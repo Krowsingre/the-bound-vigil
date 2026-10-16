@@ -425,19 +425,16 @@ pub enum SmartKind {
     Unread,
     /// Finished.
     Read,
-    /// Not finished yet: unread or in progress.
-    Incomplete,
     /// Started and not finished.
     InProgress,
     Favorites,
 }
 
 impl SmartKind {
-    pub const ALL: [SmartKind; 6] = [
+    pub const ALL: [SmartKind; 5] = [
         SmartKind::RecentlyAdded,
         SmartKind::Unread,
         SmartKind::InProgress,
-        SmartKind::Incomplete,
         SmartKind::Read,
         SmartKind::Favorites,
     ];

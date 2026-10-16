@@ -29,7 +29,7 @@ const day = 86_400_000;
 const stamp = () => new Date().toISOString();
 const ago = (days: number) => new Date(Date.now() - days * day).toISOString();
 const coverOf = ({ id, title, authors, coverPath }: BookPreview) => ({ id, title, authors, coverPath });
-const SMART: SmartKind[] = ["recently_added", "unread", "in_progress", "incomplete", "read", "favorites"];
+const SMART: SmartKind[] = ["recently_added", "unread", "in_progress", "read", "favorites"];
 
 type CollectionsApi = Pick<
   Api,
@@ -143,7 +143,6 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
     recently_added: (b) => Date.now() - Date.parse(b.addedAt) < 30 * day,
     unread: (b) => b.status === "unread",
     read: (b) => b.status === "read",
-    incomplete: (b) => b.status !== "read",
     in_progress: (b) => b.status === "in_progress",
     favorites: (b) => b.favorite,
   };
