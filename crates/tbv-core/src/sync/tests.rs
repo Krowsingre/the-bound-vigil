@@ -265,6 +265,14 @@ fn a_kind_switched_on_later_catches_up() {
     b.set_options(json!({ "notes": true }));
     b.sync(&cloud);
     assert_eq!(b.lib().notes_page(&Default::default()).unwrap().counts.personal, 1);
+
+    // A note written while notes are off isn't "waiting", but goes once they're on.
+    b.set_options(json!({ "notes": false }));
+    b.lib().save_personal_note(None, None, "Kept here for now").unwrap();
+    assert_eq!(b.lib().sync_overview().unwrap().waiting_to_send, 0);
+    b.set_options(json!({ "notes": true }));
+    assert_eq!(b.lib().sync_overview().unwrap().waiting_to_send, 1);
+    assert_eq!(b.sync(&cloud).sent, 1);
 }
 
 #[test]

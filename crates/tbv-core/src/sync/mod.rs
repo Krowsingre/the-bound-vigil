@@ -469,7 +469,18 @@ impl Library {
     }
 
     pub fn sync_overview(&self) -> Result<SyncOverview> {
-        let waiting: i64 = self.conn.query_row("SELECT COUNT(*) FROM sync_clock WHERE pushed = 0", [], |r| r.get(0))?;
+        // Only what would actually be sent: kinds switched off keep their
+        // stamps for later, but aren't waiting now.
+        let options = self.sync_options()?;
+        let mut waiting: i64 = 0;
+        for kind in KINDS.iter().filter(|k| options.includes(k.category)) {
+            waiting += self.conn.query_row(
+                "SELECT COUNT(*) FROM sync_clock c WHERE c.kind = ?1 AND c.pushed = 0
+                   AND NOT EXISTS (SELECT 1 FROM sync_conflicts x WHERE x.kind = c.kind AND x.key = c.key)",
+                params![kind.name],
+                |r| r.get::<_, i64>(0),
+            )?;
+        }
         Ok(SyncOverview {
             status: self.sync_status()?,
             project: self.supabase_project()?,

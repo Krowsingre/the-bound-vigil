@@ -601,15 +601,18 @@ pub fn run() {
             download_book,
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
-        // page gets a moment to save the reading position first, and the app
-        // quits regardless after two seconds.
+        // page gets a moment to save the reading position first; then the
+        // last sync gets its chance, and the app quits regardless after that.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.emit("tbv://quit-requested", ());
                 let app = window.app_handle().clone();
                 std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    std::thread::sleep(Duration::from_secs(2));
+                    if let Some(worker) = app.try_state::<Arc<sync::SyncWorker>>() {
+                        worker.finish(Duration::from_secs(15));
+                    }
                     app.exit(0);
                 });
             }
