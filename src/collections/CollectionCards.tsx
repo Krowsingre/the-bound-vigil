@@ -4,6 +4,7 @@ import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { hashOf } from "../lib/format";
 import { Badge } from "./badges";
+import type { ReorderProps } from "./useReorder";
 import { bookCount, KIND_LABEL, pictureUrl, SMART_INFO } from "./collectionInfo";
 
 /** A collection's picture, or a quiet tone when it has none. */
@@ -79,17 +80,19 @@ export function PinnedCard({
 export function SmartCard({
   smart,
   selected,
+  reorder,
   onSelect,
   onOpen,
 }: {
   smart: SmartSummary;
   selected: boolean;
+  reorder?: ReorderProps;
   onSelect: () => void;
   onOpen: () => void;
 }) {
   const info = SMART_INFO[smart.kind];
   return (
-    <li>
+    <li {...reorder}>
       <button
         type="button"
         className={`smart-card${selected ? " is-selected" : ""}`}
@@ -113,18 +116,20 @@ export function CollectionCard({
   layout,
   selected,
   menu,
+  reorder,
   onSelect,
   onOpen,
 }: {
   collection: CollectionSummary;
   layout: "grid" | "list";
   selected: boolean;
+  reorder?: ReorderProps;
   menu: MenuEntry[];
   onSelect: () => void;
   onOpen: () => void;
 }) {
   return (
-    <li className={`collection-card collection-card-${layout}${selected ? " is-selected" : ""}`} data-tone={hashOf(collection.id) % 4}>
+    <li {...reorder} className={`collection-card collection-card-${layout}${selected ? " is-selected" : ""}`} data-tone={hashOf(collection.id) % 4}>
       <button type="button" className="collection-card-open" onClick={onSelect} onDoubleClick={onOpen} aria-pressed={selected}>
         <span className="collection-card-head">
           <span className="collection-card-name">

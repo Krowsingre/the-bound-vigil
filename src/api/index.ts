@@ -64,6 +64,8 @@ export interface Api {
   chooseCollectionPicture(id: string): Promise<CollectionSummary | null>;
   addToCollection(id: string, bookIds: string[]): Promise<void>;
   removeFromCollection(id: string, bookId: string): Promise<void>;
+  /** Moves one of your collections to a new place (zero-based) in "Your order". */
+  moveCollection(id: string, toIndex: number): Promise<void>;
   moveInCollection(id: string, bookId: string, toIndex: number): Promise<void>;
   /** Ids of the user's collections a book is in. */
   collectionsForBook(bookId: string): Promise<string[]>;
@@ -151,6 +153,7 @@ function appApi(): Api {
     },
     addToCollection: async (id, bookIds) => (await core).invoke("add_to_collection", { id, bookIds }),
     removeFromCollection: async (id, bookId) => (await core).invoke("remove_from_collection", { id, bookId }),
+    moveCollection: async (id, toIndex) => (await core).invoke("move_collection", { id, toIndex }),
     moveInCollection: async (id, bookId, toIndex) => (await core).invoke("move_in_collection", { id, bookId, toIndex }),
     collectionsForBook: async (bookId) => (await core).invoke<string[]>("collections_for_book", { bookId }),
     getNotes: async (query) => (await core).invoke<NotesPage>("get_notes", { query }),
