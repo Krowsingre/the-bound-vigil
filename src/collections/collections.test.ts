@@ -24,8 +24,8 @@ describe("collections", () => {
   it("tells collections apart", () => {
     expect(sameRef({ kind: "collection", id: "a" }, { kind: "collection", id: "a" })).toBe(true);
     expect(sameRef({ kind: "collection", id: "a" }, { kind: "collection", id: "b" })).toBe(false);
-    expect(sameRef({ kind: "series", name: "Holmes" }, { kind: "smart", smart: "not_started" })).toBe(false);
-    expect(sameRef({ kind: "smart", smart: "last_read" }, { kind: "smart", smart: "last_read" })).toBe(true);
+    expect(sameRef({ kind: "series", name: "Holmes" }, { kind: "smart", smart: "unread" })).toBe(false);
+    expect(sameRef({ kind: "smart", smart: "read" }, { kind: "smart", smart: "read" })).toBe(true);
     expect(sameRef(null, { kind: "series", name: "x" })).toBe(false);
   });
 
