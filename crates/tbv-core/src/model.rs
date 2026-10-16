@@ -183,7 +183,11 @@ pub struct HomeViewModel {
 
 /// What happened to one file handed to import.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", tag = "outcome")]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "outcome"
+)]
 pub enum ImportResult {
     Imported {
         path: String,
@@ -202,4 +206,23 @@ pub enum ImportResult {
         path: String,
         reason: String,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn import_results_match_the_typescript_shape() {
+        let json = serde_json::to_value(ImportResult::AlreadyInLibrary {
+            path: "a.epub".into(),
+            book_id: "sha256:00".into(),
+            title: "A".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"outcome": "alreadyInLibrary", "path": "a.epub", "bookId": "sha256:00", "title": "A"})
+        );
+    }
 }

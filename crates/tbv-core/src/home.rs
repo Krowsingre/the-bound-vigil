@@ -288,4 +288,32 @@ mod tests {
             Availability::Missing
         );
     }
+    #[test]
+    fn reimporting_a_missing_book_relinks_it_and_keeps_its_cover() {
+        let (dir, mut library) = open_temp_library();
+        let source = dir.path().join("Back.epub");
+        write_test_epub(&source, "Back", "Author", true);
+        library.import_files(std::slice::from_ref(&source));
+        let before = library.home().unwrap().recently_added[0].clone();
+        fs::remove_file(
+            library
+                .paths()
+                .books_dir
+                .join(format!("Back [{}].epub", &before.id[7..15])),
+        )
+        .unwrap();
+        assert_eq!(
+            library.home().unwrap().recently_added[0].availability,
+            Availability::Missing
+        );
+
+        assert!(matches!(
+            library.import_files(&[source])[0],
+            ImportResult::AlreadyInLibrary { .. }
+        ));
+        let after = library.home().unwrap().recently_added[0].clone();
+        assert_eq!(after.availability, Availability::Local);
+        assert!(after.cover_path.is_some());
+        assert_eq!(after.cover_path, before.cover_path);
+    }
 }

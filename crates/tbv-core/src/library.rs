@@ -208,8 +208,10 @@ impl Library {
             // Known book (maybe synced from elsewhere) without a file here: adopt this copy.
             if !self.has_local_file(&book_id)? {
                 let stored = self.copy_into_library(source, &title, &book_id, format)?;
+                // Keep any cover already cached for this book.
                 self.conn.execute(
-                    "INSERT OR REPLACE INTO local_files (book_id, path) VALUES (?1, ?2)",
+                    "INSERT INTO local_files (book_id, path) VALUES (?1, ?2)
+                     ON CONFLICT(book_id) DO UPDATE SET path = excluded.path",
                     params![book_id, stored.display().to_string()],
                 )?;
             }
