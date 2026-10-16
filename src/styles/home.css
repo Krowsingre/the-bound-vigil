@@ -140,16 +140,6 @@
   isolation: isolate;
 }
 
-.hero-backdrop {
-  position: absolute;
-  inset: -40px;
-  z-index: -1;
-  background-size: cover;
-  background-position: center;
-  filter: blur(48px) saturate(0.35);
-  opacity: 0.14;
-}
-
 .hero-inner {
   display: flex;
   gap: 40px;

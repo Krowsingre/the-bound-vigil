@@ -1,4 +1,3 @@
-import { api } from "../api";
 import type { BookPreview } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
@@ -39,10 +38,8 @@ export function ResumeHero({
     );
   }
 
-  const backdrop = book.coverPath ? api.coverUrl(book.coverPath) : "";
   return (
     <section className="hero" aria-labelledby="hero-title">
-      {backdrop && <div className="hero-backdrop" style={{ backgroundImage: `url("${backdrop}")` }} aria-hidden />}
       <div className="hero-inner">
         <button type="button" className="hero-cover" onClick={() => actions.open(book)} aria-label={`Open ${book.title}`}>
           <BookCover book={book} size="l" />
