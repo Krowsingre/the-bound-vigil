@@ -109,7 +109,6 @@ impl Library {
                         "b.last_opened_at IS NULL, b.last_opened_at DESC",
                         vec![],
                     ),
-                    SmartKind::Incomplete => ("b.status != 'read'", "b.added_at DESC", vec![]),
                     SmartKind::InProgress => (
                         "b.status = 'in_progress'",
                         "b.last_opened_at IS NULL, b.last_opened_at DESC",
@@ -795,7 +794,6 @@ mod tests {
         assert_eq!(count(SmartKind::RecentlyAdded), 3);
         assert_eq!(count(SmartKind::Unread), 2);
         assert_eq!(count(SmartKind::Read), 0);
-        assert_eq!(count(SmartKind::Incomplete), 3);
         assert_eq!(count(SmartKind::InProgress), 1);
         assert_eq!(count(SmartKind::Favorites), 0);
     }

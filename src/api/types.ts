@@ -193,7 +193,7 @@ export interface CollectionSummary {
   updatedAt: IsoUtc;
 }
 
-export type SmartKind = "recently_added" | "unread" | "read" | "incomplete" | "in_progress" | "favorites";
+export type SmartKind = "recently_added" | "unread" | "in_progress" | "read" | "favorites";
 
 export interface SmartSummary {
   kind: SmartKind;
