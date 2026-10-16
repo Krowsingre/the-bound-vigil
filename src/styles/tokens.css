@@ -26,7 +26,9 @@
   --danger: #8c3b3b;
   --shadow: 0 1px 2px rgb(18 20 22 / 0.08), 0 4px 16px rgb(18 20 22 / 0.06);
 
-  --font-serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+  /* Georgia where installed (Windows, macOS); Gelasio, a bundled look-alike with the same
+     letter widths, everywhere else, so spacing never depends on the machine. */
+  --font-serif: Georgia, "Gelasio", serif;
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
   --radius-s: 6px;
