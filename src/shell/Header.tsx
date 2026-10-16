@@ -1,5 +1,5 @@
-import { forwardRef, useState } from "react";
-import type { SyncStatus } from "../api/types";
+import { forwardRef } from "react";
+import type { Profile, SyncStatus } from "../api/types";
 import { Icon } from "../components/Icon";
 import { SyncMenu } from "./SyncMenu";
 import { WindowControls } from "./WindowControls";
@@ -8,13 +8,17 @@ export const Header = forwardRef<
   HTMLInputElement,
   {
     sync: SyncStatus | null;
-    onSearch: (query: string) => void;
+    profile: Profile | null;
+    search: string;
+    onSearchChange: (query: string) => void;
+    onSearchSubmit: () => void;
     onImportBooks: () => void;
     onImportFolder: () => void;
     onOpenSyncSettings: () => void;
+    onChooseAvatar: () => void;
+    onClearAvatar: () => void;
   }
->(function Header({ sync, onSearch, ...menu }, searchRef) {
-  const [query, setQuery] = useState("");
+>(function Header({ sync, profile, search, onSearchChange, onSearchSubmit, ...menu }, searchRef) {
   return (
     <header className="header" data-tauri-drag-region>
       <form
@@ -22,7 +26,7 @@ export const Header = forwardRef<
         role="search"
         onSubmit={(e) => {
           e.preventDefault();
-          if (query.trim()) onSearch(query.trim());
+          onSearchSubmit();
         }}
       >
         <Icon name="search" size={18} />
@@ -33,12 +37,12 @@ export const Header = forwardRef<
           id="global-search"
           ref={searchRef}
           type="search"
-          placeholder="Search books, authors, or collections…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search books, authors or series…"
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
-              setQuery("");
+              onSearchChange("");
               e.currentTarget.blur();
             }
           }}
@@ -47,7 +51,7 @@ export const Header = forwardRef<
         />
       </form>
       <div className="header-spacer" data-tauri-drag-region />
-      <SyncMenu sync={sync} {...menu} />
+      <SyncMenu sync={sync} profile={profile} {...menu} />
       <WindowControls />
     </header>
   );

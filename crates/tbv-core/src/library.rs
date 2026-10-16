@@ -25,6 +25,8 @@ pub struct LibraryPaths {
     pub books_dir: PathBuf,
     /// Extracted covers (OS cache folder; safe to delete).
     pub covers_dir: PathBuf,
+    /// This device's profile picture (app-data folder).
+    pub profile_dir: PathBuf,
 }
 
 impl LibraryPaths {
@@ -33,6 +35,7 @@ impl LibraryPaths {
             database: data_dir.join("library.sqlite3"),
             books_dir: data_dir.join("Library"),
             covers_dir: cache_dir.join("covers"),
+            profile_dir: data_dir.join("Profile"),
         }
     }
 }
@@ -105,6 +108,19 @@ const MIGRATIONS: &[&str] = &[
         deleted_at TEXT
     );
     CREATE INDEX idx_annotations_updated ON annotations(updated_at);
+    "#,
+    // v2: series, shelves the user picks (favourites, want to read), and
+    // settings that belong to this device only.
+    r#"
+    ALTER TABLE books ADD COLUMN series TEXT;
+    ALTER TABLE books ADD COLUMN series_index REAL;
+    ALTER TABLE books ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE books ADD COLUMN want_to_read INTEGER NOT NULL DEFAULT 0;
+
+    CREATE TABLE device_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
     "#,
 ];
 
@@ -248,8 +264,8 @@ impl Library {
 
         let tx = self.conn.transaction()?;
         tx.execute(
-            "INSERT INTO books (id, title, authors, format, file_size, synopsis, publisher, language, added_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO books (id, title, authors, format, file_size, synopsis, publisher, language, added_at, series, series_index)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 book_id,
                 title,
@@ -260,6 +276,8 @@ impl Library {
                 metadata.publisher,
                 metadata.language,
                 now_utc(),
+                metadata.series,
+                metadata.series_index,
             ],
         )?;
         tx.execute(

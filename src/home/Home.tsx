@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
-import type { BookPreview, HomeViewModel } from "../api/types";
+import type { HomeViewModel } from "../api/types";
 import { useToast } from "../components/Toast";
 import { Icon } from "../components/Icon";
 import { greeting } from "../lib/format";
+import type { LibraryView } from "../library/libraryView";
 import type { Route } from "../shell/routes";
-import { openMessage, type BookActions } from "./bookActions";
+import { makeBookActions } from "./bookActions";
 import { CollectionsPreview } from "./CollectionsPreview";
 import { InProgress } from "./InProgress";
 import { LibrarySnapshot } from "./LibrarySnapshot";
@@ -19,12 +20,14 @@ type Load = { state: "loading" } | { state: "error"; message: string } | { state
 export function Home({
   refreshKey,
   onNavigate,
+  onOpenLibrary,
   onImportBooks,
   onImportFolder,
   onLoaded,
 }: {
   refreshKey: number;
   onNavigate: (route: Route) => void;
+  onOpenLibrary: (view?: Partial<LibraryView>) => void;
   onImportBooks: () => void;
   onImportFolder: () => void;
   onLoaded?: (home: HomeViewModel) => void;
@@ -48,15 +51,8 @@ export function Home({
     };
   }, [refreshKey, reload, onLoaded]);
 
-  const actions: BookActions = {
-    open: (book: BookPreview) => toast(openMessage(book)),
-    setStatus: (book, status) =>
-      api.setBookStatus(book.id, status).then(
-        () => setReload((n) => n + 1),
-        (e: unknown) => toast(`Couldn't update “${book.title}”: ${String(e)}`),
-      ),
-  };
-  const openLibrary = useCallback(() => onNavigate("library"), [onNavigate]);
+  const actions = makeBookActions(api, toast, () => setReload((n) => n + 1));
+  const openLibrary = useCallback(() => onOpenLibrary({ tab: "all" }), [onOpenLibrary]);
 
   if (load.state === "loading") return <div className="home home-loading" aria-busy="true" aria-label="Loading your library" />;
   if (load.state === "error")
@@ -106,8 +102,12 @@ export function Home({
         <ReadingActivity activity={home.activity} />
       </div>
       <div className="home-middle">
-        <RecentlyAdded books={home.recentlyAdded} actions={actions} onViewAll={openLibrary} />
-        <InProgress books={home.inProgress} actions={actions} onViewAll={openLibrary} />
+        <RecentlyAdded
+          books={home.recentlyAdded}
+          actions={actions}
+          onViewAll={() => onOpenLibrary({ tab: "all", sort: "recently_added" })}
+        />
+        <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenLibrary({ tab: "in_progress" })} />
       </div>
       <div className="home-bottom">
         <CollectionsPreview collections={home.collections} onViewAll={() => onNavigate("collections")} />

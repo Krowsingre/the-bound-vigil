@@ -2,13 +2,29 @@
 // calls Rust commands; in a plain browser (design previews only) it serves a
 // clearly labelled sample library so screens can be looked at without the app.
 
-import type { HomeViewModel, ImportResult, ReadStatus } from "./types";
+import type {
+  CollectionPreview,
+  HomeViewModel,
+  ImportResult,
+  LibraryPage,
+  LibraryQuery,
+  Profile,
+  ReadStatus,
+} from "./types";
 
 export interface Api {
   readonly kind: "app" | "preview";
   getHome(): Promise<HomeViewModel>;
   importBooks(paths: string[]): Promise<ImportResult[]>;
   setBookStatus(bookId: string, status: ReadStatus): Promise<void>;
+  getLibrary(query: LibraryQuery): Promise<LibraryPage>;
+  getCollections(): Promise<CollectionPreview[]>;
+  setFavorite(bookId: string, favorite: boolean): Promise<void>;
+  setWantToRead(bookId: string, want: boolean): Promise<void>;
+  getProfile(): Promise<Profile>;
+  /** Asks for a picture, copies it into TBV, and returns the new profile. Null if cancelled. */
+  chooseAvatar(): Promise<Profile | null>;
+  clearAvatar(): Promise<Profile>;
   pickBooks(): Promise<string[]>;
   pickFolder(): Promise<string[]>;
   coverUrl(path: string): string;
@@ -33,6 +49,22 @@ function appApi(): Api {
     getHome: async () => (await core).invoke<HomeViewModel>("get_home"),
     importBooks: async (paths) => (await core).invoke<ImportResult[]>("import_books", { paths }),
     setBookStatus: async (bookId, status) => (await core).invoke("set_book_status", { bookId, status }),
+    getLibrary: async (query) => (await core).invoke<LibraryPage>("get_library", { query }),
+    getCollections: async () => (await core).invoke<CollectionPreview[]>("get_collections"),
+    setFavorite: async (bookId, favorite) => (await core).invoke("set_favorite", { bookId, favorite }),
+    setWantToRead: async (bookId, want) => (await core).invoke("set_want_to_read", { bookId, want }),
+    getProfile: async () => (await core).invoke<Profile>("get_profile"),
+    chooseAvatar: async () => {
+      const [path] = asList(
+        await (await dialog).open({
+          multiple: false,
+          title: "Choose a profile picture",
+          filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+        }),
+      );
+      return path ? (await core).invoke<Profile>("set_avatar", { path }) : null;
+    },
+    clearAvatar: async () => (await core).invoke<Profile>("clear_avatar"),
     pickBooks: async () =>
       asList(
         await (await dialog).open({

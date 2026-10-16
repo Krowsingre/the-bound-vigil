@@ -16,19 +16,25 @@ const COLLECTIONS_LIMIT: u32 = 4;
 const ANNOTATIONS_LIMIT: u32 = 2;
 
 /// Effective metadata = the user's override if there is one, else the book's own.
-const BOOK_SELECT: &str = r#"
+pub(crate) const BOOK_COLUMNS: &str = r#"
     SELECT b.id,
            COALESCE(o_title.value, b.title),
            COALESCE(o_authors.value, b.authors),
            b.format,
            COALESCE(o_synopsis.value, b.synopsis),
            b.added_at, b.last_opened_at, b.status, b.total_progression, b.resume_locator,
-           lf.path, lf.cover_path
+           lf.path, lf.cover_path,
+           COALESCE(o_series.value, b.series), b.series_index, b.favorite, b.want_to_read
+"#;
+
+/// The joins that make the effective metadata available to WHERE and ORDER BY.
+pub(crate) const BOOK_FROM: &str = r#"
     FROM books b
     LEFT JOIN local_files lf ON lf.book_id = b.id
     LEFT JOIN metadata_overrides o_title ON o_title.book_id = b.id AND o_title.field = 'title'
     LEFT JOIN metadata_overrides o_authors ON o_authors.book_id = b.id AND o_authors.field = 'authors'
     LEFT JOIN metadata_overrides o_synopsis ON o_synopsis.book_id = b.id AND o_synopsis.field = 'synopsis'
+    LEFT JOIN metadata_overrides o_series ON o_series.book_id = b.id AND o_series.field = 'series'
     WHERE b.deleted_at IS NULL
 "#;
 
@@ -74,7 +80,7 @@ impl Library {
     }
 
     fn books(&self, tail: &str, limit: u32) -> Result<Vec<BookPreview>> {
-        let sql = format!("{BOOK_SELECT} {tail} LIMIT ?1");
+        let sql = format!("{BOOK_COLUMNS} {BOOK_FROM} {tail} LIMIT ?1");
         let mut statement = self.conn.prepare(&sql)?;
         let rows = statement.query_map(params![limit], book_from_row)?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
@@ -101,6 +107,11 @@ impl Library {
     }
 
     fn collection_previews(&self) -> Result<Vec<CollectionPreview>> {
+        self.collections(COLLECTIONS_LIMIT)
+    }
+
+    /// Collections, newest first, each with up to four covers.
+    pub fn collections(&self, limit: u32) -> Result<Vec<CollectionPreview>> {
         let mut statement = self.conn.prepare(
             "SELECT c.id, c.name,
                     (SELECT COUNT(*) FROM collection_books cb JOIN books b ON b.id = cb.book_id
@@ -115,7 +126,7 @@ impl Library {
              ORDER BY cb.added_at LIMIT 4",
         )?;
         let rows = statement
-            .query_map(params![COLLECTIONS_LIMIT], |r| {
+            .query_map(params![limit], |r| {
                 Ok((r.get::<_, String>(0)?, r.get(1)?, r.get(2)?))
             })?
             .collect::<std::result::Result<Vec<(String, String, u32)>, _>>()?;
@@ -164,7 +175,7 @@ impl Library {
     }
 }
 
-fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
+pub(crate) fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
     let authors: String = r.get(2)?;
     let status: String = r.get(7)?;
     let locator: Option<String> = r.get(9)?;
@@ -189,6 +200,10 @@ fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
         availability,
         // Filled in once sync records other devices' positions.
         remote_positions: Vec::new(),
+        series: r.get(12)?,
+        series_index: r.get(13)?,
+        favorite: r.get(14)?,
+        want_to_read: r.get(15)?,
     })
 }
 

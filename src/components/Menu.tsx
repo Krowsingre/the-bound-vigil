@@ -7,6 +7,8 @@ export interface MenuItem {
   hint?: string;
   disabled?: boolean;
   danger?: boolean;
+  /** Shown as a tick; the menu stays open so several can be toggled. */
+  checked?: boolean;
   onSelect?: () => void;
 }
 
@@ -78,15 +80,20 @@ export function Menu({
               <button
                 key={i}
                 type="button"
-                role="menuitem"
+                role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+                aria-checked={item.checked}
                 className={`menu-item${item.danger ? " menu-item-danger" : ""}`}
                 disabled={item.disabled}
                 onClick={() => {
-                  setOpen(false);
+                  if (item.checked === undefined) setOpen(false);
                   item.onSelect?.();
                 }}
               >
-                {item.icon && <Icon name={item.icon} size={16} />}
+                {item.checked !== undefined ? (
+                  <span className="menu-check">{item.checked && <Icon name="check" size={16} />}</span>
+                ) : (
+                  item.icon && <Icon name={item.icon} size={16} />
+                )}
                 <span className="menu-label">{item.label}</span>
                 {item.hint && <span className="menu-hint">{item.hint}</span>}
               </button>

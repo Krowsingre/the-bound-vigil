@@ -5,7 +5,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use tauri::{Manager, State};
-use tbv_core::model::{HomeViewModel, ImportResult, ReadStatus};
+use tbv_core::model::{
+    CollectionPreview, HomeViewModel, ImportResult, LibraryPage, LibraryQuery, Profile, ReadStatus,
+};
 use tbv_core::{Library, LibraryPaths, SUPPORTED_FORMATS};
 
 struct AppLibrary(Arc<Mutex<Library>>);
@@ -52,6 +54,61 @@ async fn set_book_status(
 }
 
 #[tauri::command]
+async fn get_library(
+    state: State<'_, AppLibrary>,
+    query: LibraryQuery,
+) -> CommandResult<LibraryPage> {
+    with_library(state, move |library| library.library_page(&query)).await
+}
+
+#[tauri::command]
+async fn get_collections(state: State<'_, AppLibrary>) -> CommandResult<Vec<CollectionPreview>> {
+    with_library(state, |library| library.collections(u32::MAX)).await
+}
+
+#[tauri::command]
+async fn set_favorite(
+    state: State<'_, AppLibrary>,
+    book_id: String,
+    favorite: bool,
+) -> CommandResult<()> {
+    with_library(state, move |library| {
+        library.set_favorite(&book_id, favorite)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn set_want_to_read(
+    state: State<'_, AppLibrary>,
+    book_id: String,
+    want: bool,
+) -> CommandResult<()> {
+    with_library(state, move |library| {
+        library.set_want_to_read(&book_id, want)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn get_profile(state: State<'_, AppLibrary>) -> CommandResult<Profile> {
+    with_library(state, |library| library.profile()).await
+}
+
+#[tauri::command]
+async fn set_avatar(state: State<'_, AppLibrary>, path: String) -> CommandResult<Profile> {
+    with_library(state, move |library| {
+        library.set_avatar(&PathBuf::from(path))
+    })
+    .await
+}
+
+#[tauri::command]
+async fn clear_avatar(state: State<'_, AppLibrary>) -> CommandResult<Profile> {
+    with_library(state, |library| library.clear_avatar()).await
+}
+
+#[tauri::command]
 fn supported_formats() -> Vec<&'static str> {
     SUPPORTED_FORMATS.to_vec()
 }
@@ -71,6 +128,13 @@ pub fn run() {
             get_home,
             import_books,
             set_book_status,
+            get_library,
+            get_collections,
+            set_favorite,
+            set_want_to_read,
+            get_profile,
+            set_avatar,
+            clear_avatar,
             supported_formats
         ])
         .run(tauri::generate_context!())

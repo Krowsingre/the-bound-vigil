@@ -310,7 +310,7 @@
   position: absolute;
   top: calc(100% + 6px);
   z-index: 20;
-  min-width: 300px;
+  min-width: 320px;
   padding: 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-m);
@@ -355,6 +355,7 @@
 
 .menu-hint {
   font-size: 12px;
+  white-space: nowrap;
   color: var(--text-muted);
 }
 
@@ -450,4 +451,58 @@
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.menu-check {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  color: var(--accent);
+}
+
+/* A chosen picture fills the circle; sync state moves to a small badge. */
+.sync-avatar {
+  position: relative;
+  display: block;
+  width: 36px;
+  height: 36px;
+}
+
+.sync-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.5px solid var(--border);
+}
+
+.sync-circle:hover .sync-avatar img,
+.sync-circle[aria-expanded="true"] .sync-avatar img {
+  border-color: var(--text-muted);
+}
+
+.sync-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  color: var(--text-muted);
+}
+
+.sync-idle .sync-badge,
+.sync-syncing .sync-badge {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sync-attention .sync-badge,
+.sync-error .sync-badge {
+  border-color: var(--danger);
+  color: var(--danger);
 }

@@ -20,7 +20,21 @@ Step 1 is the app's frame and the Home screen:
   window. EPUB, PDF, MOBI, AZW3, CBZ and FB2 files are accepted. Your original
   files are never changed; TBV keeps its own copy in its library folder.
 
-The Library, Collections, Notes, Settings and the reader are placeholders for now.
+Step 2 adds the Library page:
+
+- Every book in your library, as covers, a list, or a compact table.
+- Shelves: All books, Favourites, Want to read, In progress, Read, Unread and
+  Collections, each with its count.
+- Sorting by recently added, recently opened, title (ignoring "The", "A" and
+  "An"), author, series or progress, remembered on this device.
+- Filtering by file format and by whether the book is on this device.
+- Searching titles, authors and series from the header search box.
+- Pages of 24 books.
+- Each book's **…** menu can add it to Favourites or Want to read.
+- The sync circle can show a profile picture of your choosing, picked from
+  its menu. Sync state then shows as a small badge on the picture.
+
+Collections, Notes, Settings and the reader are placeholders for now.
 
 ## Getting the app
 

@@ -1,10 +1,6 @@
 import type { Route } from "../shell/routes";
 
-const PAGES: Record<Exclude<Route, "home">, { title: string; body: string }> = {
-  library: {
-    title: "Library",
-    body: "Every book you own, with sorting, filters and search. This page is built in a later step.",
-  },
+const PAGES: Record<Exclude<Route, "home" | "library">, { title: string; body: string }> = {
   collections: {
     title: "Collections",
     body: "Your own groupings of books, synced across devices. This page is built in a later step.",
@@ -23,7 +19,7 @@ const PAGES: Record<Exclude<Route, "home">, { title: string; body: string }> = {
   },
 };
 
-export function ComingSoon({ route }: { route: Exclude<Route, "home"> }) {
+export function ComingSoon({ route }: { route: Exclude<Route, "home" | "library"> }) {
   const page = PAGES[route];
   return (
     <div className="coming-soon">

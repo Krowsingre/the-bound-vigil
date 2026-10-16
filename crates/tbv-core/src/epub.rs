@@ -17,6 +17,8 @@ pub struct BookMetadata {
     pub synopsis: Option<String>,
     pub publisher: Option<String>,
     pub language: Option<String>,
+    pub series: Option<String>,
+    pub series_index: Option<f64>,
     pub cover: Option<Cover>,
 }
 
@@ -41,6 +43,10 @@ enum Field {
     Description,
     Publisher,
     Language,
+    /// EPUB 3 `<meta property="belongs-to-collection">`.
+    Series,
+    /// EPUB 3 `<meta property="group-position">`.
+    SeriesIndex,
 }
 
 pub fn read_epub_metadata(path: &Path) -> Result<BookMetadata> {
@@ -67,10 +73,12 @@ pub fn read_epub_metadata(path: &Path) -> Result<BookMetadata> {
                 if let Some(field) = metadata_field(&e) {
                     capturing = Some((field, String::new()));
                 } else {
-                    collect_opf_element(&e, &mut manifest, &mut cover_id);
+                    collect_opf_element(&e, &mut manifest, &mut cover_id, &mut metadata);
                 }
             }
-            Ok(Event::Empty(e)) => collect_opf_element(&e, &mut manifest, &mut cover_id),
+            Ok(Event::Empty(e)) => {
+                collect_opf_element(&e, &mut manifest, &mut cover_id, &mut metadata)
+            }
             Ok(Event::Text(t)) => {
                 if let Some((_, text)) = capturing.as_mut() {
                     if let Ok(value) = t.unescape() {
@@ -137,6 +145,11 @@ fn metadata_field(e: &BytesStart) -> Option<Field> {
         b"description" => Some(Field::Description),
         b"publisher" => Some(Field::Publisher),
         b"language" => Some(Field::Language),
+        b"meta" => match attribute(e, b"property").as_deref() {
+            Some("belongs-to-collection") => Some(Field::Series),
+            Some("group-position") => Some(Field::SeriesIndex),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -145,6 +158,7 @@ fn collect_opf_element(
     e: &BytesStart,
     manifest: &mut Vec<ManifestItem>,
     cover_id: &mut Option<String>,
+    metadata: &mut BookMetadata,
 ) {
     match e.local_name().as_ref() {
         b"item" => {
@@ -160,6 +174,14 @@ fn collect_opf_element(
         b"meta" if attribute(e, b"name").is_some_and(|n| n.eq_ignore_ascii_case("cover")) => {
             *cover_id = attribute(e, b"content");
         }
+        // Calibre writes series as <meta name="calibre:series" content="…"/>.
+        b"meta" => match (attribute(e, b"name").as_deref(), attribute(e, b"content")) {
+            (Some("calibre:series"), Some(value)) => store_field(metadata, Field::Series, value),
+            (Some("calibre:series_index"), Some(value)) => {
+                store_field(metadata, Field::SeriesIndex, value)
+            }
+            _ => {}
+        },
         _ => {}
     }
 }
@@ -178,6 +200,10 @@ fn store_field(metadata: &mut BookMetadata, field: Field, raw: String) {
         Field::Description if metadata.synopsis.is_none() => metadata.synopsis = Some(text),
         Field::Publisher if metadata.publisher.is_none() => metadata.publisher = Some(text),
         Field::Language if metadata.language.is_none() => metadata.language = Some(text),
+        Field::Series if metadata.series.is_none() => metadata.series = Some(text),
+        Field::SeriesIndex if metadata.series_index.is_none() => {
+            metadata.series_index = text.parse().ok()
+        }
         _ => {}
     }
 }
@@ -298,6 +324,17 @@ pub(crate) mod tests {
 
     /// Builds a small but valid EPUB for tests.
     pub fn write_test_epub(path: &Path, title: &str, author: &str, with_cover: bool) {
+        write_test_epub_with(path, title, author, with_cover, "");
+    }
+
+    /// Like `write_test_epub`, with extra elements inside `<metadata>`.
+    pub fn write_test_epub_with(
+        path: &Path,
+        title: &str,
+        author: &str,
+        with_cover: bool,
+        extra_metadata: &str,
+    ) {
         let file = File::create(path).unwrap();
         let mut zip = zip::ZipWriter::new(file);
         let stored =
@@ -312,7 +349,7 @@ pub(crate) mod tests {
             ""
         };
         let opf = format!(
-            r#"<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>{title}</dc:title><dc:creator>{author}</dc:creator><dc:description>&lt;p&gt;A tale of &lt;i&gt;night&lt;/i&gt; &amp;amp; watchfulness.&lt;/p&gt;</dc:description><dc:language>en</dc:language></metadata><manifest><item id="c1" href="text/ch1.xhtml" media-type="application/xhtml+xml"/>{cover_item}</manifest><spine><itemref idref="c1"/></spine></package>"#
+            r#"<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>{title}</dc:title><dc:creator>{author}</dc:creator><dc:description>&lt;p&gt;A tale of &lt;i&gt;night&lt;/i&gt; &amp;amp; watchfulness.&lt;/p&gt;</dc:description><dc:language>en</dc:language>{extra_metadata}</metadata><manifest><item id="c1" href="text/ch1.xhtml" media-type="application/xhtml+xml"/>{cover_item}</manifest><spine><itemref idref="c1"/></spine></package>"#
         );
         zip.start_file("OEBPS/content.opf", stored).unwrap();
         zip.write_all(opf.as_bytes()).unwrap();
@@ -344,6 +381,34 @@ pub(crate) mod tests {
         let cover = metadata.cover.unwrap();
         assert_eq!(cover.extension, "png");
         assert_eq!(cover.bytes, b"\x89PNG fake cover");
+    }
+
+    #[test]
+    fn reads_calibre_and_epub3_series() {
+        let dir = tempfile::tempdir().unwrap();
+        let calibre = dir.path().join("calibre.epub");
+        write_test_epub_with(
+            &calibre,
+            "Words of Radiance",
+            "B",
+            false,
+            r#"<meta name="calibre:series" content="The Stormlight Archive"/><meta name="calibre:series_index" content="2.0"/>"#,
+        );
+        let m = read_epub_metadata(&calibre).unwrap();
+        assert_eq!(m.series.as_deref(), Some("The Stormlight Archive"));
+        assert_eq!(m.series_index, Some(2.0));
+
+        let epub3 = dir.path().join("epub3.epub");
+        write_test_epub_with(
+            &epub3,
+            "Oathbringer",
+            "B",
+            false,
+            r##"<meta property="belongs-to-collection" id="c1">The Stormlight Archive</meta><meta refines="#c1" property="group-position">3</meta>"##,
+        );
+        let m = read_epub_metadata(&epub3).unwrap();
+        assert_eq!(m.series.as_deref(), Some("The Stormlight Archive"));
+        assert_eq!(m.series_index, Some(3.0));
     }
 
     #[test]
