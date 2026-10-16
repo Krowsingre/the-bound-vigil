@@ -13,6 +13,7 @@ import type {
   CollectionsOverview,
   HomeViewModel,
   ImportResult,
+  LibraryInfo,
   LibraryPage,
   LibraryQuery,
   NoteItem,
@@ -76,6 +77,18 @@ export interface Api {
   /** Changes the words on a highlight. Empty words make it a plain highlight. */
   setAnnotationNote(id: string, note: string | null): Promise<NoteItem>;
   deleteNote(id: string, kind: NoteKind): Promise<void>;
+  /** Where this device keeps the library, and how big it is. */
+  libraryInfo(): Promise<LibraryInfo>;
+  /** Asks where to save, then writes the file. False if cancelled. */
+  exportLibrary(): Promise<boolean>;
+  exportNotesMarkdown(): Promise<boolean>;
+  createBackup(): Promise<boolean>;
+  /** Asks for a backup file and replaces this device's library with it. False if cancelled. */
+  restoreBackup(): Promise<boolean>;
+  /** A colour from a book's cover, as #rrggbb, for Adaptive theming. */
+  coverAccent(bookId: string): Promise<string | null>;
+  /** Opens File Explorer at a file or folder. */
+  showFolder(path: string): Promise<void>;
 }
 
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -91,6 +104,13 @@ function appApi(): Api {
 
   const asList = (picked: string | string[] | null) =>
     picked === null ? [] : Array.isArray(picked) ? picked : [picked];
+  const today = () => new Date().toISOString().slice(0, 10);
+  const saveTo = async (command: string, title: string, defaultPath: string, name: string, extensions: string[]) => {
+    const path = await (await dialog).save({ title, defaultPath, filters: [{ name, extensions }] });
+    if (!path) return false;
+    await (await core).invoke(command, { path });
+    return true;
+  };
 
   return {
     kind: "app",
@@ -161,6 +181,24 @@ function appApi(): Api {
     savePersonalNote: async (id, title, body) => (await core).invoke<NoteItem>("save_personal_note", { id, title, body }),
     setAnnotationNote: async (id, note) => (await core).invoke<NoteItem>("set_annotation_note", { id, note }),
     deleteNote: async (id, kind) => (await core).invoke("delete_note", { id, kind }),
+    libraryInfo: async () => (await core).invoke<LibraryInfo>("library_info"),
+    exportLibrary: () => saveTo("export_library", "Export library data", `TBV library ${today()}.json`, "JSON", ["json"]),
+    exportNotesMarkdown: () => saveTo("export_notes_markdown", "Export notes", `TBV notes ${today()}.md`, "Markdown", ["md"]),
+    createBackup: () => saveTo("create_backup", "Create a backup", `TBV backup ${today()}.tbvbackup`, "TBV backup", ["tbvbackup"]),
+    restoreBackup: async () => {
+      const [path] = asList(
+        await (await dialog).open({
+          multiple: false,
+          title: "Restore from a backup",
+          filters: [{ name: "TBV backup", extensions: ["tbvbackup", "db", "sqlite"] }],
+        }),
+      );
+      if (!path) return false;
+      await (await core).invoke("restore_backup", { path });
+      return true;
+    },
+    coverAccent: async (bookId) => (await core).invoke<string | null>("cover_accent", { bookId }),
+    showFolder: async (path) => (await core).invoke("show_folder", { path }),
   };
 }
 

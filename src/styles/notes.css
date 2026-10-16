@@ -52,21 +52,37 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .kind-highlight {
+  :root:not([data-theme]) .kind-highlight {
     color: #e3bd78;
   }
 
-  :root:not([data-theme="light"]) .kind-annotation {
+  :root:not([data-theme]) .kind-annotation {
     color: #9fbbd8;
   }
 
-  :root:not([data-theme="light"]) .kind-book_note {
+  :root:not([data-theme]) .kind-book_note {
     color: #a6c7a1;
   }
 
-  :root:not([data-theme="light"]) .kind-personal {
+  :root:not([data-theme]) .kind-personal {
     color: #e3a59c;
   }
+}
+
+:root[data-theme="dark"] .kind-highlight {
+  color: #e3bd78;
+}
+
+:root[data-theme="dark"] .kind-annotation {
+  color: #9fbbd8;
+}
+
+:root[data-theme="dark"] .kind-book_note {
+  color: #a6c7a1;
+}
+
+:root[data-theme="dark"] .kind-personal {
+  color: #e3a59c;
 }
 
 .note-art-personal {

@@ -41,8 +41,9 @@
   color-scheme: light;
 }
 
+/* Dark follows the system until the app has chosen (Settings > Appearance). */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme]) {
     --bg: var(--crow-ink);
     --surface: var(--crow-ink-soft);
     --surface-sunk: var(--crow-ink-deep);
@@ -57,4 +58,88 @@
     --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
     color-scheme: dark;
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: var(--crow-ink);
+  --surface: var(--crow-ink-soft);
+  --surface-sunk: var(--crow-ink-deep);
+  --sidebar-bg: var(--crow-ink-deep);
+  --sidebar-hover: var(--crow-ink-soft);
+  --text: var(--ash-pale);
+  --text-muted: #9a9ea3;
+  --border: #33383d;
+  --accent: #8fa3b5;
+  --accent-text: var(--crow-ink-deep);
+  --danger: #d08a8a;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+  color-scheme: dark;
+}
+
+/* Settings > Appearance: surface style */
+:root[data-surface="matte"] {
+  --bg: #e9e6e1;
+  --surface: #f3f1ed;
+}
+
+:root[data-surface="paper"] {
+  --bg: #efe9dd;
+  --surface: #f8f4ec;
+  --surface-sunk: #e6dfd1;
+  --border: #d9d0c0;
+}
+
+:root[data-theme="dark"][data-surface="matte"] {
+  --bg: #1d1f21;
+  --surface: #25282b;
+}
+
+:root[data-theme="dark"][data-surface="paper"] {
+  --bg: #1f1d1a;
+  --surface: #2a2723;
+  --surface-sunk: #171513;
+  --border: #3a3631;
+}
+
+/* Settings > Appearance: interface font */
+:root[data-ui-font="serif"] {
+  --font-sans: Georgia, "Gelasio", serif;
+}
+
+/* Settings > Accessibility */
+:root[data-high-contrast] {
+  --text-muted: #3d4247;
+  --border: #9a958d;
+  --focus: #2f5f8a;
+}
+
+:root[data-high-contrast][data-theme="dark"] {
+  --text: #f6f4f0;
+  --text-muted: #c9ccd0;
+  --border: #6b7177;
+  --focus: #a9c4dc;
+}
+
+:root[data-reduce-motion] *,
+:root[data-reduce-motion] *::before,
+:root[data-reduce-motion] *::after {
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+:root[data-strong-focus] :focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+:root[data-underline-links] a,
+:root[data-underline-links] .link-btn {
+  text-decoration: underline;
+}
+
+/* Settings > Appearance: progress bars on books in Library and Collections */
+:root[data-hide-progress] .library .progress-line,
+:root[data-hide-progress] .collections-page .progress-line {
+  display: none !important;
 }

@@ -15,6 +15,7 @@
     "core:window:allow-set-fullscreen",
     "core:window:allow-is-fullscreen",
     "dialog:allow-open",
+    "dialog:allow-save",
     "opener:allow-open-url"
   ]
 }

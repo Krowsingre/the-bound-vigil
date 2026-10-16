@@ -13,6 +13,7 @@ import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars
 import { LeftPanel, RightPanel, type AnnotationHandlers, type RightTab } from "./ReaderPanels";
 import { NoteDialog, SelectionToolbar, TextSettings } from "./ReaderPopovers";
 import { ReaderSearch } from "./ReaderSearch";
+import { useAppDark } from "../settings/appSettings";
 import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, resolveTheme, SETTINGS_KEY, type ReaderSettings } from "./settings";
 import { useReaderEngine, type TextSelection } from "./useReaderEngine";
 
@@ -37,18 +38,6 @@ function readPanels(): { left: boolean; right: boolean } {
     /* fall through to the default */
   }
   return { left: true, right: true };
-}
-
-function usePrefersDark(): boolean {
-  const query = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : null;
-  const [dark, setDark] = useState(query?.matches ?? false);
-  useEffect(() => {
-    if (!query) return;
-    const on = () => setDark(query.matches);
-    query.addEventListener("change", on);
-    return () => query.removeEventListener("change", on);
-  }, [query]);
-  return dark;
 }
 
 async function setWindowFullscreen(on: boolean) {
@@ -92,7 +81,7 @@ export function Reader({
   const [lastColor, setLastColor] = useState<HighlightColor>("rose");
   const host = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
-  const prefersDark = usePrefersDark();
+  const prefersDark = useAppDark();
 
   // Load the book, its highlights and the reading settings, then the file.
   useEffect(() => {

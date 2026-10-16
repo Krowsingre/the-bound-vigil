@@ -1,0 +1,257 @@
+// The pages inside Settings, and what the settings search can find.
+
+import type { IconName } from "../components/Icon";
+
+export type SettingsTab =
+  | "appearance"
+  | "reading"
+  | "library"
+  | "collections"
+  | "notes"
+  | "sync"
+  | "files"
+  | "accessibility"
+  | "shortcuts"
+  | "advanced"
+  | "about";
+
+export const SETTINGS_TABS: {
+  tab: SettingsTab;
+  label: string;
+  icon: IconName;
+  lede: string;
+}[] = [
+  {
+    tab: "appearance",
+    label: "Appearance",
+    icon: "palette",
+    lede: "Choose how The Bound Vigil looks and feels.",
+  },
+  {
+    tab: "reading",
+    label: "Reading",
+    icon: "readingA",
+    lede: "How the text of your books looks when you open them.",
+  },
+  {
+    tab: "library",
+    label: "Library",
+    icon: "library",
+    lede: "How your library is shown, and where its files live.",
+  },
+  {
+    tab: "collections",
+    label: "Collections",
+    icon: "grid",
+    lede: "What the Collections page shows.",
+  },
+  {
+    tab: "notes",
+    label: "Notes",
+    icon: "notes",
+    lede: "How your notes are shown, and taking them with you.",
+  },
+  {
+    tab: "sync",
+    label: "Sync & Backup",
+    icon: "cloud",
+    lede: "Keep your library, reading progress and notes in step and safe.",
+  },
+  {
+    tab: "files",
+    label: "File Handling",
+    icon: "file",
+    lede: "Which books TBV opens, and how it treats your files.",
+  },
+  {
+    tab: "accessibility",
+    label: "Accessibility",
+    icon: "accessibility",
+    lede: "Make TBV easier to see and use.",
+  },
+  {
+    tab: "shortcuts",
+    label: "Shortcuts",
+    icon: "keyboard",
+    lede: "Keys that save a trip to the mouse.",
+  },
+  {
+    tab: "advanced",
+    label: "Advanced",
+    icon: "sliders",
+    lede: "Where TBV keeps its data, and starting settings afresh.",
+  },
+  {
+    tab: "about",
+    label: "About",
+    icon: "info",
+    lede: "The Bound Vigil, and the work it is built on.",
+  },
+];
+
+export interface SettingsEntry {
+  tab: SettingsTab;
+  /** The section's id on its page. */
+  section: string;
+  label: string;
+  /** Other words people might search for. */
+  words: string;
+}
+
+export const SETTINGS_ENTRIES: SettingsEntry[] = [
+  {
+    tab: "appearance",
+    section: "theme",
+    label: "Application theme",
+    words: "light dark system adaptive colour color mode night cover accent",
+  },
+  {
+    tab: "appearance",
+    section: "layout",
+    label: "Interface layout",
+    words: "scale size zoom sidebar cover display grid list",
+  },
+  {
+    tab: "appearance",
+    section: "typography",
+    label: "Typography",
+    words: "font typeface interface reading lora serif size",
+  },
+  {
+    tab: "appearance",
+    section: "colour",
+    label: "Colour & surface",
+    words: "surface paper matte clean progress bars contrast motion",
+  },
+  {
+    tab: "reading",
+    section: "text",
+    label: "Text and page",
+    words: "font size line spacing width margins justify page turn scroll paging page colour",
+  },
+  {
+    tab: "library",
+    section: "view",
+    label: "Library view",
+    words: "default layout grid list compact sort order",
+  },
+  {
+    tab: "library",
+    section: "folder",
+    label: "Library folder",
+    words: "folder location storage files explorer size",
+  },
+  {
+    tab: "collections",
+    section: "show",
+    label: "What Collections shows",
+    words: "smart collections series layout cards list",
+  },
+  {
+    tab: "notes",
+    section: "view",
+    label: "Notes view",
+    words: "layout cards list compact sort",
+  },
+  {
+    tab: "notes",
+    section: "export",
+    label: "Export notes",
+    words: "markdown export highlights annotations",
+  },
+  {
+    tab: "sync",
+    section: "provider",
+    label: "Sync provider",
+    words: "supabase dropbox google drive onedrive cloud account connect",
+  },
+  {
+    tab: "sync",
+    section: "options",
+    label: "Sync options",
+    words: "progress notes highlights collections metadata book files",
+  },
+  {
+    tab: "sync",
+    section: "behaviour",
+    label: "Sync behaviour",
+    words: "frequency automatic startup close conflict resolution recent",
+  },
+  {
+    tab: "sync",
+    section: "backup",
+    label: "Backup & restore",
+    words: "backup restore export json data safe copy",
+  },
+  {
+    tab: "files",
+    section: "formats",
+    label: "Book formats",
+    words: "epub pdf mobi azw3 cbz fb2 formats supported",
+  },
+  {
+    tab: "files",
+    section: "files",
+    label: "Your book files",
+    words: "import copy original modify metadata files",
+  },
+  {
+    tab: "accessibility",
+    section: "vision",
+    label: "Seeing clearly",
+    words: "contrast scale zoom larger text focus ring underline links",
+  },
+  {
+    tab: "accessibility",
+    section: "motion",
+    label: "Motion",
+    words: "reduce motion animation transitions",
+  },
+  {
+    tab: "shortcuts",
+    section: "everywhere",
+    label: "Shortcuts everywhere",
+    words: "keyboard keys ctrl",
+  },
+  {
+    tab: "shortcuts",
+    section: "reader",
+    label: "Shortcuts while reading",
+    words: "keyboard keys page turn bookmark focus fullscreen",
+  },
+  {
+    tab: "advanced",
+    section: "data",
+    label: "Data on this device",
+    words: "database data folder schema version size",
+  },
+  {
+    tab: "advanced",
+    section: "reset",
+    label: "Reset settings",
+    words: "reset defaults start over",
+  },
+  {
+    tab: "about",
+    section: "about",
+    label: "About The Bound Vigil",
+    words: "version",
+  },
+  {
+    tab: "about",
+    section: "licences",
+    label: "Licences",
+    words: "licenses open source credits fonts",
+  },
+];
+
+/** Entries whose names or words contain every word searched for. */
+export function searchSettings(query: string): SettingsEntry[] {
+  const words = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  return SETTINGS_ENTRIES.filter((e) => {
+    const page = SETTINGS_TABS.find((t) => t.tab === e.tab)?.label ?? "";
+    const text = `${e.label} ${e.words} ${page}`.toLocaleLowerCase();
+    return words.every((w) => text.includes(w));
+  });
+}

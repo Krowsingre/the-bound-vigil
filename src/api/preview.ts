@@ -263,6 +263,29 @@ export function previewApi(): Api {
     getSetting: async (key) => settings.get(key) ?? null,
     setSetting: async (key, value) => void settings.set(key, value),
     quit: async () => undefined,
+    libraryInfo: async () => ({
+      database: "C:\\Users\\you\\AppData\\Roaming\\The Bound Vigil\\library.db",
+      booksDir: "C:\\Users\\you\\AppData\\Roaming\\The Bound Vigil\\Books",
+      schemaVersion: 5,
+      bookCount: books.length,
+      databaseBytes: 1_480_000,
+      booksBytes: 186_400_000,
+    }),
+    exportLibrary: async () => {
+      throw new Error("Exporting works in the desktop app.");
+    },
+    exportNotesMarkdown: async () => {
+      throw new Error("Exporting works in the desktop app.");
+    },
+    createBackup: async () => {
+      throw new Error("Backups work in the desktop app.");
+    },
+    restoreBackup: async () => {
+      throw new Error("Restoring works in the desktop app.");
+    },
+    // A quiet colour per sample book, standing in for its cover.
+    coverAccent: async (bookId) => ["#8a5a44", "#4f6b5a", "#5b5f8a", "#8a7444", "#6a4a6e"][parseInt(bookId.slice(-2), 16) % 5],
+    showFolder: async () => undefined,
     ...collections.api,
     ...notes,
   };

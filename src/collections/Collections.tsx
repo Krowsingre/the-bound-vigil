@@ -18,6 +18,7 @@ import { sameRef, SMART_INFO } from "./collectionInfo";
 import { CollectionPanel } from "./CollectionPanel";
 import { CollectionView } from "./CollectionView";
 import { moved, useReorder } from "./useReorder";
+import { useAppSettings } from "../settings/appSettings";
 
 type Tab = "all" | "collections" | "reading_lists" | "series";
 type Sort = "custom" | "name" | "size" | "created" | "changed";
@@ -98,6 +99,7 @@ export function Collections({
   const [deleting, setDeleting] = useState<CollectionSummary | null>(null);
   const toast = useToast();
   const narrow = useNarrow();
+  const { settings } = useAppSettings();
 
   useEffect(() => {
     let current = true;
@@ -285,7 +287,9 @@ export function Collections({
     },
   );
 
-  const series = (overview?.series ?? []).filter((s) => (tab === "all" || tab === "series") && matches(s.name, ...s.authors));
+  const series = (settings.showSeries ? (overview?.series ?? []) : []).filter(
+    (s) => (tab === "all" || tab === "series") && matches(s.name, ...s.authors),
+  );
 
   if (open)
     return (
@@ -367,7 +371,7 @@ export function Collections({
             </section>
           )}
 
-          {!q && (
+          {!q && settings.showSmartCollections && (
             <section className="collections-section">
               <div className="section-head section-head-tools">
                 <h2>Smart collections</h2>
@@ -423,7 +427,9 @@ export function Collections({
                     ["reading_lists", "Reading lists"],
                     ["series", "Series"],
                   ] as const
-                ).map(([value, label]) => (
+                )
+                  .filter(([value]) => value !== "series" || settings.showSeries)
+                  .map(([value, label]) => (
                   <button
                     key={value}
                     type="button"

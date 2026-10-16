@@ -1,0 +1,382 @@
+import { useEffect, useState } from "react";
+import { api, isApp } from "../api";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { Icon } from "../components/Icon";
+import { useToast } from "../components/Toast";
+import { useAppSettings, type ConflictRule, type SyncFrequency } from "./appSettings";
+import { ActionTile, RadioList, Row, Section, Select, Toggle } from "./controls";
+
+type Provider = "supabase" | "dropbox" | "gdrive" | "onedrive";
+
+const PROVIDERS: { id: Provider; name: string; art: React.ReactNode }[] = [
+  {
+    id: "supabase",
+    name: "Supabase",
+    art: (
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
+        <path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="currentColor" />
+      </svg>
+    ),
+  },
+  {
+    id: "dropbox",
+    name: "Dropbox",
+    art: (
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
+        <path
+          d="m7 3-5 3.2L7 9.4l5-3.2zm10 0-5 3.2 5 3.2 5-3.2zM2 12.6l5 3.2 5-3.2-5-3.2zm15-3.2-5 3.2 5 3.2 5-3.2zM7 17l5 3.2 5-3.2-5-3.2z"
+          fill="currentColor"
+        />
+      </svg>
+    ),
+  },
+  {
+    id: "gdrive",
+    name: "Google Drive",
+    art: (
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
+        <path d="M8.5 3h7l6.5 11.3h-7zM8.5 3 2 14.3l3.5 6 6.5-11.3zm-3 17.3h13l3.5-6H9z" fill="currentColor" />
+      </svg>
+    ),
+  },
+  {
+    id: "onedrive",
+    name: "OneDrive",
+    art: (
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
+        <path d="M7 18h11a4 4 0 0 0 .6-7.9A6 6 0 0 0 7.2 8.6 4.8 4.8 0 0 0 7 18z" fill="currentColor" />
+      </svg>
+    ),
+  },
+];
+
+const SUPABASE_KEY = "sync.supabase";
+
+interface SupabaseDetails {
+  url: string;
+  anonKey: string;
+}
+
+export function SyncTab({ onRestored }: { onRestored: () => void }) {
+  const { settings, changeSync } = useAppSettings();
+  const sync = settings.sync;
+  const toast = useToast();
+  const [provider, setProvider] = useState<Provider>("supabase");
+  const [supabase, setSupabase] = useState<SupabaseDetails | null>(null);
+  const [draft, setDraft] = useState<SupabaseDetails>({ url: "", anonKey: "" });
+  const [editing, setEditing] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.getSetting(SUPABASE_KEY).then(
+      (json) => {
+        try {
+          const saved = JSON.parse(json ?? "null") as SupabaseDetails | null;
+          if (saved?.url) {
+            setSupabase(saved);
+            setDraft(saved);
+          }
+        } catch {
+          /* nothing saved */
+        }
+      },
+      () => undefined,
+    );
+  }, []);
+
+  const urlOk = /^https:\/\/[a-z0-9-]+\.supabase\.(co|in)\/?$/i.test(draft.url.trim());
+  const saveSupabase = () => {
+    const details = {
+      url: draft.url.trim().replace(/\/$/, ""),
+      anonKey: draft.anonKey.trim(),
+    };
+    api.setSetting(SUPABASE_KEY, JSON.stringify(details)).then(
+      () => {
+        setSupabase(details);
+        setEditing(false);
+        toast("Saved. TBV will use this project when syncing is switched on.");
+      },
+      (e: unknown) => toast(String(e)),
+    );
+  };
+  const forgetSupabase = () =>
+    api.setSetting(SUPABASE_KEY, "null").then(() => {
+      setSupabase(null);
+      setDraft({ url: "", anonKey: "" });
+      setEditing(false);
+    });
+
+  const run = async (work: () => Promise<boolean>, done: string) => {
+    if (!isApp) return toast("This works in the desktop app. The browser preview has sample books only.");
+    setBusy(true);
+    try {
+      if (await work()) toast(done);
+    } catch (e) {
+      toast(`That didn't work: ${String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const statusOf = (id: Provider) => (id === "supabase" && supabase ? "Project saved" : "Not connected");
+  const chosen = PROVIDERS.find((p) => p.id === provider)!;
+
+  return (
+    <>
+      <p className="settings-notice">
+        <Icon name="info" size={18} />
+        <span>
+          Syncing between devices arrives in the next update. Everything you choose here is saved now and used as soon as it does. Backups and exports
+          below already work.
+        </span>
+      </p>
+
+      <Section
+        id="provider"
+        title="Sync provider"
+        lede="Choose the cloud service that carries your library between devices."
+        aside={
+          <div className="connection-details">
+            <h3>Connection details</h3>
+            <dl>
+              <dt>Service</dt>
+              <dd>{chosen.name}</dd>
+              <dt>Status</dt>
+              <dd>
+                <span className={`status-dot${provider === "supabase" && supabase ? " is-ready" : ""}`} aria-hidden />
+                {provider === "supabase" && supabase ? "Ready for sync" : "Not connected"}
+              </dd>
+              {provider === "supabase" && supabase && (
+                <>
+                  <dt>Project</dt>
+                  <dd className="mono">{supabase.url.replace(/^https:\/\//, "")}</dd>
+                </>
+              )}
+              <dt>Last synced</dt>
+              <dd>Never</dd>
+            </dl>
+            {provider === "supabase" ? (
+              <button type="button" className="btn btn-quiet" onClick={() => setEditing(true)}>
+                <Icon name="settings" size={16} /> {supabase ? "Manage connection" : "Set up Supabase"}
+              </button>
+            ) : (
+              <p className="settings-row-hint">Signing in to {chosen.name} comes with the sync update.</p>
+            )}
+          </div>
+        }
+      >
+        <div className="provider-cards" role="radiogroup" aria-label="Sync provider">
+          {PROVIDERS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              role="radio"
+              aria-checked={provider === p.id}
+              className={`provider-card${provider === p.id ? " is-active" : ""}`}
+              onClick={() => setProvider(p.id)}
+            >
+              <span className="provider-art">{p.art}</span>
+              <span className="provider-text">
+                <span className="settings-row-label">{p.name}</span>
+                <span className="settings-row-hint">
+                  <span className={`status-dot${p.id === "supabase" && supabase ? " is-ready" : ""}`} aria-hidden />
+                  {statusOf(p.id)}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+        {provider === "supabase" && editing && (
+          <form
+            className="settings-subpanel supabase-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (urlOk && draft.anonKey.trim()) saveSupabase();
+            }}
+          >
+            <h3>Your Supabase project</h3>
+            <p className="settings-row-hint">
+              Use a project made for TBV, not one another app uses. Both values are in Supabase under Project Settings, then API. They stay on this
+              device.
+            </p>
+            <label className="field">
+              <span>Project URL</span>
+              <input
+                value={draft.url}
+                onChange={(e) => setDraft({ ...draft, url: e.target.value })}
+                placeholder="https://yourproject.supabase.co"
+                spellCheck={false}
+              />
+            </label>
+            {draft.url.trim() && !urlOk && <p className="form-error">That doesn't look like a Supabase project address.</p>}
+            <label className="field">
+              <span>Public (anon) key</span>
+              <input value={draft.anonKey} onChange={(e) => setDraft({ ...draft, anonKey: e.target.value })} placeholder="eyJ…" spellCheck={false} />
+            </label>
+            <div className="dialog-actions">
+              {supabase && (
+                <button type="button" className="btn btn-quiet btn-danger-text" onClick={() => void forgetSupabase()}>
+                  Forget this project
+                </button>
+              )}
+              <button type="button" className="btn btn-quiet" onClick={() => setEditing(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={!urlOk || !draft.anonKey.trim()}>
+                Save
+              </button>
+            </div>
+          </form>
+        )}
+      </Section>
+
+      <Section
+        id="options"
+        title="Sync options"
+        lede="Choose what goes between your devices."
+        aside={
+          <div className="settings-aside-note">
+            <h3>
+              <Icon name="info" size={18} /> About book file syncing
+            </h3>
+            <p>Book files are not synced unless you turn it on. They stay on this computer, and you decide where copies go.</p>
+            <p>With it on, your whole library can be opened from any of your devices. TBV never changes the files themselves.</p>
+          </div>
+        }
+      >
+        <div className="toggle-list">
+          <Toggle
+            label="Sync reading progress"
+            hint="Where you are in each book, and what you've finished."
+            checked={sync.progress}
+            onChange={(progress) => changeSync({ progress })}
+          />
+          <Toggle
+            label="Sync notes and highlights"
+            hint="Highlights, notes, book notes, personal notes and bookmarks."
+            checked={sync.notes}
+            onChange={(notes) => changeSync({ notes })}
+          />
+          <Toggle
+            label="Sync collections and reading lists"
+            hint="Your collections, their pictures and badges, and favourites."
+            checked={sync.collections}
+            onChange={(collections) => changeSync({ collections })}
+          />
+          <Toggle
+            label="Sync library details"
+            hint="Titles, authors, series and other details you've corrected."
+            checked={sync.metadata}
+            onChange={(metadata) => changeSync({ metadata })}
+          />
+          <Toggle
+            label="Sync book files"
+            hint="Keep a copy of your books in the cloud."
+            checked={sync.bookFiles}
+            onChange={(bookFiles) => changeSync({ bookFiles })}
+          />
+        </div>
+      </Section>
+
+      <Section id="behaviour" title="Sync behaviour" lede="When TBV syncs, and what happens when two devices disagree.">
+        <div className="settings-columns">
+          <div>
+            <Row label="How often">
+              <Select<SyncFrequency>
+                label="How often to sync"
+                value={sync.frequency}
+                options={[
+                  { value: "automatic", label: "Automatically (Recommended)" },
+                  { value: "15min", label: "Every 15 minutes" },
+                  { value: "hourly", label: "Every hour" },
+                  { value: "manual", label: "Only when I ask" },
+                ]}
+                onChange={(frequency) => changeSync({ frequency })}
+              />
+            </Row>
+            <div className="toggle-list">
+              <Toggle label="Sync when TBV opens" checked={sync.onStartup} onChange={(onStartup) => changeSync({ onStartup })} />
+              <Toggle label="Sync when TBV closes" checked={sync.onClose} onChange={(onClose) => changeSync({ onClose })} />
+            </div>
+          </div>
+          <div>
+            <h3 className="settings-subhead">When devices disagree, use</h3>
+            <RadioList<ConflictRule>
+              label="When devices disagree"
+              value={sync.conflicts}
+              options={[
+                {
+                  value: "recent",
+                  label: "The most recent change (Recommended)",
+                  hint: "Keeps the newest version automatically.",
+                },
+                {
+                  value: "ask",
+                  label: "Ask me",
+                  hint: "Lets you choose which version to keep.",
+                },
+                {
+                  value: "local",
+                  label: "This device's version",
+                  hint: "Always keeps what is on this computer.",
+                },
+                {
+                  value: "cloud",
+                  label: "The cloud's version",
+                  hint: "Always keeps what is in the cloud.",
+                },
+              ]}
+              onChange={(conflicts) => changeSync({ conflicts })}
+            />
+          </div>
+        </div>
+      </Section>
+
+      <Section id="backup" title="Backup & restore" lede="Keep a copy of everything on this computer, or bring one back.">
+        <div className="action-tiles">
+          <ActionTile
+            icon={<Icon name="download" size={22} />}
+            title="Export library data"
+            hint="Books' details, progress, notes and collections, as a readable file."
+            disabled={busy}
+            onClick={() => void run(() => api.exportLibrary(), "Exported your library data.")}
+          />
+          <ActionTile
+            icon={<Icon name="folder" size={22} />}
+            title="Create a backup"
+            hint="A complete copy of TBV's data, to restore later."
+            disabled={busy}
+            onClick={() => void run(() => api.createBackup(), "Backup saved.")}
+          />
+          <ActionTile
+            icon={<Icon name="upload" size={22} />}
+            title="Restore from a backup"
+            hint="Replaces this computer's library data with a backup."
+            disabled={busy}
+            onClick={() => (isApp ? setRestoring(true) : toast("Restoring works in the desktop app."))}
+          />
+        </div>
+        <p className="settings-row-hint">Backups hold your library's data, not the book files. Your books stay in the library folder.</p>
+      </Section>
+
+      {restoring && (
+        <ConfirmDialog
+          title="Restore from a backup?"
+          body="Your library data on this computer is replaced by the backup's: progress, notes, collections and settings. Make a backup first if you might want today's data back."
+          confirm="Choose a backup…"
+          danger
+          onCancel={() => setRestoring(false)}
+          onConfirm={() => {
+            setRestoring(false);
+            void run(async () => {
+              const done = await api.restoreBackup();
+              if (done) onRestored();
+              return done;
+            }, "Restored from the backup.");
+          }}
+        />
+      )}
+    </>
+  );
+}

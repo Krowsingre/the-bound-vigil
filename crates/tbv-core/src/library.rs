@@ -203,7 +203,12 @@ impl Library {
         Ok(library)
     }
 
-    fn migrate(&mut self) -> Result<()> {
+    /// The schema this version of TBV writes.
+    pub(crate) fn schema_version() -> usize {
+        MIGRATIONS.len()
+    }
+
+    pub(crate) fn migrate(&mut self) -> Result<()> {
         let version: usize = self
             .conn
             .pragma_query_value(None, "user_version", |r| r.get(0))?;
