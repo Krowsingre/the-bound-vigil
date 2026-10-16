@@ -56,8 +56,10 @@ export interface Api {
   deleteCollection(id: string): Promise<void>;
   /** A gallery picture (`gallery:<name>`), a book's cover (`cover:<book id>`), or none. */
   setCollectionPicture(id: string, picture: string | null): Promise<CollectionSummary>;
-  /** Asks for a picture on the computer and uses a copy of it. Null if cancelled. */
-  chooseCollectionPicture(id: string): Promise<CollectionSummary | null>;
+  /** Asks for a picture on the computer. Null if cancelled. */
+  pickCollectionPicture(): Promise<string | null>;
+  /** Uses a copy of a picture on the computer for a collection. */
+  setCollectionPictureFile(id: string, path: string): Promise<CollectionSummary>;
   addToCollection(id: string, bookIds: string[]): Promise<void>;
   removeFromCollection(id: string, bookId: string): Promise<void>;
   /** Moves one of your collections to a new place (zero-based) in "Your order". */
@@ -130,7 +132,7 @@ function appApi(): Api {
     deleteCollection: async (id) => (await core).invoke("delete_collection", { id }),
     setCollectionPicture: async (id, picture) =>
       (await core).invoke<CollectionSummary>("set_collection_picture", { id, picture }),
-    chooseCollectionPicture: async (id) => {
+    pickCollectionPicture: async () => {
       const [path] = asList(
         await (await dialog).open({
           multiple: false,
@@ -138,8 +140,9 @@ function appApi(): Api {
           filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
         }),
       );
-      return path ? (await core).invoke<CollectionSummary>("set_collection_picture_file", { id, path }) : null;
+      return path ?? null;
     },
+    setCollectionPictureFile: async (id, path) => (await core).invoke<CollectionSummary>("set_collection_picture_file", { id, path }),
     addToCollection: async (id, bookIds) => (await core).invoke("add_to_collection", { id, bookIds }),
     removeFromCollection: async (id, bookId) => (await core).invoke("remove_from_collection", { id, bookId }),
     moveCollection: async (id, toIndex) => (await core).invoke("move_collection", { id, toIndex }),
