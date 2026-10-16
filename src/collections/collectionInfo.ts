@@ -6,10 +6,11 @@ import { galleryUrl } from "./gallery";
 
 export const SMART_INFO: Record<SmartKind, { name: string; badge: string; description: string }> = {
   recently_added: { name: "Recently added", badge: "sparkle", description: "Books added in the last 30 days." },
-  not_started: { name: "Not started", badge: "book", description: "Books you haven't opened yet." },
-  last_read: { name: "Last read", badge: "hourglass", description: "Books you opened in the last 30 days." },
-  nearly_finished: { name: "Nearly finished", badge: "flame", description: "Books you're at least three quarters through." },
-  set_aside: { name: "Set aside", badge: "leaf", description: "Books in progress you haven't opened for two months." },
+  unread: { name: "Unread", badge: "book", description: "Books you haven't opened yet." },
+  read: { name: "Read", badge: "check", description: "Books you've finished." },
+  incomplete: { name: "Incomplete", badge: "hourglass", description: "Every book you haven't finished yet, started or not." },
+  in_progress: { name: "In progress", badge: "bookmark", description: "Books you've started and not finished." },
+  favorites: { name: "Favourites", badge: "heart", description: "Books you've marked as a favourite." },
 };
 
 export const KIND_LABEL: Record<CollectionKind, string> = {

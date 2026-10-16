@@ -186,7 +186,8 @@
 /* Smart collections */
 .smart-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  /* Six smart collections: one row when wide, otherwise two even rows of three. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   list-style: none;
   margin: 0;
@@ -1029,5 +1030,11 @@
   .collections-head {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+@media (min-width: 1700px) {
+  .smart-row {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }

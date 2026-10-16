@@ -415,28 +415,31 @@ pub struct CollectionSummary {
     pub updated_at: IsoUtc,
 }
 
-/// Collections that fill themselves from how books are being read.
+/// Collections that fill themselves from each book's own details.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SmartKind {
     /// Added in the last 30 days.
     RecentlyAdded,
-    NotStarted,
-    /// Opened in the last 30 days.
-    LastRead,
-    /// In progress and at least three quarters through.
-    NearlyFinished,
-    /// In progress but not opened for 60 days.
-    SetAside,
+    /// Not opened yet.
+    Unread,
+    /// Finished.
+    Read,
+    /// Not finished yet: unread or in progress.
+    Incomplete,
+    /// Started and not finished.
+    InProgress,
+    Favorites,
 }
 
 impl SmartKind {
-    pub const ALL: [SmartKind; 5] = [
+    pub const ALL: [SmartKind; 6] = [
         SmartKind::RecentlyAdded,
-        SmartKind::NotStarted,
-        SmartKind::LastRead,
-        SmartKind::NearlyFinished,
-        SmartKind::SetAside,
+        SmartKind::Unread,
+        SmartKind::InProgress,
+        SmartKind::Incomplete,
+        SmartKind::Read,
+        SmartKind::Favorites,
     ];
 }
 

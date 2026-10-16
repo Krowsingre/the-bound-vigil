@@ -103,22 +103,19 @@ impl Library {
                     SmartKind::RecentlyAdded => {
                         ("b.added_at >= ?1", "b.added_at DESC", vec![days_ago(30)])
                     }
-                    SmartKind::NotStarted => ("b.status = 'unread'", "b.added_at DESC", vec![]),
-                    SmartKind::LastRead => (
-                        "b.last_opened_at >= ?1",
-                        "b.last_opened_at DESC",
-                        vec![days_ago(30)],
-                    ),
-                    SmartKind::NearlyFinished => (
-                        "b.status = 'in_progress' AND b.total_progression >= 0.75",
-                        "b.total_progression DESC",
+                    SmartKind::Unread => ("b.status = 'unread'", "b.added_at DESC", vec![]),
+                    SmartKind::Read => (
+                        "b.status = 'read'",
+                        "b.last_opened_at IS NULL, b.last_opened_at DESC",
                         vec![],
                     ),
-                    SmartKind::SetAside => (
-                        "b.status = 'in_progress' AND (b.last_opened_at IS NULL OR b.last_opened_at < ?1)",
-                        "b.last_opened_at",
-                        vec![days_ago(60)],
+                    SmartKind::Incomplete => ("b.status != 'read'", "b.added_at DESC", vec![]),
+                    SmartKind::InProgress => (
+                        "b.status = 'in_progress'",
+                        "b.last_opened_at IS NULL, b.last_opened_at DESC",
+                        vec![],
                     ),
+                    SmartKind::Favorites => ("b.favorite = 1", "b.added_at DESC", vec![]),
                 };
                 Members {
                     condition: condition.into(),
@@ -695,7 +692,7 @@ mod tests {
         assert_eq!(
             library
                 .collection_detail(&CollectionRef::Smart {
-                    smart: SmartKind::NotStarted
+                    smart: SmartKind::Unread
                 })
                 .unwrap()
                 .books
@@ -741,10 +738,11 @@ mod tests {
                 .count
         };
         assert_eq!(count(SmartKind::RecentlyAdded), 3);
-        assert_eq!(count(SmartKind::NotStarted), 2);
-        assert_eq!(count(SmartKind::LastRead), 1);
-        assert_eq!(count(SmartKind::NearlyFinished), 0);
-        assert_eq!(count(SmartKind::SetAside), 0);
+        assert_eq!(count(SmartKind::Unread), 2);
+        assert_eq!(count(SmartKind::Read), 0);
+        assert_eq!(count(SmartKind::Incomplete), 3);
+        assert_eq!(count(SmartKind::InProgress), 1);
+        assert_eq!(count(SmartKind::Favorites), 0);
     }
 
     #[test]

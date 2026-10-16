@@ -29,7 +29,7 @@ const day = 86_400_000;
 const stamp = () => new Date().toISOString();
 const ago = (days: number) => new Date(Date.now() - days * day).toISOString();
 const coverOf = ({ id, title, authors, coverPath }: BookPreview) => ({ id, title, authors, coverPath });
-const SMART: SmartKind[] = ["recently_added", "not_started", "last_read", "nearly_finished", "set_aside"];
+const SMART: SmartKind[] = ["recently_added", "unread", "in_progress", "incomplete", "read", "favorites"];
 
 type CollectionsApi = Pick<
   Api,
@@ -138,13 +138,13 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
     "shelf:want_to_read": (b) => b.wantToRead,
     "shelf:completed": (b) => b.status === "read",
   };
-  const opened = (b: BookPreview) => (b.lastOpenedAt ? Date.parse(b.lastOpenedAt) : 0);
   const smartBooks: Record<SmartKind, (b: BookPreview) => boolean> = {
     recently_added: (b) => Date.now() - Date.parse(b.addedAt) < 30 * day,
-    not_started: (b) => b.status === "unread",
-    last_read: (b) => Date.now() - opened(b) < 30 * day,
-    nearly_finished: (b) => b.status === "in_progress" && (b.totalProgression ?? 0) >= 0.75,
-    set_aside: (b) => b.status === "in_progress" && Date.now() - opened(b) > 60 * day,
+    unread: (b) => b.status === "unread",
+    read: (b) => b.status === "read",
+    incomplete: (b) => b.status !== "read",
+    in_progress: (b) => b.status === "in_progress",
+    favorites: (b) => b.favorite,
   };
 
   function membersOf(c: Stored): BookPreview[] {
