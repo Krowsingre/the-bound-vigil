@@ -10,7 +10,8 @@ import { GALLERY, galleryUrl } from "./gallery";
 type PictureTab = "gallery" | "covers" | "computer";
 
 /** What the picture will be once saved. `file` asks for one after saving a new collection. */
-type PictureChoice = { picture: string | null; picturePath: string | null } | "file";
+/** A picture already in TBV, or one picked on the computer that is copied in on Save. */
+type PictureChoice = { picture: string | null; picturePath: string | null } | { file: string };
 
 /**
  * Making a new collection or changing one: name, description, type, badge,
@@ -52,10 +53,9 @@ export function CollectionEditor({
 
   const chooseFile = async () => {
     if (!isApp) return setError("Choosing a picture from your computer works in the desktop app.");
-    if (!collection) return setPicture("file");
     try {
-      const saved = await api.chooseCollectionPicture(collection.id);
-      if (saved) setPicture({ picture: saved.picture, picturePath: saved.picturePath });
+      const file = await api.pickCollectionPicture();
+      if (file) setPicture({ file });
     } catch (e) {
       setError(`That picture couldn't be used: ${String(e)}`);
     }
@@ -69,7 +69,7 @@ export function CollectionEditor({
     try {
       let saved = collection ? await api.updateCollection(collection.id, input) : await api.createCollection(input);
       if (!collection && addBookIds.length) await api.addToCollection(saved.id, addBookIds);
-      if (picture === "file") saved = (await api.chooseCollectionPicture(saved.id)) ?? saved;
+      if ("file" in picture) saved = await api.setCollectionPictureFile(saved.id, picture.file);
       else if (picture.picture !== saved.picture) saved = await api.setCollectionPicture(saved.id, picture.picture);
       onSaved(saved);
     } catch (e) {
@@ -78,9 +78,9 @@ export function CollectionEditor({
     }
   };
 
-  const shown = picture === "file" ? { picture: null, picturePath: null } : picture;
+  const shown = "file" in picture ? { picture: null, picturePath: null } : picture;
   const preview = { id: collection?.id ?? "new", covers: books.slice(0, 3), ...shown };
-  const current = picture === "file" ? null : picture.picture;
+  const current = "file" in picture ? null : picture.picture;
   const title = collection ? `Edit ${shelf ? "shelf" : kind === "reading_list" ? "reading list" : "collection"}` : "New collection";
 
   return (
@@ -236,8 +236,8 @@ export function CollectionEditor({
                   <Icon name="image" size={16} /> Choose a picture…
                 </button>
                 <small className="muted">
-                  {picture === "file"
-                    ? "You'll pick the picture when you save."
+                  {"file" in picture
+                    ? `Picked ${picture.file.split(/[\\/]/).pop()}. It's used when you save.`
                     : "TBV keeps its own copy, and it goes to your other devices with sync."}
                 </small>
               </div>
