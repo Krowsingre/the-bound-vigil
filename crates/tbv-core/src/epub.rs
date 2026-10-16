@@ -43,10 +43,65 @@ enum Field {
     Description,
     Publisher,
     Language,
-    /// EPUB 3 `<meta property="belongs-to-collection">`.
+    /// Calibre's `calibre:series`.
     Series,
-    /// EPUB 3 `<meta property="group-position">`.
+    /// Calibre's `calibre:series_index`.
     SeriesIndex,
+    /// EPUB 3 `<meta property="belongs-to-collection">`.
+    Collection,
+    /// Any other EPUB 3 `<meta refines="#id" property="…">`, such as a
+    /// collection's `collection-type` or `group-position`.
+    Refinement,
+}
+
+/// An element whose text is being read, with the attributes needed to place it.
+struct Capture {
+    field: Field,
+    id: Option<String>,
+    refines: Option<String>,
+    property: Option<String>,
+    text: String,
+}
+
+/// EPUB 3 collections and the refinements that describe them. A book can
+/// belong to several (a set and a series, say), so they are kept until the
+/// whole package is read and then matched up by id.
+#[derive(Default)]
+struct Collections {
+    named: Vec<(Option<String>, String)>,
+    refinements: Vec<(String, String, String)>,
+}
+
+impl Collections {
+    fn refinement(&self, id: &str, property: &str) -> Option<&str> {
+        self.refinements
+            .iter()
+            .find(|(target, p, _)| target == id && p == property)
+            .map(|(_, _, value)| value.as_str())
+    }
+
+    fn kind(&self, id: Option<&str>) -> Option<&str> {
+        id.and_then(|id| self.refinement(id, "collection-type"))
+    }
+
+    /// The collection marked as a series, else the first one not marked as
+    /// some other kind (a `set`), with the position refined onto that one.
+    fn series(&self) -> Option<(String, Option<f64>)> {
+        let (id, name) = self
+            .named
+            .iter()
+            .find(|(id, _)| self.kind(id.as_deref()) == Some("series"))
+            .or_else(|| {
+                self.named
+                    .iter()
+                    .find(|(id, _)| self.kind(id.as_deref()).is_none())
+            })?;
+        let position = id
+            .as_deref()
+            .and_then(|id| self.refinement(id, "group-position"))
+            .and_then(|p| p.parse().ok());
+        Some((name.clone(), position))
+    }
 }
 
 pub fn read_epub_metadata(path: &Path) -> Result<BookMetadata> {
@@ -65,13 +120,20 @@ pub fn read_epub_metadata(path: &Path) -> Result<BookMetadata> {
     let mut reader = Reader::from_reader(opf.as_slice());
     reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
-    let mut capturing: Option<(Field, String)> = None;
+    let mut capturing: Option<Capture> = None;
+    let mut collections = Collections::default();
 
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
                 if let Some(field) = metadata_field(&e) {
-                    capturing = Some((field, String::new()));
+                    capturing = Some(Capture {
+                        field,
+                        id: attribute(&e, b"id"),
+                        refines: attribute(&e, b"refines"),
+                        property: attribute(&e, b"property"),
+                        text: String::new(),
+                    });
                 } else {
                     collect_opf_element(&e, &mut manifest, &mut cover_id, &mut metadata);
                 }
@@ -80,20 +142,37 @@ pub fn read_epub_metadata(path: &Path) -> Result<BookMetadata> {
                 collect_opf_element(&e, &mut manifest, &mut cover_id, &mut metadata)
             }
             Ok(Event::Text(t)) => {
-                if let Some((_, text)) = capturing.as_mut() {
+                if let Some(capture) = capturing.as_mut() {
                     if let Ok(value) = t.unescape() {
-                        text.push_str(&value);
+                        capture.text.push_str(&value);
                     }
                 }
             }
             Ok(Event::CData(t)) => {
-                if let Some((_, text)) = capturing.as_mut() {
-                    text.push_str(&String::from_utf8_lossy(&t));
+                if let Some(capture) = capturing.as_mut() {
+                    capture.text.push_str(&String::from_utf8_lossy(&t));
                 }
             }
             Ok(Event::End(_)) => {
-                if let Some((field, text)) = capturing.take() {
-                    store_field(&mut metadata, field, text);
+                if let Some(capture) = capturing.take() {
+                    match capture.field {
+                        Field::Collection => {
+                            let name = collapse_whitespace(&capture.text);
+                            if !name.is_empty() {
+                                collections.named.push((capture.id, name));
+                            }
+                        }
+                        Field::Refinement => {
+                            if let (Some(target), Some(property)) =
+                                (capture.refines, capture.property)
+                            {
+                                let target = target.trim_start_matches('#').to_string();
+                                let value = collapse_whitespace(&capture.text);
+                                collections.refinements.push((target, property, value));
+                            }
+                        }
+                        field => store_field(&mut metadata, field, capture.text),
+                    }
                 }
             }
             Ok(Event::Eof) => break,
@@ -101,6 +180,14 @@ pub fn read_epub_metadata(path: &Path) -> Result<BookMetadata> {
             _ => {}
         }
         buf.clear();
+    }
+
+    // Calibre's own series fields win; otherwise use the EPUB 3 collection.
+    if metadata.series.is_none() {
+        if let Some((name, position)) = collections.series() {
+            metadata.series = Some(name);
+            metadata.series_index = position;
+        }
     }
 
     if let Some(href) = find_cover_href(&manifest, cover_id.as_deref()) {
@@ -146,8 +233,8 @@ fn metadata_field(e: &BytesStart) -> Option<Field> {
         b"publisher" => Some(Field::Publisher),
         b"language" => Some(Field::Language),
         b"meta" => match attribute(e, b"property").as_deref() {
-            Some("belongs-to-collection") => Some(Field::Series),
-            Some("group-position") => Some(Field::SeriesIndex),
+            Some("belongs-to-collection") => Some(Field::Collection),
+            Some(_) if attribute(e, b"refines").is_some() => Some(Field::Refinement),
             _ => None,
         },
         _ => None,
@@ -409,6 +496,42 @@ pub(crate) mod tests {
         let m = read_epub_metadata(&epub3).unwrap();
         assert_eq!(m.series.as_deref(), Some("The Stormlight Archive"));
         assert_eq!(m.series_index, Some(3.0));
+    }
+
+    #[test]
+    fn picks_the_series_collection_and_its_own_position() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("both.epub");
+        write_test_epub_with(
+            &path,
+            "Oathbringer",
+            "B",
+            false,
+            concat!(
+                r##"<meta property="belongs-to-collection" id="set">Cosmere Box Set</meta>"##,
+                r##"<meta refines="#set" property="collection-type">set</meta>"##,
+                r##"<meta refines="#set" property="group-position">9</meta>"##,
+                r##"<meta property="belongs-to-collection" id="s">The Stormlight Archive</meta>"##,
+                r##"<meta refines="#s" property="collection-type">series</meta>"##,
+                r##"<meta refines="#s" property="group-position">3</meta>"##,
+            ),
+        );
+        let m = read_epub_metadata(&path).unwrap();
+        assert_eq!(m.series.as_deref(), Some("The Stormlight Archive"));
+        assert_eq!(m.series_index, Some(3.0));
+
+        let only_set = dir.path().join("set.epub");
+        write_test_epub_with(
+            &only_set,
+            "Box",
+            "B",
+            false,
+            concat!(
+                r##"<meta property="belongs-to-collection" id="set">Cosmere Box Set</meta>"##,
+                r##"<meta refines="#set" property="collection-type">set</meta>"##,
+            ),
+        );
+        assert_eq!(read_epub_metadata(&only_set).unwrap().series, None);
     }
 
     #[test]

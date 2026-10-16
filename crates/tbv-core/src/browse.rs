@@ -72,9 +72,9 @@ impl Library {
             .filter(|s| !s.is_empty())
         {
             conditions.push(format!(
-                "(lower({TITLE}) LIKE ?{n} ESCAPE '\\' \
-                  OR lower(COALESCE(o_authors.value, b.authors)) LIKE ?{n} ESCAPE '\\' \
-                  OR lower(COALESCE({SERIES}, '')) LIKE ?{n} ESCAPE '\\')",
+                "(tbv_fold({TITLE}) LIKE ?{n} ESCAPE '\\' \
+                  OR tbv_fold(COALESCE(o_authors.value, b.authors)) LIKE ?{n} ESCAPE '\\' \
+                  OR tbv_fold(COALESCE({SERIES}, '')) LIKE ?{n} ESCAPE '\\')",
                 n = values.len() + 1
             ));
             values.push(Value::Text(like_pattern(search)));
@@ -378,6 +378,25 @@ mod tests {
         assert_eq!(search("%"), "100% Wolf");
         assert_eq!(search("   "), "Oathbringer,100% Wolf,Dune");
         assert_eq!(search("nothing like this"), "");
+    }
+
+    #[test]
+    fn search_folds_case_beyond_ascii() {
+        let (dir, mut library) = open_temp_library();
+        add(&mut library, dir.path(), "Germinal", "Émile Zola");
+        add(&mut library, dir.path(), "ÖDE INSELN", "Jane Doe");
+        let search = |s: &str| {
+            let s = s.to_string();
+            titles(
+                &library
+                    .library_page(&query(|q| q.search = Some(s)))
+                    .unwrap(),
+            )
+            .join(",")
+        };
+        assert_eq!(search("émile zola"), "Germinal");
+        assert_eq!(search("ÉMILE"), "Germinal");
+        assert_eq!(search("öde"), "ÖDE INSELN");
     }
 
     #[test]

@@ -124,6 +124,19 @@ const MIGRATIONS: &[&str] = &[
     "#,
 ];
 
+/// SQLite's own `lower()` only folds A–Z, so "Émile" would never match "émile".
+/// `tbv_fold` lowercases with Rust's Unicode-aware rules instead.
+fn register_functions(conn: &Connection) -> Result<()> {
+    use rusqlite::functions::FunctionFlags;
+    conn.create_scalar_function(
+        "tbv_fold",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| Ok(ctx.get::<Option<String>>(0)?.map(|s| s.to_lowercase())),
+    )?;
+    Ok(())
+}
+
 impl Library {
     pub fn open(paths: LibraryPaths) -> Result<Self> {
         if let Some(parent) = paths.database.parent() {
@@ -134,6 +147,7 @@ impl Library {
         let conn = Connection::open(&paths.database)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        register_functions(&conn)?;
         let mut library = Self { conn, paths };
         library.migrate()?;
         Ok(library)
