@@ -27,6 +27,9 @@ pub struct LibraryPaths {
     pub covers_dir: PathBuf,
     /// This device's profile picture (app-data folder).
     pub profile_dir: PathBuf,
+    /// Pictures the user added for collections, named by content hash so
+    /// every device agrees on the name (app-data folder).
+    pub pictures_dir: PathBuf,
 }
 
 impl LibraryPaths {
@@ -36,6 +39,7 @@ impl LibraryPaths {
             books_dir: data_dir.join("Library"),
             covers_dir: cache_dir.join("covers"),
             profile_dir: data_dir.join("Profile"),
+            pictures_dir: data_dir.join("Pictures"),
         }
     }
 }
@@ -128,6 +132,31 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE annotations ADD COLUMN created_at TEXT;
     UPDATE annotations SET created_at = updated_at WHERE created_at IS NULL;
     CREATE INDEX idx_annotations_book ON annotations(book_id);
+    "#,
+    // v4: the Collections page. Collections gain a description, a badge, a
+    // picture, pinning and an order; reading lists keep their books in order.
+    // Removing a book leaves a tombstone so sync can pass the removal on. The
+    // four built-in shelves get fixed ids so every device agrees on them.
+    r#"
+    ALTER TABLE collections ADD COLUMN description TEXT;
+    ALTER TABLE collections ADD COLUMN kind TEXT NOT NULL DEFAULT 'collection';
+    ALTER TABLE collections ADD COLUMN badge TEXT;
+    ALTER TABLE collections ADD COLUMN picture TEXT;
+    ALTER TABLE collections ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE collections ADD COLUMN position REAL;
+    ALTER TABLE collections ADD COLUMN updated_at TEXT;
+    UPDATE collections SET updated_at = created_at;
+
+    ALTER TABLE collection_books ADD COLUMN position REAL;
+    ALTER TABLE collection_books ADD COLUMN removed_at TEXT;
+    ALTER TABLE collection_books ADD COLUMN updated_at TEXT;
+    UPDATE collection_books SET updated_at = added_at;
+
+    INSERT OR IGNORE INTO collections (id, name, created_at, updated_at, kind, badge, picture, pinned, position) VALUES
+        ('shelf:favorites', 'Favourites', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'star', 'gallery:archive', 1, 1),
+        ('shelf:reading', 'Currently reading', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'compass', 'gallery:peaks', 1, 2),
+        ('shelf:want_to_read', 'To be read', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'bookmark', 'gallery:forest', 1, 3),
+        ('shelf:completed', 'Completed', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'check', 'gallery:coast', 1, 4);
     "#,
 ];
 

@@ -115,14 +115,14 @@ impl Library {
         let mut statement = self.conn.prepare(
             "SELECT c.id, c.name,
                     (SELECT COUNT(*) FROM collection_books cb JOIN books b ON b.id = cb.book_id
-                     WHERE cb.collection_id = c.id AND b.deleted_at IS NULL)
-             FROM collections c WHERE c.deleted_at IS NULL
+                     WHERE cb.collection_id = c.id AND cb.removed_at IS NULL AND b.deleted_at IS NULL)
+             FROM collections c WHERE c.deleted_at IS NULL AND c.kind != 'shelf'
              ORDER BY c.created_at DESC LIMIT ?1",
         )?;
         let mut covers = self.conn.prepare(
             "SELECT lf.cover_path FROM collection_books cb
              JOIN local_files lf ON lf.book_id = cb.book_id
-             WHERE cb.collection_id = ?1 AND lf.cover_path IS NOT NULL
+             WHERE cb.collection_id = ?1 AND cb.removed_at IS NULL AND lf.cover_path IS NOT NULL
              ORDER BY cb.added_at LIMIT 4",
         )?;
         let rows = statement

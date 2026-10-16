@@ -5,7 +5,12 @@
 import type {
   Annotation,
   AnnotationInput,
+  CollectionDetail,
+  CollectionInput,
   CollectionPreview,
+  CollectionRef,
+  CollectionSummary,
+  CollectionsOverview,
   HomeViewModel,
   ImportResult,
   LibraryPage,
@@ -44,6 +49,20 @@ export interface Api {
   setSetting(key: string, value: string): Promise<void>;
   /** Quits the whole app. */
   quit(): Promise<void>;
+  getCollectionsOverview(): Promise<CollectionsOverview>;
+  getCollection(collection: CollectionRef): Promise<CollectionDetail>;
+  createCollection(input: CollectionInput): Promise<CollectionSummary>;
+  updateCollection(id: string, input: CollectionInput): Promise<CollectionSummary>;
+  deleteCollection(id: string): Promise<void>;
+  /** A gallery picture (`gallery:<name>`), a book's cover (`cover:<book id>`), or none. */
+  setCollectionPicture(id: string, picture: string | null): Promise<CollectionSummary>;
+  /** Asks for a picture on the computer and uses a copy of it. Null if cancelled. */
+  chooseCollectionPicture(id: string): Promise<CollectionSummary | null>;
+  addToCollection(id: string, bookIds: string[]): Promise<void>;
+  removeFromCollection(id: string, bookId: string): Promise<void>;
+  moveInCollection(id: string, bookId: string, toIndex: number): Promise<void>;
+  /** Ids of the user's collections a book is in. */
+  collectionsForBook(bookId: string): Promise<string[]>;
 }
 
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -102,6 +121,27 @@ function appApi(): Api {
     getSetting: async (key) => (await core).invoke<string | null>("get_setting", { key }),
     setSetting: async (key, value) => (await core).invoke("set_setting", { key, value }),
     quit: async () => (await core).invoke("quit_app"),
+    getCollectionsOverview: async () => (await core).invoke<CollectionsOverview>("get_collections_overview"),
+    getCollection: async (collection) => (await core).invoke<CollectionDetail>("get_collection", { collection }),
+    createCollection: async (input) => (await core).invoke<CollectionSummary>("create_collection", { input }),
+    updateCollection: async (id, input) => (await core).invoke<CollectionSummary>("update_collection", { id, input }),
+    deleteCollection: async (id) => (await core).invoke("delete_collection", { id }),
+    setCollectionPicture: async (id, picture) =>
+      (await core).invoke<CollectionSummary>("set_collection_picture", { id, picture }),
+    chooseCollectionPicture: async (id) => {
+      const [path] = asList(
+        await (await dialog).open({
+          multiple: false,
+          title: "Choose a picture for this collection",
+          filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+        }),
+      );
+      return path ? (await core).invoke<CollectionSummary>("set_collection_picture_file", { id, path }) : null;
+    },
+    addToCollection: async (id, bookIds) => (await core).invoke("add_to_collection", { id, bookIds }),
+    removeFromCollection: async (id, bookId) => (await core).invoke("remove_from_collection", { id, bookId }),
+    moveInCollection: async (id, bookId, toIndex) => (await core).invoke("move_in_collection", { id, bookId, toIndex }),
+    collectionsForBook: async (bookId) => (await core).invoke<string[]>("collections_for_book", { bookId }),
   };
 }
 

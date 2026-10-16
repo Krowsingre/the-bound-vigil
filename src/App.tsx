@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isApp } from "./api";
-import type { HomeViewModel, Profile, SyncStatus } from "./api/types";
+import type { CollectionRef, HomeViewModel, Profile, SyncStatus } from "./api/types";
+import { AddToCollectionHost } from "./collections/AddToCollection";
+import { Collections } from "./collections/Collections";
 import { useToast } from "./components/Toast";
 import { Home } from "./home/Home";
 import { importSummary } from "./lib/importSummary";
@@ -33,8 +35,15 @@ export function App() {
   const [searchText, setSearchText] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [reading, setReading] = useState<string | null>(null);
+  const [openCollection, setOpenCollection] = useState<CollectionRef | null>(null);
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
+
+  const navigate = useCallback((r: Route) => {
+    // The sidebar's Collections always starts at the overview.
+    if (r === "collections") setOpenCollection(null);
+    setRoute(r);
+  }, []);
 
   const toggleSidebar = useCallback(() => {
     setCollapsed((c) => {
@@ -138,15 +147,21 @@ export function App() {
       if (e.key === "\\") toggleSidebar();
       else if (e.key.toLowerCase() === "o" && !e.shiftKey) importBooks();
       else if (e.key.toLowerCase() === "f" || e.key.toLowerCase() === "k") search.current?.focus();
-      else if (n >= 1 && n <= NAV.length) setRoute(NAV[n - 1].route);
+      else if (n >= 1 && n <= NAV.length) navigate(NAV[n - 1].route);
       else return;
       e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleSidebar, importBooks, reading]);
+  }, [toggleSidebar, importBooks, reading, navigate]);
 
   const onHomeLoaded = useCallback((home: HomeViewModel) => setSync(home.sync), []);
+  const showCollection = useCallback((id: string) => {
+    setOpenCollection({ kind: "collection", id });
+    setRoute("collections");
+  }, []);
+  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
   const closeBook = useCallback(() => {
     setReading(null);
     setRefreshKey((k) => k + 1);
@@ -169,7 +184,7 @@ export function App() {
 
   return (
     <div className={`app${collapsed ? " sidebar-collapsed" : ""}`}>
-      <Sidebar route={route} collapsed={collapsed} onNavigate={setRoute} onToggle={toggleSidebar} preview={api.kind === "preview"} />
+      <Sidebar route={route} collapsed={collapsed} onNavigate={navigate} onToggle={toggleSidebar} preview={api.kind === "preview"} />
       <div className="main">
         <Header
           ref={search}
@@ -188,12 +203,13 @@ export function App() {
           {route === "home" ? (
             <Home
               refreshKey={refreshKey}
-              onNavigate={setRoute}
+              onNavigate={navigate}
               onOpenLibrary={openLibrary}
               onImportBooks={importBooks}
               onImportFolder={importFolder}
               onLoaded={onHomeLoaded}
               onOpenBook={setReading}
+              onOpenCollection={showCollection}
             />
           ) : route === "library" ? (
             <Library
@@ -205,6 +221,15 @@ export function App() {
               onImportBooks={importBooks}
               onImportFolder={importFolder}
               onOpenBook={setReading}
+              onOpenCollection={showCollection}
+            />
+          ) : route === "collections" ? (
+            <Collections
+              open={openCollection}
+              refreshKey={refreshKey}
+              onOpen={setOpenCollection}
+              onOpenBook={setReading}
+              onChanged={refresh}
             />
           ) : (
             <ComingSoon route={route} />
@@ -217,6 +242,7 @@ export function App() {
         </div>
       )}
       {importing && <div className="import-progress" role="status">Importing…</div>}
+      <AddToCollectionHost onChanged={refresh} />
     </div>
   );
 }

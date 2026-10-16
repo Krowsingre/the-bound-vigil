@@ -171,3 +171,71 @@ export interface AnnotationInput {
   color?: HighlightColor | null;
   locator: ReaderLocator;
 }
+
+export type CollectionKind = "shelf" | "collection" | "reading_list";
+
+export interface CollectionSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  kind: CollectionKind;
+  /** One of the badges in `collections/badges.tsx`, by name. */
+  badge: string | null;
+  /** `gallery:<name>`, `picture:<file>` or `cover:<book id>`. */
+  picture: string | null;
+  /** The picture's file on this device, for `picture:` and `cover:`. */
+  picturePath: string | null;
+  pinned: boolean;
+  count: number;
+  /** Its first three books, for the strip of covers. */
+  covers: CoverRef[];
+  createdAt: IsoUtc;
+  updatedAt: IsoUtc;
+}
+
+export type SmartKind = "recently_added" | "not_started" | "last_read" | "nearly_finished" | "set_aside";
+
+export interface SmartSummary {
+  kind: SmartKind;
+  count: number;
+}
+
+export interface SeriesSummary {
+  name: string;
+  count: number;
+  authors: string[];
+  covers: CoverRef[];
+}
+
+/** Enough of a book to draw its cover. */
+export interface CoverRef {
+  id: BookId;
+  title: string;
+  authors: string[];
+  coverPath: string | null;
+}
+
+export interface CollectionsOverview {
+  pinned: CollectionSummary[];
+  smart: SmartSummary[];
+  collections: CollectionSummary[];
+  series: SeriesSummary[];
+}
+
+export type CollectionRef =
+  | { kind: "collection"; id: string }
+  | { kind: "series"; name: string }
+  | { kind: "smart"; smart: SmartKind };
+
+export interface CollectionDetail {
+  collection: CollectionSummary | null;
+  books: BookPreview[];
+}
+
+export interface CollectionInput {
+  name: string;
+  description?: string | null;
+  kind: CollectionKind;
+  badge?: string | null;
+  pinned: boolean;
+}

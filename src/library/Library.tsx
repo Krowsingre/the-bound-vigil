@@ -22,6 +22,7 @@ export function Library({
   onImportBooks,
   onImportFolder,
   onOpenBook,
+  onOpenCollection,
 }: {
   view: LibraryView;
   search: string;
@@ -31,6 +32,7 @@ export function Library({
   onImportBooks: () => void;
   onImportFolder: () => void;
   onOpenBook: (bookId: string) => void;
+  onOpenCollection: (id: string) => void;
 }) {
   const [load, setLoad] = useState<Load<LibraryPage>>({ state: "loading" });
   const [collections, setCollections] = useState<CollectionPreview[] | null>(null);
@@ -96,7 +98,7 @@ export function Library({
       </div>
     );
   } else if (view.tab === "collections") {
-    body = <CollectionsTab collections={collections} />;
+    body = <CollectionsTab collections={collections} onOpenCollection={onOpenCollection} />;
   } else if (!page) {
     body = <div className="library-loading" aria-busy="true" aria-label="Loading your library" />;
   } else if (page.counts.all === 0) {

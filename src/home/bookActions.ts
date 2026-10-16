@@ -1,4 +1,5 @@
 import type { BookPreview } from "../api/types";
+import { askAddToCollection } from "../collections/AddToCollection";
 import type { MenuEntry } from "../components/Menu";
 
 export interface BookActions {
@@ -6,6 +7,8 @@ export interface BookActions {
   setStatus: (book: BookPreview, status: BookPreview["status"]) => void;
   setFavorite: (book: BookPreview, favorite: boolean) => void;
   setWantToRead: (book: BookPreview, want: boolean) => void;
+  /** Set when the books are shown inside one of the user's collections. */
+  removeFromCollection?: { name: string; remove: (book: BookPreview) => void };
 }
 
 /** The "…" menu for a book. Actions that arrive in later steps are shown but disabled. */
@@ -19,6 +22,10 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     book.wantToRead
       ? { label: "Remove from Want to read", icon: "bookmark", onSelect: () => actions.setWantToRead(book, false) }
       : { label: "Want to read", icon: "bookmark", onSelect: () => actions.setWantToRead(book, true) },
+    { label: "Add to collection…", icon: "collections", onSelect: () => askAddToCollection(book) },
+    ...(actions.removeFromCollection
+      ? [{ label: `Remove from ${actions.removeFromCollection.name}`, onSelect: () => actions.removeFromCollection?.remove(book) }]
+      : []),
     "divider",
     book.status === "read"
       ? { label: "Mark as unread", onSelect: () => actions.setStatus(book, "unread") }
