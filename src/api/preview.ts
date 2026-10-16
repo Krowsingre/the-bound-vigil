@@ -4,6 +4,7 @@
 
 import type { Api } from "./index";
 import { previewCollections } from "../preview/collections";
+import { previewNotes, sampleAnnotations } from "../preview/notes";
 import { sampleEpub } from "../preview/sampleEpub";
 import type {
   Annotation,
@@ -100,6 +101,8 @@ const SAMPLE_AVATAR =
   );
 const library = () => (empty ? [] : books);
 const collections = previewCollections(library, empty);
+let annotations: Annotation[] = empty ? [] : sampleAnnotations(books);
+const notes = previewNotes(library, { get: () => annotations, set: (list) => (annotations = list) }, empty);
 
 const articles = /^(the|an|a) /i;
 const sortTitle = (b: BookPreview) => b.title.replace(articles, "").toLowerCase();
@@ -204,7 +207,6 @@ const update = (bookId: string, change: Partial<BookPreview>) => {
 
 export function previewApi(): Api {
   let profile: Profile = { avatarPath: params.has("avatar") ? SAMPLE_AVATAR : null };
-  let annotations: Annotation[] = [];
   const settings = new Map<string, string>();
   const find = (bookId: string) => {
     const b = books.find((x) => x.id === bookId);
@@ -237,7 +239,7 @@ export function previewApi(): Api {
       return sampleEpub(b.title, b.authors.join(", "));
     },
     savePosition: async (bookId, locator) => update(bookId, { resumeLocator: locator, totalProgression: locator.totalProgression ?? null }),
-    getAnnotations: async (bookId) => annotations.filter((a) => a.bookId === bookId),
+    getAnnotations: async (bookId) => annotations.filter((a) => a.bookId === bookId && (a.kind as string) !== "book_note"),
     saveAnnotation: async (input) => {
       const now = new Date().toISOString();
       const old = annotations.find((a) => a.id === input.id);
@@ -262,5 +264,6 @@ export function previewApi(): Api {
     setSetting: async (key, value) => void settings.set(key, value),
     quit: async () => undefined,
     ...collections.api,
+    ...notes,
   };
 }

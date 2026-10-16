@@ -158,6 +158,20 @@ const MIGRATIONS: &[&str] = &[
         ('shelf:want_to_read', 'To be read', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'bookmark', 'gallery:forest', 1, 3),
         ('shelf:completed', 'Completed', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'check', 'gallery:coast', 1, 4);
     "#,
+    // v5: the Notes page. Book notes (about a whole book) live with the
+    // other annotations as kind 'book_note'. Personal notes belong to no
+    // book, so they get their own table.
+    r#"
+    CREATE TABLE personal_notes (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        body TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX idx_personal_notes_updated ON personal_notes(updated_at);
+    "#,
 ];
 
 /// SQLite's own `lower()` only folds A–Z, so "Émile" would never match "émile".

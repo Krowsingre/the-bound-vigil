@@ -14,6 +14,7 @@ import "./styles/home.css";
 import "./styles/library.css";
 import "./styles/reader.css";
 import "./styles/collections.css";
+import "./styles/notes.css";
 import { isApp } from "./api";
 import { runBeforeQuit } from "./lib/beforeQuit";
 
