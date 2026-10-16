@@ -202,6 +202,7 @@ impl Library {
             .conn
             .execute("VACUUM INTO ?1", params![partial.display().to_string()])
             .map_err(Error::from)
+            .and_then(|_| forget_device_only(&partial))
             .and_then(|_| fs::rename(&partial, target).map_err(Error::from));
         if made.is_err() {
             let _ = fs::remove_file(&partial);
@@ -219,17 +220,31 @@ impl Library {
         fs::copy(source, &staging)?;
         let checked = check_backup(&staging);
         let restored = checked.and_then(|_| {
-            // Where this device keeps its book files isn't part of a backup.
+            // Where this device keeps its book files, and its sync sign-in,
+            // aren't part of a backup.
             let here = self.local_files()?;
+            let kept = DEVICE_ONLY
+                .iter()
+                .map(|key| Ok((*key, self.setting(key)?)))
+                .collect::<Result<Vec<_>>>()?;
             self.conn
                 .restore(rusqlite::MAIN_DB, &staging, None::<fn(rusqlite::backup::Progress)>)?;
-            self.rebind_local_files(here)
+            crate::sync::install_triggers(&self.conn)?;
+            self.rebind_local_files(here)?;
+            for (key, value) in kept {
+                self.conn.execute("DELETE FROM device_settings WHERE key = ?1", params![key])?;
+                if let Some(value) = value {
+                    self.set_setting(key, &value)?;
+                }
+            }
+            // Start sync afresh: send everything again; the cloud keeps whichever is newer.
+            self.reset_sync()
         });
         let _ = fs::remove_file(&staging);
         restored
     }
 
-    fn local_files(&self) -> Result<Vec<(String, String, Option<String>)>> {
+    fn local_files(&self) -> Result<Vec<LocalFile>> {
         let mut statement = self.conn.prepare("SELECT book_id, path, cover_path FROM local_files")?;
         let rows = statement.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
@@ -237,11 +252,11 @@ impl Library {
 
     /// Drops file locations that don't exist on this device, then puts back
     /// the ones this device had before the restore.
-    fn rebind_local_files(&self, here: Vec<(String, String, Option<String>)>) -> Result<()> {
+    fn rebind_local_files(&self, here: Vec<LocalFile>) -> Result<()> {
         let restored = self.local_files()?;
         let tx = self.conn.unchecked_transaction()?;
         for (book_id, path, cover) in restored {
-            if !Path::new(&path).exists() {
+            if path.is_some_and(|p| !Path::new(&p).exists()) {
                 tx.execute("DELETE FROM local_files WHERE book_id = ?1", params![book_id])?;
             } else if cover.is_some_and(|c| !Path::new(&c).exists()) {
                 tx.execute("UPDATE local_files SET cover_path = NULL WHERE book_id = ?1", params![book_id])?;
@@ -278,6 +293,20 @@ impl Library {
         Ok(accent_of(&image.thumbnail(48, 48).to_rgb8()))
     }
 }
+
+/// Settings that belong to this device and its sign-in, never to a backup.
+const DEVICE_ONLY: [&str; 3] = ["sync.session", "sync.supabase", "sync.device_id"];
+
+/// Takes this device's sign-in out of a backup copy, so a backup file never
+/// holds a way into the cloud.
+fn forget_device_only(copy: &Path) -> Result<()> {
+    let conn = Connection::open(copy)?;
+    conn.execute("DELETE FROM device_settings WHERE key = 'sync.session'", [])?;
+    Ok(())
+}
+
+/// A book's file and cover on this device: (book id, file, cover).
+type LocalFile = (String, Option<String>, Option<String>);
 
 /// `file.ext` becomes `file.ext.<suffix>` beside it.
 fn sibling(path: &Path, suffix: &str) -> PathBuf {
@@ -422,6 +451,25 @@ mod tests {
 
         library.restore_backup(&backup).unwrap();
         assert_eq!(library.local_files().unwrap(), here);
+    }
+
+    #[test]
+    fn backups_never_hold_the_sync_sign_in_and_restores_keep_it() {
+        let (dir, mut library) = open_temp_library();
+        library.set_setting("sync.session", r#"{"secret":"token"}"#).unwrap();
+        let backup = dir.path().join("library.tbvbackup");
+        library.create_backup(&backup).unwrap();
+        let copy = Connection::open(&backup).unwrap();
+        let held: i64 = copy.query_row("SELECT COUNT(*) FROM device_settings WHERE key = 'sync.session'", [], |r| r.get(0)).unwrap();
+        assert_eq!(held, 0);
+        drop(copy);
+
+        library.restore_backup(&backup).unwrap();
+        assert_eq!(library.setting("sync.session").unwrap().as_deref(), Some(r#"{"secret":"token"}"#));
+        // Changes after a restore are still noticed for sync.
+        library.save_personal_note(None, None, "After the restore").unwrap();
+        let waiting: i64 = library.conn.query_row("SELECT COUNT(*) FROM sync_clock WHERE kind = 'personal_note' AND pushed = 0", [], |r| r.get(0)).unwrap();
+        assert_eq!(waiting, 1);
     }
 
     #[test]

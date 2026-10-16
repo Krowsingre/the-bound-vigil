@@ -163,7 +163,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "sync",
     section: "provider",
     label: "Sync provider",
-    words: "supabase dropbox google drive onedrive cloud account connect",
+    words: "supabase dropbox google drive onedrive cloud account connect sign in sign out email password setup script sync now join device",
   },
   {
     tab: "sync",

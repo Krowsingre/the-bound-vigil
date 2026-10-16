@@ -173,6 +173,15 @@ export function App() {
   }, []);
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
+  // Sync runs in the background; show its state, and what it brings in.
+  useEffect(() => {
+    api.syncOverview().then(
+      (o) => setSync(o.status),
+      () => undefined,
+    );
+    return api.onSync({ status: setSync, libraryChanged: refresh });
+  }, [refresh]);
+
   const closeBook = useCallback(() => {
     setReading(null);
     setRefreshKey((k) => k + 1);

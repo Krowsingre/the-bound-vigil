@@ -68,21 +68,27 @@ export function SyncMenu({
               <span>
                 {off
                   ? "No cloud service connected yet."
-                  : sync?.lastSuccessAt
+                  : state === "attention"
+                    ? "Some changes need you to choose. See Sync & Accounts."
+                    : sync?.lastSuccessAt
                     ? `Last synced ${relativeTime(sync.lastSuccessAt)}`
                     : "Not synced yet"}
               </span>
             </>
           ),
         },
-        { label: "Sync now", icon: "sync", disabled: off },
+        { label: "Sync now", icon: "sync", disabled: off || state === "syncing", onSelect: () => void api.syncNow() },
         "divider",
         { label: "Import books…", icon: "importFile", hint: "Ctrl+O", onSelect: onImportBooks },
         { label: "Import a folder…", icon: "folder", onSelect: onImportFolder },
         "divider",
-        { label: "Connect a cloud service", icon: "cloud", hint: "Coming soon", disabled: true },
-        { label: "Join an existing library", icon: "link", hint: "Coming soon", disabled: true },
-        "divider",
+        ...(off
+          ? [
+              { label: "Connect a cloud service", icon: "cloud" as const, onSelect: onOpenSyncSettings },
+              { label: "Join an existing library", icon: "link" as const, hint: "Sign in on this device", onSelect: onOpenSyncSettings },
+              "divider" as const,
+            ]
+          : []),
         { label: "Sync & Accounts", icon: "settings", onSelect: onOpenSyncSettings },
         "divider",
         { label: avatar ? "Change profile picture…" : "Choose a profile picture…", icon: "image", onSelect: onChooseAvatar },

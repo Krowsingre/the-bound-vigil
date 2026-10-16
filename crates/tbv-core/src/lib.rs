@@ -13,6 +13,7 @@ pub mod model;
 pub mod notes;
 pub mod profile;
 pub mod reader;
+pub mod sync;
 pub mod time;
 
 pub use error::{Error, Result};

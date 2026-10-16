@@ -77,6 +77,32 @@ export interface SyncStatus {
   lastSuccessAt: IsoUtc | null;
 }
 
+export interface SupabaseProject {
+  url: string;
+  anonKey: string;
+}
+
+/** Both devices changed the same thing; the user picks which to keep. */
+export interface SyncConflict {
+  kind: string;
+  key: string;
+  /** What it is, in words: "Reading progress in Dracula". */
+  what: string;
+  here: string;
+  cloud: string;
+  cloudChangedAt: IsoUtc;
+}
+
+export interface SyncOverview {
+  status: SyncStatus;
+  project: SupabaseProject | null;
+  signedInAs: string | null;
+  lastError: string | null;
+  /** Changes on this device the cloud doesn't have yet. */
+  waitingToSend: number;
+  conflicts: SyncConflict[];
+}
+
 export interface ReadingActivity {
   completedBooks: number;
   pagesRead: number | null;

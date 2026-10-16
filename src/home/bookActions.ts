@@ -44,8 +44,7 @@ export function cannotOpen(book: BookPreview): string | null {
   switch (book.availability) {
     case "missing":
       return `The file for “${book.title}” is missing from this device. Relinking arrives in a later step.`;
-    case "cloud":
-      return `“${book.title}” isn't downloaded to this device yet. Downloading arrives with sync.`;
+    // A cloud book downloads as it opens.
     default:
       return null;
   }

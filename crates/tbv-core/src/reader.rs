@@ -112,7 +112,8 @@ impl Library {
                 params![book_id],
                 |r| r.get(0),
             )
-            .optional()?;
+            .optional()?
+            .flatten();
         let path = path.map(PathBuf::from).ok_or_else(|| {
             Error::Unsuitable("This book isn't downloaded to this device yet.".into())
         })?;

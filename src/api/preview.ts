@@ -14,6 +14,7 @@ import type {
   LibraryPage,
   LibraryQuery,
   Profile,
+  SyncOverview,
 } from "./types";
 
 const day = 86_400_000;
@@ -197,7 +198,7 @@ function home(): HomeViewModel {
       read: all.filter((b) => b.status === "read").length,
     },
     activity: null,
-    sync: { state: "disabled", lastSuccessAt: null },
+    sync: previewSync().status,
   };
 }
 
@@ -205,7 +206,33 @@ const update = (bookId: string, change: Partial<BookPreview>) => {
   books = books.map((b) => (b.id === bookId ? { ...b, ...change } : b));
 };
 
+function previewSync(): SyncOverview {
+  const mode = params.get("sync");
+  if (!mode) return { status: { state: "disabled", lastSuccessAt: null }, project: null, signedInAs: null, lastError: null, waitingToSend: 0, conflicts: [] };
+  return {
+    status: { state: mode === "ask" ? "attention" : "idle", lastSuccessAt: ago(0.002) },
+    project: { url: "https://abcdefghijklmnop.supabase.co", anonKey: "sb_publishable_sample" },
+    signedInAs: "reader@example.com",
+    lastError: null,
+    waitingToSend: 2,
+    conflicts:
+      mode === "ask"
+        ? [
+            {
+              kind: "book_progress",
+              key: '["x"]',
+              what: "Reading progress in Dracula",
+              here: "in progress, 42% through",
+              cloud: "in progress, 61% through",
+              cloudChangedAt: ago(0.1),
+            },
+          ]
+        : [],
+  };
+}
+
 export function previewApi(): Api {
+  let sync = previewSync();
   let profile: Profile = { avatarPath: params.has("avatar") ? SAMPLE_AVATAR : null };
   const settings = new Map<string, string>();
   const find = (bookId: string) => {
@@ -286,6 +313,30 @@ export function previewApi(): Api {
     // A quiet colour per sample book, standing in for its cover.
     coverAccent: async (bookId) => ["#8a5a44", "#4f6b5a", "#5b5f8a", "#8a7444", "#6a4a6e"][parseInt(bookId.slice(-2), 16) % 5],
     showFolder: async () => undefined,
+    // Sync is pretend here: `?sync=on` shows a signed-in library, `?sync=ask`
+    // adds a conflict to choose about.
+    syncOverview: async () => sync,
+    syncNow: async () => {
+      sync = { ...sync, status: { state: "idle", lastSuccessAt: new Date().toISOString() }, waitingToSend: 0 };
+    },
+    syncSignIn: async (email) => {
+      sync = { ...sync, signedInAs: email, status: { state: "idle", lastSuccessAt: new Date().toISOString() } };
+      return true;
+    },
+    syncSignOut: async () => {
+      sync = { ...sync, signedInAs: null, status: { state: "disabled", lastSuccessAt: null } };
+    },
+    setSupabaseProject: async (project) => {
+      sync = { ...sync, project, signedInAs: project?.url === sync.project?.url ? sync.signedInAs : null };
+    },
+    resolveSyncConflict: async (_kind, key) => {
+      sync = { ...sync, conflicts: sync.conflicts.filter((c) => c.key !== key) };
+      if (!sync.conflicts.length) sync.status = { ...sync.status, state: "idle" };
+    },
+    downloadBook: async () => {
+      throw new Error("Downloading works in the desktop app.");
+    },
+    onSync: () => () => undefined,
     ...collections.api,
     ...notes,
   };

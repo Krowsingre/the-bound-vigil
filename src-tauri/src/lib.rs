@@ -1,8 +1,11 @@
 //! Tauri shell: wires the UI to `tbv-core`. Commands stay thin; all logic and
 //! file work lives in the core, and blocking work runs off the UI thread.
 
+mod sync;
+
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tauri::{Emitter, Manager, State};
 use tbv_core::model::{
@@ -12,6 +15,7 @@ use tbv_core::model::{
     ReaderBook, ReaderLocator,
 };
 use tbv_core::data::LibraryInfo;
+use tbv_core::sync::{SupabaseProject, SyncOverview};
 use tbv_core::{Library, LibraryPaths, SUPPORTED_FORMATS};
 
 struct AppLibrary(Arc<Mutex<Library>>);
@@ -119,9 +123,13 @@ fn supported_formats() -> Vec<&'static str> {
 
 /// Ends the whole app, not just the window. The close button uses this so
 /// nothing is left running in the background after the window goes away.
+/// A last sync gets a moment to finish first, if the user wants one.
 #[tauri::command]
-fn quit_app(app: tauri::AppHandle) {
+async fn quit_app(app: tauri::AppHandle, worker: State<'_, Arc<sync::SyncWorker>>) -> CommandResult<()> {
+    let worker = worker.inner().clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || worker.finish(Duration::from_secs(15))).await;
     app.exit(0);
+    Ok(())
 }
 
 #[tauri::command]
@@ -135,7 +143,22 @@ async fn read_book_file(
     state: State<'_, AppLibrary>,
     book_id: String,
 ) -> CommandResult<tauri::ipc::Response> {
-    let path = with_library(state, move |library| library.book_file(&book_id)).await?;
+    let library = state.0.clone();
+    let id = book_id.clone();
+    let path = match with_library(state, move |library| library.book_file(&id)).await {
+        Ok(path) => path,
+        // Only in the cloud (or gone from here): fetch it, then open it.
+        Err(_) => tauri::async_runtime::spawn_blocking(move || {
+            sync::download(&library, &book_id)?;
+            library
+                .lock()
+                .map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?
+                .book_file(&book_id)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?,
+    };
     let bytes = tauri::async_runtime::spawn_blocking(move || std::fs::read(path))
         .await
         .map_err(|e| e.to_string())?
@@ -393,6 +416,118 @@ async fn cover_accent(
     with_library(state, move |library| library.cover_accent(&book_id)).await
 }
 
+#[tauri::command]
+async fn sync_overview(
+    state: State<'_, AppLibrary>,
+    worker: State<'_, Arc<sync::SyncWorker>>,
+) -> CommandResult<SyncOverview> {
+    let busy = worker.is_busy();
+    with_library(state, move |library| {
+        let mut overview = library.sync_overview()?;
+        overview.status = sync::status(library, busy);
+        Ok(overview)
+    })
+    .await
+}
+
+#[tauri::command]
+fn sync_now(worker: State<'_, Arc<sync::SyncWorker>>) {
+    worker.sync_now();
+}
+
+/// Signs in (or makes an account). False means Supabase emailed a link to
+/// confirm the address first.
+#[tauri::command]
+async fn sync_sign_in(
+    state: State<'_, AppLibrary>,
+    worker: State<'_, Arc<sync::SyncWorker>>,
+    email: String,
+    password: String,
+    create: bool,
+) -> CommandResult<bool> {
+    let library = state.0.clone();
+    let signed_in = tauri::async_runtime::spawn_blocking(move || sync::sign_in(&library, &email, &password, create))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    if signed_in {
+        worker.sync_now();
+    }
+    Ok(signed_in)
+}
+
+#[tauri::command]
+async fn sync_sign_out(app: tauri::AppHandle, state: State<'_, AppLibrary>) -> CommandResult<()> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        sync::sign_out(&library)?;
+        announce(&app, &library);
+        Ok::<_, tbv_core::Error>(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+/// Tells the window sync's state changed (the header circle listens).
+fn announce(app: &tauri::AppHandle, library: &Mutex<Library>) {
+    if let Ok(library) = library.lock() {
+        let _ = app.emit("sync-status", sync::status(&library, false));
+    }
+}
+
+/// Saves which Supabase project to use. A different project signs out first.
+#[tauri::command]
+async fn set_supabase_project(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    project: Option<SupabaseProject>,
+) -> CommandResult<()> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || -> tbv_core::Result<()> {
+        let current = library
+            .lock()
+            .map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?
+            .supabase_project()?;
+        if current.as_ref().map(|p| &p.url) != project.as_ref().map(|p| &p.url) {
+            sync::sign_out(&library)?;
+        }
+        let json = serde_json::to_string(&project)?;
+        library
+            .lock()
+            .map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?
+            .set_setting("sync.supabase", &json)?;
+        announce(&app, &library);
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn resolve_sync_conflict(
+    state: State<'_, AppLibrary>,
+    worker: State<'_, Arc<sync::SyncWorker>>,
+    kind: String,
+    key: String,
+    keep_cloud: bool,
+) -> CommandResult<()> {
+    with_library(state, move |library| library.resolve_sync_conflict(&kind, &key, keep_cloud)).await?;
+    worker.sync_now();
+    Ok(())
+}
+
+/// Fetches a book that's only in the cloud onto this device.
+#[tauri::command]
+async fn download_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || sync::download(&library, &book_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 /// Opens File Explorer at a file or folder TBV keeps.
 #[tauri::command]
 fn show_folder(path: String) -> CommandResult<()> {
@@ -407,8 +542,9 @@ pub fn run() {
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             let cache_dir = app.path().app_cache_dir()?;
-            let library = Library::open(LibraryPaths::new(&data_dir, &cache_dir))?;
-            app.manage(AppLibrary(Arc::new(Mutex::new(library))));
+            let library = Arc::new(Mutex::new(Library::open(LibraryPaths::new(&data_dir, &cache_dir))?));
+            app.manage(Arc::new(sync::SyncWorker::start(app.handle().clone(), library.clone())));
+            app.manage(AppLibrary(library));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -455,7 +591,14 @@ pub fn run() {
             create_backup,
             restore_backup,
             cover_accent,
-            show_folder
+            show_folder,
+            sync_overview,
+            sync_now,
+            sync_sign_in,
+            sync_sign_out,
+            set_supabase_project,
+            resolve_sync_conflict,
+            download_book,
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
         // page gets a moment to save the reading position first, and the app

@@ -24,6 +24,9 @@ import type {
   ReadStatus,
   ReaderBook,
   ReaderLocator,
+  SupabaseProject,
+  SyncOverview,
+  SyncStatus,
 } from "./types";
 
 export interface Api {
@@ -91,6 +94,19 @@ export interface Api {
   coverAccent(bookId: string): Promise<string | null>;
   /** Opens File Explorer at a file or folder. */
   showFolder(path: string): Promise<void>;
+  syncOverview(): Promise<SyncOverview>;
+  /** Asks for a sync now. Progress arrives through `onSync`. */
+  syncNow(): Promise<void>;
+  /** Signs in, or makes an account. False means Supabase emailed a link to confirm first. */
+  syncSignIn(email: string, password: string, create: boolean): Promise<boolean>;
+  syncSignOut(): Promise<void>;
+  /** Saves the Supabase project to use. A different project signs out first. */
+  setSupabaseProject(project: SupabaseProject | null): Promise<void>;
+  resolveSyncConflict(kind: string, key: string, keepCloud: boolean): Promise<void>;
+  /** Fetches a book that's only in the cloud onto this device. */
+  downloadBook(bookId: string): Promise<void>;
+  /** Hears sync starting and finishing, and library changes it brings. Returns a way to stop. */
+  onSync(listener: { status?: (status: SyncStatus) => void; libraryChanged?: () => void }): () => void;
 }
 
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -202,6 +218,26 @@ function appApi(): Api {
     },
     coverAccent: async (bookId) => (await core).invoke<string | null>("cover_accent", { bookId }),
     showFolder: async (path) => (await core).invoke("show_folder", { path }),
+    syncOverview: async () => (await core).invoke<SyncOverview>("sync_overview"),
+    syncNow: async () => (await core).invoke("sync_now"),
+    syncSignIn: async (email, password, create) => (await core).invoke<boolean>("sync_sign_in", { email, password, create }),
+    syncSignOut: async () => (await core).invoke("sync_sign_out"),
+    setSupabaseProject: async (project) => (await core).invoke("set_supabase_project", { project }),
+    resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
+    downloadBook: async (bookId) => (await core).invoke("download_book", { bookId }),
+    onSync: ({ status, libraryChanged }) => {
+      const stops: (() => void)[] = [];
+      let stopped = false;
+      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+        const add = (stop: () => void) => (stopped ? stop() : stops.push(stop));
+        if (status) add(await listen<SyncStatus>("sync-status", (e) => status(e.payload)));
+        if (libraryChanged) add(await listen("library-changed", () => libraryChanged()));
+      });
+      return () => {
+        stopped = true;
+        stops.forEach((stop) => stop());
+      };
+    },
   };
 }
 
