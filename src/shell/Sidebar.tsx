@@ -1,0 +1,76 @@
+import emblem from "../assets/emblem.svg?raw";
+import { Icon } from "../components/Icon";
+import { NAV, navRouteOf, type Route } from "./routes";
+
+export function Sidebar({
+  route,
+  collapsed,
+  onNavigate,
+  onToggle,
+  preview,
+}: {
+  route: Route;
+  collapsed: boolean;
+  onNavigate: (route: Route) => void;
+  onToggle: () => void;
+  preview: boolean;
+}) {
+  const active = navRouteOf(route);
+  return (
+    <aside className={`sidebar${collapsed ? " is-collapsed" : ""}`}>
+      <div className="sidebar-top" data-tauri-drag-region>
+        <button
+          type="button"
+          className="sidebar-toggle"
+          onClick={onToggle}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
+          title={`${collapsed ? "Expand" : "Collapse"} sidebar (Ctrl+\\)`}
+        >
+          <Icon name="more" size={20} />
+        </button>
+      </div>
+
+      <div className="brand" data-tauri-drag-region>
+        <span className="brand-emblem" aria-hidden dangerouslySetInnerHTML={{ __html: emblem }} />
+        {!collapsed && (
+          <>
+            <span className="brand-name">The Bound Vigil</span>
+            <span className="brand-tagline">Books endure</span>
+          </>
+        )}
+      </div>
+
+      <nav aria-label="Main">
+        <ul className="nav">
+          {NAV.map((item, i) => (
+            <li key={item.route}>
+              <button
+                type="button"
+                className={`nav-item${active === item.route ? " is-active" : ""}`}
+                aria-current={active === item.route ? "page" : undefined}
+                onClick={() => onNavigate(item.route)}
+                title={collapsed ? `${item.label} (Ctrl+${i + 1})` : undefined}
+              >
+                <Icon name={item.icon} size={20} />
+                <span className="nav-label">{item.label}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      {!collapsed && (
+        <figure className="sidebar-quote" aria-hidden>
+          <blockquote>A quieter world lives in these pages.</blockquote>
+          <span className="sidebar-rule" />
+        </figure>
+      )}
+      {preview && (
+        <p className="preview-badge" title="Sample books for design previews. The desktop app shows your own library.">
+          {collapsed ? "P" : "Preview · sample books"}
+        </p>
+      )}
+    </aside>
+  );
+}
