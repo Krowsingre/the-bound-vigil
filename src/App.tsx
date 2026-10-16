@@ -5,6 +5,7 @@ import { useToast } from "./components/Toast";
 import { Home } from "./home/Home";
 import { importSummary } from "./lib/importSummary";
 import { Library } from "./library/Library";
+import { Reader } from "./reader/Reader";
 import { initialView, rememberView, type LibraryView } from "./library/libraryView";
 import { ComingSoon } from "./pages/ComingSoon";
 import { Header } from "./shell/Header";
@@ -31,6 +32,7 @@ export function App() {
   const [libraryView, setLibraryView] = useState<LibraryView>(initialView);
   const [searchText, setSearchText] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [reading, setReading] = useState<string | null>(null);
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
@@ -131,7 +133,7 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || reading) return;
       const n = Number(e.key);
       if (e.key === "\\") toggleSidebar();
       else if (e.key.toLowerCase() === "o" && !e.shiftKey) importBooks();
@@ -142,9 +144,28 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleSidebar, importBooks]);
+  }, [toggleSidebar, importBooks, reading]);
 
   const onHomeLoaded = useCallback((home: HomeViewModel) => setSync(home.sync), []);
+  const closeBook = useCallback(() => {
+    setReading(null);
+    setRefreshKey((k) => k + 1);
+  }, []);
+
+  const shell = {
+    sync,
+    profile,
+    onChooseAvatar: chooseAvatar,
+    onClearAvatar: clearAvatar,
+    onImportBooks: importBooks,
+    onImportFolder: importFolder,
+    onOpenSyncSettings: () => {
+      setReading(null);
+      setRoute("sync");
+    },
+  };
+
+  if (reading) return <Reader key={reading} bookId={reading} shell={shell} onClose={closeBook} />;
 
   return (
     <div className={`app${collapsed ? " sidebar-collapsed" : ""}`}>
@@ -172,6 +193,7 @@ export function App() {
               onImportBooks={importBooks}
               onImportFolder={importFolder}
               onLoaded={onHomeLoaded}
+              onOpenBook={setReading}
             />
           ) : route === "library" ? (
             <Library
@@ -182,6 +204,7 @@ export function App() {
               onClearSearch={() => changeSearch("")}
               onImportBooks={importBooks}
               onImportFolder={importFolder}
+              onOpenBook={setReading}
             />
           ) : (
             <ComingSoon route={route} />

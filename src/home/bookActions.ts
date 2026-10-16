@@ -32,15 +32,15 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
   ];
 }
 
-/** What opening a book does today, given where its file is. */
-export function openMessage(book: BookPreview): string {
+/** Why a book can't be opened here, or null when it can. */
+export function cannotOpen(book: BookPreview): string | null {
   switch (book.availability) {
     case "missing":
       return `The file for “${book.title}” is missing from this device. Relinking arrives in a later step.`;
     case "cloud":
       return `“${book.title}” isn't downloaded to this device yet. Downloading arrives with sync.`;
     default:
-      return `The reader arrives in a later step. “${book.title}” will open right where you left off.`;
+      return null;
   }
 }
 
@@ -49,11 +49,16 @@ export function makeBookActions(
   api: Pick<import("../api").Api, "setBookStatus" | "setFavorite" | "setWantToRead">,
   toast: (text: string) => void,
   refresh: () => void,
+  openBook: (bookId: string) => void,
 ): BookActions {
   const run = (book: BookPreview, work: Promise<void>) =>
     work.then(refresh, (e: unknown) => toast(`Couldn't update “${book.title}”: ${String(e)}`));
   return {
-    open: (book) => toast(openMessage(book)),
+    open: (book) => {
+      const reason = cannotOpen(book);
+      if (reason) toast(reason);
+      else openBook(book.id);
+    },
     setStatus: (book, status) => void run(book, api.setBookStatus(book.id, status)),
     setFavorite: (book, favorite) => void run(book, api.setFavorite(book.id, favorite)),
     setWantToRead: (book, want) => void run(book, api.setWantToRead(book.id, want)),

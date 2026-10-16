@@ -15,6 +15,8 @@ export interface ReaderLocator {
   textBefore?: string;
   textHighlight?: string;
   textAfter?: string;
+  /** The chapter title at this position. */
+  chapter?: string;
 }
 
 export interface RemotePosition {
@@ -54,7 +56,7 @@ export interface AnnotationPreview {
   id: string;
   bookId: BookId;
   bookTitle: string;
-  kind: "note" | "highlight" | "bookmark";
+  kind: AnnotationKind;
   excerpt: string;
   note: string | null;
   locator: ReaderLocator;
@@ -135,4 +137,37 @@ export interface LibraryPage {
 
 export interface Profile {
   avatarPath: string | null;
+}
+
+export type HighlightColor = "rose" | "amber" | "sage" | "slate";
+export type AnnotationKind = "note" | "highlight" | "bookmark";
+
+export interface ReaderBook {
+  book: BookPreview;
+  publisher: string | null;
+  language: string | null;
+  fileSize: number;
+  previouslyOpenedAt: IsoUtc | null;
+}
+
+export interface Annotation {
+  id: string;
+  bookId: BookId;
+  kind: AnnotationKind;
+  excerpt: string;
+  note: string | null;
+  color: HighlightColor | null;
+  locator: ReaderLocator;
+  createdAt: IsoUtc;
+  updatedAt: IsoUtc;
+}
+
+export interface AnnotationInput {
+  id?: string;
+  bookId: BookId;
+  kind: AnnotationKind;
+  excerpt: string;
+  note?: string | null;
+  color?: HighlightColor | null;
+  locator: ReaderLocator;
 }

@@ -68,6 +68,9 @@ pub struct ReaderLocator {
     pub text_highlight: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_after: Option<String>,
+    /// The chapter title at this position, for lists of highlights and bookmarks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chapter: Option<String>,
 }
 
 /// Another device's position for the same book, shown as "On Phone you're at 51%".
@@ -312,4 +315,50 @@ mod tests {
             serde_json::json!({"outcome": "alreadyInLibrary", "path": "a.epub", "bookId": "sha256:00", "title": "A"})
         );
     }
+}
+
+/// Everything the reader needs about a book besides its file.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReaderBook {
+    pub book: BookPreview,
+    pub publisher: Option<String>,
+    pub language: Option<String>,
+    pub file_size: u64,
+    /// When the book was opened before this time, for "Last opened 2 h ago".
+    pub previously_opened_at: Option<IsoUtc>,
+}
+
+/// A highlight (with or without a note) or a bookmark inside a book.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Annotation {
+    pub id: String,
+    pub book_id: BookId,
+    pub kind: AnnotationKind,
+    /// The highlighted words, or the first words of a bookmarked page.
+    pub excerpt: String,
+    pub note: Option<String>,
+    /// One of the four highlight colours: `rose`, `amber`, `sage`, `slate`.
+    pub color: Option<String>,
+    pub locator: ReaderLocator,
+    pub created_at: IsoUtc,
+    pub updated_at: IsoUtc,
+}
+
+/// A new or changed annotation from the reader. Without an id, one is created.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationInput {
+    #[serde(default)]
+    pub id: Option<String>,
+    pub book_id: BookId,
+    pub kind: AnnotationKind,
+    #[serde(default)]
+    pub excerpt: String,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
+    pub locator: ReaderLocator,
 }

@@ -21,6 +21,7 @@ export function Library({
   onClearSearch,
   onImportBooks,
   onImportFolder,
+  onOpenBook,
 }: {
   view: LibraryView;
   search: string;
@@ -29,12 +30,16 @@ export function Library({
   onClearSearch: () => void;
   onImportBooks: () => void;
   onImportFolder: () => void;
+  onOpenBook: (bookId: string) => void;
 }) {
   const [load, setLoad] = useState<Load<LibraryPage>>({ state: "loading" });
   const [collections, setCollections] = useState<CollectionPreview[] | null>(null);
   const [reload, setReload] = useState(0);
   const toast = useToast();
-  const actions = useMemo(() => makeBookActions(api, toast, () => setReload((n) => n + 1)), [toast]);
+  const actions = useMemo(
+    () => makeBookActions(api, toast, () => setReload((n) => n + 1), onOpenBook),
+    [toast, onOpenBook],
+  );
 
   const shelf = view.tab === "collections" ? "all" : view.tab;
   useEffect(() => {

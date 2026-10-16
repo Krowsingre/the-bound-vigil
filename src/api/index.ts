@@ -3,6 +3,8 @@
 // clearly labelled sample library so screens can be looked at without the app.
 
 import type {
+  Annotation,
+  AnnotationInput,
   CollectionPreview,
   HomeViewModel,
   ImportResult,
@@ -10,6 +12,8 @@ import type {
   LibraryQuery,
   Profile,
   ReadStatus,
+  ReaderBook,
+  ReaderLocator,
 } from "./types";
 
 export interface Api {
@@ -28,6 +32,18 @@ export interface Api {
   pickBooks(): Promise<string[]>;
   pickFolder(): Promise<string[]>;
   coverUrl(path: string): string;
+  /** Opens a book for reading (records when, and moves Unread to In progress). */
+  openBook(bookId: string): Promise<ReaderBook>;
+  /** The book file itself, for the reader's page engine. */
+  readBookFile(bookId: string): Promise<Blob>;
+  savePosition(bookId: string, locator: ReaderLocator): Promise<void>;
+  getAnnotations(bookId: string): Promise<Annotation[]>;
+  saveAnnotation(annotation: AnnotationInput): Promise<Annotation>;
+  deleteAnnotation(id: string): Promise<void>;
+  getSetting(key: string): Promise<string | null>;
+  setSetting(key: string, value: string): Promise<void>;
+  /** Quits the whole app. */
+  quit(): Promise<void>;
 }
 
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -76,7 +92,24 @@ function appApi(): Api {
     pickFolder: async () =>
       asList(await (await dialog).open({ directory: true, multiple: false, title: "Import a folder of books" })),
     coverUrl: (path) => (convert ? convert(path) : ""),
+    openBook: async (bookId) => (await core).invoke<ReaderBook>("open_book", { bookId }),
+    readBookFile: async (bookId) =>
+      new Blob([await (await core).invoke<ArrayBuffer>("read_book_file", { bookId })]),
+    savePosition: async (bookId, locator) => (await core).invoke("save_position", { bookId, locator }),
+    getAnnotations: async (bookId) => (await core).invoke<Annotation[]>("get_annotations", { bookId }),
+    saveAnnotation: async (annotation) => (await core).invoke<Annotation>("save_annotation", { annotation }),
+    deleteAnnotation: async (id) => (await core).invoke("delete_annotation", { id }),
+    getSetting: async (key) => (await core).invoke<string | null>("get_setting", { key }),
+    setSetting: async (key, value) => (await core).invoke("set_setting", { key, value }),
+    quit: async () => (await core).invoke("quit_app"),
   };
+}
+
+/** Opens a web link in the person's browser, never inside TBV. */
+export async function openExternal(url: string): Promise<void> {
+  if (!/^https?:\/\//i.test(url)) return;
+  if (isApp) await (await import("@tauri-apps/plugin-opener")).openUrl(url);
+  else window.open(url, "_blank", "noopener");
 }
 
 export const api: Api = isApp ? appApi() : (await import("./preview")).previewApi();

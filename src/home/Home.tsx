@@ -24,6 +24,7 @@ export function Home({
   onImportBooks,
   onImportFolder,
   onLoaded,
+  onOpenBook,
 }: {
   refreshKey: number;
   onNavigate: (route: Route) => void;
@@ -31,6 +32,7 @@ export function Home({
   onImportBooks: () => void;
   onImportFolder: () => void;
   onLoaded?: (home: HomeViewModel) => void;
+  onOpenBook: (bookId: string) => void;
 }) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [reload, setReload] = useState(0);
@@ -51,7 +53,7 @@ export function Home({
     };
   }, [refreshKey, reload, onLoaded]);
 
-  const actions = makeBookActions(api, toast, () => setReload((n) => n + 1));
+  const actions = makeBookActions(api, toast, () => setReload((n) => n + 1), onOpenBook);
   const openLibrary = useCallback(() => onOpenLibrary({ tab: "all" }), [onOpenLibrary]);
 
   if (load.state === "loading") return <div className="home home-loading" aria-busy="true" aria-label="Loading your library" />;

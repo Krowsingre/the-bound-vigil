@@ -9,6 +9,7 @@ pub mod ids;
 pub mod library;
 pub mod model;
 pub mod profile;
+pub mod reader;
 pub mod time;
 
 pub use error::{Error, Result};
