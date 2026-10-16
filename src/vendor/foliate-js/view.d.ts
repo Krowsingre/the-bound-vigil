@@ -36,7 +36,8 @@ export interface FoliateBook {
 }
 
 export interface Paginator extends HTMLElement {
-  setStyles(css: string | [string, string]): void;
+  /** Only the flowing (paginator) renderer has this; fixed-layout books do not. */
+  setStyles?(css: string | [string, string]): void;
   getContents(): { doc: Document; index: number }[];
   next(): Promise<void>;
   prev(): Promise<void>;

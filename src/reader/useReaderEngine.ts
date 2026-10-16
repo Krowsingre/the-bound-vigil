@@ -57,7 +57,8 @@ function applyLayout(view: View, settings: ReaderSettings, colors: PageColors) {
   r.setAttribute("max-column-count", "1");
   r.setAttribute("gap", "6%");
   r.setAttribute("margin", "32px");
-  r.setStyles(readerCss(settings, colors));
+  // Fixed-layout books (comics, pre-paginated EPUBs) keep their own styles.
+  r.setStyles?.(readerCss(settings, colors));
 }
 
 export function useReaderEngine({

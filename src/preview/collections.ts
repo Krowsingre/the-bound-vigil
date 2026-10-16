@@ -39,7 +39,8 @@ type CollectionsApi = Pick<
   | "updateCollection"
   | "deleteCollection"
   | "setCollectionPicture"
-  | "chooseCollectionPicture"
+  | "pickCollectionPicture"
+  | "setCollectionPictureFile"
   | "addToCollection"
   | "removeFromCollection"
   | "moveCollection"
@@ -250,7 +251,10 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
       stored = stored.filter((c) => c.id !== id);
     },
     setCollectionPicture: async (id, picture) => change(id, (c) => ({ ...c, picture })),
-    chooseCollectionPicture: async () => {
+    pickCollectionPicture: async () => {
+      throw new Error("Choosing a picture from your computer works in the desktop app.");
+    },
+    setCollectionPictureFile: async () => {
       throw new Error("Choosing a picture from your computer works in the desktop app.");
     },
     addToCollection: async (id, bookIds) => {

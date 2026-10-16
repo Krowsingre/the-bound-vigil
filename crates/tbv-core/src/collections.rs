@@ -495,11 +495,16 @@ impl Library {
     /// Takes a book out of a collection. The book stays in the library.
     pub fn remove_from_collection(&self, id: &str, book_id: &str) -> Result<()> {
         let now = now_utc();
-        self.conn.execute(
+        let tx = self.conn.unchecked_transaction()?;
+        let removed = tx.execute(
             "UPDATE collection_books SET removed_at = ?3, updated_at = ?3
              WHERE collection_id = ?1 AND book_id = ?2 AND removed_at IS NULL",
             params![id, book_id, now],
         )?;
+        if removed > 0 {
+            tx.execute("UPDATE collections SET updated_at = ?2 WHERE id = ?1", params![id, now])?;
+        }
+        tx.commit()?;
         Ok(())
     }
 
@@ -566,6 +571,9 @@ impl Library {
                  WHERE collection_id = ?1 AND book_id = ?2 AND (position IS NULL OR position != ?3)",
                 params![id, book_id, (i + 1) as f64, now],
             )?;
+        }
+        if moving.is_some() {
+            tx.execute("UPDATE collections SET updated_at = ?2 WHERE id = ?1", params![id, now])?;
         }
         tx.commit()?;
         Ok(())

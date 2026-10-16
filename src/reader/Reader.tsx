@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, isApp } from "../api";
-import type { Annotation, HighlightColor, Profile, ReaderBook, ReaderLocator, SyncStatus } from "../api/types";
+import type { Annotation, HighlightColor, Profile, ReadStatus, ReaderBook, ReaderLocator, SyncStatus } from "../api/types";
 import { Icon } from "../components/Icon";
 import type { MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
@@ -383,6 +383,17 @@ export function Reader({
     );
   }
 
+  // Keeps the menu in step with the book's status after a change.
+  const markStatus = (status: ReadStatus, done: string) =>
+    info &&
+    api.setBookStatus(info.book.id, status).then(
+      () => {
+        setInfo((i) => (i ? { ...i, book: { ...i.book, status } } : i));
+        toast(done);
+      },
+      (e: unknown) => toast(String(e)),
+    );
+
   const menu: MenuEntry[] = [
     { label: "Focus mode", icon: "focus", hint: "F", onSelect: () => setFocus(true) },
     { label: panels.left ? "Hide contents panel" : "Show contents panel", icon: "panelLeft", onSelect: () => pagePanels({ left: !panels.left }) },
@@ -396,15 +407,8 @@ export function Reader({
     },
     "divider",
     info?.book.status === "read"
-      ? {
-          label: "Mark as not finished",
-          onSelect: () => void api.setBookStatus(info.book.id, "in_progress").then(() => toast("Marked as in progress.")),
-        }
-      : {
-          label: "Mark as read",
-          icon: "check",
-          onSelect: () => info && void api.setBookStatus(info.book.id, "read").then(() => toast("Marked as read.")),
-        },
+      ? { label: "Mark as not finished", onSelect: () => void markStatus("in_progress", "Marked as in progress.") }
+      : { label: "Mark as read", icon: "check", onSelect: () => void markStatus("read", "Marked as read.") },
     "divider",
     { label: "Close book", icon: "close", onSelect: leave },
   ];
