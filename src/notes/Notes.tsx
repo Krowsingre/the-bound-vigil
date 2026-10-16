@@ -265,7 +265,12 @@ export function Notes({
             onSave={saveWords}
             onOpenInReader={openInReader}
             onSelect={(n) => {
-              if (!notes.some((x) => x.id === n.id)) setTab("all");
+              // A related note hidden by the current filters brings them all down.
+              if (!notes.some((x) => x.id === n.id)) {
+                setTab("all");
+                setColors([]);
+                onClearSearch();
+              }
               setSelectedId(n.id);
             }}
             onViewAllForBook={(id) => {

@@ -56,6 +56,13 @@ export function NotePanel({
   const place = placeLine(note);
   const wordsLabel = personal ? "Note" : note.kind === "book_note" ? "About this book" : "My notes";
 
+  // Cancelling throws the draft away, so editing again starts from the saved words.
+  const cancel = () => {
+    setEditing(false);
+    setWords(note.note ?? "");
+    setTitle(note.title ?? "");
+  };
+
   return (
     <aside className="note-panel" aria-label="Selected note">
       <div className="note-panel-head">
@@ -94,18 +101,14 @@ export function NotePanel({
               void save();
             }}
             onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setEditing(false);
-                setWords(note.note ?? "");
-                setTitle(note.title ?? "");
-              }
+              if (e.key === "Escape") cancel();
               if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void save();
             }}
           >
             {personal && <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title (optional)" maxLength={120} />}
             <textarea ref={area} value={words} onChange={(e) => setWords(e.target.value)} rows={7} placeholder="Your thoughts…" />
             <div className="dialog-actions">
-              <button type="button" className="btn btn-quiet" onClick={() => setEditing(false)} disabled={busy}>
+              <button type="button" className="btn btn-quiet" onClick={cancel} disabled={busy}>
                 Cancel
               </button>
               <button type="submit" className="btn btn-primary" disabled={busy}>

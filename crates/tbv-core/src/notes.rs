@@ -356,6 +356,8 @@ mod tests {
             .save_book_note(&tides, None, "  A quiet book.  ")
             .unwrap();
         assert_eq!(book_note.note.as_deref(), Some("A quiet book."));
+        // Times are kept to the millisecond; make sure the next note is newer.
+        std::thread::sleep(std::time::Duration::from_millis(5));
         library
             .save_personal_note(None, Some("Ideas"), "Read more poetry")
             .unwrap();
