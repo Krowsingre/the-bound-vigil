@@ -114,6 +114,13 @@ fn supported_formats() -> Vec<&'static str> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Ends the whole app, not just the window. The close button uses this so
+/// nothing is left running in the background after the window goes away.
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -135,8 +142,15 @@ pub fn run() {
             get_profile,
             set_avatar,
             clear_avatar,
-            supported_formats
+            supported_formats,
+            quit_app
         ])
+        // Alt+F4 or closing from the taskbar ends the app the same way.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                window.app_handle().exit(0);
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running The Bound Vigil");
 }

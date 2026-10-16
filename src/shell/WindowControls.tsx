@@ -20,6 +20,13 @@ export function WindowControls() {
     return () => unlisten?.();
   }, []);
 
+  // Quit the whole app rather than only closing the window, so no process is left behind.
+  const quit = () => {
+    void import("@tauri-apps/api/core")
+      .then(({ invoke }) => invoke("quit_app"))
+      .catch(() => win?.close());
+  };
+
   return (
     <div className="window-controls">
       <button type="button" aria-label="Minimize" title="Minimize" onClick={() => void win?.minimize()}>
@@ -33,7 +40,7 @@ export function WindowControls() {
       >
         <Icon name={maximized ? "restore" : "maximize"} size={16} />
       </button>
-      <button type="button" className="window-close" aria-label="Close" title="Close" onClick={() => void win?.close()}>
+      <button type="button" className="window-close" aria-label="Close" title="Close" onClick={quit}>
         <Icon name="close" size={16} />
       </button>
     </div>
