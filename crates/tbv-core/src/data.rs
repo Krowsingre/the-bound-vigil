@@ -2,13 +2,13 @@
 //! restoring them, and the accent colour Adaptive theming takes from a cover.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use rusqlite::{params, Connection, OpenFlags};
+use rusqlite::{params, Connection};
 use serde::Serialize;
 
 use crate::error::{Error, Result};
-use crate::library::Library;
+use crate::library::{migrate, Library};
 use crate::model::*;
 use crate::time::now_utc;
 
@@ -191,48 +191,71 @@ impl Library {
     }
 
     /// Saves a copy of the library's records (not the book files) to one file.
+    /// An existing backup is only replaced once the new one is complete.
     pub fn create_backup(&self, target: &Path) -> Result<()> {
         if target == self.paths.database {
             return Err(Error::Unsuitable("choose a different file for the backup".into()));
         }
-        if target.exists() {
-            fs::remove_file(target)?;
+        let partial = sibling(target, "partial");
+        let _ = fs::remove_file(&partial);
+        let made = self
+            .conn
+            .execute("VACUUM INTO ?1", params![partial.display().to_string()])
+            .map_err(Error::from)
+            .and_then(|_| fs::rename(&partial, target).map_err(Error::from));
+        if made.is_err() {
+            let _ = fs::remove_file(&partial);
         }
-        self.conn.execute(
-            "VACUUM INTO ?1",
-            params![target.display().to_string()],
-        )?;
-        Ok(())
+        made
     }
 
     /// Replaces the library's records with a backup's. Book files are left
     /// alone; books whose files aren't on this device show as missing.
     pub fn restore_backup(&mut self, source: &Path) -> Result<()> {
-        {
-            let backup = Connection::open_with_flags(source, OpenFlags::SQLITE_OPEN_READ_ONLY)
-                .map_err(|_| Error::Unsuitable("that file isn't a TBV backup".into()))?;
-            let version: usize = backup
-                .pragma_query_value(None, "user_version", |r| r.get(0))
-                .map_err(|_| Error::Unsuitable("that file isn't a TBV backup".into()))?;
-            let has_books: bool = backup
-                .query_row(
-                    "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = 'books'",
-                    [],
-                    |r| r.get(0),
-                )
-                .unwrap_or(false);
-            if !has_books || version == 0 {
-                return Err(Error::Unsuitable("that file isn't a TBV backup".into()));
-            }
-            if version > Self::schema_version() {
-                return Err(Error::Unsuitable(
-                    "that backup comes from a newer TBV; update TBV first".into(),
-                ));
+        // Checked and brought up to date on a copy, so a bad file never
+        // touches the library in use.
+        let staging = sibling(&self.paths.database, "restore");
+        let _ = fs::remove_file(&staging);
+        fs::copy(source, &staging)?;
+        let checked = check_backup(&staging);
+        let restored = checked.and_then(|_| {
+            // Where this device keeps its book files isn't part of a backup.
+            let here = self.local_files()?;
+            self.conn
+                .restore(rusqlite::MAIN_DB, &staging, None::<fn(rusqlite::backup::Progress)>)?;
+            self.rebind_local_files(here)
+        });
+        let _ = fs::remove_file(&staging);
+        restored
+    }
+
+    fn local_files(&self) -> Result<Vec<(String, String, Option<String>)>> {
+        let mut statement = self.conn.prepare("SELECT book_id, path, cover_path FROM local_files")?;
+        let rows = statement.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Drops file locations that don't exist on this device, then puts back
+    /// the ones this device had before the restore.
+    fn rebind_local_files(&self, here: Vec<(String, String, Option<String>)>) -> Result<()> {
+        let restored = self.local_files()?;
+        let tx = self.conn.unchecked_transaction()?;
+        for (book_id, path, cover) in restored {
+            if !Path::new(&path).exists() {
+                tx.execute("DELETE FROM local_files WHERE book_id = ?1", params![book_id])?;
+            } else if cover.is_some_and(|c| !Path::new(&c).exists()) {
+                tx.execute("UPDATE local_files SET cover_path = NULL WHERE book_id = ?1", params![book_id])?;
             }
         }
-        self.conn
-            .restore(rusqlite::MAIN_DB, source, None::<fn(rusqlite::backup::Progress)>)?;
-        self.migrate()
+        for (book_id, path, cover) in here {
+            tx.execute(
+                "INSERT OR REPLACE INTO local_files (book_id, path, cover_path)
+                 SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM books WHERE id = ?1)",
+                params![book_id, path, cover],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     /// A gentle accent colour from a book's cover, as `#rrggbb`, for
@@ -254,6 +277,51 @@ impl Library {
         };
         Ok(accent_of(&image.thumbnail(48, 48).to_rgb8()))
     }
+}
+
+/// `file.ext` becomes `file.ext.<suffix>` beside it.
+fn sibling(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".{suffix}"));
+    path.with_file_name(name)
+}
+
+/// Makes sure a copied backup is a whole TBV library, brought up to the
+/// current schema: every table and column TBV expects, and no damage.
+fn check_backup(copy: &Path) -> Result<()> {
+    let not_backup = || Error::Unsuitable("that file isn't a TBV backup".into());
+    let mut backup = Connection::open(copy).map_err(|_| not_backup())?;
+    let version: usize = backup
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .map_err(|_| not_backup())?;
+    if version == 0 {
+        return Err(not_backup());
+    }
+    if version > Library::schema_version() {
+        return Err(Error::Unsuitable("that backup comes from a newer TBV; update TBV first".into()));
+    }
+    let ok: String = backup.query_row("PRAGMA integrity_check", [], |r| r.get(0)).map_err(|_| not_backup())?;
+    if ok != "ok" {
+        return Err(Error::Unsuitable("that backup is damaged".into()));
+    }
+    migrate(&mut backup).map_err(|_| not_backup())?;
+    let mut expected = Connection::open_in_memory()?;
+    migrate(&mut expected)?;
+    let have = columns(&backup)?;
+    if columns(&expected)?.iter().any(|c| !have.contains(c)) {
+        return Err(not_backup());
+    }
+    Ok(())
+}
+
+/// Every (table, column) in a database.
+fn columns(conn: &Connection) -> Result<Vec<(String, String)>> {
+    let mut statement = conn.prepare(
+        "SELECT m.name, p.name FROM sqlite_master m, pragma_table_info(m.name) p
+         WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'",
+    )?;
+    let rows = statement.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    Ok(rows.collect::<std::result::Result<_, _>>()?)
 }
 
 /// The most colourful common tone in a small picture, toned down so text
@@ -318,6 +386,42 @@ mod tests {
         fs::write(&junk, b"not a database").unwrap();
         assert!(library.restore_backup(&junk).is_err());
         assert_eq!(library.library_info().unwrap().book_count, 1, "a bad file changes nothing");
+
+        // A database that only looks like TBV's is turned away too.
+        let lookalike = dir.path().join("lookalike.tbvbackup");
+        let other = Connection::open(&lookalike).unwrap();
+        other.execute_batch("CREATE TABLE books (id TEXT); PRAGMA user_version = 5;").unwrap();
+        drop(other);
+        assert!(library.restore_backup(&lookalike).is_err());
+        assert_eq!(library.library_info().unwrap().book_count, 1);
+
+        let leftovers: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok()?.file_name().into_string().ok())
+            .filter(|n| n.ends_with(".partial") || n.ends_with(".restore"))
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+    }
+
+    #[test]
+    fn a_restore_keeps_this_devices_book_files() {
+        let (dir, mut library) = open_temp_library();
+        let book = dir.path().join("Lamps.epub");
+        write_test_epub_with(&book, "Lamps", "Wren Hale", false, "");
+        library.import_files(&[book]);
+        let here = library.local_files().unwrap();
+
+        // A backup made on another computer points at that computer's files.
+        let backup = dir.path().join("library.tbvbackup");
+        library.create_backup(&backup).unwrap();
+        let other = Connection::open(&backup).unwrap();
+        other
+            .execute("UPDATE local_files SET path = '/elsewhere/Lamps.epub', cover_path = '/elsewhere/c.jpg'", [])
+            .unwrap();
+        drop(other);
+
+        library.restore_backup(&backup).unwrap();
+        assert_eq!(library.local_files().unwrap(), here);
     }
 
     #[test]

@@ -256,7 +256,9 @@ export function App() {
               onLibraryView={changeLibraryView}
               sidebarShown={!collapsed}
               onSidebarShown={(shown) => shown === collapsed && toggleSidebar()}
-              onRestored={refresh}
+              // Settings, profile and reader preferences are held all over the app,
+              // so a restore starts the window afresh to read them back.
+              onRestored={() => window.location.reload()}
             />
           )}
         </main>

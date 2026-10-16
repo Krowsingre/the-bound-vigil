@@ -174,6 +174,18 @@ const MIGRATIONS: &[&str] = &[
     "#,
 ];
 
+/// Brings a database up to the current schema, one step at a time.
+pub(crate) fn migrate(conn: &mut Connection) -> Result<()> {
+    let version: usize = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    for (index, sql) in MIGRATIONS.iter().enumerate().skip(version) {
+        let tx = conn.transaction()?;
+        tx.execute_batch(sql)?;
+        tx.pragma_update(None, "user_version", index + 1)?;
+        tx.commit()?;
+    }
+    Ok(())
+}
+
 /// SQLite's own `lower()` only folds A–Z, so "Émile" would never match "émile".
 /// `tbv_fold` lowercases with Rust's Unicode-aware rules instead.
 fn register_functions(conn: &Connection) -> Result<()> {
@@ -209,16 +221,7 @@ impl Library {
     }
 
     pub(crate) fn migrate(&mut self) -> Result<()> {
-        let version: usize = self
-            .conn
-            .pragma_query_value(None, "user_version", |r| r.get(0))?;
-        for (index, sql) in MIGRATIONS.iter().enumerate().skip(version) {
-            let tx = self.conn.transaction()?;
-            tx.execute_batch(sql)?;
-            tx.pragma_update(None, "user_version", index + 1)?;
-            tx.commit()?;
-        }
-        Ok(())
+        migrate(&mut self.conn)
     }
 
     pub fn paths(&self) -> &LibraryPaths {
