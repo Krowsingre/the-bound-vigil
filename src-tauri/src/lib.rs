@@ -274,6 +274,15 @@ async fn remove_from_collection(
 }
 
 #[tauri::command]
+async fn move_collection(
+    state: State<'_, AppLibrary>,
+    id: String,
+    to_index: usize,
+) -> CommandResult<()> {
+    with_library(state, move |library| library.move_collection(&id, to_index)).await
+}
+
+#[tauri::command]
 async fn move_in_collection(
     state: State<'_, AppLibrary>,
     id: String,
@@ -336,6 +345,7 @@ pub fn run() {
             set_collection_picture_file,
             add_to_collection,
             remove_from_collection,
+            move_collection,
             move_in_collection,
             collections_for_book
         ])

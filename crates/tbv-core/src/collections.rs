@@ -504,6 +504,35 @@ impl Library {
         Ok(())
     }
 
+    /// Moves one of the user's collections to a new place (zero-based) in
+    /// "Your order". Shelves keep their own place.
+    pub fn move_collection(&self, id: &str, to_index: usize) -> Result<()> {
+        let mut ids: Vec<String> = self
+            .conn
+            .prepare(
+                "SELECT id FROM collections WHERE deleted_at IS NULL AND kind != 'shelf'
+                 ORDER BY position IS NULL, position, created_at",
+            )?
+            .query_map([], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        let Some(from) = ids.iter().position(|c| c == id) else {
+            return Err(Error::Unsuitable("that collection no longer exists".into()));
+        };
+        let moving = ids.remove(from);
+        ids.insert(to_index.min(ids.len()), moving);
+        let now = now_utc();
+        let tx = self.conn.unchecked_transaction()?;
+        for (i, id) in ids.iter().enumerate() {
+            tx.execute(
+                "UPDATE collections SET position = ?2, updated_at = ?3
+                 WHERE id = ?1 AND (position IS NULL OR position != ?2)",
+                params![id, (i + 1) as f64, now],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Moves a book to a new place (zero-based) in a reading list.
     pub fn move_in_collection(&self, id: &str, book_id: &str, to_index: usize) -> Result<()> {
         self.renumber(id, Some((book_id, to_index)))
@@ -699,6 +728,32 @@ mod tests {
                 .len(),
             3
         );
+    }
+
+    #[test]
+    fn collections_can_be_put_in_your_own_order() {
+        let (_dir, library) = open_temp_library();
+        let names = ["One", "Two", "Three"];
+        let ids: Vec<String> = names
+            .iter()
+            .map(|n| {
+                library
+                    .create_collection(&input(n, CollectionKind::Collection))
+                    .unwrap()
+                    .id
+            })
+            .collect();
+        library.move_collection(&ids[2], 0).unwrap();
+        library.move_collection(&ids[0], 5).unwrap();
+        let order: Vec<String> = library
+            .collections_overview()
+            .unwrap()
+            .collections
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        assert_eq!(order, ["Three", "Two", "One"]);
+        assert!(library.move_collection("shelf:favorites", 0).is_err());
     }
 
     #[test]

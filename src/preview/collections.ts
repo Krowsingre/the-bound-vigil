@@ -42,6 +42,7 @@ type CollectionsApi = Pick<
   | "chooseCollectionPicture"
   | "addToCollection"
   | "removeFromCollection"
+  | "moveCollection"
   | "moveInCollection"
   | "collectionsForBook"
 >;
@@ -264,6 +265,14 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
     },
     removeFromCollection: async (id, bookId) => {
       change(id, (c) => ({ ...c, members: c.members.filter((m) => m.bookId !== bookId) }));
+    },
+    moveCollection: async (id, toIndex) => {
+      const own = stored.filter((c) => c.kind !== "shelf");
+      const from = own.findIndex((c) => c.id === id);
+      if (from < 0) throw new Error("that collection no longer exists");
+      const [c] = own.splice(from, 1);
+      own.splice(Math.min(toIndex, own.length), 0, c);
+      stored = [...stored.filter((x) => x.kind === "shelf"), ...own];
     },
     moveInCollection: async (id, bookId, toIndex) => {
       change(id, (c) => {

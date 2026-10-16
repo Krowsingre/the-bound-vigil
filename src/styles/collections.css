@@ -66,6 +66,28 @@
   font-size: 13px;
 }
 
+.section-head-tools > .menu-root {
+  margin-left: auto;
+}
+
+/* Putting collections in your own order */
+[data-reorder] {
+  transition: opacity 0.15s;
+}
+
+[draggable="true"] {
+  cursor: grab;
+}
+
+[data-reorder="dragging"] {
+  opacity: 0.45;
+}
+
+[data-reorder="target"] {
+  border-radius: var(--radius-m);
+  box-shadow: -3px 0 0 var(--accent);
+}
+
 .collections-section .library-toolbar {
   margin-bottom: 16px;
 }

@@ -6,6 +6,7 @@ import type {
   CollectionSummary,
   CollectionsOverview,
   CoverRef,
+  SmartSummary,
 } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
@@ -13,33 +14,59 @@ import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { CollectionCard, PinnedCard, SeriesCard, SmartCard } from "./CollectionCards";
 import { CollectionEditor } from "./CollectionEditor";
-import { sameRef } from "./collectionInfo";
+import { sameRef, SMART_INFO } from "./collectionInfo";
 import { CollectionPanel } from "./CollectionPanel";
 import { CollectionView } from "./CollectionView";
+import { moved, useReorder } from "./useReorder";
 
 type Tab = "all" | "collections" | "reading_lists" | "series";
-type Sort = "name" | "created" | "changed" | "size" | "custom";
+type Sort = "custom" | "name" | "size" | "created" | "changed";
+type SmartSort = "custom" | "name" | "size";
 
 const SORTS: { sort: Sort; label: string }[] = [
   { sort: "custom", label: "Your order" },
-  { sort: "name", label: "Name" },
+  { sort: "name", label: "Name, A to Z" },
+  { sort: "size", label: "Most books" },
   { sort: "created", label: "Recently created" },
   { sort: "changed", label: "Recently changed" },
+];
+
+const SMART_SORTS: { sort: SmartSort; label: string }[] = [
+  { sort: "custom", label: "Your order" },
+  { sort: "name", label: "Name, A to Z" },
   { sort: "size", label: "Most books" },
 ];
 
 const PREFS_KEY = "tbv.collections.view";
+/** Your order for the smart collections, kept with this device's settings. */
+const SMART_ORDER_KEY = "collections.smartOrder";
 
-function readPrefs(): { sort: Sort; layout: "grid" | "list" } {
+interface Prefs {
+  sort: Sort;
+  smartSort: SmartSort;
+  layout: "grid" | "list";
+}
+
+function readPrefs(): Prefs {
   try {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}");
     return {
       sort: SORTS.some((s) => s.sort === p.sort) ? p.sort : "custom",
+      smartSort: SMART_SORTS.some((s) => s.sort === p.smartSort) ? p.smartSort : "custom",
       layout: p.layout === "list" ? "list" : "grid",
     };
   } catch {
-    return { sort: "custom", layout: "grid" };
+    return { sort: "custom", smartSort: "custom", layout: "grid" };
   }
+}
+
+/** Your order for the smart collections, with any new kinds at the end. */
+function orderSmart(list: SmartSummary[], saved: string[]): SmartSummary[] {
+  const rank = (k: string) => {
+    const i = saved.indexOf(k);
+    return i < 0 ? saved.length + list.findIndex((s) => s.kind === k) : i;
+  };
+  return [...list].sort((a, b) => rank(a.kind) - rank(b.kind));
 }
 
 type Editing = { collection?: CollectionSummary; books: CoverRef[] } | null;
@@ -65,6 +92,7 @@ export function Collections({
   const [selected, setSelected] = useState<CollectionRef | null>(null);
   const [tab, setTab] = useState<Tab>("all");
   const [prefs, setPrefs] = useState(readPrefs);
+  const [smartOrder, setSmartOrder] = useState<string[]>([]);
   const [filter, setFilter] = useState("");
   const [editing, setEditing] = useState<Editing>(null);
   const [deleting, setDeleting] = useState<CollectionSummary | null>(null);
@@ -86,13 +114,27 @@ export function Collections({
     };
   }, [refreshKey, reload]);
 
+  useEffect(() => {
+    api.getSetting(SMART_ORDER_KEY).then(
+      (json) => {
+        try {
+          const saved: unknown = JSON.parse(json ?? "[]");
+          if (Array.isArray(saved)) setSmartOrder(saved.filter((k): k is string => typeof k === "string"));
+        } catch {
+          /* start from the usual order */
+        }
+      },
+      () => undefined,
+    );
+  }, []);
+
   // Something is always selected for the side panel: the first pinned one to start.
   const firstPinned = overview?.pinned[0]?.id;
   useEffect(() => {
     if (!selected && firstPinned) setSelected({ kind: "collection", id: firstPinned });
   }, [selected, firstPinned]);
 
-  const changePrefs = (change: Partial<typeof prefs>) =>
+  const changePrefs = (change: Partial<Prefs>) =>
     setPrefs((p) => {
       const next = { ...p, ...change };
       try {
@@ -196,13 +238,53 @@ export function Collections({
     const sorters: Record<Sort, (a: CollectionSummary, b: CollectionSummary) => number> = {
       custom: () => 0,
       name: (a, b) => a.name.localeCompare(b.name),
+      size: (a, b) => b.count - a.count || a.name.localeCompare(b.name),
       created: (a, b) => b.createdAt.localeCompare(a.createdAt),
       changed: (a, b) => b.updatedAt.localeCompare(a.updatedAt),
-      size: (a, b) => b.count - a.count || a.name.localeCompare(b.name),
     };
     return [...list].sort(sorters[prefs.sort]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overview, tab, q, prefs.sort]);
+  const smart = useMemo(() => {
+    const list = overview?.smart ?? [];
+    if (prefs.smartSort === "name") return [...list].sort((a, b) => SMART_INFO[a.kind].name.localeCompare(SMART_INFO[b.kind].name));
+    if (prefs.smartSort === "size") return [...list].sort((a, b) => b.count - a.count);
+    return orderSmart(list, smartOrder);
+  }, [overview, prefs.smartSort, smartOrder]);
+
+  const reorderSmart = useReorder(
+    smart.map((s) => s.kind),
+    prefs.smartSort === "custom",
+    (kind, to) => {
+      const next = moved(
+        smart.map((s) => s.kind as string),
+        kind,
+        to,
+      );
+      setSmartOrder(next);
+      api.setSetting(SMART_ORDER_KEY, JSON.stringify(next)).catch((e: unknown) => toast(String(e)));
+    },
+  );
+
+  // Your order covers every collection, so a move within a filtered view
+  // lands next to the card it was dropped on.
+  const reorderOwn = useReorder(
+    own.map((c) => c.id),
+    prefs.sort === "custom" && !q,
+    (id, to) => {
+      if (!overview) return;
+      const target = own[to]?.id;
+      const full = overview.collections.map((c) => c.id);
+      const index = target ? full.indexOf(target) : full.length - 1;
+      const order = moved(full, id, index);
+      setOverview({ ...overview, collections: order.map((cid) => overview.collections.find((c) => c.id === cid)!) });
+      api.moveCollection(id, index).then(changed, (e: unknown) => {
+        toast(String(e));
+        changed();
+      });
+    },
+  );
+
   const series = (overview?.series ?? []).filter((s) => (tab === "all" || tab === "series") && matches(s.name, ...s.authors));
 
   if (open)
@@ -287,14 +369,39 @@ export function Collections({
 
           {!q && (
             <section className="collections-section">
-              <div className="section-head">
+              <div className="section-head section-head-tools">
                 <h2>Smart collections</h2>
-                <p className="muted">These fill themselves as you read.</p>
+                <p className="muted">
+                  These fill themselves as you read.{prefs.smartSort === "custom" && " Drag them into any order."}
+                </p>
+                <Menu
+                  label="Sort smart collections"
+                  className="toolbar-button"
+                  trigger={
+                    <>
+                      Sort: {SMART_SORTS.find((s) => s.sort === prefs.smartSort)?.label} <Icon name="chevronDown" size={14} />
+                    </>
+                  }
+                  items={SMART_SORTS.map((s) => ({
+                    label: s.label,
+                    checked: prefs.smartSort === s.sort,
+                    onSelect: () => changePrefs({ smartSort: s.sort }),
+                  }))}
+                />
               </div>
               <ul className="smart-row">
-                {overview.smart.map((s) => {
+                {smart.map((s) => {
                   const ref: CollectionRef = { kind: "smart", smart: s.kind };
-                  return <SmartCard key={s.kind} smart={s} selected={isSel(ref)} onSelect={() => pick(ref)} onOpen={() => onOpen(ref)} />;
+                  return (
+                    <SmartCard
+                      key={s.kind}
+                      smart={s}
+                      selected={isSel(ref)}
+                      reorder={reorderSmart(s.kind)}
+                      onSelect={() => pick(ref)}
+                      onOpen={() => onOpen(ref)}
+                    />
+                  );
                 })}
               </ul>
             </section>
@@ -303,7 +410,9 @@ export function Collections({
           <section className="collections-section">
             <div className="section-head">
               <h2>Your collections</h2>
-              <p className="muted">Your own groupings, plus series found in your books.</p>
+              <p className="muted">
+                Your own groupings, plus series found in your books.{prefs.sort === "custom" && !q && " Drag yours into any order."}
+              </p>
             </div>
             <div className="library-toolbar">
               <div className="tabs" role="tablist" aria-label="Kinds of collection">
@@ -395,6 +504,7 @@ export function Collections({
                       layout={prefs.layout}
                       selected={isSel(ref)}
                       menu={menuFor(c)}
+                      reorder={reorderOwn(c.id)}
                       onSelect={() => pick(ref)}
                       onOpen={() => onOpen(ref)}
                     />
