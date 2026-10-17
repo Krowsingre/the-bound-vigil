@@ -25,7 +25,11 @@ pub(crate) const BOOK_COLUMNS: &str = r#"
            b.added_at, b.last_opened_at, b.status, b.total_progression, b.resume_locator,
            lf.path, lf.cover_path,
            COALESCE(o_series.value, b.series), b.series_index, b.favorite, b.want_to_read,
-           b.rating, b.finished_at
+           b.rating, b.finished_at,
+           (SELECT json_group_array(tag) FROM (SELECT t.tag FROM book_tags t
+             WHERE t.book_id = b.id AND t.removed_at IS NULL ORDER BY t.tag COLLATE NOCASE)),
+           EXISTS (SELECT 1 FROM sync_files sf WHERE sf.uploaded_at IS NOT NULL
+             AND sf.path = 'books/' || substr(b.id, 8) || '.' || b.format)
 "#;
 
 /// The joins that make the effective metadata available to WHERE and ORDER BY.
@@ -205,6 +209,11 @@ pub(crate) fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
         want_to_read: r.get(15)?,
         rating: r.get(16)?,
         finished_at: r.get(17)?,
+        tags: r
+            .get::<_, Option<String>>(18)?
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default(),
+        in_cloud: r.get(19)?,
     })
 }
 

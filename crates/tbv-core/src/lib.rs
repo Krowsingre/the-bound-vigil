@@ -12,6 +12,7 @@ pub mod hardcover;
 pub mod home;
 pub mod ids;
 pub mod library;
+pub mod manage;
 pub mod model;
 pub mod notes;
 pub mod profile;

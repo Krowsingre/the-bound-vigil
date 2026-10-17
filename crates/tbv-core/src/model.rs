@@ -108,6 +108,12 @@ pub struct BookPreview {
     pub rating: Option<u8>,
     /// When you finished it.
     pub finished_at: Option<IsoUtc>,
+    /// Your own tags, A to Z.
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Whether sync has put the book's file in the cloud, so the copy here can be removed.
+    #[serde(default)]
+    pub in_cloud: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -238,6 +244,9 @@ pub struct LibraryQuery {
     /// Lowercase extensions. Empty means every format.
     pub formats: Vec<String>,
     pub location: Option<Location>,
+    /// Books with any of these tags. Empty means any book.
+    #[serde(default)]
+    pub tags: Vec<String>,
     /// Zero-based.
     pub page: u32,
     pub page_size: u32,
@@ -267,6 +276,8 @@ pub struct LibraryPage {
     pub counts: ShelfCounts,
     /// Formats present in the library, for the filter menu.
     pub formats: Vec<String>,
+    /// Your tags, A to Z, for the filter menu.
+    pub tags: Vec<String>,
 }
 
 /// This device's own settings. Not synced.

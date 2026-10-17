@@ -47,6 +47,8 @@ const dracula: BookPreview = {
   wantToRead: false,
   rating: null,
   finishedAt: null,
+  tags: [],
+  inCloud: false,
 };
 
 function renderHome() {

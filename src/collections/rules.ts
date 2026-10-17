@@ -93,6 +93,16 @@ export const FIELDS: FieldInfo[] = [
       { value: "cloud", label: "Only in the cloud" },
     ],
   },
+  {
+    field: "tag",
+    label: "Tag",
+    ops: [
+      { op: "is", label: "is" },
+      { op: "isNot", label: "is not" },
+      { op: "contains", label: "contains" },
+      { op: "isEmpty", label: "has no tags" },
+    ],
+  },
 ];
 
 export const fieldInfo = (field: RuleField) => FIELDS.find((f) => f.field === field)!;
@@ -182,6 +192,13 @@ function matchesRule(book: BookPreview, rule: Rule, extra: { publisher?: string;
     }
     case "location":
       return v === "device" ? book.availability === "local" : book.availability !== "local";
+    case "tag": {
+      const tags = (book.tags ?? []).map((t) => t.toLowerCase());
+      if (rule.op === "isEmpty") return tags.length === 0;
+      if (rule.op === "isNot") return !tags.includes(v);
+      if (rule.op === "contains") return tags.some((t) => t.includes(v));
+      return tags.includes(v);
+    }
   }
 }
 

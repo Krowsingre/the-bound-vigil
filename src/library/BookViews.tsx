@@ -5,7 +5,7 @@ import { Menu } from "../components/Menu";
 import { ProgressBar } from "../components/ProgressBar";
 import { Stars } from "../components/StarRating";
 import { authorLine, percent } from "../lib/format";
-import { bookMenu, type BookActions } from "../home/bookActions";
+import { bookContextMenu, bookMenu, type BookActions } from "../home/bookActions";
 
 type Props = { books: BookPreview[]; actions: BookActions };
 
@@ -51,7 +51,7 @@ export function BookGrid({ books, actions }: Props) {
   return (
     <ul className="book-grid">
       {books.map((book) => (
-        <li key={book.id} className="grid-card">
+        <li key={book.id} className="grid-card" {...bookContextMenu(book, actions)}>
           <button type="button" className="grid-open" onClick={() => actions.open(book)} title={`${book.title}, ${authorLine(book.authors)}`}>
             <BookCover book={book} />
           </button>
@@ -76,7 +76,7 @@ export function BookList({ books, actions }: Props) {
   return (
     <ul className="book-list">
       {books.map((book) => (
-        <li key={book.id} className="list-row">
+        <li key={book.id} className="list-row" {...bookContextMenu(book, actions)}>
           <button type="button" className="list-open" onClick={() => actions.open(book)}>
             <BookCover book={book} size="s" />
             <span className="list-text">
@@ -86,6 +86,7 @@ export function BookList({ books, actions }: Props) {
                 <Marks book={book} />
               </span>
               {seriesLine(book) && <span className="book-author">{seriesLine(book)}</span>}
+              {book.tags.length > 0 && <span className="book-tags">{book.tags.join(" · ")}</span>}
               <Stars value={book.rating} size={13} />
             </span>
           </button>
@@ -120,7 +121,7 @@ export function BookTable({ books, actions }: Props) {
       </thead>
       <tbody>
         {books.map((book) => (
-          <tr key={book.id}>
+          <tr key={book.id} {...bookContextMenu(book, actions)}>
             <td>
               <button type="button" className="table-title" onClick={() => actions.open(book)}>
                 {book.title}

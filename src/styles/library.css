@@ -396,3 +396,161 @@
     display: none;
   }
 }
+
+/* Tags: on list rows, in the tag editor and in Settings. */
+.book-tags {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.tag-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--bg);
+  cursor: text;
+}
+
+.tag-field:focus-within {
+  border-color: var(--accent);
+}
+
+.tag-field input {
+  flex: 1 1 140px;
+  min-width: 0;
+  border: 0;
+  padding: 4px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: 500 13px var(--font-sans);
+  line-height: 1.4;
+}
+
+.tag-chip button {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tag-chip button:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+button.tag-chip-add {
+  padding-right: 10px;
+  cursor: pointer;
+}
+
+button.tag-chip-add:hover {
+  border-color: var(--accent);
+}
+
+.tag-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.tag-suggestions > .muted {
+  margin-right: 4px;
+  font-size: 13px;
+}
+
+.tag-manage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The duplicate finder. */
+.duplicates-dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.duplicate-groups {
+  display: grid;
+  gap: 14px;
+  margin: 14px 0 4px;
+  overflow-y: auto;
+}
+
+.duplicate-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+}
+
+.duplicate-group header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 8px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.duplicate-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.duplicate-book {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.duplicate-book + .duplicate-book {
+  border-top: 1px solid var(--border);
+}
+
+.duplicate-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.duplicate-text > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duplicate-facts {
+  font-size: 12.5px;
+}

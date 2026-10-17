@@ -6,7 +6,8 @@ import type { Api } from "./index";
 import { previewCollections } from "../preview/collections";
 import { previewNotes, sampleAnnotations } from "../preview/notes";
 import { sampleEpub } from "../preview/sampleEpub";
-import { queryBooks } from "../lib/queryBooks";
+import { cleanTag, queryBooks, tagCounts } from "../lib/queryBooks";
+import { duplicateGroups } from "../lib/duplicates";
 import type {
   ProviderView,
   Annotation,
@@ -81,6 +82,8 @@ function book(title: string, author: string, extra: Partial<BookPreview> = {}): 
     wantToRead: false,
     rating: null,
     finishedAt: extra.status === "read" ? ago(n * 3) : null,
+    tags: [],
+    inCloud: n % 3 !== 0,
     ...extra,
   };
 }
@@ -102,7 +105,7 @@ let books: BookPreview[] = [
   book("Middlemarch", "George Eliot", reading(0.18, 2)),
   book("The Moonstone", "Wilkie Collins", reading(0.71, 5)),
   book("Frankenstein", "Mary Shelley", { availability: "cloud", wantToRead: true }),
-  book("Jane Eyre", "Charlotte Brontë", { favorite: true, rating: 4 }),
+  book("Jane Eyre", "Charlotte Brontë", { favorite: true, rating: 4, tags: ["Gothic"] }),
   book("Moby-Dick", "Herman Melville", { status: "read", totalProgression: 1, lastOpenedAt: ago(30), rating: 4 }),
   book("The Picture of Dorian Gray", "Oscar Wilde", { wantToRead: true }),
   book("A Study in Scarlet", "Arthur Conan Doyle", { series: "Sherlock Holmes", seriesIndex: 1, status: "read", totalProgression: 1, rating: 5 }),
@@ -110,8 +113,8 @@ let books: BookPreview[] = [
   book("The Hound of the Baskervilles", "Arthur Conan Doyle", { series: "Sherlock Holmes", seriesIndex: 5 }),
   book("The Warden", "Anthony Trollope", { series: "Chronicles of Barsetshire", seriesIndex: 1 }),
   book("Barchester Towers", "Anthony Trollope", { series: "Chronicles of Barsetshire", seriesIndex: 2, wantToRead: true }),
-  book("Dracula", "Bram Stoker", { favorite: true, status: "read", totalProgression: 1, rating: 5 }),
-  book("Wuthering Heights", "Emily Brontë"),
+  book("Dracula", "Bram Stoker", { favorite: true, status: "read", totalProgression: 1, rating: 5, tags: ["Gothic", "Horror"] }),
+  book("Wuthering Heights", "Emily Brontë", { tags: ["Gothic", "Book club"] }),
   book("Persuasion", "Jane Austen", { favorite: true }),
   book("Emma", "Jane Austen"),
   book("Great Expectations", "Charles Dickens", { status: "read", totalProgression: 1, rating: 3 }),
@@ -130,6 +133,7 @@ let books: BookPreview[] = [
   book("The Brothers Karamazov", "Fyodor Dostoevsky", { format: "doc" }),
   book("Crime and Punishment", "Fyodor Dostoevsky", { status: "read", totalProgression: 1, format: "fb2" }),
   book("A Tale of Two Cities", "Charles Dickens"),
+  book("Dracula", "Bram Stoker", { format: "pdf" }),
 ];
 
 const params = new URLSearchParams(location.search);
@@ -236,6 +240,7 @@ export function previewApi(): Api {
   let sync = previewSync();
   let profile: Profile = { avatarPath: params.has("avatar") ? SAMPLE_AVATAR : null };
   const settings = new Map<string, string>();
+  const dismissed = new Set<string>();
   const find = (bookId: string) => {
     const b = books.find((x) => x.id === bookId);
     if (!b) throw new Error("This book is no longer in your library.");
@@ -404,6 +409,35 @@ export function previewApi(): Api {
     downloadBook: async () => {
       throw new Error("Downloading works in the desktop app.");
     },
+    allTags: async () => tagCounts(library()),
+    addTag: async (bookIds, tag) => {
+      const clean = cleanTag(tag);
+      if (!clean) throw new Error("Type a tag first.");
+      const kept = tagCounts(library()).find((t) => t.name.toLowerCase() === clean.toLowerCase())?.name ?? clean;
+      for (const id of bookIds) {
+        const b = find(id);
+        if (!b.tags.some((t) => t.toLowerCase() === kept.toLowerCase())) update(id, { tags: [...b.tags, kept].sort() });
+      }
+      return kept;
+    },
+    removeTag: async (bookIds, tag) => {
+      for (const id of bookIds) update(id, { tags: find(id).tags.filter((t) => t.toLowerCase() !== tag.toLowerCase()) });
+    },
+    setBookTags: async (bookId, tags) =>
+      update(bookId, { tags: [...new Set(tags.map(cleanTag).filter((t): t is string => !!t))].sort() }),
+    deleteBook: async (bookId) => {
+      find(bookId);
+      books = books.filter((b) => b.id !== bookId);
+    },
+    removeDownload: async (bookId) => {
+      if (!find(bookId).inCloud) throw new Error("This book isn't in the cloud yet, so this is its only copy.");
+      update(bookId, { availability: "cloud" });
+    },
+    findDuplicates: async () =>
+      duplicateGroups(library())
+        .filter((g) => !dismissed.has(g.key))
+        .map((g) => ({ ...g, books: g.books.map((b, i) => ({ ...b, fileSize: 412_000 + i * 2_300_000, notes: i ? 0 : 3 })) })),
+    dismissDuplicates: async (key) => void dismissed.add(key),
     onSync: () => () => undefined,
     ...collections.api,
     ...notes,

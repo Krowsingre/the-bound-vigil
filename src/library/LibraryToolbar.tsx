@@ -23,15 +23,18 @@ export function LibraryToolbar({
   view,
   counts,
   formats,
+  tags,
   onChange,
 }: {
   view: LibraryView;
   counts: ShelfCounts | null;
   formats: string[];
+  tags: string[];
   onChange: (change: Partial<LibraryView>) => void;
 }) {
   const sortLabel = SORTS.find((s) => s.sort === view.sort)?.label;
-  const filterCount = view.formats.length + (view.location ? 1 : 0);
+  const filterCount = view.formats.length + (view.location ? 1 : 0) + view.tags.length;
+  const toggleTag = (t: string) => onChange({ tags: view.tags.includes(t) ? view.tags.filter((x) => x !== t) : [...view.tags, t] });
   const toggleFormat = (f: string) =>
     onChange({ formats: view.formats.includes(f) ? view.formats.filter((x) => x !== f) : [...view.formats, f] });
   const setLocation = (l: Location) => onChange({ location: view.location === l ? null : l });
@@ -43,8 +46,15 @@ export function LibraryToolbar({
     { heading: <strong>Where the file is</strong> },
     { label: "On this device", checked: view.location === "on_device", onSelect: () => setLocation("on_device") },
     { label: "In the cloud only", checked: view.location === "cloud_only", onSelect: () => setLocation("cloud_only") },
+    ...(tags.length
+      ? ([
+          "divider",
+          { heading: <strong>Tags</strong> },
+          ...[...new Set([...tags, ...view.tags])].map((t) => ({ label: t, checked: view.tags.includes(t), onSelect: () => toggleTag(t) })),
+        ] as MenuEntry[])
+      : []),
     ...(filterCount
-      ? (["divider", { label: "Clear filters", onSelect: () => onChange({ formats: [], location: null }) }] as MenuEntry[])
+      ? (["divider", { label: "Clear filters", onSelect: () => onChange({ formats: [], location: null, tags: [] }) }] as MenuEntry[])
       : []),
   ];
 

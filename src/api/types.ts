@@ -47,6 +47,10 @@ export interface BookPreview {
   rating: number | null;
   /** When you finished it. */
   finishedAt: IsoUtc | null;
+  /** Your own tags, A to Z. */
+  tags: string[];
+  /** Whether the book's file is in the cloud, so the copy here can be removed. */
+  inCloud: boolean;
 }
 
 export interface CollectionPreview {
@@ -172,6 +176,8 @@ export interface LibraryQuery {
   search: string | null;
   formats: string[];
   location: Location | null;
+  /** Books with any of these tags. */
+  tags?: string[];
   /** Zero-based. */
   page: number;
   pageSize: number;
@@ -194,6 +200,21 @@ export interface LibraryPage {
   pageSize: number;
   counts: ShelfCounts;
   formats: string[];
+  /** Your tags, A to Z. */
+  tags: string[];
+}
+
+export interface TagCount {
+  name: string;
+  count: number;
+}
+
+/** Books that look like the same book. */
+export interface DuplicateGroup {
+  key: string;
+  /** Why they look alike, in words. */
+  reason: string;
+  books: (BookPreview & { fileSize: number; notes: number })[];
 }
 
 export interface Profile {
@@ -347,7 +368,8 @@ export type RuleField =
   | "favorite"
   | "upNext"
   | "added"
-  | "location";
+  | "location"
+  | "tag";
 
 export type RuleOp =
   | "contains"

@@ -1,4 +1,5 @@
 import {
+  forwardRef,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -104,20 +105,6 @@ export function Menu({
     if (!open) setPlace({ visibility: "hidden" });
   }, [open]);
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    const buttons = [
-      ...(menu.current?.querySelectorAll<HTMLButtonElement>(
-        ".menu-item:not(:disabled)",
-      ) ?? []),
-    ];
-    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    const next =
-      (at + (e.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
-    buttons[next]?.focus();
-  };
-
   return (
     <div className="menu-root" ref={root}>
       <button
@@ -133,51 +120,85 @@ export function Menu({
       </button>
       {open &&
         createPortal(
-          <div
+          <MenuList
             ref={menu}
-            className={`menu menu-floating ${menuClassName}`.trim()}
-            role="menu"
-            aria-label={label}
+            label={label}
+            items={items}
+            className={menuClassName}
             style={place}
-            onKeyDown={onKeyDown}
-          >
-            {items.map((item, i) =>
-              item === "divider" ? (
-                <div key={i} className="menu-divider" role="separator" />
-              ) : "heading" in item ? (
-                <div key={i} className="menu-heading">
-                  {item.heading}
-                </div>
-              ) : (
-                <button
-                  key={i}
-                  type="button"
-                  role={
-                    item.checked === undefined ? "menuitem" : "menuitemcheckbox"
-                  }
-                  aria-checked={item.checked}
-                  className={`menu-item${item.danger ? " menu-item-danger" : ""}`}
-                  disabled={item.disabled}
-                  onClick={() => {
-                    if (item.checked === undefined) setOpen(false);
-                    item.onSelect?.();
-                  }}
-                >
-                  {item.checked !== undefined ? (
-                    <span className="menu-check">
-                      {item.checked && <Icon name="check" size={16} />}
-                    </span>
-                  ) : (
-                    item.icon && <Icon name={item.icon} size={16} />
-                  )}
-                  <span className="menu-label">{item.label}</span>
-                  {item.hint && <span className="menu-hint">{item.hint}</span>}
-                </button>
-              ),
-            )}
-          </div>,
+            onClose={() => setOpen(false)}
+          />,
           document.body,
         )}
     </div>
   );
 }
+
+/** The dropdown's list itself, for a Menu or a right-click menu. */
+export const MenuList = forwardRef<
+  HTMLDivElement,
+  {
+    label: string;
+    items: MenuEntry[];
+    className?: string;
+    style: CSSProperties;
+    onClose: () => void;
+  }
+>(function MenuList({ label, items, className = "", style, onClose }, ref) {
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const buttons = [
+      ...e.currentTarget.querySelectorAll<HTMLButtonElement>(
+        ".menu-item:not(:disabled)",
+      ),
+    ];
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const next =
+      (at + (e.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[next]?.focus();
+  };
+  return (
+    <div
+      ref={ref}
+      className={`menu menu-floating ${className}`.trim()}
+      role="menu"
+      aria-label={label}
+      style={style}
+      onKeyDown={onKeyDown}
+    >
+      {items.map((item, i) =>
+        item === "divider" ? (
+          <div key={i} className="menu-divider" role="separator" />
+        ) : "heading" in item ? (
+          <div key={i} className="menu-heading">
+            {item.heading}
+          </div>
+        ) : (
+          <button
+            key={i}
+            type="button"
+            role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+            aria-checked={item.checked}
+            className={`menu-item${item.danger ? " menu-item-danger" : ""}`}
+            disabled={item.disabled}
+            onClick={() => {
+              if (item.checked === undefined) onClose();
+              item.onSelect?.();
+            }}
+          >
+            {item.checked !== undefined ? (
+              <span className="menu-check">
+                {item.checked && <Icon name="check" size={16} />}
+              </span>
+            ) : (
+              item.icon && <Icon name={item.icon} size={16} />
+            )}
+            <span className="menu-label">{item.label}</span>
+            {item.hint && <span className="menu-hint">{item.hint}</span>}
+          </button>
+        ),
+      )}
+    </div>
+  );
+});

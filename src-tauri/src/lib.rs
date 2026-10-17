@@ -687,6 +687,60 @@ async fn download_book(state: State<'_, AppLibrary>, book_id: String) -> Command
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn all_tags(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::manage::TagCount>> {
+    with_library(state, |library| library.all_tags()).await
+}
+
+#[tauri::command]
+async fn add_tag(
+    state: State<'_, AppLibrary>,
+    book_ids: Vec<String>,
+    tag: String,
+) -> CommandResult<String> {
+    with_library(state, move |library| library.add_tag(&book_ids, &tag)).await
+}
+
+#[tauri::command]
+async fn remove_tag(
+    state: State<'_, AppLibrary>,
+    book_ids: Vec<String>,
+    tag: String,
+) -> CommandResult<()> {
+    with_library(state, move |library| library.remove_tag(&book_ids, &tag)).await
+}
+
+#[tauri::command]
+async fn set_book_tags(
+    state: State<'_, AppLibrary>,
+    book_id: String,
+    tags: Vec<String>,
+) -> CommandResult<Vec<String>> {
+    with_library(state, move |library| library.set_book_tags(&book_id, &tags)).await
+}
+
+#[tauri::command]
+async fn delete_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.delete_book(&book_id)).await
+}
+
+#[tauri::command]
+async fn remove_download(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.remove_download(&book_id)).await
+}
+
+#[tauri::command]
+async fn find_duplicates(
+    state: State<'_, AppLibrary>,
+) -> CommandResult<Vec<tbv_core::manage::DuplicateGroup>> {
+    with_library(state, |library| library.find_duplicates()).await
+}
+
+#[tauri::command]
+async fn dismiss_duplicates(state: State<'_, AppLibrary>, key: String) -> CommandResult<()> {
+    with_library(state, move |library| library.dismiss_duplicates(&key)).await
+}
+
 /// Opens File Explorer at a file or folder TBV keeps.
 #[tauri::command]
 fn show_folder(path: String) -> CommandResult<()> {
@@ -710,6 +764,14 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_home,
+            all_tags,
+            add_tag,
+            remove_tag,
+            set_book_tags,
+            delete_book,
+            remove_download,
+            find_duplicates,
+            dismiss_duplicates,
             queue_imports,
             import_queue,
             cancel_imports,

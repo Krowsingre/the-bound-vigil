@@ -23,9 +23,10 @@ import type {
   ReaderLocator,
   ReadStatus,
   SmartKind,
+  TagCount,
 } from "../api/types";
 import { matches, usable } from "../collections/rules";
-import { queryBooks } from "../lib/queryBooks";
+import { cleanTag, queryBooks, tagCounts } from "../lib/queryBooks";
 import { WebDb } from "./db";
 import { UP_NEXT, WebLibrary, type BookRow } from "./library";
 import { WebSync } from "./sync";
@@ -94,6 +95,25 @@ export async function webApi(): Promise<Api> {
   };
   await refreshDownloaded();
 
+  // A book's tags, A to Z.
+  const tagsByBook = () => {
+    const map = new Map<string, string[]>();
+    for (const t of library.rows("book_tags")) {
+      if (t.removed_at) continue;
+      const id = String(t.book_id);
+      map.set(id, [...(map.get(id) ?? []), String(t.tag)]);
+    }
+    for (const list of map.values()) list.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    return map;
+  };
+  let tagCache: { at: number; map: Map<string, string[]> } | null = null;
+  let libraryVersion = 0;
+  library.subscribe(() => libraryVersion++);
+  const tagsOf = (id: string) => {
+    if (tagCache?.at !== libraryVersion) tagCache = { at: libraryVersion, map: tagsByBook() };
+    return tagCache.map.get(id) ?? [];
+  };
+
   const preview = (b: BookRow, edits: Map<string, string | null> | undefined): BookPreview => {
     const hex = b.id.replace(/^sha256:/, "");
     const o = (field: string, own: string | null) => (edits?.has(field) ? edits.get(field)! : own);
@@ -117,6 +137,9 @@ export async function webApi(): Promise<Api> {
       wantToRead: !!b.want_to_read,
       rating: b.rating ?? null,
       finishedAt: b.finished_at ?? null,
+      tags: tagsOf(b.id),
+      // Books open from the cloud here, so every one is there.
+      inCloud: true,
     };
   };
 
@@ -735,6 +758,64 @@ export async function webApi(): Promise<Api> {
     downloadBook: async (bookId) => {
       await api.readBookFile(bookId);
     },
+    allTags: async (): Promise<TagCount[]> => tagCounts(books()),
+    addTag: async (bookIds, tag) => {
+      const typed = cleanTag(tag);
+      if (!typed) throw new Error("Type a tag first.");
+      const kept = tagCounts(books()).find((t) => t.name.toLowerCase() === typed.toLowerCase())?.name ?? typed;
+      const at = now();
+      const changes: [string, Row][] = [];
+      for (const id of bookIds) {
+        if (!library.book(id)) continue;
+        const has = tagsOf(id);
+        if (has.length >= 50 || has.some((t) => t.toLowerCase() === kept.toLowerCase())) continue;
+        changes.push(["book_tag", { book_id: id, tag: kept, added_at: at, removed_at: null, updated_at: at }]);
+      }
+      await library.writeAll(changes);
+      return kept;
+    },
+    removeTag: async (bookIds, tag) => {
+      const ids = new Set(bookIds);
+      const at = now();
+      await library.writeAll(
+        library
+          .rows("book_tags")
+          .filter((t) => ids.has(String(t.book_id)) && !t.removed_at && String(t.tag).toLowerCase() === tag.toLowerCase())
+          .map((t): [string, Row] => ["book_tag", { ...t, removed_at: at, updated_at: at }]),
+      );
+    },
+    setBookTags: async (bookId, tags) => {
+      find(bookId);
+      const wanted = new Map<string, string>();
+      for (const t of tags.map(cleanTag)) if (t && wanted.size < 50) wanted.set(t.toLowerCase(), t);
+      const have = tagsOf(bookId);
+      for (const t of have) if (!wanted.has(t.toLowerCase())) await api.removeTag([bookId], t);
+      for (const t of wanted.values()) if (!have.some((h) => h.toLowerCase() === t.toLowerCase())) await api.addTag([bookId], t);
+    },
+    deleteBook: async (bookId) => {
+      const b = find(bookId);
+      const at = now();
+      const changes: [string, Row][] = [["book", { ...b, deleted_at: at }]];
+      for (const a of library.rows("annotations"))
+        if (a.book_id === bookId && !a.deleted_at) changes.push(["annotation", { ...a, deleted_at: at, updated_at: at }]);
+      for (const m of library.rows("collection_books"))
+        if (m.book_id === bookId && !m.removed_at) changes.push(["collection_book", { ...m, removed_at: at, updated_at: at }]);
+      for (const t of library.rows("book_tags"))
+        if (t.book_id === bookId && !t.removed_at) changes.push(["book_tag", { ...t, removed_at: at, updated_at: at }]);
+      await library.writeAll(changes);
+      await db.deleteFile(`books/${bookId.replace(/^sha256:/, "")}.${b.format}`).catch(() => undefined);
+      await refreshDownloaded();
+    },
+    removeDownload: async (bookId) => {
+      const b = find(bookId);
+      await db.deleteFile(`books/${bookId.replace(/^sha256:/, "")}.${b.format}`);
+      await refreshDownloaded();
+      library.changed();
+    },
+    findDuplicates: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    dismissDuplicates: async () => undefined,
     onSync: ({ status, libraryChanged }) => {
       const stops: (() => void)[] = [];
       if (status) stops.push(sync.onStatus(status));

@@ -1,7 +1,7 @@
 import type { BookPreview } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { authorLine } from "../lib/format";
-import type { BookActions } from "./bookActions";
+import { bookContextMenu, type BookActions } from "./bookActions";
 import { EmptyNote, Section } from "./Section";
 
 export function RecentlyAdded({ books, actions, onViewAll }: { books: BookPreview[]; actions: BookActions; onViewAll: () => void }) {
@@ -12,7 +12,7 @@ export function RecentlyAdded({ books, actions, onViewAll }: { books: BookPrevie
       ) : (
         <ul className="shelf">
           {books.map((book) => (
-            <li key={book.id}>
+            <li key={book.id} {...bookContextMenu(book, actions)}>
               <button type="button" className="shelf-book" onClick={() => actions.open(book)} title={`${book.title}, ${authorLine(book.authors)}`}>
                 <BookCover book={book} />
                 <span className="book-title">{book.title}</span>

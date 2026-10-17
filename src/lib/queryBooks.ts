@@ -1,6 +1,6 @@
 // The Library page's filtering, sorting and paging, done in the page itself.
 
-import type { BookPreview, LibraryPage, LibraryQuery } from "../api/types";
+import type { BookPreview, LibraryPage, LibraryQuery, TagCount } from "../api/types";
 
 const articles = /^(the|an|a) /i;
 const sortTitle = (b: BookPreview) => b.title.replace(articles, "").toLowerCase();
@@ -18,6 +18,7 @@ export function queryBooks(all: BookPreview[], q: LibraryQuery, collectionCount:
     if (q.formats.length && !q.formats.includes(b.format)) return false;
     if (q.location === "on_device" && b.availability === "cloud") return false;
     if (q.location === "cloud_only" && b.availability !== "cloud") return false;
+    if (q.tags?.length && !b.tags.some((t) => q.tags!.some((w) => w.toLowerCase() === t.toLowerCase()))) return false;
     if (search && ![b.title, ...b.authors, b.series ?? ""].some((t) => t.toLowerCase().includes(search))) return false;
     return true;
   });
@@ -52,6 +53,24 @@ export function queryBooks(all: BookPreview[], q: LibraryQuery, collectionCount:
       collections: collectionCount,
     },
     formats: [...new Set(all.map((b) => b.format))].sort(),
+    tags: tagCounts(all).map((t) => t.name),
   };
 }
 
+/** Every tag on these books, A to Z, with how many carry it. One spelling per tag. */
+export function tagCounts(all: BookPreview[]): TagCount[] {
+  const counts = new Map<string, TagCount>();
+  for (const b of all)
+    for (const t of b.tags) {
+      const found = counts.get(t.toLowerCase());
+      if (found) found.count++;
+      else counts.set(t.toLowerCase(), { name: t, count: 1 });
+    }
+  return [...counts.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
+/** A tag as it's kept: single spaces, at most 40 letters. Null when nothing's left. */
+export function cleanTag(tag: string): string | null {
+  const t = tag.split(/\s+/).filter(Boolean).join(" ").slice(0, 40);
+  return t || null;
+}

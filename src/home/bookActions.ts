@@ -1,8 +1,10 @@
 import { createElement } from "react";
 import type { BookPreview } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
+import { openContextMenu } from "../components/ContextMenu";
 import type { MenuEntry } from "../components/Menu";
 import { StarRating } from "../components/StarRating";
+import { askDeleteBook, askEditTags } from "../library/BookDialogs";
 
 export interface BookActions {
   open: (book: BookPreview) => void;
@@ -10,11 +12,15 @@ export interface BookActions {
   setFavorite: (book: BookPreview, favorite: boolean) => void;
   setWantToRead: (book: BookPreview, want: boolean) => void;
   setRating: (book: BookPreview, rating: number | null) => void;
+  /** Fetches a cloud-only book onto this device. */
+  download?: (book: BookPreview) => void;
+  /** Removes the copy here, keeping the one in the cloud. */
+  removeDownload?: (book: BookPreview) => void;
   /** Set when the books are shown inside one of the user's collections. */
   removeFromCollection?: { name: string; remove: (book: BookPreview) => void };
 }
 
-/** The "…" menu for a book. Actions that arrive in later steps are shown but disabled. */
+/** The "…" menu for a book, and its right-click menu. Actions that arrive in later steps are shown but disabled. */
 export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
   return [
     { label: "Book details", hint: "Coming soon", disabled: true },
@@ -34,6 +40,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
       ? { label: "Remove from Up next", icon: "bookmark", onSelect: () => actions.setWantToRead(book, false) }
       : { label: "Add to Up next", icon: "bookmark", onSelect: () => actions.setWantToRead(book, true) },
     { label: "Add to collection…", icon: "collections", onSelect: () => askAddToCollection(book) },
+    { label: book.tags.length ? "Edit tags…" : "Add tags…", icon: "tag", onSelect: () => askEditTags(book) },
     ...(actions.removeFromCollection
       ? [{ label: `Remove from ${actions.removeFromCollection.name}`, onSelect: () => actions.removeFromCollection?.remove(book) }]
       : []),
@@ -45,9 +52,22 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
       ? [{ label: "Stop reading (mark unread)", onSelect: () => actions.setStatus(book, "unread") }]
       : []),
     "divider",
-    { label: "Remove from this device", hint: "Coming soon", disabled: true },
-    { label: "Delete from library…", hint: "Coming soon", disabled: true, danger: true },
+    downloadItem(book, actions),
+    { label: "Delete from library…", icon: "trash", danger: true, onSelect: () => askDeleteBook(book) },
   ];
+}
+
+/** Right-clicking a book opens its menu. Spread onto the book's card or row. */
+export function bookContextMenu(book: BookPreview, actions: BookActions) {
+  return { onContextMenu: (e: React.MouseEvent) => openContextMenu(e, `More for ${book.title}`, bookMenu(book, actions)) };
+}
+
+function downloadItem(book: BookPreview, actions: BookActions): MenuEntry {
+  if (book.availability === "cloud")
+    return { label: "Download to this device", icon: "download", disabled: !actions.download, onSelect: () => actions.download?.(book) };
+  if (book.availability === "missing") return { label: "Remove download", icon: "cloudOff", hint: "File missing", disabled: true };
+  if (!book.inCloud) return { label: "Remove download", icon: "cloudOff", hint: "Not in the cloud yet", disabled: true };
+  return { label: "Remove download (keep in cloud)", icon: "cloudOff", disabled: !actions.removeDownload, onSelect: () => actions.removeDownload?.(book) };
 }
 
 /** Why a book can't be opened here, or null when it can. */
@@ -63,7 +83,8 @@ export function cannotOpen(book: BookPreview): string | null {
 
 /** The shared actions, refreshing the current view after each change. */
 export function makeBookActions(
-  api: Pick<import("../api").Api, "setBookStatus" | "setFavorite" | "setWantToRead" | "setRating">,
+  api: Pick<import("../api").Api, "setBookStatus" | "setFavorite" | "setWantToRead" | "setRating"> &
+    Partial<Pick<import("../api").Api, "downloadBook" | "removeDownload">>,
   toast: (text: string) => void,
   refresh: () => void,
   openBook: (bookId: string) => void,
@@ -80,5 +101,11 @@ export function makeBookActions(
     setFavorite: (book, favorite) => void run(book, api.setFavorite(book.id, favorite)),
     setWantToRead: (book, want) => void run(book, api.setWantToRead(book.id, want)),
     setRating: (book, rating) => void run(book, api.setRating(book.id, rating)),
+    download: api.downloadBook && ((book) => {
+      toast(`Downloading “${book.title}”…`);
+      void run(book, api.downloadBook!(book.id).then(() => toast(`“${book.title}” is on this device.`)));
+    }),
+    removeDownload: api.removeDownload && ((book) =>
+      void run(book, api.removeDownload!(book.id).then(() => toast(`Removed the copy of “${book.title}” here. It's still in the cloud.`)))),
   };
 }
