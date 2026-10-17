@@ -617,7 +617,7 @@
   color: var(--text);
 }
 
-.reader-right .menu {
+.menu-narrow {
   min-width: 220px;
 }
 

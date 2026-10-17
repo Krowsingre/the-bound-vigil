@@ -3,11 +3,11 @@
 // shows a "Preview" badge whenever it is active.
 
 import type { Api } from "./index";
+import { previewCollections } from "../preview/collections";
 import { sampleEpub } from "../preview/sampleEpub";
 import type {
   Annotation,
   BookPreview,
-  CollectionPreview,
   HomeViewModel,
   ImportResult,
   LibraryPage,
@@ -90,11 +90,6 @@ let books: BookPreview[] = [
   book("A Tale of Two Cities", "Charles Dickens"),
 ];
 
-const collections: CollectionPreview[] = [
-  { id: "c1", name: "Gothic", count: 3, coverPaths: [] },
-  { id: "c2", name: "Long Victorians", count: 4, coverPaths: [] },
-];
-
 const params = new URLSearchParams(location.search);
 const empty = params.has("empty");
 // `?avatar` shows a stand-in profile picture, for reviewing the sync circle.
@@ -104,6 +99,7 @@ const SAMPLE_AVATAR =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x2="0" y2="1"><stop offset="0" stop-color="#8fa3b5"/><stop offset="1" stop-color="#2f3a44"/></linearGradient></defs><rect width="64" height="64" fill="url(#g)"/><circle cx="32" cy="26" r="11" fill="#e6e3de"/><path d="M12 64c2-14 10-20 20-20s18 6 20 20z" fill="#e6e3de"/></svg>`,
   );
 const library = () => (empty ? [] : books);
+const collections = previewCollections(library, empty);
 
 const articles = /^(the|an|a) /i;
 const sortTitle = (b: BookPreview) => b.title.replace(articles, "").toLowerCase();
@@ -151,7 +147,7 @@ function queryBooks(all: BookPreview[], q: LibraryQuery): LibraryPage {
       inProgress: all.filter((b) => b.status === "in_progress").length,
       read: all.filter((b) => b.status === "read").length,
       unread: all.filter((b) => b.status === "unread").length,
-      collections: empty ? 0 : collections.length,
+      collections: collections.previews().length,
     },
     formats: [...new Set(all.map((b) => b.format))].sort(),
   };
@@ -166,7 +162,7 @@ function home(): HomeViewModel {
     resumeBook: inProgress[0] ?? null,
     recentlyAdded: [...all].sort((a, b) => b.addedAt.localeCompare(a.addedAt)).slice(0, 5),
     inProgress: inProgress.slice(0, 3),
-    collections: empty ? [] : collections,
+    collections: collections.previews().slice(0, 4),
     annotations: empty
       ? []
       : [
@@ -222,7 +218,7 @@ export function previewApi(): Api {
     setBookStatus: async (bookId, status) =>
       update(bookId, status === "unread" ? { status, totalProgression: null } : { status }),
     getLibrary: async (query) => queryBooks(library(), query),
-    getCollections: async () => (empty ? [] : collections),
+    getCollections: async () => collections.previews(),
     setFavorite: async (bookId, favorite) => update(bookId, { favorite }),
     setWantToRead: async (bookId, wantToRead) => update(bookId, { wantToRead }),
     getProfile: async () => profile,
@@ -265,5 +261,6 @@ export function previewApi(): Api {
     getSetting: async (key) => settings.get(key) ?? null,
     setSetting: async (key, value) => void settings.set(key, value),
     quit: async () => undefined,
+    ...collections.api,
   };
 }

@@ -362,3 +362,150 @@ pub struct AnnotationInput {
     pub color: Option<String>,
     pub locator: ReaderLocator,
 }
+
+/// What a collection is. Shelves are the four built-in ones (Favourites,
+/// Currently reading, To be read, Completed): their books come from each
+/// book's own flags, and only their picture, badge and pinning can change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CollectionKind {
+    Shelf,
+    Collection,
+    /// A collection whose order matters, read from the top down.
+    ReadingList,
+}
+
+impl CollectionKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CollectionKind::Shelf => "shelf",
+            CollectionKind::Collection => "collection",
+            CollectionKind::ReadingList => "reading_list",
+        }
+    }
+
+    pub fn parse(value: &str) -> CollectionKind {
+        match value {
+            "shelf" => CollectionKind::Shelf,
+            "reading_list" => CollectionKind::ReadingList,
+            _ => CollectionKind::Collection,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionSummary {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub kind: CollectionKind,
+    /// One of the badges that ship with TBV, by name.
+    pub badge: Option<String>,
+    /// `gallery:<name>`, `picture:<file>` (a picture the user added) or
+    /// `cover:<book id>`. Synced as written.
+    pub picture: Option<String>,
+    /// The picture's file on this device, for `picture:` and `cover:`.
+    pub picture_path: Option<String>,
+    pub pinned: bool,
+    pub count: u32,
+    /// Its first three books, for the strip of covers.
+    pub covers: Vec<CoverRef>,
+    pub created_at: IsoUtc,
+    pub updated_at: IsoUtc,
+}
+
+/// Collections that fill themselves from each book's own details.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SmartKind {
+    /// Added in the last 30 days.
+    RecentlyAdded,
+    /// Not opened yet.
+    Unread,
+    /// Finished.
+    Read,
+    /// Started and not finished.
+    InProgress,
+    Favorites,
+}
+
+impl SmartKind {
+    pub const ALL: [SmartKind; 5] = [
+        SmartKind::RecentlyAdded,
+        SmartKind::Unread,
+        SmartKind::InProgress,
+        SmartKind::Read,
+        SmartKind::Favorites,
+    ];
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SmartSummary {
+    pub kind: SmartKind,
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesSummary {
+    pub name: String,
+    pub count: u32,
+    pub authors: Vec<String>,
+    pub covers: Vec<CoverRef>,
+}
+
+/// Enough of a book to draw its cover, or a cloth cover when it has none.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverRef {
+    pub id: BookId,
+    pub title: String,
+    pub authors: Vec<String>,
+    pub cover_path: Option<String>,
+}
+
+/// Everything the Collections page shows.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionsOverview {
+    /// Shelves and collections pinned to the top row.
+    pub pinned: Vec<CollectionSummary>,
+    pub smart: Vec<SmartSummary>,
+    /// The user's own collections and reading lists (not shelves).
+    pub collections: Vec<CollectionSummary>,
+    pub series: Vec<SeriesSummary>,
+}
+
+/// Which collection to open.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CollectionRef {
+    Collection { id: String },
+    Series { name: String },
+    Smart { smart: SmartKind },
+}
+
+/// One collection with its books, in the collection's own order.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionDetail {
+    /// Set for shelves, collections and reading lists.
+    pub collection: Option<CollectionSummary>,
+    pub books: Vec<BookPreview>,
+}
+
+/// A new collection, or the changes to one. Shelves keep their name and kind.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionInput {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub kind: CollectionKind,
+    #[serde(default)]
+    pub badge: Option<String>,
+    #[serde(default)]
+    pub pinned: bool,
+}

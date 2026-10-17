@@ -27,6 +27,9 @@ pub struct LibraryPaths {
     pub covers_dir: PathBuf,
     /// This device's profile picture (app-data folder).
     pub profile_dir: PathBuf,
+    /// Pictures the user added for collections, named by content hash so
+    /// every device agrees on the name (app-data folder).
+    pub pictures_dir: PathBuf,
 }
 
 impl LibraryPaths {
@@ -36,6 +39,7 @@ impl LibraryPaths {
             books_dir: data_dir.join("Library"),
             covers_dir: cache_dir.join("covers"),
             profile_dir: data_dir.join("Profile"),
+            pictures_dir: data_dir.join("Pictures"),
         }
     }
 }
@@ -129,7 +133,38 @@ const MIGRATIONS: &[&str] = &[
     UPDATE annotations SET created_at = updated_at WHERE created_at IS NULL;
     CREATE INDEX idx_annotations_book ON annotations(book_id);
     "#,
+    // v4: the Collections page. Collections gain a description, a badge, a
+    // picture, pinning and an order; reading lists keep their books in order.
+    // Removing a book leaves a tombstone so sync can pass the removal on. The
+    // built-in Up next shelf gets a fixed id so every device agrees on it.
+    r#"
+    ALTER TABLE collections ADD COLUMN description TEXT;
+    ALTER TABLE collections ADD COLUMN kind TEXT NOT NULL DEFAULT 'collection';
+    ALTER TABLE collections ADD COLUMN badge TEXT;
+    ALTER TABLE collections ADD COLUMN picture TEXT;
+    ALTER TABLE collections ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE collections ADD COLUMN position REAL;
+    ALTER TABLE collections ADD COLUMN updated_at TEXT;
+    UPDATE collections SET updated_at = created_at;
+
+    ALTER TABLE collection_books ADD COLUMN position REAL;
+    ALTER TABLE collection_books ADD COLUMN removed_at TEXT;
+    ALTER TABLE collection_books ADD COLUMN updated_at TEXT;
+    UPDATE collection_books SET updated_at = added_at;
+
+    INSERT OR IGNORE INTO collections (id, name, created_at, updated_at, kind, badge, picture, pinned, position) VALUES
+        ('shelf:want_to_read', 'Up next', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'bookmark', 'gallery:forest', 1, 1);
+    "#,
 ];
+
+/// Early builds had four built-in shelves, but three of them repeated smart
+/// collections (Favourites, In progress, Read). Only Up next is kept. Run at
+/// every open, so it also tidies a library restored from an old backup.
+const RETIRED_SHELVES: &str = r#"
+    DELETE FROM collection_books WHERE collection_id IN ('shelf:favorites', 'shelf:reading', 'shelf:completed');
+    DELETE FROM collections WHERE id IN ('shelf:favorites', 'shelf:reading', 'shelf:completed');
+    UPDATE collections SET name = 'Up next' WHERE id = 'shelf:want_to_read' AND name = 'To be read';
+"#;
 
 /// SQLite's own `lower()` only folds A–Z, so "Émile" would never match "émile".
 /// `tbv_fold` lowercases with Rust's Unicode-aware rules instead.
@@ -157,6 +192,7 @@ impl Library {
         register_functions(&conn)?;
         let mut library = Self { conn, paths };
         library.migrate()?;
+        library.conn.execute_batch(RETIRED_SHELVES)?;
         Ok(library)
     }
 
@@ -411,6 +447,34 @@ pub(crate) mod tests {
         let paths = LibraryPaths::new(&dir.path().join("data"), &dir.path().join("cache"));
         let library = Library::open(paths).unwrap();
         (dir, library)
+    }
+
+    #[test]
+    fn shelves_that_repeat_smart_collections_are_retired() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = || LibraryPaths::new(&dir.path().join("data"), &dir.path().join("cache"));
+        let library = Library::open(paths()).unwrap();
+        library
+            .conn
+            .execute_batch(
+                "INSERT INTO collections (id, name, created_at, updated_at, kind, pinned, position) VALUES
+                    ('shelf:favorites', 'Favourites', '2026-01-01', '2026-01-01', 'shelf', 1, 1),
+                    ('shelf:completed', 'Completed', '2026-01-01', '2026-01-01', 'shelf', 1, 4);
+                 UPDATE collections SET name = 'To be read' WHERE id = 'shelf:want_to_read';",
+            )
+            .unwrap();
+        drop(library);
+
+        let library = Library::open(paths()).unwrap();
+        let shelves: Vec<(String, String)> = library
+            .conn
+            .prepare("SELECT id, name FROM collections WHERE kind = 'shelf'")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(shelves, [("shelf:want_to_read".to_string(), "Up next".to_string())]);
     }
 
     #[test]

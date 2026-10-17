@@ -28,6 +28,7 @@ const paths = {
   rows: "M4 6h16M4 10h16M4 14h16M4 18h16",
   filter: "M4 5h16l-6 7.5V19l-4-1.5v-5z",
   chevronDown: "M7 10l5 5 5-5",
+  chevronUp: "M7 14l5-5 5 5",
   chevronLeft: "M14.5 6.5 9 12l5.5 5.5",
   chevronRight: "M9.5 6.5 15 12l-5.5 5.5",
   heart: "M12 19.5s-7.5-4.6-7.5-10A4.2 4.2 0 0 1 12 6.8a4.2 4.2 0 0 1 7.5 2.7c0 5.4-7.5 10-7.5 10z",

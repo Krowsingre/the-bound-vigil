@@ -6,8 +6,9 @@ use std::sync::{Arc, Mutex};
 
 use tauri::{Emitter, Manager, State};
 use tbv_core::model::{
-    Annotation, AnnotationInput, CollectionPreview, HomeViewModel, ImportResult, LibraryPage,
-    LibraryQuery, Profile, ReadStatus, ReaderBook, ReaderLocator,
+    Annotation, AnnotationInput, BookId, CollectionDetail, CollectionInput, CollectionPreview,
+    CollectionRef, CollectionSummary, CollectionsOverview, HomeViewModel, ImportResult,
+    LibraryPage, LibraryQuery, Profile, ReadStatus, ReaderBook, ReaderLocator,
 };
 use tbv_core::{Library, LibraryPaths, SUPPORTED_FORMATS};
 
@@ -187,6 +188,121 @@ async fn set_setting(
     with_library(state, move |library| library.set_setting(&key, &value)).await
 }
 
+#[tauri::command]
+async fn get_collections_overview(
+    state: State<'_, AppLibrary>,
+) -> CommandResult<CollectionsOverview> {
+    with_library(state, |library| library.collections_overview()).await
+}
+
+#[tauri::command]
+async fn get_collection(
+    state: State<'_, AppLibrary>,
+    collection: CollectionRef,
+) -> CommandResult<CollectionDetail> {
+    with_library(state, move |library| library.collection_detail(&collection)).await
+}
+
+#[tauri::command]
+async fn create_collection(
+    state: State<'_, AppLibrary>,
+    input: CollectionInput,
+) -> CommandResult<CollectionSummary> {
+    with_library(state, move |library| library.create_collection(&input)).await
+}
+
+#[tauri::command]
+async fn update_collection(
+    state: State<'_, AppLibrary>,
+    id: String,
+    input: CollectionInput,
+) -> CommandResult<CollectionSummary> {
+    with_library(state, move |library| library.update_collection(&id, &input)).await
+}
+
+#[tauri::command]
+async fn delete_collection(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.delete_collection(&id)).await
+}
+
+#[tauri::command]
+async fn set_collection_picture(
+    state: State<'_, AppLibrary>,
+    id: String,
+    picture: Option<String>,
+) -> CommandResult<CollectionSummary> {
+    with_library(state, move |library| {
+        library.set_collection_picture(&id, picture.as_deref())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn set_collection_picture_file(
+    state: State<'_, AppLibrary>,
+    id: String,
+    path: String,
+) -> CommandResult<CollectionSummary> {
+    with_library(state, move |library| {
+        library.set_collection_picture_file(&id, &PathBuf::from(path))
+    })
+    .await
+}
+
+#[tauri::command]
+async fn add_to_collection(
+    state: State<'_, AppLibrary>,
+    id: String,
+    book_ids: Vec<BookId>,
+) -> CommandResult<()> {
+    with_library(state, move |library| {
+        library.add_to_collection(&id, &book_ids)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn remove_from_collection(
+    state: State<'_, AppLibrary>,
+    id: String,
+    book_id: String,
+) -> CommandResult<()> {
+    with_library(state, move |library| {
+        library.remove_from_collection(&id, &book_id)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn move_collection(
+    state: State<'_, AppLibrary>,
+    id: String,
+    to_index: usize,
+) -> CommandResult<()> {
+    with_library(state, move |library| library.move_collection(&id, to_index)).await
+}
+
+#[tauri::command]
+async fn move_in_collection(
+    state: State<'_, AppLibrary>,
+    id: String,
+    book_id: String,
+    to_index: usize,
+) -> CommandResult<()> {
+    with_library(state, move |library| {
+        library.move_in_collection(&id, &book_id, to_index)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn collections_for_book(
+    state: State<'_, AppLibrary>,
+    book_id: String,
+) -> CommandResult<Vec<String>> {
+    with_library(state, move |library| library.collections_for_book(&book_id)).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -219,7 +335,19 @@ pub fn run() {
             save_annotation,
             delete_annotation,
             get_setting,
-            set_setting
+            set_setting,
+            get_collections_overview,
+            get_collection,
+            create_collection,
+            update_collection,
+            delete_collection,
+            set_collection_picture,
+            set_collection_picture_file,
+            add_to_collection,
+            remove_from_collection,
+            move_collection,
+            move_in_collection,
+            collections_for_book
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
         // page gets a moment to save the reading position first, and the app

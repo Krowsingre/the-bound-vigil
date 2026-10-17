@@ -2,6 +2,7 @@
 //! No UI code lives here, so all of it is testable with `cargo test`.
 
 pub mod browse;
+pub mod collections;
 pub mod epub;
 pub mod error;
 pub mod home;

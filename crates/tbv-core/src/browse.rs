@@ -139,7 +139,7 @@ impl Library {
                     COALESCE(SUM(status = 'in_progress'), 0),
                     COALESCE(SUM(status = 'read'), 0),
                     COALESCE(SUM(status = 'unread'), 0),
-                    (SELECT COUNT(*) FROM collections WHERE deleted_at IS NULL)
+                    (SELECT COUNT(*) FROM collections WHERE deleted_at IS NULL AND kind != 'shelf')
              FROM books WHERE deleted_at IS NULL",
             [],
             |r| {

@@ -25,6 +25,7 @@ export function Home({
   onImportFolder,
   onLoaded,
   onOpenBook,
+  onOpenCollection,
 }: {
   refreshKey: number;
   onNavigate: (route: Route) => void;
@@ -33,6 +34,7 @@ export function Home({
   onImportFolder: () => void;
   onLoaded?: (home: HomeViewModel) => void;
   onOpenBook: (bookId: string) => void;
+  onOpenCollection: (id: string) => void;
 }) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [reload, setReload] = useState(0);
@@ -112,7 +114,7 @@ export function Home({
         <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenLibrary({ tab: "in_progress" })} />
       </div>
       <div className="home-bottom">
-        <CollectionsPreview collections={home.collections} onViewAll={() => onNavigate("collections")} />
+        <CollectionsPreview collections={home.collections} onViewAll={() => onNavigate("collections")} onOpenCollection={onOpenCollection} />
         <NotesPreview notes={home.annotations} onViewAll={() => onNavigate("notes")} />
         <LibrarySnapshot counts={home.libraryCounts} onOpenLibrary={openLibrary} />
       </div>

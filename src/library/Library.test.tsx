@@ -56,6 +56,7 @@ function renderLibrary(props: Partial<React.ComponentProps<typeof Library>> = {}
         onImportBooks={() => {}}
         onImportFolder={() => {}}
         onOpenBook={() => {}}
+        onOpenCollection={() => {}}
         {...props}
       />
     </ToastProvider>,
