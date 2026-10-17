@@ -6,7 +6,7 @@ import { useToast } from "../components/Toast";
 import { useAppSettings, type ConflictRule, type SyncFrequency } from "./appSettings";
 import { ActionTile, RadioList, Row, Section, Select, Toggle } from "./controls";
 
-type Provider = "supabase" | "dropbox" | "gdrive" | "onedrive";
+type Provider = "supabase" | "dropbox" | "gdrive" | "onedrive" | "icloud" | "mega" | "custom";
 
 const PROVIDERS: { id: Provider; name: string; art: React.ReactNode }[] = [
   {
@@ -48,7 +48,48 @@ const PROVIDERS: { id: Provider; name: string; art: React.ReactNode }[] = [
       </svg>
     ),
   },
+  {
+    id: "icloud",
+    name: "iCloud Drive",
+    art: (
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
+        <path
+          d="M6.5 19h11a4.5 4.5 0 0 0 .4-9A6 6 0 0 0 6.6 9.2 5 5 0 0 0 6.5 19z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ),
+  },
+  {
+    id: "mega",
+    name: "MEGA",
+    art: (
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
+        <circle cx="12" cy="12" r="10" fill="currentColor" />
+        <path d="M7.5 16V8.5l4.5 4.5 4.5-4.5V16" fill="none" stroke="var(--surface)" strokeWidth="2" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
+    id: "custom",
+    name: "Another service",
+    art: (
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
+        <circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="3 2.6" />
+        <path d="M12 8v8M8 12h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    ),
+  },
 ];
+
+/** What each service still waiting for its sync update will ask for. */
+const COMING: Partial<Record<Provider, string>> = {
+  custom:
+    "Use a service that isn't listed, such as Nextcloud, pCloud or Box: point TBV at a folder its app keeps in sync on this computer, or at its WebDAV address. This comes with a later update.",
+};
 
 const SUPABASE_KEY = "sync.supabase";
 
@@ -161,7 +202,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
                 <Icon name="settings" size={16} /> {supabase ? "Manage connection" : "Set up Supabase"}
               </button>
             ) : (
-              <p className="settings-row-hint">Signing in to {chosen.name} comes with the sync update.</p>
+              <p className="settings-row-hint">{COMING[provider] ?? `Signing in to ${chosen.name} comes with the sync update.`}</p>
             )}
           </div>
         }
