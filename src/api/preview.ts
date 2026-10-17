@@ -7,6 +7,7 @@ import { previewCollections } from "../preview/collections";
 import { previewNotes, sampleAnnotations } from "../preview/notes";
 import { sampleEpub } from "../preview/sampleEpub";
 import type {
+  ProviderView,
   Annotation,
   BookPreview,
   HardcoverStatus,
@@ -216,9 +217,22 @@ const update = (bookId: string, change: Partial<BookPreview>) => {
 
 function previewSync(): SyncOverview {
   const mode = params.get("sync");
-  if (!mode) return { status: { state: "disabled", lastSuccessAt: null }, project: null, signedInAs: null, lastError: null, waitingToSend: 0, conflicts: [] };
+  const supabase: ProviderView = { kind: "supabase", service: null, location: null, username: null };
+  if (!mode)
+    return { status: { state: "disabled", lastSuccessAt: null }, provider: supabase, project: null, signedInAs: null, lastError: null, waitingToSend: 0, conflicts: [] };
+  if (mode === "folder")
+    return {
+      status: { state: "idle", lastSuccessAt: ago(0.002) },
+      provider: { kind: "folder", service: "icloud", location: "C:\\Users\\you\\iCloudDrive", username: null },
+      project: null,
+      signedInAs: null,
+      lastError: null,
+      waitingToSend: 0,
+      conflicts: [],
+    };
   return {
     status: { state: mode === "ask" ? "attention" : "idle", lastSuccessAt: ago(0.002) },
+    provider: supabase,
     project: { url: "https://abcdefghijklmnop.supabase.co", anonKey: "sb_publishable_sample" },
     signedInAs: "reader@example.com",
     lastError: null,
@@ -383,6 +397,19 @@ export function previewApi(): Api {
     setSupabaseProject: async (project) => {
       sync = { ...sync, project, signedInAs: project?.url === sync.project?.url ? sync.signedInAs : null };
     },
+    setSyncProvider: async (choice) => {
+      const provider: ProviderView =
+        choice.kind === "folder"
+          ? { kind: "folder", service: choice.service, location: choice.path, username: null }
+          : choice.kind === "webdav"
+            ? { kind: "webdav", service: null, location: choice.url, username: choice.username }
+            : { kind: "supabase", service: null, location: null, username: null };
+      sync = { ...sync, provider, status: { state: "idle", lastSuccessAt: new Date().toISOString() } };
+      return false;
+    },
+    chooseFolder: async () => "C:\\Users\\you\\Dropbox",
+    suggestSyncFolder: async (service) =>
+      ({ icloud: "C:\\Users\\you\\iCloudDrive", dropbox: "C:\\Users\\you\\Dropbox", onedrive: "C:\\Users\\you\\OneDrive", gdrive: "G:\\My Drive" })[service] ?? null,
     resolveSyncConflict: async (_kind, key) => {
       sync = { ...sync, conflicts: sync.conflicts.filter((c) => c.key !== key) };
       if (!sync.conflicts.length) sync.status = { ...sync.status, state: "idle" };

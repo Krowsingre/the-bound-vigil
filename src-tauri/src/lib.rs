@@ -622,6 +622,31 @@ async fn resolve_sync_conflict(
     Ok(())
 }
 
+/// Chooses the service that carries the library. True when the folder or
+/// server already held a library, which this device now joins.
+#[tauri::command]
+async fn set_sync_provider(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    worker: State<'_, Arc<sync::SyncWorker>>,
+    provider: tbv_core::sync::Provider,
+) -> CommandResult<bool> {
+    let joined = blocking(state, move |library| {
+        let joined = sync::choose(library, provider)?;
+        announce(&app, library);
+        Ok(joined)
+    })
+    .await?;
+    worker.sync_now();
+    Ok(joined)
+}
+
+/// Where a cloud app usually keeps its folder on this computer, if it's there.
+#[tauri::command]
+fn suggest_sync_folder(service: String) -> Option<String> {
+    sync::likely_folder(&service).map(|p| p.display().to_string())
+}
+
 /// Fetches a book that's only in the cloud onto this device.
 #[tauri::command]
 async fn download_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
@@ -712,12 +737,15 @@ pub fn run() {
             sync_sign_in,
             sync_sign_out,
             set_supabase_project,
+            set_sync_provider,
+            suggest_sync_folder,
             resolve_sync_conflict,
             download_book,
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
         // page gets a moment to save the reading position first; then ratings
-        // on their way to Hardcover and the last sync get their chance, and the app quits regardless after that.
+        // on their way to Hardcover and the last sync get their chance, and
+        // the app quits regardless after that.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();

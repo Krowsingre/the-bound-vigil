@@ -3,6 +3,7 @@
 // clearly labelled sample library so screens can be looked at without the app.
 
 import type {
+  ProviderChoice,
   Annotation,
   AnnotationInput,
   CollectionDetail,
@@ -123,6 +124,12 @@ export interface Api {
   syncSignOut(): Promise<void>;
   /** Saves the Supabase project to use. A different project signs out first. */
   setSupabaseProject(project: SupabaseProject | null): Promise<void>;
+  /** Chooses where the library is kept. True when that folder or server already held a library to join. */
+  setSyncProvider(provider: ProviderChoice): Promise<boolean>;
+  /** Asks for a folder. Null if cancelled. */
+  chooseFolder(title: string, start?: string | null): Promise<string | null>;
+  /** Where a cloud app usually keeps its folder on this computer, if it's there. */
+  suggestSyncFolder(service: string): Promise<string | null>;
   resolveSyncConflict(kind: string, key: string, keepCloud: boolean): Promise<void>;
   /** Fetches a book that's only in the cloud onto this device. */
   downloadBook(bookId: string): Promise<void>;
@@ -287,6 +294,12 @@ function appApi(): Api {
     syncSignIn: async (email, password, create) => (await core).invoke<boolean>("sync_sign_in", { email, password, create }),
     syncSignOut: async () => (await core).invoke("sync_sign_out"),
     setSupabaseProject: async (project) => (await core).invoke("set_supabase_project", { project }),
+    setSyncProvider: async (provider) => (await core).invoke<boolean>("set_sync_provider", { provider }),
+    chooseFolder: async (title, start) => {
+      const picked = await (await dialog).open({ directory: true, multiple: false, title, defaultPath: start ?? undefined });
+      return typeof picked === "string" ? picked : null;
+    },
+    suggestSyncFolder: async (service) => (await core).invoke<string | null>("suggest_sync_folder", { service }),
     resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
     downloadBook: async (bookId) => (await core).invoke("download_book", { bookId }),
     onSync: ({ status, libraryChanged }) => {

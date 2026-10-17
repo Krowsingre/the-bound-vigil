@@ -36,12 +36,13 @@ impl Remote for FakeRemote {
         Ok(())
     }
 
-    fn pull(&mut self, after: i64, limit: usize) -> Result<Vec<(i64, Record)>> {
+    fn pull(&mut self, after: &str, limit: usize) -> Result<Page> {
         let cloud = self.0.lock().unwrap();
-        let mut out: Vec<_> = cloud.records.values().filter(|(s, _)| *s > after).cloned().collect();
+        let from = seq_after(after);
+        let mut out: Vec<_> = cloud.records.values().filter(|(s, _)| *s > from).cloned().collect();
         out.sort_by_key(|(s, _)| *s);
         out.truncate(limit);
-        Ok(out)
+        Ok(Page::numbered(out, after))
     }
 
     fn upload(&mut self, path: &str, file: &Path) -> Result<()> {
@@ -420,4 +421,47 @@ fn talks_to_supabase() {
     let mut to_c = Supabase::new(project.clone(), supabase::sign_in(&project, &other, "another password").unwrap(), "c".into());
     assert_eq!(sync_once(&c.library, &mut to_c).unwrap().received, 0);
     assert!(c.lib().book(&book).unwrap().is_none());
+}
+
+#[test]
+fn a_shared_folder_carries_a_library_between_devices() {
+    let folder = tempfile::tempdir().unwrap();
+    let provider = Provider::Folder { service: "icloud".into(), path: folder.path().display().to_string() };
+    let a = Device::new();
+    let b = Device::new();
+    a.set_options(json!({ "bookFiles": true }));
+    for device in [&a, &b] {
+        device.lib().set_sync_provider(&provider).unwrap();
+        assert_eq!(device.lib().sync_status().unwrap().state, SyncState::Idle);
+    }
+    let sync = |device: &Device| {
+        let mut cloud = device.lib().connect().unwrap().unwrap();
+        sync_once(&device.library, &mut cloud).unwrap()
+    };
+
+    let book = a.import("Carmilla");
+    a.lib().set_favorite(&book, true).unwrap();
+    let sent = sync(&a);
+    assert!(sent.sent > 0 && sent.files_sent > 0, "{sent:?}");
+    let got = sync(&b);
+    assert!(got.received > 0, "{got:?}");
+    let there = b.lib().book(&book).unwrap().unwrap();
+    assert!(there.favorite);
+    assert_eq!(sync(&b).received, 0, "nothing is read twice");
+
+    tick();
+    b.lib().set_favorite(&book, false).unwrap();
+    sync(&b);
+    sync(&a);
+    assert!(!a.lib().book(&book).unwrap().unwrap().favorite);
+
+    // The book's file can be fetched by a device that doesn't have it.
+    let mut cloud = b.lib().connect().unwrap().unwrap();
+    download_book(&b.library, &mut cloud, &book).unwrap();
+
+    // Pointing at another folder starts over there.
+    let elsewhere = tempfile::tempdir().unwrap();
+    b.lib().set_sync_provider(&Provider::Folder { service: "dropbox".into(), path: elsewhere.path().display().to_string() }).unwrap();
+    assert!(sync(&b).sent > 0, "everything is sent to the new place");
+    assert_eq!(b.lib().sync_overview().unwrap().provider.service.as_deref(), Some("dropbox"));
 }

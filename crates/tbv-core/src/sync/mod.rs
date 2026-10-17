@@ -9,7 +9,9 @@
 //! holds whole records with the time they changed, so any service that can
 //! store them can carry a library.
 
+pub mod files;
 pub mod supabase;
+pub mod webdav;
 
 use std::collections::HashSet;
 use std::fs;
@@ -259,6 +261,104 @@ pub struct SupabaseProject {
     pub anon_key: String,
 }
 
+/// Which service carries the library. Kept in this device's settings only,
+/// since a WebDAV one holds a password.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Provider {
+    /// The Supabase project in `sync.supabase`, signed in as `sync.session`.
+    Supabase,
+    /// A folder a cloud app keeps in sync. `service` is which one the person
+    /// picked ("icloud", "dropbox", "mega", "custom"…), for Settings to show.
+    Folder { service: String, path: String },
+    #[serde(rename = "webdav")]
+    WebDav(webdav::WebDavAccount),
+}
+
+/// The provider as Settings shows it: never the password.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderView {
+    pub kind: &'static str,
+    pub service: Option<String>,
+    /// The folder, or the server's address.
+    pub location: Option<String>,
+    pub username: Option<String>,
+}
+
+impl Provider {
+    pub fn view(&self) -> ProviderView {
+        match self {
+            Provider::Supabase => ProviderView { kind: "supabase", service: None, location: None, username: None },
+            Provider::Folder { service, path } => {
+                ProviderView { kind: "folder", service: Some(service.clone()), location: Some(path.clone()), username: None }
+            }
+            Provider::WebDav(account) => ProviderView {
+                kind: "webdav",
+                service: None,
+                location: Some(account.url.clone()),
+                username: Some(account.username.clone()),
+            },
+        }
+    }
+
+    /// Whether two choices point at the same cloud library.
+    fn same_place(&self, other: &Provider) -> bool {
+        match (self, other) {
+            (Provider::Supabase, Provider::Supabase) => true,
+            (Provider::Folder { path: a, .. }, Provider::Folder { path: b, .. }) => a == b,
+            (Provider::WebDav(a), Provider::WebDav(b)) => a.url == b.url && a.username == b.username,
+            _ => false,
+        }
+    }
+}
+
+/// A connection to wherever the library is kept.
+pub enum Cloud {
+    Supabase(supabase::Supabase),
+    Files(files::FileRemote<Box<dyn files::Store + Send>>),
+}
+
+impl Cloud {
+    fn remote(&mut self) -> &mut dyn Remote {
+        match self {
+            Cloud::Supabase(s) => s,
+            Cloud::Files(f) => f,
+        }
+    }
+}
+
+impl Remote for Cloud {
+    fn push(&mut self, records: &[Record]) -> Result<()> {
+        self.remote().push(records)
+    }
+    fn pull(&mut self, after: &str, limit: usize) -> Result<Page> {
+        self.remote().pull(after, limit)
+    }
+    fn upload(&mut self, path: &str, file: &Path) -> Result<()> {
+        self.remote().upload(path, file)
+    }
+    fn download(&mut self, path: &str, to: &Path) -> Result<bool> {
+        self.remote().download(path, to)
+    }
+    fn list(&mut self, folder: &str) -> Result<Vec<String>> {
+        self.remote().list(folder)
+    }
+}
+
+/// Opens a folder or WebDAV library and makes sure it's one TBV can use.
+/// Returns the connection and whether a library was already there.
+pub fn open_files(provider: &Provider, device: String) -> Result<(files::FileRemote<Box<dyn files::Store + Send>>, bool)> {
+    let store: Box<dyn files::Store + Send> = match provider {
+        Provider::Folder { path, .. } => Box::new(files::FolderStore::open(Path::new(path))?),
+        Provider::WebDav(account) => Box::new(webdav::WebDav::open(account)?),
+        Provider::Supabase => return Err(Error::Unsuitable("Supabase isn't a folder".into())),
+    };
+    let mut remote = files::FileRemote::new(store, device);
+    let existing = remote.prepare()?;
+    Ok((remote, existing))
+}
+
 /// Who is signed in on this device. Kept in this device's settings only.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -276,6 +376,7 @@ pub struct Session {
 #[serde(rename_all = "camelCase")]
 pub struct SyncOverview {
     pub status: SyncStatus,
+    pub provider: ProviderView,
     pub project: Option<SupabaseProject>,
     pub signed_in_as: Option<String>,
     pub last_error: Option<String>,
@@ -310,12 +411,34 @@ pub struct SyncReport {
     pub skipped_files: Vec<String>,
 }
 
+/// Records from the cloud, and where the next pull carries on from.
+#[derive(Debug, Default)]
+pub struct Page {
+    pub records: Vec<Record>,
+    /// Opaque to the engine: a number for Supabase, each device's place for
+    /// a folder. Empty means from the beginning.
+    pub cursor: String,
+}
+
+impl Page {
+    /// For services that number every record in one order.
+    pub fn numbered(rows: Vec<(i64, Record)>, after: &str) -> Page {
+        let cursor = rows.last().map(|(seq, _)| seq.to_string()).unwrap_or_else(|| after.to_string());
+        Page { records: rows.into_iter().map(|(_, r)| r).collect(), cursor }
+    }
+}
+
+/// A numbered cursor, as `Page::numbered` writes it.
+pub fn seq_after(after: &str) -> i64 {
+    after.parse().unwrap_or(0)
+}
+
 /// Where records and files are kept in the cloud.
 pub trait Remote {
     /// Stores records. Ones older than what the cloud already has are ignored.
     fn push(&mut self, records: &[Record]) -> Result<()>;
-    /// Records changed after `after`, oldest first, each with its place in the order.
-    fn pull(&mut self, after: i64, limit: usize) -> Result<Vec<(i64, Record)>>;
+    /// Records changed since the cursor `after`, oldest first.
+    fn pull(&mut self, after: &str, limit: usize) -> Result<Page>;
     /// Puts a file at `path` (like `books/<hash>.epub`), replacing any there.
     fn upload(&mut self, path: &str, file: &Path) -> Result<()>;
     /// Fetches the file at `path`. False if the cloud doesn't have it.
@@ -335,11 +458,17 @@ const LAST_SUCCESS: &str = "sync.last_success_at";
 const LAST_ERROR: &str = "sync.last_error";
 const SESSION: &str = "sync.session";
 const PROJECT: &str = "sync.supabase";
+pub(crate) const PROVIDER: &str = "sync.provider";
 const APP_SETTINGS: &str = "app.settings";
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Cursor {
     scope: String,
+    /// Where pulls carry on from (see `Page::cursor`).
+    #[serde(default)]
+    at: Option<String>,
+    /// Saved by earlier versions, which only knew Supabase's numbers.
+    #[serde(default)]
     seq: i64,
 }
 
@@ -424,6 +553,32 @@ impl Library {
             .filter(|p| !p.url.is_empty() && !p.anon_key.is_empty()))
     }
 
+    /// The chosen service. Before there was a choice, it was Supabase.
+    pub fn sync_provider(&self) -> Result<Provider> {
+        Ok(self.setting(PROVIDER)?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Provider::Supabase))
+    }
+
+    /// Saves the chosen service. Moving to a different cloud library starts
+    /// sync over with it: everything here is sent there, and all of it read.
+    pub fn set_sync_provider(&self, provider: &Provider) -> Result<()> {
+        if !self.sync_provider()?.same_place(provider) {
+            self.reset_sync()?;
+        }
+        self.put_setting(PROVIDER, Some(&serde_json::to_string(provider)?))
+    }
+
+    /// A connection to the chosen service, if it's ready to use.
+    pub fn connect(&self) -> Result<Option<Cloud>> {
+        let provider = self.sync_provider()?;
+        match provider {
+            Provider::Supabase => {
+                let (Some(project), Some(session)) = (self.supabase_project()?, self.sync_session()?) else { return Ok(None) };
+                Ok(Some(Cloud::Supabase(supabase::Supabase::new(project, session, self.device_id()?))))
+            }
+            _ => Ok(Some(Cloud::Files(open_files(&provider, self.device_id()?)?.0))),
+        }
+    }
+
     pub fn sync_session(&self) -> Result<Option<Session>> {
         Ok(self.setting(SESSION)?.and_then(|s| serde_json::from_str(&s).ok()))
     }
@@ -446,7 +601,10 @@ impl Library {
     /// Sync's state as far as the saved data knows. While a run is going,
     /// the app reports Syncing itself.
     pub fn sync_status(&self) -> Result<SyncStatus> {
-        let ready = self.supabase_project()?.is_some() && self.sync_session()?.is_some();
+        let ready = match self.sync_provider()? {
+            Provider::Supabase => self.supabase_project()?.is_some() && self.sync_session()?.is_some(),
+            _ => true,
+        };
         let last_error = self.setting(LAST_ERROR)?;
         let conflicts: i64 = self.conn.query_row("SELECT COUNT(*) FROM sync_conflicts", [], |r| r.get(0))?;
         let state = if conflicts > 0 {
@@ -483,6 +641,7 @@ impl Library {
         }
         Ok(SyncOverview {
             status: self.sync_status()?,
+            provider: self.sync_provider()?.view(),
             project: self.supabase_project()?,
             signed_in_as: self.sync_session()?.map(|s| s.email),
             last_error: self.setting(LAST_ERROR)?.map(|e| e.trim_start_matches(OFFLINE_PREFIX).to_string()),
@@ -497,8 +656,15 @@ impl Library {
                 self.put_setting(LAST_SUCCESS, Some(&now_utc()))?;
                 self.put_setting(LAST_ERROR, None)
             }
-            Err(Error::Offline(why)) => self.put_setting(LAST_ERROR, Some(&format!("{OFFLINE_PREFIX}{why}"))),
-            Err(error) => self.put_setting(LAST_ERROR, Some(&error.to_string())),
+            Err(error) => self.note_sync_failure(error),
+        }
+    }
+
+    /// Remembers why sync couldn't run, for Settings and the header circle.
+    pub fn note_sync_failure(&self, error: &Error) -> Result<()> {
+        match error {
+            Error::Offline(why) => self.put_setting(LAST_ERROR, Some(&format!("{OFFLINE_PREFIX}{why}"))),
+            error => self.put_setting(LAST_ERROR, Some(&error.to_string())),
         }
     }
 
@@ -515,13 +681,16 @@ impl Library {
         Ok(())
     }
 
-    fn cursor(&self, options: &SyncOptions) -> Result<i64> {
+    fn cursor(&self, options: &SyncOptions) -> Result<String> {
         let saved: Cursor = self.setting(CURSOR)?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-        Ok(if saved.scope == options.scope() { saved.seq } else { 0 })
+        if saved.scope != options.scope() {
+            return Ok(String::new());
+        }
+        Ok(saved.at.unwrap_or_else(|| if saved.seq > 0 { saved.seq.to_string() } else { String::new() }))
     }
 
-    fn save_cursor(&self, options: &SyncOptions, seq: i64) -> Result<()> {
-        let json = serde_json::to_string(&Cursor { scope: options.scope(), seq })?;
+    fn save_cursor(&self, options: &SyncOptions, at: &str) -> Result<()> {
+        let json = serde_json::to_string(&Cursor { scope: options.scope(), at: Some(at.to_string()), seq: 0 })?;
         self.put_setting(CURSOR, Some(&json))
     }
 
@@ -1006,15 +1175,16 @@ fn run<'a>(lock: &dyn Fn() -> Result<std::sync::MutexGuard<'a, Library>>, remote
     };
 
     loop {
-        let page = remote.pull(cursor, PAGE)?;
-        let Some(last) = page.last().map(|(seq, _)| *seq) else { break };
-        let records: Vec<Record> = page.into_iter().map(|(_, r)| r).collect();
+        let Page { records, cursor: next } = remote.pull(&cursor, PAGE)?;
+        if records.is_empty() {
+            break;
+        }
         let library = lock()?;
         let (applied, conflicts) = library.sync_apply(&records, &options)?;
         report.received += applied;
         report.new_conflicts += conflicts;
-        cursor = last;
-        library.save_cursor(&options, cursor)?;
+        cursor = next;
+        library.save_cursor(&options, &cursor)?;
         if records.len() < PAGE {
             break;
         }

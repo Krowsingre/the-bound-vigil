@@ -97,8 +97,25 @@ export interface SyncConflict {
   cloudChangedAt: IsoUtc;
 }
 
+/** Where the library is kept, as Settings shows it (never a password). */
+export interface ProviderView {
+  kind: "supabase" | "folder" | "webdav";
+  /** For a folder: which cloud app's ("icloud", "dropbox", "mega", "custom"…). */
+  service: string | null;
+  /** The folder, or the WebDAV address. */
+  location: string | null;
+  username: string | null;
+}
+
+/** A choice of where to keep the library, as sent to the core. */
+export type ProviderChoice =
+  | { kind: "supabase" }
+  | { kind: "folder"; service: string; path: string }
+  | { kind: "webdav"; url: string; username: string; password: string };
+
 export interface SyncOverview {
   status: SyncStatus;
+  provider: ProviderView;
   project: SupabaseProject | null;
   signedInAs: string | null;
   lastError: string | null;

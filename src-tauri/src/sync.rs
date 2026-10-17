@@ -2,6 +2,7 @@
 //! picked, when asked, and once more on the way out. The library is only
 //! locked while it is read or written, never while waiting on the network.
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
@@ -10,8 +11,8 @@ use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter};
 use tbv_core::model::{SyncState, SyncStatus};
-use tbv_core::sync::supabase::{self, Supabase};
-use tbv_core::sync::{self as core_sync, Frequency};
+use tbv_core::sync::supabase;
+use tbv_core::sync::{self as core_sync, Cloud, Frequency, Provider};
 use tbv_core::{Error, Library};
 
 enum Wake {
@@ -96,16 +97,9 @@ fn has_changes(library: &Mutex<Library>) -> bool {
     library.lock().ok().and_then(|l| l.sync_overview().ok()).is_some_and(|o| o.waiting_to_send > 0)
 }
 
-/// A connection to the user's Supabase project, if they've set one up and signed in.
-pub fn connect(library: &Library) -> tbv_core::Result<Option<Supabase>> {
-    let (Some(project), Some(session)) = (library.supabase_project()?, library.sync_session()?) else {
-        return Ok(None);
-    };
-    Ok(Some(Supabase::new(project, session, library.device_id()?)))
-}
-
-/// Saves a renewed sign-in, or forgets one that was withdrawn.
-pub fn keep_session(library: &Library, client: &Supabase, outcome: &tbv_core::Result<impl Sized>) {
+/// Saves a renewed Supabase sign-in, or forgets one that was withdrawn.
+pub fn keep_session(library: &Library, cloud: &Cloud, outcome: &tbv_core::Result<impl Sized>) {
+    let Cloud::Supabase(client) = cloud else { return };
     if matches!(outcome, Err(Error::SignedOut)) {
         let _ = library.set_sync_session(None);
     } else if client.renewed() {
@@ -128,13 +122,40 @@ fn emit_status(app: &AppHandle, library: &Mutex<Library>, busy: bool) {
 }
 
 fn run(app: &AppHandle, library: &Arc<Mutex<Library>>, busy: &AtomicBool) {
-    let client = match library.lock().map(|l| connect(&l)) {
-        Ok(Ok(Some(client))) => client,
-        _ => return,
-    };
-    let mut client = client;
+    let ready = library.lock().ok().and_then(|l| l.sync_status().ok()).is_some_and(|s| s.state != SyncState::Disabled);
+    if !ready {
+        return;
+    }
     busy.store(true, Ordering::Relaxed);
     emit_status(app, library, true);
+    // A folder is opened (and a WebDAV server reached) outside the lock.
+    let connected = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into())).and_then(|l| {
+        let provider = l.sync_provider()?;
+        let device = l.device_id()?;
+        Ok(match provider {
+            Provider::Supabase => l.connect()?,
+            other => {
+                drop(l);
+                Some(Cloud::Files(core_sync::open_files(&other, device)?.0))
+            }
+        })
+    });
+    let mut client = match connected {
+        Ok(Some(client)) => client,
+        Ok(None) => {
+            busy.store(false, Ordering::Relaxed);
+            emit_status(app, library, false);
+            return;
+        }
+        Err(e) => {
+            if let Ok(l) = library.lock() {
+                let _ = l.note_sync_failure(&e);
+            }
+            busy.store(false, Ordering::Relaxed);
+            emit_status(app, library, false);
+            return;
+        }
+    };
     let outcome = core_sync::sync_once(library, &mut client);
     if let Ok(library) = library.lock() {
         keep_session(&library, &client, &outcome);
@@ -169,6 +190,7 @@ pub fn sign_in(library: &Mutex<Library>, email: &str, password: &str, create: bo
         library.reset_sync()?;
     }
     library.set_sync_session(Some(&session))?;
+    library.set_sync_provider(&Provider::Supabase)?;
     Ok(true)
 }
 
@@ -177,7 +199,9 @@ pub fn sign_out(library: &Mutex<Library>) -> tbv_core::Result<()> {
         let library = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?;
         let out = (library.supabase_project()?, library.sync_session()?);
         library.set_sync_session(None)?;
-        library.reset_sync()?;
+        if library.sync_provider()? == Provider::Supabase {
+            library.reset_sync()?;
+        }
         out
     };
     if let (Some(project), Some(session)) = (project, session) {
@@ -186,12 +210,24 @@ pub fn sign_out(library: &Mutex<Library>) -> tbv_core::Result<()> {
     Ok(())
 }
 
+/// Chooses where the library is kept. A folder or WebDAV server is checked
+/// first; the answer says whether it already held a library to join.
+pub fn choose(library: &Mutex<Library>, provider: Provider) -> tbv_core::Result<bool> {
+    let device = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?.device_id()?;
+    let existing = match &provider {
+        Provider::Supabase => false,
+        other => core_sync::open_files(other, device)?.1,
+    };
+    library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?.set_sync_provider(&provider)?;
+    Ok(existing)
+}
+
 /// Fetches a book that's only in the cloud. Errors say what to do.
 pub fn download(library: &Mutex<Library>, book_id: &str) -> tbv_core::Result<()> {
-    let client = connect(&*library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?)?;
+    let client = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?.connect()?;
     let Some(mut client) = client else {
         return Err(Error::Unsuitable(
-            "This book's file is on another device. Sign in to sync (Settings › Sync) to download it here.".into(),
+            "This book's file is on another device. Set up sync (Settings › Sync) to download it here.".into(),
         ));
     };
     let outcome = core_sync::download_book(library, &mut client, book_id);
@@ -199,4 +235,28 @@ pub fn download(library: &Mutex<Library>, book_id: &str) -> tbv_core::Result<()>
         keep_session(&library, &client, &outcome);
     }
     outcome
+}
+
+/// Where each cloud app usually keeps its folder on Windows. Only a folder
+/// that's really there is suggested.
+pub fn likely_folder(service: &str) -> Option<PathBuf> {
+    let home = PathBuf::from(std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?);
+    let candidates: Vec<PathBuf> = match service {
+        "icloud" => vec![home.join("iCloudDrive"), home.join("iCloud Drive")],
+        "dropbox" => vec![home.join("Dropbox")],
+        "onedrive" => {
+            let mut found: Vec<PathBuf> = std::env::var_os("OneDrive").map(PathBuf::from).into_iter().collect();
+            found.push(home.join("OneDrive"));
+            found
+        }
+        "gdrive" => {
+            let mut found: Vec<PathBuf> = ('D'..='Z').map(|d| PathBuf::from(format!("{d}:\\My Drive"))).collect();
+            found.push(home.join("Google Drive").join("My Drive"));
+            found.push(home.join("Google Drive"));
+            found
+        }
+        "mega" => vec![home.join("MEGA"), home.join("MEGAsync"), home.join("Documents").join("MEGAsync")],
+        _ => Vec::new(),
+    };
+    candidates.into_iter().find(|p| p.is_dir())
 }

@@ -1079,3 +1079,47 @@ kbd {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* Sync › a folder a cloud app keeps in step, or a WebDAV server. */
+.sync-folder h4 {
+  margin: 10px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.folder-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.folder-path {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: var(--surface-sunk);
+  font: 400 12.5px ui-monospace, "Cascadia Mono", Consolas, monospace;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.webdav-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.webdav-form .field input {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 13px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}

@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use ureq::http::Response;
 use ureq::{Agent, Body};
 
-use super::{Record, Remote, Session, SupabaseProject};
+use super::{seq_after, Page, Record, Remote, Session, SupabaseProject};
 use crate::error::{Error, Result};
 
 const BUCKET: &str = "tbv-files";
@@ -241,7 +241,9 @@ impl Remote for Supabase {
         }
     }
 
-    fn pull(&mut self, after: i64, limit: usize) -> Result<Vec<(i64, Record)>> {
+    fn pull(&mut self, after: &str, limit: usize) -> Result<Page> {
+        let start = after;
+        let after = seq_after(after);
         #[derive(Deserialize)]
         struct Row {
             seq: i64,
@@ -266,7 +268,7 @@ impl Remote for Supabase {
                     .limit(256 * 1024 * 1024)
                     .read_json()
                     .map_err(|e| Error::Cloud(e.to_string()))?;
-                Ok(rows.into_iter().map(|r| (r.seq, r.record)).collect())
+                Ok(Page::numbered(rows.into_iter().map(|r| (r.seq, r.record)).collect(), start))
             }
             _ => Err(rest_problem(&mut answer)),
         }
