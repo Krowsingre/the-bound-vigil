@@ -25,9 +25,11 @@ import type {
   ReadStatus,
   SmartKind,
   TagCount,
+  AudioChapter,
+  AudioPart,
 } from "../api/types";
 import { matches, usable } from "../collections/rules";
-import { cleanTag, queryBooks, tagCounts } from "../lib/queryBooks";
+import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
 import { cleanValue, DETAIL_FIELDS, listOf } from "../lib/details";
 import { WebDb } from "./db";
 import { UP_NEXT, WebLibrary, type BookRow } from "./library";
@@ -101,6 +103,10 @@ export async function webApi(): Promise<Api> {
     }
     return map;
   };
+  const audioRow = (id: string) =>
+    library.rows("audiobooks").find((a) => a.book_id === id) as
+      | { book_id: string; narrators: string | null; duration_ms: number | null; chapters: string | null; parts: string | null; ebook_id: string | null }
+      | undefined;
   const detailFields = (b: BookRow): DetailField[] => {
     const edits = layer("metadata_overrides").get(b.id);
     const found = layer("metadata_fetched").get(b.id);
@@ -113,6 +119,7 @@ export async function webApi(): Promise<Api> {
       publisher: b.publisher,
       language: b.language,
       isbn: b.isbn,
+      narrators: audioRow(b.id)?.narrators ?? null,
     };
     return DETAIL_FIELDS.map(({ field }) => ({
       field,
@@ -180,6 +187,8 @@ export async function webApi(): Promise<Api> {
       // Books open from the cloud here, so every one is there.
       inCloud: true,
       genres: listOf(edits?.get("genres") ?? null),
+      durationMs: audioRow(b.id)?.duration_ms ?? null,
+      narrators: listOf(edits?.get("narrators") ?? audioRow(b.id)?.narrators ?? null),
     };
   };
 
@@ -393,11 +402,13 @@ export async function webApi(): Promise<Api> {
     kind: "web",
     getHome: async (): Promise<HomeViewModel> => {
       const all = books();
-      const inProgress = all.filter((b) => b.status === "in_progress").sort((a, b) => newest(a.lastOpenedAt, b.lastOpenedAt));
+      // Home is for reading; audiobooks have their own page.
+      const reading = all.filter((b) => !isAudio(b.format));
+      const inProgress = reading.filter((b) => b.status === "in_progress").sort((a, b) => newest(a.lastOpenedAt, b.lastOpenedAt));
       const titles = new Map(all.map((b) => [b.id as string, b.title]));
       return {
         resumeBook: inProgress[0] ?? null,
-        recentlyAdded: [...all].sort((a, b) => newest(a.addedAt, b.addedAt)).slice(0, 5),
+        recentlyAdded: [...reading].sort((a, b) => newest(a.addedAt, b.addedAt)).slice(0, 5),
         inProgress: inProgress.slice(0, 3),
         collections: previews().slice(0, 4),
         annotations: annotationRows()
@@ -501,6 +512,40 @@ export async function webApi(): Promise<Api> {
         total_progression: typeof p === "number" ? Math.min(1, Math.max(0, p)) : (find(bookId).total_progression ?? null),
       });
     },
+    audiobook: async (bookId) => {
+      const book = bookPreview(bookId);
+      const a = audioRow(bookId);
+      const ebook = a?.ebook_id ? library.book(a.ebook_id) : null;
+      return {
+        book,
+        narrators: book.narrators ?? [],
+        durationMs: a?.duration_ms ?? 0,
+        chapters: parse<AudioChapter[]>(a?.chapters ?? null, []),
+        parts: parse<AudioPart[]>(a?.parts ?? null, []),
+        positionMs: book.resumeLocator?.audioMs ?? 0,
+        ebook: ebook ? { id: ebook.id, name: bookPreview(ebook.id).title } : null,
+      };
+    },
+    saveListening: async (bookId, positionMs, chapter) => {
+      const duration = audioRow(bookId)?.duration_ms ?? 0;
+      const before = find(bookId);
+      const totalProgression = duration > 0 ? Math.min(1, Math.max(0, positionMs / duration)) : (before.total_progression ?? null);
+      await writeProgress(bookId, {
+        resume_locator: JSON.stringify({ audioMs: Math.round(positionMs), totalProgression, chapter }),
+        total_progression: totalProgression,
+        last_opened_at: now(),
+        status: before.status === "unread" && positionMs > 0 ? "in_progress" : before.status,
+      });
+    },
+    linkEbook: async (audiobookId, ebookId) => {
+      const a = audioRow(audiobookId);
+      if (!a) throw new Error("That audiobook's details haven't arrived here yet.");
+      await library.write("audiobook", { ...a, ebook_id: ebookId, updated_at: now() });
+    },
+    audiobookForEbook: async (ebookId) =>
+      (library.rows("audiobooks").find((a) => a.ebook_id === ebookId && library.book(String(a.book_id)))?.book_id as string) ?? null,
+    // Audiobooks play in the desktop app; here you see them and where you are.
+    audioUrl: () => null,
     getAnnotations: async (bookId) =>
       annotationRows()
         .filter((a) => a.book_id === bookId && a.kind !== "book_note")

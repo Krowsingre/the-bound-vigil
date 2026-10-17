@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { BookPreview, DetailChange, DetailField, DetailFieldName } from "../api/types";
 import { useToast } from "../components/Toast";
-import { cleanValue, DETAIL_FIELDS, effective, isList, listOf } from "../lib/details";
+import { AUDIO_ONLY, cleanValue, DETAIL_FIELDS, effective, isList, listOf } from "../lib/details";
+import { isAudio } from "../lib/queryBooks";
 import { ChipInput } from "./ChipInput";
 
 /** The details that make sense to set on many books at once. */
@@ -95,7 +96,11 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
       );
   };
 
-  const shownFields = DETAIL_FIELDS.filter((f) => !many || MASS_FIELDS.includes(f.field));
+  // Narrators belong to audiobooks only.
+  const audio = books.every((b) => isAudio(b.format));
+  const shownFields = DETAIL_FIELDS.filter(
+    (f) => (!many || MASS_FIELDS.includes(f.field) || (audio && f.field === "narrators")) && (audio || !AUDIO_ONLY.includes(f.field)),
+  );
   const undoEdit = (f: DetailField) => set(f.field, toForm(f.field, f.fetched ?? f.own));
 
   return (
@@ -153,7 +158,7 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
                       value={value}
                       onChange={(v) => set(field, v)}
                       label={label}
-                      placeholder={field === "authors" ? "Type a name and press Enter" : "Type a genre and press Enter"}
+                      placeholder={field === "genres" ? "Type a genre and press Enter" : "Type a name and press Enter"}
                     />
                   ) : long ? (
                     <textarea id={`detail-${field}`} rows={6} value={value} onChange={(e) => set(field, e.target.value)} />

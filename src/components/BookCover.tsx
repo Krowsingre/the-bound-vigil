@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api } from "../api";
 import type { BookPreview } from "../api/types";
 import { authorLine, hashOf } from "../lib/format";
-import { isDocument } from "../lib/queryBooks";
+import { isAudio, isDocument } from "../lib/queryBooks";
 import { Icon } from "./Icon";
 
 // Muted cloth tones for books that ship without cover art.
@@ -14,7 +14,7 @@ export function BookCover({ book, size = "m" }: { book: CoverBook; size?: "s" | 
   const [failed, setFailed] = useState(false);
   const src = book.coverPath && !failed ? api.coverUrl(book.coverPath) : "";
   return (
-    <div className={`cover cover-${size}`}>
+    <div className={`cover cover-${size}${book.format && isAudio(book.format) ? " cover-audio" : ""}`}>
       {src ? (
         <img src={src} alt="" draggable={false} onError={() => setFailed(true)} />
       ) : (

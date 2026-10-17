@@ -13,6 +13,10 @@ export interface LibraryView {
   tags: string[];
   /** Books with any of these genres. */
   genres: string[];
+  /** Audiobooks by any of these authors. */
+  authors: string[];
+  /** Audiobooks read by any of these narrators. */
+  narrators: string[];
   page: number;
   layout: Layout;
 }
@@ -41,11 +45,11 @@ export const SORTS: { sort: SortOrder; label: string }[] = [
 ];
 
 const KEY = "tbv.libraryView";
-const keyOf = (kind: ItemKind) => (kind === "documents" ? "tbv.documentsView" : KEY);
+const keyOf = (kind: ItemKind) => (kind === "books" ? KEY : `tbv.${kind}View`);
 
-/** Sort and layout are remembered on this device, for the Library and Documents each; the rest starts fresh. */
+/** Sort and layout are remembered on this device, for each page of books; the rest starts fresh. */
 export function initialView(kind: ItemKind = "books"): LibraryView {
-  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], page: 0, layout: "grid" };
+  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], authors: [], narrators: [], page: 0, layout: "grid" };
   try {
     const saved = JSON.parse(localStorage.getItem(keyOf(kind)) ?? "{}") as Partial<LibraryView>;
     if (SORTS.some((s) => s.sort === saved.sort)) view.sort = saved.sort!;

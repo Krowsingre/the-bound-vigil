@@ -32,8 +32,9 @@ export function Library({
   onImportFolder,
   onOpenBook,
   onOpenCollection,
+  intro,
 }: {
-  /** Books (the Library) or documents (PDF, Word and text files). */
+  /** Books (the Library), documents (PDF, Word and text files) or audiobooks. */
   kind?: ItemKind;
   view: LibraryView;
   search: string;
@@ -44,6 +45,8 @@ export function Library({
   onImportFolder: () => void;
   onOpenBook: (bookId: string) => void;
   onOpenCollection: (id: string) => void;
+  /** Shown above the books, like Continue listening. */
+  intro?: React.ReactNode;
 }) {
   const [load, setLoad] = useState<Load<LibraryPage>>({ state: "loading" });
   const [collections, setCollections] = useState<CollectionPreview[] | null>(null);
@@ -70,6 +73,8 @@ export function Library({
         location: view.location,
         tags: view.tags,
         genres: view.genres,
+        authors: view.authors,
+        narrators: view.narrators,
         kind,
         page: view.page,
         pageSize: PAGE_SIZE,
@@ -81,7 +86,7 @@ export function Library({
     return () => {
       current = false;
     };
-  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.page, search, refreshKey, reload]);
+  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.authors, view.narrators, view.page, search, refreshKey, reload]);
 
   useEffect(() => {
     if (view.tab !== "collections") return;
@@ -113,7 +118,8 @@ export function Library({
 
   const page = load.state === "ready" ? load.data : null;
   const counts = page?.counts ?? null;
-  const filtered = view.formats.length > 0 || view.location !== null || view.tags.length > 0 || view.genres.length > 0;
+  const filtered =
+    view.formats.length > 0 || view.location !== null || view.tags.length > 0 || view.genres.length > 0 || view.authors.length > 0 || view.narrators.length > 0;
   const selection: Selection | null = selected && {
     has: (id) => selected.has(id),
     toggle: (book) =>
@@ -175,7 +181,7 @@ export function Library({
             </button>
           )}
           {filtered && (
-            <button type="button" className="btn btn-quiet" onClick={() => onChange({ formats: [], location: null, tags: [], genres: [] })}>
+            <button type="button" className="btn btn-quiet" onClick={() => onChange({ formats: [], location: null, tags: [], genres: [], authors: [], narrators: [] })}>
               Clear filters
             </button>
           )}
@@ -221,7 +227,9 @@ export function Library({
         formats={page?.formats ?? []}
         tags={page?.tags ?? []}
         genres={page?.genres ?? []}
-        allLabel={kind === "documents" ? "All documents" : undefined}
+        authors={page?.authors ?? undefined}
+        narrators={page?.narrators ?? undefined}
+        allLabel={kind === "books" ? undefined : `All ${words.many}`}
         selecting={selected !== null}
         onSelecting={(on) => setSelected(on ? new Map() : null)}
         onChange={onChange}
@@ -273,6 +281,8 @@ export function Library({
           </button>
         </p>
       )}
+
+      {view.tab !== "collections" && intro}
 
       <div className="library-body">{body}</div>
     </div>

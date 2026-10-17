@@ -15,7 +15,7 @@ import { useToast } from "../components/Toast";
 import { bookMenu, makeBookActions } from "../home/bookActions";
 import { askEditTags } from "../library/BookDialogs";
 import { effective, listOf } from "../lib/details";
-import { isDocument } from "../lib/queryBooks";
+import { formatLength, formatLabel, isAudio, isDocument } from "../lib/queryBooks";
 import { formatBytes } from "../settings/controls";
 import { askEditDetails, askFetchDetails } from "./openDetails";
 
@@ -102,7 +102,13 @@ export function BookDetailsPage({
     ["Published", value("published"), "published"],
     ["Language", value("language"), "language"],
     ["ISBN", value("isbn"), "isbn"],
-    ["Format", book.format.toUpperCase(), null],
+    ...(isAudio(book.format)
+      ? ([
+          ["Narrators", listOf(value("narrators")).join(", ") || null, "narrators"],
+          ["Length", formatLength(book.durationMs), null],
+        ] as [string, string | null, DetailFieldName | null][])
+      : []),
+    ["Format", formatLabel(book.format), null],
     ["File size", fileSize ? formatBytes(fileSize) : null, null],
     ["Added", new Date(book.addedAt).toLocaleDateString(), null],
     ["Finished", book.finishedAt ? new Date(book.finishedAt).toLocaleDateString() : null, null],
@@ -126,7 +132,18 @@ export function BookDetailsPage({
         <aside className="details-side">
           <BookCover book={book} size="l" />
           <button type="button" className="btn btn-primary btn-wide" onClick={() => actions.open(book)}>
-            <Icon name="play" size={16} /> {started ? "Continue reading" : book.status === "read" ? "Read again" : "Read"}
+            <Icon name="play" size={16} />{" "}
+            {isAudio(book.format)
+              ? started
+                ? "Continue listening"
+                : book.status === "read"
+                  ? "Listen again"
+                  : "Listen"
+              : started
+                ? "Continue reading"
+                : book.status === "read"
+                  ? "Read again"
+                  : "Read"}
           </button>
           {started ? (
             <ProgressBar value={book.totalProgression} label={`${Math.round((book.totalProgression ?? 0) * 100)}% read`} />
@@ -162,7 +179,7 @@ export function BookDetailsPage({
             </div>
             <Menu
               label={`More for ${book.title}`}
-              className="icon-button"
+              className="icon-btn"
               trigger={<Icon name="more" size={18} />}
               items={bookMenu(book, actions).filter(
                 (e) => typeof e === "string" || !("label" in e) || e.label !== "Book details",

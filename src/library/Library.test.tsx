@@ -46,7 +46,7 @@ const book = (n: number, extra: Partial<BookPreview> = {}): BookPreview => ({
 });
 
 const counts = { all: 30, favorites: 1, wantToRead: 0, inProgress: 2, read: 3, unread: 25, collections: 0 };
-const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], page: 0, layout: "grid" };
+const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], authors: [], narrators: [], page: 0, layout: "grid" };
 
 function renderLibrary(props: Partial<React.ComponentProps<typeof Library>> = {}) {
   const onChange = vi.fn();

@@ -238,12 +238,14 @@ const notes = previewNotes(library, { get: () => annotations, set: (list) => (an
 
 function home(): HomeViewModel {
   const all = library();
-  const inProgress = all
+  // Home is for reading; audiobooks have their own page.
+  const reading = all.filter((b) => !isAudio(b.format));
+  const inProgress = reading
     .filter((b) => b.status === "in_progress")
     .sort((a, b) => (b.lastOpenedAt ?? "").localeCompare(a.lastOpenedAt ?? ""));
   return {
     resumeBook: inProgress[0] ?? null,
-    recentlyAdded: [...all].sort((a, b) => b.addedAt.localeCompare(a.addedAt)).slice(0, 5),
+    recentlyAdded: [...reading].sort((a, b) => b.addedAt.localeCompare(a.addedAt)).slice(0, 5),
     inProgress: inProgress.slice(0, 3),
     collections: collections.previews().slice(0, 4),
     annotations: empty

@@ -21,10 +21,12 @@ import "./styles/notes.css";
 import "./styles/settings.css";
 import "./styles/imports.css";
 import "./styles/details.css";
+import "./styles/audio.css";
 import "./styles/web.css";
 import { isApp, isWeb } from "./api";
 import { WebGate } from "./web/WebConnect";
 import { runBeforeQuit } from "./lib/beforeQuit";
+import { PlayerProvider } from "./audio/player";
 
 // Closing the window another way (Alt+F4, the taskbar) asks the page to
 // finish saving, then quit.
@@ -54,13 +56,15 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ToastProvider>
       <AppSettingsProvider>
-        {isWeb ? (
-          <WebGate>
+        <PlayerProvider>
+          {isWeb ? (
+            <WebGate>
+              <App />
+            </WebGate>
+          ) : (
             <App />
-          </WebGate>
-        ) : (
-          <App />
-        )}
+          )}
+        </PlayerProvider>
       </AppSettingsProvider>
     </ToastProvider>
   </StrictMode>,

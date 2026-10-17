@@ -9,6 +9,9 @@ import { DetailsHost } from "./details/DetailsHost";
 import { onShowBookDetails } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Notes } from "./notes/Notes";
+import { Audiobooks } from "./audio/Audiobooks";
+import { PlayerBar } from "./audio/PlayerBar";
+import { usePlayer } from "./audio/player";
 import { useToast } from "./components/Toast";
 import { Home } from "./home/Home";
 import { Imports, importCounts } from "./imports/Imports";
@@ -49,6 +52,8 @@ export function App() {
   const wasRunning = useRef(false);
   const [libraryView, setLibraryView] = useState<LibraryView>(() => initialView("books"));
   const [documentsView, setDocumentsView] = useState<LibraryView>(() => initialView("documents"));
+  const [audiobooksView, setAudiobooksView] = useState<LibraryView>(() => initialView("audiobooks"));
+  const player = usePlayer();
   // The book the details page shows, and the page to go back to.
   const [details, setDetails] = useState<{ bookId: string; from: Route } | null>(null);
   const [searchText, setSearchText] = useState("");
@@ -99,6 +104,14 @@ export function App() {
     });
   }, []);
 
+  const changeAudiobooksView = useCallback((change: Partial<LibraryView>) => {
+    setAudiobooksView((v) => {
+      const next = { ...v, ...change, page: change.page ?? 0 };
+      rememberView(next, "audiobooks");
+      return next;
+    });
+  }, []);
+
   // Any book menu can open the details page.
   const routeNow = useRef(route);
   routeNow.current = route;
@@ -126,6 +139,7 @@ export function App() {
       // Typing on the Library page filters it straight away, from page one.
       setLibraryView((v) => (v.page === 0 ? v : { ...v, page: 0 }));
       setDocumentsView((v) => (v.page === 0 ? v : { ...v, page: 0 }));
+      setAudiobooksView((v) => (v.page === 0 ? v : { ...v, page: 0 }));
     },
     [],
   );
@@ -262,7 +276,7 @@ export function App() {
   if (reading) return <Reader key={reading.bookId} bookId={reading.bookId} openAt={reading.at} shell={shell} onClose={closeBook} />;
 
   return (
-    <div className={`app${collapsed ? " sidebar-collapsed" : ""}`}>
+    <div className={`app${collapsed ? " sidebar-collapsed" : ""}${player.book ? " has-player" : ""}`}>
       <Sidebar
         route={route === "book" && details ? details.from : route}
         collapsed={collapsed}
@@ -278,8 +292,8 @@ export function App() {
           profile={profile}
           search={searchText}
           onSearchChange={changeSearch}
-          placeholder={route === "notes" ? "Search notes, books, authors or words…" : undefined}
-          onSearchSubmit={() => route !== "notes" && route !== "documents" && setRoute("library")}
+          placeholder={route === "notes" ? "Search notes, books, authors or words…" : route === "audiobooks" ? "Search audiobooks…" : undefined}
+          onSearchSubmit={() => route !== "notes" && route !== "documents" && route !== "audiobooks" && setRoute("library")}
           onChooseAvatar={chooseAvatar}
           onClearAvatar={clearAvatar}
           onImportBooks={importBooks}
@@ -346,6 +360,18 @@ export function App() {
               onOpenBook={openBook}
               onChanged={refresh}
             />
+          ) : route === "audiobooks" ? (
+            <Audiobooks
+              view={audiobooksView}
+              search={searchText}
+              refreshKey={refreshKey}
+              onChange={changeAudiobooksView}
+              onClearSearch={() => changeSearch("")}
+              onImportBooks={importBooks}
+              onImportFolder={importFolder}
+              onOpenCollection={showCollection}
+              onReadAlong={(ebookId) => openBook(ebookId)}
+            />
           ) : route === "imports" ? (
             <Imports
               items={imports}
@@ -385,6 +411,7 @@ export function App() {
           Imported {importCounts(imports).done} of {importCounts(imports).total} books <span className="import-progress-link">View</span>
         </button>
       )}
+      <PlayerBar onShowAudiobooks={() => navigate("audiobooks")} />
       <AddToCollectionHost onChanged={refresh} />
       <BookDialogsHost onChanged={refresh} />
       <DetailsHost onChanged={refresh} />

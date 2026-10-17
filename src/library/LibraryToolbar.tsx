@@ -26,6 +26,8 @@ export function LibraryToolbar({
   formats,
   tags,
   genres,
+  authors = [],
+  narrators = [],
   allLabel,
   selecting,
   onSelecting,
@@ -36,6 +38,9 @@ export function LibraryToolbar({
   formats: string[];
   tags: string[];
   genres: string[];
+  /** Audiobooks only: who wrote and who reads them. */
+  authors?: string[];
+  narrators?: string[];
   /** The first tab's name, when it isn't "All books". */
   allLabel?: string;
   selecting: boolean;
@@ -43,7 +48,18 @@ export function LibraryToolbar({
   onChange: (change: Partial<LibraryView>) => void;
 }) {
   const sortLabel = SORTS.find((s) => s.sort === view.sort)?.label;
-  const filterCount = view.formats.length + (view.location ? 1 : 0) + view.tags.length + view.genres.length;
+  const filterCount =
+    view.formats.length + (view.location ? 1 : 0) + view.tags.length + view.genres.length + view.authors.length + view.narrators.length;
+  const toggle = (list: "authors" | "narrators", name: string) =>
+    onChange({ [list]: view[list].includes(name) ? view[list].filter((x) => x !== name) : [...view[list], name] });
+  const names = (list: "authors" | "narrators", heading: string, known: string[]): MenuEntry[] =>
+    known.length || view[list].length
+      ? [
+          "divider",
+          { heading: <strong>{heading}</strong> },
+          ...[...new Set([...known, ...view[list]])].map((n) => ({ label: n, checked: view[list].includes(n), onSelect: () => toggle(list, n) })),
+        ]
+      : [];
   const toggleGenre = (g: string) =>
     onChange({ genres: view.genres.includes(g) ? view.genres.filter((x) => x !== g) : [...view.genres, g] });
   const toggleTag = (t: string) => onChange({ tags: view.tags.includes(t) ? view.tags.filter((x) => x !== t) : [...view.tags, t] });
@@ -76,10 +92,12 @@ export function LibraryToolbar({
           })),
         ] as MenuEntry[])
       : []),
+    ...names("authors", "Authors", authors),
+    ...names("narrators", "Narrators", narrators),
     ...(filterCount
       ? ([
           "divider",
-          { label: "Clear filters", onSelect: () => onChange({ formats: [], location: null, tags: [], genres: [] }) },
+          { label: "Clear filters", onSelect: () => onChange({ formats: [], location: null, tags: [], genres: [], authors: [], narrators: [] }) },
         ] as MenuEntry[])
       : []),
   ];
