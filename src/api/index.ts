@@ -11,6 +11,7 @@ import type {
   CollectionRef,
   CollectionSummary,
   CollectionsOverview,
+  GoodreadsImport,
   HomeViewModel,
   ImportResult,
   LibraryInfo,
@@ -38,6 +39,10 @@ export interface Api {
   getCollections(): Promise<CollectionPreview[]>;
   setFavorite(bookId: string, favorite: boolean): Promise<void>;
   setWantToRead(bookId: string, want: boolean): Promise<void>;
+  /** 1 to 5 stars, or null to clear. */
+  setRating(bookId: string, rating: number | null): Promise<void>;
+  /** Asks for a Goodreads export file and brings it in. Null if cancelled. */
+  importGoodreads(): Promise<GoodreadsImport | null>;
   getProfile(): Promise<Profile>;
   /** Asks for a picture, copies it into TBV, and returns the new profile. Null if cancelled. */
   chooseAvatar(): Promise<Profile | null>;
@@ -139,6 +144,17 @@ function appApi(): Api {
     getCollections: async () => (await core).invoke<CollectionPreview[]>("get_collections"),
     setFavorite: async (bookId, favorite) => (await core).invoke("set_favorite", { bookId, favorite }),
     setWantToRead: async (bookId, want) => (await core).invoke("set_want_to_read", { bookId, want }),
+    setRating: async (bookId, rating) => (await core).invoke("set_rating", { bookId, rating }),
+    importGoodreads: async () => {
+      const [path] = asList(
+        await (await dialog).open({
+          multiple: false,
+          title: "Import your Goodreads export",
+          filters: [{ name: "Goodreads export", extensions: ["csv"] }],
+        }),
+      );
+      return path ? (await core).invoke<GoodreadsImport>("import_goodreads", { path }) : null;
+    },
     getProfile: async () => (await core).invoke<Profile>("get_profile"),
     chooseAvatar: async () => {
       const [path] = asList(

@@ -41,6 +41,8 @@ function book(title: string, author: string, extra: Partial<BookPreview> = {}): 
     remotePositions: [],
     favorite: false,
     wantToRead: false,
+    rating: null,
+    finishedAt: extra.status === "read" ? ago(n * 3) : null,
     ...extra,
   };
 }
@@ -62,19 +64,19 @@ let books: BookPreview[] = [
   book("Middlemarch", "George Eliot", reading(0.18, 2)),
   book("The Moonstone", "Wilkie Collins", reading(0.71, 5)),
   book("Frankenstein", "Mary Shelley", { availability: "cloud", wantToRead: true }),
-  book("Jane Eyre", "Charlotte Brontë", { favorite: true }),
-  book("Moby-Dick", "Herman Melville", { status: "read", totalProgression: 1, lastOpenedAt: ago(30) }),
+  book("Jane Eyre", "Charlotte Brontë", { favorite: true, rating: 4 }),
+  book("Moby-Dick", "Herman Melville", { status: "read", totalProgression: 1, lastOpenedAt: ago(30), rating: 4 }),
   book("The Picture of Dorian Gray", "Oscar Wilde", { wantToRead: true }),
-  book("A Study in Scarlet", "Arthur Conan Doyle", { series: "Sherlock Holmes", seriesIndex: 1, status: "read", totalProgression: 1 }),
+  book("A Study in Scarlet", "Arthur Conan Doyle", { series: "Sherlock Holmes", seriesIndex: 1, status: "read", totalProgression: 1, rating: 5 }),
   book("The Sign of the Four", "Arthur Conan Doyle", { series: "Sherlock Holmes", seriesIndex: 2, ...reading(0.33, 9) }),
   book("The Hound of the Baskervilles", "Arthur Conan Doyle", { series: "Sherlock Holmes", seriesIndex: 5 }),
   book("The Warden", "Anthony Trollope", { series: "Chronicles of Barsetshire", seriesIndex: 1 }),
   book("Barchester Towers", "Anthony Trollope", { series: "Chronicles of Barsetshire", seriesIndex: 2, wantToRead: true }),
-  book("Dracula", "Bram Stoker", { favorite: true, status: "read", totalProgression: 1 }),
+  book("Dracula", "Bram Stoker", { favorite: true, status: "read", totalProgression: 1, rating: 5 }),
   book("Wuthering Heights", "Emily Brontë"),
   book("Persuasion", "Jane Austen", { favorite: true }),
   book("Emma", "Jane Austen"),
-  book("Great Expectations", "Charles Dickens", { status: "read", totalProgression: 1 }),
+  book("Great Expectations", "Charles Dickens", { status: "read", totalProgression: 1, rating: 3 }),
   book("Bleak House", "Charles Dickens", { wantToRead: true }),
   book("The Woman in White", "Wilkie Collins"),
   book("North and South", "Elizabeth Gaskell"),
@@ -135,6 +137,7 @@ function queryBooks(all: BookPreview[], q: LibraryQuery): LibraryPage {
       nullsLast(a.seriesIndex, b.seriesIndex, (x, y) => x - y) ||
       byTitle(a, b),
     progress: (a, b) => (b.totalProgression ?? 0) - (a.totalProgression ?? 0) || byTitle(a, b),
+    rating: (a, b) => nullsLast(a.rating, b.rating, (x, y) => y - x) || byTitle(a, b),
   };
   list = [...list].sort(sorters[q.sort]);
   const pageSize = q.pageSize || 24;
@@ -250,6 +253,19 @@ export function previewApi(): Api {
     getCollections: async () => collections.previews(),
     setFavorite: async (bookId, favorite) => update(bookId, { favorite }),
     setWantToRead: async (bookId, wantToRead) => update(bookId, { wantToRead }),
+    setRating: async (bookId, rating) => update(bookId, { rating }),
+    // The preview has no files to read, so it shows what an import reports.
+    importGoodreads: async () => ({
+      rows: 214,
+      matched: 38,
+      ratings: 31,
+      statuses: 26,
+      upNext: 9,
+      favourites: 4,
+      collectionsCreated: ["Gothic", "Victorian"],
+      collectionBooks: 17,
+      notFound: ["Middlemarch by George Eliot", "Bleak House by Charles Dickens"],
+    }),
     getProfile: async () => profile,
     chooseAvatar: async () => null,
     clearAvatar: async () => (profile = { avatarPath: null }),

@@ -104,6 +104,10 @@ pub struct BookPreview {
     pub remote_positions: Vec<RemotePosition>,
     pub favorite: bool,
     pub want_to_read: bool,
+    /// Your own rating, 1 to 5 stars.
+    pub rating: Option<u8>,
+    /// When you finished it.
+    pub finished_at: Option<IsoUtc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -212,6 +216,8 @@ pub enum SortOrder {
     Author,
     Series,
     Progress,
+    /// Your highest rated first; unrated books last.
+    Rating,
 }
 
 /// Where a book's file is, for filtering. `Missing` books count as on device.
@@ -409,6 +415,8 @@ pub struct CollectionSummary {
     pub picture_path: Option<String>,
     pub pinned: bool,
     pub count: u32,
+    /// The average of your ratings of its books, if you've rated any.
+    pub rating: Option<f64>,
     /// Its first three books, for the strip of covers.
     pub covers: Vec<CoverRef>,
     pub created_at: IsoUtc,
@@ -445,6 +453,8 @@ impl SmartKind {
 pub struct SmartSummary {
     pub kind: SmartKind,
     pub count: u32,
+    /// The average of your ratings of its books, if you've rated any.
+    pub rating: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

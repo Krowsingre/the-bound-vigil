@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Annotation, BookPreview, HighlightColor, ReaderBook } from "../api/types";
+import { api } from "../api";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { ProgressBar } from "../components/ProgressBar";
+import { StarRating } from "../components/StarRating";
 import { authorLine, percent, relativeTime } from "../lib/format";
 import {
   annotationPage,
@@ -364,6 +366,13 @@ export function RightPanel({
 
 function BookInfo({ info, totalPages }: { info: ReaderBook; totalPages: number }) {
   const b = info.book;
+  const [rating, setRating] = useState(b.rating);
+  useEffect(() => setRating(b.rating), [b.id, b.rating]);
+  const rate = (next: number | null) => {
+    const before = rating;
+    setRating(next);
+    api.setRating(b.id, next).catch(() => setRating(before));
+  };
   const rows: [string, string | null][] = [
     ["Title", b.title],
     ["Author", b.authors.length ? b.authors.join(", ") : null],
@@ -374,9 +383,14 @@ function BookInfo({ info, totalPages }: { info: ReaderBook; totalPages: number }
     ["Pages", totalPages > 0 ? formatNumber(totalPages) : null],
     ["File size", info.fileSize > 0 ? `${(info.fileSize / 1_048_576).toFixed(1)} MB` : null],
     ["Added", new Date(b.addedAt).toLocaleDateString()],
+    ["Finished", b.finishedAt ? new Date(b.finishedAt).toLocaleDateString() : null],
   ];
   return (
     <div className="book-info">
+      <div className="book-info-rating">
+        <span>Your rating</span>
+        <StarRating value={rating} onChange={rate} />
+      </div>
       <dl>
         {rows
           .filter(([, v]) => v)

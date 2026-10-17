@@ -1,12 +1,15 @@
+import { createElement } from "react";
 import type { BookPreview } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
 import type { MenuEntry } from "../components/Menu";
+import { StarRating } from "../components/StarRating";
 
 export interface BookActions {
   open: (book: BookPreview) => void;
   setStatus: (book: BookPreview, status: BookPreview["status"]) => void;
   setFavorite: (book: BookPreview, favorite: boolean) => void;
   setWantToRead: (book: BookPreview, want: boolean) => void;
+  setRating: (book: BookPreview, rating: number | null) => void;
   /** Set when the books are shown inside one of the user's collections. */
   removeFromCollection?: { name: string; remove: (book: BookPreview) => void };
 }
@@ -15,6 +18,14 @@ export interface BookActions {
 export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
   return [
     { label: "Book details", hint: "Coming soon", disabled: true },
+    {
+      heading: createElement(
+        "span",
+        { className: "menu-rating" },
+        "Your rating",
+        createElement(StarRating, { value: book.rating, size: 18, onChange: (r) => actions.setRating(book, r) }),
+      ),
+    },
     "divider",
     book.favorite
       ? { label: "Remove from favourites", icon: "heart", onSelect: () => actions.setFavorite(book, false) }
@@ -52,7 +63,7 @@ export function cannotOpen(book: BookPreview): string | null {
 
 /** The shared actions, refreshing the current view after each change. */
 export function makeBookActions(
-  api: Pick<import("../api").Api, "setBookStatus" | "setFavorite" | "setWantToRead">,
+  api: Pick<import("../api").Api, "setBookStatus" | "setFavorite" | "setWantToRead" | "setRating">,
   toast: (text: string) => void,
   refresh: () => void,
   openBook: (bookId: string) => void,
@@ -68,5 +79,6 @@ export function makeBookActions(
     setStatus: (book, status) => void run(book, api.setBookStatus(book.id, status)),
     setFavorite: (book, favorite) => void run(book, api.setFavorite(book.id, favorite)),
     setWantToRead: (book, want) => void run(book, api.setWantToRead(book.id, want)),
+    setRating: (book, rating) => void run(book, api.setRating(book.id, rating)),
   };
 }

@@ -24,7 +24,8 @@ pub(crate) const BOOK_COLUMNS: &str = r#"
            COALESCE(o_synopsis.value, b.synopsis),
            b.added_at, b.last_opened_at, b.status, b.total_progression, b.resume_locator,
            lf.path, lf.cover_path,
-           COALESCE(o_series.value, b.series), b.series_index, b.favorite, b.want_to_read
+           COALESCE(o_series.value, b.series), b.series_index, b.favorite, b.want_to_read,
+           b.rating, b.finished_at
 "#;
 
 /// The joins that make the effective metadata available to WHERE and ORDER BY.
@@ -61,16 +62,17 @@ impl Library {
         let now = now_utc();
         match status {
             ReadStatus::Unread => self.conn.execute(
-                "UPDATE books SET status = 'unread', total_progression = NULL, resume_locator = NULL WHERE id = ?1",
+                "UPDATE books SET status = 'unread', total_progression = NULL, resume_locator = NULL, finished_at = NULL WHERE id = ?1",
                 params![book_id],
             )?,
             ReadStatus::InProgress => self.conn.execute(
                 "UPDATE books SET status = 'in_progress', last_opened_at = COALESCE(last_opened_at, ?2) WHERE id = ?1",
                 params![book_id, now],
             )?,
+            // Marking a book read again keeps the day it was first finished.
             ReadStatus::Read => self.conn.execute(
-                "UPDATE books SET status = 'read' WHERE id = ?1",
-                params![book_id],
+                "UPDATE books SET status = 'read', finished_at = COALESCE(finished_at, ?2) WHERE id = ?1",
+                params![book_id, now],
             )?,
         };
         Ok(())
@@ -201,6 +203,8 @@ pub(crate) fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
         series_index: r.get(13)?,
         favorite: r.get(14)?,
         want_to_read: r.get(15)?,
+        rating: r.get(16)?,
+        finished_at: r.get(17)?,
     })
 }
 

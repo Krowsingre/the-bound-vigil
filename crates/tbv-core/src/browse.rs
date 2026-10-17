@@ -2,7 +2,7 @@
 
 use rusqlite::{params, params_from_iter, types::Value};
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM};
 use crate::library::Library;
 use crate::model::*;
@@ -39,6 +39,7 @@ fn order_by(sort: SortOrder) -> String {
             "{SERIES} IS NULL, {SERIES} COLLATE NOCASE, b.series_index IS NULL, b.series_index, {title}"
         ),
         SortOrder::Progress => format!("COALESCE(b.total_progression, 0) DESC, {title}"),
+        SortOrder::Rating => format!("b.rating IS NULL, b.rating DESC, {title}"),
     }
 }
 
@@ -169,6 +170,15 @@ impl Library {
             "UPDATE books SET favorite = ?2 WHERE id = ?1",
             params![book_id, favorite],
         )?;
+        Ok(())
+    }
+
+    /// Sets your star rating, 1 to 5, or clears it with `None`.
+    pub fn set_rating(&self, book_id: &str, rating: Option<u8>) -> Result<()> {
+        if rating.is_some_and(|r| !(1..=5).contains(&r)) {
+            return Err(Error::Unsuitable("a rating is 1 to 5 stars".into()));
+        }
+        self.conn.execute("UPDATE books SET rating = ?2 WHERE id = ?1", params![book_id, rating])?;
         Ok(())
     }
 

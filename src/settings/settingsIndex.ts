@@ -115,7 +115,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "appearance",
     section: "typography",
     label: "Typography",
-    words: "font typeface interface reading lora serif size",
+    words: "font typeface interface reading lora echolume serif size",
   },
   {
     tab: "appearance",
@@ -140,6 +140,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     section: "folder",
     label: "Library folder",
     words: "folder location storage files explorer size",
+  },
+  {
+    tab: "library",
+    section: "goodreads",
+    label: "Bring in from Goodreads",
+    words: "goodreads import export csv ratings stars shelves read dates",
   },
   {
     tab: "collections",

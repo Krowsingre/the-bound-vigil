@@ -244,6 +244,13 @@ const MIGRATIONS: &[&str] = &[
     DROP TABLE local_files;
     ALTER TABLE local_files_v6 RENAME TO local_files;
     "#,
+    // v7: your own star rating (1 to 5) and the day you finished a book, and
+    // the ISBN printed in it, which lets a Goodreads export find the book.
+    r#"
+    ALTER TABLE books ADD COLUMN rating INTEGER CHECK (rating BETWEEN 1 AND 5);
+    ALTER TABLE books ADD COLUMN finished_at TEXT;
+    ALTER TABLE books ADD COLUMN isbn TEXT;
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
@@ -420,8 +427,8 @@ impl Library {
 
         let tx = self.conn.transaction()?;
         tx.execute(
-            "INSERT INTO books (id, title, authors, format, file_size, synopsis, publisher, language, added_at, series, series_index)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO books (id, title, authors, format, file_size, synopsis, publisher, language, added_at, series, series_index, isbn)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 book_id,
                 title,
@@ -434,6 +441,7 @@ impl Library {
                 now_utc(),
                 metadata.series,
                 metadata.series_index,
+                metadata.isbn,
             ],
         )?;
         tx.execute(

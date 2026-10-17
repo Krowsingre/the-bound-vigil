@@ -129,11 +129,12 @@ impl Library {
             .ok_or_else(|| Error::Unsuitable("that collection no longer exists".into()))
     }
 
-    fn member_count(&self, members: &Members) -> Result<u32> {
+    /// How many books belong, and the average of your ratings of them.
+    fn member_stats(&self, members: &Members) -> Result<(u32, Option<f64>)> {
         Ok(self.conn.query_row(
-            &format!("SELECT COUNT(*) {BOOK_FROM} AND {}", members.condition),
+            &format!("SELECT COUNT(*), AVG(b.rating) {BOOK_FROM} AND {}", members.condition),
             params_from_iter(members.values.iter()),
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )?)
     }
 
@@ -203,8 +204,10 @@ impl Library {
             .map(
                 |(id, name, description, kind, badge, picture, pinned, created_at, updated_at)| {
                     let members = self.members(&CollectionRef::Collection { id: id.clone() })?;
+                    let (count, rating) = self.member_stats(&members)?;
                     Ok(CollectionSummary {
-                        count: self.member_count(&members)?,
+                        count,
+                        rating,
                         covers: self.member_covers(&members)?,
                         picture_path: self.picture_path(picture.as_deref())?,
                         id,
@@ -233,10 +236,8 @@ impl Library {
             .iter()
             .map(|&kind| {
                 let members = self.members(&CollectionRef::Smart { smart: kind })?;
-                Ok(SmartSummary {
-                    kind,
-                    count: self.member_count(&members)?,
-                })
+                let (count, rating) = self.member_stats(&members)?;
+                Ok(SmartSummary { kind, count, rating })
             })
             .collect::<Result<_>>()?;
         Ok(CollectionsOverview {

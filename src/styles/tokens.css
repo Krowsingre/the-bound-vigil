@@ -24,6 +24,7 @@
   --accent-text: var(--ash-pale-soft);
   --focus: #6b8aa6;
   --danger: #8c3b3b;
+  --star: #b07d24;
   --shadow: 0 1px 2px rgb(18 20 22 / 0.08), 0 4px 16px rgb(18 20 22 / 0.06);
 
   /* Georgia where installed (Windows, macOS); Gelasio, a bundled look-alike with the same
@@ -55,6 +56,7 @@
     --accent: #8fa3b5;
     --accent-text: var(--crow-ink-deep);
     --danger: #d08a8a;
+    --star: #d9a03f;
     --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
     color-scheme: dark;
   }
@@ -72,6 +74,7 @@
   --accent: #8fa3b5;
   --accent-text: var(--crow-ink-deep);
   --danger: #d08a8a;
+  --star: #d9a03f;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
   color-scheme: dark;
 }
@@ -104,6 +107,10 @@
 /* Settings > Appearance: interface font */
 :root[data-ui-font="serif"] {
   --font-sans: Georgia, "Gelasio", serif;
+}
+
+:root[data-ui-font="echolume"] {
+  --font-sans: "Echolume", system-ui, "Segoe UI", sans-serif;
 }
 
 /* Settings > Accessibility */

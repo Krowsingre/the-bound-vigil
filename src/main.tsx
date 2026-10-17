@@ -8,6 +8,8 @@ import "@fontsource/gelasio/400.css";
 import "@fontsource/gelasio/400-italic.css";
 // The reader's default font, also used to preview it in the text settings.
 import "@fontsource/lora/400.css";
+// Krowsingre Publishing's own typeface, offered for reading and the interface.
+import "./styles/echolume.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import "./styles/shell.css";

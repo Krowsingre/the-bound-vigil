@@ -8,7 +8,7 @@ import type { BookPreview } from "../api/types";
 export type ThemeChoice = "light" | "dark" | "system" | "adaptive";
 export type AdaptiveBase = "system" | "light" | "dark";
 export type InterfaceScale = "small" | "medium" | "large";
-export type InterfaceFont = "system" | "serif";
+export type InterfaceFont = "system" | "serif" | "echolume";
 export type SurfaceStyle = "clean" | "matte" | "paper";
 export type SyncFrequency = "automatic" | "15min" | "hourly" | "manual";
 export type ConflictRule = "recent" | "ask" | "local" | "cloud";
@@ -99,7 +99,7 @@ export function parseAppSettings(json: string | null): AppSettings {
     adaptiveBase: oneOf(raw.adaptiveBase, ["system", "light", "dark"], d.adaptiveBase),
     adaptiveStrength: typeof raw.adaptiveStrength === "number" ? Math.min(1, Math.max(0, raw.adaptiveStrength)) : d.adaptiveStrength,
     scale: oneOf(raw.scale, ["small", "medium", "large"], d.scale),
-    interfaceFont: oneOf(raw.interfaceFont, ["system", "serif"], d.interfaceFont),
+    interfaceFont: oneOf(raw.interfaceFont, ["system", "serif", "echolume"], d.interfaceFont),
     surface: oneOf(raw.surface, ["clean", "matte", "paper"], d.surface),
     highContrast: flag(raw.highContrast, d.highContrast),
     reduceMotion: flag(raw.reduceMotion, d.reduceMotion),

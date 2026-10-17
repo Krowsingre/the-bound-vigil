@@ -87,6 +87,19 @@ async fn set_favorite(
 }
 
 #[tauri::command]
+async fn set_rating(state: State<'_, AppLibrary>, book_id: String, rating: Option<u8>) -> CommandResult<()> {
+    with_library(state, move |library| library.set_rating(&book_id, rating)).await
+}
+
+#[tauri::command]
+async fn import_goodreads(
+    state: State<'_, AppLibrary>,
+    path: String,
+) -> CommandResult<tbv_core::goodreads::GoodreadsImport> {
+    with_library(state, move |library| library.import_goodreads(std::path::Path::new(&path))).await
+}
+
+#[tauri::command]
 async fn set_want_to_read(
     state: State<'_, AppLibrary>,
     book_id: String,
@@ -555,6 +568,8 @@ pub fn run() {
             get_collections,
             set_favorite,
             set_want_to_read,
+            set_rating,
+            import_goodreads,
             get_profile,
             set_avatar,
             clear_avatar,

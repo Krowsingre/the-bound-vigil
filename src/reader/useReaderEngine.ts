@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { Annotation } from "../api/types";
 import type { Relocation, SearchResult, TocItem, View } from "../vendor/foliate-js/view.js";
+import { fitTextToPage, hexToRgb, luminance } from "./darkText";
 import { highlightHex, readerCss, WIDTHS, type PageColors, type ReaderSettings } from "./settings";
 
 export interface TextSelection {
@@ -49,6 +50,8 @@ function windowRect(doc: Document, range: Range): DOMRect {
   return new DOMRect(r.left + (frame?.left ?? 0), r.top + (frame?.top ?? 0), r.width, r.height);
 }
 
+const isDarkPage = (colors: PageColors) => luminance(hexToRgb(colors.background)) < 0.2;
+
 /** Styles inside the pages, and page layout around them. */
 function applyLayout(view: View, settings: ReaderSettings, colors: PageColors) {
   const r = view.renderer;
@@ -59,6 +62,7 @@ function applyLayout(view: View, settings: ReaderSettings, colors: PageColors) {
   r.setAttribute("margin", "32px");
   // Fixed-layout books (comics, pre-paginated EPUBs) keep their own styles.
   r.setStyles?.(readerCss(settings, colors));
+  for (const { doc } of r.getContents?.() ?? []) fitTextToPage(doc, colors, isDarkPage(colors));
 }
 
 export function useReaderEngine({
@@ -123,6 +127,11 @@ export function useReaderEngine({
 
         v.addEventListener("load", (e) => {
           const { doc, index } = (e as CustomEvent<{ doc: Document; index: number }>).detail;
+          // After the book's own styles have applied, so their colours are what's read.
+          requestAnimationFrame(() => {
+            const { colors } = styleRef.current;
+            fitTextToPage(doc, colors, isDarkPage(colors));
+          });
           const check = () => {
             const selection = doc.getSelection();
             const text = selection?.toString().trim() ?? "";

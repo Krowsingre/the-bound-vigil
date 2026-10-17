@@ -149,6 +149,11 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
     return c.kind === "reading_list" ? list : list.reverse();
   }
 
+  function averageRating(list: BookPreview[]): number | null {
+    const rated = list.map((b) => b.rating).filter((r): r is number => r !== null);
+    return rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : null;
+  }
+
   function summary(c: Stored): CollectionSummary {
     const members = membersOf(c);
     const coverBook = c.picture?.startsWith("cover:") ? live().get(c.picture.slice(6)) : undefined;
@@ -162,6 +167,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
       picturePath: coverBook?.coverPath ?? null,
       pinned: c.pinned,
       count: members.length,
+      rating: averageRating(members),
       covers: members.slice(0, 3).map(coverOf),
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
@@ -193,7 +199,10 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
       for (const b of books()) if (b.series) series.set(b.series, [...(series.get(b.series) ?? []), b]);
       return {
         pinned: stored.filter((c) => c.pinned).map(summary),
-        smart: SMART.map((kind) => ({ kind, count: books().filter(smartBooks[kind]).length })),
+        smart: SMART.map((kind) => {
+          const list = books().filter(smartBooks[kind]);
+          return { kind, count: list.length, rating: averageRating(list) };
+        }),
         collections: stored.filter((c) => c.kind !== "shelf").map(summary),
         series: [...series.entries()]
           .sort(([a], [b]) => a.localeCompare(b))

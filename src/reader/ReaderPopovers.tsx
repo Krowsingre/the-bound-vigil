@@ -18,16 +18,19 @@ function Choice<T extends string | number>({
   value,
   options,
   onChange,
+  wrap = false,
 }: {
   label: string;
   value: T;
   options: { value: T; label: string; style?: React.CSSProperties }[];
   onChange: (value: T) => void;
+  /** Lets buttons keep their natural width and flow onto a second line. */
+  wrap?: boolean;
 }) {
   return (
     <fieldset className="choice">
       <legend>{label}</legend>
-      <div className="choice-row" role="radiogroup" aria-label={label}>
+      <div className={`choice-row${wrap ? " is-wrapping" : ""}`} role="radiogroup" aria-label={label}>
         {options.map((o) => (
           <button
             key={String(o.value)}
@@ -47,7 +50,7 @@ function Choice<T extends string | number>({
 }
 
 const THEME_OPTIONS: { value: ReadingTheme; label: string; style?: React.CSSProperties }[] = [
-  { value: "auto", label: "Match app" },
+  { value: "auto", label: "Auto" },
   { value: "light", label: "Light", style: { background: PAGE_COLORS.light.background, color: PAGE_COLORS.light.text } },
   { value: "paper", label: "Paper", style: { background: PAGE_COLORS.paper.background, color: PAGE_COLORS.paper.text } },
   { value: "dark", label: "Dark", style: { background: PAGE_COLORS.dark.background, color: PAGE_COLORS.dark.text } },
@@ -59,10 +62,11 @@ export function TextSettings({ settings, onChange }: { settings: ReaderSettings;
     <div className="text-settings">
       <Choice
         label="Font"
+        wrap
         value={settings.font}
         options={FONTS.map((f) => ({
           ...f,
-          style: { fontFamily: f.value === "lora" ? '"Lora", serif' : f.value === "georgia" ? "var(--font-serif)" : f.value === "sans" ? "var(--font-sans)" : undefined },
+          style: { fontFamily: f.value === "lora" ? '"Lora", serif' : f.value === "georgia" ? "var(--font-serif)" : f.value === "sans" ? "var(--font-sans)" : f.value === "echolume" ? '"Echolume", sans-serif' : undefined },
         }))}
         onChange={(font) => onChange({ font })}
       />
