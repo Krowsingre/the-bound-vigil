@@ -18,6 +18,7 @@ type Load<T> = { state: "loading" } | { state: "error"; message: string } | { st
 const WORDS = {
   books: { title: "Library", eyebrow: "Your personal archive", one: "book", many: "books", total: "Total books" },
   documents: { title: "Documents", eyebrow: "PDF, Word and text files", one: "document", many: "documents", total: "Total documents" },
+  audiobooks: { title: "Audiobooks", eyebrow: "Your listening shelf", one: "audiobook", many: "audiobooks", total: "Total audiobooks" },
 } as const;
 
 export function Library({

@@ -6,10 +6,12 @@ import type { Api } from "./index";
 import { previewCollections } from "../preview/collections";
 import { previewNotes, sampleAnnotations } from "../preview/notes";
 import { sampleEpub } from "../preview/sampleEpub";
-import { cleanTag, queryBooks, tagCounts } from "../lib/queryBooks";
+import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
 import { duplicateGroups } from "../lib/duplicates";
 import { cleanValue, DETAIL_FIELDS, previewFields } from "../lib/details";
 import type {
+  Audiobook,
+  AudioChapter,
   DetailField,
   DetailFieldName,
   ProviderView,
@@ -138,7 +140,88 @@ let books: BookPreview[] = [
   book("Crime and Punishment", "Fyodor Dostoevsky", { status: "read", totalProgression: 1, format: "fb2" }),
   book("A Tale of Two Cities", "Charles Dickens"),
   book("Dracula", "Bram Stoker", { format: "pdf" }),
+  book("Persuasion", "Jane Austen", {
+    format: "tbvaudio",
+    narrators: ["Juliet Stevenson"],
+    genres: ["Romance", "Classics"],
+    ...reading(0.38, 0.05),
+  }),
+  book("The Hound of the Baskervilles", "Arthur Conan Doyle", {
+    format: "m4b",
+    narrators: ["Stephen Fry"],
+    series: "Sherlock Holmes",
+    seriesIndex: 5,
+    genres: ["Mystery"],
+    ...reading(0.12, 1),
+  }),
+  book("Carmilla", "Sheridan Le Fanu", { format: "mp3", narrators: ["Rosamund Pike"], genres: ["Gothic fiction", "Horror"] }),
+  book("The Time Machine", "H. G. Wells", { format: "m4b", narrators: ["Derek Jacobi"], genres: ["Science fiction"], status: "read", totalProgression: 1 }),
+  book("Northanger Abbey", "Jane Austen", { format: "m4b", narrators: ["Juliet Stevenson"], genres: ["Romance", "Gothic fiction"], availability: "cloud" }),
 ];
+
+// Sample audiobooks are short, so the preview plays them as silence of the right length.
+const audioParts = new Map<string, { chapters: string[]; parts: number[] }>([
+  ["Persuasion", { chapters: ["Chapter 1", "Chapter 2", "Chapter 3", "Chapter 4"], parts: [50, 45, 55, 40] }],
+  ["The Hound of the Baskervilles", { chapters: ["Mr. Sherlock Holmes", "The Curse of the Baskervilles", "The Problem", "Sir Henry Baskerville", "Three Broken Threads"], parts: [210] }],
+  ["Carmilla", { chapters: ["An Early Fright", "A Guest", "We Compare Notes"], parts: [40, 40, 40] }],
+  ["The Time Machine", { chapters: ["Introduction", "The Machine", "The Time Traveller Returns"], parts: [120] }],
+  ["Northanger Abbey", { chapters: ["Chapter 1", "Chapter 2"], parts: [90] }],
+]);
+for (const b of books)
+  if (isAudio(b.format)) {
+    const info = audioParts.get(b.title);
+    b.durationMs = (info?.parts ?? [60]).reduce((a, s) => a + s, 0) * 1000;
+    if (b.totalProgression) b.resumeLocator = { audioMs: Math.round(b.durationMs * b.totalProgression), totalProgression: b.totalProgression };
+  }
+
+function previewAudiobook(b: BookPreview, ebooks: BookPreview[], linked: Map<string, string>): Audiobook {
+  const info = audioParts.get(b.title) ?? { chapters: ["Chapter 1"], parts: [60] };
+  const durationMs = info.parts.reduce((a, s) => a + s, 0) * 1000;
+  let at = 0;
+  const parts = info.parts.map((s, i) => {
+    const part = { name: `${String(i + 1).padStart(2, "0")} ${b.title}.mp3`, startMs: at, durationMs: s * 1000 };
+    at += s * 1000;
+    return part;
+  });
+  // One chapter per part, or evenly through a single file.
+  const chapters: AudioChapter[] =
+    parts.length > 1
+      ? parts.map((p, i) => ({ title: info.chapters[i] ?? `Chapter ${i + 1}`, startMs: p.startMs }))
+      : info.chapters.map((title, i) => ({ title, startMs: Math.round((durationMs / info.chapters.length) * i) }));
+  const ebookId = linked.get(b.id);
+  const ebook = ebookId ? ebooks.find((e) => e.id === ebookId) : undefined;
+  return {
+    book: b,
+    narrators: b.narrators ?? [],
+    durationMs,
+    chapters,
+    parts,
+    positionMs: b.resumeLocator?.audioMs ?? 0,
+    ebook: ebook ? { id: ebook.id, name: ebook.title } : null,
+  };
+}
+
+/** A silent WAV of this length: 8 kHz, 8-bit mono. */
+function silence(seconds: number): string {
+  const samples = Math.round(seconds * 8000);
+  const buffer = new ArrayBuffer(44 + samples);
+  const v = new DataView(buffer);
+  const text = (at: number, s: string) => [...s].forEach((c, i) => v.setUint8(at + i, c.charCodeAt(0)));
+  text(0, "RIFF");
+  v.setUint32(4, 36 + samples, true);
+  text(8, "WAVEfmt ");
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true);
+  v.setUint32(28, 8000, true);
+  v.setUint16(32, 1, true);
+  v.setUint16(34, 8, true);
+  text(36, "data");
+  v.setUint32(40, samples, true);
+  new Uint8Array(buffer, 44).fill(128);
+  return URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+}
 
 const params = new URLSearchParams(location.search);
 const empty = params.has("empty");
@@ -261,6 +344,7 @@ export function previewApi(): Api {
         publisher: "Penguin Classics",
         language: "en",
         isbn: null,
+        narrators: isAudio(b.format) ? JSON.stringify(b.narrators ?? []) : null,
       });
       if (b.genres.length) fetched.set(id, { ...fetched.get(id), genres: { value: JSON.stringify(b.genres), source: "openlibrary" } });
     }
@@ -275,6 +359,8 @@ export function previewApi(): Api {
       edited: edited.get(id)?.[field] ?? null,
     }));
   const relayer = (id: string) => update(id, previewFields(detailFields(id)));
+  const linked = new Map<string, string>();
+  const sounds = new Map<string, string>();
   const find = (bookId: string) => {
     const b = books.find((x) => x.id === bookId);
     if (!b) throw new Error("This book is no longer in your library.");
@@ -330,6 +416,31 @@ export function previewApi(): Api {
     bookText: async () => "Chapter One\nThe lamps along the harbour wall were lit one by one.",
     fillCover: async () => false,
     fetchCover: async () => false,
+    audiobook: async (bookId) => previewAudiobook(find(bookId), books, linked),
+    saveListening: async (bookId, positionMs, chapter) => {
+      const b = find(bookId);
+      const total = b.durationMs ?? 0;
+      const progression = total ? Math.min(1, positionMs / total) : null;
+      update(bookId, {
+        resumeLocator: { audioMs: Math.round(positionMs), totalProgression: progression ?? undefined, chapter: chapter ?? undefined },
+        totalProgression: progression,
+        lastOpenedAt: new Date().toISOString(),
+        status: b.status === "unread" && positionMs > 0 ? "in_progress" : b.status,
+      });
+    },
+    linkEbook: async (audiobookId, ebookId) => {
+      if (ebookId) linked.set(audiobookId, ebookId);
+      else linked.delete(audiobookId);
+    },
+    audiobookForEbook: async (ebookId) => [...linked].find(([, e]) => e === ebookId)?.[0] ?? null,
+    audioUrl: (bookId, part) => {
+      const key = `${bookId}/${part}`;
+      if (!sounds.has(key)) {
+        const seconds = previewAudiobook(find(bookId), books, linked).parts[part]?.durationMs ?? 0;
+        sounds.set(key, silence(seconds / 1000));
+      }
+      return sounds.get(key)!;
+    },
     getProfile: async () => profile,
     chooseAvatar: async () => null,
     clearAvatar: async () => (profile = { avatarPath: null }),

@@ -3,6 +3,7 @@
 // clearly labelled sample library so screens can be looked at without the app.
 
 import type {
+  Audiobook,
   ProviderChoice,
   Annotation,
   AnnotationInput,
@@ -73,6 +74,16 @@ export interface Api {
   fillCover(bookId: string, picture: Uint8Array): Promise<boolean>;
   /** Downloads a cover found online, for a book that has none. */
   fetchCover(bookId: string, url: string): Promise<boolean>;
+  /** An audiobook's chapters, parts and your place in it. */
+  audiobook(bookId: string): Promise<Audiobook>;
+  /** Remembers where you are in an audiobook. */
+  saveListening(bookId: string, positionMs: number, chapter: string | null): Promise<void>;
+  /** Links an audiobook to its ebook for reading along, or unlinks it with null. */
+  linkEbook(audiobookId: string, ebookId: string | null): Promise<void>;
+  /** The audiobook linked to an ebook, for reading along. */
+  audiobookForEbook(ebookId: string): Promise<string | null>;
+  /** Where the player streams one part of an audiobook from, or null where it can't play here. */
+  audioUrl(bookId: string, part: number): string | null;
   getProfile(): Promise<Profile>;
   /** Asks for a picture, copies it into TBV, and returns the new profile. Null if cancelled. */
   chooseAvatar(): Promise<Profile | null>;
@@ -262,6 +273,14 @@ function appApi(): Api {
     bookText: async (bookId) => (await core).invoke<string>("book_text", { bookId }),
     fillCover: async (bookId, picture) => (await core).invoke<boolean>("fill_cover", picture, { headers: { "book-id": bookId } }),
     fetchCover: async (bookId, url) => (await core).invoke<boolean>("fetch_cover", { bookId, url }),
+    audiobook: async (bookId) => (await core).invoke<Audiobook>("audiobook", { bookId }),
+    saveListening: async (bookId, positionMs, chapter) =>
+      (await core).invoke("save_listening", { bookId, positionMs: Math.max(0, Math.round(positionMs)), chapter }),
+    linkEbook: async (audiobookId, ebookId) => (await core).invoke("link_ebook", { audiobookId, ebookId }),
+    audiobookForEbook: async (ebookId) => (await core).invoke<string | null>("audiobook_for_ebook", { ebookId }),
+    // Windows and Android reach custom schemes through http://<scheme>.localhost.
+    audioUrl: (bookId, part) =>
+      `${/windows|android/i.test(navigator.userAgent) ? "http://tbvaudio.localhost" : "tbvaudio://localhost"}/${encodeURIComponent(bookId)}/${part}`,
     getProfile: async () => (await core).invoke<Profile>("get_profile"),
     chooseAvatar: async () => {
       const [path] = asList(

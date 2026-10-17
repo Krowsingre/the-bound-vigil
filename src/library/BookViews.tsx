@@ -5,6 +5,7 @@ import { Menu } from "../components/Menu";
 import { ProgressBar } from "../components/ProgressBar";
 import { Stars } from "../components/StarRating";
 import { authorLine, percent } from "../lib/format";
+import { formatLabel } from "../lib/queryBooks";
 import { bookContextMenu, bookMenu, type BookActions } from "../home/bookActions";
 
 /** While choosing books for a change to many at once, a click picks a book instead of opening it. */
@@ -137,7 +138,7 @@ export function BookList({ books, actions, selection }: Props) {
             <span className="list-status">
               {book.status === "in_progress" ? <Progress book={book} /> : <span className="muted">{STATUS[book.status]}</span>}
             </span>
-            <span className="list-format muted">{book.format.toUpperCase()}</span>
+            <span className="list-format muted">{formatLabel(book.format)}</span>
             <span className="list-added muted">{new Date(book.addedAt).toLocaleDateString()}</span>
             <MoreMenu book={book} actions={actions} />
           </li>
@@ -187,7 +188,7 @@ export function BookTable({ books, actions, selection }: Props) {
               <td>
                 <Stars value={book.rating} size={12} />
               </td>
-              <td className="muted">{book.format.toUpperCase()}</td>
+              <td className="muted">{formatLabel(book.format)}</td>
               <td className="muted num">{new Date(book.addedAt).toLocaleDateString()}</td>
               <td>
                 <MoreMenu book={book} actions={actions} />

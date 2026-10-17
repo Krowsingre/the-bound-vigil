@@ -17,6 +17,8 @@ export interface ReaderLocator {
   textAfter?: string;
   /** The chapter title at this position. */
   chapter?: string;
+  /** For an audiobook: how far in, from the start of the whole book. */
+  audioMs?: number;
 }
 
 export interface RemotePosition {
@@ -53,6 +55,10 @@ export interface BookPreview {
   inCloud: boolean;
   /** Its genres: your edit, else fetched online or from the file. */
   genres: string[];
+  /** An audiobook's length. */
+  durationMs?: number | null;
+  /** An audiobook's narrators. */
+  narrators?: string[];
 }
 
 export interface CollectionPreview {
@@ -171,7 +177,7 @@ export interface ImportItem {
 export type Shelf = "all" | "favorites" | "want_to_read" | "in_progress" | "read" | "unread";
 export type SortOrder = "recently_added" | "recently_opened" | "title" | "author" | "series" | "progress" | "rating" | "genre";
 /** Ebooks live in the Library; PDF, DOC, DOCX and TXT on the Documents page. */
-export type ItemKind = "books" | "documents";
+export type ItemKind = "books" | "documents" | "audiobooks";
 export type Location = "on_device" | "cloud_only";
 
 export interface LibraryQuery {
@@ -184,7 +190,11 @@ export interface LibraryQuery {
   tags?: string[];
   /** Books with any of these genres. */
   genres?: string[];
-  /** Only books, or only documents. Left out: both. */
+  /** Books by any of these authors. */
+  authors?: string[];
+  /** Audiobooks read by any of these narrators. */
+  narrators?: string[];
+  /** Only books, documents or audiobooks. Left out: all of them. */
   kind?: ItemKind | null;
   /** Zero-based. */
   page: number;
@@ -212,6 +222,9 @@ export interface LibraryPage {
   tags: string[];
   /** Genres on books of this kind, A to Z. */
   genres: string[];
+  /** For audiobooks: their authors and narrators, A to Z. */
+  authors: string[];
+  narrators: string[];
 }
 
 export type DetailFieldName =
@@ -224,7 +237,8 @@ export type DetailFieldName =
   | "publisher"
   | "published"
   | "language"
-  | "isbn";
+  | "isbn"
+  | "narrators";
 
 /** One detail in its layers. Lists (authors, genres) are JSON arrays. */
 export interface DetailField {
@@ -497,4 +511,28 @@ export interface LibraryInfo {
   bookCount: number;
   databaseBytes: number;
   booksBytes: number;
+}
+
+export interface AudioChapter {
+  title: string;
+  startMs: number;
+}
+
+export interface AudioPart {
+  name: string;
+  startMs: number;
+  durationMs: number;
+}
+
+/** An audiobook as its page and the player show it. */
+export interface Audiobook {
+  book: BookPreview;
+  narrators: string[];
+  durationMs: number;
+  chapters: AudioChapter[];
+  parts: AudioPart[];
+  /** Where you are, from the start. */
+  positionMs: number;
+  /** The ebook it's linked to, for reading along. */
+  ebook: { id: string; name: string } | null;
 }

@@ -1,6 +1,7 @@
 import type { Location, ShelfCounts } from "../api/types";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
+import { formatLabel } from "../lib/queryBooks";
 import { SORTS, TABS, type Layout, type LibraryTab, type LibraryView } from "./libraryView";
 
 const COUNT_OF: Record<LibraryTab, keyof ShelfCounts> = {
@@ -52,7 +53,7 @@ export function LibraryToolbar({
 
   const filterItems: MenuEntry[] = [
     { heading: <strong>Format</strong> },
-    ...formats.map((f) => ({ label: f.toUpperCase(), checked: view.formats.includes(f), onSelect: () => toggleFormat(f) })),
+    ...formats.map((f) => ({ label: formatLabel(f), checked: view.formats.includes(f), onSelect: () => toggleFormat(f) })),
     "divider",
     { heading: <strong>Where the file is</strong> },
     { label: "On this device", checked: view.location === "on_device", onSelect: () => setLocation("on_device") },
