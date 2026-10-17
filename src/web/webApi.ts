@@ -447,7 +447,13 @@ export async function webApi(): Promise<Api> {
     clearFinishedImports: async () => undefined,
     onImports: () => () => undefined,
     syncActivity: async () => ({ running: false, startedAt: null, finishedAt: null, places: [], recent: [] }),
-    onSyncActivity: () => () => undefined,
+    onSyncActivity: (listener) => {
+      let stopped = false;
+      void Promise.resolve().then(() => !stopped && listener({ running: false, startedAt: null, finishedAt: null, places: [], recent: [] }));
+      return () => {
+        stopped = true;
+      };
+    },
     setBookStatus: async (bookId, status) => {
       const b = find(bookId);
       const at = now();

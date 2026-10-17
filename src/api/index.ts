@@ -246,6 +246,7 @@ export interface Api {
   pickKeyFile(): Promise<string | null>;
   /** What sync is doing now, file by file, and what it did lately. */
   syncActivity(): Promise<SyncActivity>;
+  /** Hears the activity now, then each change to it. Returns a way to stop. */
   onSyncActivity(listener: (activity: SyncActivity) => void): () => void;
   /** Hears sync starting and finishing, and library changes it brings. Returns a way to stop. */
   onSync(listener: { status?: (status: SyncStatus) => void; libraryChanged?: () => void }): () => void;
@@ -286,9 +287,17 @@ function appApi(): Api {
       let stop: (() => void) | null = null;
       let stopped = false;
       void import("@tauri-apps/api/event").then(async ({ listen }) => {
-        const unlisten = await listen<SyncActivity>("sync-activity", (e) => listener(e.payload));
-        if (stopped) unlisten();
-        else stop = unlisten;
+        let heard = false;
+        const unlisten = await listen<SyncActivity>("sync-activity", (e) => {
+          heard = true;
+          listener(e.payload);
+        });
+        if (stopped) return unlisten();
+        stop = unlisten;
+        // The snapshot is asked for only once updates are heard, so none slips between
+        // the two, and it's dropped if an update has already arrived.
+        const snapshot = await (await core).invoke<SyncActivity>("sync_activity").catch(() => null);
+        if (snapshot && !heard && !stopped) listener(snapshot);
       });
       return () => {
         stopped = true;

@@ -460,7 +460,13 @@ export function previewApi(): Api {
     },
     onImports: () => () => undefined,
     syncActivity: async () => previewActivity,
-    onSyncActivity: () => () => undefined,
+    onSyncActivity: (listener) => {
+      let stopped = false;
+      void Promise.resolve().then(() => !stopped && listener(previewActivity));
+      return () => {
+        stopped = true;
+      };
+    },
     setBookStatus: async (bookId, status) =>
       update(bookId, status === "unread" ? { status, totalProgression: null } : { status }),
     getLibrary: async (query) => queryBooks(library(), query, collections.previews().length),

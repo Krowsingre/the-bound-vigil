@@ -51,7 +51,8 @@ function fileIcon(f: FileActivity) {
 }
 
 function Place({ place }: { place: PlaceActivity }) {
-  const fraction = place.bytesTotal ? place.bytesDone / place.bytesTotal : place.filesTotal ? place.filesDone / place.filesTotal : 0;
+  // Counted by files: download sizes aren't known until they arrive.
+  const fraction = place.filesTotal ? place.filesDone / place.filesTotal : 0;
   const moving = !place.finished && place.step === "files" && place.filesTotal > 0;
   return (
     <section className={`imports-summary sync-place${place.problem ? " is-bad" : ""}`} aria-live="polite">
@@ -89,15 +90,7 @@ function Place({ place }: { place: PlaceActivity }) {
 
 export function SyncActivity({ sync, onOpenSyncSettings }: { sync: SyncStatus | null; onOpenSyncSettings: () => void }) {
   const [activity, setActivity] = useState<Activity>(NOTHING);
-  useEffect(() => {
-    let live = true;
-    void api.syncActivity().then((a) => live && setActivity(a), () => undefined);
-    const stop = api.onSyncActivity(setActivity);
-    return () => {
-      live = false;
-      stop();
-    };
-  }, []);
+  useEffect(() => api.onSyncActivity(setActivity), []);
 
   const off = (sync?.state ?? "disabled") === "disabled";
   const running = activity.running || sync?.state === "syncing";
