@@ -6,6 +6,8 @@ import type { MoveStatus } from "./types";
 
 export const MOVE_DESKTOP_ONLY = "Moving your library works in the desktop app.";
 
+export const TIDY_DESKTOP_ONLY = "Tidying up Supabase works in the desktop app.";
+
 export const IDLE_MOVE: MoveStatus = {
   running: false,
   mode: null,
@@ -22,12 +24,24 @@ export const IDLE_MOVE: MoveStatus = {
 
 type MoveApi = Pick<
   Api,
-  "moveStatus" | "moveSignIn" | "moveSignOut" | "startMove" | "retryMove" | "cancelMove" | "clearMove" | "onMove"
+  | "moveStatus"
+  | "moveSignIn"
+  | "moveSignOut"
+  | "startMove"
+  | "retryMove"
+  | "cancelMove"
+  | "clearMove"
+  | "onMove"
+  | "planTidyCloud"
+  | "tidyCloud"
 >;
 
 export function moveStub(): MoveApi {
   const no = async (): Promise<never> => {
     throw new Error(MOVE_DESKTOP_ONLY);
+  };
+  const tidyNo = async (): Promise<never> => {
+    throw new Error(TIDY_DESKTOP_ONLY);
   };
   return {
     moveStatus: async () => IDLE_MOVE,
@@ -38,5 +52,7 @@ export function moveStub(): MoveApi {
     cancelMove: async () => undefined,
     clearMove: async () => undefined,
     onMove: () => () => undefined,
+    planTidyCloud: tidyNo,
+    tidyCloud: tidyNo,
   };
 }

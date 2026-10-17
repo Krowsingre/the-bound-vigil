@@ -5,10 +5,14 @@
 use std::io::Write;
 use std::net::TcpStream;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use suppaftp::list::{File as ListedFile, ListParser};
-use suppaftp::rustls::{ClientConfig, RootCertStore};
+use sha2::{Digest, Sha256};
+use suppaftp::rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use suppaftp::rustls::client::WebPkiServerVerifier;
+use suppaftp::rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use suppaftp::rustls::{ClientConfig, DigitallySignedStruct, Error as TlsError, RootCertStore, SignatureScheme};
 use suppaftp::types::FileType;
 use suppaftp::{FtpError, RustlsConnector, RustlsFtpStream, Status};
 
@@ -20,14 +24,71 @@ pub(crate) struct FtpConnection {
     server: Server,
 }
 
-/// TLS that checks the server's certificate against the usual public
-/// authorities, with the same crypto (ring) the rest of TBV uses.
-fn tls_config() -> Result<Arc<ClientConfig>> {
-    let roots = RootCertStore { roots: webpki_roots::TLS_SERVER_ROOTS.to_vec() };
-    let config = ClientConfig::builder_with_provider(Arc::new(suppaftp::rustls::crypto::ring::default_provider()))
+/// Checks the server's certificate against the usual public authorities,
+/// like a browser. A server with its own certificate (common on seedboxes)
+/// is accepted only once the person has trusted that certificate's
+/// fingerprint, and from then on only that certificate; until then the
+/// fingerprint is kept in `seen` to show them.
+#[derive(Debug)]
+struct CertCheck {
+    public: Arc<WebPkiServerVerifier>,
+    trusted: Option<String>,
+    seen: Arc<Mutex<Option<String>>>,
+}
+
+/// A certificate's SHA-256 fingerprint, written the way FileZilla shows it.
+fn fingerprint(cert: &CertificateDer<'_>) -> String {
+    let digest = Sha256::digest(cert.as_ref());
+    let hex: Vec<String> = digest.iter().map(|b| format!("{b:02X}")).collect();
+    format!("SHA256:{}", hex.join(":"))
+}
+
+impl ServerCertVerifier for CertCheck {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        server_name: &ServerName<'_>,
+        ocsp_response: &[u8],
+        now: UnixTime,
+    ) -> std::result::Result<ServerCertVerified, TlsError> {
+        let remember = |seen: String| *self.seen.lock().unwrap_or_else(|p| p.into_inner()) = Some(seen);
+        // A trusted certificate is pinned: any other is refused, even one a
+        // public authority vouches for.
+        if let Some(trusted) = &self.trusted {
+            let seen = fingerprint(end_entity);
+            let same = *trusted == seen;
+            remember(seen);
+            return if same { Ok(ServerCertVerified::assertion()) } else { Err(TlsError::General("the server's certificate changed".into())) };
+        }
+        self.public.verify_server_cert(end_entity, intermediates, server_name, ocsp_response, now).inspect_err(|_| remember(fingerprint(end_entity)))
+    }
+
+    fn verify_tls12_signature(&self, message: &[u8], cert: &CertificateDer<'_>, dss: &DigitallySignedStruct) -> std::result::Result<HandshakeSignatureValid, TlsError> {
+        self.public.verify_tls12_signature(message, cert, dss)
+    }
+
+    fn verify_tls13_signature(&self, message: &[u8], cert: &CertificateDer<'_>, dss: &DigitallySignedStruct) -> std::result::Result<HandshakeSignatureValid, TlsError> {
+        self.public.verify_tls13_signature(message, cert, dss)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.public.supported_verify_schemes()
+    }
+}
+
+/// TLS with the same crypto (ring) the rest of TBV uses.
+fn tls_config(server: &Server, seen: Arc<Mutex<Option<String>>>) -> Result<Arc<ClientConfig>> {
+    let unsuitable = |e: &dyn std::fmt::Display| Error::Unsuitable(format!("A secure connection couldn't be set up: {e}"));
+    let provider = Arc::new(suppaftp::rustls::crypto::ring::default_provider());
+    let roots = Arc::new(RootCertStore { roots: webpki_roots::TLS_SERVER_ROOTS.to_vec() });
+    let public = WebPkiServerVerifier::builder_with_provider(roots, provider.clone()).build().map_err(|e| unsuitable(&e))?;
+    let check = CertCheck { public, trusted: server.host_key.clone(), seen };
+    let config = ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()
-        .map_err(|e| Error::Unsuitable(format!("A secure connection couldn't be set up: {e}")))?
-        .with_root_certificates(roots)
+        .map_err(|e| unsuitable(&e))?
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(check))
         .with_no_client_auth();
     Ok(Arc::new(config))
 }
@@ -66,12 +127,16 @@ impl FtpConnection {
         // downloads; the one TBV reached them on works instead.
         stream.set_passive_nat_workaround(true);
         if server.protocol == Protocol::Ftps {
-            stream = stream.into_secure(RustlsConnector::from(tls_config()?), &server.host).map_err(|e| match e {
+            let seen = Arc::new(Mutex::new(None));
+            stream = stream.into_secure(RustlsConnector::from(tls_config(server, seen.clone())?), &server.host).map_err(|e| match e {
                 FtpError::UnexpectedResponse(_) => Error::Unsuitable(format!(
                     "{} doesn't offer FTPS (FTP with TLS). Choose SFTP if your server has it, or plain FTP.",
                     server.host
                 )),
-                other => explain(other),
+                other => {
+                    let seen = seen.lock().unwrap_or_else(|p| p.into_inner()).take();
+                    super::sftp::key_problem(server, seen).unwrap_or_else(|| explain(other))
+                }
             })?;
         }
         let password = if server.password.is_empty() { "tbv@localhost" } else { server.password.as_str() };
@@ -96,7 +161,7 @@ fn explain(e: FtpError, server: &Server, path: &str) -> Error {
     match e {
         FtpError::ConnectionError(io) => network_problem(&io, server),
         FtpError::SecureError(detail) => Error::Unsuitable(format!(
-            "A secure (TLS) connection to {} couldn't be made ({detail}). If the server has its own certificate rather than one from a public authority, use SFTP instead.",
+            "A secure (TLS) connection to {} couldn't be made ({detail}). Check the address and try again, or use SFTP if your server offers it.",
             server.host
         )),
         FtpError::UnexpectedResponse(r) => {
@@ -204,15 +269,46 @@ mod tests {
 
     /// A real FTP server (libunftp) serving a folder, on its own thread.
     fn ftp_server(root: std::path::PathBuf) -> u16 {
+        serve(root, None)
+    }
+
+    /// The same, offering FTPS with its own certificate, as seedboxes often do.
+    fn ftps_server(root: std::path::PathBuf) -> u16 {
+        let certs = tempfile::tempdir().unwrap().keep();
+        let (cert, key) = (certs.join("cert.pem"), certs.join("key.pem"));
+        std::fs::write(&cert, SELF_SIGNED_CERT).unwrap();
+        std::fs::write(&key, include_str!("testdata/self-signed-key.pem")).unwrap();
+        serve(root, Some((cert, key)))
+    }
+
+    /// Connects to the test FTPS server. libunftp answers AUTH TLS before it
+    /// switches to TLS, so on a busy machine it sometimes reads the start of
+    /// the handshake as a command and replies in plain text; that one race
+    /// is the test server's, so it's tried again.
+    fn open_tls(server: &Server) -> Result<FtpConnection> {
+        for _ in 0..10 {
+            match FtpConnection::open(server) {
+                Err(Error::Unsuitable(m)) if m.contains("InvalidContentType") => continue,
+                other => return other,
+            }
+        }
+        FtpConnection::open(server)
+    }
+
+    const SELF_SIGNED_CERT: &str = include_str!("testdata/self-signed-cert.pem");
+
+    fn serve(root: std::path::PathBuf, tls: Option<(std::path::PathBuf, std::path::PathBuf)>) -> u16 {
         let port = free_port();
         let passive = free_port();
         std::thread::spawn(move || {
             let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap();
             runtime.block_on(async move {
-                let ftp = libunftp::ServerBuilder::new(Box::new(move || unftp_sbe_fs::Filesystem::new(root.clone()).unwrap()))
-                    .passive_ports(passive..=passive)
-                    .build()
-                    .unwrap();
+                let mut builder = libunftp::ServerBuilder::new(Box::new(move || unftp_sbe_fs::Filesystem::new(root.clone()).unwrap()))
+                    .passive_ports(passive..=passive);
+                if let Some((cert, key)) = tls {
+                    builder = builder.ftps(cert, key);
+                }
+                let ftp = builder.build().unwrap();
                 let _ = ftp.listen(format!("127.0.0.1:{port}")).await;
             });
         });
@@ -297,6 +393,41 @@ mod tests {
     fn failure(server: &Server) -> String {
         match FtpConnection::open(server) {
             Err(Error::Unsuitable(m)) => m,
+            Err(other) => panic!("{other:?}"),
+            Ok(_) => panic!("connected"),
+        }
+    }
+
+    #[test]
+    fn a_servers_own_certificate_is_trusted_once_the_person_says_so() {
+        let served = tempfile::tempdir().unwrap();
+        std::fs::write(served.path().join("Carmilla.epub"), b"PK carmilla").unwrap();
+        let port = ftps_server(served.path().to_path_buf());
+        let mut ftps = server(port);
+        ftps.protocol = Protocol::Ftps;
+
+        // First time: TBV stops and shows the certificate's fingerprint.
+        let shown = match open_tls(&ftps) {
+            Err(Error::NewHostKey(f)) => f,
+            Err(other) => panic!("{other:?}"),
+            Ok(_) => panic!("connected without asking"),
+        };
+        // As `openssl x509 -fingerprint -sha256` and FileZilla show it.
+        assert_eq!(shown, "SHA256:2C:78:7E:87:C9:4F:03:AC:24:D0:0B:C2:31:6D:8E:6C:45:29:40:AA:57:DF:B5:5B:C2:D5:F4:24:85:DD:B3:2E");
+
+        // Trusted, it connects, lists and downloads over TLS.
+        ftps.host_key = Some(shown.clone());
+        let mut connection = open_tls(&ftps).unwrap();
+        let names: Vec<String> = connection.list("").unwrap().into_iter().map(|e| e.name).collect();
+        assert_eq!(names, ["Carmilla.epub"]);
+        let mut bytes = Vec::new();
+        connection.fetch("Carmilla.epub", &mut bytes, &mut |_| true).unwrap();
+        assert_eq!(bytes, b"PK carmilla");
+
+        // A different certificate later is refused.
+        ftps.host_key = Some("SHA256:00".into());
+        match open_tls(&ftps) {
+            Err(Error::Unsuitable(m)) => assert!(m.contains("isn't showing the fingerprint it showed before"), "{m}"),
             Err(other) => panic!("{other:?}"),
             Ok(_) => panic!("connected"),
         }

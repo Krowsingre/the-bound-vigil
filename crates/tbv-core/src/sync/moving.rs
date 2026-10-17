@@ -304,7 +304,7 @@ fn files_in(remote: &mut dyn Remote) -> Result<HashMap<String, Option<u64>>> {
 
 /// Brings a file down from the old place and sends it to the new. Book
 /// files are named by their contents' hash, so a damaged copy is caught.
-fn carry(from: &mut dyn Remote, to: &mut dyn Remote, path: &str, temp: &Path) -> Result<Option<u64>> {
+pub(super) fn carry(from: &mut dyn Remote, to: &mut dyn Remote, path: &str, temp: &Path) -> Result<Option<u64>> {
     let name = path.rsplit('/').next().unwrap_or("file").to_string();
     let file = temp.join(&name);
     let outcome = (|| {

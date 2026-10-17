@@ -423,3 +423,63 @@ pub fn likely_folder(service: &str) -> Option<PathBuf> {
     };
     candidates.into_iter().find(|p| p.is_dir())
 }
+
+/// The Supabase place to tidy up, and the other place, each with its lane.
+type TidyPlaces = ((Cloud, Lane), Option<(Cloud, Lane)>);
+
+fn tidy_places(library: &Arc<Mutex<Library>>) -> tbv_core::Result<TidyPlaces> {
+    let unavailable = || Error::Unsuitable("the library is unavailable".into());
+    let (main_is, also_is) = {
+        let l = library.lock().map_err(|_| unavailable())?;
+        (l.sync_provider()? == Provider::Supabase, l.sync_also()? == Some(Provider::Supabase))
+    };
+    if !main_is && !also_is {
+        return Err(Error::Unsuitable("This library doesn't sync with Supabase.".into()));
+    }
+    let main = {
+        let l = library.lock().map_err(|_| unavailable())?;
+        connect(library, &l)?
+    };
+    let also = connect_second(library);
+    let signed_out = || Error::Unsuitable("Sign in to Supabase (Settings › Sync) first.".into());
+    if main_is {
+        Ok(((main.ok_or_else(signed_out)?, Lane::Main), also.map(|c| (c, Lane::Also))))
+    } else {
+        Ok(((also.ok_or_else(signed_out)?, Lane::Also), main.map(|c| (c, Lane::Main))))
+    }
+}
+
+/// What tidying up Supabase would do.
+pub fn plan_tidy(library: &Arc<Mutex<Library>>) -> tbv_core::Result<core_sync::tidy::TidyPlan> {
+    let ((mut place, _), mut other) = tidy_places(library)?;
+    let outcome = core_sync::tidy::plan_tidy(library, &mut place, other.as_mut().map(|(c, _)| c as &mut dyn core_sync::Remote));
+    if let Ok(l) = library.lock() {
+        keep_session(&l, &place, &outcome);
+    }
+    outcome
+}
+
+/// Removes Supabase's copies of books that aren't on this computer, sending
+/// any the other place lacks there first. Tells the window how far it's got.
+pub fn tidy(app: &AppHandle, library: &Arc<Mutex<Library>>) -> tbv_core::Result<core_sync::tidy::TidyReport> {
+    let ((mut place, lane), mut other) = tidy_places(library)?;
+    let plan = core_sync::tidy::plan_tidy(library, &mut place, other.as_mut().map(|(c, _)| c as &mut dyn core_sync::Remote))?;
+    let temp = std::env::temp_dir().join(format!("tbv-tidy-{}", std::process::id()));
+    let outcome = core_sync::tidy::tidy(
+        library,
+        &mut place,
+        lane,
+        other.as_mut().map(|(c, l)| (c as &mut dyn core_sync::Remote, *l)),
+        &plan,
+        &temp,
+        &AtomicBool::new(false),
+        &mut |progress| {
+            let _ = app.emit("tidy-progress", progress);
+        },
+    );
+    let _ = std::fs::remove_dir_all(&temp);
+    if let Ok(l) = library.lock() {
+        keep_session(&l, &place, &outcome);
+    }
+    outcome
+}

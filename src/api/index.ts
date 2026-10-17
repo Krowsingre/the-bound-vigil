@@ -3,6 +3,9 @@
 // clearly labelled sample library so screens can be looked at without the app.
 
 import type {
+  TidyPlan,
+  TidyProgress,
+  TidyReport,
   Audiobook,
   ProviderChoice,
   Annotation,
@@ -176,6 +179,10 @@ export interface Api {
   resolveSyncConflict(kind: string, key: string, keepCloud: boolean): Promise<void>;
   /** Fetches a book that's only in the cloud onto this device. */
   downloadBook(bookId: string): Promise<void>;
+  /** What tidying up Supabase would remove: cloud copies of books that aren't on this computer. */
+  planTidyCloud(): Promise<TidyPlan>;
+  /** Tidies Supabase up, sending copies the other place lacks there first. */
+  tidyCloud(onProgress: (progress: TidyProgress) => void): Promise<TidyReport>;
   /** How moving or backing up the library to another service stands. */
   moveStatus(): Promise<MoveStatus>;
   /** Signs in to a Supabase project to move to, leaving sync's own sign-in alone. False: confirm the email first. */
@@ -475,6 +482,16 @@ function appApi(): Api {
     moveSignIn: async (project, email, password, create) =>
       (await core).invoke<boolean>("move_sign_in", { project, email, password, create }),
     moveSignOut: async () => (await core).invoke("move_sign_out"),
+    planTidyCloud: async () => (await core).invoke("plan_tidy_cloud"),
+    tidyCloud: async (onProgress) => {
+      const { listen } = await import("@tauri-apps/api/event");
+      const stop = await listen<TidyProgress>("tidy-progress", (e) => onProgress(e.payload));
+      try {
+        return await (await core).invoke<TidyReport>("tidy_cloud");
+      } finally {
+        stop();
+      }
+    },
     startMove: async (mode, scope, to) => (await core).invoke("start_move", { mode, scope, to }),
     retryMove: async () => (await core).invoke("retry_move"),
     cancelMove: async () => (await core).invoke("cancel_move"),

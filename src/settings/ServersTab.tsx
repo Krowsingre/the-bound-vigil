@@ -11,7 +11,7 @@ import { useToast } from "../components/Toast";
 import { formatBytes, Section, Segmented } from "./controls";
 
 const PROTOCOLS: { value: ServerProtocol; label: string }[] = [
-  { value: "sftp", label: "SFTP" },
+  { value: "sftp", label: "SFTP (SSH)" },
   { value: "ftps", label: "FTPS" },
   { value: "ftp", label: "FTP" },
 ];

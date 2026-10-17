@@ -79,7 +79,8 @@ pub struct Server {
     /// Where browsing starts. Empty means the account's own folder.
     #[serde(default)]
     pub folder: String,
-    /// The SFTP server's key, as its SHA256 fingerprint, once trusted.
+    /// The SFTP server's key, or an FTPS server's own certificate, as its
+    /// SHA256 fingerprint, once trusted.
     #[serde(default)]
     pub host_key: Option<String>,
 }
@@ -273,8 +274,9 @@ pub trait Connection: Send {
     fn fetch(&mut self, path: &str, out: &mut dyn Write, progress: &mut dyn FnMut(u64) -> bool) -> Result<u64>;
 }
 
-/// Connects and signs in. An SFTP server TBV hasn't met before gives
-/// `Error::NewHostKey` with its fingerprint, for the person to check.
+/// Connects and signs in. A server TBV hasn't met before (SFTP, or FTPS
+/// with its own certificate) gives `Error::NewHostKey` with its
+/// fingerprint, for the person to check.
 pub fn connect(server: &Server) -> Result<Box<dyn Connection>> {
     match server.protocol {
         Protocol::Ftp | Protocol::Ftps => Ok(Box::new(ftp::FtpConnection::open(server)?)),

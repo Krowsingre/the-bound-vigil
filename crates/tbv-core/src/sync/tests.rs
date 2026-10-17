@@ -96,6 +96,13 @@ impl Device {
         self.lib().set_setting(APP_SETTINGS, &json!({ "sync": options }).to_string()).unwrap();
     }
 
+    /// A book file that was never imported here, as from another device.
+    fn dir_file(&self, name: &str) -> PathBuf {
+        let file = self._dir.path().join(name);
+        write_test_epub(&file, "Elsewhere", "Someone", true);
+        file
+    }
+
     fn import(&self, title: &str) -> String {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join(format!("{title}.epub"));
@@ -1207,4 +1214,94 @@ fn covers_travel_before_book_files_and_despite_them() {
     let seen = b.lib().book(&book).unwrap().unwrap();
     assert_eq!(seen.availability, Availability::Cloud);
     assert!(seen.cover_path.is_some());
+}
+
+mod tidying {
+    use super::*;
+    use crate::sync::tidy::{plan_tidy, tidy, TidyPlan};
+    use std::sync::atomic::AtomicBool;
+
+    fn files(cloud: &FakeRemote) -> Vec<String> {
+        let mut out: Vec<String> = cloud.0.lock().unwrap().files.keys().filter(|p| p.starts_with("books/")).cloned().collect();
+        out.sort();
+        out
+    }
+
+    fn book_path(id: &str) -> String {
+        format!("books/{}.epub", crate::ids::book_id_hex(id))
+    }
+
+    #[test]
+    fn only_books_on_this_computer_stay_and_the_rest_go_to_the_other_place_first() {
+        let supabase = FakeRemote::default();
+        let icloud = FakeRemote::default();
+        let pc = Device::new();
+        pc.set_options(json!({ "bookFiles": true }));
+        let here = pc.import("Dracula");
+        let gone = pc.import("Carmilla");
+        pc.sync(&supabase);
+        pc.lib().remove_download(&gone).unwrap();
+        // iCloud already has Carmilla; a book from another device is only in Supabase.
+        let carmilla = supabase.0.lock().unwrap().files[&book_path(&gone)].clone();
+        icloud.0.lock().unwrap().files.insert(book_path(&gone), carmilla);
+        let other_device = pc.dir_file("Camilla.epub");
+        let other_id = crate::ids::book_id_for_file(&other_device).unwrap();
+        supabase.0.lock().unwrap().files.insert(book_path(&other_id), fs::read(&other_device).unwrap());
+
+        let plan = plan_tidy(&pc.library, &mut supabase.clone(), Some(&mut icloud.clone())).unwrap();
+        assert_eq!(plan.keep, 1);
+        assert_eq!(plan.remove, [book_path(&gone)]);
+        assert_eq!(plan.copy_first, [book_path(&other_id)]);
+        assert!(plan.lose.is_empty());
+
+        let temp = tempfile::tempdir().unwrap();
+        let mut seen = Vec::new();
+        let report = tidy(
+            &pc.library,
+            &mut supabase.clone(),
+            Lane::Main,
+            Some((&mut icloud.clone(), Lane::Also)),
+            &plan,
+            temp.path(),
+            &AtomicBool::new(false),
+            &mut |p| seen.push(p.done),
+        )
+        .unwrap();
+        assert_eq!((report.removed, report.copied, report.failed), (2, 1, 0));
+        assert_eq!(seen.last(), Some(&2));
+        assert_eq!(files(&supabase), [book_path(&here)]);
+        let mut both = vec![book_path(&gone), book_path(&other_id)];
+        both.sort();
+        assert_eq!(files(&icloud), both);
+        // Still in the library, and this computer no longer thinks Supabase has it.
+        assert!(pc.lib().book(&gone).unwrap().is_some());
+        let left: i64 = pc
+            .lib()
+            .conn
+            .query_row("SELECT COUNT(*) FROM sync_files WHERE path = ?1", params![book_path(&gone)], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 0);
+        // Nothing left to do the second time.
+        assert!(plan_tidy(&pc.library, &mut supabase.clone(), Some(&mut icloud.clone())).unwrap().is_empty());
+    }
+
+    #[test]
+    fn with_no_other_place_the_copies_are_named_as_lost_and_a_failed_copy_stays() {
+        let supabase = FakeRemote::default();
+        let pc = Device::new();
+        pc.set_options(json!({ "bookFiles": true }));
+        let gone = pc.import("Carmilla");
+        pc.sync(&supabase);
+        pc.lib().remove_download(&gone).unwrap();
+        let plan = plan_tidy(&pc.library, &mut supabase.clone(), None).unwrap();
+        assert_eq!(plan.lose, [book_path(&gone)]);
+        assert!(plan.bytes > 0);
+
+        // A copy the other place won't take is left where it is.
+        let failing = TidyPlan { copy_first: plan.lose.clone(), ..TidyPlan::default() };
+        let temp = tempfile::tempdir().unwrap();
+        let report = tidy(&pc.library, &mut supabase.clone(), Lane::Main, None, &failing, temp.path(), &AtomicBool::new(false), &mut |_| {}).unwrap();
+        assert_eq!((report.removed, report.failed), (0, 1));
+        assert_eq!(files(&supabase), [book_path(&gone)]);
+    }
 }

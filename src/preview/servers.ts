@@ -4,6 +4,12 @@
 import { IDLE_SERVER_DOWNLOAD, type ServerApi } from "../api/serverStub";
 import type { RemoteEntry, ServerDownloadStatus, ServerView } from "../api/types";
 
+/** What a server TBV hasn't met shows: an SFTP key, or an FTPS server's own certificate. */
+const PRETEND_FINGERPRINT = {
+  sftp: "SHA256:q3Vx1d2Yw9pZ8bKcR4mT7nLs0aEfGhJiUoPyXwVb6kM",
+  ftps: "SHA256:2C:78:7E:87:C9:4F:03:AC:24:D0:0B:C2:31:6D:8E:6C:45:29:40:AA:57:DF:B5:5B:C2:D5:F4:24:85:DD:B3:2E",
+};
+
 const TREE: Record<string, RemoteEntry[]> = {
   "/home/wren": [
     { name: "Audiobooks", path: "/home/wren/Audiobooks", isDir: true, size: 0 },
@@ -75,12 +81,12 @@ export function previewServers(): ServerApi {
     },
     testServer: async (id) => {
       const s = find(id);
-      if (s.protocol === "sftp" && !s.hostKey) throw new Error("new-host-key:SHA256:q3Vx1d2Yw9pZ8bKcR4mT7nLs0aEfGhJiUoPyXwVb6kM");
+      if (s.protocol !== "ftp" && !s.hostKey) throw new Error(`new-host-key:${PRETEND_FINGERPRINT[s.protocol]}`);
       return `Connected to ${s.name}. /home/wren has 2 folders and 1 file TBV can import.`;
     },
     browseServer: async (id, path) => {
       const s = find(id);
-      if (s.protocol === "sftp" && !s.hostKey) throw new Error("new-host-key:SHA256:q3Vx1d2Yw9pZ8bKcR4mT7nLs0aEfGhJiUoPyXwVb6kM");
+      if (s.protocol !== "ftp" && !s.hostKey) throw new Error(`new-host-key:${PRETEND_FINGERPRINT[s.protocol]}`);
       const at = path ?? (s.folder || "/home/wren");
       return { path: at, entries: TREE[at] ?? [], hidden: at === "/home/wren" ? 2 : 0 };
     },
