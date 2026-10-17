@@ -47,7 +47,7 @@ function Choice<T extends string | number>({
 }
 
 const THEME_OPTIONS: { value: ReadingTheme; label: string; style?: React.CSSProperties }[] = [
-  { value: "auto", label: "Match app" },
+  { value: "auto", label: "Auto" },
   { value: "light", label: "Light", style: { background: PAGE_COLORS.light.background, color: PAGE_COLORS.light.text } },
   { value: "paper", label: "Paper", style: { background: PAGE_COLORS.paper.background, color: PAGE_COLORS.paper.text } },
   { value: "dark", label: "Dark", style: { background: PAGE_COLORS.dark.background, color: PAGE_COLORS.dark.text } },
