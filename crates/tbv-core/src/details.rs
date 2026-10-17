@@ -161,6 +161,15 @@ pub(crate) fn clean_value(field: &str, value: &str) -> Result<String> {
     }
 }
 
+/// SQL for one detail as shown (your edit, else fetched, else the book's own
+/// `b.<field>`), for queries on the books table as `b`.
+pub(crate) fn shown_sql(field: &str) -> String {
+    format!(
+        "COALESCE(NULLIF((SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = '{field}'), ''), \
+                  NULLIF((SELECT value FROM metadata_fetched WHERE book_id = b.id AND field = '{field}'), ''), b.{field})"
+    )
+}
+
 impl Library {
     pub fn book_details(&self, book_id: &str) -> Result<BookDetails> {
         let book = self
@@ -268,6 +277,21 @@ impl Library {
         if fetched {
             self.conn
                 .execute("DELETE FROM metadata_fetched WHERE book_id = ?1 AND source != 'file'", params![book_id])?;
+            // Details found online may have replaced what the file itself says;
+            // read the file again so its genres and date come back.
+            let file: Option<(Option<String>, String)> = self
+                .conn
+                .query_row(
+                    "SELECT lf.path, b.format FROM books b LEFT JOIN local_files lf ON lf.book_id = b.id WHERE b.id = ?1",
+                    params![book_id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?;
+            if let Some((Some(path), format)) = file {
+                if let Ok(metadata) = crate::formats::read_metadata(std::path::Path::new(&path), &format) {
+                    self.keep_file_details(book_id, &metadata.subjects, metadata.published.as_deref())?;
+                }
+            }
         }
         Ok(())
     }
@@ -380,6 +404,17 @@ mod tests {
         let details = library.book_details(&id).unwrap();
         let published = details.fields.iter().find(|f| f.field == "published").unwrap();
         assert_eq!((published.fetched.as_deref(), published.fetched_from.as_deref()), (Some("1897-05-26"), Some("file")));
+        // Genres found online replace the file's, and a reset brings the file's back.
+        let found = BTreeMap::from([("genres".to_string(), r#"["Classics"]"#.to_string())]);
+        library.save_fetched(&id, "google", &found).unwrap();
+        assert_eq!(library.book(&id).unwrap().unwrap().genres, ["Classics"]);
+        library.reset_details(&id, true).unwrap();
+        assert_eq!(library.book(&id).unwrap().unwrap().genres, ["Horror", "Vampires"]);
+
+        // A blank number in the series shows no number, not 0.
+        library.save_fetched(&id, "google", &BTreeMap::from([("series".to_string(), "Count".to_string())])).unwrap();
+        library.conn.execute("INSERT INTO metadata_fetched (book_id, field, value, source, updated_at) VALUES (?1, 'series_index', '', 'google', '')", params![id]).unwrap();
+        assert_eq!(library.book(&id).unwrap().unwrap().series_index, None);
     }
 
     #[test]

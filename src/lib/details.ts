@@ -81,7 +81,7 @@ export function previewFields(fields: DetailField[]): Partial<BookPreview> {
     title: get("title") ?? "",
     authors: listOf(get("authors")),
     series: series?.trim() ? series : null,
-    seriesIndex: index && Number.isFinite(Number(index)) ? Number(index) : null,
+    seriesIndex: index?.trim() && Number.isFinite(Number(index)) ? Number(index) : null,
     synopsis: get("synopsis"),
     genres: listOf(get("genres")),
     narrators: listOf(get("narrators")),
