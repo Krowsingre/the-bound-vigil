@@ -103,6 +103,16 @@ export const FIELDS: FieldInfo[] = [
       { op: "isEmpty", label: "has no tags" },
     ],
   },
+  {
+    field: "genre",
+    label: "Genre",
+    ops: [
+      { op: "is", label: "is" },
+      { op: "isNot", label: "is not" },
+      { op: "contains", label: "contains" },
+      { op: "isEmpty", label: "has no genre" },
+    ],
+  },
 ];
 
 export const fieldInfo = (field: RuleField) => FIELDS.find((f) => f.field === field)!;
@@ -192,8 +202,9 @@ function matchesRule(book: BookPreview, rule: Rule, extra: { publisher?: string;
     }
     case "location":
       return v === "device" ? book.availability === "local" : book.availability !== "local";
-    case "tag": {
-      const tags = (book.tags ?? []).map((t) => t.toLowerCase());
+    case "tag":
+    case "genre": {
+      const tags = ((rule.field === "tag" ? book.tags : book.genres) ?? []).map((t) => t.toLowerCase());
       if (rule.op === "isEmpty") return tags.length === 0;
       if (rule.op === "isNot") return !tags.includes(v);
       if (rule.op === "contains") return tags.some((t) => t.includes(v));

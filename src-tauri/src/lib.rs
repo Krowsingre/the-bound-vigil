@@ -195,6 +195,16 @@ async fn fill_cover(state: State<'_, AppLibrary>, request: tauri::ipc::Request<'
     with_library(state, move |library| library.fill_cover(&book_id, &picture)).await
 }
 
+/// A cover found online, for a book that has none.
+#[tauri::command]
+async fn fetch_cover(state: State<'_, AppLibrary>, book_id: String, url: String) -> CommandResult<bool> {
+    let picture = tauri::async_runtime::spawn_blocking(move || tbv_core::details::download_cover(&url))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    with_library(state, move |library| library.fill_cover(&book_id, &picture)).await
+}
+
 #[tauri::command]
 async fn import_goodreads(
     state: State<'_, AppLibrary>,
@@ -720,6 +730,38 @@ async fn set_book_tags(
 }
 
 #[tauri::command]
+async fn book_details(
+    state: State<'_, AppLibrary>,
+    book_id: String,
+) -> CommandResult<tbv_core::details::BookDetails> {
+    with_library(state, move |library| library.book_details(&book_id)).await
+}
+
+#[tauri::command]
+async fn edit_details(
+    state: State<'_, AppLibrary>,
+    book_ids: Vec<String>,
+    changes: Vec<tbv_core::details::DetailChange>,
+) -> CommandResult<()> {
+    with_library(state, move |library| library.edit_details(&book_ids, &changes)).await
+}
+
+#[tauri::command]
+async fn reset_details(state: State<'_, AppLibrary>, book_id: String, fetched: bool) -> CommandResult<()> {
+    with_library(state, move |library| library.reset_details(&book_id, fetched)).await
+}
+
+#[tauri::command]
+async fn save_fetched(
+    state: State<'_, AppLibrary>,
+    book_id: String,
+    source: String,
+    values: std::collections::BTreeMap<String, String>,
+) -> CommandResult<()> {
+    with_library(state, move |library| library.save_fetched(&book_id, &source, &values)).await
+}
+
+#[tauri::command]
 async fn delete_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
     with_library(state, move |library| library.delete_book(&book_id)).await
 }
@@ -772,6 +814,10 @@ pub fn run() {
             remove_download,
             find_duplicates,
             dismiss_duplicates,
+            book_details,
+            edit_details,
+            reset_details,
+            save_fetched,
             queue_imports,
             import_queue,
             cancel_imports,
@@ -784,6 +830,7 @@ pub fn run() {
             hardcover_send_all,
             book_text,
             fill_cover,
+            fetch_cover,
             set_book_status,
             get_library,
             get_collections,

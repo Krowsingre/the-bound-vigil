@@ -22,8 +22,8 @@ const MAX_NAME_CHARS: usize = 80;
 const MAX_DESCRIPTION_CHARS: usize = 600;
 const COVER_STRIP: u32 = 3;
 
-const TITLE: &str = "COALESCE(o_title.value, b.title) COLLATE NOCASE";
-const SERIES: &str = "COALESCE(o_series.value, b.series)";
+const TITLE: &str = "COALESCE(o_title.value, f_title.value, b.title) COLLATE NOCASE";
+const SERIES: &str = "COALESCE(o_series.value, f_series.value, b.series)";
 
 /// The books on a built-in shelf, from each book's own flags.
 fn shelf_condition(id: &str) -> Option<(&'static str, &'static str)> {
@@ -176,7 +176,7 @@ impl Library {
 
     fn member_covers(&self, members: &Members) -> Result<Vec<CoverRef>> {
         let mut statement = self.conn.prepare(&format!(
-            "SELECT b.id, COALESCE(o_title.value, b.title), COALESCE(o_authors.value, b.authors), lf.cover_path
+            "SELECT b.id, COALESCE(o_title.value, f_title.value, b.title), COALESCE(o_authors.value, f_authors.value, b.authors), lf.cover_path
              {BOOK_FROM} AND {} ORDER BY {} LIMIT {COVER_STRIP}",
             members.condition, members.order
         ))?;
@@ -295,8 +295,8 @@ impl Library {
             .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?)))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         let mut authors = self.conn.prepare(&format!(
-            "SELECT DISTINCT json_extract(COALESCE(o_authors.value, b.authors), '$[0]') {BOOK_FROM}
-             AND {SERIES} = ?1 AND json_extract(COALESCE(o_authors.value, b.authors), '$[0]') IS NOT NULL"
+            "SELECT DISTINCT json_extract(COALESCE(o_authors.value, f_authors.value, b.authors), '$[0]') {BOOK_FROM}
+             AND {SERIES} = ?1 AND json_extract(COALESCE(o_authors.value, f_authors.value, b.authors), '$[0]') IS NOT NULL"
         ))?;
         rows.into_iter()
             .map(|(name, count)| {

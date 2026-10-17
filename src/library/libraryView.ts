@@ -1,4 +1,4 @@
-import type { Location, Shelf, SortOrder } from "../api/types";
+import type { ItemKind, Location, Shelf, SortOrder } from "../api/types";
 
 export type LibraryTab = Shelf | "collections";
 export type Layout = "grid" | "list" | "compact";
@@ -11,6 +11,8 @@ export interface LibraryView {
   location: Location | null;
   /** Books with any of these tags. */
   tags: string[];
+  /** Books with any of these genres. */
+  genres: string[];
   page: number;
   layout: Layout;
 }
@@ -35,15 +37,17 @@ export const SORTS: { sort: SortOrder; label: string }[] = [
   { sort: "series", label: "Series" },
   { sort: "progress", label: "Progress" },
   { sort: "rating", label: "Your rating" },
+  { sort: "genre", label: "Genre" },
 ];
 
 const KEY = "tbv.libraryView";
+const keyOf = (kind: ItemKind) => (kind === "documents" ? "tbv.documentsView" : KEY);
 
-/** Sort and layout are remembered on this device; the rest starts fresh. */
-export function initialView(): LibraryView {
-  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], page: 0, layout: "grid" };
+/** Sort and layout are remembered on this device, for the Library and Documents each; the rest starts fresh. */
+export function initialView(kind: ItemKind = "books"): LibraryView {
+  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], page: 0, layout: "grid" };
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<LibraryView>;
+    const saved = JSON.parse(localStorage.getItem(keyOf(kind)) ?? "{}") as Partial<LibraryView>;
     if (SORTS.some((s) => s.sort === saved.sort)) view.sort = saved.sort!;
     if (saved.layout === "grid" || saved.layout === "list" || saved.layout === "compact") view.layout = saved.layout;
   } catch {
@@ -52,9 +56,9 @@ export function initialView(): LibraryView {
   return view;
 }
 
-export function rememberView(view: LibraryView) {
+export function rememberView(view: LibraryView, kind: ItemKind = "books") {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ sort: view.sort, layout: view.layout }));
+    localStorage.setItem(keyOf(kind), JSON.stringify({ sort: view.sort, layout: view.layout }));
   } catch {
     /* the choice just won't be remembered */
   }

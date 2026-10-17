@@ -1,6 +1,12 @@
 // The Library page's filtering, sorting and paging, done in the page itself.
 
-import type { BookPreview, LibraryPage, LibraryQuery, TagCount } from "../api/types";
+import type { BookPreview, ItemKind, LibraryPage, LibraryQuery, TagCount } from "../api/types";
+
+/** The kinds of file the Documents page holds (DOCUMENT_FORMATS in the core). */
+export const DOCUMENT_FORMATS = ["pdf", "doc", "docx", "txt"];
+export const isDocument = (format: string) => DOCUMENT_FORMATS.includes(format.toLowerCase());
+export const ofKind = (b: BookPreview, kind: ItemKind | null | undefined) =>
+  !kind || (kind === "documents") === isDocument(b.format);
 
 const articles = /^(the|an|a) /i;
 const sortTitle = (b: BookPreview) => b.title.replace(articles, "").toLowerCase();
@@ -9,7 +15,8 @@ const nullsLast = <T>(a: T | null, b: T | null, cmp: (x: T, y: T) => number) =>
   a === null ? (b === null ? 0 : 1) : b === null ? -1 : cmp(a, b);
 
 /** Mirrors the core's Library query, for the browser preview and the web version. */
-export function queryBooks(all: BookPreview[], q: LibraryQuery, collectionCount: number): LibraryPage {
+export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectionCount: number): LibraryPage {
+  const all = everything.filter((b) => ofKind(b, q.kind));
   const search = q.search?.trim().toLowerCase();
   let list = all.filter((b) => {
     if (q.shelf === "favorites" && !b.favorite) return false;
@@ -19,6 +26,7 @@ export function queryBooks(all: BookPreview[], q: LibraryQuery, collectionCount:
     if (q.location === "on_device" && b.availability === "cloud") return false;
     if (q.location === "cloud_only" && b.availability !== "cloud") return false;
     if (q.tags?.length && !b.tags.some((t) => q.tags!.some((w) => w.toLowerCase() === t.toLowerCase()))) return false;
+    if (q.genres?.length && !(b.genres ?? []).some((g) => q.genres!.some((w) => w.toLowerCase() === g.toLowerCase()))) return false;
     if (search && ![b.title, ...b.authors, b.series ?? ""].some((t) => t.toLowerCase().includes(search))) return false;
     return true;
   });
@@ -34,6 +42,8 @@ export function queryBooks(all: BookPreview[], q: LibraryQuery, collectionCount:
       byTitle(a, b),
     progress: (a, b) => (b.totalProgression ?? 0) - (a.totalProgression ?? 0) || byTitle(a, b),
     rating: (a, b) => nullsLast(a.rating, b.rating, (x, y) => y - x) || byTitle(a, b),
+    genre: (a, b) =>
+      nullsLast(a.genres?.[0] ?? null, b.genres?.[0] ?? null, (x, y) => x.localeCompare(y, undefined, { sensitivity: "base" })) || byTitle(a, b),
   };
   list = [...list].sort(sorters[q.sort]);
   const pageSize = q.pageSize || 24;
@@ -53,7 +63,8 @@ export function queryBooks(all: BookPreview[], q: LibraryQuery, collectionCount:
       collections: collectionCount,
     },
     formats: [...new Set(all.map((b) => b.format))].sort(),
-    tags: tagCounts(all).map((t) => t.name),
+    tags: tagCounts(everything).map((t) => t.name),
+    genres: tagCounts(all.map((b) => ({ ...b, tags: b.genres ?? [] }))).map((t) => t.name),
   };
 }
 

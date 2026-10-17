@@ -3,16 +3,29 @@
 use rusqlite::{params, params_from_iter, types::Value};
 
 use crate::error::{Error, Result};
-use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM};
+use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM, DOCUMENT_FORMATS};
 use crate::library::Library;
 use crate::model::*;
 
 pub const DEFAULT_PAGE_SIZE: u32 = 24;
 const MAX_PAGE_SIZE: u32 = 200;
 
-const TITLE: &str = "COALESCE(o_title.value, b.title)";
-const FIRST_AUTHOR: &str = "json_extract(COALESCE(o_authors.value, b.authors), '$[0]')";
-const SERIES: &str = "COALESCE(o_series.value, b.series)";
+const TITLE: &str = "COALESCE(o_title.value, f_title.value, b.title)";
+const AUTHORS: &str = "COALESCE(o_authors.value, f_authors.value, b.authors)";
+const FIRST_AUTHOR: &str = "json_extract(COALESCE(o_authors.value, f_authors.value, b.authors), '$[0]')";
+const SERIES: &str = "COALESCE(o_series.value, f_series.value, b.series)";
+const SERIES_INDEX: &str =
+    "COALESCE(CAST(o_series_index.value AS REAL), CAST(f_series_index.value AS REAL), b.series_index)";
+const GENRES: &str = "COALESCE(o_genres.value, f_genres.value)";
+
+/// The SQL test for books of one kind, on the books table as `b`.
+pub(crate) fn kind_condition(kind: ItemKind) -> String {
+    let list = DOCUMENT_FORMATS.iter().map(|f| format!("'{f}'")).collect::<Vec<_>>().join(", ");
+    match kind {
+        ItemKind::Documents => format!("b.format IN ({list})"),
+        ItemKind::Books => format!("b.format NOT IN ({list})"),
+    }
+}
 
 /// Title without a leading "The", "A" or "An", so "The Hobbit" sorts under H.
 fn sort_title() -> String {
@@ -36,8 +49,12 @@ fn order_by(sort: SortOrder) -> String {
             format!("{FIRST_AUTHOR} IS NULL, {FIRST_AUTHOR} COLLATE NOCASE, {title}")
         }
         SortOrder::Series => format!(
-            "{SERIES} IS NULL, {SERIES} COLLATE NOCASE, b.series_index IS NULL, b.series_index, {title}"
+            "{SERIES} IS NULL, {SERIES} COLLATE NOCASE, {SERIES_INDEX} IS NULL, {SERIES_INDEX}, {title}"
         ),
+        SortOrder::Genre => {
+            let first = format!("CASE WHEN json_valid({GENRES}) THEN json_extract({GENRES}, '$[0]') END");
+            format!("{first} IS NULL, {first} COLLATE NOCASE, {title}")
+        }
         SortOrder::Progress => format!("COALESCE(b.total_progression, 0) DESC, {title}"),
         SortOrder::Rating => format!("b.rating IS NULL, b.rating DESC, {title}"),
     }
@@ -74,7 +91,7 @@ impl Library {
         {
             conditions.push(format!(
                 "(tbv_fold({TITLE}) LIKE ?{n} ESCAPE '\\' \
-                  OR tbv_fold(COALESCE(o_authors.value, b.authors)) LIKE ?{n} ESCAPE '\\' \
+                  OR tbv_fold({AUTHORS}) LIKE ?{n} ESCAPE '\\' \
                   OR tbv_fold(COALESCE({SERIES}, '')) LIKE ?{n} ESCAPE '\\')",
                 n = values.len() + 1
             ));
@@ -106,6 +123,20 @@ impl Library {
                     .iter()
                     .map(|t| Value::Text(t.trim().to_lowercase())),
             );
+        }
+
+        if !query.genres.is_empty() {
+            let start = values.len() + 1;
+            let slots: Vec<String> = (0..query.genres.len()).map(|i| format!("?{}", start + i)).collect();
+            conditions.push(format!(
+                "EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid({GENRES}) THEN {GENRES} ELSE '[]' END) g WHERE lower(g.value) IN ({}))",
+                slots.join(", ")
+            ));
+            values.extend(query.genres.iter().map(|g| Value::Text(g.trim().to_lowercase())));
+        }
+
+        if let Some(kind) = query.kind {
+            conditions.push(kind_condition(kind));
         }
 
         match query.location {
@@ -145,22 +176,29 @@ impl Library {
             total,
             page,
             page_size,
-            counts: self.shelf_counts()?,
-            formats: self.formats_in_library()?,
+            counts: self.shelf_counts_of(query.kind)?,
+            formats: self.formats_in_library(query.kind)?,
             tags: self.all_tags()?.into_iter().map(|t| t.name).collect(),
+            genres: self.genres_in_library(query.kind)?,
         })
     }
 
     pub fn shelf_counts(&self) -> Result<ShelfCounts> {
+        self.shelf_counts_of(None)
+    }
+
+    /// Counts for one kind of book, or all of them.
+    pub fn shelf_counts_of(&self, kind: Option<ItemKind>) -> Result<ShelfCounts> {
+        let only = kind.map(|k| format!(" AND {}", kind_condition(k))).unwrap_or_default();
         Ok(self.conn.query_row(
-            "SELECT COUNT(*),
+            &format!("SELECT COUNT(*),
                     COALESCE(SUM(favorite = 1), 0),
                     COALESCE(SUM(want_to_read = 1), 0),
                     COALESCE(SUM(status = 'in_progress'), 0),
                     COALESCE(SUM(status = 'read'), 0),
                     COALESCE(SUM(status = 'unread'), 0),
                     (SELECT COUNT(*) FROM collections WHERE deleted_at IS NULL AND kind != 'shelf')
-             FROM books WHERE deleted_at IS NULL",
+             FROM books b WHERE deleted_at IS NULL{only}"),
             [],
             |r| {
                 Ok(ShelfCounts {
@@ -176,10 +214,23 @@ impl Library {
         )?)
     }
 
-    fn formats_in_library(&self) -> Result<Vec<String>> {
-        let mut statement = self.conn.prepare(
-            "SELECT DISTINCT format FROM books WHERE deleted_at IS NULL ORDER BY format",
-        )?;
+    fn formats_in_library(&self, kind: Option<ItemKind>) -> Result<Vec<String>> {
+        let only = kind.map(|k| format!(" AND {}", kind_condition(k))).unwrap_or_default();
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT DISTINCT format FROM books b WHERE deleted_at IS NULL{only} ORDER BY format"
+        ))?;
+        let rows = statement.query_map([], |r| r.get(0))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Every genre on books of this kind, one spelling each, A to Z.
+    pub fn genres_in_library(&self, kind: Option<ItemKind>) -> Result<Vec<String>> {
+        let only = kind.map(|k| format!(" AND {}", kind_condition(k))).unwrap_or_default();
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT MIN(g.value) FROM (SELECT {GENRES} AS genres {BOOK_FROM}{only}) x, json_each(CASE WHEN json_valid(x.genres) THEN x.genres ELSE '[]' END) g
+             WHERE trim(g.value) != ''
+             GROUP BY lower(g.value) ORDER BY lower(g.value)"
+        ))?;
         let rows = statement.query_map([], |r| r.get(0))?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }

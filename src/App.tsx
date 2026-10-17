@@ -4,6 +4,9 @@ import type { CollectionRef, HomeViewModel, ImportItem, ImportResult, Profile, S
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { ContextMenuHost } from "./components/ContextMenu";
 import { BookDialogsHost } from "./library/BookDialogs";
+import { BookDetailsPage } from "./details/BookDetailsPage";
+import { DetailsHost } from "./details/DetailsHost";
+import { onShowBookDetails } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Notes } from "./notes/Notes";
 import { useToast } from "./components/Toast";
@@ -44,7 +47,10 @@ export function App() {
   // Finished books already handled here (PDF covers drawn, counted in the summary).
   const handled = useRef(new Set<number>());
   const wasRunning = useRef(false);
-  const [libraryView, setLibraryView] = useState<LibraryView>(initialView);
+  const [libraryView, setLibraryView] = useState<LibraryView>(() => initialView("books"));
+  const [documentsView, setDocumentsView] = useState<LibraryView>(() => initialView("documents"));
+  // The book the details page shows, and the page to go back to.
+  const [details, setDetails] = useState<{ bookId: string; from: Route } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [reading, setReading] = useState<{ bookId: string; at?: string } | null>(null);
@@ -85,6 +91,27 @@ export function App() {
     });
   }, []);
 
+  const changeDocumentsView = useCallback((change: Partial<LibraryView>) => {
+    setDocumentsView((v) => {
+      const next = { ...v, ...change, page: change.page ?? 0 };
+      rememberView(next, "documents");
+      return next;
+    });
+  }, []);
+
+  // Any book menu can open the details page.
+  const routeNow = useRef(route);
+  routeNow.current = route;
+  useEffect(
+    () =>
+      onShowBookDetails((bookId) => {
+        const from = routeNow.current;
+        setDetails((d) => ({ bookId, from: from === "book" ? (d?.from ?? "library") : from }));
+        setRoute("book");
+      }),
+    [],
+  );
+
   const openLibrary = useCallback(
     (change: Partial<LibraryView> = {}) => {
       changeLibraryView(change);
@@ -98,6 +125,7 @@ export function App() {
       setSearchText(text);
       // Typing on the Library page filters it straight away, from page one.
       setLibraryView((v) => (v.page === 0 ? v : { ...v, page: 0 }));
+      setDocumentsView((v) => (v.page === 0 ? v : { ...v, page: 0 }));
     },
     [],
   );
@@ -236,7 +264,7 @@ export function App() {
   return (
     <div className={`app${collapsed ? " sidebar-collapsed" : ""}`}>
       <Sidebar
-        route={route}
+        route={route === "book" && details ? details.from : route}
         collapsed={collapsed}
         onNavigate={navigate}
         onToggle={toggleSidebar}
@@ -251,7 +279,7 @@ export function App() {
           search={searchText}
           onSearchChange={changeSearch}
           placeholder={route === "notes" ? "Search notes, books, authors or words…" : undefined}
-          onSearchSubmit={() => route !== "notes" && setRoute("library")}
+          onSearchSubmit={() => route !== "notes" && route !== "documents" && setRoute("library")}
           onChooseAvatar={chooseAvatar}
           onClearAvatar={clearAvatar}
           onImportBooks={importBooks}
@@ -281,6 +309,34 @@ export function App() {
               onImportFolder={importFolder}
               onOpenBook={openBook}
               onOpenCollection={showCollection}
+            />
+          ) : route === "documents" ? (
+            <Library
+              kind="documents"
+              view={documentsView}
+              search={searchText}
+              refreshKey={refreshKey}
+              onChange={changeDocumentsView}
+              onClearSearch={() => changeSearch("")}
+              onImportBooks={importBooks}
+              onImportFolder={importFolder}
+              onOpenBook={openBook}
+              onOpenCollection={showCollection}
+            />
+          ) : route === "book" && details ? (
+            <BookDetailsPage
+              bookId={details.bookId}
+              refreshKey={refreshKey}
+              onBack={() => setRoute(details.from)}
+              onOpenBook={openBook}
+              onOpenCollection={showCollection}
+              onOpenLibrary={(genre, documents) => {
+                const change = { tab: "all" as const, genres: [genre], formats: [], tags: [], location: null };
+                if (documents) {
+                  changeDocumentsView(change);
+                  setRoute("documents");
+                } else openLibrary(change);
+              }}
             />
           ) : route === "collections" ? (
             <Collections
@@ -331,6 +387,7 @@ export function App() {
       )}
       <AddToCollectionHost onChanged={refresh} />
       <BookDialogsHost onChanged={refresh} />
+      <DetailsHost onChanged={refresh} />
       <ContextMenuHost />
     </div>
   );

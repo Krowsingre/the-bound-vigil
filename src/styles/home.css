@@ -643,3 +643,26 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+/* Documents carry a small badge on their cover, wherever they show. */
+.cover-doc {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px 2px 4px;
+  border-radius: 4px;
+  background: rgb(18 20 22 / 0.72);
+  color: var(--ash-pale);
+  font: 600 10px/1.4 var(--font-sans);
+  letter-spacing: 0.04em;
+}
+
+.cover-s .cover-doc {
+  top: 2px;
+  left: 2px;
+  padding: 1px 3px;
+  font-size: 0;
+}

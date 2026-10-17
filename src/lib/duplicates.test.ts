@@ -27,6 +27,7 @@ const book = (title: string, author: string, extra: Partial<BookPreview> = {}): 
   finishedAt: null,
   tags: [],
   inCloud: false,
+  genres: [],
   ...extra,
 });
 

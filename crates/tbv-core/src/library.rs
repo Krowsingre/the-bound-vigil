@@ -273,6 +273,19 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX idx_book_tags_tag ON book_tags(tag) WHERE removed_at IS NULL;
     "#,
+    // v10: details from outside your own edits: fetched online (Google Books,
+    // Open Library) or read from the file beyond the basics (genres, date).
+    // They sit between your edits and the book's own metadata.
+    r#"
+    CREATE TABLE metadata_fetched (
+        book_id TEXT NOT NULL REFERENCES books(id),
+        field TEXT NOT NULL,
+        value TEXT,
+        source TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (book_id, field)
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
@@ -453,6 +466,8 @@ impl Library {
             params![book_id, stored_path, cover],
         )?;
         tx.commit()?;
+        // Genres and a date are extras; a book still imports without them.
+        let _ = self.keep_file_details(&book_id, &metadata.subjects, metadata.published.as_deref());
         Ok(ImportResult::Imported { path, book_id, title })
     }
 

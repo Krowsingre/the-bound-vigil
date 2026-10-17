@@ -12,7 +12,9 @@ import type {
   CollectionPreview,
   CollectionRef,
   CollectionSummary,
+  BookDetails,
   CollectionsOverview,
+  DetailChange,
   DuplicateGroup,
   GoodreadsImport,
   HardcoverSendAll,
@@ -69,6 +71,8 @@ export interface Api {
   bookText(bookId: string): Promise<string>;
   /** Gives a book a cover drawn here (a PDF's first page) if it has none. */
   fillCover(bookId: string, picture: Uint8Array): Promise<boolean>;
+  /** Downloads a cover found online, for a book that has none. */
+  fetchCover(bookId: string, url: string): Promise<boolean>;
   getProfile(): Promise<Profile>;
   /** Asks for a picture, copies it into TBV, and returns the new profile. Null if cancelled. */
   chooseAvatar(): Promise<Profile | null>;
@@ -156,6 +160,14 @@ export interface Api {
   /** Removes the copy on this device, keeping the one in the cloud. */
   removeDownload(bookId: string): Promise<void>;
   findDuplicates(): Promise<DuplicateGroup[]>;
+  /** A book's details in their layers, for the Book details page. */
+  bookDetails(bookId: string): Promise<BookDetails>;
+  /** Applies the same changes to each book. */
+  editDetails(bookIds: string[], changes: DetailChange[]): Promise<void>;
+  /** Takes away your edits, and with `fetched` what was fetched online too. */
+  resetDetails(bookId: string, fetched: boolean): Promise<void>;
+  /** Keeps details found online. Lists (authors, genres) as JSON arrays. */
+  saveFetched(bookId: string, source: "google" | "openlibrary", values: Record<string, string>): Promise<void>;
   /** Remembers that a group isn't duplicates, so it isn't shown again. */
   dismissDuplicates(key: string): Promise<void>;
   /** Hears sync starting and finishing, and library changes it brings. Returns a way to stop. */
@@ -249,6 +261,7 @@ function appApi(): Api {
     },
     bookText: async (bookId) => (await core).invoke<string>("book_text", { bookId }),
     fillCover: async (bookId, picture) => (await core).invoke<boolean>("fill_cover", picture, { headers: { "book-id": bookId } }),
+    fetchCover: async (bookId, url) => (await core).invoke<boolean>("fetch_cover", { bookId, url }),
     getProfile: async () => (await core).invoke<Profile>("get_profile"),
     chooseAvatar: async () => {
       const [path] = asList(
@@ -354,6 +367,10 @@ function appApi(): Api {
     removeDownload: async (bookId) => (await core).invoke("remove_download", { bookId }),
     findDuplicates: async () => (await core).invoke<DuplicateGroup[]>("find_duplicates"),
     dismissDuplicates: async (key) => (await core).invoke("dismiss_duplicates", { key }),
+    bookDetails: async (bookId) => (await core).invoke<BookDetails>("book_details", { bookId }),
+    editDetails: async (bookIds, changes) => (await core).invoke("edit_details", { bookIds, changes }),
+    resetDetails: async (bookId, fetched) => (await core).invoke("reset_details", { bookId, fetched }),
+    saveFetched: async (bookId, source, values) => (await core).invoke("save_fetched", { bookId, source, values }),
     onSync: ({ status, libraryChanged }) => {
       const stops: (() => void)[] = [];
       let stopped = false;

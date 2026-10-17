@@ -150,3 +150,83 @@ function TagEditor({ book, onClose }: { book: BookPreview; onClose: (changed: bo
     </div>
   );
 }
+
+/** Adds one tag to many books, keeping the tags they already have. */
+export function AddTagToMany({ books, onClose }: { books: BookPreview[]; onClose: (changed: boolean) => void }) {
+  const toast = useToast();
+  const [typed, setTyped] = useState("");
+  const [all, setAll] = useState<TagCount[]>([]);
+  const [saving, setSaving] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    void api.allTags().then(setAll, () => undefined);
+    input.current?.focus();
+  }, []);
+
+  const save = async (text: string) => {
+    const clean = cleanTag(text);
+    if (!clean) return;
+    const tag = all.find((t) => t.name.toLowerCase() === clean.toLowerCase())?.name ?? clean;
+    setSaving(true);
+    let done = 0;
+    for (const book of books) {
+      if (book.tags.some((t) => t.toLowerCase() === tag.toLowerCase())) continue;
+      try {
+        await api.setBookTags(book.id, [...book.tags, tag]);
+        done += 1;
+      } catch (e) {
+        toast(`Couldn't tag “${book.title}”: ${String(e)}`);
+      }
+    }
+    toast(done ? `Tagged ${done} ${done === 1 ? "book" : "books"} “${tag}”.` : `Those books were already tagged “${tag}”.`);
+    onClose(done > 0);
+  };
+  const q = typed.trim().toLowerCase();
+  const suggestions = all.filter((t) => !q || t.name.toLowerCase().includes(q)).slice(0, 12);
+
+  return (
+    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose(false)}>
+      <div className="dialog tag-dialog" role="dialog" aria-label="Add a tag" onKeyDown={(e) => e.key === "Escape" && onClose(false)}>
+        <h2>Add a tag</h2>
+        <p className="muted add-dialog-book">
+          To {books.length} {books.length === 1 ? "book" : "books"}. Tags they already have stay.
+        </p>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save(typed);
+          }}
+        >
+          <div className="tag-field">
+            <input
+              ref={input}
+              value={typed}
+              maxLength={40}
+              placeholder="Type a tag"
+              aria-label="Tag"
+              onChange={(e) => setTyped(e.target.value)}
+            />
+          </div>
+        </form>
+        {suggestions.length > 0 && (
+          <div className="tag-suggestions">
+            <span className="muted">Your tags</span>
+            {suggestions.map((t) => (
+              <button key={t.name} type="button" className="tag-chip tag-chip-add" disabled={saving} onClick={() => void save(t.name)}>
+                <Icon name="plus" size={12} /> {t.name}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-quiet" onClick={() => onClose(false)}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn-primary" disabled={saving || !typed.trim()} onClick={() => void save(typed)}>
+            Add tag
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

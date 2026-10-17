@@ -275,10 +275,12 @@ impl Library {
 
     fn books_for_matching(&self) -> Result<Vec<Known>> {
         let mut statement = self.conn.prepare(
-            "SELECT b.id, b.isbn, COALESCE(o_title.value, b.title), COALESCE(o_authors.value, b.authors)
+            "SELECT b.id, b.isbn, COALESCE(o_title.value, f_title.value, b.title), COALESCE(o_authors.value, f_authors.value, b.authors)
              FROM books b
              LEFT JOIN metadata_overrides o_title ON o_title.book_id = b.id AND o_title.field = 'title'
              LEFT JOIN metadata_overrides o_authors ON o_authors.book_id = b.id AND o_authors.field = 'authors'
+             LEFT JOIN metadata_fetched f_title ON f_title.book_id = b.id AND f_title.field = 'title'
+             LEFT JOIN metadata_fetched f_authors ON f_authors.book_id = b.id AND f_authors.field = 'authors'
              WHERE b.deleted_at IS NULL",
         )?;
         let rows = statement.query_map([], |r| {
@@ -348,11 +350,13 @@ impl Library {
     /// shelves. Returns how many books were written.
     pub fn export_goodreads(&self, file: &Path) -> Result<u32> {
         let mut statement = self.conn.prepare(
-            "SELECT b.id, COALESCE(o_title.value, b.title), COALESCE(o_authors.value, b.authors), b.isbn, b.rating,
+            "SELECT b.id, COALESCE(o_title.value, f_title.value, b.title), COALESCE(o_authors.value, f_authors.value, b.authors), b.isbn, b.rating,
                     b.status, b.finished_at, b.added_at, b.want_to_read, b.favorite, b.publisher
              FROM books b
              LEFT JOIN metadata_overrides o_title ON o_title.book_id = b.id AND o_title.field = 'title'
              LEFT JOIN metadata_overrides o_authors ON o_authors.book_id = b.id AND o_authors.field = 'authors'
+             LEFT JOIN metadata_fetched f_title ON f_title.book_id = b.id AND f_title.field = 'title'
+             LEFT JOIN metadata_fetched f_authors ON f_authors.book_id = b.id AND f_authors.field = 'authors'
              WHERE b.deleted_at IS NULL AND (b.rating IS NOT NULL OR b.status != 'unread' OR b.want_to_read = 1)
              ORDER BY b.added_at",
         )?;
