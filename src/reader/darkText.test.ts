@@ -44,4 +44,15 @@ describe("text on dark pages", () => {
     expect(plain.style.color).toBe("rgb(17, 17, 17)");
     expect(plain.hasAttribute("data-tbv-color")).toBe(false);
   });
+
+  it("leaves dark text alone on a light box of the book's own", () => {
+    const doc = document.implementation.createHTMLDocument("book");
+    doc.body.innerHTML =
+      '<aside style="background-color: #f4f0e0"><p style="color: #111">Boxed words</p></aside><p style="color: #111">Page words</p>';
+    Object.defineProperty(doc, "defaultView", { value: window });
+    const [boxed, open] = [...doc.querySelectorAll("p")];
+    fitTextToPage(doc, dark, true);
+    expect(boxed.style.color).toBe("rgb(17, 17, 17)");
+    expect(open.style.color).toBe("rgb(217, 213, 206)");
+  });
 });
