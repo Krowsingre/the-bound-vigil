@@ -295,13 +295,18 @@ impl Library {
 }
 
 /// Settings that belong to this device and its sign-in, never to a backup.
-const DEVICE_ONLY: [&str; 3] = ["sync.session", "sync.supabase", "sync.device_id"];
+const DEVICE_ONLY: [&str; 4] = ["sync.session", "sync.supabase", "sync.device_id", crate::hardcover::ACCOUNT_KEY];
 
-/// Takes this device's sign-in out of a backup copy, so a backup file never
-/// holds a way into the cloud.
+/// Sign-ins: never written into a backup file.
+const SIGN_INS: [&str; 2] = ["sync.session", crate::hardcover::ACCOUNT_KEY];
+
+/// Takes this device's sign-ins out of a backup copy, so a backup file never
+/// holds a way into the cloud or into Hardcover.
 fn forget_device_only(copy: &Path) -> Result<()> {
     let conn = Connection::open(copy)?;
-    conn.execute("DELETE FROM device_settings WHERE key = 'sync.session'", [])?;
+    for key in SIGN_INS {
+        conn.execute("DELETE FROM device_settings WHERE key = ?1", [key])?;
+    }
     Ok(())
 }
 
@@ -457,15 +462,19 @@ mod tests {
     fn backups_never_hold_the_sync_sign_in_and_restores_keep_it() {
         let (dir, mut library) = open_temp_library();
         library.set_setting("sync.session", r#"{"secret":"token"}"#).unwrap();
+        library.set_setting("hardcover.account", r#"{"access_token":"hc"}"#).unwrap();
         let backup = dir.path().join("library.tbvbackup");
         library.create_backup(&backup).unwrap();
         let copy = Connection::open(&backup).unwrap();
-        let held: i64 = copy.query_row("SELECT COUNT(*) FROM device_settings WHERE key = 'sync.session'", [], |r| r.get(0)).unwrap();
+        let held: i64 = copy
+            .query_row("SELECT COUNT(*) FROM device_settings WHERE key IN ('sync.session', 'hardcover.account')", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(held, 0);
         drop(copy);
 
         library.restore_backup(&backup).unwrap();
         assert_eq!(library.setting("sync.session").unwrap().as_deref(), Some(r#"{"secret":"token"}"#));
+        assert_eq!(library.setting("hardcover.account").unwrap().as_deref(), Some(r#"{"access_token":"hc"}"#));
         // Changes after a restore are still noticed for sync.
         library.save_personal_note(None, None, "After the restore").unwrap();
         let waiting: i64 = library.conn.query_row("SELECT COUNT(*) FROM sync_clock WHERE kind = 'personal_note' AND pushed = 0", [], |r| r.get(0)).unwrap();

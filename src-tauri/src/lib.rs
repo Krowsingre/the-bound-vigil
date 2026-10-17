@@ -90,6 +90,7 @@ async fn set_favorite(
 #[tauri::command]
 async fn set_rating(
     app: tauri::AppHandle,
+    sends: State<'_, Arc<hardcover::Sends>>,
     state: State<'_, AppLibrary>,
     book_id: String,
     rating: Option<u8>,
@@ -97,7 +98,7 @@ async fn set_rating(
     let library = state.0.clone();
     let id = book_id.clone();
     with_library(state, move |library| library.set_rating(&id, rating)).await?;
-    hardcover::send_in_background(library, app, book_id);
+    hardcover::send_in_background(library, app, sends.inner().clone(), book_id);
     Ok(())
 }
 
@@ -219,9 +220,18 @@ fn supported_formats() -> Vec<&'static str> {
 /// nothing is left running in the background after the window goes away.
 /// A last sync gets a moment to finish first, if the user wants one.
 #[tauri::command]
-async fn quit_app(app: tauri::AppHandle, worker: State<'_, Arc<sync::SyncWorker>>) -> CommandResult<()> {
+async fn quit_app(
+    app: tauri::AppHandle,
+    worker: State<'_, Arc<sync::SyncWorker>>,
+    sends: State<'_, Arc<hardcover::Sends>>,
+) -> CommandResult<()> {
     let worker = worker.inner().clone();
-    let _ = tauri::async_runtime::spawn_blocking(move || worker.finish(Duration::from_secs(15))).await;
+    let sends = sends.inner().clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        sends.finish(Duration::from_secs(10));
+        worker.finish(Duration::from_secs(15));
+    })
+    .await;
     app.exit(0);
     Ok(())
 }
@@ -639,6 +649,7 @@ pub fn run() {
             let library = Arc::new(Mutex::new(Library::open(LibraryPaths::new(&data_dir, &cache_dir))?));
             app.manage(Arc::new(sync::SyncWorker::start(app.handle().clone(), library.clone())));
             app.manage(AppLibrary(library));
+            app.manage(Arc::new(hardcover::Sends::default()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -705,8 +716,8 @@ pub fn run() {
             download_book,
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
-        // page gets a moment to save the reading position first; then the
-        // last sync gets its chance, and the app quits regardless after that.
+        // page gets a moment to save the reading position first; then ratings
+        // on their way to Hardcover and the last sync get their chance, and the app quits regardless after that.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
@@ -714,6 +725,9 @@ pub fn run() {
                 let app = window.app_handle().clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(Duration::from_secs(2));
+                    if let Some(sends) = app.try_state::<Arc<hardcover::Sends>>() {
+                        sends.finish(Duration::from_secs(10));
+                    }
                     if let Some(worker) = app.try_state::<Arc<sync::SyncWorker>>() {
                         worker.finish(Duration::from_secs(15));
                     }

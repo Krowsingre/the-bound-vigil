@@ -1,8 +1,9 @@
 //! Hardcover sign-in and rating sends. The library is only locked while it
 //! is read or written, never while waiting on Hardcover or the browser.
 
+use std::collections::HashMap;
 use std::net::TcpListener;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::Duration;
 
@@ -80,14 +81,61 @@ struct Notice {
     message: String,
 }
 
+/// Ratings on their way to Hardcover. They go one at a time, and a book
+/// rated again before its send starts is sent once, with the newest rating,
+/// so an older rating can never land last.
+#[derive(Default)]
+pub struct Sends {
+    state: Mutex<Waiting>,
+    finished: Condvar,
+    one_at_a_time: Mutex<()>,
+}
+
+#[derive(Default)]
+struct Waiting {
+    next: u64,
+    newest: HashMap<String, u64>,
+    pending: usize,
+}
+
+impl Sends {
+    /// Waits, up to `limit`, for sends still on their way, so closing TBV
+    /// straight after rating a book doesn't cut the rating off.
+    pub fn finish(&self, limit: Duration) {
+        let Ok(state) = self.state.lock() else { return };
+        let _ = self.finished.wait_timeout_while(state, limit, |w| w.pending > 0);
+    }
+}
+
 /// After a rating changes here: send it in the background, and only speak
 /// up if something needs the person's attention.
-pub fn send_in_background(library: Arc<Mutex<Library>>, app: AppHandle, book_id: String) {
+pub fn send_in_background(library: Arc<Mutex<Library>>, app: AppHandle, sends: Arc<Sends>, book_id: String) {
+    let ticket = {
+        let Ok(mut w) = sends.state.lock() else { return };
+        w.next += 1;
+        let ticket = w.next;
+        w.newest.insert(book_id.clone(), ticket);
+        w.pending += 1;
+        ticket
+    };
     thread::spawn(move || {
-        let message = match send_one(&library, &book_id) {
-            Ok((Sent::NotFound, label)) => format!("Hardcover doesn't seem to have {label}, so its rating stays in TBV."),
-            Ok(_) => return,
-            Err(e) => format!("Your rating couldn't reach Hardcover: {e}"),
+        let outcome = {
+            let _turn = sends.one_at_a_time.lock();
+            let newest = sends.state.lock().map(|w| w.newest.get(&book_id) == Some(&ticket)).unwrap_or(true);
+            // The book's rating is read when its turn comes, so the newest send has it.
+            newest.then(|| send_one(&library, &book_id))
+        };
+        if let Ok(mut w) = sends.state.lock() {
+            w.pending -= 1;
+            if w.newest.get(&book_id) == Some(&ticket) {
+                w.newest.remove(&book_id);
+            }
+        }
+        sends.finished.notify_all();
+        let message = match outcome {
+            Some(Ok((Sent::NotFound, label))) => format!("Hardcover doesn't seem to have {label}, so its rating stays in TBV."),
+            Some(Err(e)) => format!("Your rating couldn't reach Hardcover: {e}"),
+            _ => return,
         };
         let _ = app.emit("hardcover-notice", Notice { message });
     });

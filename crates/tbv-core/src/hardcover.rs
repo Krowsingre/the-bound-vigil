@@ -31,7 +31,7 @@ const GRAPHQL_URL: &str = "https://api.hardcover.app/v1/graphql";
 const ISSUER: &str = "https://api.hardcover.app";
 const SCOPES: &str = "read:me:content read:catalog read:library write:library";
 
-const ACCOUNT_KEY: &str = "hardcover.account";
+pub(crate) const ACCOUNT_KEY: &str = "hardcover.account";
 const MATCHES_KEY: &str = "hardcover.books";
 
 /// The signed-in Hardcover account, kept on this device.
