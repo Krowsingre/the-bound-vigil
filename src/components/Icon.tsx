@@ -23,6 +23,17 @@ const paths = {
   restore: "M8.5 8.5h9v9h-9zM6.5 15.5v-9h9",
   highlight: "M5 19h14M7 15l8.5-8.5 2.5 2.5L9.5 17.5H7z",
   note: "M5 5h14v10l-4 4H5zM15 19v-4h4",
+  grid: "M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z",
+  list: "M4 6h3v3H4zM10 7.5h10M4 15h3v3H4zM10 16.5h10",
+  rows: "M4 6h16M4 10h16M4 14h16M4 18h16",
+  filter: "M4 5h16l-6 7.5V19l-4-1.5v-5z",
+  chevronDown: "M7 10l5 5 5-5",
+  chevronLeft: "M14.5 6.5 9 12l5.5 5.5",
+  chevronRight: "M9.5 6.5 15 12l-5.5 5.5",
+  heart: "M12 19.5s-7.5-4.6-7.5-10A4.2 4.2 0 0 1 12 6.8a4.2 4.2 0 0 1 7.5 2.7c0 5.4-7.5 10-7.5 10z",
+  bookmark: "M7 4h10v16l-5-3.5L7 20z",
+  check: "M5.5 12.5l4 4 9-9",
+  image: "M4.5 5.5h15v13h-15zM4.5 15.5l4.5-4.5 4 4 2.5-2.5 4 4M15 9.5h.01",
 } as const;
 
 export type IconName = keyof typeof paths;

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isApp } from "./api";
-import type { HomeViewModel, SyncStatus } from "./api/types";
+import type { HomeViewModel, Profile, SyncStatus } from "./api/types";
 import { useToast } from "./components/Toast";
 import { Home } from "./home/Home";
 import { importSummary } from "./lib/importSummary";
+import { Library } from "./library/Library";
+import { initialView, rememberView, type LibraryView } from "./library/libraryView";
 import { ComingSoon } from "./pages/ComingSoon";
 import { Header } from "./shell/Header";
 import { NAV, type Route } from "./shell/routes";
@@ -26,6 +28,9 @@ export function App() {
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [dropping, setDropping] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [libraryView, setLibraryView] = useState<LibraryView>(initialView);
+  const [searchText, setSearchText] = useState("");
+  const [profile, setProfile] = useState<Profile | null>(null);
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
@@ -39,6 +44,47 @@ export function App() {
       return !c;
     });
   }, []);
+
+  // Any change except turning the page starts again from page one.
+  const changeLibraryView = useCallback((change: Partial<LibraryView>) => {
+    setLibraryView((v) => {
+      const next = { ...v, ...change, page: change.page ?? 0 };
+      rememberView(next);
+      return next;
+    });
+  }, []);
+
+  const openLibrary = useCallback(
+    (change: Partial<LibraryView> = {}) => {
+      changeLibraryView(change);
+      setRoute("library");
+    },
+    [changeLibraryView],
+  );
+
+  const changeSearch = useCallback(
+    (text: string) => {
+      setSearchText(text);
+      // Typing on the Library page filters it straight away, from page one.
+      setLibraryView((v) => (v.page === 0 ? v : { ...v, page: 0 }));
+    },
+    [],
+  );
+
+  useEffect(() => {
+    api.getProfile().then(setProfile, () => setProfile({ avatarPath: null }));
+  }, []);
+
+  const chooseAvatar = useCallback(() => {
+    if (!isApp) return toast("Choosing a picture works in the desktop app.");
+    api.chooseAvatar().then(
+      (p) => p && setProfile(p),
+      (e: unknown) => toast(`That picture couldn't be used: ${String(e)}`),
+    );
+  }, [toast]);
+  const clearAvatar = useCallback(() => {
+    api.clearAvatar().then(setProfile, (e: unknown) => toast(String(e)));
+  }, [toast]);
 
   const runImport = useCallback(
     async (paths: string[]) => {
@@ -107,7 +153,12 @@ export function App() {
         <Header
           ref={search}
           sync={sync}
-          onSearch={() => toast("Search arrives with the Library page in a later step.")}
+          profile={profile}
+          search={searchText}
+          onSearchChange={changeSearch}
+          onSearchSubmit={() => setRoute("library")}
+          onChooseAvatar={chooseAvatar}
+          onClearAvatar={clearAvatar}
           onImportBooks={importBooks}
           onImportFolder={importFolder}
           onOpenSyncSettings={() => setRoute("sync")}
@@ -117,9 +168,20 @@ export function App() {
             <Home
               refreshKey={refreshKey}
               onNavigate={setRoute}
+              onOpenLibrary={openLibrary}
               onImportBooks={importBooks}
               onImportFolder={importFolder}
               onLoaded={onHomeLoaded}
+            />
+          ) : route === "library" ? (
+            <Library
+              view={libraryView}
+              search={searchText}
+              refreshKey={refreshKey}
+              onChange={changeLibraryView}
+              onClearSearch={() => changeSearch("")}
+              onImportBooks={importBooks}
+              onImportFolder={importFolder}
             />
           ) : (
             <ComingSoon route={route} />

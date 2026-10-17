@@ -6,7 +6,14 @@ import { Home } from "./Home";
 const getHome = vi.fn<() => Promise<HomeViewModel>>();
 vi.mock("../api", () => ({
   isApp: false,
-  api: { kind: "app", getHome: () => getHome(), coverUrl: () => "", setBookStatus: vi.fn() },
+  api: {
+    kind: "app",
+    getHome: () => getHome(),
+    coverUrl: () => "",
+    setBookStatus: vi.fn(),
+    setFavorite: vi.fn(),
+    setWantToRead: vi.fn(),
+  },
 }));
 
 const emptyHome: HomeViewModel = {
@@ -27,6 +34,8 @@ const dracula: BookPreview = {
   coverPath: null,
   format: "epub",
   synopsis: null,
+  series: null,
+  seriesIndex: null,
   addedAt: "2026-10-16T10:00:00.000Z",
   lastOpenedAt: null,
   status: "unread",
@@ -34,12 +43,14 @@ const dracula: BookPreview = {
   resumeLocator: null,
   availability: "local",
   remotePositions: [],
+  favorite: false,
+  wantToRead: false,
 };
 
 function renderHome() {
   return render(
     <ToastProvider>
-      <Home refreshKey={0} onNavigate={() => {}} onImportBooks={() => {}} onImportFolder={() => {}} />
+      <Home refreshKey={0} onNavigate={() => {}} onOpenLibrary={() => {}} onImportBooks={() => {}} onImportFolder={() => {}} />
     </ToastProvider>,
   );
 }

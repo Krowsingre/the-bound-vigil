@@ -1,4 +1,5 @@
-import type { SyncStatus } from "../api/types";
+import { api } from "../api";
+import type { Profile, SyncStatus } from "../api/types";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { relativeTime } from "../lib/format";
@@ -14,28 +15,46 @@ const SUMMARY: Record<SyncStatus["state"], string> = {
 
 /**
  * The header circle. TBV has no account of its own, so this shows sync
- * state, and its menu holds sync, import and library setup actions.
+ * state, and its menu holds sync, import and library setup actions. It can
+ * frame a picture of the user's choosing; sync state then shows as a badge.
  */
 export function SyncMenu({
   sync,
+  profile,
   onImportBooks,
   onImportFolder,
   onOpenSyncSettings,
+  onChooseAvatar,
+  onClearAvatar,
 }: {
   sync: SyncStatus | null;
+  profile: Profile | null;
   onImportBooks: () => void;
   onImportFolder: () => void;
   onOpenSyncSettings: () => void;
+  onChooseAvatar: () => void;
+  onClearAvatar: () => void;
 }) {
   const state = sync?.state ?? "disabled";
   const off = state === "disabled";
+  const icon = off ? "cloudOff" : state === "syncing" ? "sync" : "cloud";
+  const avatar = profile?.avatarPath ? api.coverUrl(profile.avatarPath) : "";
   return (
     <Menu
       label={`Sync and import: ${SUMMARY[state]}`}
-      className={`sync-circle sync-${state}`}
+      className={`sync-circle sync-${state}${avatar ? " has-avatar" : ""}`}
       trigger={
         <>
-          <Icon name={off ? "cloudOff" : state === "syncing" ? "sync" : "cloud"} size={18} />
+          {avatar ? (
+            <span className="sync-avatar">
+              <img src={avatar} alt="" draggable={false} />
+              <span className="sync-badge">
+                <Icon name={icon} size={11} />
+              </span>
+            </span>
+          ) : (
+            <Icon name={icon} size={18} />
+          )}
           <span className="sync-chevron" aria-hidden>
             ▾
           </span>
@@ -65,6 +84,9 @@ export function SyncMenu({
         { label: "Join an existing library", icon: "link", hint: "Coming soon", disabled: true },
         "divider",
         { label: "Sync & Accounts", icon: "settings", onSelect: onOpenSyncSettings },
+        "divider",
+        { label: avatar ? "Change profile picture…" : "Choose a profile picture…", icon: "image", onSelect: onChooseAvatar },
+        ...(avatar ? [{ label: "Remove profile picture", onSelect: onClearAvatar }] : []),
       ]}
     />
   );

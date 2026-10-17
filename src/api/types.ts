@@ -30,6 +30,8 @@ export interface BookPreview {
   coverPath: string | null;
   format: string;
   synopsis: string | null;
+  series: string | null;
+  seriesIndex: number | null;
   addedAt: IsoUtc;
   lastOpenedAt: IsoUtc | null;
   status: ReadStatus;
@@ -37,6 +39,8 @@ export interface BookPreview {
   resumeLocator: ReaderLocator | null;
   availability: Availability;
   remotePositions: RemotePosition[];
+  favorite: boolean;
+  wantToRead: boolean;
 }
 
 export interface CollectionPreview {
@@ -94,3 +98,41 @@ export type ImportResult =
   | { outcome: "alreadyInLibrary"; path: string; bookId: BookId; title: string }
   | { outcome: "unsupported"; path: string }
   | { outcome: "failed"; path: string; reason: string };
+
+export type Shelf = "all" | "favorites" | "want_to_read" | "in_progress" | "read" | "unread";
+export type SortOrder = "recently_added" | "recently_opened" | "title" | "author" | "series" | "progress";
+export type Location = "on_device" | "cloud_only";
+
+export interface LibraryQuery {
+  shelf: Shelf;
+  sort: SortOrder;
+  search: string | null;
+  formats: string[];
+  location: Location | null;
+  /** Zero-based. */
+  page: number;
+  pageSize: number;
+}
+
+export interface ShelfCounts {
+  all: number;
+  favorites: number;
+  wantToRead: number;
+  inProgress: number;
+  read: number;
+  unread: number;
+  collections: number;
+}
+
+export interface LibraryPage {
+  books: BookPreview[];
+  total: number;
+  page: number;
+  pageSize: number;
+  counts: ShelfCounts;
+  formats: string[];
+}
+
+export interface Profile {
+  avatarPath: string | null;
+}

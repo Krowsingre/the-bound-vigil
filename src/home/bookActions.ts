@@ -4,12 +4,21 @@ import type { MenuEntry } from "../components/Menu";
 export interface BookActions {
   open: (book: BookPreview) => void;
   setStatus: (book: BookPreview, status: BookPreview["status"]) => void;
+  setFavorite: (book: BookPreview, favorite: boolean) => void;
+  setWantToRead: (book: BookPreview, want: boolean) => void;
 }
 
 /** The "…" menu for a book. Actions that arrive in later steps are shown but disabled. */
 export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
   return [
     { label: "Book details", hint: "Coming soon", disabled: true },
+    "divider",
+    book.favorite
+      ? { label: "Remove from favourites", icon: "heart", onSelect: () => actions.setFavorite(book, false) }
+      : { label: "Add to favourites", icon: "heart", onSelect: () => actions.setFavorite(book, true) },
+    book.wantToRead
+      ? { label: "Remove from Want to read", icon: "bookmark", onSelect: () => actions.setWantToRead(book, false) }
+      : { label: "Want to read", icon: "bookmark", onSelect: () => actions.setWantToRead(book, true) },
     "divider",
     book.status === "read"
       ? { label: "Mark as unread", onSelect: () => actions.setStatus(book, "unread") }
@@ -33,4 +42,20 @@ export function openMessage(book: BookPreview): string {
     default:
       return `The reader arrives in a later step. “${book.title}” will open right where you left off.`;
   }
+}
+
+/** The shared actions, refreshing the current view after each change. */
+export function makeBookActions(
+  api: Pick<import("../api").Api, "setBookStatus" | "setFavorite" | "setWantToRead">,
+  toast: (text: string) => void,
+  refresh: () => void,
+): BookActions {
+  const run = (book: BookPreview, work: Promise<void>) =>
+    work.then(refresh, (e: unknown) => toast(`Couldn't update “${book.title}”: ${String(e)}`));
+  return {
+    open: (book) => toast(openMessage(book)),
+    setStatus: (book, status) => void run(book, api.setBookStatus(book.id, status)),
+    setFavorite: (book, favorite) => void run(book, api.setFavorite(book.id, favorite)),
+    setWantToRead: (book, want) => void run(book, api.setWantToRead(book.id, want)),
+  };
 }

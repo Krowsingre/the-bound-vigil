@@ -90,6 +90,8 @@ pub struct BookPreview {
     /// Lowercase file extension without the dot, e.g. `epub`.
     pub format: String,
     pub synopsis: Option<String>,
+    pub series: Option<String>,
+    pub series_index: Option<f64>,
     pub added_at: IsoUtc,
     pub last_opened_at: Option<IsoUtc>,
     pub status: ReadStatus,
@@ -97,6 +99,8 @@ pub struct BookPreview {
     pub resume_locator: Option<ReaderLocator>,
     pub availability: Availability,
     pub remote_positions: Vec<RemotePosition>,
+    pub favorite: bool,
+    pub want_to_read: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -179,6 +183,89 @@ pub struct HomeViewModel {
     pub library_counts: LibraryCounts,
     pub activity: Option<ReadingActivity>,
     pub sync: SyncStatus,
+}
+
+/// Which books the Library page lists. Read statuses are explicit, never
+/// inferred from a percentage.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Shelf {
+    #[default]
+    All,
+    Favorites,
+    WantToRead,
+    InProgress,
+    Read,
+    Unread,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SortOrder {
+    #[default]
+    RecentlyAdded,
+    RecentlyOpened,
+    Title,
+    Author,
+    Series,
+    Progress,
+}
+
+/// Where a book's file is, for filtering. `Missing` books count as on device.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Location {
+    OnDevice,
+    CloudOnly,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LibraryQuery {
+    pub shelf: Shelf,
+    pub sort: SortOrder,
+    /// Matches title, author or series, ignoring case.
+    pub search: Option<String>,
+    /// Lowercase extensions. Empty means every format.
+    pub formats: Vec<String>,
+    pub location: Option<Location>,
+    /// Zero-based.
+    pub page: u32,
+    pub page_size: u32,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShelfCounts {
+    pub all: u32,
+    pub favorites: u32,
+    pub want_to_read: u32,
+    pub in_progress: u32,
+    pub read: u32,
+    pub unread: u32,
+    pub collections: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryPage {
+    pub books: Vec<BookPreview>,
+    /// Books matching the query across all pages.
+    pub total: u32,
+    pub page: u32,
+    pub page_size: u32,
+    /// Whole-library counts, unaffected by search and filters.
+    pub counts: ShelfCounts,
+    /// Formats present in the library, for the filter menu.
+    pub formats: Vec<String>,
+}
+
+/// This device's own settings. Not synced.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Profile {
+    /// The picture shown inside the sync circle, copied into the app's data folder.
+    pub avatar_path: Option<String>,
 }
 
 /// What happened to one file handed to import.

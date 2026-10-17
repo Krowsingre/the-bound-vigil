@@ -10,6 +10,9 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     #[error("this book file could not be read: {0}")]
     BadBook(String),
+    /// Something the user picked that TBV can't use; the text says why.
+    #[error("{0}")]
+    Unsuitable(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
