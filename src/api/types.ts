@@ -629,3 +629,75 @@ export interface Audiobook {
   /** The ebook it's linked to, for reading along. */
   ebook: { id: string; name: string } | null;
 }
+
+export type ServerProtocol = "ftp" | "ftps" | "sftp";
+export type ServerLogin = "password" | "key";
+
+/** A server saved on this device, as Settings shows it: never the password. */
+export interface ServerView {
+  id: string;
+  name: string;
+  protocol: ServerProtocol;
+  host: string;
+  port: number;
+  username: string;
+  hasPassword: boolean;
+  login: ServerLogin;
+  keyFile: string | null;
+  folder: string;
+  /** The SFTP server's key fingerprint, once trusted. */
+  hostKey: string | null;
+}
+
+export interface ServerInput {
+  /** Null adds a new server. */
+  id: string | null;
+  name: string;
+  protocol: ServerProtocol;
+  host: string;
+  port: number;
+  username: string;
+  /** Null keeps the password saved before. */
+  password: string | null;
+  login: ServerLogin;
+  keyFile: string | null;
+  folder: string;
+}
+
+export interface RemoteEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  size: number;
+}
+
+/** A server's folder: its folders and the files TBV can import. */
+export interface ServerListing {
+  path: string;
+  entries: RemoteEntry[];
+  /** Files left out because TBV can't import them. */
+  hidden: number;
+}
+
+export interface ServerChoice {
+  path: string;
+  isDir: boolean;
+  size: number;
+}
+
+export interface ServerDownloadStatus {
+  running: boolean;
+  server: string | null;
+  progress: {
+    stage: "looking" | "downloading";
+    filesDone: number;
+    filesTotal: number;
+    bytesDone: number;
+    bytesTotal: number;
+    current: string | null;
+  };
+  /** Books handed to the import queue once it finished. */
+  queued: number | null;
+  stopped: boolean;
+  error: string | null;
+}

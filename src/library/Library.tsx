@@ -3,6 +3,7 @@ import { api } from "../api";
 import type { BookPreview, CollectionPreview, ItemKind, LibraryPage } from "../api/types";
 import { askEditDetails } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { makeBookActions } from "../home/bookActions";
@@ -55,6 +56,8 @@ export function Library({
   // Choosing books to change many at once.
   const [selected, setSelected] = useState<Map<string, BookPreview> | null>(null);
   const [tagging, setTagging] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
   const toast = useToast();
   const words = WORDS[kind];
   const actions = useMemo(
@@ -63,6 +66,18 @@ export function Library({
   );
 
   const shelf = view.tab === "collections" ? "all" : view.tab;
+  const query = {
+    shelf,
+    sort: view.sort,
+    search: search.trim() || null,
+    formats: view.formats,
+    location: view.location,
+    tags: view.tags,
+    genres: view.genres,
+    authors: view.authors,
+    narrators: view.narrators,
+    kind,
+  };
   useEffect(() => {
     let current = true;
     api
@@ -132,6 +147,47 @@ export function Library({
       }),
   };
   const chosen = selected ? [...selected.values()] : [];
+
+  /** Chooses every book the current filters and search show, on every page. */
+  const chooseAll = async () => {
+    setBusy("Choosing…");
+    try {
+      const all = new Map(selected ?? []);
+      for (let p = 0; ; p++) {
+        const got = await api.getLibrary({ ...query, page: p, pageSize: 200 });
+        got.books.forEach((b) => all.set(b.id, b));
+        if (got.page < p || (got.page + 1) * got.pageSize >= got.total) break;
+      }
+      setSelected(all);
+    } catch (e) {
+      toast(`Couldn't choose them all: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const removeChosen = async () => {
+    setRemoving(false);
+    const list = chosen;
+    let failed = 0;
+    for (let i = 0; i < list.length; i++) {
+      setBusy(`Removing ${i + 1} of ${list.length}…`);
+      try {
+        await api.deleteBook(list[i].id);
+      } catch {
+        failed++;
+      }
+    }
+    setBusy(null);
+    setSelected(new Map());
+    setReload((n) => n + 1);
+    const done = list.length - failed;
+    toast(
+      failed
+        ? `Removed ${done} of ${list.length} ${words.many}. ${failed} couldn't be removed.`
+        : `Removed ${done === 1 ? `1 ${words.one}` : `${done} ${words.many}`} from your library.`,
+    );
+  };
 
   let body: React.ReactNode;
   if (load.state === "error") {
@@ -246,11 +302,17 @@ export function Library({
               Choose all on this page
             </button>
           )}
+          {page && page.total > page.books.length && selected.size < page.total && (
+            <button type="button" className="view-all" disabled={busy !== null} onClick={() => void chooseAll()}>
+              Choose all {page.total}
+            </button>
+          )}
           {selected.size > 0 && (
-            <button type="button" className="view-all" onClick={() => setSelected(new Map())}>
+            <button type="button" className="view-all" disabled={busy !== null} onClick={() => setSelected(new Map())}>
               Clear
             </button>
           )}
+          {busy && <span className="select-count">{busy}</span>}
           <span className="select-actions">
             <button type="button" className="btn btn-quiet" disabled={!selected.size} onClick={() => askEditDetails(chosen)}>
               <Icon name="edit" size={16} /> Edit details
@@ -263,11 +325,32 @@ export function Library({
                 <Icon name="ereader" size={16} /> Send to e-reader
               </button>
             )}
-            <button type="button" className="btn btn-primary" onClick={() => setSelected(null)}>
+            <button
+              type="button"
+              className="btn btn-quiet btn-danger-text"
+              disabled={!selected.size || busy !== null}
+              onClick={() => setRemoving(true)}
+            >
+              <Icon name="trash" size={16} /> Remove from library
+            </button>
+            <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => setSelected(null)}>
               Done
             </button>
           </span>
         </div>
+      )}
+      {removing && (
+        <ConfirmDialog
+          title={chosen.length === 1 ? `Remove “${chosen[0].title}”?` : `Remove ${chosen.length} ${words.many}?`}
+          body={
+            `This takes ${chosen.length === 1 ? "it" : "them"} out of your library on every device, with highlights and notes. ` +
+            "Book files you imported from a folder of your own stay where they are."
+          }
+          confirm={chosen.length === 1 ? `Remove ${words.one}` : `Remove ${chosen.length} ${words.many}`}
+          danger
+          onCancel={() => setRemoving(false)}
+          onConfirm={() => void removeChosen()}
+        />
       )}
       {tagging && (
         <AddTagToMany

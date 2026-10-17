@@ -153,6 +153,16 @@
   font: italic 400 16px/1.5 var(--font-serif);
 }
 
+.sidebar-quote-by {
+  margin-top: 6px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.sidebar-quote-by::before {
+  content: "— ";
+}
+
 .sidebar-rule {
   display: block;
   width: 28px;

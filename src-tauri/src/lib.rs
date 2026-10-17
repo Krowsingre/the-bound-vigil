@@ -5,6 +5,7 @@ mod audio;
 mod hardcover;
 mod imports;
 mod moving;
+mod servers;
 mod sync;
 
 use std::path::PathBuf;
@@ -360,6 +361,9 @@ async fn delete_annotation(state: State<'_, AppLibrary>, id: String) -> CommandR
 
 #[tauri::command]
 async fn get_setting(state: State<'_, AppLibrary>, key: String) -> CommandResult<Option<String>> {
+    if tbv_core::data::is_secret_setting(&key) {
+        return Err("That setting can't be read from here.".into());
+    }
     with_library(state, move |library| library.setting(&key)).await
 }
 
@@ -369,6 +373,9 @@ async fn set_setting(
     key: String,
     value: String,
 ) -> CommandResult<()> {
+    if tbv_core::data::is_secret_setting(&key) {
+        return Err("That setting can't be changed from here.".into());
+    }
     with_library(state, move |library| library.set_setting(&key, &value)).await
 }
 
@@ -962,6 +969,113 @@ async fn send_kindle_test(state: State<'_, AppLibrary>) -> CommandResult<()> {
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn list_servers(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::servers::ServerView>> {
+    with_library(state, |library| library.server_views()).await
+}
+
+#[tauri::command]
+async fn save_server(
+    state: State<'_, AppLibrary>,
+    server: tbv_core::servers::ServerInput,
+) -> CommandResult<tbv_core::servers::ServerView> {
+    with_library(state, move |library| library.save_server(&server)).await
+}
+
+#[tauri::command]
+async fn remove_server(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.remove_server(&id)).await
+}
+
+/// Remembers an SFTP server's key once the person has said it's theirs.
+#[tauri::command]
+async fn trust_server_key(
+    state: State<'_, AppLibrary>,
+    id: String,
+    fingerprint: String,
+) -> CommandResult<tbv_core::servers::ServerView> {
+    with_library(state, move |library| library.trust_server_key(&id, &fingerprint)).await
+}
+
+/// Runs `work` against a saved server, off the UI thread and without the
+/// library held while the server is waited on.
+async fn on_server<T, F>(state: State<'_, AppLibrary>, id: String, work: F) -> CommandResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce(&tbv_core::servers::Server) -> tbv_core::Result<T> + Send + 'static,
+{
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || work(&servers::saved(&library, &id)?))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(servers::problem)
+}
+
+/// Connects to a saved server and says what's there.
+#[tauri::command]
+async fn test_server(state: State<'_, AppLibrary>, id: String) -> CommandResult<String> {
+    on_server(state, id, tbv_core::servers::test).await
+}
+
+/// A folder on a server: its folders and the files TBV can import. No path
+/// means where browsing starts.
+#[tauri::command]
+async fn browse_server(
+    state: State<'_, AppLibrary>,
+    id: String,
+    path: Option<String>,
+) -> CommandResult<tbv_core::servers::Listing> {
+    on_server(state, id, move |server| {
+        let mut connection = tbv_core::servers::connect(server)?;
+        let path = match path.filter(|p| !p.trim().is_empty()) {
+            Some(p) => tbv_core::servers::normalise(&p),
+            None => tbv_core::servers::start_folder(connection.as_mut(), server)?,
+        };
+        tbv_core::servers::list_importable(connection.as_mut(), &path)
+    })
+    .await
+}
+
+/// Starts bringing down what was ticked; it then joins the import queue.
+#[tauri::command]
+async fn download_from_server(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    imports: State<'_, Arc<imports::Imports>>,
+    downloads: State<'_, Arc<servers::Downloads>>,
+    id: String,
+    chosen: Vec<tbv_core::servers::Chosen>,
+) -> CommandResult<()> {
+    if chosen.is_empty() {
+        return Err("Tick the files or folders to bring in first.".into());
+    }
+    let library = state.0.clone();
+    let server = {
+        let library = library.clone();
+        tauri::async_runtime::spawn_blocking(move || servers::saved(&library, &id))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(servers::problem)?
+    };
+    let into = tbv_core::servers::downloads_dir(&app.path().app_data_dir().map_err(|e| e.to_string())?);
+    downloads.inner().start(app, library, imports.inner().clone(), server, chosen, into)
+}
+
+#[tauri::command]
+fn server_download_status(downloads: State<'_, Arc<servers::Downloads>>) -> servers::DownloadStatus {
+    downloads.status()
+}
+
+#[tauri::command]
+fn cancel_server_download(downloads: State<'_, Arc<servers::Downloads>>) {
+    downloads.cancel();
+}
+
+#[tauri::command]
+fn clear_server_download(app: tauri::AppHandle, downloads: State<'_, Arc<servers::Downloads>>) {
+    downloads.clear(&app);
+}
+
 /// Opens File Explorer at a file or folder TBV keeps.
 #[tauri::command]
 fn show_folder(path: String) -> CommandResult<()> {
@@ -983,6 +1097,9 @@ pub fn run() {
             app.manage(Arc::new(hardcover::Sends::default()));
             app.manage(Arc::new(imports::Imports::default()));
             app.manage(Arc::new(moving::Mover::default()));
+            app.manage(Arc::new(servers::Downloads::default()));
+            // Downloads left from last time were either imported or stopped.
+            let _ = std::fs::remove_dir_all(tbv_core::servers::downloads_dir(&data_dir));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1084,6 +1201,16 @@ pub fn run() {
             retry_move,
             cancel_move,
             clear_move,
+            list_servers,
+            save_server,
+            remove_server,
+            trust_server_key,
+            test_server,
+            browse_server,
+            download_from_server,
+            server_download_status,
+            cancel_server_download,
+            clear_server_download,
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
         // page gets a moment to save the reading position first; then ratings

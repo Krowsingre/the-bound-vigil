@@ -7,6 +7,7 @@ import { previewCollections } from "../preview/collections";
 import { previewNotes, sampleAnnotations } from "../preview/notes";
 import { sampleEpub } from "../preview/sampleEpub";
 import { previewMove } from "../preview/move";
+import { previewServers } from "../preview/servers";
 import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
 import { duplicateGroups } from "../lib/duplicates";
 import { cleanValue, DETAIL_FIELDS, previewFields } from "../lib/details";
@@ -669,6 +670,7 @@ export function previewApi(): Api {
       throw new Error(DESKTOP_ONLY);
     },
     onSync: () => () => undefined,
+    ...previewServers(),
     ...collections.api,
     ...notes,
   };

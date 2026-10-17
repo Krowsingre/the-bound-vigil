@@ -36,6 +36,7 @@ import { WebDb } from "./db";
 import { UP_NEXT, WebLibrary, type BookRow } from "./library";
 import { WebSync } from "./sync";
 import { moveStub } from "../api/moveStub";
+import { serverStub } from "../api/serverStub";
 import { projectFromLink } from "./link";
 
 type Row = { [column: string]: unknown };
@@ -971,6 +972,7 @@ export async function webApi(): Promise<Api> {
     sendKindleTest: async () => {
       throw new Error(SENDING_DESKTOP_ONLY);
     },
+    ...serverStub(),
     onSync: ({ status, libraryChanged }) => {
       const stops: (() => void)[] = [];
       if (status) stops.push(sync.onStatus(status));

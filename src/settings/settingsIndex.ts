@@ -11,6 +11,7 @@ export type SettingsTab =
   | "sync"
   | "files"
   | "ereaders"
+  | "servers"
   | "accessibility"
   | "shortcuts"
   | "advanced"
@@ -71,6 +72,12 @@ export const SETTINGS_TABS: {
     lede: "Send books to your Kindle, Kobo or other e-reader.",
   },
   {
+    tab: "servers",
+    label: "Servers",
+    icon: "database",
+    lede: "Bring in books and audiobooks from a seedbox, a NAS or another computer.",
+  },
+  {
     tab: "accessibility",
     label: "Accessibility",
     icon: "accessibility",
@@ -106,6 +113,12 @@ export interface SettingsEntry {
 }
 
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
+  {
+    tab: "servers",
+    section: "servers",
+    label: "Servers",
+    words: "ftp ftps sftp ssh seedbox nas server remote computer import download audiobooks books key fingerprint",
+  },
   {
     tab: "appearance",
     section: "theme",

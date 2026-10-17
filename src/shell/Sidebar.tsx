@@ -85,7 +85,8 @@ export function Sidebar({
 
       {!collapsed && (
         <figure className="sidebar-quote" aria-hidden>
-          <blockquote>A quieter world lives in these pages.</blockquote>
+          <blockquote>A wider world lives in these pages.</blockquote>
+          <figcaption className="sidebar-quote-by">Krowsingre</figcaption>
           <span className="sidebar-rule" />
         </figure>
       )}

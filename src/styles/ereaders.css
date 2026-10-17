@@ -160,3 +160,169 @@
   flex-direction: column;
   gap: 2px;
 }
+
+/* Settings › Servers */
+.server-item {
+  align-items: center;
+}
+
+.server-item > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+
+.ereader-item > .server-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.server-form {
+  margin-top: 4px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+}
+
+.server-form-title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.server-key-file {
+  display: flex;
+  gap: 8px;
+}
+
+.server-key-file input {
+  flex: 1;
+  min-width: 0;
+}
+
+.server-tested {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+  color: var(--text-success, var(--accent));
+}
+
+.server-fingerprint {
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--surface-sunk);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.server-download {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: var(--radius-s);
+  background: var(--surface-sunk);
+}
+
+.server-download p {
+  margin: 0;
+}
+
+.browse-dialog {
+  width: min(640px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.browse-dialog h2 {
+  margin: 0;
+}
+
+.browse-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.browse-path-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 13px;
+}
+
+.browse-list {
+  height: min(360px, 50vh);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+}
+
+.browse-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+}
+
+.browse-list li {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-s);
+}
+
+.browse-list li:hover,
+.browse-list li.is-chosen {
+  background: var(--surface-sunk);
+}
+
+.browse-check {
+  display: flex;
+  padding: 8px 4px 8px 8px;
+  cursor: pointer;
+}
+
+.browse-entry {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.browse-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browse-size {
+  flex: none;
+  color: var(--text-muted, inherit);
+  font-size: 13px;
+}
+
+.browse-note {
+  padding: 16px;
+}
+
+@media (max-width: 520px) {
+  .server-item {
+    flex-wrap: wrap;
+  }
+}

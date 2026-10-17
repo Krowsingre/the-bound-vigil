@@ -26,6 +26,11 @@ import type {
   ImportItem,
   KindleEmailInput,
   KindleEmailView,
+  ServerChoice,
+  ServerDownloadStatus,
+  ServerInput,
+  ServerListing,
+  ServerView,
   MoveMode,
   MoveScope,
   MoveStatus,
@@ -213,6 +218,24 @@ export interface Api {
   sendToKindle(bookId: string): Promise<void>;
   /** Emails a small test document to the Kindle with the saved settings. */
   sendKindleTest(): Promise<void>;
+  /** Servers to import from (FTP, FTPS, SFTP), saved on this device. */
+  listServers(): Promise<ServerView[]>;
+  saveServer(server: ServerInput): Promise<ServerView>;
+  removeServer(id: string): Promise<void>;
+  /** Remembers an SFTP server's key once the person has said it's theirs. */
+  trustServerKey(id: string, fingerprint: string): Promise<ServerView>;
+  /** Connects and says what's there. A new SFTP server fails with `new-host-key:<fingerprint>`. */
+  testServer(id: string): Promise<string>;
+  /** A folder on the server; null is where browsing starts. */
+  browseServer(id: string, path: string | null): Promise<ServerListing>;
+  /** Brings down what was ticked, then hands it to the import queue. */
+  downloadFromServer(id: string, chosen: ServerChoice[]): Promise<void>;
+  serverDownloadStatus(): Promise<ServerDownloadStatus>;
+  cancelServerDownload(): Promise<void>;
+  clearServerDownload(): Promise<void>;
+  onServerDownload(listener: (status: ServerDownloadStatus) => void): () => void;
+  /** A private key file, for SFTP. */
+  pickKeyFile(): Promise<string | null>;
   /** Hears sync starting and finishing, and library changes it brings. Returns a way to stop. */
   onSync(listener: { status?: (status: SyncStatus) => void; libraryChanged?: () => void }): () => void;
 }
@@ -450,6 +473,33 @@ function appApi(): Api {
     forgetKindleEmail: async () => (await core).invoke("forget_kindle_email"),
     sendToKindle: async (bookId) => (await core).invoke("send_to_kindle", { bookId }),
     sendKindleTest: async () => (await core).invoke("send_kindle_test"),
+    listServers: async () => (await core).invoke<ServerView[]>("list_servers"),
+    saveServer: async (server) => (await core).invoke<ServerView>("save_server", { server }),
+    removeServer: async (id) => (await core).invoke("remove_server", { id }),
+    trustServerKey: async (id, fingerprint) => (await core).invoke<ServerView>("trust_server_key", { id, fingerprint }),
+    testServer: async (id) => (await core).invoke<string>("test_server", { id }),
+    browseServer: async (id, path) => (await core).invoke<ServerListing>("browse_server", { id, path }),
+    downloadFromServer: async (id, chosen) => (await core).invoke("download_from_server", { id, chosen }),
+    serverDownloadStatus: async () => (await core).invoke<ServerDownloadStatus>("server_download_status"),
+    cancelServerDownload: async () => (await core).invoke("cancel_server_download"),
+    clearServerDownload: async () => (await core).invoke("clear_server_download"),
+    onServerDownload: (listener) => {
+      let stop: (() => void) | null = null;
+      let stopped = false;
+      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+        const unlisten = await listen<ServerDownloadStatus>("server-download-changed", (e) => listener(e.payload));
+        if (stopped) unlisten();
+        else stop = unlisten;
+      });
+      return () => {
+        stopped = true;
+        stop?.();
+      };
+    },
+    pickKeyFile: async () => {
+      const picked = await (await dialog).open({ multiple: false, title: "Choose your private key file" });
+      return typeof picked === "string" ? picked : null;
+    },
     onSync: ({ status, libraryChanged }) => {
       const stops: (() => void)[] = [];
       let stopped = false;
