@@ -12,6 +12,8 @@ import type {
   CollectionSummary,
   CollectionsOverview,
   GoodreadsImport,
+  HardcoverSendAll,
+  HardcoverStatus,
   HomeViewModel,
   ImportResult,
   LibraryInfo,
@@ -43,6 +45,16 @@ export interface Api {
   setRating(bookId: string, rating: number | null): Promise<void>;
   /** Asks for a Goodreads export file and brings it in. Null if cancelled. */
   importGoodreads(): Promise<GoodreadsImport | null>;
+  /** Writes a Goodreads-format file of rated and shelved books. Null if cancelled, else how many. */
+  exportGoodreads(): Promise<number | null>;
+  hardcoverStatus(): Promise<HardcoverStatus>;
+  /** Opens Hardcover in the browser and waits for the person to approve. */
+  hardcoverSignIn(): Promise<HardcoverStatus>;
+  hardcoverSignOut(): Promise<HardcoverStatus>;
+  hardcoverSetSending(on: boolean): Promise<HardcoverStatus>;
+  hardcoverSendAll(): Promise<HardcoverSendAll>;
+  /** Problems sending a rating to Hardcover in the background. */
+  onHardcoverNotice(listener: (message: string) => void): () => void;
   /** The plain text of an old Word (DOC) book. */
   bookText(bookId: string): Promise<string>;
   /** Gives a book a cover drawn here (a PDF's first page) if it has none. */
@@ -158,6 +170,32 @@ function appApi(): Api {
         }),
       );
       return path ? (await core).invoke<GoodreadsImport>("import_goodreads", { path }) : null;
+    },
+    exportGoodreads: async () => {
+      const path = await (await dialog).save({
+        title: "Export for Goodreads",
+        defaultPath: `TBV for Goodreads ${today()}.csv`,
+        filters: [{ name: "Goodreads file", extensions: ["csv"] }],
+      });
+      return path ? (await core).invoke<number>("export_goodreads", { path }) : null;
+    },
+    hardcoverStatus: async () => (await core).invoke<HardcoverStatus>("hardcover_status"),
+    hardcoverSignIn: async () => (await core).invoke<HardcoverStatus>("hardcover_sign_in"),
+    hardcoverSignOut: async () => (await core).invoke<HardcoverStatus>("hardcover_sign_out"),
+    hardcoverSetSending: async (on) => (await core).invoke<HardcoverStatus>("hardcover_set_sending", { on }),
+    hardcoverSendAll: async () => (await core).invoke<HardcoverSendAll>("hardcover_send_all"),
+    onHardcoverNotice: (listener) => {
+      let stop: (() => void) | null = null;
+      let stopped = false;
+      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+        const unlisten = await listen<{ message: string }>("hardcover-notice", (e) => listener(e.payload.message));
+        if (stopped) unlisten();
+        else stop = unlisten;
+      });
+      return () => {
+        stopped = true;
+        stop?.();
+      };
     },
     bookText: async (bookId) => (await core).invoke<string>("book_text", { bookId }),
     fillCover: async (bookId, picture) => (await core).invoke<boolean>("fill_cover", picture, { headers: { "book-id": bookId } }),

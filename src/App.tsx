@@ -93,6 +93,8 @@ export function App() {
     [],
   );
 
+  useEffect(() => api.onHardcoverNotice((message) => toast(message)), [toast]);
+
   useEffect(() => {
     api.getProfile().then(setProfile, () => setProfile({ avatarPath: null }));
   }, []);

@@ -133,6 +133,17 @@ function GoodreadsSection() {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<GoodreadsImport | null>(null);
+  const exportFile = async () => {
+    setBusy(true);
+    try {
+      const count = await api.exportGoodreads();
+      if (count !== null) toast(`Saved ${count} ${count === 1 ? "book" : "books"}. On Goodreads, open My Books, then Import and export, and import this file.`);
+    } catch (e) {
+      toast(`That didn't work: ${String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
   const start = async () => {
     setBusy(true);
     try {
@@ -147,8 +158,8 @@ function GoodreadsSection() {
   return (
     <Section
       id="goodreads"
-      title="Bring in from Goodreads"
-      lede="Goodreads lets you export your books as a file. TBV reads it and adds your ratings, read dates and shelves to the books you have here."
+      title="Goodreads"
+      lede="Goodreads doesn't let other apps change your account, so ratings travel by file. Bring a Goodreads export into TBV, or make a file of your TBV ratings and shelves for Goodreads to import."
     >
       <div className="action-tiles">
         <ActionTile
@@ -157,6 +168,13 @@ function GoodreadsSection() {
           hint="Only fills in what TBV is missing."
           disabled={busy}
           onClick={() => void start()}
+        />
+        <ActionTile
+          icon={<Icon name="download" size={22} />}
+          title="Export for Goodreads"
+          hint="Your ratings, reading status and shelves."
+          disabled={busy}
+          onClick={() => void exportFile()}
         />
       </div>
       <p className="settings-row-hint">

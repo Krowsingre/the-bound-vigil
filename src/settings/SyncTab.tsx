@@ -8,6 +8,7 @@ import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { useAppSettings, type ConflictRule, type SyncFrequency } from "./appSettings";
 import { AccountPanel } from "./AccountPanel";
+import { HardcoverSection } from "./HardcoverSection";
 import { ActionTile, RadioList, Row, Section, Select, Toggle } from "./controls";
 
 type Provider = "supabase" | "dropbox" | "gdrive" | "onedrive" | "icloud" | "mega" | "custom";
@@ -441,6 +442,8 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
           </div>
         </div>
       </Section>
+
+      <HardcoverSection />
 
       <Section id="backup" title="Backup & restore" lede="Keep a copy of everything on this computer, or bring one back.">
         <div className="action-tiles">

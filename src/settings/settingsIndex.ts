@@ -144,8 +144,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   {
     tab: "library",
     section: "goodreads",
-    label: "Bring in from Goodreads",
-    words: "goodreads import export csv ratings stars shelves read dates",
+    label: "Goodreads",
+    words: "goodreads import export csv file upload ratings stars shelves read dates",
   },
   {
     tab: "collections",
@@ -183,6 +183,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     section: "behaviour",
     label: "Sync behaviour",
     words: "frequency automatic startup close conflict resolution recent",
+  },
+  {
+    tab: "sync",
+    section: "hardcover",
+    label: "Hardcover",
+    words: "hardcover goodreads ratings stars rate send account sign in reading tracker",
   },
   {
     tab: "sync",

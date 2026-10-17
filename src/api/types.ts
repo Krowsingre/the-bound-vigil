@@ -234,6 +234,19 @@ export interface SmartSummary {
 }
 
 /** What an import of a Goodreads export did. */
+export interface HardcoverStatus {
+  /** False until this version of TBV is registered with Hardcover. */
+  available: boolean;
+  username: string | null;
+  sendRatings: boolean;
+}
+
+export interface HardcoverSendAll {
+  sent: number;
+  /** "Title by Author" for books Hardcover doesn't have. */
+  notFound: string[];
+}
+
 export interface GoodreadsImport {
   rows: number;
   matched: number;
