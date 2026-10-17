@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { ToastProvider } from "./components/Toast";
+import { AppSettingsProvider } from "./settings/AppSettingsProvider";
 // Bundled so titles look the same on machines without Georgia.
 import "@fontsource/gelasio/400.css";
 import "@fontsource/gelasio/400-italic.css";
@@ -15,6 +16,7 @@ import "./styles/library.css";
 import "./styles/reader.css";
 import "./styles/collections.css";
 import "./styles/notes.css";
+import "./styles/settings.css";
 import { isApp } from "./api";
 import { runBeforeQuit } from "./lib/beforeQuit";
 
@@ -33,7 +35,9 @@ if (isApp) {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ToastProvider>
-      <App />
+      <AppSettingsProvider>
+        <App />
+      </AppSettingsProvider>
     </ToastProvider>
   </StrictMode>,
 );

@@ -10,7 +10,9 @@ import { importSummary } from "./lib/importSummary";
 import { Library } from "./library/Library";
 import { Reader } from "./reader/Reader";
 import { initialView, rememberView, type LibraryView } from "./library/libraryView";
-import { ComingSoon } from "./pages/ComingSoon";
+import { useAppSettings } from "./settings/appSettings";
+import { Settings } from "./settings/Settings";
+import type { SettingsTab } from "./settings/settingsIndex";
 import { Header } from "./shell/Header";
 import { NAV, type Route } from "./shell/routes";
 import { Sidebar } from "./shell/Sidebar";
@@ -37,12 +39,19 @@ export function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [reading, setReading] = useState<{ bookId: string; at?: string } | null>(null);
   const [openCollection, setOpenCollection] = useState<CollectionRef | null>(null);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
+  const { refreshAdaptive } = useAppSettings();
 
   const navigate = useCallback((r: Route) => {
     // The sidebar's Collections always starts at the overview.
     if (r === "collections") setOpenCollection(null);
+    // Sync & Accounts is a page inside Settings.
+    if (r === "sync") {
+      setSettingsTab("sync");
+      r = "settings";
+    }
     setRoute(r);
   }, []);
 
@@ -167,7 +176,9 @@ export function App() {
   const closeBook = useCallback(() => {
     setReading(null);
     setRefreshKey((k) => k + 1);
-  }, []);
+    // Adaptive takes its colour from the book just read.
+    refreshAdaptive();
+  }, [refreshAdaptive]);
 
   const shell = {
     sync,
@@ -178,7 +189,7 @@ export function App() {
     onImportFolder: importFolder,
     onOpenSyncSettings: () => {
       setReading(null);
-      setRoute("sync");
+      navigate("sync");
     },
   };
 
@@ -200,7 +211,7 @@ export function App() {
           onClearAvatar={clearAvatar}
           onImportBooks={importBooks}
           onImportFolder={importFolder}
-          onOpenSyncSettings={() => setRoute("sync")}
+          onOpenSyncSettings={() => navigate("sync")}
         />
         <main className="content" aria-busy={importing}>
           {route === "home" ? (
@@ -237,7 +248,18 @@ export function App() {
           ) : route === "notes" ? (
             <Notes search={searchText} refreshKey={refreshKey} onClearSearch={() => changeSearch("")} onOpenBook={openBook} />
           ) : (
-            <ComingSoon route={route} />
+            <Settings
+              tab={settingsTab}
+              onTab={setSettingsTab}
+              libraryLayout={libraryView.layout}
+              librarySort={libraryView.sort}
+              onLibraryView={changeLibraryView}
+              sidebarShown={!collapsed}
+              onSidebarShown={(shown) => shown === collapsed && toggleSidebar()}
+              // Settings, profile and reader preferences are held all over the app,
+              // so a restore starts the window afresh to read them back.
+              onRestored={() => window.location.reload()}
+            />
           )}
         </main>
       </div>

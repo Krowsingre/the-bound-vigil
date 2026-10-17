@@ -1,0 +1,277 @@
+import { useEffect, useState } from "react";
+import { api } from "../api";
+import { BookCover } from "../components/BookCover";
+import { Icon } from "../components/Icon";
+import type { Layout } from "../library/libraryView";
+import { FONTS, HIGHLIGHT_COLORS, parseSettings, SETTINGS_KEY, SIZE_RANGE, type ReaderSettings, type ReadingFont } from "../reader/settings";
+import { useAppSettings, type AdaptiveBase, type InterfaceFont, type InterfaceScale, type SurfaceStyle, type ThemeChoice } from "./appSettings";
+import { Row, Section, Segmented, Select, Toggle } from "./controls";
+
+/** The reader's own settings, shared with the Aa panel in the reader. */
+export function useReaderSettings(): [ReaderSettings | null, (change: Partial<ReaderSettings>) => void] {
+  const [settings, setSettings] = useState<ReaderSettings | null>(null);
+  useEffect(() => {
+    api.getSetting(SETTINGS_KEY).then(
+      (json) => setSettings(parseSettings(json)),
+      () => setSettings(parseSettings(null)),
+    );
+  }, []);
+  const change = (c: Partial<ReaderSettings>) =>
+    setSettings((s) => {
+      if (!s) return s;
+      const next = { ...s, ...c };
+      void api.setSetting(SETTINGS_KEY, JSON.stringify(next)).catch(() => undefined);
+      return next;
+    });
+  return [settings, change];
+}
+
+const THEMES: { value: ThemeChoice; label: string }[] = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+  { value: "system", label: "System" },
+  { value: "adaptive", label: "Adaptive" },
+];
+
+export function AppearanceTab({
+  layout,
+  onLayout,
+  sidebarShown,
+  onSidebarShown,
+}: {
+  layout: Layout;
+  onLayout: (layout: Layout) => void;
+  sidebarShown: boolean;
+  onSidebarShown: (shown: boolean) => void;
+}) {
+  const { settings, change, adaptive, adaptiveBook, refreshAdaptive } = useAppSettings();
+  const [reader, changeReader] = useReaderSettings();
+  const adaptiveOn = settings.theme === "adaptive";
+
+  return (
+    <>
+      <Section
+        id="theme"
+        title="Application theme"
+        lede="Choose the base theme for the whole app."
+        aside={
+          <div className="theme-preview">
+            <h3>Theme preview</h3>
+            <div className="theme-preview-art">
+              {adaptiveOn && adaptiveBook ? (
+                <BookCover book={adaptiveBook} />
+              ) : (
+                <div className="theme-preview-sample" aria-hidden>
+                  <span className="tp-sidebar" />
+                  <span className="tp-main">
+                    <span className="tp-title" />
+                    <span className="tp-line" />
+                    <span className="tp-line short" />
+                    <span className="tp-button" />
+                  </span>
+                </div>
+              )}
+            </div>
+            <ul className="swatches">
+              <li>
+                <span className="swatch-chip" style={{ background: "var(--bg)" }} />
+                Page
+              </li>
+              <li>
+                <span className="swatch-chip" style={{ background: "var(--surface)" }} />
+                Surface
+              </li>
+              <li>
+                <span className="swatch-chip" style={{ background: "var(--accent)" }} />
+                Accent
+              </li>
+              <li>
+                <span
+                  className="swatch-chip"
+                  style={{
+                    background: adaptive?.highlight ?? HIGHLIGHT_COLORS[3].hex,
+                  }}
+                />
+                Highlight
+              </li>
+            </ul>
+          </div>
+        }
+      >
+        <div className="theme-cards" role="radiogroup" aria-label="Theme">
+          {THEMES.map((t) => (
+            <label key={t.value} className={`theme-card${settings.theme === t.value ? " is-active" : ""}`}>
+              <span className={`theme-swatch theme-swatch-${t.value}`} aria-hidden />
+              <span className="theme-card-label">
+                <input type="radio" name="tbv-theme" checked={settings.theme === t.value} onChange={() => change({ theme: t.value })} />
+                {t.label}
+              </span>
+            </label>
+          ))}
+        </div>
+        {adaptiveOn && (
+          <div className="settings-subpanel">
+            <h3>Adaptive theme</h3>
+            <p className="settings-row-hint">
+              The accent colour comes from the cover of the book you read most recently
+              {adaptiveBook ? (
+                <>
+                  , now <em>{adaptiveBook.title}</em>
+                </>
+              ) : null}
+              .{!adaptive && " That book has no cover with a colour to use yet, so the usual accent stays."}
+            </p>
+            <Row label="Light or dark" hint="What Adaptive builds on.">
+              <Segmented<AdaptiveBase>
+                label="Adaptive base"
+                value={settings.adaptiveBase}
+                options={[
+                  { value: "system", label: "Follow system" },
+                  { value: "light", label: "Light" },
+                  { value: "dark", label: "Dark" },
+                ]}
+                onChange={(adaptiveBase) => change({ adaptiveBase })}
+              />
+            </Row>
+            <Row label="Accent strength" hint="How strongly the cover's colour is used.">
+              <div className="range-row">
+                <span className="settings-row-hint">Subtle</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={settings.adaptiveStrength}
+                  aria-label="Accent strength"
+                  onChange={(e) => change({ adaptiveStrength: Number(e.target.value) })}
+                />
+                <span className="settings-row-hint">Strong</span>
+              </div>
+            </Row>
+            <button type="button" className="btn btn-quiet" onClick={refreshAdaptive}>
+              <Icon name="sync" size={16} /> Take the colour again
+            </button>
+          </div>
+        )}
+      </Section>
+
+      <Section id="layout" title="Interface layout" lede="The size of things, and how the library shows your books.">
+        <Row label="Interface scale" hint="Makes all text and controls smaller or larger.">
+          <Segmented<InterfaceScale>
+            label="Interface scale"
+            value={settings.scale}
+            options={[
+              { value: "small", label: "Small" },
+              { value: "medium", label: "Medium" },
+              { value: "large", label: "Large" },
+            ]}
+            onChange={(scale) => change({ scale })}
+          />
+        </Row>
+        <Row label="Sidebar" hint="The ••• button at the top left does the same.">
+          <Toggle label="Show the full sidebar" checked={sidebarShown} onChange={onSidebarShown} />
+        </Row>
+        <Row label="Cover display" hint="How the Library page shows your books.">
+          <div className="cover-styles" role="radiogroup" aria-label="Cover display">
+            {(
+              [
+                ["grid", "Covers"],
+                ["list", "List"],
+                ["compact", "Compact"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={layout === value}
+                className={`cover-style${layout === value ? " is-active" : ""}`}
+                onClick={() => onLayout(value)}
+              >
+                <span className={`cover-style-art cover-style-${value}`} aria-hidden>
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                {label}
+              </button>
+            ))}
+          </div>
+        </Row>
+      </Section>
+
+      <Section id="typography" title="Typography" lede="Fonts for the interface and for reading.">
+        <Row label="Interface font" hint="Used for menus, buttons and labels.">
+          <Segmented<InterfaceFont>
+            label="Interface font"
+            value={settings.interfaceFont}
+            options={[
+              { value: "system", label: "Segoe UI (Default)" },
+              { value: "serif", label: "Georgia" },
+            ]}
+            onChange={(interfaceFont) => change({ interfaceFont })}
+          />
+        </Row>
+        {reader && (
+          <Row label="Reading font" hint="Used in the reader. More text options are under Reading.">
+            <div className="font-row">
+              <Select<ReadingFont>
+                label="Reading font"
+                value={reader.font}
+                options={FONTS.map((f) => ({
+                  value: f.value,
+                  label: f.value === "lora" ? "Lora (Default)" : f.label,
+                }))}
+                onChange={(font) => changeReader({ font })}
+              />
+              <Select<string>
+                label="Reading text size"
+                value={String(reader.size)}
+                options={Array.from({ length: SIZE_RANGE.max - SIZE_RANGE.min + 1 }, (_, i) => {
+                  const n = String(SIZE_RANGE.min + i);
+                  return { value: n, label: n };
+                })}
+                onChange={(size) => changeReader({ size: Number(size) })}
+              />
+            </div>
+          </Row>
+        )}
+      </Section>
+
+      <Section id="colour" title="Colour & surface" lede="Finishing touches for comfort and taste.">
+        <Row label="Surface style" hint="A subtle tint behind pages and cards.">
+          <Segmented<SurfaceStyle>
+            label="Surface style"
+            value={settings.surface}
+            options={[
+              { value: "clean", label: "Clean" },
+              { value: "matte", label: "Matte" },
+              { value: "paper", label: "Paper" },
+            ]}
+            onChange={(surface) => change({ surface })}
+          />
+        </Row>
+        <div className="toggle-list">
+          <Toggle
+            label="Show progress bars on books"
+            hint="In the Library and Collections. Home always shows what you're reading."
+            checked={settings.showProgress}
+            onChange={(showProgress) => change({ showProgress })}
+          />
+          <Toggle
+            label="Use high contrast"
+            hint="Darker text and clearer edges."
+            checked={settings.highContrast}
+            onChange={(highContrast) => change({ highContrast })}
+          />
+          <Toggle
+            label="Reduce motion"
+            hint="Turns off animations and sliding."
+            checked={settings.reduceMotion}
+            onChange={(reduceMotion) => change({ reduceMotion })}
+          />
+        </div>
+      </Section>
+    </>
+  );
+}

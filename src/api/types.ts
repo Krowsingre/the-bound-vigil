@@ -283,3 +283,13 @@ export interface NotesPage {
   counts: NoteCounts;
   books: CoverRef[];
 }
+
+/** Where this device keeps the library, for Settings. */
+export interface LibraryInfo {
+  database: string;
+  booksDir: string;
+  schemaVersion: number;
+  bookCount: number;
+  databaseBytes: number;
+  booksBytes: number;
+}

@@ -11,6 +11,7 @@ use tbv_core::model::{
     LibraryPage, LibraryQuery, NoteItem, NoteKind, NotesPage, NotesQuery, Profile, ReadStatus,
     ReaderBook, ReaderLocator,
 };
+use tbv_core::data::LibraryInfo;
 use tbv_core::{Library, LibraryPaths, SUPPORTED_FORMATS};
 
 struct AppLibrary(Arc<Mutex<Library>>);
@@ -356,6 +357,48 @@ async fn delete_note(
     with_library(state, move |library| library.delete_note(&id, kind)).await
 }
 
+#[tauri::command]
+async fn library_info(state: State<'_, AppLibrary>) -> CommandResult<LibraryInfo> {
+    with_library(state, |library| library.library_info()).await
+}
+
+#[tauri::command]
+async fn export_library(state: State<'_, AppLibrary>, path: String) -> CommandResult<()> {
+    with_library(state, move |library| library.export_library(&PathBuf::from(path))).await
+}
+
+#[tauri::command]
+async fn export_notes_markdown(state: State<'_, AppLibrary>, path: String) -> CommandResult<()> {
+    with_library(state, move |library| {
+        library.export_notes_markdown(&PathBuf::from(path))
+    })
+    .await
+}
+
+#[tauri::command]
+async fn create_backup(state: State<'_, AppLibrary>, path: String) -> CommandResult<()> {
+    with_library(state, move |library| library.create_backup(&PathBuf::from(path))).await
+}
+
+#[tauri::command]
+async fn restore_backup(state: State<'_, AppLibrary>, path: String) -> CommandResult<()> {
+    with_library(state, move |library| library.restore_backup(&PathBuf::from(path))).await
+}
+
+#[tauri::command]
+async fn cover_accent(
+    state: State<'_, AppLibrary>,
+    book_id: String,
+) -> CommandResult<Option<String>> {
+    with_library(state, move |library| library.cover_accent(&book_id)).await
+}
+
+/// Opens File Explorer at a file or folder TBV keeps.
+#[tauri::command]
+fn show_folder(path: String) -> CommandResult<()> {
+    tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -405,7 +448,14 @@ pub fn run() {
             save_book_note,
             save_personal_note,
             set_annotation_note,
-            delete_note
+            delete_note,
+            library_info,
+            export_library,
+            export_notes_markdown,
+            create_backup,
+            restore_backup,
+            cover_accent,
+            show_folder
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
         // page gets a moment to save the reading position first, and the app
