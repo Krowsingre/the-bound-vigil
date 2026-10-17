@@ -250,7 +250,7 @@ impl Mover {
                     .into(),
             ));
         }
-        l.adopt_move(&destination, report.check.as_ref().expect("checked"))?;
+        l.adopt_move(&destination, report.check.as_ref().expect("checked"), scope)?;
         drop(l);
         if let Destination::Supabase { .. } = destination {
             self.sign_out();

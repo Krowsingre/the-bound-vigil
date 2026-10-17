@@ -497,7 +497,7 @@ const LAST_ERROR: &str = "sync.last_error";
 const SESSION: &str = "sync.session";
 const PROJECT: &str = "sync.supabase";
 pub(crate) const PROVIDER: &str = "sync.provider";
-const APP_SETTINGS: &str = "app.settings";
+pub(crate) const APP_SETTINGS: &str = "app.settings";
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Cursor {

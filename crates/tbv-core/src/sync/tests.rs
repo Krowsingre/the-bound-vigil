@@ -607,7 +607,7 @@ fn moving_copies_records_and_files_then_switches_over() {
     // Switching counts everything there as sent: nothing goes twice.
     let folder = tempfile::tempdir().unwrap();
     let provider = Provider::Folder { service: "dropbox".into(), path: folder.path().display().to_string() };
-    a.lib().adopt_move(&Destination::Files(provider.clone()), &check).unwrap();
+    a.lib().adopt_move(&Destination::Files(provider.clone()), &check, MoveScope::All).unwrap();
     assert_eq!(a.lib().sync_provider().unwrap(), provider);
     assert_eq!(a.lib().sync_overview().unwrap().waiting_to_send, 0);
     let after = a.sync(&new);
@@ -696,7 +696,7 @@ fn running_again_skips_what_is_already_there() {
     a.sync(&old);
 
     let first = copy(&a, Some(&old), &mut new.clone(), MoveScope::All);
-    assert!(first.records_copied > 0 && first.files_copied == 1, "{first:?}");
+    assert!(first.records_copied > 0 && first.files_copied == 2, "{first:?}");
     let pushes = new.0.lock().unwrap().pushes;
     let second = copy(&a, Some(&old), &mut new.clone(), MoveScope::All);
     assert_eq!((second.records_copied, second.files_copied), (0, 0));
@@ -733,6 +733,16 @@ fn text_only_leaves_audiobooks_behind() {
         assert!(files.iter().any(|f| f.contains(book_id_hex(&book))));
     }
 
+    // Moving there turns off sending audiobook files, so the first sync doesn't send them anyway.
+    let before = a.lib().sync_options().unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    let provider = Provider::Folder { service: "dropbox".into(), path: folder.path().display().to_string() };
+    let check = copy(&a, None, &mut new.clone(), MoveScope::Text).check.unwrap();
+    a.lib().adopt_move(&Destination::Files(provider), &check, MoveScope::Text).unwrap();
+    let after = a.lib().sync_options().unwrap();
+    assert!(!after.audio_files);
+    assert_eq!((after.book_files, after.notes), (before.book_files, before.notes));
+
     // And Audio only takes just the audiobook.
     let audio_only = FakeRemote::default();
     copy(&a, None, &mut audio_only.clone(), MoveScope::Audio);
@@ -766,7 +776,7 @@ fn a_folder_is_read_back_as_another_device_would() {
     let cancel = AtomicBool::new(false);
     let run = MoveRun { scope: MoveScope::All, from: None, to: &mut to, check: Some(&mut reader), cancel: &cancel, progress: &mut |_| {} };
     let check = moving::copy_library(&a.library, run).unwrap().check.unwrap();
-    assert!(check.passed() && check.records > 0 && check.files == 1, "{check:?}");
+    assert!(check.passed() && check.records > 0 && check.files == 2, "the book and its cover: {check:?}");
 }
 
 #[test]
@@ -794,7 +804,7 @@ fn a_migration_after_a_backup_only_copies_whats_new() {
     assert!(check.passed());
     let folder = tempfile::tempdir().unwrap();
     let provider = Provider::Folder { service: "mega".into(), path: folder.path().display().to_string() };
-    a.lib().adopt_move(&Destination::Files(provider), &check).unwrap();
+    a.lib().adopt_move(&Destination::Files(provider), &check, MoveScope::All).unwrap();
     let after = a.sync(&backup);
     assert_eq!((after.sent, after.files_sent), (0, 0), "and sync doesn't send them again");
 }
@@ -828,7 +838,7 @@ fn moves_to_supabase() {
     assert!(back.list("books/").unwrap().contains(&format!("{}.epub", book_id_hex(&cloud_only))));
     let again = copy(&b, Some(&old), &mut to, MoveScope::All);
     assert_eq!((again.records_copied, again.files_copied), (0, 0), "{again:?}");
-    b.lib().adopt_move(&Destination::Supabase { project, session }, &check).unwrap();
+    b.lib().adopt_move(&Destination::Supabase { project, session }, &check, MoveScope::All).unwrap();
     assert_eq!(b.lib().sync_provider().unwrap(), Provider::Supabase);
     assert_eq!(b.lib().sync_overview().unwrap().waiting_to_send, 0);
 }

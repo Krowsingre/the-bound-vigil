@@ -181,7 +181,8 @@ pub fn open_part(path: &Path, format: &str, index: usize) -> Result<(Slice, Stri
 pub fn mime_of(ext: &str) -> &'static str {
     match ext {
         "mp3" => "audio/mpeg",
-        "m4a" | "m4b" | "aac" => "audio/mp4",
+        "m4a" | "m4b" => "audio/mp4",
+        "aac" => "audio/aac",
         "ogg" | "oga" => "audio/ogg",
         "opus" => "audio/ogg; codecs=opus",
         "flac" => "audio/flac",
@@ -207,6 +208,12 @@ pub fn folder_parts(dir: &Path) -> Vec<PathBuf> {
 
 /// Compares names the way people number things: "Part 2" before "Part 10".
 fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    // Names that read the same ("Part 2", "part 02") still need one order,
+    // so the same folder always makes the same bundle.
+    natural_key_cmp(a, b).then_with(|| a.cmp(b))
+}
+
+fn natural_key_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     let chunks = |s: &str| -> Vec<(bool, String)> {
         let mut out: Vec<(bool, String)> = Vec::new();
         for c in s.to_lowercase().chars() {
@@ -618,6 +625,14 @@ pub(crate) mod tests {
             out.extend_from_slice(&frame);
         }
         out
+    }
+
+    #[test]
+    fn names_that_read_the_same_still_have_one_order() {
+        assert_eq!(natural_cmp("Part 2.mp3", "Part 02.mp3"), "Part 2.mp3".cmp("Part 02.mp3"));
+        assert_ne!(natural_cmp("part 1.mp3", "Part 1.mp3"), std::cmp::Ordering::Equal);
+        assert_eq!(natural_cmp("Part 2.mp3", "Part 10.mp3"), std::cmp::Ordering::Less);
+        assert_eq!(mime_of("aac"), "audio/aac");
     }
 
     #[test]

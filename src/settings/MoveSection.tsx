@@ -10,6 +10,7 @@ import type { MoveMode, MoveScope, MoveStatus, ProviderChoice, ProviderView, Sup
 import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
 import { useToast } from "../components/Toast";
+import { useAppSettings } from "./appSettings";
 import { RadioList, Section } from "./controls";
 import { PROVIDERS, type Provider } from "./providers";
 import { SignInForm, SupabaseProjectForm } from "./SupabaseSetup";
@@ -56,13 +57,18 @@ export function MoveSection({
   const [project, setProject] = useState<SupabaseProject | null>(null);
   const [anotherProject, setAnotherProject] = useState(false);
 
+  const { changeSync } = useAppSettings();
   useEffect(() => {
     void api.moveStatus().then(setStatus, () => undefined);
     return api.onMove((s) => {
       setStatus(s);
-      if (s.switched) onChanged();
+      if (!s.switched) return;
+      // The app turned off sending the files of books left behind; keep that here too.
+      if (s.scope === "text") changeSync({ audioFiles: false });
+      if (s.scope === "audio") changeSync({ bookFiles: false });
+      onChanged();
     });
-  }, [onChanged]);
+  }, [onChanged, changeSync]);
 
   const current = overview?.provider ?? NOWHERE;
   const from = placeName(inUse ? current : null);

@@ -19,7 +19,7 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{fetch, kind_named, Page, Provider, Record, Remote, Session, SupabaseProject, SyncOptions, BATCH, KINDS, PAGE, PROJECT, PROVIDER};
+use super::{fetch, kind_named, Page, APP_SETTINGS, Provider, Record, Remote, Session, SupabaseProject, SyncOptions, BATCH, KINDS, PAGE, PROJECT, PROVIDER};
 use crate::error::{Error, Result};
 use crate::ids::{book_id_for_file, book_id_hex};
 use crate::library::{Library, SUPPORTED_FORMATS};
@@ -213,7 +213,25 @@ impl Library {
 
     /// Syncs through the new place from now on. What the check found there
     /// counts as sent, so nothing is sent twice.
-    pub fn adopt_move(&mut self, to: &Destination, check: &MoveCheck) -> Result<()> {
+    /// A move of only some books turns off sending the other kind's files, so
+    /// the first sync there doesn't send them anyway.
+    pub fn adopt_move(&mut self, to: &Destination, check: &MoveCheck, scope: MoveScope) -> Result<()> {
+        let left_out = match scope {
+            MoveScope::All => None,
+            MoveScope::Text => Some("audioFiles"),
+            MoveScope::Audio => Some("bookFiles"),
+        };
+        if let Some(switch) = left_out {
+            let mut app: Value = self.setting(APP_SETTINGS)?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_else(|| serde_json::json!({}));
+            if !app.is_object() {
+                app = serde_json::json!({});
+            }
+            let sync = app.as_object_mut().expect("an object").entry("sync").or_insert_with(|| serde_json::json!({}));
+            if let Some(sync) = sync.as_object_mut() {
+                sync.insert(switch.into(), Value::Bool(false));
+            }
+            self.put_setting(APP_SETTINGS, Some(&app.to_string()))?;
+        }
         match to {
             Destination::Supabase { project, session } => {
                 self.put_setting(PROJECT, Some(&serde_json::to_string(project)?))?;
@@ -316,7 +334,17 @@ pub fn copy_library(library: &Mutex<Library>, run: MoveRun<'_>) -> Result<MoveRe
     // What this device has.
     let (options, mut books, kept, temp) = {
         let l = lock()?;
-        let options = l.sync_options()?;
+        // Everything goes, whatever this device syncs: the scope alone decides
+        // which books.
+        let options = SyncOptions {
+            progress: true,
+            notes: true,
+            collections: true,
+            metadata: true,
+            book_files: true,
+            audio_files: true,
+            ..l.sync_options()?
+        };
         let kept = l.files_kept(&options)?;
         (options, l.move_books()?, kept, l.paths.books_dir.join(".moving"))
     };
