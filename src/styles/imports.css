@@ -155,3 +155,47 @@
   margin-left: 8px;
   text-decoration: underline;
 }
+
+/* Sync activity: one card per sync place, then the files it moved. */
+.sync-places {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.sync-place.imports-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin: 0;
+}
+
+.sync-place .eyebrow {
+  margin-bottom: 4px;
+}
+
+.sync-place .mono {
+  overflow-wrap: anywhere;
+}
+
+.sync-place.is-bad {
+  border-color: var(--danger, var(--border));
+}
+
+.sync-place .import-row {
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border);
+}
+
+.sync-when {
+  flex: none;
+  white-space: nowrap;
+}
+
+.sync-place .progress {
+  flex: none;
+  height: 6px;
+  border-radius: 3px;
+}

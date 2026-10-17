@@ -1,6 +1,7 @@
 //! Tauri shell: wires the UI to `tbv-core`. Commands stay thin; all logic and
 //! file work lives in the core, and blocking work runs off the UI thread.
 
+mod activity;
 mod audio;
 mod hardcover;
 mod imports;
@@ -602,6 +603,12 @@ async fn sync_overview(
         Ok(overview)
     })
     .await
+}
+
+/// What sync is doing now, and the files it moved lately.
+#[tauri::command]
+fn sync_activity() -> activity::SyncActivity {
+    activity::current()
 }
 
 #[tauri::command]
@@ -1229,6 +1236,7 @@ pub fn run() {
             set_supabase_project,
             set_sync_provider,
             set_also_sync,
+            sync_activity,
             suggest_sync_folder,
             resolve_sync_conflict,
             download_book,

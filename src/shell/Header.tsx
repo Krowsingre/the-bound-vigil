@@ -17,6 +17,7 @@ export const Header = forwardRef<
     onImportBooks: () => void;
     onImportFolder: () => void;
     onOpenSyncSettings: () => void;
+    onOpenActivity?: () => void;
     onChooseAvatar: () => void;
     onClearAvatar: () => void;
   }

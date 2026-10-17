@@ -446,6 +446,8 @@ export async function webApi(): Promise<Api> {
     cancelImports: async () => undefined,
     clearFinishedImports: async () => undefined,
     onImports: () => () => undefined,
+    syncActivity: async () => ({ running: false, startedAt: null, finishedAt: null, places: [], recent: [] }),
+    onSyncActivity: () => () => undefined,
     setBookStatus: async (bookId, status) => {
       const b = find(bookId);
       const at = now();

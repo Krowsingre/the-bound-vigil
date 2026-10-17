@@ -1068,3 +1068,37 @@ fn starting_the_first_place_over_keeps_the_seconds_conflicts() {
     let left: i64 = pc.lib().conn.query_row("SELECT COUNT(*) FROM sync_conflicts", [], |r| r.get(0)).unwrap();
     assert_eq!(left, 1);
 }
+
+#[test]
+fn a_run_says_what_it_is_doing() {
+    let cloud = FakeRemote::default();
+    let a = Device::new();
+    let b = Device::new();
+    a.set_options(json!({ "bookFiles": true }));
+    let book = a.import("Dracula");
+    let heard = Mutex::new(Vec::new());
+    let tell = |e: SyncEvent| heard.lock().unwrap().push(e);
+    let epoch = a.lib().sync_epoch();
+    sync_watched(&a.library, Some(&mut cloud.clone()), None, epoch, &tell).unwrap();
+    let heard = heard.into_inner().unwrap();
+    assert!(heard.contains(&SyncEvent::Step { lane: Lane::Main, step: SyncStep::Sending }));
+    let sent: Vec<_> = heard
+        .iter()
+        .filter_map(|e| match e {
+            SyncEvent::File { direction: Direction::Up, what, done: true, problem: None, .. } => Some(what.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(sent.contains(&"Dracula".to_string()) && sent.contains(&"The cover of Dracula".to_string()), "{sent:?}");
+    assert_eq!(heard.last(), Some(&SyncEvent::Finished { lane: Lane::Main, problem: None }));
+
+    let heard = Mutex::new(Vec::new());
+    let tell = |e: SyncEvent| heard.lock().unwrap().push(e);
+    let epoch = b.lib().sync_epoch();
+    sync_watched(&b.library, Some(&mut cloud.clone()), None, epoch, &tell).unwrap();
+    let got_cover = heard.into_inner().unwrap().iter().any(|e| {
+        matches!(e, SyncEvent::File { direction: Direction::Down, what, done: true, problem: None, .. } if what == "The cover of Dracula")
+    });
+    assert!(got_cover);
+    assert!(b.lib().book(&book).unwrap().is_some());
+}

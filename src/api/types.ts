@@ -711,3 +711,40 @@ export interface ServerDownloadStatus {
   stopped: boolean;
   error: string | null;
 }
+
+/** One file a sync moved (or tried to), for the Sync activity page. */
+export interface FileActivity {
+  /** "main" or "also"; null for a book fetched when it was opened. */
+  lane: "main" | "also" | null;
+  direction: "up" | "down" | "erase";
+  what: string;
+  bytes: number;
+  at: IsoUtc;
+  problem: string | null;
+}
+
+/** How one sync place is getting on in the current (or last) run. */
+export interface PlaceActivity {
+  lane: "main" | "also";
+  provider: ProviderView;
+  step: "receiving" | "sending" | "files" | null;
+  received: number;
+  sent: number;
+  filesTotal: number;
+  filesDone: number;
+  bytesTotal: number;
+  bytesDone: number;
+  current: FileActivity | null;
+  finished: boolean;
+  problem: string | null;
+}
+
+/** What sync is doing now and did lately. Kept only while TBV is open. */
+export interface SyncActivity {
+  running: boolean;
+  startedAt: IsoUtc | null;
+  finishedAt: IsoUtc | null;
+  places: PlaceActivity[];
+  /** Newest first. */
+  recent: FileActivity[];
+}

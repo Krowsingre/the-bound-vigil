@@ -16,6 +16,7 @@ import { usePlayer } from "./audio/player";
 import { useToast } from "./components/Toast";
 import { Home } from "./home/Home";
 import { Imports, importCounts } from "./imports/Imports";
+import { SyncActivity } from "./sync/SyncActivity";
 import { importSummary } from "./lib/importSummary";
 import { Library } from "./library/Library";
 import { Reader } from "./reader/Reader";
@@ -275,6 +276,14 @@ export function App() {
       setReading(null);
       navigate("sync");
     },
+    // The phone version syncs in the background with no activity page.
+    onOpenActivity:
+      api.kind === "web"
+        ? undefined
+        : () => {
+            setReading(null);
+            navigate("activity");
+          },
   };
 
   if (reading) return <Reader key={reading.bookId} bookId={reading.bookId} openAt={reading.at} shell={shell} onClose={closeBook} />;
@@ -303,6 +312,7 @@ export function App() {
           onImportBooks={importBooks}
           onImportFolder={importFolder}
           onOpenSyncSettings={() => navigate("sync")}
+          onOpenActivity={shell.onOpenActivity}
         />
         <main className="content">
           {route === "home" ? (
@@ -387,6 +397,8 @@ export function App() {
               onImportFolder={importFolder}
               onOpenBook={openBook}
             />
+          ) : route === "activity" ? (
+            <SyncActivity sync={sync} onOpenSyncSettings={() => navigate("sync")} />
           ) : route === "notes" ? (
             <Notes search={searchText} refreshKey={refreshKey} onClearSearch={() => changeSearch("")} onOpenBook={openBook} />
           ) : (

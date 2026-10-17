@@ -24,6 +24,7 @@ import type {
   HardcoverStatus,
   HomeViewModel,
   ImportItem,
+  SyncActivity,
   KindleEmailInput,
   KindleEmailView,
   ServerChoice,
@@ -243,6 +244,9 @@ export interface Api {
   onServerDownload(listener: (status: ServerDownloadStatus) => void): () => void;
   /** A private key file, for SFTP. */
   pickKeyFile(): Promise<string | null>;
+  /** What sync is doing now, file by file, and what it did lately. */
+  syncActivity(): Promise<SyncActivity>;
+  onSyncActivity(listener: (activity: SyncActivity) => void): () => void;
   /** Hears sync starting and finishing, and library changes it brings. Returns a way to stop. */
   onSync(listener: { status?: (status: SyncStatus) => void; libraryChanged?: () => void }): () => void;
 }
@@ -277,6 +281,20 @@ function appApi(): Api {
     importQueue: async () => (await core).invoke<ImportItem[]>("import_queue"),
     cancelImports: async () => (await core).invoke<void>("cancel_imports"),
     clearFinishedImports: async () => (await core).invoke<void>("clear_finished_imports"),
+    syncActivity: async () => (await core).invoke<SyncActivity>("sync_activity"),
+    onSyncActivity: (listener) => {
+      let stop: (() => void) | null = null;
+      let stopped = false;
+      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+        const unlisten = await listen<SyncActivity>("sync-activity", (e) => listener(e.payload));
+        if (stopped) unlisten();
+        else stop = unlisten;
+      });
+      return () => {
+        stopped = true;
+        stop?.();
+      };
+    },
     onImports: (listener) => {
       let stop: (() => void) | null = null;
       let stopped = false;
