@@ -357,7 +357,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
         )}
 
         {provider === "supabase" && project && !editing && (
-          <AccountPanel signedIn={signedIn} onChanged={() => void reload()} />
+          <AccountPanel signedIn={signedIn} project={project} onChanged={() => void reload()} />
         )}
 
         {provider !== "supabase" && (

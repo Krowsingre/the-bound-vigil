@@ -1,0 +1,277 @@
+/* The web version's connect screen, and the layout for phone-sized screens. */
+
+.web-connect {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+  background: var(--bg);
+  overflow-y: auto;
+}
+
+.web-connect-card {
+  width: min(460px, 100%);
+  display: grid;
+  gap: 16px;
+}
+
+.web-connect-card > h1 {
+  margin: 0;
+  font: 400 30px/1.15 var(--font-serif);
+  text-align: center;
+}
+
+.web-connect-card > .muted {
+  margin: 0;
+  text-align: center;
+}
+
+.web-connect-emblem {
+  display: block;
+  justify-self: center;
+  width: 56px;
+  height: 56px;
+  color: var(--text);
+}
+
+.web-connect-emblem svg {
+  width: 100%;
+  height: 100%;
+}
+
+.web-connect-project {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.web-connect .settings-subpanel {
+  margin: 0;
+}
+
+.web-connection {
+  margin-bottom: 16px;
+}
+
+/* Phones: the sidebar becomes a bar of tabs along the bottom. */
+@media (max-width: 760px) {
+  :root {
+    --header-h: 52px;
+    --tabbar-h: calc(58px + env(safe-area-inset-bottom));
+  }
+
+  .app,
+  .app.sidebar-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 40;
+    height: var(--tabbar-h);
+    padding-bottom: env(safe-area-inset-bottom);
+    flex-direction: row;
+    overflow: hidden;
+  }
+
+  .sidebar-top,
+  .brand,
+  .sidebar-quote,
+  .preview-badge {
+    display: none;
+  }
+
+  .sidebar nav {
+    flex: 1;
+  }
+
+  .nav,
+  .sidebar-collapsed .nav {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 0;
+    height: 100%;
+    padding: 0 4px;
+  }
+
+  .nav-item,
+  .sidebar-collapsed .nav-item {
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    height: 100%;
+    padding: 0;
+    font: 500 11px var(--font-sans);
+    background: none;
+  }
+
+  .nav-item:hover,
+  .nav-item.is-active {
+    background: none;
+  }
+
+  .nav-item.is-active::before {
+    inset: 0 30% auto;
+    width: auto;
+    height: 3px;
+  }
+
+  .sidebar-collapsed .nav-label,
+  .nav-label {
+    display: block;
+  }
+
+  .main {
+    padding-bottom: var(--tabbar-h);
+  }
+
+  .header {
+    gap: 8px;
+    padding: 0 10px 0 12px;
+  }
+
+  .search {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .header-spacer {
+    display: none;
+  }
+
+  .toasts {
+    right: 12px;
+    left: 12px;
+    bottom: calc(var(--tabbar-h) + 12px);
+    justify-items: center;
+  }
+
+  .import-progress {
+    bottom: calc(var(--tabbar-h) + 12px);
+  }
+
+  /* Library */
+  .library {
+    padding: 0 16px 24px;
+  }
+
+  .library-stats {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .library-stats .stat {
+    padding: 0 12px;
+  }
+
+  .book-grid {
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    gap: 20px 14px;
+  }
+
+  /* Settings: its menu becomes a row of pages along the top. */
+  .settings-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    position: static;
+    height: auto;
+    padding: 12px 12px 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .settings-eyebrow,
+  .settings-search {
+    display: none;
+  }
+
+  .settings-menu {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 4px;
+    padding-bottom: 10px;
+  }
+
+  .settings-menu-item {
+    white-space: nowrap;
+  }
+
+  .settings-body {
+    padding: 20px 16px 40px;
+  }
+
+  .toolbar-controls {
+    flex-wrap: wrap;
+    margin-left: 0;
+    padding-bottom: 8px;
+  }
+
+  /* Reader: the text fills the screen; the panels slide over it. */
+  .reader .reader-body,
+  .reader.has-left .reader-body,
+  .reader.has-right .reader-body,
+  .reader.has-left.has-right .reader-body {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reader-left,
+  .reader-right {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 30;
+    width: min(360px, 88vw);
+    box-shadow: var(--shadow);
+    overflow-y: auto;
+  }
+
+  .reader-left {
+    left: 0;
+  }
+
+  .reader-right {
+    right: 0;
+  }
+
+  .reader-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 25;
+    background: rgb(18 20 22 / 0.35);
+  }
+
+  .reader-top {
+    gap: 2px;
+    padding: 0 4px;
+  }
+
+  .reader-top-app,
+  .reader-top-author,
+  .reader-top-rule,
+  .reader-top .reader-search,
+  .reader-top .sync-circle {
+    display: none;
+  }
+
+  .reader-top-title strong {
+    font-size: 15px;
+  }
+
+  .reader-top .popover {
+    position: fixed;
+    top: calc(var(--header-h) + 4px);
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: calc(100% - var(--header-h) - 16px);
+    overflow-y: auto;
+  }
+}
