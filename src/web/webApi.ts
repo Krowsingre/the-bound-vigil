@@ -193,6 +193,7 @@ export async function webApi(): Promise<Api> {
       // Only books whose file is in the cloud (or already here) can be opened on the phone.
       inCloud: sync.bookFiles.has(hex) || downloaded.has(hex),
       language: languageCode(o("language", b.language)),
+      fileUnavailable: !sync.bookFiles.has(hex) && !downloaded.has(hex),
       genres: listOf(edits?.get("genres") ?? null),
       durationMs: audioRow(b.id)?.duration_ms ?? null,
       narrators: listOf(edits?.get("narrators") ?? audioRow(b.id)?.narrators ?? null),

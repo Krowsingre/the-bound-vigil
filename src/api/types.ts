@@ -57,6 +57,8 @@ export interface BookPreview {
   genres: string[];
   /** Its language as a short code ("en"), when known. */
   language?: string | null;
+  /** Phone version: its file isn't in the cloud, so it can't be opened or downloaded here. */
+  fileUnavailable?: boolean;
   /** An audiobook's length. */
   durationMs?: number | null;
   /** An audiobook's narrators. */

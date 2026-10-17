@@ -334,7 +334,7 @@ impl Library {
                     book_from_row(r)?,
                     r.get::<_, Option<String>>(24)?,
                     r.get::<_, i64>(25)?,
-                    r.get::<_, u32>(25)?,
+                    r.get::<_, u32>(26)?,
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;

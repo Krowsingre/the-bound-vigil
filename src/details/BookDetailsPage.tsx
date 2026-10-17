@@ -114,13 +114,15 @@ export function BookDetailsPage({
     ["Finished", book.finishedAt ? new Date(book.finishedAt).toLocaleDateString() : null, null],
     [
       "Where",
-      book.availability === "cloud"
-        ? "In the cloud only"
-        : book.availability === "missing"
-          ? "File missing"
-          : book.inCloud
-            ? "On this device and in the cloud"
-            : "On this device",
+      book.fileUnavailable
+        ? "Its file isn't in the cloud yet"
+        : book.availability === "cloud"
+          ? "In the cloud only"
+          : book.availability === "missing"
+            ? "File missing"
+            : book.inCloud
+              ? "On this device and in the cloud"
+              : "On this device",
       null,
     ],
   ];
