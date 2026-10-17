@@ -3,12 +3,12 @@
 // settings, draws highlights, and reports where the reader is and what they
 // select.
 
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { Annotation } from "../api/types";
 import type { Relocation, SearchResult, TocItem, View } from "../vendor/foliate-js/view.js";
 import { fitTextToPage, hexToRgb, luminance } from "./darkText";
 import type { ReaderSource } from "./formats";
-import { highlightHex, readerCss, WIDTHS, type PageColors, type ReaderSettings } from "./settings";
+import { DEFAULT_SETTINGS, highlightHex, readerCss, WIDTHS, type PageColors, type ReaderSettings } from "./settings";
 
 export interface TextSelection {
   cfi: string;
@@ -40,6 +40,8 @@ export interface ReaderEngine {
   search: (query: string) => AsyncGenerator<SearchResult> | null;
   clearSearch: () => void;
   deselect: () => void;
+  /** The engine itself, for reading aloud. Null until a book is open. */
+  getView: () => View | null;
 }
 
 const drawable = (a: Annotation) => a.kind !== "bookmark" && !!a.locator.cfi;
@@ -210,11 +212,17 @@ export function useReaderEngine({
     };
   }, [file, host]);
 
-  // Reading settings changed while the book is open.
+  // Reading settings changed while the book is open. The read aloud voice
+  // and speed don't change the page, so they don't lay it out again.
+  const { font, size, lineHeight, width, flow, theme, justify } = settings;
+  const look = useMemo(
+    () => ({ ...DEFAULT_SETTINGS, font, size, lineHeight, width, flow, theme, justify }),
+    [font, size, lineHeight, width, flow, theme, justify],
+  );
   useEffect(() => {
     const view = viewRef.current;
-    if (ready && view) applyLayout(view, settings, colors);
-  }, [ready, settings, colors]);
+    if (ready && view) applyLayout(view, look, colors);
+  }, [ready, look, colors]);
 
   // Redraw highlights when they change (added, recoloured or deleted).
   const drawn = useRef(new Map<string, string>());
@@ -267,5 +275,6 @@ export function useReaderEngine({
     }, []),
     clearSearch: useCallback(() => viewRef.current?.clearSearch(), []),
     deselect: useCallback(() => viewRef.current?.deselect(), []),
+    getView: useCallback(() => viewRef.current, []),
   };
 }

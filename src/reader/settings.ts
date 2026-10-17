@@ -1,5 +1,6 @@
 // How the book text looks: font, size, spacing, width, page turns or scrolling,
-// and the page colour. Saved on this device only.
+// and the page colour, plus the voice and speed for reading aloud. Saved on
+// this device only.
 
 import gelasio400 from "@fontsource/gelasio/files/gelasio-latin-400-normal.woff2?url";
 import gelasio400i from "@fontsource/gelasio/files/gelasio-latin-400-italic.woff2?url";
@@ -14,6 +15,7 @@ import loraExt700i from "@fontsource/lora/files/lora-latin-ext-700-italic.woff2?
 import echolume from "../assets/fonts/echolume-variable.woff2?url";
 import echolumeItalic from "../assets/fonts/echolume-italic-variable.woff2?url";
 import type { HighlightColor } from "../api/types";
+import { RATE_RANGE } from "./readAloud";
 
 export type ReadingFont = "lora" | "georgia" | "sans" | "echolume" | "publisher";
 export type ReadingFlow = "paginated" | "scrolled";
@@ -29,6 +31,10 @@ export interface ReaderSettings {
   flow: ReadingFlow;
   theme: ReadingTheme;
   justify: boolean;
+  /** Read aloud: the voice chosen for each language ("en" → voiceURI). */
+  voices: Record<string, string>;
+  /** Read aloud speed, 1 being the voice's normal pace. */
+  rate: number;
 }
 
 export const SETTINGS_KEY = "reader.settings";
@@ -41,6 +47,8 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   flow: "paginated",
   theme: "auto",
   justify: false,
+  voices: {},
+  rate: 1,
 };
 
 export const SIZE_RANGE = { min: 14, max: 30, step: 1 } as const;
@@ -78,7 +86,14 @@ export function parseSettings(json: string | null): ReaderSettings {
     flow: oneOf(raw.flow, ["paginated", "scrolled"], d.flow),
     theme: oneOf(raw.theme, ["auto", "light", "paper", "dark"], d.theme),
     justify: typeof raw.justify === "boolean" ? raw.justify : d.justify,
+    voices: parseVoices(raw.voices),
+    rate: typeof raw.rate === "number" && Number.isFinite(raw.rate) ? clamp(Math.round(raw.rate * 100) / 100, RATE_RANGE.min, RATE_RANGE.max) : d.rate,
   };
+}
+
+function parseVoices(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return Object.fromEntries(Object.entries(raw).filter(([, v]) => typeof v === "string" && v));
 }
 
 export interface PageColors {

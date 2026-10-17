@@ -7,7 +7,30 @@ import { Stars } from "../components/StarRating";
 import { authorLine, percent } from "../lib/format";
 import { bookContextMenu, bookMenu, type BookActions } from "../home/bookActions";
 
-type Props = { books: BookPreview[]; actions: BookActions };
+/** While choosing books for a change to many at once, a click picks a book instead of opening it. */
+export interface Selection {
+  has: (bookId: string) => boolean;
+  toggle: (book: BookPreview) => void;
+}
+
+type Props = { books: BookPreview[]; actions: BookActions; selection?: Selection | null };
+
+const press = (book: BookPreview, actions: BookActions, selection?: Selection | null) =>
+  selection ? selection.toggle(book) : actions.open(book);
+
+/** The tick on a chosen book, and the props that say it's chosen. */
+function picked(book: BookPreview, selection?: Selection | null) {
+  if (!selection) return { mark: null, props: {} };
+  const on = selection.has(book.id);
+  return {
+    mark: (
+      <span className={`select-mark${on ? " is-on" : ""}`} aria-hidden>
+        {on && <Icon name="check" size={14} />}
+      </span>
+    ),
+    props: { "aria-pressed": on },
+  };
+}
 
 const STATUS = { unread: "Unread", in_progress: "In progress", read: "Read" } as const;
 
@@ -47,62 +70,84 @@ function Progress({ book }: { book: BookPreview }) {
   );
 }
 
-export function BookGrid({ books, actions }: Props) {
+export function BookGrid({ books, actions, selection }: Props) {
   return (
-    <ul className="book-grid">
-      {books.map((book) => (
-        <li key={book.id} className="grid-card" {...bookContextMenu(book, actions)}>
-          <button type="button" className="grid-open" onClick={() => actions.open(book)} title={`${book.title}, ${authorLine(book.authors)}`}>
-            <BookCover book={book} />
-          </button>
-          <div className="grid-caption">
-            <div className="grid-text">
-              <span className="book-title">{book.title}</span>
-              <span className="book-author">
-                {authorLine(book.authors)}
-                <Marks book={book} />
-              </span>
+    <ul className={`book-grid${selection ? " is-selecting" : ""}`}>
+      {books.map((book) => {
+        const { mark, props } = picked(book, selection);
+        return (
+          <li
+            key={book.id}
+            className={`grid-card${selection?.has(book.id) ? " is-selected" : ""}`}
+            {...bookContextMenu(book, actions)}
+          >
+            <button
+              type="button"
+              className="grid-open"
+              onClick={() => press(book, actions, selection)}
+              title={`${book.title}, ${authorLine(book.authors)}`}
+              {...props}
+            >
+              <BookCover book={book} />
+              {mark}
+            </button>
+            <div className="grid-caption">
+              <div className="grid-text">
+                <span className="book-title">{book.title}</span>
+                <span className="book-author">
+                  {authorLine(book.authors)}
+                  <Marks book={book} />
+                </span>
+              </div>
+              <MoreMenu book={book} actions={actions} />
             </div>
-            <MoreMenu book={book} actions={actions} />
-          </div>
-          <Progress book={book} />
-        </li>
-      ))}
+            <Progress book={book} />
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-export function BookList({ books, actions }: Props) {
+export function BookList({ books, actions, selection }: Props) {
   return (
     <ul className="book-list">
-      {books.map((book) => (
-        <li key={book.id} className="list-row" {...bookContextMenu(book, actions)}>
-          <button type="button" className="list-open" onClick={() => actions.open(book)}>
-            <BookCover book={book} size="s" />
-            <span className="list-text">
-              <span className="book-title">{book.title}</span>
-              <span className="book-author">
-                {authorLine(book.authors)}
-                <Marks book={book} />
+      {books.map((book) => {
+        const { mark, props } = picked(book, selection);
+        return (
+          <li
+            key={book.id}
+            className={`list-row${selection?.has(book.id) ? " is-selected" : ""}`}
+            {...bookContextMenu(book, actions)}
+          >
+            <button type="button" className="list-open" onClick={() => press(book, actions, selection)} {...props}>
+              {mark}
+              <BookCover book={book} size="s" />
+              <span className="list-text">
+                <span className="book-title">{book.title}</span>
+                <span className="book-author">
+                  {authorLine(book.authors)}
+                  <Marks book={book} />
+                </span>
+                {seriesLine(book) && <span className="book-author">{seriesLine(book)}</span>}
+                {book.tags.length > 0 && <span className="book-tags">{book.tags.join(" · ")}</span>}
+                <Stars value={book.rating} size={13} />
               </span>
-              {seriesLine(book) && <span className="book-author">{seriesLine(book)}</span>}
-              {book.tags.length > 0 && <span className="book-tags">{book.tags.join(" · ")}</span>}
-              <Stars value={book.rating} size={13} />
+            </button>
+            <span className="list-status">
+              {book.status === "in_progress" ? <Progress book={book} /> : <span className="muted">{STATUS[book.status]}</span>}
             </span>
-          </button>
-          <span className="list-status">
-            {book.status === "in_progress" ? <Progress book={book} /> : <span className="muted">{STATUS[book.status]}</span>}
-          </span>
-          <span className="list-format muted">{book.format.toUpperCase()}</span>
-          <span className="list-added muted">{new Date(book.addedAt).toLocaleDateString()}</span>
-          <MoreMenu book={book} actions={actions} />
-        </li>
-      ))}
+            <span className="list-format muted">{book.format.toUpperCase()}</span>
+            <span className="list-added muted">{new Date(book.addedAt).toLocaleDateString()}</span>
+            <MoreMenu book={book} actions={actions} />
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-export function BookTable({ books, actions }: Props) {
+export function BookTable({ books, actions, selection }: Props) {
   return (
     <table className="book-table">
       <thead>
@@ -120,32 +165,36 @@ export function BookTable({ books, actions }: Props) {
         </tr>
       </thead>
       <tbody>
-        {books.map((book) => (
-          <tr key={book.id} {...bookContextMenu(book, actions)}>
-            <td>
-              <button type="button" className="table-title" onClick={() => actions.open(book)}>
-                {book.title}
-              </button>
-              <Marks book={book} />
-              {book.availability !== "local" && (
-                <span className="mark" title={book.availability === "cloud" ? "In the cloud" : "File missing"}>
-                  <Icon name={book.availability === "cloud" ? "cloud" : "warning"} size={13} />
-                </span>
-              )}
-            </td>
-            <td>{authorLine(book.authors)}</td>
-            <td className="muted">{seriesLine(book) ?? ""}</td>
-            <td className="num">{book.status === "in_progress" ? percent(book.totalProgression) : STATUS[book.status]}</td>
-            <td>
-              <Stars value={book.rating} size={12} />
-            </td>
-            <td className="muted">{book.format.toUpperCase()}</td>
-            <td className="muted num">{new Date(book.addedAt).toLocaleDateString()}</td>
-            <td>
-              <MoreMenu book={book} actions={actions} />
-            </td>
-          </tr>
-        ))}
+        {books.map((book) => {
+          const { mark, props } = picked(book, selection);
+          return (
+            <tr key={book.id} className={selection?.has(book.id) ? "is-selected" : undefined} {...bookContextMenu(book, actions)}>
+              <td>
+                <button type="button" className="table-title" onClick={() => press(book, actions, selection)} {...props}>
+                  {mark}
+                  {book.title}
+                </button>
+                <Marks book={book} />
+                {book.availability !== "local" && (
+                  <span className="mark" title={book.availability === "cloud" ? "In the cloud" : "File missing"}>
+                    <Icon name={book.availability === "cloud" ? "cloud" : "warning"} size={13} />
+                  </span>
+                )}
+              </td>
+              <td>{authorLine(book.authors)}</td>
+              <td className="muted">{seriesLine(book) ?? ""}</td>
+              <td className="num">{book.status === "in_progress" ? percent(book.totalProgression) : STATUS[book.status]}</td>
+              <td>
+                <Stars value={book.rating} size={12} />
+              </td>
+              <td className="muted">{book.format.toUpperCase()}</td>
+              <td className="muted num">{new Date(book.addedAt).toLocaleDateString()}</td>
+              <td>
+                <MoreMenu book={book} actions={actions} />
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

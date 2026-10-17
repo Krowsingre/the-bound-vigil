@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use rusqlite::{params, OptionalExtension, Row};
 
 use crate::error::{Error, Result};
-use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM};
+use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM, LANGUAGE, PUBLISHER};
 use crate::ids::new_record_id;
 use crate::library::Library;
 use crate::model::*;
@@ -90,7 +90,7 @@ impl Library {
             .book(book_id)?
             .ok_or_else(|| Error::Unsuitable("This book is no longer in your library.".into()))?;
         let (publisher, language, file_size) = self.conn.query_row(
-            "SELECT b.publisher, b.language, b.file_size FROM books b WHERE b.id = ?1",
+            &format!("SELECT {PUBLISHER}, {LANGUAGE}, b.file_size {BOOK_FROM} AND b.id = ?1"),
             params![book_id],
             |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)?)),
         )?;

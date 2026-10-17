@@ -47,6 +47,8 @@ pub enum RuleField {
     Location,
     /// One of your tags.
     Tag,
+    /// One of its genres.
+    Genre,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,9 +66,9 @@ pub enum RuleOp {
     OlderThanDays,
 }
 
-const TITLE: &str = "COALESCE(o_title.value, b.title)";
-const AUTHORS: &str = "COALESCE(o_authors.value, b.authors)";
-const SERIES: &str = "COALESCE(o_series.value, b.series)";
+const TITLE: &str = "COALESCE(o_title.value, f_title.value, b.title)";
+const AUTHORS: &str = "COALESCE(o_authors.value, f_authors.value, b.authors)";
+const SERIES: &str = "COALESCE(o_series.value, f_series.value, b.series)";
 
 /// `%` and `_` typed by the person are matched as themselves.
 fn like(text: &str, start: &str, end: &str) -> Value {
@@ -129,8 +131,8 @@ impl Rule {
         Some(match self.field {
             F::Title => text(TITLE, &mut bind)?,
             F::Series => text(SERIES, &mut bind)?,
-            F::Publisher => text("b.publisher", &mut bind)?,
-            F::Language => text("b.language", &mut bind)?,
+            F::Publisher => text(crate::home::PUBLISHER, &mut bind)?,
+            F::Language => text(crate::home::LANGUAGE, &mut bind)?,
             F::Author => {
                 // Any one of the book's authors.
                 let each = |test: String| format!("EXISTS (SELECT 1 FROM json_each({AUTHORS}) a WHERE {test})");
@@ -204,6 +206,22 @@ impl Rule {
                         " AND lower(t.tag) LIKE {} ESCAPE '\\'",
                         bind(like(value, "%", "%"))
                     )),
+                    _ => return None,
+                }
+            }
+            F::Genre => {
+                const GENRES: &str = "COALESCE(o_genres.value, f_genres.value)";
+                let any = |test: &str| {
+                    format!(
+                        "EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid({GENRES}) THEN {GENRES} ELSE '[]' END) g WHERE 1 = 1{test})"
+                    )
+                };
+                match self.op {
+                    O::IsEmpty => format!("NOT {}", any("")),
+                    _ if value.is_empty() => return None,
+                    O::Is => any(&format!(" AND lower(g.value) = {}", bind(Value::Text(value.to_lowercase())))),
+                    O::IsNot => format!("NOT {}", any(&format!(" AND lower(g.value) = {}", bind(Value::Text(value.to_lowercase()))))),
+                    O::Contains => any(&format!(" AND lower(g.value) LIKE {} ESCAPE '\\'", bind(like(value, "%", "%")))),
                     _ => return None,
                 }
             }

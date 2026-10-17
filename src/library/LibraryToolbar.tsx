@@ -24,16 +24,27 @@ export function LibraryToolbar({
   counts,
   formats,
   tags,
+  genres,
+  allLabel,
+  selecting,
+  onSelecting,
   onChange,
 }: {
   view: LibraryView;
   counts: ShelfCounts | null;
   formats: string[];
   tags: string[];
+  genres: string[];
+  /** The first tab's name, when it isn't "All books". */
+  allLabel?: string;
+  selecting: boolean;
+  onSelecting: (on: boolean) => void;
   onChange: (change: Partial<LibraryView>) => void;
 }) {
   const sortLabel = SORTS.find((s) => s.sort === view.sort)?.label;
-  const filterCount = view.formats.length + (view.location ? 1 : 0) + view.tags.length;
+  const filterCount = view.formats.length + (view.location ? 1 : 0) + view.tags.length + view.genres.length;
+  const toggleGenre = (g: string) =>
+    onChange({ genres: view.genres.includes(g) ? view.genres.filter((x) => x !== g) : [...view.genres, g] });
   const toggleTag = (t: string) => onChange({ tags: view.tags.includes(t) ? view.tags.filter((x) => x !== t) : [...view.tags, t] });
   const toggleFormat = (f: string) =>
     onChange({ formats: view.formats.includes(f) ? view.formats.filter((x) => x !== f) : [...view.formats, f] });
@@ -53,8 +64,22 @@ export function LibraryToolbar({
           ...[...new Set([...tags, ...view.tags])].map((t) => ({ label: t, checked: view.tags.includes(t), onSelect: () => toggleTag(t) })),
         ] as MenuEntry[])
       : []),
+    ...(genres.length || view.genres.length
+      ? ([
+          "divider",
+          { heading: <strong>Genres</strong> },
+          ...[...new Set([...genres, ...view.genres])].map((g) => ({
+            label: g,
+            checked: view.genres.includes(g),
+            onSelect: () => toggleGenre(g),
+          })),
+        ] as MenuEntry[])
+      : []),
     ...(filterCount
-      ? (["divider", { label: "Clear filters", onSelect: () => onChange({ formats: [], location: null, tags: [] }) }] as MenuEntry[])
+      ? ([
+          "divider",
+          { label: "Clear filters", onSelect: () => onChange({ formats: [], location: null, tags: [], genres: [] }) },
+        ] as MenuEntry[])
       : []),
   ];
 
@@ -72,7 +97,7 @@ export function LibraryToolbar({
               className={`tab${view.tab === tab ? " is-active" : ""}`}
               onClick={() => onChange({ tab })}
             >
-              {label}
+              {tab === "all" && allLabel ? allLabel : label}
               {count !== undefined && <span className="tab-count num">{count}</span>}
             </button>
           );
@@ -103,6 +128,15 @@ export function LibraryToolbar({
             }
             items={filterItems}
           />
+          <button
+            type="button"
+            className={`toolbar-button${selecting ? " is-on" : ""}`}
+            aria-pressed={selecting}
+            title="Choose books to change many at once"
+            onClick={() => onSelecting(!selecting)}
+          >
+            <Icon name="check" size={16} /> Select
+          </button>
           <div className="layout-switch" role="radiogroup" aria-label="Layout">
             {LAYOUTS.map((l) => (
               <button

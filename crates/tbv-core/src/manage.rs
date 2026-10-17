@@ -298,7 +298,10 @@ impl Library {
     /// and first author's surname. Groups marked as not duplicates are left out.
     pub fn find_duplicates(&self) -> Result<Vec<DuplicateGroup>> {
         let sql = format!(
-            "{BOOK_COLUMNS}, b.isbn, b.file_size,
+            "{BOOK_COLUMNS},
+                    COALESCE((SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = 'isbn'),
+                             (SELECT value FROM metadata_fetched WHERE book_id = b.id AND field = 'isbn'), b.isbn),
+                    b.file_size,
                     (SELECT COUNT(*) FROM annotations a WHERE a.book_id = b.id AND a.deleted_at IS NULL)
              {BOOK_FROM} ORDER BY b.added_at"
         );
@@ -307,9 +310,9 @@ impl Library {
             .query_map([], |r| {
                 Ok((
                     book_from_row(r)?,
-                    r.get::<_, Option<String>>(20)?,
-                    r.get::<_, i64>(21)?,
-                    r.get::<_, u32>(22)?,
+                    r.get::<_, Option<String>>(21)?,
+                    r.get::<_, i64>(22)?,
+                    r.get::<_, u32>(23)?,
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;

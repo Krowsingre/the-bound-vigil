@@ -15,6 +15,7 @@ use std::path::Path;
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
+use crate::details::shown_sql;
 use crate::epub::{clean_isbn, read_epub_metadata, BookMetadata};
 use crate::error::{Error, Result};
 use crate::library::Library;
@@ -274,19 +275,22 @@ impl Library {
     }
 
     fn books_for_matching(&self) -> Result<Vec<Known>> {
-        let mut statement = self.conn.prepare(
-            "SELECT b.id, b.isbn, COALESCE(o_title.value, b.title), COALESCE(o_authors.value, b.authors)
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT b.id, {isbn}, COALESCE(o_title.value, f_title.value, b.title), COALESCE(o_authors.value, f_authors.value, b.authors)
              FROM books b
              LEFT JOIN metadata_overrides o_title ON o_title.book_id = b.id AND o_title.field = 'title'
              LEFT JOIN metadata_overrides o_authors ON o_authors.book_id = b.id AND o_authors.field = 'authors'
+             LEFT JOIN metadata_fetched f_title ON f_title.book_id = b.id AND f_title.field = 'title'
+             LEFT JOIN metadata_fetched f_authors ON f_authors.book_id = b.id AND f_authors.field = 'authors'
              WHERE b.deleted_at IS NULL",
-        )?;
+            isbn = shown_sql("isbn"),
+        ))?;
         let rows = statement.query_map([], |r| {
             let authors: String = r.get(3)?;
             let authors: Vec<String> = serde_json::from_str(&authors).unwrap_or_default();
             Ok(Known {
                 id: r.get(0)?,
-                isbn: r.get(1)?,
+                isbn: r.get::<_, Option<String>>(1)?.as_deref().and_then(clean_isbn),
                 title: title_key(&r.get::<_, String>(2)?),
                 short_title: short_title_key(&r.get::<_, String>(2)?),
                 surnames: authors.iter().filter_map(|a| surname(a)).collect(),
@@ -347,15 +351,19 @@ impl Library {
     /// put in Up next are included; others would only crowd your Goodreads
     /// shelves. Returns how many books were written.
     pub fn export_goodreads(&self, file: &Path) -> Result<u32> {
-        let mut statement = self.conn.prepare(
-            "SELECT b.id, COALESCE(o_title.value, b.title), COALESCE(o_authors.value, b.authors), b.isbn, b.rating,
-                    b.status, b.finished_at, b.added_at, b.want_to_read, b.favorite, b.publisher
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT b.id, COALESCE(o_title.value, f_title.value, b.title), COALESCE(o_authors.value, f_authors.value, b.authors), {isbn}, b.rating,
+                    b.status, b.finished_at, b.added_at, b.want_to_read, b.favorite, {publisher}
              FROM books b
              LEFT JOIN metadata_overrides o_title ON o_title.book_id = b.id AND o_title.field = 'title'
              LEFT JOIN metadata_overrides o_authors ON o_authors.book_id = b.id AND o_authors.field = 'authors'
+             LEFT JOIN metadata_fetched f_title ON f_title.book_id = b.id AND f_title.field = 'title'
+             LEFT JOIN metadata_fetched f_authors ON f_authors.book_id = b.id AND f_authors.field = 'authors'
              WHERE b.deleted_at IS NULL AND (b.rating IS NOT NULL OR b.status != 'unread' OR b.want_to_read = 1)
              ORDER BY b.added_at",
-        )?;
+            isbn = shown_sql("isbn"),
+            publisher = shown_sql("publisher"),
+        ))?;
         type ExportRow = (String, String, String, Option<String>, Option<u8>, String, Option<String>, String, bool, bool, Option<String>);
         let rows: Vec<ExportRow> = statement
             .query_map([], |r| {
@@ -390,7 +398,7 @@ impl Library {
             if *favourite {
                 shelves.push("favorites".into());
             }
-            let (isbn10, isbn13) = match isbn.as_deref() {
+            let (isbn10, isbn13) = match isbn.as_deref().and_then(clean_isbn).as_deref() {
                 Some(i) if i.len() == 13 => (String::new(), i.to_string()),
                 Some(i) => (i.to_string(), String::new()),
                 None => (String::new(), String::new()),
@@ -510,6 +518,12 @@ mod tests {
         library.set_status(&dune, ReadStatus::Read).unwrap();
         library.set_favorite(&dune, true).unwrap();
         library.set_want_to_read(&lathe, true).unwrap();
+        // Details you edited are what's exported.
+        let edits = [
+            crate::details::DetailChange { field: "isbn".into(), value: Some("978-0-441-01359-3".into()) },
+            crate::details::DetailChange { field: "publisher".into(), value: Some("Ace".into()) },
+        ];
+        library.edit_details(std::slice::from_ref(&dune), &edits).unwrap();
         let file = dir.path().join("out.csv");
         assert_eq!(library.export_goodreads(&file).unwrap(), 2);
         let text = fs::read_to_string(&file).unwrap();
@@ -519,6 +533,7 @@ mod tests {
         assert!(text.contains("favorites"), "{text}");
         assert!(text.contains("to-read"), "{text}");
         assert!(!text.contains("Emma"), "{text}");
+        assert!(text.contains("9780441013593") && text.contains(",Ace,"), "{text}");
 
         // A fresh library takes it all back through the Goodreads import.
         let (dir2, mut other) = open_temp_library();

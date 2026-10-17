@@ -1,0 +1,404 @@
+/* The Book details page, the details editor and the online search. */
+.book-details {
+  max-width: 1144px;
+  padding: 20px 32px 40px;
+}
+
+.details-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.details-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+}
+
+.details-side {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  position: sticky;
+  top: 0;
+}
+
+.details-side .cover-l {
+  width: 100%;
+}
+
+.details-side-actions {
+  display: grid;
+  gap: 4px;
+}
+
+.details-side-actions .btn {
+  justify-content: flex-start;
+}
+
+.details-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.details-title {
+  margin: 0 0 6px;
+  font: 400 34px/1.15 var(--font-serif);
+}
+
+.details-authors {
+  margin: 0 0 4px;
+  font: 400 18px var(--font-serif);
+}
+
+.details-rating {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 16px 0;
+  color: var(--star);
+}
+
+.details-rating .muted {
+  font-size: 14px;
+}
+
+.details-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.details-origin {
+  margin-left: 10px;
+  color: var(--text-muted);
+  font: 400 12px var(--font-sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.details-section {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.details-section h2 {
+  margin: 0 0 12px;
+  font: 400 20px var(--font-serif);
+}
+
+.details-synopsis p {
+  max-width: 68ch;
+  margin: 0 0 12px;
+  font: 400 16px/1.6 var(--font-serif);
+  user-select: text;
+}
+
+.details-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px 28px;
+  margin: 0;
+}
+
+.details-facts dt {
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.details-facts dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.details-facts dd .details-origin {
+  display: block;
+  margin: 2px 0 0;
+}
+
+/* Editing details */
+.details-dialog,
+.fetch-dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.details-form {
+  display: grid;
+  gap: 14px;
+  margin: 0 -24px;
+  padding: 4px 24px;
+  overflow: auto;
+}
+
+.details-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 0 !important;
+}
+
+.details-field-head .check-row {
+  margin: 0;
+}
+
+.details-field.is-off .tag-field,
+.details-field.is-off input:not([type="checkbox"]),
+.details-field.is-off textarea {
+  opacity: 0.55;
+}
+
+.field .tag-field input {
+  width: auto;
+  padding: 4px;
+  border: 0;
+  background: none;
+}
+
+.tag-field.is-disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* Finding details online */
+.fetch-search {
+  display: grid;
+  grid-template-columns: 2fr 1.4fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.fetch-search .btn {
+  height: 37px;
+}
+
+.fetch-results {
+  display: grid;
+  gap: 4px;
+  min-height: 120px;
+  margin: 16px -24px 0;
+  padding: 0 24px;
+  overflow: auto;
+}
+
+.fetch-result {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px;
+  border-radius: var(--radius-m);
+  text-align: left;
+}
+
+.fetch-result:hover,
+.fetch-result:focus-visible {
+  background: var(--surface-sunk);
+}
+
+.fetch-thumb {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 60px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--surface-sunk);
+  color: var(--text-muted);
+}
+
+.fetch-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fetch-result-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.fetch-result-text strong {
+  font: 400 16px var(--font-serif);
+}
+
+.fetch-source {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.fetch-chosen {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.fetch-compare {
+  display: grid;
+  margin: 0 -24px;
+  padding: 0 24px;
+  overflow: auto;
+}
+
+.fetch-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fetch-row-head {
+  padding-top: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: default;
+}
+
+.fetch-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.fetch-now,
+.fetch-found {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.fetch-cover {
+  width: 60px;
+  border-radius: 3px;
+}
+
+/* Choosing many books */
+.select-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 0 0 18px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+
+.select-count {
+  font-weight: 600;
+}
+
+.select-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.select-mark {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: rgb(18 20 22 / 0.35);
+  color: var(--accent-text);
+  box-shadow: var(--shadow);
+}
+
+.select-mark.is-on {
+  background: var(--accent);
+}
+
+.grid-open {
+  position: relative;
+}
+
+.list-open .select-mark,
+.table-title .select-mark {
+  position: static;
+  flex: none;
+  border-color: var(--border);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.table-title .select-mark {
+  display: inline-grid;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.list-open .select-mark.is-on,
+.table-title .select-mark.is-on {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.grid-card.is-selected .cover {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.list-row.is-selected,
+.book-table tr.is-selected {
+  background: var(--surface-sunk);
+}
+
+@media (max-width: 760px) {
+  .book-details {
+    padding: 12px 16px 32px;
+  }
+
+  .details-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .details-side {
+    position: static;
+    grid-template-columns: 120px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .details-side .cover-l {
+    grid-row: span 3;
+  }
+
+  .details-title {
+    font-size: 26px;
+  }
+
+  .fetch-search {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .fetch-row {
+    grid-template-columns: 100px minmax(0, 1fr) minmax(0, 1fr);
+  }
+}

@@ -642,6 +642,7 @@ const READER: [string, string][] = [
   ["Ctrl + F", "Search in the book"],
   ["Ctrl + B", "Add or remove a bookmark"],
   ["F", "Focus mode"],
+  ["R", "Read aloud, or pause reading"],
   ["F11", "Full screen"],
   ["Esc", "Close a panel, leave focus mode or full screen"],
 ];

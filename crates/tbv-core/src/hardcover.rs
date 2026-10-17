@@ -488,11 +488,13 @@ impl Library {
         let row = self
             .conn
             .query_row(
-                "SELECT b.id, COALESCE(o_title.value, b.title), COALESCE(o_authors.value, b.authors), b.isbn, b.rating, b.status
+                &format!("SELECT b.id, COALESCE(o_title.value, f_title.value, b.title), COALESCE(o_authors.value, f_authors.value, b.authors), {}, b.rating, b.status
                  FROM books b
                  LEFT JOIN metadata_overrides o_title ON o_title.book_id = b.id AND o_title.field = 'title'
                  LEFT JOIN metadata_overrides o_authors ON o_authors.book_id = b.id AND o_authors.field = 'authors'
-                 WHERE b.id = ?1 AND b.deleted_at IS NULL",
+                 LEFT JOIN metadata_fetched f_title ON f_title.book_id = b.id AND f_title.field = 'title'
+                 LEFT JOIN metadata_fetched f_authors ON f_authors.book_id = b.id AND f_authors.field = 'authors'
+                 WHERE b.id = ?1 AND b.deleted_at IS NULL", crate::details::shown_sql("isbn")),
                 [book_id],
                 |r| {
                     let authors: String = r.get(2)?;
@@ -500,7 +502,7 @@ impl Library {
                         id: r.get(0)?,
                         title: r.get(1)?,
                         authors: serde_json::from_str(&authors).unwrap_or_default(),
-                        isbn: r.get(3)?,
+                        isbn: r.get::<_, Option<String>>(3)?.as_deref().and_then(crate::epub::clean_isbn),
                         rating: r.get(4)?,
                         status: r.get(5)?,
                     })

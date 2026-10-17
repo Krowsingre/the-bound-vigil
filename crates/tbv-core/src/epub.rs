@@ -21,6 +21,10 @@ pub struct BookMetadata {
     pub series_index: Option<f64>,
     /// The ISBN-13 (or ISBN-10) printed in the book's identifiers, digits only.
     pub isbn: Option<String>,
+    /// `dc:subject`s, which publishers use for genres.
+    pub subjects: Vec<String>,
+    /// When it was published, as the book gives it (often a year or a date).
+    pub published: Option<String>,
     pub cover: Option<Cover>,
 }
 
@@ -47,6 +51,8 @@ enum Field {
     Language,
     /// `dc:identifier`, read for an ISBN.
     Identifier,
+    Subject,
+    Date,
     /// Calibre's `calibre:series`.
     Series,
     /// Calibre's `calibre:series_index`.
@@ -237,6 +243,8 @@ fn metadata_field(e: &BytesStart) -> Option<Field> {
         b"publisher" => Some(Field::Publisher),
         b"language" => Some(Field::Language),
         b"identifier" => Some(Field::Identifier),
+        b"subject" => Some(Field::Subject),
+        b"date" => Some(Field::Date),
         b"meta" => match attribute(e, b"property").as_deref() {
             Some("belongs-to-collection") => Some(Field::Collection),
             Some(_) if attribute(e, b"refines").is_some() => Some(Field::Refinement),
@@ -296,6 +304,10 @@ fn store_field(metadata: &mut BookMetadata, field: Field, raw: String) {
         Field::SeriesIndex if metadata.series_index.is_none() => {
             metadata.series_index = text.parse().ok()
         }
+        Field::Subject if !metadata.subjects.iter().any(|s| s.eq_ignore_ascii_case(&text)) && metadata.subjects.len() < 20 => {
+            metadata.subjects.push(text)
+        }
+        Field::Date if metadata.published.is_none() => metadata.published = Some(text.chars().take(10).collect()),
         // A 13-digit ISBN beats a 10-digit one if the book lists both.
         Field::Identifier => {
             if let Some(isbn) = clean_isbn(&text) {

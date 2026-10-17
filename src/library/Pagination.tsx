@@ -5,8 +5,11 @@ export function Pagination({
   page,
   pageSize,
   total,
+  noun = ["book", "books"],
   onPage,
 }: {
+  /** What's being counted, one and many. */
+  noun?: [string, string];
   page: number;
   pageSize: number;
   total: number;
@@ -18,7 +21,7 @@ export function Pagination({
   return (
     <div className="pagination">
       <p className="muted num">
-        Showing {first}–{last} of {total} {total === 1 ? "book" : "books"}
+        Showing {first}–{last} of {total} {total === 1 ? noun[0] : noun[1]}
       </p>
       {count > 1 && (
         <nav aria-label="Pages" className="pages">

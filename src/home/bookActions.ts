@@ -4,6 +4,7 @@ import { askAddToCollection } from "../collections/AddToCollection";
 import { openContextMenu } from "../components/ContextMenu";
 import type { MenuEntry } from "../components/Menu";
 import { StarRating } from "../components/StarRating";
+import { askEditDetails, showBookDetails } from "../details/openDetails";
 import { askDeleteBook, askEditTags } from "../library/BookDialogs";
 
 export interface BookActions {
@@ -20,10 +21,11 @@ export interface BookActions {
   removeFromCollection?: { name: string; remove: (book: BookPreview) => void };
 }
 
-/** The "…" menu for a book, and its right-click menu. Actions that arrive in later steps are shown but disabled. */
+/** The "…" menu for a book, and its right-click menu. */
 export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
   return [
-    { label: "Book details", hint: "Coming soon", disabled: true },
+    { label: "Book details", icon: "info", onSelect: () => showBookDetails(book.id) },
+    { label: "Edit details…", icon: "edit", onSelect: () => askEditDetails([book]) },
     {
       heading: createElement(
         "span",

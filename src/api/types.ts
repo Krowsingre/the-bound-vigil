@@ -51,6 +51,8 @@ export interface BookPreview {
   tags: string[];
   /** Whether the book's file is in the cloud, so the copy here can be removed. */
   inCloud: boolean;
+  /** Its genres: your edit, else fetched online or from the file. */
+  genres: string[];
 }
 
 export interface CollectionPreview {
@@ -167,7 +169,9 @@ export interface ImportItem {
 }
 
 export type Shelf = "all" | "favorites" | "want_to_read" | "in_progress" | "read" | "unread";
-export type SortOrder = "recently_added" | "recently_opened" | "title" | "author" | "series" | "progress" | "rating";
+export type SortOrder = "recently_added" | "recently_opened" | "title" | "author" | "series" | "progress" | "rating" | "genre";
+/** Ebooks live in the Library; PDF, DOC, DOCX and TXT on the Documents page. */
+export type ItemKind = "books" | "documents";
 export type Location = "on_device" | "cloud_only";
 
 export interface LibraryQuery {
@@ -178,6 +182,10 @@ export interface LibraryQuery {
   location: Location | null;
   /** Books with any of these tags. */
   tags?: string[];
+  /** Books with any of these genres. */
+  genres?: string[];
+  /** Only books, or only documents. Left out: both. */
+  kind?: ItemKind | null;
   /** Zero-based. */
   page: number;
   pageSize: number;
@@ -202,6 +210,47 @@ export interface LibraryPage {
   formats: string[];
   /** Your tags, A to Z. */
   tags: string[];
+  /** Genres on books of this kind, A to Z. */
+  genres: string[];
+}
+
+export type DetailFieldName =
+  | "title"
+  | "authors"
+  | "series"
+  | "series_index"
+  | "synopsis"
+  | "genres"
+  | "publisher"
+  | "published"
+  | "language"
+  | "isbn";
+
+/** One detail in its layers. Lists (authors, genres) are JSON arrays. */
+export interface DetailField {
+  field: DetailFieldName;
+  /** From the book file. */
+  own: string | null;
+  /** Fetched online, or read from the file beyond the basics. */
+  fetched: string | null;
+  fetchedFrom: "google" | "openlibrary" | "file" | null;
+  /** Your own edit. */
+  edited: string | null;
+}
+
+export interface BookDetails {
+  book: BookPreview;
+  fields: DetailField[];
+  fileSize: number;
+  filePath: string | null;
+  collections: { id: string; name: string }[];
+  annotations: number;
+}
+
+/** A value for a detail, or null to take your edit away. */
+export interface DetailChange {
+  field: DetailFieldName;
+  value: string | null;
 }
 
 export interface TagCount {
@@ -369,7 +418,8 @@ export type RuleField =
   | "upNext"
   | "added"
   | "location"
-  | "tag";
+  | "tag"
+  | "genre";
 
 export type RuleOp =
   | "contains"

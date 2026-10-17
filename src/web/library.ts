@@ -13,7 +13,7 @@ interface Kind {
   cols: string[];
 }
 
-export type Table = "books" | "metadata_overrides" | "collections" | "collection_books" | "book_tags" | "annotations" | "personal_notes";
+export type Table = "books" | "metadata_overrides" | "metadata_fetched" | "collections" | "collection_books" | "book_tags" | "annotations" | "personal_notes";
 
 /** Keep in step with KINDS in the core. */
 export const KINDS: Kind[] = [
@@ -26,6 +26,7 @@ export const KINDS: Kind[] = [
   { name: "book_progress", table: "books", keys: ["id"], cols: ["status", "total_progression", "resume_locator", "last_opened_at", "finished_at"] },
   { name: "book_shelves", table: "books", keys: ["id"], cols: ["favorite", "want_to_read", "rating"] },
   { name: "override", table: "metadata_overrides", keys: ["book_id", "field"], cols: ["value", "updated_at"] },
+  { name: "fetched", table: "metadata_fetched", keys: ["book_id", "field"], cols: ["value", "source", "updated_at"] },
   {
     name: "collection",
     table: "collections",
@@ -174,6 +175,19 @@ export class WebLibrary {
       const previous = this.db.records.get(recordId(kind.name, key));
       out.push({ kind: kind.name, key, data, changed_at: stampAfter(previous?.changed_at), pushed: false });
     }
+    await this.db.putRecords(out);
+    this.changed();
+    this.onLocalChange();
+  }
+
+  /** Removes records, as the desktop app records a deleted row. */
+  async remove(changes: [kind: string, keys: unknown[]][]): Promise<void> {
+    const out: Stored[] = changes.map(([kindName, keys]) => {
+      const key = JSON.stringify(keys);
+      const previous = this.db.records.get(recordId(kindName, key));
+      return { kind: kindName, key, data: null, changed_at: stampAfter(previous?.changed_at), pushed: false };
+    });
+    if (!out.length) return;
     await this.db.putRecords(out);
     this.changed();
     this.onLocalChange();

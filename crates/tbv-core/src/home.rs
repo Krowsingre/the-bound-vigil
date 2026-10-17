@@ -15,21 +15,25 @@ const IN_PROGRESS_LIMIT: u32 = 3;
 const COLLECTIONS_LIMIT: u32 = 4;
 const ANNOTATIONS_LIMIT: u32 = 2;
 
-/// Effective metadata = the user's override if there is one, else the book's own.
+/// Effective metadata: your edit if there is one, else details fetched online
+/// (or read from the file beyond the basics), else the book's own.
 pub(crate) const BOOK_COLUMNS: &str = r#"
     SELECT b.id,
-           COALESCE(o_title.value, b.title),
-           COALESCE(o_authors.value, b.authors),
+           COALESCE(o_title.value, f_title.value, b.title),
+           COALESCE(o_authors.value, f_authors.value, b.authors),
            b.format,
-           COALESCE(o_synopsis.value, b.synopsis),
+           COALESCE(o_synopsis.value, f_synopsis.value, b.synopsis),
            b.added_at, b.last_opened_at, b.status, b.total_progression, b.resume_locator,
            lf.path, lf.cover_path,
-           COALESCE(o_series.value, b.series), b.series_index, b.favorite, b.want_to_read,
+           COALESCE(o_series.value, f_series.value, b.series),
+           COALESCE(CAST(NULLIF(o_series_index.value, '') AS REAL), CAST(NULLIF(f_series_index.value, '') AS REAL), b.series_index),
+           b.favorite, b.want_to_read,
            b.rating, b.finished_at,
            (SELECT json_group_array(tag) FROM (SELECT t.tag FROM book_tags t
              WHERE t.book_id = b.id AND t.removed_at IS NULL ORDER BY t.tag COLLATE NOCASE)),
            EXISTS (SELECT 1 FROM sync_files sf WHERE sf.uploaded_at IS NOT NULL
-             AND sf.path = 'books/' || substr(b.id, 8) || '.' || b.format)
+             AND sf.path = 'books/' || substr(b.id, 8) || '.' || b.format),
+           COALESCE(o_genres.value, f_genres.value)
 "#;
 
 /// The joins that make the effective metadata available to WHERE and ORDER BY.
@@ -40,8 +44,27 @@ pub(crate) const BOOK_FROM: &str = r#"
     LEFT JOIN metadata_overrides o_authors ON o_authors.book_id = b.id AND o_authors.field = 'authors'
     LEFT JOIN metadata_overrides o_synopsis ON o_synopsis.book_id = b.id AND o_synopsis.field = 'synopsis'
     LEFT JOIN metadata_overrides o_series ON o_series.book_id = b.id AND o_series.field = 'series'
+    LEFT JOIN metadata_overrides o_series_index ON o_series_index.book_id = b.id AND o_series_index.field = 'series_index'
+    LEFT JOIN metadata_overrides o_publisher ON o_publisher.book_id = b.id AND o_publisher.field = 'publisher'
+    LEFT JOIN metadata_overrides o_language ON o_language.book_id = b.id AND o_language.field = 'language'
+    LEFT JOIN metadata_overrides o_genres ON o_genres.book_id = b.id AND o_genres.field = 'genres'
+    LEFT JOIN metadata_fetched f_title ON f_title.book_id = b.id AND f_title.field = 'title'
+    LEFT JOIN metadata_fetched f_authors ON f_authors.book_id = b.id AND f_authors.field = 'authors'
+    LEFT JOIN metadata_fetched f_synopsis ON f_synopsis.book_id = b.id AND f_synopsis.field = 'synopsis'
+    LEFT JOIN metadata_fetched f_series ON f_series.book_id = b.id AND f_series.field = 'series'
+    LEFT JOIN metadata_fetched f_series_index ON f_series_index.book_id = b.id AND f_series_index.field = 'series_index'
+    LEFT JOIN metadata_fetched f_publisher ON f_publisher.book_id = b.id AND f_publisher.field = 'publisher'
+    LEFT JOIN metadata_fetched f_language ON f_language.book_id = b.id AND f_language.field = 'language'
+    LEFT JOIN metadata_fetched f_genres ON f_genres.book_id = b.id AND f_genres.field = 'genres'
     WHERE b.deleted_at IS NULL
 "#;
+
+/// Effective publisher and language, for rules and the reader.
+pub(crate) const PUBLISHER: &str = "COALESCE(o_publisher.value, f_publisher.value, b.publisher)";
+pub(crate) const LANGUAGE: &str = "COALESCE(o_language.value, f_language.value, b.language)";
+
+/// The kinds of file the Documents page holds. Everything else is a book in the Library.
+pub const DOCUMENT_FORMATS: &[&str] = &["pdf", "doc", "docx", "txt"];
 
 impl Library {
     pub fn home(&self) -> Result<HomeViewModel> {
@@ -203,7 +226,8 @@ pub(crate) fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
         availability,
         // Filled in once sync records other devices' positions.
         remote_positions: Vec::new(),
-        series: r.get(12)?,
+        // An edit that empties the series takes the book out of it.
+        series: r.get::<_, Option<String>>(12)?.filter(|s| !s.trim().is_empty()),
         series_index: r.get(13)?,
         favorite: r.get(14)?,
         want_to_read: r.get(15)?,
@@ -214,6 +238,10 @@ pub(crate) fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or_default(),
         in_cloud: r.get(19)?,
+        genres: r
+            .get::<_, Option<String>>(20)?
+            .and_then(|g| serde_json::from_str(&g).ok())
+            .unwrap_or_default(),
     })
 }
 

@@ -16,6 +16,7 @@ import type {
   CollectionRules,
   CollectionSummary,
   CoverRef,
+  DetailField,
   HighlightColor,
   HomeViewModel,
   NoteItem,
@@ -27,6 +28,7 @@ import type {
 } from "../api/types";
 import { matches, usable } from "../collections/rules";
 import { cleanTag, queryBooks, tagCounts } from "../lib/queryBooks";
+import { cleanValue, DETAIL_FIELDS, listOf } from "../lib/details";
 import { WebDb } from "./db";
 import { UP_NEXT, WebLibrary, type BookRow } from "./library";
 import { WebSync } from "./sync";
@@ -78,14 +80,47 @@ export async function webApi(): Promise<Api> {
 
   // ---- Books ----
 
-  const overrides = () => {
-    const map = new Map<string, Map<string, string | null>>();
-    for (const o of library.rows("metadata_overrides")) {
+  // Your edits, then details fetched online or from the file, by book and field.
+  const layer = (table: "metadata_overrides" | "metadata_fetched") => {
+    const map = new Map<string, Map<string, { value: string | null; source: string | null }>>();
+    for (const o of library.rows(table)) {
       const id = String(o.book_id);
       if (!map.has(id)) map.set(id, new Map());
-      map.get(id)!.set(String(o.field), (o.value as string | null) ?? null);
+      map.get(id)!.set(String(o.field), { value: (o.value as string | null) ?? null, source: (o.source as string | null) ?? null });
     }
     return map;
+  };
+  const overrides = () => {
+    const edits = layer("metadata_overrides");
+    const found = layer("metadata_fetched");
+    const map = new Map<string, Map<string, string | null>>();
+    for (const [id, fields] of found) map.set(id, new Map([...fields].filter(([, v]) => v.value !== null).map(([f, v]) => [f, v.value])));
+    for (const [id, fields] of edits) {
+      if (!map.has(id)) map.set(id, new Map());
+      for (const [f, v] of fields) if (v.value !== null) map.get(id)!.set(f, v.value);
+    }
+    return map;
+  };
+  const detailFields = (b: BookRow): DetailField[] => {
+    const edits = layer("metadata_overrides").get(b.id);
+    const found = layer("metadata_fetched").get(b.id);
+    const own: Record<string, string | null> = {
+      title: b.title,
+      authors: b.authors,
+      series: b.series,
+      series_index: b.series_index === null || b.series_index === undefined ? null : String(b.series_index),
+      synopsis: b.synopsis,
+      publisher: b.publisher,
+      language: b.language,
+      isbn: b.isbn,
+    };
+    return DETAIL_FIELDS.map(({ field }) => ({
+      field,
+      own: own[field] ?? null,
+      fetched: found?.get(field)?.value ?? null,
+      fetchedFrom: (found?.get(field)?.source as DetailField["fetchedFrom"]) ?? null,
+      edited: edits?.get(field)?.value ?? null,
+    }));
   };
 
   const downloaded = new Set<string>();
@@ -114,6 +149,10 @@ export async function webApi(): Promise<Api> {
     return tagCache.map.get(id) ?? [];
   };
 
+  /** A number typed as text; blank or not a number shows what's beneath. */
+  const numberOr = (text: string | null | undefined, beneath: number | null) =>
+    text?.trim() && Number.isFinite(Number(text)) ? Number(text) : beneath;
+
   const preview = (b: BookRow, edits: Map<string, string | null> | undefined): BookPreview => {
     const hex = b.id.replace(/^sha256:/, "");
     const o = (field: string, own: string | null) => (edits?.has(field) ? edits.get(field)! : own);
@@ -124,8 +163,8 @@ export async function webApi(): Promise<Api> {
       coverPath: sync.coverUrls.get(hex) ?? null,
       format: b.format,
       synopsis: o("synopsis", b.synopsis),
-      series: o("series", b.series),
-      seriesIndex: b.series_index ?? null,
+      series: o("series", b.series)?.trim() || null,
+      seriesIndex: numberOr(edits?.get("series_index"), b.series_index ?? null),
       addedAt: b.added_at,
       lastOpenedAt: b.last_opened_at ?? null,
       status: (["unread", "in_progress", "read"].includes(b.status) ? b.status : "unread") as ReadStatus,
@@ -140,6 +179,7 @@ export async function webApi(): Promise<Api> {
       tags: tagsOf(b.id),
       // Books open from the cloud here, so every one is there.
       inCloud: true,
+      genres: listOf(edits?.get("genres") ?? null),
     };
   };
 
@@ -415,6 +455,7 @@ export async function webApi(): Promise<Api> {
       throw new Error("Old Word (DOC) files open in the desktop app.");
     },
     fillCover: async () => false,
+    fetchCover: async () => false,
     getProfile: async () => ({ avatarPath: db.meta.get(AVATAR) ?? null }),
     chooseAvatar: async () => {
       const file = await pickFile("image/png,image/jpeg,image/webp,image/gif");
@@ -814,6 +855,56 @@ export async function webApi(): Promise<Api> {
     },
     findDuplicates: async () => {
       throw new Error(DESKTOP_ONLY);
+    },
+    bookDetails: async (bookId) => {
+      const b = find(bookId);
+      const own = new Set(collectionRows().filter((c) => c.kind !== "shelf").map((c) => String(c.id)));
+      const names = new Map(collectionRows().map((c) => [String(c.id), String(c.name)]));
+      return {
+        book: bookPreview(bookId),
+        fields: detailFields(b),
+        fileSize: Number(b.file_size) || 0,
+        filePath: null,
+        collections: library
+          .rows("collection_books")
+          .filter((m) => m.book_id === bookId && !m.removed_at && own.has(String(m.collection_id)))
+          .map((m) => ({ id: String(m.collection_id), name: names.get(String(m.collection_id)) ?? "" })),
+        annotations: annotationRows().filter((a) => a.book_id === bookId).length,
+      };
+    },
+    editDetails: async (bookIds, changes) => {
+      const cleaned = changes.map((c) => ({ ...c, value: c.value === null ? null : cleanValue(c.field, c.value) }));
+      const at = now();
+      const writes: [string, Row][] = [];
+      const removes: [string, unknown[]][] = [];
+      for (const id of bookIds) {
+        if (!library.book(id)) continue;
+        for (const c of cleaned) {
+          if (c.value === null) {
+            if (library.row("metadata_overrides", [id, c.field])) removes.push(["override", [id, c.field]]);
+          } else writes.push(["override", { book_id: id, field: c.field, value: c.value, updated_at: at }]);
+        }
+      }
+      await library.writeAll(writes);
+      await library.remove(removes);
+    },
+    resetDetails: async (bookId, alsoFetched) => {
+      const mine = (table: "metadata_overrides" | "metadata_fetched", kind: string) =>
+        library
+          .rows(table)
+          .filter((o) => o.book_id === bookId && (table === "metadata_overrides" || o.source !== "file"))
+          .map((o): [string, unknown[]] => [kind, [bookId, o.field]]);
+      await library.remove([...mine("metadata_overrides", "override"), ...(alsoFetched ? mine("metadata_fetched", "fetched") : [])]);
+    },
+    saveFetched: async (bookId, source, values) => {
+      find(bookId);
+      const at = now();
+      const writes: [string, Row][] = [];
+      for (const [field, value] of Object.entries(values)) {
+        const v = cleanValue(field as DetailField["field"], value);
+        if (v && v !== "[]") writes.push(["fetched", { book_id: bookId, field, value: v, source, updated_at: at }]);
+      }
+      await library.writeAll(writes);
     },
     dismissDuplicates: async () => undefined,
     onSync: ({ status, libraryChanged }) => {

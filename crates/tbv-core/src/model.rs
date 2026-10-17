@@ -114,6 +114,9 @@ pub struct BookPreview {
     /// Whether sync has put the book's file in the cloud, so the copy here can be removed.
     #[serde(default)]
     pub in_cloud: bool,
+    /// Its genres: your edit, else fetched or from the file.
+    #[serde(default)]
+    pub genres: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -224,6 +227,16 @@ pub enum SortOrder {
     Progress,
     /// Your highest rated first; unrated books last.
     Rating,
+    /// By first genre, A to Z; books without one last.
+    Genre,
+}
+
+/// Which page a book belongs on: ebooks in the Library, PDF/DOC/DOCX/TXT in Documents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ItemKind {
+    Books,
+    Documents,
 }
 
 /// Where a book's file is, for filtering. `Missing` books count as on device.
@@ -247,6 +260,12 @@ pub struct LibraryQuery {
     /// Books with any of these tags. Empty means any book.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Books with any of these genres. Empty means any.
+    #[serde(default)]
+    pub genres: Vec<String>,
+    /// Only books, or only documents. None means both.
+    #[serde(default)]
+    pub kind: Option<ItemKind>,
     /// Zero-based.
     pub page: u32,
     pub page_size: u32,
@@ -278,6 +297,8 @@ pub struct LibraryPage {
     pub formats: Vec<String>,
     /// Your tags, A to Z, for the filter menu.
     pub tags: Vec<String>,
+    /// Genres on the books of this kind, A to Z, for the filter menu.
+    pub genres: Vec<String>,
 }
 
 /// This device's own settings. Not synced.

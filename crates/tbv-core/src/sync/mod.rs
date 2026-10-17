@@ -96,6 +96,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "fetched",
+        table: "metadata_fetched",
+        keys: &["book_id", "field"],
+        cols: &["value", "source", "updated_at"],
+        category: Category::Metadata,
+        creates: true,
+    },
+    Kind {
         name: "collection",
         table: "collections",
         keys: &["id"],
@@ -985,6 +993,7 @@ impl Library {
             "book_progress" => format!("Reading progress{}", book(key.first())?),
             "book_shelves" => format!("Favourite and To be read{}", book(key.first())?),
             "override" => format!("A corrected detail{}", book(key.first())?),
+            "fetched" => format!("A detail found online{}", book(key.first())?),
             "collection" => format!("The collection {}", field("name").unwrap_or_default()),
             "collection_book" => format!("A book's place in a collection{}", book(key.get(1))?),
             "annotation" => format!("A note or highlight{}", book(data.and_then(|d| d.get("book_id")))?),
@@ -1167,7 +1176,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
             }
         }
         "book" => short(text("title")),
-        "override" => short(text("value")),
+        "override" | "fetched" => short(text("value")),
         "collection" => short(text("name")),
         "collection_book" => "In the collection".into(),
         "book_tag" => if data.get("removed_at").is_some_and(|v| !v.is_null()) { "Tag taken off".into() } else { "Tagged".into() },

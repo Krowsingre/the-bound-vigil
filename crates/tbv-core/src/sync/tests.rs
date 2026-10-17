@@ -527,3 +527,32 @@ fn stopping_sync_turns_it_off() {
     assert!(a.lib().connect().unwrap().is_none());
     assert_eq!(a.lib().sync_overview().unwrap().provider.kind, "off");
 }
+
+#[test]
+fn details_found_online_and_edits_travel() {
+    let cloud = FakeRemote::default();
+    let a = Device::new();
+    let b = Device::new();
+    let book = a.import("Found");
+    let found = BTreeMap::from([("publisher".to_string(), "Penguin".to_string()), ("genres".to_string(), r#"["Gothic"]"#.to_string())]);
+    a.lib().save_fetched(&book, "google", &found).unwrap();
+    a.lib()
+        .edit_details(std::slice::from_ref(&book), &[crate::details::DetailChange { field: "series".into(), value: Some("Vigil".into()) }])
+        .unwrap();
+    a.sync(&cloud);
+    b.sync(&cloud);
+    let details = b.lib().book_details(&book).unwrap();
+    let get = |f: &str| details.fields.iter().find(|x| x.field == f).unwrap().clone();
+    assert_eq!(get("publisher").fetched.as_deref(), Some("Penguin"));
+    assert_eq!(get("publisher").fetched_from.as_deref(), Some("google"));
+    assert_eq!(get("series").edited.as_deref(), Some("Vigil"));
+    assert_eq!(details.book.genres, vec!["Gothic".to_string()]);
+
+    // Showing the book's own details again reaches the other device too.
+    tick();
+    a.lib().reset_details(&book, true).unwrap();
+    a.sync(&cloud);
+    b.sync(&cloud);
+    let details = b.lib().book_details(&book).unwrap();
+    assert!(details.fields.iter().all(|f| f.edited.is_none() && f.fetched_from.as_deref() != Some("google")));
+}

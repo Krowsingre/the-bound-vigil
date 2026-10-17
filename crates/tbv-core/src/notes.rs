@@ -33,13 +33,15 @@ impl Library {
         let mut statement = self.conn.prepare(
             "SELECT a.id, a.kind, a.excerpt, a.note, a.color, a.locator,
                     COALESCE(a.created_at, a.updated_at), a.updated_at,
-                    b.id, COALESCE(o_title.value, b.title), COALESCE(o_authors.value, b.authors),
+                    b.id, COALESCE(o_title.value, f_title.value, b.title), COALESCE(o_authors.value, f_authors.value, b.authors),
                     lf.cover_path
              FROM annotations a
              JOIN books b ON b.id = a.book_id AND b.deleted_at IS NULL
              LEFT JOIN local_files lf ON lf.book_id = b.id
              LEFT JOIN metadata_overrides o_title ON o_title.book_id = b.id AND o_title.field = 'title'
              LEFT JOIN metadata_overrides o_authors ON o_authors.book_id = b.id AND o_authors.field = 'authors'
+             LEFT JOIN metadata_fetched f_title ON f_title.book_id = b.id AND f_title.field = 'title'
+             LEFT JOIN metadata_fetched f_authors ON f_authors.book_id = b.id AND f_authors.field = 'authors'
              WHERE a.deleted_at IS NULL AND a.kind IN ('highlight', 'note', 'book_note')",
         )?;
         let mut notes = statement

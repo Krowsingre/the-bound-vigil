@@ -8,7 +8,10 @@ import { previewNotes, sampleAnnotations } from "../preview/notes";
 import { sampleEpub } from "../preview/sampleEpub";
 import { cleanTag, queryBooks, tagCounts } from "../lib/queryBooks";
 import { duplicateGroups } from "../lib/duplicates";
+import { cleanValue, DETAIL_FIELDS, previewFields } from "../lib/details";
 import type {
+  DetailField,
+  DetailFieldName,
   ProviderView,
   Annotation,
   BookPreview,
@@ -84,6 +87,7 @@ function book(title: string, author: string, extra: Partial<BookPreview> = {}): 
     finishedAt: extra.status === "read" ? ago(n * 3) : null,
     tags: [],
     inCloud: n % 3 !== 0,
+    genres: [],
     ...extra,
   };
 }
@@ -102,10 +106,10 @@ let books: BookPreview[] = [
       "Wrongly imprisoned on the eve of his wedding, Edmond Dantès escapes after fourteen years and returns as the wealthy Count, set on repaying every debt.",
     remotePositions: [{ deviceName: "Phone", totalProgression: 0.47, at: ago(0.5) }],
   }),
-  book("Middlemarch", "George Eliot", reading(0.18, 2)),
+  book("Middlemarch", "George Eliot", { ...reading(0.18, 2), genres: ["Literary fiction"] }),
   book("The Moonstone", "Wilkie Collins", reading(0.71, 5)),
   book("Frankenstein", "Mary Shelley", { availability: "cloud", wantToRead: true }),
-  book("Jane Eyre", "Charlotte Brontë", { favorite: true, rating: 4, tags: ["Gothic"] }),
+  book("Jane Eyre", "Charlotte Brontë", { favorite: true, rating: 4, tags: ["Gothic"], genres: ["Romance", "Gothic fiction"] }),
   book("Moby-Dick", "Herman Melville", { status: "read", totalProgression: 1, lastOpenedAt: ago(30), rating: 4 }),
   book("The Picture of Dorian Gray", "Oscar Wilde", { wantToRead: true }),
   book("A Study in Scarlet", "Arthur Conan Doyle", { series: "Sherlock Holmes", seriesIndex: 1, status: "read", totalProgression: 1, rating: 5 }),
@@ -113,7 +117,7 @@ let books: BookPreview[] = [
   book("The Hound of the Baskervilles", "Arthur Conan Doyle", { series: "Sherlock Holmes", seriesIndex: 5 }),
   book("The Warden", "Anthony Trollope", { series: "Chronicles of Barsetshire", seriesIndex: 1 }),
   book("Barchester Towers", "Anthony Trollope", { series: "Chronicles of Barsetshire", seriesIndex: 2, wantToRead: true }),
-  book("Dracula", "Bram Stoker", { favorite: true, status: "read", totalProgression: 1, rating: 5, tags: ["Gothic", "Horror"] }),
+  book("Dracula", "Bram Stoker", { favorite: true, status: "read", totalProgression: 1, rating: 5, tags: ["Gothic", "Horror"], genres: ["Horror", "Gothic fiction"] }),
   book("Wuthering Heights", "Emily Brontë", { tags: ["Gothic", "Book club"] }),
   book("Persuasion", "Jane Austen", { favorite: true }),
   book("Emma", "Jane Austen"),
@@ -123,8 +127,8 @@ let books: BookPreview[] = [
   book("North and South", "Elizabeth Gaskell"),
   book("The Turn of the Screw", "Henry James", { format: "pdf" }),
   book("Little Women", "Louisa May Alcott"),
-  book("The Time Machine", "H. G. Wells", { status: "read", totalProgression: 1 }),
-  book("The War of the Worlds", "H. G. Wells", { format: "txt" }),
+  book("The Time Machine", "H. G. Wells", { status: "read", totalProgression: 1, genres: ["Science fiction"] }),
+  book("The War of the Worlds", "H. G. Wells", { format: "txt", genres: ["Science fiction"] }),
   book("Twenty Thousand Leagues Under the Seas", "Jules Verne", { availability: "cloud" }),
   book("Around the World in Eighty Days", "Jules Verne"),
   book("Little Nemo in Slumberland", "Winsor McCay", { format: "cbz" }),
@@ -241,6 +245,36 @@ export function previewApi(): Api {
   let profile: Profile = { avatarPath: params.has("avatar") ? SAMPLE_AVATAR : null };
   const settings = new Map<string, string>();
   const dismissed = new Set<string>();
+  // Book details in their layers: what each book started with, your edits and what was fetched.
+  const own = new Map<string, Record<string, string | null>>();
+  const edited = new Map<string, Record<string, string>>();
+  const fetched = new Map<string, Record<string, { value: string; source: "google" | "openlibrary" }>>();
+  const ownOf = (id: string) => {
+    if (!own.has(id)) {
+      const b = find(id);
+      own.set(id, {
+        title: b.title,
+        authors: JSON.stringify(b.authors),
+        series: b.series,
+        series_index: b.seriesIndex === null ? null : String(b.seriesIndex),
+        synopsis: b.synopsis,
+        publisher: "Penguin Classics",
+        language: "en",
+        isbn: null,
+      });
+      if (b.genres.length) fetched.set(id, { ...fetched.get(id), genres: { value: JSON.stringify(b.genres), source: "openlibrary" } });
+    }
+    return own.get(id)!;
+  };
+  const detailFields = (id: string): DetailField[] =>
+    DETAIL_FIELDS.map(({ field }) => ({
+      field,
+      own: ownOf(id)[field] ?? null,
+      fetched: fetched.get(id)?.[field]?.value ?? null,
+      fetchedFrom: fetched.get(id)?.[field]?.source ?? null,
+      edited: edited.get(id)?.[field] ?? null,
+    }));
+  const relayer = (id: string) => update(id, previewFields(detailFields(id)));
   const find = (bookId: string) => {
     const b = books.find((x) => x.id === bookId);
     if (!b) throw new Error("This book is no longer in your library.");
@@ -295,6 +329,7 @@ export function previewApi(): Api {
     onHardcoverNotice: () => () => undefined,
     bookText: async () => "Chapter One\nThe lamps along the harbour wall were lit one by one.",
     fillCover: async () => false,
+    fetchCover: async () => false,
     getProfile: async () => profile,
     chooseAvatar: async () => null,
     clearAvatar: async () => (profile = { avatarPath: null }),
@@ -438,6 +473,43 @@ export function previewApi(): Api {
         .filter((g) => !dismissed.has(g.key))
         .map((g) => ({ ...g, books: g.books.map((b, i) => ({ ...b, fileSize: 412_000 + i * 2_300_000, notes: i ? 0 : 3 })) })),
     dismissDuplicates: async (key) => void dismissed.add(key),
+    bookDetails: async (bookId) => ({
+      book: find(bookId),
+      fields: detailFields(bookId),
+      fileSize: 1_284_000,
+      filePath: find(bookId).availability === "local" ? `C:\\Users\\you\\AppData\\Roaming\\The Bound Vigil\\Books\\${find(bookId).title}.${find(bookId).format}` : null,
+      collections: [],
+      annotations: 0,
+    }),
+    editDetails: async (bookIds, changes) => {
+      const cleaned = changes.map((c) => ({ ...c, value: c.value === null ? null : cleanValue(c.field, c.value) }));
+      for (const id of bookIds) {
+        ownOf(id);
+        const mine = { ...edited.get(id) };
+        for (const c of cleaned) {
+          if (c.value === null) delete mine[c.field];
+          else mine[c.field] = c.value;
+        }
+        edited.set(id, mine);
+        relayer(id);
+      }
+    },
+    resetDetails: async (bookId, alsoFetched) => {
+      ownOf(bookId);
+      edited.delete(bookId);
+      if (alsoFetched) fetched.delete(bookId);
+      relayer(bookId);
+    },
+    saveFetched: async (bookId, source, values) => {
+      ownOf(bookId);
+      const found = { ...fetched.get(bookId) };
+      for (const [field, value] of Object.entries(values)) {
+        const v = cleanValue(field as DetailFieldName, value);
+        if (v && v !== "[]") found[field] = { value: v, source };
+      }
+      fetched.set(bookId, found);
+      relayer(bookId);
+    },
     onSync: () => () => undefined,
     ...collections.api,
     ...notes,
