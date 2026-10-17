@@ -67,6 +67,7 @@ export function CollectionPanel({
       <CollectionPicture
         collection={{ id: c?.id ?? name, picture: c?.picture ?? null, picturePath: c?.picturePath ?? null, covers }}
         className="panel-picture"
+        shape="square"
       />
       <div className="panel-title">
         <Badge name={badge} size={22} />

@@ -5,7 +5,7 @@ import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { Badge, BADGE_NAMES } from "./badges";
 import { CollectionPicture } from "./CollectionCards";
-import { GALLERY, galleryUrl } from "./gallery";
+import { GALLERY, galleryName, galleryUrl } from "./gallery";
 
 type PictureTab = "gallery" | "covers" | "computer";
 
@@ -81,6 +81,8 @@ export function CollectionEditor({
   const shown = "file" in picture ? { picture: null, picturePath: null } : picture;
   const preview = { id: collection?.id ?? "new", covers: books.slice(0, 3), ...shown };
   const current = "file" in picture ? null : picture.picture;
+  // A picture chosen before the paintings arrived shows as the one standing in for it.
+  const currentGallery = current?.startsWith("gallery:") ? `gallery:${galleryName(current.slice("gallery:".length))}` : null;
   const title = collection ? `Edit ${shelf ? "shelf" : kind === "reading_list" ? "reading list" : "collection"}` : "New collection";
 
   return (
@@ -197,16 +199,15 @@ export function CollectionEditor({
                       <button
                         key={g.name}
                         type="button"
-                        aria-pressed={current === value}
+                        aria-pressed={currentGallery === value}
                         title={g.label}
                         onClick={() => setPicture({ picture: value, picturePath: null })}
                       >
-                        <img src={galleryUrl(g.name)} alt={g.label} draggable={false} />
+                        <img src={galleryUrl(g.name, "square") ?? undefined} alt={g.label} loading="lazy" draggable={false} />
                       </button>
                     );
                   })}
                 </div>
-                <small className="muted">Placeholder art until the TBV gallery pictures arrive.</small>
               </>
             )}
             {tab === "covers" &&

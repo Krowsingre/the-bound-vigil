@@ -7,16 +7,20 @@ import { hashOf } from "../lib/format";
 import { Badge } from "./badges";
 import type { ReorderProps } from "./useReorder";
 import { bookCount, KIND_LABEL, pictureUrl, SMART_INFO } from "./collectionInfo";
+import type { GalleryShape } from "./gallery";
 
 /** A collection's picture, or a quiet tone when it has none. */
 export function CollectionPicture({
   collection,
   className = "",
+  shape = "wide",
 }: {
   collection: Pick<CollectionSummary, "id" | "picture" | "picturePath" | "covers">;
   className?: string;
+  /** Which shape of gallery picture fits the space: banners take the wide one. */
+  shape?: GalleryShape;
 }) {
-  const src = pictureUrl(collection);
+  const src = pictureUrl(collection, shape);
   return (
     <span className={`collection-picture ${className}`} data-tone={hashOf(collection.id) % 4}>
       {src ? (
@@ -64,7 +68,7 @@ export function PinnedCard({
   return (
     <li className={`pinned-card${selected ? " is-selected" : ""}`}>
       <button type="button" className="pinned-open" onClick={onSelect} onDoubleClick={onOpen} aria-pressed={selected}>
-        <CollectionPicture collection={collection} />
+        <CollectionPicture collection={collection} shape="square" />
         <span className="pinned-text">
           <span className="pinned-name">
             <Badge name={collection.badge} size={16} />

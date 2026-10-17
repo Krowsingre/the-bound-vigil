@@ -10,10 +10,20 @@ describe("collections", () => {
     expect(new Set(BADGE_NAMES).size).toBe(BADGE_NAMES.length);
   });
 
-  it("draws every gallery picture, and the same one each time", () => {
-    for (const g of GALLERY) expect(galleryUrl(g.name)).toMatch(/^data:image\/svg\+xml,/);
-    expect(galleryUrl("peaks")).toBe(galleryUrl("peaks"));
-    expect(galleryUrl("peaks")).not.toBe(galleryUrl("forest"));
+  it("has both shapes of every gallery picture", () => {
+    expect(GALLERY).toHaveLength(25);
+    for (const g of GALLERY) {
+      expect(galleryUrl(g.name, "wide")).toMatch(/-wide\.webp/);
+      expect(galleryUrl(g.name, "square")).toMatch(/-square\.webp/);
+    }
+    expect(GALLERY.find((g) => g.name === "citadel-beneath-the-planet")?.label).toBe("Citadel Beneath the Planet");
+    // Names the core accepts: lower-case letters and hyphens, 32 at most.
+    for (const g of GALLERY) expect(g.name).toMatch(/^[a-z-]{1,32}$/);
+  });
+
+  it("keeps pictures chosen before the paintings arrived", () => {
+    expect(galleryUrl("peaks")).toBe(galleryUrl("snowbound-peaks"));
+    expect(galleryUrl("not-a-picture")).toBeNull();
   });
 
   it("shows covers when there's no picture", () => {

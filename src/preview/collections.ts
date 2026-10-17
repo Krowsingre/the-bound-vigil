@@ -87,7 +87,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
   });
 
   let stored: Stored[] = [
-    shelf("want_to_read", "Up next", "bookmark", "gallery:forest"),
+    shelf("want_to_read", "Up next", "bookmark", "gallery:forest-shrine"),
     ...(empty
       ? []
       : [
@@ -96,7 +96,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
             "Gothic",
             {
               badge: "moon",
-              picture: "gallery:night",
+              picture: "gallery:moonlit-towers",
               pinned: true,
               description: "Old houses, long shadows and letters that arrive too late.",
             },
@@ -113,7 +113,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
           own(
             "c3",
             "Adventure",
-            { badge: "compass", picture: "gallery:harbour", description: "Voyages, escapes and maps with edges." },
+            { badge: "compass", picture: "gallery:stormbound-harbor", description: "Voyages, escapes and maps with edges." },
             [
               "Twenty Thousand Leagues Under the Seas",
               "Around the World in Eighty Days",
@@ -124,7 +124,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
             22,
           ),
           own("c4", "Austen & the Brontës", { badge: "feather" }, ["Persuasion", "Emma", "Jane Eyre", "Wuthering Heights"], 12),
-          own("c5", "Russian winters", { badge: "tower", picture: "gallery:moor" }, ["Anna Karenina", "Crime and Punishment", "The Brothers Karamazov"], 6),
+          own("c5", "Russian winters", { badge: "tower", picture: "gallery:winter-valley" }, ["Anna Karenina", "Crime and Punishment", "The Brothers Karamazov"], 6),
           own("c6", "Comfort reads", { badge: "lantern", kind: "reading_list" }, ["Little Women", "The Secret Garden"], 2),
         ]),
   ];
