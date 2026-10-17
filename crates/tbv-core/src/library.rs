@@ -8,15 +8,17 @@ use std::sync::Arc;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::epub::read_epub_metadata;
-use crate::error::Result;
+use crate::formats::read_metadata;
+use crate::error::{Error, Result};
 use crate::ids::{book_id_for_file, book_id_hex};
 use crate::model::{BookId, ImportResult};
 use crate::time::now_utc;
 
 /// Formats TBV accepts on import. Only EPUB metadata is read today; the rest
 /// are titled from their file name until their readers land.
-pub const SUPPORTED_FORMATS: &[&str] = &["epub", "pdf", "mobi", "azw3", "cbz", "fb2"];
+pub const SUPPORTED_FORMATS: &[&str] = &[
+    "epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "txt", "docx", "doc",
+];
 
 /// Where this device keeps TBV's files.
 #[derive(Debug, Clone)]
@@ -396,8 +398,7 @@ impl Library {
                 // Keep any cover already cached for this book, or read it now.
                 let cover = match self.cover_of(&book_id)? {
                     Some(cover) => Some(cover),
-                    None if format == "epub" => self.save_cover(&book_id, &read_epub_metadata(source)?)?,
-                    None => None,
+                    None => self.save_cover(&book_id, &read_metadata(source, format)?)?,
                 };
                 self.conn.execute(
                     "INSERT INTO local_files (book_id, path, cover_path) VALUES (?1, ?2, ?3)
@@ -412,11 +413,7 @@ impl Library {
             });
         }
 
-        let metadata = if format == "epub" {
-            read_epub_metadata(source)?
-        } else {
-            Default::default()
-        };
+        let metadata = read_metadata(source, format)?;
         let title = metadata
             .title
             .clone()
@@ -469,6 +466,35 @@ impl Library {
     }
 
     /// The cover this device has for a book, if it is still there.
+    /// Gives a book a cover drawn by the reader (a PDF's first page, which
+    /// only the PDF engine can draw), unless it already has one. Returns
+    /// whether the picture was kept.
+    pub fn fill_cover(&self, book_id: &str, picture: &[u8]) -> Result<bool> {
+        let book_id = book_id.to_string();
+        if self.title_of(&book_id)?.is_none() || self.cover_of(&book_id)?.is_some() {
+            return Ok(false);
+        }
+        let image = image::load_from_memory(picture).map_err(|e| Error::Unsuitable(format!("That picture couldn't be read: {e}")))?;
+        // Covers are shown small; a page drawn at full size would be wasted space.
+        let image = if image.height() > 900 { image.resize(900, 900, image::imageops::FilterType::Triangle) } else { image };
+        let mut bytes = Vec::new();
+        image
+            .to_rgb8()
+            .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
+            .map_err(|e| Error::Unsuitable(e.to_string()))?;
+        let metadata = crate::epub::BookMetadata {
+            cover: Some(crate::epub::Cover { bytes, extension: "jpg".into() }),
+            ..Default::default()
+        };
+        let cover = self.save_cover(&book_id, &metadata)?;
+        self.conn.execute(
+            "INSERT INTO local_files (book_id, path, cover_path) VALUES (?1, NULL, ?2)
+             ON CONFLICT(book_id) DO UPDATE SET cover_path = excluded.cover_path",
+            params![book_id, cover],
+        )?;
+        Ok(true)
+    }
+
     fn cover_of(&self, book_id: &BookId) -> Result<Option<String>> {
         let cover: Option<String> = self
             .conn
@@ -657,16 +683,62 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_drawn_cover_fills_in_once() {
+        let (dir, mut library) = open_temp_library();
+        let pdf = dir.path().join("Plain.pdf");
+        fs::write(&pdf, "%PDF-1.4 fake").unwrap();
+        let ImportResult::Imported { book_id, .. } = library.import_files(&[pdf]).remove(0) else {
+            panic!()
+        };
+        let mut png = Vec::new();
+        image::RgbImage::from_pixel(60, 1200, image::Rgb([200, 30, 30]))
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        assert!(library.fill_cover(&book_id, &png).unwrap());
+        let cover = library.cover_of(&book_id).unwrap().unwrap();
+        assert!(cover.ends_with(".jpg"));
+        assert_eq!(image::open(&cover).unwrap().height(), 900);
+        // A cover that's already there stays.
+        assert!(!library.fill_cover(&book_id, &png).unwrap());
+        assert!(library.fill_cover("nope", &png).is_ok_and(|kept| !kept));
+        assert!(library.fill_cover(&book_id, b"junk").is_ok());
+    }
+
+    #[test]
+    fn every_kind_of_book_imports_with_its_details() {
+        let (dir, mut library) = open_temp_library();
+        let mobi = dir.path().join("x.azw3");
+        fs::write(&mobi, crate::formats::mobi_sample("Bleak House", "Charles Dickens")).unwrap();
+        let doc = dir.path().join("y.doc");
+        fs::copy(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/lamps.doc"), &doc).unwrap();
+        let txt = dir.path().join("Night_Thoughts.txt");
+        fs::write(&txt, "Chapter 1\n\nIt was night.").unwrap();
+        let results = library.import_files(&[mobi, doc, txt]);
+        let titles: Vec<_> = results
+            .iter()
+            .map(|r| match r {
+                ImportResult::Imported { title, .. } => title.clone(),
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(titles, ["Bleak House", "Lamps at Dusk", "Night Thoughts"]);
+        let ImportResult::Imported { book_id, .. } = &results[0] else { panic!() };
+        assert!(library.cover_of(book_id).unwrap().is_some());
+        let ImportResult::Imported { book_id, .. } = &results[1] else { panic!() };
+        assert!(library.book_text(book_id).unwrap().contains("harbour wall"));
+    }
+
+    #[test]
     fn unsupported_and_broken_files_are_reported_not_fatal() {
         let (dir, mut library) = open_temp_library();
-        let txt = dir.path().join("notes.txt");
-        fs::write(&txt, "hi").unwrap();
+        let rtf = dir.path().join("notes.rtf");
+        fs::write(&rtf, "hi").unwrap();
         let broken = dir.path().join("broken.epub");
         fs::write(&broken, "not a zip").unwrap();
         let pdf = dir.path().join("The_Night_Watch.pdf");
         fs::write(&pdf, "%PDF-1.4 fake").unwrap();
 
-        let results = library.import_files(&[txt, broken, pdf]);
+        let results = library.import_files(&[rtf, broken, pdf]);
         assert!(matches!(results[0], ImportResult::Unsupported { .. }));
         assert!(matches!(results[1], ImportResult::Failed { .. }));
         let ImportResult::Imported { title, .. } = &results[2] else {

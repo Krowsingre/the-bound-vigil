@@ -8,6 +8,7 @@ import { onBeforeQuit } from "../lib/beforeQuit";
 import { SyncMenu } from "../shell/SyncMenu";
 import type { TocItem } from "../vendor/foliate-js/view.js";
 import { isBookmark, isNote } from "./annotations";
+import { drawPdfCover, readerSource, type ReaderSource } from "./formats";
 import { contentsEntries, currentEntry, pageOf, pushJump, type Jump } from "./pages";
 import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars";
 import { LeftPanel, RightPanel, type AnnotationHandlers, type RightTab } from "./ReaderPanels";
@@ -66,7 +67,7 @@ export function Reader({
 }) {
   const toast = useToast();
   const [info, setInfo] = useState<ReaderBook | null>(null);
-  const [file, setFile] = useState<Blob | null>(null);
+  const [file, setFile] = useState<ReaderSource | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
@@ -98,8 +99,17 @@ export function Reader({
         setAnnotations(list);
         setSettings(parseSettings(saved));
         const blob = await api.readBookFile(bookId);
+        const { format, title, authors, coverPath } = opened.book;
         // The page engine tells formats apart partly by file name.
-        if (!cancelled) setFile(new File([blob], `book.${opened.book.format}`, { type: blob.type }));
+        const named = new File([blob], `book.${format}`, { type: blob.type });
+        const source = await readerSource(named, format, bookId, { title, author: authors.join(", "), language: opened.language });
+        if (!cancelled) setFile(source);
+        // A PDF imported elsewhere, or whose cover couldn't be drawn then.
+        if (format === "pdf" && !coverPath) {
+          void drawPdfCover(blob)
+            .then(async (cover) => cover && api.fillCover(bookId, new Uint8Array(await cover.arrayBuffer())))
+            .catch(() => undefined);
+        }
       } catch (e) {
         if (!cancelled) setLoadError(String(e instanceof Error ? e.message : e));
       }

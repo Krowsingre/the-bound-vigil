@@ -21,13 +21,13 @@ function crc32(bytes: Uint8Array): number {
 }
 
 /** A zip with every file stored uncompressed, which EPUB readers accept. */
-export function storedZip(files: [string, string][]): Blob {
+export function storedZip(files: [string, string | Uint8Array][], type = "application/epub+zip"): Blob {
   const parts: Uint8Array[] = [];
   const central: Uint8Array[] = [];
   let offset = 0;
   for (const [name, text] of files) {
     const nameBytes = enc.encode(name);
-    const data = enc.encode(text);
+    const data = typeof text === "string" ? enc.encode(text) : text;
     const crc = crc32(data);
     const local = new DataView(new ArrayBuffer(30));
     local.setUint32(0, 0x04034b50, true);
@@ -58,11 +58,11 @@ export function storedZip(files: [string, string][]): Blob {
   end.setUint32(12, size, true);
   end.setUint32(16, offset, true);
   return new Blob([...parts, ...central, new Uint8Array(end.buffer)].map((p) => p.slice().buffer), {
-    type: "application/epub+zip",
+    type,
   });
 }
 
-const PARAGRAPHS = [
+export const PARAGRAPHS = [
   "The lamps along the harbour wall were lit one by one, the way they had been every evening for as long as anyone in the town could remember. Wren walked the length of the wall with her taper held high, and the small flames answered her in a line that bent away into the fog.",
   "Her grandmother had kept the lamps before her, and her grandmother's father before that. The town had long since stopped thanking the family for it. People only noticed the lamps on the nights they were not lit, and there had not been one of those in sixty years.",
   "At the end of the wall the stones were older and darker, and the last lamp hung from an iron hook shaped like a closed hand. Wren reached up to it and paused. Someone had been here before her. The glass was clean, the wick trimmed, and a folded note was tucked behind the bracket.",

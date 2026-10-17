@@ -194,7 +194,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "files",
     section: "formats",
     label: "Book formats",
-    words: "epub pdf mobi azw3 cbz fb2 formats supported",
+    words: "epub pdf mobi azw azw3 cbz fb2 fbz txt text docx doc word formats supported",
   },
   {
     tab: "files",

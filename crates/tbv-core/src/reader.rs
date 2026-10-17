@@ -125,6 +125,12 @@ impl Library {
         Ok(path)
     }
 
+    /// The plain text of a book shown without its own formatting: old Word
+    /// documents, whose layout only Word itself can reproduce.
+    pub fn book_text(&self, book_id: &str) -> Result<String> {
+        crate::formats::doc::read_text(&self.book_file(book_id)?)
+    }
+
     /// Remembers the reading position. Status is left alone: finishing a book
     /// is the reader's call, not a percentage's.
     pub fn save_position(&self, book_id: &str, locator: &ReaderLocator) -> Result<()> {

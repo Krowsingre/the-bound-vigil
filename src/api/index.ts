@@ -43,6 +43,10 @@ export interface Api {
   setRating(bookId: string, rating: number | null): Promise<void>;
   /** Asks for a Goodreads export file and brings it in. Null if cancelled. */
   importGoodreads(): Promise<GoodreadsImport | null>;
+  /** The plain text of an old Word (DOC) book. */
+  bookText(bookId: string): Promise<string>;
+  /** Gives a book a cover drawn here (a PDF's first page) if it has none. */
+  fillCover(bookId: string, picture: Uint8Array): Promise<boolean>;
   getProfile(): Promise<Profile>;
   /** Asks for a picture, copies it into TBV, and returns the new profile. Null if cancelled. */
   chooseAvatar(): Promise<Profile | null>;
@@ -116,7 +120,7 @@ export interface Api {
 
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-const BOOK_EXTENSIONS = ["epub", "pdf", "mobi", "azw3", "cbz", "fb2"];
+const BOOK_EXTENSIONS = ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "txt", "docx", "doc"];
 
 function appApi(): Api {
   // Loaded lazily so the browser preview never touches Tauri internals.
@@ -155,6 +159,8 @@ function appApi(): Api {
       );
       return path ? (await core).invoke<GoodreadsImport>("import_goodreads", { path }) : null;
     },
+    bookText: async (bookId) => (await core).invoke<string>("book_text", { bookId }),
+    fillCover: async (bookId, picture) => (await core).invoke<boolean>("fill_cover", picture, { headers: { "book-id": bookId } }),
     getProfile: async () => (await core).invoke<Profile>("get_profile"),
     chooseAvatar: async () => {
       const [path] = asList(

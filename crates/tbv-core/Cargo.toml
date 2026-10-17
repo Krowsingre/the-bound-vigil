@@ -6,10 +6,13 @@ license.workspace = true
 description = "UI-independent library, identity and storage core for The Bound Vigil"
 
 [dependencies]
+cfb = "0.14"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 csv = "1"
+encoding_rs = "0.8"
 hex = "0.4"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
+lopdf = { version = "0.45", default-features = false }
 quick-xml = "0.37"
 rusqlite = { version = "0.37", features = ["bundled", "functions", "backup"] }
 serde.workspace = true
