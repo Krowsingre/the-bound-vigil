@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { isApp } from "../api";
 import type { Window as AppWindow } from "@tauri-apps/api/window";
 import { Icon } from "../components/Icon";
+import { runBeforeQuit } from "../lib/beforeQuit";
 
 /** Real minimize / maximize / close buttons, since the window has no system title bar. */
 export function WindowControls() {
@@ -22,7 +23,8 @@ export function WindowControls() {
 
   // Quit the whole app rather than only closing the window, so no process is left behind.
   const quit = () => {
-    void import("@tauri-apps/api/core")
+    void runBeforeQuit()
+      .then(() => import("@tauri-apps/api/core"))
       .then(({ invoke }) => invoke("quit_app"))
       .catch(() => win?.close());
   };

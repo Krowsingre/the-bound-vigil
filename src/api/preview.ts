@@ -3,7 +3,9 @@
 // shows a "Preview" badge whenever it is active.
 
 import type { Api } from "./index";
+import { sampleEpub } from "../preview/sampleEpub";
 import type {
+  Annotation,
   BookPreview,
   CollectionPreview,
   HomeViewModel,
@@ -206,6 +208,13 @@ const update = (bookId: string, change: Partial<BookPreview>) => {
 
 export function previewApi(): Api {
   let profile: Profile = { avatarPath: params.has("avatar") ? SAMPLE_AVATAR : null };
+  let annotations: Annotation[] = [];
+  const settings = new Map<string, string>();
+  const find = (bookId: string) => {
+    const b = books.find((x) => x.id === bookId);
+    if (!b) throw new Error("This book is no longer in your library.");
+    return b;
+  };
   return {
     kind: "preview",
     getHome: async () => home(),
@@ -222,5 +231,39 @@ export function previewApi(): Api {
     pickBooks: async () => [],
     pickFolder: async () => [],
     coverUrl: (path) => (path.startsWith("data:") ? path : ""),
+    openBook: async (bookId) => {
+      const before = find(bookId);
+      update(bookId, { lastOpenedAt: new Date().toISOString(), status: before.status === "unread" ? "in_progress" : before.status });
+      return { book: find(bookId), publisher: "Sample Press", language: "en", fileSize: 48_000, previouslyOpenedAt: before.lastOpenedAt };
+    },
+    readBookFile: async (bookId) => {
+      const b = find(bookId);
+      return sampleEpub(b.title, b.authors.join(", "));
+    },
+    savePosition: async (bookId, locator) => update(bookId, { resumeLocator: locator, totalProgression: locator.totalProgression ?? null }),
+    getAnnotations: async (bookId) => annotations.filter((a) => a.bookId === bookId),
+    saveAnnotation: async (input) => {
+      const now = new Date().toISOString();
+      const old = annotations.find((a) => a.id === input.id);
+      const saved: Annotation = {
+        id: input.id ?? `preview-${Math.random().toString(36).slice(2)}`,
+        bookId: input.bookId,
+        kind: input.kind,
+        excerpt: input.excerpt,
+        note: input.note?.trim() || null,
+        color: input.color ?? null,
+        locator: input.locator,
+        createdAt: old?.createdAt ?? now,
+        updatedAt: now,
+      };
+      annotations = [...annotations.filter((a) => a.id !== saved.id), saved];
+      return saved;
+    },
+    deleteAnnotation: async (id) => {
+      annotations = annotations.filter((a) => a.id !== id);
+    },
+    getSetting: async (key) => settings.get(key) ?? null,
+    setSetting: async (key, value) => void settings.set(key, value),
+    quit: async () => undefined,
   };
 }

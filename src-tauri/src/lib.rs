@@ -4,9 +4,10 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use tbv_core::model::{
-    CollectionPreview, HomeViewModel, ImportResult, LibraryPage, LibraryQuery, Profile, ReadStatus,
+    Annotation, AnnotationInput, CollectionPreview, HomeViewModel, ImportResult, LibraryPage,
+    LibraryQuery, Profile, ReadStatus, ReaderBook, ReaderLocator,
 };
 use tbv_core::{Library, LibraryPaths, SUPPORTED_FORMATS};
 
@@ -113,7 +114,6 @@ fn supported_formats() -> Vec<&'static str> {
     SUPPORTED_FORMATS.to_vec()
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Ends the whole app, not just the window. The close button uses this so
 /// nothing is left running in the background after the window goes away.
 #[tauri::command]
@@ -121,9 +121,77 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+#[tauri::command]
+async fn open_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<ReaderBook> {
+    with_library(state, move |library| library.open_book(&book_id)).await
+}
+
+/// The book's bytes, sent as raw binary rather than JSON so large books load quickly.
+#[tauri::command]
+async fn read_book_file(
+    state: State<'_, AppLibrary>,
+    book_id: String,
+) -> CommandResult<tauri::ipc::Response> {
+    let path = with_library(state, move |library| library.book_file(&book_id)).await?;
+    let bytes = tauri::async_runtime::spawn_blocking(move || std::fs::read(path))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("the book file couldn't be read: {e}"))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[tauri::command]
+async fn save_position(
+    state: State<'_, AppLibrary>,
+    book_id: String,
+    locator: ReaderLocator,
+) -> CommandResult<()> {
+    with_library(state, move |library| {
+        library.save_position(&book_id, &locator)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn get_annotations(
+    state: State<'_, AppLibrary>,
+    book_id: String,
+) -> CommandResult<Vec<Annotation>> {
+    with_library(state, move |library| library.book_annotations(&book_id)).await
+}
+
+#[tauri::command]
+async fn save_annotation(
+    state: State<'_, AppLibrary>,
+    annotation: AnnotationInput,
+) -> CommandResult<Annotation> {
+    with_library(state, move |library| library.save_annotation(&annotation)).await
+}
+
+#[tauri::command]
+async fn delete_annotation(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.delete_annotation(&id)).await
+}
+
+#[tauri::command]
+async fn get_setting(state: State<'_, AppLibrary>, key: String) -> CommandResult<Option<String>> {
+    with_library(state, move |library| library.setting(&key)).await
+}
+
+#[tauri::command]
+async fn set_setting(
+    state: State<'_, AppLibrary>,
+    key: String,
+    value: String,
+) -> CommandResult<()> {
+    with_library(state, move |library| library.set_setting(&key, &value)).await
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             let cache_dir = app.path().app_cache_dir()?;
@@ -143,12 +211,28 @@ pub fn run() {
             set_avatar,
             clear_avatar,
             supported_formats,
-            quit_app
+            quit_app,
+            open_book,
+            read_book_file,
+            save_position,
+            get_annotations,
+            save_annotation,
+            delete_annotation,
+            get_setting,
+            set_setting
         ])
-        // Alt+F4 or closing from the taskbar ends the app the same way.
+        // Alt+F4 or closing from the taskbar ends the app the same way. The
+        // page gets a moment to save the reading position first, and the app
+        // quits regardless after two seconds.
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                window.app_handle().exit(0);
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.emit("tbv://quit-requested", ());
+                let app = window.app_handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    app.exit(0);
+                });
             }
         })
         .run(tauri::generate_context!())

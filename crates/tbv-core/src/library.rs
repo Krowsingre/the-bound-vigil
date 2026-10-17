@@ -122,6 +122,13 @@ const MIGRATIONS: &[&str] = &[
         value TEXT NOT NULL
     );
     "#,
+    // v3: the reader. Highlights and bookmarks remember when they were made
+    // and how far into the book they sit, for "sort by position".
+    r#"
+    ALTER TABLE annotations ADD COLUMN created_at TEXT;
+    UPDATE annotations SET created_at = updated_at WHERE created_at IS NULL;
+    CREATE INDEX idx_annotations_book ON annotations(book_id);
+    "#,
 ];
 
 /// SQLite's own `lower()` only folds A–Z, so "Émile" would never match "émile".

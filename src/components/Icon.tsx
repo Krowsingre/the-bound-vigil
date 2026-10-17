@@ -34,17 +34,41 @@ const paths = {
   bookmark: "M7 4h10v16l-5-3.5L7 20z",
   check: "M5.5 12.5l4 4 9-9",
   image: "M4.5 5.5h15v13h-15zM4.5 15.5l4.5-4.5 4 4 2.5-2.5 4 4M15 9.5h.01",
+  arrowLeft: "M19 12H5M11 6l-6 6 6 6",
+  arrowRight: "M5 12h14M13 6l6 6-6 6",
+  fullscreen: "M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5",
+  exitFullscreen: "M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5",
+  clock: "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM12 7.5V12l3 2",
+  trash: "M5 7h14M10 7V4.5h4V7M7 7l1 12.5h8L17 7",
+  copy: "M9 9h10v11H9zM5 15V4h10",
+  edit: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
+  info: "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM12 11v5M12 8h.01",
+  panelLeft: "M4 5h16v14H4zM9.5 5v14",
+  panelRight: "M4 5h16v14H4zM14.5 5v14",
+  focus: "M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6zM12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z",
+  textSize: "M3 19 8 6l5 13M4.8 15h6.4M14 19l3.5-9 3.5 9M15.2 16h4.6",
 } as const;
 
 export type IconName = keyof typeof paths;
 
-export function Icon({ name, size = 18, label }: { name: IconName; size?: number; label?: string }) {
+export function Icon({
+  name,
+  size = 18,
+  label,
+  filled = false,
+}: {
+  name: IconName;
+  size?: number;
+  label?: string;
+  /** Fills the shape, e.g. a bookmark that is set. */
+  filled?: boolean;
+}) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
+      fill={filled ? "currentColor" : "none"}
       stroke="currentColor"
       strokeWidth={name === "more" ? 2.6 : 1.6}
       strokeLinecap="round"
