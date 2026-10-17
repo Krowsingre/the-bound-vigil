@@ -1,0 +1,49 @@
+The Bound Vigil
+Copyright (c) 2026 Krowsingre Publishing LLC. All rights reserved.
+
+PROPRIETARY SOFTWARE LICENSE
+
+This repository and everything in it (the source code, the compiled
+application, its interface designs, artwork, gallery images, badges, fonts
+including Echolume, text and documentation, together "the Software") is the
+property of Krowsingre Publishing LLC and is protected by copyright law and
+international treaties.
+
+The Software is NOT free or open-source software. The source code is made
+visible for reference only. No license or right is granted to you by making
+it visible, by your viewing it, or by your downloading it.
+
+Without a separate written license agreement signed by Krowsingre Publishing
+LLC, and payment of the fees it sets out, you may not:
+
+  1. use, run or install the Software, or any part of it, for any purpose;
+  2. copy, reproduce, modify, translate or create derivative works of it;
+  3. distribute, publish, sublicense, sell, rent, lend or otherwise make it
+     available to anyone, whether alone or as part of other work;
+  4. use any part of it, including its code, designs, artwork or fonts, in
+     other software, products or services;
+  5. remove or alter this notice or any other notice of ownership.
+
+The only exception is what the terms of service of the site hosting this
+repository (for example GitHub) require for public repositories, such as
+viewing it and forking it within that site. That exception grants no right
+to use, run, copy outside that site, modify or distribute the Software.
+
+To ask about a commercial license, contact Krowsingre Publishing LLC through
+the repository owner's profile.
+
+THIRD-PARTY COMPONENTS. Some parts of the Software were written by others
+and come with their own licenses, which continue to apply to those parts
+only. They include foliate-js (MIT License, see src/vendor/foliate-js/LICENSE),
+PDF.js (Apache License 2.0) and the packages listed in package.json and
+Cargo.toml, each under its own license. Nothing in this notice limits the
+rights those licenses give you for those parts.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
+KROWSINGRE PUBLISHING LLC BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.
+
+Any use of the Software without a written license is infringement and may
+lead to legal action.
