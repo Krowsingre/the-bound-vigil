@@ -149,6 +149,10 @@ export async function webApi(): Promise<Api> {
     return tagCache.map.get(id) ?? [];
   };
 
+  /** A number typed as text; blank or not a number shows what's beneath. */
+  const numberOr = (text: string | null | undefined, beneath: number | null) =>
+    text?.trim() && Number.isFinite(Number(text)) ? Number(text) : beneath;
+
   const preview = (b: BookRow, edits: Map<string, string | null> | undefined): BookPreview => {
     const hex = b.id.replace(/^sha256:/, "");
     const o = (field: string, own: string | null) => (edits?.has(field) ? edits.get(field)! : own);
@@ -160,7 +164,7 @@ export async function webApi(): Promise<Api> {
       format: b.format,
       synopsis: o("synopsis", b.synopsis),
       series: o("series", b.series)?.trim() || null,
-      seriesIndex: edits?.has("series_index") && Number.isFinite(Number(edits.get("series_index"))) ? Number(edits.get("series_index")) : (b.series_index ?? null),
+      seriesIndex: numberOr(edits?.get("series_index"), b.series_index ?? null),
       addedAt: b.added_at,
       lastOpenedAt: b.last_opened_at ?? null,
       status: (["unread", "in_progress", "read"].includes(b.status) ? b.status : "unread") as ReadStatus,

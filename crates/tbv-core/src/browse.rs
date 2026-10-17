@@ -15,7 +15,7 @@ const AUTHORS: &str = "COALESCE(o_authors.value, f_authors.value, b.authors)";
 const FIRST_AUTHOR: &str = "json_extract(COALESCE(o_authors.value, f_authors.value, b.authors), '$[0]')";
 const SERIES: &str = "COALESCE(o_series.value, f_series.value, b.series)";
 const SERIES_INDEX: &str =
-    "COALESCE(CAST(o_series_index.value AS REAL), CAST(f_series_index.value AS REAL), b.series_index)";
+    "COALESCE(CAST(NULLIF(o_series_index.value, '') AS REAL), CAST(NULLIF(f_series_index.value, '') AS REAL), b.series_index)";
 const GENRES: &str = "COALESCE(o_genres.value, f_genres.value)";
 
 /// The SQL test for books of one kind, on the books table as `b`.

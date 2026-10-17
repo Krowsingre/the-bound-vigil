@@ -26,7 +26,7 @@ pub(crate) const BOOK_COLUMNS: &str = r#"
            b.added_at, b.last_opened_at, b.status, b.total_progression, b.resume_locator,
            lf.path, lf.cover_path,
            COALESCE(o_series.value, f_series.value, b.series),
-           COALESCE(CAST(o_series_index.value AS REAL), CAST(f_series_index.value AS REAL), b.series_index),
+           COALESCE(CAST(NULLIF(o_series_index.value, '') AS REAL), CAST(NULLIF(f_series_index.value, '') AS REAL), b.series_index),
            b.favorite, b.want_to_read,
            b.rating, b.finished_at,
            (SELECT json_group_array(tag) FROM (SELECT t.tag FROM book_tags t
