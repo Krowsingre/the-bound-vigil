@@ -25,7 +25,9 @@ const render = async (page, doc, zoom) => {
     await page.render({ canvasContext, viewport }).promise
     doc.querySelector('#canvas').replaceChildren(doc.adoptNode(canvas))
 
+    // TBV: a page drawn again (at a new size) starts from empty layers
     const container = doc.querySelector('.textLayer')
+    container.replaceChildren()
     const textLayer = new pdfjsLib.TextLayer({
         textContentSource: await page.streamTextContent(),
         container, viewport,
@@ -54,6 +56,7 @@ const render = async (page, doc, zoom) => {
     container.onpointerup = () => container.classList.remove('selecting')
 
     const div = doc.querySelector('.annotationLayer')
+    div.replaceChildren()
     const linkService = {
         goToDestination: () => {},
         getDestinationHash: dest => JSON.stringify(dest),
