@@ -71,7 +71,13 @@ export function genresFrom(subjects: string[]): string[] {
 
 async function getJson(url: string, signal: AbortSignal): Promise<unknown> {
   const timer = AbortSignal.timeout(TIMEOUT_MS);
-  const response = await fetch(url, { signal: AbortSignal.any ? AbortSignal.any([signal, timer]) : signal });
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: AbortSignal.any ? AbortSignal.any([signal, timer]) : signal });
+  } catch (e) {
+    if (signal.aborted) throw e;
+    throw new Error(timer.aborted ? "took too long to answer" : "couldn't be reached. Check your internet connection");
+  }
   if (!response.ok) throw new Error(response.status === 429 ? "is busy right now (too many searches). Try again in a while." : `answered ${response.status}`);
   return response.json();
 }
@@ -182,7 +188,8 @@ export async function searchOnline(q: Lookup, signal: AbortSignal): Promise<Foun
   const [google, openLibrary] = await Promise.allSettled([searchGoogle(q, signal), searchOpenLibrary(q, signal)]);
   const found = [google, openLibrary].flatMap((r) => (r.status === "fulfilled" ? r.value : []));
   if (!found.length) {
-    const why = (r: PromiseSettledResult<Found[]>, name: string) => (r.status === "rejected" ? `${name} ${r.reason instanceof Error ? r.reason.message : String(r.reason)}` : null);
+    const why = (r: PromiseSettledResult<Found[]>, name: string) =>
+      r.status === "rejected" ? `${name} ${(r.reason instanceof Error ? r.reason.message : String(r.reason)).replace(/\.$/, "")}` : null;
     const reasons = [why(google, "Google Books"), why(openLibrary, "Open Library")].filter(Boolean);
     if (reasons.length === 2) throw new Error(signal.aborted ? "Stopped." : `Couldn't search online. ${reasons.join(". ")}.`);
   }

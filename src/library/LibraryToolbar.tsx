@@ -25,6 +25,7 @@ export function LibraryToolbar({
   formats,
   tags,
   genres,
+  allLabel,
   selecting,
   onSelecting,
   onChange,
@@ -34,6 +35,8 @@ export function LibraryToolbar({
   formats: string[];
   tags: string[];
   genres: string[];
+  /** The first tab's name, when it isn't "All books". */
+  allLabel?: string;
   selecting: boolean;
   onSelecting: (on: boolean) => void;
   onChange: (change: Partial<LibraryView>) => void;
@@ -94,7 +97,7 @@ export function LibraryToolbar({
               className={`tab${view.tab === tab ? " is-active" : ""}`}
               onClick={() => onChange({ tab })}
             >
-              {label}
+              {tab === "all" && allLabel ? allLabel : label}
               {count !== undefined && <span className="tab-count num">{count}</span>}
             </button>
           );

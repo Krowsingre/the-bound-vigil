@@ -191,7 +191,7 @@ export function Library({
     body = (
       <>
         <Layout books={page.books} actions={actions} selection={selection} />
-        <Pagination page={page.page} pageSize={page.pageSize} total={page.total} onPage={(p) => onChange({ page: p })} />
+        <Pagination noun={[words.one, words.many]} page={page.page} pageSize={page.pageSize} total={page.total} onPage={(p) => onChange({ page: p })} />
       </>
     );
   }
@@ -220,6 +220,7 @@ export function Library({
         formats={page?.formats ?? []}
         tags={page?.tags ?? []}
         genres={page?.genres ?? []}
+        allLabel={kind === "documents" ? "All documents" : undefined}
         selecting={selected !== null}
         onSelecting={(on) => setSelected(on ? new Map() : null)}
         onChange={onChange}

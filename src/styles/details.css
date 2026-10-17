@@ -1,6 +1,7 @@
 /* The Book details page, the details editor and the online search. */
 .book-details {
-  max-width: 1080px;
+  max-width: 1144px;
+  padding: 20px 32px 40px;
 }
 
 .details-back {
@@ -12,14 +13,15 @@
 
 .details-layout {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 40px;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 48px;
   align-items: start;
 }
 
 .details-side {
   display: grid;
   gap: 12px;
+  min-width: 0;
   position: sticky;
   top: 0;
 }
@@ -157,6 +159,13 @@
 .details-field.is-off input:not([type="checkbox"]),
 .details-field.is-off textarea {
   opacity: 0.55;
+}
+
+.field .tag-field input {
+  width: auto;
+  padding: 4px;
+  border: 0;
+  background: none;
 }
 
 .tag-field.is-disabled {
@@ -362,6 +371,10 @@
 }
 
 @media (max-width: 760px) {
+  .book-details {
+    padding: 12px 16px 32px;
+  }
+
   .details-layout {
     grid-template-columns: 1fr;
     gap: 24px;

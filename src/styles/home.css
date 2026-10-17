@@ -647,8 +647,8 @@
 /* Documents carry a small badge on their cover, wherever they show. */
 .cover-doc {
   position: absolute;
-  top: 6px;
-  left: 6px;
+  right: 6px;
+  bottom: 6px;
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -661,8 +661,8 @@
 }
 
 .cover-s .cover-doc {
-  top: 2px;
-  left: 2px;
+  right: 2px;
+  bottom: 2px;
   padding: 1px 3px;
   font-size: 0;
 }
