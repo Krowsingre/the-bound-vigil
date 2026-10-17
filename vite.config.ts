@@ -32,13 +32,16 @@ function pdfjsAssets(): Plugin {
   };
 }
 
-// Tauri expects a fixed dev port and serves the built files from dist/.
-export default defineConfig({
+// Tauri expects a fixed dev port and serves the built files from dist/. The
+// web version (`--mode web`) is built into dist-web/ for GitHub Pages, which
+// serves it from /the-bound-vigil/.
+export default defineConfig(({ mode }) => ({
+  base: mode === "web" ? "/the-bound-vigil/" : "/",
   plugins: [react(), pdfjsAssets()],
   clearScreen: false,
-  server: { port: 1420, strictPort: true },
+  server: mode === "web" ? { port: 1421 } : { port: 1420, strictPort: true },
   envPrefix: ["VITE_", "TAURI_ENV_"],
   // PDF.js (about 500 kB) loads only when a PDF is opened.
-  build: { target: "es2022", outDir: "dist", chunkSizeWarningLimit: 600 },
+  build: { target: "es2022", outDir: mode === "web" ? "dist-web" : "dist", chunkSizeWarningLimit: 600 },
   test: { environment: "jsdom", globals: true, setupFiles: ["src/test/setup.ts"] },
-});
+}));

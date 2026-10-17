@@ -6,7 +6,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
 import textLayerBuilderCSS from './vendor/pdfjs/text_layer_builder.css?raw'
 import annotationLayerBuilderCSS from './vendor/pdfjs/annotation_layer_builder.css?raw'
 
-const pdfjsPath = path => new URL(`/pdfjs/${path}`, location.href).toString()
+const pdfjsPath = path => new URL(`${import.meta.env.BASE_URL}pdfjs/${path}`, location.href).toString()
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsPath('pdf.worker.min.mjs')
 
 const render = async (page, doc, zoom) => {

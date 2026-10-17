@@ -20,7 +20,9 @@ import "./styles/collections.css";
 import "./styles/notes.css";
 import "./styles/settings.css";
 import "./styles/imports.css";
-import { isApp } from "./api";
+import "./styles/web.css";
+import { isApp, isWeb } from "./api";
+import { WebGate } from "./web/WebConnect";
 import { runBeforeQuit } from "./lib/beforeQuit";
 
 // Closing the window another way (Alt+F4, the taskbar) asks the page to
@@ -39,7 +41,13 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ToastProvider>
       <AppSettingsProvider>
-        <App />
+        {isWeb ? (
+          <WebGate>
+            <App />
+          </WebGate>
+        ) : (
+          <App />
+        )}
       </AppSettingsProvider>
     </ToastProvider>
   </StrictMode>,

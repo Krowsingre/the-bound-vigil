@@ -35,7 +35,7 @@ import type {
 } from "./types";
 
 export interface Api {
-  readonly kind: "app" | "preview";
+  readonly kind: "app" | "preview" | "web";
   getHome(): Promise<HomeViewModel>;
   /** Queues book files and folders on the Imports page. Returns how many books were found. */
   queueImports(paths: string[]): Promise<number>;
@@ -147,6 +147,8 @@ export interface Api {
 }
 
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+/** The web version, for phones: built with `npm run build:web`, syncing through Supabase. */
+export const isWeb = !isApp && import.meta.env.VITE_TBV_WEB === "1";
 
 const BOOK_EXTENSIONS = ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "txt", "docx", "doc"];
 
@@ -351,4 +353,8 @@ export async function openExternal(url: string): Promise<void> {
   else window.open(url, "_blank", "noopener");
 }
 
-export const api: Api = isApp ? appApi() : (await import("./preview")).previewApi();
+export const api: Api = isApp
+  ? appApi()
+  : isWeb
+    ? await (await import("../web/webApi")).webApi()
+    : (await import("./preview")).previewApi();

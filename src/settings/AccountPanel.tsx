@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { api } from "../api";
+import { api, isWeb } from "../api";
+import type { SupabaseProject } from "../api/types";
+import { phoneLink } from "../web/link";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 
@@ -7,7 +9,16 @@ import { useToast } from "../components/Toast";
  * Signing in to the Supabase project. One account holds one library: use
  * the same email on every device. TBV keeps the sign-in on this device only.
  */
-export function AccountPanel({ signedIn, onChanged }: { signedIn: string | null; onChanged: () => void }) {
+export function AccountPanel({
+  signedIn,
+  project,
+  onChanged,
+}: {
+  signedIn: string | null;
+  /** Given on the desktop, to offer a link that opens this library on a phone. */
+  project?: SupabaseProject | null;
+  onChanged: () => void;
+}) {
   const toast = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -43,8 +54,31 @@ export function AccountPanel({ signedIn, onChanged }: { signedIn: string | null;
         <p className="account-line">
           <Icon name="check" size={16} /> Signed in as <strong>{signedIn}</strong>
         </p>
-        <p className="settings-row-hint">To add another device, install TBV there, set up this same project, and sign in with this account.</p>
+        <p className="settings-row-hint">
+          {isWeb
+            ? "This is the account your desktop app signs in with. Signing out clears this browser's copy of your library."
+            : "To add another device, install TBV there, set up this same project, and sign in with this account."}
+        </p>
+        {project && !isWeb && (
+          <p className="settings-row-hint">
+            On your phone, open TBV's web version from a link that already knows this project: copy it, send it to yourself, and open it there.
+          </p>
+        )}
         <div className="dialog-actions">
+          {project && !isWeb && (
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() =>
+                navigator.clipboard.writeText(phoneLink(project)).then(
+                  () => toast("Phone link copied. Open it on your phone and sign in with this account."),
+                  () => toast("Couldn't copy the link."),
+                )
+              }
+            >
+              <Icon name="copy" size={16} /> Copy phone link
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-quiet"
@@ -54,7 +88,7 @@ export function AccountPanel({ signedIn, onChanged }: { signedIn: string | null;
               api.syncSignOut().then(
                 () => {
                   setBusy(false);
-                  toast("Signed out. Your library stays on this device.");
+                  toast(isWeb ? "Signed out. Your library is still in the cloud." : "Signed out. Your library stays on this device.");
                   onChanged();
                 },
                 (e: unknown) => {

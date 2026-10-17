@@ -6,6 +6,12 @@ import { AppearanceTab } from "./AppearanceTab";
 import { AboutTab, AccessibilityTab, AdvancedTab, CollectionsTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
 import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex";
 import { SyncTab } from "./SyncTab";
+import { isWeb } from "../api";
+import { WebSyncTab } from "../web/WebConnect";
+
+/** The pages the web version has: the rest are about files and features on a computer. */
+const WEB_TABS = new Set<SettingsTab>(["appearance", "reading", "collections", "sync", "accessibility", "about"]);
+const TABS = isWeb ? SETTINGS_TABS.filter((t) => WEB_TABS.has(t.tab)) : SETTINGS_TABS;
 
 /** Settings: its own menu of pages on the left, the chosen page on the right. */
 export function Settings({
@@ -31,7 +37,7 @@ export function Settings({
   const [query, setQuery] = useState("");
   const [jumpTo, setJumpTo] = useState<string | null>(null);
   const body = useRef<HTMLDivElement>(null);
-  const results = searchSettings(query);
+  const results = searchSettings(query).filter((r) => TABS.some((t) => t.tab === r.tab));
   const page = SETTINGS_TABS.find((t) => t.tab === tab)!;
 
   // A new page starts at its top, or at the section picked from search.
@@ -67,7 +73,7 @@ export function Settings({
       case "notes":
         return <NotesTab />;
       case "sync":
-        return <SyncTab onRestored={onRestored} />;
+        return isWeb ? <WebSyncTab /> : <SyncTab onRestored={onRestored} />;
       case "files":
         return <FilesTab />;
       case "accessibility":
@@ -115,7 +121,7 @@ export function Settings({
           </ul>
         ) : (
           <ul className="settings-menu">
-            {SETTINGS_TABS.map((t) => (
+            {TABS.map((t) => (
               <li key={t.tab}>
                 <button
                   type="button"

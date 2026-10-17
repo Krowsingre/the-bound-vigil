@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, isApp } from "./api";
+import { api, isApp, isWeb } from "./api";
 import type { CollectionRef, HomeViewModel, ImportItem, ImportResult, Profile, SyncStatus } from "./api/types";
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { Collections } from "./collections/Collections";
@@ -20,6 +20,9 @@ import { Sidebar } from "./shell/Sidebar";
 import { drawImportedCovers } from "./reader/formats";
 
 const COLLAPSE_KEY = "tbv.sidebarCollapsed";
+const NO_IMPORTS = isWeb
+  ? "Add books with the desktop app. They show up here once they sync."
+  : "Importing works in the desktop app. This browser preview uses sample books.";
 
 function readCollapsed(): boolean {
   try {
@@ -104,7 +107,7 @@ export function App() {
   }, []);
 
   const chooseAvatar = useCallback(() => {
-    if (!isApp) return toast("Choosing a picture works in the desktop app.");
+    if (!isApp && !isWeb) return toast("Choosing a picture works in the desktop app.");
     api.chooseAvatar().then(
       (p) => p && setProfile(p),
       (e: unknown) => toast(`That picture couldn't be used: ${String(e)}`),
@@ -149,11 +152,11 @@ export function App() {
   const reloadImports = useCallback(() => void api.importQueue().then(setImports, () => undefined), []);
 
   const importBooks = useCallback(() => {
-    if (!isApp) return toast("Importing works in the desktop app. This browser preview uses sample books.");
+    if (!isApp) return toast(NO_IMPORTS);
     void api.pickBooks().then(runImport);
   }, [runImport, toast]);
   const importFolder = useCallback(() => {
-    if (!isApp) return toast("Importing works in the desktop app. This browser preview uses sample books.");
+    if (!isApp) return toast(NO_IMPORTS);
     void api.pickFolder().then(runImport);
   }, [runImport, toast]);
 

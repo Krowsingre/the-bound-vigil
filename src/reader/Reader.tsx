@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, isApp } from "../api";
+import { isNarrow, useNarrow } from "../lib/useNarrow";
 import type { Annotation, HighlightColor, Profile, ReadStatus, ReaderBook, ReaderLocator, SyncStatus } from "../api/types";
 import { Icon } from "../components/Icon";
 import type { MenuEntry } from "../components/Menu";
@@ -32,6 +33,8 @@ const PANELS_KEY = "tbv.reader.panels";
 const SAVE_DELAY_MS = 800;
 
 function readPanels(): { left: boolean; right: boolean } {
+  // On a phone the panels cover the page, so it opens on the text alone.
+  if (isNarrow()) return { left: false, right: false };
   try {
     const saved = JSON.parse(localStorage.getItem(PANELS_KEY) ?? "null");
     if (saved && typeof saved.left === "boolean" && typeof saved.right === "boolean") return saved;
@@ -83,6 +86,7 @@ export function Reader({
   const host = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const prefersDark = useAppDark();
+  const narrow = useNarrow();
 
   // Load the book, its highlights and the reading settings, then the file.
   useEffect(() => {
@@ -234,6 +238,7 @@ export function Reader({
   const pagePanels = (change: Partial<typeof panels>) =>
     setPanels((p) => {
       const next = { ...p, ...change };
+      if (narrow) return next;
       try {
         localStorage.setItem(PANELS_KEY, JSON.stringify(next));
       } catch {
@@ -456,7 +461,10 @@ export function Reader({
             entries={entries}
             currentId={current?.id ?? null}
             annotations={annotations}
-            onGoHref={jumpTo}
+            onGoHref={(href) => {
+              void jumpTo(href);
+              if (narrow) pagePanels({ left: false });
+            }}
             handlers={handlers}
           />
         )}
@@ -484,6 +492,9 @@ export function Reader({
             focus={focus}
           />
         </main>
+        {narrow && (showLeft || showRight) && (
+          <div className="reader-scrim" aria-hidden onClick={() => pagePanels({ left: false, right: false })} />
+        )}
         {showRight && info && (
           <RightPanel
             tab={rightTab}
