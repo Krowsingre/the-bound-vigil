@@ -93,7 +93,7 @@ export function Home({
               <Icon name="link" size={16} /> Join an existing library
             </button>
           </div>
-          <p className="muted welcome-hint">You can also drag book files anywhere into this window. EPUB, PDF, MOBI, AZW3, CBZ and FB2 are accepted.</p>
+          <p className="muted welcome-hint">You can also drag book files anywhere into this window. EPUB, PDF, Kindle (MOBI, AZW3), comics (CBZ), FB2, TXT and Word (DOCX, DOC) are accepted.</p>
         </section>
       </div>
     );

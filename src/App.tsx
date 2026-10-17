@@ -16,6 +16,7 @@ import type { SettingsTab } from "./settings/settingsIndex";
 import { Header } from "./shell/Header";
 import { NAV, type Route } from "./shell/routes";
 import { Sidebar } from "./shell/Sidebar";
+import { drawImportedCovers } from "./reader/formats";
 
 const COLLAPSE_KEY = "tbv.sidebarCollapsed";
 
@@ -115,6 +116,8 @@ export function App() {
         const results = await api.importBooks(paths);
         toast(importSummary(results));
         setRefreshKey((k) => k + 1);
+        // PDF covers are drawn here, after the books show up.
+        void drawImportedCovers(results).then((added) => added && setRefreshKey((k) => k + 1));
       } catch (e) {
         toast(`Import didn't finish: ${String(e)}`);
       } finally {

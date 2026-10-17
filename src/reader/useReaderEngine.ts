@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import type { Annotation } from "../api/types";
 import type { Relocation, SearchResult, TocItem, View } from "../vendor/foliate-js/view.js";
 import { fitTextToPage, hexToRgb, luminance } from "./darkText";
+import type { ReaderSource } from "./formats";
 import { highlightHex, readerCss, WIDTHS, type PageColors, type ReaderSettings } from "./settings";
 
 export interface TextSelection {
@@ -75,7 +76,7 @@ export function useReaderEngine({
   events,
 }: {
   host: RefObject<HTMLDivElement | null>;
-  file: Blob | null;
+  file: ReaderSource | null;
   startCfi: string | null;
   settings: ReaderSettings;
   colors: PageColors;
@@ -121,6 +122,15 @@ export function useReaderEngine({
 
         v.addEventListener("relocate", (e) => {
           const detail = (e as CustomEvent<Relocation>).detail;
+          // A page can report before it has been laid out, with no position yet.
+          if (!Number.isFinite(detail.fraction)) return;
+          // PDFs and comics have real pages, so their page numbers are those
+          // pages rather than the engine's measure of text length.
+          if (v.isFixedLayout) {
+            const { current, total } = detail.section;
+            detail.location = { current, next: current, total };
+            detail.fraction = total ? (current + 1) / total : 0;
+          }
           setRelocation(detail);
           eventsRef.current.onRelocate?.(detail);
         });
@@ -176,7 +186,9 @@ export function useReaderEngine({
           void import("../api").then(({ openExternal }) => openExternal(href_));
         });
 
-        setToc(v.book.toc ?? []);
+        // Comics list their picture files as contents; show page numbers instead.
+        const pictureName = /\.(jpe?g|png|gif|webp|avif|bmp)$/i;
+        setToc((v.book.toc ?? []).map((item, i) => (pictureName.test(item.label) ? { ...item, label: `Page ${i + 1}` } : item)));
         setSectionStarts(v.getSectionFractions());
         applyLayout(v, styleRef.current.settings, styleRef.current.colors);
         await v.init({ lastLocation: startRef.current, showTextStart: true });
@@ -189,8 +201,12 @@ export function useReaderEngine({
     return () => {
       cancelled = true;
       viewRef.current = null;
+      // The engine's close leaves the book itself open: PDF.js workers and
+      // laid-out chapters are let go here.
+      const book = view?.book;
       view?.close();
       view?.remove();
+      Promise.resolve(book?.destroy?.()).catch(() => {});
     };
   }, [file, host]);
 

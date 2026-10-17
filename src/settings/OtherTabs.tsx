@@ -324,25 +324,28 @@ export function NotesTab() {
   );
 }
 
-const FORMATS: { ext: string; name: string; reads: boolean }[] = [
-  { ext: "EPUB", name: "The standard eBook format", reads: true },
-  { ext: "PDF", name: "Fixed pages, like print", reads: false },
-  { ext: "MOBI", name: "Older Kindle books", reads: false },
-  { ext: "AZW3", name: "Kindle books without DRM", reads: false },
-  { ext: "CBZ", name: "Comics and graphic novels", reads: false },
-  { ext: "FB2", name: "FictionBook", reads: false },
+const FORMATS: { ext: string; name: string }[] = [
+  { ext: "EPUB", name: "The standard eBook format" },
+  { ext: "PDF", name: "Fixed pages, like print" },
+  { ext: "MOBI", name: "Older Kindle books" },
+  { ext: "AZW3", name: "Kindle books without DRM (also AZW)" },
+  { ext: "CBZ", name: "Comics and graphic novels" },
+  { ext: "FB2", name: "FictionBook (also zipped, as FBZ)" },
+  { ext: "TXT", name: "Plain text, split into chapters where it has them" },
+  { ext: "DOCX", name: "Word documents, with their formatting" },
+  { ext: "DOC", name: "Older Word documents, as text only" },
 ];
 
 export function FilesTab() {
   return (
     <>
-      <Section id="formats" title="Book formats" lede="TBV imports all of these. EPUB books open in the reader now; readers for the others follow.">
+      <Section id="formats" title="Book formats" lede="TBV imports and reads all of these.">
         <ul className="format-list">
           {FORMATS.map((f) => (
             <li key={f.ext}>
               <span className="format-ext">{f.ext}</span>
               <span className="settings-row-hint">{f.name}</span>
-              <span className={`format-state${f.reads ? " is-ready" : ""}`}>{f.reads ? "Opens in the reader" : "Imports now, opens later"}</span>
+              <span className="format-state is-ready">Opens in the reader</span>
             </li>
           ))}
         </ul>
@@ -547,6 +550,18 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
     what: "Unpacking compressed book files",
     licence: "MIT",
     url: "https://github.com/101arrowz/fflate",
+  },
+  {
+    name: "PDF.js",
+    what: "Showing PDF books, by Mozilla",
+    licence: "Apache 2.0",
+    url: "https://github.com/mozilla/pdf.js",
+  },
+  {
+    name: "Mammoth",
+    what: "Reading Word documents",
+    licence: "BSD 2-Clause",
+    url: "https://github.com/mwilliamson/mammoth.js",
   },
   {
     name: "Lora",

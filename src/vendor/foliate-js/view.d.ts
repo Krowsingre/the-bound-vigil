@@ -33,6 +33,9 @@ export interface FoliateBook {
   dir?: string;
   splitTOCHref?(href: string): [string, unknown];
   resolveHref(href: string): { index: number; anchor?: unknown } | null;
+  getCover?(): Promise<Blob | null> | null;
+  /** Lets go of what the book holds open (PDF.js workers, chapter URLs). */
+  destroy?(): void | Promise<void>;
 }
 
 export interface Paginator extends HTMLElement {
@@ -47,8 +50,11 @@ export interface Paginator extends HTMLElement {
 export interface View extends HTMLElement {
   book: FoliateBook;
   renderer: Paginator;
+  /** PDFs, comics and pre-paginated EPUBs, laid out page by page. */
+  isFixedLayout: boolean;
   lastLocation: Relocation | null;
-  open(book: Blob | File): Promise<void>;
+  /** A file, or a book object built by TBV (see src/reader/formats). */
+  open(book: Blob | File | object): Promise<void>;
   init(options: { lastLocation?: string | null; showTextStart?: boolean }): Promise<void>;
   close(): void;
   goTo(target: string | number): Promise<unknown>;

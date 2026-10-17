@@ -6,6 +6,7 @@ pub mod collections;
 pub mod data;
 pub mod epub;
 pub mod error;
+pub mod formats;
 pub mod goodreads;
 pub mod home;
 pub mod ids;

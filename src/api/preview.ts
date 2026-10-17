@@ -83,14 +83,14 @@ let books: BookPreview[] = [
   book("The Turn of the Screw", "Henry James", { format: "pdf" }),
   book("Little Women", "Louisa May Alcott"),
   book("The Time Machine", "H. G. Wells", { status: "read", totalProgression: 1 }),
-  book("The War of the Worlds", "H. G. Wells"),
+  book("The War of the Worlds", "H. G. Wells", { format: "txt" }),
   book("Twenty Thousand Leagues Under the Seas", "Jules Verne", { availability: "cloud" }),
   book("Around the World in Eighty Days", "Jules Verne"),
   book("Little Nemo in Slumberland", "Winsor McCay", { format: "cbz" }),
-  book("The Secret Garden", "Frances Hodgson Burnett"),
+  book("The Secret Garden", "Frances Hodgson Burnett", { format: "docx" }),
   book("Anna Karenina", "Leo Tolstoy", { wantToRead: true }),
-  book("The Brothers Karamazov", "Fyodor Dostoevsky"),
-  book("Crime and Punishment", "Fyodor Dostoevsky", { status: "read", totalProgression: 1 }),
+  book("The Brothers Karamazov", "Fyodor Dostoevsky", { format: "doc" }),
+  book("Crime and Punishment", "Fyodor Dostoevsky", { status: "read", totalProgression: 1, format: "fb2" }),
   book("A Tale of Two Cities", "Charles Dickens"),
 ];
 
@@ -266,6 +266,8 @@ export function previewApi(): Api {
       collectionBooks: 17,
       notFound: ["Middlemarch by George Eliot", "Bleak House by Charles Dickens"],
     }),
+    bookText: async () => "Chapter One\nThe lamps along the harbour wall were lit one by one.",
+    fillCover: async () => false,
     getProfile: async () => profile,
     chooseAvatar: async () => null,
     clearAvatar: async () => (profile = { avatarPath: null }),
@@ -279,7 +281,22 @@ export function previewApi(): Api {
     },
     readBookFile: async (bookId) => {
       const b = find(bookId);
-      return sampleEpub(b.title, b.authors.join(", "));
+      const author = b.authors.join(", ");
+      const { sampleComic, sampleDocx, sampleFb2, samplePdf, sampleText } = await import("../preview/sampleFiles");
+      switch (b.format) {
+        case "pdf":
+          return samplePdf(b.title, author);
+        case "cbz":
+          return sampleComic(b.title);
+        case "txt":
+          return sampleText(b.title);
+        case "docx":
+          return sampleDocx(b.title, author);
+        case "fb2":
+          return sampleFb2(b.title, author);
+        default:
+          return sampleEpub(b.title, author);
+      }
     },
     savePosition: async (bookId, locator) => update(bookId, { resumeLocator: locator, totalProgression: locator.totalProgression ?? null }),
     getAnnotations: async (bookId) => annotations.filter((a) => a.bookId === bookId && (a.kind as string) !== "book_note"),

@@ -91,6 +91,29 @@ async fn set_rating(state: State<'_, AppLibrary>, book_id: String, rating: Optio
     with_library(state, move |library| library.set_rating(&book_id, rating)).await
 }
 
+/// The plain text of an old Word document, for the reader.
+#[tauri::command]
+async fn book_text(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<String> {
+    with_library(state, move |library| library.book_text(&book_id)).await
+}
+
+/// A cover the reader drew (a PDF's first page). The picture arrives as raw
+/// bytes, with the book named in a header.
+#[tauri::command]
+async fn fill_cover(state: State<'_, AppLibrary>, request: tauri::ipc::Request<'_>) -> CommandResult<bool> {
+    let tauri::ipc::InvokeBody::Raw(picture) = request.body() else {
+        return Err("expected a picture".into());
+    };
+    let book_id = request
+        .headers()
+        .get("book-id")
+        .and_then(|v| v.to_str().ok())
+        .ok_or("which book?")?
+        .to_string();
+    let picture = picture.clone();
+    with_library(state, move |library| library.fill_cover(&book_id, &picture)).await
+}
+
 #[tauri::command]
 async fn import_goodreads(
     state: State<'_, AppLibrary>,
@@ -563,6 +586,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_home,
             import_books,
+            book_text,
+            fill_cover,
             set_book_status,
             get_library,
             get_collections,

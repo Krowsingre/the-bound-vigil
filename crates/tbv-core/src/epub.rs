@@ -355,7 +355,7 @@ fn find_cover_href(manifest: &[ManifestItem], cover_id: Option<&str>) -> Option<
         .map(|i| i.href.clone())
 }
 
-fn attribute(e: &BytesStart, name: &[u8]) -> Option<String> {
+pub(crate) fn attribute(e: &BytesStart, name: &[u8]) -> Option<String> {
     e.attributes()
         .flatten()
         .find(|a| a.key.local_name().as_ref() == name)
@@ -409,12 +409,12 @@ fn image_extension(entry: &str) -> String {
     }
 }
 
-fn collapse_whitespace(value: &str) -> String {
+pub(crate) fn collapse_whitespace(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Descriptions are often HTML; keep the words, drop the markup.
-fn strip_html(value: &str) -> String {
+pub(crate) fn strip_html(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     let mut in_tag = false;
     for ch in value.chars() {
