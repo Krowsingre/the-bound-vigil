@@ -76,7 +76,7 @@ impl SftpConnection {
             let tcp = within(CONNECT_TIMEOUT, server, tokio::net::TcpStream::connect(&addresses[..]))
                 .await?
                 .map_err(|e| network_problem(&e, server))?;
-            let config = client::Config { keepalive_interval: Some(Duration::from_secs(30)), ..Default::default() };
+            let config = client::Config { keepalive_interval: Some(Duration::from_secs(30)), preferred: preferred(), ..Default::default() };
             let connected = within(CONNECT_TIMEOUT, server, client::connect_stream(Arc::new(config), tcp, check)).await?;
             let mut session = match connected {
                 Ok(session) => session,
@@ -100,6 +100,23 @@ impl SftpConnection {
     fn sftp(&self) -> &SftpSession {
         self.sftp.as_ref().expect("open until dropped")
     }
+}
+
+/// The ways of talking TBV offers: russh's modern ones first, then older
+/// ones that FileZilla and other apps still accept, so a server set up years
+/// ago can still be reached. The server's key is checked either way.
+fn preferred() -> russh::Preferred {
+    use russh::{cipher, kex, mac};
+    let base = russh::Preferred::DEFAULT;
+    let (extensions, mut kexes): (Vec<kex::Name>, Vec<kex::Name>) =
+        base.kex.iter().copied().partition(|k| k.as_ref().starts_with("ext-info") || k.as_ref().starts_with("kex-strict"));
+    kexes.extend([kex::ECDH_SHA2_NISTP256, kex::ECDH_SHA2_NISTP384, kex::ECDH_SHA2_NISTP521, kex::DH_G14_SHA1, kex::DH_GEX_SHA1]);
+    kexes.extend(extensions);
+    let mut ciphers = base.cipher.to_vec();
+    ciphers.extend([cipher::AES_128_GCM, cipher::AES_256_CBC, cipher::AES_192_CBC, cipher::AES_128_CBC]);
+    let mut macs = base.mac.to_vec();
+    macs.extend([mac::HMAC_SHA1_ETM, mac::HMAC_SHA1]);
+    russh::Preferred { kex: kexes.into(), cipher: ciphers.into(), mac: macs.into(), ..base }
 }
 
 /// Why the server's key wasn't accepted, if that's what stopped the connection.
@@ -203,7 +220,7 @@ fn ssh_problem(e: &russh::Error, server: &Server) -> Error {
             server.host, server.port
         )),
         russh::Error::NoCommonAlgo { .. } | russh::Error::Kex | russh::Error::KexInit => Error::Unsuitable(format!(
-            "TBV and {} couldn't agree on a secure way to talk. The server may be too old for TBV.",
+            "TBV and {} couldn't agree on a secure way to talk. The server may be too old for TBV. ({e})",
             server.host
         )),
         other => Error::Unsuitable(format!("Something went wrong talking to {}: {other}", server.host)),

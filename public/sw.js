@@ -2,7 +2,7 @@
 // connection and served from here when there isn't; the app's own files
 // (their names change with every build) are kept once fetched. Supabase is
 // on another address, so books, covers and sync never pass through here.
-const CACHE = "tbv-shell-v1";
+const CACHE = "tbv-shell-v2";
 // Script requests carry an Origin header and the server answers "Vary: Origin", so that is ignored.
 const ANY = { ignoreVary: true };
 const SCOPE = self.registration.scope;
