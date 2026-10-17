@@ -10,6 +10,7 @@
 //! store them can carry a library.
 
 pub mod files;
+pub mod moving;
 pub mod supabase;
 pub mod webdav;
 
@@ -68,6 +69,14 @@ pub(crate) const KINDS: &[Kind] = &[
             "title", "authors", "format", "file_size", "synopsis", "publisher", "language", "series", "series_index",
             "added_at", "deleted_at", "isbn",
         ],
+        category: Category::Library,
+        creates: true,
+    },
+    Kind {
+        name: "audiobook",
+        table: "audiobooks",
+        keys: &["book_id"],
+        cols: &["narrators", "duration_ms", "chapters", "parts", "ebook_id", "updated_at"],
         category: Category::Library,
         creates: true,
     },
@@ -229,6 +238,8 @@ pub struct SyncOptions {
     pub collections: bool,
     pub metadata: bool,
     pub book_files: bool,
+    /// Audiobook files are large, so they have a switch of their own.
+    pub audio_files: bool,
     pub frequency: Frequency,
     pub on_startup: bool,
     pub on_close: bool,
@@ -243,6 +254,7 @@ impl Default for SyncOptions {
             collections: true,
             metadata: true,
             book_files: false,
+            audio_files: false,
             frequency: Frequency::Automatic,
             on_startup: true,
             on_close: true,
@@ -363,6 +375,9 @@ impl Remote for Cloud {
     fn list(&mut self, folder: &str) -> Result<Vec<String>> {
         self.remote().list(folder)
     }
+    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+        self.remote().list_sizes(folder)
+    }
 }
 
 /// Opens a folder or WebDAV library and makes sure it's one TBV can use.
@@ -464,6 +479,10 @@ pub trait Remote {
     fn download(&mut self, path: &str, to: &Path) -> Result<bool>;
     /// Files in a folder, like `covers/`.
     fn list(&mut self, folder: &str) -> Result<Vec<String>>;
+    /// As `list`, with each file's size where the service says it.
+    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+        Ok(self.list(folder)?.into_iter().map(|name| (name, None)).collect())
+    }
 }
 
 const PAGE: usize = 500;
@@ -478,7 +497,7 @@ const LAST_ERROR: &str = "sync.last_error";
 const SESSION: &str = "sync.session";
 const PROJECT: &str = "sync.supabase";
 pub(crate) const PROVIDER: &str = "sync.provider";
-const APP_SETTINGS: &str = "app.settings";
+pub(crate) const APP_SETTINGS: &str = "app.settings";
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Cursor {
@@ -994,6 +1013,7 @@ impl Library {
             "book_shelves" => format!("Favourite and To be read{}", book(key.first())?),
             "override" => format!("A corrected detail{}", book(key.first())?),
             "fetched" => format!("A detail found online{}", book(key.first())?),
+            "audiobook" => format!("Chapters and narrators{}", book(key.first())?),
             "collection" => format!("The collection {}", field("name").unwrap_or_default()),
             "collection_book" => format!("A book's place in a collection{}", book(key.get(1))?),
             "annotation" => format!("A note or highlight{}", book(data.and_then(|d| d.get("book_id")))?),
@@ -1002,9 +1022,9 @@ impl Library {
         })
     }
 
-    /// Books this device has that the cloud doesn't, as (cloud path, file).
-    fn files_to_send(&self, options: &SyncOptions) -> Result<Vec<(String, PathBuf)>> {
-        let retry_after = (Utc::now() - Duration::hours(RETRY_FILE_HOURS)).to_rfc3339_opts(SecondsFormat::Millis, true);
+    /// Every file this device keeps in the cloud (covers always, book files
+    /// and collection pictures when those are synced), as (cloud path, file).
+    pub(crate) fn files_kept(&self, options: &SyncOptions) -> Result<Vec<(String, PathBuf)>> {
         let mut wanted = Vec::new();
         let rows = self
             .conn
@@ -1020,7 +1040,8 @@ impl Library {
                 let extension = Path::new(&cover).extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default();
                 wanted.push((format!("covers/{hex}.{extension}"), PathBuf::from(cover)));
             }
-            if options.book_files {
+            let wanted_here = if crate::audio::is_audio(&format) { options.audio_files } else { options.book_files };
+            if wanted_here {
                 if let Some(path) = path {
                     wanted.push((format!("books/{hex}.{format}"), PathBuf::from(path)));
                 }
@@ -1037,6 +1058,13 @@ impl Library {
                 wanted.push((format!("pictures/{name}"), self.paths.pictures_dir.join(name)));
             }
         }
+        Ok(wanted)
+    }
+
+    /// Books this device has that the cloud doesn't, as (cloud path, file).
+    fn files_to_send(&self, options: &SyncOptions) -> Result<Vec<(String, PathBuf)>> {
+        let retry_after = (Utc::now() - Duration::hours(RETRY_FILE_HOURS)).to_rfc3339_opts(SecondsFormat::Millis, true);
+        let wanted = self.files_kept(options)?;
         let mut out = Vec::new();
         for (remote, file) in wanted {
             let done: Option<(Option<String>, Option<String>)> = self
@@ -1177,6 +1205,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         }
         "book" => short(text("title")),
         "override" | "fetched" => short(text("value")),
+        "audiobook" => if data.get("ebook_id").is_some_and(|v| !v.is_null()) { "Linked to its ebook".into() } else { "Chapters and narrators".into() },
         "collection" => short(text("name")),
         "collection_book" => "In the collection".into(),
         "book_tag" => if data.get("removed_at").is_some_and(|v| !v.is_null()) { "Tag taken off".into() } else { "Tagged".into() },

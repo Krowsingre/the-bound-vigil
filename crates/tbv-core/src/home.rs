@@ -33,8 +33,17 @@ pub(crate) const BOOK_COLUMNS: &str = r#"
              WHERE t.book_id = b.id AND t.removed_at IS NULL ORDER BY t.tag COLLATE NOCASE)),
            EXISTS (SELECT 1 FROM sync_files sf WHERE sf.uploaded_at IS NOT NULL
              AND sf.path = 'books/' || substr(b.id, 8) || '.' || b.format),
-           COALESCE(o_genres.value, f_genres.value)
+           COALESCE(o_genres.value, f_genres.value),
+           (SELECT ab.duration_ms FROM audiobooks ab WHERE ab.book_id = b.id),
+           COALESCE((SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = 'narrators'),
+                    (SELECT value FROM metadata_fetched WHERE book_id = b.id AND field = 'narrators'),
+                    (SELECT ab.narrators FROM audiobooks ab WHERE ab.book_id = b.id))
 "#;
+
+/// Effective narrators, for filters.
+pub(crate) const NARRATORS: &str = "COALESCE((SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = 'narrators'),
+    (SELECT value FROM metadata_fetched WHERE book_id = b.id AND field = 'narrators'),
+    (SELECT ab.narrators FROM audiobooks ab WHERE ab.book_id = b.id))";
 
 /// The joins that make the effective metadata available to WHERE and ORDER BY.
 pub(crate) const BOOK_FROM: &str = r#"
@@ -63,18 +72,21 @@ pub(crate) const BOOK_FROM: &str = r#"
 pub(crate) const PUBLISHER: &str = "COALESCE(o_publisher.value, f_publisher.value, b.publisher)";
 pub(crate) const LANGUAGE: &str = "COALESCE(o_language.value, f_language.value, b.language)";
 
-/// The kinds of file the Documents page holds. Everything else is a book in the Library.
+/// The kinds of file the Documents page holds. Audio is on the Audiobooks
+/// page, and everything else is a book in the Library.
 pub const DOCUMENT_FORMATS: &[&str] = &["pdf", "doc", "docx", "txt"];
 
 impl Library {
     pub fn home(&self) -> Result<HomeViewModel> {
+        // Home is for reading; audiobooks have their own page and Continue listening.
+        let audio = crate::audio::AUDIO_FORMATS.iter().map(|f| format!("'{f}'")).collect::<Vec<_>>().join(", ");
         let in_progress = self.books(
-            "AND b.status = 'in_progress' ORDER BY b.last_opened_at IS NULL, b.last_opened_at DESC",
+            &format!("AND b.status = 'in_progress' AND b.format NOT IN ({audio}) ORDER BY b.last_opened_at IS NULL, b.last_opened_at DESC"),
             IN_PROGRESS_LIMIT,
         )?;
         Ok(HomeViewModel {
             resume_book: in_progress.first().cloned(),
-            recently_added: self.books("ORDER BY b.added_at DESC", RECENTLY_ADDED_LIMIT)?,
+            recently_added: self.books(&format!("AND b.format NOT IN ({audio}) ORDER BY b.added_at DESC"), RECENTLY_ADDED_LIMIT)?,
             in_progress,
             collections: self.collection_previews()?,
             annotations: self.annotation_previews()?,
@@ -241,6 +253,11 @@ pub(crate) fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
         genres: r
             .get::<_, Option<String>>(20)?
             .and_then(|g| serde_json::from_str(&g).ok())
+            .unwrap_or_default(),
+        duration_ms: r.get::<_, Option<i64>>(21)?.map(|d| d.max(0) as u64),
+        narrators: r
+            .get::<_, Option<String>>(22)?
+            .and_then(|n| serde_json::from_str(&n).ok())
             .unwrap_or_default(),
     })
 }

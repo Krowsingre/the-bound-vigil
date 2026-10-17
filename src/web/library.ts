@@ -13,7 +13,7 @@ interface Kind {
   cols: string[];
 }
 
-export type Table = "books" | "metadata_overrides" | "metadata_fetched" | "collections" | "collection_books" | "book_tags" | "annotations" | "personal_notes";
+export type Table = "books" | "audiobooks" | "metadata_overrides" | "metadata_fetched" | "collections" | "collection_books" | "book_tags" | "annotations" | "personal_notes";
 
 /** Keep in step with KINDS in the core. */
 export const KINDS: Kind[] = [
@@ -23,6 +23,7 @@ export const KINDS: Kind[] = [
     keys: ["id"],
     cols: ["title", "authors", "format", "file_size", "synopsis", "publisher", "language", "series", "series_index", "added_at", "deleted_at", "isbn"],
   },
+  { name: "audiobook", table: "audiobooks", keys: ["book_id"], cols: ["narrators", "duration_ms", "chapters", "parts", "ebook_id", "updated_at"] },
   { name: "book_progress", table: "books", keys: ["id"], cols: ["status", "total_progression", "resume_locator", "last_opened_at", "finished_at"] },
   { name: "book_shelves", table: "books", keys: ["id"], cols: ["favorite", "want_to_read", "rating"] },
   { name: "override", table: "metadata_overrides", keys: ["book_id", "field"], cols: ["value", "updated_at"] },

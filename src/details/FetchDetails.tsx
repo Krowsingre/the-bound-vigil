@@ -7,7 +7,7 @@ import { api, isApp } from "../api";
 import type { BookDetails, BookPreview, DetailFieldName } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
-import { DETAIL_FIELDS, detailLabel, effective, isList, listOf } from "../lib/details";
+import { AUDIO_ONLY, DETAIL_FIELDS, detailLabel, effective, isList, listOf } from "../lib/details";
 import { foundValues, openLibraryDescription, searchOnline, type Found } from "../lib/onlineDetails";
 
 const SOURCE_NAME = { google: "Google Books", openlibrary: "Open Library" } as const;
@@ -204,7 +204,7 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
                 <span role="columnheader">Now</span>
                 <span role="columnheader">Found</span>
               </div>
-              {DETAIL_FIELDS.filter((f) => values[f.field]).map(({ field }) => {
+              {DETAIL_FIELDS.filter((f) => values[f.field] && !AUDIO_ONLY.includes(f.field)).map(({ field }) => {
                 const current = details?.fields.find((x) => x.field === field);
                 return (
                   <label key={field} className="fetch-row" role="row">

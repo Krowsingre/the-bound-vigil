@@ -18,6 +18,7 @@ import { ReaderSearch } from "./ReaderSearch";
 import { useAppDark } from "../settings/appSettings";
 import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, resolveTheme, SETTINGS_KEY, type ReaderSettings } from "./settings";
 import { useReadAloud } from "./useReadAloud";
+import { useReadAlong } from "./useReadAlong";
 import { useReaderEngine, type TextSelection } from "./useReaderEngine";
 
 export interface ReaderShellProps {
@@ -187,6 +188,13 @@ export function Reader({
     voices: settings.voices,
     rate: settings.rate,
     dark: theme === "dark",
+  });
+  const readAlong = useReadAlong({
+    getView: engine.getView,
+    ready: engine.ready,
+    bookId,
+    dark: theme === "dark",
+    onStart: readAloud.stop,
   });
 
   const r = engine.relocation;
@@ -453,6 +461,23 @@ export function Reader({
           </Popover>
         }
         readAloud={
+          <>
+          {readAlong.audiobookId && (
+            <button
+              type="button"
+              className={`icon-btn${readAlong.following ? " is-on" : ""}`}
+              aria-pressed={readAlong.following}
+              aria-label="Listen along"
+              title={
+                readAlong.following
+                  ? "Following the audiobook. Click to stop."
+                  : "Listen along: play the audiobook and follow it here"
+              }
+              onClick={readAlong.toggle}
+            >
+              <Icon name="headphones" size={20} />
+            </button>
+          )}
           <Popover
             label="Read aloud"
             title={readAloud.unavailable ?? (readAloud.status === "playing" ? "Read aloud: reading (R to pause)" : "Read aloud (R)")}
@@ -463,6 +488,7 @@ export function Reader({
           >
             <ReadAloudPlayer readAloud={readAloud} lang={bookLang} settings={settings} onChange={changeSettings} />
           </Popover>
+          </>
         }
         bookmarked={!!bookmarkHere}
         onToggleBookmark={toggleBookmark}

@@ -2,94 +2,17 @@ import { useCallback, useEffect, useState } from "react";
 import { api, isApp } from "../api";
 import type { ProviderView, SupabaseProject, SyncOverview } from "../api/types";
 import { relativeTime } from "../lib/format";
-import SETUP_SQL from "../../supabase/setup.sql?raw";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { useAppSettings, type ConflictRule, type SyncFrequency } from "./appSettings";
 import { AccountPanel } from "./AccountPanel";
+import { SupabaseProjectForm } from "./SupabaseSetup";
+import { MoveSection } from "./MoveSection";
 import { HardcoverSection } from "./HardcoverSection";
 import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
+import { PROVIDERS, type Provider } from "./providers";
 import { ActionTile, RadioList, Row, Section, Select, Toggle } from "./controls";
-
-type Provider = "supabase" | "dropbox" | "gdrive" | "onedrive" | "icloud" | "mega" | "custom";
-
-const PROVIDERS: { id: Provider; name: string; art: React.ReactNode }[] = [
-  {
-    id: "supabase",
-    name: "Supabase",
-    art: (
-      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
-        <path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="currentColor" />
-      </svg>
-    ),
-  },
-  {
-    id: "dropbox",
-    name: "Dropbox",
-    art: (
-      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
-        <path
-          d="m7 3-5 3.2L7 9.4l5-3.2zm10 0-5 3.2 5 3.2 5-3.2zM2 12.6l5 3.2 5-3.2-5-3.2zm15-3.2-5 3.2 5 3.2 5-3.2zM7 17l5 3.2 5-3.2-5-3.2z"
-          fill="currentColor"
-        />
-      </svg>
-    ),
-  },
-  {
-    id: "gdrive",
-    name: "Google Drive",
-    art: (
-      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
-        <path d="M8.5 3h7l6.5 11.3h-7zM8.5 3 2 14.3l3.5 6 6.5-11.3zm-3 17.3h13l3.5-6H9z" fill="currentColor" />
-      </svg>
-    ),
-  },
-  {
-    id: "onedrive",
-    name: "OneDrive",
-    art: (
-      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
-        <path d="M7 18h11a4 4 0 0 0 .6-7.9A6 6 0 0 0 7.2 8.6 4.8 4.8 0 0 0 7 18z" fill="currentColor" />
-      </svg>
-    ),
-  },
-  {
-    id: "icloud",
-    name: "iCloud Drive",
-    art: (
-      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
-        <path
-          d="M6.5 19h11a4.5 4.5 0 0 0 .4-9A6 6 0 0 0 6.6 9.2 5 5 0 0 0 6.5 19z"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinejoin="round"
-        />
-      </svg>
-    ),
-  },
-  {
-    id: "mega",
-    name: "MEGA",
-    art: (
-      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
-        <circle cx="12" cy="12" r="10" fill="currentColor" />
-        <path d="M7.5 16V8.5l4.5 4.5 4.5-4.5V16" fill="none" stroke="var(--surface)" strokeWidth="2" strokeLinejoin="round" />
-      </svg>
-    ),
-  },
-  {
-    id: "custom",
-    name: "Another service",
-    art: (
-      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
-        <circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="3 2.6" />
-        <path d="M12 8v8M8 12h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-];
 
 /** Sync's state in a few words, for the connection details. */
 const STATE_TEXT: Record<SyncOverview["status"]["state"], string> = {
@@ -108,15 +31,12 @@ function cardFor(view: ProviderView): Provider {
   return "supabase";
 }
 
-const EMPTY_PROJECT: SupabaseProject = { url: "", anonKey: "" };
-
 export function SyncTab({ onRestored }: { onRestored: () => void }) {
   const { settings, changeSync } = useAppSettings();
   const sync = settings.sync;
   const toast = useToast();
   const [provider, setProvider] = useState<Provider>("supabase");
   const [overview, setOverview] = useState<SyncOverview | null>(null);
-  const [draft, setDraft] = useState<SupabaseProject>(EMPTY_PROJECT);
   const [editing, setEditing] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -134,7 +54,6 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
   );
   useEffect(() => {
     void reload().then((o) => {
-      if (o?.project) setDraft(o.project);
       if (o) setProvider(cardFor(o.provider));
     });
     return api.onSync({ status: () => void reload() });
@@ -148,12 +67,10 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
   const inUse = current.kind === "off" ? null : current.kind === "supabase" ? (signedIn ? "supabase" : null) : cardFor(current);
   const showing = provider === inUse;
 
-  const urlOk = /^https:\/\/[a-z0-9-]+\.supabase\.(co|in)\/?$/i.test(draft.url.trim());
   const saveProject = (next: SupabaseProject | null) =>
     api.setSupabaseProject(next).then(
       () => {
         setEditing(false);
-        if (!next) setDraft(EMPTY_PROJECT);
         void reload();
         toast(next ? "Saved. Now sign in below." : "TBV no longer uses that project.");
       },
@@ -294,66 +211,13 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
         </div>
 
         {provider === "supabase" && (editing || !project) && (
-          <form
-            className="settings-subpanel supabase-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (urlOk && draft.anonKey.trim()) void saveProject({ url: draft.url.trim().replace(/\/$/, ""), anonKey: draft.anonKey.trim() });
-            }}
-          >
-            <h3>Your Supabase project</h3>
-            <ol className="setup-steps">
-              <li>Use a Supabase project made for TBV, not one another app uses.</li>
-              <li>
-                Open its <strong>SQL Editor</strong>, paste TBV's setup script, and press <strong>Run</strong>. It only needs doing once.
-                <button
-                  type="button"
-                  className="btn btn-quiet btn-small"
-                  onClick={() =>
-                    navigator.clipboard.writeText(SETUP_SQL).then(
-                      () => toast("Setup script copied. Paste it into Supabase's SQL Editor."),
-                      () => toast("Couldn't copy. The script is supabase/setup.sql in TBV's code."),
-                    )
-                  }
-                >
-                  <Icon name="copy" size={14} /> Copy setup script
-                </button>
-              </li>
-              <li>
-                From <strong>Project Settings</strong>, copy the project URL and the publishable key into the boxes below.
-              </li>
-            </ol>
-            <label className="field">
-              <span>Project URL</span>
-              <input value={draft.url} onChange={(e) => setDraft({ ...draft, url: e.target.value })} placeholder="https://yourproject.supabase.co" spellCheck={false} />
-            </label>
-            {draft.url.trim() && !urlOk && <p className="form-error">That doesn't look like a Supabase project address.</p>}
-            <label className="field">
-              <span>Publishable key</span>
-              <input
-                value={draft.anonKey}
-                onChange={(e) => setDraft({ ...draft, anonKey: e.target.value })}
-                placeholder="sb_publishable_… (or the older anon key, eyJ…)"
-                spellCheck={false}
-              />
-            </label>
-            <p className="settings-row-hint">This key is safe to keep in an app: it can't see anything until you sign in. Never paste the secret (service role) key here.</p>
-            <div className="dialog-actions">
-              {project && (
-                <button type="button" className="btn btn-quiet btn-danger-text" onClick={() => void saveProject(null)}>
-                  Forget this project
-                </button>
-              )}
-              {project && (
-                <button type="button" className="btn btn-quiet" onClick={() => (setEditing(false), setDraft(project))}>
-                  Cancel
-                </button>
-              )}
-              <button type="submit" className="btn btn-primary" disabled={!urlOk || !draft.anonKey.trim()}>
-                Save
-              </button>
-            </div>
-          </form>
+          <SupabaseProjectForm
+            key={project?.url ?? ""}
+            initial={project}
+            onSave={(next) => void saveProject(next)}
+            onForget={project ? () => void saveProject(null) : undefined}
+            onCancel={project ? () => setEditing(false) : undefined}
+          />
         )}
 
         {provider === "supabase" && project && !editing && (
@@ -390,6 +254,8 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
           </ul>
         </Section>
       )}
+
+      <MoveSection overview={overview} inUse={inUse} onChanged={reload} />
 
       <Section
         id="options"
@@ -435,6 +301,12 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
             hint="Keep a copy of your books in the cloud."
             checked={sync.bookFiles}
             onChange={(bookFiles) => changeSync({ bookFiles })}
+          />
+          <Toggle
+            label="Sync audiobook files"
+            hint="Audiobooks are large, so this is separate. Their chapters and your place sync either way."
+            checked={sync.audioFiles}
+            onChange={(audioFiles) => changeSync({ audioFiles })}
           />
         </div>
       </Section>

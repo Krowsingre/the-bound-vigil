@@ -310,9 +310,9 @@ impl Library {
             .query_map([], |r| {
                 Ok((
                     book_from_row(r)?,
-                    r.get::<_, Option<String>>(21)?,
-                    r.get::<_, i64>(22)?,
-                    r.get::<_, u32>(23)?,
+                    r.get::<_, Option<String>>(23)?,
+                    r.get::<_, i64>(24)?,
+                    r.get::<_, u32>(25)?,
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;

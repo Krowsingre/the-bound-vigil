@@ -5,8 +5,13 @@ import type { BookPreview, ItemKind, LibraryPage, LibraryQuery, TagCount } from 
 /** The kinds of file the Documents page holds (DOCUMENT_FORMATS in the core). */
 export const DOCUMENT_FORMATS = ["pdf", "doc", "docx", "txt"];
 export const isDocument = (format: string) => DOCUMENT_FORMATS.includes(format.toLowerCase());
-export const ofKind = (b: BookPreview, kind: ItemKind | null | undefined) =>
-  !kind || (kind === "documents") === isDocument(b.format);
+/** Audio formats, kept on the Audiobooks page (AUDIO_FORMATS in the core). */
+export const AUDIO_FORMATS = ["m4b", "m4a", "mp3", "aac", "ogg", "oga", "opus", "flac", "tbvaudio"];
+export const isAudio = (format: string) => AUDIO_FORMATS.includes(format.toLowerCase());
+export const kindOf = (format: string): ItemKind => (isAudio(format) ? "audiobooks" : isDocument(format) ? "documents" : "books");
+export const ofKind = (b: BookPreview, kind: ItemKind | null | undefined) => !kind || kindOf(b.format) === kind;
+const hasAny = (names: string[] | undefined, wanted: string[] | undefined) =>
+  !wanted?.length || (names ?? []).some((n) => wanted.some((w) => w.toLowerCase() === n.toLowerCase()));
 
 const articles = /^(the|an|a) /i;
 const sortTitle = (b: BookPreview) => b.title.replace(articles, "").toLowerCase();
@@ -26,7 +31,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     if (q.location === "on_device" && b.availability === "cloud") return false;
     if (q.location === "cloud_only" && b.availability !== "cloud") return false;
     if (q.tags?.length && !b.tags.some((t) => q.tags!.some((w) => w.toLowerCase() === t.toLowerCase()))) return false;
-    if (q.genres?.length && !(b.genres ?? []).some((g) => q.genres!.some((w) => w.toLowerCase() === g.toLowerCase()))) return false;
+    if (!hasAny(b.genres, q.genres) || !hasAny(b.authors, q.authors) || !hasAny(b.narrators, q.narrators)) return false;
     if (search && ![b.title, ...b.authors, b.series ?? ""].some((t) => t.toLowerCase().includes(search))) return false;
     return true;
   });
@@ -64,8 +69,23 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     },
     formats: [...new Set(all.map((b) => b.format))].sort(),
     tags: tagCounts(everything).map((t) => t.name),
-    genres: tagCounts(all.map((b) => ({ ...b, tags: b.genres ?? [] }))).map((t) => t.name),
+    genres: namesIn(all, (b) => b.genres ?? []),
+    authors: q.kind === "audiobooks" ? namesIn(all, (b) => b.authors) : [],
+    narrators: q.kind === "audiobooks" ? namesIn(all, (b) => b.narrators ?? []) : [],
   };
+}
+
+const namesIn = (books: BookPreview[], names: (b: BookPreview) => string[]) =>
+  tagCounts(books.map((b) => ({ ...b, tags: names(b) }))).map((t) => t.name);
+
+/** "8h 24m", "41m" or "52s": how long, for people. */
+export function formatLength(ms: number | null | undefined): string {
+  if (!ms || ms < 0) return "";
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 1) return `${Math.max(1, Math.round(ms / 1000))}s`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h ? `${h}h ${m}m` : `${m}m`;
 }
 
 /** Every tag on these books, A to Z, with how many carry it. One spelling per tag. */
@@ -85,3 +105,6 @@ export function cleanTag(tag: string): string | null {
   const t = tag.split(/\s+/).filter(Boolean).join(" ").slice(0, 40);
   return t || null;
 }
+
+/** A format as people know it. A folder of audio files kept as one book is "Audio". */
+export const formatLabel = (format: string) => (format === "tbvaudio" ? "Audio" : format.toUpperCase());

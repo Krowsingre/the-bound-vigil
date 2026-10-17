@@ -3,7 +3,7 @@
 use rusqlite::{params, params_from_iter, types::Value};
 
 use crate::error::{Error, Result};
-use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM, DOCUMENT_FORMATS};
+use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM, DOCUMENT_FORMATS, NARRATORS};
 use crate::library::Library;
 use crate::model::*;
 
@@ -20,10 +20,12 @@ const GENRES: &str = "COALESCE(o_genres.value, f_genres.value)";
 
 /// The SQL test for books of one kind, on the books table as `b`.
 pub(crate) fn kind_condition(kind: ItemKind) -> String {
-    let list = DOCUMENT_FORMATS.iter().map(|f| format!("'{f}'")).collect::<Vec<_>>().join(", ");
+    let quoted = |formats: &[&str]| formats.iter().map(|f| format!("'{f}'")).collect::<Vec<_>>().join(", ");
+    let (docs, audio) = (quoted(DOCUMENT_FORMATS), quoted(crate::audio::AUDIO_FORMATS));
     match kind {
-        ItemKind::Documents => format!("b.format IN ({list})"),
-        ItemKind::Books => format!("b.format NOT IN ({list})"),
+        ItemKind::Documents => format!("b.format IN ({docs})"),
+        ItemKind::Audiobooks => format!("b.format IN ({audio})"),
+        ItemKind::Books => format!("b.format NOT IN ({docs}, {audio})"),
     }
 }
 
@@ -125,14 +127,18 @@ impl Library {
             );
         }
 
-        if !query.genres.is_empty() {
+        // Genres, authors and narrators are JSON lists: a book matches when any name does.
+        for (list, names) in [(GENRES, &query.genres), (AUTHORS, &query.authors), (NARRATORS, &query.narrators)] {
+            if names.is_empty() {
+                continue;
+            }
             let start = values.len() + 1;
-            let slots: Vec<String> = (0..query.genres.len()).map(|i| format!("?{}", start + i)).collect();
+            let slots: Vec<String> = (0..names.len()).map(|i| format!("?{}", start + i)).collect();
             conditions.push(format!(
-                "EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid({GENRES}) THEN {GENRES} ELSE '[]' END) g WHERE lower(g.value) IN ({}))",
+                "EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid({list}) THEN {list} ELSE '[]' END) g WHERE tbv_fold(g.value) IN ({}))",
                 slots.join(", ")
             ));
-            values.extend(query.genres.iter().map(|g| Value::Text(g.trim().to_lowercase())));
+            values.extend(names.iter().map(|g| Value::Text(g.trim().to_lowercase())));
         }
 
         if let Some(kind) = query.kind {
@@ -180,6 +186,9 @@ impl Library {
             formats: self.formats_in_library(query.kind)?,
             tags: self.all_tags()?.into_iter().map(|t| t.name).collect(),
             genres: self.genres_in_library(query.kind)?,
+            // Only audiobooks filter by author and narrator; other pages search instead.
+            authors: if query.kind == Some(ItemKind::Audiobooks) { self.names_in_library(AUTHORS, query.kind)? } else { Vec::new() },
+            narrators: if query.kind == Some(ItemKind::Audiobooks) { self.names_in_library(NARRATORS, query.kind)? } else { Vec::new() },
         })
     }
 
@@ -225,11 +234,17 @@ impl Library {
 
     /// Every genre on books of this kind, one spelling each, A to Z.
     pub fn genres_in_library(&self, kind: Option<ItemKind>) -> Result<Vec<String>> {
+        self.names_in_library(GENRES, kind)
+    }
+
+    /// Every name in a list column (genres, authors, narrators) on books of
+    /// this kind, one spelling each, A to Z.
+    fn names_in_library(&self, list: &str, kind: Option<ItemKind>) -> Result<Vec<String>> {
         let only = kind.map(|k| format!(" AND {}", kind_condition(k))).unwrap_or_default();
         let mut statement = self.conn.prepare(&format!(
-            "SELECT MIN(g.value) FROM (SELECT {GENRES} AS genres {BOOK_FROM}{only}) x, json_each(CASE WHEN json_valid(x.genres) THEN x.genres ELSE '[]' END) g
+            "SELECT MIN(g.value) FROM (SELECT {list} AS names {BOOK_FROM}{only}) x, json_each(CASE WHEN json_valid(x.names) THEN x.names ELSE '[]' END) g
              WHERE trim(g.value) != ''
-             GROUP BY lower(g.value) ORDER BY lower(g.value)"
+             GROUP BY tbv_fold(g.value) ORDER BY tbv_fold(g.value)"
         ))?;
         let rows = statement.query_map([], |r| r.get(0))?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)

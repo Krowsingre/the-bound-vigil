@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { api, isApp } from "../api";
-import type { ProviderView } from "../api/types";
+import type { ProviderChoice, ProviderView } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 
@@ -57,7 +57,20 @@ export function serviceName(service: string | null): string {
   return service && service in SERVICE ? SERVICE[service as FolderService].name : "a folder";
 }
 
-export function SyncFolderPanel({ service, current, onChanged }: { service: FolderService; current: ProviderView; onChanged: () => void }) {
+export function SyncFolderPanel({
+  service,
+  current,
+  onChanged,
+  onUse,
+  useLabel,
+}: {
+  service: FolderService;
+  current: ProviderView;
+  onChanged: () => void;
+  /** Takes the folder or server instead of syncing through it (moving a library there, say). */
+  onUse?: (choice: ProviderChoice) => void;
+  useLabel?: string;
+}) {
   const toast = useToast();
   const info = SERVICE[service];
   const usingThis = current.kind === "folder" && current.service === service;
@@ -70,7 +83,8 @@ export function SyncFolderPanel({ service, current, onChanged }: { service: Fold
     else if (service !== "custom") void api.suggestSyncFolder(service).then((p) => setPath((now) => now ?? p), () => undefined);
   }, [service, usingThis, current.location]);
 
-  const use = async (choice: Parameters<typeof api.setSyncProvider>[0], where: string) => {
+  const use = async (choice: ProviderChoice, where: string) => {
+    if (onUse) return onUse(choice);
     if (!isApp) toast("This is the browser preview: nothing is synced here.");
     setBusy(true);
     try {
@@ -110,7 +124,7 @@ export function SyncFolderPanel({ service, current, onChanged }: { service: Fold
           disabled={!path || busy || (usingThis && path === current.location)}
           onClick={() => path && void use({ kind: "folder", service, path }, info.name === "another service" ? "that folder" : info.name)}
         >
-          {usingThis && path === current.location ? "In use" : "Use this folder"}
+          {usingThis && path === current.location ? "In use" : (useLabel ?? "Use this folder")}
         </button>
       </div>
       <p className="settings-row-hint">
@@ -157,7 +171,7 @@ export function SyncFolderPanel({ service, current, onChanged }: { service: Fold
           </p>
           <div className="dialog-actions">
             <button type="submit" className="btn btn-primary" disabled={!davReady || busy}>
-              {busy ? "Connecting…" : current.kind === "webdav" ? "Save" : "Connect"}
+              {busy ? "Connecting…" : (useLabel ?? (current.kind === "webdav" ? "Save" : "Connect"))}
             </button>
           </div>
         </form>

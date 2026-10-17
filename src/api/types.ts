@@ -17,6 +17,8 @@ export interface ReaderLocator {
   textAfter?: string;
   /** The chapter title at this position. */
   chapter?: string;
+  /** For an audiobook: how far in, from the start of the whole book. */
+  audioMs?: number;
 }
 
 export interface RemotePosition {
@@ -53,6 +55,10 @@ export interface BookPreview {
   inCloud: boolean;
   /** Its genres: your edit, else fetched online or from the file. */
   genres: string[];
+  /** An audiobook's length. */
+  durationMs?: number | null;
+  /** An audiobook's narrators. */
+  narrators?: string[];
 }
 
 export interface CollectionPreview {
@@ -131,6 +137,51 @@ export interface SyncOverview {
   conflicts: SyncConflict[];
 }
 
+/** Migrate: copy everything, then sync through the new place. Backup: copy everything, keep syncing where you are. */
+export type MoveMode = "migrate" | "backup";
+/** Which books go: all, books and documents, or audiobooks. */
+export type MoveScope = "all" | "text" | "audio";
+export type MoveStage = "looking" | "records" | "files" | "checking";
+
+/** The check at the end of a move: is everything that should be there, there? */
+export interface MoveCheck {
+  records: number;
+  recordsFound: number;
+  files: number;
+  filesFound: number;
+  /** What isn't there, in words. */
+  missing: string[];
+  moreMissing: number;
+  /** What didn't go but wasn't in the old place either. Doesn't fail the check. */
+  notes: string[];
+}
+
+export interface MoveReport {
+  recordsCopied: number;
+  filesCopied: number;
+  /** Already there from an earlier backup or try. */
+  alreadyThere: number;
+  cancelled: boolean;
+  check: MoveCheck | null;
+}
+
+export interface MoveStatus {
+  running: boolean;
+  mode: MoveMode | null;
+  scope: MoveScope;
+  from: ProviderView | null;
+  to: ProviderView | null;
+  progress: { stage: MoveStage; done: number; total: number };
+  report: MoveReport | null;
+  /** A migration that passed its check now syncs through the new place. */
+  switched: boolean;
+  error: string | null;
+  /** Whether "Audio only" can be chosen yet. */
+  audioReady: boolean;
+  /** Signed in to the Supabase project being moved to, as this email. */
+  supabaseAccount: string | null;
+}
+
 export interface ReadingActivity {
   completedBooks: number;
   pagesRead: number | null;
@@ -171,7 +222,7 @@ export interface ImportItem {
 export type Shelf = "all" | "favorites" | "want_to_read" | "in_progress" | "read" | "unread";
 export type SortOrder = "recently_added" | "recently_opened" | "title" | "author" | "series" | "progress" | "rating" | "genre";
 /** Ebooks live in the Library; PDF, DOC, DOCX and TXT on the Documents page. */
-export type ItemKind = "books" | "documents";
+export type ItemKind = "books" | "documents" | "audiobooks";
 export type Location = "on_device" | "cloud_only";
 
 export interface LibraryQuery {
@@ -184,7 +235,11 @@ export interface LibraryQuery {
   tags?: string[];
   /** Books with any of these genres. */
   genres?: string[];
-  /** Only books, or only documents. Left out: both. */
+  /** Books by any of these authors. */
+  authors?: string[];
+  /** Audiobooks read by any of these narrators. */
+  narrators?: string[];
+  /** Only books, documents or audiobooks. Left out: all of them. */
   kind?: ItemKind | null;
   /** Zero-based. */
   page: number;
@@ -212,6 +267,9 @@ export interface LibraryPage {
   tags: string[];
   /** Genres on books of this kind, A to Z. */
   genres: string[];
+  /** For audiobooks: their authors and narrators, A to Z. */
+  authors: string[];
+  narrators: string[];
 }
 
 export type DetailFieldName =
@@ -224,7 +282,8 @@ export type DetailFieldName =
   | "publisher"
   | "published"
   | "language"
-  | "isbn";
+  | "isbn"
+  | "narrators";
 
 /** One detail in its layers. Lists (authors, genres) are JSON arrays. */
 export interface DetailField {
@@ -348,6 +407,54 @@ export interface HardcoverSendAll {
   sent: number;
   /** "Title by Author" for books Hardcover doesn't have. */
   notFound: string[];
+}
+
+// Mirrors crates/tbv-core/src/ereaders.
+
+export type EreaderKind = "kindle" | "kobo" | "pocketBook" | "nook" | "sony" | "other";
+
+/** An e-reader (or a drive that might be one) plugged in by cable. */
+export interface Ereader {
+  kind: EreaderKind;
+  /** "Kindle", or for a drive TBV isn't sure about, its name. */
+  name: string;
+  /** Where the drive is, e.g. `E:\`. Names the reader when sending. */
+  root: string;
+  booksFolder: string;
+  /** Formats it opens when copied by cable. Empty when TBV can't know. */
+  formats: string[];
+}
+
+export interface CopiedToEreader {
+  path: string;
+  /** The same book was there already. */
+  alreadyThere: boolean;
+}
+
+export type MailSecurity = "starttls" | "ssl";
+
+/** Kindle by email, as Settings shows it: everything but the password. */
+export interface KindleEmailView {
+  server: string;
+  port: number;
+  security: MailSecurity;
+  username: string;
+  hasPassword: boolean;
+  /** The address Amazon must have on its approved list. */
+  from: string;
+  /** The person's @kindle.com address. */
+  kindle: string;
+}
+
+export interface KindleEmailInput {
+  server: string;
+  port: number;
+  security: MailSecurity;
+  username: string;
+  /** Null keeps the password saved before. */
+  password: string | null;
+  from: string;
+  kindle: string;
 }
 
 export interface GoodreadsImport {
@@ -497,4 +604,28 @@ export interface LibraryInfo {
   bookCount: number;
   databaseBytes: number;
   booksBytes: number;
+}
+
+export interface AudioChapter {
+  title: string;
+  startMs: number;
+}
+
+export interface AudioPart {
+  name: string;
+  startMs: number;
+  durationMs: number;
+}
+
+/** An audiobook as its page and the player show it. */
+export interface Audiobook {
+  book: BookPreview;
+  narrators: string[];
+  durationMs: number;
+  chapters: AudioChapter[];
+  parts: AudioPart[];
+  /** Where you are, from the start. */
+  positionMs: number;
+  /** The ebook it's linked to, for reading along. */
+  ebook: { id: string; name: string } | null;
 }

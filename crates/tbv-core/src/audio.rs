@@ -1,0 +1,789 @@
+//! Audiobooks: reading their details, chapters and lengths, and keeping a
+//! folder of audio files (one file per chapter or per CD) as one book.
+//!
+//! A folder becomes a bundle: an uncompressed ZIP of its audio files in
+//! name order, written the same way every time, so the same folder always
+//! gives the same book id. Uncompressed means each file sits whole inside the
+//! bundle, so the player streams straight from it. A single file (an M4B,
+//! one long MP3) is kept as it is.
+
+use std::fs::{self, File};
+use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+use crate::epub::{BookMetadata, Cover};
+use crate::error::{Error, Result};
+
+/// The format of a folder of audio files kept as one book.
+pub const BUNDLE: &str = "tbvaudio";
+
+/// Audio formats TBV imports as audiobooks.
+pub const AUDIO_FORMATS: &[&str] = &["m4b", "m4a", "mp3", "aac", "ogg", "oga", "opus", "flac", BUNDLE];
+
+/// Formats that can be parts of a folder audiobook.
+const PART_FORMATS: &[&str] = &["m4b", "m4a", "mp3", "aac", "ogg", "oga", "opus", "flac"];
+
+/// Pictures a folder audiobook may keep its cover in.
+const COVER_NAMES: &[&str] = &["cover", "folder", "front", "album", "artwork"];
+
+pub fn is_audio(format: &str) -> bool {
+    AUDIO_FORMATS.contains(&format)
+}
+
+pub(crate) fn is_part(path: &Path) -> bool {
+    extension(path).is_some_and(|e| PART_FORMATS.contains(&e.as_str()))
+}
+
+fn extension(path: &Path) -> Option<String> {
+    path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase())
+}
+
+/// A chapter, by where it starts in the whole book.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Chapter {
+    pub title: String,
+    pub start_ms: u64,
+}
+
+/// One audio file of a book, by where it starts in the whole book.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Part {
+    pub name: String,
+    pub start_ms: u64,
+    pub duration_ms: u64,
+}
+
+/// What an audiobook's files say beyond the usual book details.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct AudioDetails {
+    pub narrators: Vec<String>,
+    pub duration_ms: u64,
+    pub chapters: Vec<Chapter>,
+    pub parts: Vec<Part>,
+}
+
+/// One file's tags and length.
+#[derive(Debug, Default)]
+struct PartInfo {
+    title: Option<String>,
+    album: Option<String>,
+    artists: Vec<String>,
+    narrators: Vec<String>,
+    genres: Vec<String>,
+    published: Option<String>,
+    synopsis: Option<String>,
+    publisher: Option<String>,
+    duration_ms: u64,
+    /// Chapters inside this file, from its start.
+    chapters: Vec<Chapter>,
+    cover: Option<Cover>,
+}
+
+/// A stretch of a file, read as if it were a file of its own: one part of a bundle.
+pub struct Slice {
+    file: File,
+    start: u64,
+    len: u64,
+    pos: u64,
+}
+
+impl Slice {
+    pub fn new(mut file: File, start: u64, len: u64) -> io::Result<Self> {
+        file.seek(SeekFrom::Start(start))?;
+        Ok(Self { file, start, len, pos: 0 })
+    }
+
+    pub fn len(&self) -> u64 {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+impl Read for Slice {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let left = self.len.saturating_sub(self.pos);
+        let take = buf.len().min(left as usize);
+        if take == 0 {
+            return Ok(0);
+        }
+        let read = self.file.read(&mut buf[..take])?;
+        self.pos += read as u64;
+        Ok(read)
+    }
+}
+
+impl Seek for Slice {
+    fn seek(&mut self, to: SeekFrom) -> io::Result<u64> {
+        let target = match to {
+            SeekFrom::Start(n) => n as i64,
+            SeekFrom::End(n) => self.len as i64 + n,
+            SeekFrom::Current(n) => self.pos as i64 + n,
+        };
+        if target < 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "seek before the start"));
+        }
+        self.pos = target as u64;
+        self.file.seek(SeekFrom::Start(self.start + self.pos.min(self.len)))?;
+        Ok(self.pos)
+    }
+}
+
+/// A part's place inside a bundle.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Entry {
+    pub name: String,
+    pub start: u64,
+    pub len: u64,
+}
+
+/// The parts of a bundle, in playing order.
+pub fn bundle_entries(path: &Path) -> Result<Vec<Entry>> {
+    let mut archive = zip::ZipArchive::new(File::open(path)?).map_err(|e| Error::Unsuitable(format!("this audiobook couldn't be read: {e}")))?;
+    let mut entries = Vec::new();
+    for i in 0..archive.len() {
+        let file = archive.by_index_raw(i).map_err(|e| Error::Unsuitable(format!("this audiobook couldn't be read: {e}")))?;
+        if file.is_dir() {
+            continue;
+        }
+        if file.compression() != zip::CompressionMethod::Stored {
+            return Err(Error::Unsuitable("this audiobook's files are compressed, so they can't be played".into()));
+        }
+        entries.push(Entry { name: file.name().to_string(), start: file.data_start(), len: file.size() });
+    }
+    Ok(entries)
+}
+
+/// One part of a book as a readable file: the file itself, or a stretch of a bundle.
+pub fn open_part(path: &Path, format: &str, index: usize) -> Result<(Slice, String)> {
+    if format == BUNDLE {
+        let entry = bundle_entries(path)?
+            .into_iter()
+            .nth(index)
+            .ok_or_else(|| Error::Unsuitable("that part of the audiobook isn't there".into()))?;
+        let ext = extension(Path::new(&entry.name)).unwrap_or_default();
+        return Ok((Slice::new(File::open(path)?, entry.start, entry.len)?, ext));
+    }
+    if index != 0 {
+        return Err(Error::Unsuitable("that part of the audiobook isn't there".into()));
+    }
+    let len = fs::metadata(path)?.len();
+    Ok((Slice::new(File::open(path)?, 0, len)?, format.to_string()))
+}
+
+/// The MIME type to play a part with.
+pub fn mime_of(ext: &str) -> &'static str {
+    match ext {
+        "mp3" => "audio/mpeg",
+        "m4a" | "m4b" => "audio/mp4",
+        "aac" => "audio/aac",
+        "ogg" | "oga" => "audio/ogg",
+        "opus" => "audio/ogg; codecs=opus",
+        "flac" => "audio/flac",
+        _ => "application/octet-stream",
+    }
+}
+
+/// The audio files directly in `dir`, in the order they play.
+pub fn folder_parts(dir: &Path) -> Vec<PathBuf> {
+    let mut parts: Vec<PathBuf> = fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|e| e.file_type().is_ok_and(|t| t.is_file()) && !e.file_name().to_string_lossy().starts_with('.'))
+                .map(|e| e.path())
+                .filter(|p| is_part(p))
+                .collect()
+        })
+        .unwrap_or_default();
+    parts.sort_by(|a, b| natural_cmp(&a.file_name().unwrap_or_default().to_string_lossy(), &b.file_name().unwrap_or_default().to_string_lossy()));
+    parts
+}
+
+/// Compares names the way people number things: "Part 2" before "Part 10".
+fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    // Names that read the same ("Part 2", "part 02") still need one order,
+    // so the same folder always makes the same bundle.
+    natural_key_cmp(a, b).then_with(|| a.cmp(b))
+}
+
+fn natural_key_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let chunks = |s: &str| -> Vec<(bool, String)> {
+        let mut out: Vec<(bool, String)> = Vec::new();
+        for c in s.to_lowercase().chars() {
+            let digit = c.is_ascii_digit();
+            match out.last_mut() {
+                Some((d, text)) if *d == digit => text.push(c),
+                _ => out.push((digit, c.to_string())),
+            }
+        }
+        out
+    };
+    let (a, b) = (chunks(a), chunks(b));
+    for (x, y) in a.iter().zip(b.iter()) {
+        let order = match (x.0, y.0) {
+            (true, true) => {
+                let (xn, yn) = (x.1.trim_start_matches('0'), y.1.trim_start_matches('0'));
+                xn.len().cmp(&yn.len()).then_with(|| xn.cmp(yn))
+            }
+            _ => x.1.cmp(&y.1),
+        };
+        if order.is_ne() {
+            return order;
+        }
+    }
+    a.len().cmp(&b.len())
+}
+
+/// Writes a folder's audio files (and its cover picture, if any) into one
+/// bundle at `out`. The same folder always makes the same bytes.
+pub fn write_bundle(dir: &Path, out: &Path) -> Result<()> {
+    let parts = folder_parts(dir);
+    if parts.is_empty() {
+        return Err(Error::Unsuitable("there are no audio files in that folder".into()));
+    }
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored)
+        .last_modified_time(zip::DateTime::default())
+        .unix_permissions(0o644)
+        .large_file(true);
+    let partial = out.with_extension(format!("{BUNDLE}.partial"));
+    let result = (|| -> Result<()> {
+        let mut writer = zip::ZipWriter::new(File::create(&partial)?);
+        let width = parts.len().to_string().len().max(3);
+        for (i, part) in parts.iter().enumerate() {
+            let name = part.file_name().unwrap_or_default().to_string_lossy().replace(['/', '\\'], " ");
+            writer
+                .start_file(format!("{:0width$} {name}", i + 1), options)
+                .map_err(|e| Error::Unsuitable(e.to_string()))?;
+            io::copy(&mut File::open(part)?, &mut writer)?;
+        }
+        if let Some(cover) = folder_cover(dir) {
+            let ext = extension(&cover).unwrap_or_else(|| "jpg".into());
+            writer.start_file(format!("cover.{ext}"), options).map_err(|e| Error::Unsuitable(e.to_string()))?;
+            io::copy(&mut File::open(&cover)?, &mut writer)?;
+        }
+        let mut file = writer.finish().map_err(|e| Error::Unsuitable(e.to_string()))?;
+        file.flush()?;
+        Ok(())
+    })();
+    match result {
+        Ok(()) => {
+            fs::rename(&partial, out)?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = fs::remove_file(&partial);
+            Err(e)
+        }
+    }
+}
+
+/// A cover picture kept beside the audio files.
+fn folder_cover(dir: &Path) -> Option<PathBuf> {
+    let mut pictures: Vec<PathBuf> = fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| extension(p).is_some_and(|e| matches!(e.as_str(), "jpg" | "jpeg" | "png" | "webp")))
+        .collect();
+    pictures.sort();
+    let stem = |p: &PathBuf| p.file_stem().map(|s| s.to_string_lossy().to_lowercase()).unwrap_or_default();
+    pictures
+        .iter()
+        .find(|p| COVER_NAMES.contains(&stem(p).as_str()))
+        .or_else(|| (pictures.len() == 1).then(|| &pictures[0]))
+        .cloned()
+}
+
+/// An audiobook's details: from its one file, or from every part of a bundle.
+pub fn read(path: &Path, format: &str) -> Result<(BookMetadata, AudioDetails)> {
+    let mut infos = Vec::new();
+    let mut names = Vec::new();
+    let mut bundle_cover = None;
+    if format == BUNDLE {
+        for entry in bundle_entries(path)? {
+            let ext = extension(Path::new(&entry.name)).unwrap_or_default();
+            let mut slice = Slice::new(File::open(path)?, entry.start, entry.len)?;
+            if PART_FORMATS.contains(&ext.as_str()) {
+                infos.push(read_part(&mut slice, &ext));
+                names.push(entry.name.split_once(' ').map(|(_, n)| n.to_string()).unwrap_or(entry.name.clone()));
+            } else if bundle_cover.is_none() {
+                let mut bytes = Vec::new();
+                slice.read_to_end(&mut bytes)?;
+                bundle_cover = crate::formats::cover_from_bytes(bytes);
+            }
+        }
+    } else {
+        let len = fs::metadata(path)?.len();
+        infos.push(read_part(&mut Slice::new(File::open(path)?, 0, len)?, format));
+        names.push(path.file_name().unwrap_or_default().to_string_lossy().to_string());
+    }
+    if infos.is_empty() {
+        return Err(Error::Unsuitable("there are no audio files in this audiobook".into()));
+    }
+    Ok(combine(infos, names, bundle_cover))
+}
+
+/// One book from its parts: the first part's tags speak for the book, and
+/// every part adds its chapters (or is a chapter itself).
+fn combine(infos: Vec<PartInfo>, names: Vec<String>, bundle_cover: Option<Cover>) -> (BookMetadata, AudioDetails) {
+    let many = infos.len() > 1;
+    let first = &infos[0];
+    let title = if many { first.album.clone().or(first.title.clone()) } else { first.title.clone().or(first.album.clone()) };
+    let mut details = AudioDetails::default();
+    let mut at = 0u64;
+    for (info, name) in infos.iter().zip(&names) {
+        details.parts.push(Part { name: name.clone(), start_ms: at, duration_ms: info.duration_ms });
+        if info.chapters.is_empty() {
+            let title = info
+                .title
+                .clone()
+                .filter(|t| many && Some(t) != title.as_ref())
+                .unwrap_or_else(|| strip_extension(name));
+            details.chapters.push(Chapter { title, start_ms: at });
+        } else {
+            details.chapters.extend(info.chapters.iter().map(|c| Chapter { title: c.title.clone(), start_ms: at + c.start_ms }));
+        }
+        at += info.duration_ms;
+    }
+    details.duration_ms = at;
+    details.narrators = first.narrators.clone();
+    let metadata = BookMetadata {
+        title,
+        authors: first.artists.clone(),
+        synopsis: first.synopsis.clone(),
+        publisher: first.publisher.clone(),
+        subjects: first.genres.clone(),
+        published: first.published.clone(),
+        cover: bundle_cover.or_else(|| infos.iter().find_map(|i| i.cover.clone())),
+        audio: Some(details.clone()),
+        ..Default::default()
+    };
+    (metadata, details)
+}
+
+fn strip_extension(name: &str) -> String {
+    let stem = Path::new(name).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| name.to_string());
+    stem.replace('_', " ").trim().to_string()
+}
+
+/// Splits "A; B / C" style name lists.
+fn names(values: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for value in values {
+        for name in value.split([';', '/', '\0']).map(str::trim).filter(|n| !n.is_empty()) {
+            if !out.iter().any(|o| o.eq_ignore_ascii_case(name)) {
+                out.push(name.to_string());
+            }
+        }
+    }
+    out
+}
+
+fn read_part(reader: &mut Slice, ext: &str) -> PartInfo {
+    use lofty::file::{AudioFile, TaggedFileExt};
+    use lofty::tag::{Accessor, ItemKey};
+
+    let mut info = PartInfo::default();
+    let _ = reader.seek(SeekFrom::Start(0));
+    if let Ok(probe) = lofty::probe::Probe::new(&mut *reader).guess_file_type() {
+        if let Ok(tagged) = probe.read() {
+            info.duration_ms = tagged.properties().duration().as_millis() as u64;
+            if let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) {
+                let text = |key: &ItemKey| tag.get_string(key).map(str::trim).filter(|s| !s.is_empty()).map(String::from);
+                info.title = tag.title().map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+                info.album = tag.album().map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+                let artists = text(&ItemKey::AlbumArtist).into_iter().chain(tag.artist().map(|a| a.to_string()));
+                info.artists = names(artists).into_iter().take(1).chain(names(tag.artist().map(|a| a.to_string()))).collect();
+                info.artists.dedup();
+                let narrator = tag.get_string(&ItemKey::Unknown("NARRATOR".into())).map(String::from);
+                info.narrators = names(narrator.into_iter().chain(text(&ItemKey::Composer)));
+                info.genres = names(tag.genre().map(|g| g.to_string()));
+                info.published = text(&ItemKey::RecordingDate).or_else(|| text(&ItemKey::Year)).or_else(|| tag.year().map(|y| y.to_string()));
+                info.synopsis = text(&ItemKey::Description).or_else(|| text(&ItemKey::PodcastDescription)).or_else(|| tag.comment().map(|c| c.to_string()));
+                info.publisher = text(&ItemKey::Publisher).or_else(|| text(&ItemKey::Label));
+                info.cover = tag.pictures().first().and_then(|p| crate::formats::cover_from_bytes(p.data().to_vec()));
+            }
+        }
+    }
+    // Lofty knows tags; chapters and narrators live in format-specific places.
+    let _ = reader.seek(SeekFrom::Start(0));
+    match ext {
+        "m4b" | "m4a" | "aac" => {
+            if let Ok(tag) = mp4ameta::Tag::read_from(reader) {
+                info.chapters = tag
+                    .chapters()
+                    .iter()
+                    .map(|c| Chapter { title: c.title.trim().to_string(), start_ms: c.start.as_millis() as u64 })
+                    .collect();
+                let narrators: Vec<String> = tag.strings_of(&mp4ameta::Fourcc(*b"\xa9nrt")).map(String::from).collect();
+                if !narrators.is_empty() {
+                    info.narrators = names(narrators);
+                }
+                if info.duration_ms == 0 {
+                    info.duration_ms = tag.duration().as_millis() as u64;
+                }
+            }
+        }
+        "mp3" => {
+            if let Ok(tag) = id3::Tag::read_from2(&mut *reader) {
+                let mut chapters: Vec<Chapter> = tag
+                    .chapters()
+                    .map(|c| Chapter {
+                        title: c
+                            .frames
+                            .iter()
+                            .find(|f| f.id() == "TIT2")
+                            .and_then(|f| f.content().text())
+                            .map(|t| t.trim().to_string())
+                            .unwrap_or_default(),
+                        start_ms: c.start_time as u64,
+                    })
+                    .collect();
+                chapters.sort_by_key(|c| c.start_ms);
+                info.chapters = chapters;
+                let narrators: Vec<String> = tag
+                    .extended_texts()
+                    .filter(|t| t.description.eq_ignore_ascii_case("narrator") || t.description.eq_ignore_ascii_case("narrated by"))
+                    .map(|t| t.value.clone())
+                    .collect();
+                if !narrators.is_empty() {
+                    info.narrators = names(narrators);
+                }
+            }
+        }
+        _ => {}
+    }
+    // Chapters without names get numbers; ones past the end are dropped.
+    if info.duration_ms > 0 {
+        let end = info.duration_ms;
+        info.chapters.retain(|c| c.start_ms < end);
+    }
+    for (i, c) in info.chapters.iter_mut().enumerate() {
+        if c.title.is_empty() {
+            c.title = format!("Chapter {}", i + 1);
+        }
+    }
+    info
+}
+
+
+/// An audiobook as its page and the player show it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Audiobook {
+    pub book: crate::model::BookPreview,
+    pub narrators: Vec<String>,
+    pub duration_ms: u64,
+    pub chapters: Vec<Chapter>,
+    pub parts: Vec<Part>,
+    /// Where you are, from the start.
+    pub position_ms: u64,
+    /// The ebook it's linked to, for reading along.
+    pub ebook: Option<crate::details::NamedRef>,
+}
+
+impl crate::library::Library {
+    /// Keeps what an audiobook's files say, so devices without the files can
+    /// show it too. A link to an ebook stays as it is.
+    pub(crate) fn keep_audio_details(&self, book_id: &str, audio: &AudioDetails) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO audiobooks (book_id, narrators, duration_ms, chapters, parts, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(book_id) DO UPDATE SET narrators = excluded.narrators, duration_ms = excluded.duration_ms,
+                chapters = excluded.chapters, parts = excluded.parts, updated_at = excluded.updated_at
+             WHERE narrators IS NOT excluded.narrators OR duration_ms IS NOT excluded.duration_ms
+                OR chapters IS NOT excluded.chapters OR parts IS NOT excluded.parts",
+            rusqlite::params![
+                book_id,
+                serde_json::to_string(&audio.narrators)?,
+                audio.duration_ms as i64,
+                serde_json::to_string(&audio.chapters)?,
+                serde_json::to_string(&audio.parts)?,
+                crate::time::now_utc()
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn audiobook(&self, book_id: &str) -> Result<Audiobook> {
+        use rusqlite::OptionalExtension;
+        let book = self.book(book_id)?.ok_or_else(|| Error::Unsuitable("This audiobook is no longer in your library.".into()))?;
+        if !is_audio(&book.format) {
+            return Err(Error::Unsuitable("That isn't an audiobook.".into()));
+        }
+        let row: Option<(i64, String, String, Option<String>)> = self
+            .conn
+            .query_row(
+                "SELECT duration_ms, chapters, parts, ebook_id FROM audiobooks WHERE book_id = ?1",
+                rusqlite::params![book_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .optional()?;
+        let (duration, chapters, parts, ebook_id) = row.unwrap_or((0, "[]".into(), "[]".into(), None));
+        let ebook = match ebook_id {
+            Some(id) => self.book(&id)?.map(|b| crate::details::NamedRef { id: b.id, name: b.title }),
+            None => None,
+        };
+        let position_ms = book.resume_locator.as_ref().and_then(|l| l.audio_ms).unwrap_or(0);
+        Ok(Audiobook {
+            narrators: book.narrators.clone(),
+            duration_ms: duration.max(0) as u64,
+            chapters: serde_json::from_str(&chapters).unwrap_or_default(),
+            parts: serde_json::from_str(&parts).unwrap_or_default(),
+            position_ms,
+            ebook,
+            book,
+        })
+    }
+
+    /// Remembers where you are in an audiobook. Starting one puts it in
+    /// progress; finishing is still your call.
+    pub fn save_listening(&self, book_id: &str, position_ms: u64, chapter: Option<String>) -> Result<()> {
+        let duration: i64 = self
+            .conn
+            .query_row("SELECT duration_ms FROM audiobooks WHERE book_id = ?1", rusqlite::params![book_id], |r| r.get(0))
+            .unwrap_or(0);
+        let progression = (duration > 0).then(|| (position_ms as f64 / duration as f64).clamp(0.0, 1.0));
+        let locator = crate::model::ReaderLocator { audio_ms: Some(position_ms), total_progression: progression, chapter, ..Default::default() };
+        let now = crate::time::now_utc();
+        self.conn.execute(
+            "UPDATE books SET resume_locator = ?2, total_progression = COALESCE(?3, total_progression), last_opened_at = ?4,
+                status = CASE WHEN status = 'unread' AND ?5 > 0 THEN 'in_progress' ELSE status END
+             WHERE id = ?1 AND deleted_at IS NULL",
+            rusqlite::params![book_id, serde_json::to_string(&locator)?, progression, now, position_ms as i64],
+        )?;
+        Ok(())
+    }
+
+    /// Links an audiobook to its ebook for reading along, or unlinks it.
+    pub fn link_ebook(&self, audiobook_id: &str, ebook_id: Option<&str>) -> Result<()> {
+        if let Some(ebook) = ebook_id {
+            let format: Option<String> = self.book(ebook)?.map(|b| b.format);
+            if format.as_deref().is_none_or(is_audio) {
+                return Err(Error::Unsuitable("Choose an ebook to read along with.".into()));
+            }
+        }
+        let changed = self.conn.execute(
+            "UPDATE audiobooks SET ebook_id = ?2, updated_at = ?3 WHERE book_id = ?1 AND ebook_id IS NOT ?2",
+            rusqlite::params![audiobook_id, ebook_id, crate::time::now_utc()],
+        )?;
+        let exists: bool = self
+            .conn
+            .query_row("SELECT EXISTS (SELECT 1 FROM audiobooks WHERE book_id = ?1)", rusqlite::params![audiobook_id], |r| r.get(0))?;
+        if changed == 0 && !exists {
+            return Err(Error::Unsuitable("That audiobook's details haven't arrived on this device yet.".into()));
+        }
+        Ok(())
+    }
+
+    /// The audiobook linked to an ebook, if any, for the reader.
+    pub fn audiobook_for_ebook(&self, ebook_id: &str) -> Result<Option<String>> {
+        use rusqlite::OptionalExtension;
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT ab.book_id FROM audiobooks ab JOIN books b ON b.id = ab.book_id
+                 WHERE ab.ebook_id = ?1 AND b.deleted_at IS NULL ORDER BY ab.updated_at DESC LIMIT 1",
+                rusqlite::params![ebook_id],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Where a book's audio is on this device, and its format, for playing.
+    pub fn audio_file(&self, book_id: &str) -> Result<(PathBuf, String)> {
+        let format = self.book(book_id)?.map(|b| b.format).ok_or_else(|| Error::Unsuitable("That audiobook isn't in your library.".into()))?;
+        Ok((self.book_file(book_id)?, format))
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+
+    /// A tiny but real MP3: silent MPEG-1 Layer III frames at 128 kbps, 44.1 kHz.
+    pub(crate) fn silent_mp3(frames: usize, title: &str, album: &str, artist: &str) -> Vec<u8> {
+        use id3::TagLike;
+        let mut tag = id3::Tag::new();
+        tag.set_title(title);
+        tag.set_album(album);
+        tag.set_artist(artist);
+        tag.add_frame(id3::frame::ExtendedText { description: "NARRATOR".into(), value: "Ann Reader".into() });
+        let mut out = Vec::new();
+        tag.write_to(&mut out, id3::Version::Id3v24).unwrap();
+        // 128 kbps at 44.1 kHz: 417 bytes per frame, 1152 samples (about 26 ms).
+        let mut frame = vec![0u8; 417];
+        frame[..4].copy_from_slice(&[0xFF, 0xFB, 0x90, 0x64]);
+        for _ in 0..frames {
+            out.extend_from_slice(&frame);
+        }
+        out
+    }
+
+    #[test]
+    fn names_that_read_the_same_still_have_one_order() {
+        assert_eq!(natural_cmp("Part 2.mp3", "Part 02.mp3"), "Part 2.mp3".cmp("Part 02.mp3"));
+        assert_ne!(natural_cmp("part 1.mp3", "Part 1.mp3"), std::cmp::Ordering::Equal);
+        assert_eq!(natural_cmp("Part 2.mp3", "Part 10.mp3"), std::cmp::Ordering::Less);
+        assert_eq!(mime_of("aac"), "audio/aac");
+    }
+
+    #[test]
+    fn names_sort_the_way_people_number_them() {
+        let mut names = vec!["Part 10.mp3", "Part 2.mp3", "part 1.mp3", "Intro.mp3"];
+        names.sort_by(|a, b| natural_cmp(a, b));
+        assert_eq!(names, vec!["Intro.mp3", "part 1.mp3", "Part 2.mp3", "Part 10.mp3"]);
+    }
+
+    #[test]
+    fn a_folder_becomes_one_book_the_same_way_every_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("The Moonstone");
+        fs::create_dir(&folder).unwrap();
+        fs::write(folder.join("02 Second.mp3"), silent_mp3(80, "The Second Period", "The Moonstone", "Wilkie Collins")).unwrap();
+        fs::write(folder.join("01 First.mp3"), silent_mp3(40, "The First Period", "The Moonstone", "Wilkie Collins")).unwrap();
+        fs::write(folder.join("cover.jpg"), [0xFF, 0xD8, 0xFF, 0xE0, 0, 0]).unwrap();
+        fs::write(folder.join("notes.txt"), "not audio").unwrap();
+
+        let a = dir.path().join("a.tbvaudio");
+        let b = dir.path().join("b.tbvaudio");
+        write_bundle(&folder, &a).unwrap();
+        write_bundle(&folder, &b).unwrap();
+        assert_eq!(fs::read(&a).unwrap(), fs::read(&b).unwrap(), "same folder, same bytes, same book");
+
+        let entries = bundle_entries(&a).unwrap();
+        assert_eq!(entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), vec!["001 01 First.mp3", "002 02 Second.mp3", "cover.jpg"]);
+
+        let (metadata, audio) = read(&a, BUNDLE).unwrap();
+        assert_eq!(metadata.title.as_deref(), Some("The Moonstone"));
+        assert_eq!(metadata.authors, vec!["Wilkie Collins".to_string()]);
+        assert_eq!(metadata.cover.as_ref().map(|c| c.extension.as_str()), Some("jpg"));
+        assert_eq!(audio.narrators, vec!["Ann Reader".to_string()]);
+        assert_eq!(audio.parts.len(), 2);
+        assert_eq!(audio.chapters.iter().map(|c| c.title.as_str()).collect::<Vec<_>>(), vec!["The First Period", "The Second Period"]);
+        let first = audio.parts[0].duration_ms;
+        assert!(first > 900 && first < 1200, "about a second: {first}");
+        assert_eq!(audio.chapters[1].start_ms, first);
+        assert_eq!(audio.duration_ms, first + audio.parts[1].duration_ms);
+
+        // A part reads back byte for byte from inside the bundle.
+        let (mut part, ext) = open_part(&a, BUNDLE, 0).unwrap();
+        assert_eq!(ext, "mp3");
+        let mut bytes = Vec::new();
+        part.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, fs::read(folder.join("01 First.mp3")).unwrap());
+        part.seek(SeekFrom::Start(10)).unwrap();
+        let mut ten = [0u8; 10];
+        part.read_exact(&mut ten).unwrap();
+        assert_eq!(&ten, &bytes[10..20]);
+    }
+
+    #[test]
+    fn one_file_with_chapters_keeps_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("book.mp3");
+        let mut bytes = silent_mp3(0, "Dracula", "Dracula", "Bram Stoker");
+        // Rewrite the tag with two chapters.
+        {
+            use id3::TagLike;
+            let mut tag = id3::Tag::read_from2(std::io::Cursor::new(&bytes)).unwrap();
+            for (i, (start, title)) in [(0u32, "Jonathan Harker's Journal"), (600, "Letter")].iter().enumerate() {
+                tag.add_frame(id3::frame::Chapter {
+                    element_id: format!("ch{i}"),
+                    start_time: *start,
+                    end_time: start + 600,
+                    start_offset: u32::MAX,
+                    end_offset: u32::MAX,
+                    frames: vec![id3::Frame::text("TIT2", *title)],
+                });
+            }
+            let mut out = Vec::new();
+            tag.write_to(&mut out, id3::Version::Id3v24).unwrap();
+            let mut frame = vec![0u8; 417];
+            frame[..4].copy_from_slice(&[0xFF, 0xFB, 0x90, 0x64]);
+            for _ in 0..50 {
+                out.extend_from_slice(&frame);
+            }
+            bytes = out;
+        }
+        fs::write(&path, bytes).unwrap();
+        let (metadata, audio) = read(&path, "mp3").unwrap();
+        assert_eq!(metadata.title.as_deref(), Some("Dracula"));
+        assert_eq!(audio.parts.len(), 1);
+        assert_eq!(audio.chapters, vec![
+            Chapter { title: "Jonathan Harker's Journal".into(), start_ms: 0 },
+            Chapter { title: "Letter".into(), start_ms: 600 }
+        ]);
+    }
+
+    #[test]
+    fn an_audiobook_folder_imports_as_one_book_on_its_own_page() {
+        use crate::model::{ItemKind, LibraryQuery, ReadStatus};
+        let (dir, mut library) = crate::library::tests::open_temp_library();
+        let source = dir.path().join("incoming");
+        let folder = source.join("Persuasion");
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("Chapter 1.mp3"), silent_mp3(40, "Chapter 1", "Persuasion", "Jane Austen")).unwrap();
+        fs::write(folder.join("Chapter 2.mp3"), silent_mp3(40, "Chapter 2", "Persuasion", "Jane Austen")).unwrap();
+        fs::write(source.join("notes.nfo"), "not a book").unwrap();
+        crate::epub::tests::write_test_epub(&source.join("persuasion.epub"), "Persuasion", "Jane Austen", false);
+
+        let results = library.import_files(std::slice::from_ref(&source));
+        assert_eq!(results.len(), 2, "the folder is one book, beside the ebook: {results:?}");
+        let audio_id = match &results[0] {
+            crate::model::ImportResult::Imported { book_id, path, .. } => {
+                assert!(path.ends_with("Persuasion"), "reported by the folder: {path}");
+                book_id.clone()
+            }
+            other => panic!("{other:?}"),
+        };
+        assert!(!library.paths.books_dir.join(".incoming").read_dir().is_ok_and(|mut d| d.next().is_some()), "the bundle made on the way is gone");
+
+        let page = |kind| library.library_page(&LibraryQuery { kind: Some(kind), ..Default::default() }).unwrap();
+        assert_eq!(page(ItemKind::Audiobooks).books.iter().map(|b| b.id.clone()).collect::<Vec<_>>(), vec![audio_id.clone()]);
+        assert_eq!(page(ItemKind::Books).total, 1, "the ebook stays in the Library");
+        assert!(library.home().unwrap().recently_added.iter().all(|b| b.id != audio_id), "Home is for reading");
+
+        let book = library.audiobook(&audio_id).unwrap();
+        assert_eq!(book.book.title, "Persuasion");
+        assert_eq!(book.narrators, vec!["Ann Reader".to_string()]);
+        assert_eq!(book.chapters.len(), 2);
+        assert_eq!(book.parts.len(), 2);
+        assert!(book.duration_ms > 1500);
+        assert_eq!(book.book.duration_ms, Some(book.duration_ms));
+
+        library.save_listening(&audio_id, book.duration_ms / 2, Some("Chapter 2".into())).unwrap();
+        let book = library.audiobook(&audio_id).unwrap();
+        assert_eq!(book.position_ms, book.duration_ms / 2);
+        assert_eq!(book.book.status, ReadStatus::InProgress);
+        assert!((book.book.total_progression.unwrap() - 0.5).abs() < 0.01);
+
+        let ebook_id = page(ItemKind::Books).books[0].id.clone();
+        assert!(library.link_ebook(&audio_id, Some(&audio_id)).is_err(), "an audiobook can't read along with itself");
+        library.link_ebook(&audio_id, Some(&ebook_id)).unwrap();
+        assert_eq!(library.audiobook_for_ebook(&ebook_id).unwrap(), Some(audio_id.clone()));
+        assert_eq!(library.audiobook(&audio_id).unwrap().ebook.map(|e| e.name), Some("Persuasion".into()));
+
+        // The same folder again is the same book.
+        let again = library.import_files(&[folder]);
+        assert!(matches!(&again[0], crate::model::ImportResult::AlreadyInLibrary { book_id, .. } if *book_id == audio_id), "{again:?}");
+
+        // Narrators can be corrected like any detail.
+        library
+            .edit_details(std::slice::from_ref(&audio_id), &[crate::details::DetailChange { field: "narrators".into(), value: Some(r#"["Juliet Stevenson"]"#.into()) }])
+            .unwrap();
+        assert_eq!(library.audiobook(&audio_id).unwrap().narrators, vec!["Juliet Stevenson".to_string()]);
+        let by = library
+            .library_page(&LibraryQuery { kind: Some(ItemKind::Audiobooks), narrators: vec!["juliet stevenson".into()], ..Default::default() })
+            .unwrap();
+        assert_eq!(by.total, 1);
+        assert_eq!(by.narrators, vec!["Juliet Stevenson".to_string()]);
+    }
+}

@@ -3,6 +3,7 @@
 // clearly labelled sample library so screens can be looked at without the app.
 
 import type {
+  Audiobook,
   ProviderChoice,
   Annotation,
   AnnotationInput,
@@ -16,11 +17,18 @@ import type {
   CollectionsOverview,
   DetailChange,
   DuplicateGroup,
+  CopiedToEreader,
+  Ereader,
   GoodreadsImport,
   HardcoverSendAll,
   HardcoverStatus,
   HomeViewModel,
   ImportItem,
+  KindleEmailInput,
+  KindleEmailView,
+  MoveMode,
+  MoveScope,
+  MoveStatus,
   LibraryInfo,
   LibraryPage,
   LibraryQuery,
@@ -73,6 +81,16 @@ export interface Api {
   fillCover(bookId: string, picture: Uint8Array): Promise<boolean>;
   /** Downloads a cover found online, for a book that has none. */
   fetchCover(bookId: string, url: string): Promise<boolean>;
+  /** An audiobook's chapters, parts and your place in it. */
+  audiobook(bookId: string): Promise<Audiobook>;
+  /** Remembers where you are in an audiobook. */
+  saveListening(bookId: string, positionMs: number, chapter: string | null): Promise<void>;
+  /** Links an audiobook to its ebook for reading along, or unlinks it with null. */
+  linkEbook(audiobookId: string, ebookId: string | null): Promise<void>;
+  /** The audiobook linked to an ebook, for reading along. */
+  audiobookForEbook(ebookId: string): Promise<string | null>;
+  /** Where the player streams one part of an audiobook from, or null where it can't play here. */
+  audioUrl(bookId: string, part: number): string | null;
   getProfile(): Promise<Profile>;
   /** Asks for a picture, copies it into TBV, and returns the new profile. Null if cancelled. */
   chooseAvatar(): Promise<Profile | null>;
@@ -148,6 +166,19 @@ export interface Api {
   resolveSyncConflict(kind: string, key: string, keepCloud: boolean): Promise<void>;
   /** Fetches a book that's only in the cloud onto this device. */
   downloadBook(bookId: string): Promise<void>;
+  /** How moving or backing up the library to another service stands. */
+  moveStatus(): Promise<MoveStatus>;
+  /** Signs in to a Supabase project to move to, leaving sync's own sign-in alone. False: confirm the email first. */
+  moveSignIn(project: SupabaseProject, email: string, password: string, create: boolean): Promise<boolean>;
+  moveSignOut(): Promise<void>;
+  /** Starts copying the library to another service, in the background. Progress arrives through `onMove`. */
+  startMove(mode: MoveMode, scope: MoveScope, to: ProviderChoice): Promise<void>;
+  /** Runs the last move again; only what's still missing is copied. */
+  retryMove(): Promise<void>;
+  cancelMove(): Promise<void>;
+  /** Puts away a finished move's result. */
+  clearMove(): Promise<void>;
+  onMove(listener: (status: MoveStatus) => void): () => void;
   /** Your tags, A to Z, with how many books carry each. */
   allTags(): Promise<TagCount[]>;
   /** Puts a tag on books. Returns the tag as kept (an existing tag keeps its spelling). */
@@ -170,6 +201,18 @@ export interface Api {
   saveFetched(bookId: string, source: "google" | "openlibrary", values: Record<string, string>): Promise<void>;
   /** Remembers that a group isn't duplicates, so it isn't shown again. */
   dismissDuplicates(key: string): Promise<void>;
+  /** E-readers plugged in by cable now. */
+  listEreaders(): Promise<Ereader[]>;
+  /** Copies a book onto the reader plugged in at `root`. The library's copy is never changed. */
+  copyToEreader(bookId: string, root: string): Promise<CopiedToEreader>;
+  /** Kindle by email, if it's set up on this device. */
+  kindleEmailSettings(): Promise<KindleEmailView | null>;
+  saveKindleEmail(settings: KindleEmailInput): Promise<KindleEmailView>;
+  forgetKindleEmail(): Promise<void>;
+  /** Emails a book to the person's Kindle. */
+  sendToKindle(bookId: string): Promise<void>;
+  /** Emails a small test document to the Kindle with the saved settings. */
+  sendKindleTest(): Promise<void>;
   /** Hears sync starting and finishing, and library changes it brings. Returns a way to stop. */
   onSync(listener: { status?: (status: SyncStatus) => void; libraryChanged?: () => void }): () => void;
 }
@@ -262,6 +305,14 @@ function appApi(): Api {
     bookText: async (bookId) => (await core).invoke<string>("book_text", { bookId }),
     fillCover: async (bookId, picture) => (await core).invoke<boolean>("fill_cover", picture, { headers: { "book-id": bookId } }),
     fetchCover: async (bookId, url) => (await core).invoke<boolean>("fetch_cover", { bookId, url }),
+    audiobook: async (bookId) => (await core).invoke<Audiobook>("audiobook", { bookId }),
+    saveListening: async (bookId, positionMs, chapter) =>
+      (await core).invoke("save_listening", { bookId, positionMs: Math.max(0, Math.round(positionMs)), chapter }),
+    linkEbook: async (audiobookId, ebookId) => (await core).invoke("link_ebook", { audiobookId, ebookId }),
+    audiobookForEbook: async (ebookId) => (await core).invoke<string | null>("audiobook_for_ebook", { ebookId }),
+    // Windows and Android reach custom schemes through http://<scheme>.localhost.
+    audioUrl: (bookId, part) =>
+      `${/windows|android/i.test(navigator.userAgent) ? "http://tbvaudio.localhost" : "tbvaudio://localhost"}/${encodeURIComponent(bookId)}/${part}`,
     getProfile: async () => (await core).invoke<Profile>("get_profile"),
     chooseAvatar: async () => {
       const [path] = asList(
@@ -359,6 +410,27 @@ function appApi(): Api {
     suggestSyncFolder: async (service) => (await core).invoke<string | null>("suggest_sync_folder", { service }),
     resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
     downloadBook: async (bookId) => (await core).invoke("download_book", { bookId }),
+    moveStatus: async () => (await core).invoke<MoveStatus>("move_status"),
+    moveSignIn: async (project, email, password, create) =>
+      (await core).invoke<boolean>("move_sign_in", { project, email, password, create }),
+    moveSignOut: async () => (await core).invoke("move_sign_out"),
+    startMove: async (mode, scope, to) => (await core).invoke("start_move", { mode, scope, to }),
+    retryMove: async () => (await core).invoke("retry_move"),
+    cancelMove: async () => (await core).invoke("cancel_move"),
+    clearMove: async () => (await core).invoke("clear_move"),
+    onMove: (listener) => {
+      let stop: (() => void) | null = null;
+      let stopped = false;
+      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+        const unlisten = await listen<MoveStatus>("move-changed", (e) => listener(e.payload));
+        if (stopped) unlisten();
+        else stop = unlisten;
+      });
+      return () => {
+        stopped = true;
+        stop?.();
+      };
+    },
     allTags: async () => (await core).invoke<TagCount[]>("all_tags"),
     addTag: async (bookIds, tag) => (await core).invoke<string>("add_tag", { bookIds, tag }),
     removeTag: async (bookIds, tag) => (await core).invoke("remove_tag", { bookIds, tag }),
@@ -371,6 +443,13 @@ function appApi(): Api {
     editDetails: async (bookIds, changes) => (await core).invoke("edit_details", { bookIds, changes }),
     resetDetails: async (bookId, fetched) => (await core).invoke("reset_details", { bookId, fetched }),
     saveFetched: async (bookId, source, values) => (await core).invoke("save_fetched", { bookId, source, values }),
+    listEreaders: async () => (await core).invoke<Ereader[]>("list_ereaders"),
+    copyToEreader: async (bookId, root) => (await core).invoke<CopiedToEreader>("copy_to_ereader", { bookId, root }),
+    kindleEmailSettings: async () => (await core).invoke<KindleEmailView | null>("kindle_email_settings"),
+    saveKindleEmail: async (settings) => (await core).invoke<KindleEmailView>("save_kindle_email", { settings }),
+    forgetKindleEmail: async () => (await core).invoke("forget_kindle_email"),
+    sendToKindle: async (bookId) => (await core).invoke("send_to_kindle", { bookId }),
+    sendKindleTest: async () => (await core).invoke("send_kindle_test"),
     onSync: ({ status, libraryChanged }) => {
       const stops: (() => void)[] = [];
       let stopped = false;

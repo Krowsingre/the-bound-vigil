@@ -367,9 +367,16 @@ impl Remote for Supabase {
     }
 
     fn list(&mut self, folder: &str) -> Result<Vec<String>> {
+        Ok(self.list_sizes(folder)?.into_iter().map(|(name, _)| name).collect())
+    }
+
+    /// Storage lists each file's size in its metadata (folders have none).
+    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
         #[derive(Deserialize)]
         struct Item {
             name: String,
+            #[serde(default)]
+            metadata: Option<Value>,
         }
         let prefix = format!("{}/{}", self.session.user_id, folder.trim_end_matches('/'));
         let key = self.project.anon_key.clone();
@@ -389,7 +396,10 @@ impl Remote for Supabase {
             }
             let page: Vec<Item> = answer.body_mut().read_json().map_err(|e| Error::Cloud(e.to_string()))?;
             let full = page.len() == 1000;
-            names.extend(page.into_iter().map(|i| i.name));
+            names.extend(page.into_iter().map(|i| {
+                let size = i.metadata.as_ref().and_then(|m| m.get("size")).and_then(Value::as_u64);
+                (i.name, size)
+            }));
             if !full {
                 return Ok(names);
             }

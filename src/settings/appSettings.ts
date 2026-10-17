@@ -19,6 +19,8 @@ export interface SyncSettings {
   collections: boolean;
   metadata: boolean;
   bookFiles: boolean;
+  /** Audiobook files are large, so they have a switch of their own. */
+  audioFiles: boolean;
   frequency: SyncFrequency;
   onStartup: boolean;
   onClose: boolean;
@@ -67,6 +69,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     collections: true,
     metadata: true,
     bookFiles: false,
+    audioFiles: false,
     frequency: "automatic",
     onStartup: true,
     onClose: true,
@@ -114,6 +117,7 @@ export function parseAppSettings(json: string | null): AppSettings {
       collections: flag(s.collections, d.sync.collections),
       metadata: flag(s.metadata, d.sync.metadata),
       bookFiles: flag(s.bookFiles, d.sync.bookFiles),
+      audioFiles: flag(s.audioFiles, d.sync.audioFiles),
       frequency: oneOf(s.frequency, ["automatic", "15min", "hourly", "manual"], d.sync.frequency),
       onStartup: flag(s.onStartup, d.sync.onStartup),
       onClose: flag(s.onClose, d.sync.onClose),

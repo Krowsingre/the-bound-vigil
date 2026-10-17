@@ -16,10 +16,14 @@ export const DETAIL_FIELDS: { field: DetailFieldName; label: string; list?: bool
   { field: "published", label: "Published" },
   { field: "language", label: "Language" },
   { field: "isbn", label: "ISBN" },
+  { field: "narrators", label: "Narrators", list: true },
 ];
 
+/** Details that only audiobooks have. */
+export const AUDIO_ONLY: DetailFieldName[] = ["narrators"];
+
 export const detailLabel = (field: DetailFieldName) => DETAIL_FIELDS.find((f) => f.field === field)?.label ?? field;
-export const isList = (field: DetailFieldName) => field === "authors" || field === "genres";
+export const isList = (field: DetailFieldName) => field === "authors" || field === "genres" || field === "narrators";
 
 /** The value that shows: your edit, else fetched, else the book's own. */
 export function effective(f: DetailField): string | null {
@@ -80,5 +84,6 @@ export function previewFields(fields: DetailField[]): Partial<BookPreview> {
     seriesIndex: index?.trim() && Number.isFinite(Number(index)) ? Number(index) : null,
     synopsis: get("synopsis"),
     genres: listOf(get("genres")),
+    narrators: listOf(get("narrators")),
   };
 }

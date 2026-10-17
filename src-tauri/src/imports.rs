@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tbv_core::ids::book_id_for_file_with_progress;
-use tbv_core::library::{find_book_files, ImportPlan};
+use tbv_core::library::{find_book_files, stage_source, ImportPlan, Staged};
 use tbv_core::model::ImportResult;
 use tbv_core::{Library, SUPPORTED_FORMATS};
 
@@ -81,7 +81,7 @@ impl Imports {
                 queue.items.push(ImportItem {
                     id,
                     name: file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-                    bytes: std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0),
+                    bytes: size_of(&file),
                     path: file.display().to_string(),
                     bytes_read: 0,
                     stage: Stage::Waiting,
@@ -155,20 +155,30 @@ impl Imports {
     fn import(&self, id: u64, path: &Path, app: &AppHandle, library: &Mutex<Library>) -> tbv_core::Result<ImportResult> {
         let lock = || library.lock().map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()));
         let display = path.display().to_string();
-        let Some(format) = path
+        let supported = path
             .extension()
             .map(|e| e.to_string_lossy().to_ascii_lowercase())
-            .filter(|ext| SUPPORTED_FORMATS.contains(&ext.as_str()))
-        else {
+            .is_some_and(|ext| SUPPORTED_FORMATS.contains(&ext.as_str()));
+        if !supported && !path.is_dir() {
             return Ok(ImportResult::Unsupported { path: display });
-        };
-        let book_id = book_id_for_file_with_progress(path, &mut |read| {
+        }
+        // A folder of audio files is bundled into one audiobook first.
+        let paths = lock()?.paths().clone();
+        let staged = stage_source(&paths, path)?;
+        let result = self.import_staged(id, &staged, app, library);
+        staged.clean_up();
+        result.map(|r| r.from_path(display))
+    }
+
+    fn import_staged(&self, id: u64, staged: &Staged, app: &AppHandle, library: &Mutex<Library>) -> tbv_core::Result<ImportResult> {
+        let lock = || library.lock().map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()));
+        let book_id = book_id_for_file_with_progress(&staged.file, &mut |read| {
             self.update(id, |item| item.bytes_read = read);
             self.tell(app, false);
         })?;
         self.update(id, |item| item.stage = Stage::Adding);
         self.tell(app, false);
-        let job = match lock()?.import_plan(path, &format, book_id)? {
+        let job = match lock()?.import_plan(&staged.file, &staged.format, book_id)? {
             ImportPlan::Finished(result) => return Ok(result),
             ImportPlan::Prepare(job) => job,
         };
@@ -193,6 +203,14 @@ impl Imports {
         *told = Some(Instant::now());
         let _ = app.emit("imports-changed", self.list());
     }
+}
+
+/// How much there is to read: a file's size, or a folder audiobook's audio.
+fn size_of(path: &Path) -> u64 {
+    if path.is_dir() {
+        return tbv_core::audio::folder_parts(path).iter().filter_map(|p| std::fs::metadata(p).ok()).map(|m| m.len()).sum();
+    }
+    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
 }
 
 fn failed(path: &Path, reason: &str) -> ImportResult {
