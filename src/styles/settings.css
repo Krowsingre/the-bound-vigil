@@ -977,3 +977,105 @@ kbd {
 .settings-subpanel .settings-row {
   grid-template-columns: minmax(0, 1fr);
 }
+
+.connection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.status-dot.is-idle {
+  background: #4f8a5b;
+  opacity: 1;
+}
+
+.status-dot.is-syncing {
+  background: var(--accent);
+  opacity: 1;
+}
+
+.status-dot.is-attention,
+.status-dot.is-offline {
+  background: #b0873a;
+  opacity: 1;
+}
+
+.status-dot.is-error {
+  background: var(--danger);
+  opacity: 1;
+}
+
+.setup-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.setup-steps .btn {
+  margin: 6px 0 0;
+  display: flex;
+}
+
+.btn-small {
+  padding: 4px 10px;
+  font-size: 12.5px;
+}
+
+.account-panel {
+  align-items: stretch;
+}
+
+.account-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.account-line svg {
+  color: #4f8a5b;
+}
+
+.conflict-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+}
+
+.conflict dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 18px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.conflict dt {
+  color: var(--text-muted);
+}
+
+.conflict dd {
+  margin: 0;
+}
+
+.conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

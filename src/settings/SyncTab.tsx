@@ -1,9 +1,13 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, isApp } from "../api";
+import type { SupabaseProject, SyncOverview } from "../api/types";
+import { relativeTime } from "../lib/format";
+import SETUP_SQL from "../../supabase/setup.sql?raw";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { useAppSettings, type ConflictRule, type SyncFrequency } from "./appSettings";
+import { AccountPanel } from "./AccountPanel";
 import { ActionTile, RadioList, Row, Section, Select, Toggle } from "./controls";
 
 type Provider = "supabase" | "dropbox" | "gdrive" | "onedrive" | "icloud" | "mega" | "custom";
@@ -85,68 +89,66 @@ const PROVIDERS: { id: Provider; name: string; art: React.ReactNode }[] = [
   },
 ];
 
+/** Sync's state in a few words, for the connection details. */
+const STATE_TEXT: Record<SyncOverview["status"]["state"], string> = {
+  disabled: "Not connected",
+  idle: "Up to date",
+  syncing: "Syncing…",
+  offline: "Offline. Changes wait here",
+  attention: "Needs you to choose",
+  error: "Sync failed",
+};
+
 /** What each service still waiting for its sync update will ask for. */
 const COMING: Partial<Record<Provider, string>> = {
   custom:
     "Use a service that isn't listed, such as Nextcloud, pCloud or Box: point TBV at a folder its app keeps in sync on this computer, or at its WebDAV address. This comes with a later update.",
 };
 
-const SUPABASE_KEY = "sync.supabase";
-
-interface SupabaseDetails {
-  url: string;
-  anonKey: string;
-}
+const EMPTY_PROJECT: SupabaseProject = { url: "", anonKey: "" };
 
 export function SyncTab({ onRestored }: { onRestored: () => void }) {
   const { settings, changeSync } = useAppSettings();
   const sync = settings.sync;
   const toast = useToast();
   const [provider, setProvider] = useState<Provider>("supabase");
-  const [supabase, setSupabase] = useState<SupabaseDetails | null>(null);
-  const [draft, setDraft] = useState<SupabaseDetails>({ url: "", anonKey: "" });
+  const [overview, setOverview] = useState<SyncOverview | null>(null);
+  const [draft, setDraft] = useState<SupabaseProject>(EMPTY_PROJECT);
   const [editing, setEditing] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  const reload = useCallback(
+    () =>
+      api.syncOverview().then(
+        (o) => {
+          setOverview(o);
+          return o;
+        },
+        () => null,
+      ),
+    [],
+  );
   useEffect(() => {
-    api.getSetting(SUPABASE_KEY).then(
-      (json) => {
-        try {
-          const saved = JSON.parse(json ?? "null") as SupabaseDetails | null;
-          if (saved?.url) {
-            setSupabase(saved);
-            setDraft(saved);
-          }
-        } catch {
-          /* nothing saved */
-        }
-      },
-      () => undefined,
-    );
-  }, []);
+    void reload().then((o) => o?.project && setDraft(o.project));
+    return api.onSync({ status: () => void reload() });
+  }, [reload]);
+
+  const project = overview?.project ?? null;
+  const signedIn = overview?.signedInAs ?? null;
+  const state = overview?.status.state ?? "disabled";
 
   const urlOk = /^https:\/\/[a-z0-9-]+\.supabase\.(co|in)\/?$/i.test(draft.url.trim());
-  const saveSupabase = () => {
-    const details = {
-      url: draft.url.trim().replace(/\/$/, ""),
-      anonKey: draft.anonKey.trim(),
-    };
-    api.setSetting(SUPABASE_KEY, JSON.stringify(details)).then(
+  const saveProject = (next: SupabaseProject | null) =>
+    api.setSupabaseProject(next).then(
       () => {
-        setSupabase(details);
         setEditing(false);
-        toast("Saved. TBV will use this project when syncing is switched on.");
+        if (!next) setDraft(EMPTY_PROJECT);
+        void reload();
+        toast(next ? "Saved. Now sign in below." : "TBV no longer uses that project.");
       },
       (e: unknown) => toast(String(e)),
     );
-  };
-  const forgetSupabase = () =>
-    api.setSetting(SUPABASE_KEY, "null").then(() => {
-      setSupabase(null);
-      setDraft({ url: "", anonKey: "" });
-      setEditing(false);
-    });
 
   const run = async (work: () => Promise<boolean>, done: string) => {
     if (!isApp) return toast("This works in the desktop app. The browser preview has sample books only.");
@@ -160,19 +162,12 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
     }
   };
 
-  const statusOf = (id: Provider) => (id === "supabase" && supabase ? "Project saved" : "Not connected");
+  const statusOf = (id: Provider) =>
+    id !== "supabase" ? "Coming later" : signedIn ? "Connected" : project ? "Sign in to start" : "Not connected";
   const chosen = PROVIDERS.find((p) => p.id === provider)!;
 
   return (
     <>
-      <p className="settings-notice">
-        <Icon name="info" size={18} />
-        <span>
-          Syncing between devices arrives in the next update. Everything you choose here is saved now and used as soon as it does. Backups and exports
-          below already work.
-        </span>
-      </p>
-
       <Section
         id="provider"
         title="Sync provider"
@@ -185,24 +180,46 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
               <dd>{chosen.name}</dd>
               <dt>Status</dt>
               <dd>
-                <span className={`status-dot${provider === "supabase" && supabase ? " is-ready" : ""}`} aria-hidden />
-                {provider === "supabase" && supabase ? "Ready for sync" : "Not connected"}
+                <span className={`status-dot${provider === "supabase" && signedIn ? ` is-${state}` : ""}`} aria-hidden />
+                {provider !== "supabase" ? "Not connected" : signedIn ? STATE_TEXT[state] : project ? "Not signed in" : "Not connected"}
               </dd>
-              {provider === "supabase" && supabase && (
+              {provider === "supabase" && project && (
                 <>
                   <dt>Project</dt>
-                  <dd className="mono">{supabase.url.replace(/^https:\/\//, "")}</dd>
+                  <dd className="mono">{project.url.replace(/^https:\/\//, "")}</dd>
+                </>
+              )}
+              {provider === "supabase" && signedIn && (
+                <>
+                  <dt>Account</dt>
+                  <dd>{signedIn}</dd>
                 </>
               )}
               <dt>Last synced</dt>
-              <dd>Never</dd>
+              <dd>{provider === "supabase" && overview?.status.lastSuccessAt ? relativeTime(overview.status.lastSuccessAt) : "Never"}</dd>
+              {provider === "supabase" && signedIn && overview && overview.waitingToSend > 0 && (
+                <>
+                  <dt>Waiting</dt>
+                  <dd>
+                    {overview.waitingToSend} {overview.waitingToSend === 1 ? "change" : "changes"} to send
+                  </dd>
+                </>
+              )}
             </dl>
+            {provider === "supabase" && overview?.lastError && signedIn && <p className="form-error">{overview.lastError}</p>}
             {provider === "supabase" ? (
-              <button type="button" className="btn btn-quiet" onClick={() => setEditing(true)}>
-                <Icon name="settings" size={16} /> {supabase ? "Manage connection" : "Set up Supabase"}
-              </button>
+              <div className="connection-actions">
+                {signedIn && (
+                  <button type="button" className="btn btn-primary" disabled={state === "syncing"} onClick={() => void api.syncNow()}>
+                    <Icon name="sync" size={16} /> {state === "syncing" ? "Syncing…" : "Sync now"}
+                  </button>
+                )}
+                <button type="button" className="btn btn-quiet" onClick={() => setEditing(true)}>
+                  <Icon name="settings" size={16} /> {project ? "Manage connection" : "Set up Supabase"}
+                </button>
+              </div>
             ) : (
-              <p className="settings-row-hint">{COMING[provider] ?? `Signing in to ${chosen.name} comes with the sync update.`}</p>
+              <p className="settings-row-hint">{COMING[provider] ?? `${chosen.name} comes in a later update. Supabase works now.`}</p>
             )}
           </div>
         }
@@ -221,56 +238,107 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
               <span className="provider-text">
                 <span className="settings-row-label">{p.name}</span>
                 <span className="settings-row-hint">
-                  <span className={`status-dot${p.id === "supabase" && supabase ? " is-ready" : ""}`} aria-hidden />
+                  <span className={`status-dot${p.id === "supabase" && signedIn ? " is-ready" : ""}`} aria-hidden />
                   {statusOf(p.id)}
                 </span>
               </span>
             </button>
           ))}
         </div>
-        {provider === "supabase" && editing && (
+
+        {provider === "supabase" && (editing || !project) && (
           <form
             className="settings-subpanel supabase-form"
             onSubmit={(e) => {
               e.preventDefault();
-              if (urlOk && draft.anonKey.trim()) saveSupabase();
+              if (urlOk && draft.anonKey.trim()) void saveProject({ url: draft.url.trim().replace(/\/$/, ""), anonKey: draft.anonKey.trim() });
             }}
           >
             <h3>Your Supabase project</h3>
-            <p className="settings-row-hint">
-              Use a project made for TBV, not one another app uses. Both values are in Supabase under Project Settings, then API. They stay on this
-              device.
-            </p>
+            <ol className="setup-steps">
+              <li>Use a Supabase project made for TBV, not one another app uses.</li>
+              <li>
+                Open its <strong>SQL Editor</strong>, paste TBV's setup script, and press <strong>Run</strong>. It only needs doing once.
+                <button
+                  type="button"
+                  className="btn btn-quiet btn-small"
+                  onClick={() =>
+                    navigator.clipboard.writeText(SETUP_SQL).then(
+                      () => toast("Setup script copied. Paste it into Supabase's SQL Editor."),
+                      () => toast("Couldn't copy. The script is supabase/setup.sql in TBV's code."),
+                    )
+                  }
+                >
+                  <Icon name="copy" size={14} /> Copy setup script
+                </button>
+              </li>
+              <li>
+                From <strong>Project Settings</strong>, copy the project URL and the publishable key into the boxes below.
+              </li>
+            </ol>
             <label className="field">
               <span>Project URL</span>
-              <input
-                value={draft.url}
-                onChange={(e) => setDraft({ ...draft, url: e.target.value })}
-                placeholder="https://yourproject.supabase.co"
-                spellCheck={false}
-              />
+              <input value={draft.url} onChange={(e) => setDraft({ ...draft, url: e.target.value })} placeholder="https://yourproject.supabase.co" spellCheck={false} />
             </label>
             {draft.url.trim() && !urlOk && <p className="form-error">That doesn't look like a Supabase project address.</p>}
             <label className="field">
-              <span>Public (anon) key</span>
-              <input value={draft.anonKey} onChange={(e) => setDraft({ ...draft, anonKey: e.target.value })} placeholder="eyJ…" spellCheck={false} />
+              <span>Publishable key</span>
+              <input
+                value={draft.anonKey}
+                onChange={(e) => setDraft({ ...draft, anonKey: e.target.value })}
+                placeholder="sb_publishable_… (or the older anon key, eyJ…)"
+                spellCheck={false}
+              />
             </label>
+            <p className="settings-row-hint">This key is safe to keep in an app: it can't see anything until you sign in. Never paste the secret (service role) key here.</p>
             <div className="dialog-actions">
-              {supabase && (
-                <button type="button" className="btn btn-quiet btn-danger-text" onClick={() => void forgetSupabase()}>
+              {project && (
+                <button type="button" className="btn btn-quiet btn-danger-text" onClick={() => void saveProject(null)}>
                   Forget this project
                 </button>
               )}
-              <button type="button" className="btn btn-quiet" onClick={() => setEditing(false)}>
-                Cancel
-              </button>
+              {project && (
+                <button type="button" className="btn btn-quiet" onClick={() => (setEditing(false), setDraft(project))}>
+                  Cancel
+                </button>
+              )}
               <button type="submit" className="btn btn-primary" disabled={!urlOk || !draft.anonKey.trim()}>
                 Save
               </button>
             </div>
           </form>
         )}
+
+        {provider === "supabase" && project && !editing && (
+          <AccountPanel signedIn={signedIn} onChanged={() => void reload()} />
+        )}
       </Section>
+
+      {overview && overview.conflicts.length > 0 && (
+        <Section id="conflicts" title="Changes to choose between" lede="This device and another changed the same things. Pick which version to keep.">
+          <ul className="conflict-list">
+            {overview.conflicts.map((c) => (
+              <li key={`${c.kind}${c.key}`} className="conflict">
+                <strong>{c.what}</strong>
+                <dl>
+                  <dt>On this device</dt>
+                  <dd>{c.here}</dd>
+                  <dt>In the cloud ({relativeTime(c.cloudChangedAt)})</dt>
+                  <dd>{c.cloud}</dd>
+                </dl>
+                <div className="conflict-actions">
+                  <button type="button" className="btn btn-quiet" onClick={() => void api.resolveSyncConflict(c.kind, c.key, false).then(reload)}>
+                    Keep this device's
+                  </button>
+                  <button type="button" className="btn btn-quiet" onClick={() => void api.resolveSyncConflict(c.kind, c.key, true).then(reload)}>
+                    Keep the cloud's
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
 
       <Section
         id="options"
@@ -281,8 +349,8 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
             <h3>
               <Icon name="info" size={18} /> About book file syncing
             </h3>
-            <p>Book files are not synced unless you turn it on. They stay on this computer, and you decide where copies go.</p>
-            <p>With it on, your whole library can be opened from any of your devices. TBV never changes the files themselves.</p>
+            <p>Book files are not synced unless you turn it on. Without it, other devices list your books and their covers, and a book opens where its file is.</p>
+            <p>With it on, any of your devices can open any book, and downloads it the first time. TBV never changes the files themselves. Supabase's free plan holds 1 GB, and files over 50 MB are skipped.</p>
           </div>
         }
       >

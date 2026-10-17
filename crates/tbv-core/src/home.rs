@@ -52,10 +52,7 @@ impl Library {
             annotations: self.annotation_previews()?,
             library_counts: self.counts()?,
             activity: None,
-            sync: SyncStatus {
-                state: SyncState::Disabled,
-                last_success_at: None,
-            },
+            sync: self.sync_status()?,
         })
     }
 

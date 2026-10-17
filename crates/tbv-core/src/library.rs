@@ -3,6 +3,8 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -47,6 +49,9 @@ impl LibraryPaths {
 pub struct Library {
     pub(crate) conn: Connection,
     pub(crate) paths: LibraryPaths,
+    /// False while changes from another device are written, so they aren't
+    /// stamped as this device's own.
+    pub(crate) sync_live: Arc<AtomicBool>,
 }
 
 const MIGRATIONS: &[&str] = &[
@@ -169,6 +174,76 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX idx_personal_notes_updated ON personal_notes(updated_at);
     "#,
+    // v6: sync. Every change to something that travels between devices
+    // stamps `sync_clock` (see sync.rs, which adds the triggers), and
+    // `pushed` says whether the cloud has it yet. Existing data is stamped
+    // with its own dates, so a device that joins later doesn't overrule newer
+    // changes made elsewhere. A book can now be known here only by its cover,
+    // so `local_files.path` may be empty.
+    r#"
+    CREATE TABLE sync_clock (
+        kind TEXT NOT NULL,
+        key TEXT NOT NULL,
+        changed_at TEXT NOT NULL,
+        pushed INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (kind, key)
+    );
+    CREATE INDEX idx_sync_clock_waiting ON sync_clock(pushed) WHERE pushed = 0;
+
+    -- Changes from another device that waited for something they belong to
+    -- (a note before its book arrived, say).
+    CREATE TABLE sync_waiting (
+        kind TEXT NOT NULL,
+        key TEXT NOT NULL,
+        record TEXT NOT NULL,
+        PRIMARY KEY (kind, key)
+    );
+
+    -- Both devices changed the same thing and the user asked to choose.
+    CREATE TABLE sync_conflicts (
+        kind TEXT NOT NULL,
+        key TEXT NOT NULL,
+        remote TEXT NOT NULL,
+        found_at TEXT NOT NULL,
+        PRIMARY KEY (kind, key)
+    );
+
+    -- Files this device has put in the cloud, or failed to.
+    CREATE TABLE sync_files (
+        path TEXT PRIMARY KEY,
+        uploaded_at TEXT,
+        failed_at TEXT,
+        error TEXT
+    );
+
+    INSERT INTO sync_clock (kind, key, changed_at)
+        SELECT 'book', json_array(id), added_at FROM books;
+    INSERT INTO sync_clock (kind, key, changed_at)
+        SELECT 'book_progress', json_array(id), COALESCE(last_opened_at, added_at) FROM books
+        WHERE status != 'unread' OR resume_locator IS NOT NULL OR last_opened_at IS NOT NULL;
+    INSERT INTO sync_clock (kind, key, changed_at)
+        SELECT 'book_shelves', json_array(id), added_at FROM books WHERE favorite = 1 OR want_to_read = 1;
+    INSERT INTO sync_clock (kind, key, changed_at)
+        SELECT 'override', json_array(book_id, field), updated_at FROM metadata_overrides;
+    INSERT INTO sync_clock (kind, key, changed_at)
+        SELECT 'collection', json_array(id), COALESCE(updated_at, created_at) FROM collections
+        WHERE kind != 'shelf' OR updated_at > '2026-01-01T00:00:00.000Z';
+    INSERT INTO sync_clock (kind, key, changed_at)
+        SELECT 'collection_book', json_array(collection_id, book_id), COALESCE(updated_at, added_at) FROM collection_books;
+    INSERT INTO sync_clock (kind, key, changed_at)
+        SELECT 'annotation', json_array(id), updated_at FROM annotations;
+    INSERT INTO sync_clock (kind, key, changed_at)
+        SELECT 'personal_note', json_array(id), updated_at FROM personal_notes;
+
+    CREATE TABLE local_files_v6 (
+        book_id TEXT PRIMARY KEY REFERENCES books(id),
+        path TEXT,
+        cover_path TEXT
+    );
+    INSERT INTO local_files_v6 SELECT book_id, path, cover_path FROM local_files;
+    DROP TABLE local_files;
+    ALTER TABLE local_files_v6 RENAME TO local_files;
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
@@ -194,7 +269,9 @@ pub(crate) fn migrate(conn: &mut Connection) -> Result<()> {
 
 /// SQLite's own `lower()` only folds A–Z, so "Émile" would never match "émile".
 /// `tbv_fold` lowercases with Rust's Unicode-aware rules instead.
-fn register_functions(conn: &Connection) -> Result<()> {
+///
+/// `tbv_sync_live` tells the sync triggers whether a change is this device's own.
+fn register_functions(conn: &Connection, sync_live: &Arc<AtomicBool>) -> Result<()> {
     use rusqlite::functions::FunctionFlags;
     conn.create_scalar_function(
         "tbv_fold",
@@ -202,6 +279,10 @@ fn register_functions(conn: &Connection) -> Result<()> {
         FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
         |ctx| Ok(ctx.get::<Option<String>>(0)?.map(|s| s.to_lowercase())),
     )?;
+    let live = sync_live.clone();
+    conn.create_scalar_function("tbv_sync_live", 0, FunctionFlags::SQLITE_UTF8, move |_| {
+        Ok(live.load(Ordering::Relaxed))
+    })?;
     Ok(())
 }
 
@@ -215,9 +296,11 @@ impl Library {
         let conn = Connection::open(&paths.database)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        register_functions(&conn)?;
-        let mut library = Self { conn, paths };
+        let sync_live = Arc::new(AtomicBool::new(true));
+        register_functions(&conn, &sync_live)?;
+        let mut library = Self { conn, paths, sync_live };
         library.migrate()?;
+        crate::sync::install_triggers(&library.conn)?;
         library.conn.execute_batch(RETIRED_SHELVES)?;
         Ok(library)
     }
@@ -303,11 +386,16 @@ impl Library {
             // Known book (maybe synced from elsewhere) without a file here: adopt this copy.
             if !self.has_local_file(&book_id)? {
                 let stored = self.copy_into_library(source, &title, &book_id, format)?;
-                // Keep any cover already cached for this book.
+                // Keep any cover already cached for this book, or read it now.
+                let cover = match self.cover_of(&book_id)? {
+                    Some(cover) => Some(cover),
+                    None if format == "epub" => self.save_cover(&book_id, &read_epub_metadata(source)?)?,
+                    None => None,
+                };
                 self.conn.execute(
-                    "INSERT INTO local_files (book_id, path) VALUES (?1, ?2)
-                     ON CONFLICT(book_id) DO UPDATE SET path = excluded.path",
-                    params![book_id, stored.display().to_string()],
+                    "INSERT INTO local_files (book_id, path, cover_path) VALUES (?1, ?2, ?3)
+                     ON CONFLICT(book_id) DO UPDATE SET path = excluded.path, cover_path = excluded.cover_path",
+                    params![book_id, stored.display().to_string(), cover],
                 )?;
             }
             return Ok(ImportResult::AlreadyInLibrary {
@@ -328,18 +416,7 @@ impl Library {
             .unwrap_or_else(|| title_from_file_name(source));
 
         let stored = self.copy_into_library(source, &title, &book_id, format)?;
-        let cover_path = match &metadata.cover {
-            Some(cover) => {
-                let cover_file = self.paths.covers_dir.join(format!(
-                    "{}.{}",
-                    book_id_hex(&book_id),
-                    cover.extension
-                ));
-                fs::write(&cover_file, &cover.bytes)?;
-                Some(cover_file.display().to_string())
-            }
-            None => None,
-        };
+        let cover_path = self.save_cover(&book_id, &metadata)?;
 
         let tx = self.conn.transaction()?;
         tx.execute(
@@ -383,6 +460,32 @@ impl Library {
             .optional()?)
     }
 
+    /// The cover this device has for a book, if it is still there.
+    fn cover_of(&self, book_id: &BookId) -> Result<Option<String>> {
+        let cover: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT cover_path FROM local_files WHERE book_id = ?1",
+                params![book_id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+        Ok(cover.filter(|c| Path::new(c).exists()))
+    }
+
+    fn save_cover(&self, book_id: &BookId, metadata: &crate::epub::BookMetadata) -> Result<Option<String>> {
+        let Some(cover) = &metadata.cover else {
+            return Ok(None);
+        };
+        let cover_file = self
+            .paths
+            .covers_dir
+            .join(format!("{}.{}", book_id_hex(book_id), cover.extension));
+        fs::write(&cover_file, &cover.bytes)?;
+        Ok(Some(cover_file.display().to_string()))
+    }
+
     fn has_local_file(&self, book_id: &BookId) -> Result<bool> {
         let path: Option<String> = self
             .conn
@@ -391,7 +494,8 @@ impl Library {
                 params![book_id],
                 |r| r.get(0),
             )
-            .optional()?;
+            .optional()?
+            .flatten();
         Ok(path.is_some_and(|p| Path::new(&p).exists()))
     }
 
@@ -561,6 +665,47 @@ pub(crate) mod tests {
             panic!("{results:?}")
         };
         assert_eq!(title, "The Night Watch");
+    }
+
+    #[test]
+    fn a_library_from_before_sync_is_ready_to_send() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = LibraryPaths::new(&dir.path().join("data"), &dir.path().join("cache"));
+        fs::create_dir_all(dir.path().join("data")).unwrap();
+        {
+            let conn = Connection::open(&paths.database).unwrap();
+            for (i, sql) in MIGRATIONS.iter().take(5).enumerate() {
+                conn.execute_batch(sql).unwrap();
+                conn.pragma_update(None, "user_version", i + 1).unwrap();
+            }
+            conn.execute_batch(
+                "INSERT INTO books (id, title, format, file_size, added_at, favorite, last_opened_at, status)
+                 VALUES ('sha256:aa', 'Old', 'epub', 1, '2020-01-01T00:00:00.000Z', 1, '2021-01-01T00:00:00.000Z', 'in_progress');
+                 INSERT INTO local_files (book_id, path) VALUES ('sha256:aa', '/books/old.epub');",
+            )
+            .unwrap();
+        }
+        let library = Library::open(paths).unwrap();
+        let stamps: Vec<(String, String)> = library
+            .conn
+            .prepare("SELECT kind, changed_at FROM sync_clock WHERE pushed = 0 ORDER BY kind")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(
+            stamps,
+            [
+                ("book".into(), "2020-01-01T00:00:00.000Z".into()),
+                ("book_progress".into(), "2021-01-01T00:00:00.000Z".into()),
+                ("book_shelves".into(), "2020-01-01T00:00:00.000Z".into()),
+            ]
+        );
+        // The file path survived the table's rebuild, and may now be empty.
+        let path: Option<String> = library.conn.query_row("SELECT path FROM local_files", [], |r| r.get(0)).unwrap();
+        assert_eq!(path.as_deref(), Some("/books/old.epub"));
+        library.conn.execute("UPDATE local_files SET path = NULL", []).unwrap();
     }
 
     #[test]
