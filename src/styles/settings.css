@@ -1123,3 +1123,70 @@ kbd {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
 }
+
+/* Settings › Sync: moving or backing up the library. */
+.move-panel {
+  gap: 12px;
+}
+
+.move-panel > .provider-cards,
+.move-panel > .settings-subpanel,
+.move-panel > .account-panel,
+.move-panel > .radio-list,
+.move-panel > .progress,
+.move-panel > .dialog-actions {
+  align-self: stretch;
+}
+
+.move-panel h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.move-step {
+  color: var(--text-muted);
+  font-size: 0.85em;
+  margin: 0;
+}
+
+.move-start {
+  justify-content: flex-start;
+}
+
+.move-numbers {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0;
+}
+
+.move-numbers dt {
+  color: var(--text-muted);
+}
+
+.move-numbers dd {
+  margin: 0;
+}
+
+.move-missing,
+.move-notes {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.radio-item.is-disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.move-panel > .progress {
+  flex: none;
+  height: 6px;
+  border-radius: 3px;
+}
+
+.move-panel h4,
+.move-panel p {
+  margin: 0;
+}

@@ -10,6 +10,7 @@
 //! store them can carry a library.
 
 pub mod files;
+pub mod moving;
 pub mod supabase;
 pub mod webdav;
 
@@ -374,6 +375,9 @@ impl Remote for Cloud {
     fn list(&mut self, folder: &str) -> Result<Vec<String>> {
         self.remote().list(folder)
     }
+    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+        self.remote().list_sizes(folder)
+    }
 }
 
 /// Opens a folder or WebDAV library and makes sure it's one TBV can use.
@@ -475,6 +479,10 @@ pub trait Remote {
     fn download(&mut self, path: &str, to: &Path) -> Result<bool>;
     /// Files in a folder, like `covers/`.
     fn list(&mut self, folder: &str) -> Result<Vec<String>>;
+    /// As `list`, with each file's size where the service says it.
+    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+        Ok(self.list(folder)?.into_iter().map(|name| (name, None)).collect())
+    }
 }
 
 const PAGE: usize = 500;
@@ -1014,9 +1022,9 @@ impl Library {
         })
     }
 
-    /// Books this device has that the cloud doesn't, as (cloud path, file).
-    fn files_to_send(&self, options: &SyncOptions) -> Result<Vec<(String, PathBuf)>> {
-        let retry_after = (Utc::now() - Duration::hours(RETRY_FILE_HOURS)).to_rfc3339_opts(SecondsFormat::Millis, true);
+    /// Every file this device keeps in the cloud (covers always, book files
+    /// and collection pictures when those are synced), as (cloud path, file).
+    pub(crate) fn files_kept(&self, options: &SyncOptions) -> Result<Vec<(String, PathBuf)>> {
         let mut wanted = Vec::new();
         let rows = self
             .conn
@@ -1050,6 +1058,13 @@ impl Library {
                 wanted.push((format!("pictures/{name}"), self.paths.pictures_dir.join(name)));
             }
         }
+        Ok(wanted)
+    }
+
+    /// Books this device has that the cloud doesn't, as (cloud path, file).
+    fn files_to_send(&self, options: &SyncOptions) -> Result<Vec<(String, PathBuf)>> {
+        let retry_after = (Utc::now() - Duration::hours(RETRY_FILE_HOURS)).to_rfc3339_opts(SecondsFormat::Millis, true);
+        let wanted = self.files_kept(options)?;
         let mut out = Vec::new();
         for (remote, file) in wanted {
             let done: Option<(Option<String>, Option<String>)> = self

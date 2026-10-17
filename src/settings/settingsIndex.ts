@@ -193,6 +193,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "sync",
+    section: "move",
+    label: "Move or back up your library",
+    words: "move migrate switch transfer copy backup another cloud service provider dropbox google drive onedrive icloud mega webdav supabase audio text",
+  },
+  {
+    tab: "sync",
     section: "options",
     label: "Sync options",
     words: "progress notes highlights collections metadata book files",

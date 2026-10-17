@@ -35,6 +35,7 @@ import { DESKTOP_ONLY as SENDING_DESKTOP_ONLY } from "../ereaders/ereaders";
 import { WebDb } from "./db";
 import { UP_NEXT, WebLibrary, type BookRow } from "./library";
 import { WebSync } from "./sync";
+import { moveStub } from "../api/moveStub";
 import { projectFromLink } from "./link";
 
 type Row = { [column: string]: unknown };
@@ -401,6 +402,7 @@ export async function webApi(): Promise<Api> {
 
   const api: Api = {
     kind: "web",
+    ...moveStub(),
     getHome: async (): Promise<HomeViewModel> => {
       const all = books();
       // Home is for reading; audiobooks have their own page.

@@ -103,15 +103,15 @@ export function RadioList<T extends string>({
 }: {
   label: string;
   value: T;
-  options: { value: T; label: string; hint?: string }[];
+  options: { value: T; label: string; hint?: string; disabled?: boolean }[];
   onChange: (value: T) => void;
 }) {
   const name = useId();
   return (
     <div className="radio-list" role="radiogroup" aria-label={label}>
       {options.map((o) => (
-        <label key={o.value} className="radio-item">
-          <input type="radio" name={name} checked={value === o.value} onChange={() => onChange(o.value)} />
+        <label key={o.value} className={`radio-item${o.disabled ? " is-disabled" : ""}`}>
+          <input type="radio" name={name} checked={value === o.value} disabled={o.disabled} onChange={() => onChange(o.value)} />
           <span>
             <span className="settings-row-label">{o.label}</span>
             {o.hint && <span className="settings-row-hint">{o.hint}</span>}

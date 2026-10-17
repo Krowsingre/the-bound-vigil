@@ -61,6 +61,11 @@ impl Remote for FakeRemote {
         let cloud = self.0.lock().unwrap();
         Ok(cloud.files.keys().filter_map(|p| p.strip_prefix(folder)).map(str::to_string).collect())
     }
+
+    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+        let cloud = self.0.lock().unwrap();
+        Ok(cloud.files.iter().filter_map(|(p, bytes)| Some((p.strip_prefix(folder)?.to_string(), Some(bytes.len() as u64)))).collect())
+    }
 }
 
 struct Device {
@@ -555,4 +560,275 @@ fn details_found_online_and_edits_travel() {
     b.sync(&cloud);
     let details = b.lib().book_details(&book).unwrap();
     assert!(details.fields.iter().all(|f| f.edited.is_none() && f.fetched_from.as_deref() != Some("google")));
+}
+
+use super::moving::{self, Destination, MoveReport, MoveRun, MoveScope};
+use std::sync::atomic::AtomicBool;
+
+/// Copies a device's library from `from` to `to`, as a move or backup does.
+fn copy(device: &Device, from: Option<&FakeRemote>, to: &mut dyn Remote, scope: MoveScope) -> MoveReport {
+    let cancel = AtomicBool::new(false);
+    let mut old = from.cloned();
+    let run = MoveRun { scope, from: old.as_mut().map(|r| r as &mut dyn Remote), to, check: None, cancel: &cancel, progress: &mut |_| {} };
+    moving::copy_library(&device.library, run).unwrap()
+}
+
+#[test]
+fn moving_copies_records_and_files_then_switches_over() {
+    let old = FakeRemote::default();
+    let new = FakeRemote::default();
+    let a = Device::new();
+    a.set_options(json!({ "bookFiles": true }));
+    let book = a.import("Dracula");
+    a.lib().set_favorite(&book, true).unwrap();
+    a.lib().save_personal_note(None, Some("Plan"), "Carmilla next").unwrap();
+    a.sync(&old);
+
+    let mut progress = Vec::new();
+    let cancel = AtomicBool::new(false);
+    let (mut from, mut to) = (old.clone(), new.clone());
+    let report = moving::copy_library(
+        &a.library,
+        MoveRun { scope: MoveScope::All, from: Some(&mut from), to: &mut to, check: None, cancel: &cancel, progress: &mut |p| progress.push(p.clone()) },
+    )
+    .unwrap();
+    let check = report.check.clone().expect("checked");
+    assert!(check.passed(), "{check:?}");
+    assert_eq!(check.records, check.records_found);
+    assert_eq!(check.files, 2, "the book and its cover");
+    assert_eq!(new.0.lock().unwrap().records.len(), old.0.lock().unwrap().records.len());
+    let mut files: Vec<_> = new.0.lock().unwrap().files.keys().cloned().collect();
+    files.sort();
+    let hex = book_id_hex(&book).to_string();
+    assert!(files[0] == format!("books/{hex}.epub") && files[1].starts_with(&format!("covers/{hex}.")), "{files:?}");
+    assert_eq!(progress.last().unwrap().stage, moving::MoveStage::Checking);
+    assert!(progress.iter().any(|p| p.total > 0 && p.done == p.total));
+
+    // Switching counts everything there as sent: nothing goes twice.
+    let folder = tempfile::tempdir().unwrap();
+    let provider = Provider::Folder { service: "dropbox".into(), path: folder.path().display().to_string() };
+    a.lib().adopt_move(&Destination::Files(provider.clone()), &check).unwrap();
+    assert_eq!(a.lib().sync_provider().unwrap(), provider);
+    assert_eq!(a.lib().sync_overview().unwrap().waiting_to_send, 0);
+    let after = a.sync(&new);
+    assert_eq!((after.sent, after.files_sent), (0, 0), "{after:?}");
+}
+
+#[test]
+fn books_only_in_the_cloud_are_carried_across() {
+    let old = FakeRemote::default();
+    let new = FakeRemote::default();
+    let a = Device::new();
+    let b = Device::new();
+    a.set_options(json!({ "bookFiles": true }));
+    let book = a.import("Carmilla");
+    a.sync(&old);
+    b.set_options(json!({ "bookFiles": true }));
+    b.sync(&old);
+    assert_eq!(b.lib().book(&book).unwrap().unwrap().availability, Availability::Cloud);
+
+    let report = copy(&b, Some(&old), &mut new.clone(), MoveScope::All);
+    assert!(report.check.as_ref().unwrap().passed(), "{report:?}");
+    let path = format!("books/{}.epub", book_id_hex(&book));
+    assert!(new.0.lock().unwrap().files.contains_key(&path));
+    assert_eq!(new.0.lock().unwrap().files.get(&path), old.0.lock().unwrap().files.get(&path), "the same bytes");
+    assert_eq!(b.lib().book(&book).unwrap().unwrap().availability, Availability::Cloud, "still not kept on this device");
+    let leftovers: Vec<_> = fs::read_dir(&b.lib().paths().books_dir).unwrap().filter_map(|e| e.ok()).map(|e| e.file_name()).collect();
+    assert!(leftovers.is_empty(), "the temporary copy is gone: {leftovers:?}");
+}
+
+/// A service that quietly loses book files.
+struct LosesBooks(FakeRemote);
+
+impl Remote for LosesBooks {
+    fn push(&mut self, records: &[Record]) -> Result<()> {
+        self.0.push(records)
+    }
+    fn pull(&mut self, after: &str, limit: usize) -> Result<Page> {
+        self.0.pull(after, limit)
+    }
+    fn upload(&mut self, path: &str, file: &Path) -> Result<()> {
+        if path.starts_with("books/") {
+            return Ok(());
+        }
+        self.0.upload(path, file)
+    }
+    fn download(&mut self, path: &str, to: &Path) -> Result<bool> {
+        self.0.download(path, to)
+    }
+    fn list(&mut self, folder: &str) -> Result<Vec<String>> {
+        self.0.list(folder)
+    }
+    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+        self.0.list_sizes(folder)
+    }
+}
+
+#[test]
+fn the_check_finds_a_missing_file_and_a_second_try_fills_it() {
+    let old = FakeRemote::default();
+    let new = FakeRemote::default();
+    let a = Device::new();
+    a.set_options(json!({ "bookFiles": true }));
+    a.import("Frankenstein");
+    a.sync(&old);
+
+    let report = copy(&a, Some(&old), &mut LosesBooks(new.clone()), MoveScope::All);
+    let check = report.check.unwrap();
+    assert!(!check.passed());
+    assert_eq!(check.missing, ["The book file of Frankenstein"]);
+    assert_eq!((check.files, check.files_found), (2, 1));
+    assert_eq!(check.records, check.records_found, "the records all went");
+
+    // Trying again copies only what's missing.
+    let again = copy(&a, Some(&old), &mut new.clone(), MoveScope::All);
+    assert!(again.check.unwrap().passed());
+    assert_eq!((again.records_copied, again.files_copied), (0, 1));
+}
+
+#[test]
+fn running_again_skips_what_is_already_there() {
+    let old = FakeRemote::default();
+    let new = FakeRemote::default();
+    let a = Device::new();
+    a.import("Wren");
+    a.lib().save_personal_note(None, None, "Lamps").unwrap();
+    a.sync(&old);
+
+    let first = copy(&a, Some(&old), &mut new.clone(), MoveScope::All);
+    assert!(first.records_copied > 0 && first.files_copied == 1, "{first:?}");
+    let pushes = new.0.lock().unwrap().pushes;
+    let second = copy(&a, Some(&old), &mut new.clone(), MoveScope::All);
+    assert_eq!((second.records_copied, second.files_copied), (0, 0));
+    assert_eq!(second.already_there, first.records_copied + first.files_copied);
+    assert!(second.check.unwrap().passed());
+    assert_eq!(new.0.lock().unwrap().pushes, pushes, "nothing sent the second time");
+
+    // A change made since goes on the next try.
+    tick();
+    a.lib().save_personal_note(None, None, "More lamps").unwrap();
+    assert_eq!(copy(&a, Some(&old), &mut new.clone(), MoveScope::All).records_copied, 1);
+}
+
+#[test]
+fn text_only_leaves_audiobooks_behind() {
+    let new = FakeRemote::default();
+    let a = Device::new();
+    let book = a.import("Dracula");
+    let audio = a.import("Dracula, read aloud");
+    a.lib().conn.execute("UPDATE books SET format = 'm4b' WHERE id = ?1", params![audio]).unwrap();
+    a.lib().set_favorite(&audio, true).unwrap();
+    a.lib().save_personal_note(None, None, "Not about a book").unwrap();
+
+    let report = copy(&a, None, &mut new.clone(), MoveScope::Text);
+    assert!(report.check.unwrap().passed());
+    {
+        let cloud = new.0.lock().unwrap();
+        let about = |id: &str| cloud.records.values().any(|(_, r)| r.key.contains(id));
+        assert!(about(&book));
+        assert!(!about(&audio), "nothing about the audiobook went");
+        assert!(cloud.records.values().any(|(_, r)| r.kind == "personal_note"), "notes not about a book still go");
+        let files: Vec<_> = cloud.files.keys().collect();
+        assert!(files.iter().all(|f| !f.contains(book_id_hex(&audio))), "{files:?}");
+        assert!(files.iter().any(|f| f.contains(book_id_hex(&book))));
+    }
+
+    // And Audio only takes just the audiobook.
+    let audio_only = FakeRemote::default();
+    copy(&a, None, &mut audio_only.clone(), MoveScope::Audio);
+    let cloud = audio_only.0.lock().unwrap();
+    let books: Vec<_> = cloud.records.values().filter(|(_, r)| r.kind == "book").map(|(_, r)| r.key.clone()).collect();
+    assert_eq!(books, [json!([audio]).to_string()]);
+}
+
+#[test]
+fn stopping_part_way_leaves_the_rest_for_next_time() {
+    let new = FakeRemote::default();
+    let a = Device::new();
+    a.import("Halfway");
+    let cancel = AtomicBool::new(true);
+    let mut to = new.clone();
+    let run = MoveRun { scope: MoveScope::All, from: None, to: &mut to, check: None, cancel: &cancel, progress: &mut |_| {} };
+    let report = moving::copy_library(&a.library, run).unwrap();
+    assert!(report.cancelled && report.check.is_none());
+    assert!(new.0.lock().unwrap().records.is_empty());
+}
+
+#[test]
+fn a_folder_is_read_back_as_another_device_would() {
+    let folder = tempfile::tempdir().unwrap();
+    let provider = Provider::Folder { service: "custom".into(), path: folder.path().display().to_string() };
+    let a = Device::new();
+    a.import("Shelved");
+    let device = a.lib().device_id().unwrap();
+    let mut to = open_files(&provider, device).unwrap().0;
+    let mut reader = open_files(&provider, "check".into()).unwrap().0;
+    let cancel = AtomicBool::new(false);
+    let run = MoveRun { scope: MoveScope::All, from: None, to: &mut to, check: Some(&mut reader), cancel: &cancel, progress: &mut |_| {} };
+    let check = moving::copy_library(&a.library, run).unwrap().check.unwrap();
+    assert!(check.passed() && check.records > 0 && check.files == 1, "{check:?}");
+}
+
+#[test]
+fn a_migration_after_a_backup_only_copies_whats_new() {
+    let old = FakeRemote::default();
+    let backup = FakeRemote::default();
+    let a = Device::new();
+    a.set_options(json!({ "bookFiles": true }));
+    a.import("Dracula");
+    a.import("Carmilla");
+    a.sync(&old);
+
+    // A backup leaves the new place holding everything, and nothing else behind.
+    let first = copy(&a, Some(&old), &mut backup.clone(), MoveScope::All);
+    assert!(first.check.unwrap().passed());
+    assert_eq!(first.files_copied, 4, "two books and their covers");
+
+    // Migrating there later finds it all already there.
+    let pushes = backup.0.lock().unwrap().pushes;
+    let migrate = copy(&a, Some(&old), &mut backup.clone(), MoveScope::All);
+    assert_eq!((migrate.records_copied, migrate.files_copied), (0, 0), "{migrate:?}");
+    assert_eq!(migrate.already_there, first.records_copied + first.files_copied);
+    assert_eq!(backup.0.lock().unwrap().pushes, pushes);
+    let check = migrate.check.unwrap();
+    assert!(check.passed());
+    let folder = tempfile::tempdir().unwrap();
+    let provider = Provider::Folder { service: "mega".into(), path: folder.path().display().to_string() };
+    a.lib().adopt_move(&Destination::Files(provider), &check).unwrap();
+    let after = a.sync(&backup);
+    assert_eq!((after.sent, after.files_sent), (0, 0), "and sync doesn't send them again");
+}
+
+/// Moving to the Supabase stand-in, from a device that has only some of its
+/// books' files. Run with `TBV_SUPABASE_MOCK=http://127.0.0.1:<port> cargo test -- --ignored`.
+#[test]
+#[ignore = "needs the Supabase stand-in server"]
+fn moves_to_supabase() {
+    use super::supabase::{self, Supabase};
+    let url = std::env::var("TBV_SUPABASE_MOCK").expect("TBV_SUPABASE_MOCK");
+    let project = SupabaseProject { url, anon_key: "sb_publishable_test".into() };
+    let old = FakeRemote::default();
+    let a = Device::new();
+    let b = Device::new();
+    a.set_options(json!({ "bookFiles": true }));
+    b.set_options(json!({ "bookFiles": true }));
+    let cloud_only = a.import("Dracula");
+    a.sync(&old);
+    b.sync(&old);
+    b.import("Carmilla");
+    b.lib().save_personal_note(None, Some("Plan"), "Move it all").unwrap();
+
+    let session = supabase::sign_in(&project, "reader@example.com", "a long password").unwrap();
+    let mut to = Supabase::new(project.clone(), session.clone(), "b".into());
+    let report = copy(&b, Some(&old), &mut to, MoveScope::All);
+    let check = report.check.clone().unwrap();
+    assert!(check.passed(), "{report:?}");
+    assert_eq!(check.files, 4, "two books and two covers");
+    let mut back = Supabase::new(project.clone(), session.clone(), "c".into());
+    assert!(back.list("books/").unwrap().contains(&format!("{}.epub", book_id_hex(&cloud_only))));
+    let again = copy(&b, Some(&old), &mut to, MoveScope::All);
+    assert_eq!((again.records_copied, again.files_copied), (0, 0), "{again:?}");
+    b.lib().adopt_move(&Destination::Supabase { project, session }, &check).unwrap();
+    assert_eq!(b.lib().sync_provider().unwrap(), Provider::Supabase);
+    assert_eq!(b.lib().sync_overview().unwrap().waiting_to_send, 0);
 }

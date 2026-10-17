@@ -26,6 +26,9 @@ import type {
   ImportItem,
   KindleEmailInput,
   KindleEmailView,
+  MoveMode,
+  MoveScope,
+  MoveStatus,
   LibraryInfo,
   LibraryPage,
   LibraryQuery,
@@ -163,6 +166,19 @@ export interface Api {
   resolveSyncConflict(kind: string, key: string, keepCloud: boolean): Promise<void>;
   /** Fetches a book that's only in the cloud onto this device. */
   downloadBook(bookId: string): Promise<void>;
+  /** How moving or backing up the library to another service stands. */
+  moveStatus(): Promise<MoveStatus>;
+  /** Signs in to a Supabase project to move to, leaving sync's own sign-in alone. False: confirm the email first. */
+  moveSignIn(project: SupabaseProject, email: string, password: string, create: boolean): Promise<boolean>;
+  moveSignOut(): Promise<void>;
+  /** Starts copying the library to another service, in the background. Progress arrives through `onMove`. */
+  startMove(mode: MoveMode, scope: MoveScope, to: ProviderChoice): Promise<void>;
+  /** Runs the last move again; only what's still missing is copied. */
+  retryMove(): Promise<void>;
+  cancelMove(): Promise<void>;
+  /** Puts away a finished move's result. */
+  clearMove(): Promise<void>;
+  onMove(listener: (status: MoveStatus) => void): () => void;
   /** Your tags, A to Z, with how many books carry each. */
   allTags(): Promise<TagCount[]>;
   /** Puts a tag on books. Returns the tag as kept (an existing tag keeps its spelling). */
@@ -394,6 +410,27 @@ function appApi(): Api {
     suggestSyncFolder: async (service) => (await core).invoke<string | null>("suggest_sync_folder", { service }),
     resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
     downloadBook: async (bookId) => (await core).invoke("download_book", { bookId }),
+    moveStatus: async () => (await core).invoke<MoveStatus>("move_status"),
+    moveSignIn: async (project, email, password, create) =>
+      (await core).invoke<boolean>("move_sign_in", { project, email, password, create }),
+    moveSignOut: async () => (await core).invoke("move_sign_out"),
+    startMove: async (mode, scope, to) => (await core).invoke("start_move", { mode, scope, to }),
+    retryMove: async () => (await core).invoke("retry_move"),
+    cancelMove: async () => (await core).invoke("cancel_move"),
+    clearMove: async () => (await core).invoke("clear_move"),
+    onMove: (listener) => {
+      let stop: (() => void) | null = null;
+      let stopped = false;
+      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+        const unlisten = await listen<MoveStatus>("move-changed", (e) => listener(e.payload));
+        if (stopped) unlisten();
+        else stop = unlisten;
+      });
+      return () => {
+        stopped = true;
+        stop?.();
+      };
+    },
     allTags: async () => (await core).invoke<TagCount[]>("all_tags"),
     addTag: async (bookIds, tag) => (await core).invoke<string>("add_tag", { bookIds, tag }),
     removeTag: async (bookIds, tag) => (await core).invoke("remove_tag", { bookIds, tag }),

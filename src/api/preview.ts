@@ -6,6 +6,7 @@ import type { Api } from "./index";
 import { previewCollections } from "../preview/collections";
 import { previewNotes, sampleAnnotations } from "../preview/notes";
 import { sampleEpub } from "../preview/sampleEpub";
+import { previewMove } from "../preview/move";
 import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
 import { duplicateGroups } from "../lib/duplicates";
 import { cleanValue, DETAIL_FIELDS, previewFields } from "../lib/details";
@@ -395,6 +396,7 @@ export function previewApi(): Api {
   };
   return {
     kind: "preview",
+    ...previewMove(params),
     getHome: async () => home(),
     queueImports: async () => 0,
     importQueue: async () => imports,
