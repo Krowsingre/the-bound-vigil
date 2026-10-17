@@ -1,80 +1,77 @@
 # The Bound Vigil
 
 A calm eBook reader for your own books. It keeps your library, reading
-progress and notes in step across your devices through cloud services you
-choose, without a Bound Vigil account. Windows desktop comes first.
+progress, notes and collections in step across your devices through a cloud
+service you choose, without a Bound Vigil account. Windows desktop comes first.
 
-## Where things stand
+> **Not free software.** The Bound Vigil is proprietary. The code is public
+> to read, but you may not use, run, copy, modify or distribute any part of
+> it without a paid license from Krowsingre Publishing LLC. See
+> [LICENSE](LICENSE).
 
-Step 1 is the app's frame and the Home screen:
+## What it does
 
-- The window, with its own title bar and working minimize, maximize and close buttons.
-- The sidebar (Home, Library, Collections, Notes, Settings). The **•••** in the
-  top-left corner, or **Ctrl+\\**, folds it to a narrow strip. The app remembers
-  your choice.
-- The header, with search and the sync circle. The circle's menu holds sync,
-  importing books and setting up a shared library. Sync itself arrives later.
-- Home, built from the books you actually import. Nothing on it is made up:
-  sections with nothing to show say so.
-- Importing books by menu (**Ctrl+O**), by folder, or by dragging files onto the
-  window. EPUB, PDF, MOBI, AZW3, CBZ and FB2 files are accepted. Your original
-  files are never changed; TBV keeps its own copy in its library folder.
-
-Step 2 adds the Library page:
-
-- Every book in your library, as covers, a list, or a compact table.
-- Shelves: All books, Favourites, Want to read, In progress, Read, Unread and
-  Collections, each with its count.
-- Sorting by recently added, recently opened, title (ignoring "The", "A" and
-  "An"), author, series or progress, remembered on this device.
-- Filtering by file format and by whether the book is on this device.
-- Searching titles, authors and series from the header search box.
-- Pages of 24 books.
-- Each book's **…** menu can add it to Favourites or Want to read.
-- The sync circle can show a profile picture of your choosing, picked from
-  its menu. Sync state then shows as a small badge on the picture.
-
-Collections, Notes, Settings and the reader are placeholders for now.
+- **Library.** Import books by menu, folder or drag and drop: EPUB, PDF,
+  MOBI, AZW/AZW3, FB2, CBZ, TXT, DOCX and DOC. Big imports run in the
+  background, and the Imports page shows each book's progress. Your
+  original files are never changed.
+- **Reader.** Paged or scrolling, a focus mode, fixed page numbers that
+  match across devices and text sizes, four highlight colours, and a jump
+  back to where you were.
+- **Collections.** Your own collections and reading lists, collections that
+  fill themselves from rules (author, series, rating, format and more),
+  smart collections, series found in your books, badges and gallery
+  pictures.
+- **Notes.** Highlights, annotations, notes on whole books and personal notes.
+- **Ratings.** Star ratings, Goodreads import and export, and optional rating
+  sync with Hardcover.
+- **Sync.** Through Supabase, or through the folder of iCloud Drive, Dropbox,
+  Google Drive, OneDrive or MEGA, or any WebDAV server. Book files can sync
+  too, and books that are only in the cloud download when you open them.
 
 ## Getting the app
 
-Every pull request and every change to `main` builds a Windows installer. Open
-the latest run under **Actions**, then download **the-bound-vigil-windows** at the
-bottom of the page. It contains an `.exe` installer and an `.msi`; either works.
-Windows may warn that the publisher is unknown because the app is not yet
-code-signed.
-
-## Working on it
-
-You need [Node.js](https://nodejs.org) 22 or newer and [Rust](https://rustup.rs).
-On Windows, also the Microsoft C++ Build Tools (the Rust installer offers them).
-
-```sh
-npm install          # once, to fetch the interface's building blocks
-npm run tauri dev    # run the app with live reloading
-npm test             # screen tests
-cargo test -p tbv-core   # library core tests
-npm run tauri build  # make the installers
-```
-
-`npm run dev` alone opens the interface in an ordinary browser with a few
-sample books, marked **Preview** in the sidebar, for looking at designs. Add
-`?empty` to the address to see the empty-library screen. The real app never
-uses the sample books.
+The Bound Vigil is sold under license and isn't publicly available yet. To
+ask about a license, contact Krowsingre Publishing LLC through the
+repository owner's profile; see [LICENSE](LICENSE).
 
 ## How it is put together
 
 | Part | Folder | What it does |
 | --- | --- | --- |
-| Library core | `crates/tbv-core` | Rust. Imports books, reads their details, keeps the library database (SQLite) and builds what Home shows. No interface code, so it is fully testable. |
+| Library core | `crates/tbv-core` | Rust. Imports and reads books, keeps the library database (SQLite), and runs sync. No interface code, so it is fully testable. |
 | App wrapper | `src-tauri` | Tauri 2. Opens the window and passes requests from the interface to the core. |
-| Interface | `src` | React and TypeScript. The shell (`src/shell`), Home (`src/home`), shared pieces (`src/components`) and colours and type (`src/styles/tokens.css`). |
+| Interface | `src` | React and TypeScript. |
 
-Principles carried over from the design work:
+Principles:
 
 - Book files are never modified. Edits to a book's details are stored
   separately and can be reset.
 - A book is identified by a fingerprint of its contents (`sha256:…`), so every
   device agrees which book is which.
 - Reading positions are stored independently of screen size and font.
-- Each device writes its own append-only change log for sync.
+- Each device writes its own change log for sync.
+
+## Building (licensed developers)
+
+You need [Node.js](https://nodejs.org) 22 or newer and [Rust](https://rustup.rs).
+On Windows, also the Microsoft C++ Build Tools.
+
+```sh
+npm install              # once
+npm run tauri dev        # run the app with live reloading
+npm test                 # screen tests
+cargo test -p tbv-core   # library core tests
+npm run tauri build      # make the installers
+```
+
+`npm run dev` alone opens the interface in a browser with sample books,
+marked **Preview** in the sidebar, for looking at designs.
+
+## Third-party parts
+
+foliate-js (MIT), PDF.js (Apache 2.0) and the packages in `package.json` and
+`Cargo.toml` keep their own licenses. Echolume, the gallery paintings and the
+badges belong to Krowsingre Publishing LLC.
+
+Copyright (c) 2026 Krowsingre Publishing LLC. All rights reserved.
