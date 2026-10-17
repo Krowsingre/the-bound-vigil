@@ -506,3 +506,11 @@
   border-color: var(--danger);
   color: var(--danger);
 }
+
+/* Menus float over the whole window (see Menu.tsx). */
+.menu-floating {
+  position: fixed;
+  z-index: 60;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+}
