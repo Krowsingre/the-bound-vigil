@@ -311,8 +311,10 @@
 
 .select-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-left: auto;
+  min-width: 0;
 }
 
 .select-mark {

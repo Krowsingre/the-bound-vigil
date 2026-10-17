@@ -45,6 +45,8 @@ pub trait Store {
     fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
         Ok(self.list(folder)?.into_iter().map(|name| (name, None)).collect())
     }
+    /// Erases a file. Fine if there's no such file.
+    fn remove(&mut self, path: &str) -> Result<()>;
 }
 
 impl<T: Store + ?Sized> Store for Box<T> {
@@ -65,6 +67,9 @@ impl<T: Store + ?Sized> Store for Box<T> {
     }
     fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
         (**self).list_sizes(folder)
+    }
+    fn remove(&mut self, path: &str) -> Result<()> {
+        (**self).remove(path)
     }
 }
 
@@ -182,6 +187,10 @@ impl<S: Store> Remote for FileRemote<S> {
     fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
         self.store.list_sizes(folder)
     }
+
+    fn remove(&mut self, path: &str) -> Result<()> {
+        self.store.remove(path)
+    }
 }
 
 /// A folder on this computer, usually one a cloud app keeps in sync.
@@ -282,6 +291,13 @@ impl Store for FolderStore {
             let size = fs::metadata(dir.join(&name)).ok().filter(|m| m.is_file()).map(|m| m.len());
             (name, size)
         }).collect())
+    }
+
+    fn remove(&mut self, path: &str) -> Result<()> {
+        match fs::remove_file(self.at(path)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+            _ => Ok(()),
+        }
     }
 }
 

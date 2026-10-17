@@ -240,6 +240,15 @@ impl WebDav {
 }
 
 impl Store for WebDav {
+    fn remove(&mut self, path: &str) -> Result<()> {
+        let answer = self.send("DELETE", &self.url(path), None, Vec::new())?;
+        match answer.status().as_u16() {
+            200..=299 | 404 | 410 => Ok(()),
+            401 | 403 => Err(Error::Cloud("the server didn't accept the sign-in. Check it in Settings › Sync".into())),
+            status => Err(Error::Cloud(format!("the server wouldn't erase a file (status {status})"))),
+        }
+    }
+
     fn read(&mut self, path: &str) -> Result<Option<Vec<u8>>> {
         let Some(mut answer) = self.get(path)? else { return Ok(None) };
         let bytes = answer.body_mut().with_config().limit(64 * 1024 * 1024).read_to_vec().map_err(transport)?;

@@ -9,7 +9,7 @@ import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { cleanTag } from "../lib/queryBooks";
 
-type Ask = { kind: "tags"; book: BookPreview } | { kind: "delete"; book: BookPreview };
+type Ask = { kind: "tags"; book: BookPreview } | { kind: "delete"; book: BookPreview } | { kind: "remove"; book: BookPreview };
 
 let listener: ((ask: Ask) => void) | null = null;
 
@@ -20,6 +20,18 @@ export function askEditTags(book: BookPreview) {
 export function askDeleteBook(book: BookPreview) {
   listener?.({ kind: "delete", book });
 }
+
+export function askRemoveBook(book: BookPreview) {
+  listener?.({ kind: "remove", book });
+}
+
+/** What the warnings say, for one book or many. */
+export const removeWarning = (many = false) =>
+  many
+    ? "This takes them out of your library on every device. Their highlights, notes, tags and collections are kept, along with their files in the cloud, so importing the same books again brings it all back."
+    : "This takes it out of your library on every device. Its highlights, notes, tags and collections are kept, along with its file in the cloud, so importing the same book again brings it all back.";
+export const deleteWarning = (many = false) =>
+  `This deletes ${many ? "them" : "it"} for good on every device: ${many ? "their" : "its"} highlights and notes go too, and ${many ? "their files and covers are" : "its file and cover are"} erased from your cloud storage at the next sync. This can't be undone. Book files you imported from a folder of your own stay where they are.`;
 
 export function BookDialogsHost({ onChanged }: { onChanged: () => void }) {
   const [ask, setAsk] = useState<Ask | null>(null);
@@ -37,24 +49,22 @@ export function BookDialogsHost({ onChanged }: { onChanged: () => void }) {
   };
   if (ask.kind === "tags") return <TagEditor key={ask.book.id} book={ask.book} onClose={close} />;
   const { book } = ask;
+  const removing = ask.kind === "remove";
   return (
     <ConfirmDialog
-      title={`Delete “${book.title}”?`}
-      body={
-        "This takes the book out of your library on every device, with its highlights and notes. " +
-        "Book files you imported from a folder of your own stay where they are."
-      }
-      confirm="Delete book"
+      title={removing ? `Remove “${book.title}” from your library?` : `Delete “${book.title}” for good?`}
+      body={removing ? removeWarning() : deleteWarning()}
+      confirm={removing ? "Remove from library" : "Delete for good"}
       danger
       onCancel={() => close(false)}
       onConfirm={() =>
-        void api.deleteBook(book.id).then(
+        void (removing ? api.removeFromLibrary(book.id) : api.deleteBook(book.id)).then(
           () => {
-            toast(`Deleted “${book.title}”.`);
+            toast(removing ? `Removed “${book.title}” from your library.` : `Deleted “${book.title}”.`);
             close(true);
           },
           (e: unknown) => {
-            toast(`Couldn't delete “${book.title}”: ${String(e)}`);
+            toast(`Couldn't ${removing ? "remove" : "delete"} “${book.title}”: ${String(e)}`);
             close(false);
           },
         )

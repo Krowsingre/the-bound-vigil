@@ -6,7 +6,7 @@ import type { MenuEntry } from "../components/Menu";
 import { StarRating } from "../components/StarRating";
 import { askEditDetails, showBookDetails } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
-import { askDeleteBook, askEditTags } from "../library/BookDialogs";
+import { askDeleteBook, askEditTags, askRemoveBook } from "../library/BookDialogs";
 import { playAudiobook } from "../audio/player";
 import { isAudio } from "../lib/queryBooks";
 
@@ -20,6 +20,8 @@ export interface BookActions {
   download?: (book: BookPreview) => void;
   /** Removes the copy here, keeping the one in the cloud. */
   removeDownload?: (book: BookPreview) => void;
+  /** Saves a copy named "Title - Author" somewhere of your choosing. */
+  saveCopy?: (book: BookPreview) => void;
   /** Set when the books are shown inside one of the user's collections. */
   removeFromCollection?: { name: string; remove: (book: BookPreview) => void };
 }
@@ -58,8 +60,11 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
       : []),
     "divider",
     ...(isAudio(book.format) ? [] : [{ label: "Send to e-reader…", icon: "ereader" as const, onSelect: () => askSendToEreader([book]) }]),
+    ...(actions.saveCopy ? [{ label: "Save a copy…", icon: "copy" as const, onSelect: () => actions.saveCopy?.(book) }] : []),
     downloadItem(book, actions),
-    { label: "Delete from library…", icon: "trash", danger: true, onSelect: () => askDeleteBook(book) },
+    "divider",
+    { label: "Remove from library…", icon: "close", onSelect: () => askRemoveBook(book) },
+    { label: "Delete for good…", icon: "trash", danger: true, onSelect: () => askDeleteBook(book) },
   ];
 }
 
@@ -90,7 +95,7 @@ export function cannotOpen(book: BookPreview): string | null {
 /** The shared actions, refreshing the current view after each change. */
 export function makeBookActions(
   api: Pick<import("../api").Api, "setBookStatus" | "setFavorite" | "setWantToRead" | "setRating"> &
-    Partial<Pick<import("../api").Api, "downloadBook" | "removeDownload">>,
+    Partial<Pick<import("../api").Api, "downloadBook" | "removeDownload" | "saveCopies">>,
   toast: (text: string) => void,
   refresh: () => void,
   openBook: (bookId: string) => void,
@@ -115,5 +120,10 @@ export function makeBookActions(
     }),
     removeDownload: api.removeDownload && ((book) =>
       void run(book, api.removeDownload!(book.id).then(() => toast(`Removed the copy of “${book.title}” here. It's still in the cloud.`)))),
+    saveCopy: api.saveCopies && ((book) =>
+      void api.saveCopies!([book.id]).then(
+        (done) => done && toast(`Saved a copy of “${book.title}” to ${done.folder}.`),
+        (e: unknown) => toast(`Couldn't save a copy of “${book.title}”: ${String(e)}`),
+      )),
   };
 }

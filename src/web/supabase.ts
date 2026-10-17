@@ -189,6 +189,12 @@ export class Supabase {
     if (!answer.ok) throw await problem(answer);
   }
 
+  /** Erases a file. Fine if it isn't there. */
+  async remove(path: string): Promise<void> {
+    const answer = await this.call(`/storage/v1/object/${this.object(path)}`, { method: "DELETE" });
+    if (!answer.ok && answer.status !== 404 && answer.status !== 400) throw await problem(answer);
+  }
+
   /** The names of the files in one folder of the bucket. */
   async list(folder: string): Promise<string[]> {
     const names: string[] = [];

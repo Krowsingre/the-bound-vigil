@@ -8,7 +8,7 @@ import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { makeBookActions } from "../home/bookActions";
 import { Stat } from "../home/ReadingActivity";
-import { AddTagToMany } from "./BookDialogs";
+import { AddTagToMany, deleteWarning, removeWarning } from "./BookDialogs";
 import { BookGrid, BookList, BookTable, type Selection } from "./BookViews";
 import { CollectionsTab } from "./CollectionsTab";
 import { LibraryToolbar } from "./LibraryToolbar";
@@ -56,7 +56,7 @@ export function Library({
   // Choosing books to change many at once.
   const [selected, setSelected] = useState<Map<string, BookPreview> | null>(null);
   const [tagging, setTagging] = useState(false);
-  const [removing, setRemoving] = useState(false);
+  const [asking, setAsking] = useState<"remove" | "delete" | "download" | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const toast = useToast();
   const words = WORDS[kind];
@@ -166,27 +166,47 @@ export function Library({
     }
   };
 
-  const removeChosen = async () => {
-    setRemoving(false);
-    const list = chosen;
+  /** Removes downloads, removes from the library, or deletes, one book at a time. */
+  const changeChosen = async (what: "remove" | "delete" | "download") => {
+    setAsking(null);
+    const list = what === "download" ? chosen.filter((b) => b.availability === "local" && b.inCloud) : chosen;
+    const verb = { remove: "Removing", delete: "Deleting", download: "Removing downloads" }[what];
+    const work = { remove: api.removeFromLibrary, delete: api.deleteBook, download: api.removeDownload }[what];
     let failed = 0;
     for (let i = 0; i < list.length; i++) {
-      setBusy(`Removing ${i + 1} of ${list.length}…`);
+      setBusy(`${verb}: ${i + 1} of ${list.length}…`);
       try {
-        await api.deleteBook(list[i].id);
+        await work(list[i].id);
       } catch {
         failed++;
       }
     }
     setBusy(null);
-    setSelected(new Map());
+    if (what !== "download") setSelected(new Map());
     setReload((n) => n + 1);
     const done = list.length - failed;
+    const count = (n: number) => (n === 1 ? `1 ${words.one}` : `${n} ${words.many}`);
+    const skipped = chosen.length - list.length;
     toast(
-      failed
-        ? `Removed ${done} of ${list.length} ${words.many}. ${failed} couldn't be removed.`
-        : `Removed ${done === 1 ? `1 ${words.one}` : `${done} ${words.many}`} from your library.`,
+      what === "download"
+        ? `Removed the downloads of ${count(done)}. They're still in the cloud.` +
+            (skipped ? ` ${count(skipped)} ${skipped === 1 ? "isn't" : "aren't"} in the cloud yet, so ${skipped === 1 ? "it was" : "they were"} kept here.` : "")
+        : failed
+          ? `${what === "remove" ? "Removed" : "Deleted"} ${done} of ${list.length}. ${failed} couldn't be changed.`
+          : `${what === "remove" ? "Removed" : "Deleted"} ${count(done)}.`,
     );
+  };
+
+  const saveChosen = async () => {
+    try {
+      setBusy("Saving copies…");
+      const done = await api.saveCopies(chosen.map((b) => b.id));
+      if (done) toast(`Saved ${done.saved === 1 ? "a copy" : `${done.saved} copies`} to ${done.folder}.`);
+    } catch (e) {
+      toast(`Couldn't save the copies: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
   };
 
   let body: React.ReactNode;
@@ -325,13 +345,28 @@ export function Library({
                 <Icon name="ereader" size={16} /> Send to e-reader
               </button>
             )}
+            <button type="button" className="btn btn-quiet" disabled={!selected.size || busy !== null} onClick={() => void saveChosen()}>
+              <Icon name="copy" size={16} /> Save copies
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              disabled={!chosen.some((b) => b.availability === "local" && b.inCloud) || busy !== null}
+              title="Frees space here. The books stay in your library and in the cloud."
+              onClick={() => setAsking("download")}
+            >
+              <Icon name="cloudOff" size={16} /> Remove download
+            </button>
+            <button type="button" className="btn btn-quiet" disabled={!selected.size || busy !== null} onClick={() => setAsking("remove")}>
+              <Icon name="close" size={16} /> Remove from library
+            </button>
             <button
               type="button"
               className="btn btn-quiet btn-danger-text"
               disabled={!selected.size || busy !== null}
-              onClick={() => setRemoving(true)}
+              onClick={() => setAsking("delete")}
             >
-              <Icon name="trash" size={16} /> Remove from library
+              <Icon name="trash" size={16} /> Delete
             </button>
             <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => setSelected(null)}>
               Done
@@ -339,17 +374,24 @@ export function Library({
           </span>
         </div>
       )}
-      {removing && (
+      {asking && (
         <ConfirmDialog
-          title={chosen.length === 1 ? `Remove “${chosen[0].title}”?` : `Remove ${chosen.length} ${words.many}?`}
-          body={
-            `This takes ${chosen.length === 1 ? "it" : "them"} out of your library on every device, with highlights and notes. ` +
-            "Book files you imported from a folder of your own stay where they are."
+          title={
+            {
+              download: `Remove the downloads of ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`}?`,
+              remove: `Remove ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`} from your library?`,
+              delete: `Delete ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`} for good?`,
+            }[asking]
           }
-          confirm={chosen.length === 1 ? `Remove ${words.one}` : `Remove ${chosen.length} ${words.many}`}
-          danger
-          onCancel={() => setRemoving(false)}
-          onConfirm={() => void removeChosen()}
+          body={
+            asking === "download"
+              ? "This frees up space on this device. The books stay in your library and in the cloud, and download again when you open them. Books that aren't in the cloud yet are kept here."
+              : (asking === "remove" ? removeWarning : deleteWarning)(chosen.length > 1)
+          }
+          confirm={{ download: "Remove downloads", remove: "Remove from library", delete: "Delete for good" }[asking]}
+          danger={asking !== "download"}
+          onCancel={() => setAsking(null)}
+          onConfirm={() => void changeChosen(asking)}
         />
       )}
       {tagging && (

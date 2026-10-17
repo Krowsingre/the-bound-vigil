@@ -605,6 +605,11 @@ export function previewApi(): Api {
       find(bookId);
       books = books.filter((b) => b.id !== bookId);
     },
+    saveCopies: async (bookIds) => ({ saved: bookIds.length, folder: "C:\\Users\\you\\Documents" }),
+    removeFromLibrary: async (bookId) => {
+      find(bookId);
+      books = books.filter((b) => b.id !== bookId);
+    },
     removeDownload: async (bookId) => {
       if (!find(bookId).inCloud) throw new Error("This book isn't in the cloud yet, so this is its only copy.");
       update(bookId, { availability: "cloud" });

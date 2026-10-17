@@ -868,6 +868,29 @@ async fn delete_book(state: State<'_, AppLibrary>, book_id: String) -> CommandRe
 }
 
 #[tauri::command]
+async fn remove_from_library(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.remove_from_library(&book_id)).await
+}
+
+/// Saves copies of books, named "Title - Author", into a folder. Cloud-only
+/// books are fetched first; the library's own copies are only read.
+#[tauri::command]
+async fn save_copies(state: State<'_, AppLibrary>, book_ids: Vec<String>, folder: String) -> CommandResult<usize> {
+    let folder = PathBuf::from(folder);
+    let mut saved = 0;
+    for id in book_ids {
+        let book = outgoing(state.clone(), id).await?;
+        let to = folder.clone();
+        tauri::async_runtime::spawn_blocking(move || tbv_core::ereaders::save_copy(&book, &to))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+        saved += 1;
+    }
+    Ok(saved)
+}
+
+#[tauri::command]
 async fn remove_download(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
     with_library(state, move |library| library.remove_download(&book_id)).await
 }
@@ -1110,6 +1133,8 @@ pub fn run() {
             set_book_tags,
             delete_book,
             remove_download,
+            remove_from_library,
+            save_copies,
             find_duplicates,
             dismiss_duplicates,
             book_details,

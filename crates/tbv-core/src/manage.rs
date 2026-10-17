@@ -231,14 +231,35 @@ impl Library {
         Ok(path.filter(|p| Path::new(p).starts_with(&self.paths.books_dir)))
     }
 
-    /// Deletes a book from the library on every device. Its highlights and
-    /// notes go with it. TBV's own copy of the file on this device is
-    /// removed; the file you imported it from is never touched.
+    /// Takes a book out of the library on every device, keeping everything
+    /// else: its highlights, notes, tags and collections wait, hidden, and its
+    /// file stays in the cloud, so importing the book again brings it all
+    /// back. TBV's own copy on this device is removed.
+    pub fn remove_from_library(&self, book_id: &str) -> Result<()> {
+        if !self.book_exists(book_id)? {
+            return Ok(());
+        }
+        let copy = self.own_copy(book_id)?;
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute("UPDATE books SET deleted_at = ?2 WHERE id = ?1", params![book_id, now_utc()])?;
+        tx.execute("UPDATE local_files SET path = NULL WHERE book_id = ?1", params![book_id])?;
+        tx.commit()?;
+        if let Some(copy) = copy {
+            let _ = fs::remove_file(copy);
+        }
+        Ok(())
+    }
+
+    /// Deletes a book for good, on every device. Its highlights and notes go
+    /// with it, and its file and cover are erased from the cloud at the next
+    /// sync. TBV's own copy on this device is removed; the file you imported
+    /// it from is never touched.
     pub fn delete_book(&self, book_id: &str) -> Result<()> {
         if !self.book_exists(book_id)? {
             return Ok(());
         }
         let copy = self.own_copy(book_id)?;
+        self.erase_from_cloud(book_id)?;
         let now = now_utc();
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
@@ -484,6 +505,27 @@ mod tests {
                 .total,
             1
         );
+    }
+
+    #[test]
+    fn removing_a_book_keeps_its_notes_and_tags_for_when_it_comes_back() {
+        let (dir, mut library) = open_temp_library();
+        let a = add(&mut library, dir.path(), "a", "Carmilla", "Le Fanu", "");
+        library.add_tag(std::slice::from_ref(&a), "Gothic").unwrap();
+        library.save_book_note(&a, None, "Laura narrates.").unwrap();
+        let notes = |l: &Library| l.notes_page(&Default::default()).unwrap().notes.len();
+        assert_eq!(notes(&library), 1);
+        let copy = library.own_copy(&a).unwrap().unwrap();
+        library.remove_from_library(&a).unwrap();
+        assert!(!Path::new(&copy).exists());
+        assert!(dir.path().join("a.epub").exists(), "the original file is never touched");
+        assert_eq!(library.library_page(&LibraryQuery::default()).unwrap().total, 0);
+        assert!(library.all_tags().unwrap().is_empty(), "hidden while it's out");
+        assert_eq!(notes(&library), 0);
+        let again = library.import_files(&[dir.path().join("a.epub")]).remove(0);
+        assert!(matches!(again, ImportResult::Imported { .. }), "{again:?}");
+        assert_eq!(library.all_tags().unwrap().len(), 1, "its tag is back");
+        assert_eq!(notes(&library), 1, "and its note");
     }
 
     #[test]

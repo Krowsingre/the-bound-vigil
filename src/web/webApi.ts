@@ -31,6 +31,7 @@ import type {
 import { matches, usable } from "../collections/rules";
 import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
 import { cleanValue, DETAIL_FIELDS, listOf } from "../lib/details";
+import { copyName } from "../lib/format";
 import { DESKTOP_ONLY as SENDING_DESKTOP_ONLY } from "../ereaders/ereaders";
 import { WebDb } from "./db";
 import { UP_NEXT, WebLibrary, type BookRow } from "./library";
@@ -893,6 +894,30 @@ export async function webApi(): Promise<Api> {
       for (const t of library.rows("book_tags"))
         if (t.book_id === bookId && !t.removed_at) changes.push(["book_tag", { ...t, removed_at: at, updated_at: at }]);
       await library.writeAll(changes);
+      await db.deleteFile(`books/${bookId.replace(/^sha256:/, "")}.${b.format}`).catch(() => undefined);
+      await sync.eraseBook(bookId, b.format).catch(() => undefined);
+      await refreshDownloaded();
+    },
+    // A browser saves each book to its downloads.
+    saveCopies: async (bookIds) => {
+      let saved = 0;
+      for (const id of bookIds) {
+        const b = find(id);
+        const blob = await sync.bookFile(b.id, b.format);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = copyName(b.title, listOf(b.authors), b.format);
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        saved++;
+      }
+      return { saved, folder: "your downloads" };
+    },
+    // Out of the library everywhere; notes, tags, collections and the cloud file wait for it to come back.
+    removeFromLibrary: async (bookId) => {
+      const b = find(bookId);
+      await library.writeAll([["book", { ...b, deleted_at: now() }]]);
       await db.deleteFile(`books/${bookId.replace(/^sha256:/, "")}.${b.format}`).catch(() => undefined);
       await refreshDownloaded();
     },

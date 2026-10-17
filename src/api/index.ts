@@ -192,7 +192,12 @@ export interface Api {
   /** Gives a book exactly these tags. */
   setBookTags(bookId: string, tags: string[]): Promise<void>;
   /** Takes a book out of the library on every device, with its notes. */
+  /** Deletes a book for good: its notes, and its file and cover in the cloud, go too. */
   deleteBook(bookId: string): Promise<void>;
+  /** Takes a book out of the library, keeping its notes and cloud file for when it's imported again. */
+  removeFromLibrary(bookId: string): Promise<void>;
+  /** Saves copies of the books, named "Title - Author", into a folder chosen now. Null if none was chosen. */
+  saveCopies(bookIds: string[]): Promise<{ saved: number; folder: string } | null>;
   /** Removes the copy on this device, keeping the one in the cloud. */
   removeDownload(bookId: string): Promise<void>;
   findDuplicates(): Promise<DuplicateGroup[]>;
@@ -459,6 +464,13 @@ function appApi(): Api {
     removeTag: async (bookIds, tag) => (await core).invoke("remove_tag", { bookIds, tag }),
     setBookTags: async (bookId, tags) => (await core).invoke("set_book_tags", { bookId, tags }),
     deleteBook: async (bookId) => (await core).invoke("delete_book", { bookId }),
+    removeFromLibrary: async (bookId) => (await core).invoke("remove_from_library", { bookId }),
+    saveCopies: async (bookIds) => {
+      const picked = await (await dialog).open({ directory: true, multiple: false, title: "Save copies to this folder" });
+      if (typeof picked !== "string") return null;
+      const saved = await (await core).invoke<number>("save_copies", { bookIds, folder: picked });
+      return { saved, folder: picked };
+    },
     removeDownload: async (bookId) => (await core).invoke("remove_download", { bookId }),
     findDuplicates: async () => (await core).invoke<DuplicateGroup[]>("find_duplicates"),
     dismissDuplicates: async (key) => (await core).invoke("dismiss_duplicates", { key }),
