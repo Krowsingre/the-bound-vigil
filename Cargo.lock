@@ -4393,11 +4393,8 @@ dependencies = [
  "hex",
  "id3",
  "image",
-<<<<<<< HEAD
- "lofty",
-=======
  "lettre",
->>>>>>> claude/step-15-ereaders
+ "lofty",
  "lopdf",
  "mp4ameta",
  "quick-xml 0.37.5",
