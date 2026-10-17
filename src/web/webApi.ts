@@ -400,7 +400,14 @@ export async function webApi(): Promise<Api> {
 
   // ---- Settings and profile, kept in this browser only ----
 
+  /** Where early web versions kept a picture for this browser only. */
   const AVATAR = "profile.avatar";
+  /** The library's profile picture, shared by every device; else one this browser kept before pictures synced. */
+  const profile = () => {
+    const avatar = library.row("profile", ["me"])?.avatar;
+    if (typeof avatar === "string") return { avatarPath: sync.pictureUrls.get(avatar) ?? null };
+    return { avatarPath: avatar === null ? null : (db.meta.get(AVATAR) ?? null) };
+  };
 
   const api: Api = {
     kind: "web",
@@ -472,23 +479,23 @@ export async function webApi(): Promise<Api> {
     },
     fillCover: async () => false,
     fetchCover: async () => false,
-    getProfile: async () => ({ avatarPath: db.meta.get(AVATAR) ?? null }),
+    getProfile: async () => profile(),
     chooseAvatar: async () => {
       const file = await pickFile("image/png,image/jpeg,image/webp,image/gif");
       if (!file) return null;
       if (file.size > 4 * 1024 * 1024) throw new Error("choose a picture under 4 MB");
-      const url = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
-      await db.setMeta(AVATAR, url);
-      return { avatarPath: url };
+      const extension = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" }[file.type] ?? "png";
+      // The same kind of name the desktop app gives it, so every device finds it.
+      const name = `avatar-${crypto.randomUUID()}.${extension}`;
+      await sync.addPicture(name, file);
+      await db.setMeta(AVATAR, null);
+      await library.write("profile", { id: "me", avatar: name, updated_at: now() });
+      return profile();
     },
     clearAvatar: async () => {
       await db.setMeta(AVATAR, null);
-      return { avatarPath: null };
+      await library.write("profile", { id: "me", avatar: null, updated_at: now() });
+      return profile();
     },
     pickBooks: async () => [],
     pickFolder: async () => [],
@@ -842,6 +849,9 @@ export async function webApi(): Promise<Api> {
     setSyncProvider: async (provider) => {
       if (provider.kind !== "supabase") throw new Error("The web version syncs through Supabase only.");
       return false;
+    },
+    setAlsoSync: async () => {
+      throw new Error("The web version syncs through Supabase only.");
     },
     chooseFolder: async () => null,
     suggestSyncFolder: async () => null,

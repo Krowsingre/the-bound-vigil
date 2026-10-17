@@ -238,6 +238,7 @@ impl Library {
                 }
             }
             // Start sync afresh: send everything again; the cloud keeps whichever is newer.
+            self.reset_also_sync()?;
             self.reset_sync()
         });
         let _ = fs::remove_file(&staging);
@@ -295,11 +296,12 @@ impl Library {
 }
 
 /// Settings that belong to this device and its sign-in, never to a backup.
-const DEVICE_ONLY: [&str; 7] = [
+const DEVICE_ONLY: [&str; 8] = [
     "sync.session",
     "sync.supabase",
     "sync.device_id",
     crate::sync::PROVIDER,
+    crate::sync::ALSO,
     crate::hardcover::ACCOUNT_KEY,
     crate::ereaders::email::SETTINGS_KEY,
     crate::servers::SETTINGS_KEY,
@@ -308,9 +310,10 @@ const DEVICE_ONLY: [&str; 7] = [
 /// Sign-ins (and the sync choice, which can hold a WebDAV password, the
 /// Kindle email settings, which hold an email password, and saved servers,
 /// which hold theirs): never written into a backup file.
-const SIGN_INS: [&str; 5] = [
+const SIGN_INS: [&str; 6] = [
     "sync.session",
     crate::sync::PROVIDER,
+    crate::sync::ALSO,
     crate::hardcover::ACCOUNT_KEY,
     crate::ereaders::email::SETTINGS_KEY,
     crate::servers::SETTINGS_KEY,

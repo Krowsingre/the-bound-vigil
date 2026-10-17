@@ -135,6 +135,16 @@ export interface SyncOverview {
   /** Changes on this device the cloud doesn't have yet. */
   waitingToSend: number;
   conflicts: SyncConflict[];
+  /** The second place the library syncs with, if there is one. */
+  also: AlsoOverview | null;
+}
+
+/** How the second place stands. */
+export interface AlsoOverview {
+  provider: ProviderView;
+  lastSuccessAt: IsoUtc | null;
+  lastError: string | null;
+  waitingToSend: number;
 }
 
 /** Migrate: copy everything, then sync through the new place. Backup: copy everything, keep syncing where you are. */

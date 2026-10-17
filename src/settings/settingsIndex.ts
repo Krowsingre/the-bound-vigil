@@ -206,6 +206,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "sync",
+    section: "also",
+    label: "Second sync",
+    words: "dual two both second also another place at once icloud supabase phone audiobooks storage room",
+  },
+  {
+    tab: "sync",
     section: "move",
     label: "Move or back up your library",
     words: "move migrate switch transfer copy backup another cloud service provider dropbox google drive onedrive icloud mega webdav supabase audio text",

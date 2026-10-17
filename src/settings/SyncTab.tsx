@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, isApp } from "../api";
+import { api, isApp, isWeb } from "../api";
 import type { ProviderView, SupabaseProject, SyncOverview } from "../api/types";
 import { relativeTime } from "../lib/format";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -9,6 +9,7 @@ import { useAppSettings, type ConflictRule, type SyncFrequency } from "./appSett
 import { AccountPanel } from "./AccountPanel";
 import { SupabaseProjectForm } from "./SupabaseSetup";
 import { MoveSection } from "./MoveSection";
+import { AlsoSection } from "./AlsoSection";
 import { HardcoverSection } from "./HardcoverSection";
 import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
 import { PROVIDERS, type Provider } from "./providers";
@@ -254,6 +255,8 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
           </ul>
         </Section>
       )}
+
+      {overview && inUse && !isWeb && <AlsoSection overview={overview} onChanged={() => void reload()} />}
 
       <MoveSection overview={overview} inUse={inUse} onChanged={reload} />
 

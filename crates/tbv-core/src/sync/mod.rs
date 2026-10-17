@@ -147,6 +147,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "profile",
+        table: "profile",
+        keys: &["id"],
+        cols: &["avatar", "updated_at"],
+        category: Category::Library,
+        creates: true,
+    },
+    Kind {
         name: "personal_note",
         table: "personal_notes",
         keys: &["id"],
@@ -244,6 +252,10 @@ pub struct SyncOptions {
     pub on_startup: bool,
     pub on_close: bool,
     pub conflicts: ConflictRule,
+    /// What the second place (see `Lane::Also`) is sent: book files…
+    pub also_book_files: bool,
+    /// …and audiobook files, which may not fit there.
+    pub also_audio_files: bool,
 }
 
 impl Default for SyncOptions {
@@ -259,6 +271,8 @@ impl Default for SyncOptions {
             on_startup: true,
             on_close: true,
             conflicts: ConflictRule::Recent,
+            also_book_files: true,
+            also_audio_files: false,
         }
     }
 }
@@ -278,6 +292,79 @@ impl SyncOptions {
     /// pulled again so newly included kinds catch up.
     fn scope(&self) -> String {
         KINDS.iter().filter(|k| self.includes(k.category)).map(|k| k.name).collect::<Vec<_>>().join(",")
+    }
+
+    /// The choices as they apply to one place: the second has its own file switches.
+    fn for_lane(&self, lane: Lane) -> SyncOptions {
+        match lane {
+            Lane::Main => self.clone(),
+            Lane::Also => SyncOptions { book_files: self.also_book_files, audio_files: self.also_audio_files, ..self.clone() },
+        }
+    }
+}
+
+/// The places a library syncs with. Most people have one; someone who keeps
+/// every file in iCloud and reads on a phone through Supabase has both. Each
+/// keeps its own idea of what it has been sent, so a change from either one
+/// is passed on to the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lane {
+    /// The provider in `sync.provider`.
+    Main,
+    /// The second place in `sync.also`, if there is one.
+    Also,
+}
+
+impl Lane {
+    fn name(self) -> &'static str {
+        match self {
+            Lane::Main => "main",
+            Lane::Also => "also",
+        }
+    }
+
+    fn from_name(name: &str) -> Lane {
+        if name == "also" {
+            Lane::Also
+        } else {
+            Lane::Main
+        }
+    }
+
+    fn cursor_key(self) -> &'static str {
+        match self {
+            Lane::Main => CURSOR,
+            Lane::Also => ALSO_CURSOR,
+        }
+    }
+
+    fn erase_key(self) -> &'static str {
+        match self {
+            Lane::Main => ERASE,
+            Lane::Also => ALSO_ERASE,
+        }
+    }
+
+    /// Which files this place has been sent.
+    fn files_table(self) -> &'static str {
+        match self {
+            Lane::Main => "sync_files",
+            Lane::Also => "sync_files_also",
+        }
+    }
+
+    fn last_success_key(self) -> &'static str {
+        match self {
+            Lane::Main => LAST_SUCCESS,
+            Lane::Also => ALSO_LAST_SUCCESS,
+        }
+    }
+
+    fn last_error_key(self) -> &'static str {
+        match self {
+            Lane::Main => LAST_ERROR,
+            Lane::Also => ALSO_LAST_ERROR,
+        }
     }
 }
 
@@ -334,7 +421,7 @@ impl Provider {
     }
 
     /// Whether two choices point at the same cloud library.
-    fn same_place(&self, other: &Provider) -> bool {
+    pub fn same_place(&self, other: &Provider) -> bool {
         match (self, other) {
             (Provider::Supabase, Provider::Supabase) | (Provider::Off, Provider::Off) => true,
             (Provider::Folder { path: a, .. }, Provider::Folder { path: b, .. }) => a == b,
@@ -420,6 +507,18 @@ pub struct SyncOverview {
     /// Changes on this device the cloud doesn't have yet.
     pub waiting_to_send: u32,
     pub conflicts: Vec<SyncConflict>,
+    /// The second place the library syncs with, if there is one.
+    pub also: Option<AlsoOverview>,
+}
+
+/// How the second place stands.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlsoOverview {
+    pub provider: ProviderView,
+    pub last_success_at: Option<IsoUtc>,
+    pub last_error: Option<String>,
+    pub waiting_to_send: u32,
 }
 
 /// Both devices changed the same thing; the user picks which to keep.
@@ -501,6 +600,12 @@ const DEVICE_ID: &str = "sync.device_id";
 const CURSOR: &str = "sync.cursor";
 const LAST_SUCCESS: &str = "sync.last_success_at";
 const LAST_ERROR: &str = "sync.last_error";
+/// The second place, as a `Provider`. Kept on this device only, like the first.
+pub(crate) const ALSO: &str = "sync.also";
+const ALSO_CURSOR: &str = "sync.also.cursor";
+const ALSO_ERASE: &str = "sync.also.erase";
+const ALSO_LAST_SUCCESS: &str = "sync.also.last_success_at";
+const ALSO_LAST_ERROR: &str = "sync.also.last_error";
 const SESSION: &str = "sync.session";
 const PROJECT: &str = "sync.supabase";
 pub(crate) const PROVIDER: &str = "sync.provider";
@@ -609,19 +714,66 @@ impl Library {
         if !self.sync_provider()?.same_place(provider) {
             self.reset_sync()?;
         }
-        self.put_setting(PROVIDER, Some(&serde_json::to_string(provider)?))
+        self.put_setting(PROVIDER, Some(&serde_json::to_string(provider)?))?;
+        self.drop_also_if_same(provider)
+    }
+
+    /// The main sync moved to where the second one was: one place is enough.
+    pub(crate) fn drop_also_if_same(&mut self, main: &Provider) -> Result<()> {
+        if self.sync_also()?.is_some_and(|also| also.same_place(main)) {
+            self.set_sync_also(None)?;
+        }
+        Ok(())
+    }
+
+    /// The second place the library syncs with, if there is one.
+    pub fn sync_also(&self) -> Result<Option<Provider>> {
+        Ok(self.setting(ALSO)?.and_then(|s| serde_json::from_str(&s).ok()).filter(|p| *p != Provider::Off))
+    }
+
+    /// Saves (or, with `None`, stops) the second place. A new place is sent
+    /// everything and all of it read, as the first one was.
+    pub fn set_sync_also(&mut self, provider: Option<&Provider>) -> Result<()> {
+        let provider = provider.filter(|p| **p != Provider::Off);
+        if let Some(provider) = provider {
+            if self.sync_provider()?.same_place(provider) {
+                return Err(Error::Unsuitable("Your library already syncs there. Choose a different place for the second sync.".into()));
+            }
+        }
+        let before = self.sync_also()?;
+        let same = match (&before, provider) {
+            (Some(a), Some(b)) => a.same_place(b),
+            (None, None) => true,
+            _ => false,
+        };
+        if !same {
+            self.reset_also_sync()?;
+        }
+        let json = provider.map(serde_json::to_string).transpose()?;
+        self.put_setting(ALSO, json.as_deref())
     }
 
     /// A connection to the chosen service, if it's ready to use.
     pub fn connect(&self) -> Result<Option<Cloud>> {
-        let provider = self.sync_provider()?;
+        self.connect_to(&self.sync_provider()?)
+    }
+
+    /// A connection to the second place, if there is one and it's ready.
+    pub fn connect_also(&self) -> Result<Option<Cloud>> {
+        match self.sync_also()? {
+            Some(provider) => self.connect_to(&provider),
+            None => Ok(None),
+        }
+    }
+
+    pub fn connect_to(&self, provider: &Provider) -> Result<Option<Cloud>> {
         match provider {
             Provider::Supabase => {
                 let (Some(project), Some(session)) = (self.supabase_project()?, self.sync_session()?) else { return Ok(None) };
                 Ok(Some(Cloud::Supabase(supabase::Supabase::new(project, session, self.device_id()?))))
             }
             Provider::Off => Ok(None),
-            _ => Ok(Some(Cloud::Files(open_files(&provider, self.device_id()?)?.0))),
+            _ => Ok(Some(Cloud::Files(open_files(provider, self.device_id()?)?.0))),
         }
     }
 
@@ -683,41 +835,65 @@ impl Library {
         // Only what would actually be sent: kinds switched off keep their
         // stamps for later, but aren't waiting now.
         let options = self.sync_options()?;
-        let mut waiting: i64 = 0;
-        for kind in KINDS.iter().filter(|k| options.includes(k.category)) {
-            waiting += self.conn.query_row(
-                "SELECT COUNT(*) FROM sync_clock c WHERE c.kind = ?1 AND c.pushed = 0
-                   AND NOT EXISTS (SELECT 1 FROM sync_conflicts x WHERE x.kind = c.kind AND x.key = c.key)",
-                params![kind.name],
-                |r| r.get::<_, i64>(0),
-            )?;
-        }
+        let also = match self.sync_also()? {
+            Some(provider) => Some(AlsoOverview {
+                provider: provider.view(),
+                last_success_at: self.setting(ALSO_LAST_SUCCESS)?,
+                last_error: self.setting(ALSO_LAST_ERROR)?.map(|e| e.trim_start_matches(OFFLINE_PREFIX).to_string()),
+                waiting_to_send: self.waiting_count(&options, Lane::Also)?,
+            }),
+            None => None,
+        };
         Ok(SyncOverview {
             status: self.sync_status()?,
             provider: self.sync_provider()?.view(),
             project: self.supabase_project()?,
             signed_in_as: self.sync_session()?.map(|s| s.email),
             last_error: self.setting(LAST_ERROR)?.map(|e| e.trim_start_matches(OFFLINE_PREFIX).to_string()),
-            waiting_to_send: waiting.max(0) as u32,
+            waiting_to_send: self.waiting_count(&options, Lane::Main)?,
             conflicts: self.sync_conflicts()?,
+            also,
         })
     }
 
-    fn record_result(&self, outcome: &Result<SyncReport>) -> Result<()> {
+    /// Changes one place doesn't have yet. Only what would actually be sent:
+    /// kinds switched off keep their stamps for later, but aren't waiting now.
+    fn waiting_count(&self, options: &SyncOptions, lane: Lane) -> Result<u32> {
+        let mut waiting: i64 = 0;
+        for kind in KINDS.iter().filter(|k| options.includes(k.category)) {
+            waiting += self.conn.query_row(
+                &format!(
+                    "SELECT COUNT(*) FROM sync_clock c WHERE c.kind = ?1 AND {}
+                       AND NOT EXISTS (SELECT 1 FROM sync_conflicts x WHERE x.kind = c.kind AND x.key = c.key)",
+                    unsent(lane)
+                ),
+                params![kind.name],
+                |r| r.get::<_, i64>(0),
+            )?;
+        }
+        Ok(waiting.max(0) as u32)
+    }
+
+    fn record_result(&self, outcome: &Result<SyncReport>, lane: Lane) -> Result<()> {
         match outcome {
             Ok(_) => {
-                self.put_setting(LAST_SUCCESS, Some(&now_utc()))?;
-                self.put_setting(LAST_ERROR, None)
+                self.put_setting(lane.last_success_key(), Some(&now_utc()))?;
+                self.put_setting(lane.last_error_key(), None)
             }
-            Err(error) => self.note_sync_failure(error),
+            Err(error) => self.note_lane_failure(error, lane),
         }
     }
 
     /// Remembers why sync couldn't run, for Settings and the header circle.
     pub fn note_sync_failure(&self, error: &Error) -> Result<()> {
+        self.note_lane_failure(error, Lane::Main)
+    }
+
+    /// As `note_sync_failure`, for either place.
+    pub fn note_lane_failure(&self, error: &Error, lane: Lane) -> Result<()> {
         match error {
-            Error::Offline(why) => self.put_setting(LAST_ERROR, Some(&format!("{OFFLINE_PREFIX}{why}"))),
-            error => self.put_setting(LAST_ERROR, Some(&error.to_string())),
+            Error::Offline(why) => self.put_setting(lane.last_error_key(), Some(&format!("{OFFLINE_PREFIX}{why}"))),
+            error => self.put_setting(lane.last_error_key(), Some(&error.to_string())),
         }
     }
 
@@ -727,7 +903,7 @@ impl Library {
         self.sync_epoch += 1;
         self.conn.execute_batch(
             "UPDATE sync_clock SET pushed = 0;
-             DELETE FROM sync_waiting; DELETE FROM sync_conflicts; DELETE FROM sync_files;",
+             DELETE FROM sync_waiting WHERE lane = 'main'; DELETE FROM sync_conflicts WHERE lane = 'main'; DELETE FROM sync_files;",
         )?;
         for key in [CURSOR, LAST_SUCCESS, LAST_ERROR] {
             self.put_setting(key, None)?;
@@ -735,17 +911,30 @@ impl Library {
         Ok(())
     }
 
-    fn cursor(&self, options: &SyncOptions) -> Result<String> {
-        let saved: Cursor = self.setting(CURSOR)?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    /// As `reset_sync`, for the second place only.
+    pub fn reset_also_sync(&mut self) -> Result<()> {
+        self.sync_epoch += 1;
+        self.conn.execute_batch(
+            "DELETE FROM sync_clock_also; DELETE FROM sync_files_also;
+             DELETE FROM sync_waiting WHERE lane = 'also'; DELETE FROM sync_conflicts WHERE lane = 'also';",
+        )?;
+        for key in [ALSO_CURSOR, ALSO_ERASE, ALSO_LAST_SUCCESS, ALSO_LAST_ERROR] {
+            self.put_setting(key, None)?;
+        }
+        Ok(())
+    }
+
+    fn cursor(&self, options: &SyncOptions, lane: Lane) -> Result<String> {
+        let saved: Cursor = self.setting(lane.cursor_key())?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
         if saved.scope != options.scope() {
             return Ok(String::new());
         }
         Ok(saved.at.unwrap_or_else(|| if saved.seq > 0 { saved.seq.to_string() } else { String::new() }))
     }
 
-    fn save_cursor(&self, options: &SyncOptions, at: &str) -> Result<()> {
+    fn save_cursor(&self, options: &SyncOptions, at: &str, lane: Lane) -> Result<()> {
         let json = serde_json::to_string(&Cursor { scope: options.scope(), at: Some(at.to_string()), seq: 0 })?;
-        self.put_setting(CURSOR, Some(&json))
+        self.put_setting(lane.cursor_key(), Some(&json))
     }
 
     /// The row a record stands for, as it is here now. `None` if it's gone.
@@ -768,14 +957,20 @@ impl Library {
 
     /// Changes the cloud doesn't have yet, oldest first, in `KINDS` order.
     pub fn sync_outbox(&self, options: &SyncOptions, limit: usize) -> Result<Vec<Record>> {
+        self.lane_outbox(options, limit, Lane::Main)
+    }
+
+    /// As `sync_outbox`, for either place.
+    pub fn lane_outbox(&self, options: &SyncOptions, limit: usize, lane: Lane) -> Result<Vec<Record>> {
         let mut out = Vec::new();
         for kind in KINDS.iter().filter(|k| options.includes(k.category)) {
-            let mut statement = self.conn.prepare(
+            let mut statement = self.conn.prepare(&format!(
                 "SELECT c.key, c.changed_at FROM sync_clock c
-                 WHERE c.kind = ?1 AND c.pushed = 0
+                 WHERE c.kind = ?1 AND {}
                    AND NOT EXISTS (SELECT 1 FROM sync_conflicts x WHERE x.kind = c.kind AND x.key = c.key)
                  ORDER BY c.changed_at LIMIT ?2",
-            )?;
+                unsent(lane)
+            ))?;
             let waiting = statement
                 .query_map(params![kind.name, (limit - out.len()) as i64], |r| Ok((r.get::<_, String>(0)?, r.get(1)?)))?
                 .collect::<rusqlite::Result<Vec<(String, String)>>>()?;
@@ -792,26 +987,50 @@ impl Library {
 
     /// The cloud has these now. Ones changed again meanwhile stay waiting.
     pub fn sync_mark_sent(&self, records: &[Record]) -> Result<()> {
+        self.lane_mark_sent(records, Lane::Main)
+    }
+
+    /// As `sync_mark_sent`, for either place.
+    pub fn lane_mark_sent(&self, records: &[Record], lane: Lane) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
         for r in records {
-            tx.execute(
-                "UPDATE sync_clock SET pushed = 1 WHERE kind = ?1 AND key = ?2 AND changed_at = ?3",
-                params![r.kind, r.key, r.changed_at],
-            )?;
+            let params = params![r.kind, r.key, r.changed_at];
+            match lane {
+                Lane::Main => tx.execute("UPDATE sync_clock SET pushed = 1 WHERE kind = ?1 AND key = ?2 AND changed_at = ?3", params)?,
+                Lane::Also => tx.execute(
+                    "INSERT OR REPLACE INTO sync_clock_also (kind, key, changed_at)
+                     SELECT kind, key, changed_at FROM sync_clock WHERE kind = ?1 AND key = ?2 AND changed_at = ?3",
+                    params,
+                )?,
+            };
         }
         tx.commit()?;
+        Ok(())
+    }
+
+    /// The second place has this change, so it isn't sent there again.
+    fn also_has(&self, record: &Record, changed_at: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO sync_clock_also (kind, key, changed_at) VALUES (?1, ?2, ?3)",
+            params![record.kind, record.key, changed_at],
+        )?;
         Ok(())
     }
 
     /// Merges records from other devices. Returns how many changed something
     /// here and how many need the user to choose.
     pub fn sync_apply(&self, records: &[Record], options: &SyncOptions) -> Result<(u32, u32)> {
+        self.lane_apply(records, options, Lane::Main)
+    }
+
+    /// As `sync_apply`, for records from either place.
+    pub fn lane_apply(&self, records: &[Record], options: &SyncOptions, lane: Lane) -> Result<(u32, u32)> {
         let _quiet = Quiet::new(self);
         let tx = self.conn.unchecked_transaction()?;
         let mut applied = 0;
         let mut conflicts = 0;
         for record in records {
-            match self.merge(record, options)? {
+            match self.merge(record, options, lane)? {
                 Merge::Applied => applied += 1,
                 Merge::Conflict => conflicts += 1,
                 Merge::Kept => {}
@@ -822,24 +1041,37 @@ impl Library {
         Ok((applied, conflicts))
     }
 
-    fn merge(&self, record: &Record, options: &SyncOptions) -> Result<Merge> {
+    fn merge(&self, record: &Record, options: &SyncOptions, lane: Lane) -> Result<Merge> {
         let Some(kind) = kind_named(&record.kind) else {
             return Ok(Merge::Kept); // From a newer TBV.
         };
         if !options.includes(kind.category) {
             return Ok(Merge::Kept);
         }
+        // Whether this change here was already sent to the place the record came from.
         let local: Option<(String, bool)> = self
             .conn
             .query_row(
-                "SELECT changed_at, pushed FROM sync_clock WHERE kind = ?1 AND key = ?2",
+                match lane {
+                    Lane::Main => "SELECT changed_at, pushed FROM sync_clock WHERE kind = ?1 AND key = ?2",
+                    Lane::Also => {
+                        "SELECT c.changed_at, a.changed_at IS c.changed_at FROM sync_clock c
+                         LEFT JOIN sync_clock_also a ON a.kind = c.kind AND a.key = c.key WHERE c.kind = ?1 AND c.key = ?2"
+                    }
+                },
                 params![record.kind, record.key],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
         let take = match local {
             None => true,
-            Some((at, _)) if at == record.changed_at => false, // Already the same change.
+            Some((at, _)) if at == record.changed_at => {
+                // Already the same change.
+                if lane == Lane::Also {
+                    self.also_has(record, &at)?;
+                }
+                false
+            }
             Some((at, true)) => record.changed_at > at,
             Some((at, false)) => {
                 // Changed here and elsewhere since the last sync.
@@ -856,8 +1088,8 @@ impl Library {
                     }
                     ConflictRule::Ask => {
                         self.conn.execute(
-                            "INSERT OR REPLACE INTO sync_conflicts (kind, key, remote, found_at) VALUES (?1, ?2, ?3, ?4)",
-                            params![record.kind, record.key, serde_json::to_string(record)?, now_utc()],
+                            "INSERT OR REPLACE INTO sync_conflicts (kind, key, remote, found_at, lane) VALUES (?1, ?2, ?3, ?4, ?5)",
+                            params![record.kind, record.key, serde_json::to_string(record)?, now_utc(), lane.name()],
                         )?;
                         return Ok(Merge::Conflict);
                     }
@@ -868,14 +1100,19 @@ impl Library {
             return Ok(Merge::Kept);
         }
         if self.write(kind, record)? {
-            self.stamp(record, record.changed_at.clone(), true)?;
+            // Sent on to the other place: from the first, the second hasn't
+            // got it; from the second, the first hasn't.
+            self.stamp(record, record.changed_at.clone(), lane == Lane::Main)?;
+            if lane == Lane::Also {
+                self.also_has(record, &record.changed_at)?;
+            }
             self.conn.execute("DELETE FROM sync_conflicts WHERE kind = ?1 AND key = ?2", params![record.kind, record.key])?;
             self.conn.execute("DELETE FROM sync_waiting WHERE kind = ?1 AND key = ?2", params![record.kind, record.key])?;
             Ok(Merge::Applied)
         } else {
             self.conn.execute(
-                "INSERT OR REPLACE INTO sync_waiting (kind, key, record) VALUES (?1, ?2, ?3)",
-                params![record.kind, record.key, serde_json::to_string(record)?],
+                "INSERT OR REPLACE INTO sync_waiting (kind, key, record, lane) VALUES (?1, ?2, ?3, ?4)",
+                params![record.kind, record.key, serde_json::to_string(record)?, lane.name()],
             )?;
             Ok(Merge::Kept)
         }
@@ -942,14 +1179,14 @@ impl Library {
         loop {
             let waiting = self
                 .conn
-                .prepare("SELECT record FROM sync_waiting")?
-                .query_map([], |r| r.get::<_, String>(0))?
+                .prepare("SELECT record, lane FROM sync_waiting")?
+                .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             let mut progress = false;
-            for json in waiting {
+            for (json, lane) in waiting {
                 let Ok(record) = serde_json::from_str::<Record>(&json) else { continue };
                 self.conn.execute("DELETE FROM sync_waiting WHERE kind = ?1 AND key = ?2", params![record.kind, record.key])?;
-                if let Merge::Applied = self.merge(&record, options)? {
+                if let Merge::Applied = self.merge(&record, options, Lane::from_name(&lane))? {
                     applied += 1;
                     progress = true;
                 }
@@ -985,17 +1222,19 @@ impl Library {
 
     /// Settles a conflict the user was asked about.
     pub fn resolve_sync_conflict(&self, kind: &str, key: &str, keep_cloud: bool) -> Result<()> {
-        let remote: Option<String> = self
+        let remote: Option<(String, String)> = self
             .conn
-            .query_row("SELECT remote FROM sync_conflicts WHERE kind = ?1 AND key = ?2", params![kind, key], |r| r.get(0))
+            .query_row("SELECT remote, lane FROM sync_conflicts WHERE kind = ?1 AND key = ?2", params![kind, key], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
             .optional()?;
-        let Some(remote) = remote.and_then(|r| serde_json::from_str::<Record>(&r).ok()) else {
+        let Some((remote, lane)) = remote.and_then(|(r, lane)| Some((serde_json::from_str::<Record>(&r).ok()?, lane))) else {
             return Ok(());
         };
         self.conn.execute("DELETE FROM sync_conflicts WHERE kind = ?1 AND key = ?2", params![kind, key])?;
         if keep_cloud {
             let options = SyncOptions { conflicts: ConflictRule::Cloud, ..self.sync_options()? };
-            self.sync_apply(&[remote], &options)?;
+            self.lane_apply(&[remote], &options, Lane::from_name(&lane))?;
         } else {
             self.stamp(&remote, after(&remote.changed_at), false)?;
         }
@@ -1025,6 +1264,7 @@ impl Library {
             "collection_book" => format!("A book's place in a collection{}", book(key.get(1))?),
             "annotation" => format!("A note or highlight{}", book(data.and_then(|d| d.get("book_id")))?),
             "book_tag" => format!("The tag {}{}", key.get(1).and_then(Value::as_str).unwrap_or_default(), book(key.first())?),
+            "profile" => "Your profile picture".into(),
             _ => format!("The note {}", field("title").filter(|t| !t.is_empty()).unwrap_or_else(|| "without a title".into())),
         })
     }
@@ -1054,6 +1294,9 @@ impl Library {
                 }
             }
         }
+        if let Some(name) = self.avatar_name()? {
+            wanted.push((format!("pictures/{name}"), self.paths.profile_dir.join(name)));
+        }
         if options.collections {
             let pictures = self
                 .conn
@@ -1069,15 +1312,14 @@ impl Library {
     }
 
     /// Books this device has that the cloud doesn't, as (cloud path, file).
-    fn files_to_send(&self, options: &SyncOptions) -> Result<Vec<(String, PathBuf)>> {
+    fn files_to_send(&self, options: &SyncOptions, lane: Lane) -> Result<Vec<(String, PathBuf)>> {
         let retry_after = (Utc::now() - Duration::hours(RETRY_FILE_HOURS)).to_rfc3339_opts(SecondsFormat::Millis, true);
         let wanted = self.files_kept(options)?;
         let mut out = Vec::new();
+        let sql = format!("SELECT uploaded_at, failed_at FROM {} WHERE path = ?1", lane.files_table());
         for (remote, file) in wanted {
-            let done: Option<(Option<String>, Option<String>)> = self
-                .conn
-                .query_row("SELECT uploaded_at, failed_at FROM sync_files WHERE path = ?1", params![remote], |r| Ok((r.get(0)?, r.get(1)?)))
-                .optional()?;
+            let done: Option<(Option<String>, Option<String>)> =
+                self.conn.query_row(&sql, params![remote], |r| Ok((r.get(0)?, r.get(1)?))).optional()?;
             let due = match done {
                 None => true,
                 Some((Some(_), _)) => false,
@@ -1091,9 +1333,13 @@ impl Library {
     }
 
     fn file_sent(&self, remote: &str, error: Option<&str>) -> Result<()> {
+        self.lane_file_sent(remote, error, Lane::Main)
+    }
+
+    fn lane_file_sent(&self, remote: &str, error: Option<&str>, lane: Lane) -> Result<()> {
         let now = now_utc();
         self.conn.execute(
-            "INSERT OR REPLACE INTO sync_files (path, uploaded_at, failed_at, error) VALUES (?1, ?2, ?3, ?4)",
+            &format!("INSERT OR REPLACE INTO {} (path, uploaded_at, failed_at, error) VALUES (?1, ?2, ?3, ?4)", lane.files_table()),
             params![remote, error.is_none().then(|| now.clone()), error.map(|_| now.clone()), error],
         )?;
         Ok(())
@@ -1153,30 +1399,35 @@ impl Library {
             .optional()?;
         let Some((format, cover)) = found else { return Ok(()) };
         let hex = book_id_hex(book_id);
-        let mut paths = self.files_to_erase()?;
-        paths.push(format!("books/{hex}.{format}"));
+        let mut gone = vec![format!("books/{hex}.{format}")];
         // The cover's name in the cloud follows the picture's own type.
         match cover.as_deref().and_then(|c| Path::new(c).extension()) {
-            Some(extension) => paths.push(format!("covers/{hex}.{}", extension.to_string_lossy())),
-            None => paths.extend(["jpg", "png", "webp"].map(|e| format!("covers/{hex}.{e}"))),
+            Some(extension) => gone.push(format!("covers/{hex}.{}", extension.to_string_lossy())),
+            None => gone.extend(["jpg", "png", "webp"].map(|e| format!("covers/{hex}.{e}"))),
         }
-        paths.sort();
-        paths.dedup();
-        self.put_setting(ERASE, Some(&serde_json::to_string(&paths)?))
+        let lanes: &[Lane] = if self.sync_also()?.is_some() { &[Lane::Main, Lane::Also] } else { &[Lane::Main] };
+        for &lane in lanes {
+            let mut paths = self.files_to_erase(lane)?;
+            paths.extend(gone.iter().cloned());
+            paths.sort();
+            paths.dedup();
+            self.put_setting(lane.erase_key(), Some(&serde_json::to_string(&paths)?))?;
+        }
+        Ok(())
     }
 
-    fn files_to_erase(&self) -> Result<Vec<String>> {
-        Ok(self.setting(ERASE)?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default())
+    fn files_to_erase(&self, lane: Lane) -> Result<Vec<String>> {
+        Ok(self.setting(lane.erase_key())?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default())
     }
 
     /// Forgets erased files, so the same book imported again goes up afresh.
-    fn files_erased(&self, done: &[String]) -> Result<()> {
+    fn files_erased(&self, done: &[String], lane: Lane) -> Result<()> {
         for path in done {
-            self.conn.execute("DELETE FROM sync_files WHERE path = ?1", params![path])?;
+            self.conn.execute(&format!("DELETE FROM {} WHERE path = ?1", lane.files_table()), params![path])?;
         }
-        let left: Vec<String> = self.files_to_erase()?.into_iter().filter(|p| !done.contains(p)).collect();
+        let left: Vec<String> = self.files_to_erase(lane)?.into_iter().filter(|p| !done.contains(p)).collect();
         let left = if left.is_empty() { None } else { Some(serde_json::to_string(&left)?) };
-        self.put_setting(ERASE, left.as_deref())
+        self.put_setting(lane.erase_key(), left.as_deref())
     }
 
     /// Where a book's file is kept in the cloud, if this device knows the book.
@@ -1254,12 +1505,23 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "collection" => short(text("name")),
         "collection_book" => "In the collection".into(),
         "book_tag" => if data.get("removed_at").is_some_and(|v| !v.is_null()) { "Tag taken off".into() } else { "Tagged".into() },
+        "profile" => if text("avatar").is_empty() { "No picture".into() } else { "A picture".into() },
         "annotation" => short(if text("note").is_empty() { text("excerpt") } else { text("note") }),
         _ => short(text("body")),
     }
 }
 
 const OFFLINE_PREFIX: &str = "offline: ";
+
+/// A `sync_clock` row (as `c`) the place hasn't been sent yet.
+fn unsent(lane: Lane) -> &'static str {
+    match lane {
+        Lane::Main => "c.pushed = 0",
+        Lane::Also => {
+            "NOT EXISTS (SELECT 1 FROM sync_clock_also a WHERE a.kind = c.kind AND a.key = c.key AND a.changed_at = c.changed_at)"
+        }
+    }
+}
 
 /// One sync run: pull, merge, push, then files. The library is locked only
 /// while reading or writing it, never while waiting on the network.
@@ -1271,6 +1533,35 @@ pub fn sync_once(library: &Mutex<Library>, remote: &mut dyn Remote) -> Result<Sy
 /// As `sync_once`, for a remote opened when sync was at `epoch` (see
 /// `Library::sync_epoch`). If sync has started over since, nothing is written.
 pub fn sync_once_since(library: &Mutex<Library>, remote: &mut dyn Remote, epoch: u64) -> Result<SyncReport> {
+    sync_both_since(library, remote, None, epoch)
+}
+
+/// As `sync_both_since`, when either place may be out of reach this time.
+/// A place that couldn't be connected is left alone (its trouble was noted
+/// when connecting); the result is the first place's when it ran, else the second's.
+pub fn sync_lanes_since(
+    library: &Mutex<Library>,
+    main: Option<&mut dyn Remote>,
+    also: Option<&mut dyn Remote>,
+    epoch: u64,
+) -> Result<SyncReport> {
+    match (main, also) {
+        (Some(main), also) => sync_both_since(library, main, also, epoch),
+        (None, Some(also)) => run_lanes(library, None, Some(also), epoch),
+        (None, None) => Ok(SyncReport::default()),
+    }
+}
+
+/// One run with both places: what each has that this device doesn't comes
+/// down first, then each is sent what it lacks, so a change made through
+/// one (a phone on Supabase, say) reaches the other in the same run. A place
+/// that can't be reached doesn't stop the other; each remembers its own
+/// result. Returns the first place's, with what the second brought added.
+pub fn sync_both_since(library: &Mutex<Library>, main: &mut dyn Remote, also: Option<&mut dyn Remote>, epoch: u64) -> Result<SyncReport> {
+    run_lanes(library, Some(main), also, epoch)
+}
+
+fn run_lanes(library: &Mutex<Library>, main: Option<&mut dyn Remote>, also: Option<&mut dyn Remote>, epoch: u64) -> Result<SyncReport> {
     let take = || library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()));
     // Sync started over meanwhile (another service, or signed out): this
     // run's place is no longer the library's, so it writes nothing more.
@@ -1281,75 +1572,155 @@ pub fn sync_once_since(library: &Mutex<Library>, remote: &mut dyn Remote, epoch:
         }
         Ok(library)
     };
-    let outcome = run(&lock, remote);
-    match (&outcome, lock()) {
-        (Err(Error::Superseded), _) | (_, Err(Error::Superseded)) => Ok(SyncReport::default()),
-        (_, Err(e)) => Err(e),
-        (_, Ok(library)) => {
-            library.record_result(&outcome)?;
-            outcome
+    let (main_outcome, also_outcome) = run_both(&lock, main, also);
+    let superseded = |o: &Result<SyncReport>| matches!(o, Err(Error::Superseded));
+    if main_outcome.as_ref().is_some_and(superseded) || also_outcome.as_ref().is_some_and(superseded) {
+        return Ok(SyncReport::default());
+    }
+    match lock() {
+        Err(Error::Superseded) => Ok(SyncReport::default()),
+        Err(e) => Err(e),
+        Ok(library) => {
+            if let Some(outcome) = &main_outcome {
+                library.record_result(outcome, Lane::Main)?;
+            }
+            if let Some(outcome) = &also_outcome {
+                library.record_result(outcome, Lane::Also)?;
+            }
+            let Some(main_outcome) = main_outcome else {
+                return also_outcome.unwrap_or_else(|| Ok(SyncReport::default()));
+            };
+            let mut report = main_outcome?;
+            if let Some(Ok(also)) = also_outcome {
+                report.received += also.received;
+                report.sent += also.sent;
+                report.files_sent += also.files_sent;
+                report.files_received += also.files_received;
+                report.new_conflicts += also.new_conflicts;
+                report.skipped_files.extend(also.skipped_files);
+            }
+            Ok(report)
         }
     }
 }
 
-fn run<'a>(lock: &dyn Fn() -> Result<std::sync::MutexGuard<'a, Library>>, remote: &mut dyn Remote) -> Result<SyncReport> {
-    let mut report = SyncReport::default();
-    let (options, mut cursor) = {
-        let library = lock()?;
-        let options = library.sync_options()?;
-        let cursor = library.cursor(&options)?;
-        (options, cursor)
+type Lock<'l, 'a> = &'l dyn Fn() -> Result<std::sync::MutexGuard<'a, Library>>;
+
+/// Runs a step for a place that hasn't failed yet in this run.
+fn step(outcome: &mut Result<SyncReport>, work: impl FnOnce(&mut SyncReport) -> Result<()>) {
+    if let Ok(report) = outcome {
+        if let Err(e) = work(report) {
+            *outcome = Err(e);
+        }
+    }
+}
+
+type Outcomes = (Option<Result<SyncReport>>, Option<Result<SyncReport>>);
+
+fn run_both(lock: Lock, mut main: Option<&mut dyn Remote>, mut also: Option<&mut dyn Remote>) -> Outcomes {
+    let options = match lock().and_then(|l| l.sync_options()) {
+        Ok(options) => options,
+        Err(e) => return (Some(Err(e)), None),
+    };
+    let also_options = options.for_lane(Lane::Also);
+    let mut first = main.as_ref().map(|_| Ok(SyncReport::default()));
+    let mut second = also.as_ref().map(|_| Ok(SyncReport::default()));
+    let stopped = |a: &Option<Result<SyncReport>>, b: &Option<Result<SyncReport>>| {
+        matches!(a, Some(Err(Error::Superseded))) || matches!(b, Some(Err(Error::Superseded)))
     };
 
+    if let (Some(remote), Some(outcome)) = (main.as_deref_mut(), first.as_mut()) {
+        step(outcome, |r| pull(lock, remote, &options, Lane::Main, r));
+    }
+    if let (Some(remote), Some(outcome)) = (also.as_deref_mut(), second.as_mut()) {
+        step(outcome, |r| pull(lock, remote, &also_options, Lane::Also, r));
+    }
+    if stopped(&first, &second) {
+        return (first, second);
+    }
+    if let (Some(remote), Some(outcome)) = (main.as_deref_mut(), first.as_mut()) {
+        step(outcome, |r| push(lock, remote, &options, Lane::Main, r));
+    }
+    if let (Some(remote), Some(outcome)) = (also.as_deref_mut(), second.as_mut()) {
+        step(outcome, |r| push(lock, remote, &also_options, Lane::Also, r));
+    }
+    if stopped(&first, &second) {
+        return (first, second);
+    }
+    if let (Some(remote), Some(outcome)) = (main, first.as_mut()) {
+        step(outcome, |r| files(lock, remote, &options, Lane::Main, r));
+    }
+    if let (Some(remote), Some(outcome)) = (also, second.as_mut()) {
+        step(outcome, |r| files(lock, remote, &also_options, Lane::Also, r));
+    }
+    (first, second)
+}
+
+fn pull(lock: Lock, remote: &mut dyn Remote, options: &SyncOptions, lane: Lane, report: &mut SyncReport) -> Result<()> {
+    let mut cursor = lock()?.cursor(options, lane)?;
     loop {
         let Page { records, cursor: next } = remote.pull(&cursor, PAGE)?;
         if records.is_empty() {
             break;
         }
         let library = lock()?;
-        let (applied, conflicts) = library.sync_apply(&records, &options)?;
+        let (applied, conflicts) = library.lane_apply(&records, options, lane)?;
         report.received += applied;
         report.new_conflicts += conflicts;
         cursor = next;
-        library.save_cursor(&options, &cursor)?;
+        library.save_cursor(options, &cursor, lane)?;
         if records.len() < PAGE {
             break;
         }
     }
+    Ok(())
+}
 
+fn push(lock: Lock, remote: &mut dyn Remote, options: &SyncOptions, lane: Lane, report: &mut SyncReport) -> Result<()> {
     let mut seen = HashSet::new();
     loop {
-        let batch = lock()?.sync_outbox(&options, BATCH)?;
+        let batch = lock()?.lane_outbox(options, BATCH, lane)?;
         // Anything changed again mid-send comes back; send it once more, not forever.
         let fresh: Vec<Record> = batch.into_iter().filter(|r| seen.insert((r.kind.clone(), r.key.clone(), r.changed_at.clone()))).collect();
         if fresh.is_empty() {
             break;
         }
         remote.push(&fresh)?;
-        lock()?.sync_mark_sent(&fresh)?;
+        lock()?.lane_mark_sent(&fresh, lane)?;
         report.sent += fresh.len() as u32;
     }
+    Ok(())
+}
 
-    let to_erase = lock()?.files_to_erase()?;
+fn files(lock: Lock, remote: &mut dyn Remote, options: &SyncOptions, lane: Lane, report: &mut SyncReport) -> Result<()> {
+    let to_erase = lock()?.files_to_erase(lane)?;
     if !to_erase.is_empty() {
         for path in &to_erase {
             remote.remove(path)?;
         }
-        lock()?.files_erased(&to_erase)?;
+        lock()?.files_erased(&to_erase, lane)?;
     }
 
-    let to_send = lock()?.files_to_send(&options)?;
+    let to_send = lock()?.files_to_send(options, lane)?;
     for (path, file) in to_send {
         match remote.upload(&path, &file) {
             Ok(()) => {
-                lock()?.file_sent(&path, None)?;
+                lock()?.lane_file_sent(&path, None, lane)?;
                 report.files_sent += 1;
             }
             Err(Error::Rejected(why)) => {
-                lock()?.file_sent(&path, Some(&why))?;
+                lock()?.lane_file_sent(&path, Some(&why), lane)?;
                 report.skipped_files.push(format!("{}: {why}", file.file_name().unwrap_or_default().to_string_lossy()));
             }
             Err(e) => return Err(e),
+        }
+    }
+
+    let avatar = lock()?.avatar_to_fetch()?;
+    if let Some((path, file)) = avatar {
+        if fetch(remote, &path, &file)? {
+            lock()?.tidy_avatars()?;
+            report.files_received += 1;
         }
     }
 
@@ -1377,7 +1748,7 @@ fn run<'a>(lock: &dyn Fn() -> Result<std::sync::MutexGuard<'a, Library>>, remote
             }
         }
     }
-    Ok(report)
+    Ok(())
 }
 
 /// Downloads to a temporary name first, so a cut-off download never looks finished.
@@ -1401,6 +1772,20 @@ fn fetch(remote: &mut dyn Remote, path: &str, to: &Path) -> Result<bool> {
 
 /// Fetches a book's file from the cloud and adds it to this device.
 pub fn download_book(library: &Mutex<Library>, remote: &mut dyn Remote, book_id: &str) -> Result<()> {
+    if download_book_from(library, remote, book_id, Lane::Main)? {
+        Ok(())
+    } else {
+        Err(not_in_cloud())
+    }
+}
+
+/// The answer when no place has a book's file.
+pub fn not_in_cloud() -> Error {
+    Error::Unsuitable("This book's file isn't in the cloud. Turn on Sync book files on the device that has it.".into())
+}
+
+/// As `download_book`, from either place. False if that place hasn't got the file.
+pub fn download_book_from(library: &Mutex<Library>, remote: &mut dyn Remote, book_id: &str, lane: Lane) -> Result<bool> {
     let lock = || library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()));
     let (path, target) = {
         let library = lock()?;
@@ -1410,16 +1795,15 @@ pub fn download_book(library: &Mutex<Library>, remote: &mut dyn Remote, book_id:
         (path, library.download_target(book_id))
     };
     if !fetch(remote, &path, &target)? {
-        return Err(Error::Unsuitable(
-            "This book's file isn't in the cloud. Turn on Sync book files on the device that has it.".into(),
-        ));
+        return Ok(false);
     }
     let format = path.rsplit('.').next().unwrap_or("epub").to_string();
     let result = lock()?.adopt_download(book_id, &target, &format);
     let _ = fs::remove_file(&target);
     result?;
     // The cloud has it, so this copy can be removed again later, and it isn't sent back up.
-    lock()?.file_sent(&path, None)
+    lock()?.lane_file_sent(&path, None, lane)?;
+    Ok(true)
 }
 
 #[cfg(test)]

@@ -293,7 +293,8 @@ impl Library {
     /// to download again when it's next opened. Only when the cloud has it.
     pub fn remove_download(&self, book_id: &str) -> Result<()> {
         let in_cloud: bool = self.conn.query_row(
-            "SELECT EXISTS (SELECT 1 FROM books b JOIN sync_files sf
+            "SELECT EXISTS (SELECT 1 FROM books b JOIN (SELECT path, uploaded_at FROM sync_files
+                  UNION ALL SELECT path, uploaded_at FROM sync_files_also) sf
                 ON sf.path = 'books/' || substr(b.id, 8) || '.' || b.format AND sf.uploaded_at IS NOT NULL
               WHERE b.id = ?1)",
             params![book_id],

@@ -711,6 +711,25 @@ async fn set_sync_provider(
     Ok(joined)
 }
 
+/// Chooses (or, with none, stops) a second place to sync with. True when
+/// the folder or server already held a library.
+#[tauri::command]
+async fn set_also_sync(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    worker: State<'_, Arc<sync::SyncWorker>>,
+    provider: Option<tbv_core::sync::Provider>,
+) -> CommandResult<bool> {
+    let joined = blocking(state, move |library| {
+        let joined = sync::choose_also(library, provider)?;
+        announce(&app, library);
+        Ok(joined)
+    })
+    .await?;
+    worker.sync_now();
+    Ok(joined)
+}
+
 /// How moving or backing up the library to another service stands.
 #[tauri::command]
 fn move_status(mover: State<'_, Arc<moving::Mover>>) -> moving::MoveStatus {
@@ -1209,6 +1228,7 @@ pub fn run() {
             sync_sign_out,
             set_supabase_project,
             set_sync_provider,
+            set_also_sync,
             suggest_sync_folder,
             resolve_sync_conflict,
             download_book,
