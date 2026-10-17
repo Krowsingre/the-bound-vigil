@@ -24,8 +24,8 @@ function Marks({ book }: { book: BookPreview }) {
         </span>
       )}
       {book.wantToRead && (
-        <span className="mark" title="Want to read">
-          <Icon name="bookmark" size={13} label="Want to read" />
+        <span className="mark" title="Up next">
+          <Icon name="bookmark" size={13} label="Up next" />
         </span>
       )}
     </>

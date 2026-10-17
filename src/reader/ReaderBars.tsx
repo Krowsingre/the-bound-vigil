@@ -100,7 +100,7 @@ export function ReaderTopBar({
             <Icon name="notes" size={20} />
             {noteCount > 0 && <span className="dot" aria-hidden />}
           </button>
-          <Menu label="More" trigger={<Icon name="more" size={20} />} items={menu} />
+          <Menu label="More" trigger={<Icon name="more" size={20} />} items={menu} menuClassName="menu-narrow" />
           {avatar}
           <WindowControls />
         </>

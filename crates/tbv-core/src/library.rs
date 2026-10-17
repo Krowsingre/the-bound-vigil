@@ -141,7 +141,7 @@ const MIGRATIONS: &[&str] = &[
     // v4: the Collections page. Collections gain a description, a badge, a
     // picture, pinning and an order; reading lists keep their books in order.
     // Removing a book leaves a tombstone so sync can pass the removal on. The
-    // four built-in shelves get fixed ids so every device agrees on them.
+    // built-in Up next shelf gets a fixed id so every device agrees on it.
     r#"
     ALTER TABLE collections ADD COLUMN description TEXT;
     ALTER TABLE collections ADD COLUMN kind TEXT NOT NULL DEFAULT 'collection';
@@ -158,10 +158,7 @@ const MIGRATIONS: &[&str] = &[
     UPDATE collection_books SET updated_at = added_at;
 
     INSERT OR IGNORE INTO collections (id, name, created_at, updated_at, kind, badge, picture, pinned, position) VALUES
-        ('shelf:favorites', 'Favourites', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'star', 'gallery:archive', 1, 1),
-        ('shelf:reading', 'Currently reading', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'compass', 'gallery:peaks', 1, 2),
-        ('shelf:want_to_read', 'To be read', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'bookmark', 'gallery:forest', 1, 3),
-        ('shelf:completed', 'Completed', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'check', 'gallery:coast', 1, 4);
+        ('shelf:want_to_read', 'Up next', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'bookmark', 'gallery:forest', 1, 1);
     "#,
     // v5: the Notes page. Book notes (about a whole book) live with the
     // other annotations as kind 'book_note'. Personal notes belong to no
@@ -249,6 +246,15 @@ const MIGRATIONS: &[&str] = &[
     "#,
 ];
 
+/// Early builds had four built-in shelves, but three of them repeated smart
+/// collections (Favourites, In progress, Read). Only Up next is kept. Run at
+/// every open, so it also tidies a library restored from an old backup.
+const RETIRED_SHELVES: &str = r#"
+    DELETE FROM collection_books WHERE collection_id IN ('shelf:favorites', 'shelf:reading', 'shelf:completed');
+    DELETE FROM collections WHERE id IN ('shelf:favorites', 'shelf:reading', 'shelf:completed');
+    UPDATE collections SET name = 'Up next' WHERE id = 'shelf:want_to_read' AND name = 'To be read';
+"#;
+
 /// Brings a database up to the current schema, one step at a time.
 pub(crate) fn migrate(conn: &mut Connection) -> Result<()> {
     let version: usize = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
@@ -295,6 +301,7 @@ impl Library {
         let mut library = Self { conn, paths, sync_live };
         library.migrate()?;
         crate::sync::install_triggers(&library.conn)?;
+        library.conn.execute_batch(RETIRED_SHELVES)?;
         Ok(library)
     }
 
@@ -566,6 +573,34 @@ pub(crate) mod tests {
         let paths = LibraryPaths::new(&dir.path().join("data"), &dir.path().join("cache"));
         let library = Library::open(paths).unwrap();
         (dir, library)
+    }
+
+    #[test]
+    fn shelves_that_repeat_smart_collections_are_retired() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = || LibraryPaths::new(&dir.path().join("data"), &dir.path().join("cache"));
+        let library = Library::open(paths()).unwrap();
+        library
+            .conn
+            .execute_batch(
+                "INSERT INTO collections (id, name, created_at, updated_at, kind, pinned, position) VALUES
+                    ('shelf:favorites', 'Favourites', '2026-01-01', '2026-01-01', 'shelf', 1, 1),
+                    ('shelf:completed', 'Completed', '2026-01-01', '2026-01-01', 'shelf', 1, 4);
+                 UPDATE collections SET name = 'To be read' WHERE id = 'shelf:want_to_read';",
+            )
+            .unwrap();
+        drop(library);
+
+        let library = Library::open(paths()).unwrap();
+        let shelves: Vec<(String, String)> = library
+            .conn
+            .prepare("SELECT id, name FROM collections WHERE kind = 'shelf'")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(shelves, [("shelf:want_to_read".to_string(), "Up next".to_string())]);
     }
 
     #[test]

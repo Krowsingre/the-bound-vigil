@@ -18,7 +18,7 @@ export const PAGE_SIZE = 24;
 export const TABS: { tab: LibraryTab; label: string }[] = [
   { tab: "all", label: "All books" },
   { tab: "favorites", label: "Favourites" },
-  { tab: "want_to_read", label: "Want to read" },
+  { tab: "want_to_read", label: "Up next" },
   { tab: "in_progress", label: "In progress" },
   { tab: "read", label: "Read" },
   { tab: "unread", label: "Unread" },

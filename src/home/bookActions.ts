@@ -20,8 +20,8 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
       ? { label: "Remove from favourites", icon: "heart", onSelect: () => actions.setFavorite(book, false) }
       : { label: "Add to favourites", icon: "heart", onSelect: () => actions.setFavorite(book, true) },
     book.wantToRead
-      ? { label: "Remove from Want to read", icon: "bookmark", onSelect: () => actions.setWantToRead(book, false) }
-      : { label: "Want to read", icon: "bookmark", onSelect: () => actions.setWantToRead(book, true) },
+      ? { label: "Remove from Up next", icon: "bookmark", onSelect: () => actions.setWantToRead(book, false) }
+      : { label: "Add to Up next", icon: "bookmark", onSelect: () => actions.setWantToRead(book, true) },
     { label: "Add to collection…", icon: "collections", onSelect: () => askAddToCollection(book) },
     ...(actions.removeFromCollection
       ? [{ label: `Remove from ${actions.removeFromCollection.name}`, onSelect: () => actions.removeFromCollection?.remove(book) }]
