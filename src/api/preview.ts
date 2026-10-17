@@ -9,6 +9,7 @@ import { sampleEpub } from "../preview/sampleEpub";
 import type {
   Annotation,
   BookPreview,
+  HardcoverStatus,
   HomeViewModel,
   ImportResult,
   LibraryPage,
@@ -21,6 +22,10 @@ const day = 86_400_000;
 const ago = (days: number) => new Date(Date.now() - days * day).toISOString();
 
 let next = 1;
+// `?hardcover` shows Hardcover signed in, for reviewing Settings.
+let hardcover: HardcoverStatus = new URLSearchParams(location.search).has("hardcover")
+  ? { available: true, username: "wrenhale", sendRatings: true }
+  : { available: true, username: null, sendRatings: false };
 function book(title: string, author: string, extra: Partial<BookPreview> = {}): BookPreview {
   const n = next++;
   return {
@@ -266,6 +271,22 @@ export function previewApi(): Api {
       collectionBooks: 17,
       notFound: ["Middlemarch by George Eliot", "Bleak House by Charles Dickens"],
     }),
+    exportGoodreads: async () => 12,
+    hardcoverStatus: async () => ({ ...hardcover }),
+    hardcoverSignIn: async () => {
+      hardcover = { ...hardcover, username: "wrenhale", sendRatings: true };
+      return { ...hardcover };
+    },
+    hardcoverSignOut: async () => {
+      hardcover = { ...hardcover, username: null, sendRatings: false };
+      return { ...hardcover };
+    },
+    hardcoverSetSending: async (on) => {
+      hardcover = { ...hardcover, sendRatings: on };
+      return { ...hardcover };
+    },
+    hardcoverSendAll: async () => ({ sent: 4, notFound: ["Little Nemo in Slumberland by Winsor McCay"] }),
+    onHardcoverNotice: () => () => undefined,
     bookText: async () => "Chapter One\nThe lamps along the harbour wall were lit one by one.",
     fillCover: async () => false,
     getProfile: async () => profile,

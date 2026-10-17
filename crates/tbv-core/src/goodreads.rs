@@ -314,6 +314,120 @@ impl Library {
     }
 }
 
+/// Goodreads' own export columns, which its importer reads back.
+const EXPORT_HEADER: [&str; 24] = [
+    "Book Id", "Title", "Author", "Author l-f", "Additional Authors", "ISBN", "ISBN13", "My Rating",
+    "Average Rating", "Publisher", "Binding", "Number of Pages", "Year Published", "Original Publication Year",
+    "Date Read", "Date Added", "Bookshelves", "Bookshelves with positions", "Exclusive Shelf", "My Review",
+    "Spoiler", "Private Notes", "Read Count", "Owned Copies",
+];
+
+/// "Mary Shelley" as Goodreads files it: "Shelley, Mary".
+fn last_first(name: &str) -> String {
+    match name.trim().rsplit_once(' ') {
+        Some((first, last)) => format!("{last}, {first}"),
+        None => name.trim().to_string(),
+    }
+}
+
+/// A shelf name the way Goodreads writes them: "Sci fi" becomes "sci-fi".
+fn goodreads_shelf(name: &str) -> String {
+    name.trim().to_lowercase().split_whitespace().collect::<Vec<_>>().join("-")
+}
+
+/// Goodreads dates are written 2024/05/14.
+fn goodreads_date(iso: &str) -> String {
+    iso.get(..10).map(|d| d.replace('-', "/")).unwrap_or_default()
+}
+
+impl Library {
+    /// Writes a file in Goodreads' export format, for its importer (My Books
+    /// › Import and export › Import). Books you've rated, read, started or
+    /// put in Up next are included; others would only crowd your Goodreads
+    /// shelves. Returns how many books were written.
+    pub fn export_goodreads(&self, file: &Path) -> Result<u32> {
+        let mut statement = self.conn.prepare(
+            "SELECT b.id, COALESCE(o_title.value, b.title), COALESCE(o_authors.value, b.authors), b.isbn, b.rating,
+                    b.status, b.finished_at, b.added_at, b.want_to_read, b.favorite, b.publisher
+             FROM books b
+             LEFT JOIN metadata_overrides o_title ON o_title.book_id = b.id AND o_title.field = 'title'
+             LEFT JOIN metadata_overrides o_authors ON o_authors.book_id = b.id AND o_authors.field = 'authors'
+             WHERE b.deleted_at IS NULL AND (b.rating IS NOT NULL OR b.status != 'unread' OR b.want_to_read = 1)
+             ORDER BY b.added_at",
+        )?;
+        type ExportRow = (String, String, String, Option<String>, Option<u8>, String, Option<String>, String, bool, bool, Option<String>);
+        let rows: Vec<ExportRow> = statement
+            .query_map([], |r| {
+                Ok((
+                    r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?,
+                    r.get(9)?, r.get(10)?,
+                ))
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+        let mut shelves_of = self.conn.prepare(
+            "SELECT c.name FROM collection_books cb JOIN collections c ON c.id = cb.collection_id
+             WHERE cb.book_id = ?1 AND cb.removed_at IS NULL AND c.deleted_at IS NULL AND c.kind != 'shelf'
+             ORDER BY c.name",
+        )?;
+
+        let mut writer = csv::Writer::from_path(file).map_err(|e| Error::Unsuitable(e.to_string()))?;
+        writer.write_record(EXPORT_HEADER).map_err(|e| Error::Unsuitable(e.to_string()))?;
+        // Books in Up next and other unread books go to Goodreads' "to-read".
+        for (id, title, authors, isbn, rating, status, finished, added, _up_next, favourite, publisher) in &rows {
+            let authors: Vec<String> = serde_json::from_str(authors).unwrap_or_default();
+            let exclusive = match status.as_str() {
+                "read" => "read",
+                "in_progress" => "currently-reading",
+                _ => "to-read",
+            };
+            let mut shelves: Vec<String> = shelves_of
+                .query_map(params![id], |r| r.get::<_, String>(0))?
+                .collect::<std::result::Result<Vec<_>, _>>()?
+                .iter()
+                .map(|s| goodreads_shelf(s))
+                .collect();
+            if *favourite {
+                shelves.push("favorites".into());
+            }
+            let (isbn10, isbn13) = match isbn.as_deref() {
+                Some(i) if i.len() == 13 => (String::new(), i.to_string()),
+                Some(i) => (i.to_string(), String::new()),
+                None => (String::new(), String::new()),
+            };
+            let first = authors.first().cloned().unwrap_or_default();
+            let record = [
+                String::new(),
+                title.clone(),
+                first.clone(),
+                last_first(&first),
+                authors.iter().skip(1).cloned().collect::<Vec<_>>().join(", "),
+                isbn10,
+                isbn13,
+                rating.map(|r| r.to_string()).unwrap_or_else(|| "0".into()),
+                String::new(),
+                publisher.clone().unwrap_or_default(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                if exclusive == "read" { finished.as_deref().map(goodreads_date).unwrap_or_default() } else { String::new() },
+                goodreads_date(added),
+                shelves.join(", "),
+                String::new(),
+                exclusive.to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
+                if exclusive == "read" { "1" } else { "0" }.to_string(),
+                "0".to_string(),
+            ];
+            writer.write_record(&record).map_err(|e| Error::Unsuitable(e.to_string()))?;
+        }
+        writer.flush()?;
+        Ok(rows.len() as u32)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,6 +497,36 @@ mod tests {
         assert_eq!(sci_fi.rating, Some(5.0));
         let detail = library.collection_detail(&CollectionRef::Collection { id: sci_fi.id.clone() }).unwrap();
         assert_eq!(detail.books.len(), 2);
+    }
+
+    #[test]
+    fn goodreads_export_reads_back_in() {
+        let (dir, mut library) = open_temp_library();
+        let dune = add(&mut library, dir.path(), "Dune", "Frank Herbert");
+        let lathe = add(&mut library, dir.path(), "The Lathe of Heaven", "Ursula K. Le Guin");
+        let _untouched = add(&mut library, dir.path(), "Emma", "Jane Austen");
+        library.set_rating(&dune, Some(5)).unwrap();
+        library.set_status(&dune, ReadStatus::Read).unwrap();
+        library.set_favorite(&dune, true).unwrap();
+        library.set_want_to_read(&lathe, true).unwrap();
+        let file = dir.path().join("out.csv");
+        assert_eq!(library.export_goodreads(&file).unwrap(), 2);
+        let text = fs::read_to_string(&file).unwrap();
+        assert!(text.starts_with("Book Id,Title,Author,Author l-f"), "{text}");
+        assert!(text.contains("Dune,Frank Herbert,\"Herbert, Frank\""), "{text}");
+        assert!(text.contains(",5,"), "{text}");
+        assert!(text.contains("favorites"), "{text}");
+        assert!(text.contains("to-read"), "{text}");
+        assert!(!text.contains("Emma"), "{text}");
+
+        // A fresh library takes it all back through the Goodreads import.
+        let (dir2, mut other) = open_temp_library();
+        let dune2 = add(&mut other, dir2.path(), "Dune", "Frank Herbert");
+        let report = other.import_goodreads(&file).unwrap();
+        assert_eq!(report.matched, 1);
+        let back = other.book(&dune2).unwrap().unwrap();
+        assert_eq!(back.rating, Some(5));
+        assert!(back.favorite);
     }
 
     #[test]

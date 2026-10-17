@@ -8,6 +8,7 @@ pub mod epub;
 pub mod error;
 pub mod formats;
 pub mod goodreads;
+pub mod hardcover;
 pub mod home;
 pub mod ids;
 pub mod library;

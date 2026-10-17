@@ -20,7 +20,7 @@ serde_json.workspace = true
 sha2 = "0.10"
 thiserror.workspace = true
 ureq = { version = "3", features = ["json"] }
-uuid = { version = "1", features = ["v7"] }
+uuid = { version = "1", features = ["v4", "v7"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
