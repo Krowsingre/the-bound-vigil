@@ -295,10 +295,11 @@ impl Library {
 }
 
 /// Settings that belong to this device and its sign-in, never to a backup.
-const DEVICE_ONLY: [&str; 4] = ["sync.session", "sync.supabase", "sync.device_id", crate::hardcover::ACCOUNT_KEY];
+const DEVICE_ONLY: [&str; 5] = ["sync.session", "sync.supabase", "sync.device_id", crate::sync::PROVIDER, crate::hardcover::ACCOUNT_KEY];
 
-/// Sign-ins: never written into a backup file.
-const SIGN_INS: [&str; 2] = ["sync.session", crate::hardcover::ACCOUNT_KEY];
+/// Sign-ins (and the sync choice, which can hold a WebDAV password): never
+/// written into a backup file.
+const SIGN_INS: [&str; 3] = ["sync.session", crate::sync::PROVIDER, crate::hardcover::ACCOUNT_KEY];
 
 /// Takes this device's sign-ins out of a backup copy, so a backup file never
 /// holds a way into the cloud or into Hardcover.

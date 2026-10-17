@@ -8,7 +8,10 @@ export function Sidebar({
   onNavigate,
   onToggle,
   preview,
+  imports,
 }: {
+  /** Books imported so far and in all, while there's an import to show. */
+  imports: { done: number; total: number; running: boolean } | null;
   route: Route;
   collapsed: boolean;
   onNavigate: (route: Route) => void;
@@ -57,6 +60,26 @@ export function Sidebar({
               </button>
             </li>
           ))}
+          {imports && (
+            <li>
+              <button
+                type="button"
+                className={`nav-item nav-imports${active === "imports" ? " is-active" : ""}`}
+                aria-current={active === "imports" ? "page" : undefined}
+                onClick={() => onNavigate("imports")}
+                title={collapsed ? `Imports: ${imports.done} of ${imports.total}` : undefined}
+              >
+                <Icon name="download" size={20} />
+                <span className="nav-label">Imports</span>
+                <span className="nav-count">{imports.running ? `${imports.done}/${imports.total}` : "✓"}</span>
+                {imports.running && (
+                  <span className="nav-progress" aria-hidden>
+                    <span style={{ width: `${(imports.done / Math.max(1, imports.total)) * 100}%` }} />
+                  </span>
+                )}
+              </button>
+            </li>
+          )}
         </ul>
       </nav>
 

@@ -2,6 +2,7 @@
 //! file work lives in the core, and blocking work runs off the UI thread.
 
 mod hardcover;
+mod imports;
 mod sync;
 
 use std::path::PathBuf;
@@ -11,7 +12,7 @@ use std::time::Duration;
 use tauri::{Emitter, Manager, State};
 use tbv_core::model::{
     Annotation, AnnotationInput, BookId, CollectionDetail, CollectionInput, CollectionPreview,
-    CollectionRef, CollectionSummary, CollectionsOverview, HomeViewModel, ImportResult,
+    CollectionRef, CollectionSummary, CollectionsOverview, HomeViewModel,
     LibraryPage, LibraryQuery, NoteItem, NoteKind, NotesPage, NotesQuery, Profile, ReadStatus,
     ReaderBook, ReaderLocator,
 };
@@ -44,13 +45,34 @@ async fn get_home(state: State<'_, AppLibrary>) -> CommandResult<HomeViewModel> 
     with_library(state, |library| library.home()).await
 }
 
+/// Queues book files (and folders of them) on the Imports page. Returns how
+/// many books were found.
 #[tauri::command]
-async fn import_books(
+async fn queue_imports(
+    app: tauri::AppHandle,
     state: State<'_, AppLibrary>,
+    imports: State<'_, Arc<imports::Imports>>,
     paths: Vec<String>,
-) -> CommandResult<Vec<ImportResult>> {
+) -> CommandResult<usize> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_library(state, move |library| Ok(library.import_files(&paths))).await
+    let (library, imports) = (state.0.clone(), imports.inner().clone());
+    // Looking through a big folder can take a while; not on the UI thread.
+    tauri::async_runtime::spawn_blocking(move || imports.add(&app, &library, paths)).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn import_queue(imports: State<'_, Arc<imports::Imports>>) -> Vec<imports::ImportItem> {
+    imports.list()
+}
+
+#[tauri::command]
+fn cancel_imports(app: tauri::AppHandle, imports: State<'_, Arc<imports::Imports>>) {
+    imports.cancel(&app);
+}
+
+#[tauri::command]
+fn clear_finished_imports(app: tauri::AppHandle, imports: State<'_, Arc<imports::Imports>>) {
+    imports.clear_finished(&app);
 }
 
 #[tauri::command]
@@ -341,6 +363,14 @@ async fn create_collection(
 }
 
 #[tauri::command]
+async fn count_rule_matches(
+    state: State<'_, AppLibrary>,
+    rules: tbv_core::rules::CollectionRules,
+) -> CommandResult<u32> {
+    with_library(state, move |library| library.count_rule_matches(&rules)).await
+}
+
+#[tauri::command]
 async fn update_collection(
     state: State<'_, AppLibrary>,
     id: String,
@@ -622,6 +652,31 @@ async fn resolve_sync_conflict(
     Ok(())
 }
 
+/// Chooses the service that carries the library. True when the folder or
+/// server already held a library, which this device now joins.
+#[tauri::command]
+async fn set_sync_provider(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    worker: State<'_, Arc<sync::SyncWorker>>,
+    provider: tbv_core::sync::Provider,
+) -> CommandResult<bool> {
+    let joined = blocking(state, move |library| {
+        let joined = sync::choose(library, provider)?;
+        announce(&app, library);
+        Ok(joined)
+    })
+    .await?;
+    worker.sync_now();
+    Ok(joined)
+}
+
+/// Where a cloud app usually keeps its folder on this computer, if it's there.
+#[tauri::command]
+fn suggest_sync_folder(service: String) -> Option<String> {
+    sync::likely_folder(&service).map(|p| p.display().to_string())
+}
+
 /// Fetches a book that's only in the cloud onto this device.
 #[tauri::command]
 async fn download_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
@@ -650,11 +705,15 @@ pub fn run() {
             app.manage(Arc::new(sync::SyncWorker::start(app.handle().clone(), library.clone())));
             app.manage(AppLibrary(library));
             app.manage(Arc::new(hardcover::Sends::default()));
+            app.manage(Arc::new(imports::Imports::default()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_home,
-            import_books,
+            queue_imports,
+            import_queue,
+            cancel_imports,
+            clear_finished_imports,
             export_goodreads,
             hardcover_status,
             hardcover_set_sending,
@@ -686,6 +745,7 @@ pub fn run() {
             get_collections_overview,
             get_collection,
             create_collection,
+            count_rule_matches,
             update_collection,
             delete_collection,
             set_collection_picture,
@@ -712,12 +772,15 @@ pub fn run() {
             sync_sign_in,
             sync_sign_out,
             set_supabase_project,
+            set_sync_provider,
+            suggest_sync_folder,
             resolve_sync_conflict,
             download_book,
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
         // page gets a moment to save the reading position first; then ratings
-        // on their way to Hardcover and the last sync get their chance, and the app quits regardless after that.
+        // on their way to Hardcover and the last sync get their chance, and
+        // the app quits regardless after that.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();

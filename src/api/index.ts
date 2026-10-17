@@ -3,10 +3,12 @@
 // clearly labelled sample library so screens can be looked at without the app.
 
 import type {
+  ProviderChoice,
   Annotation,
   AnnotationInput,
   CollectionDetail,
   CollectionInput,
+  CollectionRules,
   CollectionPreview,
   CollectionRef,
   CollectionSummary,
@@ -15,7 +17,7 @@ import type {
   HardcoverSendAll,
   HardcoverStatus,
   HomeViewModel,
-  ImportResult,
+  ImportItem,
   LibraryInfo,
   LibraryPage,
   LibraryQuery,
@@ -35,7 +37,13 @@ import type {
 export interface Api {
   readonly kind: "app" | "preview";
   getHome(): Promise<HomeViewModel>;
-  importBooks(paths: string[]): Promise<ImportResult[]>;
+  /** Queues book files and folders on the Imports page. Returns how many books were found. */
+  queueImports(paths: string[]): Promise<number>;
+  importQueue(): Promise<ImportItem[]>;
+  /** Takes the books still waiting off the queue. */
+  cancelImports(): Promise<void>;
+  clearFinishedImports(): Promise<void>;
+  onImports(listener: (items: ImportItem[]) => void): () => void;
   setBookStatus(bookId: string, status: ReadStatus): Promise<void>;
   getLibrary(query: LibraryQuery): Promise<LibraryPage>;
   getCollections(): Promise<CollectionPreview[]>;
@@ -81,6 +89,8 @@ export interface Api {
   getCollectionsOverview(): Promise<CollectionsOverview>;
   getCollection(collection: CollectionRef): Promise<CollectionDetail>;
   createCollection(input: CollectionInput): Promise<CollectionSummary>;
+  /** How many books these rules would hold. */
+  countRuleMatches(rules: CollectionRules): Promise<number>;
   updateCollection(id: string, input: CollectionInput): Promise<CollectionSummary>;
   deleteCollection(id: string): Promise<void>;
   /** A gallery picture (`gallery:<name>`), a book's cover (`cover:<book id>`), or none. */
@@ -123,6 +133,12 @@ export interface Api {
   syncSignOut(): Promise<void>;
   /** Saves the Supabase project to use. A different project signs out first. */
   setSupabaseProject(project: SupabaseProject | null): Promise<void>;
+  /** Chooses where the library is kept. True when that folder or server already held a library to join. */
+  setSyncProvider(provider: ProviderChoice): Promise<boolean>;
+  /** Asks for a folder. Null if cancelled. */
+  chooseFolder(title: string, start?: string | null): Promise<string | null>;
+  /** Where a cloud app usually keeps its folder on this computer, if it's there. */
+  suggestSyncFolder(service: string): Promise<string | null>;
   resolveSyncConflict(kind: string, key: string, keepCloud: boolean): Promise<void>;
   /** Fetches a book that's only in the cloud onto this device. */
   downloadBook(bookId: string): Promise<void>;
@@ -154,7 +170,23 @@ function appApi(): Api {
   return {
     kind: "app",
     getHome: async () => (await core).invoke<HomeViewModel>("get_home"),
-    importBooks: async (paths) => (await core).invoke<ImportResult[]>("import_books", { paths }),
+    queueImports: async (paths) => (await core).invoke<number>("queue_imports", { paths }),
+    importQueue: async () => (await core).invoke<ImportItem[]>("import_queue"),
+    cancelImports: async () => (await core).invoke<void>("cancel_imports"),
+    clearFinishedImports: async () => (await core).invoke<void>("clear_finished_imports"),
+    onImports: (listener) => {
+      let stop: (() => void) | null = null;
+      let stopped = false;
+      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+        const unlisten = await listen<ImportItem[]>("imports-changed", (e) => listener(e.payload));
+        if (stopped) unlisten();
+        else stop = unlisten;
+      });
+      return () => {
+        stopped = true;
+        stop?.();
+      };
+    },
     setBookStatus: async (bookId, status) => (await core).invoke("set_book_status", { bookId, status }),
     getLibrary: async (query) => (await core).invoke<LibraryPage>("get_library", { query }),
     getCollections: async () => (await core).invoke<CollectionPreview[]>("get_collections"),
@@ -239,6 +271,7 @@ function appApi(): Api {
     getCollectionsOverview: async () => (await core).invoke<CollectionsOverview>("get_collections_overview"),
     getCollection: async (collection) => (await core).invoke<CollectionDetail>("get_collection", { collection }),
     createCollection: async (input) => (await core).invoke<CollectionSummary>("create_collection", { input }),
+    countRuleMatches: async (rules) => (await core).invoke<number>("count_rule_matches", { rules }),
     updateCollection: async (id, input) => (await core).invoke<CollectionSummary>("update_collection", { id, input }),
     deleteCollection: async (id) => (await core).invoke("delete_collection", { id }),
     setCollectionPicture: async (id, picture) =>
@@ -287,6 +320,12 @@ function appApi(): Api {
     syncSignIn: async (email, password, create) => (await core).invoke<boolean>("sync_sign_in", { email, password, create }),
     syncSignOut: async () => (await core).invoke("sync_sign_out"),
     setSupabaseProject: async (project) => (await core).invoke("set_supabase_project", { project }),
+    setSyncProvider: async (provider) => (await core).invoke<boolean>("set_sync_provider", { provider }),
+    chooseFolder: async (title, start) => {
+      const picked = await (await dialog).open({ directory: true, multiple: false, title, defaultPath: start ?? undefined });
+      return typeof picked === "string" ? picked : null;
+    },
+    suggestSyncFolder: async (service) => (await core).invoke<string | null>("suggest_sync_folder", { service }),
     resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
     downloadBook: async (bookId) => (await core).invoke("download_book", { bookId }),
     onSync: ({ status, libraryChanged }) => {

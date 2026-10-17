@@ -2,12 +2,14 @@
 // look at the Collections page while designing. Never used in the app.
 
 import type { Api } from "../api";
+import { matches } from "../collections/rules";
 import type {
   BookPreview,
   CollectionInput,
   CollectionKind,
   CollectionPreview,
   CollectionRef,
+  CollectionRules,
   CollectionSummary,
   SmartKind,
 } from "../api/types";
@@ -20,6 +22,7 @@ interface Stored {
   badge: string | null;
   picture: string | null;
   pinned: boolean;
+  rules?: CollectionRules | null;
   createdAt: string;
   updatedAt: string;
   members: { bookId: string; addedAt: string }[];
@@ -36,6 +39,7 @@ type CollectionsApi = Pick<
   | "getCollectionsOverview"
   | "getCollection"
   | "createCollection"
+  | "countRuleMatches"
   | "updateCollection"
   | "deleteCollection"
   | "setCollectionPicture"
@@ -87,7 +91,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
   });
 
   let stored: Stored[] = [
-    shelf("want_to_read", "Up next", "bookmark", "gallery:forest"),
+    shelf("want_to_read", "Up next", "bookmark", "gallery:forest-shrine"),
     ...(empty
       ? []
       : [
@@ -96,7 +100,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
             "Gothic",
             {
               badge: "moon",
-              picture: "gallery:night",
+              picture: "gallery:moonlit-towers",
               pinned: true,
               description: "Old houses, long shadows and letters that arrive too late.",
             },
@@ -113,7 +117,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
           own(
             "c3",
             "Adventure",
-            { badge: "compass", picture: "gallery:harbour", description: "Voyages, escapes and maps with edges." },
+            { badge: "compass", picture: "gallery:stormbound-harbor", description: "Voyages, escapes and maps with edges." },
             [
               "Twenty Thousand Leagues Under the Seas",
               "Around the World in Eighty Days",
@@ -124,7 +128,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
             22,
           ),
           own("c4", "Austen & the Brontës", { badge: "feather" }, ["Persuasion", "Emma", "Jane Eyre", "Wuthering Heights"], 12),
-          own("c5", "Russian winters", { badge: "tower", picture: "gallery:moor" }, ["Anna Karenina", "Crime and Punishment", "The Brothers Karamazov"], 6),
+          own("c5", "Russian winters", { badge: "tower", picture: "gallery:winter-valley" }, ["Anna Karenina", "Crime and Punishment", "The Brothers Karamazov"], 6),
           own("c6", "Comfort reads", { badge: "lantern", kind: "reading_list" }, ["Little Women", "The Secret Garden"], 2),
         ]),
   ];
@@ -144,6 +148,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
 
   function membersOf(c: Stored): BookPreview[] {
     if (c.kind === "shelf") return books().filter(shelfBooks[c.id] ?? (() => false));
+    if (c.rules) return books().filter((b) => matches(b, c.rules!)).sort((a, b) => b.addedAt.localeCompare(a.addedAt));
     const map = live();
     const list = c.members.map((m) => map.get(m.bookId)).filter((b): b is BookPreview => !!b);
     return c.kind === "reading_list" ? list : list.reverse();
@@ -166,6 +171,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
       picture: c.picture,
       picturePath: coverBook?.coverPath ?? null,
       pinned: c.pinned,
+      rules: c.rules ?? null,
       count: members.length,
       rating: averageRating(members),
       covers: members.slice(0, 3).map(coverOf),
@@ -229,6 +235,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
         badge: input.badge ?? null,
         picture: null,
         pinned: input.pinned,
+        rules: input.rules ?? null,
         createdAt: stamp(),
         updatedAt: stamp(),
         members: [],
@@ -247,8 +254,10 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
               kind: input.kind,
               badge: input.badge ?? null,
               pinned: input.pinned,
+              rules: input.rules ?? null,
             },
       ),
+    countRuleMatches: async (rules) => books().filter((b) => matches(b, rules)).length,
     deleteCollection: async (id) => {
       if (find(id).kind === "shelf") throw new Error("the built-in shelves can't be deleted");
       stored = stored.filter((c) => c.id !== id);
@@ -261,6 +270,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
       throw new Error("Choosing a picture from your computer works in the desktop app.");
     },
     addToCollection: async (id, bookIds) => {
+      if (find(id).rules) throw new Error("this collection fills itself from its rules");
       change(id, (c) => ({
         ...c,
         members: [

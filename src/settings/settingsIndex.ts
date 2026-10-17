@@ -170,7 +170,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     section: "provider",
     label: "Sync provider",
     words:
-      "supabase dropbox google drive onedrive icloud mega webdav nextcloud other custom cloud account connect sign in sign out email password setup script sync now join device",
+      "supabase dropbox google drive onedrive icloud mega webdav nextcloud owncloud pcloud box folder other custom cloud account connect sign in sign out email password setup script sync now join device",
   },
   {
     tab: "sync",

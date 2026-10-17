@@ -97,8 +97,26 @@ export interface SyncConflict {
   cloudChangedAt: IsoUtc;
 }
 
+/** Where the library is kept, as Settings shows it (never a password). */
+export interface ProviderView {
+  kind: "supabase" | "folder" | "webdav" | "off";
+  /** For a folder: which cloud app's ("icloud", "dropbox", "mega", "custom"…). */
+  service: string | null;
+  /** The folder, or the WebDAV address. */
+  location: string | null;
+  username: string | null;
+}
+
+/** A choice of where to keep the library, as sent to the core. */
+export type ProviderChoice =
+  | { kind: "supabase" }
+  | { kind: "off" }
+  | { kind: "folder"; service: string; path: string }
+  | { kind: "webdav"; url: string; username: string; password: string };
+
 export interface SyncOverview {
   status: SyncStatus;
+  provider: ProviderView;
   project: SupabaseProject | null;
   signedInAs: string | null;
   lastError: string | null;
@@ -130,6 +148,19 @@ export type ImportResult =
   | { outcome: "alreadyInLibrary"; path: string; bookId: BookId; title: string }
   | { outcome: "unsupported"; path: string }
   | { outcome: "failed"; path: string; reason: string };
+
+export type ImportStage = "waiting" | "reading" | "adding" | "done";
+
+/** One book file on the Imports page. */
+export interface ImportItem {
+  id: number;
+  path: string;
+  name: string;
+  bytes: number;
+  bytesRead: number;
+  stage: ImportStage;
+  result: ImportResult | null;
+}
 
 export type Shelf = "all" | "favorites" | "want_to_read" | "in_progress" | "read" | "unread";
 export type SortOrder = "recently_added" | "recently_opened" | "title" | "author" | "series" | "progress" | "rating";
@@ -216,6 +247,8 @@ export interface CollectionSummary {
   /** The picture's file on this device, for `picture:` and `cover:`. */
   picturePath: string | null;
   pinned: boolean;
+  /** Set when it fills itself from rules instead of by hand. */
+  rules: CollectionRules | null;
   count: number;
   /** The average of your ratings of its books, if you've rated any. */
   rating: number | null;
@@ -298,6 +331,46 @@ export interface CollectionInput {
   kind: CollectionKind;
   badge?: string | null;
   pinned: boolean;
+  /** Rules that fill it by themselves. Null or left out: books are added by hand. */
+  rules?: CollectionRules | null;
+}
+
+export type RuleField =
+  | "title"
+  | "author"
+  | "series"
+  | "publisher"
+  | "language"
+  | "format"
+  | "rating"
+  | "status"
+  | "favorite"
+  | "upNext"
+  | "added"
+  | "location";
+
+export type RuleOp =
+  | "contains"
+  | "notContains"
+  | "is"
+  | "isNot"
+  | "startsWith"
+  | "isEmpty"
+  | "atLeast"
+  | "atMost"
+  | "withinDays"
+  | "olderThanDays";
+
+export interface Rule {
+  field: RuleField;
+  op: RuleOp;
+  value: string;
+}
+
+/** `any`: a book needs to match one rule; otherwise every rule. */
+export interface CollectionRules {
+  any: boolean;
+  rules: Rule[];
 }
 
 export type NoteKind = "highlight" | "annotation" | "book_note" | "personal";

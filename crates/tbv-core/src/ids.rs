@@ -14,15 +14,25 @@ pub const BOOK_ID_PREFIX: &str = "sha256:";
 
 /// Hashes the whole file, streaming, so large PDFs never sit in memory.
 pub fn book_id_for_file(path: &Path) -> Result<BookId> {
+    book_id_for_file_with_progress(path, &mut |_| {})
+}
+
+/// As `book_id_for_file`, telling `read_so_far` how many bytes are done.
+/// Reading a file a cloud app hasn't downloaded yet brings it down first,
+/// so this is where a slow import spends its time.
+pub fn book_id_for_file_with_progress(path: &Path, read_so_far: &mut dyn FnMut(u64)) -> Result<BookId> {
     let mut reader = BufReader::with_capacity(1 << 20, File::open(path)?);
     let mut hasher = Sha256::new();
     let mut buffer = vec![0u8; 1 << 20];
+    let mut done = 0u64;
     loop {
         let read = reader.read(&mut buffer)?;
         if read == 0 {
             break;
         }
         hasher.update(&buffer[..read]);
+        done += read as u64;
+        read_so_far(done);
     }
     Ok(format!(
         "{BOOK_ID_PREFIX}{}",

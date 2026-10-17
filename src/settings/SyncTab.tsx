@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, isApp } from "../api";
-import type { SupabaseProject, SyncOverview } from "../api/types";
+import type { ProviderView, SupabaseProject, SyncOverview } from "../api/types";
 import { relativeTime } from "../lib/format";
 import SETUP_SQL from "../../supabase/setup.sql?raw";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -9,6 +9,7 @@ import { useToast } from "../components/Toast";
 import { useAppSettings, type ConflictRule, type SyncFrequency } from "./appSettings";
 import { AccountPanel } from "./AccountPanel";
 import { HardcoverSection } from "./HardcoverSection";
+import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
 import { ActionTile, RadioList, Row, Section, Select, Toggle } from "./controls";
 
 type Provider = "supabase" | "dropbox" | "gdrive" | "onedrive" | "icloud" | "mega" | "custom";
@@ -100,11 +101,12 @@ const STATE_TEXT: Record<SyncOverview["status"]["state"], string> = {
   error: "Sync failed",
 };
 
-/** What each service still waiting for its sync update will ask for. */
-const COMING: Partial<Record<Provider, string>> = {
-  custom:
-    "Use a service that isn't listed, such as Nextcloud, pCloud or Box: point TBV at a folder its app keeps in sync on this computer, or at its WebDAV address. This comes with a later update.",
-};
+/** The card for the service in use. */
+function cardFor(view: ProviderView): Provider {
+  if (view.kind === "webdav") return "custom";
+  if (view.kind === "folder") return PROVIDERS.some((p) => p.id === view.service) ? (view.service as Provider) : "custom";
+  return "supabase";
+}
 
 const EMPTY_PROJECT: SupabaseProject = { url: "", anonKey: "" };
 
@@ -131,13 +133,20 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
     [],
   );
   useEffect(() => {
-    void reload().then((o) => o?.project && setDraft(o.project));
+    void reload().then((o) => {
+      if (o?.project) setDraft(o.project);
+      if (o) setProvider(cardFor(o.provider));
+    });
     return api.onSync({ status: () => void reload() });
   }, [reload]);
 
   const project = overview?.project ?? null;
   const signedIn = overview?.signedInAs ?? null;
   const state = overview?.status.state ?? "disabled";
+  const current = overview?.provider ?? { kind: "supabase" as const, service: null, location: null, username: null };
+  // Supabase counts as in use once signed in; a folder or server as soon as it's chosen.
+  const inUse = current.kind === "off" ? null : current.kind === "supabase" ? (signedIn ? "supabase" : null) : cardFor(current);
+  const showing = provider === inUse;
 
   const urlOk = /^https:\/\/[a-z0-9-]+\.supabase\.(co|in)\/?$/i.test(draft.url.trim());
   const saveProject = (next: SupabaseProject | null) =>
@@ -163,8 +172,13 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
     }
   };
 
-  const statusOf = (id: Provider) =>
-    id !== "supabase" ? "Coming later" : signedIn ? "Connected" : project ? "Sign in to start" : "Not connected";
+  const statusOf = (id: Provider) => {
+    if (id === inUse) return current.kind === "webdav" ? "Connected by WebDAV" : "Connected";
+    if (id === "supabase") return signedIn ? "Signed in, not in use" : project ? "Sign in to start" : "Not connected";
+    return id === "custom" ? "A folder or WebDAV" : "Uses its app's folder";
+  };
+  const where =
+    current.kind === "folder" ? `Folder (${serviceName(current.service)})` : current.kind === "webdav" ? "WebDAV server" : "Supabase";
   const chosen = PROVIDERS.find((p) => p.id === provider)!;
 
   return (
@@ -178,12 +192,18 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
             <h3>Connection details</h3>
             <dl>
               <dt>Service</dt>
-              <dd>{chosen.name}</dd>
+              <dd>{showing ? where : chosen.name}</dd>
               <dt>Status</dt>
               <dd>
-                <span className={`status-dot${provider === "supabase" && signedIn ? ` is-${state}` : ""}`} aria-hidden />
-                {provider !== "supabase" ? "Not connected" : signedIn ? STATE_TEXT[state] : project ? "Not signed in" : "Not connected"}
+                <span className={`status-dot${showing ? ` is-${state}` : ""}`} aria-hidden />
+                {showing ? STATE_TEXT[state] : provider === "supabase" && project ? "Not signed in" : "Not connected"}
               </dd>
+              {showing && current.location && (
+                <>
+                  <dt>{current.kind === "webdav" ? "Server" : "Folder"}</dt>
+                  <dd className="mono">{current.location}</dd>
+                </>
+              )}
               {provider === "supabase" && project && (
                 <>
                   <dt>Project</dt>
@@ -197,8 +217,8 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
                 </>
               )}
               <dt>Last synced</dt>
-              <dd>{provider === "supabase" && overview?.status.lastSuccessAt ? relativeTime(overview.status.lastSuccessAt) : "Never"}</dd>
-              {provider === "supabase" && signedIn && overview && overview.waitingToSend > 0 && (
+              <dd>{showing && overview?.status.lastSuccessAt ? relativeTime(overview.status.lastSuccessAt) : "Never"}</dd>
+              {showing && overview && overview.waitingToSend > 0 && (
                 <>
                   <dt>Waiting</dt>
                   <dd>
@@ -207,21 +227,47 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
                 </>
               )}
             </dl>
-            {provider === "supabase" && overview?.lastError && signedIn && <p className="form-error">{overview.lastError}</p>}
-            {provider === "supabase" ? (
-              <div className="connection-actions">
-                {signedIn && (
-                  <button type="button" className="btn btn-primary" disabled={state === "syncing"} onClick={() => void api.syncNow()}>
-                    <Icon name="sync" size={16} /> {state === "syncing" ? "Syncing…" : "Sync now"}
-                  </button>
-                )}
+            {showing && overview?.lastError && <p className="form-error">{overview.lastError}</p>}
+            <div className="connection-actions">
+              {showing && (
+                <button type="button" className="btn btn-primary" disabled={state === "syncing"} onClick={() => void api.syncNow()}>
+                  <Icon name="sync" size={16} /> {state === "syncing" ? "Syncing…" : "Sync now"}
+                </button>
+              )}
+              {provider === "supabase" && signedIn && !showing && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() =>
+                    void api.setSyncProvider({ kind: "supabase" }).then(
+                      () => (toast("Your library now syncs through Supabase."), void reload()),
+                      (e: unknown) => toast(String(e)),
+                    )
+                  }
+                >
+                  Sync through Supabase
+                </button>
+              )}
+              {provider === "supabase" && (
                 <button type="button" className="btn btn-quiet" onClick={() => setEditing(true)}>
                   <Icon name="settings" size={16} /> {project ? "Manage connection" : "Set up Supabase"}
                 </button>
-              </div>
-            ) : (
-              <p className="settings-row-hint">{COMING[provider] ?? `${chosen.name} comes in a later update. Supabase works now.`}</p>
-            )}
+              )}
+              {showing && current.kind !== "supabase" && (
+                <button
+                  type="button"
+                  className="btn btn-quiet btn-danger-text"
+                  onClick={() =>
+                    void api.setSyncProvider({ kind: "off" }).then(
+                      () => (toast("TBV no longer syncs through that folder. Nothing in it was deleted."), void reload()),
+                      (e: unknown) => toast(String(e)),
+                    )
+                  }
+                >
+                  Stop syncing here
+                </button>
+              )}
+            </div>
           </div>
         }
       >
@@ -239,7 +285,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
               <span className="provider-text">
                 <span className="settings-row-label">{p.name}</span>
                 <span className="settings-row-hint">
-                  <span className={`status-dot${p.id === "supabase" && signedIn ? " is-ready" : ""}`} aria-hidden />
+                  <span className={`status-dot${p.id === inUse ? " is-ready" : ""}`} aria-hidden />
                   {statusOf(p.id)}
                 </span>
               </span>
@@ -312,6 +358,10 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
 
         {provider === "supabase" && project && !editing && (
           <AccountPanel signedIn={signedIn} onChanged={() => void reload()} />
+        )}
+
+        {provider !== "supabase" && (
+          <SyncFolderPanel key={provider} service={provider as FolderService} current={current} onChanged={() => void reload()} />
         )}
       </Section>
 

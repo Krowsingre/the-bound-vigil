@@ -2,7 +2,7 @@
 
 import { api } from "../api";
 import type { CollectionKind, CollectionRef, CollectionSummary, SmartKind } from "../api/types";
-import { galleryUrl } from "./gallery";
+import { galleryUrl, type GalleryShape } from "./gallery";
 
 export const SMART_INFO: Record<SmartKind, { name: string; badge: string; description: string }> = {
   recently_added: { name: "Recently added", badge: "sparkle", description: "Books added in the last 30 days." },
@@ -21,8 +21,8 @@ export const KIND_LABEL: Record<CollectionKind, string> = {
 export const bookCount = (n: number) => `${n.toLocaleString()} ${n === 1 ? "book" : "books"}`;
 
 /** The picture to show for a collection, or null to show its covers instead. */
-export function pictureUrl(c: Pick<CollectionSummary, "picture" | "picturePath">): string | null {
-  if (c.picture?.startsWith("gallery:")) return galleryUrl(c.picture.slice("gallery:".length));
+export function pictureUrl(c: Pick<CollectionSummary, "picture" | "picturePath">, shape: GalleryShape = "wide"): string | null {
+  if (c.picture?.startsWith("gallery:")) return galleryUrl(c.picture.slice("gallery:".length), shape);
   if (c.picturePath) return api.coverUrl(c.picturePath) || null;
   return null;
 }

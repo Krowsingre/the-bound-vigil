@@ -45,7 +45,8 @@ function AddToCollectionDialog({ book, onClose }: { book: BookPreview; onClose: 
   useEffect(() => {
     Promise.all([api.getCollectionsOverview(), api.collectionsForBook(book.id)]).then(
       ([overview, ids]) => {
-        setCollections(overview.collections);
+        // A collection with rules fills itself, so it isn't offered here.
+        setCollections(overview.collections.filter((c) => !c.rules));
         setMember(new Set(ids));
       },
       (e: unknown) => {

@@ -2,18 +2,47 @@ import { describe, expect, it } from "vitest";
 import { BADGE_NAMES, isBadge } from "./badges";
 import { bookCount, pictureUrl, sameRef } from "./collectionInfo";
 import { GALLERY, galleryUrl } from "./gallery";
+import type { BookPreview } from "../api/types";
+import { describeRules, matches, newRule, usable } from "./rules";
 
 describe("collections", () => {
+  it("matches books against rules as the core does", () => {
+    const book = { title: "Carmilla", authors: ["J. Sheridan Le Fanu"], rating: 5, status: "unread", format: "epub" } as BookPreview;
+    const rules = {
+      any: false,
+      rules: [
+        { field: "author" as const, op: "contains" as const, value: "le fanu" },
+        { field: "rating" as const, op: "atLeast" as const, value: "4" },
+      ],
+    };
+    expect(matches(book, rules)).toBe(true);
+    expect(matches({ ...book, rating: 3 }, rules)).toBe(false);
+    expect(matches({ ...book, rating: 3 }, { ...rules, any: true })).toBe(true);
+    expect(usable(newRule("author"))).toBe(false);
+    expect(usable(newRule("added"))).toBe(true);
+    expect(describeRules(rules)).toBe("Author contains “le fanu”, and Your rating is at least 4 stars");
+  });
+
   it("knows the built-in shelves' badges", () => {
     for (const b of ["star", "compass", "bookmark", "check"]) expect(isBadge(b)).toBe(true);
     expect(isBadge("from-a-newer-version")).toBe(false);
     expect(new Set(BADGE_NAMES).size).toBe(BADGE_NAMES.length);
   });
 
-  it("draws every gallery picture, and the same one each time", () => {
-    for (const g of GALLERY) expect(galleryUrl(g.name)).toMatch(/^data:image\/svg\+xml,/);
-    expect(galleryUrl("peaks")).toBe(galleryUrl("peaks"));
-    expect(galleryUrl("peaks")).not.toBe(galleryUrl("forest"));
+  it("has both shapes of every gallery picture", () => {
+    expect(GALLERY).toHaveLength(25);
+    for (const g of GALLERY) {
+      expect(galleryUrl(g.name, "wide")).toMatch(/-wide\.webp/);
+      expect(galleryUrl(g.name, "square")).toMatch(/-square\.webp/);
+    }
+    expect(GALLERY.find((g) => g.name === "citadel-beneath-the-planet")?.label).toBe("Citadel Beneath the Planet");
+    // Names the core accepts: lower-case letters and hyphens, 32 at most.
+    for (const g of GALLERY) expect(g.name).toMatch(/^[a-z-]{1,32}$/);
+  });
+
+  it("keeps pictures chosen before the paintings arrived", () => {
+    expect(galleryUrl("peaks")).toBe(galleryUrl("snowbound-peaks"));
+    expect(galleryUrl("not-a-picture")).toBeNull();
   });
 
   it("shows covers when there's no picture", () => {

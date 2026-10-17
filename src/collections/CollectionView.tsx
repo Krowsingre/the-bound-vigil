@@ -12,6 +12,9 @@ import { authorLine, percent } from "../lib/format";
 import { Badge } from "./badges";
 import { CollectionPicture } from "./CollectionCards";
 import { bookCount, KIND_LABEL, SMART_INFO } from "./collectionInfo";
+import { describeRules } from "./rules";
+
+const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 
 /** One collection, full page: its picture, its books, and adding or ordering them. */
 export function CollectionView({
@@ -52,7 +55,8 @@ export function CollectionView({
   }, [key, refreshKey, reload]);
 
   const c = detail?.collection ?? null;
-  const own = c && c.kind !== "shelf" ? c : null;
+  // Books are added to `own` by hand; a collection with rules fills itself.
+  const own = c && c.kind !== "shelf" && !c.rules ? c : null;
   const changed = () => {
     setReload((n) => n + 1);
     onChanged();
@@ -99,7 +103,14 @@ export function CollectionView({
       : collection.kind === "series"
         ? `By ${authorLine(series.find((s) => s.name === collection.name)?.authors ?? []) || "unknown authors"}, in reading order.`
         : c?.description;
-  const kindLabel = collection.kind === "smart" ? "Smart collection" : collection.kind === "series" ? "Series" : c && KIND_LABEL[c.kind];
+  const kindLabel =
+    collection.kind === "smart"
+      ? "Smart collection"
+      : collection.kind === "series"
+        ? "Series"
+        : c?.rules
+          ? "Filled by rules"
+          : c && KIND_LABEL[c.kind];
   const covers = detail.books.slice(0, 3).map(({ id, title, authors, coverPath }) => ({ id, title, authors, coverPath }));
   const menu = menuFor(detail);
   const move = (book: BookPreview, to: number) =>
@@ -142,7 +153,9 @@ export function CollectionView({
               ? "In series order."
               : c?.kind === "shelf"
                 ? "Books join this shelf from their own … menu."
-                : null}
+                : c?.rules
+                  ? `Books where ${lowerFirst(describeRules(c.rules))}. It keeps up as your books change.`
+                  : null}
         </p>
         {own?.kind !== "reading_list" && detail.books.length > 0 && (
           <div className="layout-switch" role="radiogroup" aria-label="Layout">
@@ -173,7 +186,11 @@ export function CollectionView({
         <div className="library-empty">
           <h2>No books here yet</h2>
           <p className="muted">
-            {own ? "Add books with the button above, or from any book's … menu." : "Books appear here by themselves as you read."}
+            {own
+              ? "Add books with the button above, or from any book's … menu."
+              : c?.rules
+                ? "No books match its rules yet. They appear here by themselves when one does."
+                : "Books appear here by themselves as you read."}
           </p>
         </div>
       ) : own?.kind === "reading_list" ? (

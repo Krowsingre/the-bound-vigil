@@ -25,6 +25,9 @@ pub enum Error {
     /// Anything else the cloud said went wrong.
     #[error("the cloud said: {0}")]
     Cloud(String),
+    /// Sync started over while a run was going; that run stops quietly.
+    #[error("sync started over")]
+    Superseded,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

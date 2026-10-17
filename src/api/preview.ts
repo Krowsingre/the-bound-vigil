@@ -7,11 +7,12 @@ import { previewCollections } from "../preview/collections";
 import { previewNotes, sampleAnnotations } from "../preview/notes";
 import { sampleEpub } from "../preview/sampleEpub";
 import type {
+  ProviderView,
   Annotation,
   BookPreview,
   HardcoverStatus,
   HomeViewModel,
-  ImportResult,
+  ImportItem,
   LibraryPage,
   LibraryQuery,
   Profile,
@@ -22,6 +23,39 @@ const day = 86_400_000;
 const ago = (days: number) => new Date(Date.now() - days * day).toISOString();
 
 let next = 1;
+
+// `?imports` shows an import underway, for reviewing the Imports page.
+const MB = 1024 * 1024;
+let imports: ImportItem[] = new URLSearchParams(location.search).has("imports")
+  ? [
+      ["Carmilla.epub", 0.4, "imported", "Carmilla"],
+      ["The Monk.epub", 0.9, "imported", "The Monk"],
+      ["Wuthering Heights.epub", 0.6, "alreadyInLibrary", "Wuthering Heights"],
+      ["Notes from a scan.pdf", 2.2, "failed", ""],
+      ["Melmoth the Wanderer.pdf", 38, "reading", ""],
+      ["Uncle Silas.epub", 1.1, "waiting", ""],
+      ["The Castle of Otranto.epub", 0.3, "waiting", ""],
+      ["Vathek.mobi", 0.7, "waiting", ""],
+      ["The Italian.azw3", 1.4, "waiting", ""],
+    ].map(([name, size, state, title], i): ImportItem => {
+      const path = `C:\\Users\\you\\iCloudDrive\\Books\\${name}`;
+      const bytes = Math.round((size as number) * MB);
+      const done = state !== "waiting" && state !== "reading";
+      return {
+        id: i + 1,
+        path,
+        name: name as string,
+        bytes,
+        bytesRead: state === "reading" ? Math.round(bytes * 0.42) : done ? bytes : 0,
+        stage: done ? "done" : (state as "waiting" | "reading"),
+        result: !done
+          ? null
+          : state === "failed"
+            ? { outcome: "failed", path, reason: "the file is damaged or not a PDF" }
+            : { outcome: state as "imported" | "alreadyInLibrary", path, bookId: `sha256:${i}`, title: title as string },
+      };
+    })
+  : [];
 // `?hardcover` shows Hardcover signed in, for reviewing Settings.
 let hardcover: HardcoverStatus = new URLSearchParams(location.search).has("hardcover")
   ? { available: true, username: "wrenhale", sendRatings: true }
@@ -216,9 +250,22 @@ const update = (bookId: string, change: Partial<BookPreview>) => {
 
 function previewSync(): SyncOverview {
   const mode = params.get("sync");
-  if (!mode) return { status: { state: "disabled", lastSuccessAt: null }, project: null, signedInAs: null, lastError: null, waitingToSend: 0, conflicts: [] };
+  const supabase: ProviderView = { kind: "supabase", service: null, location: null, username: null };
+  if (!mode)
+    return { status: { state: "disabled", lastSuccessAt: null }, provider: supabase, project: null, signedInAs: null, lastError: null, waitingToSend: 0, conflicts: [] };
+  if (mode === "folder")
+    return {
+      status: { state: "idle", lastSuccessAt: ago(0.002) },
+      provider: { kind: "folder", service: "icloud", location: "C:\\Users\\you\\iCloudDrive", username: null },
+      project: null,
+      signedInAs: null,
+      lastError: null,
+      waitingToSend: 0,
+      conflicts: [],
+    };
   return {
     status: { state: mode === "ask" ? "attention" : "idle", lastSuccessAt: ago(0.002) },
+    provider: supabase,
     project: { url: "https://abcdefghijklmnop.supabase.co", anonKey: "sb_publishable_sample" },
     signedInAs: "reader@example.com",
     lastError: null,
@@ -251,7 +298,15 @@ export function previewApi(): Api {
   return {
     kind: "preview",
     getHome: async () => home(),
-    importBooks: async (paths): Promise<ImportResult[]> => paths.map((path) => ({ outcome: "unsupported", path })),
+    queueImports: async () => 0,
+    importQueue: async () => imports,
+    cancelImports: async () => {
+      imports = imports.filter((i) => i.stage !== "waiting");
+    },
+    clearFinishedImports: async () => {
+      imports = imports.filter((i) => i.stage !== "done");
+    },
+    onImports: () => () => undefined,
     setBookStatus: async (bookId, status) =>
       update(bookId, status === "unread" ? { status, totalProgression: null } : { status }),
     getLibrary: async (query) => queryBooks(library(), query),
@@ -383,6 +438,19 @@ export function previewApi(): Api {
     setSupabaseProject: async (project) => {
       sync = { ...sync, project, signedInAs: project?.url === sync.project?.url ? sync.signedInAs : null };
     },
+    setSyncProvider: async (choice) => {
+      const provider: ProviderView =
+        choice.kind === "folder"
+          ? { kind: "folder", service: choice.service, location: choice.path, username: null }
+          : choice.kind === "webdav"
+            ? { kind: "webdav", service: null, location: choice.url, username: choice.username }
+            : { kind: choice.kind, service: null, location: null, username: null };
+      sync = { ...sync, provider, status: choice.kind === "off" ? { state: "disabled", lastSuccessAt: null } : { state: "idle", lastSuccessAt: new Date().toISOString() } };
+      return false;
+    },
+    chooseFolder: async () => "C:\\Users\\you\\Dropbox",
+    suggestSyncFolder: async (service) =>
+      ({ icloud: "C:\\Users\\you\\iCloudDrive", dropbox: "C:\\Users\\you\\Dropbox", onedrive: "C:\\Users\\you\\OneDrive", gdrive: "G:\\My Drive" })[service] ?? null,
     resolveSyncConflict: async (_kind, key) => {
       sync = { ...sync, conflicts: sync.conflicts.filter((c) => c.key !== key) };
       if (!sync.conflicts.length) sync.status = { ...sync.status, state: "idle" };
