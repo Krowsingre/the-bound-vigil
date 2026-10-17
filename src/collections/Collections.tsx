@@ -21,13 +21,14 @@ import { moved, useReorder } from "./useReorder";
 import { useAppSettings } from "../settings/appSettings";
 
 type Tab = "all" | "collections" | "reading_lists" | "series";
-type Sort = "custom" | "name" | "size" | "created" | "changed";
-type SmartSort = "custom" | "name" | "size";
+type Sort = "custom" | "name" | "size" | "rating" | "created" | "changed";
+type SmartSort = "custom" | "name" | "size" | "rating";
 
 const SORTS: { sort: Sort; label: string }[] = [
   { sort: "custom", label: "Your order" },
   { sort: "name", label: "Name, A to Z" },
   { sort: "size", label: "Most books" },
+  { sort: "rating", label: "Highest rated" },
   { sort: "created", label: "Recently created" },
   { sort: "changed", label: "Recently changed" },
 ];
@@ -36,7 +37,12 @@ const SMART_SORTS: { sort: SmartSort; label: string }[] = [
   { sort: "custom", label: "Your order" },
   { sort: "name", label: "Name, A to Z" },
   { sort: "size", label: "Most books" },
+  { sort: "rating", label: "Highest rated" },
 ];
+
+/** Highest average rating first; collections with no rated books last. */
+const byRating = (a: { rating: number | null }, b: { rating: number | null }) =>
+  (b.rating ?? -1) - (a.rating ?? -1);
 
 const PREFS_KEY = "tbv.collections.view";
 /** Your order for the smart collections, kept with this device's settings. */
@@ -241,6 +247,7 @@ export function Collections({
       custom: () => 0,
       name: (a, b) => a.name.localeCompare(b.name),
       size: (a, b) => b.count - a.count || a.name.localeCompare(b.name),
+      rating: (a, b) => byRating(a, b) || a.name.localeCompare(b.name),
       created: (a, b) => b.createdAt.localeCompare(a.createdAt),
       changed: (a, b) => b.updatedAt.localeCompare(a.updatedAt),
     };
@@ -251,6 +258,7 @@ export function Collections({
     const list = overview?.smart ?? [];
     if (prefs.smartSort === "name") return [...list].sort((a, b) => SMART_INFO[a.kind].name.localeCompare(SMART_INFO[b.kind].name));
     if (prefs.smartSort === "size") return [...list].sort((a, b) => b.count - a.count);
+    if (prefs.smartSort === "rating") return [...list].sort(byRating);
     return orderSmart(list, smartOrder);
   }, [overview, prefs.smartSort, smartOrder]);
 

@@ -2,6 +2,7 @@ import type { CollectionSummary, CoverRef, SeriesSummary, SmartSummary } from ".
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
+import { Stars } from "../components/StarRating";
 import { hashOf } from "../lib/format";
 import { Badge } from "./badges";
 import type { ReorderProps } from "./useReorder";
@@ -139,6 +140,7 @@ export function CollectionCard({
           <span className="collection-card-meta">
             {bookCount(collection.count)}
             {collection.kind === "reading_list" && <> · {KIND_LABEL.reading_list}</>}
+            {collection.rating !== null && <Stars value={collection.rating} size={11} label={`Average rating ${collection.rating.toFixed(1)} of 5`} />}
           </span>
         </span>
         {layout === "grid" ? (

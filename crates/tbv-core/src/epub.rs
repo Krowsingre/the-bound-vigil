@@ -19,6 +19,8 @@ pub struct BookMetadata {
     pub language: Option<String>,
     pub series: Option<String>,
     pub series_index: Option<f64>,
+    /// The ISBN-13 (or ISBN-10) printed in the book's identifiers, digits only.
+    pub isbn: Option<String>,
     pub cover: Option<Cover>,
 }
 
@@ -43,6 +45,8 @@ enum Field {
     Description,
     Publisher,
     Language,
+    /// `dc:identifier`, read for an ISBN.
+    Identifier,
     /// Calibre's `calibre:series`.
     Series,
     /// Calibre's `calibre:series_index`.
@@ -232,6 +236,7 @@ fn metadata_field(e: &BytesStart) -> Option<Field> {
         b"description" => Some(Field::Description),
         b"publisher" => Some(Field::Publisher),
         b"language" => Some(Field::Language),
+        b"identifier" => Some(Field::Identifier),
         b"meta" => match attribute(e, b"property").as_deref() {
             Some("belongs-to-collection") => Some(Field::Collection),
             Some(_) if attribute(e, b"refines").is_some() => Some(Field::Refinement),
@@ -291,8 +296,38 @@ fn store_field(metadata: &mut BookMetadata, field: Field, raw: String) {
         Field::SeriesIndex if metadata.series_index.is_none() => {
             metadata.series_index = text.parse().ok()
         }
+        // A 13-digit ISBN beats a 10-digit one if the book lists both.
+        Field::Identifier => {
+            if let Some(isbn) = clean_isbn(&text) {
+                if metadata.isbn.as_ref().is_none_or(|old| old.len() < isbn.len()) {
+                    metadata.isbn = Some(isbn);
+                }
+            }
+        }
         _ => {}
     }
+}
+
+/// The digits of an ISBN written as `urn:isbn:978-…`, `ISBN 0-…` or bare.
+/// Anything else (a UUID, a store's own id) isn't one.
+pub(crate) fn clean_isbn(raw: &str) -> Option<String> {
+    let lower = raw.trim().to_ascii_lowercase();
+    let rest = lower
+        .strip_prefix("urn:isbn:")
+        .or_else(|| lower.strip_prefix("isbn:"))
+        .or_else(|| lower.strip_prefix("isbn"))
+        .unwrap_or(&lower)
+        .trim();
+    if rest.chars().any(|c| !(c.is_ascii_digit() || matches!(c, '-' | ' ' | 'x'))) {
+        return None;
+    }
+    let digits: String = rest.chars().filter(|c| c.is_ascii_digit() || *c == 'x').collect::<String>().to_uppercase();
+    let ok = match digits.len() {
+        13 => digits.chars().all(|c| c.is_ascii_digit()) && (digits.starts_with("978") || digits.starts_with("979")),
+        10 => digits[..9].chars().all(|c| c.is_ascii_digit()),
+        _ => false,
+    };
+    ok.then_some(digits)
 }
 
 fn find_cover_href(manifest: &[ManifestItem], cover_id: Option<&str>) -> Option<String> {

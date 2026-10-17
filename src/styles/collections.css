@@ -330,6 +330,11 @@
   color: var(--text-muted);
 }
 
+.collection-card-meta .stars {
+  margin-left: 8px;
+  vertical-align: -1px;
+}
+
 .collection-card .menu-root {
   position: absolute;
   top: 10px;

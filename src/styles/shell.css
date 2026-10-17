@@ -501,3 +501,39 @@
   max-height: calc(100vh - 16px);
   overflow-y: auto;
 }
+
+/* Star ratings (see StarRating.tsx). */
+.stars {
+  display: inline-flex;
+  gap: 1px;
+  color: var(--star);
+  vertical-align: -2px;
+}
+
+.star-rating {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.star-btn {
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+}
+
+.star-btn.is-on {
+  color: var(--star);
+}
+
+.star-btn:focus-visible {
+  outline: 2px solid var(--focus);
+}
+
+.menu-rating {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}

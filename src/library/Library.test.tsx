@@ -37,6 +37,8 @@ const book = (n: number, extra: Partial<BookPreview> = {}): BookPreview => ({
   remotePositions: [],
   favorite: false,
   wantToRead: false,
+  rating: null,
+  finishedAt: null,
   ...extra,
 });
 

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, isApp, openExternal } from "../api";
-import type { LibraryInfo, SortOrder } from "../api/types";
+import type { GoodreadsImport, LibraryInfo, SortOrder } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
@@ -123,7 +123,97 @@ export function LibraryTab({
           <p className="settings-row-hint">The library folder couldn't be read.</p>
         )}
       </Section>
+      <GoodreadsSection />
     </>
+  );
+}
+
+function GoodreadsSection() {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [report, setReport] = useState<GoodreadsImport | null>(null);
+  const start = async () => {
+    setBusy(true);
+    try {
+      const done = await api.importGoodreads();
+      if (done) setReport(done);
+    } catch (e) {
+      toast(`That didn't work: ${String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Section
+      id="goodreads"
+      title="Bring in from Goodreads"
+      lede="Goodreads lets you export your books as a file. TBV reads it and adds your ratings, read dates and shelves to the books you have here."
+    >
+      <div className="action-tiles">
+        <ActionTile
+          icon={<Icon name="upload" size={22} />}
+          title="Import a Goodreads export"
+          hint="Only fills in what TBV is missing."
+          disabled={busy}
+          onClick={() => void start()}
+        />
+      </div>
+      <p className="settings-row-hint">
+        On the Goodreads website, open My Books, then Import and export, and choose Export Library. Save the file it gives you, then choose it here.
+      </p>
+      {report && <GoodreadsReport report={report} onClose={() => setReport(null)} />}
+    </Section>
+  );
+}
+
+function GoodreadsReport({ report, onClose }: { report: GoodreadsImport; onClose: () => void }) {
+  const close = useRef<HTMLButtonElement>(null);
+  useEffect(() => close.current?.focus(), []);
+  const books = (n: number) => `${n} ${n === 1 ? "book" : "books"}`;
+  const lines = [
+    report.ratings > 0 && `Ratings added to ${books(report.ratings)}.`,
+    report.statuses > 0 && `Reading status brought in for ${books(report.statuses)}.`,
+    report.upNext > 0 && `${books(report.upNext)} put in Up next.`,
+    report.favourites > 0 && `${books(report.favourites)} marked as favourites.`,
+    report.collectionsCreated.length > 0 &&
+      `New ${report.collectionsCreated.length === 1 ? "collection" : "collections"} from your shelves: ${report.collectionsCreated.join(", ")}.`,
+    report.collectionBooks > 0 && `${books(report.collectionBooks)} added to collections.`,
+  ].filter(Boolean) as string[];
+  return (
+    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="dialog goodreads-report" role="dialog" aria-label="Goodreads import" onKeyDown={(e) => e.key === "Escape" && onClose()}>
+        <h2>Goodreads import</h2>
+        <p className="muted">
+          {report.matched} of the {report.rows} books in your export are in your library.
+        </p>
+        {lines.length > 0 ? (
+          <ul>
+            {lines.map((l) => (
+              <li key={l}>{l}</li>
+            ))}
+          </ul>
+        ) : (
+          <p>TBV already had everything the export holds, so nothing changed.</p>
+        )}
+        {report.notFound.length > 0 && (
+          <details>
+            <summary>
+              {books(report.notFound.length)} from Goodreads aren't in your library
+            </summary>
+            <ul className="goodreads-missing">
+              {report.notFound.map((b) => (
+                <li key={b}>{b}</li>
+              ))}
+            </ul>
+          </details>
+        )}
+        <div className="dialog-actions">
+          <button ref={close} type="button" className="btn btn-primary" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -3,6 +3,7 @@ import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { ProgressBar } from "../components/ProgressBar";
+import { Stars } from "../components/StarRating";
 import { authorLine, percent } from "../lib/format";
 import { bookMenu, type BookActions } from "../home/bookActions";
 
@@ -85,6 +86,7 @@ export function BookList({ books, actions }: Props) {
                 <Marks book={book} />
               </span>
               {seriesLine(book) && <span className="book-author">{seriesLine(book)}</span>}
+              <Stars value={book.rating} size={13} />
             </span>
           </button>
           <span className="list-status">
@@ -108,6 +110,7 @@ export function BookTable({ books, actions }: Props) {
           <th scope="col">Author</th>
           <th scope="col">Series</th>
           <th scope="col">Status</th>
+          <th scope="col">Rating</th>
           <th scope="col">Format</th>
           <th scope="col">Added</th>
           <th scope="col">
@@ -132,6 +135,9 @@ export function BookTable({ books, actions }: Props) {
             <td>{authorLine(book.authors)}</td>
             <td className="muted">{seriesLine(book) ?? ""}</td>
             <td className="num">{book.status === "in_progress" ? percent(book.totalProgression) : STATUS[book.status]}</td>
+            <td>
+              <Stars value={book.rating} size={12} />
+            </td>
             <td className="muted">{book.format.toUpperCase()}</td>
             <td className="muted num">{new Date(book.addedAt).toLocaleDateString()}</td>
             <td>

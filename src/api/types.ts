@@ -43,6 +43,10 @@ export interface BookPreview {
   remotePositions: RemotePosition[];
   favorite: boolean;
   wantToRead: boolean;
+  /** Your own rating, 1 to 5 stars. */
+  rating: number | null;
+  /** When you finished it. */
+  finishedAt: IsoUtc | null;
 }
 
 export interface CollectionPreview {
@@ -128,7 +132,7 @@ export type ImportResult =
   | { outcome: "failed"; path: string; reason: string };
 
 export type Shelf = "all" | "favorites" | "want_to_read" | "in_progress" | "read" | "unread";
-export type SortOrder = "recently_added" | "recently_opened" | "title" | "author" | "series" | "progress";
+export type SortOrder = "recently_added" | "recently_opened" | "title" | "author" | "series" | "progress" | "rating";
 export type Location = "on_device" | "cloud_only";
 
 export interface LibraryQuery {
@@ -213,6 +217,8 @@ export interface CollectionSummary {
   picturePath: string | null;
   pinned: boolean;
   count: number;
+  /** The average of your ratings of its books, if you've rated any. */
+  rating: number | null;
   /** Its first three books, for the strip of covers. */
   covers: CoverRef[];
   createdAt: IsoUtc;
@@ -224,6 +230,21 @@ export type SmartKind = "recently_added" | "unread" | "in_progress" | "read" | "
 export interface SmartSummary {
   kind: SmartKind;
   count: number;
+  rating: number | null;
+}
+
+/** What an import of a Goodreads export did. */
+export interface GoodreadsImport {
+  rows: number;
+  matched: number;
+  ratings: number;
+  statuses: number;
+  upNext: number;
+  favourites: number;
+  collectionsCreated: string[];
+  collectionBooks: number;
+  /** "Title by Author" for each book that isn't in the library. */
+  notFound: string[];
 }
 
 export interface SeriesSummary {

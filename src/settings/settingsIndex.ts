@@ -142,6 +142,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     words: "folder location storage files explorer size",
   },
   {
+    tab: "library",
+    section: "goodreads",
+    label: "Bring in from Goodreads",
+    words: "goodreads import export csv ratings stars shelves read dates",
+  },
+  {
     tab: "collections",
     section: "show",
     label: "What Collections shows",

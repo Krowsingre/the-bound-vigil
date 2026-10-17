@@ -32,6 +32,7 @@ export const SORTS: { sort: SortOrder; label: string }[] = [
   { sort: "author", label: "Author" },
   { sort: "series", label: "Series" },
   { sort: "progress", label: "Progress" },
+  { sort: "rating", label: "Your rating" },
 ];
 
 const KEY = "tbv.libraryView";

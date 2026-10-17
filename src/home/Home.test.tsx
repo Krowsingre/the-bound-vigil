@@ -45,6 +45,8 @@ const dracula: BookPreview = {
   remotePositions: [],
   favorite: false,
   wantToRead: false,
+  rating: null,
+  finishedAt: null,
 };
 
 function renderHome() {
