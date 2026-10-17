@@ -3,6 +3,7 @@
 
 mod hardcover;
 mod imports;
+mod moving;
 mod sync;
 
 use std::path::PathBuf;
@@ -681,6 +682,77 @@ async fn set_sync_provider(
     Ok(joined)
 }
 
+/// How moving or backing up the library to another service stands.
+#[tauri::command]
+fn move_status(mover: State<'_, Arc<moving::Mover>>) -> moving::MoveStatus {
+    mover.status()
+}
+
+/// Signs in to the Supabase project the library is moving to, without
+/// touching the sign-in sync uses. False means Supabase emailed a link first.
+#[tauri::command]
+async fn move_sign_in(
+    mover: State<'_, Arc<moving::Mover>>,
+    project: SupabaseProject,
+    email: String,
+    password: String,
+    create: bool,
+) -> CommandResult<bool> {
+    let mover = mover.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || mover.sign_in(project, &email, &password, create))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn move_sign_out(mover: State<'_, Arc<moving::Mover>>) {
+    mover.sign_out();
+}
+
+/// Starts copying the library to another service, in the background.
+#[tauri::command]
+async fn start_move(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    mover: State<'_, Arc<moving::Mover>>,
+    worker: State<'_, Arc<sync::SyncWorker>>,
+    mode: tbv_core::sync::moving::MoveMode,
+    scope: tbv_core::sync::moving::MoveScope,
+    to: tbv_core::sync::Provider,
+) -> CommandResult<()> {
+    let (library, mover, worker) = (state.0.clone(), mover.inner().clone(), worker.inner().clone());
+    tauri::async_runtime::spawn_blocking(move || mover.start(&app, &library, &worker, mode, scope, to))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Runs the last move again; only what's still missing is copied.
+#[tauri::command]
+async fn retry_move(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    mover: State<'_, Arc<moving::Mover>>,
+    worker: State<'_, Arc<sync::SyncWorker>>,
+) -> CommandResult<()> {
+    let (library, mover, worker) = (state.0.clone(), mover.inner().clone(), worker.inner().clone());
+    tauri::async_runtime::spawn_blocking(move || mover.again(&app, &library, &worker))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cancel_move(mover: State<'_, Arc<moving::Mover>>) {
+    mover.cancel();
+}
+
+#[tauri::command]
+fn clear_move(app: tauri::AppHandle, mover: State<'_, Arc<moving::Mover>>) {
+    mover.clear(&app);
+}
+
 /// Where a cloud app usually keeps its folder on this computer, if it's there.
 #[tauri::command]
 fn suggest_sync_folder(service: String) -> Option<String> {
@@ -802,6 +874,7 @@ pub fn run() {
             app.manage(AppLibrary(library));
             app.manage(Arc::new(hardcover::Sends::default()));
             app.manage(Arc::new(imports::Imports::default()));
+            app.manage(Arc::new(moving::Mover::default()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -885,6 +958,13 @@ pub fn run() {
             suggest_sync_folder,
             resolve_sync_conflict,
             download_book,
+            move_status,
+            move_sign_in,
+            move_sign_out,
+            start_move,
+            retry_move,
+            cancel_move,
+            clear_move,
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
         // page gets a moment to save the reading position first; then ratings

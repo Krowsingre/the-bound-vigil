@@ -10,6 +10,7 @@ import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { relativeTime } from "../lib/format";
 import { AccountPanel } from "../settings/AccountPanel";
+import { MOVE_DESKTOP_ONLY } from "../api/moveStub";
 import { Section } from "../settings/controls";
 import { urlOk } from "./link";
 
@@ -176,6 +177,7 @@ export function WebSyncTab() {
         Books open from the cloud, so turn on Sync book files in the desktop app for the books you want here. Once opened, a book stays in this browser for
         reading offline.
       </p>
+      <p className="settings-row-hint">{MOVE_DESKTOP_ONLY}</p>
     </Section>
   );
 }

@@ -131,6 +131,51 @@ export interface SyncOverview {
   conflicts: SyncConflict[];
 }
 
+/** Migrate: copy everything, then sync through the new place. Backup: copy everything, keep syncing where you are. */
+export type MoveMode = "migrate" | "backup";
+/** Which books go: all, books and documents, or audiobooks. */
+export type MoveScope = "all" | "text" | "audio";
+export type MoveStage = "looking" | "records" | "files" | "checking";
+
+/** The check at the end of a move: is everything that should be there, there? */
+export interface MoveCheck {
+  records: number;
+  recordsFound: number;
+  files: number;
+  filesFound: number;
+  /** What isn't there, in words. */
+  missing: string[];
+  moreMissing: number;
+  /** What didn't go but wasn't in the old place either. Doesn't fail the check. */
+  notes: string[];
+}
+
+export interface MoveReport {
+  recordsCopied: number;
+  filesCopied: number;
+  /** Already there from an earlier backup or try. */
+  alreadyThere: number;
+  cancelled: boolean;
+  check: MoveCheck | null;
+}
+
+export interface MoveStatus {
+  running: boolean;
+  mode: MoveMode | null;
+  scope: MoveScope;
+  from: ProviderView | null;
+  to: ProviderView | null;
+  progress: { stage: MoveStage; done: number; total: number };
+  report: MoveReport | null;
+  /** A migration that passed its check now syncs through the new place. */
+  switched: boolean;
+  error: string | null;
+  /** Whether "Audio only" can be chosen yet. */
+  audioReady: boolean;
+  /** Signed in to the Supabase project being moved to, as this email. */
+  supabaseAccount: string | null;
+}
+
 export interface ReadingActivity {
   completedBooks: number;
   pagesRead: number | null;

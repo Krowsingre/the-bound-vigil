@@ -41,6 +41,10 @@ pub trait Store {
     /// Names in a folder (files and folders), like `covers/`. Empty if the
     /// folder doesn't exist yet.
     fn list(&mut self, folder: &str) -> Result<Vec<String>>;
+    /// As `list`, with sizes where the store knows them.
+    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+        Ok(self.list(folder)?.into_iter().map(|name| (name, None)).collect())
+    }
 }
 
 impl<T: Store + ?Sized> Store for Box<T> {
@@ -58,6 +62,9 @@ impl<T: Store + ?Sized> Store for Box<T> {
     }
     fn list(&mut self, folder: &str) -> Result<Vec<String>> {
         (**self).list(folder)
+    }
+    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+        (**self).list_sizes(folder)
     }
 }
 
@@ -171,6 +178,10 @@ impl<S: Store> Remote for FileRemote<S> {
     fn list(&mut self, folder: &str) -> Result<Vec<String>> {
         self.store.list(folder)
     }
+
+    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+        self.store.list_sizes(folder)
+    }
 }
 
 /// A folder on this computer, usually one a cloud app keeps in sync.
@@ -263,6 +274,14 @@ impl Store for FolderStore {
             }
         }
         Ok(names)
+    }
+
+    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+        let dir = self.at(folder);
+        Ok(self.list(folder)?.into_iter().map(|name| {
+            let size = fs::metadata(dir.join(&name)).ok().filter(|m| m.is_file()).map(|m| m.len());
+            (name, size)
+        }).collect())
     }
 }
 

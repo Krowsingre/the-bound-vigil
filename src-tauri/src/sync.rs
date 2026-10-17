@@ -132,7 +132,7 @@ impl supabase::SessionKeeper for LibraryKeeper {
 }
 
 /// The chosen service's connection, with a Supabase sign-in kept up to date.
-fn connect(library: &Arc<Mutex<Library>>, l: &Library) -> tbv_core::Result<Option<Cloud>> {
+pub fn connect(library: &Arc<Mutex<Library>>, l: &Library) -> tbv_core::Result<Option<Cloud>> {
     let mut cloud = l.connect()?;
     if let Some(Cloud::Supabase(client)) = &mut cloud {
         client.keep_session_with(Arc::new(LibraryKeeper(library.clone())));
