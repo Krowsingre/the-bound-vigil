@@ -27,7 +27,8 @@ pub(crate) struct FtpConnection {
 /// Checks the server's certificate against the usual public authorities,
 /// like a browser. A server with its own certificate (common on seedboxes)
 /// is accepted only once the person has trusted that certificate's
-/// fingerprint; until then the fingerprint is kept in `seen` to show them.
+/// fingerprint, and from then on only that certificate; until then the
+/// fingerprint is kept in `seen` to show them.
 #[derive(Debug)]
 struct CertCheck {
     public: Arc<WebPkiServerVerifier>,
@@ -51,19 +52,16 @@ impl ServerCertVerifier for CertCheck {
         ocsp_response: &[u8],
         now: UnixTime,
     ) -> std::result::Result<ServerCertVerified, TlsError> {
-        match self.public.verify_server_cert(end_entity, intermediates, server_name, ocsp_response, now) {
-            Ok(verified) => Ok(verified),
-            Err(problem) => {
-                let seen = fingerprint(end_entity);
-                let trusted = self.trusted.as_deref() == Some(seen.as_str());
-                *self.seen.lock().unwrap_or_else(|p| p.into_inner()) = Some(seen);
-                if trusted {
-                    Ok(ServerCertVerified::assertion())
-                } else {
-                    Err(problem)
-                }
-            }
+        let remember = |seen: String| *self.seen.lock().unwrap_or_else(|p| p.into_inner()) = Some(seen);
+        // A trusted certificate is pinned: any other is refused, even one a
+        // public authority vouches for.
+        if let Some(trusted) = &self.trusted {
+            let seen = fingerprint(end_entity);
+            let same = *trusted == seen;
+            remember(seen);
+            return if same { Ok(ServerCertVerified::assertion()) } else { Err(TlsError::General("the server's certificate changed".into())) };
         }
+        self.public.verify_server_cert(end_entity, intermediates, server_name, ocsp_response, now).inspect_err(|_| remember(fingerprint(end_entity)))
     }
 
     fn verify_tls12_signature(&self, message: &[u8], cert: &CertificateDer<'_>, dss: &DigitallySignedStruct) -> std::result::Result<HandshakeSignatureValid, TlsError> {
@@ -283,6 +281,20 @@ mod tests {
         serve(root, Some((cert, key)))
     }
 
+    /// Connects to the test FTPS server. libunftp answers AUTH TLS before it
+    /// switches to TLS, so on a busy machine it sometimes reads the start of
+    /// the handshake as a command and replies in plain text; that one race
+    /// is the test server's, so it's tried again.
+    fn open_tls(server: &Server) -> Result<FtpConnection> {
+        for _ in 0..10 {
+            match FtpConnection::open(server) {
+                Err(Error::Unsuitable(m)) if m.contains("InvalidContentType") => continue,
+                other => return other,
+            }
+        }
+        FtpConnection::open(server)
+    }
+
     const SELF_SIGNED_CERT: &str = include_str!("testdata/self-signed-cert.pem");
 
     fn serve(root: std::path::PathBuf, tls: Option<(std::path::PathBuf, std::path::PathBuf)>) -> u16 {
@@ -395,7 +407,7 @@ mod tests {
         ftps.protocol = Protocol::Ftps;
 
         // First time: TBV stops and shows the certificate's fingerprint.
-        let shown = match FtpConnection::open(&ftps) {
+        let shown = match open_tls(&ftps) {
             Err(Error::NewHostKey(f)) => f,
             Err(other) => panic!("{other:?}"),
             Ok(_) => panic!("connected without asking"),
@@ -405,7 +417,7 @@ mod tests {
 
         // Trusted, it connects, lists and downloads over TLS.
         ftps.host_key = Some(shown.clone());
-        let mut connection = FtpConnection::open(&ftps).unwrap();
+        let mut connection = open_tls(&ftps).unwrap();
         let names: Vec<String> = connection.list("").unwrap().into_iter().map(|e| e.name).collect();
         assert_eq!(names, ["Carmilla.epub"]);
         let mut bytes = Vec::new();
@@ -414,7 +426,7 @@ mod tests {
 
         // A different certificate later is refused.
         ftps.host_key = Some("SHA256:00".into());
-        match FtpConnection::open(&ftps) {
+        match open_tls(&ftps) {
             Err(Error::Unsuitable(m)) => assert!(m.contains("isn't showing the fingerprint it showed before"), "{m}"),
             Err(other) => panic!("{other:?}"),
             Ok(_) => panic!("connected"),
