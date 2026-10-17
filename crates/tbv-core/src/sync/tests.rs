@@ -1044,3 +1044,27 @@ fn the_profile_picture_follows_the_library() {
     a.sync(&cloud);
     assert_eq!(a.lib().profile().unwrap().avatar_path, None, "taking it away travels too");
 }
+
+#[test]
+fn the_second_place_syncs_when_the_first_cannot_be_opened() {
+    let supabase = FakeRemote::default();
+    let pc = Device::new();
+    pc.add_second_place();
+    let book = pc.import("Alone");
+    let epoch = pc.lib().sync_epoch();
+    sync_lanes_since(&pc.library, None, Some(&mut supabase.clone()), epoch).unwrap();
+    assert!(supabase.0.lock().unwrap().records.keys().any(|(k, key)| k == "book" && key.contains(&book)));
+}
+
+#[test]
+fn starting_the_first_place_over_keeps_the_seconds_conflicts() {
+    let pc = Device::new();
+    pc.add_second_place();
+    pc.lib()
+        .conn
+        .execute_batch("INSERT INTO sync_conflicts (kind, key, remote, found_at, lane) VALUES ('book', '[\"x\"]', '{}', 'now', 'also')")
+        .unwrap();
+    pc.lib().reset_sync().unwrap();
+    let left: i64 = pc.lib().conn.query_row("SELECT COUNT(*) FROM sync_conflicts", [], |r| r.get(0)).unwrap();
+    assert_eq!(left, 1);
+}

@@ -171,6 +171,7 @@ fn run(app: &AppHandle, library: &Arc<Mutex<Library>>, busy: &AtomicBool) {
     emit_status(app, library, true);
     // A folder is opened (and a WebDAV server reached) outside the lock.
     // The epoch is read with the choice, so a switch while connecting stops this run.
+    let first_epoch = library.lock().map(|l| l.sync_epoch()).unwrap_or_default();
     let connected = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into())).and_then(|l| {
         let provider = l.sync_provider()?;
         let device = l.device_id()?;
@@ -183,34 +184,33 @@ fn run(app: &AppHandle, library: &Arc<Mutex<Library>>, busy: &AtomicBool) {
             }
         })
     });
-    let also = if matches!(connected, Ok(Some(_))) { connect_second(library) } else { None };
+    // The second place is reached on its own, so it syncs even when the first can't.
+    let also = connect_second(library);
     let (mut client, epoch) = match connected {
-        Ok(Some((client, epoch))) => (client, epoch),
-        Ok(None) => {
-            busy.store(false, Ordering::Relaxed);
-            emit_status(app, library, false);
-            return;
-        }
+        Ok(Some((client, epoch))) => (Some(client), epoch),
+        Ok(None) => (None, first_epoch),
         Err(e) => {
             if let Ok(l) = library.lock() {
                 let _ = l.note_sync_failure(&e);
             }
-            busy.store(false, Ordering::Relaxed);
-            emit_status(app, library, false);
-            return;
+            (None, first_epoch)
         }
     };
-    let (outcome, also) = match also {
-        Some(mut second) => {
-            let outcome = core_sync::sync_both_since(library, &mut client, Some(&mut second), epoch);
-            (outcome, Some(second))
-        }
-        None => (core_sync::sync_once_since(library, &mut client, epoch), None),
-    };
+    let mut second = also;
+    if client.is_none() && second.is_none() {
+        busy.store(false, Ordering::Relaxed);
+        emit_status(app, library, false);
+        return;
+    }
+    let outcome = core_sync::sync_lanes_since(
+        library,
+        client.as_mut().map(|c| c as &mut dyn core_sync::Remote),
+        second.as_mut().map(|c| c as &mut dyn core_sync::Remote),
+        epoch,
+    );
     if let Ok(library) = library.lock() {
-        keep_session(&library, &client, &outcome);
-        if let Some(second) = &also {
-            keep_session(&library, second, &outcome);
+        for cloud in client.iter().chain(second.iter()) {
+            keep_session(&library, cloud, &outcome);
         }
     }
     busy.store(false, Ordering::Relaxed);
@@ -264,10 +264,13 @@ pub fn sign_in(library: &Mutex<Library>, email: &str, password: &str, create: bo
     let mut library = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?;
     let before = library.sync_session()?.map(|s| s.user_id);
     let also_supabase = library.sync_also()? == Some(Provider::Supabase);
+    // Another account is another library: only a place already on Supabase
+    // starts over. A folder sync is left alone.
     if before.as_deref() != Some(session.user_id.as_str()) {
         if also_supabase {
             library.reset_also_sync()?;
-        } else {
+        }
+        if library.sync_provider()? == Provider::Supabase {
             library.reset_sync()?;
         }
     }
@@ -345,18 +348,21 @@ pub fn download(library: &Arc<Mutex<Library>>, book_id: &str) -> tbv_core::Resul
             "This book's file is on another device. Set up sync (Settings › Sync) to download it here.".into(),
         ));
     }
-    // The first place, then the second if the first hasn't got it.
+    // The first place, then the second if the first hasn't got it or can't be reached.
+    let mut trouble = None;
     for (cloud, lane) in [(client, Lane::Main), (second, Lane::Also)] {
         let Some(mut cloud) = cloud else { continue };
         let outcome = core_sync::download_book_from(library, &mut cloud, book_id, lane);
         if let Ok(library) = library.lock() {
             keep_session(&library, &cloud, &outcome);
         }
-        if outcome? {
-            return Ok(());
+        match outcome {
+            Ok(true) => return Ok(()),
+            Ok(false) => {}
+            Err(e) => trouble = trouble.or(Some(e)),
         }
     }
-    Err(core_sync::not_in_cloud())
+    Err(trouble.unwrap_or_else(core_sync::not_in_cloud))
 }
 
 /// Where each cloud app usually keeps its folder on Windows. Only a folder

@@ -903,7 +903,7 @@ impl Library {
         self.sync_epoch += 1;
         self.conn.execute_batch(
             "UPDATE sync_clock SET pushed = 0;
-             DELETE FROM sync_waiting; DELETE FROM sync_conflicts; DELETE FROM sync_files;",
+             DELETE FROM sync_waiting WHERE lane = 'main'; DELETE FROM sync_conflicts WHERE lane = 'main'; DELETE FROM sync_files;",
         )?;
         for key in [CURSOR, LAST_SUCCESS, LAST_ERROR] {
             self.put_setting(key, None)?;
@@ -1536,12 +1536,32 @@ pub fn sync_once_since(library: &Mutex<Library>, remote: &mut dyn Remote, epoch:
     sync_both_since(library, remote, None, epoch)
 }
 
+/// As `sync_both_since`, when either place may be out of reach this time.
+/// A place that couldn't be connected is left alone (its trouble was noted
+/// when connecting); the result is the first place's when it ran, else the second's.
+pub fn sync_lanes_since(
+    library: &Mutex<Library>,
+    main: Option<&mut dyn Remote>,
+    also: Option<&mut dyn Remote>,
+    epoch: u64,
+) -> Result<SyncReport> {
+    match (main, also) {
+        (Some(main), also) => sync_both_since(library, main, also, epoch),
+        (None, Some(also)) => run_lanes(library, None, Some(also), epoch),
+        (None, None) => Ok(SyncReport::default()),
+    }
+}
+
 /// One run with both places: what each has that this device doesn't comes
 /// down first, then each is sent what it lacks, so a change made through
 /// one (a phone on Supabase, say) reaches the other in the same run. A place
 /// that can't be reached doesn't stop the other; each remembers its own
 /// result. Returns the first place's, with what the second brought added.
 pub fn sync_both_since(library: &Mutex<Library>, main: &mut dyn Remote, also: Option<&mut dyn Remote>, epoch: u64) -> Result<SyncReport> {
+    run_lanes(library, Some(main), also, epoch)
+}
+
+fn run_lanes(library: &Mutex<Library>, main: Option<&mut dyn Remote>, also: Option<&mut dyn Remote>, epoch: u64) -> Result<SyncReport> {
     let take = || library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()));
     // Sync started over meanwhile (another service, or signed out): this
     // run's place is no longer the library's, so it writes nothing more.
@@ -1554,17 +1574,22 @@ pub fn sync_both_since(library: &Mutex<Library>, main: &mut dyn Remote, also: Op
     };
     let (main_outcome, also_outcome) = run_both(&lock, main, also);
     let superseded = |o: &Result<SyncReport>| matches!(o, Err(Error::Superseded));
-    if superseded(&main_outcome) || also_outcome.as_ref().is_some_and(superseded) {
+    if main_outcome.as_ref().is_some_and(superseded) || also_outcome.as_ref().is_some_and(superseded) {
         return Ok(SyncReport::default());
     }
     match lock() {
         Err(Error::Superseded) => Ok(SyncReport::default()),
         Err(e) => Err(e),
         Ok(library) => {
-            library.record_result(&main_outcome, Lane::Main)?;
+            if let Some(outcome) = &main_outcome {
+                library.record_result(outcome, Lane::Main)?;
+            }
             if let Some(outcome) = &also_outcome {
                 library.record_result(outcome, Lane::Also)?;
             }
+            let Some(main_outcome) = main_outcome else {
+                return also_outcome.unwrap_or_else(|| Ok(SyncReport::default()));
+            };
             let mut report = main_outcome?;
             if let Some(Ok(also)) = also_outcome {
                 report.received += also.received;
@@ -1590,33 +1615,41 @@ fn step(outcome: &mut Result<SyncReport>, work: impl FnOnce(&mut SyncReport) -> 
     }
 }
 
-fn run_both(lock: Lock, main: &mut dyn Remote, mut also: Option<&mut dyn Remote>) -> (Result<SyncReport>, Option<Result<SyncReport>>) {
+type Outcomes = (Option<Result<SyncReport>>, Option<Result<SyncReport>>);
+
+fn run_both(lock: Lock, mut main: Option<&mut dyn Remote>, mut also: Option<&mut dyn Remote>) -> Outcomes {
     let options = match lock().and_then(|l| l.sync_options()) {
         Ok(options) => options,
-        Err(e) => return (Err(e), None),
+        Err(e) => return (Some(Err(e)), None),
     };
     let also_options = options.for_lane(Lane::Also);
-    let mut first = Ok(SyncReport::default());
+    let mut first = main.as_ref().map(|_| Ok(SyncReport::default()));
     let mut second = also.as_ref().map(|_| Ok(SyncReport::default()));
-    let stopped = |a: &Result<SyncReport>, b: &Option<Result<SyncReport>>| {
-        matches!(a, Err(Error::Superseded)) || matches!(b, Some(Err(Error::Superseded)))
+    let stopped = |a: &Option<Result<SyncReport>>, b: &Option<Result<SyncReport>>| {
+        matches!(a, Some(Err(Error::Superseded))) || matches!(b, Some(Err(Error::Superseded)))
     };
 
-    step(&mut first, |r| pull(lock, main, &options, Lane::Main, r));
+    if let (Some(remote), Some(outcome)) = (main.as_deref_mut(), first.as_mut()) {
+        step(outcome, |r| pull(lock, remote, &options, Lane::Main, r));
+    }
     if let (Some(remote), Some(outcome)) = (also.as_deref_mut(), second.as_mut()) {
         step(outcome, |r| pull(lock, remote, &also_options, Lane::Also, r));
     }
     if stopped(&first, &second) {
         return (first, second);
     }
-    step(&mut first, |r| push(lock, main, &options, Lane::Main, r));
+    if let (Some(remote), Some(outcome)) = (main.as_deref_mut(), first.as_mut()) {
+        step(outcome, |r| push(lock, remote, &options, Lane::Main, r));
+    }
     if let (Some(remote), Some(outcome)) = (also.as_deref_mut(), second.as_mut()) {
         step(outcome, |r| push(lock, remote, &also_options, Lane::Also, r));
     }
     if stopped(&first, &second) {
         return (first, second);
     }
-    step(&mut first, |r| files(lock, main, &options, Lane::Main, r));
+    if let (Some(remote), Some(outcome)) = (main, first.as_mut()) {
+        step(outcome, |r| files(lock, remote, &options, Lane::Main, r));
+    }
     if let (Some(remote), Some(outcome)) = (also, second.as_mut()) {
         step(outcome, |r| files(lock, remote, &also_options, Lane::Also, r));
     }
