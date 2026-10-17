@@ -149,6 +149,19 @@ export type ImportResult =
   | { outcome: "unsupported"; path: string }
   | { outcome: "failed"; path: string; reason: string };
 
+export type ImportStage = "waiting" | "reading" | "adding" | "done";
+
+/** One book file on the Imports page. */
+export interface ImportItem {
+  id: number;
+  path: string;
+  name: string;
+  bytes: number;
+  bytesRead: number;
+  stage: ImportStage;
+  result: ImportResult | null;
+}
+
 export type Shelf = "all" | "favorites" | "want_to_read" | "in_progress" | "read" | "unread";
 export type SortOrder = "recently_added" | "recently_opened" | "title" | "author" | "series" | "progress" | "rating";
 export type Location = "on_device" | "cloud_only";

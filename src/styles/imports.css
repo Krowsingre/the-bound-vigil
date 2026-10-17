@@ -1,0 +1,157 @@
+/* Imports: the page that follows books being added. */
+.imports-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.imports-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 420px;
+  margin: 72px auto;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.imports-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px 24px;
+  margin: 24px 0 8px;
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+}
+
+.imports-summary h2 {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+.imports-summary .progress {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  height: 6px;
+  border-radius: 3px;
+}
+
+.imports-summary-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.imports-summary-actions .btn-danger-text {
+  margin-right: 0;
+}
+
+.imports-group {
+  margin-top: 26px;
+}
+
+.imports-group .section-label {
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font: 500 11px/1 var(--font-sans);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.imports-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+.import-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.import-row.is-current {
+  color: var(--accent);
+}
+
+.import-row.is-bad > svg {
+  color: var(--danger);
+}
+
+.import-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.import-name {
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-serif);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.import-detail {
+  font-size: 13px;
+}
+
+.import-row.is-bad .import-detail {
+  color: var(--danger);
+}
+
+.import-row .progress {
+  flex: none;
+  max-width: 520px;
+  height: 4px;
+  margin-top: 4px;
+}
+
+/* The sidebar entry, shown while there's an import to look at. */
+.nav-imports .nav-count {
+  margin-left: auto;
+  font: 500 12px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar.is-collapsed .nav-imports .nav-count {
+  display: none;
+}
+
+.nav-progress {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 5px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--sidebar-hover);
+  overflow: hidden;
+}
+
+.nav-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--sidebar-text);
+  transition: width 200ms;
+}
+
+.import-progress {
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.import-progress-link {
+  margin-left: 8px;
+  text-decoration: underline;
+}

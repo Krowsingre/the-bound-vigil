@@ -2,6 +2,7 @@
 //! file work lives in the core, and blocking work runs off the UI thread.
 
 mod hardcover;
+mod imports;
 mod sync;
 
 use std::path::PathBuf;
@@ -11,7 +12,7 @@ use std::time::Duration;
 use tauri::{Emitter, Manager, State};
 use tbv_core::model::{
     Annotation, AnnotationInput, BookId, CollectionDetail, CollectionInput, CollectionPreview,
-    CollectionRef, CollectionSummary, CollectionsOverview, HomeViewModel, ImportResult,
+    CollectionRef, CollectionSummary, CollectionsOverview, HomeViewModel,
     LibraryPage, LibraryQuery, NoteItem, NoteKind, NotesPage, NotesQuery, Profile, ReadStatus,
     ReaderBook, ReaderLocator,
 };
@@ -44,13 +45,34 @@ async fn get_home(state: State<'_, AppLibrary>) -> CommandResult<HomeViewModel> 
     with_library(state, |library| library.home()).await
 }
 
+/// Queues book files (and folders of them) on the Imports page. Returns how
+/// many books were found.
 #[tauri::command]
-async fn import_books(
+async fn queue_imports(
+    app: tauri::AppHandle,
     state: State<'_, AppLibrary>,
+    imports: State<'_, Arc<imports::Imports>>,
     paths: Vec<String>,
-) -> CommandResult<Vec<ImportResult>> {
+) -> CommandResult<usize> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_library(state, move |library| Ok(library.import_files(&paths))).await
+    let (library, imports) = (state.0.clone(), imports.inner().clone());
+    // Looking through a big folder can take a while; not on the UI thread.
+    tauri::async_runtime::spawn_blocking(move || imports.add(&app, &library, paths)).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn import_queue(imports: State<'_, Arc<imports::Imports>>) -> Vec<imports::ImportItem> {
+    imports.list()
+}
+
+#[tauri::command]
+fn cancel_imports(app: tauri::AppHandle, imports: State<'_, Arc<imports::Imports>>) {
+    imports.cancel(&app);
+}
+
+#[tauri::command]
+fn clear_finished_imports(app: tauri::AppHandle, imports: State<'_, Arc<imports::Imports>>) {
+    imports.clear_finished(&app);
 }
 
 #[tauri::command]
@@ -675,11 +697,15 @@ pub fn run() {
             app.manage(Arc::new(sync::SyncWorker::start(app.handle().clone(), library.clone())));
             app.manage(AppLibrary(library));
             app.manage(Arc::new(hardcover::Sends::default()));
+            app.manage(Arc::new(imports::Imports::default()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_home,
-            import_books,
+            queue_imports,
+            import_queue,
+            cancel_imports,
+            clear_finished_imports,
             export_goodreads,
             hardcover_status,
             hardcover_set_sending,

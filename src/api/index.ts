@@ -16,7 +16,7 @@ import type {
   HardcoverSendAll,
   HardcoverStatus,
   HomeViewModel,
-  ImportResult,
+  ImportItem,
   LibraryInfo,
   LibraryPage,
   LibraryQuery,
@@ -36,7 +36,13 @@ import type {
 export interface Api {
   readonly kind: "app" | "preview";
   getHome(): Promise<HomeViewModel>;
-  importBooks(paths: string[]): Promise<ImportResult[]>;
+  /** Queues book files and folders on the Imports page. Returns how many books were found. */
+  queueImports(paths: string[]): Promise<number>;
+  importQueue(): Promise<ImportItem[]>;
+  /** Takes the books still waiting off the queue. */
+  cancelImports(): Promise<void>;
+  clearFinishedImports(): Promise<void>;
+  onImports(listener: (items: ImportItem[]) => void): () => void;
   setBookStatus(bookId: string, status: ReadStatus): Promise<void>;
   getLibrary(query: LibraryQuery): Promise<LibraryPage>;
   getCollections(): Promise<CollectionPreview[]>;
@@ -161,7 +167,23 @@ function appApi(): Api {
   return {
     kind: "app",
     getHome: async () => (await core).invoke<HomeViewModel>("get_home"),
-    importBooks: async (paths) => (await core).invoke<ImportResult[]>("import_books", { paths }),
+    queueImports: async (paths) => (await core).invoke<number>("queue_imports", { paths }),
+    importQueue: async () => (await core).invoke<ImportItem[]>("import_queue"),
+    cancelImports: async () => (await core).invoke<void>("cancel_imports"),
+    clearFinishedImports: async () => (await core).invoke<void>("clear_finished_imports"),
+    onImports: (listener) => {
+      let stop: (() => void) | null = null;
+      let stopped = false;
+      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+        const unlisten = await listen<ImportItem[]>("imports-changed", (e) => listener(e.payload));
+        if (stopped) unlisten();
+        else stop = unlisten;
+      });
+      return () => {
+        stopped = true;
+        stop?.();
+      };
+    },
     setBookStatus: async (bookId, status) => (await core).invoke("set_book_status", { bookId, status }),
     getLibrary: async (query) => (await core).invoke<LibraryPage>("get_library", { query }),
     getCollections: async () => (await core).invoke<CollectionPreview[]>("get_collections"),

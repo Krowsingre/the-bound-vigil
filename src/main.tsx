@@ -19,6 +19,7 @@ import "./styles/reader.css";
 import "./styles/collections.css";
 import "./styles/notes.css";
 import "./styles/settings.css";
+import "./styles/imports.css";
 import { isApp } from "./api";
 import { runBeforeQuit } from "./lib/beforeQuit";
 

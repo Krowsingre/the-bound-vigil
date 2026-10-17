@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isApp } from "./api";
-import type { CollectionRef, HomeViewModel, Profile, SyncStatus } from "./api/types";
+import type { CollectionRef, HomeViewModel, ImportItem, ImportResult, Profile, SyncStatus } from "./api/types";
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { Collections } from "./collections/Collections";
 import { Notes } from "./notes/Notes";
 import { useToast } from "./components/Toast";
 import { Home } from "./home/Home";
+import { Imports, importCounts } from "./imports/Imports";
 import { importSummary } from "./lib/importSummary";
 import { Library } from "./library/Library";
 import { Reader } from "./reader/Reader";
@@ -34,7 +35,10 @@ export function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [dropping, setDropping] = useState(false);
-  const [importing, setImporting] = useState(false);
+  const [imports, setImports] = useState<ImportItem[]>([]);
+  // Finished books already handled here (PDF covers drawn, counted in the summary).
+  const handled = useRef(new Set<number>());
+  const wasRunning = useRef(false);
   const [libraryView, setLibraryView] = useState<LibraryView>(initialView);
   const [searchText, setSearchText] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -110,24 +114,39 @@ export function App() {
     api.clearAvatar().then(setProfile, (e: unknown) => toast(String(e)));
   }, [toast]);
 
+  // Imports run in the background, book by book; the Imports page follows them.
+  useEffect(() => {
+    const seen = (items: ImportItem[]) => {
+      setImports(items);
+      const fresh = items.filter((i) => i.stage === "done" && i.result && !handled.current.has(i.id));
+      fresh.forEach((i) => handled.current.add(i.id));
+      // PDF covers are drawn here, after the books show up.
+      const results = fresh.map((i) => i.result as ImportResult);
+      if (results.length) void drawImportedCovers(results).then((added) => added && setRefreshKey((k) => k + 1));
+      const { running } = importCounts(items);
+      if (wasRunning.current && !running) {
+        toast(importSummary(items.flatMap((i) => (i.result ? [i.result] : []))));
+        setRefreshKey((k) => k + 1);
+      }
+      wasRunning.current = running;
+    };
+    void api.importQueue().then(seen, () => undefined);
+    return api.onImports(seen);
+  }, [toast]);
+
   const runImport = useCallback(
     async (paths: string[]) => {
       if (paths.length === 0) return;
-      setImporting(true);
       try {
-        const results = await api.importBooks(paths);
-        toast(importSummary(results));
-        setRefreshKey((k) => k + 1);
-        // PDF covers are drawn here, after the books show up.
-        void drawImportedCovers(results).then((added) => added && setRefreshKey((k) => k + 1));
+        const found = await api.queueImports(paths);
+        toast(found === 0 ? "No book files were found there." : `Importing ${found} ${found === 1 ? "book" : "books"}. Follow along in Imports.`);
       } catch (e) {
-        toast(`Import didn't finish: ${String(e)}`);
-      } finally {
-        setImporting(false);
+        toast(`Import didn't start: ${String(e)}`);
       }
     },
     [toast],
   );
+  const reloadImports = useCallback(() => void api.importQueue().then(setImports, () => undefined), []);
 
   const importBooks = useCallback(() => {
     if (!isApp) return toast("Importing works in the desktop app. This browser preview uses sample books.");
@@ -211,7 +230,14 @@ export function App() {
 
   return (
     <div className={`app${collapsed ? " sidebar-collapsed" : ""}`}>
-      <Sidebar route={route} collapsed={collapsed} onNavigate={navigate} onToggle={toggleSidebar} preview={api.kind === "preview"} />
+      <Sidebar
+        route={route}
+        collapsed={collapsed}
+        onNavigate={navigate}
+        onToggle={toggleSidebar}
+        preview={api.kind === "preview"}
+        imports={imports.length ? importCounts(imports) : null}
+      />
       <div className="main">
         <Header
           ref={search}
@@ -227,7 +253,7 @@ export function App() {
           onImportFolder={importFolder}
           onOpenSyncSettings={() => navigate("sync")}
         />
-        <main className="content" aria-busy={importing}>
+        <main className="content">
           {route === "home" ? (
             <Home
               refreshKey={refreshKey}
@@ -259,6 +285,17 @@ export function App() {
               onOpenBook={openBook}
               onChanged={refresh}
             />
+          ) : route === "imports" ? (
+            <Imports
+              items={imports}
+              onCancel={() => void api.cancelImports().then(reloadImports)}
+              onClear={() => {
+                void api.clearFinishedImports().then(reloadImports);
+              }}
+              onImportBooks={importBooks}
+              onImportFolder={importFolder}
+              onOpenBook={openBook}
+            />
           ) : route === "notes" ? (
             <Notes search={searchText} refreshKey={refreshKey} onClearSearch={() => changeSearch("")} onOpenBook={openBook} />
           ) : (
@@ -282,7 +319,11 @@ export function App() {
           <p>Drop to add to your library</p>
         </div>
       )}
-      {importing && <div className="import-progress" role="status">Importing…</div>}
+      {route !== "imports" && importCounts(imports).running && (
+        <button type="button" className="import-progress" onClick={() => navigate("imports")}>
+          Imported {importCounts(imports).done} of {importCounts(imports).total} books <span className="import-progress-link">View</span>
+        </button>
+      )}
       <AddToCollectionHost onChanged={refresh} />
     </div>
   );

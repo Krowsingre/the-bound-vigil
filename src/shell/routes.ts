@@ -1,6 +1,6 @@
 import type { IconName } from "../components/Icon";
 
-export type Route = "home" | "library" | "collections" | "notes" | "settings" | "sync";
+export type Route = "home" | "library" | "collections" | "notes" | "settings" | "sync" | "imports";
 
 export const NAV: { route: Route; label: string; icon: IconName }[] = [
   { route: "home", label: "Home", icon: "home" },

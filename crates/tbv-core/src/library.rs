@@ -335,44 +335,13 @@ impl Library {
     /// Imports files and folders. Folders are searched (including subfolders)
     /// for book files; other files inside them are skipped without a report.
     pub fn import_files(&mut self, sources: &[PathBuf]) -> Vec<ImportResult> {
-        let mut files = Vec::new();
-        for source in sources {
-            if source.is_dir() {
-                self.collect_books(source, &mut files);
-            } else {
-                files.push(source.clone());
-            }
-        }
+        let files = find_book_files(sources, &self.paths.books_dir);
         files.iter().map(|source| self.import_one(source)).collect()
     }
 
-    fn collect_books(&self, dir: &Path, out: &mut Vec<PathBuf>) {
-        // Never re-import TBV's own copies.
-        if dir.starts_with(&self.paths.books_dir) {
-            return;
-        }
-        let Ok(entries) = fs::read_dir(dir) else {
-            return;
-        };
-        let mut entries: Vec<_> = entries.flatten().collect();
-        entries.sort_by_key(|e| e.file_name());
-        for entry in entries {
-            let path = entry.path();
-            let hidden = entry.file_name().to_string_lossy().starts_with('.');
-            // file_type() does not follow symlinks, so link loops cannot trap the walk.
-            match entry.file_type() {
-                Ok(t) if t.is_dir() && !hidden => self.collect_books(&path, out),
-                Ok(t)
-                    if t.is_file()
-                        && !hidden
-                        && extension_of(&path)
-                            .is_some_and(|ext| SUPPORTED_FORMATS.contains(&ext.as_str())) =>
-                {
-                    out.push(path);
-                }
-                _ => {}
-            }
-        }
+    /// Where TBV keeps its own copies, which `find_book_files` skips.
+    pub fn books_dir(&self) -> &Path {
+        &self.paths.books_dir
     }
 
     fn import_one(&mut self, source: &Path) -> ImportResult {
@@ -381,7 +350,7 @@ impl Library {
             Some(ext) if SUPPORTED_FORMATS.contains(&ext.as_str()) => ext,
             _ => return ImportResult::Unsupported { path },
         };
-        match self.try_import(source, &format) {
+        match book_id_for_file(source).and_then(|id| self.try_import(source, &format, id)) {
             Ok(result) => result,
             Err(error) => ImportResult::Failed {
                 path,
@@ -390,40 +359,51 @@ impl Library {
         }
     }
 
-    fn try_import(&mut self, source: &Path, format: &str) -> Result<ImportResult> {
-        let path = source.display().to_string();
-        let book_id = book_id_for_file(source)?;
+    fn try_import(&mut self, source: &Path, format: &str, book_id: BookId) -> Result<ImportResult> {
+        let plan = match self.import_plan(source, format, book_id)? {
+            ImportPlan::Finished(result) => return Ok(result),
+            ImportPlan::Prepare(plan) => plan,
+        };
+        let prepared = plan.prepare(&self.paths)?;
+        self.finish_import(prepared)
+    }
 
+    /// The quick first look at a hashed file: is there anything to do?
+    pub fn import_plan(&self, source: &Path, format: &str, book_id: BookId) -> Result<ImportPlan> {
+        let path = source.display().to_string();
+        let known = self.title_of(&book_id)?;
+        if let Some(title) = &known {
+            if self.has_local_file(&book_id)? {
+                return Ok(ImportPlan::Finished(ImportResult::AlreadyInLibrary { path, book_id, title: title.clone() }));
+            }
+        }
+        let cover = if known.is_some() { self.cover_of(&book_id)? } else { None };
+        Ok(ImportPlan::Prepare(ImportJob { source: source.to_path_buf(), format: format.to_string(), book_id, known, cover }))
+    }
+
+    /// Records a book whose file has been copied in. Quick: the library is
+    /// only needed for this part.
+    pub fn finish_import(&mut self, done: PreparedImport) -> Result<ImportResult> {
+        let PreparedImport { job, title, metadata, stored, cover } = done;
+        let path = job.source.display().to_string();
+        let book_id = job.book_id;
+        let stored_path = stored.display().to_string();
+        // Known already (maybe synced from elsewhere, or the same file twice
+        // in one import): adopt this copy if there's none here.
         if let Some(title) = self.title_of(&book_id)? {
-            // Known book (maybe synced from elsewhere) without a file here: adopt this copy.
             if !self.has_local_file(&book_id)? {
-                let stored = self.copy_into_library(source, &title, &book_id, format)?;
-                // Keep any cover already cached for this book, or read it now.
                 let cover = match self.cover_of(&book_id)? {
                     Some(cover) => Some(cover),
-                    None => self.save_cover(&book_id, &read_metadata(source, format)?)?,
+                    None => cover,
                 };
                 self.conn.execute(
                     "INSERT INTO local_files (book_id, path, cover_path) VALUES (?1, ?2, ?3)
                      ON CONFLICT(book_id) DO UPDATE SET path = excluded.path, cover_path = excluded.cover_path",
-                    params![book_id, stored.display().to_string(), cover],
+                    params![book_id, stored_path, cover],
                 )?;
             }
-            return Ok(ImportResult::AlreadyInLibrary {
-                path,
-                book_id,
-                title,
-            });
+            return Ok(ImportResult::AlreadyInLibrary { path, book_id, title });
         }
-
-        let metadata = read_metadata(source, format)?;
-        let title = metadata
-            .title
-            .clone()
-            .unwrap_or_else(|| title_from_file_name(source));
-
-        let stored = self.copy_into_library(source, &title, &book_id, format)?;
-        let cover_path = self.save_cover(&book_id, &metadata)?;
 
         let tx = self.conn.transaction()?;
         tx.execute(
@@ -433,7 +413,7 @@ impl Library {
                 book_id,
                 title,
                 serde_json::to_string(&metadata.authors)?,
-                format,
+                job.format,
                 fs::metadata(&stored)?.len() as i64,
                 metadata.synopsis,
                 metadata.publisher,
@@ -445,16 +425,12 @@ impl Library {
             ],
         )?;
         tx.execute(
-            "INSERT INTO local_files (book_id, path, cover_path) VALUES (?1, ?2, ?3)",
-            params![book_id, stored.display().to_string(), cover_path],
+            "INSERT INTO local_files (book_id, path, cover_path) VALUES (?1, ?2, ?3)
+             ON CONFLICT(book_id) DO UPDATE SET path = excluded.path, cover_path = excluded.cover_path",
+            params![book_id, stored_path, cover],
         )?;
         tx.commit()?;
-
-        Ok(ImportResult::Imported {
-            path,
-            book_id,
-            title,
-        })
+        Ok(ImportResult::Imported { path, book_id, title })
     }
 
     fn title_of(&self, book_id: &BookId) -> Result<Option<String>> {
@@ -489,7 +465,7 @@ impl Library {
             cover: Some(crate::epub::Cover { bytes, extension: "jpg".into() }),
             ..Default::default()
         };
-        let cover = self.save_cover(&book_id, &metadata)?;
+        let cover = save_cover(&self.paths, &book_id, &metadata)?;
         self.conn.execute(
             "INSERT INTO local_files (book_id, path, cover_path) VALUES (?1, NULL, ?2)
              ON CONFLICT(book_id) DO UPDATE SET cover_path = excluded.cover_path",
@@ -511,18 +487,6 @@ impl Library {
         Ok(cover.filter(|c| Path::new(c).exists()))
     }
 
-    fn save_cover(&self, book_id: &BookId, metadata: &crate::epub::BookMetadata) -> Result<Option<String>> {
-        let Some(cover) = &metadata.cover else {
-            return Ok(None);
-        };
-        let cover_file = self
-            .paths
-            .covers_dir
-            .join(format!("{}.{}", book_id_hex(book_id), cover.extension));
-        fs::write(&cover_file, &cover.bytes)?;
-        Ok(Some(cover_file.display().to_string()))
-    }
-
     fn has_local_file(&self, book_id: &BookId) -> Result<bool> {
         let path: Option<String> = self
             .conn
@@ -535,27 +499,118 @@ impl Library {
             .flatten();
         Ok(path.is_some_and(|p| Path::new(&p).exists()))
     }
+}
 
-    /// Copies via a temporary file and a rename, so a crash never leaves a
-    /// half-written book in the library folder.
-    fn copy_into_library(
-        &self,
-        source: &Path,
-        title: &str,
-        book_id: &str,
-        format: &str,
-    ) -> Result<PathBuf> {
-        let short = &book_id_hex(book_id)[..8];
-        let name = format!("{} [{short}].{format}", safe_file_stem(title));
-        let target = self.paths.books_dir.join(name);
-        if target.exists() {
-            return Ok(target);
+/// Every book file in `sources`: files as given, folders searched through.
+/// TBV's own copies in `books_dir` are never picked up again.
+pub fn find_book_files(sources: &[PathBuf], books_dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    for source in sources {
+        if source.is_dir() {
+            collect_books(source, books_dir, &mut files);
+        } else {
+            files.push(source.clone());
         }
-        let partial = target.with_extension(format!("{format}.partial"));
-        fs::copy(source, &partial)?;
-        fs::rename(&partial, &target)?;
-        Ok(target)
     }
+    files
+}
+
+fn collect_books(dir: &Path, books_dir: &Path, out: &mut Vec<PathBuf>) {
+    if dir.starts_with(books_dir) {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let mut entries: Vec<_> = entries.flatten().collect();
+    entries.sort_by_key(|e| e.file_name());
+    for entry in entries {
+        let path = entry.path();
+        let hidden = entry.file_name().to_string_lossy().starts_with('.');
+        // file_type() does not follow symlinks, so link loops cannot trap the walk.
+        match entry.file_type() {
+            Ok(t) if t.is_dir() && !hidden => collect_books(&path, books_dir, out),
+            Ok(t) if t.is_file() && !hidden && extension_of(&path).is_some_and(|ext| SUPPORTED_FORMATS.contains(&ext.as_str())) => {
+                out.push(path);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// A hashed file that needs copying in. `prepare` does the slow part
+/// without the library.
+#[derive(Debug)]
+pub struct ImportJob {
+    source: PathBuf,
+    format: String,
+    book_id: BookId,
+    /// The title, if the library already knows this book.
+    known: Option<String>,
+    /// The cover this device already has for it.
+    cover: Option<String>,
+}
+
+pub enum ImportPlan {
+    Finished(ImportResult),
+    Prepare(ImportJob),
+}
+
+pub struct PreparedImport {
+    job: ImportJob,
+    title: String,
+    metadata: crate::epub::BookMetadata,
+    stored: PathBuf,
+    cover: Option<String>,
+}
+
+impl ImportJob {
+    /// Reads the book's details, copies it into TBV's folder and saves its
+    /// cover. Needs only the folders, so the library stays free meanwhile.
+    pub fn prepare(self, paths: &LibraryPaths) -> Result<PreparedImport> {
+        let metadata = if self.known.is_some() && self.cover.is_some() {
+            crate::epub::BookMetadata::default()
+        } else {
+            read_metadata(&self.source, &self.format)?
+        };
+        let title = self.known.clone().or_else(|| metadata.title.clone()).unwrap_or_else(|| title_from_file_name(&self.source));
+        let stored = copy_into_library(paths, &self.source, &title, &self.book_id, &self.format)?;
+        let cover = match &self.cover {
+            Some(cover) => Some(cover.clone()),
+            None => save_cover(paths, &self.book_id, &metadata)?,
+        };
+        Ok(PreparedImport { job: self, title, metadata, stored, cover })
+    }
+}
+
+fn save_cover(paths: &LibraryPaths, book_id: &BookId, metadata: &crate::epub::BookMetadata) -> Result<Option<String>> {
+    let Some(cover) = &metadata.cover else {
+        return Ok(None);
+    };
+    let cover_file = paths.covers_dir.join(format!("{}.{}", book_id_hex(book_id), cover.extension));
+    fs::write(&cover_file, &cover.bytes)?;
+    Ok(Some(cover_file.display().to_string()))
+}
+
+/// Copies via a temporary file and a rename, so a crash never leaves a
+/// half-written book in the library folder.
+fn copy_into_library(paths: &LibraryPaths, source: &Path, title: &str, book_id: &str, format: &str) -> Result<PathBuf> {
+    let short = &book_id_hex(book_id)[..8];
+    let name = format!("{} [{short}].{format}", safe_file_stem(title));
+    let target = paths.books_dir.join(name);
+    if target.exists() {
+        return Ok(target);
+    }
+    // Unique per copy, so two imports of one book never share a temp file.
+    let partial = target.with_extension(format!("{format}.{}.partial", crate::ids::new_record_id()));
+    fs::copy(source, &partial)?;
+    if let Err(e) = fs::rename(&partial, &target) {
+        let _ = fs::remove_file(&partial);
+        if !target.exists() {
+            return Err(e.into());
+        }
+    }
+    Ok(target)
 }
 
 fn extension_of(path: &Path) -> Option<String> {
@@ -610,6 +665,29 @@ pub(crate) mod tests {
         let paths = LibraryPaths::new(&dir.path().join("data"), &dir.path().join("cache"));
         let library = Library::open(paths).unwrap();
         (dir, library)
+    }
+
+    #[test]
+    fn one_book_imported_twice_at_once_is_added_once() {
+        let (dir, mut library) = open_temp_library();
+        let source = dir.path().join("Carmilla.epub");
+        write_test_epub(&source, "Carmilla", "J. Sheridan Le Fanu", true);
+        let id = book_id_for_file(&source).unwrap();
+        let job = |library: &Library| match library.import_plan(&source, "epub", id.clone()).unwrap() {
+            ImportPlan::Prepare(job) => job,
+            ImportPlan::Finished(_) => panic!("nothing to do"),
+        };
+        // Both are planned before either finishes, as with two import threads.
+        let (first, second) = (job(&library), job(&library));
+        let paths = library.paths().clone();
+        let (first, second) = (first.prepare(&paths).unwrap(), second.prepare(&paths).unwrap());
+        assert!(matches!(library.finish_import(first).unwrap(), ImportResult::Imported { .. }));
+        assert!(matches!(library.finish_import(second).unwrap(), ImportResult::AlreadyInLibrary { .. }));
+        assert_eq!(library.title_of(&id).unwrap().as_deref(), Some("Carmilla"));
+        assert!(library.has_local_file(&id).unwrap());
+        assert!(matches!(library.import_plan(&source, "epub", id).unwrap(), ImportPlan::Finished(_)));
+        let leftovers = fs::read_dir(&paths.books_dir).unwrap().flatten().filter(|e| e.path().to_string_lossy().ends_with(".partial")).count();
+        assert_eq!(leftovers, 0);
     }
 
     #[test]
