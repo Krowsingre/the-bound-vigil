@@ -87,10 +87,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
   });
 
   let stored: Stored[] = [
-    shelf("favorites", "Favourites", "star", "gallery:archive"),
-    shelf("reading", "Currently reading", "compass", "gallery:peaks"),
-    shelf("want_to_read", "To be read", "bookmark", "gallery:forest"),
-    shelf("completed", "Completed", "check", "gallery:coast"),
+    shelf("want_to_read", "Up next", "bookmark", "gallery:forest"),
     ...(empty
       ? []
       : [
@@ -135,10 +132,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
   const live = () => new Map<string, BookPreview>(books().map((b) => [b.id, b]));
 
   const shelfBooks: Record<string, (b: BookPreview) => boolean> = {
-    "shelf:favorites": (b) => b.favorite,
-    "shelf:reading": (b) => b.status === "in_progress",
     "shelf:want_to_read": (b) => b.wantToRead,
-    "shelf:completed": (b) => b.status === "read",
   };
   const smartBooks: Record<SmartKind, (b: BookPreview) => boolean> = {
     recently_added: (b) => Date.now() - Date.parse(b.addedAt) < 30 * day,
