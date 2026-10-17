@@ -364,6 +364,54 @@ export interface HardcoverSendAll {
   notFound: string[];
 }
 
+// Mirrors crates/tbv-core/src/ereaders.
+
+export type EreaderKind = "kindle" | "kobo" | "pocketBook" | "nook" | "sony" | "other";
+
+/** An e-reader (or a drive that might be one) plugged in by cable. */
+export interface Ereader {
+  kind: EreaderKind;
+  /** "Kindle", or for a drive TBV isn't sure about, its name. */
+  name: string;
+  /** Where the drive is, e.g. `E:\`. Names the reader when sending. */
+  root: string;
+  booksFolder: string;
+  /** Formats it opens when copied by cable. Empty when TBV can't know. */
+  formats: string[];
+}
+
+export interface CopiedToEreader {
+  path: string;
+  /** The same book was there already. */
+  alreadyThere: boolean;
+}
+
+export type MailSecurity = "starttls" | "ssl";
+
+/** Kindle by email, as Settings shows it: everything but the password. */
+export interface KindleEmailView {
+  server: string;
+  port: number;
+  security: MailSecurity;
+  username: string;
+  hasPassword: boolean;
+  /** The address Amazon must have on its approved list. */
+  from: string;
+  /** The person's @kindle.com address. */
+  kindle: string;
+}
+
+export interface KindleEmailInput {
+  server: string;
+  port: number;
+  security: MailSecurity;
+  username: string;
+  /** Null keeps the password saved before. */
+  password: string | null;
+  from: string;
+  kindle: string;
+}
+
 export interface GoodreadsImport {
   rows: number;
   matched: number;

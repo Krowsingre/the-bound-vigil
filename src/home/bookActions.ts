@@ -5,6 +5,7 @@ import { openContextMenu } from "../components/ContextMenu";
 import type { MenuEntry } from "../components/Menu";
 import { StarRating } from "../components/StarRating";
 import { askEditDetails, showBookDetails } from "../details/openDetails";
+import { askSendToEreader } from "../ereaders/SendToEreader";
 import { askDeleteBook, askEditTags } from "../library/BookDialogs";
 import { playAudiobook } from "../audio/player";
 import { isAudio } from "../lib/queryBooks";
@@ -56,6 +57,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
       ? [{ label: "Stop reading (mark unread)", onSelect: () => actions.setStatus(book, "unread") }]
       : []),
     "divider",
+    ...(isAudio(book.format) ? [] : [{ label: "Send to e-reader…", icon: "ereader" as const, onSelect: () => askSendToEreader([book]) }]),
     downloadItem(book, actions),
     { label: "Delete from library…", icon: "trash", danger: true, onSelect: () => askDeleteBook(book) },
   ];

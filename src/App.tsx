@@ -4,6 +4,7 @@ import type { CollectionRef, HomeViewModel, ImportItem, ImportResult, Profile, S
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { ContextMenuHost } from "./components/ContextMenu";
 import { BookDialogsHost } from "./library/BookDialogs";
+import { SendToEreaderHost } from "./ereaders/SendToEreader";
 import { BookDetailsPage } from "./details/BookDetailsPage";
 import { DetailsHost } from "./details/DetailsHost";
 import { onShowBookDetails } from "./details/openDetails";
@@ -415,6 +416,12 @@ export function App() {
       <AddToCollectionHost onChanged={refresh} />
       <BookDialogsHost onChanged={refresh} />
       <DetailsHost onChanged={refresh} />
+      <SendToEreaderHost
+        onSetUp={() => {
+          setSettingsTab("ereaders");
+          navigate("settings");
+        }}
+      />
       <ContextMenuHost />
     </div>
   );

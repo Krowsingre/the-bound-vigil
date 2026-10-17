@@ -22,6 +22,7 @@ import "./styles/settings.css";
 import "./styles/imports.css";
 import "./styles/details.css";
 import "./styles/audio.css";
+import "./styles/ereaders.css";
 import "./styles/web.css";
 import { isApp, isWeb } from "./api";
 import { WebGate } from "./web/WebConnect";

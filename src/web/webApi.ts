@@ -31,6 +31,7 @@ import type {
 import { matches, usable } from "../collections/rules";
 import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
 import { cleanValue, DETAIL_FIELDS, listOf } from "../lib/details";
+import { DESKTOP_ONLY as SENDING_DESKTOP_ONLY } from "../ereaders/ereaders";
 import { WebDb } from "./db";
 import { UP_NEXT, WebLibrary, type BookRow } from "./library";
 import { WebSync } from "./sync";
@@ -952,6 +953,22 @@ export async function webApi(): Promise<Api> {
       await library.writeAll(writes);
     },
     dismissDuplicates: async () => undefined,
+    // A browser can't reach drives or send email; the desktop app does that.
+    listEreaders: async () => [],
+    copyToEreader: async () => {
+      throw new Error(SENDING_DESKTOP_ONLY);
+    },
+    kindleEmailSettings: async () => null,
+    saveKindleEmail: async () => {
+      throw new Error(SENDING_DESKTOP_ONLY);
+    },
+    forgetKindleEmail: async () => undefined,
+    sendToKindle: async () => {
+      throw new Error(SENDING_DESKTOP_ONLY);
+    },
+    sendKindleTest: async () => {
+      throw new Error(SENDING_DESKTOP_ONLY);
+    },
     onSync: ({ status, libraryChanged }) => {
       const stops: (() => void)[] = [];
       if (status) stops.push(sync.onStatus(status));

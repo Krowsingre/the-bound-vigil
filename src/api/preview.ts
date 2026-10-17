@@ -9,6 +9,7 @@ import { sampleEpub } from "../preview/sampleEpub";
 import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
 import { duplicateGroups } from "../lib/duplicates";
 import { cleanValue, DETAIL_FIELDS, previewFields } from "../lib/details";
+import { DESKTOP_ONLY } from "../ereaders/ereaders";
 import type {
   Audiobook,
   AudioChapter,
@@ -17,8 +18,10 @@ import type {
   ProviderView,
   Annotation,
   BookPreview,
+  Ereader,
   HardcoverStatus,
   HomeViewModel,
+  KindleEmailView,
   ImportItem,
   Profile,
   SyncOverview,
@@ -65,6 +68,28 @@ let imports: ImportItem[] = new URLSearchParams(location.search).has("imports")
 let hardcover: HardcoverStatus = new URLSearchParams(location.search).has("hardcover")
   ? { available: true, username: "wrenhale", sendRatings: true }
   : { available: true, username: null, sendRatings: false };
+// `?ereaders` shows a Kindle and a Kobo plugged in, and Kindle by email set
+// up, for reviewing the Send dialog and Settings › E-readers. Sending itself
+// only works in the desktop app.
+const showReaders = new URLSearchParams(location.search).has("ereaders");
+const sampleReaders: Ereader[] = showReaders
+  ? [
+      { kind: "kindle", name: "Kindle", root: "E:\\", booksFolder: "E:\\documents", formats: ["mobi", "azw", "azw3", "pdf", "txt"] },
+      { kind: "kobo", name: "Kobo", root: "F:\\", booksFolder: "F:\\", formats: ["epub", "pdf", "mobi", "txt", "cbz"] },
+      { kind: "other", name: "G:\\", root: "G:\\", booksFolder: "G:\\Books", formats: [] },
+    ]
+  : [];
+let kindleEmail: KindleEmailView | null = showReaders
+  ? {
+      server: "smtp.gmail.com",
+      port: 587,
+      security: "starttls",
+      username: "wren.hale@gmail.com",
+      hasPassword: true,
+      from: "wren.hale@gmail.com",
+      kindle: "wren_hale@kindle.com",
+    }
+  : null;
 function book(title: string, author: string, extra: Partial<BookPreview> = {}): BookPreview {
   const n = next++;
   return {
@@ -622,6 +647,24 @@ export function previewApi(): Api {
       }
       fetched.set(bookId, found);
       relayer(bookId);
+    },
+    listEreaders: async () => sampleReaders,
+    copyToEreader: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    kindleEmailSettings: async () => kindleEmail,
+    saveKindleEmail: async ({ password, ...rest }) => {
+      kindleEmail = { ...rest, hasPassword: Boolean(password) || Boolean(kindleEmail?.hasPassword) };
+      return kindleEmail;
+    },
+    forgetKindleEmail: async () => {
+      kindleEmail = null;
+    },
+    sendToKindle: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    sendKindleTest: async () => {
+      throw new Error(DESKTOP_ONLY);
     },
     onSync: () => () => undefined,
     ...collections.api,

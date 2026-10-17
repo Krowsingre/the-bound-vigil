@@ -18,6 +18,7 @@ use tbv_core::model::{
     ReaderBook, ReaderLocator,
 };
 use tbv_core::data::LibraryInfo;
+use tbv_core::ereaders::{self, email};
 use tbv_core::sync::{SupabaseProject, SyncOverview};
 use tbv_core::{Library, LibraryPaths, SUPPORTED_FORMATS};
 
@@ -804,6 +805,91 @@ async fn dismiss_duplicates(state: State<'_, AppLibrary>, key: String) -> Comman
     with_library(state, move |library| library.dismiss_duplicates(&key)).await
 }
 
+/// E-readers plugged in by cable. Looking at the drives can take a moment,
+/// so it happens off the UI thread, and never holds the library.
+#[tauri::command]
+async fn list_ereaders() -> CommandResult<Vec<ereaders::Ereader>> {
+    tauri::async_runtime::spawn_blocking(ereaders::connected).await.map_err(|e| e.to_string())
+}
+
+/// What sending a book needs, fetching it first if it's only in the cloud.
+/// The library is held just while the book is looked up.
+async fn outgoing(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<ereaders::Outgoing> {
+    let library = state.0.clone();
+    let id = book_id.clone();
+    match with_library(state, move |library| library.outgoing_book(&id)).await {
+        Ok(book) => Ok(book),
+        Err(_) => tauri::async_runtime::spawn_blocking(move || {
+            sync::download(&library, &book_id)?;
+            library
+                .lock()
+                .map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?
+                .outgoing_book(&book_id)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string()),
+    }
+}
+
+/// Copies a book onto the reader plugged in at `root`. The library's own
+/// copy is only read.
+#[tauri::command]
+async fn copy_to_ereader(state: State<'_, AppLibrary>, book_id: String, root: String) -> CommandResult<ereaders::Copied> {
+    let book = outgoing(state, book_id).await?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let reader = ereaders::at(std::path::Path::new(&root))
+            .ok_or_else(|| tbv_core::Error::Unsuitable("That reader isn't connected any more. Plug it in again and try once more.".into()))?;
+        ereaders::copy_to(&reader, &book)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn kindle_email_settings(state: State<'_, AppLibrary>) -> CommandResult<Option<email::KindleEmailView>> {
+    with_library(state, |library| library.kindle_email_view()).await
+}
+
+#[tauri::command]
+async fn save_kindle_email(state: State<'_, AppLibrary>, settings: email::KindleEmailInput) -> CommandResult<email::KindleEmailView> {
+    with_library(state, move |library| library.save_kindle_email(&settings)).await
+}
+
+#[tauri::command]
+async fn forget_kindle_email(state: State<'_, AppLibrary>) -> CommandResult<()> {
+    with_library(state, |library| library.forget_kindle_email()).await
+}
+
+async fn kindle_settings(state: State<'_, AppLibrary>) -> CommandResult<email::KindleEmail> {
+    with_library(state, |library| library.kindle_email())
+        .await?
+        .ok_or_else(|| "Set up Kindle by email first, in Settings › E-readers.".to_string())
+}
+
+/// Emails a book to the person's Kindle. The email service is waited on
+/// away from the library's lock.
+#[tauri::command]
+async fn send_to_kindle(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
+    let settings = kindle_settings(state.clone()).await?;
+    let book = outgoing(state, book_id).await?;
+    tauri::async_runtime::spawn_blocking(move || email::send_book(&settings, &book))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Sends a small test document to the Kindle with the saved settings.
+#[tauri::command]
+async fn send_kindle_test(state: State<'_, AppLibrary>) -> CommandResult<()> {
+    let settings = kindle_settings(state).await?;
+    tauri::async_runtime::spawn_blocking(move || email::send_test(&settings))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 /// Opens File Explorer at a file or folder TBV keeps.
 #[tauri::command]
 fn show_folder(path: String) -> CommandResult<()> {
@@ -911,6 +997,13 @@ pub fn run() {
             suggest_sync_folder,
             resolve_sync_conflict,
             download_book,
+            list_ereaders,
+            copy_to_ereader,
+            kindle_email_settings,
+            save_kindle_email,
+            forget_kindle_email,
+            send_to_kindle,
+            send_kindle_test,
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
         // page gets a moment to save the reading position first; then ratings

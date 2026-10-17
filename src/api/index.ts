@@ -17,11 +17,15 @@ import type {
   CollectionsOverview,
   DetailChange,
   DuplicateGroup,
+  CopiedToEreader,
+  Ereader,
   GoodreadsImport,
   HardcoverSendAll,
   HardcoverStatus,
   HomeViewModel,
   ImportItem,
+  KindleEmailInput,
+  KindleEmailView,
   LibraryInfo,
   LibraryPage,
   LibraryQuery,
@@ -181,6 +185,18 @@ export interface Api {
   saveFetched(bookId: string, source: "google" | "openlibrary", values: Record<string, string>): Promise<void>;
   /** Remembers that a group isn't duplicates, so it isn't shown again. */
   dismissDuplicates(key: string): Promise<void>;
+  /** E-readers plugged in by cable now. */
+  listEreaders(): Promise<Ereader[]>;
+  /** Copies a book onto the reader plugged in at `root`. The library's copy is never changed. */
+  copyToEreader(bookId: string, root: string): Promise<CopiedToEreader>;
+  /** Kindle by email, if it's set up on this device. */
+  kindleEmailSettings(): Promise<KindleEmailView | null>;
+  saveKindleEmail(settings: KindleEmailInput): Promise<KindleEmailView>;
+  forgetKindleEmail(): Promise<void>;
+  /** Emails a book to the person's Kindle. */
+  sendToKindle(bookId: string): Promise<void>;
+  /** Emails a small test document to the Kindle with the saved settings. */
+  sendKindleTest(): Promise<void>;
   /** Hears sync starting and finishing, and library changes it brings. Returns a way to stop. */
   onSync(listener: { status?: (status: SyncStatus) => void; libraryChanged?: () => void }): () => void;
 }
@@ -390,6 +406,13 @@ function appApi(): Api {
     editDetails: async (bookIds, changes) => (await core).invoke("edit_details", { bookIds, changes }),
     resetDetails: async (bookId, fetched) => (await core).invoke("reset_details", { bookId, fetched }),
     saveFetched: async (bookId, source, values) => (await core).invoke("save_fetched", { bookId, source, values }),
+    listEreaders: async () => (await core).invoke<Ereader[]>("list_ereaders"),
+    copyToEreader: async (bookId, root) => (await core).invoke<CopiedToEreader>("copy_to_ereader", { bookId, root }),
+    kindleEmailSettings: async () => (await core).invoke<KindleEmailView | null>("kindle_email_settings"),
+    saveKindleEmail: async (settings) => (await core).invoke<KindleEmailView>("save_kindle_email", { settings }),
+    forgetKindleEmail: async () => (await core).invoke("forget_kindle_email"),
+    sendToKindle: async (bookId) => (await core).invoke("send_to_kindle", { bookId }),
+    sendKindleTest: async () => (await core).invoke("send_kindle_test"),
     onSync: ({ status, libraryChanged }) => {
       const stops: (() => void)[] = [];
       let stopped = false;

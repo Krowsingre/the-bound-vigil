@@ -10,6 +10,7 @@ export type SettingsTab =
   | "notes"
   | "sync"
   | "files"
+  | "ereaders"
   | "accessibility"
   | "shortcuts"
   | "advanced"
@@ -62,6 +63,12 @@ export const SETTINGS_TABS: {
     label: "File Handling",
     icon: "file",
     lede: "Which books TBV opens, and how it treats your files.",
+  },
+  {
+    tab: "ereaders",
+    label: "E-readers",
+    icon: "ereader",
+    lede: "Send books to your Kindle, Kobo or other e-reader.",
   },
   {
     tab: "accessibility",
@@ -219,6 +226,18 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     section: "files",
     label: "Your book files",
     words: "import copy original modify metadata files",
+  },
+  {
+    tab: "ereaders",
+    section: "connected",
+    label: "Connected e-readers",
+    words: "kindle kobo pocketbook nook sony ereader e-reader device usb cable drive send copy",
+  },
+  {
+    tab: "ereaders",
+    section: "kindle",
+    label: "Kindle by email",
+    words: "kindle send to kindle email smtp server port password app password gmail yahoo icloud amazon approved address test",
   },
   {
     tab: "accessibility",
