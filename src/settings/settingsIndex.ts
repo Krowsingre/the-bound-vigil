@@ -115,7 +115,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "appearance",
     section: "typography",
     label: "Typography",
-    words: "font typeface interface reading lora serif size",
+    words: "font typeface interface reading lora echolume serif size",
   },
   {
     tab: "appearance",

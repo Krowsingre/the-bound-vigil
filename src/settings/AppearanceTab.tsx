@@ -208,6 +208,7 @@ export function AppearanceTab({
             options={[
               { value: "system", label: "Segoe UI (Default)" },
               { value: "serif", label: "Georgia" },
+              { value: "echolume", label: "Echolume" },
             ]}
             onChange={(interfaceFont) => change({ interfaceFont })}
           />

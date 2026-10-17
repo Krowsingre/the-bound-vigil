@@ -15,6 +15,7 @@ const READING_FONTS = {
   lora: '"Lora", Georgia, serif',
   georgia: "Georgia, Gelasio, serif",
   sans: "var(--font-sans)",
+  echolume: '"Echolume", sans-serif',
   publisher: "Georgia, Gelasio, serif",
 };
 
@@ -523,7 +524,12 @@ export function AdvancedTab() {
   );
 }
 
-const CREDITS: { name: string; what: string; licence: string; url: string }[] = [
+const CREDITS: { name: string; what: string; licence: string; url?: string }[] = [
+  {
+    name: "Echolume",
+    what: "A reading and interface font, by Krowsingre Publishing",
+    licence: "All rights reserved, Krowsingre Publishing LLC",
+  },
   {
     name: "foliate-js",
     what: "The page engine inside the reader",
@@ -590,13 +596,17 @@ export function AboutTab() {
           <span className="settings-value">{version}</span>
         </Row>
       </Section>
-      <Section id="licences" title="Built with" lede="TBV stands on the work of these open projects. Thank you to their authors.">
+      <Section id="licences" title="Built with" lede="TBV stands on the work of these projects. Thank you to their authors.">
         <ul className="credit-list">
           {CREDITS.map((c) => (
             <li key={c.name}>
-              <button type="button" className="credit-name link-btn" onClick={() => void openExternal(c.url)}>
-                {c.name}
-              </button>
+              {c.url ? (
+                <button type="button" className="credit-name link-btn" onClick={() => void openExternal(c.url!)}>
+                  {c.name}
+                </button>
+              ) : (
+                <span className="credit-name">{c.name}</span>
+              )}
               <span className="settings-row-hint">{c.what}</span>
               <span className="credit-licence">{c.licence}</span>
             </li>

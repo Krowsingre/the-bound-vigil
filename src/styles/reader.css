@@ -226,6 +226,11 @@
   font-size: 13px;
 }
 
+.choice-row.is-wrapping button {
+  flex: 1 1 auto;
+  min-width: auto;
+}
+
 .choice-row button.is-active {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);

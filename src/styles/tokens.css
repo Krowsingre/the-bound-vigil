@@ -109,6 +109,10 @@
   --font-sans: Georgia, "Gelasio", serif;
 }
 
+:root[data-ui-font="echolume"] {
+  --font-sans: "Echolume", system-ui, "Segoe UI", sans-serif;
+}
+
 /* Settings > Accessibility */
 :root[data-high-contrast] {
   --text-muted: #3d4247;

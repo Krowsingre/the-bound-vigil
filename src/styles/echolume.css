@@ -1,0 +1,17 @@
+/* Echolume, Krowsingre Publishing's own typeface (v1.200). All rights reserved.
+   Its lowercase letters are drawn as small caps. */
+@font-face {
+  font-family: "Echolume";
+  src: url("../assets/fonts/echolume-variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Echolume";
+  src: url("../assets/fonts/echolume-italic-variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}

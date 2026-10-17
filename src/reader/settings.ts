@@ -11,9 +11,11 @@ import loraExt400 from "@fontsource/lora/files/lora-latin-ext-400-normal.woff2?u
 import loraExt400i from "@fontsource/lora/files/lora-latin-ext-400-italic.woff2?url";
 import loraExt700 from "@fontsource/lora/files/lora-latin-ext-700-normal.woff2?url";
 import loraExt700i from "@fontsource/lora/files/lora-latin-ext-700-italic.woff2?url";
+import echolume from "../assets/fonts/echolume-variable.woff2?url";
+import echolumeItalic from "../assets/fonts/echolume-italic-variable.woff2?url";
 import type { HighlightColor } from "../api/types";
 
-export type ReadingFont = "lora" | "georgia" | "sans" | "publisher";
+export type ReadingFont = "lora" | "georgia" | "sans" | "echolume" | "publisher";
 export type ReadingFlow = "paginated" | "scrolled";
 export type ReadingTheme = "auto" | "light" | "paper" | "dark";
 export type ReadingWidth = "narrow" | "medium" | "wide";
@@ -48,6 +50,7 @@ export const FONTS: { value: ReadingFont; label: string }[] = [
   { value: "lora", label: "Lora" },
   { value: "georgia", label: "Georgia" },
   { value: "sans", label: "Sans serif" },
+  { value: "echolume", label: "Echolume" },
   { value: "publisher", label: "Book's own" },
 ];
 
@@ -68,7 +71,7 @@ export function parseSettings(json: string | null): ReaderSettings {
   }
   const d = DEFAULT_SETTINGS;
   return {
-    font: oneOf(raw.font, ["lora", "georgia", "sans", "publisher"], d.font),
+    font: oneOf(raw.font, ["lora", "georgia", "sans", "echolume", "publisher"], d.font),
     size: typeof raw.size === "number" ? clamp(Math.round(raw.size), SIZE_RANGE.min, SIZE_RANGE.max) : d.size,
     lineHeight: typeof raw.lineHeight === "number" ? clamp(raw.lineHeight, 1.2, 2.2) : d.lineHeight,
     width: oneOf(raw.width, ["narrow", "medium", "wide"], d.width),
@@ -115,8 +118,8 @@ const LATIN_EXT =
 // the fonts are declared again inside each page with absolute addresses.
 function fontFaces(): string {
   const abs = (url: string) => new URL(url, location.href).href;
-  const face = (family: string, url: string, weight: number, style: string, range: string) =>
-    `@font-face{font-family:"${family}";src:url("${abs(url)}") format("woff2");font-weight:${weight};font-style:${style};font-display:block;unicode-range:${range}}`;
+  const face = (family: string, url: string, weight: number | string, style: string, range?: string) =>
+    `@font-face{font-family:"${family}";src:url("${abs(url)}") format("woff2");font-weight:${weight};font-style:${style};font-display:block${range ? `;unicode-range:${range}` : ""}}`;
   return [
     face("TBV Lora", lora400, 400, "normal", LATIN),
     face("TBV Lora", lora400i, 400, "italic", LATIN),
@@ -128,6 +131,8 @@ function fontFaces(): string {
     face("TBV Lora", loraExt700i, 700, "italic", LATIN_EXT),
     face("TBV Gelasio", gelasio400, 400, "normal", LATIN),
     face("TBV Gelasio", gelasio400i, 400, "italic", LATIN),
+    face("TBV Echolume", echolume, "100 900", "normal"),
+    face("TBV Echolume", echolumeItalic, "100 900", "italic"),
   ].join("\n");
 }
 
@@ -135,6 +140,7 @@ const FONT_STACKS: Record<Exclude<ReadingFont, "publisher">, string> = {
   lora: `"TBV Lora", Georgia, serif`,
   georgia: `Georgia, "TBV Gelasio", serif`,
   sans: `system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`,
+  echolume: `"TBV Echolume", system-ui, "Segoe UI", sans-serif`,
 };
 
 /** The style sheet laid over every page of the book. */
