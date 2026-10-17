@@ -11,7 +11,7 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use serde::{Deserialize, Serialize};
 use ureq::http::{Method, Request, Response};
-use ureq::{Agent, Body};
+use ureq::{Agent, AsSendBody, Body};
 
 use super::files::{Store, LIBRARY_FOLDER};
 use crate::error::{Error, Result};
@@ -164,7 +164,7 @@ impl WebDav {
         format!("{}{}", self.base, encoded.join("/"))
     }
 
-    fn send(&self, method: &str, url: &str, depth: Option<&str>, body: Vec<u8>) -> Result<Response<Body>> {
+    fn send(&self, method: &str, url: &str, depth: Option<&str>, body: impl AsSendBody) -> Result<Response<Body>> {
         let method = Method::from_bytes(method.as_bytes()).map_err(|e| Error::Cloud(e.to_string()))?;
         let mut request = Request::builder().method(method).uri(url).header("Authorization", &self.auth);
         if let Some(depth) = depth {
@@ -210,12 +210,14 @@ impl WebDav {
         path.rfind('/').map(|i| &path[..=i]).unwrap_or("")
     }
 
-    fn put(&self, path: &str, body: Vec<u8>) -> Result<()> {
-        let mut answer = self.send("PUT", &self.url(path), None, body.clone())?;
+    /// Sends a file's bytes. `body` is called again if the folder had to be
+    /// made first, so a book file is read from disk as it goes, not held.
+    fn put<B: AsSendBody>(&self, path: &str, body: impl Fn() -> Result<B>) -> Result<()> {
+        let mut answer = self.send("PUT", &self.url(path), None, body()?)?;
         if answer.status().as_u16() == 409 {
             // The folder isn't there yet.
             self.make_folders(Self::parent_of(path))?;
-            answer = self.send("PUT", &self.url(path), None, body)?;
+            answer = self.send("PUT", &self.url(path), None, body()?)?;
         }
         match answer.status().as_u16() {
             200..=299 => Ok(()),
@@ -245,11 +247,11 @@ impl Store for WebDav {
     }
 
     fn write(&mut self, path: &str, bytes: &[u8]) -> Result<()> {
-        self.put(path, bytes.to_vec())
+        self.put(path, || Ok(bytes))
     }
 
     fn put_file(&mut self, path: &str, file: &Path) -> Result<()> {
-        self.put(path, std::fs::read(file)?)
+        self.put(path, || Ok(File::open(file)?))
     }
 
     fn get_file(&mut self, path: &str, to: &Path) -> Result<bool> {

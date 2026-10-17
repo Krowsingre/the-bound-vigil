@@ -129,19 +129,21 @@ fn run(app: &AppHandle, library: &Arc<Mutex<Library>>, busy: &AtomicBool) {
     busy.store(true, Ordering::Relaxed);
     emit_status(app, library, true);
     // A folder is opened (and a WebDAV server reached) outside the lock.
+    // The epoch is read with the choice, so a switch while connecting stops this run.
     let connected = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into())).and_then(|l| {
         let provider = l.sync_provider()?;
         let device = l.device_id()?;
+        let epoch = l.sync_epoch();
         Ok(match provider {
-            Provider::Supabase => l.connect()?,
+            Provider::Supabase | Provider::Off => l.connect()?.map(|c| (c, epoch)),
             other => {
                 drop(l);
-                Some(Cloud::Files(core_sync::open_files(&other, device)?.0))
+                Some((Cloud::Files(core_sync::open_files(&other, device)?.0), epoch))
             }
         })
     });
-    let mut client = match connected {
-        Ok(Some(client)) => client,
+    let (mut client, epoch) = match connected {
+        Ok(Some((client, epoch))) => (client, epoch),
         Ok(None) => {
             busy.store(false, Ordering::Relaxed);
             emit_status(app, library, false);
@@ -156,7 +158,7 @@ fn run(app: &AppHandle, library: &Arc<Mutex<Library>>, busy: &AtomicBool) {
             return;
         }
     };
-    let outcome = core_sync::sync_once(library, &mut client);
+    let outcome = core_sync::sync_once_since(library, &mut client, epoch);
     if let Ok(library) = library.lock() {
         keep_session(&library, &client, &outcome);
     }
@@ -184,7 +186,7 @@ pub fn sign_in(library: &Mutex<Library>, email: &str, password: &str, create: bo
     } else {
         supabase::sign_in(&project, email.trim(), password)?
     };
-    let library = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?;
+    let mut library = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?;
     let before = library.sync_session()?.map(|s| s.user_id);
     if before.as_deref() != Some(session.user_id.as_str()) {
         library.reset_sync()?;
@@ -196,7 +198,7 @@ pub fn sign_in(library: &Mutex<Library>, email: &str, password: &str, create: bo
 
 pub fn sign_out(library: &Mutex<Library>) -> tbv_core::Result<()> {
     let (project, session) = {
-        let library = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?;
+        let mut library = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?;
         let out = (library.supabase_project()?, library.sync_session()?);
         library.set_sync_session(None)?;
         if library.sync_provider()? == Provider::Supabase {
@@ -215,7 +217,7 @@ pub fn sign_out(library: &Mutex<Library>) -> tbv_core::Result<()> {
 pub fn choose(library: &Mutex<Library>, provider: Provider) -> tbv_core::Result<bool> {
     let device = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?.device_id()?;
     let existing = match &provider {
-        Provider::Supabase => false,
+        Provider::Supabase | Provider::Off => false,
         other => core_sync::open_files(other, device)?.1,
     };
     library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?.set_sync_provider(&provider)?;

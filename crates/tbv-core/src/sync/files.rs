@@ -129,8 +129,8 @@ impl<S: Store> Remote for FileRemote<S> {
     }
 
     /// The cursor is each other device's last batch read, as JSON. A batch
-    /// that can't be read yet (its cloud app is still bringing it down) stops
-    /// that device there until next time.
+    /// that's missing or can't be read yet (its cloud app is still bringing
+    /// it down) stops that device there until next time.
     fn pull(&mut self, after: &str, limit: usize) -> Result<Page> {
         let mut read: BTreeMap<String, u64> = if after.is_empty() { BTreeMap::new() } else { serde_json::from_str(after).unwrap_or_default() };
         let mut records = Vec::new();
@@ -145,6 +145,11 @@ impl<S: Store> Remote for FileRemote<S> {
             for n in waiting {
                 if records.len() >= limit {
                     break 'devices;
+                }
+                // A gap means a batch hasn't arrived yet; wait for it rather
+                // than read past it.
+                if n != read.get(&device).copied().unwrap_or(0) + 1 {
+                    break;
                 }
                 let Some(bytes) = self.store.read(&format!("{CHANGES}{device}/{}", batch_name(n)))? else { break };
                 let Ok(batch) = serde_json::from_slice::<Batch>(&bytes) else { break };
@@ -292,6 +297,18 @@ pub(crate) mod tests {
         fs::write(dir.path().join(LIBRARY_FOLDER).join("changes/device-a/0000000003.json"), b"{\"rec").unwrap();
         let cursor = b.pull("", 500).unwrap().cursor;
         assert_eq!(cursor, r#"{"device-a":2}"#);
+
+        // A batch that turns up before an earlier one waits for it.
+        fs::remove_file(dir.path().join(LIBRARY_FOLDER).join("changes/device-a/0000000003.json")).unwrap();
+        a.push(&[record(6)]).unwrap();
+        let batches = dir.path().join(LIBRARY_FOLDER).join("changes/device-a");
+        fs::rename(batches.join("0000000003.json"), dir.path().join("held.json")).unwrap();
+        a.push(&[record(7)]).unwrap();
+        let page = b.pull(r#"{"device-a":2}"#, 500).unwrap();
+        assert!(page.records.is_empty(), "batch 4 isn't read past the missing 3");
+        assert_eq!(page.cursor, r#"{"device-a":2}"#);
+        fs::rename(dir.path().join("held.json"), batches.join("0000000003.json")).unwrap();
+        assert_eq!(b.pull(&page.cursor, 500).unwrap().records, [record(6), record(7)]);
 
         // Numbering carries on after a restart.
         let mut again = FileRemote::new(FolderStore::open(dir.path()).unwrap(), "device-b".into());

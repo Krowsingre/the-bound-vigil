@@ -54,6 +54,9 @@ pub struct Library {
     /// False while changes from another device are written, so they aren't
     /// stamped as this device's own.
     pub(crate) sync_live: Arc<AtomicBool>,
+    /// Goes up each time sync starts over, so a run that began before then
+    /// stops instead of writing what it learned from the old place.
+    pub(crate) sync_epoch: u64,
 }
 
 const MIGRATIONS: &[&str] = &[
@@ -307,7 +310,7 @@ impl Library {
         conn.pragma_update(None, "foreign_keys", "ON")?;
         let sync_live = Arc::new(AtomicBool::new(true));
         register_functions(&conn, &sync_live)?;
-        let mut library = Self { conn, paths, sync_live };
+        let mut library = Self { conn, paths, sync_live, sync_epoch: 0 };
         library.migrate()?;
         crate::sync::install_triggers(&library.conn)?;
         library.conn.execute_batch(RETIRED_SHELVES)?;

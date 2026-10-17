@@ -99,7 +99,7 @@ export interface SyncConflict {
 
 /** Where the library is kept, as Settings shows it (never a password). */
 export interface ProviderView {
-  kind: "supabase" | "folder" | "webdav";
+  kind: "supabase" | "folder" | "webdav" | "off";
   /** For a folder: which cloud app's ("icloud", "dropbox", "mega", "custom"…). */
   service: string | null;
   /** The folder, or the WebDAV address. */
@@ -110,6 +110,7 @@ export interface ProviderView {
 /** A choice of where to keep the library, as sent to the core. */
 export type ProviderChoice =
   | { kind: "supabase" }
+  | { kind: "off" }
   | { kind: "folder"; service: string; path: string }
   | { kind: "webdav"; url: string; username: string; password: string };
 

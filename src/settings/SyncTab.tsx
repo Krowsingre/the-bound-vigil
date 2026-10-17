@@ -145,7 +145,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
   const state = overview?.status.state ?? "disabled";
   const current = overview?.provider ?? { kind: "supabase" as const, service: null, location: null, username: null };
   // Supabase counts as in use once signed in; a folder or server as soon as it's chosen.
-  const inUse = current.kind === "supabase" ? (signedIn ? "supabase" : null) : cardFor(current);
+  const inUse = current.kind === "off" ? null : current.kind === "supabase" ? (signedIn ? "supabase" : null) : cardFor(current);
   const showing = provider === inUse;
 
   const urlOk = /^https:\/\/[a-z0-9-]+\.supabase\.(co|in)\/?$/i.test(draft.url.trim());
@@ -258,7 +258,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
                   type="button"
                   className="btn btn-quiet btn-danger-text"
                   onClick={() =>
-                    void api.setSyncProvider({ kind: "supabase" }).then(
+                    void api.setSyncProvider({ kind: "off" }).then(
                       () => (toast("TBV no longer syncs through that folder. Nothing in it was deleted."), void reload()),
                       (e: unknown) => toast(String(e)),
                     )

@@ -403,8 +403,8 @@ export function previewApi(): Api {
           ? { kind: "folder", service: choice.service, location: choice.path, username: null }
           : choice.kind === "webdav"
             ? { kind: "webdav", service: null, location: choice.url, username: choice.username }
-            : { kind: "supabase", service: null, location: null, username: null };
-      sync = { ...sync, provider, status: { state: "idle", lastSuccessAt: new Date().toISOString() } };
+            : { kind: choice.kind, service: null, location: null, username: null };
+      sync = { ...sync, provider, status: choice.kind === "off" ? { state: "disabled", lastSuccessAt: null } : { state: "idle", lastSuccessAt: new Date().toISOString() } };
       return false;
     },
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",

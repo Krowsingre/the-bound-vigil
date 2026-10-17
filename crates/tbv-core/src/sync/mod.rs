@@ -273,6 +273,8 @@ pub enum Provider {
     Folder { service: String, path: String },
     #[serde(rename = "webdav")]
     WebDav(webdav::WebDavAccount),
+    /// Not syncing anywhere, after "Stop syncing here".
+    Off,
 }
 
 /// The provider as Settings shows it: never the password.
@@ -299,13 +301,14 @@ impl Provider {
                 location: Some(account.url.clone()),
                 username: Some(account.username.clone()),
             },
+            Provider::Off => ProviderView { kind: "off", service: None, location: None, username: None },
         }
     }
 
     /// Whether two choices point at the same cloud library.
     fn same_place(&self, other: &Provider) -> bool {
         match (self, other) {
-            (Provider::Supabase, Provider::Supabase) => true,
+            (Provider::Supabase, Provider::Supabase) | (Provider::Off, Provider::Off) => true,
             (Provider::Folder { path: a, .. }, Provider::Folder { path: b, .. }) => a == b,
             (Provider::WebDav(a), Provider::WebDav(b)) => a.url == b.url && a.username == b.username,
             _ => false,
@@ -352,7 +355,7 @@ pub fn open_files(provider: &Provider, device: String) -> Result<(files::FileRem
     let store: Box<dyn files::Store + Send> = match provider {
         Provider::Folder { path, .. } => Box::new(files::FolderStore::open(Path::new(path))?),
         Provider::WebDav(account) => Box::new(webdav::WebDav::open(account)?),
-        Provider::Supabase => return Err(Error::Unsuitable("Supabase isn't a folder".into())),
+        Provider::Supabase | Provider::Off => return Err(Error::Unsuitable("that isn't a folder".into())),
     };
     let mut remote = files::FileRemote::new(store, device);
     let existing = remote.prepare()?;
@@ -560,7 +563,7 @@ impl Library {
 
     /// Saves the chosen service. Moving to a different cloud library starts
     /// sync over with it: everything here is sent there, and all of it read.
-    pub fn set_sync_provider(&self, provider: &Provider) -> Result<()> {
+    pub fn set_sync_provider(&mut self, provider: &Provider) -> Result<()> {
         if !self.sync_provider()?.same_place(provider) {
             self.reset_sync()?;
         }
@@ -575,6 +578,7 @@ impl Library {
                 let (Some(project), Some(session)) = (self.supabase_project()?, self.sync_session()?) else { return Ok(None) };
                 Ok(Some(Cloud::Supabase(supabase::Supabase::new(project, session, self.device_id()?))))
             }
+            Provider::Off => Ok(None),
             _ => Ok(Some(Cloud::Files(open_files(&provider, self.device_id()?)?.0))),
         }
     }
@@ -598,11 +602,18 @@ impl Library {
         Ok(id)
     }
 
+    /// Counts each time sync starts over. A run opened at one count stops
+    /// writing once it changes.
+    pub fn sync_epoch(&self) -> u64 {
+        self.sync_epoch
+    }
+
     /// Sync's state as far as the saved data knows. While a run is going,
     /// the app reports Syncing itself.
     pub fn sync_status(&self) -> Result<SyncStatus> {
         let ready = match self.sync_provider()? {
             Provider::Supabase => self.supabase_project()?.is_some() && self.sync_session()?.is_some(),
+            Provider::Off => false,
             _ => true,
         };
         let last_error = self.setting(LAST_ERROR)?;
@@ -670,7 +681,8 @@ impl Library {
 
     /// Forgets everything sync knew about the cloud, after signing out or
     /// switching project. This device's changes are all sent again next time.
-    pub fn reset_sync(&self) -> Result<()> {
+    pub fn reset_sync(&mut self) -> Result<()> {
+        self.sync_epoch += 1;
         self.conn.execute_batch(
             "UPDATE sync_clock SET pushed = 0;
              DELETE FROM sync_waiting; DELETE FROM sync_conflicts; DELETE FROM sync_files;",
@@ -1159,10 +1171,32 @@ const OFFLINE_PREFIX: &str = "offline: ";
 /// One sync run: pull, merge, push, then files. The library is locked only
 /// while reading or writing it, never while waiting on the network.
 pub fn sync_once(library: &Mutex<Library>, remote: &mut dyn Remote) -> Result<SyncReport> {
-    let lock = || library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()));
+    let epoch = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?.sync_epoch;
+    sync_once_since(library, remote, epoch)
+}
+
+/// As `sync_once`, for a remote opened when sync was at `epoch` (see
+/// `Library::sync_epoch`). If sync has started over since, nothing is written.
+pub fn sync_once_since(library: &Mutex<Library>, remote: &mut dyn Remote, epoch: u64) -> Result<SyncReport> {
+    let take = || library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()));
+    // Sync started over meanwhile (another service, or signed out): this
+    // run's place is no longer the library's, so it writes nothing more.
+    let lock = || {
+        let library = take()?;
+        if library.sync_epoch != epoch {
+            return Err(Error::Superseded);
+        }
+        Ok(library)
+    };
     let outcome = run(&lock, remote);
-    lock()?.record_result(&outcome)?;
-    outcome
+    match (&outcome, lock()) {
+        (Err(Error::Superseded), _) | (_, Err(Error::Superseded)) => Ok(SyncReport::default()),
+        (_, Err(e)) => Err(e),
+        (_, Ok(library)) => {
+            library.record_result(&outcome)?;
+            outcome
+        }
+    }
 }
 
 fn run<'a>(lock: &dyn Fn() -> Result<std::sync::MutexGuard<'a, Library>>, remote: &mut dyn Remote) -> Result<SyncReport> {

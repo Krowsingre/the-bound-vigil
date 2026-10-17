@@ -465,3 +465,60 @@ fn a_shared_folder_carries_a_library_between_devices() {
     assert!(sync(&b).sent > 0, "everything is sent to the new place");
     assert_eq!(b.lib().sync_overview().unwrap().provider.service.as_deref(), Some("dropbox"));
 }
+
+/// Moves the library elsewhere while its batch is on the way out.
+struct SwitchMidPush<'a> {
+    inner: super::Cloud,
+    library: &'a Mutex<Library>,
+    to: Provider,
+}
+
+impl Remote for SwitchMidPush<'_> {
+    fn push(&mut self, records: &[Record]) -> Result<()> {
+        self.inner.push(records)?;
+        self.library.lock().unwrap().set_sync_provider(&self.to)
+    }
+    fn pull(&mut self, after: &str, limit: usize) -> Result<Page> {
+        self.inner.pull(after, limit)
+    }
+    fn upload(&mut self, path: &str, file: &Path) -> Result<()> {
+        self.inner.upload(path, file)
+    }
+    fn download(&mut self, path: &str, to: &Path) -> Result<bool> {
+        self.inner.download(path, to)
+    }
+    fn list(&mut self, folder: &str) -> Result<Vec<String>> {
+        self.inner.list(folder)
+    }
+}
+
+#[test]
+fn switching_mid_run_leaves_everything_for_the_new_place() {
+    let old = tempfile::tempdir().unwrap();
+    let new = tempfile::tempdir().unwrap();
+    let folder = |dir: &tempfile::TempDir| Provider::Folder { service: "custom".into(), path: dir.path().display().to_string() };
+    let a = Device::new();
+    a.lib().set_sync_provider(&folder(&old)).unwrap();
+    a.import("Carmilla");
+    let waiting = a.lib().sync_outbox(&SyncOptions::default(), 500).unwrap().len();
+    assert!(waiting > 0);
+
+    let inner = a.lib().connect().unwrap().unwrap();
+    let mut remote = SwitchMidPush { inner, library: &a.library, to: folder(&new) };
+    sync_once(&a.library, &mut remote).unwrap();
+    assert_eq!(a.lib().sync_outbox(&SyncOptions::default(), 500).unwrap().len(), waiting, "nothing marked sent by the old run");
+
+    let mut cloud = a.lib().connect().unwrap().unwrap();
+    assert_eq!(sync_once(&a.library, &mut cloud).unwrap().sent as usize, waiting);
+}
+
+#[test]
+fn stopping_sync_turns_it_off() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = Device::new();
+    a.lib().set_sync_provider(&Provider::Folder { service: "mega".into(), path: dir.path().display().to_string() }).unwrap();
+    a.lib().set_sync_provider(&Provider::Off).unwrap();
+    assert_eq!(a.lib().sync_status().unwrap().state, SyncState::Disabled);
+    assert!(a.lib().connect().unwrap().is_none());
+    assert_eq!(a.lib().sync_overview().unwrap().provider.kind, "off");
+}
