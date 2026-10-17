@@ -1046,3 +1046,74 @@
 .reader.is-focus .reader-main {
   background: var(--page-bg);
 }
+
+/* Read aloud */
+.icon-btn.is-muted {
+  opacity: 0.45;
+}
+
+.read-aloud-popover {
+  width: 320px;
+}
+
+.read-aloud {
+  display: grid;
+  gap: 14px;
+}
+
+.read-aloud-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.read-aloud-controls .icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.read-aloud-play {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.read-aloud-play:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.read-aloud-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.popover > .read-aloud-note {
+  text-align: start;
+}
+
+.read-aloud-voice {
+  width: 100%;
+  min-width: 0;
+}
+
+.read-aloud-rate {
+  min-width: 48px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.read-aloud-rate:hover {
+  background: var(--surface-sunk);
+  color: var(--text);
+}
