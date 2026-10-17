@@ -31,9 +31,9 @@ service you choose, without a Bound Vigil account. Windows desktop comes first.
 
 ## Getting the app
 
-The Bound Vigil is sold under license. Installers are built for each change
-under **Actions** (download **the-bound-vigil-windows**), but running them
-needs a license; see [LICENSE](LICENSE).
+The Bound Vigil is sold under license and isn't publicly available yet. To
+ask about a license, contact Krowsingre Publishing LLC through the
+repository owner's profile; see [LICENSE](LICENSE).
 
 ## How it is put together
 
