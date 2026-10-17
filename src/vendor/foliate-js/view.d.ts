@@ -48,6 +48,8 @@ export interface Paginator extends HTMLElement {
   /** Brings a range into view, a page turn or scroll if needed. */
   scrollToAnchor?(anchor: Range | Element, select?: boolean): Promise<void>;
   nextSection?(): Promise<void>;
+  /** Shows a section, at a fraction of the way through it or at a range. */
+  goTo(target: { index: number; anchor?: number | ((doc: Document) => Range) }): Promise<void>;
 }
 
 /** Reads a section aloud a block at a time, as SSML with a mark before each sentence or word. */
@@ -87,7 +89,7 @@ export interface View extends HTMLElement {
   clearSearch(): void;
   getSectionFractions(): number[];
   getCFI(index: number, range?: Range): string;
-  resolveNavigation(target: string | number): { index: number } | undefined;
+  resolveNavigation(target: string | number | { fraction: number }): { index: number; anchor?: unknown } | undefined;
   deselect(): void;
   /** Sets up `tts` for the section on screen; kept while that section stays. */
   initTTS(granularity?: "word" | "sentence", highlight?: (range: Range) => void): Promise<void>;
