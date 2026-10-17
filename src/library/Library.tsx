@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type { BookPreview, CollectionPreview, ItemKind, LibraryPage } from "../api/types";
 import { askEditDetails } from "../details/openDetails";
+import { askSendToEreader } from "../ereaders/SendToEreader";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { makeBookActions } from "../home/bookActions";
@@ -247,6 +248,9 @@ export function Library({
             </button>
             <button type="button" className="btn btn-quiet" disabled={!selected.size} onClick={() => setTagging(true)}>
               <Icon name="tag" size={16} /> Add a tag
+            </button>
+            <button type="button" className="btn btn-quiet" disabled={!selected.size} onClick={() => askSendToEreader(chosen)}>
+              <Icon name="ereader" size={16} /> Send to e-reader
             </button>
             <button type="button" className="btn btn-primary" onClick={() => setSelected(null)}>
               Done

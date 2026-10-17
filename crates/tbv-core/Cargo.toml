@@ -12,6 +12,7 @@ csv = "1"
 encoding_rs = "0.8"
 hex = "0.4"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname", "rustls", "ring", "webpki-roots"] }
 lopdf = { version = "0.45", default-features = false }
 quick-xml = "0.37"
 rusqlite = { version = "0.37", features = ["bundled", "functions", "backup"] }

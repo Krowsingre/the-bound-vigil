@@ -1,0 +1,162 @@
+/* Send to e-reader, and Settings › E-readers */
+
+.send-dialog {
+  width: min(480px, calc(100vw - 32px));
+}
+
+.send-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.send-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.send-choice:hover:not(:disabled) {
+  background: var(--surface-sunk);
+}
+
+.send-choice:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.send-choice > svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.send-choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.send-choice-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.send-choice-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.send-choice-note.is-blocked {
+  color: var(--danger);
+}
+
+.send-heading {
+  margin: 14px 0 2px;
+  font-size: 13px;
+}
+
+.send-empty,
+.send-desktop-only {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.send-desktop-only {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--surface-sunk);
+}
+
+.send-setup {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ereader-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.ereader-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+}
+
+.ereader-item > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.kindle-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 520px;
+}
+
+.kindle-form-pair {
+  display: grid;
+  grid-template-columns: 1fr 120px;
+  gap: 12px;
+}
+
+.kindle-form select {
+  width: 100%;
+}
+
+.kindle-approve {
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--surface-sunk);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 520px) {
+  .kindle-form-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ereader-item > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

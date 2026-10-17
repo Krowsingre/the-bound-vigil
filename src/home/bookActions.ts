@@ -5,6 +5,7 @@ import { openContextMenu } from "../components/ContextMenu";
 import type { MenuEntry } from "../components/Menu";
 import { StarRating } from "../components/StarRating";
 import { askEditDetails, showBookDetails } from "../details/openDetails";
+import { askSendToEreader } from "../ereaders/SendToEreader";
 import { askDeleteBook, askEditTags } from "../library/BookDialogs";
 
 export interface BookActions {
@@ -54,6 +55,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
       ? [{ label: "Stop reading (mark unread)", onSelect: () => actions.setStatus(book, "unread") }]
       : []),
     "divider",
+    { label: "Send to e-reader…", icon: "ereader", onSelect: () => askSendToEreader([book]) },
     downloadItem(book, actions),
     { label: "Delete from library…", icon: "trash", danger: true, onSelect: () => askDeleteBook(book) },
   ];

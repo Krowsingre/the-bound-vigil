@@ -6,6 +6,7 @@ import { AppearanceTab } from "./AppearanceTab";
 import { AboutTab, AccessibilityTab, AdvancedTab, CollectionsTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
 import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex";
 import { SyncTab } from "./SyncTab";
+import { EreadersTab } from "./EreadersTab";
 import { isWeb } from "../api";
 import { WebSyncTab } from "../web/WebConnect";
 
@@ -76,6 +77,8 @@ export function Settings({
         return isWeb ? <WebSyncTab /> : <SyncTab onRestored={onRestored} />;
       case "files":
         return <FilesTab />;
+      case "ereaders":
+        return <EreadersTab />;
       case "accessibility":
         return <AccessibilityTab />;
       case "shortcuts":
