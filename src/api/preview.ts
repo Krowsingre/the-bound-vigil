@@ -7,6 +7,7 @@ import { previewCollections } from "../preview/collections";
 import { previewNotes, sampleAnnotations } from "../preview/notes";
 import { sampleEpub } from "../preview/sampleEpub";
 import { previewMove } from "../preview/move";
+import { previewServers } from "../preview/servers";
 import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
 import { duplicateGroups } from "../lib/duplicates";
 import { cleanValue, DETAIL_FIELDS, previewFields } from "../lib/details";
@@ -604,6 +605,11 @@ export function previewApi(): Api {
       find(bookId);
       books = books.filter((b) => b.id !== bookId);
     },
+    saveCopies: async (bookIds) => ({ saved: bookIds.length, folder: "C:\\Users\\you\\Documents" }),
+    removeFromLibrary: async (bookId) => {
+      find(bookId);
+      books = books.filter((b) => b.id !== bookId);
+    },
     removeDownload: async (bookId) => {
       if (!find(bookId).inCloud) throw new Error("This book isn't in the cloud yet, so this is its only copy.");
       update(bookId, { availability: "cloud" });
@@ -669,6 +675,7 @@ export function previewApi(): Api {
       throw new Error(DESKTOP_ONLY);
     },
     onSync: () => () => undefined,
+    ...previewServers(),
     ...collections.api,
     ...notes,
   };

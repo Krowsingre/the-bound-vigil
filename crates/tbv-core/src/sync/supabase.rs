@@ -251,6 +251,24 @@ impl Supabase {
 }
 
 impl Remote for Supabase {
+    fn remove(&mut self, path: &str) -> Result<()> {
+        let object = self.object_url(path);
+        let key = self.project.anon_key.clone();
+        let mut answer = self.call(&|agent, url, bearer| {
+            agent
+                .delete(&format!("{url}/storage/v1/object/{object}"))
+                .header("apikey", &key)
+                .header("Authorization", bearer)
+                .call()
+        })?;
+        match answer.status().as_u16() {
+            200..=299 | 404 => Ok(()),
+            400 if !message(&mut answer).contains("Bucket not found") => Ok(()),
+            400 => Err(Error::Cloud(SETUP_HINT.into())),
+            _ => Err(Error::Cloud(message(&mut answer))),
+        }
+    }
+
     fn push(&mut self, records: &[Record]) -> Result<()> {
         let device = self.device_id.clone();
         let rows: Vec<Value> = records

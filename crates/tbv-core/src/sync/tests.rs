@@ -66,6 +66,11 @@ impl Remote for FakeRemote {
         let cloud = self.0.lock().unwrap();
         Ok(cloud.files.iter().filter_map(|(p, bytes)| Some((p.strip_prefix(folder)?.to_string(), Some(bytes.len() as u64)))).collect())
     }
+
+    fn remove(&mut self, path: &str) -> Result<()> {
+        self.0.lock().unwrap().files.remove(path);
+        Ok(())
+    }
 }
 
 struct Device {
@@ -500,6 +505,9 @@ impl Remote for SwitchMidPush<'_> {
     fn list(&mut self, folder: &str) -> Result<Vec<String>> {
         self.inner.list(folder)
     }
+    fn remove(&mut self, path: &str) -> Result<()> {
+        self.inner.remove(path)
+    }
 }
 
 #[test]
@@ -661,6 +669,9 @@ impl Remote for LosesBooks {
     }
     fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
         self.0.list_sizes(folder)
+    }
+    fn remove(&mut self, path: &str) -> Result<()> {
+        self.0.remove(path)
     }
 }
 
@@ -841,4 +852,28 @@ fn moves_to_supabase() {
     b.lib().adopt_move(&Destination::Supabase { project, session }, &check, MoveScope::All).unwrap();
     assert_eq!(b.lib().sync_provider().unwrap(), Provider::Supabase);
     assert_eq!(b.lib().sync_overview().unwrap().waiting_to_send, 0);
+}
+
+#[test]
+fn removing_keeps_the_cloud_file_and_deleting_erases_it() {
+    let cloud = FakeRemote::default();
+    let a = Device::new();
+    let b = Device::new();
+    a.set_options(json!({ "bookFiles": true }));
+    b.set_options(json!({ "bookFiles": true }));
+    let kept = a.import("Carmilla");
+    let gone = a.import("Dracula");
+    a.sync(&cloud);
+    let has = |book: &str| cloud.0.lock().unwrap().files.keys().any(|p| p.contains(book_id_hex(book)));
+    assert!(has(&kept) && has(&gone));
+
+    a.lib().remove_from_library(&kept).unwrap();
+    a.lib().delete_book(&gone).unwrap();
+    a.sync(&cloud);
+    assert!(has(&kept), "a removed book's file stays in the cloud");
+    assert!(!has(&gone), "a deleted book's file and cover are erased");
+    assert!(a.lib().setting(super::ERASE).unwrap().is_none(), "nothing left to erase");
+
+    b.sync(&cloud);
+    assert!(b.lib().book(&kept).unwrap().is_none() && b.lib().book(&gone).unwrap().is_none(), "both leave every device");
 }

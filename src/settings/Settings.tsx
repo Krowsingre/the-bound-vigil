@@ -7,6 +7,7 @@ import { AboutTab, AccessibilityTab, AdvancedTab, CollectionsTab, FilesTab, Libr
 import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex";
 import { SyncTab } from "./SyncTab";
 import { EreadersTab } from "./EreadersTab";
+import { ServersTab } from "./ServersTab";
 import { isWeb } from "../api";
 import { WebSyncTab } from "../web/WebConnect";
 
@@ -79,6 +80,8 @@ export function Settings({
         return <FilesTab />;
       case "ereaders":
         return <EreadersTab />;
+      case "servers":
+        return <ServersTab />;
       case "accessibility":
         return <AccessibilityTab />;
       case "shortcuts":

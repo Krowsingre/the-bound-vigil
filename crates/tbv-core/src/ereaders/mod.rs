@@ -242,7 +242,22 @@ pub fn copy_to(reader: &Ereader, book: &Outgoing) -> Result<Copied> {
     if !Path::new(&reader.root).is_dir() {
         return Err(Error::Unsuitable(format!("{} isn't connected any more. Plug it in again and try once more.", reader.name)));
     }
-    fs::create_dir_all(&folder)?;
+    copy_into(book, &folder, &reader.name)
+}
+
+/// Saves a copy of a book, named "Title - Author", into a folder of your
+/// choosing, to share or keep. The library's own copy is only read.
+pub fn save_copy(book: &Outgoing, folder: &Path) -> Result<Copied> {
+    if !folder.is_dir() {
+        return Err(Error::Unsuitable(format!("The folder {} can't be found.", folder.display())));
+    }
+    copy_into(book, folder, &folder.display().to_string())
+}
+
+/// Copies beside the target and renames, never replacing a different file
+/// of the same name. One of the same size is taken to be this book already.
+fn copy_into(book: &Outgoing, folder: &Path, place: &str) -> Result<Copied> {
+    fs::create_dir_all(folder)?;
     let (stem, ext) = book.file_name.rsplit_once('.').unwrap_or((&book.file_name, &book.format));
     let mut target = folder.join(&book.file_name);
     let mut n = 2;
@@ -258,8 +273,8 @@ pub fn copy_to(reader: &Ereader, book: &Outgoing) -> Result<Copied> {
     if let Err(e) = copied {
         let _ = fs::remove_file(&partial);
         return Err(match e.kind() {
-            std::io::ErrorKind::StorageFull => Error::Unsuitable(format!("{} is full. Make some room on it and try again.", reader.name)),
-            _ => Error::Unsuitable(format!("The book couldn't be copied to {}: {e}", reader.name)),
+            std::io::ErrorKind::StorageFull => Error::Unsuitable(format!("{place} is full. Make some room on it and try again.")),
+            _ => Error::Unsuitable(format!("The book couldn't be copied to {place}: {e}")),
         });
     }
     Ok(Copied { path: target.display().to_string(), already_there: false })

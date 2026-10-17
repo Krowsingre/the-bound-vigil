@@ -151,7 +151,12 @@ export function useReaderEngine({
             const range = selection.getRangeAt(0);
             eventsRef.current.onSelect?.({ cfi: v.getCFI(index, range), text, rect: windowRect(doc, range) });
           };
-          doc.addEventListener("pointerdown", () => eventsRef.current.onSelect?.(null));
+          doc.addEventListener("pointerdown", () => {
+            eventsRef.current.onSelect?.(null);
+            // The page is in a frame of its own, so a tap on it never reaches the
+            // reader's menus. Passed on, it closes whichever is open.
+            document.dispatchEvent(new Event("pointerdown"));
+          });
           doc.addEventListener("pointerup", () => setTimeout(check, 0));
           doc.addEventListener("keyup", (k) => k.shiftKey && check());
           doc.addEventListener("keydown", (k) => eventsRef.current.onKey?.(k));

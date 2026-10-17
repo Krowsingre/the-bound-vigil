@@ -44,11 +44,23 @@ function useVoices(): SpeechSynthesisVoice[] {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => synth?.getVoices() ?? []);
   useEffect(() => {
     if (!synth) return;
-    // Voices often arrive a moment after the page loads.
-    const update = () => setVoices(synth.getVoices());
+    // Voices often arrive a moment after the page loads. Some phones never say
+    // when they do, so it asks again for a few seconds too.
+    const update = () => setVoices((before) => {
+      const now = synth.getVoices();
+      return now.length === before.length ? before : now;
+    });
     update();
     synth.addEventListener("voiceschanged", update);
-    return () => synth.removeEventListener("voiceschanged", update);
+    let tries = 0;
+    const poll = setInterval(() => {
+      update();
+      if (++tries >= 20 || synth.getVoices().length) clearInterval(poll);
+    }, 300);
+    return () => {
+      synth.removeEventListener("voiceschanged", update);
+      clearInterval(poll);
+    };
   }, []);
   return voices;
 }
@@ -117,6 +129,10 @@ export function useReadAloud({
     /** Set while a page turned by hand settles, so the highlight doesn't pull it back. */
     held: false,
     draw: null as Draw | null,
+    /** The silent sound that claims speech from a tap is still queued. */
+    unlocking: false,
+    /** Utterances still queued: phones drop the events of ones nothing holds on to. */
+    queue: [] as SpeechSynthesisUtterance[],
   }).current;
   const opts = useRef({ getView, voice, rate, dark, lang });
   opts.current = { getView, voice, rate, dark, lang };
@@ -235,7 +251,23 @@ export function useReadAloud({
   const speakFrom = (from: number) => {
     if (!synth) return;
     const run = ++s.run;
-    synth.cancel();
+    if (s.unlocking) {
+      // Queued behind the silent sound from the tap, which must not be cancelled
+      // or a phone may refuse what comes next.
+      s.unlocking = false;
+      queueFrom(run, from);
+    } else if (synth.speaking || synth.pending) {
+      synth.cancel();
+      // Some phones ignore speech queued straight after a cancel.
+      setTimeout(() => run === s.run && queueFrom(run, from), 80);
+    } else {
+      queueFrom(run, from);
+    }
+  };
+
+  const queueFrom = (run: number, from: number) => {
+    if (!synth) return;
+    synth.resume();
     const list = s.sentences;
     if (from >= list.length) {
       void nextBlock(run);
@@ -244,6 +276,7 @@ export function useReadAloud({
     s.at = from;
     s.tts?.setMark(list[from].mark);
     const { voice, rate, lang } = opts.current;
+    s.queue = [];
     for (let i = from; i < list.length; i++) {
       const u = new SpeechSynthesisUtterance(list[i].text);
       if (voice) u.voice = voice;
@@ -266,6 +299,7 @@ export function useReadAloud({
         finish();
         setError(e.error === "not-allowed" ? "Tap play again to start reading." : "The voice stopped unexpectedly. Try another voice.");
       };
+      s.queue.push(u);
       synth.speak(u);
     }
   };
@@ -280,8 +314,8 @@ export function useReadAloud({
     const v = opts.current.getView();
     if (!v || !synth) return;
     const run = ++s.run;
-    // Not when starting from a tap: the empty utterance in play() must stay queued.
-    if (s.status === "playing") synth.cancel();
+    // Not when starting from a tap: the silent utterance in play() must stay queued.
+    if (s.status === "playing" && !s.unlocking) synth.cancel();
     setStatus("playing");
     setError(null);
     await prepare(v);
@@ -316,8 +350,17 @@ export function useReadAloud({
   const play = useCallback(() => {
     if (!synth || unavailable) return;
     if (s.status === "playing") return;
-    // Phones only allow speech that starts from a tap; this claims it before the wait below.
-    synth.speak(new SpeechSynthesisUtterance(""));
+    // Phones only allow speech that starts from a tap; this claims it before the
+    // wait below. A silent space, as some phones skip an empty one entirely.
+    const unlock = new SpeechSynthesisUtterance(" ");
+    unlock.volume = 0;
+    if (opts.current.voice) unlock.voice = opts.current.voice;
+    unlock.onend = unlock.onerror = () => {
+      s.unlocking = false;
+    };
+    s.unlocking = true;
+    synth.resume();
+    synth.speak(unlock);
     const v = opts.current.getView();
     if (s.status === "paused" && s.sentences.length && onScreen(s.current, v?.lastLocation?.range)) {
       setStatus("playing");

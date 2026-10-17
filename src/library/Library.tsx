@@ -3,11 +3,12 @@ import { api } from "../api";
 import type { BookPreview, CollectionPreview, ItemKind, LibraryPage } from "../api/types";
 import { askEditDetails } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { makeBookActions } from "../home/bookActions";
 import { Stat } from "../home/ReadingActivity";
-import { AddTagToMany } from "./BookDialogs";
+import { AddTagToMany, deleteWarning, removeWarning } from "./BookDialogs";
 import { BookGrid, BookList, BookTable, type Selection } from "./BookViews";
 import { CollectionsTab } from "./CollectionsTab";
 import { LibraryToolbar } from "./LibraryToolbar";
@@ -55,6 +56,10 @@ export function Library({
   // Choosing books to change many at once.
   const [selected, setSelected] = useState<Map<string, BookPreview> | null>(null);
   const [tagging, setTagging] = useState(false);
+  const [asking, setAsking] = useState<"remove" | "delete" | "download" | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  /** The search and filters everything was last chosen for. */
+  const [allChosenFor, setAllChosenFor] = useState<string | null>(null);
   const toast = useToast();
   const words = WORDS[kind];
   const actions = useMemo(
@@ -63,6 +68,18 @@ export function Library({
   );
 
   const shelf = view.tab === "collections" ? "all" : view.tab;
+  const query = {
+    shelf,
+    sort: view.sort,
+    search: search.trim() || null,
+    formats: view.formats,
+    location: view.location,
+    tags: view.tags,
+    genres: view.genres,
+    authors: view.authors,
+    narrators: view.narrators,
+    kind,
+  };
   useEffect(() => {
     let current = true;
     api
@@ -112,6 +129,10 @@ export function Library({
     });
   }, [load]);
 
+  useEffect(() => {
+    if (!selected?.size) setAllChosenFor(null);
+  }, [selected]);
+
   // A new page starts at the top, like turning a page.
   useEffect(() => {
     document.querySelector(".content")?.scrollTo({ top: 0 });
@@ -132,6 +153,68 @@ export function Library({
       }),
   };
   const chosen = selected ? [...selected.values()] : [];
+
+  /** Chooses every book the current filters and search show, on every page. */
+  const chooseAll = async () => {
+    setBusy("Choosing…");
+    try {
+      const all = new Map(selected ?? []);
+      for (let p = 0; ; p++) {
+        const got = await api.getLibrary({ ...query, page: p, pageSize: 200 });
+        got.books.forEach((b) => all.set(b.id, b));
+        if (got.page < p || (got.page + 1) * got.pageSize >= got.total) break;
+      }
+      setSelected(all);
+      setAllChosenFor(JSON.stringify(query));
+    } catch (e) {
+      toast(`Couldn't choose them all: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** Removes downloads, removes from the library, or deletes, one book at a time. */
+  const changeChosen = async (what: "remove" | "delete" | "download") => {
+    setAsking(null);
+    const list = what === "download" ? chosen.filter((b) => b.availability === "local" && b.inCloud) : chosen;
+    const verb = { remove: "Removing", delete: "Deleting", download: "Removing downloads" }[what];
+    const work = { remove: api.removeFromLibrary, delete: api.deleteBook, download: api.removeDownload }[what];
+    let failed = 0;
+    for (let i = 0; i < list.length; i++) {
+      setBusy(`${verb}: ${i + 1} of ${list.length}…`);
+      try {
+        await work(list[i].id);
+      } catch {
+        failed++;
+      }
+    }
+    setBusy(null);
+    if (what !== "download") setSelected(new Map());
+    setReload((n) => n + 1);
+    const done = list.length - failed;
+    const count = (n: number) => (n === 1 ? `1 ${words.one}` : `${n} ${words.many}`);
+    const skipped = chosen.length - list.length;
+    toast(
+      what === "download"
+        ? `Removed the downloads of ${count(done)}. They're still in the cloud.` +
+            (skipped ? ` ${count(skipped)} ${skipped === 1 ? "isn't" : "aren't"} in the cloud yet, so ${skipped === 1 ? "it was" : "they were"} kept here.` : "")
+        : failed
+          ? `${what === "remove" ? "Removed" : "Deleted"} ${done} of ${list.length}. ${failed} couldn't be changed.`
+          : `${what === "remove" ? "Removed" : "Deleted"} ${count(done)}.`,
+    );
+  };
+
+  const saveChosen = async () => {
+    try {
+      setBusy("Saving copies…");
+      const done = await api.saveCopies(chosen.map((b) => b.id));
+      if (done) toast(`Saved ${done.saved === 1 ? "a copy" : `${done.saved} copies`} to ${done.folder}.`);
+    } catch (e) {
+      toast(`Couldn't save the copies: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   let body: React.ReactNode;
   if (load.state === "error") {
@@ -246,11 +329,17 @@ export function Library({
               Choose all on this page
             </button>
           )}
+          {page && page.total > page.books.length && allChosenFor !== JSON.stringify(query) && (
+            <button type="button" className="view-all" disabled={busy !== null} onClick={() => void chooseAll()}>
+              Choose all {page.total}
+            </button>
+          )}
           {selected.size > 0 && (
-            <button type="button" className="view-all" onClick={() => setSelected(new Map())}>
+            <button type="button" className="view-all" disabled={busy !== null} onClick={() => setSelected(new Map())}>
               Clear
             </button>
           )}
+          {busy && <span className="select-count">{busy}</span>}
           <span className="select-actions">
             <button type="button" className="btn btn-quiet" disabled={!selected.size} onClick={() => askEditDetails(chosen)}>
               <Icon name="edit" size={16} /> Edit details
@@ -263,11 +352,54 @@ export function Library({
                 <Icon name="ereader" size={16} /> Send to e-reader
               </button>
             )}
-            <button type="button" className="btn btn-primary" onClick={() => setSelected(null)}>
+            <button type="button" className="btn btn-quiet" disabled={!selected.size || busy !== null} onClick={() => void saveChosen()}>
+              <Icon name="copy" size={16} /> Save copies
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              disabled={!chosen.some((b) => b.availability === "local" && b.inCloud) || busy !== null}
+              title="Frees space here. The books stay in your library and in the cloud."
+              onClick={() => setAsking("download")}
+            >
+              <Icon name="cloudOff" size={16} /> Remove download
+            </button>
+            <button type="button" className="btn btn-quiet" disabled={!selected.size || busy !== null} onClick={() => setAsking("remove")}>
+              <Icon name="close" size={16} /> Remove from library
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet btn-danger-text"
+              disabled={!selected.size || busy !== null}
+              onClick={() => setAsking("delete")}
+            >
+              <Icon name="trash" size={16} /> Delete
+            </button>
+            <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => setSelected(null)}>
               Done
             </button>
           </span>
         </div>
+      )}
+      {asking && (
+        <ConfirmDialog
+          title={
+            {
+              download: `Remove the downloads of ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`}?`,
+              remove: `Remove ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`} from your library?`,
+              delete: `Delete ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`} for good?`,
+            }[asking]
+          }
+          body={
+            asking === "download"
+              ? "This frees up space on this device. The books stay in your library and in the cloud, and download again when you open them. Books that aren't in the cloud yet are kept here."
+              : (asking === "remove" ? removeWarning : deleteWarning)(chosen.length > 1)
+          }
+          confirm={{ download: "Remove downloads", remove: "Remove from library", delete: "Delete for good" }[asking]}
+          danger={asking !== "download"}
+          onCancel={() => setAsking(null)}
+          onConfirm={() => void changeChosen(asking)}
+        />
       )}
       {tagging && (
         <AddTagToMany

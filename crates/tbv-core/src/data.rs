@@ -295,19 +295,33 @@ impl Library {
 }
 
 /// Settings that belong to this device and its sign-in, never to a backup.
-const DEVICE_ONLY: [&str; 6] = [
+const DEVICE_ONLY: [&str; 7] = [
     "sync.session",
     "sync.supabase",
     "sync.device_id",
     crate::sync::PROVIDER,
     crate::hardcover::ACCOUNT_KEY,
     crate::ereaders::email::SETTINGS_KEY,
+    crate::servers::SETTINGS_KEY,
 ];
 
-/// Sign-ins (and the sync choice, which can hold a WebDAV password, and the
-/// Kindle email settings, which hold an email password): never written into
-/// a backup file.
-const SIGN_INS: [&str; 4] = ["sync.session", crate::sync::PROVIDER, crate::hardcover::ACCOUNT_KEY, crate::ereaders::email::SETTINGS_KEY];
+/// Sign-ins (and the sync choice, which can hold a WebDAV password, the
+/// Kindle email settings, which hold an email password, and saved servers,
+/// which hold theirs): never written into a backup file.
+const SIGN_INS: [&str; 5] = [
+    "sync.session",
+    crate::sync::PROVIDER,
+    crate::hardcover::ACCOUNT_KEY,
+    crate::ereaders::email::SETTINGS_KEY,
+    crate::servers::SETTINGS_KEY,
+];
+
+/// Settings that hold a password or sign-in. The page's general settings
+/// calls can't read or change them; only their own commands can, and those
+/// never hand a password back.
+pub fn is_secret_setting(key: &str) -> bool {
+    SIGN_INS.contains(&key)
+}
 
 /// Takes this device's sign-ins out of a backup copy, so a backup file never
 /// holds a way into the cloud or into Hardcover.

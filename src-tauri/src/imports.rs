@@ -5,6 +5,7 @@
 //! first and to write the book's entry at the end, so every page keeps
 //! working while a big import runs.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -15,6 +16,7 @@ use tauri::{AppHandle, Emitter};
 use tbv_core::ids::book_id_for_file_with_progress;
 use tbv_core::library::{find_book_files, stage_source, ImportPlan, Staged};
 use tbv_core::model::ImportResult;
+use tbv_core::servers::TempFolder;
 use tbv_core::{Library, SUPPORTED_FORMATS};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -45,6 +47,8 @@ struct Queue {
     next_id: u64,
     /// Threads adding books right now.
     workers: usize,
+    /// Downloaded folders the waiting books come from, let go as each is done.
+    holds: HashMap<u64, Arc<TempFolder>>,
 }
 
 /// Books added at once. More would mostly wait on the same disk or network.
@@ -67,6 +71,18 @@ impl Imports {
 
     /// Finds the book files in `paths` and queues them. Returns how many.
     pub fn add(self: &Arc<Self>, app: &AppHandle, library: &Arc<Mutex<Library>>, paths: Vec<PathBuf>) -> usize {
+        self.add_holding(app, library, paths, None)
+    }
+
+    /// Like `add`, keeping `hold` (a folder of downloads) until the last of
+    /// these books is in, when it is deleted.
+    pub fn add_holding(
+        self: &Arc<Self>,
+        app: &AppHandle,
+        library: &Arc<Mutex<Library>>,
+        paths: Vec<PathBuf>,
+        hold: Option<Arc<TempFolder>>,
+    ) -> usize {
         let books_dir = match library.lock() {
             Ok(l) => l.books_dir().to_path_buf(),
             Err(_) => return 0,
@@ -78,6 +94,9 @@ impl Imports {
             for file in files {
                 queue.next_id += 1;
                 let id = queue.next_id;
+                if let Some(hold) = &hold {
+                    queue.holds.insert(id, hold.clone());
+                }
                 queue.items.push(ImportItem {
                     id,
                     name: file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
@@ -105,6 +124,8 @@ impl Imports {
     pub fn cancel(&self, app: &AppHandle) {
         if let Ok(mut queue) = self.queue.lock() {
             queue.items.retain(|i| i.stage != Stage::Waiting);
+            let left: Vec<u64> = queue.items.iter().map(|i| i.id).collect();
+            queue.holds.retain(|id, _| left.contains(id));
         }
         self.tell(app, true);
     }
@@ -138,6 +159,9 @@ impl Imports {
                 item.bytes_read = item.bytes;
                 item.result = Some(result);
             });
+            if let Ok(mut queue) = self.queue.lock() {
+                queue.holds.remove(&id);
+            }
             self.tell(app, false);
             // Pages refresh to show new books, a few times a second at most.
             if added && changed_at.elapsed() >= Duration::from_secs(1) {

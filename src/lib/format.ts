@@ -36,3 +36,10 @@ export function greeting(date = new Date()): string {
   if (hour < 18) return "Good afternoon";
   return "Good evening";
 }
+
+/** "Title - Author.epub", safe as a file name on Windows, macOS and phones. */
+export function copyName(title: string, authors: string[], format: string): string {
+  const clean = (t: string) => t.replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "");
+  const name = [clean(title) || "Untitled", clean(authors[0] ?? "")].filter(Boolean).join(" - ").slice(0, 150);
+  return `${name}.${format}`;
+}

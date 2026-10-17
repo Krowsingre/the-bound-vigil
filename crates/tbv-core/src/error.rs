@@ -25,6 +25,10 @@ pub enum Error {
     /// Anything else the cloud said went wrong.
     #[error("the cloud said: {0}")]
     Cloud(String),
+    /// An SFTP server TBV hasn't connected to before. The person checks its
+    /// fingerprint (here) and says whether it's theirs.
+    #[error("TBV hasn't connected to this server before. Its key fingerprint is {0}.")]
+    NewHostKey(String),
     /// Sync started over while a run was going; that run stops quietly.
     #[error("sync started over")]
     Superseded,

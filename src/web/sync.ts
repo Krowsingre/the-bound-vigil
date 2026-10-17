@@ -231,6 +231,15 @@ export class WebSync {
   }
 
   /** The book's file: from this browser if it was opened before, else from the cloud. */
+  /** Erases a deleted book's file and cover from the cloud. */
+  async eraseBook(id: string, format: string): Promise<void> {
+    const cloud = this.connection();
+    if (!cloud) return;
+    const hex = id.replace(/^sha256:/, "");
+    const covers = (await cloud.list("covers/").catch(() => [] as string[])).filter((n) => n.startsWith(`${hex}.`));
+    await Promise.all([cloud.remove(`books/${hex}.${format}`), ...covers.map((n) => cloud.remove(`covers/${n}`))]);
+  }
+
   async bookFile(id: string, format: string): Promise<Blob> {
     const path = `books/${id.replace(/^sha256:/, "")}.${format}`;
     const saved = await this.db.getFile(path);

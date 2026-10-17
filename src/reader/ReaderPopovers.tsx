@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { HighlightColor } from "../api/types";
 import { Icon } from "../components/Icon";
+import { isApp } from "../api";
 import { formatRate, groupVoices, primaryLang, RATE_RANGE } from "./readAloud";
 import {
   FONTS,
@@ -176,7 +177,6 @@ export function ReadAloudPlayer({
           className="read-aloud-play"
           aria-label={playing ? "Pause (R)" : "Read aloud (R)"}
           title={playing ? "Pause (R)" : "Read aloud (R)"}
-          disabled={noVoices}
           onClick={ra.toggle}
         >
           <Icon name={playing ? "pause" : "play"} size={22} filled={!playing} />
@@ -190,8 +190,10 @@ export function ReadAloudPlayer({
       </div>
       <p className="read-aloud-note" role="status">
         {ra.error ??
-          (noVoices
-            ? "No voices were found on this device. On Windows, voices are added in Settings › Time & language › Speech."
+          (noVoices && stopped
+            ? isApp
+              ? "No voices were listed yet. If nothing is heard, add voices in Windows Settings › Time & language › Speech."
+              : "Uses this device's own voice. Others can be chosen here once the device lists them."
             : playing
               ? "Reading. The pages turn as it goes."
               : ra.status === "paused"

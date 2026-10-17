@@ -378,6 +378,9 @@ impl Remote for Cloud {
     fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
         self.remote().list_sizes(folder)
     }
+    fn remove(&mut self, path: &str) -> Result<()> {
+        self.remote().remove(path)
+    }
 }
 
 /// Opens a folder or WebDAV library and makes sure it's one TBV can use.
@@ -483,9 +486,13 @@ pub trait Remote {
     fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
         Ok(self.list(folder)?.into_iter().map(|name| (name, None)).collect())
     }
+    /// Erases the file at `path`. Fine if it isn't there.
+    fn remove(&mut self, path: &str) -> Result<()>;
 }
 
 const PAGE: usize = 500;
+/// Cloud files of deleted books, waiting to be erased at the next sync.
+const ERASE: &str = "sync.erase";
 const BATCH: usize = 200;
 /// A file that wouldn't upload is tried again after this long.
 const RETRY_FILE_HOURS: i64 = 24;
@@ -1134,6 +1141,44 @@ impl Library {
         Ok(())
     }
 
+    /// Queues a deleted book's file and cover to be erased from the cloud.
+    pub(crate) fn erase_from_cloud(&self, book_id: &str) -> Result<()> {
+        let found: Option<(String, Option<String>)> = self
+            .conn
+            .query_row(
+                "SELECT b.format, lf.cover_path FROM books b LEFT JOIN local_files lf ON lf.book_id = b.id WHERE b.id = ?1",
+                params![book_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let Some((format, cover)) = found else { return Ok(()) };
+        let hex = book_id_hex(book_id);
+        let mut paths = self.files_to_erase()?;
+        paths.push(format!("books/{hex}.{format}"));
+        // The cover's name in the cloud follows the picture's own type.
+        match cover.as_deref().and_then(|c| Path::new(c).extension()) {
+            Some(extension) => paths.push(format!("covers/{hex}.{}", extension.to_string_lossy())),
+            None => paths.extend(["jpg", "png", "webp"].map(|e| format!("covers/{hex}.{e}"))),
+        }
+        paths.sort();
+        paths.dedup();
+        self.put_setting(ERASE, Some(&serde_json::to_string(&paths)?))
+    }
+
+    fn files_to_erase(&self) -> Result<Vec<String>> {
+        Ok(self.setting(ERASE)?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default())
+    }
+
+    /// Forgets erased files, so the same book imported again goes up afresh.
+    fn files_erased(&self, done: &[String]) -> Result<()> {
+        for path in done {
+            self.conn.execute("DELETE FROM sync_files WHERE path = ?1", params![path])?;
+        }
+        let left: Vec<String> = self.files_to_erase()?.into_iter().filter(|p| !done.contains(p)).collect();
+        let left = if left.is_empty() { None } else { Some(serde_json::to_string(&left)?) };
+        self.put_setting(ERASE, left.as_deref())
+    }
+
     /// Where a book's file is kept in the cloud, if this device knows the book.
     pub fn cloud_book_path(&self, book_id: &str) -> Result<Option<String>> {
         let format: Option<String> = self
@@ -1283,6 +1328,14 @@ fn run<'a>(lock: &dyn Fn() -> Result<std::sync::MutexGuard<'a, Library>>, remote
         remote.push(&fresh)?;
         lock()?.sync_mark_sent(&fresh)?;
         report.sent += fresh.len() as u32;
+    }
+
+    let to_erase = lock()?.files_to_erase()?;
+    if !to_erase.is_empty() {
+        for path in &to_erase {
+            remote.remove(path)?;
+        }
+        lock()?.files_erased(&to_erase)?;
     }
 
     let to_send = lock()?.files_to_send(&options)?;
