@@ -55,6 +55,8 @@ export interface BookPreview {
   inCloud: boolean;
   /** Its genres: your edit, else fetched online or from the file. */
   genres: string[];
+  /** Its language as a short code ("en"), when known. */
+  language?: string | null;
   /** An audiobook's length. */
   durationMs?: number | null;
   /** An audiobook's narrators. */
@@ -272,6 +274,10 @@ export interface LibraryQuery {
   tags?: string[];
   /** Books with any of these genres. */
   genres?: string[];
+  /** Books in any of these languages (codes, as `languages` lists them). */
+  languages?: string[];
+  /** Phone version only: books whose file can be downloaded here. */
+  downloadable?: boolean;
   /** Books by any of these authors. */
   authors?: string[];
   /** Audiobooks read by any of these narrators. */
@@ -304,6 +310,8 @@ export interface LibraryPage {
   tags: string[];
   /** Genres on books of this kind, A to Z. */
   genres: string[];
+  /** Languages books of this kind are in, as short codes, A to Z. */
+  languages: string[];
   /** For audiobooks: their authors and narrators, A to Z. */
   authors: string[];
   narrators: string[];

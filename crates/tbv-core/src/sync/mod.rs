@@ -1475,9 +1475,9 @@ impl Library {
     pub fn adopt_download(&mut self, book_id: &str, download: &Path, format: &str) -> Result<()> {
         let named = download.with_extension(format);
         fs::rename(download, &named)?;
-        let result = self.import_files(std::slice::from_ref(&named));
+        let result = self.import_download(&named);
         let _ = fs::remove_file(&named);
-        match result.into_iter().next() {
+        match Some(result) {
             Some(ImportResult::AlreadyInLibrary { book_id: got, .. } | ImportResult::Imported { book_id: got, .. }) if got == book_id => Ok(()),
             Some(ImportResult::Failed { reason, .. }) => Err(Error::Unsuitable(reason)),
             _ => Err(Error::Unsuitable("the downloaded file isn't the book that was asked for".into())),

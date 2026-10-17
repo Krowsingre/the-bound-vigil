@@ -356,6 +356,8 @@ pub(crate) fn migrate(conn: &mut Connection) -> Result<()> {
 /// SQLite's own `lower()` only folds A–Z, so "Émile" would never match "émile".
 /// `tbv_fold` lowercases with Rust's Unicode-aware rules instead.
 ///
+/// `tbv_language` turns a language as books spell it into a short code.
+///
 /// `tbv_sync_live` tells the sync triggers whether a change is this device's own.
 fn register_functions(conn: &Connection, sync_live: &Arc<AtomicBool>) -> Result<()> {
     use rusqlite::functions::FunctionFlags;
@@ -364,6 +366,12 @@ fn register_functions(conn: &Connection, sync_live: &Arc<AtomicBool>) -> Result<
         1,
         FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
         |ctx| Ok(ctx.get::<Option<String>>(0)?.map(|s| s.to_lowercase())),
+    )?;
+    conn.create_scalar_function(
+        "tbv_language",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| Ok(ctx.get::<Option<String>>(0)?.and_then(|s| crate::browse::language_code(&s))),
     )?;
     let live = sync_live.clone();
     conn.create_scalar_function("tbv_sync_live", 0, FunctionFlags::SQLITE_UTF8, move |_| {
@@ -411,7 +419,12 @@ impl Library {
     /// for book files; other files inside them are skipped without a report.
     pub fn import_files(&mut self, sources: &[PathBuf]) -> Vec<ImportResult> {
         let files = find_book_files(sources, &self.paths.books_dir);
-        files.iter().map(|source| self.import_one(source)).collect()
+        files.iter().map(|source| self.import_one(source, false)).collect()
+    }
+
+    /// Takes in a downloaded file for a book that was only in the cloud.
+    pub(crate) fn import_download(&mut self, file: &Path) -> ImportResult {
+        self.import_one(file, true)
     }
 
     /// Where TBV keeps its own copies, which `find_book_files` skips.
@@ -419,7 +432,7 @@ impl Library {
         &self.paths.books_dir
     }
 
-    fn import_one(&mut self, source: &Path) -> ImportResult {
+    fn import_one(&mut self, source: &Path, adopt: bool) -> ImportResult {
         let path = source.display().to_string();
         if !source.is_dir() && !extension_of(source).is_some_and(|ext| SUPPORTED_FORMATS.contains(&ext.as_str())) {
             return ImportResult::Unsupported { path };
@@ -428,7 +441,7 @@ impl Library {
             Ok(staged) => staged,
             Err(error) => return ImportResult::Failed { path, reason: error.to_string() },
         };
-        let result = book_id_for_file(&staged.file).and_then(|id| self.try_import(&staged.file, &staged.format, id));
+        let result = book_id_for_file(&staged.file).and_then(|id| self.try_import(&staged.file, &staged.format, id, adopt));
         staged.clean_up();
         match result {
             // Reported by the folder the person chose, not TBV's bundle of it.
@@ -440,8 +453,8 @@ impl Library {
         }
     }
 
-    fn try_import(&mut self, source: &Path, format: &str, book_id: BookId) -> Result<ImportResult> {
-        let plan = match self.import_plan(source, format, book_id)? {
+    fn try_import(&mut self, source: &Path, format: &str, book_id: BookId, adopt: bool) -> Result<ImportResult> {
+        let plan = match self.plan_import(source, format, book_id, adopt)? {
             ImportPlan::Finished(result) => return Ok(result),
             ImportPlan::Prepare(plan) => plan,
         };
@@ -451,10 +464,19 @@ impl Library {
 
     /// The quick first look at a hashed file: is there anything to do?
     pub fn import_plan(&self, source: &Path, format: &str, book_id: BookId) -> Result<ImportPlan> {
+        self.plan_import(source, format, book_id, false)
+    }
+
+    /// As `import_plan`. `adopt` takes the file in for a book only in the
+    /// cloud, as a download does; an import leaves that book where it is.
+    fn plan_import(&self, source: &Path, format: &str, book_id: BookId, adopt: bool) -> Result<ImportPlan> {
         let path = source.display().to_string();
         let known = self.title_of(&book_id)?;
         if let Some(title) = &known {
-            if self.has_local_file(&book_id)? {
+            // Checked against the whole library, books only in the cloud too.
+            // A book whose copy here went missing does take the file back.
+            let only_in_cloud = !self.had_local_file(&book_id)?;
+            if self.has_local_file(&book_id)? || (only_in_cloud && !adopt) {
                 return Ok(ImportPlan::Finished(ImportResult::AlreadyInLibrary { path, book_id, title: title.clone() }));
             }
         }
@@ -577,6 +599,13 @@ impl Library {
             .optional()?
             .flatten();
         Ok(cover.filter(|c| Path::new(c).exists()))
+    }
+
+    /// Whether this device has (or had, before it went missing) its own copy.
+    fn had_local_file(&self, book_id: &BookId) -> Result<bool> {
+        let path: Option<Option<String>> =
+            self.conn.query_row("SELECT path FROM local_files WHERE book_id = ?1", params![book_id], |r| r.get(0)).optional()?;
+        Ok(path.flatten().is_some())
     }
 
     fn has_local_file(&self, book_id: &BookId) -> Result<bool> {

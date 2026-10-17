@@ -332,8 +332,8 @@ impl Library {
             .query_map([], |r| {
                 Ok((
                     book_from_row(r)?,
-                    r.get::<_, Option<String>>(23)?,
-                    r.get::<_, i64>(24)?,
+                    r.get::<_, Option<String>>(24)?,
+                    r.get::<_, i64>(25)?,
                     r.get::<_, u32>(25)?,
                 ))
             })?

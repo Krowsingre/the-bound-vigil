@@ -1147,3 +1147,18 @@ fn sync_scale_never_holds_the_library_long() {
     });
     eprintln!("sent {} records, {} files; longest wait for the library: {longest:?}", report.sent, report.files_sent);
 }
+
+#[test]
+fn importing_a_book_only_in_the_cloud_leaves_it_there() {
+    let cloud = FakeRemote::default();
+    let (a, b) = (Device::new(), Device::new());
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("Dracula.epub");
+    write_test_epub(&file, "Dracula", "Bram Stoker", true);
+    let ImportResult::Imported { book_id, .. } = a.lib().import_files(std::slice::from_ref(&file)).remove(0) else { panic!() };
+    a.sync(&cloud);
+    b.sync(&cloud);
+
+    assert!(matches!(b.lib().import_files(&[file]).remove(0), ImportResult::AlreadyInLibrary { .. }));
+    assert_eq!(b.lib().book(&book_id).unwrap().unwrap().availability, Availability::Cloud, "not copied onto this device");
+}

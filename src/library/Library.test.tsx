@@ -8,6 +8,7 @@ const getLibrary = vi.fn<(q: LibraryQuery) => Promise<LibraryPage>>();
 const setFavorite = vi.fn(async () => {});
 vi.mock("../api", () => ({
   isApp: false,
+  isWeb: false,
   api: {
     kind: "app",
     getLibrary: (q: LibraryQuery) => getLibrary(q),
@@ -46,7 +47,7 @@ const book = (n: number, extra: Partial<BookPreview> = {}): BookPreview => ({
 });
 
 const counts = { all: 30, favorites: 1, wantToRead: 0, inProgress: 2, read: 3, unread: 25, collections: 0 };
-const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], authors: [], narrators: [], page: 0, layout: "grid" };
+const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], narrators: [], page: 0, layout: "grid" };
 
 function renderLibrary(props: Partial<React.ComponentProps<typeof Library>> = {}) {
   const onChange = vi.fn();
@@ -83,6 +84,7 @@ test("shows the shelf counts, the page of books and where it is in the list", as
     genres: [],
     authors: [],
     narrators: [],
+    languages: [],
   });
   renderLibrary();
   expect((await screen.findAllByText("Book 1")).length).toBeGreaterThan(0);
@@ -93,7 +95,7 @@ test("shows the shelf counts, the page of books and where it is in the list", as
 });
 
 test("choosing a shelf and a page reports the change", async () => {
-  getLibrary.mockResolvedValue({ books: [book(1)], total: 30, page: 0, pageSize: 24, counts, formats: ["epub"], tags: [], genres: [], authors: [], narrators: [] });
+  getLibrary.mockResolvedValue({ books: [book(1)], total: 30, page: 0, pageSize: 24, counts, formats: ["epub"], tags: [], genres: [], languages: [], authors: [], narrators: [] });
   const onChange = renderLibrary();
   await screen.findAllByText("Book 1");
   fireEvent.click(screen.getByRole("tab", { name: /Favourites/ }));
@@ -103,7 +105,7 @@ test("choosing a shelf and a page reports the change", async () => {
 });
 
 test("search with no results says so and offers a way back", async () => {
-  getLibrary.mockResolvedValue({ books: [], total: 0, page: 0, pageSize: 24, counts, formats: ["epub"], tags: [], genres: [], authors: [], narrators: [] });
+  getLibrary.mockResolvedValue({ books: [], total: 0, page: 0, pageSize: 24, counts, formats: ["epub"], tags: [], genres: [], languages: [], authors: [], narrators: [] });
   const onClearSearch = vi.fn();
   renderLibrary({ search: "zzz", onClearSearch });
   expect(await screen.findByText("Nothing matches")).toBeInTheDocument();
@@ -124,6 +126,7 @@ test("an empty library offers import instead of an empty grid", async () => {
     genres: [],
     authors: [],
     narrators: [],
+    languages: [],
   });
   renderLibrary();
   expect(await screen.findByText("No books yet")).toBeInTheDocument();
@@ -131,7 +134,7 @@ test("an empty library offers import instead of an empty grid", async () => {
 });
 
 test("the book menu can add a favourite", async () => {
-  getLibrary.mockResolvedValue({ books: [book(7)], total: 1, page: 0, pageSize: 24, counts, formats: ["epub"], tags: [], genres: [], authors: [], narrators: [] });
+  getLibrary.mockResolvedValue({ books: [book(7)], total: 1, page: 0, pageSize: 24, counts, formats: ["epub"], tags: [], genres: [], languages: [], authors: [], narrators: [] });
   renderLibrary();
   await screen.findAllByText("Book 7");
   fireEvent.click(screen.getByRole("button", { name: "More for Book 7" }));

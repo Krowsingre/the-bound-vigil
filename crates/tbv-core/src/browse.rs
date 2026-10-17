@@ -3,7 +3,7 @@
 use rusqlite::{params, params_from_iter, types::Value};
 
 use crate::error::{Error, Result};
-use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM, DOCUMENT_FORMATS, NARRATORS};
+use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM, DOCUMENT_FORMATS, LANGUAGE, NARRATORS};
 use crate::library::Library;
 use crate::model::*;
 
@@ -60,6 +60,40 @@ fn order_by(sort: SortOrder) -> String {
         SortOrder::Progress => format!("COALESCE(b.total_progression, 0) DESC, {title}"),
         SortOrder::Rating => format!("b.rating IS NULL, b.rating DESC, {title}"),
     }
+}
+
+/// A book's language as a short code ("en", "fr"), so "en-US", "en_GB",
+/// "eng" and "English" all count as one language. `None` when there's none.
+pub fn language_code(raw: &str) -> Option<String> {
+    let lower = raw.trim().to_lowercase();
+    let first = lower.split(['-', '_', ' ', ',', ';']).find(|p| !p.is_empty())?;
+    let code = match first {
+        "eng" | "english" => "en",
+        "fre" | "fra" | "french" | "français" | "francais" => "fr",
+        "ger" | "deu" | "german" | "deutsch" => "de",
+        "spa" | "spanish" | "español" | "espanol" => "es",
+        "ita" | "italian" | "italiano" => "it",
+        "por" | "portuguese" | "português" | "portugues" => "pt",
+        "dut" | "nld" | "dutch" | "nederlands" => "nl",
+        "rus" | "russian" => "ru",
+        "jpn" | "japanese" => "ja",
+        "chi" | "zho" | "chinese" => "zh",
+        "kor" | "korean" => "ko",
+        "ara" | "arabic" => "ar",
+        "pol" | "polish" | "polski" => "pl",
+        "swe" | "swedish" | "svenska" => "sv",
+        "dan" | "danish" | "dansk" => "da",
+        "nor" | "nob" | "norwegian" | "norsk" => "no",
+        "fin" | "finnish" | "suomi" => "fi",
+        "gre" | "ell" | "greek" => "el",
+        "tur" | "turkish" => "tr",
+        "heb" | "hebrew" => "he",
+        "hin" | "hindi" => "hi",
+        "lat" | "latin" => "la",
+        "und" | "unknown" | "mul" | "zxx" => return None,
+        other => other,
+    };
+    Some(code.to_string())
 }
 
 /// `%` and `_` typed by the user match themselves, not anything.
@@ -141,6 +175,13 @@ impl Library {
             values.extend(names.iter().map(|g| Value::Text(g.trim().to_lowercase())));
         }
 
+        if !query.languages.is_empty() {
+            let start = values.len() + 1;
+            let slots: Vec<String> = (0..query.languages.len()).map(|i| format!("?{}", start + i)).collect();
+            conditions.push(format!("tbv_language({LANGUAGE}) IN ({})", slots.join(", ")));
+            values.extend(query.languages.iter().map(|l| Value::Text(language_code(l).unwrap_or_default())));
+        }
+
         if let Some(kind) = query.kind {
             conditions.push(kind_condition(kind));
         }
@@ -186,6 +227,7 @@ impl Library {
             formats: self.formats_in_library(query.kind)?,
             tags: self.all_tags()?.into_iter().map(|t| t.name).collect(),
             genres: self.genres_in_library(query.kind)?,
+            languages: self.languages_in_library(query.kind)?,
             // Only audiobooks filter by author and narrator; other pages search instead.
             authors: if query.kind == Some(ItemKind::Audiobooks) { self.names_in_library(AUTHORS, query.kind)? } else { Vec::new() },
             narrators: if query.kind == Some(ItemKind::Audiobooks) { self.names_in_library(NARRATORS, query.kind)? } else { Vec::new() },
@@ -235,6 +277,16 @@ impl Library {
     /// Every genre on books of this kind, one spelling each, A to Z.
     pub fn genres_in_library(&self, kind: Option<ItemKind>) -> Result<Vec<String>> {
         self.names_in_library(GENRES, kind)
+    }
+
+    /// The languages books of this kind are in, as codes, A to Z.
+    pub fn languages_in_library(&self, kind: Option<ItemKind>) -> Result<Vec<String>> {
+        let only = kind.map(|k| format!(" AND {}", kind_condition(k))).unwrap_or_default();
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT DISTINCT tbv_language({LANGUAGE}) AS l {BOOK_FROM}{only} AND l IS NOT NULL ORDER BY l"
+        ))?;
+        let rows = statement.query_map([], |r| r.get(0))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
     /// Every name in a list column (genres, authors, narrators) on books of
@@ -543,6 +595,44 @@ mod tests {
         assert_eq!(seen.len(), 7);
         let past = page_of(9);
         assert_eq!((past.page, past.total, past.books.len()), (2, 7, 1));
+    }
+}
+
+#[cfg(test)]
+mod languages {
+    use super::*;
+    use crate::details::DetailChange;
+    use crate::epub::tests::write_test_epub;
+    use crate::library::tests::open_temp_library;
+
+    #[test]
+    fn spellings_of_one_language_count_as_one() {
+        for (raw, code) in [("en-US", Some("en")), ("eng", Some("en")), ("English", Some("en")), ("fr_CA", Some("fr")), ("und", None), ("  ", None)] {
+            assert_eq!(language_code(raw).as_deref(), code, "{raw}");
+        }
+    }
+
+    #[test]
+    fn the_library_filters_by_language() {
+        let (dir, mut library) = open_temp_library();
+        let mut ids = Vec::new();
+        for title in ["Dracula", "Germinal", "Nana"] {
+            let path = dir.path().join(format!("{title}.epub"));
+            write_test_epub(&path, title, "Someone", false);
+            let ImportResult::Imported { book_id, .. } = library.import_files(&[path]).remove(0) else { panic!() };
+            ids.push(book_id);
+        }
+        // The test books say "en"; two are changed to French, spelt two ways.
+        library.edit_details(&ids[1..2], &[DetailChange { field: "language".into(), value: Some("fre".into()) }]).unwrap();
+        library.edit_details(&ids[2..3], &[DetailChange { field: "language".into(), value: Some("fr-FR".into()) }]).unwrap();
+
+        let page = |languages: &[&str]| {
+            library.library_page(&LibraryQuery { languages: languages.iter().map(|l| l.to_string()).collect(), ..Default::default() }).unwrap()
+        };
+        assert_eq!(page(&[]).languages, ["en", "fr"]);
+        assert_eq!(page(&["fr"]).total, 2);
+        assert_eq!(page(&["en"]).total, 1);
+        assert_eq!(page(&["en", "fr"]).total, 3);
     }
 }
 

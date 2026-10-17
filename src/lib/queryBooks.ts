@@ -31,6 +31,8 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     if (q.location === "on_device" && b.availability === "cloud") return false;
     if (q.location === "cloud_only" && b.availability !== "cloud") return false;
     if (q.tags?.length && !b.tags.some((t) => q.tags!.some((w) => w.toLowerCase() === t.toLowerCase()))) return false;
+    if (q.languages?.length && !q.languages.includes(b.language ?? "")) return false;
+    if (q.downloadable && !b.inCloud) return false;
     if (!hasAny(b.genres, q.genres) || !hasAny(b.authors, q.authors) || !hasAny(b.narrators, q.narrators)) return false;
     if (search && ![b.title, ...b.authors, b.series ?? ""].some((t) => t.toLowerCase().includes(search))) return false;
     return true;
@@ -70,6 +72,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     formats: [...new Set(all.map((b) => b.format))].sort(),
     tags: tagCounts(everything).map((t) => t.name),
     genres: namesIn(all, (b) => b.genres ?? []),
+    languages: [...new Set(all.flatMap((b) => (b.language ? [b.language] : [])))].sort(),
     authors: q.kind === "audiobooks" ? namesIn(all, (b) => b.authors) : [],
     narrators: q.kind === "audiobooks" ? namesIn(all, (b) => b.narrators ?? []) : [],
   };

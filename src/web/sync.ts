@@ -17,6 +17,7 @@ const DEVICE = "sync.device_id";
 const LAST_SUCCESS = "sync.last_success_at";
 const LAST_ERROR = "sync.last_error";
 const COVERS = "sync.covers";
+const BOOK_FILES = "sync.book_files";
 /** Pictures chosen here that the cloud doesn't have yet, by name. */
 const PICTURES_TO_SEND = "sync.pictures_to_send";
 
@@ -36,6 +37,8 @@ export class WebSync {
   private readonly statusListeners = new Set<(s: SyncStatus) => void>();
   /** Covers in the cloud, by book id without its "sha256:" (file name, e.g. "ab12….jpg"). */
   covers = new Map<string, string>();
+  /** Books whose file is in the cloud, so this phone can download them, by id without "sha256:". */
+  bookFiles = new Set<string>();
   /** Covers ready to show, as page addresses. */
   readonly coverUrls = new Map<string, string>();
   /** Collections' own pictures (`picture:<name>`), by name. */
@@ -50,6 +53,11 @@ export class WebSync {
       for (const [hex, name] of Object.entries(JSON.parse(db.meta.get(COVERS) ?? "{}") as Record<string, string>)) this.covers.set(hex, name);
     } catch {
       /* fetched again on the next sync */
+    }
+    try {
+      this.bookFiles = new Set(JSON.parse(db.meta.get(BOOK_FILES) ?? "[]") as string[]);
+    } catch {
+      /* listed again on the next sync */
     }
   }
 
@@ -169,6 +177,7 @@ export class WebSync {
         if (batch.length < BATCH && !this.library.waiting()) break;
       }
       await this.sendPictures(cloud);
+      await this.listBookFiles(cloud);
       await this.fetchCovers(cloud);
       await this.db.setMeta(LAST_SUCCESS, new Date().toISOString());
       await this.db.setMeta(LAST_ERROR, null);
@@ -226,6 +235,16 @@ export class WebSync {
       if (file) await cloud.upload(`pictures/${name}`, file);
       await this.db.setMeta(PICTURES_TO_SEND, JSON.stringify(this.picturesToSend().filter((n) => n !== name)));
     }
+  }
+
+  /** Which books' files the cloud holds: only those can be downloaded here. */
+  private async listBookFiles(cloud: Supabase): Promise<void> {
+    const names = await cloud.list("books");
+    const files = new Set(names.map((n) => n.split(".")[0]));
+    const changed = files.size !== this.bookFiles.size || [...files].some((h) => !this.bookFiles.has(h));
+    this.bookFiles = files;
+    await this.db.setMeta(BOOK_FILES, JSON.stringify([...files]));
+    if (changed) this.library.changed();
   }
 
   private async fetchCovers(cloud: Supabase): Promise<void> {

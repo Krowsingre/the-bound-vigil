@@ -40,6 +40,7 @@ import { moveStub } from "../api/moveStub";
 import { serverStub } from "../api/serverStub";
 import { projectFromLink } from "./link";
 import { NO_IMPORTS } from "../imports/view";
+import { languageCode } from "../lib/language";
 
 type Row = { [column: string]: unknown };
 
@@ -189,8 +190,9 @@ export async function webApi(): Promise<Api> {
       rating: b.rating ?? null,
       finishedAt: b.finished_at ?? null,
       tags: tagsOf(b.id),
-      // Books open from the cloud here, so every one is there.
-      inCloud: true,
+      // Only books whose file is in the cloud (or already here) can be opened on the phone.
+      inCloud: sync.bookFiles.has(hex) || downloaded.has(hex),
+      language: languageCode(o("language", b.language)),
       genres: listOf(edits?.get("genres") ?? null),
       durationMs: audioRow(b.id)?.duration_ms ?? null,
       narrators: listOf(edits?.get("narrators") ?? audioRow(b.id)?.narrators ?? null),

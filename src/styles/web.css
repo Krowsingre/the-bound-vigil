@@ -280,3 +280,14 @@
     overflow-y: auto;
   }
 }
+
+/* Full library / Available to download, above the shelves. */
+.segmented.library-reach {
+  max-width: 420px;
+  margin: 4px 0 14px;
+}
+
+.segmented.library-reach button {
+  height: 34px;
+  font-size: 13px;
+}

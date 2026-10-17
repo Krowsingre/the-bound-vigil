@@ -126,6 +126,9 @@ pub struct BookPreview {
     /// An audiobook's narrators.
     #[serde(default)]
     pub narrators: Vec<String>,
+    /// Its language as a short code ("en"), when known.
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -274,6 +277,9 @@ pub struct LibraryQuery {
     /// Books with any of these genres. Empty means any.
     #[serde(default)]
     pub genres: Vec<String>,
+    /// Books in any of these languages (codes, as `languages` lists them). Empty means any.
+    #[serde(default)]
+    pub languages: Vec<String>,
     /// Books by any of these authors. Empty means any.
     #[serde(default)]
     pub authors: Vec<String>,
@@ -316,6 +322,8 @@ pub struct LibraryPage {
     pub tags: Vec<String>,
     /// Genres on the books of this kind, A to Z, for the filter menu.
     pub genres: Vec<String>,
+    /// Languages the books of this kind are in, as short codes ("en"), A to Z.
+    pub languages: Vec<String>,
     /// For audiobooks: their authors and narrators, A to Z, for the filter menus.
     pub authors: Vec<String>,
     pub narrators: Vec<String>,
