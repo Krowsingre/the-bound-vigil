@@ -1,0 +1,60 @@
+/* Approved palette: Crow Ink, Ash Pale, Weathered Iron, Ink Bloom. */
+:root {
+  --crow-ink: #1a1c1e;
+  --crow-ink-deep: #121416;
+  --crow-ink-soft: #23272b;
+  --ash-pale: #e6e3de;
+  --ash-pale-soft: #f1efeb;
+  --ash-pale-dim: #d5d1ca;
+  --weathered-iron: #5e6368;
+  --ink-bloom: #2f3a44;
+
+  /* Light (default) */
+  --bg: var(--ash-pale-soft);
+  --surface: #faf9f6;
+  --surface-sunk: var(--ash-pale);
+  --sidebar-bg: var(--crow-ink);
+  --sidebar-text: var(--ash-pale);
+  --sidebar-muted: #9a9ea3;
+  --sidebar-hover: var(--crow-ink-soft);
+  --text: var(--crow-ink);
+  --text-muted: var(--weathered-iron);
+  --border: var(--ash-pale-dim);
+  --accent: var(--ink-bloom);
+  --accent-text: var(--ash-pale-soft);
+  --focus: #6b8aa6;
+  --danger: #8c3b3b;
+  --shadow: 0 1px 2px rgb(18 20 22 / 0.08), 0 4px 16px rgb(18 20 22 / 0.06);
+
+  /* Georgia where installed (Windows, macOS); Gelasio, a bundled look-alike with the same
+     letter widths, everywhere else, so spacing never depends on the machine. */
+  --font-serif: Georgia, "Gelasio", serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --radius-s: 6px;
+  --radius-m: 10px;
+  --radius-l: 14px;
+  --sidebar-w: 232px;
+  --sidebar-rail: 64px;
+  --header-h: 56px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: var(--crow-ink);
+    --surface: var(--crow-ink-soft);
+    --surface-sunk: var(--crow-ink-deep);
+    --sidebar-bg: var(--crow-ink-deep);
+    --sidebar-hover: var(--crow-ink-soft);
+    --text: var(--ash-pale);
+    --text-muted: #9a9ea3;
+    --border: #33383d;
+    --accent: #8fa3b5;
+    --accent-text: var(--crow-ink-deep);
+    --danger: #d08a8a;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+    color-scheme: dark;
+  }
+}

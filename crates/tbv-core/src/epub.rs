@@ -1,0 +1,376 @@
+//! Reads the metadata and cover from an EPUB without modifying it.
+
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
+
+use quick_xml::events::{BytesStart, Event};
+use quick_xml::Reader;
+use zip::ZipArchive;
+
+use crate::error::{Error, Result};
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct BookMetadata {
+    pub title: Option<String>,
+    pub authors: Vec<String>,
+    pub synopsis: Option<String>,
+    pub publisher: Option<String>,
+    pub language: Option<String>,
+    pub cover: Option<Cover>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Cover {
+    pub bytes: Vec<u8>,
+    /// Lowercase extension without the dot, e.g. `jpg`.
+    pub extension: String,
+}
+
+struct ManifestItem {
+    id: String,
+    href: String,
+    media_type: String,
+    properties: String,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Field {
+    Title,
+    Creator,
+    Description,
+    Publisher,
+    Language,
+}
+
+pub fn read_epub_metadata(path: &Path) -> Result<BookMetadata> {
+    let mut archive =
+        ZipArchive::new(File::open(path)?).map_err(|e| Error::BadBook(e.to_string()))?;
+
+    let container = read_entry(&mut archive, "META-INF/container.xml")?;
+    let opf_path = find_rootfile(&container)
+        .ok_or_else(|| Error::BadBook("the EPUB has no package file".into()))?;
+    let opf = read_entry(&mut archive, &opf_path)?;
+
+    let mut metadata = BookMetadata::default();
+    let mut manifest: Vec<ManifestItem> = Vec::new();
+    let mut cover_id: Option<String> = None;
+
+    let mut reader = Reader::from_reader(opf.as_slice());
+    reader.config_mut().trim_text(true);
+    let mut buf = Vec::new();
+    let mut capturing: Option<(Field, String)> = None;
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => {
+                if let Some(field) = metadata_field(&e) {
+                    capturing = Some((field, String::new()));
+                } else {
+                    collect_opf_element(&e, &mut manifest, &mut cover_id);
+                }
+            }
+            Ok(Event::Empty(e)) => collect_opf_element(&e, &mut manifest, &mut cover_id),
+            Ok(Event::Text(t)) => {
+                if let Some((_, text)) = capturing.as_mut() {
+                    if let Ok(value) = t.unescape() {
+                        text.push_str(&value);
+                    }
+                }
+            }
+            Ok(Event::CData(t)) => {
+                if let Some((_, text)) = capturing.as_mut() {
+                    text.push_str(&String::from_utf8_lossy(&t));
+                }
+            }
+            Ok(Event::End(_)) => {
+                if let Some((field, text)) = capturing.take() {
+                    store_field(&mut metadata, field, text);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(Error::BadBook(format!("unreadable package file: {e}"))),
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    if let Some(href) = find_cover_href(&manifest, cover_id.as_deref()) {
+        let entry = join_archive_path(&opf_path, &href);
+        if let Ok(bytes) = read_entry(&mut archive, &entry) {
+            let extension = image_extension(&entry);
+            metadata.cover = Some(Cover { bytes, extension });
+        }
+    }
+
+    Ok(metadata)
+}
+
+fn read_entry(archive: &mut ZipArchive<File>, name: &str) -> Result<Vec<u8>> {
+    let mut entry = archive
+        .by_name(name)
+        .map_err(|_| Error::BadBook(format!("missing {name}")))?;
+    let mut bytes = Vec::with_capacity(entry.size() as usize);
+    entry.read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+fn find_rootfile(container: &[u8]) -> Option<String> {
+    let mut reader = Reader::from_reader(container);
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.local_name().as_ref() == b"rootfile" => {
+                return attribute(&e, b"full-path");
+            }
+            Ok(Event::Eof) | Err(_) => return None,
+            _ => {}
+        }
+        buf.clear();
+    }
+}
+
+fn metadata_field(e: &BytesStart) -> Option<Field> {
+    match e.local_name().as_ref() {
+        b"title" => Some(Field::Title),
+        b"creator" => Some(Field::Creator),
+        b"description" => Some(Field::Description),
+        b"publisher" => Some(Field::Publisher),
+        b"language" => Some(Field::Language),
+        _ => None,
+    }
+}
+
+fn collect_opf_element(
+    e: &BytesStart,
+    manifest: &mut Vec<ManifestItem>,
+    cover_id: &mut Option<String>,
+) {
+    match e.local_name().as_ref() {
+        b"item" => {
+            if let (Some(id), Some(href)) = (attribute(e, b"id"), attribute(e, b"href")) {
+                manifest.push(ManifestItem {
+                    id,
+                    href,
+                    media_type: attribute(e, b"media-type").unwrap_or_default(),
+                    properties: attribute(e, b"properties").unwrap_or_default(),
+                });
+            }
+        }
+        b"meta" if attribute(e, b"name").is_some_and(|n| n.eq_ignore_ascii_case("cover")) => {
+            *cover_id = attribute(e, b"content");
+        }
+        _ => {}
+    }
+}
+
+fn store_field(metadata: &mut BookMetadata, field: Field, raw: String) {
+    let text = match field {
+        Field::Description => strip_html(&raw),
+        _ => collapse_whitespace(&raw),
+    };
+    if text.is_empty() {
+        return;
+    }
+    match field {
+        Field::Title if metadata.title.is_none() => metadata.title = Some(text),
+        Field::Creator => metadata.authors.push(text),
+        Field::Description if metadata.synopsis.is_none() => metadata.synopsis = Some(text),
+        Field::Publisher if metadata.publisher.is_none() => metadata.publisher = Some(text),
+        Field::Language if metadata.language.is_none() => metadata.language = Some(text),
+        _ => {}
+    }
+}
+
+fn find_cover_href(manifest: &[ManifestItem], cover_id: Option<&str>) -> Option<String> {
+    // EPUB 3 marks the cover image directly.
+    if let Some(item) = manifest
+        .iter()
+        .find(|i| i.properties.split_whitespace().any(|p| p == "cover-image"))
+    {
+        return Some(item.href.clone());
+    }
+    // EPUB 2 points at it from <meta name="cover" content="id">.
+    if let Some(id) = cover_id {
+        if let Some(item) = manifest.iter().find(|i| i.id == id) {
+            return Some(item.href.clone());
+        }
+    }
+    // Last resort: an image whose id or file name says "cover".
+    manifest
+        .iter()
+        .find(|i| {
+            i.media_type.starts_with("image/")
+                && (i.id.to_ascii_lowercase().contains("cover")
+                    || i.href.to_ascii_lowercase().contains("cover"))
+        })
+        .map(|i| i.href.clone())
+}
+
+fn attribute(e: &BytesStart, name: &[u8]) -> Option<String> {
+    e.attributes()
+        .flatten()
+        .find(|a| a.key.local_name().as_ref() == name)
+        .and_then(|a| a.unescape_value().ok())
+        .map(|v| v.trim().to_string())
+}
+
+/// Resolves a manifest href against the package file's folder inside the zip.
+fn join_archive_path(opf_path: &str, href: &str) -> String {
+    let href = percent_decode(href.split('#').next().unwrap_or(href));
+    let mut parts: Vec<&str> = match opf_path.rfind('/') {
+        Some(i) => opf_path[..i].split('/').collect(),
+        None => Vec::new(),
+    };
+    for segment in href.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            other => parts.push(other),
+        }
+    }
+    parts.join("/")
+}
+
+fn percent_decode(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let digits = std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or("");
+            if let Ok(byte) = u8::from_str_radix(digits, 16) {
+                out.push(byte);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn image_extension(entry: &str) -> String {
+    let ext = entry.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    match ext.as_str() {
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "svg" => ext,
+        _ => "jpg".into(),
+    }
+}
+
+fn collapse_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Descriptions are often HTML; keep the words, drop the markup.
+fn strip_html(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut in_tag = false;
+    for ch in value.chars() {
+        match ch {
+            '<' => {
+                in_tag = true;
+                out.push(' ');
+            }
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(ch),
+            _ => {}
+        }
+    }
+    let text = out
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">");
+    collapse_whitespace(&text)
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+
+    /// Builds a small but valid EPUB for tests.
+    pub fn write_test_epub(path: &Path, title: &str, author: &str, with_cover: bool) {
+        let file = File::create(path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let stored =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        zip.start_file("mimetype", stored).unwrap();
+        zip.write_all(b"application/epub+zip").unwrap();
+        zip.start_file("META-INF/container.xml", stored).unwrap();
+        zip.write_all(br#"<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>"#).unwrap();
+        let cover_item = if with_cover {
+            r#"<item id="cover" href="images/cover%20art.png" media-type="image/png" properties="cover-image"/>"#
+        } else {
+            ""
+        };
+        let opf = format!(
+            r#"<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>{title}</dc:title><dc:creator>{author}</dc:creator><dc:description>&lt;p&gt;A tale of &lt;i&gt;night&lt;/i&gt; &amp;amp; watchfulness.&lt;/p&gt;</dc:description><dc:language>en</dc:language></metadata><manifest><item id="c1" href="text/ch1.xhtml" media-type="application/xhtml+xml"/>{cover_item}</manifest><spine><itemref idref="c1"/></spine></package>"#
+        );
+        zip.start_file("OEBPS/content.opf", stored).unwrap();
+        zip.write_all(opf.as_bytes()).unwrap();
+        zip.start_file("OEBPS/text/ch1.xhtml", stored).unwrap();
+        zip.write_all(b"<html><body><p>Hello</p></body></html>")
+            .unwrap();
+        if with_cover {
+            zip.start_file("OEBPS/images/cover art.png", stored)
+                .unwrap();
+            zip.write_all(b"\x89PNG fake cover").unwrap();
+        }
+        zip.finish().unwrap();
+    }
+
+    #[test]
+    fn reads_title_author_synopsis_and_epub3_cover() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("book.epub");
+        write_test_epub(&path, "Dracula", "Bram Stoker", true);
+
+        let metadata = read_epub_metadata(&path).unwrap();
+        assert_eq!(metadata.title.as_deref(), Some("Dracula"));
+        assert_eq!(metadata.authors, vec!["Bram Stoker".to_string()]);
+        assert_eq!(
+            metadata.synopsis.as_deref(),
+            Some("A tale of night & watchfulness.")
+        );
+        assert_eq!(metadata.language.as_deref(), Some("en"));
+        let cover = metadata.cover.unwrap();
+        assert_eq!(cover.extension, "png");
+        assert_eq!(cover.bytes, b"\x89PNG fake cover");
+    }
+
+    #[test]
+    fn missing_cover_is_fine() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("book.epub");
+        write_test_epub(&path, "Carmilla", "J. Sheridan Le Fanu", false);
+        assert!(read_epub_metadata(&path).unwrap().cover.is_none());
+    }
+
+    #[test]
+    fn not_a_zip_is_a_bad_book() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("broken.epub");
+        std::fs::write(&path, b"not a zip").unwrap();
+        assert!(matches!(read_epub_metadata(&path), Err(Error::BadBook(_))));
+    }
+
+    #[test]
+    fn joins_relative_paths() {
+        assert_eq!(
+            join_archive_path("OEBPS/content.opf", "../images/c.jpg"),
+            "images/c.jpg"
+        );
+        assert_eq!(
+            join_archive_path("content.opf", "img/c%20d.jpg"),
+            "img/c d.jpg"
+        );
+    }
+}
