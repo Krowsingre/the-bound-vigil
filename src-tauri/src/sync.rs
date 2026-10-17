@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tbv_core::model::{SyncState, SyncStatus};
 use tbv_core::sync::supabase;
-use tbv_core::sync::{self as core_sync, Cloud, Frequency, Provider};
+use tbv_core::sync::{self as core_sync, Cloud, Frequency, Provider, Session};
 use tbv_core::{Error, Library};
 
 enum Wake {
@@ -98,13 +98,46 @@ fn has_changes(library: &Mutex<Library>) -> bool {
 }
 
 /// Saves a renewed Supabase sign-in, or forgets one that was withdrawn.
+/// A connection only forgets the sign-in it was using, never a newer one.
 pub fn keep_session(library: &Library, cloud: &Cloud, outcome: &tbv_core::Result<impl Sized>) {
     let Cloud::Supabase(client) = cloud else { return };
+    let saved = library.sync_session().ok().flatten();
+    let still_mine = saved.as_ref().is_some_and(|s| s.refresh_token == client.session().refresh_token);
     if matches!(outcome, Err(Error::SignedOut)) {
-        let _ = library.set_sync_session(None);
-    } else if client.renewed() {
+        if still_mine {
+            let _ = library.set_sync_session(None);
+        }
+    } else if client.renewed() && (still_mine || saved.as_ref().is_some_and(|s| s.user_id == client.session().user_id)) {
         let _ = library.set_sync_session(Some(client.session()));
     }
+}
+
+/// Saves a renewed sign-in the moment it arrives, so quitting mid-sync
+/// (or a second connection) never leaves an already-used one saved.
+struct LibraryKeeper(Arc<Mutex<Library>>);
+
+impl supabase::SessionKeeper for LibraryKeeper {
+    fn latest(&self) -> Option<Session> {
+        self.0.lock().ok()?.sync_session().ok().flatten()
+    }
+
+    fn save(&self, session: &Session) {
+        if let Ok(library) = self.0.lock() {
+            // Not if the person signed out (or in as someone else) meanwhile.
+            if library.sync_session().ok().flatten().is_some_and(|s| s.user_id == session.user_id) {
+                let _ = library.set_sync_session(Some(session));
+            }
+        }
+    }
+}
+
+/// The chosen service's connection, with a Supabase sign-in kept up to date.
+fn connect(library: &Arc<Mutex<Library>>, l: &Library) -> tbv_core::Result<Option<Cloud>> {
+    let mut cloud = l.connect()?;
+    if let Some(Cloud::Supabase(client)) = &mut cloud {
+        client.keep_session_with(Arc::new(LibraryKeeper(library.clone())));
+    }
+    Ok(cloud)
 }
 
 pub fn status(library: &Library, busy: bool) -> SyncStatus {
@@ -135,7 +168,7 @@ fn run(app: &AppHandle, library: &Arc<Mutex<Library>>, busy: &AtomicBool) {
         let device = l.device_id()?;
         let epoch = l.sync_epoch();
         Ok(match provider {
-            Provider::Supabase | Provider::Off => l.connect()?.map(|c| (c, epoch)),
+            Provider::Supabase | Provider::Off => connect(library, &l)?.map(|c| (c, epoch)),
             other => {
                 drop(l);
                 Some((Cloud::Files(core_sync::open_files(&other, device)?.0), epoch))
@@ -225,8 +258,11 @@ pub fn choose(library: &Mutex<Library>, provider: Provider) -> tbv_core::Result<
 }
 
 /// Fetches a book that's only in the cloud. Errors say what to do.
-pub fn download(library: &Mutex<Library>, book_id: &str) -> tbv_core::Result<()> {
-    let client = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?.connect()?;
+pub fn download(library: &Arc<Mutex<Library>>, book_id: &str) -> tbv_core::Result<()> {
+    let client = {
+        let l = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?;
+        connect(library, &l)?
+    };
     let Some(mut client) = client else {
         return Err(Error::Unsuitable(
             "This book's file is on another device. Set up sync (Settings › Sync) to download it here.".into(),

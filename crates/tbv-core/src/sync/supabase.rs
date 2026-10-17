@@ -5,6 +5,7 @@
 use std::fs::File;
 use std::io;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -161,17 +162,33 @@ pub fn sign_out(project: &SupabaseProject, session: &Session) {
 type Request<'a> = dyn Fn(&Agent, &str, &str) -> std::result::Result<Response<Body>, ureq::Error> + 'a;
 
 /// A signed-in connection to one project.
+/// Where the sign-in is saved. Supabase hands out a new renewal token each
+/// time one is used and refuses the old one, so every connection reads the
+/// newest sign-in before renewing and saves a renewed one straight away.
+pub trait SessionKeeper: Send + Sync {
+    fn latest(&self) -> Option<Session>;
+    fn save(&self, session: &Session);
+}
+
+/// One renewal at a time across every connection in the app.
+static RENEWING: Mutex<()> = Mutex::new(());
+
 pub struct Supabase {
     project: SupabaseProject,
     session: Session,
     device_id: String,
     agent: Agent,
     renewed: bool,
+    keeper: Option<Arc<dyn SessionKeeper>>,
 }
 
 impl Supabase {
     pub fn new(project: SupabaseProject, session: Session, device_id: String) -> Self {
-        Self { project, session, device_id, agent: agent(), renewed: false }
+        Self { project, session, device_id, agent: agent(), renewed: false, keeper: None }
+    }
+
+    pub fn keep_session_with(&mut self, keeper: Arc<dyn SessionKeeper>) {
+        self.keeper = Some(keeper);
     }
 
     /// The sign-in, renewed if it ran out during this connection.
@@ -185,6 +202,17 @@ impl Supabase {
     }
 
     fn renew(&mut self) -> Result<()> {
+        let _one = RENEWING.lock().unwrap_or_else(|e| e.into_inner());
+        // Another connection may have renewed already; its sign-in is the one
+        // Supabase still accepts.
+        if let Some(latest) = self.keeper.as_ref().and_then(|k| k.latest()) {
+            if latest.user_id == self.session.user_id && latest.refresh_token != self.session.refresh_token {
+                self.session = latest;
+                if self.session.expires_at - 60 > now_secs() {
+                    return Ok(());
+                }
+            }
+        }
         let mut answer = auth_post(&self.project, "token?grant_type=refresh_token", json!({ "refresh_token": self.session.refresh_token }))?;
         if !answer.status().is_success() {
             let status = answer.status().as_u16();
@@ -193,6 +221,9 @@ impl Supabase {
         let token: TokenAnswer = answer.body_mut().read_json().map_err(|e| Error::Cloud(e.to_string()))?;
         self.session = token.session(&self.session.email);
         self.renewed = true;
+        if let Some(keeper) = &self.keeper {
+            keeper.save(&self.session);
+        }
         Ok(())
     }
 
