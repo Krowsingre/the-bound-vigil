@@ -63,7 +63,18 @@ const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 
 /** The reading screen. It replaces the sidebar and header while a book is open. */
-export function Reader({ bookId, shell, onClose }: { bookId: string; shell: ReaderShellProps; onClose: () => void }) {
+export function Reader({
+  bookId,
+  openAt,
+  shell,
+  onClose,
+}: {
+  bookId: string;
+  /** A place to go to once the book is open (a highlight from Notes). */
+  openAt?: string;
+  shell: ReaderShellProps;
+  onClose: () => void;
+}) {
   const toast = useToast();
   const [info, setInfo] = useState<ReaderBook | null>(null);
   const [file, setFile] = useState<Blob | null>(null);
@@ -196,6 +207,15 @@ export function Reader({ bookId, shell, onClose }: { bookId: string; shell: Read
     },
     [remember, engine],
   );
+  // Opening at a highlight still remembers where you were reading, so
+  // "Return to previous location" takes you back there.
+  const openedAt = useRef(false);
+  useEffect(() => {
+    if (!openAt || openedAt.current || !engine.ready || !r?.cfi) return;
+    openedAt.current = true;
+    jumpTo(openAt);
+  }, [openAt, engine.ready, r, jumpTo]);
+
   const goBack = () => {
     const last = jumps.at(-1);
     if (!last) return;

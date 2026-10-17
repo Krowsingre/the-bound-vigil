@@ -239,3 +239,47 @@ export interface CollectionInput {
   badge?: string | null;
   pinned: boolean;
 }
+
+export type NoteKind = "highlight" | "annotation" | "book_note" | "personal";
+
+export interface NoteItem {
+  id: string;
+  kind: NoteKind;
+  /** The book it belongs to. Personal notes have none. */
+  book: CoverRef | null;
+  /** The highlighted words. */
+  excerpt: string;
+  /** What you wrote. */
+  note: string | null;
+  /** A personal note's title. */
+  title: string | null;
+  color: HighlightColor | null;
+  locator: ReaderLocator | null;
+  createdAt: IsoUtc;
+  updatedAt: IsoUtc;
+}
+
+export type NotesTab = "all" | "highlights" | "annotations" | "book_notes" | "personal";
+export type NotesSort = "recent" | "updated" | "book";
+
+export interface NotesQuery {
+  tab: NotesTab;
+  sort: NotesSort;
+  search: string | null;
+  bookId: BookId | null;
+  colors: HighlightColor[];
+}
+
+export interface NoteCounts {
+  all: number;
+  highlights: number;
+  annotations: number;
+  bookNotes: number;
+  personal: number;
+}
+
+export interface NotesPage {
+  notes: NoteItem[];
+  counts: NoteCounts;
+  books: CoverRef[];
+}

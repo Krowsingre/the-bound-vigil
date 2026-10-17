@@ -9,6 +9,7 @@ pub mod home;
 pub mod ids;
 pub mod library;
 pub mod model;
+pub mod notes;
 pub mod profile;
 pub mod reader;
 pub mod time;

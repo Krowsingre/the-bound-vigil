@@ -509,3 +509,92 @@ pub struct CollectionInput {
     #[serde(default)]
     pub pinned: bool,
 }
+
+/// The kinds of note on the Notes page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NoteKind {
+    /// Highlighted words with nothing written.
+    Highlight,
+    /// Highlighted words with your own words attached.
+    Annotation,
+    /// Your words about a whole book.
+    BookNote,
+    /// Your words, belonging to no book.
+    Personal,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteItem {
+    pub id: String,
+    pub kind: NoteKind,
+    /// The book it belongs to. Personal notes have none.
+    pub book: Option<CoverRef>,
+    /// The highlighted words.
+    pub excerpt: String,
+    /// What you wrote.
+    pub note: Option<String>,
+    /// A personal note's title.
+    pub title: Option<String>,
+    pub color: Option<String>,
+    /// Where in the book, for highlights and annotations.
+    pub locator: Option<ReaderLocator>,
+    pub created_at: IsoUtc,
+    pub updated_at: IsoUtc,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotesTab {
+    #[default]
+    All,
+    Highlights,
+    Annotations,
+    BookNotes,
+    Personal,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotesSort {
+    /// Newest first.
+    #[default]
+    Recent,
+    /// Most recently changed first.
+    Updated,
+    /// By book title, then in reading order.
+    Book,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NotesQuery {
+    pub tab: NotesTab,
+    pub sort: NotesSort,
+    /// Matches the words, your notes, titles, and the book's title or author.
+    pub search: Option<String>,
+    pub book_id: Option<BookId>,
+    /// Highlight colours to keep. Empty keeps every colour.
+    pub colors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteCounts {
+    pub all: u32,
+    pub highlights: u32,
+    pub annotations: u32,
+    pub book_notes: u32,
+    pub personal: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotesPage {
+    pub notes: Vec<NoteItem>,
+    /// Across all notes, whatever the tab, search and filters.
+    pub counts: NoteCounts,
+    /// Books that have notes, for filtering by book.
+    pub books: Vec<CoverRef>,
+}

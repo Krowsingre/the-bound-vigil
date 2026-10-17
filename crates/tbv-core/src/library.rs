@@ -155,6 +155,20 @@ const MIGRATIONS: &[&str] = &[
     INSERT OR IGNORE INTO collections (id, name, created_at, updated_at, kind, badge, picture, pinned, position) VALUES
         ('shelf:want_to_read', 'Up next', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'bookmark', 'gallery:forest', 1, 1);
     "#,
+    // v5: the Notes page. Book notes (about a whole book) live with the
+    // other annotations as kind 'book_note'. Personal notes belong to no
+    // book, so they get their own table.
+    r#"
+    CREATE TABLE personal_notes (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        body TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX idx_personal_notes_updated ON personal_notes(updated_at);
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

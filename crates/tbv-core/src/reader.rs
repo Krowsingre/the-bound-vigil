@@ -140,7 +140,7 @@ impl Library {
     pub fn book_annotations(&self, book_id: &str) -> Result<Vec<Annotation>> {
         let mut statement = self.conn.prepare(&format!(
             "SELECT {ANNOTATION_COLUMNS} FROM annotations
-             WHERE book_id = ?1 AND deleted_at IS NULL
+             WHERE book_id = ?1 AND deleted_at IS NULL AND kind != 'book_note'
              ORDER BY json_extract(locator, '$.totalProgression'), created_at"
         ))?;
         let rows = statement.query_map(params![book_id], annotation_from_row)?;

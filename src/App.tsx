@@ -3,6 +3,7 @@ import { api, isApp } from "./api";
 import type { CollectionRef, HomeViewModel, Profile, SyncStatus } from "./api/types";
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { Collections } from "./collections/Collections";
+import { Notes } from "./notes/Notes";
 import { useToast } from "./components/Toast";
 import { Home } from "./home/Home";
 import { importSummary } from "./lib/importSummary";
@@ -34,7 +35,7 @@ export function App() {
   const [libraryView, setLibraryView] = useState<LibraryView>(initialView);
   const [searchText, setSearchText] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [reading, setReading] = useState<string | null>(null);
+  const [reading, setReading] = useState<{ bookId: string; at?: string } | null>(null);
   const [openCollection, setOpenCollection] = useState<CollectionRef | null>(null);
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
@@ -156,6 +157,7 @@ export function App() {
   }, [toggleSidebar, importBooks, reading, navigate]);
 
   const onHomeLoaded = useCallback((home: HomeViewModel) => setSync(home.sync), []);
+  const openBook = useCallback((bookId: string, at?: string) => setReading({ bookId, at }), []);
   const showCollection = useCallback((id: string) => {
     setOpenCollection({ kind: "collection", id });
     setRoute("collections");
@@ -180,7 +182,7 @@ export function App() {
     },
   };
 
-  if (reading) return <Reader key={reading} bookId={reading} shell={shell} onClose={closeBook} />;
+  if (reading) return <Reader key={reading.bookId} bookId={reading.bookId} openAt={reading.at} shell={shell} onClose={closeBook} />;
 
   return (
     <div className={`app${collapsed ? " sidebar-collapsed" : ""}`}>
@@ -192,7 +194,8 @@ export function App() {
           profile={profile}
           search={searchText}
           onSearchChange={changeSearch}
-          onSearchSubmit={() => setRoute("library")}
+          placeholder={route === "notes" ? "Search notes, books, authors or words…" : undefined}
+          onSearchSubmit={() => route !== "notes" && setRoute("library")}
           onChooseAvatar={chooseAvatar}
           onClearAvatar={clearAvatar}
           onImportBooks={importBooks}
@@ -208,7 +211,7 @@ export function App() {
               onImportBooks={importBooks}
               onImportFolder={importFolder}
               onLoaded={onHomeLoaded}
-              onOpenBook={setReading}
+              onOpenBook={openBook}
               onOpenCollection={showCollection}
             />
           ) : route === "library" ? (
@@ -220,7 +223,7 @@ export function App() {
               onClearSearch={() => changeSearch("")}
               onImportBooks={importBooks}
               onImportFolder={importFolder}
-              onOpenBook={setReading}
+              onOpenBook={openBook}
               onOpenCollection={showCollection}
             />
           ) : route === "collections" ? (
@@ -228,9 +231,11 @@ export function App() {
               open={openCollection}
               refreshKey={refreshKey}
               onOpen={setOpenCollection}
-              onOpenBook={setReading}
+              onOpenBook={openBook}
               onChanged={refresh}
             />
+          ) : route === "notes" ? (
+            <Notes search={searchText} refreshKey={refreshKey} onClearSearch={() => changeSearch("")} onOpenBook={openBook} />
           ) : (
             <ComingSoon route={route} />
           )}

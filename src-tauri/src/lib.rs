@@ -8,7 +8,8 @@ use tauri::{Emitter, Manager, State};
 use tbv_core::model::{
     Annotation, AnnotationInput, BookId, CollectionDetail, CollectionInput, CollectionPreview,
     CollectionRef, CollectionSummary, CollectionsOverview, HomeViewModel, ImportResult,
-    LibraryPage, LibraryQuery, Profile, ReadStatus, ReaderBook, ReaderLocator,
+    LibraryPage, LibraryQuery, NoteItem, NoteKind, NotesPage, NotesQuery, Profile, ReadStatus,
+    ReaderBook, ReaderLocator,
 };
 use tbv_core::{Library, LibraryPaths, SUPPORTED_FORMATS};
 
@@ -303,6 +304,58 @@ async fn collections_for_book(
     with_library(state, move |library| library.collections_for_book(&book_id)).await
 }
 
+#[tauri::command]
+async fn get_notes(state: State<'_, AppLibrary>, query: NotesQuery) -> CommandResult<NotesPage> {
+    with_library(state, move |library| library.notes_page(&query)).await
+}
+
+#[tauri::command]
+async fn save_book_note(
+    state: State<'_, AppLibrary>,
+    book_id: String,
+    id: Option<String>,
+    text: String,
+) -> CommandResult<NoteItem> {
+    with_library(state, move |library| {
+        library.save_book_note(&book_id, id.as_deref(), &text)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn save_personal_note(
+    state: State<'_, AppLibrary>,
+    id: Option<String>,
+    title: Option<String>,
+    body: String,
+) -> CommandResult<NoteItem> {
+    with_library(state, move |library| {
+        library.save_personal_note(id.as_deref(), title.as_deref(), &body)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn set_annotation_note(
+    state: State<'_, AppLibrary>,
+    id: String,
+    note: Option<String>,
+) -> CommandResult<NoteItem> {
+    with_library(state, move |library| {
+        library.set_annotation_note(&id, note.as_deref())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn delete_note(
+    state: State<'_, AppLibrary>,
+    id: String,
+    kind: NoteKind,
+) -> CommandResult<()> {
+    with_library(state, move |library| library.delete_note(&id, kind)).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -347,7 +400,12 @@ pub fn run() {
             remove_from_collection,
             move_collection,
             move_in_collection,
-            collections_for_book
+            collections_for_book,
+            get_notes,
+            save_book_note,
+            save_personal_note,
+            set_annotation_note,
+            delete_note
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
         // page gets a moment to save the reading position first, and the app

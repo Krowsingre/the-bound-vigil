@@ -15,6 +15,10 @@ import type {
   ImportResult,
   LibraryPage,
   LibraryQuery,
+  NoteItem,
+  NoteKind,
+  NotesPage,
+  NotesQuery,
   Profile,
   ReadStatus,
   ReaderBook,
@@ -67,6 +71,13 @@ export interface Api {
   moveInCollection(id: string, bookId: string, toIndex: number): Promise<void>;
   /** Ids of the user's collections a book is in. */
   collectionsForBook(bookId: string): Promise<string[]>;
+  getNotes(query: NotesQuery): Promise<NotesPage>;
+  /** Writes a note about a whole book; with an id, rewrites that one. */
+  saveBookNote(bookId: string, id: string | null, text: string): Promise<NoteItem>;
+  savePersonalNote(id: string | null, title: string | null, body: string): Promise<NoteItem>;
+  /** Changes the words on a highlight. Empty words make it a plain highlight. */
+  setAnnotationNote(id: string, note: string | null): Promise<NoteItem>;
+  deleteNote(id: string, kind: NoteKind): Promise<void>;
 }
 
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -152,6 +163,11 @@ function appApi(): Api {
     moveCollection: async (id, toIndex) => (await core).invoke("move_collection", { id, toIndex }),
     moveInCollection: async (id, bookId, toIndex) => (await core).invoke("move_in_collection", { id, bookId, toIndex }),
     collectionsForBook: async (bookId) => (await core).invoke<string[]>("collections_for_book", { bookId }),
+    getNotes: async (query) => (await core).invoke<NotesPage>("get_notes", { query }),
+    saveBookNote: async (bookId, id, text) => (await core).invoke<NoteItem>("save_book_note", { bookId, id, text }),
+    savePersonalNote: async (id, title, body) => (await core).invoke<NoteItem>("save_personal_note", { id, title, body }),
+    setAnnotationNote: async (id, note) => (await core).invoke<NoteItem>("set_annotation_note", { id, note }),
+    deleteNote: async (id, kind) => (await core).invoke("delete_note", { id, kind }),
   };
 }
 

@@ -10,6 +10,8 @@ export const Header = forwardRef<
     sync: SyncStatus | null;
     profile: Profile | null;
     search: string;
+    /** What the search box offers to find, when it isn't books. */
+    placeholder?: string;
     onSearchChange: (query: string) => void;
     onSearchSubmit: () => void;
     onImportBooks: () => void;
@@ -18,7 +20,7 @@ export const Header = forwardRef<
     onChooseAvatar: () => void;
     onClearAvatar: () => void;
   }
->(function Header({ sync, profile, search, onSearchChange, onSearchSubmit, ...menu }, searchRef) {
+>(function Header({ sync, profile, search, placeholder, onSearchChange, onSearchSubmit, ...menu }, searchRef) {
   return (
     <header className="header" data-tauri-drag-region>
       <form
@@ -37,7 +39,7 @@ export const Header = forwardRef<
           id="global-search"
           ref={searchRef}
           type="search"
-          placeholder="Search books, authors or series…"
+          placeholder={placeholder ?? "Search books, authors or series…"}
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           onKeyDown={(e) => {
