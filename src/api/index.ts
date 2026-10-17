@@ -164,6 +164,8 @@ export interface Api {
   setSupabaseProject(project: SupabaseProject | null): Promise<void>;
   /** Chooses where the library is kept. True when that folder or server already held a library to join. */
   setSyncProvider(provider: ProviderChoice): Promise<boolean>;
+  /** Chooses a second place to sync with at the same time, or with null stops it. True when it already held a library. */
+  setAlsoSync(provider: ProviderChoice | null): Promise<boolean>;
   /** Asks for a folder. Null if cancelled. */
   chooseFolder(title: string, start?: string | null): Promise<string | null>;
   /** Where a cloud app usually keeps its folder on this computer, if it's there. */
@@ -431,6 +433,7 @@ function appApi(): Api {
     syncSignOut: async () => (await core).invoke("sync_sign_out"),
     setSupabaseProject: async (project) => (await core).invoke("set_supabase_project", { project }),
     setSyncProvider: async (provider) => (await core).invoke<boolean>("set_sync_provider", { provider }),
+    setAlsoSync: async (provider) => (await core).invoke<boolean>("set_also_sync", { provider }),
     chooseFolder: async (title, start) => {
       const picked = await (await dialog).open({ directory: true, multiple: false, title, defaultPath: start ?? undefined });
       return typeof picked === "string" ? picked : null;

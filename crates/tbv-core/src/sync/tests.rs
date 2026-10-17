@@ -877,3 +877,170 @@ fn removing_keeps_the_cloud_file_and_deleting_erases_it() {
     b.sync(&cloud);
     assert!(b.lib().book(&kept).unwrap().is_none() && b.lib().book(&gone).unwrap().is_none(), "both leave every device");
 }
+
+/// A place that can't be reached.
+struct Unreachable;
+
+impl Remote for Unreachable {
+    fn push(&mut self, _: &[Record]) -> Result<()> {
+        Err(Error::Offline("no connection".into()))
+    }
+    fn pull(&mut self, _: &str, _: usize) -> Result<Page> {
+        Err(Error::Offline("no connection".into()))
+    }
+    fn upload(&mut self, _: &str, _: &Path) -> Result<()> {
+        Err(Error::Offline("no connection".into()))
+    }
+    fn download(&mut self, _: &str, _: &Path) -> Result<bool> {
+        Err(Error::Offline("no connection".into()))
+    }
+    fn list(&mut self, _: &str) -> Result<Vec<String>> {
+        Err(Error::Offline("no connection".into()))
+    }
+    fn remove(&mut self, _: &str) -> Result<()> {
+        Err(Error::Offline("no connection".into()))
+    }
+}
+
+impl Device {
+    /// Syncs with a first place and a second one, as a PC with iCloud and Supabase would.
+    fn sync_both(&self, main: &FakeRemote, also: &FakeRemote) -> SyncReport {
+        let epoch = self.lib().sync_epoch();
+        sync_both_since(&self.library, &mut main.clone(), Some(&mut also.clone()), epoch).unwrap()
+    }
+
+    fn add_second_place(&self) {
+        let also = Provider::Folder { service: "icloud".into(), path: "/nowhere/iCloudDrive".into() };
+        self.lib().set_sync_also(Some(&also)).unwrap();
+    }
+}
+
+#[test]
+fn a_second_place_passes_changes_both_ways() {
+    let icloud = FakeRemote::default();
+    let supabase = FakeRemote::default();
+    let pc = Device::new();
+    let phone = Device::new();
+    let laptop = Device::new();
+    pc.add_second_place();
+
+    let book = pc.import("Dracula");
+    pc.sync_both(&icloud, &supabase);
+    phone.sync(&supabase);
+    laptop.sync(&icloud);
+    assert!(phone.lib().book(&book).unwrap().is_some(), "the phone sees the PC's book through Supabase");
+    assert!(laptop.lib().book(&book).unwrap().is_some(), "the laptop sees it through iCloud");
+
+    tick();
+    phone.lib().save_position(&book, &locator(0.6)).unwrap();
+    phone.sync(&supabase);
+    pc.sync_both(&icloud, &supabase);
+    assert_eq!(pc.lib().book(&book).unwrap().unwrap().total_progression, Some(0.6));
+    laptop.sync(&icloud);
+    assert_eq!(laptop.lib().book(&book).unwrap().unwrap().total_progression, Some(0.6), "passed on to iCloud in the same run");
+
+    tick();
+    laptop.lib().save_position(&book, &locator(0.9)).unwrap();
+    laptop.sync(&icloud);
+    pc.sync_both(&icloud, &supabase);
+    phone.sync(&supabase);
+    assert_eq!(phone.lib().book(&book).unwrap().unwrap().total_progression, Some(0.9), "and the other way");
+
+    let report = pc.sync_both(&icloud, &supabase);
+    assert_eq!(report.sent, 0, "a quiet run sends nothing to either place");
+    let overview = pc.lib().sync_overview().unwrap();
+    assert_eq!(overview.waiting_to_send, 0);
+    assert_eq!(overview.also.unwrap().waiting_to_send, 0);
+}
+
+#[test]
+fn each_place_has_its_own_file_switches() {
+    let icloud = FakeRemote::default();
+    let supabase = FakeRemote::default();
+    let pc = Device::new();
+    pc.add_second_place();
+    pc.set_options(json!({ "bookFiles": true, "alsoBookFiles": false }));
+    let book = pc.import("Carmilla");
+    pc.sync_both(&icloud, &supabase);
+    let books = |cloud: &FakeRemote| cloud.0.lock().unwrap().files.keys().filter(|p| p.starts_with("books/")).count();
+    let covers = |cloud: &FakeRemote| cloud.0.lock().unwrap().files.keys().filter(|p| p.starts_with("covers/")).count();
+    assert_eq!((books(&icloud), books(&supabase)), (1, 0));
+    assert_eq!((covers(&icloud), covers(&supabase)), (1, 1), "covers go to both");
+
+    pc.set_options(json!({ "bookFiles": true, "alsoBookFiles": true }));
+    assert_eq!(pc.sync_both(&icloud, &supabase).files_sent, 1, "only the second place needed it");
+
+    // A file in either place is enough to remove this device's copy, and to get it back.
+    pc.lib().remove_download(&book).unwrap();
+    icloud.0.lock().unwrap().files.clear();
+    let mut first = icloud.clone();
+    assert!(!download_book_from(&pc.library, &mut first, &book, Lane::Main).unwrap());
+    assert!(download_book_from(&pc.library, &mut supabase.clone(), &book, Lane::Also).unwrap());
+    assert_eq!(pc.lib().book(&book).unwrap().unwrap().availability, Availability::Local);
+}
+
+#[test]
+fn one_place_failing_leaves_the_other_working() {
+    let supabase = FakeRemote::default();
+    let pc = Device::new();
+    pc.add_second_place();
+    let book = pc.import("Frankenstein");
+    let epoch = pc.lib().sync_epoch();
+    let outcome = sync_both_since(&pc.library, &mut Unreachable, Some(&mut supabase.clone()), epoch);
+    assert!(matches!(outcome, Err(Error::Offline(_))));
+    assert!(supabase.0.lock().unwrap().records.keys().any(|(k, key)| k == "book" && key.contains(&book)));
+    let overview = pc.lib().sync_overview().unwrap();
+    assert!(overview.last_error.is_some(), "the first place's trouble is noted");
+    let also = overview.also.unwrap();
+    assert!(also.last_error.is_none() && also.last_success_at.is_some());
+    assert!(overview.waiting_to_send > 0, "and its changes wait for it");
+}
+
+#[test]
+fn deleting_erases_from_both_places() {
+    let icloud = FakeRemote::default();
+    let supabase = FakeRemote::default();
+    let pc = Device::new();
+    pc.add_second_place();
+    pc.set_options(json!({ "bookFiles": true }));
+    let book = pc.import("Gone");
+    pc.sync_both(&icloud, &supabase);
+    let has = |cloud: &FakeRemote| cloud.0.lock().unwrap().files.keys().any(|p| p.contains(book_id_hex(&book)));
+    assert!(has(&icloud) && has(&supabase));
+    pc.lib().delete_book(&book).unwrap();
+    pc.sync_both(&icloud, &supabase);
+    assert!(!has(&icloud) && !has(&supabase));
+}
+
+#[test]
+fn the_second_place_must_be_somewhere_else() {
+    let pc = Device::new();
+    let folder = Provider::Folder { service: "icloud".into(), path: "/nowhere/iCloudDrive".into() };
+    pc.lib().set_sync_provider(&folder).unwrap();
+    assert!(pc.lib().set_sync_also(Some(&folder)).is_err());
+    pc.lib().set_sync_also(Some(&Provider::Supabase)).unwrap();
+    assert_eq!(pc.lib().sync_also().unwrap(), Some(Provider::Supabase));
+    pc.lib().set_sync_provider(&Provider::Supabase).unwrap();
+    assert_eq!(pc.lib().sync_also().unwrap(), None, "moving the first sync there leaves one place");
+}
+
+#[test]
+fn the_profile_picture_follows_the_library() {
+    let cloud = FakeRemote::default();
+    let a = Device::new();
+    let b = Device::new();
+    let dir = tempfile::tempdir().unwrap();
+    let picture = dir.path().join("me.png");
+    fs::write(&picture, b"png bytes").unwrap();
+    a.lib().set_avatar(&picture).unwrap();
+    a.sync(&cloud);
+    b.sync(&cloud);
+    let shown = b.lib().profile().unwrap().avatar_path.expect("the picture arrives");
+    assert_eq!(fs::read(&shown).unwrap(), b"png bytes");
+
+    tick();
+    b.lib().clear_avatar().unwrap();
+    b.sync(&cloud);
+    a.sync(&cloud);
+    assert_eq!(a.lib().profile().unwrap().avatar_path, None, "taking it away travels too");
+}

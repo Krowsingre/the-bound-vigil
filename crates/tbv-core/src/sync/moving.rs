@@ -241,6 +241,8 @@ impl Library {
             Destination::Files(provider) => self.put_setting(PROVIDER, Some(&serde_json::to_string(provider)?))?,
         }
         self.reset_sync()?;
+        let now = self.sync_provider()?;
+        self.drop_also_if_same(&now)?;
         let tx = self.conn.unchecked_transaction()?;
         for (kind, key, at) in &check.found_records {
             tx.execute("UPDATE sync_clock SET pushed = 1 WHERE kind = ?1 AND key = ?2 AND changed_at <= ?3", params![kind, key, at])?;

@@ -148,7 +148,10 @@ export function App() {
   useEffect(() => api.onHardcoverNotice((message) => toast(message)), [toast]);
 
   useEffect(() => {
-    api.getProfile().then(setProfile, () => setProfile({ avatarPath: null }));
+    const load = () => api.getProfile().then(setProfile, () => setProfile({ avatarPath: null }));
+    void load();
+    // The picture is shared by every device, so one chosen elsewhere arrives with sync.
+    return api.onSync({ libraryChanged: () => void load() });
   }, []);
 
   const chooseAvatar = useCallback(() => {

@@ -318,7 +318,7 @@ function previewSync(): SyncOverview {
   const mode = params.get("sync");
   const supabase: ProviderView = { kind: "supabase", service: null, location: null, username: null };
   if (!mode)
-    return { status: { state: "disabled", lastSuccessAt: null }, provider: supabase, project: null, signedInAs: null, lastError: null, waitingToSend: 0, conflicts: [] };
+    return { status: { state: "disabled", lastSuccessAt: null }, provider: supabase, project: null, signedInAs: null, lastError: null, waitingToSend: 0, conflicts: [], also: null };
   if (mode === "folder")
     return {
       status: { state: "idle", lastSuccessAt: ago(0.002) },
@@ -328,6 +328,7 @@ function previewSync(): SyncOverview {
       lastError: null,
       waitingToSend: 0,
       conflicts: [],
+      also: null,
     };
   return {
     status: { state: mode === "ask" ? "attention" : "idle", lastSuccessAt: ago(0.002) },
@@ -336,6 +337,7 @@ function previewSync(): SyncOverview {
     signedInAs: "reader@example.com",
     lastError: null,
     waitingToSend: 2,
+    also: null,
     conflicts:
       mode === "ask"
         ? [
@@ -573,6 +575,17 @@ export function previewApi(): Api {
             ? { kind: "webdav", service: null, location: choice.url, username: choice.username }
             : { kind: choice.kind, service: null, location: null, username: null };
       sync = { ...sync, provider, status: choice.kind === "off" ? { state: "disabled", lastSuccessAt: null } : { state: "idle", lastSuccessAt: new Date().toISOString() } };
+      return false;
+    },
+    setAlsoSync: async (choice) => {
+      const provider: ProviderView | null = !choice || choice.kind === "off"
+        ? null
+        : choice.kind === "folder"
+          ? { kind: "folder", service: choice.service, location: choice.path, username: null }
+          : choice.kind === "webdav"
+            ? { kind: "webdav", service: null, location: choice.url, username: choice.username }
+            : { kind: "supabase", service: null, location: null, username: null };
+      sync = { ...sync, also: provider && { provider, lastSuccessAt: new Date().toISOString(), lastError: null, waitingToSend: 0 } };
       return false;
     },
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",

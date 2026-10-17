@@ -302,6 +302,34 @@ const MIGRATIONS: &[&str] = &[
         updated_at TEXT NOT NULL
     );
     "#,
+    // v12: a second place to sync with (iCloud for every file and Supabase
+    // for a phone, say). `sync_clock.pushed` and `sync_files` stay the first
+    // place's; these say what the second has. Records waiting or in conflict
+    // remember which place they came from.
+    r#"
+    CREATE TABLE sync_clock_also (
+        kind TEXT NOT NULL,
+        key TEXT NOT NULL,
+        changed_at TEXT NOT NULL,
+        PRIMARY KEY (kind, key)
+    );
+    CREATE TABLE sync_files_also (
+        path TEXT PRIMARY KEY,
+        uploaded_at TEXT,
+        failed_at TEXT,
+        error TEXT
+    );
+    ALTER TABLE sync_waiting ADD COLUMN lane TEXT NOT NULL DEFAULT 'main';
+    ALTER TABLE sync_conflicts ADD COLUMN lane TEXT NOT NULL DEFAULT 'main';
+
+    -- The profile picture, synced so every device signed in to the same
+    -- library shows it. One row, 'me'; `avatar` is the picture's file name.
+    CREATE TABLE profile (
+        id TEXT PRIMARY KEY,
+        avatar TEXT,
+        updated_at TEXT NOT NULL
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
@@ -360,6 +388,7 @@ impl Library {
         library.migrate()?;
         crate::sync::install_triggers(&library.conn)?;
         library.conn.execute_batch(RETIRED_SHELVES)?;
+        library.adopt_device_avatar()?;
         Ok(library)
     }
 

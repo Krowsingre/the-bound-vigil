@@ -17,6 +17,8 @@ const DEVICE = "sync.device_id";
 const LAST_SUCCESS = "sync.last_success_at";
 const LAST_ERROR = "sync.last_error";
 const COVERS = "sync.covers";
+/** Pictures chosen here that the cloud doesn't have yet, by name. */
+const PICTURES_TO_SEND = "sync.pictures_to_send";
 
 const PAGE = 500;
 const BATCH = 200;
@@ -101,6 +103,7 @@ export class WebSync {
       lastError: this.db.meta.get(LAST_ERROR) ?? null,
       waitingToSend: this.library.waiting(),
       conflicts: [],
+      also: null,
     };
   }
 
@@ -165,6 +168,7 @@ export class WebSync {
         await this.library.markSent(batch);
         if (batch.length < BATCH && !this.library.waiting()) break;
       }
+      await this.sendPictures(cloud);
       await this.fetchCovers(cloud);
       await this.db.setMeta(LAST_SUCCESS, new Date().toISOString());
       await this.db.setMeta(LAST_ERROR, null);
@@ -201,6 +205,29 @@ export class WebSync {
     if (added) this.library.changed();
   }
 
+  private picturesToSend(): string[] {
+    try {
+      return JSON.parse(this.db.meta.get(PICTURES_TO_SEND) ?? "[]") as string[];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Keeps a picture chosen here (the profile picture), and sends it at the next sync. */
+  async addPicture(name: string, file: Blob): Promise<void> {
+    await this.db.putFile(`pictures/${name}`, file);
+    this.pictureUrls.set(name, URL.createObjectURL(file));
+    await this.db.setMeta(PICTURES_TO_SEND, JSON.stringify([...this.picturesToSend().filter((n) => n !== name), name]));
+  }
+
+  private async sendPictures(cloud: Supabase): Promise<void> {
+    for (const name of this.picturesToSend()) {
+      const file = await this.db.getFile(`pictures/${name}`);
+      if (file) await cloud.upload(`pictures/${name}`, file);
+      await this.db.setMeta(PICTURES_TO_SEND, JSON.stringify(this.picturesToSend().filter((n) => n !== name)));
+    }
+  }
+
   private async fetchCovers(cloud: Supabase): Promise<void> {
     const names = await cloud.list("covers");
     this.covers = new Map(names.map((n) => [n.split(".")[0], n]));
@@ -217,8 +244,12 @@ export class WebSync {
       // Show covers as they arrive, a few at a time.
       if (++added % 12 === 0) this.library.changed();
     }
-    for (const c of this.library.rows("collections")) {
-      const picture = typeof c.picture === "string" && !c.deleted_at ? c.picture : "";
+    const avatar = this.library.row("profile", ["me"])?.avatar;
+    const pictures = [
+      ...(typeof avatar === "string" ? [`picture:${avatar}`] : []),
+      ...this.library.rows("collections").map((c) => (typeof c.picture === "string" && !c.deleted_at ? c.picture : "")),
+    ];
+    for (const picture of pictures) {
       const name = picture.startsWith("picture:") ? picture.slice(8) : "";
       if (!name || name.includes("/") || this.pictureUrls.has(name)) continue;
       const blob = await cloud.download(`pictures/${name}`);

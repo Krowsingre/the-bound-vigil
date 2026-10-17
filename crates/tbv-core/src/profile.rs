@@ -1,8 +1,10 @@
-//! This device's profile picture, shown inside the sync circle. It is a
-//! device setting, not synced, and TBV keeps its own copy of the image.
+//! The profile picture, shown inside the sync circle. It syncs like the
+//! rest of the library, so every device signed in to the same library shows
+//! the same picture. TBV keeps its own copy of the image; the cloud has it
+//! under `pictures/`, next to collection pictures.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rusqlite::{params, OptionalExtension};
 
@@ -10,24 +12,54 @@ use crate::error::{Error, Result};
 use crate::ids::new_record_id;
 use crate::library::Library;
 use crate::model::Profile;
+use crate::time::now_utc;
 
 pub const AVATAR_FORMATS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif"];
 const MAX_AVATAR_BYTES: u64 = 10 * 1024 * 1024;
+/// Where early versions kept this device's own picture.
 const AVATAR_KEY: &str = "avatar_path";
+const ME: &str = "me";
+
+/// A name TBV gave a picture, safe to use as a file name.
+fn is_avatar_name(name: &str) -> bool {
+    name.starts_with("avatar-") && !name.contains(['/', '\\']) && !name.contains("..")
+}
 
 impl Library {
+    /// The picture's file name, if there is one.
+    pub(crate) fn avatar_name(&self) -> Result<Option<String>> {
+        let name: Option<Option<String>> =
+            self.conn.query_row("SELECT avatar FROM profile WHERE id = ?1", params![ME], |r| r.get(0)).optional()?;
+        Ok(name.flatten().filter(|n| is_avatar_name(n)))
+    }
+
+    fn save_avatar_name(&self, name: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO profile (id, avatar, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(id) DO UPDATE SET avatar = excluded.avatar, updated_at = excluded.updated_at",
+            params![ME, name, now_utc()],
+        )?;
+        Ok(())
+    }
+
+    /// Makes a picture chosen before pictures synced the library's own.
+    pub(crate) fn adopt_device_avatar(&self) -> Result<()> {
+        let old: Option<String> =
+            self.conn.query_row("SELECT value FROM device_settings WHERE key = ?1", params![AVATAR_KEY], |r| r.get(0)).optional()?;
+        let Some(old) = old else { return Ok(()) };
+        let name = Path::new(&old).file_name().map(|n| n.to_string_lossy().to_string());
+        if let Some(name) = name.filter(|n| is_avatar_name(n) && Path::new(&old).exists()) {
+            if self.avatar_name()?.is_none() {
+                self.save_avatar_name(Some(&name))?;
+            }
+        }
+        self.conn.execute("DELETE FROM device_settings WHERE key = ?1", params![AVATAR_KEY])?;
+        Ok(())
+    }
+
     pub fn profile(&self) -> Result<Profile> {
-        let avatar_path: Option<String> = self
-            .conn
-            .query_row(
-                "SELECT value FROM device_settings WHERE key = ?1",
-                params![AVATAR_KEY],
-                |r| r.get(0),
-            )
-            .optional()?;
-        Ok(Profile {
-            avatar_path: avatar_path.filter(|p| Path::new(p).exists()),
-        })
+        let path = self.avatar_name()?.map(|n| self.paths.profile_dir.join(n)).filter(|p| p.exists());
+        Ok(Profile { avatar_path: path.map(|p| p.display().to_string()) })
     }
 
     /// Copies the picture into TBV's profile folder and uses it from now on.
@@ -41,33 +73,40 @@ impl Library {
             return Err(Error::Unsuitable("that picture is over 10 MB".into()));
         }
         fs::create_dir_all(&self.paths.profile_dir)?;
-        // A fresh name each time, so the window never shows a stale cached image.
-        let target = self
-            .paths
-            .profile_dir
-            .join(format!("avatar-{}.{extension}", new_record_id()));
-        fs::copy(source, &target)?;
-        let previous = self.profile()?.avatar_path;
-        self.conn.execute(
-            "INSERT INTO device_settings (key, value) VALUES (?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![AVATAR_KEY, target.display().to_string()],
-        )?;
-        if let Some(old) = previous {
-            let _ = fs::remove_file(old);
-        }
+        // A fresh name each time, so the window never shows a stale cached
+        // image, and other devices know to fetch the new one.
+        let name = format!("avatar-{}.{extension}", new_record_id());
+        fs::copy(source, self.paths.profile_dir.join(&name))?;
+        self.save_avatar_name(Some(&name))?;
+        self.tidy_avatars()?;
         self.profile()
     }
 
     pub fn clear_avatar(&self) -> Result<Profile> {
-        if let Some(old) = self.profile()?.avatar_path {
-            let _ = fs::remove_file(old);
-        }
-        self.conn.execute(
-            "DELETE FROM device_settings WHERE key = ?1",
-            params![AVATAR_KEY],
-        )?;
+        self.save_avatar_name(None)?;
+        self.tidy_avatars()?;
         self.profile()
+    }
+
+    /// The picture, as (cloud path, file), when another device chose it and it isn't here yet.
+    pub(crate) fn avatar_to_fetch(&self) -> Result<Option<(String, PathBuf)>> {
+        Ok(self
+            .avatar_name()?
+            .map(|name| (format!("pictures/{name}"), self.paths.profile_dir.join(name)))
+            .filter(|(_, file)| !file.exists()))
+    }
+
+    /// Removes pictures no longer in use.
+    pub(crate) fn tidy_avatars(&self) -> Result<()> {
+        let current = self.avatar_name()?;
+        let Ok(entries) = fs::read_dir(&self.paths.profile_dir) else { return Ok(()) };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if is_avatar_name(&name) && current.as_deref() != Some(name.as_str()) {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
+        Ok(())
     }
 }
 

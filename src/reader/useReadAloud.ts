@@ -282,6 +282,7 @@ export function useReadAloud({
       if (voice) u.voice = voice;
       u.lang = voice?.lang ?? s.lang ?? lang ?? "";
       u.rate = rate;
+      u.volume = 1;
       const show = (k: number) => {
         if (run !== s.run || k >= list.length || s.at === k) return;
         s.at = k;
@@ -351,9 +352,10 @@ export function useReadAloud({
     if (!synth || unavailable) return;
     if (s.status === "playing") return;
     // Phones only allow speech that starts from a tap; this claims it before the
-    // wait below. A silent space, as some phones skip an empty one entirely.
+    // wait below. A space, which says nothing, as some phones skip an empty one
+    // entirely. Not at volume 0: iPhones keep that volume for what comes next.
     const unlock = new SpeechSynthesisUtterance(" ");
-    unlock.volume = 0;
+    unlock.volume = 1;
     if (opts.current.voice) unlock.voice = opts.current.voice;
     unlock.onend = unlock.onerror = () => {
       s.unlocking = false;

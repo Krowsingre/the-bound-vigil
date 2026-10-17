@@ -734,6 +734,23 @@
   overflow-wrap: anywhere;
 }
 
+.also-details {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 20px;
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+
+.also-details dt {
+  color: var(--text-muted);
+}
+
+.also-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .mono,
 .path {
   font: 400 12.5px ui-monospace, "Cascadia Mono", Consolas, monospace;

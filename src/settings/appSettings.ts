@@ -21,6 +21,9 @@ export interface SyncSettings {
   bookFiles: boolean;
   /** Audiobook files are large, so they have a switch of their own. */
   audioFiles: boolean;
+  /** What the second place is sent (see Settings › Sync › Second sync). */
+  alsoBookFiles: boolean;
+  alsoAudioFiles: boolean;
   frequency: SyncFrequency;
   onStartup: boolean;
   onClose: boolean;
@@ -70,6 +73,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     metadata: true,
     bookFiles: false,
     audioFiles: false,
+    alsoBookFiles: true,
+    alsoAudioFiles: false,
     frequency: "automatic",
     onStartup: true,
     onClose: true,
@@ -118,6 +123,8 @@ export function parseAppSettings(json: string | null): AppSettings {
       metadata: flag(s.metadata, d.sync.metadata),
       bookFiles: flag(s.bookFiles, d.sync.bookFiles),
       audioFiles: flag(s.audioFiles, d.sync.audioFiles),
+      alsoBookFiles: flag(s.alsoBookFiles, d.sync.alsoBookFiles),
+      alsoAudioFiles: flag(s.alsoAudioFiles, d.sync.alsoAudioFiles),
       frequency: oneOf(s.frequency, ["automatic", "15min", "hourly", "manual"], d.sync.frequency),
       onStartup: flag(s.onStartup, d.sync.onStartup),
       onClose: flag(s.onClose, d.sync.onClose),

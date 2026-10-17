@@ -31,8 +31,10 @@ pub(crate) const BOOK_COLUMNS: &str = r#"
            b.rating, b.finished_at,
            (SELECT json_group_array(tag) FROM (SELECT t.tag FROM book_tags t
              WHERE t.book_id = b.id AND t.removed_at IS NULL ORDER BY t.tag COLLATE NOCASE)),
-           EXISTS (SELECT 1 FROM sync_files sf WHERE sf.uploaded_at IS NOT NULL
-             AND sf.path = 'books/' || substr(b.id, 8) || '.' || b.format),
+           (EXISTS (SELECT 1 FROM sync_files sf WHERE sf.uploaded_at IS NOT NULL
+             AND sf.path = 'books/' || substr(b.id, 8) || '.' || b.format)
+            OR EXISTS (SELECT 1 FROM sync_files_also sf WHERE sf.uploaded_at IS NOT NULL
+             AND sf.path = 'books/' || substr(b.id, 8) || '.' || b.format)),
            COALESCE(o_genres.value, f_genres.value),
            (SELECT ab.duration_ms FROM audiobooks ab WHERE ab.book_id = b.id),
            COALESCE((SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = 'narrators'),
