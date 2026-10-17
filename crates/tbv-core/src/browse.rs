@@ -545,3 +545,47 @@ mod tests {
         assert_eq!((past.page, past.total, past.books.len()), (2, 7, 1));
     }
 }
+
+#[cfg(test)]
+mod scale {
+    use super::*;
+    use crate::epub::tests::write_test_epub;
+    use crate::library::tests::open_temp_library;
+    use std::time::Instant;
+
+    /// How long each page's data takes with a very large library.
+    /// `TBV_SCALE=17000 cargo test -p tbv-core scale -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn pages_stay_quick_with_a_huge_library() {
+        let count: usize = std::env::var("TBV_SCALE").ok().and_then(|n| n.parse().ok()).unwrap_or(17_000);
+        let (dir, mut library) = open_temp_library();
+        let source = dir.path().join("source");
+        std::fs::create_dir_all(&source).unwrap();
+        let paths: Vec<_> = (0..count)
+            .map(|i| {
+                let path = source.join(format!("book{i}.epub"));
+                write_test_epub(&path, &format!("Book {i}"), &format!("Author {}", i % 900), false);
+                path
+            })
+            .collect();
+        let started = Instant::now();
+        for chunk in paths.chunks(500) {
+            library.import_files(chunk);
+        }
+        eprintln!("import {count}: {:?}", started.elapsed());
+        let time = |name: &str, run: &mut dyn FnMut()| {
+            let started = Instant::now();
+            run();
+            eprintln!("{name}: {:?}", started.elapsed());
+        };
+        time("home", &mut || drop(library.home().unwrap()));
+        time("library page", &mut || {
+            drop(library.library_page(&LibraryQuery { page_size: 60, ..Default::default() }).unwrap())
+        });
+        time("collections", &mut || drop(library.collections(u32::MAX).unwrap()));
+        time("collections overview", &mut || drop(library.collections_overview().unwrap()));
+        time("notes", &mut || drop(library.notes_page(&Default::default()).unwrap()));
+        time("library info", &mut || drop(library.library_info().unwrap()));
+    }
+}

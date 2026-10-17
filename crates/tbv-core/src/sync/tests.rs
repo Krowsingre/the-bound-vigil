@@ -1102,3 +1102,48 @@ fn a_run_says_what_it_is_doing() {
     assert!(got_cover);
     assert!(b.lib().book(&book).unwrap().is_some());
 }
+
+/// How long sync keeps the library to itself with a very large library: pages
+/// wait for it, so no single hold may be long.
+/// `TBV_SCALE=17000 cargo test -p tbv-core --release sync_scale -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn sync_scale_never_holds_the_library_long() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Instant;
+    let count: usize = std::env::var("TBV_SCALE").ok().and_then(|n| n.parse().ok()).unwrap_or(17_000);
+    let (dir, mut library) = open_temp_library();
+    let source = dir.path().join("source");
+    fs::create_dir_all(&source).unwrap();
+    let paths: Vec<_> = (0..count)
+        .map(|i| {
+            let path = source.join(format!("book{i}.epub"));
+            write_test_epub(&path, &format!("Book {i}"), &format!("Author {}", i % 900), true);
+            path
+        })
+        .collect();
+    for chunk in paths.chunks(500) {
+        library.import_files(chunk);
+    }
+    let library = Mutex::new(library);
+    let done = AtomicBool::new(false);
+    let mut remote = FakeRemote::default();
+    let (report, longest) = std::thread::scope(|s| {
+        let watcher = s.spawn(|| {
+            let mut longest = StdDuration::ZERO;
+            while !done.load(Ordering::Relaxed) {
+                let asked = Instant::now();
+                drop(library.lock().unwrap());
+                longest = longest.max(asked.elapsed());
+                std::thread::sleep(StdDuration::from_millis(5));
+            }
+            longest
+        });
+        let started = Instant::now();
+        let report = sync_once(&library, &mut remote).unwrap();
+        eprintln!("sync {count}: {:?}", started.elapsed());
+        done.store(true, Ordering::Relaxed);
+        (report, watcher.join().unwrap())
+    });
+    eprintln!("sent {} records, {} files; longest wait for the library: {longest:?}", report.sent, report.files_sent);
+}

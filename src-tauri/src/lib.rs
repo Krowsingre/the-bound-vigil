@@ -66,8 +66,13 @@ async fn queue_imports(
 }
 
 #[tauri::command]
-fn import_queue(imports: State<'_, Arc<imports::Imports>>) -> Vec<imports::ImportItem> {
-    imports.list()
+fn import_queue(imports: State<'_, Arc<imports::Imports>>) -> imports::ImportsView {
+    imports.view()
+}
+
+#[tauri::command]
+fn take_pdf_covers(imports: State<'_, Arc<imports::Imports>>) -> Vec<String> {
+    imports.take_pdf_covers()
 }
 
 #[tauri::command]
@@ -1169,6 +1174,7 @@ pub fn run() {
             save_fetched,
             queue_imports,
             import_queue,
+            take_pdf_covers,
             cancel_imports,
             clear_finished_imports,
             export_goodreads,

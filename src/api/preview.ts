@@ -12,6 +12,7 @@ import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
 import { duplicateGroups } from "../lib/duplicates";
 import { cleanValue, DETAIL_FIELDS, previewFields } from "../lib/details";
 import { DESKTOP_ONLY } from "../ereaders/ereaders";
+import { importsViewOf } from "../imports/view";
 import type {
   Audiobook,
   AudioChapter,
@@ -451,7 +452,8 @@ export function previewApi(): Api {
     ...previewMove(params),
     getHome: async () => home(),
     queueImports: async () => 0,
-    importQueue: async () => imports,
+    importQueue: async () => importsViewOf(imports),
+    takePdfCovers: async () => [],
     cancelImports: async () => {
       imports = imports.filter((i) => i.stage !== "waiting");
     },

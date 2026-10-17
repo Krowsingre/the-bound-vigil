@@ -39,6 +39,7 @@ import { WebSync } from "./sync";
 import { moveStub } from "../api/moveStub";
 import { serverStub } from "../api/serverStub";
 import { projectFromLink } from "./link";
+import { NO_IMPORTS } from "../imports/view";
 
 type Row = { [column: string]: unknown };
 
@@ -442,7 +443,8 @@ export async function webApi(): Promise<Api> {
     queueImports: async () => {
       throw new Error(DESKTOP_ONLY);
     },
-    importQueue: async () => [],
+    importQueue: async () => NO_IMPORTS,
+    takePdfCovers: async () => [],
     cancelImports: async () => undefined,
     clearFinishedImports: async () => undefined,
     onImports: () => () => undefined,

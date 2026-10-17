@@ -3,7 +3,6 @@
 // documents are first laid out as chapters here.
 
 import { api } from "../../api";
-import type { ImportResult } from "../../api/types";
 import { makeHtmlBook, type BookInfo, type HtmlBook } from "./htmlBook";
 import { decodeText, textToChapters } from "./plainText";
 import { wordDocumentChapters } from "./wordDocument";
@@ -35,17 +34,20 @@ export async function drawPdfCover(file: Blob): Promise<Blob | null> {
   }
 }
 
-/** Gives newly imported PDFs a cover. Returns whether any was added. */
-export async function drawImportedCovers(results: ImportResult[]): Promise<boolean> {
+/**
+ * Gives newly imported PDFs a cover, one at a time with a pause between, so
+ * a big import of PDFs never keeps the window busy. Returns whether any was added.
+ */
+export async function drawImportedCovers(bookIds: string[]): Promise<boolean> {
   let added = false;
-  for (const r of results) {
-    if (r.outcome !== "imported" || !r.path.toLowerCase().endsWith(".pdf")) continue;
+  for (const bookId of bookIds) {
     try {
-      const cover = await drawPdfCover(await api.readBookFile(r.bookId));
-      if (cover && (await api.fillCover(r.bookId, new Uint8Array(await cover.arrayBuffer())))) added = true;
+      const cover = await drawPdfCover(await api.readBookFile(bookId));
+      if (cover && (await api.fillCover(bookId, new Uint8Array(await cover.arrayBuffer())))) added = true;
     } catch {
       // A PDF the engine can't draw keeps TBV's plain cover.
     }
+    await new Promise((done) => setTimeout(done, 150));
   }
   return added;
 }
