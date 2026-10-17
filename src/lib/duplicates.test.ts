@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { BookPreview } from "../api/types";
+import type { BookPreview, LibraryQuery } from "../api/types";
 import { matches } from "../collections/rules";
 import { authorKey, duplicateGroups, titleKey } from "./duplicates";
 import { cleanTag, queryBooks, tagCounts } from "./queryBooks";
@@ -75,5 +75,22 @@ describe("tags", () => {
     expect(matches(plain, rules("isNot"))).toBe(true);
     expect(matches(tagged, rules("contains", "club"))).toBe(true);
     expect(matches(plain, rules("isEmpty", ""))).toBe(true);
+  });
+});
+
+describe("language and download filters", () => {
+  it("spells each language one way, and filters by it and by what can be downloaded", async () => {
+    const { languageCode, languageName } = await import("./language");
+    expect([languageCode("en-US"), languageCode("eng"), languageCode("French"), languageCode("und"), languageCode(null)]).toEqual(["en", "en", "fr", null, null]);
+    expect(languageName("fr")).toBe("French");
+    const books = [
+      book("Dracula", "Bram Stoker", { language: "en", inCloud: true }),
+      book("Germinal", "Émile Zola", { language: "fr" }),
+      book("Nana", "Émile Zola", { language: "fr", inCloud: true }),
+    ];
+    const q: LibraryQuery = { shelf: "all", sort: "title", search: null, formats: [], location: null, page: 0, pageSize: 24 };
+    expect(queryBooks(books, q, 0).languages).toEqual(["en", "fr"]);
+    expect(queryBooks(books, { ...q, languages: ["fr"] }, 0).total).toBe(2);
+    expect(queryBooks(books, { ...q, downloadable: true }, 0).books.map((b) => b.title)).toEqual(["Dracula", "Nana"]);
   });
 });

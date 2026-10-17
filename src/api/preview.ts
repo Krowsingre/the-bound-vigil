@@ -167,6 +167,8 @@ function book(title: string, author: string, extra: Partial<BookPreview> = {}): 
     tags: [],
     inCloud: n % 3 !== 0,
     genres: [],
+    // The French classics are in French, so the language filter has something to show.
+    language: ["Alexandre Dumas", "Émile Zola", "Gustave Flaubert", "Victor Hugo"].includes(author) ? "fr" : "en",
     ...extra,
   };
 }

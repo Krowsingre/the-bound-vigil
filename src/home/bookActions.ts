@@ -74,6 +74,7 @@ export function bookContextMenu(book: BookPreview, actions: BookActions) {
 }
 
 function downloadItem(book: BookPreview, actions: BookActions): MenuEntry {
+  if (book.fileUnavailable) return { label: "Download to this device", icon: "download", hint: "File not in the cloud", disabled: true };
   if (book.availability === "cloud")
     return { label: "Download to this device", icon: "download", disabled: !actions.download, onSelect: () => actions.download?.(book) };
   if (book.availability === "missing") return { label: "Remove download", icon: "cloudOff", hint: "File missing", disabled: true };
@@ -83,6 +84,7 @@ function downloadItem(book: BookPreview, actions: BookActions): MenuEntry {
 
 /** Why a book can't be opened here, or null when it can. */
 export function cannotOpen(book: BookPreview): string | null {
+  if (book.fileUnavailable) return `“${book.title}” isn't in the cloud yet, so it can't be opened here. Send its file from the computer that has it.`;
   switch (book.availability) {
     case "missing":
       return `The file for “${book.title}” is missing from this device. Relinking arrives in a later step.`;

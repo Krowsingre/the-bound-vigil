@@ -39,7 +39,8 @@ pub(crate) const BOOK_COLUMNS: &str = r#"
            (SELECT ab.duration_ms FROM audiobooks ab WHERE ab.book_id = b.id),
            COALESCE((SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = 'narrators'),
                     (SELECT value FROM metadata_fetched WHERE book_id = b.id AND field = 'narrators'),
-                    (SELECT ab.narrators FROM audiobooks ab WHERE ab.book_id = b.id))
+                    (SELECT ab.narrators FROM audiobooks ab WHERE ab.book_id = b.id)),
+           tbv_language(COALESCE(o_language.value, f_language.value, b.language))
 "#;
 
 /// Effective narrators, for filters.
@@ -261,6 +262,7 @@ pub(crate) fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
             .get::<_, Option<String>>(22)?
             .and_then(|n| serde_json::from_str(&n).ok())
             .unwrap_or_default(),
+        language: r.get(23)?,
     })
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../api";
+import { api, isWeb } from "../api";
 import type { BookPreview, CollectionPreview, ItemKind, LibraryPage } from "../api/types";
 import { askEditDetails } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
@@ -76,6 +76,8 @@ export function Library({
     location: view.location,
     tags: view.tags,
     genres: view.genres,
+    languages: view.languages,
+    downloadable: view.downloadable,
     authors: view.authors,
     narrators: view.narrators,
     kind,
@@ -91,6 +93,8 @@ export function Library({
         location: view.location,
         tags: view.tags,
         genres: view.genres,
+        languages: view.languages,
+        downloadable: view.downloadable,
         authors: view.authors,
         narrators: view.narrators,
         kind,
@@ -104,7 +108,7 @@ export function Library({
     return () => {
       current = false;
     };
-  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.authors, view.narrators, view.page, search, refreshKey, reload]);
+  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.narrators, view.page, search, refreshKey, reload]);
 
   useEffect(() => {
     if (view.tab !== "collections") return;
@@ -141,7 +145,7 @@ export function Library({
   const page = load.state === "ready" ? load.data : null;
   const counts = page?.counts ?? null;
   const filtered =
-    view.formats.length > 0 || view.location !== null || view.tags.length > 0 || view.genres.length > 0 || view.authors.length > 0 || view.narrators.length > 0;
+    view.formats.length > 0 || view.location !== null || view.tags.length > 0 || view.genres.length > 0 || view.languages.length > 0 || view.downloadable || view.authors.length > 0 || view.narrators.length > 0;
   const selection: Selection | null = selected && {
     has: (id) => selected.has(id),
     toggle: (book) =>
@@ -265,7 +269,7 @@ export function Library({
             </button>
           )}
           {filtered && (
-            <button type="button" className="btn btn-quiet" onClick={() => onChange({ formats: [], location: null, tags: [], genres: [], authors: [], narrators: [] })}>
+            <button type="button" className="btn btn-quiet" onClick={() => onChange({ formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], narrators: [] })}>
               Clear filters
             </button>
           )}
@@ -305,12 +309,26 @@ export function Library({
         )}
       </header>
 
+      {isWeb && (
+        <div className="segmented library-reach" role="radiogroup" aria-label="Which books to show">
+          {[
+            { on: false, label: "Full library" },
+            { on: true, label: "Available to download" },
+          ].map(({ on, label }) => (
+            <button key={label} type="button" role="radio" aria-checked={view.downloadable === on} onClick={() => onChange({ downloadable: on, page: 0 })}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <LibraryToolbar
         view={view}
         counts={counts}
         formats={page?.formats ?? []}
         tags={page?.tags ?? []}
         genres={page?.genres ?? []}
+        languages={page?.languages ?? []}
         authors={page?.authors ?? undefined}
         narrators={page?.narrators ?? undefined}
         allLabel={kind === "books" ? undefined : `All ${words.many}`}

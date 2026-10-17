@@ -58,17 +58,19 @@ export function Menu({
     const gap = 6;
     const margin = 8;
     const below = button.bottom + gap;
-    const top =
-      below + box.height <= window.innerHeight - margin ||
-      button.top - gap - box.height < margin
-        ? below
-        : button.top - gap - box.height;
+    const roomBelow = window.innerHeight - margin - below;
+    const roomAbove = button.top - gap - margin;
+    // Below when it fits, or when there's more room there; a long menu (a big
+    // library's genres) then scrolls inside the room it has.
+    const goBelow = box.height <= roomBelow || roomBelow >= roomAbove;
+    const height = Math.min(box.height, goBelow ? roomBelow : roomAbove);
+    const top = goBelow ? below : button.top - gap - height;
     const preferred = align === "end" ? button.right - box.width : button.left;
     const left = Math.max(
       margin,
       Math.min(preferred, window.innerWidth - margin - box.width),
     );
-    setPlace({ top: Math.max(margin, top), left });
+    setPlace({ top: Math.max(margin, top), left, maxHeight: Math.max(120, height) });
   }, [open, align, items.length]);
 
   useEffect(() => {

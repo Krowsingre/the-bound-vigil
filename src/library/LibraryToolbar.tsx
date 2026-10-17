@@ -2,6 +2,7 @@ import type { Location, ShelfCounts } from "../api/types";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { formatLabel } from "../lib/queryBooks";
+import { languageName } from "../lib/language";
 import { SORTS, TABS, type Layout, type LibraryTab, type LibraryView } from "./libraryView";
 
 const COUNT_OF: Record<LibraryTab, keyof ShelfCounts> = {
@@ -26,6 +27,7 @@ export function LibraryToolbar({
   formats,
   tags,
   genres,
+  languages = [],
   authors = [],
   narrators = [],
   allLabel,
@@ -38,6 +40,8 @@ export function LibraryToolbar({
   formats: string[];
   tags: string[];
   genres: string[];
+  /** Languages the books are in, as short codes. */
+  languages?: string[];
   /** Audiobooks only: who wrote and who reads them. */
   authors?: string[];
   narrators?: string[];
@@ -49,7 +53,7 @@ export function LibraryToolbar({
 }) {
   const sortLabel = SORTS.find((s) => s.sort === view.sort)?.label;
   const filterCount =
-    view.formats.length + (view.location ? 1 : 0) + view.tags.length + view.genres.length + view.authors.length + view.narrators.length;
+    view.formats.length + (view.location ? 1 : 0) + view.tags.length + view.genres.length + view.languages.length + view.authors.length + view.narrators.length;
   const toggle = (list: "authors" | "narrators", name: string) =>
     onChange({ [list]: view[list].includes(name) ? view[list].filter((x) => x !== name) : [...view[list], name] });
   const names = (list: "authors" | "narrators", heading: string, known: string[]): MenuEntry[] =>
@@ -62,6 +66,8 @@ export function LibraryToolbar({
       : [];
   const toggleGenre = (g: string) =>
     onChange({ genres: view.genres.includes(g) ? view.genres.filter((x) => x !== g) : [...view.genres, g] });
+  const toggleLanguage = (l: string) =>
+    onChange({ languages: view.languages.includes(l) ? view.languages.filter((x) => x !== l) : [...view.languages, l] });
   const toggleTag = (t: string) => onChange({ tags: view.tags.includes(t) ? view.tags.filter((x) => x !== t) : [...view.tags, t] });
   const toggleFormat = (f: string) =>
     onChange({ formats: view.formats.includes(f) ? view.formats.filter((x) => x !== f) : [...view.formats, f] });
@@ -92,12 +98,22 @@ export function LibraryToolbar({
           })),
         ] as MenuEntry[])
       : []),
+    ...(languages.length > 1 || view.languages.length
+      ? ([
+          "divider",
+          { heading: <strong>Language</strong> },
+          ...[...new Set([...languages, ...view.languages])]
+            .map((l) => ({ code: l, name: languageName(l) }))
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map(({ code, name }) => ({ label: name, checked: view.languages.includes(code), onSelect: () => toggleLanguage(code) })),
+        ] as MenuEntry[])
+      : []),
     ...names("authors", "Authors", authors),
     ...names("narrators", "Narrators", narrators),
     ...(filterCount
       ? ([
           "divider",
-          { label: "Clear filters", onSelect: () => onChange({ formats: [], location: null, tags: [], genres: [], authors: [], narrators: [] }) },
+          { label: "Clear filters", onSelect: () => onChange({ formats: [], location: null, tags: [], genres: [], languages: [], authors: [], narrators: [] }) },
         ] as MenuEntry[])
       : []),
   ];
