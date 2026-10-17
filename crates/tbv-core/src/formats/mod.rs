@@ -27,6 +27,7 @@ pub fn read_metadata(path: &Path, format: &str) -> Result<BookMetadata> {
         "docx" => docx::read(path),
         "doc" => doc::read_metadata(path),
         "pdf" => pdf::read(path),
+        f if crate::audio::is_audio(f) => crate::audio::read(path, f).map(|(metadata, _)| metadata),
         _ => Ok(BookMetadata::default()),
     };
     Ok(read.unwrap_or_default())

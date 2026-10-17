@@ -18,6 +18,7 @@ use crate::time::now_utc;
 /// are titled from their file name until their readers land.
 pub const SUPPORTED_FORMATS: &[&str] = &[
     "epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "txt", "docx", "doc",
+    "m4b", "m4a", "mp3", "aac", "ogg", "oga", "opus", "flac", "tbvaudio",
 ];
 
 /// Where this device keeps TBV's files.
@@ -286,6 +287,21 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (book_id, field)
     );
     "#,
+    // v11: audiobooks. The book row holds what every book has; this holds
+    // what only audio has, read from its files, so a device without the file
+    // can still show chapters and length. `ebook_id` is the ebook it's linked
+    // to for reading along.
+    r#"
+    CREATE TABLE audiobooks (
+        book_id TEXT PRIMARY KEY REFERENCES books(id),
+        narrators TEXT NOT NULL DEFAULT '[]',
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        chapters TEXT NOT NULL DEFAULT '[]',
+        parts TEXT NOT NULL DEFAULT '[]',
+        ebook_id TEXT,
+        updated_at TEXT NOT NULL
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
@@ -376,12 +392,18 @@ impl Library {
 
     fn import_one(&mut self, source: &Path) -> ImportResult {
         let path = source.display().to_string();
-        let format = match extension_of(source) {
-            Some(ext) if SUPPORTED_FORMATS.contains(&ext.as_str()) => ext,
-            _ => return ImportResult::Unsupported { path },
+        if !source.is_dir() && !extension_of(source).is_some_and(|ext| SUPPORTED_FORMATS.contains(&ext.as_str())) {
+            return ImportResult::Unsupported { path };
+        }
+        let staged = match stage_source(&self.paths, source) {
+            Ok(staged) => staged,
+            Err(error) => return ImportResult::Failed { path, reason: error.to_string() },
         };
-        match book_id_for_file(source).and_then(|id| self.try_import(source, &format, id)) {
-            Ok(result) => result,
+        let result = book_id_for_file(&staged.file).and_then(|id| self.try_import(&staged.file, &staged.format, id));
+        staged.clean_up();
+        match result {
+            // Reported by the folder the person chose, not TBV's bundle of it.
+            Ok(result) => result.from_path(path),
             Err(error) => ImportResult::Failed {
                 path,
                 reason: error.to_string(),
@@ -468,6 +490,9 @@ impl Library {
         tx.commit()?;
         // Genres and a date are extras; a book still imports without them.
         let _ = self.keep_file_details(&book_id, &metadata.subjects, metadata.published.as_deref());
+        if let Some(audio) = &metadata.audio {
+            self.keep_audio_details(&book_id, audio)?;
+        }
         Ok(ImportResult::Imported { path, book_id, title })
     }
 
@@ -562,7 +587,15 @@ fn collect_books(dir: &Path, books_dir: &Path, out: &mut Vec<PathBuf>) {
     };
     let mut entries: Vec<_> = entries.flatten().collect();
     entries.sort_by_key(|e| e.file_name());
+    // A folder of audio files (one per chapter or CD) is one audiobook.
+    let audio_folder = crate::audio::folder_parts(dir).len() > 1;
+    if audio_folder {
+        out.push(dir.to_path_buf());
+    }
     for entry in entries {
+        if audio_folder && crate::audio::is_part(&entry.path()) {
+            continue;
+        }
         let path = entry.path();
         let hidden = entry.file_name().to_string_lossy().starts_with('.');
         // file_type() does not follow symlinks, so link loops cannot trap the walk.
@@ -574,6 +607,43 @@ fn collect_books(dir: &Path, books_dir: &Path, out: &mut Vec<PathBuf>) {
             _ => {}
         }
     }
+}
+
+/// What gets imported for a source: the file itself, or for a folder of
+/// audio files a bundle of them made first (and removed afterwards).
+pub struct Staged {
+    pub file: PathBuf,
+    pub format: String,
+    temp_dir: Option<PathBuf>,
+}
+
+impl Staged {
+    pub fn clean_up(&self) {
+        if let Some(dir) = &self.temp_dir {
+            let _ = fs::remove_dir_all(dir);
+        }
+    }
+}
+
+/// Readies a file or folder for import. Bundling a folder copies its audio,
+/// so it runs without the library like the rest of the slow work.
+pub fn stage_source(paths: &LibraryPaths, source: &Path) -> Result<Staged> {
+    if !source.is_dir() {
+        let format = extension_of(source)
+            .filter(|ext| SUPPORTED_FORMATS.contains(&ext.as_str()))
+            .ok_or_else(|| Error::Unsuitable("TBV can't read this kind of file".into()))?;
+        return Ok(Staged { file: source.to_path_buf(), format, temp_dir: None });
+    }
+    // Named after the folder, so a book without tags is titled by it.
+    let temp_dir = paths.books_dir.join(".incoming").join(crate::ids::new_record_id());
+    fs::create_dir_all(&temp_dir)?;
+    let name = source.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Audiobook".into());
+    let file = temp_dir.join(format!("{}.{}", safe_file_stem(&name), crate::audio::BUNDLE));
+    if let Err(e) = crate::audio::write_bundle(source, &file) {
+        let _ = fs::remove_dir_all(&temp_dir);
+        return Err(e);
+    }
+    Ok(Staged { file, format: crate::audio::BUNDLE.into(), temp_dir: Some(temp_dir) })
 }
 
 /// A hashed file that needs copying in. `prepare` does the slow part

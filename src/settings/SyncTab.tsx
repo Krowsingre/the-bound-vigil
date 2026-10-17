@@ -436,6 +436,12 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
             checked={sync.bookFiles}
             onChange={(bookFiles) => changeSync({ bookFiles })}
           />
+          <Toggle
+            label="Sync audiobook files"
+            hint="Audiobooks are large, so this is separate. Their chapters and your place sync either way."
+            checked={sync.audioFiles}
+            onChange={(audioFiles) => changeSync({ audioFiles })}
+          />
         </div>
       </Section>
 

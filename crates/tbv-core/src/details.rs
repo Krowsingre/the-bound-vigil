@@ -48,10 +48,11 @@ pub fn download_cover(url: &str) -> Result<Vec<u8>> {
 /// Every detail that can be edited or fetched, in the order the page shows them.
 pub const FIELDS: &[&str] = &[
     "title", "authors", "series", "series_index", "synopsis", "genres", "publisher", "published", "language", "isbn",
+    "narrators",
 ];
 
 /// Fields held as a JSON list of names.
-const LISTS: &[&str] = &["authors", "genres"];
+const LISTS: &[&str] = &["authors", "genres", "narrators"];
 const MAX_LIST: usize = 20;
 const MAX_TEXT: usize = 500;
 const MAX_SYNOPSIS: usize = 20_000;
@@ -167,8 +168,9 @@ impl Library {
             .ok_or_else(|| Error::Unsuitable("This book is no longer in your library.".into()))?;
         let (own, file_size, file_path): (BTreeMap<String, Option<String>>, i64, Option<String>) = self.conn.query_row(
             "SELECT b.title, b.authors, b.series, b.series_index, b.synopsis, b.publisher, b.language, b.isbn,
-                    b.file_size, lf.path
-             FROM books b LEFT JOIN local_files lf ON lf.book_id = b.id WHERE b.id = ?1",
+                    b.file_size, lf.path, ab.narrators
+             FROM books b LEFT JOIN local_files lf ON lf.book_id = b.id LEFT JOIN audiobooks ab ON ab.book_id = b.id
+             WHERE b.id = ?1",
             params![book_id],
             |r| {
                 let mut own = BTreeMap::new();
@@ -180,6 +182,7 @@ impl Library {
                 own.insert("publisher".to_string(), r.get(5)?);
                 own.insert("language".to_string(), r.get(6)?);
                 own.insert("isbn".to_string(), r.get(7)?);
+                own.insert("narrators".to_string(), r.get(10)?);
                 Ok((own, r.get(8)?, r.get(9)?))
             },
         )?;

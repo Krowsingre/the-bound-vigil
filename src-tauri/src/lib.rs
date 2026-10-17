@@ -1,6 +1,7 @@
 //! Tauri shell: wires the UI to `tbv-core`. Commands stay thin; all logic and
 //! file work lives in the core, and blocking work runs off the UI thread.
 
+mod audio;
 mod hardcover;
 mod imports;
 mod sync;
@@ -193,6 +194,26 @@ async fn fill_cover(state: State<'_, AppLibrary>, request: tauri::ipc::Request<'
         .to_string();
     let picture = picture.clone();
     with_library(state, move |library| library.fill_cover(&book_id, &picture)).await
+}
+
+#[tauri::command]
+async fn audiobook(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<tbv_core::audio::Audiobook> {
+    with_library(state, move |library| library.audiobook(&book_id)).await
+}
+
+#[tauri::command]
+async fn save_listening(state: State<'_, AppLibrary>, book_id: String, position_ms: u64, chapter: Option<String>) -> CommandResult<()> {
+    with_library(state, move |library| library.save_listening(&book_id, position_ms, chapter)).await
+}
+
+#[tauri::command]
+async fn link_ebook(state: State<'_, AppLibrary>, audiobook_id: String, ebook_id: Option<String>) -> CommandResult<()> {
+    with_library(state, move |library| library.link_ebook(&audiobook_id, ebook_id.as_deref())).await
+}
+
+#[tauri::command]
+async fn audiobook_for_ebook(state: State<'_, AppLibrary>, ebook_id: String) -> CommandResult<Option<String>> {
+    with_library(state, move |library| library.audiobook_for_ebook(&ebook_id)).await
 }
 
 /// A cover found online, for a book that has none.
@@ -794,6 +815,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .register_asynchronous_uri_scheme_protocol("tbvaudio", audio::serve)
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             let cache_dir = app.path().app_cache_dir()?;
@@ -831,6 +853,10 @@ pub fn run() {
             book_text,
             fill_cover,
             fetch_cover,
+            audiobook,
+            save_listening,
+            link_ebook,
+            audiobook_for_ebook,
             set_book_status,
             get_library,
             get_collections,

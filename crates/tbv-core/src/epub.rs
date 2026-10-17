@@ -26,6 +26,8 @@ pub struct BookMetadata {
     /// When it was published, as the book gives it (often a year or a date).
     pub published: Option<String>,
     pub cover: Option<Cover>,
+    /// An audiobook's narrators, chapters and length.
+    pub audio: Option<crate::audio::AudioDetails>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -71,6 +71,9 @@ pub struct ReaderLocator {
     /// The chapter title at this position, for lists of highlights and bookmarks.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chapter: Option<String>,
+    /// For an audiobook: how far in, from the start of the whole book.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio_ms: Option<u64>,
 }
 
 /// Another device's position for the same book, shown as "On Phone you're at 51%".
@@ -117,6 +120,12 @@ pub struct BookPreview {
     /// Its genres: your edit, else fetched or from the file.
     #[serde(default)]
     pub genres: Vec<String>,
+    /// An audiobook's length.
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
+    /// An audiobook's narrators.
+    #[serde(default)]
+    pub narrators: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -231,12 +240,14 @@ pub enum SortOrder {
     Genre,
 }
 
-/// Which page a book belongs on: ebooks in the Library, PDF/DOC/DOCX/TXT in Documents.
+/// Which page a book belongs on: ebooks in the Library, PDF/DOC/DOCX/TXT in
+/// Documents, audio in Audiobooks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ItemKind {
     Books,
     Documents,
+    Audiobooks,
 }
 
 /// Where a book's file is, for filtering. `Missing` books count as on device.
@@ -263,7 +274,13 @@ pub struct LibraryQuery {
     /// Books with any of these genres. Empty means any.
     #[serde(default)]
     pub genres: Vec<String>,
-    /// Only books, or only documents. None means both.
+    /// Books by any of these authors. Empty means any.
+    #[serde(default)]
+    pub authors: Vec<String>,
+    /// Audiobooks read by any of these narrators. Empty means any.
+    #[serde(default)]
+    pub narrators: Vec<String>,
+    /// Only books, documents or audiobooks. None means all of them.
     #[serde(default)]
     pub kind: Option<ItemKind>,
     /// Zero-based.
@@ -299,6 +316,9 @@ pub struct LibraryPage {
     pub tags: Vec<String>,
     /// Genres on the books of this kind, A to Z, for the filter menu.
     pub genres: Vec<String>,
+    /// For audiobooks: their authors and narrators, A to Z, for the filter menus.
+    pub authors: Vec<String>,
+    pub narrators: Vec<String>,
 }
 
 /// This device's own settings. Not synced.
@@ -334,6 +354,18 @@ pub enum ImportResult {
         path: String,
         reason: String,
     },
+}
+
+impl ImportResult {
+    /// The same result, reported under the path the person chose.
+    pub fn from_path(self, path: String) -> Self {
+        match self {
+            Self::Imported { book_id, title, .. } => Self::Imported { path, book_id, title },
+            Self::AlreadyInLibrary { book_id, title, .. } => Self::AlreadyInLibrary { path, book_id, title },
+            Self::Unsupported { .. } => Self::Unsupported { path },
+            Self::Failed { reason, .. } => Self::Failed { path, reason },
+        }
+    }
 }
 
 #[cfg(test)]
