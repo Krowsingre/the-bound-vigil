@@ -247,6 +247,8 @@ export interface CollectionSummary {
   /** The picture's file on this device, for `picture:` and `cover:`. */
   picturePath: string | null;
   pinned: boolean;
+  /** Set when it fills itself from rules instead of by hand. */
+  rules: CollectionRules | null;
   count: number;
   /** The average of your ratings of its books, if you've rated any. */
   rating: number | null;
@@ -329,6 +331,46 @@ export interface CollectionInput {
   kind: CollectionKind;
   badge?: string | null;
   pinned: boolean;
+  /** Rules that fill it by themselves. Null or left out: books are added by hand. */
+  rules?: CollectionRules | null;
+}
+
+export type RuleField =
+  | "title"
+  | "author"
+  | "series"
+  | "publisher"
+  | "language"
+  | "format"
+  | "rating"
+  | "status"
+  | "favorite"
+  | "upNext"
+  | "added"
+  | "location";
+
+export type RuleOp =
+  | "contains"
+  | "notContains"
+  | "is"
+  | "isNot"
+  | "startsWith"
+  | "isEmpty"
+  | "atLeast"
+  | "atMost"
+  | "withinDays"
+  | "olderThanDays";
+
+export interface Rule {
+  field: RuleField;
+  op: RuleOp;
+  value: string;
+}
+
+/** `any`: a book needs to match one rule; otherwise every rule. */
+export interface CollectionRules {
+  any: boolean;
+  rules: Rule[];
 }
 
 export type NoteKind = "highlight" | "annotation" | "book_note" | "personal";

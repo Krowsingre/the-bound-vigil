@@ -2,8 +2,27 @@ import { describe, expect, it } from "vitest";
 import { BADGE_NAMES, isBadge } from "./badges";
 import { bookCount, pictureUrl, sameRef } from "./collectionInfo";
 import { GALLERY, galleryUrl } from "./gallery";
+import type { BookPreview } from "../api/types";
+import { describeRules, matches, newRule, usable } from "./rules";
 
 describe("collections", () => {
+  it("matches books against rules as the core does", () => {
+    const book = { title: "Carmilla", authors: ["J. Sheridan Le Fanu"], rating: 5, status: "unread", format: "epub" } as BookPreview;
+    const rules = {
+      any: false,
+      rules: [
+        { field: "author" as const, op: "contains" as const, value: "le fanu" },
+        { field: "rating" as const, op: "atLeast" as const, value: "4" },
+      ],
+    };
+    expect(matches(book, rules)).toBe(true);
+    expect(matches({ ...book, rating: 3 }, rules)).toBe(false);
+    expect(matches({ ...book, rating: 3 }, { ...rules, any: true })).toBe(true);
+    expect(usable(newRule("author"))).toBe(false);
+    expect(usable(newRule("added"))).toBe(true);
+    expect(describeRules(rules)).toBe("Author contains “le fanu”, and Your rating is at least 4 stars");
+  });
+
   it("knows the built-in shelves' badges", () => {
     for (const b of ["star", "compass", "bookmark", "check"]) expect(isBadge(b)).toBe(true);
     expect(isBadge("from-a-newer-version")).toBe(false);

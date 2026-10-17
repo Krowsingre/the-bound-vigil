@@ -8,6 +8,7 @@ import type {
   AnnotationInput,
   CollectionDetail,
   CollectionInput,
+  CollectionRules,
   CollectionPreview,
   CollectionRef,
   CollectionSummary,
@@ -88,6 +89,8 @@ export interface Api {
   getCollectionsOverview(): Promise<CollectionsOverview>;
   getCollection(collection: CollectionRef): Promise<CollectionDetail>;
   createCollection(input: CollectionInput): Promise<CollectionSummary>;
+  /** How many books these rules would hold. */
+  countRuleMatches(rules: CollectionRules): Promise<number>;
   updateCollection(id: string, input: CollectionInput): Promise<CollectionSummary>;
   deleteCollection(id: string): Promise<void>;
   /** A gallery picture (`gallery:<name>`), a book's cover (`cover:<book id>`), or none. */
@@ -268,6 +271,7 @@ function appApi(): Api {
     getCollectionsOverview: async () => (await core).invoke<CollectionsOverview>("get_collections_overview"),
     getCollection: async (collection) => (await core).invoke<CollectionDetail>("get_collection", { collection }),
     createCollection: async (input) => (await core).invoke<CollectionSummary>("create_collection", { input }),
+    countRuleMatches: async (rules) => (await core).invoke<number>("count_rule_matches", { rules }),
     updateCollection: async (id, input) => (await core).invoke<CollectionSummary>("update_collection", { id, input }),
     deleteCollection: async (id) => (await core).invoke("delete_collection", { id }),
     setCollectionPicture: async (id, picture) =>

@@ -414,6 +414,8 @@ pub struct CollectionSummary {
     /// The picture's file on this device, for `picture:` and `cover:`.
     pub picture_path: Option<String>,
     pub pinned: bool,
+    /// Set when the collection fills itself from rules instead of by hand.
+    pub rules: Option<crate::rules::CollectionRules>,
     pub count: u32,
     /// The average of your ratings of its books, if you've rated any.
     pub rating: Option<f64>,
@@ -518,6 +520,9 @@ pub struct CollectionInput {
     pub badge: Option<String>,
     #[serde(default)]
     pub pinned: bool,
+    /// Rules that fill it by themselves. None: books are added by hand.
+    #[serde(default)]
+    pub rules: Option<crate::rules::CollectionRules>,
 }
 
 /// The kinds of note on the Notes page.

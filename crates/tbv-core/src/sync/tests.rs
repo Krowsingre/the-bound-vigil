@@ -138,6 +138,7 @@ fn a_second_device_receives_the_whole_library() {
                 kind: CollectionKind::Collection,
                 badge: None,
                 pinned: false,
+                rules: None,
             })
             .unwrap();
         lib.add_to_collection(&c.id, std::slice::from_ref(&book)).unwrap();

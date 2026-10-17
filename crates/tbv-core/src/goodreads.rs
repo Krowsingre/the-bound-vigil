@@ -251,6 +251,7 @@ impl Library {
                         kind: CollectionKind::Collection,
                         badge: None,
                         pinned: false,
+                        rules: None,
                     })?;
                     report.collections_created.push(name);
                     made.id

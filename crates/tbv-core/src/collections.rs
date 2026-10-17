@@ -14,6 +14,7 @@ use crate::ids::new_record_id;
 use crate::library::Library;
 use crate::model::*;
 use crate::profile::AVATAR_FORMATS;
+use crate::rules::CollectionRules;
 use crate::time::now_utc;
 
 const MAX_PICTURE_BYTES: u64 = 15 * 1024 * 1024;
@@ -58,6 +59,17 @@ fn clean_badge(badge: Option<&str>) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// The kind to save and the rules as JSON. A collection that fills itself
+/// has no order of its own, so it's never a reading list.
+fn rules_of(input: &CollectionInput) -> Result<(CollectionKind, Option<String>)> {
+    let Some(rules) = &input.rules else { return Ok((input.kind, None)) };
+    let rules = rules.cleaned();
+    if rules.rules.is_empty() {
+        return Err(Error::Unsuitable("add at least one rule, or choose books by hand".into()));
+    }
+    Ok((CollectionKind::Collection, Some(serde_json::to_string(&rules)?)))
+}
+
 impl Library {
     fn members(&self, collection: &CollectionRef) -> Result<Members> {
         Ok(match collection {
@@ -68,6 +80,11 @@ impl Library {
                     values: vec![],
                 },
                 None => {
+                    if let Some(rules) = self.collection_rules(id)? {
+                        let mut values = Vec::new();
+                        let condition = rules.sql(&mut values);
+                        return Ok(Members { condition, order: format!("b.added_at DESC, {TITLE}"), values });
+                    }
                     let (column, direction) = match self.collection_kind(id)? {
                         CollectionKind::ReadingList => ("position", ""),
                         _ => ("added_at", " DESC"),
@@ -129,6 +146,25 @@ impl Library {
             .ok_or_else(|| Error::Unsuitable("that collection no longer exists".into()))
     }
 
+    /// A collection's rules, if it fills itself.
+    fn collection_rules(&self, id: &str) -> Result<Option<CollectionRules>> {
+        let rules: Option<String> = self
+            .conn
+            .query_row("SELECT rules FROM collections WHERE id = ?1 AND deleted_at IS NULL", params![id], |r| r.get(0))
+            .optional()?
+            .flatten();
+        Ok(rules.and_then(|r| serde_json::from_str(&r).ok()))
+    }
+
+    /// How many books these rules would hold, for the editor to show as
+    /// they're written.
+    pub fn count_rule_matches(&self, rules: &CollectionRules) -> Result<u32> {
+        let mut values = Vec::new();
+        let condition = rules.cleaned().sql(&mut values);
+        let members = Members { condition, order: String::new(), values };
+        Ok(self.member_stats(&members)?.0)
+    }
+
     /// How many books belong, and the average of your ratings of them.
     fn member_stats(&self, members: &Members) -> Result<(u32, Option<f64>)> {
         Ok(self.conn.query_row(
@@ -181,7 +217,7 @@ impl Library {
     fn summaries(&self, filter: &str) -> Result<Vec<CollectionSummary>> {
         let mut statement = self.conn.prepare(&format!(
             "SELECT id, name, description, kind, badge, picture, pinned, created_at,
-                    COALESCE(updated_at, created_at)
+                    COALESCE(updated_at, created_at), rules
              FROM collections WHERE deleted_at IS NULL {filter}
              ORDER BY position IS NULL, position, created_at"
         ))?;
@@ -197,12 +233,13 @@ impl Library {
                     r.get::<_, bool>(6)?,
                     r.get::<_, String>(7)?,
                     r.get::<_, String>(8)?,
+                    r.get::<_, Option<String>>(9)?,
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         rows.into_iter()
             .map(
-                |(id, name, description, kind, badge, picture, pinned, created_at, updated_at)| {
+                |(id, name, description, kind, badge, picture, pinned, created_at, updated_at, rules)| {
                     let members = self.members(&CollectionRef::Collection { id: id.clone() })?;
                     let (count, rating) = self.member_stats(&members)?;
                     Ok(CollectionSummary {
@@ -217,6 +254,7 @@ impl Library {
                         badge,
                         picture,
                         pinned,
+                        rules: rules.and_then(|r| serde_json::from_str(&r).ok()),
                         created_at,
                         updated_at,
                     })
@@ -304,18 +342,20 @@ impl Library {
             .ok_or_else(|| Error::Unsuitable("give the collection a name".into()))?;
         let id = new_record_id();
         let now = now_utc();
+        let (kind, rules) = rules_of(input)?;
         self.conn.execute(
-            "INSERT INTO collections (id, name, description, kind, badge, pinned, position, created_at, updated_at)
+            "INSERT INTO collections (id, name, description, kind, badge, pinned, position, created_at, updated_at, rules)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6,
-                     (SELECT COALESCE(MAX(position), 0) + 1 FROM collections), ?7, ?7)",
+                     (SELECT COALESCE(MAX(position), 0) + 1 FROM collections), ?7, ?7, ?8)",
             params![
                 id,
                 name,
                 clean_text(input.description.as_deref(), MAX_DESCRIPTION_CHARS),
-                input.kind.as_str(),
+                kind.as_str(),
                 clean_badge(input.badge.as_deref()),
                 input.pinned,
-                now
+                now,
+                rules
             ],
         )?;
         self.collection(&id)
@@ -342,21 +382,23 @@ impl Library {
             }
             let name = clean_text(Some(&input.name), MAX_NAME_CHARS)
                 .ok_or_else(|| Error::Unsuitable("give the collection a name".into()))?;
+            let (new_kind, rules) = rules_of(input)?;
             self.conn.execute(
                 "UPDATE collections SET name = ?2, description = ?3, kind = ?4, badge = ?5, pinned = ?6,
-                        updated_at = ?7
+                        updated_at = ?7, rules = ?8
                  WHERE id = ?1",
                 params![
                     id,
                     name,
                     clean_text(input.description.as_deref(), MAX_DESCRIPTION_CHARS),
-                    input.kind.as_str(),
+                    new_kind.as_str(),
                     clean_badge(input.badge.as_deref()),
                     input.pinned,
-                    now
+                    now,
+                    rules
                 ],
             )?;
-            if kind != CollectionKind::ReadingList && input.kind == CollectionKind::ReadingList {
+            if kind != CollectionKind::ReadingList && new_kind == CollectionKind::ReadingList {
                 // A new reading list starts in the order the books were added.
                 self.renumber(id, None)?;
             }
@@ -459,6 +501,9 @@ impl Library {
             return Err(Error::Unsuitable(
                 "books join a shelf from their own menu".into(),
             ));
+        }
+        if self.collection_rules(id)?.is_some() {
+            return Err(Error::Unsuitable("this collection fills itself from its rules".into()));
         }
         let now = now_utc();
         let tx = self.conn.unchecked_transaction()?;
@@ -604,7 +649,63 @@ mod tests {
             kind,
             badge: Some("moon".into()),
             pinned: false,
+            rules: None,
         }
+    }
+
+    #[test]
+    fn rules_fill_a_collection_and_keep_up() {
+        use crate::rules::{CollectionRules, Rule, RuleField, RuleOp};
+        let (dir, mut library) = open_temp_library();
+        let mut by = |title: &str, author: &str| {
+            let path = dir.path().join(format!("{title}.epub"));
+            crate::epub::tests::write_test_epub(&path, title, author, false);
+            match library.import_files(&[path]).remove(0) {
+                ImportResult::Imported { book_id, .. } => book_id,
+                other => panic!("{other:?}"),
+            }
+        };
+        let carmilla = by("Carmilla", "J. Sheridan Le Fanu");
+        let silas = by("Uncle Silas", "J. Sheridan Le Fanu");
+        by("Dracula", "Bram Stoker");
+        let rule = |field, op, value: &str| Rule { field, op, value: value.into() };
+        let gothic = library
+            .create_collection(&CollectionInput {
+                kind: CollectionKind::ReadingList,
+                rules: Some(CollectionRules {
+                    any: false,
+                    rules: vec![rule(RuleField::Author, RuleOp::Contains, "le fanu"), rule(RuleField::Rating, RuleOp::AtLeast, "4")],
+                }),
+                ..input("Best of Le Fanu", CollectionKind::ReadingList)
+            })
+            .unwrap();
+        assert_eq!(gothic.kind, CollectionKind::Collection, "a collection with rules has no order of its own");
+        assert_eq!(gothic.count, 0);
+
+        library.set_rating(&carmilla, Some(5)).unwrap();
+        library.set_rating(&silas, Some(3)).unwrap();
+        let detail = library.collection_detail(&CollectionRef::Collection { id: gothic.id.clone() }).unwrap();
+        assert_eq!(detail.books.iter().map(|b| b.title.as_str()).collect::<Vec<_>>(), ["Carmilla"]);
+        assert!(library.add_to_collection(&gothic.id, std::slice::from_ref(&silas)).is_err());
+
+        // Any one rule, and the person's own % matched as written.
+        let either = CollectionRules {
+            any: true,
+            rules: vec![rule(RuleField::Title, RuleOp::StartsWith, "drac"), rule(RuleField::Title, RuleOp::Is, "uncle silas"), rule(RuleField::Title, RuleOp::Contains, "%")],
+        };
+        let mut change = input("Either", CollectionKind::Collection);
+        change.rules = Some(either);
+        assert_eq!(library.update_collection(&gothic.id, &change).unwrap().count, 2);
+
+        // Rules that can't be used are dropped; none left is refused.
+        change.rules = Some(CollectionRules { any: false, rules: vec![rule(RuleField::Rating, RuleOp::AtLeast, "lots")] });
+        assert!(library.update_collection(&gothic.id, &change).is_err());
+
+        // Back to choosing books by hand.
+        change.rules = None;
+        let by_hand = library.update_collection(&gothic.id, &change).unwrap();
+        assert_eq!((by_hand.count, by_hand.rules), (0, None));
+        library.add_to_collection(&gothic.id, &[silas]).unwrap();
     }
 
     #[test]

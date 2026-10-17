@@ -100,7 +100,7 @@ pub(crate) const KINDS: &[Kind] = &[
         table: "collections",
         keys: &["id"],
         cols: &[
-            "name", "created_at", "deleted_at", "description", "kind", "badge", "picture", "pinned", "position", "updated_at",
+            "name", "created_at", "deleted_at", "description", "kind", "badge", "picture", "pinned", "position", "updated_at", "rules",
         ],
         category: Category::Collections,
         creates: true,

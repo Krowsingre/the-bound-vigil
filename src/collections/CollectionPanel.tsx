@@ -58,7 +58,7 @@ export function CollectionPanel({
       : selected.kind === "series"
         ? `A series by ${authorLine(series.find((s) => s.name === selected.name)?.authors ?? []) || "unknown authors"}, in reading order.`
         : c?.description;
-  const kindLabel = selected.kind === "smart" ? "Smart collection" : selected.kind === "series" ? "Series" : c && KIND_LABEL[c.kind];
+  const kindLabel = selected.kind === "smart" ? "Smart collection" : selected.kind === "series" ? "Series" : c?.rules ? "Filled by rules" : c && KIND_LABEL[c.kind];
   const covers = detail.books.slice(0, 3).map(({ id, title, authors, coverPath }) => ({ id, title, authors, coverPath }));
   const menu = menuFor(detail);
 

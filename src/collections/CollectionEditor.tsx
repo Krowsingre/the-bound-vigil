@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { api, isApp } from "../api";
-import type { CollectionKind, CollectionSummary, CoverRef } from "../api/types";
+import type { CollectionKind, CollectionRules, CollectionSummary, CoverRef } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { Badge, BADGE_NAMES } from "./badges";
 import { CollectionPicture } from "./CollectionCards";
 import { GALLERY, galleryName, galleryUrl } from "./gallery";
+import { newRule, usable } from "./rules";
+import { RulesEditor } from "./RulesEditor";
 
 type PictureTab = "gallery" | "covers" | "computer";
 
@@ -38,6 +40,9 @@ export function CollectionEditor({
   const [kind, setKind] = useState<CollectionKind>(collection?.kind ?? "collection");
   const [badge, setBadge] = useState<string | null>(collection?.badge ?? null);
   const [pinned, setPinned] = useState(collection?.pinned ?? false);
+  // Kept while switching to "by hand" and back, so nothing typed is lost.
+  const [rules, setRules] = useState<CollectionRules>(collection?.rules ?? { any: false, rules: [newRule()] });
+  const [byRules, setByRules] = useState(!!collection?.rules);
   const [picture, setPicture] = useState<PictureChoice>({
     picture: collection?.picture ?? null,
     picturePath: collection?.picturePath ?? null,
@@ -65,10 +70,19 @@ export function CollectionEditor({
     if (!shelf && !name.trim()) return setError("Give the collection a name.");
     setBusy(true);
     setError(null);
-    const input = { name, description: description.trim() || null, kind, badge, pinned };
+    const ready = { ...rules, rules: rules.rules.filter(usable) };
+    if (byRules && !ready.rules.length) return setError("Finish at least one rule, or choose books by hand.");
+    const input = {
+      name,
+      description: description.trim() || null,
+      kind: byRules ? ("collection" as const) : kind,
+      badge,
+      pinned,
+      rules: byRules ? ready : null,
+    };
     try {
       let saved = collection ? await api.updateCollection(collection.id, input) : await api.createCollection(input);
-      if (!collection && addBookIds.length) await api.addToCollection(saved.id, addBookIds);
+      if (!collection && addBookIds.length && !byRules) await api.addToCollection(saved.id, addBookIds);
       if ("file" in picture) saved = await api.setCollectionPictureFile(saved.id, picture.file);
       else if (picture.picture !== saved.picture) saved = await api.setCollectionPicture(saved.id, picture.picture);
       onSaved(saved);
@@ -132,6 +146,23 @@ export function CollectionEditor({
                 />
               </label>
               <fieldset className="field">
+                <legend>Books</legend>
+                <div className="segmented" role="radiogroup" aria-label="Books">
+                  <button type="button" role="radio" aria-checked={!byRules} onClick={() => setByRules(false)}>
+                    Chosen by hand
+                  </button>
+                  <button type="button" role="radio" aria-checked={byRules} onClick={() => setByRules(true)}>
+                    Filled by rules
+                  </button>
+                </div>
+                {byRules ? (
+                  <RulesEditor rules={rules} onChange={setRules} />
+                ) : (
+                  <small className="muted">You add books yourself, from any book’s menu.</small>
+                )}
+              </fieldset>
+              {!byRules && (
+              <fieldset className="field">
                 <legend>Type</legend>
                 <div className="segmented" role="radiogroup" aria-label="Type">
                   {(
@@ -151,6 +182,7 @@ export function CollectionEditor({
                     : "A collection lists its newest additions first."}
                 </small>
               </fieldset>
+              )}
             </>
           )}
 

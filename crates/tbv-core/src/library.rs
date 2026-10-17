@@ -256,6 +256,10 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE books ADD COLUMN finished_at TEXT;
     ALTER TABLE books ADD COLUMN isbn TEXT;
     "#,
+    // v8: rules that fill a collection by themselves, as JSON (see rules.rs).
+    r#"
+    ALTER TABLE collections ADD COLUMN rules TEXT;
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

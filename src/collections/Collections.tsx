@@ -169,7 +169,7 @@ export function Collections({
   const togglePin = useCallback(
     (c: CollectionSummary) =>
       api
-        .updateCollection(c.id, { name: c.name, description: c.description, kind: c.kind, badge: c.badge, pinned: !c.pinned })
+        .updateCollection(c.id, { name: c.name, description: c.description, kind: c.kind, badge: c.badge, pinned: !c.pinned, rules: c.rules })
         .then(changed, (e: unknown) => toast(String(e))),
     [changed, toast],
   );
@@ -214,7 +214,11 @@ export function Collections({
           onSaved={(saved) => {
             setEditing(null);
             if (!editing.collection) {
-              toast(`Made ${saved.name}. Add books from any book's … menu, or from the collection.`);
+              toast(
+                saved.rules
+                  ? `Made ${saved.name}. It holds ${saved.count} ${saved.count === 1 ? "book" : "books"} now and keeps up by itself.`
+                  : `Made ${saved.name}. Add books from any book's … menu, or from the collection.`,
+              );
               setSelected({ kind: "collection", id: saved.id });
             }
             changed();

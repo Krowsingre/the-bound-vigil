@@ -363,6 +363,14 @@ async fn create_collection(
 }
 
 #[tauri::command]
+async fn count_rule_matches(
+    state: State<'_, AppLibrary>,
+    rules: tbv_core::rules::CollectionRules,
+) -> CommandResult<u32> {
+    with_library(state, move |library| library.count_rule_matches(&rules)).await
+}
+
+#[tauri::command]
 async fn update_collection(
     state: State<'_, AppLibrary>,
     id: String,
@@ -737,6 +745,7 @@ pub fn run() {
             get_collections_overview,
             get_collection,
             create_collection,
+            count_rule_matches,
             update_collection,
             delete_collection,
             set_collection_picture,
