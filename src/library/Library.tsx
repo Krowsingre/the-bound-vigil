@@ -58,6 +58,8 @@ export function Library({
   const [tagging, setTagging] = useState(false);
   const [asking, setAsking] = useState<"remove" | "delete" | "download" | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /** The search and filters everything was last chosen for. */
+  const [allChosenFor, setAllChosenFor] = useState<string | null>(null);
   const toast = useToast();
   const words = WORDS[kind];
   const actions = useMemo(
@@ -127,6 +129,10 @@ export function Library({
     });
   }, [load]);
 
+  useEffect(() => {
+    if (!selected?.size) setAllChosenFor(null);
+  }, [selected]);
+
   // A new page starts at the top, like turning a page.
   useEffect(() => {
     document.querySelector(".content")?.scrollTo({ top: 0 });
@@ -159,6 +165,7 @@ export function Library({
         if (got.page < p || (got.page + 1) * got.pageSize >= got.total) break;
       }
       setSelected(all);
+      setAllChosenFor(JSON.stringify(query));
     } catch (e) {
       toast(`Couldn't choose them all: ${String(e)}`);
     } finally {
@@ -322,7 +329,7 @@ export function Library({
               Choose all on this page
             </button>
           )}
-          {page && page.total > page.books.length && selected.size < page.total && (
+          {page && page.total > page.books.length && allChosenFor !== JSON.stringify(query) && (
             <button type="button" className="view-all" disabled={busy !== null} onClick={() => void chooseAll()}>
               Choose all {page.total}
             </button>

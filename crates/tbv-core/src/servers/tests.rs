@@ -379,6 +379,9 @@ fn the_start_folder_is_the_saved_one_or_the_accounts_own() {
     assert_eq!(start_folder(&mut fake, &server).unwrap(), "/home/wren");
     server.folder = "/home/wren/Shelf".into();
     assert_eq!(start_folder(&mut fake, &server).unwrap(), "/home/wren/Shelf");
+    // A folder typed without its leading slash is in the account's own.
+    server.folder = "Shelf".into();
+    assert_eq!(start_folder(&mut fake, &server).unwrap(), "/home/wren/Shelf");
 }
 
 #[test]

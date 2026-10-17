@@ -311,8 +311,11 @@ fn plural(n: usize, what: &str) -> String {
 pub fn start_folder(connection: &mut dyn Connection, server: &Server) -> Result<String> {
     if server.folder.is_empty() {
         Ok(normalise(&connection.home()?))
-    } else {
+    } else if server.folder.starts_with('/') {
         Ok(server.folder.clone())
+    } else {
+        // A folder in the account's own, so every path shown is a full one.
+        Ok(normalise(&join(&connection.home()?, &server.folder)))
     }
 }
 
