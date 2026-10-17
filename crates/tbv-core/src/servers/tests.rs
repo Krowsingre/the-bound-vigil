@@ -404,3 +404,39 @@ fn counts_read_naturally() {
     assert_eq!(plural(3, "folder"), "3 folders");
     assert_eq!(plural(0, "file TBV can import"), "0 files TBV can import");
 }
+
+/// Against a real SFTP server. Run with
+/// `TBV_SFTP_TEST=127.0.0.1:2222 cargo test -p tbv-core sftp_signs_in -- --ignored`
+/// (user embre, password secret).
+#[test]
+#[ignore = "needs an SFTP server"]
+fn sftp_signs_in_and_lists() {
+    let at = std::env::var("TBV_SFTP_TEST").unwrap();
+    let (host, port) = at.rsplit_once(':').unwrap();
+    let (_dir, library) = crate::library::tests::open_temp_library();
+    let saved = library
+        .save_server(&ServerInput {
+            id: None,
+            name: String::new(),
+            protocol: Protocol::Sftp,
+            host: host.into(),
+            port: port.parse().unwrap(),
+            username: "embre".into(),
+            password: Some("secret".into()),
+            login: Login::Password,
+            key_file: None,
+            folder: String::new(),
+        })
+        .unwrap();
+    let server = library.server(&saved.id).unwrap();
+    let fingerprint = match super::test(&server) {
+        Err(Error::NewHostKey(fp)) => fp,
+        other => panic!("expected to be asked about the key first: {other:?}"),
+    };
+    library.trust_server_key(&saved.id, &fingerprint).unwrap();
+    let server = library.server(&saved.id).unwrap();
+    println!("test: {:?}", super::test(&server));
+    let mut connection = super::connect(&server).unwrap();
+    let folder = super::start_folder(connection.as_mut(), &server).unwrap();
+    println!("listing {folder}: {:?}", super::list_importable(connection.as_mut(), &folder).map(|l| l.entries.len()));
+}
