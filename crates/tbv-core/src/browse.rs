@@ -109,8 +109,8 @@ impl Library {
         }
 
         match query.location {
-            Some(Location::OnDevice) => conditions.push("lf.book_id IS NOT NULL".into()),
-            Some(Location::CloudOnly) => conditions.push("lf.book_id IS NULL".into()),
+            Some(Location::OnDevice) => conditions.push("lf.path IS NOT NULL".into()),
+            Some(Location::CloudOnly) => conditions.push("lf.path IS NULL".into()),
             None => {}
         }
 

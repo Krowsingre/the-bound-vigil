@@ -351,6 +351,10 @@ fn book_files_travel_when_switched_on() {
         .filter(|n| n.starts_with('.'))
         .collect();
     assert!(leftovers.is_empty(), "{leftovers:?}");
+    let downloaded = lib.book(&book).unwrap().unwrap();
+    assert!(downloaded.in_cloud, "a book fetched from the cloud is known to be there");
+    lib.remove_download(&book).unwrap();
+    assert_eq!(lib.book(&book).unwrap().unwrap().availability, Availability::Cloud);
 }
 
 #[test]

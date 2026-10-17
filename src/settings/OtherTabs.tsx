@@ -142,11 +142,14 @@ function TagsSection() {
   const remove = async (tag: TagCount) => {
     setRemoving(null);
     try {
-      const page = await api.getLibrary({ shelf: "all", sort: "title", search: null, formats: [], location: null, tags: [tag.name], page: 0, pageSize: 100_000 });
-      await api.removeTag(
-        page.books.map((b) => b.id),
-        tag.name,
-      );
+      // The Library hands books over a page at a time.
+      const ids: string[] = [];
+      for (let page = 0; ; page++) {
+        const found = await api.getLibrary({ shelf: "all", sort: "title", search: null, formats: [], location: null, tags: [tag.name], page, pageSize: 200 });
+        ids.push(...found.books.map((b) => b.id));
+        if (found.page < page || ids.length >= found.total || !found.books.length) break;
+      }
+      await api.removeTag(ids, tag.name);
       toast(`Took “${tag.name}” off ${tag.count} ${tag.count === 1 ? "book" : "books"}.`);
     } catch (e) {
       toast(`That didn't work: ${String(e)}`);

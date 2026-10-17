@@ -1326,7 +1326,9 @@ pub fn download_book(library: &Mutex<Library>, remote: &mut dyn Remote, book_id:
     let format = path.rsplit('.').next().unwrap_or("epub").to_string();
     let result = lock()?.adopt_download(book_id, &target, &format);
     let _ = fs::remove_file(&target);
-    result
+    result?;
+    // The cloud has it, so this copy can be removed again later, and it isn't sent back up.
+    lock()?.file_sent(&path, None)
 }
 
 #[cfg(test)]
