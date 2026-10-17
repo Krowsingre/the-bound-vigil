@@ -104,3 +104,6 @@ drop policy if exists "TBV: people remove their own files" on storage.objects;
 create policy "TBV: people remove their own files" on storage.objects
   for delete to authenticated
   using (bucket_id = 'tbv-files' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- Ask the Data API to notice the new table and function straight away.
+notify pgrst, 'reload schema';

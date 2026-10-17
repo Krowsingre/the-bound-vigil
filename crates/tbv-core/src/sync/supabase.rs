@@ -54,6 +54,34 @@ fn message(response: &mut Response<Body>) -> String {
         .unwrap_or_else(|| format!("status {status}"))
 }
 
+/// Turns an error from the project's Data API (PostgREST) into a next step.
+/// A 404 has several causes that need different fixes, so the text names
+/// the one Supabase reported, with its own words after it for anyone helping.
+fn rest_problem(response: &mut Response<Body>) -> Error {
+    let status = response.status().as_u16();
+    let body = response.body_mut().read_to_string().unwrap_or_default();
+    let parsed: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+    let code = parsed.get("code").and_then(Value::as_str).unwrap_or_default();
+    let said = ["message", "msg", "error"]
+        .iter()
+        .find_map(|k| parsed.get(*k).and_then(Value::as_str))
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            let text = body.trim();
+            if text.is_empty() || text.len() > 200 { format!("status {status}") } else { text.to_string() }
+        });
+    let hint = match code {
+        // The table or function isn't there, or the API hasn't noticed it yet.
+        "PGRST205" | "PGRST202" | "42P01" | "42883" => SETUP_HINT,
+        // The project only shares other schemas (Supabase's "dedicated API schema" choice).
+        "PGRST106" => "This Supabase project's Data API doesn't include the public schema, where TBV's table lives. In Supabase, open Project Settings › Data API, add public to Exposed schemas and save, then try again",
+        "42501" => "TBV's table is there, but signed-in accounts aren't allowed to use it. Run the setup script from Settings › Sync again, then try again",
+        _ if status == 404 => "Supabase's Data API didn't answer. In Supabase, open Project Settings › Data API and check it's turned on, and that the setup script ran without errors, then try again",
+        _ => return Error::Cloud(said),
+    };
+    Error::Cloud(format!("{hint}. (Supabase said: {said})"))
+}
+
 #[derive(Deserialize)]
 struct TokenAnswer {
     access_token: String,
@@ -209,8 +237,7 @@ impl Remote for Supabase {
         })?;
         match answer.status().as_u16() {
             200..=299 => Ok(()),
-            404 => Err(Error::Cloud(SETUP_HINT.into())),
-            _ => Err(Error::Cloud(message(&mut answer))),
+            _ => Err(rest_problem(&mut answer)),
         }
     }
 
@@ -241,8 +268,7 @@ impl Remote for Supabase {
                     .map_err(|e| Error::Cloud(e.to_string()))?;
                 Ok(rows.into_iter().map(|r| (r.seq, r.record)).collect())
             }
-            404 => Err(Error::Cloud(SETUP_HINT.into())),
-            _ => Err(Error::Cloud(message(&mut answer))),
+            _ => Err(rest_problem(&mut answer)),
         }
     }
 
@@ -335,5 +361,31 @@ impl Remote for Supabase {
                 return Ok(names);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn answer(status: u16, body: &str) -> Response<Body> {
+        let body = Body::builder().mime_type("application/json").data(body.to_owned());
+        let mut response = Response::new(body);
+        *response.status_mut() = ureq::http::StatusCode::from_u16(status).unwrap();
+        response
+    }
+
+    #[test]
+    fn data_api_errors_name_the_fix() {
+        let text = |status, body| rest_problem(&mut answer(status, body)).to_string();
+        let missing = text(404, r#"{"code":"PGRST205","message":"Could not find the table 'public.tbv_records' in the schema cache"}"#);
+        assert!(missing.contains("Run the setup script"), "{missing}");
+        assert!(missing.contains("schema cache"), "Supabase's own words are kept: {missing}");
+        let hidden = text(406, r#"{"code":"PGRST106","message":"Invalid schema: public"}"#);
+        assert!(hidden.contains("Exposed schemas"), "{hidden}");
+        let off = text(404, "");
+        assert!(off.contains("turned on"), "{off}");
+        let other = text(500, r#"{"message":"boom"}"#);
+        assert_eq!(other, "the cloud said: boom");
     }
 }
