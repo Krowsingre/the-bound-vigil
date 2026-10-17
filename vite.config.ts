@@ -32,12 +32,28 @@ function pdfjsAssets(): Plugin {
   };
 }
 
+// iPhones fetch the home screen icon on their own when "Add to Home Screen"
+// is tapped, and some keep showing a letter instead. The icon is written into
+// the page itself, so there's nothing left to fetch.
+function inlineTouchIcon(): Plugin {
+  return {
+    name: "tbv-inline-touch-icon",
+    transformIndexHtml: {
+      order: "post",
+      handler(html) {
+        const png = readFileSync(join(process.cwd(), "public/bound-vigil-180.png")).toString("base64");
+        return html.replace(/(<link rel="apple-touch-icon"[^>]*href=")[^"]*(")/, `$1data:image/png;base64,${png}$2`);
+      },
+    },
+  };
+}
+
 // Tauri expects a fixed dev port and serves the built files from dist/. The
 // web version (`--mode web`) is built into dist-web/ for GitHub Pages, which
 // serves it from /the-bound-vigil/.
 export default defineConfig(({ mode }) => ({
   base: mode === "web" ? "/the-bound-vigil/" : "/",
-  plugins: [react(), pdfjsAssets()],
+  plugins: [react(), pdfjsAssets(), inlineTouchIcon()],
   clearScreen: false,
   server: mode === "web" ? { port: 1421 } : { port: 1420, strictPort: true },
   envPrefix: ["VITE_", "TAURI_ENV_"],

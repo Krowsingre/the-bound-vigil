@@ -1162,3 +1162,49 @@ fn importing_a_book_only_in_the_cloud_leaves_it_there() {
     assert!(matches!(b.lib().import_files(&[file]).remove(0), ImportResult::AlreadyInLibrary { .. }));
     assert_eq!(b.lib().book(&book_id).unwrap().unwrap().availability, Availability::Cloud, "not copied onto this device");
 }
+
+/// A service whose book uploads all fail, as when it's full.
+struct BooksFail(FakeRemote);
+
+impl Remote for BooksFail {
+    fn push(&mut self, records: &[Record]) -> Result<()> {
+        self.0.push(records)
+    }
+    fn pull(&mut self, after: &str, limit: usize) -> Result<Page> {
+        self.0.pull(after, limit)
+    }
+    fn upload(&mut self, path: &str, file: &Path) -> Result<()> {
+        if path.starts_with("books/") {
+            return Err(Error::Cloud("the service is full".into()));
+        }
+        self.0.upload(path, file)
+    }
+    fn download(&mut self, path: &str, to: &Path) -> Result<bool> {
+        self.0.download(path, to)
+    }
+    fn list(&mut self, folder: &str) -> Result<Vec<String>> {
+        self.0.list(folder)
+    }
+    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+        self.0.list_sizes(folder)
+    }
+    fn remove(&mut self, path: &str) -> Result<()> {
+        self.0.remove(path)
+    }
+}
+
+#[test]
+fn covers_travel_before_book_files_and_despite_them() {
+    let cloud = FakeRemote::default();
+    let (a, b) = (Device::new(), Device::new());
+    a.set_options(json!({ "bookFiles": true }));
+    let book = a.import("Frankenstein");
+    assert!(sync_once(&a.library, &mut BooksFail(cloud.clone())).is_err(), "the book file couldn't go");
+    assert!(cloud.0.lock().unwrap().files.keys().any(|p| p.starts_with("covers/")), "its cover went first");
+
+    // Another device shows the cover of a book it doesn't have.
+    b.sync(&cloud);
+    let seen = b.lib().book(&book).unwrap().unwrap();
+    assert_eq!(seen.availability, Availability::Cloud);
+    assert!(seen.cover_path.is_some());
+}

@@ -252,17 +252,26 @@ export class WebSync {
     this.covers = new Map(names.map((n) => [n.split(".")[0], n]));
     await this.db.setMeta(COVERS, JSON.stringify(Object.fromEntries(this.covers)));
     let added = 0;
-    for (const book of this.library.books()) {
-      const hex = book.id.replace(/^sha256:/, "");
-      const name = this.covers.get(hex);
-      if (!name || this.coverUrls.has(hex)) continue;
+    // Newest books first, a few at once: a big library has thousands of covers.
+    const wanted = [...this.library.books()]
+      .sort((a, b) => String(b.added_at).localeCompare(String(a.added_at)))
+      .map((book) => book.id.replace(/^sha256:/, ""))
+      .filter((hex) => this.covers.has(hex) && !this.coverUrls.has(hex));
+    const fetchOne = async (hex: string) => {
+      const name = this.covers.get(hex)!;
       const blob = await cloud.download(`covers/${name}`);
-      if (!blob) continue;
+      if (!blob) return;
       await this.db.putFile(`covers/${name}`, blob);
       this.coverUrls.set(hex, URL.createObjectURL(blob));
       // Show covers as they arrive, a few at a time.
-      if (++added % 12 === 0) this.library.changed();
-    }
+      if (++added % 24 === 0) this.library.changed();
+    };
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: 4 }, async () => {
+        while (next < wanted.length) await fetchOne(wanted[next++]);
+      }),
+    );
     const avatar = this.library.row("profile", ["me"])?.avatar;
     const pictures = [
       ...(typeof avatar === "string" ? [`picture:${avatar}`] : []),

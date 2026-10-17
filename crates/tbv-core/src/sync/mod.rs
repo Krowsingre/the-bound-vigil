@@ -1813,29 +1813,11 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
             })
             .collect::<Vec<_>>()
     };
-    if !to_send.is_empty() {
-        let bytes = to_send.iter().map(|(_, _, _, b)| b).sum();
-        tell(SyncEvent::FilesPlanned { lane, direction: Direction::Up, count: to_send.len() as u32, bytes });
-    }
-    for (path, local, what, bytes) in to_send {
-        file(Direction::Up, &path, &what, bytes, false, None);
-        match remote.upload(&path, &local) {
-            Ok(()) => {
-                lock()?.lane_file_sent(&path, None, lane)?;
-                report.files_sent += 1;
-                file(Direction::Up, &path, &what, bytes, true, None);
-            }
-            Err(Error::Rejected(why)) => {
-                lock()?.lane_file_sent(&path, Some(&why), lane)?;
-                report.skipped_files.push(format!("{}: {why}", local.file_name().unwrap_or_default().to_string_lossy()));
-                file(Direction::Up, &path, &what, bytes, true, Some(why));
-            }
-            Err(e) => {
-                file(Direction::Up, &path, &what, bytes, true, Some(e.to_string()));
-                return Err(e);
-            }
-        }
-    }
+    // Covers and pictures go first, then the cloud's covers come down, and
+    // only then the book files: in a big library those take far longer, and
+    // every device should show every cover meanwhile.
+    let (books, small): (Vec<_>, Vec<_>) = to_send.into_iter().partition(|(path, ..)| path.starts_with("books/"));
+    send(lock, tell, remote, lane, report, small)?;
 
     let mut fetches: Vec<(String, PathBuf, String, Option<String>)> = Vec::new();
     {
@@ -1886,6 +1868,48 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
             report.files_received += 1;
         }
     }
+
+    send(lock, tell, remote, lane, report, books)
+}
+
+type Upload = (String, PathBuf, String, u64);
+
+/// Uploads files in turn, telling the page about each.
+fn send(
+    lock: Lock,
+    tell: Tell,
+    remote: &mut dyn Remote,
+    lane: Lane,
+    report: &mut SyncReport,
+    to_send: Vec<Upload>,
+) -> Result<()> {
+    let file = |direction: Direction, path: &str, what: &str, bytes: u64, done: bool, problem: Option<String>| {
+        tell(SyncEvent::File { lane, direction, path: path.to_string(), what: what.to_string(), bytes, done, problem });
+    };
+    if !to_send.is_empty() {
+        let bytes = to_send.iter().map(|(_, _, _, b)| b).sum();
+        tell(SyncEvent::FilesPlanned { lane, direction: Direction::Up, count: to_send.len() as u32, bytes });
+    }
+    for (path, local, what, bytes) in to_send {
+        file(Direction::Up, &path, &what, bytes, false, None);
+        match remote.upload(&path, &local) {
+            Ok(()) => {
+                lock()?.lane_file_sent(&path, None, lane)?;
+                report.files_sent += 1;
+                file(Direction::Up, &path, &what, bytes, true, None);
+            }
+            Err(Error::Rejected(why)) => {
+                lock()?.lane_file_sent(&path, Some(&why), lane)?;
+                report.skipped_files.push(format!("{}: {why}", local.file_name().unwrap_or_default().to_string_lossy()));
+                file(Direction::Up, &path, &what, bytes, true, Some(why));
+            }
+            Err(e) => {
+                file(Direction::Up, &path, &what, bytes, true, Some(e.to_string()));
+                return Err(e);
+            }
+        }
+    }
+
     Ok(())
 }
 
