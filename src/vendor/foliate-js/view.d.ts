@@ -41,10 +41,25 @@ export interface FoliateBook {
 export interface Paginator extends HTMLElement {
   /** Only the flowing (paginator) renderer has this; fixed-layout books do not. */
   setStyles?(css: string | [string, string]): void;
-  getContents(): { doc: Document; index: number }[];
+  getContents(): { doc: Document; index: number; overlayer?: import("./overlayer.js").Overlayer }[];
   next(): Promise<void>;
   prev(): Promise<void>;
   focusView?(): void;
+  /** Brings a range into view, a page turn or scroll if needed. */
+  scrollToAnchor?(anchor: Range | Element, select?: boolean): Promise<void>;
+  nextSection?(): Promise<void>;
+}
+
+/** Reads a section aloud a block at a time, as SSML with a mark before each sentence or word. */
+export interface TTS {
+  doc: Document;
+  start(): string | undefined;
+  /** From the block holding this range, beginning at its first mark there. */
+  from(range: Range): string | undefined;
+  next(paused?: boolean): string | undefined;
+  prev(paused?: boolean): string | undefined;
+  /** Highlights the marked sentence through the function given to initTTS. */
+  setMark(mark: string): void;
 }
 
 export interface View extends HTMLElement {
@@ -74,4 +89,7 @@ export interface View extends HTMLElement {
   getCFI(index: number, range?: Range): string;
   resolveNavigation(target: string | number): { index: number } | undefined;
   deselect(): void;
+  /** Sets up `tts` for the section on screen; kept while that section stays. */
+  initTTS(granularity?: "word" | "sentence", highlight?: (range: Range) => void): Promise<void>;
+  tts?: TTS | null;
 }

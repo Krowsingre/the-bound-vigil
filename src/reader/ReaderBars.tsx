@@ -13,6 +13,7 @@ export function ReaderTopBar({
   onHome,
   search,
   textSettings,
+  readAloud,
   bookmarked,
   onToggleBookmark,
   notesOpen,
@@ -30,6 +31,7 @@ export function ReaderTopBar({
   onHome: () => void;
   search: ReactNode;
   textSettings: ReactNode;
+  readAloud: ReactNode;
   bookmarked: boolean;
   onToggleBookmark: () => void;
   notesOpen: boolean;
@@ -79,6 +81,7 @@ export function ReaderTopBar({
           {search}
           <span className="reader-top-rule" aria-hidden />
           {textSettings}
+          {readAloud}
           <button
             type="button"
             className={`icon-btn${bookmarked ? " is-on" : ""}`}
@@ -195,11 +198,20 @@ export function Popover({
   trigger,
   children,
   className = "",
+  title = label,
+  on = false,
+  muted = false,
 }: {
   label: string;
   trigger: ReactNode;
   children: ReactNode;
   className?: string;
+  /** The button's tooltip, when it says more than the label. */
+  title?: string;
+  /** Shows the button as on while closed, e.g. while reading aloud. */
+  on?: boolean;
+  /** Greys the button out for something that can't be used; it still opens to say why. */
+  muted?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -219,9 +231,10 @@ export function Popover({
     <div className="menu-root" ref={root}>
       <button
         type="button"
-        className={`icon-btn${open ? " is-on" : ""}`}
+        className={`icon-btn${open || on ? " is-on" : ""}${muted ? " is-muted" : ""}`}
         aria-label={label}
-        title={label}
+        aria-description={title !== label ? title : undefined}
+        title={title}
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((o) => !o)}

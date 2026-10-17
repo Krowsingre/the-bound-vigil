@@ -13,10 +13,11 @@ import { drawPdfCover, readerSource, type ReaderSource } from "./formats";
 import { contentsEntries, currentEntry, pageOf, pushJump, type Jump } from "./pages";
 import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars";
 import { LeftPanel, RightPanel, type AnnotationHandlers, type RightTab } from "./ReaderPanels";
-import { NoteDialog, SelectionToolbar, TextSettings } from "./ReaderPopovers";
+import { NoteDialog, ReadAloudPlayer, SelectionToolbar, TextSettings } from "./ReaderPopovers";
 import { ReaderSearch } from "./ReaderSearch";
 import { useAppDark } from "../settings/appSettings";
 import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, resolveTheme, SETTINGS_KEY, type ReaderSettings } from "./settings";
+import { useReadAloud } from "./useReadAloud";
 import { useReaderEngine, type TextSelection } from "./useReaderEngine";
 
 export interface ReaderShellProps {
@@ -176,6 +177,16 @@ export function Reader({
       },
       onKey: (e) => onKeyRef.current(e, true),
     },
+  });
+
+  const bookLang = info?.language ?? null;
+  const readAloud = useReadAloud({
+    getView: engine.getView,
+    ready: engine.ready,
+    lang: bookLang,
+    voices: settings.voices,
+    rate: settings.rate,
+    dark: theme === "dark",
   });
 
   const r = engine.relocation;
@@ -358,6 +369,10 @@ export function Reader({
       else return;
     } else if (ctrl || e.altKey) return;
     else if (key === "f") setFocus((f) => !f);
+    else if (key === "r") {
+      if (readAloud.unavailable) toast(readAloud.unavailable);
+      else readAloud.toggle();
+    }
     else if (e.key === "ArrowLeft") turn(false);
     else if (e.key === "ArrowRight") turn(true);
     else if (settings.flow === "paginated" && (e.key === "PageUp" || (e.key === " " && e.shiftKey))) turn(false);
@@ -435,6 +450,18 @@ export function Reader({
         textSettings={
           <Popover label="Text settings" trigger={<span className="aa">Aa</span>} className="text-settings-popover">
             <TextSettings settings={settings} onChange={changeSettings} />
+          </Popover>
+        }
+        readAloud={
+          <Popover
+            label="Read aloud"
+            title={readAloud.unavailable ?? (readAloud.status === "playing" ? "Read aloud: reading (R to pause)" : "Read aloud (R)")}
+            trigger={<Icon name="readAloud" size={20} />}
+            className="read-aloud-popover"
+            on={readAloud.status !== "stopped"}
+            muted={!!readAloud.unavailable}
+          >
+            <ReadAloudPlayer readAloud={readAloud} lang={bookLang} settings={settings} onChange={changeSettings} />
           </Popover>
         }
         bookmarked={!!bookmarkHere}

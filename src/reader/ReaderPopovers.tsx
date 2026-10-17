@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { HighlightColor } from "../api/types";
 import { Icon } from "../components/Icon";
+import { formatRate, groupVoices, primaryLang, RATE_RANGE } from "./readAloud";
 import {
   FONTS,
   HIGHLIGHT_COLORS,
@@ -12,6 +13,7 @@ import {
   type ReadingTheme,
   type ReadingWidth,
 } from "./settings";
+import type { ReadAloud } from "./useReadAloud";
 
 function Choice<T extends string | number>({
   label,
@@ -133,6 +135,106 @@ export function TextSettings({ settings, onChange }: { settings: ReaderSettings;
         <input type="checkbox" checked={settings.justify} onChange={(e) => onChange({ justify: e.target.checked })} />
         Justify text (even right edge)
       </label>
+    </div>
+  );
+}
+
+/** The read aloud player: play and pause, sentence by sentence, voice and speed. */
+export function ReadAloudPlayer({
+  readAloud: ra,
+  lang,
+  settings,
+  onChange,
+}: {
+  readAloud: ReadAloud;
+  /** The book's language, whose voices are listed first. */
+  lang: string | null;
+  settings: ReaderSettings;
+  onChange: (s: Partial<ReaderSettings>) => void;
+}) {
+  if (ra.unavailable) return <p className="read-aloud-note">{ra.unavailable}</p>;
+  const playing = ra.status === "playing";
+  const stopped = ra.status === "stopped";
+  const noVoices = ra.voices.length === 0;
+  const { matching, other } = groupVoices(ra.voices, lang);
+  const key = primaryLang(lang);
+  const chosen = settings.voices[key] ?? "";
+  const option = (v: SpeechSynthesisVoice) => (
+    <option key={v.voiceURI} value={v.voiceURI}>
+      {v.name}
+      {v.lang ? ` (${v.lang})` : ""}
+    </option>
+  );
+  return (
+    <div className="read-aloud">
+      <div className="read-aloud-controls" role="group" aria-label="Read aloud">
+        <button type="button" className="icon-btn" aria-label="Previous sentence" title="Previous sentence" disabled={stopped} onClick={ra.prevSentence}>
+          <Icon name="skipBack" size={20} />
+        </button>
+        <button
+          type="button"
+          className="read-aloud-play"
+          aria-label={playing ? "Pause (R)" : "Read aloud (R)"}
+          title={playing ? "Pause (R)" : "Read aloud (R)"}
+          disabled={noVoices}
+          onClick={ra.toggle}
+        >
+          <Icon name={playing ? "pause" : "play"} size={22} filled={!playing} />
+        </button>
+        <button type="button" className="icon-btn" aria-label="Next sentence" title="Next sentence" disabled={stopped} onClick={ra.nextSentence}>
+          <Icon name="skipForward" size={20} />
+        </button>
+        <button type="button" className="icon-btn" aria-label="Stop" title="Stop" disabled={stopped} onClick={ra.stop}>
+          <Icon name="stop" size={18} />
+        </button>
+      </div>
+      <p className="read-aloud-note" role="status">
+        {ra.error ??
+          (noVoices
+            ? "No voices were found on this device. On Windows, voices are added in Settings › Time & language › Speech."
+            : playing
+              ? "Reading. The pages turn as it goes."
+              : ra.status === "paused"
+                ? "Paused."
+                : "Starts from the first sentence on this page.")}
+      </p>
+      <fieldset className="choice">
+        <legend>Voice</legend>
+        <select
+          className="settings-select read-aloud-voice"
+          aria-label="Voice"
+          value={chosen}
+          disabled={noVoices}
+          onChange={(e) => {
+            const voices = { ...settings.voices };
+            if (e.target.value) voices[key] = e.target.value;
+            else delete voices[key];
+            onChange({ voices });
+          }}
+        >
+          <option value="">{ra.voice && !chosen ? `Automatic: ${ra.voice.name}` : "Automatic"}</option>
+          {matching.length > 0 && <optgroup label="For this book's language">{matching.map(option)}</optgroup>}
+          {other.length > 0 && (matching.length > 0 ? <optgroup label="Other languages">{other.map(option)}</optgroup> : other.map(option))}
+        </select>
+      </fieldset>
+      <fieldset className="choice">
+        <legend>Speed</legend>
+        <div className="size-row">
+          <input
+            type="range"
+            min={RATE_RANGE.min}
+            max={RATE_RANGE.max}
+            step={RATE_RANGE.step}
+            value={settings.rate}
+            aria-label="Speed"
+            aria-valuetext={formatRate(settings.rate)}
+            onChange={(e) => onChange({ rate: Math.round(Number(e.target.value) * 10) / 10 })}
+          />
+          <button type="button" className="read-aloud-rate" title="Back to normal speed" onClick={() => onChange({ rate: 1 })}>
+            {formatRate(settings.rate)}
+          </button>
+        </div>
+      </fieldset>
     </div>
   );
 }
