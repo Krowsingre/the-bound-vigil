@@ -151,6 +151,34 @@ export interface AlsoOverview {
   waitingToSend: number;
 }
 
+/** What tidying up Supabase would do: paths like `books/<hash>.epub`. */
+export interface TidyPlan {
+  /** Copies of books on this computer, which stay. */
+  keep: number;
+  /** Copies the other sync place already has: simply removed. */
+  remove: string[];
+  /** Copies the other place hasn't got: sent there, then removed. */
+  copyFirst: string[];
+  /** Copies with nowhere else to go, because there's no other place. */
+  lose: string[];
+  /** Bytes freed, where Supabase says its files' sizes. */
+  bytes: number;
+}
+
+export interface TidyReport {
+  removed: number;
+  /** Of those, sent to the other place first. */
+  copied: number;
+  /** Left where they were, because they couldn't be sent on. */
+  failed: number;
+  stopped: boolean;
+}
+
+export interface TidyProgress {
+  done: number;
+  total: number;
+}
+
 /** Migrate: copy everything, then sync through the new place. Backup: copy everything, keep syncing where you are. */
 export type MoveMode = "migrate" | "backup";
 /** Which books go: all, books and documents, or audiobooks. */

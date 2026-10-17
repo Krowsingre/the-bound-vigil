@@ -452,6 +452,21 @@ export function previewApi(): Api {
   return {
     kind: "preview",
     ...previewMove(params),
+    planTidyCloud: async () => ({
+      keep: 1,
+      remove: Array.from({ length: 1290 }, (_, i) => `books/${i}.epub`),
+      copyFirst: Array.from({ length: 416 }, (_, i) => `books/c${i}.epub`),
+      lose: [],
+      bytes: 912_000_000,
+    }),
+    tidyCloud: async (onProgress) => {
+      for (let done = 0; done <= 1706; done += 120) {
+        onProgress({ done, total: 1706 });
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      onProgress({ done: 1706, total: 1706 });
+      return { removed: 1706, copied: 416, failed: 0, stopped: false };
+    },
     getHome: async () => home(),
     queueImports: async () => 0,
     importQueue: async () => importsViewOf(imports),

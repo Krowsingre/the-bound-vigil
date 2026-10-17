@@ -12,6 +12,7 @@
 pub mod files;
 pub mod moving;
 pub mod supabase;
+pub mod tidy;
 pub mod webdav;
 
 use std::collections::HashSet;

@@ -819,6 +819,26 @@ fn suggest_sync_folder(service: String) -> Option<String> {
     sync::likely_folder(&service).map(|p| p.display().to_string())
 }
 
+/// What tidying up Supabase would remove.
+#[tauri::command]
+async fn plan_tidy_cloud(state: State<'_, AppLibrary>) -> CommandResult<tbv_core::sync::tidy::TidyPlan> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || sync::plan_tidy(&library))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Removes Supabase's copies of books that aren't on this computer.
+#[tauri::command]
+async fn tidy_cloud(app: tauri::AppHandle, state: State<'_, AppLibrary>) -> CommandResult<tbv_core::sync::tidy::TidyReport> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || sync::tidy(&app, &library))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 /// Fetches a book that's only in the cloud onto this device.
 #[tauri::command]
 async fn download_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
@@ -1246,6 +1266,8 @@ pub fn run() {
             suggest_sync_folder,
             resolve_sync_conflict,
             download_book,
+            plan_tidy_cloud,
+            tidy_cloud,
             list_ereaders,
             copy_to_ereader,
             kindle_email_settings,
