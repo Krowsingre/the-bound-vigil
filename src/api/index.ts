@@ -127,8 +127,12 @@ function appApi(): Api {
       asList(await (await dialog).open({ directory: true, multiple: false, title: "Import a folder of books" })),
     coverUrl: (path) => (convert ? convert(path) : ""),
     openBook: async (bookId) => (await core).invoke<ReaderBook>("open_book", { bookId }),
-    readBookFile: async (bookId) =>
-      new Blob([await (await core).invoke<ArrayBuffer>("read_book_file", { bookId })]),
+    readBookFile: async (bookId) => {
+      // Raw bytes normally arrive as an ArrayBuffer, but if Tauri has to fall
+      // back to its slower message channel they come as a list of numbers.
+      const bytes = await (await core).invoke<ArrayBuffer | number[]>("read_book_file", { bookId });
+      return new Blob([Array.isArray(bytes) ? new Uint8Array(bytes) : bytes]);
+    },
     savePosition: async (bookId, locator) => (await core).invoke("save_position", { bookId, locator }),
     getAnnotations: async (bookId) => (await core).invoke<Annotation[]>("get_annotations", { bookId }),
     saveAnnotation: async (annotation) => (await core).invoke<Annotation>("save_annotation", { annotation }),

@@ -1,4 +1,4 @@
-//! The Collections page: the four built-in shelves, smart collections that
+//! The Collections page: the built-in Up next shelf, smart collections that
 //! fill themselves, series read from the books, and the user's own
 //! collections and reading lists.
 
@@ -27,16 +27,7 @@ const SERIES: &str = "COALESCE(o_series.value, b.series)";
 /// The books on a built-in shelf, from each book's own flags.
 fn shelf_condition(id: &str) -> Option<(&'static str, &'static str)> {
     Some(match id {
-        "shelf:favorites" => ("b.favorite = 1", "b.added_at DESC"),
-        "shelf:reading" => (
-            "b.status = 'in_progress'",
-            "b.last_opened_at IS NULL, b.last_opened_at DESC",
-        ),
         "shelf:want_to_read" => ("b.want_to_read = 1", "b.added_at DESC"),
-        "shelf:completed" => (
-            "b.status = 'read'",
-            "b.last_opened_at IS NULL, b.last_opened_at DESC",
-        ),
         _ => return None,
     })
 }
@@ -620,14 +611,11 @@ mod tests {
         let (dir, mut library) = open_temp_library();
         let a = add(&mut library, dir.path(), "Alpha", "");
         add(&mut library, dir.path(), "Beta", "");
-        library.set_favorite(&a, true).unwrap();
+        library.set_want_to_read(&a, true).unwrap();
 
         let overview = library.collections_overview().unwrap();
         let names: Vec<_> = overview.pinned.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(
-            names,
-            ["Favourites", "Currently reading", "To be read", "Completed"]
-        );
+        assert_eq!(names, ["Up next"], "only shelves that no smart collection repeats");
         assert_eq!(overview.pinned[0].count, 1);
         assert!(
             overview.collections.is_empty(),
@@ -636,11 +624,11 @@ mod tests {
         assert_eq!(library.shelf_counts().unwrap().collections, 0);
 
         let shelf = CollectionRef::Collection {
-            id: "shelf:favorites".into(),
+            id: "shelf:want_to_read".into(),
         };
-        assert!(library.delete_collection("shelf:favorites").is_err());
+        assert!(library.delete_collection("shelf:want_to_read").is_err());
         assert!(library
-            .add_to_collection("shelf:favorites", std::slice::from_ref(&a))
+            .add_to_collection("shelf:want_to_read", std::slice::from_ref(&a))
             .is_err());
         let detail = library.collection_detail(&shelf).unwrap();
         assert_eq!(detail.books.len(), 1);
@@ -648,16 +636,16 @@ mod tests {
         // A shelf keeps its name; its badge and pinning can change.
         let changed = library
             .update_collection(
-                "shelf:favorites",
+                "shelf:want_to_read",
                 &CollectionInput {
                     pinned: false,
                     ..input("Renamed", CollectionKind::Collection)
                 },
             )
             .unwrap();
-        assert_eq!(changed.name, "Favourites");
+        assert_eq!(changed.name, "Up next");
         assert_eq!(changed.badge.as_deref(), Some("moon"));
-        assert_eq!(library.collections_overview().unwrap().pinned.len(), 3);
+        assert!(library.collections_overview().unwrap().pinned.is_empty());
     }
 
     #[test]
@@ -760,7 +748,7 @@ mod tests {
             .map(|c| c.name)
             .collect();
         assert_eq!(order, ["Three", "Two", "One"]);
-        assert!(library.move_collection("shelf:favorites", 0).is_err());
+        assert!(library.move_collection("shelf:want_to_read", 0).is_err());
     }
 
     #[test]
