@@ -537,7 +537,7 @@ fn details_found_online_and_edits_travel() {
     let found = BTreeMap::from([("publisher".to_string(), "Penguin".to_string()), ("genres".to_string(), r#"["Gothic"]"#.to_string())]);
     a.lib().save_fetched(&book, "google", &found).unwrap();
     a.lib()
-        .edit_details(&[book.clone()], &[crate::details::DetailChange { field: "series".into(), value: Some("Vigil".into()) }])
+        .edit_details(std::slice::from_ref(&book), &[crate::details::DetailChange { field: "series".into(), value: Some("Vigil".into()) }])
         .unwrap();
     a.sync(&cloud);
     b.sync(&cloud);
