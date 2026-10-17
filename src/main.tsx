@@ -37,6 +37,18 @@ if (isApp) {
   );
 }
 
+// The web version keeps working offline once it has been opened (public/sw.js).
+if (isWeb && import.meta.env.PROD && "serviceWorker" in navigator) {
+  void navigator.serviceWorker
+    .register(`${import.meta.env.BASE_URL}sw.js`)
+    .then(() => navigator.serviceWorker.ready)
+    .then((ready) => {
+      const loaded = performance.getEntriesByType("resource").map((e) => e.name);
+      ready.active?.postMessage({ cache: [location.href.split("#")[0], ...loaded] });
+    })
+    .catch(() => undefined);
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ToastProvider>
