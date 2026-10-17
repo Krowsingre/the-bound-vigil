@@ -90,9 +90,27 @@ impl Library {
             values.extend(query.formats.iter().map(|f| Value::Text(f.to_lowercase())));
         }
 
+        if !query.tags.is_empty() {
+            let start = values.len() + 1;
+            let slots: Vec<String> = (0..query.tags.len())
+                .map(|i| format!("?{}", start + i))
+                .collect();
+            conditions.push(format!(
+                "EXISTS (SELECT 1 FROM book_tags t WHERE t.book_id = b.id AND t.removed_at IS NULL \
+                 AND lower(t.tag) IN ({}))",
+                slots.join(", ")
+            ));
+            values.extend(
+                query
+                    .tags
+                    .iter()
+                    .map(|t| Value::Text(t.trim().to_lowercase())),
+            );
+        }
+
         match query.location {
-            Some(Location::OnDevice) => conditions.push("lf.book_id IS NOT NULL".into()),
-            Some(Location::CloudOnly) => conditions.push("lf.book_id IS NULL".into()),
+            Some(Location::OnDevice) => conditions.push("lf.path IS NOT NULL".into()),
+            Some(Location::CloudOnly) => conditions.push("lf.path IS NULL".into()),
             None => {}
         }
 
@@ -129,6 +147,7 @@ impl Library {
             page_size,
             counts: self.shelf_counts()?,
             formats: self.formats_in_library()?,
+            tags: self.all_tags()?.into_iter().map(|t| t.name).collect(),
         })
     }
 

@@ -4,7 +4,7 @@ import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { ProgressBar } from "../components/ProgressBar";
 import { authorLine, percent } from "../lib/format";
-import { bookMenu, type BookActions } from "./bookActions";
+import { bookContextMenu, bookMenu, type BookActions } from "./bookActions";
 import { EmptyNote, Section } from "./Section";
 
 export function InProgress({ books, actions, onViewAll }: { books: BookPreview[]; actions: BookActions; onViewAll: () => void }) {
@@ -15,7 +15,7 @@ export function InProgress({ books, actions, onViewAll }: { books: BookPreview[]
       ) : (
         <ul className="progress-list">
           {books.map((book) => (
-            <li key={book.id} className="progress-row">
+            <li key={book.id} className="progress-row" {...bookContextMenu(book, actions)}>
               <button type="button" className="progress-open" onClick={() => actions.open(book)}>
                 <BookCover book={book} size="s" />
                 <span className="progress-text">

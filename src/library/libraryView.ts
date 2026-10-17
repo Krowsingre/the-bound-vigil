@@ -9,6 +9,8 @@ export interface LibraryView {
   sort: SortOrder;
   formats: string[];
   location: Location | null;
+  /** Books with any of these tags. */
+  tags: string[];
   page: number;
   layout: Layout;
 }
@@ -39,7 +41,7 @@ const KEY = "tbv.libraryView";
 
 /** Sort and layout are remembered on this device; the rest starts fresh. */
 export function initialView(): LibraryView {
-  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, page: 0, layout: "grid" };
+  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], page: 0, layout: "grid" };
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<LibraryView>;
     if (SORTS.some((s) => s.sort === saved.sort)) view.sort = saved.sort!;

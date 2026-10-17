@@ -13,6 +13,7 @@ import type {
   CollectionRef,
   CollectionSummary,
   CollectionsOverview,
+  DuplicateGroup,
   GoodreadsImport,
   HardcoverSendAll,
   HardcoverStatus,
@@ -32,6 +33,7 @@ import type {
   SupabaseProject,
   SyncOverview,
   SyncStatus,
+  TagCount,
 } from "./types";
 
 export interface Api {
@@ -142,6 +144,20 @@ export interface Api {
   resolveSyncConflict(kind: string, key: string, keepCloud: boolean): Promise<void>;
   /** Fetches a book that's only in the cloud onto this device. */
   downloadBook(bookId: string): Promise<void>;
+  /** Your tags, A to Z, with how many books carry each. */
+  allTags(): Promise<TagCount[]>;
+  /** Puts a tag on books. Returns the tag as kept (an existing tag keeps its spelling). */
+  addTag(bookIds: string[], tag: string): Promise<string>;
+  removeTag(bookIds: string[], tag: string): Promise<void>;
+  /** Gives a book exactly these tags. */
+  setBookTags(bookId: string, tags: string[]): Promise<void>;
+  /** Takes a book out of the library on every device, with its notes. */
+  deleteBook(bookId: string): Promise<void>;
+  /** Removes the copy on this device, keeping the one in the cloud. */
+  removeDownload(bookId: string): Promise<void>;
+  findDuplicates(): Promise<DuplicateGroup[]>;
+  /** Remembers that a group isn't duplicates, so it isn't shown again. */
+  dismissDuplicates(key: string): Promise<void>;
   /** Hears sync starting and finishing, and library changes it brings. Returns a way to stop. */
   onSync(listener: { status?: (status: SyncStatus) => void; libraryChanged?: () => void }): () => void;
 }
@@ -330,6 +346,14 @@ function appApi(): Api {
     suggestSyncFolder: async (service) => (await core).invoke<string | null>("suggest_sync_folder", { service }),
     resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
     downloadBook: async (bookId) => (await core).invoke("download_book", { bookId }),
+    allTags: async () => (await core).invoke<TagCount[]>("all_tags"),
+    addTag: async (bookIds, tag) => (await core).invoke<string>("add_tag", { bookIds, tag }),
+    removeTag: async (bookIds, tag) => (await core).invoke("remove_tag", { bookIds, tag }),
+    setBookTags: async (bookId, tags) => (await core).invoke("set_book_tags", { bookId, tags }),
+    deleteBook: async (bookId) => (await core).invoke("delete_book", { bookId }),
+    removeDownload: async (bookId) => (await core).invoke("remove_download", { bookId }),
+    findDuplicates: async () => (await core).invoke<DuplicateGroup[]>("find_duplicates"),
+    dismissDuplicates: async (key) => (await core).invoke("dismiss_duplicates", { key }),
     onSync: ({ status, libraryChanged }) => {
       const stops: (() => void)[] = [];
       let stopped = false;

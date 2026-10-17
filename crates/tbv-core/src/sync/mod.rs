@@ -114,6 +114,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "book_tag",
+        table: "book_tags",
+        keys: &["book_id", "tag"],
+        cols: &["added_at", "removed_at", "updated_at"],
+        category: Category::Collections,
+        creates: true,
+    },
+    Kind {
         name: "annotation",
         table: "annotations",
         keys: &["id"],
@@ -980,6 +988,7 @@ impl Library {
             "collection" => format!("The collection {}", field("name").unwrap_or_default()),
             "collection_book" => format!("A book's place in a collection{}", book(key.get(1))?),
             "annotation" => format!("A note or highlight{}", book(data.and_then(|d| d.get("book_id")))?),
+            "book_tag" => format!("The tag {}{}", key.get(1).and_then(Value::as_str).unwrap_or_default(), book(key.first())?),
             _ => format!("The note {}", field("title").filter(|t| !t.is_empty()).unwrap_or_else(|| "without a title".into())),
         })
     }
@@ -1161,6 +1170,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "override" => short(text("value")),
         "collection" => short(text("name")),
         "collection_book" => "In the collection".into(),
+        "book_tag" => if data.get("removed_at").is_some_and(|v| !v.is_null()) { "Tag taken off".into() } else { "Tagged".into() },
         "annotation" => short(if text("note").is_empty() { text("excerpt") } else { text("note") }),
         _ => short(text("body")),
     }
@@ -1316,7 +1326,9 @@ pub fn download_book(library: &Mutex<Library>, remote: &mut dyn Remote, book_id:
     let format = path.rsplit('.').next().unwrap_or("epub").to_string();
     let result = lock()?.adopt_download(book_id, &target, &format);
     let _ = fs::remove_file(&target);
-    result
+    result?;
+    // The cloud has it, so this copy can be removed again later, and it isn't sent back up.
+    lock()?.file_sent(&path, None)
 }
 
 #[cfg(test)]

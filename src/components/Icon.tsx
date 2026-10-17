@@ -58,6 +58,8 @@ const paths = {
   database: "M5 6c0-1.4 3.1-2.5 7-2.5s7 1.1 7 2.5-3.1 2.5-7 2.5S5 7.4 5 6zM5 6v12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5",
   download: "M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14",
   upload: "M12 15V4M7.5 8.5 12 4l4.5 4.5M5 19h14",
+  plus: "M12 5v14M5 12h14",
+  tag: "M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1 1 0 0 1 0 1.4l-7.3 7.3a1 1 0 0 1-1.4 0zM8 8h.01",
 } as const;
 
 export type IconName = keyof typeof paths;

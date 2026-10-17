@@ -260,6 +260,19 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE collections ADD COLUMN rules TEXT;
     "#,
+    // v9: your own tags on books. A removed tag is kept as a tombstone so
+    // sync can pass the removal on.
+    r#"
+    CREATE TABLE book_tags (
+        book_id TEXT NOT NULL REFERENCES books(id),
+        tag TEXT NOT NULL,
+        added_at TEXT NOT NULL,
+        removed_at TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (book_id, tag)
+    );
+    CREATE INDEX idx_book_tags_tag ON book_tags(tag) WHERE removed_at IS NULL;
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
@@ -411,8 +424,14 @@ impl Library {
 
         let tx = self.conn.transaction()?;
         tx.execute(
+            // A book deleted earlier comes back when its file is imported again.
             "INSERT INTO books (id, title, authors, format, file_size, synopsis, publisher, language, added_at, series, series_index, isbn)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+             ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title, authors = excluded.authors, format = excluded.format, file_size = excluded.file_size,
+                synopsis = excluded.synopsis, publisher = excluded.publisher, language = excluded.language,
+                added_at = excluded.added_at, series = excluded.series, series_index = excluded.series_index,
+                isbn = excluded.isbn, deleted_at = NULL",
             params![
                 book_id,
                 title,

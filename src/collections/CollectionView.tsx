@@ -6,7 +6,7 @@ import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { ProgressBar } from "../components/ProgressBar";
 import { useToast } from "../components/Toast";
-import { makeBookActions } from "../home/bookActions";
+import { bookContextMenu, makeBookActions } from "../home/bookActions";
 import { BookGrid, BookList } from "../library/BookViews";
 import { authorLine, percent } from "../lib/format";
 import { Badge } from "./badges";
@@ -196,7 +196,7 @@ export function CollectionView({
       ) : own?.kind === "reading_list" ? (
         <ol className="reading-list">
           {detail.books.map((b, i) => (
-            <li key={b.id} className="reading-row">
+            <li key={b.id} className="reading-row" {...bookContextMenu(b, actions)}>
               <span className="reading-number">{i + 1}</span>
               <button type="button" className="reading-open" onClick={() => actions.open(b)}>
                 <BookCover book={b} size="s" />

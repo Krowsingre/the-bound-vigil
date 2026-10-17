@@ -53,6 +53,7 @@ export function Library({
         search: search.trim() || null,
         formats: view.formats,
         location: view.location,
+        tags: view.tags,
         page: view.page,
         pageSize: PAGE_SIZE,
       })
@@ -63,7 +64,7 @@ export function Library({
     return () => {
       current = false;
     };
-  }, [shelf, view.sort, view.formats, view.location, view.page, search, refreshKey, reload]);
+  }, [shelf, view.sort, view.formats, view.location, view.tags, view.page, search, refreshKey, reload]);
 
   useEffect(() => {
     if (view.tab !== "collections") return;
@@ -84,7 +85,7 @@ export function Library({
 
   const page = load.state === "ready" ? load.data : null;
   const counts = page?.counts ?? null;
-  const filtered = view.formats.length > 0 || view.location !== null;
+  const filtered = view.formats.length > 0 || view.location !== null || view.tags.length > 0;
 
   let body: React.ReactNode;
   if (load.state === "error") {
@@ -131,7 +132,7 @@ export function Library({
             </button>
           )}
           {filtered && (
-            <button type="button" className="btn btn-quiet" onClick={() => onChange({ formats: [], location: null })}>
+            <button type="button" className="btn btn-quiet" onClick={() => onChange({ formats: [], location: null, tags: [] })}>
               Clear filters
             </button>
           )}
@@ -171,7 +172,7 @@ export function Library({
         )}
       </header>
 
-      <LibraryToolbar view={view} counts={counts} formats={page?.formats ?? []} onChange={onChange} />
+      <LibraryToolbar view={view} counts={counts} formats={page?.formats ?? []} tags={page?.tags ?? []} onChange={onChange} />
 
       {search.trim() && view.tab !== "collections" && (
         <p className="search-note">

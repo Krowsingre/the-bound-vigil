@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isApp, isWeb } from "./api";
 import type { CollectionRef, HomeViewModel, ImportItem, ImportResult, Profile, SyncStatus } from "./api/types";
 import { AddToCollectionHost } from "./collections/AddToCollection";
+import { ContextMenuHost } from "./components/ContextMenu";
+import { BookDialogsHost } from "./library/BookDialogs";
 import { Collections } from "./collections/Collections";
 import { Notes } from "./notes/Notes";
 import { useToast } from "./components/Toast";
@@ -328,6 +330,8 @@ export function App() {
         </button>
       )}
       <AddToCollectionHost onChanged={refresh} />
+      <BookDialogsHost onChanged={refresh} />
+      <ContextMenuHost />
     </div>
   );
 }

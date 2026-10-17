@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api, isApp, openExternal } from "../api";
-import type { GoodreadsImport, LibraryInfo, SortOrder } from "../api/types";
+import type { DuplicateGroup, GoodreadsImport, LibraryInfo, SortOrder, TagCount } from "../api/types";
+import { BookCover } from "../components/BookCover";
+import { authorLine } from "../lib/format";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
@@ -124,8 +126,192 @@ export function LibraryTab({
           <p className="settings-row-hint">The library folder couldn't be read.</p>
         )}
       </Section>
+      <TagsSection />
+      <DuplicatesSection />
       <GoodreadsSection />
     </>
+  );
+}
+
+function TagsSection() {
+  const toast = useToast();
+  const [tags, setTags] = useState<TagCount[] | null>(null);
+  const [removing, setRemoving] = useState<TagCount | null>(null);
+  const load = () => void api.allTags().then(setTags, () => setTags([]));
+  useEffect(load, []);
+  const remove = async (tag: TagCount) => {
+    setRemoving(null);
+    try {
+      // The Library hands books over a page at a time.
+      const ids: string[] = [];
+      for (let page = 0; ; page++) {
+        const found = await api.getLibrary({ shelf: "all", sort: "title", search: null, formats: [], location: null, tags: [tag.name], page, pageSize: 200 });
+        ids.push(...found.books.map((b) => b.id));
+        if (found.page < page || ids.length >= found.total || !found.books.length) break;
+      }
+      await api.removeTag(ids, tag.name);
+      toast(`Took “${tag.name}” off ${tag.count} ${tag.count === 1 ? "book" : "books"}.`);
+    } catch (e) {
+      toast(`That didn't work: ${String(e)}`);
+    }
+    load();
+  };
+  return (
+    <Section id="tags" title="Tags" lede="Your own labels for books. Add them from any book's menu, right-click a book, or filter the Library by them.">
+      {tags === null ? null : tags.length === 0 ? (
+        <p className="settings-row-hint">No tags yet. Right-click a book, or open its … menu, and choose Add tags.</p>
+      ) : (
+        <ul className="tag-manage">
+          {tags.map((t) => (
+            <li key={t.name}>
+              <span className="tag-chip">
+                {t.name}
+                <span className="muted num">{t.count}</span>
+                <button type="button" aria-label={`Remove ${t.name} from every book`} title="Remove from every book" onClick={() => setRemoving(t)}>
+                  <Icon name="close" size={12} />
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {removing && (
+        <ConfirmDialog
+          title={`Remove the tag “${removing.name}”?`}
+          body={`It comes off all ${removing.count} ${removing.count === 1 ? "book" : "books"} that have it. The books stay in your library.`}
+          confirm="Remove tag"
+          danger
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => void remove(removing)}
+        />
+      )}
+    </Section>
+  );
+}
+
+function DuplicatesSection() {
+  const toast = useToast();
+  const [groups, setGroups] = useState<DuplicateGroup[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const find = async () => {
+    setBusy(true);
+    try {
+      const found = await api.findDuplicates();
+      if (found.length) setGroups(found);
+      else toast("No duplicates found. Every book in your library looks different.");
+    } catch (e) {
+      toast(`That didn't work: ${String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Section
+      id="duplicates"
+      title="Duplicates"
+      lede="Finds books that look like the same book twice: the same ISBN, or the same title and author. Nothing is deleted unless you choose to."
+    >
+      <div className="action-tiles">
+        <ActionTile
+          icon={<Icon name="copy" size={22} />}
+          title="Find duplicate books"
+          hint="Compare them side by side and pick which to keep."
+          disabled={busy}
+          onClick={() => void find()}
+        />
+      </div>
+      {groups && <DuplicatesDialog groups={groups} onClose={() => setGroups(null)} />}
+    </Section>
+  );
+}
+
+function DuplicatesDialog({ groups: start, onClose }: { groups: DuplicateGroup[]; onClose: () => void }) {
+  const toast = useToast();
+  const [groups, setGroups] = useState(start);
+  const [deleting, setDeleting] = useState<DuplicateGroup["books"][number] | null>(null);
+  const dismiss = (g: DuplicateGroup) =>
+    void api.dismissDuplicates(g.key).then(
+      () => setGroups((list) => list.filter((x) => x.key !== g.key)),
+      (e: unknown) => toast(String(e)),
+    );
+  const remove = async (book: DuplicateGroup["books"][number]) => {
+    setDeleting(null);
+    try {
+      await api.deleteBook(book.id);
+      toast(`Deleted “${book.title}” (${book.format.toUpperCase()}).`);
+      setGroups((list) =>
+        list.map((g) => ({ ...g, books: g.books.filter((b) => b.id !== book.id) })).filter((g) => g.books.length > 1),
+      );
+    } catch (e) {
+      toast(`Couldn't delete it: ${String(e)}`);
+    }
+  };
+  return (
+    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="dialog duplicates-dialog" role="dialog" aria-label="Duplicate books" onKeyDown={(e) => !deleting && e.key === "Escape" && onClose()}>
+        <h2>Duplicate books</h2>
+        {groups.length === 0 ? (
+          <p className="muted">All sorted. No more duplicates to look at.</p>
+        ) : (
+          <p className="muted">
+            {groups.length} {groups.length === 1 ? "set" : "sets"} of books look alike. Delete the copies you don't want, or mark a set as not duplicates.
+          </p>
+        )}
+        <div className="duplicate-groups">
+          {groups.map((g) => (
+            <section key={g.key} className="duplicate-group">
+              <header>
+                <span className="muted">{g.reason}</span>
+                <button type="button" className="btn btn-quiet btn-small" onClick={() => dismiss(g)}>
+                  Not duplicates
+                </button>
+              </header>
+              <ul>
+                {g.books.map((b) => (
+                  <li key={b.id} className="duplicate-book">
+                    <BookCover book={b} size="s" />
+                    <span className="duplicate-text">
+                      <strong>{b.title}</strong>
+                      <span className="muted">{authorLine(b.authors)}</span>
+                      <span className="muted duplicate-facts">
+                        {[
+                          b.format.toUpperCase(),
+                          b.fileSize ? formatBytes(b.fileSize) : null,
+                          `added ${new Date(b.addedAt).toLocaleDateString()}`,
+                          b.status === "in_progress" ? `${Math.round((b.totalProgression ?? 0) * 100)}% read` : b.status === "read" ? "read" : null,
+                          b.notes ? `${b.notes} ${b.notes === 1 ? "note" : "notes"}` : null,
+                          b.availability === "cloud" ? "in the cloud" : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </span>
+                    <button type="button" className="btn btn-quiet btn-small" onClick={() => setDeleting(b)}>
+                      <Icon name="trash" size={14} /> Delete
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-primary" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
+      {deleting && (
+        <ConfirmDialog
+          title={`Delete this copy of “${deleting.title}”?`}
+          body={`The ${deleting.format.toUpperCase()} copy leaves your library on every device${deleting.notes ? `, with its ${deleting.notes} ${deleting.notes === 1 ? "note" : "notes"}` : ""}. The other copies stay.`}
+          confirm="Delete copy"
+          danger
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => void remove(deleting)}
+        />
+      )}
+    </div>
   );
 }
 

@@ -143,6 +143,18 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "library",
+    section: "tags",
+    label: "Tags",
+    words: "tags labels remove rename filter",
+  },
+  {
+    tab: "library",
+    section: "duplicates",
+    label: "Duplicates",
+    words: "duplicate duplicates copies same book twice isbn find delete",
+  },
+  {
+    tab: "library",
     section: "goodreads",
     label: "Goodreads",
     words: "goodreads import export csv file upload ratings stars shelves read dates",

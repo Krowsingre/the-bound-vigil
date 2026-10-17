@@ -45,6 +45,8 @@ pub enum RuleField {
     Added,
     /// "device" (its file is here) or "cloud".
     Location,
+    /// One of your tags.
+    Tag,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -177,6 +179,31 @@ impl Rule {
                 match self.op {
                     O::WithinDays => format!("b.added_at >= {}", bind(Value::Text(since))),
                     O::OlderThanDays => format!("b.added_at < {}", bind(Value::Text(since))),
+                    _ => return None,
+                }
+            }
+            F::Tag => {
+                let any = |test: &str| {
+                    format!("EXISTS (SELECT 1 FROM book_tags t WHERE t.book_id = b.id AND t.removed_at IS NULL{test})")
+                };
+                match self.op {
+                    O::IsEmpty => format!("NOT {}", any("")),
+                    _ if value.is_empty() => return None,
+                    O::Is => any(&format!(
+                        " AND lower(t.tag) = {}",
+                        bind(Value::Text(value.to_lowercase()))
+                    )),
+                    O::IsNot => format!(
+                        "NOT {}",
+                        any(&format!(
+                            " AND lower(t.tag) = {}",
+                            bind(Value::Text(value.to_lowercase()))
+                        ))
+                    ),
+                    O::Contains => any(&format!(
+                        " AND lower(t.tag) LIKE {} ESCAPE '\\'",
+                        bind(like(value, "%", "%"))
+                    )),
                     _ => return None,
                 }
             }

@@ -4,7 +4,7 @@ import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { ProgressBar } from "../components/ProgressBar";
 import { authorLine, percent, relativeTime } from "../lib/format";
-import { bookMenu, type BookActions } from "./bookActions";
+import { bookContextMenu, bookMenu, type BookActions } from "./bookActions";
 
 const AVAILABILITY = { local: "On this device", cloud: "In the cloud", missing: "File missing" } as const;
 
@@ -39,7 +39,7 @@ export function ResumeHero({
   }
 
   return (
-    <section className="hero" aria-labelledby="hero-title">
+    <section className="hero" aria-labelledby="hero-title" {...bookContextMenu(book, actions)}>
       <div className="hero-inner">
         <button type="button" className="hero-cover" onClick={() => actions.open(book)} aria-label={`Open ${book.title}`}>
           <BookCover book={book} size="l" />
