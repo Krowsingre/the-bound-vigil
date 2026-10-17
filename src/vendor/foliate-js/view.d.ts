@@ -34,6 +34,8 @@ export interface FoliateBook {
   splitTOCHref?(href: string): [string, unknown];
   resolveHref(href: string): { index: number; anchor?: unknown } | null;
   getCover?(): Promise<Blob | null> | null;
+  /** Lets go of what the book holds open (PDF.js workers, chapter URLs). */
+  destroy?(): void | Promise<void>;
 }
 
 export interface Paginator extends HTMLElement {

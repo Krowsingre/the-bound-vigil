@@ -201,8 +201,12 @@ export function useReaderEngine({
     return () => {
       cancelled = true;
       viewRef.current = null;
+      // The engine's close leaves the book itself open: PDF.js workers and
+      // laid-out chapters are let go here.
+      const book = view?.book;
       view?.close();
       view?.remove();
+      Promise.resolve(book?.destroy?.()).catch(() => {});
     };
   }, [file, host]);
 

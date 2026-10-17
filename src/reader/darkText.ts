@@ -58,6 +58,36 @@ export function darkPageColor(text: Rgb, page: Rgb, pageText: Rgb): Rgb | null {
   return pageText;
 }
 
+/**
+ * The background a piece of text actually sits on, when the book gives it
+ * one of its own (a light callout box, say). Null means the page shows
+ * through, and "picture" means a background image TBV can't judge.
+ */
+function ownBackground(el: HTMLElement, win: Window, seen: Map<Element, Rgb | "picture" | null>): Rgb | "picture" | null {
+  const body = el.ownerDocument.body;
+  const path: Element[] = [];
+  let found: Rgb | "picture" | null = null;
+  for (let at: Element | null = el; at && at !== body && at !== el.ownerDocument.documentElement; at = at.parentElement) {
+    if (seen.has(at)) {
+      found = seen.get(at)!;
+      break;
+    }
+    path.push(at);
+    const style = win.getComputedStyle(at);
+    if (style.backgroundImage && style.backgroundImage !== "none") {
+      found = "picture";
+      break;
+    }
+    const bg = parseRgb(style.backgroundColor);
+    if (bg && bg.alpha >= 0.5) {
+      found = bg.rgb;
+      break;
+    }
+  }
+  for (const at of path) seen.set(at, found);
+  return found;
+}
+
 const MARK = "data-tbv-color";
 const TEXT_TAGS = new Set(["SCRIPT", "STYLE", "svg", "IMG", "VIDEO", "AUDIO", "CANVAS", "IMAGE"]);
 
@@ -79,13 +109,19 @@ export function fitTextToPage(doc: Document, colors: { background: string; text:
   const page = hexToRgb(colors.background);
   const pageText = hexToRgb(colors.text);
   const changes: [HTMLElement, string][] = [];
+  const backgrounds = new Map<Element, Rgb | "picture" | null>();
   for (const el of doc.body.querySelectorAll<HTMLElement>("*")) {
     if (TEXT_TAGS.has(el.tagName) || !el.style) continue;
     const hasText = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent?.trim());
     if (!hasText) continue;
     const parsed = parseRgb(win.getComputedStyle(el).color);
     if (!parsed || parsed.alpha === 0) continue;
-    const fitted = darkPageColor(parsed.rgb, page, pageText);
+    // Text on a box of the book's own is judged against that box. A light
+    // box keeps the book's colours, since TBV's light text wouldn't read there.
+    const own = ownBackground(el, win, backgrounds);
+    if (own === "picture") continue;
+    if (own && luminance(own) > luminance(page) && contrast(own, pageText) < READABLE) continue;
+    const fitted = darkPageColor(parsed.rgb, own ?? page, pageText);
     if (fitted) changes.push([el, `rgb(${fitted.join(" ")})`]);
   }
   // Read every colour first, then write, so one change can't skew the next read.

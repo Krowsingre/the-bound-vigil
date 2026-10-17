@@ -72,7 +72,7 @@ fn summary_properties(stream: &[u8]) -> Option<Vec<(usize, String)>> {
             0x1E => stream.get(at + 8..at + 8 + len).map(|b| encoding.decode(b).0.into_owned()),
             // VT_LPWSTR, UTF-16.
             0x1F => stream.get(at + 8..at + 8 + len * 2).map(|b| {
-                let units: Vec<u16> = b.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+                let units: Vec<u16> = b.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
                 String::from_utf16_lossy(&units)
             }),
             _ => None,
@@ -147,7 +147,7 @@ pub fn read_text(path: &Path) -> Result<String> {
                 raw.push_str(&encoding_rs::WINDOWS_1252.decode(bytes).0);
             }
         } else if let Some(bytes) = word.get(fc..fc + chars * 2) {
-            let units: Vec<u16> = bytes.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+            let units: Vec<u16> = bytes.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
             raw.push_str(&String::from_utf16_lossy(&units));
         }
     }

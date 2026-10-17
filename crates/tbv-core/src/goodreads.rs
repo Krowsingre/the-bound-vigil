@@ -15,7 +15,7 @@ use std::path::Path;
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
-use crate::epub::clean_isbn;
+use crate::epub::{clean_isbn, read_epub_metadata, BookMetadata};
 use crate::error::{Error, Result};
 use crate::library::Library;
 use crate::model::{BookId, CollectionInput, CollectionKind};
@@ -66,16 +66,23 @@ struct Known {
     id: BookId,
     isbn: Option<String>,
     title: String,
+    short_title: String,
     surnames: Vec<String>,
 }
 
 /// Lowercase letters and digits only, so punctuation and spacing never
 /// stop a match. Goodreads adds the series to titles, "Dune (Dune, #1)",
-/// and many books add a subtitle after a colon; both are dropped.
+/// which is dropped.
 fn title_key(title: &str) -> String {
     let main = title.split(" (").next().unwrap_or(title);
-    let main = main.split(':').next().unwrap_or(main);
     main.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+}
+
+/// The title without a subtitle after a colon. Only trusted when it points
+/// at a single book, since "Collected Essays: Volume One" and "…: Volume Two"
+/// share it.
+fn short_title_key(title: &str) -> String {
+    title_key(title.split(':').next().unwrap_or(title))
 }
 
 /// The last word of a name, "Ursula K. Le Guin" → "guin", which survives
@@ -133,14 +140,17 @@ impl Library {
         }
         let rows: Vec<Row> = reader.deserialize().collect::<std::result::Result<_, _>>().map_err(unreadable)?;
 
+        self.fill_missing_isbns()?;
         let known = self.books_for_matching()?;
         let mut by_isbn: HashMap<&str, usize> = HashMap::new();
         let mut by_title: HashMap<&str, Vec<usize>> = HashMap::new();
+        let mut by_short_title: HashMap<&str, Vec<usize>> = HashMap::new();
         for (i, k) in known.iter().enumerate() {
             if let Some(isbn) = &k.isbn {
                 by_isbn.insert(isbn, i);
             }
             by_title.entry(k.title.as_str()).or_default().push(i);
+            by_short_title.entry(k.short_title.as_str()).or_default().push(i);
         }
 
         let mut report = GoodreadsImport { rows: rows.len() as u32, ..Default::default() };
@@ -152,11 +162,19 @@ impl Library {
                 .or_else(|| {
                     let names = std::iter::once(row.author.as_str()).chain(row.additional_authors.split(','));
                     let wanted: Vec<String> = names.filter_map(surname).collect();
-                    by_title
-                        .get(title_key(&row.title).as_str())?
-                        .iter()
-                        .copied()
-                        .find(|&i| wanted.is_empty() || known[i].surnames.iter().any(|s| wanted.contains(s)))
+                    let by_author = |i: &usize| wanted.is_empty() || known[*i].surnames.iter().any(|s| wanted.contains(s));
+                    let exact = by_title.get(title_key(&row.title).as_str()).and_then(|c| c.iter().copied().find(by_author));
+                    exact.or_else(|| {
+                        let short = short_title_key(&row.title);
+                        let mut candidates: Vec<usize> = by_short_title.get(short.as_str())?.iter().copied().filter(by_author).collect();
+                        candidates.extend(by_title.get(short.as_str()).into_iter().flatten().copied().filter(by_author));
+                        candidates.sort_unstable();
+                        candidates.dedup();
+                        match candidates[..] {
+                            [only] => Some(only),
+                            _ => None,
+                        }
+                    })
                 });
             let Some(index) = found else {
                 report.not_found.push(if row.author.trim().is_empty() {
@@ -176,10 +194,11 @@ impl Library {
             }
             let finished = export_date(&row.date_read);
             let changed = match row.exclusive_shelf.trim() {
+                // A book being read again here keeps its in-progress status.
                 "read" => {
                     self.conn.execute(
                         "UPDATE books SET status = 'read', finished_at = COALESCE(finished_at, ?2)
-                         WHERE id = ?1 AND (status != 'read' OR (finished_at IS NULL AND ?2 IS NOT NULL))",
+                         WHERE id = ?1 AND (status = 'unread' OR (status = 'read' AND finished_at IS NULL AND ?2 IS NOT NULL))",
                         params![id, finished],
                     )? > 0
                 }
@@ -268,10 +287,30 @@ impl Library {
                 id: r.get(0)?,
                 isbn: r.get(1)?,
                 title: title_key(&r.get::<_, String>(2)?),
+                short_title: short_title_key(&r.get::<_, String>(2)?),
                 surnames: authors.iter().filter_map(|a| surname(a)).collect(),
             })
         })?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Books imported before TBV kept ISBNs have none on record, so they are
+    /// read from the EPUBs on this device the first time they're needed.
+    fn fill_missing_isbns(&self) -> Result<()> {
+        let missing: Vec<(BookId, String)> = {
+            let mut statement = self.conn.prepare(
+                "SELECT b.id, f.path FROM books b JOIN local_files f ON f.book_id = b.id
+                 WHERE b.isbn IS NULL AND b.format = 'epub' AND b.deleted_at IS NULL AND f.path IS NOT NULL AND f.path != ''",
+            )?;
+            let rows = statement.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect::<std::result::Result<_, _>>()?
+        };
+        for (id, path) in missing {
+            if let Ok(BookMetadata { isbn: Some(isbn), .. }) = read_epub_metadata(Path::new(&path)) {
+                self.conn.execute("UPDATE books SET isbn = ?2 WHERE id = ?1 AND isbn IS NULL", params![id, isbn])?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -491,6 +530,40 @@ mod tests {
     }
 
     #[test]
+    fn close_titles_rereads_and_older_books_are_handled_carefully() {
+        let (dir, mut library) = open_temp_library();
+        let one = add(&mut library, dir.path(), "Collected Essays: Volume One", "Mary Hale");
+        let two = add(&mut library, dir.path(), "Collected Essays: Volume Two", "Mary Hale");
+        let emma = add(&mut library, dir.path(), "Emma", "Jane Austen");
+        library.set_status(&emma, ReadStatus::InProgress).unwrap();
+        // A book imported before ISBNs were kept, under a different title.
+        let path = dir.path().join("lathe.epub");
+        crate::epub::tests::write_test_epub_with(&path, "Lathe", "U. Le Guin", false, "<dc:identifier>urn:isbn:9780060512750</dc:identifier>");
+        let ImportResult::Imported { book_id: lathe, .. } = &library.import_files(&[path])[0] else { panic!() };
+        library.conn.execute("UPDATE books SET isbn = NULL", []).unwrap();
+
+        let export = dir.path().join("export.csv");
+        fs::write(
+            &export,
+            format!(
+                "{HEADER}\n\
+                 1,\"Collected Essays: Volume Two\",Mary Hale,,,=\"\",=\"\",4,4,,,,,,,,,,read,,,,1,0\n\
+                 2,\"Collected Essays\",Mary Hale,,,=\"\",=\"\",3,4,,,,,,,,,,read,,,,1,0\n\
+                 3,Emma,Jane Austen,,,=\"\",=\"\",5,4,,,,,,2020/01/01,,,,read,,,,1,0\n\
+                 4,The Lathe of Heaven,Ursula K. Le Guin,,,=\"\",=\"9780060512750\",5,4,,,,,,,,,,read,,,,1,0\n"
+            ),
+        )
+        .unwrap();
+        let report = library.import_goodreads(&export).unwrap();
+        let book = |id: &str| library.book(id).unwrap().unwrap();
+        assert_eq!(book(&two).rating, Some(4));
+        assert_eq!(book(&one).rating, None, "a shortened title that fits two books matches neither");
+        assert_eq!(report.not_found, ["Collected Essays by Mary Hale"]);
+        assert_eq!(book(&emma).status, ReadStatus::InProgress, "a reread in progress stays in progress");
+        assert_eq!(book(lathe).rating, Some(5), "found by the ISBN read from the file");
+    }
+
+    #[test]
     fn other_files_are_turned_away() {
         let (dir, library) = open_temp_library();
         let file = dir.path().join("notes.csv");
@@ -507,7 +580,8 @@ mod tests {
         assert_eq!(clean_isbn("urn:uuid:1234"), None);
         assert_eq!(export_date("2023/05/14"), Some("2023-05-14T12:00:00.000Z".into()));
         assert_eq!(export_date(""), None);
-        assert_eq!(title_key("Dune: Deluxe Edition (Dune, #1)"), "dune");
+        assert_eq!(short_title_key("Dune: Deluxe Edition (Dune, #1)"), "dune");
+        assert_eq!(title_key("Dune: Deluxe Edition (Dune, #1)"), "dunedeluxeedition");
         assert_eq!(surname("Le Guin, Ursula K."), Some("guin".into()));
         assert_eq!(surname("Ursula K. Le Guin"), Some("guin".into()));
         assert_eq!(shelf_name("science-fiction"), "Science fiction");
