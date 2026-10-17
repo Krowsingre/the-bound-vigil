@@ -2,7 +2,7 @@
 // connection and served from here when there isn't; the app's own files
 // (their names change with every build) are kept once fetched. Supabase is
 // on another address, so books, covers and sync never pass through here.
-const CACHE = "tbv-shell-v2";
+const CACHE = "tbv-shell-v3";
 // Script requests carry an Origin header and the server answers "Vary: Origin", so that is ignored.
 const ANY = { ignoreVary: true };
 const SCOPE = self.registration.scope;
@@ -33,6 +33,8 @@ self.addEventListener("message", (event) => {
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET" || !request.url.startsWith(SCOPE)) return;
+  // Home screen icons always come straight from the site, so a phone never gets a stale one.
+  if (/\/bound-vigil-\d+\.png$/.test(new URL(request.url).pathname)) return;
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)

@@ -41,9 +41,43 @@ pub struct ImportItem {
     pub result: Option<ImportResult>,
 }
 
+/// What the Imports page shows. A big import can hold tens of thousands of
+/// books, so the page gets counts and a window of the list, never all of it:
+/// sending everything a few times a second left the window unable to keep up.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportsView {
+    pub total: usize,
+    pub done: usize,
+    pub added: usize,
+    pub already: usize,
+    pub unsupported: usize,
+    pub failed: usize,
+    /// The title when exactly one book was added.
+    pub only_added: Option<String>,
+    /// The reason when exactly one file couldn't be read.
+    pub only_failure: Option<String>,
+    pub waiting_count: usize,
+    pub current: Vec<ImportItem>,
+    /// The first few waiting, in order.
+    pub waiting: Vec<ImportItem>,
+    /// The latest few finished, newest first.
+    pub finished: Vec<ImportItem>,
+    /// Bytes read so far of the books under way, out of their sizes.
+    pub current_read: u64,
+    pub current_bytes: u64,
+    /// Added PDFs whose covers the page should draw (see `take_pdf_covers`).
+    pub pdf_covers: usize,
+}
+
+/// Waiting and finished books listed on the page; the rest are counted.
+const SHOW: usize = 100;
+
 #[derive(Default)]
 struct Queue {
     items: Vec<ImportItem>,
+    /// Added PDFs waiting for the page to draw their covers.
+    pdf_covers: Vec<String>,
     next_id: u64,
     /// Threads adding books right now.
     workers: usize,
@@ -65,8 +99,54 @@ pub struct Imports {
 const TELL_EVERY: Duration = Duration::from_millis(250);
 
 impl Imports {
-    pub fn list(&self) -> Vec<ImportItem> {
-        self.queue.lock().map(|q| q.items.clone()).unwrap_or_default()
+    pub fn view(&self) -> ImportsView {
+        let Ok(queue) = self.queue.lock() else { return ImportsView::default() };
+        let mut view = ImportsView { total: queue.items.len(), pdf_covers: queue.pdf_covers.len(), ..Default::default() };
+        for item in &queue.items {
+            match item.stage {
+                Stage::Waiting => {
+                    view.waiting_count += 1;
+                    if view.waiting.len() < SHOW {
+                        view.waiting.push(item.clone());
+                    }
+                }
+                Stage::Reading | Stage::Adding => {
+                    view.current_read += item.bytes_read;
+                    view.current_bytes += item.bytes;
+                    view.current.push(item.clone());
+                }
+                Stage::Done => {
+                    view.done += 1;
+                    match &item.result {
+                        Some(ImportResult::Imported { title, .. }) => {
+                            view.added += 1;
+                            view.only_added = Some(title.clone());
+                        }
+                        Some(ImportResult::AlreadyInLibrary { .. }) => view.already += 1,
+                        Some(ImportResult::Unsupported { .. }) => view.unsupported += 1,
+                        Some(ImportResult::Failed { reason, .. }) => {
+                            view.failed += 1;
+                            view.only_failure = Some(reason.clone());
+                        }
+                        None => {}
+                    }
+                }
+            }
+        }
+        if view.added != 1 {
+            view.only_added = None;
+        }
+        if view.failed != 1 {
+            view.only_failure = None;
+        }
+        // Books finish in the order they're listed, near enough.
+        view.finished = queue.items.iter().rev().filter(|i| i.stage == Stage::Done).take(SHOW).cloned().collect();
+        view
+    }
+
+    /// The added PDFs still needing a cover, handed over once.
+    pub fn take_pdf_covers(&self) -> Vec<String> {
+        self.queue.lock().map(|mut q| std::mem::take(&mut q.pdf_covers)).unwrap_or_default()
     }
 
     /// Finds the book files in `paths` and queues them. Returns how many.
@@ -154,6 +234,13 @@ impl Imports {
 
             let result = self.import(id, &path, app, library).unwrap_or_else(|e| failed(&path, &e.to_string()));
             let added = matches!(result, ImportResult::Imported { .. } | ImportResult::AlreadyInLibrary { .. });
+            if let ImportResult::Imported { book_id, path, .. } = &result {
+                if path.to_ascii_lowercase().ends_with(".pdf") {
+                    if let Ok(mut queue) = self.queue.lock() {
+                        queue.pdf_covers.push(book_id.to_string());
+                    }
+                }
+            }
             self.update(id, |item| {
                 item.stage = Stage::Done;
                 item.bytes_read = item.bytes;
@@ -225,7 +312,7 @@ impl Imports {
             return;
         }
         *told = Some(Instant::now());
-        let _ = app.emit("imports-changed", self.list());
+        let _ = app.emit("imports-changed", self.view());
     }
 }
 

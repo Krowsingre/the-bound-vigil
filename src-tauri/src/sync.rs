@@ -15,6 +15,8 @@ use tbv_core::sync::supabase;
 use tbv_core::sync::{self as core_sync, Cloud, Frequency, Lane, Provider, Session};
 use tbv_core::{Error, Library};
 
+use crate::activity;
+
 enum Wake {
     Now,
     /// Sync one last time (if the user wants that), then say so.
@@ -34,6 +36,7 @@ const AUTOMATIC_TICK: Duration = Duration::from_secs(60);
 
 impl SyncWorker {
     pub fn start(app: AppHandle, library: Arc<Mutex<Library>>) -> Self {
+        activity::attach(app.clone());
         let (tx, rx) = mpsc::channel();
         let busy = Arc::new(AtomicBool::new(false));
         let worker_busy = busy.clone();
@@ -186,6 +189,18 @@ fn run(app: &AppHandle, library: &Arc<Mutex<Library>>, busy: &AtomicBool) {
     });
     // The second place is reached on its own, so it syncs even when the first can't.
     let also = connect_second(library);
+    let (main_view, also_view) = library
+        .lock()
+        .map(|l| (l.sync_provider().ok().map(|p| p.view()), l.sync_also().ok().flatten().map(|p| p.view())))
+        .unwrap_or((None, None));
+    let mut places = Vec::new();
+    if let (Ok(Some(_)), Some(view)) = (&connected, &main_view) {
+        places.push((Lane::Main, view.clone()));
+    }
+    if let (Some(_), Some(view)) = (&also, &also_view) {
+        places.push((Lane::Also, view.clone()));
+    }
+    activity::begin(places);
     let (mut client, epoch) = match connected {
         Ok(Some((client, epoch))) => (Some(client), epoch),
         Ok(None) => (None, first_epoch),
@@ -193,21 +208,33 @@ fn run(app: &AppHandle, library: &Arc<Mutex<Library>>, busy: &AtomicBool) {
             if let Ok(l) = library.lock() {
                 let _ = l.note_sync_failure(&e);
             }
+            if let Some(view) = main_view {
+                activity::unreachable(Lane::Main, view, e.to_string().trim_start_matches("offline: ").to_string());
+            }
             (None, first_epoch)
         }
     };
+    if also.is_none() {
+        if let Some(view) = also_view {
+            let why = library.lock().ok().and_then(|l| l.sync_overview().ok()).and_then(|o| o.also).and_then(|a| a.last_error);
+            activity::unreachable(Lane::Also, view, why.unwrap_or_else(|| "TBV couldn't reach it.".into()));
+        }
+    }
     let mut second = also;
     if client.is_none() && second.is_none() {
+        activity::end();
         busy.store(false, Ordering::Relaxed);
         emit_status(app, library, false);
         return;
     }
-    let outcome = core_sync::sync_lanes_since(
+    let outcome = core_sync::sync_watched(
         library,
         client.as_mut().map(|c| c as &mut dyn core_sync::Remote),
         second.as_mut().map(|c| c as &mut dyn core_sync::Remote),
         epoch,
+        &activity::hear,
     );
+    activity::end();
     if let Ok(library) = library.lock() {
         for cloud in client.iter().chain(second.iter()) {
             keep_session(&library, cloud, &outcome);
@@ -348,6 +375,14 @@ pub fn download(library: &Arc<Mutex<Library>>, book_id: &str) -> tbv_core::Resul
             "This book's file is on another device. Set up sync (Settings › Sync) to download it here.".into(),
         ));
     }
+    let what = library.lock().ok().and_then(|l| l.cloud_book_path(book_id).ok().flatten().map(|p| l.file_named(&p))).unwrap_or_else(|| "A book".into());
+    let outcome = fetch_book(library, book_id, client, second);
+    let bytes = library.lock().ok().and_then(|l| l.book_file(book_id).ok()).and_then(|f| std::fs::metadata(f).ok()).map(|m| m.len()).unwrap_or(0);
+    activity::book_fetched(what, bytes, outcome.as_ref().err().map(|e| e.to_string()));
+    outcome
+}
+
+fn fetch_book(library: &Arc<Mutex<Library>>, book_id: &str, client: Option<Cloud>, second: Option<Cloud>) -> tbv_core::Result<()> {
     // The first place, then the second if the first hasn't got it or can't be reached.
     let mut trouble = None;
     for (cloud, lane) in [(client, Lane::Main), (second, Lane::Also)] {

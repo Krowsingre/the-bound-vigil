@@ -307,7 +307,8 @@ impl SyncOptions {
 /// every file in iCloud and reads on a phone through Supabase has both. Each
 /// keeps its own idea of what it has been sent, so a change from either one
 /// is passed on to the other.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Lane {
     /// The provider in `sync.provider`.
     Main,
@@ -1430,6 +1431,32 @@ impl Library {
         self.put_setting(lane.erase_key(), left.as_deref())
     }
 
+    /// A cloud file in words, for the Sync activity page: "Dracula", "The
+    /// cover of Dracula", "A collection picture".
+    pub fn file_named(&self, path: &str) -> String {
+        let hex = |rest: &str| rest.split('.').next().unwrap_or_default().to_string();
+        let title = |hex: String| -> Option<String> {
+            self.conn
+                .query_row("SELECT title FROM books WHERE id = ?1", params![format!("sha256:{hex}")], |r| r.get(0))
+                .optional()
+                .ok()
+                .flatten()
+        };
+        if let Some(rest) = path.strip_prefix("books/") {
+            return title(hex(rest)).unwrap_or_else(|| "A book".into());
+        }
+        if let Some(rest) = path.strip_prefix("covers/") {
+            return title(hex(rest)).map(|t| format!("The cover of {t}")).unwrap_or_else(|| "A cover".into());
+        }
+        if path.starts_with("pictures/avatar-") {
+            return "Your profile picture".into();
+        }
+        if path.starts_with("pictures/") {
+            return "A collection picture".into();
+        }
+        path.to_string()
+    }
+
     /// Where a book's file is kept in the cloud, if this device knows the book.
     pub fn cloud_book_path(&self, book_id: &str) -> Result<Option<String>> {
         let format: Option<String> = self
@@ -1545,12 +1572,70 @@ pub fn sync_lanes_since(
     also: Option<&mut dyn Remote>,
     epoch: u64,
 ) -> Result<SyncReport> {
-    match (main, also) {
-        (Some(main), also) => sync_both_since(library, main, also, epoch),
-        (None, Some(also)) => run_lanes(library, None, Some(also), epoch),
-        (None, None) => Ok(SyncReport::default()),
-    }
+    sync_watched(library, main, also, epoch, &|_| {})
 }
+
+/// As `sync_lanes_since`, telling `tell` what it's doing as it goes, for the
+/// Sync activity page.
+pub fn sync_watched(
+    library: &Mutex<Library>,
+    main: Option<&mut dyn Remote>,
+    also: Option<&mut dyn Remote>,
+    epoch: u64,
+    tell: Tell,
+) -> Result<SyncReport> {
+    if main.is_none() && also.is_none() {
+        return Ok(SyncReport::default());
+    }
+    run_lanes(library, main, also, epoch, tell)
+}
+
+/// What a sync run is doing, as it happens.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum SyncEvent {
+    /// A place moved on to a new step.
+    Step { lane: Lane, step: SyncStep },
+    /// Changes so far this run, for one place.
+    Records { lane: Lane, received: u32, sent: u32 },
+    /// The files a place is about to send or fetch.
+    FilesPlanned { lane: Lane, direction: Direction, count: u32, bytes: u64 },
+    /// One file starting, or finished (`done`), or not sent (`problem`).
+    File {
+        lane: Lane,
+        direction: Direction,
+        path: String,
+        /// What it is, in words: "Dracula" or "The cover of Dracula".
+        what: String,
+        bytes: u64,
+        done: bool,
+        problem: Option<String>,
+    },
+    /// A place has finished, well or not.
+    Finished { lane: Lane, problem: Option<String> },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SyncStep {
+    /// Fetching what other devices changed.
+    Receiving,
+    /// Sending what changed here.
+    Sending,
+    /// Book files, covers and pictures.
+    Files,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Direction {
+    Up,
+    Down,
+    Erase,
+}
+
+/// Hears `SyncEvent`s. Called with the library unlocked.
+pub type Tell<'t> = &'t (dyn Fn(SyncEvent) + Sync);
 
 /// One run with both places: what each has that this device doesn't comes
 /// down first, then each is sent what it lacks, so a change made through
@@ -1558,10 +1643,10 @@ pub fn sync_lanes_since(
 /// that can't be reached doesn't stop the other; each remembers its own
 /// result. Returns the first place's, with what the second brought added.
 pub fn sync_both_since(library: &Mutex<Library>, main: &mut dyn Remote, also: Option<&mut dyn Remote>, epoch: u64) -> Result<SyncReport> {
-    run_lanes(library, Some(main), also, epoch)
+    run_lanes(library, Some(main), also, epoch, &|_| {})
 }
 
-fn run_lanes(library: &Mutex<Library>, main: Option<&mut dyn Remote>, also: Option<&mut dyn Remote>, epoch: u64) -> Result<SyncReport> {
+fn run_lanes(library: &Mutex<Library>, main: Option<&mut dyn Remote>, also: Option<&mut dyn Remote>, epoch: u64, tell: Tell) -> Result<SyncReport> {
     let take = || library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()));
     // Sync started over meanwhile (another service, or signed out): this
     // run's place is no longer the library's, so it writes nothing more.
@@ -1572,7 +1657,13 @@ fn run_lanes(library: &Mutex<Library>, main: Option<&mut dyn Remote>, also: Opti
         }
         Ok(library)
     };
-    let (main_outcome, also_outcome) = run_both(&lock, main, also);
+    let (main_outcome, also_outcome) = run_both(&lock, main, also, tell);
+    for (lane, outcome) in [(Lane::Main, &main_outcome), (Lane::Also, &also_outcome)] {
+        if let Some(outcome) = outcome {
+            let problem = outcome.as_ref().err().filter(|e| !matches!(e, Error::Superseded)).map(|e| e.to_string());
+            tell(SyncEvent::Finished { lane, problem: problem.map(|p| p.trim_start_matches(OFFLINE_PREFIX).to_string()) });
+        }
+    }
     let superseded = |o: &Result<SyncReport>| matches!(o, Err(Error::Superseded));
     if main_outcome.as_ref().is_some_and(superseded) || also_outcome.as_ref().is_some_and(superseded) {
         return Ok(SyncReport::default());
@@ -1617,7 +1708,7 @@ fn step(outcome: &mut Result<SyncReport>, work: impl FnOnce(&mut SyncReport) -> 
 
 type Outcomes = (Option<Result<SyncReport>>, Option<Result<SyncReport>>);
 
-fn run_both(lock: Lock, mut main: Option<&mut dyn Remote>, mut also: Option<&mut dyn Remote>) -> Outcomes {
+fn run_both(lock: Lock, mut main: Option<&mut dyn Remote>, mut also: Option<&mut dyn Remote>, tell: Tell) -> Outcomes {
     let options = match lock().and_then(|l| l.sync_options()) {
         Ok(options) => options,
         Err(e) => return (Some(Err(e)), None),
@@ -1630,33 +1721,34 @@ fn run_both(lock: Lock, mut main: Option<&mut dyn Remote>, mut also: Option<&mut
     };
 
     if let (Some(remote), Some(outcome)) = (main.as_deref_mut(), first.as_mut()) {
-        step(outcome, |r| pull(lock, remote, &options, Lane::Main, r));
+        step(outcome, |r| pull(lock, tell, remote, &options, Lane::Main, r));
     }
     if let (Some(remote), Some(outcome)) = (also.as_deref_mut(), second.as_mut()) {
-        step(outcome, |r| pull(lock, remote, &also_options, Lane::Also, r));
+        step(outcome, |r| pull(lock, tell, remote, &also_options, Lane::Also, r));
     }
     if stopped(&first, &second) {
         return (first, second);
     }
     if let (Some(remote), Some(outcome)) = (main.as_deref_mut(), first.as_mut()) {
-        step(outcome, |r| push(lock, remote, &options, Lane::Main, r));
+        step(outcome, |r| push(lock, tell, remote, &options, Lane::Main, r));
     }
     if let (Some(remote), Some(outcome)) = (also.as_deref_mut(), second.as_mut()) {
-        step(outcome, |r| push(lock, remote, &also_options, Lane::Also, r));
+        step(outcome, |r| push(lock, tell, remote, &also_options, Lane::Also, r));
     }
     if stopped(&first, &second) {
         return (first, second);
     }
     if let (Some(remote), Some(outcome)) = (main, first.as_mut()) {
-        step(outcome, |r| files(lock, remote, &options, Lane::Main, r));
+        step(outcome, |r| files(lock, tell, remote, &options, Lane::Main, r));
     }
     if let (Some(remote), Some(outcome)) = (also, second.as_mut()) {
-        step(outcome, |r| files(lock, remote, &also_options, Lane::Also, r));
+        step(outcome, |r| files(lock, tell, remote, &also_options, Lane::Also, r));
     }
     (first, second)
 }
 
-fn pull(lock: Lock, remote: &mut dyn Remote, options: &SyncOptions, lane: Lane, report: &mut SyncReport) -> Result<()> {
+fn pull(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, lane: Lane, report: &mut SyncReport) -> Result<()> {
+    tell(SyncEvent::Step { lane, step: SyncStep::Receiving });
     let mut cursor = lock()?.cursor(options, lane)?;
     loop {
         let Page { records, cursor: next } = remote.pull(&cursor, PAGE)?;
@@ -1669,6 +1761,8 @@ fn pull(lock: Lock, remote: &mut dyn Remote, options: &SyncOptions, lane: Lane, 
         report.new_conflicts += conflicts;
         cursor = next;
         library.save_cursor(options, &cursor, lane)?;
+        drop(library);
+        tell(SyncEvent::Records { lane, received: report.received, sent: report.sent });
         if records.len() < PAGE {
             break;
         }
@@ -1676,7 +1770,8 @@ fn pull(lock: Lock, remote: &mut dyn Remote, options: &SyncOptions, lane: Lane, 
     Ok(())
 }
 
-fn push(lock: Lock, remote: &mut dyn Remote, options: &SyncOptions, lane: Lane, report: &mut SyncReport) -> Result<()> {
+fn push(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, lane: Lane, report: &mut SyncReport) -> Result<()> {
+    tell(SyncEvent::Step { lane, step: SyncStep::Sending });
     let mut seen = HashSet::new();
     loop {
         let batch = lock()?.lane_outbox(options, BATCH, lane)?;
@@ -1688,11 +1783,16 @@ fn push(lock: Lock, remote: &mut dyn Remote, options: &SyncOptions, lane: Lane, 
         remote.push(&fresh)?;
         lock()?.lane_mark_sent(&fresh, lane)?;
         report.sent += fresh.len() as u32;
+        tell(SyncEvent::Records { lane, received: report.received, sent: report.sent });
     }
     Ok(())
 }
 
-fn files(lock: Lock, remote: &mut dyn Remote, options: &SyncOptions, lane: Lane, report: &mut SyncReport) -> Result<()> {
+fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, lane: Lane, report: &mut SyncReport) -> Result<()> {
+    tell(SyncEvent::Step { lane, step: SyncStep::Files });
+    let file = |direction: Direction, path: &str, what: &str, bytes: u64, done: bool, problem: Option<String>| {
+        tell(SyncEvent::File { lane, direction, path: path.to_string(), what: what.to_string(), bytes, done, problem });
+    };
     let to_erase = lock()?.files_to_erase(lane)?;
     if !to_erase.is_empty() {
         for path in &to_erase {
@@ -1701,51 +1801,89 @@ fn files(lock: Lock, remote: &mut dyn Remote, options: &SyncOptions, lane: Lane,
         lock()?.files_erased(&to_erase, lane)?;
     }
 
-    let to_send = lock()?.files_to_send(options, lane)?;
-    for (path, file) in to_send {
-        match remote.upload(&path, &file) {
+    let to_send = {
+        let library = lock()?;
+        let sending = library.files_to_send(options, lane)?;
+        sending
+            .into_iter()
+            .map(|(path, local)| {
+                let what = library.file_named(&path);
+                let bytes = fs::metadata(&local).map(|m| m.len()).unwrap_or(0);
+                (path, local, what, bytes)
+            })
+            .collect::<Vec<_>>()
+    };
+    if !to_send.is_empty() {
+        let bytes = to_send.iter().map(|(_, _, _, b)| b).sum();
+        tell(SyncEvent::FilesPlanned { lane, direction: Direction::Up, count: to_send.len() as u32, bytes });
+    }
+    for (path, local, what, bytes) in to_send {
+        file(Direction::Up, &path, &what, bytes, false, None);
+        match remote.upload(&path, &local) {
             Ok(()) => {
                 lock()?.lane_file_sent(&path, None, lane)?;
                 report.files_sent += 1;
+                file(Direction::Up, &path, &what, bytes, true, None);
             }
             Err(Error::Rejected(why)) => {
                 lock()?.lane_file_sent(&path, Some(&why), lane)?;
-                report.skipped_files.push(format!("{}: {why}", file.file_name().unwrap_or_default().to_string_lossy()));
+                report.skipped_files.push(format!("{}: {why}", local.file_name().unwrap_or_default().to_string_lossy()));
+                file(Direction::Up, &path, &what, bytes, true, Some(why));
             }
-            Err(e) => return Err(e),
-        }
-    }
-
-    let avatar = lock()?.avatar_to_fetch()?;
-    if let Some((path, file)) = avatar {
-        if fetch(remote, &path, &file)? {
-            lock()?.tidy_avatars()?;
-            report.files_received += 1;
-        }
-    }
-
-    if options.collections {
-        let wanted = lock()?.pictures_to_fetch()?;
-        for (path, file) in wanted {
-            if fetch(remote, &path, &file)? {
-                report.files_received += 1;
+            Err(e) => {
+                file(Direction::Up, &path, &what, bytes, true, Some(e.to_string()));
+                return Err(e);
             }
         }
     }
 
+    let mut fetches: Vec<(String, PathBuf, String, Option<String>)> = Vec::new();
+    {
+        let library = lock()?;
+        if let Some((path, local)) = library.avatar_to_fetch()? {
+            fetches.push((path, local, "Your profile picture".into(), None));
+        }
+        if options.collections {
+            for (path, local) in library.pictures_to_fetch()? {
+                fetches.push((path, local, "A collection picture".into(), None));
+            }
+        }
+    }
     let (bare, covers_dir) = {
         let library = lock()?;
         (library.books_without_covers()?, library.paths.covers_dir.clone())
     };
     if !bare.is_empty() {
         let in_cloud = remote.list("covers/")?;
+        let library = lock()?;
         for (hex, book_id) in bare {
             let Some(name) = in_cloud.iter().find(|n| Path::new(n).file_stem().is_some_and(|s| s == hex.as_str())) else { continue };
-            let file = covers_dir.join(name);
-            if fetch(remote, &format!("covers/{name}"), &file)? {
-                lock()?.set_cover(&book_id, &file)?;
-                report.files_received += 1;
+            let path = format!("covers/{name}");
+            let what = library.file_named(&path);
+            fetches.push((path, covers_dir.join(name), what, Some(book_id)));
+        }
+    }
+    if !fetches.is_empty() {
+        tell(SyncEvent::FilesPlanned { lane, direction: Direction::Down, count: fetches.len() as u32, bytes: 0 });
+    }
+    for (path, local, what, cover_of) in fetches {
+        file(Direction::Down, &path, &what, 0, false, None);
+        let got = fetch(remote, &path, &local);
+        let problem = match &got {
+            Ok(true) => None,
+            Ok(false) => Some("It isn't in the cloud yet.".to_string()),
+            Err(e) => Some(e.to_string()),
+        };
+        let bytes = fs::metadata(&local).map(|m| m.len()).unwrap_or(0);
+        file(Direction::Down, &path, &what, bytes, true, problem);
+        if got? {
+            let library = lock()?;
+            match &cover_of {
+                Some(book_id) => library.set_cover(book_id, &local)?,
+                None if path.starts_with("pictures/avatar-") => library.tidy_avatars()?,
+                None => {}
             }
+            report.files_received += 1;
         }
     }
     Ok(())

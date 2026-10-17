@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isApp, isWeb } from "./api";
-import type { CollectionRef, HomeViewModel, ImportItem, ImportResult, Profile, SyncStatus } from "./api/types";
+import type { CollectionRef, HomeViewModel, ImportsView, Profile, SyncStatus } from "./api/types";
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { ContextMenuHost } from "./components/ContextMenu";
 import { BookDialogsHost } from "./library/BookDialogs";
@@ -16,6 +16,8 @@ import { usePlayer } from "./audio/player";
 import { useToast } from "./components/Toast";
 import { Home } from "./home/Home";
 import { Imports, importCounts } from "./imports/Imports";
+import { NO_IMPORTS as NOTHING_IMPORTED } from "./imports/view";
+import { SyncActivity } from "./sync/SyncActivity";
 import { importSummary } from "./lib/importSummary";
 import { Library } from "./library/Library";
 import { Reader } from "./reader/Reader";
@@ -47,9 +49,9 @@ export function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [dropping, setDropping] = useState(false);
-  const [imports, setImports] = useState<ImportItem[]>([]);
-  // Finished books already handled here (PDF covers drawn, counted in the summary).
-  const handled = useRef(new Set<number>());
+  const [imports, setImports] = useState<ImportsView>(NOTHING_IMPORTED);
+  // PDF covers are drawn one at a time, in the background.
+  const drawingCovers = useRef(false);
   const wasRunning = useRef(false);
   const [libraryView, setLibraryView] = useState<LibraryView>(() => initialView("books"));
   const [documentsView, setDocumentsView] = useState<LibraryView>(() => initialView("documents"));
@@ -167,16 +169,24 @@ export function App() {
 
   // Imports run in the background, book by book; the Imports page follows them.
   useEffect(() => {
-    const seen = (items: ImportItem[]) => {
-      setImports(items);
-      const fresh = items.filter((i) => i.stage === "done" && i.result && !handled.current.has(i.id));
-      fresh.forEach((i) => handled.current.add(i.id));
+    const drawCovers = async () => {
+      if (drawingCovers.current) return;
+      drawingCovers.current = true;
+      try {
+        for (let ids = await api.takePdfCovers(); ids.length; ids = await api.takePdfCovers()) {
+          if (await drawImportedCovers(ids)) setRefreshKey((k) => k + 1);
+        }
+      } finally {
+        drawingCovers.current = false;
+      }
+    };
+    const seen = (view: ImportsView) => {
+      setImports(view);
       // PDF covers are drawn here, after the books show up.
-      const results = fresh.map((i) => i.result as ImportResult);
-      if (results.length) void drawImportedCovers(results).then((added) => added && setRefreshKey((k) => k + 1));
-      const { running } = importCounts(items);
+      if (view.pdfCovers > 0) void drawCovers();
+      const { running } = importCounts(view);
       if (wasRunning.current && !running) {
-        toast(importSummary(items.flatMap((i) => (i.result ? [i.result] : []))));
+        toast(importSummary(view));
         setRefreshKey((k) => k + 1);
       }
       wasRunning.current = running;
@@ -275,6 +285,14 @@ export function App() {
       setReading(null);
       navigate("sync");
     },
+    // The phone version syncs in the background with no activity page.
+    onOpenActivity:
+      api.kind === "web"
+        ? undefined
+        : () => {
+            setReading(null);
+            navigate("activity");
+          },
   };
 
   if (reading) return <Reader key={reading.bookId} bookId={reading.bookId} openAt={reading.at} shell={shell} onClose={closeBook} />;
@@ -287,7 +305,7 @@ export function App() {
         onNavigate={navigate}
         onToggle={toggleSidebar}
         preview={api.kind === "preview"}
-        imports={imports.length ? importCounts(imports) : null}
+        imports={imports.total ? importCounts(imports) : null}
       />
       <div className="main">
         <Header
@@ -303,6 +321,7 @@ export function App() {
           onImportBooks={importBooks}
           onImportFolder={importFolder}
           onOpenSyncSettings={() => navigate("sync")}
+          onOpenActivity={shell.onOpenActivity}
         />
         <main className="content">
           {route === "home" ? (
@@ -378,7 +397,7 @@ export function App() {
             />
           ) : route === "imports" ? (
             <Imports
-              items={imports}
+              view={imports}
               onCancel={() => void api.cancelImports().then(reloadImports)}
               onClear={() => {
                 void api.clearFinishedImports().then(reloadImports);
@@ -387,6 +406,8 @@ export function App() {
               onImportFolder={importFolder}
               onOpenBook={openBook}
             />
+          ) : route === "activity" ? (
+            <SyncActivity sync={sync} onOpenSyncSettings={() => navigate("sync")} />
           ) : route === "notes" ? (
             <Notes search={searchText} refreshKey={refreshKey} onClearSearch={() => changeSearch("")} onOpenBook={openBook} />
           ) : (

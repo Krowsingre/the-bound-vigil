@@ -1,24 +1,18 @@
-import type { ImportResult } from "../api/types";
+import type { ImportsView } from "../api/types";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-/** One plain sentence describing what an import did. */
-export function importSummary(results: ImportResult[]): string {
-  if (results.length === 0) return "No book files were found there.";
-  const count = (outcome: ImportResult["outcome"]) => results.filter((r) => r.outcome === outcome).length;
-  const imported = count("imported");
-  const already = count("alreadyInLibrary");
-  const unsupported = count("unsupported");
-  const failed = results.filter((r) => r.outcome === "failed");
+type Tally = Pick<ImportsView, "done" | "added" | "already" | "unsupported" | "failed" | "onlyAdded" | "onlyFailure">;
 
+/** One plain sentence describing what an import did. */
+export function importSummary(t: Tally): string {
+  if (t.done === 0) return "No book files were found there.";
   const parts: string[] = [];
-  if (imported === 1) {
-    const only = results.find((r) => r.outcome === "imported");
-    parts.push(`Added “${only && "title" in only ? only.title : "1 book"}”.`);
-  } else if (imported > 1) parts.push(`Added ${plural(imported, "book")}.`);
-  if (already) parts.push(`${plural(already, "book was", "books were")} already in your library.`);
-  if (unsupported) parts.push(`${plural(unsupported, "file isn't a", "files aren't")} supported book format${unsupported === 1 ? "" : "s"}.`);
-  if (failed.length === 1 && failed[0].outcome === "failed") parts.push(`One file couldn't be read: ${failed[0].reason}.`);
-  else if (failed.length > 1) parts.push(`${failed.length} files couldn't be read.`);
+  if (t.added === 1) parts.push(`Added “${t.onlyAdded ?? "1 book"}”.`);
+  else if (t.added > 1) parts.push(`Added ${plural(t.added, "book")}.`);
+  if (t.already) parts.push(`${plural(t.already, "book was", "books were")} already in your library.`);
+  if (t.unsupported) parts.push(`${plural(t.unsupported, "file isn't a", "files aren't")} supported book format${t.unsupported === 1 ? "" : "s"}.`);
+  if (t.failed === 1) parts.push(`One file couldn't be read: ${t.onlyFailure}.`);
+  else if (t.failed > 1) parts.push(`${t.failed} files couldn't be read.`);
   return parts.join(" ");
 }

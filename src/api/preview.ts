@@ -12,6 +12,7 @@ import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
 import { duplicateGroups } from "../lib/duplicates";
 import { cleanValue, DETAIL_FIELDS, previewFields } from "../lib/details";
 import { DESKTOP_ONLY } from "../ereaders/ereaders";
+import { importsViewOf } from "../imports/view";
 import type {
   Audiobook,
   AudioChapter,
@@ -27,12 +28,61 @@ import type {
   ImportItem,
   Profile,
   SyncOverview,
+  SyncActivity,
 } from "./types";
 
 const day = 86_400_000;
 const ago = (days: number) => new Date(Date.now() - days * day).toISOString();
 
 let next = 1;
+
+// `?activity` shows a sync underway in both places, for reviewing the Sync activity page.
+const secondsAgo = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+const previewActivity: SyncActivity = new URLSearchParams(location.search).has("activity")
+  ? {
+      running: true,
+      startedAt: secondsAgo(40),
+      finishedAt: null,
+      places: [
+        {
+          lane: "main",
+          provider: { kind: "supabase", service: null, location: null, username: null },
+          step: "files",
+          received: 12,
+          sent: 3,
+          filesTotal: 6,
+          filesDone: 2,
+          bytesTotal: 18_400_000,
+          bytesDone: 4_100_000,
+          current: { lane: "main", direction: "up", what: "The Left Hand of Darkness", bytes: 2_300_000, at: secondsAgo(2), problem: null },
+          finished: false,
+          problem: null,
+        },
+        {
+          lane: "also",
+          provider: { kind: "folder", service: "icloud", location: "C:\\Users\\embre\\iCloudDrive\\The Bound Vigil", username: null },
+          step: null,
+          received: 0,
+          sent: 15,
+          filesTotal: 9,
+          filesDone: 9,
+          bytesTotal: 412_000_000,
+          bytesDone: 412_000_000,
+          current: null,
+          finished: true,
+          problem: null,
+        },
+      ],
+      recent: [
+        { lane: "main", direction: "up", what: "The cover of Piranesi", bytes: 180_000, at: secondsAgo(6), problem: null },
+        { lane: "main", direction: "up", what: "Piranesi", bytes: 3_900_000, at: secondsAgo(9), problem: null },
+        { lane: "also", direction: "up", what: "Project Hail Mary (audiobook)", bytes: 398_000_000, at: secondsAgo(14), problem: null },
+        { lane: "main", direction: "down", what: "A collection picture", bytes: 420_000, at: secondsAgo(20), problem: null },
+        { lane: "main", direction: "down", what: "The Name of the Wind", bytes: 0, at: secondsAgo(25), problem: "It isn't in the cloud yet." },
+        { lane: null, direction: "down", what: "Dune", bytes: 1_200_000, at: secondsAgo(3600), problem: null },
+      ],
+    }
+  : { running: false, startedAt: null, finishedAt: null, places: [], recent: [] };
 
 // `?imports` shows an import underway, for reviewing the Imports page.
 const MB = 1024 * 1024;
@@ -402,7 +452,8 @@ export function previewApi(): Api {
     ...previewMove(params),
     getHome: async () => home(),
     queueImports: async () => 0,
-    importQueue: async () => imports,
+    importQueue: async () => importsViewOf(imports),
+    takePdfCovers: async () => [],
     cancelImports: async () => {
       imports = imports.filter((i) => i.stage !== "waiting");
     },
@@ -410,6 +461,14 @@ export function previewApi(): Api {
       imports = imports.filter((i) => i.stage !== "done");
     },
     onImports: () => () => undefined,
+    syncActivity: async () => previewActivity,
+    onSyncActivity: (listener) => {
+      let stopped = false;
+      void Promise.resolve().then(() => !stopped && listener(previewActivity));
+      return () => {
+        stopped = true;
+      };
+    },
     setBookStatus: async (bookId, status) =>
       update(bookId, status === "unread" ? { status, totalProgression: null } : { status }),
     getLibrary: async (query) => queryBooks(library(), query, collections.previews().length),

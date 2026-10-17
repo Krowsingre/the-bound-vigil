@@ -23,7 +23,8 @@ import type {
   HardcoverSendAll,
   HardcoverStatus,
   HomeViewModel,
-  ImportItem,
+  ImportsView,
+  SyncActivity,
   KindleEmailInput,
   KindleEmailView,
   ServerChoice,
@@ -56,11 +57,13 @@ export interface Api {
   getHome(): Promise<HomeViewModel>;
   /** Queues book files and folders on the Imports page. Returns how many books were found. */
   queueImports(paths: string[]): Promise<number>;
-  importQueue(): Promise<ImportItem[]>;
+  importQueue(): Promise<ImportsView>;
+  /** Added PDFs still needing a cover drawn, handed over once. */
+  takePdfCovers(): Promise<string[]>;
   /** Takes the books still waiting off the queue. */
   cancelImports(): Promise<void>;
   clearFinishedImports(): Promise<void>;
-  onImports(listener: (items: ImportItem[]) => void): () => void;
+  onImports(listener: (view: ImportsView) => void): () => void;
   setBookStatus(bookId: string, status: ReadStatus): Promise<void>;
   getLibrary(query: LibraryQuery): Promise<LibraryPage>;
   getCollections(): Promise<CollectionPreview[]>;
@@ -243,6 +246,10 @@ export interface Api {
   onServerDownload(listener: (status: ServerDownloadStatus) => void): () => void;
   /** A private key file, for SFTP. */
   pickKeyFile(): Promise<string | null>;
+  /** What sync is doing now, file by file, and what it did lately. */
+  syncActivity(): Promise<SyncActivity>;
+  /** Hears the activity now, then each change to it. Returns a way to stop. */
+  onSyncActivity(listener: (activity: SyncActivity) => void): () => void;
   /** Hears sync starting and finishing, and library changes it brings. Returns a way to stop. */
   onSync(listener: { status?: (status: SyncStatus) => void; libraryChanged?: () => void }): () => void;
 }
@@ -274,14 +281,37 @@ function appApi(): Api {
     kind: "app",
     getHome: async () => (await core).invoke<HomeViewModel>("get_home"),
     queueImports: async (paths) => (await core).invoke<number>("queue_imports", { paths }),
-    importQueue: async () => (await core).invoke<ImportItem[]>("import_queue"),
+    importQueue: async () => (await core).invoke<ImportsView>("import_queue"),
+    takePdfCovers: async () => (await core).invoke<string[]>("take_pdf_covers"),
     cancelImports: async () => (await core).invoke<void>("cancel_imports"),
     clearFinishedImports: async () => (await core).invoke<void>("clear_finished_imports"),
+    syncActivity: async () => (await core).invoke<SyncActivity>("sync_activity"),
+    onSyncActivity: (listener) => {
+      let stop: (() => void) | null = null;
+      let stopped = false;
+      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+        let heard = false;
+        const unlisten = await listen<SyncActivity>("sync-activity", (e) => {
+          heard = true;
+          listener(e.payload);
+        });
+        if (stopped) return unlisten();
+        stop = unlisten;
+        // The snapshot is asked for only once updates are heard, so none slips between
+        // the two, and it's dropped if an update has already arrived.
+        const snapshot = await (await core).invoke<SyncActivity>("sync_activity").catch(() => null);
+        if (snapshot && !heard && !stopped) listener(snapshot);
+      });
+      return () => {
+        stopped = true;
+        stop?.();
+      };
+    },
     onImports: (listener) => {
       let stop: (() => void) | null = null;
       let stopped = false;
       void import("@tauri-apps/api/event").then(async ({ listen }) => {
-        const unlisten = await listen<ImportItem[]>("imports-changed", (e) => listener(e.payload));
+        const unlisten = await listen<ImportsView>("imports-changed", (e) => listener(e.payload));
         if (stopped) unlisten();
         else stop = unlisten;
       });

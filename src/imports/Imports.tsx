@@ -1,16 +1,12 @@
 // Imports: books being added, like a downloads page. The newest import's
 // books stay listed until cleared, with what happened to each.
 
-import type { ImportItem, ImportResult } from "../api/types";
+import type { ImportResult, ImportsView } from "../api/types";
 import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
 
-/** Waiting books shown at once; the rest are counted. */
-const SHOW_WAITING = 200;
-
-export function importCounts(items: ImportItem[]) {
-  const done = items.filter((i) => i.stage === "done").length;
-  return { done, total: items.length, running: done < items.length };
+export function importCounts(view: ImportsView) {
+  return { done: view.done, total: view.total, running: view.done < view.total };
 }
 
 function size(bytes: number): string {
@@ -34,29 +30,27 @@ function outcome(result: ImportResult | null): { text: string; tone: "ok" | "sam
 }
 
 export function Imports({
-  items,
+  view,
   onCancel,
   onClear,
   onImportBooks,
   onImportFolder,
   onOpenBook,
 }: {
-  items: ImportItem[];
+  view: ImportsView;
   onCancel: () => void;
   onClear: () => void;
   onImportBooks: () => void;
   onImportFolder: () => void;
   onOpenBook: (bookId: string) => void;
 }) {
-  const { done, total, running } = importCounts(items);
-  const current = items.filter((i) => i.stage === "reading" || i.stage === "adding");
-  const waiting = items.filter((i) => i.stage === "waiting");
-  const finished = items.filter((i) => i.stage === "done").reverse();
-  // Whole-import progress counts the book under way by how much of it is read.
-  const partly = current.reduce((sum, i) => sum + (i.bytes ? i.bytesRead / i.bytes : 0), 0);
+  const { done, total, running } = importCounts(view);
+  const { current, waiting, finished } = view;
+  // Whole-import progress counts the books under way by how much of them is read.
+  const partly = view.currentBytes ? (view.currentRead / view.currentBytes) * current.length : 0;
   const overall = total ? (done + partly * 0.9) / total : 0;
-  const added = finished.filter((i) => i.result?.outcome === "imported").length;
-  const problems = finished.filter((i) => i.result?.outcome === "failed" || i.result?.outcome === "unsupported").length;
+  const added = view.added;
+  const problems = view.failed + view.unsupported;
 
   return (
     <div className="library imports-page">
@@ -87,19 +81,19 @@ export function Imports({
               <h2>{running ? `Adding ${Math.min(done + 1, total)} of ${total} ${total === 1 ? "book" : "books"}` : `Finished: ${total} ${total === 1 ? "book" : "books"}`}</h2>
               <p className="settings-row-hint">
                 {added} added
-                {finished.length - added - problems > 0 && `, ${finished.length - added - problems} already in your library`}
+                {view.already > 0 && `, ${view.already} already in your library`}
                 {problems > 0 && `, ${problems} couldn't be added`}
                 {running && ". You can keep using TBV meanwhile."}
               </p>
             </div>
             <ProgressBar value={running ? overall : 1} label={`${Math.round((running ? overall : 1) * 100)}% imported`} />
             <div className="imports-summary-actions">
-              {waiting.length > 0 && (
+              {view.waitingCount > 0 && (
                 <button type="button" className="btn btn-quiet btn-danger-text" onClick={onCancel}>
                   Cancel the rest
                 </button>
               )}
-              {finished.length > 0 && (
+              {done > 0 && (
                 <button type="button" className="btn btn-quiet" onClick={onClear}>
                   Clear finished
                 </button>
@@ -131,9 +125,9 @@ export function Imports({
 
           {waiting.length > 0 && (
             <section className="imports-group">
-              <h3 className="section-label">Up next · {waiting.length}</h3>
+              <h3 className="section-label">Up next · {view.waitingCount}</h3>
               <ul className="imports-list">
-                {waiting.slice(0, SHOW_WAITING).map((i) => (
+                {waiting.map((i) => (
                   <li key={i.id} className="import-row">
                     <Icon name="clock" size={18} />
                     <div className="import-text">
@@ -143,13 +137,16 @@ export function Imports({
                   </li>
                 ))}
               </ul>
-              {waiting.length > SHOW_WAITING && <p className="settings-row-hint">And {waiting.length - SHOW_WAITING} more.</p>}
+              {view.waitingCount > waiting.length && <p className="settings-row-hint">And {view.waitingCount - waiting.length} more.</p>}
             </section>
           )}
 
           {finished.length > 0 && (
             <section className="imports-group">
-              <h3 className="section-label">Finished · {finished.length}</h3>
+              <h3 className="section-label">
+                Finished · {done}
+                {done > finished.length && ` · latest ${finished.length} shown`}
+              </h3>
               <ul className="imports-list">
                 {finished.map((i) => {
                   const o = outcome(i.result);
