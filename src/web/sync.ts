@@ -10,6 +10,8 @@ import { Offline, SignedOut, Supabase, signIn, signOut, signUp, type Session } f
 
 const PROJECT = "sync.supabase";
 const SESSION = "sync.session";
+/** Whose library this browser holds. Outlives the session, which goes when renewing it fails. */
+const OWNER = "sync.owner";
 const CURSOR = "sync.cursor";
 const DEVICE = "sync.device_id";
 const LAST_SUCCESS = "sync.last_success_at";
@@ -256,9 +258,11 @@ export class WebSync {
     if (!project) throw new Error("Set up the Supabase project first.");
     const session = create ? await signUp(project, email.trim(), password) : await signIn(project, email.trim(), password);
     if (!session) return false;
-    const previous = this.session;
-    // Another account's library doesn't mix with this one.
-    if (previous && previous.userId !== session.userId) await this.forget();
+    // Another account's library doesn't mix with this one. With no owner on
+    // record, a library left here can't be shown to be this account's, so it goes.
+    const owner = this.db.meta.get(OWNER) ?? this.session?.userId ?? null;
+    if (owner ? owner !== session.userId : this.db.records.size > 0) await this.forget();
+    await this.db.setMeta(OWNER, session.userId);
     await this.db.setMeta(SESSION, JSON.stringify(session));
     await this.db.setMeta(LAST_ERROR, null);
     void this.now();
