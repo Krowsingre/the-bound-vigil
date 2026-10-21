@@ -595,6 +595,7 @@ export function previewApi(): Api {
       else linked.delete(audiobookId);
     },
     audiobookForEbook: async (ebookId) => [...linked].find(([, e]) => e === ebookId)?.[0] ?? null,
+    prepareStream: async () => null,
     audioUrl: (bookId, part) => {
       const key = `${bookId}/${part}`;
       if (!sounds.has(key)) {

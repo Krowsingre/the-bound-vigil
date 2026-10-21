@@ -385,6 +385,23 @@ pub fn download(library: &Arc<Mutex<Library>>, book_id: &str) -> tbv_core::Resul
     outcome
 }
 
+/// The sync places, first then second, to stream an audiobook from.
+pub fn stream_places(library: &Arc<Mutex<Library>>) -> Vec<Cloud> {
+    // A folder or WebDAV server is opened outside the lock, as for the second place.
+    let first = (|| {
+        let l = library.lock().ok()?;
+        match l.sync_provider().ok()? {
+            Provider::Supabase | Provider::Off => connect(library, &l).ok().flatten(),
+            other => {
+                let device = l.device_id().ok()?;
+                drop(l);
+                core_sync::open_files(&other, device).ok().map(|(files, _)| Cloud::Files(files))
+            }
+        }
+    })();
+    first.into_iter().chain(connect_second(library)).collect()
+}
+
 fn fetch_book(library: &Arc<Mutex<Library>>, book_id: &str, client: Option<Cloud>, second: Option<Cloud>) -> tbv_core::Result<()> {
     // The first place, then the second if the first hasn't got it or can't be reached.
     let mut trouble = None;

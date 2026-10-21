@@ -109,6 +109,11 @@ export interface Api {
   audiobookForEbook(ebookId: string): Promise<string | null>;
   /** Where the player streams one part of an audiobook from, or null where it can't play here. */
   audioUrl(bookId: string, part: number): string | null;
+  /**
+   * Gets an audiobook that isn't on this device ready to play from the cloud without downloading.
+   * The links to play each part from, or null to use `audioUrl`. Throws when it can't be streamed.
+   */
+  prepareStream(bookId: string): Promise<string[] | null>;
   getProfile(): Promise<Profile>;
   /** Asks for a picture, copies it into TBV, and returns the new profile. Null if cancelled. */
   chooseAvatar(): Promise<Profile | null>;
@@ -430,6 +435,10 @@ function appApi(): Api {
     linkEbook: async (audiobookId, ebookId) => (await core).invoke("link_ebook", { audiobookId, ebookId }),
     audiobookForEbook: async (ebookId) => (await core).invoke<string | null>("audiobook_for_ebook", { ebookId }),
     // Windows and Android reach custom schemes through http://<scheme>.localhost.
+    prepareStream: async (bookId) => {
+      await (await core).invoke("prepare_stream", { bookId });
+      return null;
+    },
     audioUrl: (bookId, part) =>
       `${/windows|android/i.test(navigator.userAgent) ? "http://tbvaudio.localhost" : "tbvaudio://localhost"}/${encodeURIComponent(bookId)}/${part}`,
     getProfile: async () => (await core).invoke<Profile>("get_profile"),

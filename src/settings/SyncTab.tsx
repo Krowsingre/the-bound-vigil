@@ -317,6 +317,12 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
             checked={sync.audioFiles}
             onChange={(audioFiles) => changeSync({ audioFiles })}
           />
+          <Toggle
+            label="Stream audiobooks that aren't on this computer"
+            hint="Play them straight from the cloud without downloading. Turn off to download each one before it plays."
+            checked={sync.streamAudio}
+            onChange={(streamAudio) => changeSync({ streamAudio })}
+          />
         </div>
       </Section>
 

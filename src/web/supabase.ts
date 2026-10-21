@@ -179,6 +179,19 @@ export class Supabase {
     return answer.blob();
   }
 
+  /** A link that plays a file straight from the bucket for a few hours, or null if it isn't there. */
+  async signedUrl(path: string, seconds: number): Promise<string | null> {
+    const answer = await this.call(`/storage/v1/object/sign/${this.object(path)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expiresIn: seconds }),
+    });
+    if (answer.status === 404 || answer.status === 400) return null;
+    if (!answer.ok) throw await problem(answer);
+    const { signedURL } = (await answer.json()) as { signedURL: string };
+    return `${this.project.url}/storage/v1${signedURL}`;
+  }
+
   async upload(path: string, file: Blob): Promise<void> {
     const answer = await this.call(`/storage/v1/object/${this.object(path)}`, {
       method: "POST",

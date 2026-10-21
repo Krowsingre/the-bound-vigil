@@ -7,6 +7,7 @@ import { api } from "../api";
 import type { AudioChapter, Audiobook } from "../api/types";
 import { useToast } from "../components/Toast";
 import { onBeforeQuit } from "../lib/beforeQuit";
+import { useAppSettings } from "../settings/appSettings";
 
 export const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 const SAVE_EVERY_MS = 15_000;
@@ -109,6 +110,10 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
   const now = useRef(state);
   now.current = state;
   const part = useRef(-1);
+  /** Links to play the book's parts from the cloud, when it's streamed that way. */
+  const streaming = useRef<string[] | null>(null);
+  const streamAudio = useRef(true);
+  streamAudio.current = useAppSettings().settings.sync.streamAudio;
   const lastSaved = useRef(0);
   const changed = useRef(onChanged);
   changed.current = onChanged;
@@ -140,7 +145,7 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
         if (play) void audio.play().catch(() => update({ playing: false }));
       };
       if (index !== part.current || !audio.src) {
-        const url = api.audioUrl(book.book.id, index);
+        const url = streaming.current?.[index] ?? api.audioUrl(book.book.id, index);
         if (!url) {
           if (play) toast("Audiobooks play in the desktop app for now. Your place is kept here.");
           return;
@@ -164,10 +169,21 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
       }
       if (current) await save();
       let book: Audiobook;
+      let links: string[] | null = null;
       try {
         book = await api.audiobook(bookId);
-        // A cloud-only audiobook comes down first, where this device can play it.
-        if (play && book.book.availability === "cloud" && api.audioUrl(bookId, 0)) {
+        let stream = book.book.availability === "cloud" && (streamAudio.current || !api.audioUrl(bookId, 0));
+        if (stream) {
+          // Straight from the cloud: nothing is downloaded.
+          try {
+            links = await api.prepareStream(bookId);
+          } catch (e) {
+            stream = false;
+            if (!api.audioUrl(bookId, 0)) throw e;
+          }
+        }
+        // Otherwise a cloud-only audiobook comes down first, where this device can play it.
+        if (play && !stream && book.book.availability === "cloud" && api.audioUrl(bookId, 0)) {
           toast(`Downloading “${book.book.title}” to play it…`);
           await api.downloadBook(bookId);
           book = await api.audiobook(bookId);
@@ -180,6 +196,7 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
       audio?.pause();
       audio?.removeAttribute("src");
       part.current = -1;
+      streaming.current = links;
       // A finished book starts again from the beginning.
       const at = book.positionMs >= book.durationMs - 1000 ? 0 : book.positionMs;
       setState((s) => ({ ...s, book, positionMs: at, playing: false }));

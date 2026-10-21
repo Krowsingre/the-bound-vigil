@@ -315,6 +315,18 @@ export class WebSync {
     return blob;
   }
 
+  /** A link that streams a book's file from Supabase without downloading it. */
+  async streamUrl(id: string, format: string): Promise<string> {
+    const cloud = this.connection();
+    if (!cloud) throw new Error("Sign in to play your audiobooks.");
+    const url = await cloud.signedUrl(`books/${id.replace(/^sha256:/, "")}.${format}`, 6 * 60 * 60);
+    if (!url)
+      throw new Error(
+        "This audiobook's file isn't in Supabase. On the computer that has it, turn on Settings › Sync › Sync audiobook files, and let it sync.",
+      );
+    return url;
+  }
+
   async setProject(project: SupabaseProject | null): Promise<void> {
     const before = this.project;
     if (before?.url !== project?.url) await this.signOut();

@@ -585,8 +585,15 @@ export async function webApi(): Promise<Api> {
     },
     audiobookForEbook: async (ebookId) =>
       (library.rows("audiobooks").find((a) => a.ebook_id === ebookId && library.book(String(a.book_id)))?.book_id as string) ?? null,
-    // Audiobooks play in the desktop app; here you see them and where you are.
+    // Audiobooks stream from Supabase here; nothing is kept on the phone.
     audioUrl: () => null,
+    prepareStream: async (bookId) => {
+      const b = library.book(bookId);
+      if (!b) throw new Error("That audiobook's details haven't arrived here yet.");
+      if (b.format === "tbvaudio")
+        throw new Error("This audiobook is a folder of several files, which plays in the desktop app. Single-file audiobooks (M4B, MP3) play here.");
+      return [await sync.streamUrl(bookId, String(b.format))];
+    },
     getAnnotations: async (bookId) =>
       annotationRows()
         .filter((a) => a.book_id === bookId && a.kind !== "book_note")

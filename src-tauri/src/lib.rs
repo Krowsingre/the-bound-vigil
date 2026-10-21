@@ -211,6 +211,17 @@ async fn audiobook(state: State<'_, AppLibrary>, book_id: String) -> CommandResu
     with_library(state, move |library| library.audiobook(&book_id)).await
 }
 
+/// Gets an audiobook that isn't on this computer ready to play straight
+/// from the cloud, without downloading it.
+#[tauri::command]
+async fn prepare_stream(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || audio::prepare(&library, &book_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn save_listening(state: State<'_, AppLibrary>, book_id: String, position_ms: u64, chapter: Option<String>) -> CommandResult<()> {
     with_library(state, move |library| library.save_listening(&book_id, position_ms, chapter)).await
@@ -1391,6 +1402,7 @@ pub fn run() {
             save_copies,
             find_duplicates,
             find_series_books,
+            prepare_stream,
             series_review,
             hide_series_book,
             approve_series_matches,

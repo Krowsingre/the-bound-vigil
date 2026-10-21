@@ -338,6 +338,25 @@ impl Supabase {
 }
 
 impl Remote for Supabase {
+    fn read_range(&mut self, path: &str, start: u64, end: u64) -> Result<Option<(Vec<u8>, u64)>> {
+        let object = self.object_url(path);
+        let key = self.project.anon_key.clone();
+        let range = format!("bytes={start}-{end}");
+        let mut answer = self.call(&|agent, url, bearer| {
+            agent
+                .get(&format!("{url}/storage/v1/object/authenticated/{object}"))
+                .header("apikey", &key)
+                .header("Authorization", bearer)
+                .header("Range", &range)
+                .call()
+        })?;
+        match answer.status().as_u16() {
+            200..=299 | 416 => super::ranged_answer(&mut answer, start, end).map(Some),
+            400 | 404 => Ok(None),
+            _ => Err(Error::Cloud(message(&mut answer))),
+        }
+    }
+
     fn remove(&mut self, path: &str) -> Result<()> {
         let object = self.object_url(path);
         let key = self.project.anon_key.clone();

@@ -1365,3 +1365,40 @@ mod tidying {
         assert_eq!(files(&supabase), [book_path(&gone)]);
     }
 }
+
+/// Answers one request with `head` and `body`, and hands back what was asked.
+fn answer_once(head: &'static str, body: &'static [u8]) -> (String, std::thread::JoinHandle<String>) {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/file", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        let mut asked = vec![0u8; 4096];
+        let n = socket.read(&mut asked).unwrap();
+        socket.write_all(format!("{head}\r\nContent-Length: {}\r\n\r\n", body.len()).as_bytes()).unwrap();
+        socket.write_all(body).unwrap();
+        String::from_utf8_lossy(&asked[..n]).into_owned()
+    });
+    (url, server)
+}
+
+#[test]
+fn ranged_answers_give_the_part_asked_for_and_the_whole_size() {
+    let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
+    let (url, server) = answer_once("HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 2-5/10", b"cdef");
+    let mut answer = agent.get(&url).header("Range", "bytes=2-5").call().unwrap();
+    assert_eq!(super::ranged_answer(&mut answer, 2, 5).unwrap(), (b"cdef".to_vec(), 10));
+    assert!(server.join().unwrap().to_lowercase().contains("range: bytes=2-5"));
+
+    // A server that ignores the range sends everything; only the part is kept.
+    let (url, server) = answer_once("HTTP/1.1 200 OK", b"abcdefghij");
+    let mut answer = agent.get(&url).call().unwrap();
+    assert_eq!(super::ranged_answer(&mut answer, 2, 5).unwrap(), (b"cdef".to_vec(), 10));
+    server.join().unwrap();
+
+    // Past the end.
+    let (url, server) = answer_once("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */10", b"");
+    let mut answer = agent.get(&url).call().unwrap();
+    assert_eq!(super::ranged_answer(&mut answer, 20, 30).unwrap(), (Vec::new(), 10));
+    server.join().unwrap();
+}
