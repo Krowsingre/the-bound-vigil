@@ -103,9 +103,9 @@ export function Imports({
             </div>
             <ProgressBar value={running ? overall : 1} label={`${Math.round((running ? overall : 1) * 100)}% imported`} />
             <div className="imports-summary-actions">
-              {view.waitingCount > 0 && (
+              {(view.waitingCount > 0 || view.current.length > 0) && (
                 <button type="button" className="btn btn-quiet btn-danger-text" onClick={onCancel}>
-                  Cancel the rest
+                  Stop importing
                 </button>
               )}
               {done > 0 && (
