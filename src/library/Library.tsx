@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, isWeb } from "../api";
+import { api, isHome, isWeb } from "../api";
 import type { BookPreview, CollectionPreview, ItemKind, LibraryPage } from "../api/types";
 import { askEditDetails } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
@@ -453,7 +453,7 @@ export function Library({
 
       {view.tab !== "collections" && intro}
 
-      {!isWeb && view.tab !== "collections" && view.series.length === 1 && (
+      {!isWeb && !isHome && view.tab !== "collections" && view.series.length === 1 && (
         <SeriesPanel
           name={view.series[0]}
           author={page?.books[0]?.authors[0] ?? ""}

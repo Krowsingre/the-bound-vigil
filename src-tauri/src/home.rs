@@ -169,22 +169,26 @@ impl Home {
                     break;
                 }
                 let Ok(stream) = stream else { continue };
-                let (home, app) = (home.clone(), app.clone());
+                let (home, app, stopped) = (home.clone(), app.clone(), stopping.clone());
                 thread::spawn(move || {
-                    let _ = home.serve(&app, stream);
+                    let _ = home.serve(&app, stream, &stopped);
                 });
             }
         });
         Ok(Running { stop })
     }
 
-    /// Answers requests on one connection until the phone closes it.
-    fn serve(&self, app: &AppHandle, stream: TcpStream) -> std::io::Result<()> {
+    /// Answers requests on one connection until the phone closes it, or
+    /// serving is turned off.
+    fn serve(&self, app: &AppHandle, stream: TcpStream, stopped: &AtomicBool) -> std::io::Result<()> {
         stream.set_read_timeout(Some(Duration::from_secs(15)))?;
         let mut reader = BufReader::new(stream.try_clone()?);
         let mut out = stream;
         loop {
             let Ok(Some(request)) = read_head(&mut reader) else { return Ok(()) };
+            if stopped.load(Ordering::SeqCst) {
+                return Ok(());
+            }
             let mut body = Vec::new();
             body_reader(&request, &mut reader).take(MAX_BODY).read_to_end(&mut body)?;
             let reply = self.route(app, &request, &body);

@@ -3,7 +3,7 @@
 // they were one long recording, and remembers where you are as you listen.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api";
+import { api, isHome } from "../api";
 import type { AudioChapter, Audiobook } from "../api/types";
 import { useToast } from "../components/Toast";
 import { onBeforeQuit } from "../lib/beforeQuit";
@@ -172,14 +172,15 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
       let links: string[] | null = null;
       try {
         book = await api.audiobook(bookId);
-        let stream = book.book.availability === "cloud" && (streamAudio.current || !api.audioUrl(bookId, 0));
+        // A phone at home can't download, so it always streams through the computer.
+        let stream = book.book.availability === "cloud" && (isHome || streamAudio.current || !api.audioUrl(bookId, 0));
         if (stream) {
           // Straight from the cloud: nothing is downloaded.
           try {
             links = await api.prepareStream(bookId);
           } catch (e) {
             stream = false;
-            if (!api.audioUrl(bookId, 0)) throw e;
+            if (isHome || !api.audioUrl(bookId, 0)) throw e;
           }
         }
         // Otherwise a cloud-only audiobook comes down first, where this device can play it.
