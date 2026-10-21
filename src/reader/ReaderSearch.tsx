@@ -23,6 +23,7 @@ export const ReaderSearch = forwardRef<
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const runId = useRef(0);
+  const gone = useRef(false);
 
   const reset = () => {
     runId.current++;
@@ -41,13 +42,25 @@ export const ReaderSearch = forwardRef<
     setOpen(true);
     setProgress(0);
     for await (const r of results) {
-      if (id !== runId.current) return;
+      if (id !== runId.current) {
+        // Closed mid-search: the page it just marked is cleared too.
+        if (gone.current) clear();
+        return;
+      }
       if (r === "done") break;
       if ("progress" in r) setProgress(r.progress);
       else if (r.subitems.length) setGroups((g) => [...g, { label: r.label, hits: r.subitems }]);
     }
     if (id === runId.current) setProgress(null);
   };
+
+  useEffect(() => {
+    gone.current = false;
+    return () => {
+      gone.current = true;
+      runId.current++;
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;

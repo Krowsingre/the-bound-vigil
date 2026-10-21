@@ -483,7 +483,12 @@ export class FixedLayout extends HTMLElement {
         if (index === this.#index) {
             // TBV: a second call while the first is still showing it waits for it.
             await this.#showing
-            this.#render(side)
+            // TBV: moving to the other page of a spread makes it the page being read.
+            if (side && side !== this.#side && !this.#center) {
+                this.#side = side
+                this.#render(side)
+                this.#reportLocation(reason)
+            } else this.#render(side)
             return
         }
         this.#index = index
@@ -683,10 +688,14 @@ export class FixedLayout extends HTMLElement {
     }
     /** TBV: brings a range on a page into view (reading aloud, scrolling). */
     async scrollToAnchor(range) {
-        if (this.#flow !== 'scrolled' || !range?.getBoundingClientRect) return
+        if (!range?.getBoundingClientRect) return
         const doc = range.startContainer?.ownerDocument
-        const frame = this.#pages.find(p => p.frame?.iframe.contentDocument === doc)?.frame
+        const frames = this.#flow === 'scrolled' ? this.#pages.map(p => p.frame)
+            : [this.#center, this.#left, this.#right]
+        const frame = frames.find(f => f?.iframe?.contentDocument === doc)
         if (!frame) return
+        // TBV: a page-turn page that fits the screen has nothing to scroll.
+        if (this.#flow !== 'scrolled' && this.scrollHeight <= this.clientHeight) return
         const r = range.getBoundingClientRect()
         const top = frame.element.getBoundingClientRect().top + r.top
         const box = this.getBoundingClientRect()
