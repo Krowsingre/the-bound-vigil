@@ -664,6 +664,8 @@ mod scale {
             library.import_files(chunk);
         }
         eprintln!("import {count}: {:?}", started.elapsed());
+        // Big libraries have many series, with a few books in each.
+        library.conn.execute("UPDATE books SET series = 'Series ' || (rowid % (?1 / 4 + 1)), series_index = rowid % 4", [count as i64]).unwrap();
         let time = |name: &str, run: &mut dyn FnMut()| {
             let started = Instant::now();
             run();

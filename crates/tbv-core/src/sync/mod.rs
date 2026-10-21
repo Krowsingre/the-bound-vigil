@@ -15,6 +15,7 @@ pub mod supabase;
 pub mod tidy;
 pub mod webdav;
 
+use std::thread;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -571,8 +572,9 @@ pub fn seq_after(after: &str) -> i64 {
     after.parse().unwrap_or(0)
 }
 
-/// Where records and files are kept in the cloud.
-pub trait Remote {
+/// Where records and files are kept in the cloud. `Send`, so the two sync
+/// places can each work on their own thread.
+pub trait Remote: Send {
     /// Stores records. Ones older than what the cloud already has are ignored.
     fn push(&mut self, records: &[Record]) -> Result<()>;
     /// Records changed since the cursor `after`, oldest first.
@@ -592,6 +594,19 @@ pub trait Remote {
 }
 
 const PAGE: usize = 500;
+
+/// Set when the app is closing: files still waiting are left for next time,
+/// so the last sync only exchanges records and the app can quit promptly.
+static WINDING_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Stops file transfers between files, for the rest of this run of the app.
+pub fn wind_down() {
+    WINDING_DOWN.store(true, Ordering::SeqCst);
+}
+
+fn winding_down() -> bool {
+    WINDING_DOWN.load(Ordering::SeqCst)
+}
 /// Cloud files of deleted books, waiting to be erased at the next sync.
 const ERASE: &str = "sync.erase";
 const BATCH: usize = 200;
@@ -1696,7 +1711,7 @@ fn run_lanes(library: &Mutex<Library>, main: Option<&mut dyn Remote>, also: Opti
     }
 }
 
-type Lock<'l, 'a> = &'l dyn Fn() -> Result<std::sync::MutexGuard<'a, Library>>;
+type Lock<'l, 'a> = &'l (dyn Fn() -> Result<std::sync::MutexGuard<'a, Library>> + Sync);
 
 /// Runs a step for a place that hasn't failed yet in this run.
 fn step(outcome: &mut Result<SyncReport>, work: impl FnOnce(&mut SyncReport) -> Result<()>) {
@@ -1720,31 +1735,36 @@ fn run_both(lock: Lock, mut main: Option<&mut dyn Remote>, mut also: Option<&mut
     let stopped = |a: &Option<Result<SyncReport>>, b: &Option<Result<SyncReport>>| {
         matches!(a, Some(Err(Error::Superseded))) || matches!(b, Some(Err(Error::Superseded)))
     };
+    type Work = fn(Lock, Tell, &mut dyn Remote, &SyncOptions, Lane, &mut SyncReport) -> Result<()>;
+    // Each step runs for both places at once, so a slow place (a big upload
+    // to iCloud, say) never keeps the other waiting. Every place has received
+    // before either sends, so a change made through one reaches the other in
+    // the same run.
+    let mut both = |work: Work, first: &mut Option<Result<SyncReport>>, second: &mut Option<Result<SyncReport>>| {
+        let main = main.as_deref_mut().zip(first.as_mut());
+        let also = also.as_deref_mut().zip(second.as_mut());
+        match (main, also) {
+            (Some((m, mo)), Some((a, ao))) => thread::scope(|scope| {
+                let options = &options;
+                let also_options = &also_options;
+                scope.spawn(move || step(ao, |r| work(lock, tell, a, also_options, Lane::Also, r)));
+                step(mo, |r| work(lock, tell, m, options, Lane::Main, r));
+            }),
+            (Some((m, mo)), None) => step(mo, |r| work(lock, tell, m, &options, Lane::Main, r)),
+            (None, Some((a, ao))) => step(ao, |r| work(lock, tell, a, &also_options, Lane::Also, r)),
+            (None, None) => {}
+        }
+    };
 
-    if let (Some(remote), Some(outcome)) = (main.as_deref_mut(), first.as_mut()) {
-        step(outcome, |r| pull(lock, tell, remote, &options, Lane::Main, r));
-    }
-    if let (Some(remote), Some(outcome)) = (also.as_deref_mut(), second.as_mut()) {
-        step(outcome, |r| pull(lock, tell, remote, &also_options, Lane::Also, r));
-    }
+    both(pull, &mut first, &mut second);
     if stopped(&first, &second) {
         return (first, second);
     }
-    if let (Some(remote), Some(outcome)) = (main.as_deref_mut(), first.as_mut()) {
-        step(outcome, |r| push(lock, tell, remote, &options, Lane::Main, r));
-    }
-    if let (Some(remote), Some(outcome)) = (also.as_deref_mut(), second.as_mut()) {
-        step(outcome, |r| push(lock, tell, remote, &also_options, Lane::Also, r));
-    }
+    both(push, &mut first, &mut second);
     if stopped(&first, &second) {
         return (first, second);
     }
-    if let (Some(remote), Some(outcome)) = (main, first.as_mut()) {
-        step(outcome, |r| files(lock, tell, remote, &options, Lane::Main, r));
-    }
-    if let (Some(remote), Some(outcome)) = (also, second.as_mut()) {
-        step(outcome, |r| files(lock, tell, remote, &also_options, Lane::Also, r));
-    }
+    both(files, &mut first, &mut second);
     (first, second)
 }
 
@@ -1850,6 +1870,9 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
         tell(SyncEvent::FilesPlanned { lane, direction: Direction::Down, count: fetches.len() as u32, bytes: 0 });
     }
     for (path, local, what, cover_of) in fetches {
+        if winding_down() {
+            break;
+        }
         file(Direction::Down, &path, &what, 0, false, None);
         let got = fetch(remote, &path, &local);
         let problem = match &got {
@@ -1892,6 +1915,9 @@ fn send(
         tell(SyncEvent::FilesPlanned { lane, direction: Direction::Up, count: to_send.len() as u32, bytes });
     }
     for (path, local, what, bytes) in to_send {
+        if winding_down() {
+            break;
+        }
         file(Direction::Up, &path, &what, bytes, false, None);
         match remote.upload(&path, &local) {
             Ok(()) => {

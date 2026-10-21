@@ -31,7 +31,8 @@ import type {
   KindleEmailInput,
   KindleEmailView,
   ServerChoice,
-  ServerDownloadStatus,
+  ServerQueueView,
+  QueuedServerFile,
   ServerInput,
   ServerListing,
   ServerView,
@@ -245,12 +246,19 @@ export interface Api {
   testServer(id: string): Promise<string>;
   /** A folder on the server; null is where browsing starts. */
   browseServer(id: string, path: string | null): Promise<ServerListing>;
-  /** Brings down what was ticked, then hands it to the import queue. */
+  /** Lists every file in what was ticked and starts bringing them down; each joins the import queue as it arrives. */
   downloadFromServer(id: string, chosen: ServerChoice[]): Promise<void>;
-  serverDownloadStatus(): Promise<ServerDownloadStatus>;
-  cancelServerDownload(): Promise<void>;
-  clearServerDownload(): Promise<void>;
-  onServerDownload(listener: (status: ServerDownloadStatus) => void): () => void;
+  serverQueue(): Promise<ServerQueueView>;
+  /** Rows of the server list, in the order they were chosen. */
+  serverQueuePage(offset: number, limit: number): Promise<QueuedServerFile[]>;
+  retryServerFile(id: number): Promise<void>;
+  removeServerFile(id: number): Promise<void>;
+  /** Takes everything not yet down off the list. */
+  cancelServerQueue(): Promise<void>;
+  clearServerFinished(): Promise<void>;
+  /** How many files come down at once, 1 to 5. */
+  setServerConnections(count: number): Promise<void>;
+  onServerQueue(listener: () => void): () => void;
   /** A private key file, for SFTP. */
   pickKeyFile(): Promise<string | null>;
   /** What sync is doing now, file by file, and what it did lately. */
@@ -542,14 +550,18 @@ function appApi(): Api {
     testServer: async (id) => (await core).invoke<string>("test_server", { id }),
     browseServer: async (id, path) => (await core).invoke<ServerListing>("browse_server", { id, path }),
     downloadFromServer: async (id, chosen) => (await core).invoke("download_from_server", { id, chosen }),
-    serverDownloadStatus: async () => (await core).invoke<ServerDownloadStatus>("server_download_status"),
-    cancelServerDownload: async () => (await core).invoke("cancel_server_download"),
-    clearServerDownload: async () => (await core).invoke("clear_server_download"),
-    onServerDownload: (listener) => {
+    serverQueue: async () => (await core).invoke<ServerQueueView>("server_queue"),
+    serverQueuePage: async (offset, limit) => (await core).invoke<QueuedServerFile[]>("server_queue_page", { offset, limit }),
+    retryServerFile: async (id) => (await core).invoke("retry_server_file", { id }),
+    removeServerFile: async (id) => (await core).invoke("remove_server_file", { id }),
+    cancelServerQueue: async () => (await core).invoke("cancel_server_queue"),
+    clearServerFinished: async () => (await core).invoke("clear_server_finished"),
+    setServerConnections: async (count) => (await core).invoke("set_server_connections", { count }),
+    onServerQueue: (listener) => {
       let stop: (() => void) | null = null;
       let stopped = false;
       void import("@tauri-apps/api/event").then(async ({ listen }) => {
-        const unlisten = await listen<ServerDownloadStatus>("server-download-changed", (e) => listener(e.payload));
+        const unlisten = await listen("server-queue-changed", () => listener());
         if (stopped) unlisten();
         else stop = unlisten;
       });

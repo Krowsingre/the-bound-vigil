@@ -86,8 +86,11 @@ impl SyncWorker {
         self.busy.load(Ordering::Relaxed)
     }
 
-    /// Lets a last sync finish before the app quits, up to `limit`.
+    /// Lets a last sync finish before the app quits, up to `limit`. Files
+    /// still waiting stay for next time: a sync already sending them stops
+    /// after the file it's on, and the last sync only exchanges records.
     pub fn finish(&self, limit: Duration) {
+        core_sync::wind_down();
         let (done_tx, done_rx) = mpsc::channel();
         let sent = self.wake.lock().map(|tx| tx.send(Wake::Closing(done_tx)).is_ok()).unwrap_or(false);
         if sent {

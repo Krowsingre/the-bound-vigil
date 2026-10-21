@@ -129,6 +129,9 @@ pub struct BookPreview {
     /// Its language as a short code ("en"), when known.
     #[serde(default)]
     pub language: Option<String>,
+    /// An ebook linked to an audiobook in the library, or an audiobook linked to an ebook.
+    #[serde(default)]
+    pub paired: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

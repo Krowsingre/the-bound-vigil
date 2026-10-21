@@ -9,6 +9,7 @@
 //! import queue picks it up.
 
 mod ftp;
+pub mod queue;
 mod sftp;
 
 use std::collections::HashSet;
@@ -617,6 +618,49 @@ pub fn download(
     state.current = None;
     progress(&state);
     Ok(Downloaded { roots: roots.iter().map(|r| into.join(r)).collect(), files: state.files_done, bytes: state.bytes_done, stopped: false })
+}
+
+/// Brings down one file to `target`, written beside it and renamed once
+/// whole. `progress` hears the bytes so far and returns false to stop, which
+/// gives `Ok(None)` and leaves nothing behind.
+pub fn fetch_file(
+    connection: &mut dyn Connection,
+    remote: &str,
+    target: &Path,
+    progress: &mut dyn FnMut(u64) -> bool,
+) -> Result<Option<u64>> {
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let partial = queue::partial(target);
+    let mut out = fs::File::create(&partial)?;
+    let mut done = 0u64;
+    let mut stopped = false;
+    let fetched = connection.fetch(remote, &mut out, &mut |n| {
+        done += n;
+        let go = progress(done);
+        stopped |= !go;
+        go
+    });
+    drop(out);
+    match fetched {
+        Ok(_) if stopped => {
+            let _ = fs::remove_file(&partial);
+            Ok(None)
+        }
+        Ok(n) => {
+            fs::rename(&partial, target)?;
+            Ok(Some(n))
+        }
+        Err(e) => {
+            let _ = fs::remove_file(&partial);
+            if stopped {
+                Ok(None)
+            } else {
+                Err(e)
+            }
+        }
+    }
 }
 
 /// Where downloads wait for the import queue, inside TBV's own data folder.

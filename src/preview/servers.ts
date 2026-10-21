@@ -1,8 +1,8 @@
 // The browser preview's pretend seedbox, so Settings › Servers can be tried
 // without one. `?servers` starts with it saved.
 
-import { IDLE_SERVER_DOWNLOAD, type ServerApi } from "../api/serverStub";
-import type { RemoteEntry, ServerDownloadStatus, ServerView } from "../api/types";
+import { NO_SERVER_QUEUE, type ServerApi } from "../api/serverStub";
+import type { QueuedServerFile, RemoteEntry, ServerView } from "../api/types";
 
 /** What a server TBV hasn't met shows: an SFTP key, or an FTPS server's own certificate. */
 const PRETEND_FINGERPRINT = {
@@ -46,12 +46,29 @@ const SEEDBOX: ServerView = {
 
 export function previewServers(): ServerApi {
   let servers: ServerView[] = new URLSearchParams(location.search).has("servers") ? [SEEDBOX] : [];
-  let status: ServerDownloadStatus = IDLE_SERVER_DOWNLOAD;
-  const listeners = new Set<(s: ServerDownloadStatus) => void>();
-  const tell = (next: ServerDownloadStatus) => {
-    status = next;
-    listeners.forEach((l) => l(status));
+  // A pretend list of files coming down: a few at once, a step every half second.
+  let files: QueuedServerFile[] = [];
+  let connections = 3;
+  let version = 0;
+  let nextId = 1;
+  const listeners = new Set<() => void>();
+  const tell = () => {
+    version += 1;
+    listeners.forEach((l) => l());
   };
+  const expand = (path: string, isDir: boolean, size: number): { path: string; size: number }[] =>
+    isDir ? (TREE[path] ?? []).flatMap((e) => expand(e.path, e.isDir, e.size)) : [{ path, size }];
+  const step = () => {
+    const now = new Date().toISOString();
+    for (const f of files.filter((f) => f.state === "downloading")) {
+      f.bytesDone = Math.min(f.size, f.bytesDone + Math.max(2_000_000, f.size / 4));
+      if (f.bytesDone >= f.size) Object.assign(f, { state: "done", finishedAt: now });
+    }
+    for (const f of files.filter((f) => f.state === "waiting").slice(0, connections - files.filter((f) => f.state === "downloading").length))
+      Object.assign(f, { state: "downloading", startedAt: now });
+    tell();
+  };
+  setInterval(() => files.some((f) => f.state === "waiting" || f.state === "downloading") && step(), 500);
   const find = (id: string) => {
     const s = servers.find((x) => x.id === id);
     if (!s) throw new Error("That server isn't saved any more. Add it again in Settings › Servers.");
@@ -92,33 +109,63 @@ export function previewServers(): ServerApi {
     },
     downloadFromServer: async (id, chosen) => {
       const s = find(id);
-      const total = chosen.length * 3;
-      let done = 0;
-      tell({ ...IDLE_SERVER_DOWNLOAD, running: true, server: s.name });
-      const tick = setInterval(() => {
-        done += 1;
-        if (done > total) {
-          clearInterval(tick);
-          tell({ ...status, running: false, queued: chosen.length });
-          return;
-        }
-        tell({
-          ...status,
-          progress: {
-            stage: "downloading",
-            filesDone: done - 1,
-            filesTotal: total,
-            bytesDone: done * 4_000_000,
-            bytesTotal: total * 4_000_000,
-            current: chosen[Math.min(chosen.length - 1, Math.floor((done - 1) / 3))].path.split("/").pop() ?? null,
-          },
-        });
-      }, 500);
+      for (const c of chosen)
+        for (const f of expand(c.path, c.isDir, c.size))
+          files.push({
+            id: nextId++,
+            serverName: s.name,
+            remote: f.path,
+            name: f.path.split("/").pop() ?? f.path,
+            size: f.size,
+            bytesDone: 0,
+            state: "waiting",
+            error: null,
+            startedAt: null,
+            finishedAt: null,
+          });
+      tell();
     },
-    serverDownloadStatus: async () => status,
-    cancelServerDownload: async () => tell({ ...status, running: false, stopped: true }),
-    clearServerDownload: async () => tell(IDLE_SERVER_DOWNLOAD),
-    onServerDownload: (listener) => {
+    serverQueue: async () => {
+      const count = (...states: QueuedServerFile["state"][]) => files.filter((f) => states.includes(f.state)).length;
+      return {
+        ...NO_SERVER_QUEUE,
+        counts: {
+          total: files.length,
+          waiting: count("waiting"),
+          downloading: count("downloading"),
+          downloaded: count("downloaded", "importing"),
+          done: count("done"),
+          failed: count("failed"),
+          bytesTotal: files.reduce((n, f) => n + f.size, 0),
+          bytesDone: files.reduce((n, f) => n + f.bytesDone, 0),
+        },
+        connections,
+        active: files.filter((f) => f.state === "downloading"),
+        version,
+      };
+    },
+    serverQueuePage: async (offset, limit) => files.slice(offset, offset + limit).map((f) => ({ ...f })),
+    retryServerFile: async (id) => {
+      files = files.map((f) => (f.id === id && f.state === "failed" ? { ...f, state: "waiting", error: null } : f));
+      tell();
+    },
+    removeServerFile: async (id) => {
+      files = files.filter((f) => f.id !== id);
+      tell();
+    },
+    cancelServerQueue: async () => {
+      files = files.filter((f) => f.state !== "waiting" && f.state !== "downloading");
+      tell();
+    },
+    clearServerFinished: async () => {
+      files = files.filter((f) => f.state !== "done" && f.state !== "failed");
+      tell();
+    },
+    setServerConnections: async (count) => {
+      connections = count;
+      tell();
+    },
+    onServerQueue: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },

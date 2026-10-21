@@ -3,10 +3,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api, isApp } from "../api";
-import { IDLE_SERVER_DOWNLOAD, SERVERS_DESKTOP_ONLY } from "../api/serverStub";
-import type { RemoteEntry, ServerDownloadStatus, ServerInput, ServerListing, ServerProtocol, ServerView } from "../api/types";
+import { NO_SERVER_QUEUE, SERVERS_DESKTOP_ONLY } from "../api/serverStub";
+import type { RemoteEntry, ServerInput, ServerQueueView, ServerListing, ServerProtocol, ServerView } from "../api/types";
 import { Icon } from "../components/Icon";
-import { ProgressBar } from "../components/ProgressBar";
 import { useToast } from "../components/Toast";
 import { formatBytes, Section, Segmented } from "./controls";
 
@@ -150,9 +149,10 @@ export function ServersTab() {
           server={browsing}
           withKey={withKey}
           onClose={() => setBrowsing(null)}
-          onStarted={() => {
-            setBrowsing(null);
-            toast("Bringing them down now. They'll be added to your library as they arrive.");
+          onStarted={(count) => {
+            toast(
+              `${count === 1 ? "It's" : "They're"} on the Imports page, and added to your library as ${count === 1 ? "it arrives" : "they arrive"}. You can keep choosing.`,
+            );
           }}
         />
       )}
@@ -437,7 +437,8 @@ function BrowseDialog({
   server: ServerView;
   withKey: WithKey;
   onClose: () => void;
-  onStarted: () => void;
+  /** Called with how many things were chosen; the dialog stays open for more. */
+  onStarted: (count: number) => void;
 }) {
   const [listing, setListing] = useState<ServerListing | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -480,11 +481,12 @@ function BrowseDialog({
         server.id,
         [...chosen.values()].map((e) => ({ path: e.path, isDir: e.isDir, size: e.size })),
       );
-      onStarted();
+      onStarted(chosen.size);
+      setChosen(new Map());
     } catch (e) {
       setError(plain(e));
-      setStarting(false);
     }
+    setStarting(false);
   };
 
   return (
@@ -541,11 +543,12 @@ function BrowseDialog({
         )}
         {error && <p className="form-error">{error}</p>}
         <p className="settings-row-hint">
-          Tick books, audiobooks or whole folders. A folder of audio files becomes one audiobook.
+          Tick books, audiobooks or whole folders. A folder of audio files becomes one audiobook, or several when their tags say
+          they're different books. You can keep browsing while files come down.
         </p>
         <div className="dialog-actions">
           <button type="button" className="btn btn-quiet" onClick={onClose}>
-            Cancel
+            Close
           </button>
           <button type="button" className="btn btn-primary" disabled={chosen.size === 0 || starting} onClick={() => void start()}>
             {starting ? "Starting…" : chosen.size === 0 ? "Bring in" : `Bring in ${chosen.size === 1 ? "1 item" : `${chosen.size} items`}`}
@@ -556,58 +559,38 @@ function BrowseDialog({
   );
 }
 
-/** How the last download from a server went, or is going. */
+/** How many files come down at once, and how the list stands; the files
+ *  themselves are on the Imports page. */
 function DownloadStatus() {
-  const [status, setStatus] = useState<ServerDownloadStatus>(IDLE_SERVER_DOWNLOAD);
+  const [view, setView] = useState<ServerQueueView>(NO_SERVER_QUEUE);
   useEffect(() => {
-    api.serverDownloadStatus().then(setStatus, () => undefined);
-    return api.onServerDownload(setStatus);
+    const load = () => void api.serverQueue().then(setView, () => undefined);
+    load();
+    return api.onServerQueue(load);
   }, []);
-  const p = status.progress;
-  if (!status.running && status.queued === null && !status.stopped && !status.error) return null;
+  const c = view.counts;
+  const left = c.waiting + c.downloading + c.downloaded;
   return (
-    <div className="server-download" role="status">
-      {status.running ? (
-        <>
-          <p className="settings-row-label">
-            {p.stage === "looking"
-              ? `Looking through ${status.server ?? "the server"}…`
-              : `Bringing down ${p.filesDone + 1 > p.filesTotal ? p.filesTotal : p.filesDone + 1} of ${p.filesTotal} from ${status.server}`}
+    <div className="server-download">
+      <div className="settings-row">
+        <div className="settings-row-text">
+          <p className="settings-row-label">Connections</p>
+          <p className="settings-row-hint">
+            How many files come down at once. Each uses its own connection; some servers allow only a few.
           </p>
-          {p.stage === "downloading" && (
-            <>
-              <ProgressBar value={p.bytesTotal ? p.bytesDone / p.bytesTotal : 0} label="Download progress" />
-              <p className="settings-row-hint">
-                {formatBytes(p.bytesDone)} of {formatBytes(p.bytesTotal)}
-                {p.current ? ` · ${p.current}` : ""}
-              </p>
-            </>
-          )}
-          <div className="connection-actions">
-            <button type="button" className="btn btn-quiet" onClick={() => void api.cancelServerDownload()}>
-              <Icon name="stop" size={16} /> Stop
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <p className={status.error ? "form-error" : "settings-row-label"}>
-            {status.error
-              ? status.error.startsWith(NEW_KEY)
-                ? "The server's key wasn't trusted, so nothing came down."
-                : status.error
-              : status.stopped
-                ? "Stopped. Nothing half-finished was kept."
-                : status.queued === 1
-                  ? `Brought down 1 book from ${status.server}. It's being added to your library now.`
-                  : `Brought down ${status.queued} books from ${status.server}. They're being added to your library now.`}
-          </p>
-          <div className="connection-actions">
-            <button type="button" className="btn btn-quiet" onClick={() => void api.clearServerDownload()}>
-              Dismiss
-            </button>
-          </div>
-        </>
+        </div>
+        <Segmented
+          label="Connections"
+          value={String(view.connections)}
+          options={["1", "2", "3", "4", "5"].map((n) => ({ value: n, label: n }))}
+          onChange={(n) => void api.setServerConnections(Number(n)).then(() => api.serverQueue().then(setView))}
+        />
+      </div>
+      {(left > 0 || view.looking.length > 0) && (
+        <p className="settings-row-hint" role="status">
+          {view.looking.length > 0 && `Looking through ${view.looking[0]}… `}
+          {left > 0 && `${left} ${left === 1 ? "file" : "files"} on the way from servers. Every file is listed on the Imports page.`}
+        </p>
       )}
     </div>
   );

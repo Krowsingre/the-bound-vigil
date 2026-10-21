@@ -285,6 +285,7 @@ export function Library({
     const Layout = { grid: BookGrid, list: BookList, compact: BookTable }[view.layout];
     body = (
       <>
+        <Pagination top page={page.page} pageSize={page.pageSize} total={page.total} onPage={(p) => onChange({ page: p })} />
         <Layout books={page.books} actions={actions} selection={selection} />
         <Pagination noun={[words.one, words.many]} page={page.page} pageSize={page.pageSize} total={page.total} onPage={(p) => onChange({ page: p })} />
       </>

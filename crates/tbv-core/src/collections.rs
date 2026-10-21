@@ -286,31 +286,38 @@ impl Library {
         })
     }
 
+    /// Every series, with its first covers and authors, in one pass over the
+    /// library: a query per series made the Collections page take minutes
+    /// with tens of thousands of books.
     fn series_summaries(&self) -> Result<Vec<SeriesSummary>> {
         let mut statement = self.conn.prepare(&format!(
-            "SELECT {SERIES} AS s, COUNT(*) {BOOK_FROM} AND {SERIES} IS NOT NULL AND trim({SERIES}) != ''
-             GROUP BY s ORDER BY s COLLATE NOCASE"
+            "SELECT {SERIES} AS s, b.id, COALESCE(o_title.value, f_title.value, b.title),
+                    COALESCE(o_authors.value, f_authors.value, b.authors), lf.cover_path
+             {BOOK_FROM} AND {SERIES} IS NOT NULL AND trim({SERIES}) != ''
+             ORDER BY s COLLATE NOCASE, s, b.series_index IS NULL, b.series_index, {TITLE}"
         ))?;
-        let rows = statement
-            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?)))?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        let mut authors = self.conn.prepare(&format!(
-            "SELECT DISTINCT json_extract(COALESCE(o_authors.value, f_authors.value, b.authors), '$[0]') {BOOK_FROM}
-             AND {SERIES} = ?1 AND json_extract(COALESCE(o_authors.value, f_authors.value, b.authors), '$[0]') IS NOT NULL"
-        ))?;
-        rows.into_iter()
-            .map(|(name, count)| {
-                let members = self.members(&CollectionRef::Series { name: name.clone() })?;
-                Ok(SeriesSummary {
-                    authors: authors
-                        .query_map(params![name], |r| r.get(0))?
-                        .collect::<std::result::Result<_, _>>()?,
-                    covers: self.member_covers(&members)?,
-                    name,
-                    count,
-                })
-            })
-            .collect()
+        let rows = statement.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, Option<String>>(4)?))
+        })?;
+        let mut out: Vec<SeriesSummary> = Vec::new();
+        for row in rows {
+            let (name, id, title, authors, cover_path) = row?;
+            let authors: Vec<String> = serde_json::from_str(&authors).unwrap_or_default();
+            if out.last().is_none_or(|last| last.name != name) {
+                out.push(SeriesSummary { name, count: 0, authors: Vec::new(), covers: Vec::new() });
+            }
+            let series = out.last_mut().expect("just pushed");
+            series.count += 1;
+            if let Some(first) = authors.first() {
+                if !series.authors.contains(first) {
+                    series.authors.push(first.clone());
+                }
+            }
+            if series.covers.len() < COVER_STRIP as usize {
+                series.covers.push(CoverRef { id, title, authors, cover_path });
+            }
+        }
+        Ok(out)
     }
 
     /// One collection with its books, in its own order.

@@ -81,9 +81,13 @@ struct Queue {
     next_id: u64,
     /// Threads adding books right now.
     workers: usize,
-    /// Downloaded folders the waiting books come from, let go as each is done.
-    holds: HashMap<u64, Arc<TempFolder>>,
+    /// What the waiting books need kept (a folder of downloads, say), let go
+    /// as each is done.
+    holds: HashMap<u64, Hold>,
 }
+
+/// Kept while a book is in the queue, and dropped once it's done.
+pub type Hold = Arc<dyn Send + Sync>;
 
 /// Books added at once. More would mostly wait on the same disk or network.
 const WORKERS: usize = 3;
@@ -167,19 +171,26 @@ impl Imports {
             Ok(l) => l.books_dir().to_path_buf(),
             Err(_) => return 0,
         };
-        let files = find_book_files(&paths, &books_dir);
-        let added = files.len();
+        let hold = hold.map(|h| h as Hold);
+        let files = find_book_files(&paths, &books_dir).into_iter().map(|f| (f, hold.clone())).collect();
+        self.queue_sources(app, library, files)
+    }
+
+    /// Queues each source as it is (a file, an audiobook's folder or a group
+    /// within one), each keeping its own hold until it's done.
+    pub fn queue_sources(self: &Arc<Self>, app: &AppHandle, library: &Arc<Mutex<Library>>, sources: Vec<(PathBuf, Option<Hold>)>) -> usize {
+        let added = sources.len();
         let start = {
             let Ok(mut queue) = self.queue.lock() else { return 0 };
-            for file in files {
+            for (file, hold) in sources {
                 queue.next_id += 1;
                 let id = queue.next_id;
-                if let Some(hold) = &hold {
-                    queue.holds.insert(id, hold.clone());
+                if let Some(hold) = hold {
+                    queue.holds.insert(id, hold);
                 }
                 queue.items.push(ImportItem {
                     id,
-                    name: file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                    name: tbv_core::audio::display_name(&file),
                     bytes: size_of(&file),
                     path: file.display().to_string(),
                     bytes_read: 0,
@@ -202,11 +213,16 @@ impl Imports {
 
     /// Takes the books still waiting off the list.
     pub fn cancel(&self, app: &AppHandle) {
-        if let Ok(mut queue) = self.queue.lock() {
-            queue.items.retain(|i| i.stage != Stage::Waiting);
-            let left: Vec<u64> = queue.items.iter().map(|i| i.id).collect();
-            queue.holds.retain(|id, _| left.contains(id));
-        }
+        // Holds are let go with the queue unlocked: letting go can tell others.
+        let _released: Vec<Hold> = match self.queue.lock() {
+            Ok(mut queue) => {
+                queue.items.retain(|i| i.stage != Stage::Waiting);
+                let left: Vec<u64> = queue.items.iter().map(|i| i.id).collect();
+                let gone: Vec<u64> = queue.holds.keys().copied().filter(|id| !left.contains(id)).collect();
+                gone.iter().filter_map(|id| queue.holds.remove(id)).collect()
+            }
+            Err(_) => Vec::new(),
+        };
         self.tell(app, true);
     }
 
@@ -246,9 +262,8 @@ impl Imports {
                 item.bytes_read = item.bytes;
                 item.result = Some(result);
             });
-            if let Ok(mut queue) = self.queue.lock() {
-                queue.holds.remove(&id);
-            }
+            let released = self.queue.lock().ok().and_then(|mut queue| queue.holds.remove(&id));
+            drop(released);
             self.tell(app, false);
             // Pages refresh to show new books, a few times a second at most.
             if added && changed_at.elapsed() >= Duration::from_secs(1) {
@@ -270,7 +285,7 @@ impl Imports {
             .extension()
             .map(|e| e.to_string_lossy().to_ascii_lowercase())
             .is_some_and(|ext| SUPPORTED_FORMATS.contains(&ext.as_str()));
-        if !supported && !path.is_dir() {
+        if !supported && !path.is_dir() && tbv_core::audio::parse_group(path).is_none() {
             return Ok(ImportResult::Unsupported { path: display });
         }
         // A folder of audio files is bundled into one audiobook first.
@@ -318,8 +333,8 @@ impl Imports {
 
 /// How much there is to read: a file's size, or a folder audiobook's audio.
 fn size_of(path: &Path) -> u64 {
-    if path.is_dir() {
-        return tbv_core::audio::folder_parts(path).iter().filter_map(|p| std::fs::metadata(p).ok()).map(|m| m.len()).sum();
+    if path.is_dir() || tbv_core::audio::parse_group(path).is_some() {
+        return tbv_core::audio::source_parts(path).iter().filter_map(|p| std::fs::metadata(p).ok()).map(|m| m.len()).sum();
     }
     std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
 }

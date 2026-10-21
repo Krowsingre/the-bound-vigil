@@ -4,6 +4,8 @@
 import type { ImportResult, ImportsView } from "../api/types";
 import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
+import type { ServerQueue } from "./serverQueue";
+import { ServerRows } from "./ServerRows";
 
 export function importCounts(view: ImportsView) {
   return { done: view.done, total: view.total, running: view.done < view.total };
@@ -36,8 +38,11 @@ export function Imports({
   onImportBooks,
   onImportFolder,
   onOpenBook,
+  servers,
 }: {
   view: ImportsView;
+  /** Files coming down from servers, desktop only. */
+  servers?: ServerQueue;
   onCancel: () => void;
   onClear: () => void;
   onImportBooks: () => void;
@@ -69,11 +74,15 @@ export function Imports({
         </div>
       </header>
 
+      {servers && <ServerRows queue={servers} />}
+
       {total === 0 ? (
+        servers && (servers.view.counts.total > 0 || servers.view.looking.length > 0) ? null : (
         <div className="imports-empty">
           <Icon name="download" size={28} />
           <p>Nothing is being imported. Books you import, or drop on the window, show up here while they're added.</p>
         </div>
+        )
       ) : (
         <>
           <section className="imports-summary" aria-live="polite">
