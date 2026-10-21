@@ -377,6 +377,10 @@ export function Reader({
       } else if (fullscreen) toggleFullscreen();
       else if (focus) setFocus(false);
       else return;
+    } else if (e.altKey && !ctrl && e.key === "ArrowLeft") {
+      // Back: to where a link jumped from, else out of the book.
+      if (jumps.length) goBack();
+      else leave();
     } else if (ctrl || e.altKey) return;
     else if (key === "f") setFocus((f) => !f);
     else if (key === "r") {

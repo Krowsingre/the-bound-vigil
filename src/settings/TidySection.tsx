@@ -17,6 +17,7 @@ function size(bytes: number): string {
 }
 
 const copies = (n: number) => `${n.toLocaleString()} ${n === 1 ? "copy" : "copies"}`;
+const files = (n: number) => `${n.toLocaleString()} ${n === 1 ? "file" : "files"}`;
 const books = (n: number) => `${n.toLocaleString()} ${n === 1 ? "book" : "books"}`;
 
 function placeName(view: ProviderView): string {
@@ -29,9 +30,17 @@ function placeName(view: ProviderView): string {
 export function tidyText(plan: TidyPlan, other: string | null): string {
   const going = plan.remove.length + plan.copyFirst.length + plan.lose.length;
   const one = (n: number, single: string, many: string) => (n === 1 ? single : many);
-  const parts = [
-    `Supabase has ${books(going)} that ${one(going, "isn't", "aren't")} on this computer${plan.bytes ? ` (${size(plan.bytes)})` : ""}. Their copies there are removed, so your phone shows only the books on this computer as ready to download.`,
-  ];
+  const covers = plan.covers.length;
+  const room = plan.bytes ? ` (${size(plan.bytes)} in all)` : "";
+  const parts = going
+    ? [
+        `Supabase has ${books(going)} that ${one(going, "isn't", "aren't")} on this computer${room}. Their copies there are removed, so your phone shows only the books on this computer as ready to download.`,
+      ]
+    : [];
+  if (covers)
+    parts.push(
+      `${covers.toLocaleString()} ${one(covers, "cover belongs to a book", "covers belong to books")} whose file isn't kept in Supabase${going ? "" : room}, so ${one(covers, "it's", "they're")} removed there too. This computer keeps every cover.`,
+    );
   if (plan.copyFirst.length && other)
     parts.push(
       `${books(plan.copyFirst.length)} ${one(plan.copyFirst.length, "isn't", "aren't")} in ${other} yet, so ${one(plan.copyFirst.length, "it's", "they're")} copied there first.`,
@@ -62,7 +71,7 @@ export function TidySection({ overview }: { overview: SyncOverview }) {
     setChecking(true);
     try {
       const found = await api.planTidyCloud();
-      if (found.remove.length + found.copyFirst.length + found.lose.length === 0)
+      if (found.remove.length + found.copyFirst.length + found.lose.length + found.covers.length === 0)
         toast("Supabase only holds books that are on this computer. There's nothing to tidy.");
       else setPlan(found);
     } catch (e) {
@@ -111,7 +120,7 @@ export function TidySection({ overview }: { overview: SyncOverview }) {
       ) : (
         <>
           <p className="settings-row-hint">
-            Removes Supabase's copies of books that aren't on this computer.{" "}
+            Removes Supabase's copies of books that aren't on this computer, and the covers of books whose file isn't kept there.{" "}
             {other ? `Any that ${other} hasn't got are copied there first.` : "You'll see how many before anything is removed."}
           </p>
           <div className="dialog-actions move-start">
@@ -125,7 +134,7 @@ export function TidySection({ overview }: { overview: SyncOverview }) {
         <ConfirmDialog
           title="Tidy up Supabase?"
           body={tidyText(plan, other)}
-          confirm={`Remove ${copies(plan.remove.length + plan.copyFirst.length + plan.lose.length)}`}
+          confirm={`Remove ${files(plan.remove.length + plan.copyFirst.length + plan.lose.length + plan.covers.length)}`}
           danger
           onCancel={() => setPlan(null)}
           onConfirm={() => void tidy()}

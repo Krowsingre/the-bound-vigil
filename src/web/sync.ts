@@ -268,7 +268,7 @@ export class WebSync {
     };
     let next = 0;
     await Promise.all(
-      Array.from({ length: 4 }, async () => {
+      Array.from({ length: 2 }, async () => {
         while (next < wanted.length) await fetchOne(wanted[next++]);
       }),
     );

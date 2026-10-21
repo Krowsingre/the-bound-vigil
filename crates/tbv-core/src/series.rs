@@ -17,7 +17,7 @@ use crate::error::{Error, Result};
 use crate::hardcover::{graphql, Transport};
 use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM};
 use crate::library::Library;
-use crate::manage::{author_key, title_key};
+use crate::manage::{author_key, numbered_apart, title_key};
 use crate::model::{BookId, BookPreview};
 use crate::time::now_utc;
 
@@ -132,6 +132,9 @@ fn distance(a: &str, b: &str) -> usize {
 
 /// How alike two titles are: the same, close (a typo or two), or not.
 fn alike(a: &str, b: &str) -> Option<&'static str> {
+    if numbered_apart(a, b) {
+        return None;
+    }
     let (a, b) = (title_key(a), title_key(b));
     if a.is_empty() || b.is_empty() {
         return None;
@@ -393,13 +396,24 @@ impl Library {
         let mut missing = Vec::new();
         let mut matches: Vec<SeriesMatch> = Vec::new();
         let mut offered: HashSet<String> = HashSet::new();
-        for entry in &saved.books {
-            let by_number = entry.position.and_then(|p| inside.iter().find(|b| b.series_index.is_some_and(|i| (i - p).abs() < 1e-6)));
-            let by_title = inside.iter().find(|b| alike(&b.title, &entry.title).is_some());
-            if by_number.is_some() {
+        // Each book here stands for one book of the list: first those whose
+        // number says which, then those whose title does.
+        let mut used: HashSet<&str> = HashSet::new();
+        let numbered: Vec<bool> = saved
+            .books
+            .iter()
+            .map(|entry| {
+                let by_number = entry.position.and_then(|p| inside.iter().find(|b| !used.contains(b.id.as_str()) && b.series_index.is_some_and(|i| (i - p).abs() < 1e-6)));
+                by_number.map(|b| used.insert(b.id.as_str())).is_some()
+            })
+            .collect();
+        for (entry, numbered) in saved.books.iter().zip(numbered) {
+            if numbered {
                 continue;
             }
+            let by_title = inside.iter().find(|b| !used.contains(b.id.as_str()) && alike(&b.title, &entry.title).is_some());
             if let Some(book) = by_title {
+                used.insert(book.id.as_str());
                 // In the series already, but without its number.
                 if book.series_index.is_none() && entry.position.is_some() && !denied.contains(book.id.as_str()) && offered.insert(book.id.to_string()) {
                     matches.push(SeriesMatch { book: book.clone(), position: entry.position, reason: "In the series, but without its number".into() });

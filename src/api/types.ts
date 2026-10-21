@@ -163,8 +163,29 @@ export interface TidyPlan {
   copyFirst: string[];
   /** Copies with nowhere else to go, because there's no other place. */
   lose: string[];
+  /** Covers of books whose file isn't kept in Supabase: simply removed. */
+  covers: string[];
   /** Bytes freed, where Supabase says its files' sizes. */
   bytes: number;
+}
+
+/** One file TBV keeps in Supabase (Settings › Sync › What's in Supabase). */
+export interface StoredFile {
+  /** Like `books/<hash>.epub`. */
+  path: string;
+  kind: "ebook" | "document" | "audiobook" | "cover" | "picture" | "other";
+  /** The book it belongs to, if it's one in the library. */
+  bookId: string | null;
+  title: string | null;
+  bytes: number | null;
+  /** This computer or the other sync place keeps a copy, so removing it loses nothing. */
+  elsewhere: boolean;
+}
+
+export interface RemoveReport {
+  removed: number;
+  failed: number;
+  stopped: boolean;
 }
 
 /** How much of a Supabase project TBV is using. */

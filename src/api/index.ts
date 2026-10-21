@@ -6,6 +6,8 @@ import { homeAudioUrl, homeCore, homeEvents } from "./homeCore";
 import type { Found } from "../lib/onlineDetails";
 import type {
   TidyPlan,
+  StoredFile,
+  RemoveReport,
   TidyProgress,
   SentFile,
   SupabaseUsage,
@@ -207,6 +209,10 @@ export interface Api {
   /** Tidies Supabase up, sending copies the other place lacks there first. */
   tidyCloud(onProgress: (progress: TidyProgress) => void): Promise<TidyReport>;
   supabaseUsage(): Promise<SupabaseUsage>;
+  /** Every file TBV keeps in Supabase, by type. */
+  supabaseContents(): Promise<StoredFile[]>;
+  /** Removes the chosen files from Supabase. */
+  removeSupabaseFiles(paths: string[], onProgress: (progress: TidyProgress) => void): Promise<RemoveReport>;
   /** How moving or backing up the library to another service stands. */
   moveStatus(): Promise<MoveStatus>;
   /** Signs in to a Supabase project to move to, leaving sync's own sign-in alone. False: confirm the email first. */
@@ -568,6 +574,16 @@ function appApi(): Api {
     moveSignOut: async () => (await core).invoke("move_sign_out"),
     planTidyCloud: async () => (await core).invoke("plan_tidy_cloud"),
     supabaseUsage: async () => (await core).invoke("supabase_usage"),
+    supabaseContents: async () => (await core).invoke("supabase_contents"),
+    removeSupabaseFiles: async (paths, onProgress) => {
+      const { listen } = await tauriEvents();
+      const stop = await listen<TidyProgress>("tidy-progress", (e) => onProgress(e.payload));
+      try {
+        return await (await core).invoke<RemoveReport>("remove_supabase_files", { paths });
+      } finally {
+        stop();
+      }
+    },
     tidyCloud: async (onProgress) => {
       const { listen } = await tauriEvents();
       const stop = await listen<TidyProgress>("tidy-progress", (e) => onProgress(e.payload));

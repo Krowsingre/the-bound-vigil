@@ -585,14 +585,7 @@ impl Library {
         if self.title_of(&book_id)?.is_none() || self.cover_of(&book_id)?.is_some() {
             return Ok(false);
         }
-        let image = image::load_from_memory(picture).map_err(|e| Error::Unsuitable(format!("That picture couldn't be read: {e}")))?;
-        // Covers are shown small; a page drawn at full size would be wasted space.
-        let image = if image.height() > 900 { image.resize(900, 900, image::imageops::FilterType::Triangle) } else { image };
-        let mut bytes = Vec::new();
-        image
-            .to_rgb8()
-            .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
-            .map_err(|e| Error::Unsuitable(e.to_string()))?;
+        let bytes = jpeg_cover(picture)?;
         let metadata = crate::epub::BookMetadata {
             cover: Some(crate::epub::Cover { bytes, extension: "jpg".into() }),
             ..Default::default()
@@ -603,6 +596,78 @@ impl Library {
              ON CONFLICT(book_id) DO UPDATE SET cover_path = excluded.cover_path",
             params![book_id, cover],
         )?;
+        Ok(true)
+    }
+
+    /// Where a book's own cover waits while one found online is used.
+    fn originals_dir(&self) -> PathBuf {
+        self.paths.covers_dir.join("originals")
+    }
+
+    /// The kept original of a book's cover: its file, or a `.none` marker
+    /// when the book had no cover.
+    fn original_cover(&self, book_id: &str) -> Result<Option<PathBuf>> {
+        let prefix = format!("{}.", book_id_hex(book_id));
+        let Ok(entries) = fs::read_dir(self.originals_dir()) else { return Ok(None) };
+        Ok(entries.flatten().map(|e| e.path()).find(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&prefix))))
+    }
+
+    fn put_cover_path(&self, book_id: &str, cover: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO local_files (book_id, path, cover_path) VALUES (?1, NULL, ?2)
+             ON CONFLICT(book_id) DO UPDATE SET cover_path = excluded.cover_path",
+            params![book_id, cover],
+        )?;
+        Ok(())
+    }
+
+    /// Uses a cover found online in place of the book's own (or none),
+    /// which is kept so resetting the book's details brings it back.
+    pub fn replace_cover(&self, book_id: &str, picture: &[u8]) -> Result<bool> {
+        let id = book_id.to_string();
+        if self.title_of(&id)?.is_none() {
+            return Ok(false);
+        }
+        let bytes = jpeg_cover(picture)?;
+        let hex = book_id_hex(book_id).to_string();
+        let current = self.cover_of(&id)?;
+        if self.original_cover(book_id)?.is_none() {
+            let originals = self.originals_dir();
+            fs::create_dir_all(&originals)?;
+            match current.as_deref().map(Path::new) {
+                Some(path) => fs::rename(path, originals.join(path.file_name().unwrap_or_default()))?,
+                None => fs::write(originals.join(format!("{hex}.none")), b"")?,
+            }
+        } else if let Some(path) = &current {
+            let _ = fs::remove_file(path);
+        }
+        // A new name each time, so the picture shown is never an old one.
+        let file = self.paths.covers_dir.join(format!("{hex}.{}.jpg", chrono::Utc::now().timestamp_millis()));
+        fs::write(&file, bytes)?;
+        let file = file.display().to_string();
+        self.put_cover_path(book_id, Some(&file))?;
+        self.cover_changed(book_id, current.as_deref(), Some(&file))?;
+        Ok(true)
+    }
+
+    /// Brings back the cover a book came with, if one found online replaced
+    /// it. Returns whether anything changed.
+    pub fn restore_cover(&self, book_id: &str) -> Result<bool> {
+        let Some(original) = self.original_cover(book_id)? else { return Ok(false) };
+        let current = self.cover_of(&book_id.to_string())?;
+        if let Some(path) = &current {
+            let _ = fs::remove_file(path);
+        }
+        let restored = if original.extension().is_some_and(|e| e == "none") {
+            fs::remove_file(&original)?;
+            None
+        } else {
+            let back = self.paths.covers_dir.join(original.file_name().unwrap_or_default());
+            fs::rename(&original, &back)?;
+            Some(back.display().to_string())
+        };
+        self.put_cover_path(book_id, restored.as_deref())?;
+        self.cover_changed(book_id, current.as_deref(), restored.as_deref())?;
         Ok(true)
     }
 
@@ -782,6 +847,19 @@ impl ImportJob {
         };
         Ok(PreparedImport { job: self, title, metadata, stored, cover })
     }
+}
+
+/// A picture as a cover file: a JPEG no taller than covers are shown.
+fn jpeg_cover(picture: &[u8]) -> Result<Vec<u8>> {
+    let image = image::load_from_memory(picture).map_err(|e| Error::Unsuitable(format!("That picture couldn't be read: {e}")))?;
+    // Covers are shown small; a page drawn at full size would be wasted space.
+    let image = if image.height() > 900 { image.resize(900, 900, image::imageops::FilterType::Triangle) } else { image };
+    let mut bytes = Vec::new();
+    image
+        .to_rgb8()
+        .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
+        .map_err(|e| Error::Unsuitable(e.to_string()))?;
+    Ok(bytes)
 }
 
 fn save_cover(paths: &LibraryPaths, book_id: &BookId, metadata: &crate::epub::BookMetadata) -> Result<Option<String>> {

@@ -5,7 +5,7 @@
 use std::fs::File;
 use std::io;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -41,6 +41,54 @@ fn transport(error: ureq::Error) -> Error {
         ureq::Error::ConnectionFailed => Error::Offline("the connection failed".into()),
         other => Error::Cloud(other.to_string()),
     }
+}
+
+/// How many requests this app has with Supabase at once, across every sync
+/// lane, stream and download. The free plan's file service shares a small
+/// pool of database connections, and too many at once get turned away.
+const AT_ONCE: usize = 3;
+static IN_FLIGHT: (Mutex<usize>, Condvar) = (Mutex::new(0), Condvar::new());
+
+/// One of the AT_ONCE places, held for as long as it lives.
+struct Turn;
+
+impl Turn {
+    fn wait() -> Self {
+        let (count, freed) = &IN_FLIGHT;
+        let mut count = count.lock().unwrap_or_else(|e| e.into_inner());
+        while *count >= AT_ONCE {
+            count = freed.wait(count).unwrap_or_else(|e| e.into_inner());
+        }
+        *count += 1;
+        Turn
+    }
+}
+
+impl Drop for Turn {
+    fn drop(&mut self) {
+        let (count, freed) = &IN_FLIGHT;
+        *count.lock().unwrap_or_else(|e| e.into_inner()) -= 1;
+        freed.notify_one();
+    }
+}
+
+/// Tries before giving up on a busy Supabase, waiting longer each time.
+const BUSY_TRIES: u32 = 6;
+
+/// Whether an answer means "too busy, try again soon" rather than a real
+/// problem. Supabase's file service sometimes puts its real status (and
+/// "too many connections") inside a 400 or 500 answer's body.
+fn busy(status: u16, body: &str) -> bool {
+    if matches!(status, 429 | 502 | 503 | 504 | 544) {
+        return true;
+    }
+    if !matches!(status, 400 | 500) {
+        return false;
+    }
+    let body = body.to_lowercase();
+    ["too many connections", "timeout", "timed out", "rate limit", "\"statuscode\":\"429\"", "\"statuscode\":\"503\"", "\"statuscode\":\"544\""]
+        .iter()
+        .any(|w| body.contains(w))
 }
 
 /// The readable part of an error answer from any Supabase service.
@@ -229,20 +277,42 @@ impl Supabase {
 
     /// Sends a request with the current sign-in, renewing it once if it has
     /// run out.
+    /// Waits and tries again (up to BUSY_TRIES times) when Supabase is too
+    /// busy, rather than failing the whole sync.
     fn call(&mut self, send: &Request<'_>) -> Result<Response<Body>> {
         if self.session.expires_at - 60 < now_secs() {
             self.renew()?;
         }
-        for attempt in 0..2 {
+        let mut renewed = false;
+        let mut tries = 0;
+        loop {
             let bearer = format!("Bearer {}", self.session.access_token);
-            let answer = send(&self.agent, &self.project.url, &bearer).map_err(transport)?;
-            if answer.status().as_u16() == 401 && attempt == 0 {
+            let mut answer = {
+                let _turn = Turn::wait();
+                send(&self.agent, &self.project.url, &bearer).map_err(transport)?
+            };
+            let status = answer.status().as_u16();
+            if status == 401 {
+                if renewed {
+                    return Err(Error::SignedOut);
+                }
+                renewed = true;
                 self.renew()?;
                 continue;
             }
-            return Ok(answer);
+            if !matches!(status, 400 | 429 | 500..=599) {
+                return Ok(answer);
+            }
+            let body = answer.body_mut().read_to_string().unwrap_or_default();
+            tries += 1;
+            if !busy(status, &body) || tries >= BUSY_TRIES {
+                // Hand the answer back as it came, for the caller to read.
+                let mut again = Response::new(Body::builder().mime_type("application/json").data(body));
+                *again.status_mut() = answer.status();
+                return Ok(again);
+            }
+            std::thread::sleep(Duration::from_millis(500 << tries));
         }
-        Err(Error::SignedOut)
     }
 
     fn object_url(&self, path: &str) -> String {
@@ -373,6 +443,10 @@ impl Remote for Supabase {
             400 => Err(Error::Cloud(SETUP_HINT.into())),
             _ => Err(Error::Cloud(message(&mut answer))),
         }
+    }
+
+    fn covers_follow_files(&self) -> bool {
+        true
     }
 
     fn push(&mut self, records: &[Record]) -> Result<()> {
@@ -554,6 +628,16 @@ mod tests {
         assert_eq!((usage.book_bytes, usage.audio_bytes, usage.picture_bytes), (700, 200, 55));
         assert_eq!(usage.database_bytes, Some(12_000_000));
         assert_eq!(Usage::from_answer(&json!({})), Usage::default());
+    }
+
+    #[test]
+    fn busy_answers_are_told_apart_from_real_problems() {
+        assert!(busy(503, ""));
+        assert!(busy(400, r#"{"statusCode":"500","error":"internal","message":"too many connections issued to the database"}"#));
+        assert!(busy(500, "Too many connections"));
+        assert!(!busy(400, r#"{"statusCode":"404","error":"not_found","message":"Object not found"}"#));
+        assert!(!busy(413, "Payload too large"));
+        assert!(!busy(404, "timeout"));
     }
 
     #[test]

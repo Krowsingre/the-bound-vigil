@@ -238,14 +238,14 @@ async fn audiobook_for_ebook(state: State<'_, AppLibrary>, ebook_id: String) -> 
     with_library(state, move |library| library.audiobook_for_ebook(&ebook_id)).await
 }
 
-/// A cover found online, for a book that has none.
+/// A cover found online, in place of the book's own (kept, for a reset).
 #[tauri::command]
 async fn fetch_cover(state: State<'_, AppLibrary>, book_id: String, url: String) -> CommandResult<bool> {
     let picture = tauri::async_runtime::spawn_blocking(move || tbv_core::details::download_cover(&url))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
-    with_library(state, move |library| library.fill_cover(&book_id, &picture)).await
+    with_library(state, move |library| library.replace_cover(&book_id, &picture)).await
 }
 
 #[tauri::command]
@@ -866,6 +866,30 @@ async fn plan_tidy_cloud(state: State<'_, AppLibrary>) -> CommandResult<tbv_core
 async fn tidy_cloud(app: tauri::AppHandle, state: State<'_, AppLibrary>) -> CommandResult<tbv_core::sync::tidy::TidyReport> {
     let library = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || sync::tidy(&app, &library))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Every file TBV keeps in Supabase, for choosing what to remove.
+#[tauri::command]
+async fn supabase_contents(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::sync::contents::StoredFile>> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || sync::supabase_contents(&library))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Removes the chosen files from Supabase.
+#[tauri::command]
+async fn remove_supabase_files(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    paths: Vec<String>,
+) -> CommandResult<tbv_core::sync::contents::RemoveReport> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || sync::remove_supabase_files(&app, &library, &paths))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
@@ -1530,6 +1554,8 @@ pub fn run() {
             plan_tidy_cloud,
             tidy_cloud,
             supabase_usage,
+            supabase_contents,
+            remove_supabase_files,
             list_ereaders,
             copy_to_ereader,
             kindle_email_settings,

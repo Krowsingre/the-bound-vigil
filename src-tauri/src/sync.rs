@@ -504,6 +504,29 @@ pub fn tidy(app: &AppHandle, library: &Arc<Mutex<Library>>) -> tbv_core::Result<
     outcome
 }
 
+/// Every file TBV keeps in Supabase, by type, with whether a copy is kept
+/// anywhere else.
+pub fn supabase_contents(library: &Arc<Mutex<Library>>) -> tbv_core::Result<Vec<core_sync::contents::StoredFile>> {
+    let ((mut place, _), mut other) = tidy_places(library)?;
+    let outcome = core_sync::contents::list_contents(library, &mut place, other.as_mut().map(|(c, _)| c as &mut dyn core_sync::Remote));
+    if let Ok(l) = library.lock() {
+        keep_session(&l, &place, &outcome);
+    }
+    outcome
+}
+
+/// Removes the chosen files from Supabase. Tells the window how far it's got.
+pub fn remove_supabase_files(app: &AppHandle, library: &Arc<Mutex<Library>>, paths: &[String]) -> tbv_core::Result<core_sync::contents::RemoveReport> {
+    let ((mut place, _), _) = tidy_places(library)?;
+    let outcome = core_sync::contents::remove_contents(&mut place, paths, &AtomicBool::new(false), &mut |done, total| {
+        let _ = app.emit("tidy-progress", core_sync::tidy::TidyProgress { done, total });
+    });
+    if let Ok(l) = library.lock() {
+        keep_session(&l, &place, &outcome);
+    }
+    outcome
+}
+
 /// How much of the Supabase project this library is using.
 pub fn supabase_usage(library: &Arc<Mutex<Library>>) -> tbv_core::Result<core_sync::supabase::Usage> {
     let ((mut place, _), _) = tidy_places(library)?;

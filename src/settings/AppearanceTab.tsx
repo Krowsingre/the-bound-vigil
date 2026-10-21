@@ -5,8 +5,10 @@ import { Icon } from "../components/Icon";
 import type { Layout } from "../library/libraryView";
 import { FONTS, HIGHLIGHT_COLORS, parseSettings, SETTINGS_KEY, SIZE_RANGE, type ReaderSettings, type ReadingFont } from "../reader/settings";
 import {
+  isDark,
   PRIVACY_SHORTCUT,
   useAppSettings,
+  useSystemDark,
   type AdaptiveBase,
   type InterfaceFont,
   type InterfaceScale,
@@ -35,11 +37,14 @@ export function useReaderSettings(): [ReaderSettings | null, (change: Partial<Re
   return [settings, change];
 }
 
-const THEMES: { value: ThemeChoice; label: string }[] = [
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-  { value: "system", label: "System" },
-  { value: "adaptive", label: "Adaptive" },
+/** The theme cards. Adaptive has one for each of light and dark. */
+type ThemeCard = "light" | "dark" | "system" | "adaptive-light" | "adaptive-dark";
+const THEMES: { value: ThemeCard; label: string; theme: ThemeChoice; base?: AdaptiveBase }[] = [
+  { value: "light", label: "Light", theme: "light" },
+  { value: "dark", label: "Dark", theme: "dark" },
+  { value: "system", label: "System", theme: "system" },
+  { value: "adaptive-light", label: "Adaptive light", theme: "adaptive", base: "light" },
+  { value: "adaptive-dark", label: "Adaptive dark", theme: "adaptive", base: "dark" },
 ];
 
 export function AppearanceTab({
@@ -56,6 +61,8 @@ export function AppearanceTab({
   const { settings, change, adaptive, adaptiveBook, refreshAdaptive, togglePrivacy } = useAppSettings();
   const [reader, changeReader] = useReaderSettings();
   const adaptiveOn = settings.theme === "adaptive";
+  const systemDark = useSystemDark();
+  const card: ThemeCard = adaptiveOn ? (isDark(settings, systemDark) ? "adaptive-dark" : "adaptive-light") : (settings.theme as ThemeCard);
 
   return (
     <>
@@ -109,10 +116,15 @@ export function AppearanceTab({
       >
         <div className="theme-cards" role="radiogroup" aria-label="Theme">
           {THEMES.map((t) => (
-            <label key={t.value} className={`theme-card${settings.theme === t.value ? " is-active" : ""}`}>
+            <label key={t.value} className={`theme-card${card === t.value ? " is-active" : ""}`}>
               <span className={`theme-swatch theme-swatch-${t.value}`} aria-hidden />
               <span className="theme-card-label">
-                <input type="radio" name="tbv-theme" checked={settings.theme === t.value} onChange={() => change({ theme: t.value })} />
+                <input
+                  type="radio"
+                  name="tbv-theme"
+                  checked={card === t.value}
+                  onChange={() => change(t.base ? { theme: t.theme, adaptiveBase: t.base } : { theme: t.theme })}
+                />
                 {t.label}
               </span>
             </label>
@@ -130,18 +142,12 @@ export function AppearanceTab({
               ) : null}
               .{!adaptive && " That book has no cover with a colour to use yet, so the usual accent stays."}
             </p>
-            <Row label="Light or dark" hint="What Adaptive builds on.">
-              <Segmented<AdaptiveBase>
-                label="Adaptive base"
-                value={settings.adaptiveBase}
-                options={[
-                  { value: "system", label: "Follow system" },
-                  { value: "light", label: "Light" },
-                  { value: "dark", label: "Dark" },
-                ]}
-                onChange={(adaptiveBase) => change({ adaptiveBase })}
-              />
-            </Row>
+            <Toggle
+              label="Switch with the system"
+              hint="Use Adaptive light or Adaptive dark to match Windows' light or dark mode."
+              checked={settings.adaptiveBase === "system"}
+              onChange={(on) => change({ adaptiveBase: on ? "system" : systemDark ? "dark" : "light" })}
+            />
             <Row label="Accent strength" hint="How strongly the cover's colour is used.">
               <div className="range-row">
                 <span className="settings-row-hint">Subtle</span>

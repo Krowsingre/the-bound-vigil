@@ -347,7 +347,7 @@ pub fn copy_library(library: &Mutex<Library>, run: MoveRun<'_>) -> Result<MoveRe
             audio_files: true,
             ..l.sync_options()?
         };
-        let kept = l.files_kept(&options)?;
+        let kept = l.files_kept(&options, false)?;
         (options, l.move_books()?, kept, l.paths.books_dir.join(".moving"))
     };
     let mut records: HashMap<(String, String), Record> = HashMap::new();

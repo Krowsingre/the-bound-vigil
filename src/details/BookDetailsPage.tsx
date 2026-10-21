@@ -287,7 +287,7 @@ export function BookDetailsPage({
       {resetting && (
         <ConfirmDialog
           title="Show the book's own details?"
-          body="This takes away your edits and the details found online for this book, on every device. The book file was never changed, so its own details come back as they were."
+          body="This takes away your edits and the details found online for this book, on every device, and brings back the cover it came with. The book file was never changed, so its own details come back as they were."
           confirm="Show the book's own"
           onCancel={() => setResetting(false)}
           onConfirm={() => {

@@ -34,13 +34,17 @@ pub struct TidyPlan {
     pub copy_first: Vec<String>,
     /// Copies with nowhere else to go, because there's no other place.
     pub lose: Vec<String>,
+    /// Covers of books whose file isn't kept there (see
+    /// `Remote::covers_follow_files`): simply removed, since this computer
+    /// and the other place keep their own.
+    pub covers: Vec<String>,
     /// Bytes freed, where the place says its files' sizes.
     pub bytes: u64,
 }
 
 impl TidyPlan {
     pub fn is_empty(&self) -> bool {
-        self.remove.is_empty() && self.copy_first.is_empty() && self.lose.is_empty()
+        self.remove.is_empty() && self.copy_first.is_empty() && self.lose.is_empty() && self.covers.is_empty()
     }
 }
 
@@ -102,6 +106,7 @@ pub fn plan_tidy(library: &Mutex<Library>, place: &mut dyn Remote, other: Option
         None => None,
     };
     let mut plan = TidyPlan::default();
+    let mut staying: HashSet<String> = HashSet::new();
     for (name, size) in place.list_sizes("books/")? {
         if name.starts_with('.') || name.ends_with('/') {
             continue;
@@ -109,6 +114,7 @@ pub fn plan_tidy(library: &Mutex<Library>, place: &mut dyn Remote, other: Option
         let hex = hex_of(&name);
         if here.contains(hex) {
             plan.keep += 1;
+            staying.insert(hex.to_string());
             continue;
         }
         plan.bytes += size.unwrap_or(0);
@@ -119,7 +125,16 @@ pub fn plan_tidy(library: &Mutex<Library>, place: &mut dyn Remote, other: Option
             None => plan.lose.push(path),
         }
     }
-    for list in [&mut plan.remove, &mut plan.copy_first, &mut plan.lose] {
+    if place.covers_follow_files() {
+        for (name, size) in place.list_sizes("covers/")? {
+            if name.starts_with('.') || name.ends_with('/') || staying.contains(hex_of(&name)) {
+                continue;
+            }
+            plan.bytes += size.unwrap_or(0);
+            plan.covers.push(format!("covers/{name}"));
+        }
+    }
+    for list in [&mut plan.remove, &mut plan.copy_first, &mut plan.lose, &mut plan.covers] {
         list.sort();
     }
     Ok(plan)
@@ -145,6 +160,7 @@ pub fn tidy(
         .remove
         .iter()
         .chain(&plan.lose)
+        .chain(&plan.covers)
         .map(|p| (p, false))
         .chain(plan.copy_first.iter().map(|p| (p, true)))
         .collect();
