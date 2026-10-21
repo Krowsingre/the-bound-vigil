@@ -845,6 +845,16 @@ async fn tidy_cloud(app: tauri::AppHandle, state: State<'_, AppLibrary>) -> Comm
         .map_err(|e| e.to_string())
 }
 
+/// How much of the Supabase project this library is using.
+#[tauri::command]
+async fn supabase_usage(state: State<'_, AppLibrary>) -> CommandResult<tbv_core::sync::supabase::Usage> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || sync::supabase_usage(&library))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 /// Fetches a book that's only in the cloud onto this device.
 #[tauri::command]
 async fn download_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
@@ -1386,6 +1396,7 @@ pub fn run() {
             download_book,
             plan_tidy_cloud,
             tidy_cloud,
+            supabase_usage,
             list_ereaders,
             copy_to_ereader,
             kindle_email_settings,

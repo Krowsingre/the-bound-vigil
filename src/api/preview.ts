@@ -467,6 +467,14 @@ export function previewApi(): Api {
       onProgress({ done: 1706, total: 1706 });
       return { removed: 1706, copied: 416, failed: 0, stopped: false };
     },
+    supabaseUsage: async () => ({
+      fileBytes: 742_000_000,
+      files: 18_412,
+      bookBytes: 590_000_000,
+      audioBytes: 0,
+      pictureBytes: 152_000_000,
+      databaseBytes: params.has("oldsetup") ? null : 61_000_000,
+    }),
     getHome: async () => home(),
     queueImports: async () => 0,
     importQueue: async () => importsViewOf(imports),

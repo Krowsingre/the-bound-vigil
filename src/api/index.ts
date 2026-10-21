@@ -6,6 +6,7 @@ import type { Found } from "../lib/onlineDetails";
 import type {
   TidyPlan,
   TidyProgress,
+  SupabaseUsage,
   TidyReport,
   Audiobook,
   ProviderChoice,
@@ -187,6 +188,7 @@ export interface Api {
   planTidyCloud(): Promise<TidyPlan>;
   /** Tidies Supabase up, sending copies the other place lacks there first. */
   tidyCloud(onProgress: (progress: TidyProgress) => void): Promise<TidyReport>;
+  supabaseUsage(): Promise<SupabaseUsage>;
   /** How moving or backing up the library to another service stands. */
   moveStatus(): Promise<MoveStatus>;
   /** Signs in to a Supabase project to move to, leaving sync's own sign-in alone. False: confirm the email first. */
@@ -519,6 +521,7 @@ function appApi(): Api {
       (await core).invoke<boolean>("move_sign_in", { project, email, password, create }),
     moveSignOut: async () => (await core).invoke("move_sign_out"),
     planTidyCloud: async () => (await core).invoke("plan_tidy_cloud"),
+    supabaseUsage: async () => (await core).invoke("supabase_usage"),
     tidyCloud: async (onProgress) => {
       const { listen } = await import("@tauri-apps/api/event");
       const stop = await listen<TidyProgress>("tidy-progress", (e) => onProgress(e.payload));

@@ -486,3 +486,16 @@ pub fn tidy(app: &AppHandle, library: &Arc<Mutex<Library>>) -> tbv_core::Result<
     }
     outcome
 }
+
+/// How much of the Supabase project this library is using.
+pub fn supabase_usage(library: &Arc<Mutex<Library>>) -> tbv_core::Result<core_sync::supabase::Usage> {
+    let ((mut place, _), _) = tidy_places(library)?;
+    let outcome = match &mut place {
+        Cloud::Supabase(client) => client.usage(),
+        Cloud::Files(_) => Err(Error::Unsuitable("This library doesn't sync with Supabase.".into())),
+    };
+    if let Ok(l) = library.lock() {
+        keep_session(&l, &place, &outcome);
+    }
+    outcome
+}

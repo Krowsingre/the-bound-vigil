@@ -200,7 +200,7 @@ fn discovery(state: &State) {
             Err(_) => {
                 // Now and then, in case a device missed the first announcement.
                 quiet += 1;
-                if quiet % 30 == 0 {
+                if quiet.is_multiple_of(30) {
                     let _ = socket.send_to(&message(true), to);
                 }
             }

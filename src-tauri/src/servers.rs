@@ -49,6 +49,9 @@ pub struct ServerQueueView {
     pub version: u64,
 }
 
+/// Open connections kept while someone browses, by server, with when each was last used.
+type Browsing = HashMap<String, (Box<dyn Connection>, Instant)>;
+
 #[derive(Default)]
 pub struct ServerImports {
     queue: Mutex<Queue>,
@@ -57,7 +60,7 @@ pub struct ServerImports {
     problem: Mutex<Option<String>>,
     version: AtomicU64,
     told: Mutex<Option<Instant>>,
-    browsing: Mutex<HashMap<String, (Box<dyn Connection>, Instant)>>,
+    browsing: Mutex<Browsing>,
 }
 
 /// Puts a problem in words for the page. A server TBV hasn't met before is

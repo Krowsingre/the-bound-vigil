@@ -167,6 +167,17 @@ export interface TidyPlan {
   bytes: number;
 }
 
+/** How much of a Supabase project TBV is using. */
+export interface SupabaseUsage {
+  fileBytes: number;
+  files: number;
+  bookBytes: number;
+  audioBytes: number;
+  pictureBytes: number;
+  /** Unknown until the setup script is run again. */
+  databaseBytes: number | null;
+}
+
 export interface TidyReport {
   removed: number;
   /** Of those, sent to the other place first. */
