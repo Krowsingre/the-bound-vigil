@@ -670,6 +670,7 @@ async fn sync_sign_out(app: tauri::AppHandle, state: State<'_, AppLibrary>) -> C
     let library = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
         sync::sign_out(&library)?;
+        audio::forget(None);
         announce(&app, &library);
         Ok::<_, tbv_core::Error>(())
     })
@@ -738,6 +739,7 @@ async fn set_sync_provider(
 ) -> CommandResult<bool> {
     let joined = blocking(state, move |library| {
         let joined = sync::choose(library, provider)?;
+        audio::forget(None);
         announce(&app, library);
         Ok(joined)
     })
@@ -757,6 +759,7 @@ async fn set_also_sync(
 ) -> CommandResult<bool> {
     let joined = blocking(state, move |library| {
         let joined = sync::choose_also(library, provider)?;
+        audio::forget(None);
         announce(&app, library);
         Ok(joined)
     })
