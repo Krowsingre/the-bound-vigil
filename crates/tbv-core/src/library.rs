@@ -330,6 +330,21 @@ const MIGRATIONS: &[&str] = &[
         updated_at TEXT NOT NULL
     );
     "#,
+    // v13: the books of a series as looked up online, per series (its
+    // name in lower case), for showing what's missing. `hidden` holds the
+    // missing books the person doesn't want shown, `denied` the books in
+    // the library they said aren't in it. Synced.
+    r#"
+    CREATE TABLE series_lists (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        books TEXT NOT NULL DEFAULT '[]',
+        hidden TEXT NOT NULL DEFAULT '[]',
+        denied TEXT NOT NULL DEFAULT '[]',
+        checked_at TEXT,
+        updated_at TEXT NOT NULL
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

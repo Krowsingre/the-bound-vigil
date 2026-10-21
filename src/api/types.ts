@@ -415,6 +415,44 @@ export interface DuplicateGroup {
   books: (BookPreview & { fileSize: number; notes: number })[];
 }
 
+/** One book of a series, as an online source lists it. */
+export interface SeriesEntry {
+  title: string;
+  /** Its number in the series. Novellas can be 2.5. */
+  position: number | null;
+  authors: string[];
+  coverUrl: string | null;
+  source: string;
+}
+
+/** A book of the series the library doesn't have. */
+export interface MissingBook extends SeriesEntry {
+  key: string;
+  /** Hidden by the person. */
+  hidden: boolean;
+}
+
+/** A book in the library that is probably in the series. */
+export interface SeriesMatch {
+  book: BookPreview;
+  /** The number it would get. */
+  position: number | null;
+  /** Why TBV thinks it fits, in words. */
+  reason: string;
+}
+
+export interface SeriesReview {
+  name: string;
+  /** When the list was last looked up online. Null: never. */
+  checkedAt: string | null;
+  /** How many books the online list has. */
+  listed: number;
+  /** How many books of the series the library has. */
+  owned: number;
+  missing: MissingBook[];
+  matches: SeriesMatch[];
+}
+
 export interface Profile {
   avatarPath: string | null;
 }

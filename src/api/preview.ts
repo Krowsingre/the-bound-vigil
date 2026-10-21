@@ -27,6 +27,8 @@ import type {
   KindleEmailView,
   ImportItem,
   Profile,
+  SeriesEntry,
+  SeriesReview,
   SyncOverview,
   SyncActivity,
 } from "./types";
@@ -196,6 +198,7 @@ let books: BookPreview[] = [
   book("A Study in Scarlet", "Arthur Conan Doyle", { series: "Sherlock Holmes", seriesIndex: 1, status: "read", totalProgression: 1, rating: 5 }),
   book("The Sign of the Four", "Arthur Conan Doyle", { series: "Sherlock Holmes", seriesIndex: 2, ...reading(0.33, 9) }),
   book("The Hound of the Baskervilles", "Arthur Conan Doyle", { series: "Sherlock Holmes", seriesIndex: 5 }),
+  book("The Valley of Fear", "Arthur Conan Doyle"),
   book("The Warden", "Anthony Trollope", { series: "Chronicles of Barsetshire", seriesIndex: 1 }),
   book("Barchester Towers", "Anthony Trollope", { series: "Chronicles of Barsetshire", seriesIndex: 2, wantToRead: true }),
   book("Dracula", "Bram Stoker", { favorite: true, status: "read", totalProgression: 1, rating: 5, tags: ["Gothic", "Horror"], genres: ["Horror", "Gothic fiction"] }),
@@ -449,9 +452,52 @@ export function previewApi(): Api {
     if (!b) throw new Error("This book is no longer in your library.");
     return b;
   };
+  // Find missing books: a made-up online list for each series asked about.
+  const seriesLists = new Map<string, { list: SeriesEntry[]; hidden: Set<string>; denied: Set<string> }>();
+  const seriesReviewOf = (name: string): SeriesReview => {
+    const id = name.toLowerCase();
+    const inside = library().filter((b) => b.series?.toLowerCase() === id);
+    const saved = seriesLists.get(id);
+    if (!saved) return { name, checkedAt: null, listed: 0, owned: inside.length, missing: [], matches: [] };
+    const missing = saved.list
+      .filter((e) => !inside.some((b) => b.seriesIndex === e.position || b.title.toLowerCase() === e.title.toLowerCase()))
+      .map((e) => ({ ...e, key: String(e.position), hidden: saved.hidden.has(String(e.position)) }));
+    const matches = missing.flatMap((m) =>
+      m.hidden
+        ? []
+        : library()
+            .filter((b) => !saved.denied.has(b.id) && b.series?.toLowerCase() !== id && b.title.toLowerCase() === m.title.toLowerCase())
+            .map((book) => ({ book, position: m.position, reason: "The same title and author, with no series in its details" })),
+    );
+    return { name, checkedAt: new Date().toISOString(), listed: saved.list.length, owned: inside.length, missing, matches };
+  };
+  const HOLMES = ["A Study in Scarlet", "The Sign of the Four", "The Adventures of Sherlock Holmes", "The Memoirs of Sherlock Holmes", "The Hound of the Baskervilles", "The Return of Sherlock Holmes", "The Valley of Fear", "His Last Bow", "The Case-Book of Sherlock Holmes"];
+
   return {
     kind: "preview",
     ...previewMove(params),
+    findSeriesBooks: async (name, author) => {
+      await new Promise((r) => setTimeout(r, 600));
+      const titles = name.toLowerCase() === "sherlock holmes" ? HOLMES : Array.from({ length: 5 }, (_, i) => `${name}, book ${i + 1}`);
+      const list = titles.map((title, i) => ({ title, position: i + 1, authors: [author], coverUrl: null, source: "audible" }));
+      const old = seriesLists.get(name.toLowerCase());
+      seriesLists.set(name.toLowerCase(), { list, hidden: old?.hidden ?? new Set(), denied: old?.denied ?? new Set() });
+      return seriesReviewOf(name);
+    },
+    seriesReview: async (name) => seriesReviewOf(name),
+    hideSeriesBook: async (name, key, hidden) => {
+      const saved = seriesLists.get(name.toLowerCase());
+      if (saved) hidden ? saved.hidden.add(key) : saved.hidden.delete(key);
+      return seriesReviewOf(name);
+    },
+    approveSeriesMatches: async (name, approvals) => {
+      for (const a of approvals) update(a.bookId, { series: name, seriesIndex: a.position });
+      return seriesReviewOf(name);
+    },
+    denySeriesMatches: async (name, bookIds) => {
+      bookIds.forEach((id) => seriesLists.get(name.toLowerCase())?.denied.add(id));
+      return seriesReviewOf(name);
+    },
     planTidyCloud: async () => ({
       keep: 1,
       remove: Array.from({ length: 1290 }, (_, i) => `books/${i}.epub`),

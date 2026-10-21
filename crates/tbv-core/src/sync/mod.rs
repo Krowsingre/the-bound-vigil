@@ -115,6 +115,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "series",
+        table: "series_lists",
+        keys: &["id"],
+        cols: &["name", "books", "hidden", "denied", "checked_at", "updated_at"],
+        category: Category::Metadata,
+        creates: true,
+    },
+    Kind {
         name: "collection",
         table: "collections",
         keys: &["id"],
@@ -1282,6 +1290,7 @@ impl Library {
             "annotation" => format!("A note or highlight{}", book(data.and_then(|d| d.get("book_id")))?),
             "book_tag" => format!("The tag {}{}", key.get(1).and_then(Value::as_str).unwrap_or_default(), book(key.first())?),
             "profile" => "Your profile picture".into(),
+            "series" => format!("The missing books of {}", field("name").unwrap_or_default()),
             _ => format!("The note {}", field("title").filter(|t| !t.is_empty()).unwrap_or_else(|| "without a title".into())),
         })
     }
@@ -1549,6 +1558,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "collection_book" => "In the collection".into(),
         "book_tag" => if data.get("removed_at").is_some_and(|v| !v.is_null()) { "Tag taken off".into() } else { "Tagged".into() },
         "profile" => if text("avatar").is_empty() { "No picture".into() } else { "A picture".into() },
+        "series" => short(text("name")),
         "annotation" => short(if text("note").is_empty() { text("excerpt") } else { text("note") }),
         _ => short(text("body")),
     }

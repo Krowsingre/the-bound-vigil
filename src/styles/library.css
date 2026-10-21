@@ -561,3 +561,114 @@ button.tag-chip-add:hover {
 .duplicate-facts {
   font-size: 12.5px;
 }
+
+/* A series (Show series): what's missing, and books that might belong. */
+.series-panel {
+  display: grid;
+  gap: 14px;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.series-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.series-head > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.series-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.series-sub-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.series-matches ul,
+.missing-row {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.series-matches ul {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.series-done {
+  margin: 0;
+}
+
+.missing-row {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.missing-card {
+  display: grid;
+  gap: 4px;
+  flex: 0 0 auto;
+  width: 112px;
+}
+
+.missing-cover {
+  position: relative;
+  opacity: 0.55;
+  filter: grayscale(0.7);
+}
+
+.missing-card.is-hidden {
+  opacity: 0.5;
+}
+
+.missing-blank {
+  background: var(--surface-sunk);
+  color: var(--text-muted);
+}
+
+.missing-badge {
+  position: absolute;
+  z-index: 2;
+  left: 6px;
+  bottom: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.missing-title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.missing-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}

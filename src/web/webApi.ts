@@ -1010,6 +1010,20 @@ export async function webApi(): Promise<Api> {
       await library.remove([...mine("metadata_overrides", "override"), ...(alsoFetched ? mine("metadata_fetched", "fetched") : [])]);
     },
     searchDetailsMore: async () => [],
+    // Finding a series' missing books happens in the desktop app.
+    findSeriesBooks: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    seriesReview: async (name) => ({ name, checkedAt: null, listed: 0, owned: 0, missing: [], matches: [] }),
+    hideSeriesBook: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    approveSeriesMatches: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    denySeriesMatches: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
     saveFetched: async (bookId, source, values) => {
       find(bookId);
       const at = now();

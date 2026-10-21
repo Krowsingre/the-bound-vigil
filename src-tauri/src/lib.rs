@@ -1250,6 +1250,56 @@ async fn search_details_more(
     .map_err(|e| e.to_string())
 }
 
+/// Looks the books of a series up online (Hardcover when it's connected,
+/// then Audible) and keeps the list, for showing what's missing.
+#[tauri::command]
+async fn find_series_books(state: State<'_, AppLibrary>, name: String, author: String) -> CommandResult<tbv_core::series::SeriesReview> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let hardcover = hardcover::series(&library, &name);
+        let audible = tbv_core::series::search_audible_series(&name, &author);
+        let problem = match (&hardcover, &audible) {
+            (Err(e), Err(_)) => Some(e.to_string()),
+            _ => None,
+        };
+        let lists = vec![hardcover.ok().flatten().unwrap_or_default(), audible.unwrap_or_default()];
+        let books = tbv_core::series::merge(lists);
+        if books.is_empty() {
+            return Err(tbv_core::Error::Unsuitable(
+                problem.unwrap_or_else(|| format!("No list of the books in {name} was found online.")),
+            ));
+        }
+        hardcover::lock(&library)?.save_series_found(&name, books)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn series_review(state: State<'_, AppLibrary>, name: String) -> CommandResult<tbv_core::series::SeriesReview> {
+    with_library(state, move |library| library.series_review(&name)).await
+}
+
+#[tauri::command]
+async fn hide_series_book(state: State<'_, AppLibrary>, name: String, key: String, hidden: bool) -> CommandResult<tbv_core::series::SeriesReview> {
+    with_library(state, move |library| library.hide_series_book(&name, &key, hidden)).await
+}
+
+#[tauri::command]
+async fn approve_series_matches(
+    state: State<'_, AppLibrary>,
+    name: String,
+    approvals: Vec<tbv_core::series::Approval>,
+) -> CommandResult<tbv_core::series::SeriesReview> {
+    with_library(state, move |library| library.approve_series_matches(&name, &approvals)).await
+}
+
+#[tauri::command]
+async fn deny_series_matches(state: State<'_, AppLibrary>, name: String, book_ids: Vec<String>) -> CommandResult<tbv_core::series::SeriesReview> {
+    with_library(state, move |library| library.deny_series_matches(&name, &book_ids)).await
+}
+
 fn localsend_inbox(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("LocalSend inbox"))
 }
@@ -1340,6 +1390,11 @@ pub fn run() {
             remove_from_library,
             save_copies,
             find_duplicates,
+            find_series_books,
+            series_review,
+            hide_series_book,
+            approve_series_matches,
+            deny_series_matches,
             dismiss_duplicates,
             book_details,
             edit_details,

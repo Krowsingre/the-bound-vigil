@@ -23,6 +23,7 @@ import type {
   CollectionsOverview,
   DetailChange,
   DuplicateGroup,
+  SeriesReview,
   CopiedToEreader,
   Ereader,
   GoodreadsImport,
@@ -230,6 +231,15 @@ export interface Api {
   saveFetched(bookId: string, source: "google" | "openlibrary" | "audible" | "hardcover", values: Record<string, string>): Promise<void>;
   /** Looks a book up in Audible's catalogue, or on Hardcover when it's connected (desktop app). */
   searchDetailsMore(source: "audible" | "hardcover", title: string, author: string): Promise<Found[]>;
+  /** Looks a series' books up online (Hardcover when connected, then Audible) and keeps the list. Desktop app. */
+  findSeriesBooks(name: string, author: string): Promise<SeriesReview>;
+  /** What's missing from a series, and books that probably belong to it. */
+  seriesReview(name: string): Promise<SeriesReview>;
+  hideSeriesBook(name: string, key: string, hidden: boolean): Promise<SeriesReview>;
+  /** Puts the books in the series with their numbers, as details edits. */
+  approveSeriesMatches(name: string, approvals: { bookId: string; position: number | null }[]): Promise<SeriesReview>;
+  /** Remembers the books aren't in the series. */
+  denySeriesMatches(name: string, bookIds: string[]): Promise<SeriesReview>;
   /** Remembers that a group isn't duplicates, so it isn't shown again. */
   dismissDuplicates(key: string): Promise<void>;
   /** E-readers plugged in by cable now. */
@@ -593,6 +603,11 @@ function appApi(): Api {
     clearServerFinished: async () => (await core).invoke("clear_server_finished"),
     setServerConnections: async (count) => (await core).invoke("set_server_connections", { count }),
     searchDetailsMore: async (source, title, author) => (await core).invoke<Found[]>("search_details_more", { source, title, author }),
+    findSeriesBooks: async (name, author) => (await core).invoke<SeriesReview>("find_series_books", { name, author }),
+    seriesReview: async (name) => (await core).invoke<SeriesReview>("series_review", { name }),
+    hideSeriesBook: async (name, key, hidden) => (await core).invoke<SeriesReview>("hide_series_book", { name, key, hidden }),
+    approveSeriesMatches: async (name, approvals) => (await core).invoke<SeriesReview>("approve_series_matches", { name, approvals }),
+    denySeriesMatches: async (name, bookIds) => (await core).invoke<SeriesReview>("deny_series_matches", { name, bookIds }),
     localSendStatus: async () => (await core).invoke<LocalSendStatus>("localsend_status"),
     setLocalSend: async (on) => (await core).invoke<LocalSendStatus>("set_localsend", { on }),
     answerLocalSend: async (session, accept) => (await core).invoke("answer_localsend", { session, accept }),

@@ -5,6 +5,7 @@ import { askEditDetails } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
+import { SeriesPanel } from "./SeriesPanel";
 import { useToast } from "../components/Toast";
 import { makeBookActions } from "../home/bookActions";
 import { Stat } from "../home/ReadingActivity";
@@ -451,6 +452,15 @@ export function Library({
       )}
 
       {view.tab !== "collections" && intro}
+
+      {!isWeb && view.tab !== "collections" && view.series.length === 1 && (
+        <SeriesPanel
+          name={view.series[0]}
+          author={page?.books[0]?.authors[0] ?? ""}
+          refreshKey={refreshKey + reload}
+          onChanged={() => setReload((n) => n + 1)}
+        />
+      )}
 
       <div className="library-body">{body}</div>
     </div>
