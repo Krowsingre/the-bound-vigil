@@ -70,7 +70,7 @@ export function App() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
-  const { refreshAdaptive } = useAppSettings();
+  const { refreshAdaptive, togglePrivacy } = useAppSettings();
 
   const navigate = useCallback((r: Route) => {
     // The sidebar's Collections always starts at the overview.
@@ -241,6 +241,12 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Privacy mode works everywhere, the reader included.
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "h") {
+        e.preventDefault();
+        togglePrivacy();
+        return;
+      }
       if (!(e.ctrlKey || e.metaKey) || e.altKey || reading) return;
       const n = Number(e.key);
       if (e.key === "\\") toggleSidebar();
@@ -252,7 +258,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleSidebar, importBooks, reading, navigate]);
+  }, [toggleSidebar, importBooks, reading, navigate, togglePrivacy]);
 
   const onHomeLoaded = useCallback((home: HomeViewModel) => setSync(home.sync), []);
   const openBook = useCallback((bookId: string, at?: string) => setReading({ bookId, at }), []);

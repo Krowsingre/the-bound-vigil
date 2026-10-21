@@ -24,7 +24,7 @@ export function CollectionPicture({
   return (
     <span className={`collection-picture ${className}`} data-tone={hashOf(collection.id) % 4}>
       {src ? (
-        <img src={src} alt="" draggable={false} />
+        <img className={collection.picture?.startsWith("gallery:") ? undefined : "private-picture"} src={src} alt="" draggable={false} />
       ) : (
         <span className="collection-picture-covers">
           {collection.covers.slice(0, 3).map((c) => (

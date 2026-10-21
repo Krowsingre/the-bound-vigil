@@ -1,0 +1,60 @@
+/* Privacy mode (Settings › Appearance): every cover gives way to a plain tile.
+   The covers stay loaded underneath, so hiding and showing them is instant. */
+
+.cover-private {
+  display: none;
+}
+
+:root[data-privacy] .cover-private {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  padding: 14% 10%;
+  background: #3a3f45;
+  color: var(--ash-pale);
+  text-align: center;
+  box-shadow: inset 6px 0 0 rgb(0 0 0 / 0.18);
+}
+
+:root[data-privacy] .cover > img,
+:root[data-privacy] .cover-generated,
+:root[data-privacy] .tile-art img,
+:root[data-privacy] .private-picture,
+:root[data-privacy] .fetch-cover,
+:root[data-privacy-avatar] .sync-avatar img {
+  visibility: hidden;
+}
+
+/* Blank tiles keep no words at all. */
+:root[data-privacy="blank"] .cover-private > span {
+  visibility: hidden;
+}
+
+/* Badges (in the cloud, has its audiobook…) stay readable above the tile. */
+:root[data-privacy] .cover > span {
+  z-index: 2;
+}
+
+.cover-s .cover-private {
+  font-size: 7px;
+  padding: 10% 6%;
+}
+
+.cover-m .cover-private {
+  font-size: 14px;
+}
+
+.cover-l .cover-private {
+  font-size: 22px;
+}
+
+:root[data-privacy-avatar] .sync-avatar {
+  border-radius: 50%;
+  background: var(--surface-sunk);
+}

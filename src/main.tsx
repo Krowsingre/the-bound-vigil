@@ -24,10 +24,15 @@ import "./styles/details.css";
 import "./styles/audio.css";
 import "./styles/ereaders.css";
 import "./styles/web.css";
+import "./styles/privacy.css";
 import { isApp, isWeb } from "./api";
 import { WebGate } from "./web/WebConnect";
 import { runBeforeQuit } from "./lib/beforeQuit";
 import { PlayerProvider } from "./audio/player";
+import { restorePrivacy } from "./settings/appSettings";
+
+// Covers stay hidden from the very first moment if privacy mode was on.
+restorePrivacy();
 
 // Closing the window another way (Alt+F4, the taskbar) asks the page to
 // finish saving, then quit.

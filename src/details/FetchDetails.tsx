@@ -172,7 +172,7 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
                 results?.map((r) => (
                   <button key={r.id} type="button" className="fetch-result" onClick={() => void choose(r)}>
                     <span className="fetch-thumb">
-                      {r.coverUrl ? <img src={r.coverUrl} alt="" loading="lazy" /> : <Icon name="image" size={18} />}
+                      {r.coverUrl ? <img className="private-picture" src={r.coverUrl} alt="" loading="lazy" /> : <Icon name="image" size={18} />}
                     </span>
                     <span className="fetch-result-text">
                       <strong>{r.title}</strong>

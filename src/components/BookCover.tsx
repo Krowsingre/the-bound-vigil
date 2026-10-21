@@ -15,6 +15,11 @@ export function BookCover({ book, size = "m" }: { book: CoverBook; size?: "s" | 
   const src = book.coverPath && !failed ? api.coverUrl(book.coverPath) : "";
   return (
     <div className={`cover cover-${size}${book.format && isAudio(book.format) ? " cover-audio" : ""}`}>
+      {/* Privacy mode shows this instead of the cover; the cover stays loaded underneath. */}
+      <div className="cover-private" aria-hidden>
+        <span className="cover-title">{book.title}</span>
+        <span className="cover-author">{authorLine(book.authors)}</span>
+      </div>
       {src ? (
         <img src={src} alt="" draggable={false} onError={() => setFailed(true)} />
       ) : (

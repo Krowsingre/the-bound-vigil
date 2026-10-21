@@ -4,7 +4,16 @@ import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import type { Layout } from "../library/libraryView";
 import { FONTS, HIGHLIGHT_COLORS, parseSettings, SETTINGS_KEY, SIZE_RANGE, type ReaderSettings, type ReadingFont } from "../reader/settings";
-import { useAppSettings, type AdaptiveBase, type InterfaceFont, type InterfaceScale, type SurfaceStyle, type ThemeChoice } from "./appSettings";
+import {
+  PRIVACY_SHORTCUT,
+  useAppSettings,
+  type AdaptiveBase,
+  type InterfaceFont,
+  type InterfaceScale,
+  type PrivacyStyle,
+  type SurfaceStyle,
+  type ThemeChoice,
+} from "./appSettings";
 import { Row, Section, Segmented, Select, Toggle } from "./controls";
 
 /** The reader's own settings, shared with the Aa panel in the reader. */
@@ -44,7 +53,7 @@ export function AppearanceTab({
   sidebarShown: boolean;
   onSidebarShown: (shown: boolean) => void;
 }) {
-  const { settings, change, adaptive, adaptiveBook, refreshAdaptive } = useAppSettings();
+  const { settings, change, adaptive, adaptiveBook, refreshAdaptive, togglePrivacy } = useAppSettings();
   const [reader, changeReader] = useReaderSettings();
   const adaptiveOn = settings.theme === "adaptive";
 
@@ -237,6 +246,40 @@ export function AppearanceTab({
             </div>
           </Row>
         )}
+      </Section>
+
+      <Section
+        id="privacy"
+        title="Privacy mode"
+        lede={`Hides every book cover at once, and brings them back just as fast. Press ${PRIVACY_SHORTCUT} anywhere, or use the menu under your sync circle.`}
+      >
+        <div className="toggle-list">
+          <Toggle
+            label="Hide covers now"
+            hint="Stays on until you turn it off, even if you close TBV."
+            checked={settings.privacy.on}
+            onChange={() => togglePrivacy()}
+          />
+        </div>
+        <Row label="Hidden covers show" hint="What appears in place of each cover.">
+          <Segmented<PrivacyStyle>
+            label="Hidden covers show"
+            value={settings.privacy.style}
+            options={[
+              { value: "titles", label: "The title" },
+              { value: "blank", label: "Nothing" },
+            ]}
+            onChange={(style) => change({ privacy: { ...settings.privacy, style } })}
+          />
+        </Row>
+        <div className="toggle-list">
+          <Toggle
+            label="Hide my profile picture too"
+            hint="Collection pictures made from covers or your own images are always hidden. TBV's gallery paintings stay."
+            checked={settings.privacy.avatar}
+            onChange={(avatar) => change({ privacy: { ...settings.privacy, avatar } })}
+          />
+        </div>
       </Section>
 
       <Section id="colour" title="Colour & surface" lede="Finishing touches for comfort and taste.">

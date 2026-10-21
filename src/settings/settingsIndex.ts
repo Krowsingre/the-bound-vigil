@@ -139,6 +139,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "appearance",
+    section: "privacy",
+    label: "Privacy mode",
+    words: "privacy private hide covers blank discreet shortcut profile picture",
+  },
+  {
+    tab: "appearance",
     section: "colour",
     label: "Colour & surface",
     words: "surface paper matte clean progress bars contrast motion",
