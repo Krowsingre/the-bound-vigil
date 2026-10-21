@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Annotation } from "../api/types";
 import { annotationPage, counts, filterAnnotations, isHighlight, isNote } from "./annotations";
 import { contentsEntries, currentEntry, pageAtFraction, pageOf, pushJump } from "./pages";
-import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, readerCss, resolveTheme, SIZE_RANGE } from "./settings";
+import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, readerCss, resolveTheme, SIZE_RANGE, zoomStep } from "./settings";
 
 describe("fixed pages", () => {
   it("numbers pages from one and never past the end", () => {
@@ -114,5 +114,25 @@ describe("highlights and notes", () => {
     expect(annotationPage(list[2], 100)).toBe(42);
     expect(annotationPage(list[0], 100)).toBe(91);
     expect(annotationPage(ann({}), 100)).toBeNull();
+  });
+});
+
+describe("page zoom (PDFs and comics)", () => {
+  it("keeps a fit or a set size, and drops anything else", () => {
+    expect(parseSettings(JSON.stringify({ pageZoom: "fit-width" })).pageZoom).toBe("fit-width");
+    expect(parseSettings(JSON.stringify({ pageZoom: 1.234 })).pageZoom).toBe(1.23);
+    expect(parseSettings(JSON.stringify({ pageZoom: 40 })).pageZoom).toBe(5);
+    expect(parseSettings(JSON.stringify({ pageZoom: "huge" })).pageZoom).toBe("fit-page");
+    expect(parseSettings(JSON.stringify({ pageSpread: "two", pageFlow: "scrolled" }))).toMatchObject({ pageSpread: "two", pageFlow: "scrolled" });
+    expect(parseSettings(JSON.stringify({ pageSpread: "three" })).pageSpread).toBe("one");
+  });
+
+  it("steps from the size shown now to the next step", () => {
+    expect(zoomStep(0.62, 1)).toBe(0.75);
+    expect(zoomStep(0.62, -1)).toBe(0.5);
+    expect(zoomStep(1, 1)).toBe(1.25);
+    expect(zoomStep(1, -1)).toBe(0.75);
+    expect(zoomStep(5, 1)).toBe(5);
+    expect(zoomStep(0.25, -1)).toBe(0.25);
   });
 });

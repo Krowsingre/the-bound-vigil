@@ -46,11 +46,9 @@ export function sampleDocx(title: string, author: string): Blob {
 export function samplePdf(title: string, author: string): Blob {
   const pdfText = (s: string) => s.replace(/[\\()]/g, (c) => `\\${c}`);
   const lines = (p: string) => p.match(/.{1,60}(\s|$)/g)!.map((l) => l.trim());
-  const pages = [
-    [title, `by ${author}`],
-    lines(PARAGRAPHS[0]).concat("", lines(PARAGRAPHS[1])),
-    lines(PARAGRAPHS[2]).concat("", lines(PARAGRAPHS[3])),
-  ];
+  // Eight pages, enough to try two pages side by side and scrolling.
+  const para = (i: number) => lines(PARAGRAPHS[i % PARAGRAPHS.length]);
+  const pages = [[title, `by ${author}`], ...Array.from({ length: 7 }, (_, i) => para(i * 2).concat("", para(i * 2 + 1)))];
   const objects: string[] = [];
   const pageIds = pages.map((_, i) => 4 + i * 2);
   objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";

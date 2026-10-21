@@ -270,6 +270,23 @@
     font-size: 15px;
   }
 
+  /* PDFs and comics: page, slider, zoom and page turns in one row. */
+  .reader-bottom.has-zoom {
+    grid-template-columns: auto minmax(48px, 1fr) auto auto;
+    gap: 8px;
+    margin: 0 10px;
+  }
+
+  .reader-bottom.has-zoom .reader-bottom-percent,
+  .reader-bottom.has-zoom .reader-bottom-chapter {
+    display: none;
+  }
+
+  .reader-bottom .zoom-controls.is-compact .zoom-value {
+    min-width: 0;
+    padding: 0 6px;
+  }
+
   .reader-top .popover {
     position: fixed;
     top: calc(var(--header-h) + 4px);

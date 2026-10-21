@@ -13,10 +13,10 @@ import { drawPdfCover, readerSource, type ReaderSource } from "./formats";
 import { contentsEntries, currentEntry, pageOf, pushJump, type Jump } from "./pages";
 import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars";
 import { LeftPanel, RightPanel, type AnnotationHandlers, type RightTab } from "./ReaderPanels";
-import { NoteDialog, ReadAloudPlayer, SelectionToolbar, TextSettings } from "./ReaderPopovers";
+import { NoteDialog, PageSettings, ReadAloudPlayer, SelectionToolbar, TextSettings, ZoomControls } from "./ReaderPopovers";
 import { ReaderSearch } from "./ReaderSearch";
 import { useAppDark } from "../settings/appSettings";
-import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, resolveTheme, SETTINGS_KEY, type ReaderSettings } from "./settings";
+import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, resolveTheme, SETTINGS_KEY, zoomStep, type ReaderSettings } from "./settings";
 import { useReadAloud } from "./useReadAloud";
 import { useReadAlong } from "./useReadAlong";
 import { useReaderEngine, type TextSelection } from "./useReaderEngine";
@@ -79,6 +79,8 @@ export function Reader({
   const [panels, setPanels] = useState(readPanels);
   const [rightTab, setRightTab] = useState<RightTab>("notes");
   const [focus, setFocus] = useState(false);
+  // Phones: the search box is hidden in the top bar and opened from the menu.
+  const [phoneSearch, setPhoneSearch] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [jumps, setJumps] = useState<Jump[]>([]);
   const [selection, setSelection] = useState<TextSelection | null>(null);
@@ -148,6 +150,8 @@ export function Reader({
   const theme = resolveTheme(settings.theme, prefersDark);
   const colors = PAGE_COLORS[theme];
 
+  // Set below; the page engine reports zooming before that's defined.
+  const changeSettingsRef = useRef<(change: Partial<ReaderSettings>) => void>(() => {});
   const engine = useReaderEngine({
     host,
     file,
@@ -179,6 +183,7 @@ export function Reader({
         }
       },
       onKey: (e) => onKeyRef.current(e, true),
+      onZoom: (pageZoom) => changeSettingsRef.current({ pageZoom }),
     },
   });
 
@@ -274,6 +279,7 @@ export function Reader({
       void api.setSetting(SETTINGS_KEY, JSON.stringify(next)).catch(() => undefined);
       return next;
     });
+  changeSettingsRef.current = changeSettings;
 
   // Highlights, notes and bookmarks.
   const store = async (work: Promise<Annotation>) => {
@@ -364,7 +370,10 @@ export function Reader({
     if (!fromBook && isTyping(e.target) && e.key !== "Escape") return;
     const ctrl = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
-    if (ctrl && (key === "k" || key === "f")) {
+    if (ctrl && engine.fixed && (key === "=" || key === "+" || key === "-" || key === "0")) {
+      // Zoom for PDFs and comics, in place of the window's own zoom.
+      changeSettings({ pageZoom: key === "0" ? "fit-page" : zoomStep(engine.scale, key === "-" ? -1 : 1) });
+    } else if (ctrl && (key === "k" || key === "f")) {
       if (focus) setFocus(false);
       setTimeout(() => searchInput.current?.focus(), 0);
     } else if (ctrl && key === "b") toggleBookmark();
@@ -389,8 +398,9 @@ export function Reader({
     }
     else if (e.key === "ArrowLeft") turn(false);
     else if (e.key === "ArrowRight") turn(true);
-    else if (settings.flow === "paginated" && (e.key === "PageUp" || (e.key === " " && e.shiftKey))) turn(false);
-    else if (settings.flow === "paginated" && (e.key === "PageDown" || e.key === " ")) turn(true);
+    else if (engine.fixed && (e.key === "ArrowUp" || e.key === "ArrowDown")) engine.scrollStep(e.key === "ArrowUp" ? -1 : 1);
+    else if ((engine.fixed || settings.flow === "paginated") && (e.key === "PageUp" || (e.key === " " && e.shiftKey))) turn(false);
+    else if ((engine.fixed || settings.flow === "paginated") && (e.key === "PageDown" || e.key === " ")) turn(true);
     else return;
     e.preventDefault();
   };
@@ -428,6 +438,7 @@ export function Reader({
     );
 
   const menu: MenuEntry[] = [
+    ...(narrow ? [{ label: "Search in this book", icon: "search" as const, onSelect: () => setPhoneSearch(true) }] : []),
     { label: "Focus mode", icon: "focus", hint: "F", onSelect: () => setFocus(true) },
     { label: panels.left ? "Hide contents panel" : "Show contents panel", icon: "panelLeft", onSelect: () => pagePanels({ left: !panels.left }) },
     {
@@ -462,9 +473,15 @@ export function Reader({
         onHome={leave}
         search={<ReaderSearch ref={searchInput} run={engine.search} clear={engine.clearSearch} onGo={jumpTo} />}
         textSettings={
-          <Popover label="Text settings" trigger={<span className="aa">Aa</span>} className="text-settings-popover">
-            <TextSettings settings={settings} onChange={changeSettings} />
-          </Popover>
+          engine.fixed ? (
+            <Popover label="Page settings" trigger={<Icon name="sliders" size={20} />} className="text-settings-popover">
+              <PageSettings settings={settings} scale={engine.scale} onChange={changeSettings} />
+            </Popover>
+          ) : (
+            <Popover label="Text settings" trigger={<span className="aa">Aa</span>} className="text-settings-popover">
+              <TextSettings settings={settings} onChange={changeSettings} />
+            </Popover>
+          )
         }
         readAloud={
           <>
@@ -528,6 +545,14 @@ export function Reader({
           />
         )}
         <main className="reader-main">
+          {narrow && phoneSearch && !focus && (
+            <div className="reader-phone-search">
+              <ReaderSearch run={engine.search} clear={engine.clearSearch} onGo={jumpTo} autoFocus />
+              <button type="button" className="icon-btn" aria-label="Close search" onClick={() => { engine.clearSearch(); setPhoneSearch(false); }}>
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+          )}
           {jumps.length > 0 && !focus && <ReturnPill jump={jumps.at(-1)!} onReturn={goBack} onDismiss={() => setJumps([])} />}
           <div className="reader-host" ref={host} aria-busy={!engine.ready} />
           {!engine.ready && !engine.error && <p className="reader-loading">Opening the book…</p>}
@@ -549,6 +574,11 @@ export function Reader({
             onPrev={() => turn(false)}
             onNext={() => turn(true)}
             focus={focus}
+            zoom={
+              engine.fixed && engine.ready ? (
+                <ZoomControls compact zoom={settings.pageZoom} scale={engine.scale} onChange={(pageZoom) => changeSettings({ pageZoom })} />
+              ) : null
+            }
           />
         </main>
         {narrow && (showLeft || showRight) && (

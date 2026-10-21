@@ -21,6 +21,10 @@ export type ReadingFont = "lora" | "georgia" | "sans" | "echolume" | "publisher"
 export type ReadingFlow = "paginated" | "scrolled";
 export type ReadingTheme = "auto" | "light" | "paper" | "dark";
 export type ReadingWidth = "narrow" | "medium" | "wide";
+/** PDFs and comics: fit to the screen, or a set size (1 = the page's own size). */
+export type PageZoom = "fit-page" | "fit-width" | number;
+/** PDFs and comics: one page at a time, two side by side, or two when the window is wide. */
+export type PageSpread = "one" | "two" | "auto";
 
 export interface ReaderSettings {
   font: ReadingFont;
@@ -35,6 +39,10 @@ export interface ReaderSettings {
   voices: Record<string, string>;
   /** Read aloud speed, 1 being the voice's normal pace. */
   rate: number;
+  /** PDFs, comics and other books made of fixed pages. */
+  pageZoom: PageZoom;
+  pageSpread: PageSpread;
+  pageFlow: ReadingFlow;
 }
 
 export const SETTINGS_KEY = "reader.settings";
@@ -49,7 +57,26 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   justify: false,
   voices: {},
   rate: 1,
+  pageZoom: "fit-page",
+  pageSpread: "one",
+  pageFlow: "paginated",
 };
+
+/** Zoom steps for the + and − buttons, as multiples of the page's own size. */
+export const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5] as const;
+export const ZOOM_RANGE = { min: ZOOM_STEPS[0], max: ZOOM_STEPS[ZOOM_STEPS.length - 1] } as const;
+
+/** The next zoom step in or out from the scale shown now. */
+export function zoomStep(scale: number, direction: 1 | -1): number {
+  if (direction > 0) return ZOOM_STEPS.find((z) => z > scale * 1.01) ?? ZOOM_RANGE.max;
+  return [...ZOOM_STEPS].reverse().find((z) => z < scale * 0.99) ?? ZOOM_RANGE.min;
+}
+
+export function parseZoom(raw: unknown): PageZoom {
+  if (raw === "fit-page" || raw === "fit-width") return raw;
+  if (typeof raw === "number" && Number.isFinite(raw)) return clamp(Math.round(raw * 100) / 100, ZOOM_RANGE.min, ZOOM_RANGE.max);
+  return DEFAULT_SETTINGS.pageZoom;
+}
 
 export const SIZE_RANGE = { min: 14, max: 30, step: 1 } as const;
 export const LINE_HEIGHTS = [1.4, 1.6, 1.8, 2.0] as const;
@@ -88,6 +115,9 @@ export function parseSettings(json: string | null): ReaderSettings {
     justify: typeof raw.justify === "boolean" ? raw.justify : d.justify,
     voices: parseVoices(raw.voices),
     rate: typeof raw.rate === "number" && Number.isFinite(raw.rate) ? clamp(Math.round(raw.rate * 100) / 100, RATE_RANGE.min, RATE_RANGE.max) : d.rate,
+    pageZoom: parseZoom(raw.pageZoom),
+    pageSpread: oneOf(raw.pageSpread, ["one", "two", "auto"], d.pageSpread),
+    pageFlow: oneOf(raw.pageFlow, ["paginated", "scrolled"], d.pageFlow),
   };
 }
 
