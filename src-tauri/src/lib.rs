@@ -1431,6 +1431,13 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             let cache_dir = app.path().app_cache_dir()?;
             let library = Arc::new(Mutex::new(Library::open(LibraryPaths::new(&data_dir, &cache_dir))?));
+            // Audiobooks and ebooks already here find their other half.
+            let linking = library.clone();
+            std::thread::spawn(move || {
+                if let Ok(library) = linking.lock() {
+                    let _ = library.auto_link_audiobooks();
+                }
+            });
             app.manage(Arc::new(sync::SyncWorker::start(app.handle().clone(), library.clone())));
             app.manage(AppLibrary(library));
             app.manage(Arc::new(hardcover::Sends::default()));

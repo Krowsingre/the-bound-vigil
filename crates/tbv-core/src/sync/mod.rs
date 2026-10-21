@@ -1677,7 +1677,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         }
         "book" => short(text("title")),
         "override" | "fetched" => short(text("value")),
-        "audiobook" => if data.get("ebook_id").is_some_and(|v| !v.is_null()) { "Linked to its ebook".into() } else { "Chapters and narrators".into() },
+        "audiobook" => if data.get("ebook_id").and_then(|v| v.as_str()).is_some_and(|v| !v.is_empty()) { "Linked to its ebook".into() } else { "Chapters and narrators".into() },
         "collection" => short(text("name")),
         "collection_book" => "In the collection".into(),
         "book_tag" => if data.get("removed_at").is_some_and(|v| !v.is_null()) { "Tag taken off".into() } else { "Tagged".into() },
@@ -1827,6 +1827,11 @@ fn run_lanes(library: &Mutex<Library>, main: Option<&mut dyn Remote>, also: Opti
             }
             if let Some(outcome) = &also_outcome {
                 library.record_result(outcome, Lane::Also)?;
+            }
+            // Books from elsewhere may be the other half of an audiobook here.
+            let received = |o: &Option<Result<SyncReport>>| o.as_ref().is_some_and(|o| o.as_ref().is_ok_and(|r| r.received > 0));
+            if received(&main_outcome) || received(&also_outcome) {
+                let _ = library.auto_link_audiobooks();
             }
             let Some(main_outcome) = main_outcome else {
                 return also_outcome.unwrap_or_else(|| Ok(SyncReport::default()));

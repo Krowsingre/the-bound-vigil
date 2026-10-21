@@ -273,6 +273,10 @@ impl Imports {
         }
         // The last thread out tells the pages.
         if self.queue.lock().is_ok_and(|q| q.workers == 0) {
+            // New audiobooks and ebooks find their other half, once per batch.
+            if let Ok(library) = library.lock() {
+                let _ = library.auto_link_audiobooks();
+            }
             self.tell(app, true);
             let _ = app.emit("library-changed", ());
         }

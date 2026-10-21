@@ -779,6 +779,9 @@ impl crate::library::Library {
                 return Err(Error::Unsuitable("Choose an ebook to read along with.".into()));
             }
         }
+        // Unlinking by hand leaves an empty link, so it isn't linked again
+        // automatically (see `auto_link_audiobooks`).
+        let ebook_id = Some(ebook_id.unwrap_or(""));
         let changed = self.conn.execute(
             "UPDATE audiobooks SET ebook_id = ?2, updated_at = ?3 WHERE book_id = ?1 AND ebook_id IS NOT ?2",
             rusqlite::params![audiobook_id, ebook_id, crate::time::now_utc()],
@@ -790,6 +793,68 @@ impl crate::library::Library {
             return Err(Error::Unsuitable("That audiobook's details haven't arrived on this device yet.".into()));
         }
         Ok(())
+    }
+
+    /// Links each audiobook not linked yet to the ebook in the library with
+    /// the same title and author, when there's exactly one, so both show
+    /// they have the other and read-along works without choosing. Never
+    /// touches an audiobook whose link was set or removed by hand. Returns
+    /// how many were linked.
+    pub fn auto_link_audiobooks(&self) -> Result<usize> {
+        let unlinked: Vec<String> = {
+            let mut stmt = self.conn.prepare(
+                "SELECT ab.book_id FROM audiobooks ab JOIN books b ON b.id = ab.book_id
+                 WHERE ab.ebook_id IS NULL AND b.deleted_at IS NULL",
+            )?;
+            let rows = stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+            rows
+        };
+        if unlinked.is_empty() {
+            return Ok(0);
+        }
+        // Every book's title and first author as they compare, with its format.
+        let sql = format!(
+            "SELECT b.id, b.format, COALESCE(o_title.value, f_title.value, b.title), COALESCE(o_authors.value, f_authors.value, b.authors) {}",
+            crate::home::BOOK_FROM
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows: Vec<(String, String, String, String)> =
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.collect::<rusqlite::Result<_>>()?;
+        let key = |title: &str, authors: &str| {
+            let authors: Vec<String> = serde_json::from_str(authors).unwrap_or_default();
+            let author = authors.first().map(|a| crate::manage::title_key(a)).unwrap_or_default();
+            (crate::manage::title_key(title), author)
+        };
+        let mut ebooks: std::collections::HashMap<(String, String), Vec<(&str, &str)>> = std::collections::HashMap::new();
+        let mut audio: std::collections::HashMap<&str, (&str, (String, String))> = std::collections::HashMap::new();
+        for (id, format, title, authors) in &rows {
+            let k = key(title, authors);
+            if k.0.is_empty() || k.1.is_empty() {
+                continue;
+            }
+            if is_audio(format) {
+                audio.insert(id, (title, k));
+            } else if !crate::home::DOCUMENT_FORMATS.contains(&format.as_str()) {
+                ebooks.entry(k).or_default().push((id, title));
+            }
+        }
+        let mut linked = 0;
+        let now = crate::time::now_utc();
+        for id in &unlinked {
+            let Some((title, k)) = audio.get(id.as_str()) else { continue };
+            // "Book 2" never pairs with "Book 3", though their titles compare alike.
+            let matches: Vec<&str> = ebooks
+                .get(k)
+                .map(|list| list.iter().filter(|(_, t)| !crate::manage::numbered_apart(title, t)).map(|(e, _)| *e).collect())
+                .unwrap_or_default();
+            if let [ebook] = matches[..] {
+                linked += self.conn.execute(
+                    "UPDATE audiobooks SET ebook_id = ?2, updated_at = ?3 WHERE book_id = ?1 AND ebook_id IS NULL",
+                    rusqlite::params![id, ebook, now],
+                )?;
+            }
+        }
+        Ok(linked)
     }
 
     /// The audiobook linked to an ebook, if any, for the reader.
@@ -1049,6 +1114,14 @@ pub(crate) mod tests {
 
         let ebook_id = page(ItemKind::Books).books[0].id.clone();
         assert!(library.link_ebook(&audio_id, Some(&audio_id)).is_err(), "an audiobook can't read along with itself");
+        // Same title and author: linked without asking, and both covers say so.
+        assert_eq!(library.auto_link_audiobooks().unwrap(), 1);
+        assert_eq!(library.audiobook_for_ebook(&ebook_id).unwrap(), Some(audio_id.clone()));
+        assert!(page(ItemKind::Books).books[0].paired && page(ItemKind::Audiobooks).books[0].paired);
+        // Unlinked by hand: left alone from then on.
+        library.link_ebook(&audio_id, None).unwrap();
+        assert_eq!(library.auto_link_audiobooks().unwrap(), 0);
+        assert!(!page(ItemKind::Books).books[0].paired);
         library.link_ebook(&audio_id, Some(&ebook_id)).unwrap();
         assert_eq!(library.audiobook_for_ebook(&ebook_id).unwrap(), Some(audio_id.clone()));
         assert_eq!(library.audiobook(&audio_id).unwrap().ebook.map(|e| e.name), Some("Persuasion".into()));
