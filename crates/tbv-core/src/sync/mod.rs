@@ -1643,13 +1643,18 @@ impl Library {
     /// Books added on a phone whose file isn't on this computer yet. Ones
     /// that are here already are marked collected on the way.
     pub(crate) fn books_from_phone(&self) -> Result<Vec<String>> {
-        self.conn.execute(
-            "UPDATE books SET from_phone = 0 WHERE from_phone AND id IN (SELECT book_id FROM local_files WHERE path IS NOT NULL)",
-            [],
-        )?;
         let mut stmt = self.conn.prepare("SELECT id FROM books WHERE from_phone AND deleted_at IS NULL")?;
         let ids = stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<Vec<String>>>()?;
-        Ok(ids)
+        let mut waiting = Vec::new();
+        for id in ids {
+            // Already here (imported on this computer too): nothing to fetch.
+            if self.has_local_file(&id)? {
+                self.collected_from_phone(&id)?;
+            } else {
+                waiting.push(id);
+            }
+        }
+        Ok(waiting)
     }
 
     /// A book added on a phone is on this computer now.

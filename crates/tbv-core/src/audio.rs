@@ -822,7 +822,8 @@ impl crate::library::Library {
             stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.collect::<rusqlite::Result<_>>()?;
         let key = |title: &str, authors: &str| {
             let authors: Vec<String> = serde_json::from_str(authors).unwrap_or_default();
-            let author = authors.first().map(|a| crate::manage::title_key(a)).unwrap_or_default();
+            // "Stoker, Bram" and "Bram Stoker" alike.
+            let author = crate::manage::author_key(&authors);
             (crate::manage::title_key(title), author)
         };
         let mut ebooks: std::collections::HashMap<(String, String), Vec<(&str, &str)>> = std::collections::HashMap::new();
@@ -1080,7 +1081,7 @@ pub(crate) mod tests {
         fs::write(folder.join("Chapter 1.mp3"), silent_mp3(40, "Chapter 1", "Persuasion", "Jane Austen")).unwrap();
         fs::write(folder.join("Chapter 2.mp3"), silent_mp3(40, "Chapter 2", "Persuasion", "Jane Austen")).unwrap();
         fs::write(source.join("notes.nfo"), "not a book").unwrap();
-        crate::epub::tests::write_test_epub(&source.join("persuasion.epub"), "Persuasion", "Jane Austen", false);
+        crate::epub::tests::write_test_epub(&source.join("persuasion.epub"), "Persuasion", "Austen, Jane", false);
 
         let results = library.import_files(std::slice::from_ref(&source));
         assert_eq!(results.len(), 2, "the folder is one book, beside the ebook: {results:?}");
@@ -1114,7 +1115,7 @@ pub(crate) mod tests {
 
         let ebook_id = page(ItemKind::Books).books[0].id.clone();
         assert!(library.link_ebook(&audio_id, Some(&audio_id)).is_err(), "an audiobook can't read along with itself");
-        // Same title and author: linked without asking, and both covers say so.
+        // Same title and author ("Austen, Jane" on the ebook): linked without asking, and both covers say so.
         assert_eq!(library.auto_link_audiobooks().unwrap(), 1);
         assert_eq!(library.audiobook_for_ebook(&ebook_id).unwrap(), Some(audio_id.clone()));
         assert!(page(ItemKind::Books).books[0].paired && page(ItemKind::Audiobooks).books[0].paired);

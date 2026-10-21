@@ -250,7 +250,11 @@ export async function webApi(): Promise<Api> {
     const known = library.book(id);
     if (known) {
       // On the phone already as a book only in the cloud: this copy is kept.
-      if (!downloaded.has(hex) && !sync.bookFiles.has(hex)) await sync.sendBook(hex, format, file, null);
+      if (!downloaded.has(hex) && !sync.bookFiles.has(hex)) {
+        await sync.sendBook(hex, format, file, null);
+        await refreshDownloaded();
+      }
+      if (downloaded.has(hex)) await notePhoneHas(id, true);
       return { outcome: "alreadyInLibrary", path, bookId: id as BookId, title: known.title };
     }
     const details = await readDetails(file, format);

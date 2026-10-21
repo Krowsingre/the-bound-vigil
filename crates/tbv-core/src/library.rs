@@ -741,7 +741,7 @@ impl Library {
         Ok(path.flatten().is_some())
     }
 
-    fn has_local_file(&self, book_id: &BookId) -> Result<bool> {
+    pub(crate) fn has_local_file(&self, book_id: &BookId) -> Result<bool> {
         let path: Option<String> = self
             .conn
             .query_row(
