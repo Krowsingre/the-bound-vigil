@@ -31,6 +31,11 @@ export type ServerApi = Pick<
   | "clearServerFinished"
   | "setServerConnections"
   | "onServerQueue"
+  | "localSendStatus"
+  | "setLocalSend"
+  | "answerLocalSend"
+  | "onLocalSendOffer"
+  | "onLocalSendReceived"
   | "pickKeyFile"
 >;
 
@@ -54,6 +59,11 @@ export function serverStub(): ServerApi {
     clearServerFinished: async () => undefined,
     setServerConnections: async () => undefined,
     onServerQueue: () => () => undefined,
+    localSendStatus: async () => ({ enabled: false, running: false, alias: "The Bound Vigil", problem: null }),
+    setLocalSend: no,
+    answerLocalSend: async () => undefined,
+    onLocalSendOffer: () => () => undefined,
+    onLocalSendReceived: () => () => undefined,
     pickKeyFile: async () => null,
   };
 }

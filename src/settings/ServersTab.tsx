@@ -8,6 +8,7 @@ import type { RemoteEntry, ServerInput, ServerQueueView, ServerListing, ServerPr
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { formatBytes, Section, Segmented } from "./controls";
+import { LocalSendSection } from "./LocalSendSection";
 
 const PROTOCOLS: { value: ServerProtocol; label: string }[] = [
   { value: "sftp", label: "SFTP (SSH)" },
@@ -143,6 +144,8 @@ export function ServersTab() {
         )}
         <DownloadStatus />
       </Section>
+
+      <LocalSendSection />
 
       {browsing && (
         <BrowseDialog

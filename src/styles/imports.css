@@ -217,3 +217,21 @@
 .server-rows-more {
   margin-top: 12px;
 }
+
+/* Files offered over LocalSend */
+.localsend-files {
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  margin: 12px 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.localsend-files li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}

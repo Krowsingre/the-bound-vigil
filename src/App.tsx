@@ -18,6 +18,7 @@ import { Home } from "./home/Home";
 import { Imports, importCounts } from "./imports/Imports";
 import { NO_IMPORTS as NOTHING_IMPORTED } from "./imports/view";
 import { useServerQueue } from "./imports/serverQueue";
+import { LocalSendOffers } from "./imports/LocalSendOffer";
 import { SyncActivity } from "./sync/SyncActivity";
 import { importSummary } from "./lib/importSummary";
 import { Library } from "./library/Library";
@@ -446,6 +447,7 @@ export function App() {
           Imported {importCounts(imports).done} of {importCounts(imports).total} books <span className="import-progress-link">View</span>
         </button>
       )}
+      {!isWeb && <LocalSendOffers />}
       <PlayerBar onShowAudiobooks={() => navigate("audiobooks")} />
       <AddToCollectionHost onChanged={refresh} />
       <BookDialogsHost onChanged={refresh} />

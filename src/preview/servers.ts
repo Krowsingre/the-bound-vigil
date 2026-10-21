@@ -2,7 +2,17 @@
 // without one. `?servers` starts with it saved.
 
 import { NO_SERVER_QUEUE, type ServerApi } from "../api/serverStub";
-import type { QueuedServerFile, RemoteEntry, ServerView } from "../api/types";
+import type { LocalSendOffer, LocalSendStatus, QueuedServerFile, RemoteEntry, ServerView } from "../api/types";
+
+const PRETEND_OFFER: LocalSendOffer = {
+  session: "preview-offer",
+  from: "Wren's iPhone",
+  files: [
+    { id: "a", name: "Carmilla - Le Fanu.epub", size: 412_000, importable: true },
+    { id: "b", name: "Uncle Silas.m4b", size: 310_000_000, importable: true },
+    { id: "c", name: "IMG_2041.HEIC", size: 2_100_000, importable: false },
+  ],
+};
 
 /** What a server TBV hasn't met shows: an SFTP key, or an FTPS server's own certificate. */
 const PRETEND_FINGERPRINT = {
@@ -52,6 +62,9 @@ export function previewServers(): ServerApi {
   let version = 0;
   let nextId = 1;
   const listeners = new Set<() => void>();
+  let localSend: LocalSendStatus = { enabled: false, running: false, alias: "The Bound Vigil on PREVIEW", problem: null };
+  const offerListeners = new Set<(offer: LocalSendOffer) => void>();
+  const receivedListeners = new Set<(books: number) => void>();
   const tell = () => {
     version += 1;
     listeners.forEach((l) => l());
@@ -164,6 +177,24 @@ export function previewServers(): ServerApi {
     setServerConnections: async (count) => {
       connections = count;
       tell();
+    },
+    localSendStatus: async () => ({ ...localSend }),
+    setLocalSend: async (on) => {
+      localSend = { ...localSend, enabled: on, running: on };
+      // The preview pretends a phone offers two books a moment after it's switched on.
+      if (on) setTimeout(() => offerListeners.forEach((l) => l(PRETEND_OFFER)), 1500);
+      return { ...localSend };
+    },
+    answerLocalSend: async (_session, accept) => {
+      if (accept) setTimeout(() => receivedListeners.forEach((l) => l(2)), 800);
+    },
+    onLocalSendOffer: (listener) => {
+      offerListeners.add(listener);
+      return () => offerListeners.delete(listener);
+    },
+    onLocalSendReceived: (listener) => {
+      receivedListeners.add(listener);
+      return () => receivedListeners.delete(listener);
     },
     onServerQueue: (listener) => {
       listeners.add(listener);

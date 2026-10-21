@@ -14,6 +14,7 @@ pub mod hardcover;
 pub mod home;
 pub mod ids;
 pub mod library;
+pub mod localsend;
 pub mod details;
 pub mod manage;
 pub mod model;

@@ -5,6 +5,7 @@ mod activity;
 mod audio;
 mod hardcover;
 mod imports;
+mod localsend;
 mod moving;
 mod servers;
 mod sync;
@@ -1205,6 +1206,41 @@ async fn set_server_connections(
     .map_err(|e| e.to_string())?
 }
 
+fn localsend_inbox(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("LocalSend inbox"))
+}
+
+#[tauri::command]
+async fn localsend_status(state: State<'_, AppLibrary>, localsend: State<'_, Arc<localsend::LocalSend>>) -> CommandResult<localsend::LocalSendStatus> {
+    let (library, localsend) = (state.0.clone(), localsend.inner().clone());
+    tauri::async_runtime::spawn_blocking(move || localsend.status(&library)).await.map_err(|e| e.to_string())
+}
+
+/// Switches receiving from LocalSend on or off.
+#[tauri::command]
+async fn set_localsend(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    imports: State<'_, Arc<imports::Imports>>,
+    localsend: State<'_, Arc<localsend::LocalSend>>,
+    on: bool,
+) -> CommandResult<localsend::LocalSendStatus> {
+    let (library, imports, localsend) = (state.0.clone(), imports.inner().clone(), localsend.inner().clone());
+    let inbox = localsend_inbox(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        localsend.set(&app, &library, &imports, inbox, on).map_err(|e| e.to_string())?;
+        Ok(localsend.status(&library))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Accepts or turns down what someone is sending with LocalSend.
+#[tauri::command]
+fn answer_localsend(localsend: State<'_, Arc<localsend::LocalSend>>, session: String, accept: bool) {
+    localsend.answer(&session, accept);
+}
+
 /// Opens File Explorer at a file or folder TBV keeps.
 #[tauri::command]
 fn show_folder(path: String) -> CommandResult<()> {
@@ -1233,6 +1269,9 @@ pub fn run() {
             app.manage(server_imports.clone());
             let library = app.state::<AppLibrary>().0.clone();
             server_imports.resume(app.handle(), &library, &imports);
+            let receiving = Arc::new(localsend::LocalSend::default());
+            app.manage(receiving.clone());
+            receiving.start(app.handle(), &library, &imports, data_dir.join("LocalSend inbox"));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1355,6 +1394,9 @@ pub fn run() {
             cancel_server_queue,
             clear_server_finished,
             set_server_connections,
+            localsend_status,
+            set_localsend,
+            answer_localsend,
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
         // page gets a moment to save the reading position first; then ratings

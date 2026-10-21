@@ -762,6 +762,22 @@ export interface ServerChoice {
   size: number;
 }
 
+export interface LocalSendStatus {
+  enabled: boolean;
+  running: boolean;
+  /** How TBV shows in LocalSend's list of nearby devices. */
+  alias: string;
+  problem: string | null;
+}
+
+/** Files someone wants to send with LocalSend, waiting for an answer. */
+export interface LocalSendOffer {
+  session: string;
+  /** The sending device's name. */
+  from: string;
+  files: { id: string; name: string; size: number; importable: boolean }[];
+}
+
 /** One file from a server, from being chosen until its book is in the library. */
 export interface QueuedServerFile {
   id: number;
