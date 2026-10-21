@@ -345,6 +345,16 @@ const MIGRATIONS: &[&str] = &[
         updated_at TEXT NOT NULL
     );
     "#,
+    // v14: books and the phone (web version), synced. `phone_wanted`: sent
+    // to Supabase for the phone even when only chosen books go there.
+    // `phone_has`: downloaded on a phone, so tidying keeps its cloud copy.
+    // `from_phone`: added on a phone, so a computer fetches it and passes
+    // it on to its other places; cleared once a computer has it.
+    r#"
+    ALTER TABLE books ADD COLUMN phone_wanted INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE books ADD COLUMN phone_has INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE books ADD COLUMN from_phone INTEGER NOT NULL DEFAULT 0;
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
@@ -522,6 +532,9 @@ impl Library {
                      ON CONFLICT(book_id) DO UPDATE SET path = excluded.path, cover_path = excluded.cover_path",
                     params![book_id, stored_path, cover],
                 )?;
+                if self.added_on_phone(&book_id)? {
+                    self.take_details_from_file(&book_id, metadata.title.as_deref().unwrap_or(&title), &metadata)?;
+                }
             }
             return Ok(ImportResult::AlreadyInLibrary { path, book_id, title });
         }
@@ -563,6 +576,43 @@ impl Library {
             self.keep_audio_details(&book_id, audio)?;
         }
         Ok(ImportResult::Imported { path, book_id, title })
+    }
+
+    fn added_on_phone(&self, book_id: &BookId) -> Result<bool> {
+        Ok(self
+            .conn
+            .query_row("SELECT from_phone FROM books WHERE id = ?1", params![book_id], |r| r.get::<_, bool>(0))
+            .optional()?
+            .unwrap_or(false))
+    }
+
+    /// A phone only reads a book's title and author; the computer reads the
+    /// rest from the file once it has it. Details the phone found and this
+    /// file lacks are kept.
+    fn take_details_from_file(&mut self, book_id: &BookId, title: &str, metadata: &crate::epub::BookMetadata) -> Result<()> {
+        let authors = (!metadata.authors.is_empty()).then(|| serde_json::to_string(&metadata.authors)).transpose()?;
+        self.conn.execute(
+            "UPDATE books SET title = ?2, authors = COALESCE(?3, authors), synopsis = COALESCE(?4, synopsis),
+                publisher = COALESCE(?5, publisher), language = COALESCE(?6, language), series = COALESCE(?7, series),
+                series_index = COALESCE(?8, series_index), isbn = COALESCE(?9, isbn)
+             WHERE id = ?1",
+            params![
+                book_id,
+                title,
+                authors,
+                metadata.synopsis,
+                metadata.publisher,
+                metadata.language,
+                metadata.series,
+                metadata.series_index,
+                metadata.isbn,
+            ],
+        )?;
+        let _ = self.keep_file_details(book_id, &metadata.subjects, metadata.published.as_deref());
+        if let Some(audio) = &metadata.audio {
+            self.keep_audio_details(book_id, audio)?;
+        }
+        Ok(())
     }
 
     fn title_of(&self, book_id: &BookId) -> Result<Option<String>> {

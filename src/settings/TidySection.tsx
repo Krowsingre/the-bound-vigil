@@ -9,6 +9,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ProgressBar } from "../components/ProgressBar";
 import { useToast } from "../components/Toast";
 import { serviceName } from "./SyncFolderPanel";
+import { useAppSettings } from "./appSettings";
 import { Section } from "./controls";
 
 function size(bytes: number): string {
@@ -27,14 +28,16 @@ function placeName(view: ProviderView): string {
 }
 
 /** What the confirmation says, in plain words. */
-export function tidyText(plan: TidyPlan, other: string | null): string {
+export function tidyText(plan: TidyPlan, other: string | null, chosenOnly = false): string {
   const going = plan.remove.length + plan.copyFirst.length + plan.lose.length;
   const one = (n: number, single: string, many: string) => (n === 1 ? single : many);
   const covers = plan.covers.length;
   const room = plan.bytes ? ` (${size(plan.bytes)} in all)` : "";
   const parts = going
     ? [
-        `Supabase has ${books(going)} that ${one(going, "isn't", "aren't")} on this computer${room}. Their copies there are removed, so your phone shows only the books on this computer as ready to download.`,
+        chosenOnly
+          ? `Supabase has ${books(going)} that ${one(going, "wasn't", "weren't")} chosen for your phone${room}. Their copies there are removed, so your phone shows only the chosen books as ready to download. Books your phone has downloaded, or added, stay.`
+          : `Supabase has ${books(going)} that ${one(going, "isn't", "aren't")} on this computer${room}. Their copies there are removed, so your phone shows only the books on this computer as ready to download. Books your phone has downloaded, or added, stay.`,
       ]
     : [];
   if (covers)
@@ -55,6 +58,7 @@ export function tidyText(plan: TidyPlan, other: string | null): string {
 
 export function TidySection({ overview }: { overview: SyncOverview }) {
   const toast = useToast();
+  const { settings } = useAppSettings();
   const [plan, setPlan] = useState<TidyPlan | null>(null);
   const [checking, setChecking] = useState(false);
   const [progress, setProgress] = useState<TidyProgress | null>(null);
@@ -133,7 +137,7 @@ export function TidySection({ overview }: { overview: SyncOverview }) {
       {plan && (
         <ConfirmDialog
           title="Tidy up Supabase?"
-          body={tidyText(plan, other)}
+          body={tidyText(plan, other, settings.sync.phoneChosenOnly)}
           confirm={`Remove ${files(plan.remove.length + plan.copyFirst.length + plan.lose.length + plan.covers.length)}`}
           danger
           onCancel={() => setPlan(null)}

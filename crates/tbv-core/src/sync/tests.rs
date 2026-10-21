@@ -1414,6 +1414,80 @@ mod tidying {
         assert!(left[0].contains(crate::ids::book_id_hex(&dracula)));
     }
 
+    /// What the phone sends for a book: its record and whether it has it.
+    fn from_the_phone(supabase: &Short, id: &str, kind: &str, data: serde_json::Value) {
+        let Value::Object(data) = data else { unreachable!() };
+        let record = Record { kind: kind.into(), key: json!([id]).to_string(), data: Some(data), changed_at: now_utc() };
+        supabase.0.clone().push(&[record]).unwrap();
+    }
+
+    fn phone_has(id: &str, has: bool, added: bool) -> serde_json::Value {
+        json!({ "id": id, "phone_wanted": 0, "phone_has": has as i64, "from_phone": added as i64 })
+    }
+
+    #[test]
+    fn a_book_added_on_the_phone_comes_to_this_computer_and_on_to_icloud() {
+        let icloud = FakeRemote::default();
+        let supabase = Short::default();
+        let pc = Device::new();
+        pc.add_second_place();
+        pc.set_options(json!({ "bookFiles": true, "alsoBookFiles": true }));
+        // The phone sends the file first, then the book, read only for its file name.
+        let file = pc.dir_file("phone-upload.epub");
+        let id = crate::ids::book_id_for_file(&file).unwrap();
+        supabase.0.0.lock().unwrap().files.insert(book_path(&id), fs::read(&file).unwrap());
+        let book = json!({
+            "id": id, "title": "phone upload", "authors": "[]", "format": "epub", "file_size": 1, "synopsis": null,
+            "publisher": null, "language": null, "series": null, "series_index": null, "added_at": now_utc(),
+            "deleted_at": null, "isbn": null,
+        });
+        from_the_phone(&supabase, &id, "book", book);
+        from_the_phone(&supabase, &id, "book_phone", phone_has(&id, true, true));
+
+        let epoch = pc.lib().sync_epoch();
+        sync_both_since(&pc.library, &mut icloud.clone(), Some(&mut supabase.clone()), epoch).unwrap();
+        let seen = pc.lib().book(&id).unwrap().unwrap();
+        assert_eq!(seen.availability, Availability::Local);
+        assert_eq!(seen.title, "Elsewhere", "details are read from the file here");
+        assert_eq!(seen.authors, ["Someone"]);
+        assert!(files(&icloud).contains(&book_path(&id)), "copied on to the main place in the same run");
+        assert!(pc.lib().books_from_phone().unwrap().is_empty());
+
+        // The phone hears the better details, and that the computer has it.
+        tick();
+        sync_both_since(&pc.library, &mut icloud.clone(), Some(&mut supabase.clone()), epoch).unwrap();
+        let cloud = supabase.0.0.lock().unwrap();
+        let record = |kind: &str| cloud.records[&(kind.to_string(), json!([id]).to_string())].1.data.clone().unwrap();
+        assert_eq!(record("book")["title"], "Elsewhere");
+        assert_eq!(record("book_phone")["from_phone"], 0);
+        assert_eq!(record("book_phone")["phone_has"], 1);
+    }
+
+    #[test]
+    fn only_chosen_books_go_to_the_phone_and_tidying_keeps_what_the_phone_has() {
+        let supabase = Short::default();
+        let pc = Device::new();
+        // The file switches are off: chosen books go anyway.
+        pc.set_options(json!({ "bookFiles": false, "phoneChosenOnly": true }));
+        let dracula = pc.import("Dracula");
+        let carmilla = pc.import("Carmilla");
+        pc.lib().set_phone_wanted(std::slice::from_ref(&dracula), true).unwrap();
+        sync_once(&pc.library, &mut supabase.clone()).unwrap();
+        assert_eq!(files(&supabase.0), [book_path(&dracula)]);
+        assert!(pc.lib().book(&dracula).unwrap().unwrap().phone_wanted);
+
+        // Carmilla reached Supabase another way: tidying removes it, unless the phone has it.
+        let path: String = pc.lib().conn.query_row("SELECT path FROM local_files WHERE book_id = ?1", params![carmilla], |r| r.get(0)).unwrap();
+        let bytes = fs::read(path).unwrap();
+        supabase.0.0.lock().unwrap().files.insert(book_path(&carmilla), bytes);
+        let plan = plan_tidy(&pc.library, &mut supabase.clone(), None).unwrap();
+        assert_eq!(plan.remove, [book_path(&carmilla)]);
+        from_the_phone(&supabase, &carmilla, "book_phone", phone_has(&carmilla, true, false));
+        sync_once(&pc.library, &mut supabase.clone()).unwrap();
+        assert!(pc.lib().book(&carmilla).unwrap().unwrap().phone_has);
+        assert!(plan_tidy(&pc.library, &mut supabase.clone(), None).unwrap().is_empty());
+    }
+
     #[test]
     fn contents_are_listed_by_type_with_where_else_they_are_kept() {
         use crate::sync::contents::{list_contents, remove_contents};

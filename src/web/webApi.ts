@@ -27,6 +27,7 @@ import type {
   TagCount,
   AudioChapter,
   AudioPart,
+  ImportResult,
 } from "../api/types";
 import { matches, usable } from "../collections/rules";
 import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
@@ -39,7 +40,7 @@ import { WebSync } from "./sync";
 import { moveStub } from "../api/moveStub";
 import { serverStub } from "../api/serverStub";
 import { projectFromLink } from "./link";
-import { NO_IMPORTS } from "../imports/view";
+import { formatOf, PHONE_MAX_BYTES, PhoneImports, readDetails, sha256Hex, smallCover } from "./phoneImport";
 import { languageCode } from "../lib/language";
 
 type Row = { [column: string]: unknown };
@@ -213,6 +214,8 @@ export async function webApi(): Promise<Api> {
       durationMs: audioRow(b.id)?.duration_ms ?? null,
       narrators: listOf(edits?.get("narrators") ?? audioRow(b.id)?.narrators ?? null),
       paired: isPaired(b.id),
+      phoneWanted: !!b.phone_wanted,
+      phoneHas: !!b.phone_has,
     };
   };
 
@@ -230,6 +233,61 @@ export async function webApi(): Promise<Api> {
 
   const writeProgress = (id: string, change: Partial<BookRow>) => library.write("book_progress", { ...find(id), ...change });
   const writeShelves = (id: string, change: Partial<BookRow>) => library.write("book_shelves", { ...find(id), ...change });
+  /** Tells the computer whether this phone holds a book, so tidying Supabase keeps it. */
+  const notePhoneHas = async (id: string, has: boolean) => {
+    const b = library.book(id);
+    if (b && !!b.phone_has !== has) await library.write("book_phone", { ...b, phone_has: has ? 1 : 0 });
+  };
+  // ---- Adding books on the phone ----
+
+  const addFromPhone = async (file: File): Promise<ImportResult> => {
+    const path = file.webkitRelativePath || file.name;
+    const format = formatOf(file.name);
+    if (file.size > PHONE_MAX_BYTES)
+      return { outcome: "failed", path, reason: "Too big to add from the phone. Add it with TBV on the computer instead." };
+    const hex = await sha256Hex(await file.arrayBuffer());
+    const id = `sha256:${hex}`;
+    const known = library.book(id);
+    if (known) {
+      // On the phone already as a book only in the cloud: this copy is kept.
+      if (!downloaded.has(hex) && !sync.bookFiles.has(hex)) await sync.sendBook(hex, format, file, null);
+      return { outcome: "alreadyInLibrary", path, bookId: id as BookId, title: known.title };
+    }
+    const details = await readDetails(file, format);
+    const cover = details.cover ? await smallCover(details.cover) : null;
+    await sync.sendBook(hex, format, file, cover);
+    await refreshDownloaded();
+    const row: Row = {
+      id,
+      title: details.title,
+      authors: JSON.stringify(details.authors),
+      format,
+      file_size: file.size,
+      synopsis: null,
+      publisher: null,
+      language: details.language,
+      series: null,
+      series_index: null,
+      added_at: now(),
+      deleted_at: null,
+      isbn: null,
+      phone_wanted: 0,
+      phone_has: 1,
+      from_phone: 1,
+    };
+    // Sent only now the file is in Supabase, so the computer never looks for a file that isn't there.
+    await library.writeAll([
+      ["book", row],
+      ["book_phone", row],
+    ]);
+    return { outcome: "imported", path, bookId: id as BookId, title: details.title };
+  };
+  const phoneImports = new PhoneImports(addFromPhone);
+
+  // Books downloaded before the phone told the computer about them.
+  void (async () => {
+    for (const hex of downloaded) await notePhoneHas(`sha256:${hex}`, true);
+  })().catch(() => undefined);
 
   // ---- Collections ----
 
@@ -459,14 +517,12 @@ export async function webApi(): Promise<Api> {
         sync: sync.status(),
       };
     },
-    queueImports: async () => {
-      throw new Error(DESKTOP_ONLY);
-    },
-    importQueue: async () => NO_IMPORTS,
+    queueImports: async (paths) => phoneImports.queue(paths),
+    importQueue: async () => phoneImports.view(),
     takePdfCovers: async () => [],
-    cancelImports: async () => undefined,
-    clearFinishedImports: async () => undefined,
-    onImports: () => () => undefined,
+    cancelImports: async () => phoneImports.cancel(),
+    clearFinishedImports: async () => phoneImports.clearFinished(),
+    onImports: (listener) => phoneImports.subscribe(listener),
     syncActivity: async () => ({ running: false, startedAt: null, finishedAt: null, places: [], recent: [] }),
     onSyncActivity: (listener) => {
       let stopped = false;
@@ -486,6 +542,14 @@ export async function webApi(): Promise<Api> {
     getCollections: async () => previews(),
     setFavorite: async (bookId, favorite) => writeShelves(bookId, { favorite: favorite ? 1 : 0 }),
     setWantToRead: async (bookId, want) => writeShelves(bookId, { want_to_read: want ? 1 : 0 }),
+    setPhoneWanted: async (bookIds, wanted) => {
+      const changes: [string, Row][] = [];
+      for (const id of bookIds) {
+        const b = library.book(id);
+        if (b && !!b.phone_wanted !== wanted) changes.push(["book_phone", { ...b, phone_wanted: wanted ? 1 : 0 }]);
+      }
+      if (changes.length) await library.writeAll(changes);
+    },
     setRating: async (bookId, rating) => writeShelves(bookId, { rating: rating === null ? null : Math.min(5, Math.max(1, Math.round(rating))) }),
     importGoodreads: async () => {
       throw new Error(DESKTOP_ONLY);
@@ -526,8 +590,8 @@ export async function webApi(): Promise<Api> {
       await library.write("profile", { id: "me", avatar: null, updated_at: now() });
       return profile();
     },
-    pickBooks: async () => [],
-    pickFolder: async () => [],
+    pickBooks: () => phoneImports.pick(false),
+    pickFolder: () => phoneImports.pick(true),
     coverUrl: (path) => (/^(blob|data|https?):/.test(path) ? path : ""),
     openBook: async (bookId) => {
       const before = find(bookId);
@@ -544,6 +608,7 @@ export async function webApi(): Promise<Api> {
       const b = find(bookId);
       const blob = await sync.bookFile(b.id, b.format);
       await refreshDownloaded();
+      if (downloaded.has(b.id.replace(/^sha256:/, ""))) await notePhoneHas(b.id, true);
       return blob;
     },
     savePosition: async (bookId, locator) => {
@@ -592,7 +657,10 @@ export async function webApi(): Promise<Api> {
       if (!b) throw new Error("That audiobook's details haven't arrived here yet.");
       if (b.format === "tbvaudio")
         throw new Error("This audiobook is a folder of several files, which plays in the desktop app. Single-file audiobooks (M4B, MP3) play here.");
-      return [await sync.streamUrl(bookId, String(b.format))];
+      const url = await sync.streamUrl(bookId, String(b.format));
+      // Listened to here, so tidying Supabase keeps it.
+      await notePhoneHas(bookId, true);
+      return [url];
     },
     getAnnotations: async (bookId) =>
       annotationRows()
@@ -971,6 +1039,7 @@ export async function webApi(): Promise<Api> {
       const b = find(bookId);
       await db.deleteFile(`books/${bookId.replace(/^sha256:/, "")}.${b.format}`);
       await refreshDownloaded();
+      await notePhoneHas(bookId, false);
       library.changed();
     },
     findDuplicates: async () => {

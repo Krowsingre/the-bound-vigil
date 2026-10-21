@@ -34,6 +34,7 @@ export const KINDS: Kind[] = [
     cols: ["title", "authors", "format", "file_size", "synopsis", "publisher", "language", "series", "series_index", "added_at", "deleted_at", "isbn"],
   },
   { name: "audiobook", table: "audiobooks", keys: ["book_id"], cols: ["narrators", "duration_ms", "chapters", "parts", "ebook_id", "updated_at"] },
+  { name: "book_phone", table: "books", keys: ["id"], cols: ["phone_wanted", "phone_has", "from_phone"] },
   { name: "book_progress", table: "books", keys: ["id"], cols: ["status", "total_progression", "resume_locator", "last_opened_at", "finished_at"] },
   { name: "book_shelves", table: "books", keys: ["id"], cols: ["favorite", "want_to_read", "rating"] },
   { name: "override", table: "metadata_overrides", keys: ["book_id", "field"], cols: ["value", "updated_at"] },
@@ -80,6 +81,12 @@ export interface BookRow {
   favorite: number;
   want_to_read: number;
   rating: number | null;
+  /** Asked for on the phone, from the computer. */
+  phone_wanted: number;
+  /** Downloaded on the phone. */
+  phone_has: number;
+  /** Added on the phone, waiting for the computer to take it in. */
+  from_phone: number;
 }
 
 /** The built-in Up next shelf, as every device starts with it. */
@@ -98,7 +105,7 @@ export const UP_NEXT: Row = {
   rules: null,
 };
 
-const BOOK_DEFAULTS = { status: "unread", total_progression: null, resume_locator: null, last_opened_at: null, finished_at: null, favorite: 0, want_to_read: 0, rating: null };
+const BOOK_DEFAULTS = { status: "unread", total_progression: null, resume_locator: null, last_opened_at: null, finished_at: null, favorite: 0, want_to_read: 0, rating: null, phone_wanted: 0, phone_has: 0, from_phone: 0 };
 
 /** A time that sorts after `previous`, so a change on this device never looks older than the last. */
 export function stampAfter(previous: string | undefined): string {

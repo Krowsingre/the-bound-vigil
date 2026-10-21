@@ -44,7 +44,8 @@ pub(crate) const BOOK_COLUMNS: &str = r#"
            (EXISTS (SELECT 1 FROM audiobooks ab JOIN books e ON e.id = ab.ebook_id
              WHERE ab.book_id = b.id AND e.deleted_at IS NULL)
             OR EXISTS (SELECT 1 FROM audiobooks ab JOIN books a ON a.id = ab.book_id
-             WHERE ab.ebook_id = b.id AND a.deleted_at IS NULL))
+             WHERE ab.ebook_id = b.id AND a.deleted_at IS NULL)),
+           b.phone_wanted, b.phone_has
 "#;
 
 /// Effective narrators, for filters.
@@ -268,6 +269,8 @@ pub(crate) fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
             .unwrap_or_default(),
         language: r.get(23)?,
         paired: r.get(24)?,
+        phone_wanted: r.get(25)?,
+        phone_has: r.get(26)?,
     })
 }
 

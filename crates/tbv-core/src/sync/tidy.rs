@@ -1,6 +1,8 @@
 //! Tidying a place up: removing the cloud copies of books that aren't on
 //! this computer, so a phone reading through it sees only those books as
-//! ready to download.
+//! ready to download. Books a phone has downloaded, or that were chosen for
+//! the phone, always keep their copy; when only chosen books go to the
+//! phone, the rest go even if they're on this computer.
 //!
 //! A copy that the other sync place doesn't have is sent there first, and
 //! only removed once it has arrived, so tidying never loses a book's only
@@ -79,6 +81,22 @@ impl Library {
         Ok(rows.into_iter().filter(|(_, path)| Path::new(path).exists()).map(|(id, _)| book_id_hex(&id).to_string()).collect())
     }
 
+    /// The hashes of books whose copy in the phone's place stays.
+    fn books_kept(&self) -> Result<HashSet<String>> {
+        let for_phone: HashSet<String> = self
+            .conn
+            .prepare("SELECT id FROM books WHERE deleted_at IS NULL AND (phone_wanted OR phone_has OR from_phone)")?
+            .query_map([], |r| r.get::<_, String>(0))?
+            .map(|id| id.map(|id| book_id_hex(&id).to_string()))
+            .collect::<rusqlite::Result<_>>()?;
+        if self.sync_options()?.phone_chosen_only {
+            return Ok(for_phone);
+        }
+        let mut kept = self.books_here()?;
+        kept.extend(for_phone);
+        Ok(kept)
+    }
+
     /// Forgets that `paths` were sent to a place, after they're removed from it.
     fn files_gone(&self, paths: &[String], lane: Lane) -> Result<()> {
         let sql = format!("DELETE FROM {} WHERE path = ?1", lane.files_table());
@@ -100,7 +118,10 @@ fn lock(library: &Mutex<Library>) -> Result<std::sync::MutexGuard<'_, Library>> 
 /// Works out what tidying `place` would do. `other` is the second sync
 /// place, if there is one. The library is only locked while it's read.
 pub fn plan_tidy(library: &Mutex<Library>, place: &mut dyn Remote, other: Option<&mut dyn Remote>) -> Result<TidyPlan> {
-    let here = lock(library)?.books_here()?;
+    let (here, on_computer) = {
+        let library = lock(library)?;
+        (library.books_kept()?, library.books_here()?)
+    };
     let elsewhere: Option<HashSet<String>> = match other {
         Some(other) => Some(other.list("books/")?.iter().map(|n| hex_of(n).to_string()).collect()),
         None => None,
@@ -120,6 +141,8 @@ pub fn plan_tidy(library: &Mutex<Library>, place: &mut dyn Remote, other: Option
         plan.bytes += size.unwrap_or(0);
         let path = format!("books/{name}");
         match &elsewhere {
+            // Not chosen for the phone, but this computer has it.
+            _ if on_computer.contains(hex) => plan.remove.push(path),
             Some(has) if has.contains(hex) => plan.remove.push(path),
             Some(_) => plan.copy_first.push(path),
             None => plan.lose.push(path),

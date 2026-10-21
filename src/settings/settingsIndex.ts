@@ -224,6 +224,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "sync",
+    section: "phone",
+    label: "Books for your phone",
+    words: "phone iphone mobile choose chosen send which books audiobooks supabase download",
+  },
+  {
+    tab: "sync",
     section: "contents",
     label: "What's in Supabase",
     words: "supabase files contents storage space remove delete covers pictures ebooks documents audiobooks free plan full",

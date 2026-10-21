@@ -39,6 +39,8 @@ export interface SyncSettings {
   /** What the second place is sent (see Settings › Sync › Second sync). */
   alsoBookFiles: boolean;
   alsoAudioFiles: boolean;
+  /** Supabase (the phone's place) gets only the books chosen for the phone. */
+  phoneChosenOnly: boolean;
   /** Audiobooks that aren't on this device play straight from the cloud instead of downloading first. */
   streamAudio: boolean;
   frequency: SyncFrequency;
@@ -94,6 +96,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     audioFiles: false,
     alsoBookFiles: true,
     alsoAudioFiles: false,
+    phoneChosenOnly: false,
     streamAudio: true,
     frequency: "automatic",
     onStartup: true,
@@ -151,6 +154,7 @@ export function parseAppSettings(json: string | null): AppSettings {
       audioFiles: flag(s.audioFiles, d.sync.audioFiles),
       alsoBookFiles: flag(s.alsoBookFiles, d.sync.alsoBookFiles),
       alsoAudioFiles: flag(s.alsoAudioFiles, d.sync.alsoAudioFiles),
+      phoneChosenOnly: flag(s.phoneChosenOnly, d.sync.phoneChosenOnly),
       streamAudio: flag(s.streamAudio, d.sync.streamAudio),
       frequency: oneOf(s.frequency, ["automatic", "15min", "hourly", "manual"], d.sync.frequency),
       onStartup: flag(s.onStartup, d.sync.onStartup),

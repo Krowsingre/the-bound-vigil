@@ -32,12 +32,11 @@ import { Header } from "./shell/Header";
 import { NAV, type Route } from "./shell/routes";
 import { Sidebar } from "./shell/Sidebar";
 import { drawImportedCovers } from "./reader/formats";
+import { setChoosingForPhone } from "./home/bookActions";
 
 const COLLAPSE_KEY = "tbv.sidebarCollapsed";
-const NO_IMPORTS = isWeb
-  ? "Add books with the desktop app. They show up here once they sync."
-  : isHome
-    ? "Add books in TBV on the computer. They show up here straight away."
+const NO_IMPORTS = isHome
+  ? "Add books in TBV on the computer. They show up here straight away."
   : "Importing works in the desktop app. This browser preview uses sample books.";
 
 function readCollapsed(): boolean {
@@ -74,7 +73,8 @@ export function App() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
-  const { refreshAdaptive, togglePrivacy } = useAppSettings();
+  const { settings: appSettings, refreshAdaptive, togglePrivacy } = useAppSettings();
+  setChoosingForPhone(appSettings.sync.phoneChosenOnly);
 
   const navigate = useCallback((r: Route) => {
     // The sidebar's Collections always starts at the overview.
@@ -231,11 +231,11 @@ export function App() {
   const reloadImports = useCallback(() => void api.importQueue().then(setImports, () => undefined), []);
 
   const importBooks = useCallback(() => {
-    if (!isApp) return toast(NO_IMPORTS);
+    if (isHome || (!isApp && !isWeb)) return toast(NO_IMPORTS);
     void api.pickBooks().then(runImport);
   }, [runImport, toast]);
   const importFolder = useCallback(() => {
-    if (!isApp) return toast(NO_IMPORTS);
+    if (isHome || (!isApp && !isWeb)) return toast(NO_IMPORTS);
     void api.pickFolder().then(runImport);
   }, [runImport, toast]);
 

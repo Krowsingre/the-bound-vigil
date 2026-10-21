@@ -30,4 +30,10 @@ describe("tidying up Supabase", () => {
     expect(text).not.toContain("Supabase has");
     expect(text).toContain("2 covers belong to books whose file isn't kept in Supabase (2 MB in all), so they're removed there too.");
   });
+
+  it("speaks of chosen books when only those go to the phone", () => {
+    const text = tidyText({ ...plan, remove: ["books/a.epub", "books/d.epub"], copyFirst: [], bytes: 0 }, null, true);
+    expect(text).toContain("that weren't chosen for your phone.");
+    expect(text).toContain("Books your phone has downloaded, or added, stay.");
+  });
 });

@@ -577,6 +577,7 @@ export function previewApi(): Api {
     getCollections: async () => collections.previews(),
     setFavorite: async (bookId, favorite) => update(bookId, { favorite }),
     setWantToRead: async (bookId, wantToRead) => update(bookId, { wantToRead }),
+    setPhoneWanted: async (bookIds, phoneWanted) => bookIds.forEach((id) => update(id, { phoneWanted })),
     setRating: async (bookId, rating) => update(bookId, { rating }),
     // The preview has no files to read, so it shows what an import reports.
     importGoodreads: async () => ({

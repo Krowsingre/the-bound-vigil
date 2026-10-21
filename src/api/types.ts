@@ -65,6 +65,10 @@ export interface BookPreview {
   narrators?: string[];
   /** An ebook linked to an audiobook in the library, or an audiobook linked to an ebook. */
   paired?: boolean;
+  /** Chosen to go to the phone (when only chosen books do), or asked for from the phone. */
+  phoneWanted?: boolean;
+  /** Downloaded on a phone, so tidying Supabase keeps it. */
+  phoneHas?: boolean;
 }
 
 export interface CollectionPreview {

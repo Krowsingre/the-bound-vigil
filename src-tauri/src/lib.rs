@@ -269,6 +269,11 @@ async fn set_want_to_read(
 }
 
 #[tauri::command]
+async fn set_phone_wanted(state: State<'_, AppLibrary>, book_ids: Vec<String>, wanted: bool) -> CommandResult<()> {
+    with_library(state, move |library| library.set_phone_wanted(&book_ids, wanted)).await
+}
+
+#[tauri::command]
 async fn get_profile(state: State<'_, AppLibrary>) -> CommandResult<Profile> {
     with_library(state, |library| library.profile()).await
 }
@@ -1507,6 +1512,7 @@ pub fn run() {
             get_collections,
             set_favorite,
             set_want_to_read,
+            set_phone_wanted,
             set_rating,
             import_goodreads,
             get_profile,

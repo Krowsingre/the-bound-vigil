@@ -10,6 +10,7 @@ import { AccountPanel } from "./AccountPanel";
 import { SupabaseProjectForm } from "./SupabaseSetup";
 import { MoveSection } from "./MoveSection";
 import { AlsoSection } from "./AlsoSection";
+import { PhoneSection } from "./PhoneSection";
 import { TidySection } from "./TidySection";
 import { HomeSection } from "./HomeSection";
 import { UsageSection } from "./UsageSection";
@@ -266,6 +267,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
 
       {overview && !isWeb && <UsageSection overview={overview} />}
 
+      {overview && !isWeb && <PhoneSection overview={overview} />}
       {overview && !isWeb && <TidySection overview={overview} />}
       {overview && !isWeb && <ContentsSection overview={overview} />}
       {!isWeb && <HomeSection />}
