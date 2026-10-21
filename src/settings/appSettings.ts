@@ -12,6 +12,21 @@ export type InterfaceFont = "system" | "serif" | "echolume";
 export type SurfaceStyle = "clean" | "matte" | "paper";
 export type SyncFrequency = "automatic" | "15min" | "hourly" | "manual";
 export type ConflictRule = "recent" | "ask" | "local" | "cloud";
+export type PrivacyStyle = "titles" | "blank";
+
+/** Privacy mode: covers (and pictures that could give a book away) hidden at once. */
+export interface PrivacySettings {
+  on: boolean;
+  /** Plain tiles that keep the title, or blank ones. */
+  style: PrivacyStyle;
+  /** Hides the profile picture too. */
+  avatar: boolean;
+}
+
+/** The shortcut that turns privacy mode on and off. */
+export const PRIVACY_SHORTCUT = "Ctrl+Shift+H";
+/** Kept in the browser as well, so covers never flash before settings load. */
+export const PRIVACY_STORE = "tbv.privacy";
 
 export interface SyncSettings {
   progress: boolean;
@@ -47,6 +62,7 @@ export interface AppSettings {
   showProgress: boolean;
   showSmartCollections: boolean;
   showSeries: boolean;
+  privacy: PrivacySettings;
   sync: SyncSettings;
 }
 
@@ -66,6 +82,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showProgress: true,
   showSmartCollections: true,
   showSeries: true,
+  privacy: { on: false, style: "titles", avatar: true },
   sync: {
     progress: true,
     notes: true,
@@ -102,6 +119,7 @@ export function parseAppSettings(json: string | null): AppSettings {
   }
   const d = DEFAULT_APP_SETTINGS;
   const s = (raw.sync && typeof raw.sync === "object" ? raw.sync : {}) as Record<string, unknown>;
+  const p = (raw.privacy && typeof raw.privacy === "object" ? raw.privacy : {}) as Record<string, unknown>;
   return {
     theme: oneOf(raw.theme, ["light", "dark", "system", "adaptive"], d.theme),
     adaptiveBase: oneOf(raw.adaptiveBase, ["system", "light", "dark"], d.adaptiveBase),
@@ -116,6 +134,11 @@ export function parseAppSettings(json: string | null): AppSettings {
     showProgress: flag(raw.showProgress, d.showProgress),
     showSmartCollections: flag(raw.showSmartCollections, d.showSmartCollections),
     showSeries: flag(raw.showSeries, d.showSeries),
+    privacy: {
+      on: flag(p.on, d.privacy.on),
+      style: oneOf(p.style, ["titles", "blank"], d.privacy.style),
+      avatar: flag(p.avatar, d.privacy.avatar),
+    },
     sync: {
       progress: flag(s.progress, d.sync.progress),
       notes: flag(s.notes, d.sync.notes),
@@ -207,13 +230,44 @@ export function applyAppSettings(settings: AppSettings, dark: boolean, adaptive:
   root.toggleAttribute("data-underline-links", settings.underlineLinks);
   root.toggleAttribute("data-hide-progress", !settings.showProgress);
   root.style.setProperty("zoom", String(SCALES[settings.scale]));
+  applyPrivacy(settings.privacy);
   for (const [name, value] of [
     ["--accent", adaptive?.accent],
     ["--accent-text", adaptive?.accentText],
   ] as const) {
-    if (settings.theme === "adaptive" && value) root.style.setProperty(name, value);
+    // A cover's colour can give the book away, so privacy mode leaves it out.
+    if (settings.theme === "adaptive" && !settings.privacy.on && value) root.style.setProperty(name, value);
     else root.style.removeProperty(name);
   }
+}
+
+/** Shows or hides covers on the whole window, at once. */
+export function applyPrivacy(privacy: PrivacySettings) {
+  const root = document.documentElement;
+  if (privacy.on) root.dataset.privacy = privacy.style;
+  else delete root.dataset.privacy;
+  root.toggleAttribute("data-privacy-avatar", privacy.on && privacy.avatar);
+  try {
+    localStorage.setItem(PRIVACY_STORE, JSON.stringify(privacy));
+  } catch {
+    /* private browsing, say: settings still apply once loaded */
+  }
+}
+
+/** The privacy mode last used here, read before the saved settings load. */
+export function storedPrivacy(): PrivacySettings {
+  try {
+    const saved = localStorage.getItem(PRIVACY_STORE);
+    if (saved) return parseAppSettings(JSON.stringify({ privacy: JSON.parse(saved) })).privacy;
+  } catch {
+    /* nothing saved */
+  }
+  return DEFAULT_APP_SETTINGS.privacy;
+}
+
+/** Applies the privacy mode last used here before anything is drawn. */
+export function restorePrivacy() {
+  applyPrivacy(storedPrivacy());
 }
 
 export interface AppSettingsContext {
@@ -226,6 +280,8 @@ export interface AppSettingsContext {
   /** The book Adaptive takes its colour from. */
   adaptiveBook: Pick<BookPreview, "id" | "title" | "authors" | "coverPath"> | null;
   refreshAdaptive: () => void;
+  /** Turns privacy mode on or off. */
+  togglePrivacy: () => void;
 }
 
 export const AppSettingsCtx = createContext<AppSettingsContext>({
@@ -236,6 +292,7 @@ export const AppSettingsCtx = createContext<AppSettingsContext>({
   adaptive: null,
   adaptiveBook: null,
   refreshAdaptive: () => undefined,
+  togglePrivacy: () => undefined,
 });
 
 export const useAppSettings = () => useContext(AppSettingsCtx);

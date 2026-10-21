@@ -3,6 +3,7 @@ import type { Profile, SyncStatus } from "../api/types";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { relativeTime } from "../lib/format";
+import { PRIVACY_SHORTCUT, useAppSettings } from "../settings/appSettings";
 
 const SUMMARY: Record<SyncStatus["state"], string> = {
   disabled: "Sync is off",
@@ -42,6 +43,8 @@ export function SyncMenu({
   const off = state === "disabled";
   const icon = off ? "cloudOff" : state === "syncing" ? "sync" : "cloud";
   const avatar = profile?.avatarPath ? api.coverUrl(profile.avatarPath) : "";
+  const { settings, togglePrivacy } = useAppSettings();
+  const hidden = settings.privacy.on;
   return (
     <Menu
       label={`Sync and import: ${SUMMARY[state]}`}
@@ -94,6 +97,13 @@ export function SyncMenu({
             ]
           : []),
         { label: "Sync & Accounts", icon: "settings", onSelect: onOpenSyncSettings },
+        "divider",
+        {
+          label: hidden ? "Show covers" : "Hide covers",
+          icon: hidden ? "focus" : "eyeOff",
+          hint: PRIVACY_SHORTCUT,
+          onSelect: togglePrivacy,
+        },
         "divider",
         { label: avatar ? "Change profile picture…" : "Choose a profile picture…", icon: "image", onSelect: onChooseAvatar },
         ...(avatar ? [{ label: "Remove profile picture", onSelect: onClearAvatar }] : []),
