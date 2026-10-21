@@ -95,9 +95,34 @@ export function usePlayer(): Player {
   return player;
 }
 
+/**
+ * Asks the browser to treat this as music-style playback, which an iPhone
+ * (Safari 17 and later) keeps going with the screen locked or TBV in the
+ * background, and which ignores the silent switch.
+ */
+function playInBackground() {
+  const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+  if (session && session.type !== "playback") {
+    try {
+      session.type = "playback";
+    } catch {
+      /* older browsers keep their own choice */
+    }
+  }
+}
+
 export function PlayerProvider({ children, onChanged }: { children: React.ReactNode; onChanged?: () => void }) {
   const toast = useToast();
-  const audio = useMemo(() => (typeof Audio === "undefined" ? null : new Audio()), []);
+  const audio = useMemo(() => {
+    if (typeof Audio === "undefined") return null;
+    const element = new Audio();
+    element.preload = "auto";
+    // Kept in the page: an iPhone is readier to keep playing one that is.
+    element.setAttribute("playsinline", "");
+    element.hidden = true;
+    document.body.append(element);
+    return element;
+  }, []);
   const [state, setState] = useState<PlayerState>(() => ({
     book: null,
     playing: false,
@@ -142,7 +167,10 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
       update({ positionMs: clamped });
       const start = () => {
         audio.currentTime = within;
-        if (play) void audio.play().catch(() => update({ playing: false }));
+        if (play) {
+          playInBackground();
+          void audio.play().catch(() => update({ playing: false }));
+        }
       };
       if (index !== part.current || !audio.src) {
         const url = streaming.current?.[index] ?? api.audioUrl(book.book.id, index);
@@ -343,10 +371,12 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
     if (!session || !state.book) return;
     const b = state.book.book;
     try {
+      const cover = b.coverPath ? api.coverUrl(b.coverPath) : "";
       session.metadata = new MediaMetadata({
         title: b.title,
         artist: b.authors.join(", "),
         album: state.book.narrators.join(", "),
+        artwork: cover ? [{ src: cover, sizes: "512x512" }] : [],
       });
       session.setActionHandler("play", toggle);
       session.setActionHandler("pause", toggle);
@@ -354,10 +384,30 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
       session.setActionHandler("seekforward", () => skip(30_000));
       session.setActionHandler("previoustrack", () => chapter(-1));
       session.setActionHandler("nexttrack", () => chapter(1));
+      session.setActionHandler("seekto", (d) => d.seekTime !== undefined && seek(d.seekTime * 1000));
     } catch {
       /* not every webview offers these */
     }
-  }, [state.book, toggle, skip, chapter]);
+  }, [state.book, toggle, skip, chapter, seek]);
+
+  // The lock screen's progress bar, kept in step a few times a minute.
+  const shownAt = useRef(0);
+  useEffect(() => {
+    const session = typeof navigator !== "undefined" ? navigator.mediaSession : undefined;
+    if (!session?.setPositionState || !state.book || Date.now() - shownAt.current < 5000) return;
+    shownAt.current = Date.now();
+    const duration = state.book.durationMs / 1000;
+    try {
+      session.setPositionState({ duration, position: Math.min(duration, state.positionMs / 1000), playbackRate: state.rate });
+    } catch {
+      /* not every browser takes these */
+    }
+  }, [state.book, state.positionMs, state.rate]);
+  useEffect(() => {
+    const session = typeof navigator !== "undefined" ? navigator.mediaSession : undefined;
+    if (session && state.book) session.playbackState = state.playing ? "playing" : "paused";
+    shownAt.current = 0;
+  }, [state.book, state.playing]);
 
   const player: Player = {
     ...state,
