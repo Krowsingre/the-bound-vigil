@@ -230,6 +230,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "sync",
+    section: "home",
+    label: "Use on your phone at home",
+    words: "phone iphone wifi wi-fi home network qr code pair pairing serve local stream icloud",
+  },
+  {
+    tab: "sync",
     section: "behaviour",
     label: "Sync behaviour",
     words: "frequency automatic startup close conflict resolution recent",

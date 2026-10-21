@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, isApp, isWeb } from "./api";
+import { api, isApp, isHome, isWeb } from "./api";
 import type { CollectionRef, HomeViewModel, ImportsView, Profile, SyncStatus } from "./api/types";
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { ContextMenuHost } from "./components/ContextMenu";
@@ -36,6 +36,8 @@ import { drawImportedCovers } from "./reader/formats";
 const COLLAPSE_KEY = "tbv.sidebarCollapsed";
 const NO_IMPORTS = isWeb
   ? "Add books with the desktop app. They show up here once they sync."
+  : isHome
+    ? "Add books in TBV on the computer. They show up here straight away."
   : "Importing works in the desktop app. This browser preview uses sample books.";
 
 function readCollapsed(): boolean {
@@ -53,9 +55,9 @@ export function App() {
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [dropping, setDropping] = useState(false);
   const [imports, setImports] = useState<ImportsView>(NOTHING_IMPORTED);
-  const servers = useServerQueue(!isWeb);
+  const servers = useServerQueue(!isWeb && !isHome);
   const serverCounts = servers.view.counts;
-  const sent = useLocalSendRows(!isWeb);
+  const sent = useLocalSendRows(!isWeb && !isHome);
   // PDF covers are drawn one at a time, in the background.
   const drawingCovers = useRef(false);
   const wasRunning = useRef(false);
@@ -475,7 +477,7 @@ export function App() {
           Imported {importCounts(imports).done} of {importCounts(imports).total} books <span className="import-progress-link">View</span>
         </button>
       )}
-      {!isWeb && <LocalSendOffers />}
+      {!isWeb && !isHome && <LocalSendOffers />}
       <PlayerBar onShowAudiobooks={() => navigate("audiobooks")} />
       <AddToCollectionHost onChanged={refresh} />
       <BookDialogsHost onChanged={refresh} />

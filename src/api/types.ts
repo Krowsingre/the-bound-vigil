@@ -453,6 +453,20 @@ export interface SeriesReview {
   matches: SeriesMatch[];
 }
 
+/** "Use on your phone at home": the computer serving TBV to a phone on the same Wi-Fi. */
+export interface HomeStatus {
+  on: boolean;
+  /** Addresses to open on the phone, best first. */
+  addresses: string[];
+  /** The pairing code, while one is offered. */
+  code: string | null;
+  /** A QR code (SVG) that opens the first address and pairs. */
+  qr: string | null;
+  phones: number;
+  /** Why it couldn't start, in words. */
+  problem: string | null;
+}
+
 export interface Profile {
   avatarPath: string | null;
 }

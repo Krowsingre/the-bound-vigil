@@ -78,9 +78,9 @@ pub fn serve<R: Runtime>(ctx: UriSchemeContext<'_, R>, request: Request<Vec<u8>>
     });
 }
 
-type Failure = (StatusCode, String);
+pub(crate) type Failure = (StatusCode, String);
 
-fn answer(library: &Arc<Mutex<tbv_core::Library>>, request: &Request<Vec<u8>>) -> Result<Response<Vec<u8>>, Failure> {
+pub(crate) fn answer(library: &Arc<Mutex<tbv_core::Library>>, request: &Request<Vec<u8>>) -> Result<Response<Vec<u8>>, Failure> {
     let path = request.uri().path().trim_start_matches('/');
     let (book_id, part) = path.rsplit_once('/').ok_or((StatusCode::NOT_FOUND, "no such audio".into()))?;
     let book_id = percent_decode(book_id);

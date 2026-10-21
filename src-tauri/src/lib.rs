@@ -4,6 +4,7 @@
 mod activity;
 mod audio;
 mod hardcover;
+mod home;
 mod imports;
 mod localsend;
 mod moving;
@@ -326,6 +327,11 @@ async fn read_book_file(
     state: State<'_, AppLibrary>,
     book_id: String,
 ) -> CommandResult<tauri::ipc::Response> {
+    Ok(tauri::ipc::Response::new(book_bytes(state, book_id).await?))
+}
+
+/// A book's bytes, fetched from the cloud first if it's only there.
+async fn book_bytes(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<Vec<u8>> {
     let library = state.0.clone();
     let id = book_id.clone();
     let path = match with_library(state, move |library| library.book_file(&id)).await {
@@ -352,7 +358,7 @@ async fn read_book_file(
     .await
         .map_err(|e| e.to_string())?
         .map_err(|e| format!("the book file couldn't be read: {e}"))?;
-    Ok(tauri::ipc::Response::new(bytes))
+    Ok(bytes)
 }
 
 #[tauri::command]
@@ -1314,6 +1320,31 @@ async fn deny_series_matches(state: State<'_, AppLibrary>, name: String, book_id
     with_library(state, move |library| library.deny_series_matches(&name, &book_ids)).await
 }
 
+#[tauri::command]
+async fn home_status(app: tauri::AppHandle, home: State<'_, Arc<home::Home>>) -> CommandResult<home::HomeStatus> {
+    let home = home.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || home.status(&app)).await.map_err(|e| e.to_string())
+}
+
+/// Turns "Use on your phone at home" on or off.
+#[tauri::command]
+async fn set_home(app: tauri::AppHandle, home: State<'_, Arc<home::Home>>, on: bool) -> CommandResult<home::HomeStatus> {
+    let home = home.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || home.set(&app, on)).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn new_home_code(app: tauri::AppHandle, home: State<'_, Arc<home::Home>>) -> CommandResult<home::HomeStatus> {
+    let home = home.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || home.new_code(&app)).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn forget_home_phones(app: tauri::AppHandle, home: State<'_, Arc<home::Home>>) -> CommandResult<home::HomeStatus> {
+    let home = home.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || home.forget_phones(&app)).await.map_err(|e| e.to_string())
+}
+
 fn localsend_inbox(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("LocalSend inbox"))
 }
@@ -1391,6 +1422,9 @@ pub fn run() {
             let receiving = Arc::new(localsend::LocalSend::default());
             app.manage(receiving.clone());
             receiving.start(app.handle(), &library, &imports, data_dir.join("LocalSend inbox"));
+            let home = Arc::new(home::Home::default());
+            app.manage(home.clone());
+            home.resume(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1406,6 +1440,10 @@ pub fn run() {
             find_duplicates,
             find_series_books,
             prepare_stream,
+            home_status,
+            set_home,
+            new_home_code,
+            forget_home_phones,
             series_review,
             hide_series_book,
             approve_series_matches,

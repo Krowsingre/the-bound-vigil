@@ -1017,6 +1017,18 @@ export async function webApi(): Promise<Api> {
       await library.remove([...mine("metadata_overrides", "override"), ...(alsoFetched ? mine("metadata_fetched", "fetched") : [])]);
     },
     searchDetailsMore: async () => [],
+    // The phone version served by the computer is turned on there.
+    homeStatus: async () => ({ on: false, addresses: [], code: null, qr: null, phones: 0, problem: null }),
+    setHome: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    newHomeCode: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    forgetHomePhones: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    onHomeChanged: () => () => undefined,
     // Finding a series' missing books happens in the desktop app.
     findSeriesBooks: async () => {
       throw new Error(DESKTOP_ONLY);

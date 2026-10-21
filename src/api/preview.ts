@@ -29,6 +29,7 @@ import type {
   Profile,
   SeriesEntry,
   SeriesReview,
+  HomeStatus,
   SyncOverview,
   SyncActivity,
 } from "./types";
@@ -452,6 +453,17 @@ export function previewApi(): Api {
     if (!b) throw new Error("This book is no longer in your library.");
     return b;
   };
+  const HOME_OFF: HomeStatus = { on: false, addresses: [], code: null, qr: null, phones: 0, problem: null };
+  const HOME_ON: HomeStatus = {
+    on: true,
+    addresses: ["http://192.168.1.24:53318/"],
+    code: "482913",
+    qr: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21" width="220" height="220"><rect width="21" height="21" fill="#fff"/><path d="M1 1h7v7H1zM13 1h7v7h-7zM1 13h7v7H1z" fill="none" stroke="#000"/><path d="M3 3h3v3H3zM15 3h3v3h-3zM3 15h3v3H3zM10 2h1v1h-1zM9 9h3v1H9zM12 12h2v2h-2zM16 13h2v1h-2zM14 17h3v1h-3z"/></svg>`,
+    phones: 1,
+    problem: null,
+  };
+  let homeState: HomeStatus = HOME_OFF;
+
   // Find missing books: a made-up online list for each series asked about.
   const seriesLists = new Map<string, { list: SeriesEntry[]; hidden: Set<string>; denied: Set<string> }>();
   const seriesReviewOf = (name: string): SeriesReview => {
@@ -596,6 +608,11 @@ export function previewApi(): Api {
     },
     audiobookForEbook: async (ebookId) => [...linked].find(([, e]) => e === ebookId)?.[0] ?? null,
     prepareStream: async () => null,
+    homeStatus: async () => homeState,
+    setHome: async (on) => (homeState = on ? { ...HOME_ON, phones: homeState.phones } : { ...HOME_OFF, phones: homeState.phones }),
+    newHomeCode: async () => (homeState = { ...homeState, code: String(100000 + Math.floor(Math.random() * 900000)) }),
+    forgetHomePhones: async () => (homeState = { ...homeState, phones: 0 }),
+    onHomeChanged: () => () => undefined,
     audioUrl: (bookId, part) => {
       const key = `${bookId}/${part}`;
       if (!sounds.has(key)) {

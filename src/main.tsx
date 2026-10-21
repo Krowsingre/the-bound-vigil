@@ -25,7 +25,8 @@ import "./styles/audio.css";
 import "./styles/ereaders.css";
 import "./styles/web.css";
 import "./styles/privacy.css";
-import { isApp, isWeb } from "./api";
+import { isApp, isHome, isWeb } from "./api";
+import { HomePair } from "./web/HomePair";
 import { WebGate } from "./web/WebConnect";
 import { runBeforeQuit } from "./lib/beforeQuit";
 import { PlayerProvider } from "./audio/player";
@@ -67,6 +68,10 @@ createRoot(document.getElementById("root")!).render(
             <WebGate>
               <App />
             </WebGate>
+          ) : isHome ? (
+            <HomePair>
+              <App />
+            </HomePair>
           ) : (
             <App />
           )}

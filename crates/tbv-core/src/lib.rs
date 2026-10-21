@@ -12,6 +12,7 @@ pub mod formats;
 pub mod goodreads;
 pub mod hardcover;
 pub mod home;
+pub mod http;
 pub mod ids;
 pub mod library;
 pub mod localsend;
