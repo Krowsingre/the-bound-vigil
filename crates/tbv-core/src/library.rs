@@ -17,7 +17,7 @@ use crate::time::now_utc;
 /// Formats TBV accepts on import. Only EPUB metadata is read today; the rest
 /// are titled from their file name until their readers land.
 pub const SUPPORTED_FORMATS: &[&str] = &[
-    "epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "txt", "docx", "doc",
+    "epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "cbr", "txt", "docx", "doc",
     "m4b", "m4a", "mp3", "aac", "ogg", "oga", "opus", "flac", "tbvaudio",
 ];
 

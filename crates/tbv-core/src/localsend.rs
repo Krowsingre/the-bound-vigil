@@ -33,7 +33,7 @@ const ANSWER_WITHIN: Duration = Duration::from_secs(120);
 #[cfg(not(test))]
 const ABANDONED: Duration = Duration::from_secs(120);
 #[cfg(test)]
-const ABANDONED: Duration = Duration::from_millis(300);
+const ABANDONED: Duration = Duration::from_millis(800);
 /// A request or upload that goes quiet this long is given up on.
 const IDLE: Duration = Duration::from_secs(60);
 /// Requests' own lines and JSON bodies; files are streamed, not held.
@@ -86,27 +86,69 @@ pub struct Offer {
     pub files: Vec<OfferedFile>,
 }
 
+/// Where one sent file has got to, for the person to follow in TBV.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FileState {
+    Waiting,
+    Arriving,
+    Arrived,
+    Failed,
+    /// Not taken: TBV can't import it, or the offer was turned down.
+    Skipped,
+}
+
+/// One sent file, as TBV shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SentFile {
+    pub session: String,
+    pub id: String,
+    pub from: String,
+    pub name: String,
+    /// The size the sender gave, and how much has come so far.
+    pub size: u64,
+    pub bytes: u64,
+    pub state: FileState,
+    /// Why it failed or was skipped, in plain words.
+    pub reason: Option<String>,
+}
+
 /// What the app does with offers and what arrives.
 pub trait Host: Send + Sync {
     /// Asks the person about an offer; true to accept its importable files.
     /// Returning nothing within `ANSWER_WITHIN` turns it down.
     fn ask(&self, offer: Offer, answer: Box<dyn FnOnce(bool) + Send>);
-    /// A file has arrived (or a session ended, with `done`), for progress.
-    fn progress(&self, session: &str, received: usize, of: usize);
-    /// Everything accepted has arrived (or the sender stopped part-way):
-    /// `folder` holds what did, to import and then delete.
-    fn received(&self, session: &str, folder: PathBuf, files: Vec<PathBuf>);
+    /// A file's state or progress changed.
+    fn file(&self, file: &SentFile);
+    /// A book has arrived whole and can be imported now (then deleted).
+    fn arrived(&self, path: PathBuf);
+    /// The session is over. Audiobook parts wait for this, so the parts of
+    /// one audiobook become one book: `folder` holds them, to import and then
+    /// delete. Empty when no audio came.
+    fn finished(&self, folder: PathBuf, audio: Vec<PathBuf>);
+}
+
+struct Accepted {
+    file: SentFile,
+    token: String,
 }
 
 struct Session {
     folder: PathBuf,
-    /// Accepted files by LocalSend's id: their name, the token they must come
-    /// with and the size the sender gave.
-    files: HashMap<String, (String, String, u64)>,
-    arrived: Vec<PathBuf>,
+    /// Accepted files by LocalSend's id.
+    files: HashMap<String, Accepted>,
+    /// Audio that has arrived, held until the session ends.
+    audio: Vec<PathBuf>,
     /// When something last arrived, and how many files are arriving now.
     touched: Instant,
     arriving: usize,
+}
+
+impl Session {
+    fn pending(&self) -> bool {
+        self.files.values().any(|f| matches!(f.file.state, FileState::Waiting | FileState::Arriving))
+    }
 }
 
 /// The receiver while it's switched on. Dropping it stops it.
@@ -171,6 +213,15 @@ pub fn start(identity: Identity, inbox: &Path, host: Arc<dyn Host>, announce: bo
     if announce {
         let state = state.clone();
         thread::spawn(move || discovery(&state));
+    }
+    {
+        let state = state.clone();
+        thread::spawn(move || {
+            while !state.stop.load(Ordering::SeqCst) {
+                thread::sleep(Duration::from_millis(250));
+                sweep(&state);
+            }
+        });
     }
     Ok(Receiver { stop, port })
 }
@@ -362,7 +413,7 @@ fn route(state: &State, request: &Request, reader: &mut dyn BufRead) -> (u16, Va
         ("POST", "/api/localsend/v2/upload") => upload(state, request, reader),
         ("POST", "/api/localsend/v2/cancel") => {
             if let Some(id) = request.query.get("sessionId") {
-                finish(state, id);
+                finish(state, id, Some("Cancelled on the sending device"));
             }
             (200, Value::Null)
         }
@@ -373,13 +424,7 @@ fn route(state: &State, request: &Request, reader: &mut dyn BufRead) -> (u16, Va
 /// Someone wants to send files: ask the person, and wait for the answer.
 fn prepare(state: &State, body: Option<Value>) -> (u16, Value) {
     let Some(body) = body else { return (400, json!({ "message": "Invalid body" })) };
-    let abandoned: Vec<String> = match state.sessions.lock() {
-        Ok(sessions) => sessions.iter().filter(|(_, s)| s.arriving == 0 && s.touched.elapsed() > ABANDONED).map(|(id, _)| id.clone()).collect(),
-        Err(_) => return (500, Value::Null),
-    };
-    for id in abandoned {
-        finish(state, &id);
-    }
+    sweep(state);
     if state.sessions.lock().map(|s| !s.is_empty()).unwrap_or(true) {
         return (409, json!({ "message": "Blocked by another session" }));
     }
@@ -402,97 +447,224 @@ fn prepare(state: &State, body: Option<Value>) -> (u16, Value) {
         })
         .unwrap_or_default();
     files.sort_by(|a, b| a.name.cmp(&b.name));
+    let session = crate::ids::new_record_id();
+    let row = |f: &OfferedFile, state: FileState, reason: Option<String>| SentFile {
+        session: session.clone(),
+        id: f.id.clone(),
+        from: from.clone(),
+        name: f.name.clone(),
+        size: f.size,
+        bytes: 0,
+        state,
+        reason,
+    };
+    for f in files.iter().filter(|f| !f.importable) {
+        state.host.file(&row(f, FileState::Skipped, Some(not_taken(&f.name))));
+    }
     if !files.iter().any(|f| f.importable) {
         return (403, json!({ "message": "TBV only takes books, documents and audiobooks." }));
     }
-    let session = crate::ids::new_record_id();
     let (tx, rx) = std::sync::mpsc::channel();
     state.host.ask(
-        Offer { session: session.clone(), from, files: files.clone() },
+        Offer { session: session.clone(), from: from.clone(), files: files.clone() },
         Box::new(move |yes| {
             let _ = tx.send(yes);
         }),
     );
-    if !rx.recv_timeout(ANSWER_WITHIN).unwrap_or(false) {
-        return (403, json!({ "message": "Declined" }));
-    }
+    let accepted = rx.recv_timeout(ANSWER_WITHIN).unwrap_or(false);
     let folder = state.inbox.join(&session);
-    if fs::create_dir_all(&folder).is_err() {
+    if accepted && fs::create_dir_all(&folder).is_err() {
         return (500, json!({ "message": "TBV couldn't make room for the files." }));
     }
-    let accepted: HashMap<String, (String, String, u64)> = files
-        .into_iter()
-        .filter(|f| f.importable)
-        .map(|f| (f.id, (f.name, crate::ids::new_record_id(), f.size)))
-        .collect();
-    let tokens: serde_json::Map<String, Value> = accepted.iter().map(|(id, (_, token, _))| (id.clone(), json!(token))).collect();
+    let mut taken = HashMap::new();
+    for f in files.into_iter().filter(|f| f.importable) {
+        if !accepted {
+            state.host.file(&row(&f, FileState::Skipped, Some("Turned down".into())));
+            continue;
+        }
+        let file = row(&f, FileState::Waiting, None);
+        state.host.file(&file);
+        taken.insert(f.id.clone(), Accepted { file, token: crate::ids::new_record_id() });
+    }
+    if !accepted {
+        return (403, json!({ "message": "Declined" }));
+    }
+    let tokens: serde_json::Map<String, Value> = taken.iter().map(|(id, a)| (id.clone(), json!(a.token))).collect();
     if let Ok(mut sessions) = state.sessions.lock() {
-        sessions.insert(session.clone(), Session { folder, files: accepted, arrived: Vec::new(), touched: Instant::now(), arriving: 0 });
+        sessions.insert(session.clone(), Session { folder, files: taken, audio: Vec::new(), touched: Instant::now(), arriving: 0 });
     }
     (200, json!({ "sessionId": session, "files": tokens }))
+}
+
+/// Why a file wasn't taken, in plain words.
+fn not_taken(name: &str) -> String {
+    match name.rsplit_once('.') {
+        Some((_, ext)) if !ext.is_empty() => format!("TBV doesn't take .{} files", ext.to_ascii_lowercase()),
+        _ => "TBV can't tell what kind of file this is".into(),
+    }
+}
+
+/// Changes one file's row and tells the app.
+fn update(state: &State, session: &str, id: &str, change: impl FnOnce(&mut SentFile)) {
+    let row = state.sessions.lock().ok().and_then(|mut all| {
+        let file = &mut all.get_mut(session)?.files.get_mut(id)?.file;
+        change(file);
+        Some(file.clone())
+    });
+    if let Some(row) = row {
+        state.host.file(&row);
+    }
+}
+
+/// Copies a body into `out`, telling the app how far it has got now and then.
+fn copy_counting(from: &mut dyn Read, out: &mut impl Write, mut told: impl FnMut(u64)) -> std::io::Result<u64> {
+    let mut buffer = vec![0u8; 256 * 1024];
+    let (mut total, mut last) = (0u64, Instant::now());
+    loop {
+        let n = match from.read(&mut buffer) {
+            Ok(0) => return Ok(total),
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        out.write_all(&buffer[..n])?;
+        total += n as u64;
+        if last.elapsed() > Duration::from_millis(250) {
+            told(total);
+            last = Instant::now();
+        }
+    }
+}
+
+/// A finished file into place. Antivirus software sometimes holds a new
+/// file for a moment on Windows, so it's tried again, then copied instead.
+fn put_in_place(from: &Path, to: &Path) -> std::io::Result<()> {
+    for _ in 0..10 {
+        if fs::rename(from, to).is_ok() {
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
+    fs::copy(from, to)?;
+    let _ = fs::remove_file(from);
+    Ok(())
+}
+
+fn size_text(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / 1024.0 / 1024.0)
+    } else {
+        format!("{} KB", bytes.div_ceil(1024))
+    }
 }
 
 /// One accepted file arriving.
 fn upload(state: &State, request: &Request, reader: &mut dyn BufRead) -> (u16, Value) {
     let q = |k: &str| request.query.get(k).cloned().unwrap_or_default();
     let (session, file, token) = (q("sessionId"), q("fileId"), q("token"));
-    let (target, size) = {
+    let target = {
         let Ok(mut sessions) = state.sessions.lock() else { return (500, Value::Null) };
         let Some(s) = sessions.get_mut(&session) else { return (403, json!({ "message": "No such session" })) };
-        let found = match s.files.get(&file) {
-            Some((name, expected, size)) if *expected == token => (unique_in(&s.folder, name), *size),
+        let target = match s.files.get(&file) {
+            Some(a) if a.token == token && a.file.state != FileState::Arrived => unique_in(&s.folder, &a.file.name),
             _ => return (403, json!({ "message": "Invalid token" })),
         };
         s.arriving += 1;
         s.touched = Instant::now();
-        found
+        target
     };
+    update(state, &session, &file, |f| {
+        f.state = FileState::Arriving;
+        f.bytes = 0;
+        f.reason = None;
+    });
+    // HTTP says how long the body is (or sends it in chunks that end with a
+    // marker), so a connection that drops part way is caught here. The size
+    // the sender announced beforehand is only shown: some phones announce
+    // a slightly different one.
     let declared = request.headers.get("content-length").and_then(|l| l.parse::<u64>().ok());
     let partial = target.with_file_name(format!("{}.part", target.file_name().unwrap_or_default().to_string_lossy()));
-    let written = (|| -> std::io::Result<()> {
-        let mut out = fs::File::create(&partial)?;
-        let copied = std::io::copy(&mut body_reader(request, reader), &mut out)?;
-        // A connection that drops part way looks like the end of the file,
-        // so a file shorter than promised didn't arrive.
-        if (size > 0 && copied != size) || declared.is_some_and(|d| d != copied) {
-            return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "cut short"));
+    let written = (|| -> std::result::Result<u64, String> {
+        let mut out = fs::File::create(&partial).map_err(|e| format!("TBV couldn't save it ({e})"))?;
+        // A body with neither a length nor chunks runs until the sender closes.
+        let chunked = request.headers.contains_key("transfer-encoding");
+        let mut body: Box<dyn Read + '_> = if declared.is_none() && !chunked { Box::new(&mut *reader) } else { body_reader(request, reader) };
+        let copied = copy_counting(&mut body, &mut out, |bytes| {
+            update(state, &session, &file, |f| f.bytes = bytes);
+        })
+        .map_err(|e| format!("The connection dropped part way ({e})"))?;
+        if let Some(d) = declared.filter(|d| *d != copied) {
+            return Err(format!("The connection dropped after {} of {}", size_text(copied), size_text(d)));
         }
-        out.flush()?;
+        out.flush().map_err(|e| format!("TBV couldn't save it ({e})"))?;
         drop(out);
-        fs::rename(&partial, &target)
+        put_in_place(&partial, &target).map_err(|e| format!("TBV couldn't save it ({e})"))?;
+        Ok(copied)
     })();
-    if let Ok(mut sessions) = state.sessions.lock() {
-        if let Some(s) = sessions.get_mut(&session) {
-            s.arriving = s.arriving.saturating_sub(1);
-            s.touched = Instant::now();
-        }
-    }
-    if written.is_err() {
-        let _ = fs::remove_file(&partial);
-        return (500, json!({ "message": "The file didn't arrive whole." }));
-    }
-    let (arrived, of, complete) = {
+    let complete = {
         let Ok(mut sessions) = state.sessions.lock() else { return (500, Value::Null) };
         let Some(s) = sessions.get_mut(&session) else { return (200, Value::Null) };
-        s.files.remove(&file);
-        s.arrived.push(target);
-        (s.arrived.len(), s.arrived.len() + s.files.len(), s.files.is_empty())
+        s.arriving = s.arriving.saturating_sub(1);
+        s.touched = Instant::now();
+        if written.is_ok() && crate::audio::is_part(&target) {
+            s.audio.push(target.clone());
+        }
+        let row = s.files.get_mut(&file).map(|a| {
+            match &written {
+                Ok(bytes) => {
+                    a.file.state = FileState::Arrived;
+                    a.file.bytes = *bytes;
+                }
+                Err(why) => {
+                    a.file.state = FileState::Failed;
+                    a.file.reason = Some(why.clone());
+                }
+            }
+            a.file.clone()
+        });
+        if let Some(row) = row {
+            state.host.file(&row);
+        }
+        !s.pending()
     };
-    state.host.progress(&session, arrived, of);
+    if let Err(why) = &written {
+        let _ = fs::remove_file(&partial);
+        if complete {
+            finish(state, &session, None);
+        }
+        return (500, json!({ "message": why }));
+    }
+    if !crate::audio::is_part(&target) {
+        state.host.arrived(target);
+    }
     if complete {
-        finish(state, &session);
+        finish(state, &session, None);
     }
     (200, Value::Null)
 }
 
-/// A session is over: what arrived goes to the app.
-fn finish(state: &State, session: &str) {
+/// A session is over: audio that arrived goes to the app, and anything still
+/// to come is marked with `unsent` (the sender cancelled or vanished).
+fn finish(state: &State, session: &str, unsent: Option<&str>) {
     let Some(s) = state.sessions.lock().ok().and_then(|mut all| all.remove(session)) else { return };
-    if s.arrived.is_empty() {
-        let _ = fs::remove_dir_all(&s.folder);
-        return;
+    for a in s.files.into_values().filter(|a| matches!(a.file.state, FileState::Waiting | FileState::Arriving)) {
+        let mut row = a.file;
+        row.state = FileState::Failed;
+        row.reason = Some(unsent.unwrap_or("The sender stopped before sending it").to_string());
+        state.host.file(&row);
     }
-    state.host.received(session, s.folder, s.arrived);
+    state.host.finished(s.folder, s.audio);
+}
+
+/// Ends sessions whose sender has gone quiet.
+fn sweep(state: &State) {
+    let abandoned: Vec<String> = match state.sessions.lock() {
+        Ok(sessions) => sessions.iter().filter(|(_, s)| s.arriving == 0 && s.touched.elapsed() > ABANDONED).map(|(id, _)| id.clone()).collect(),
+        Err(_) => return,
+    };
+    for id in abandoned {
+        finish(state, &id, Some("The sender stopped before sending it"));
+    }
 }
 
 /// A sent name made safe to save: no folders, nothing hidden.
@@ -549,7 +721,9 @@ mod tests {
     struct Fake {
         accept: bool,
         offers: Mutex<Vec<Offer>>,
-        received: Mutex<Vec<(PathBuf, Vec<PathBuf>)>>,
+        rows: Mutex<HashMap<String, SentFile>>,
+        arrived: Mutex<Vec<PathBuf>>,
+        finished: Mutex<Vec<Vec<PathBuf>>>,
     }
 
     impl Host for Fake {
@@ -557,10 +731,34 @@ mod tests {
             self.offers.lock().unwrap().push(offer);
             answer(self.accept);
         }
-        fn progress(&self, _: &str, _: usize, _: usize) {}
-        fn received(&self, _: &str, folder: PathBuf, files: Vec<PathBuf>) {
-            self.received.lock().unwrap().push((folder, files));
+        fn file(&self, file: &SentFile) {
+            self.rows.lock().unwrap().insert(file.name.clone(), file.clone());
         }
+        fn arrived(&self, path: PathBuf) {
+            self.arrived.lock().unwrap().push(path);
+        }
+        fn finished(&self, _: PathBuf, audio: Vec<PathBuf>) {
+            self.finished.lock().unwrap().push(audio);
+        }
+    }
+
+    impl Fake {
+        fn row(&self, name: &str) -> (FileState, Option<String>) {
+            let rows = self.rows.lock().unwrap();
+            let row = rows.get(name).unwrap_or_else(|| panic!("no row for {name}"));
+            (row.state, row.reason.clone())
+        }
+    }
+
+    /// An upload whose connection drops: says `length` bytes, sends `body`, stops.
+    fn cut_short(port: u16, path: &str, length: usize, body: &[u8]) -> u16 {
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        write!(stream, "POST {path} HTTP/1.1\r\nHost: x\r\nContent-Length: {length}\r\n\r\n").unwrap();
+        stream.write_all(body).unwrap();
+        stream.shutdown(std::net::Shutdown::Write).unwrap();
+        let mut reply = String::new();
+        let _ = stream.read_to_string(&mut reply);
+        reply.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0)
     }
 
     fn post(port: u16, path: &str, body: &[u8], chunked: bool) -> (u16, Value) {
@@ -597,6 +795,7 @@ mod tests {
             "info": { "alias": "Wren's iPhone", "version": "2.1", "deviceType": "mobile", "fingerprint": "phone" },
             "files": {
                 "a": { "id": "a", "fileName": "Dracula.epub", "size": 7, "fileType": "application/epub+zip" },
+                "c": { "id": "c", "fileName": "Carmilla.epub", "size": 999, "fileType": "application/epub+zip" },
                 "b": { "id": "b", "fileName": "../holiday.jpg", "size": 3, "fileType": "image/jpeg" }
             }
         })
@@ -615,30 +814,67 @@ mod tests {
         assert_eq!(status, 200);
         let offered = host.offers.lock().unwrap()[0].clone();
         assert_eq!(offered.from, "Wren's iPhone");
-        assert_eq!(offered.files.iter().map(|f| (f.name.as_str(), f.importable)).collect::<Vec<_>>(), [("Dracula.epub", true), ("holiday.jpg", false)]);
+        assert_eq!(
+            offered.files.iter().map(|f| (f.name.as_str(), f.importable)).collect::<Vec<_>>(),
+            [("Carmilla.epub", true), ("Dracula.epub", true), ("holiday.jpg", false)]
+        );
+        assert_eq!(host.row("holiday.jpg"), (FileState::Skipped, Some("TBV doesn't take .jpg files".into())));
+        assert_eq!(host.row("Dracula.epub").0, FileState::Waiting);
         let session = reply["sessionId"].as_str().unwrap().to_string();
         assert!(reply["files"].get("b").is_none(), "only what TBV can import is asked for");
         let token = reply["files"]["a"].as_str().unwrap();
+        let upload = |id: &str, token: &str| format!("/api/localsend/v2/upload?sessionId={session}&fileId={id}&token={token}");
 
-        let (status, _) = post(port, &format!("/api/localsend/v2/upload?sessionId={session}&fileId=a&token=wrong"), b"nope", false);
-        assert_eq!(status, 403);
-        let (status, _) = post(port, &format!("/api/localsend/v2/upload?sessionId={session}&fileId=a&token={token}"), b"dra", false);
-        assert_eq!(status, 500, "a file shorter than the sender said didn't arrive whole");
-        assert!(host.received.lock().unwrap().is_empty());
-        let (status, _) = post(port, &format!("/api/localsend/v2/upload?sessionId={session}&fileId=a&token={token}"), b"dracula", true);
-        assert_eq!(status, 200);
-        let received = host.received.lock().unwrap();
-        assert_eq!(received.len(), 1, "the session ends with its last file");
-        assert_eq!(fs::read_to_string(&received[0].1[0]).unwrap(), "dracula");
+        assert_eq!(post(port, &upload("a", "wrong"), b"nope", false).0, 403);
+        assert_eq!(cut_short(port, &upload("a", token), 7, b"dra"), 500);
+        let (state, reason) = host.row("Dracula.epub");
+        assert_eq!(state, FileState::Failed);
+        assert!(reason.unwrap().contains("dropped"), "the person is told why");
+        assert!(host.arrived.lock().unwrap().is_empty());
+
+        // Sent again, whole: it's handed on at once, without waiting for the rest.
+        assert_eq!(post(port, &upload("a", token), b"dracula", true).0, 200);
+        assert_eq!(host.row("Dracula.epub").0, FileState::Arrived);
+        assert_eq!(fs::read_to_string(&host.arrived.lock().unwrap()[0]).unwrap(), "dracula");
+        assert!(host.finished.lock().unwrap().is_empty(), "Carmilla is still to come");
+
+        // The phone said 999 bytes but sends 8: what arrived whole counts.
+        let carmilla = reply["files"]["c"].as_str().unwrap();
+        assert_eq!(post(port, &upload("c", carmilla), b"carmilla", false).0, 200);
+        assert_eq!(host.row("Carmilla.epub").0, FileState::Arrived);
+        assert_eq!(host.arrived.lock().unwrap().len(), 2);
+        assert_eq!(host.finished.lock().unwrap().len(), 1, "the session ends with its last file");
+    }
+
+    #[test]
+    fn audiobook_parts_wait_for_the_rest_of_the_delivery() {
+        let (_dir, host, receiver) = receiver(true);
+        let port = receiver.port();
+        let offer = json!({
+            "info": { "alias": "Phone" },
+            "files": {
+                "1": { "id": "1", "fileName": "01.mp3", "size": 3 },
+                "2": { "id": "2", "fileName": "02.mp3", "size": 3 }
+            }
+        });
+        let (_, reply) = post(port, "/api/localsend/v2/prepare-upload", offer.to_string().as_bytes(), false);
+        let session = reply["sessionId"].as_str().unwrap().to_string();
+        for id in ["1", "2"] {
+            let token = reply["files"][id].as_str().unwrap();
+            assert_eq!(post(port, &format!("/api/localsend/v2/upload?sessionId={session}&fileId={id}&token={token}"), b"mp3", false).0, 200);
+        }
+        assert!(host.arrived.lock().unwrap().is_empty());
+        assert_eq!(host.finished.lock().unwrap()[0].len(), 2, "both parts, together");
     }
 
     #[test]
     fn a_sender_that_vanishes_makes_way_for_the_next() {
-        let (_dir, _host, receiver) = receiver(true);
+        let (_dir, host, receiver) = receiver(true);
         let port = receiver.port();
         assert_eq!(post(port, "/api/localsend/v2/prepare-upload", &offer(), false).0, 200);
         assert_eq!(post(port, "/api/localsend/v2/prepare-upload", &offer(), false).0, 409, "one sender at a time");
-        thread::sleep(ABANDONED * 2);
+        thread::sleep(ABANDONED * 3);
+        assert_eq!(host.row("Dracula.epub"), (FileState::Failed, Some("The sender stopped before sending it".into())));
         assert_eq!(post(port, "/api/localsend/v2/prepare-upload", &offer(), false).0, 200);
     }
 
@@ -647,7 +883,8 @@ mod tests {
         let (_dir, host, receiver) = receiver(false);
         let (status, _) = post(receiver.port(), "/api/localsend/v2/prepare-upload", &offer(), false);
         assert_eq!(status, 403);
-        assert!(host.received.lock().unwrap().is_empty());
+        assert!(host.arrived.lock().unwrap().is_empty());
+        assert_eq!(host.row("Dracula.epub"), (FileState::Skipped, Some("Turned down".into())));
     }
 
     #[test]

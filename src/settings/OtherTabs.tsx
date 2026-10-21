@@ -533,7 +533,7 @@ const FORMATS: { ext: string; name: string }[] = [
   { ext: "PDF", name: "Fixed pages, like print" },
   { ext: "MOBI", name: "Older Kindle books" },
   { ext: "AZW3", name: "Kindle books without DRM (also AZW)" },
-  { ext: "CBZ", name: "Comics and graphic novels" },
+  { ext: "CBZ, CBR", name: "Comics and graphic novels" },
   { ext: "FB2", name: "FictionBook (also zipped, as FBZ)" },
   { ext: "TXT", name: "Plain text, split into chapters where it has them" },
   { ext: "DOCX", name: "Word documents, with their formatting" },

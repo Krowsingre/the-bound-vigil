@@ -35,7 +35,9 @@ export type ServerApi = Pick<
   | "setLocalSend"
   | "answerLocalSend"
   | "onLocalSendOffer"
-  | "onLocalSendReceived"
+  | "localSendFiles"
+  | "clearLocalSendFinished"
+  | "onLocalSendChanged"
   | "pickKeyFile"
 >;
 
@@ -63,7 +65,9 @@ export function serverStub(): ServerApi {
     setLocalSend: no,
     answerLocalSend: async () => undefined,
     onLocalSendOffer: () => () => undefined,
-    onLocalSendReceived: () => () => undefined,
+    localSendFiles: async () => [],
+    clearLocalSendFinished: async () => undefined,
+    onLocalSendChanged: () => () => undefined,
     pickKeyFile: async () => null,
   };
 }

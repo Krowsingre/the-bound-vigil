@@ -331,8 +331,14 @@ async fn read_book_file(
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?,
     };
-    let bytes = tauri::async_runtime::spawn_blocking(move || std::fs::read(path))
-        .await
+    // The reader opens comics as zips; a CBR is made into one in memory.
+    let bytes = tauri::async_runtime::spawn_blocking(move || -> std::io::Result<Vec<u8>> {
+        if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("cbr")) {
+            return tbv_core::formats::comic::rar_as_zip(&path).map_err(std::io::Error::other);
+        }
+        std::fs::read(path)
+    })
+    .await
         .map_err(|e| e.to_string())?
         .map_err(|e| format!("the book file couldn't be read: {e}"))?;
     Ok(tauri::ipc::Response::new(bytes))
@@ -1274,6 +1280,17 @@ async fn set_localsend(
 }
 
 /// Accepts or turns down what someone is sending with LocalSend.
+/// Every file sent with LocalSend this run, for the Imports page.
+#[tauri::command]
+fn localsend_files(localsend: State<'_, Arc<localsend::LocalSend>>) -> Vec<tbv_core::localsend::SentFile> {
+    localsend.rows()
+}
+
+#[tauri::command]
+fn clear_localsend_finished(app: tauri::AppHandle, localsend: State<'_, Arc<localsend::LocalSend>>) {
+    localsend.clear_finished(&app);
+}
+
 #[tauri::command]
 fn answer_localsend(localsend: State<'_, Arc<localsend::LocalSend>>, session: String, accept: bool) {
     localsend.answer(&session, accept);
@@ -1437,6 +1454,8 @@ pub fn run() {
             localsend_status,
             set_localsend,
             answer_localsend,
+            localsend_files,
+            clear_localsend_finished,
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
         // page gets a moment to save the reading position first; then ratings

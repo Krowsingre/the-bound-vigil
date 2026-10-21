@@ -782,6 +782,20 @@ export interface LocalSendStatus {
 }
 
 /** Files someone wants to send with LocalSend, waiting for an answer. */
+/** One file sent with LocalSend, as the Imports page shows it. */
+export interface SentFile {
+  session: string;
+  id: string;
+  from: string;
+  name: string;
+  /** The size the sender gave, and how much has arrived. */
+  size: number;
+  bytes: number;
+  state: "waiting" | "arriving" | "arrived" | "failed" | "skipped";
+  /** Why it failed or was skipped. */
+  reason: string | null;
+}
+
 export interface LocalSendOffer {
   session: string;
   /** The sending device's name. */

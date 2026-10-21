@@ -107,8 +107,10 @@ export function Reader({
         const blob = await api.readBookFile(bookId);
         const { format, title, authors, coverPath } = opened.book;
         // The page engine tells formats apart partly by file name.
-        const named = new File([blob], `book.${format}`, { type: blob.type });
-        const source = await readerSource(named, format, bookId, { title, author: authors.join(", "), language: opened.language });
+        // A CBR arrives already made into a zip.
+        const opensAs = format === "cbr" ? "cbz" : format;
+        const named = new File([blob], `book.${opensAs}`, { type: blob.type });
+        const source = await readerSource(named, opensAs, bookId, { title, author: authors.join(", "), language: opened.language });
         if (!cancelled) setFile(source);
         // A PDF imported elsewhere, or whose cover couldn't be drawn then.
         if (format === "pdf" && !coverPath) {

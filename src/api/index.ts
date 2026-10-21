@@ -6,6 +6,7 @@ import type { Found } from "../lib/onlineDetails";
 import type {
   TidyPlan,
   TidyProgress,
+  SentFile,
   SupabaseUsage,
   TidyReport,
   Audiobook,
@@ -272,8 +273,11 @@ export interface Api {
   answerLocalSend(session: string, accept: boolean): Promise<void>;
   /** Someone nearby wants to send files; answer with `answerLocalSend`. */
   onLocalSendOffer(listener: (offer: LocalSendOffer) => void): () => void;
-  /** Accepted files arrived and went to the import queue: how many books. */
-  onLocalSendReceived(listener: (books: number) => void): () => void;
+  /** Every file sent with LocalSend this run, newest delivery first. */
+  localSendFiles(): Promise<SentFile[]>;
+  clearLocalSendFinished(): Promise<void>;
+  /** A sent file's state or progress changed. */
+  onLocalSendChanged(listener: () => void): () => void;
   /** A private key file, for SFTP. */
   pickKeyFile(): Promise<string | null>;
   /** What sync is doing now, file by file, and what it did lately. */
@@ -288,7 +292,7 @@ export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in w
 /** The web version, for phones: built with `npm run build:web`, syncing through Supabase. */
 export const isWeb = !isApp && import.meta.env.VITE_TBV_WEB === "1";
 
-const BOOK_EXTENSIONS = ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "txt", "docx", "doc"];
+const BOOK_EXTENSIONS = ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "cbr", "txt", "docx", "doc"];
 
 /** Listens for one of the app's events until the returned function is called. */
 function onEvent<T>(name: string, listener: (payload: T) => void): () => void {
@@ -593,7 +597,9 @@ function appApi(): Api {
     setLocalSend: async (on) => (await core).invoke<LocalSendStatus>("set_localsend", { on }),
     answerLocalSend: async (session, accept) => (await core).invoke("answer_localsend", { session, accept }),
     onLocalSendOffer: (listener) => onEvent<LocalSendOffer>("localsend-offer", listener),
-    onLocalSendReceived: (listener) => onEvent<number>("localsend-received", listener),
+    localSendFiles: async () => (await core).invoke<SentFile[]>("localsend_files"),
+    clearLocalSendFinished: async () => (await core).invoke("clear_localsend_finished"),
+    onLocalSendChanged: (listener) => onEvent<null>("localsend-changed", () => listener()),
     onServerQueue: (listener) => {
       let stop: (() => void) | null = null;
       let stopped = false;

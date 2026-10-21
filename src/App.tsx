@@ -18,6 +18,7 @@ import { Home } from "./home/Home";
 import { Imports, importCounts } from "./imports/Imports";
 import { NO_IMPORTS as NOTHING_IMPORTED } from "./imports/view";
 import { useServerQueue } from "./imports/serverQueue";
+import { useLocalSendRows } from "./imports/LocalSendRows";
 import { LocalSendOffers } from "./imports/LocalSendOffer";
 import { SyncActivity } from "./sync/SyncActivity";
 import { importSummary } from "./lib/importSummary";
@@ -54,6 +55,7 @@ export function App() {
   const [imports, setImports] = useState<ImportsView>(NOTHING_IMPORTED);
   const servers = useServerQueue(!isWeb);
   const serverCounts = servers.view.counts;
+  const sent = useLocalSendRows(!isWeb);
   // PDF covers are drawn one at a time, in the background.
   const drawingCovers = useRef(false);
   const wasRunning = useRef(false);
@@ -320,7 +322,13 @@ export function App() {
             ? importCounts(imports)
             : serverCounts.total
               ? { done: serverCounts.done, total: serverCounts.total, running: serverCounts.done + serverCounts.failed < serverCounts.total }
-              : null
+              : sent.length
+                ? {
+                    done: sent.filter((f) => f.state !== "waiting" && f.state !== "arriving").length,
+                    total: sent.length,
+                    running: sent.some((f) => f.state === "waiting" || f.state === "arriving"),
+                  }
+                : null
         }
       />
       <div className="main">
@@ -415,6 +423,7 @@ export function App() {
             <Imports
               view={imports}
               servers={isWeb ? undefined : servers}
+              sent={sent}
               onCancel={() => void api.cancelImports().then(reloadImports)}
               onClear={() => {
                 void api.clearFinishedImports().then(reloadImports);

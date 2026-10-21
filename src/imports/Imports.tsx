@@ -6,6 +6,8 @@ import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
 import type { ServerQueue } from "./serverQueue";
 import { ServerRows } from "./ServerRows";
+import { LocalSendRows } from "./LocalSendRows";
+import type { SentFile } from "../api/types";
 
 export function importCounts(view: ImportsView) {
   return { done: view.done, total: view.total, running: view.done < view.total };
@@ -39,10 +41,13 @@ export function Imports({
   onImportFolder,
   onOpenBook,
   servers,
+  sent = [],
 }: {
   view: ImportsView;
   /** Files coming down from servers, desktop only. */
   servers?: ServerQueue;
+  /** Files sent with LocalSend, desktop only. */
+  sent?: SentFile[];
   onCancel: () => void;
   onClear: () => void;
   onImportBooks: () => void;
@@ -74,10 +79,11 @@ export function Imports({
         </div>
       </header>
 
+      <LocalSendRows rows={sent} />
       {servers && <ServerRows queue={servers} />}
 
       {total === 0 ? (
-        servers && (servers.view.counts.total > 0 || servers.view.looking.length > 0) ? null : (
+        sent.length > 0 || (servers && (servers.view.counts.total > 0 || servers.view.looking.length > 0)) ? null : (
         <div className="imports-empty">
           <Icon name="download" size={28} />
           <p>Nothing is being imported. Books you import, or drop on the window, show up here while they're added.</p>
