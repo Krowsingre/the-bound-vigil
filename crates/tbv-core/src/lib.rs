@@ -15,6 +15,7 @@ pub mod home;
 pub mod ids;
 pub mod library;
 pub mod localsend;
+pub mod lookup;
 pub mod details;
 pub mod manage;
 pub mod model;

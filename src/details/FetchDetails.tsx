@@ -8,9 +8,8 @@ import type { BookDetails, BookPreview, DetailFieldName } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { AUDIO_ONLY, DETAIL_FIELDS, detailLabel, effective, isList, listOf } from "../lib/details";
-import { foundValues, openLibraryDescription, searchOnline, type Found } from "../lib/onlineDetails";
-
-const SOURCE_NAME = { google: "Google Books", openlibrary: "Open Library" } as const;
+import { foundValues, openLibraryDescription, searchOnline, SOURCE_NAME, type Found } from "../lib/onlineDetails";
+import { isAudio } from "../lib/queryBooks";
 
 function shown(field: DetailFieldName, value: string | null): string {
   if (!value) return "";
@@ -37,7 +36,7 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
     running.current = stop;
     setSearching(true);
     setError(null);
-    searchOnline(q, stop.signal).then(
+    searchOnline(q, stop.signal, isApp ? (source, lookup) => api.searchDetailsMore(source, lookup.title, lookup.author) : undefined).then(
       (found) => {
         if (stop.signal.aborted) return;
         setResults(found);
@@ -130,7 +129,8 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
       >
         <h2>Find details online</h2>
         <p className="muted add-dialog-book">
-          {book.title}. Searches Google Books and Open Library. Your book file isn't changed.
+          {book.title}. Searches Google Books, Open Library{isApp ? ", Audible and Hardcover (when it's connected)" : ""}. Your book file
+          isn't changed.
         </p>
 
         {!chosen ? (
@@ -179,6 +179,13 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
                       <span className="muted">
                         {[r.authors.join(", "), r.published?.slice(0, 4), r.publisher].filter(Boolean).join(" · ")}
                       </span>
+                      {(r.series || r.narrators?.length) && (
+                        <span className="muted">
+                          {[r.series && `${r.series}${r.seriesIndex ? ` #${r.seriesIndex}` : ""}`, r.narrators?.length && `Read by ${r.narrators.join(", ")}`]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      )}
                       <span className="fetch-source">{SOURCE_NAME[r.source]}</span>
                     </span>
                   </button>
@@ -204,7 +211,7 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
                 <span role="columnheader">Now</span>
                 <span role="columnheader">Found</span>
               </div>
-              {DETAIL_FIELDS.filter((f) => values[f.field] && !AUDIO_ONLY.includes(f.field)).map(({ field }) => {
+              {DETAIL_FIELDS.filter((f) => values[f.field] && (isAudio(book.format) || !AUDIO_ONLY.includes(f.field))).map(({ field }) => {
                 const current = details?.fields.find((x) => x.field === field);
                 return (
                   <label key={field} className="fetch-row" role="row">

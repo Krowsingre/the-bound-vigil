@@ -2,6 +2,7 @@
 // calls Rust commands; in a plain browser (design previews only) it serves a
 // clearly labelled sample library so screens can be looked at without the app.
 
+import type { Found } from "../lib/onlineDetails";
 import type {
   TidyPlan,
   TidyProgress,
@@ -223,7 +224,9 @@ export interface Api {
   /** Takes away your edits, and with `fetched` what was fetched online too. */
   resetDetails(bookId: string, fetched: boolean): Promise<void>;
   /** Keeps details found online. Lists (authors, genres) as JSON arrays. */
-  saveFetched(bookId: string, source: "google" | "openlibrary", values: Record<string, string>): Promise<void>;
+  saveFetched(bookId: string, source: "google" | "openlibrary" | "audible" | "hardcover", values: Record<string, string>): Promise<void>;
+  /** Looks a book up in Audible's catalogue, or on Hardcover when it's connected (desktop app). */
+  searchDetailsMore(source: "audible" | "hardcover", title: string, author: string): Promise<Found[]>;
   /** Remembers that a group isn't duplicates, so it isn't shown again. */
   dismissDuplicates(key: string): Promise<void>;
   /** E-readers plugged in by cable now. */
@@ -582,6 +585,7 @@ function appApi(): Api {
     cancelServerQueue: async () => (await core).invoke("cancel_server_queue"),
     clearServerFinished: async () => (await core).invoke("clear_server_finished"),
     setServerConnections: async (count) => (await core).invoke("set_server_connections", { count }),
+    searchDetailsMore: async (source, title, author) => (await core).invoke<Found[]>("search_details_more", { source, title, author }),
     localSendStatus: async () => (await core).invoke<LocalSendStatus>("localsend_status"),
     setLocalSend: async (on) => (await core).invoke<LocalSendStatus>("set_localsend", { on }),
     answerLocalSend: async (session, accept) => (await core).invoke("answer_localsend", { session, accept }),

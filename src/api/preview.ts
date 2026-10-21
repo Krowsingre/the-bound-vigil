@@ -414,7 +414,7 @@ export function previewApi(): Api {
   // Book details in their layers: what each book started with, your edits and what was fetched.
   const own = new Map<string, Record<string, string | null>>();
   const edited = new Map<string, Record<string, string>>();
-  const fetched = new Map<string, Record<string, { value: string; source: "google" | "openlibrary" }>>();
+  const fetched = new Map<string, Record<string, { value: string; source: "google" | "openlibrary" | "audible" | "hardcover" }>>();
   const ownOf = (id: string) => {
     if (!own.has(id)) {
       const b = find(id);
@@ -735,6 +735,7 @@ export function previewApi(): Api {
       if (alsoFetched) fetched.delete(bookId);
       relayer(bookId);
     },
+    searchDetailsMore: async () => [],
     saveFetched: async (bookId, source, values) => {
       ownOf(bookId);
       const found = { ...fetched.get(bookId) };

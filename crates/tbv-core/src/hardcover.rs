@@ -306,7 +306,7 @@ fn first_of(value: &Value) -> &Value {
     }
 }
 
-fn graphql(net: &dyn Transport, token: &str, query: &str, variables: Value) -> Result<Value> {
+pub(crate) fn graphql(net: &dyn Transport, token: &str, query: &str, variables: Value) -> Result<Value> {
     let (status, body) = net.post_json(GRAPHQL_URL, token, &json!({ "query": query, "variables": variables }))?;
     if status == 401 {
         return Err(Error::SignedOut);

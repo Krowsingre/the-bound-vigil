@@ -1009,6 +1009,7 @@ export async function webApi(): Promise<Api> {
           .map((o): [string, unknown[]] => [kind, [bookId, o.field]]);
       await library.remove([...mine("metadata_overrides", "override"), ...(alsoFetched ? mine("metadata_fetched", "fetched") : [])]);
     },
+    searchDetailsMore: async () => [],
     saveFetched: async (bookId, source, values) => {
       find(bookId);
       const at = now();

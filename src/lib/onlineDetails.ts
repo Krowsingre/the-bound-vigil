@@ -1,8 +1,17 @@
-// Looks a book up online, in Google Books and Open Library, for the Book
-// details page. Both are free and need no account. Nothing here changes a
-// book: the person picks what to keep, and it's saved as fetched details.
+// Looks a book up online for the Book details page: Google Books and Open
+// Library from here, and in the desktop app Audible's catalogue (audiobooks,
+// narrators, series) and Hardcover (when it's connected), which TBV's core
+// reaches. Nothing here changes a book: the person picks what to keep, and
+// it's saved as fetched details.
 
-export type Source = "google" | "openlibrary";
+export type Source = "google" | "openlibrary" | "audible" | "hardcover";
+
+export const SOURCE_NAME: Record<Source, string> = {
+  google: "Google Books",
+  openlibrary: "Open Library",
+  audible: "Audible",
+  hardcover: "Hardcover",
+};
 
 export interface Found {
   /** Unique within one search. */
@@ -10,6 +19,8 @@ export interface Found {
   source: Source;
   title: string;
   authors: string[];
+  /** For audiobooks (Audible). */
+  narrators?: string[];
   series: string | null;
   seriesIndex: string | null;
   synopsis: string | null;
@@ -37,6 +48,15 @@ const LANGUAGES: Record<string, string> = {
   swe: "sv", dan: "da", nor: "no", fin: "fi", pol: "pl", rus: "ru", jpn: "ja", chi: "zh", zho: "zh", kor: "ko",
   ara: "ar", heb: "he", gre: "el", ell: "el", tur: "tr", cze: "cs", ces: "cs", hun: "hu", lat: "la", wel: "cy", gle: "ga",
 };
+
+/** A series as catalogues write it, "Discworld ; 3" or "Discworld #3", as name and number. */
+export function splitSeries(text: string | null | undefined): { series: string | null; index: string | null } {
+  const t = text?.trim();
+  if (!t) return { series: null, index: null };
+  const m = /^(.*?)[\s,;:(#]*(?:book|vol\.?|volume|no\.?|#)?\s*(\d+(?:\.\d+)?)\)?$/i.exec(t);
+  if (m && m[1].trim()) return { series: m[1].trim().replace(/[\s,;:(#-]+$/, ""), index: m[2] };
+  return { series: t, index: null };
+}
 
 /** Text without HTML tags, with paragraphs kept as blank lines. */
 export function plainText(html: string): string {
@@ -157,13 +177,14 @@ export async function searchOpenLibrary(q: Lookup, signal: AbortSignal): Promise
   return (data.docs ?? []).map((d): Found => {
     const isbn13 = d.isbn?.find((i) => i.length === 13) ?? d.isbn?.[0] ?? null;
     const lang = d.language?.[0];
+    const series = splitSeries(d.series?.[0]);
     return {
       id: `openlibrary:${d.key}`,
       source: "openlibrary",
       title: d.title ?? "",
       authors: d.author_name ?? [],
-      series: d.series?.[0] ?? null,
-      seriesIndex: null,
+      series: series.series,
+      seriesIndex: series.index,
       synopsis: null,
       genres: genresFrom(d.subject ?? []),
       publisher: d.publisher?.[0] ?? null,
@@ -183,18 +204,30 @@ export async function openLibraryDescription(workKey: string, signal: AbortSigna
   return d ? plainText(d) : null;
 }
 
-/** Both sources at once. Fails only when both do, saying why. */
-export async function searchOnline(q: Lookup, signal: AbortSignal): Promise<Found[]> {
-  const [google, openLibrary] = await Promise.allSettled([searchGoogle(q, signal), searchOpenLibrary(q, signal)]);
-  const found = [google, openLibrary].flatMap((r) => (r.status === "fulfilled" ? r.value : []));
-  if (!found.length) {
-    const why = (r: PromiseSettledResult<Found[]>, name: string) =>
-      r.status === "rejected" ? `${name} ${(r.reason instanceof Error ? r.reason.message : String(r.reason)).replace(/\.$/, "")}` : null;
-    const reasons = [why(google, "Google Books"), why(openLibrary, "Open Library")].filter(Boolean);
-    if (reasons.length === 2) throw new Error(signal.aborted ? "Stopped." : `Couldn't search online. ${reasons.join(". ")}.`);
+/** Searches the core reaches (Audible, Hardcover), in the desktop app. */
+export type MoreSources = (source: "audible" | "hardcover", q: Lookup) => Promise<Found[]>;
+
+/** Every source at once. Fails only when all do, saying why. */
+export async function searchOnline(q: Lookup, signal: AbortSignal, more?: MoreSources): Promise<Found[]> {
+  const tried: [string, Promise<Found[]>][] = [
+    ["Google Books", searchGoogle(q, signal)],
+    ["Open Library", searchOpenLibrary(q, signal)],
+  ];
+  // The ISBN alone means nothing to Audible's search; the title does.
+  if (more && (q.title.trim() || q.author.trim())) {
+    tried.push(["Audible", more("audible", q)], ["Hardcover", more("hardcover", q)]);
   }
-  // Results with the most to offer first, alternating sources.
-  const score = (f: Found) => [f.synopsis, f.publisher, f.published, f.isbn, f.coverUrl].filter(Boolean).length + f.genres.length / 3;
+  const settled = await Promise.allSettled(tried.map(([, p]) => p));
+  const found = settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  if (!found.length) {
+    const reasons = settled.flatMap((r, i) =>
+      r.status === "rejected" ? [`${tried[i][0]} ${(r.reason instanceof Error ? r.reason.message : String(r.reason)).replace(/\.$/, "")}`] : [],
+    );
+    if (reasons.length === tried.length) throw new Error(signal.aborted ? "Stopped." : `Couldn't search online. ${reasons.join(". ")}.`);
+  }
+  // Results with the most to offer first; a series counts for a lot, as few sources have one.
+  const score = (f: Found) =>
+    [f.synopsis, f.publisher, f.published, f.isbn, f.coverUrl].filter(Boolean).length + f.genres.length / 3 + (f.series ? 2 : 0);
   return found.sort((a, b) => score(b) - score(a));
 }
 
@@ -206,6 +239,7 @@ export function foundValues(f: Found): Record<string, string> {
   };
   put("title", f.title);
   if (f.authors.length) out.authors = JSON.stringify(f.authors);
+  if (f.narrators?.length) out.narrators = JSON.stringify(f.narrators);
   put("series", f.series);
   put("series_index", f.seriesIndex && /^\d+(\.\d+)?$/.test(f.seriesIndex) ? f.seriesIndex : null);
   put("synopsis", f.synopsis);

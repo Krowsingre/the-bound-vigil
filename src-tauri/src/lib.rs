@@ -1206,6 +1206,26 @@ async fn set_server_connections(
     .map_err(|e| e.to_string())?
 }
 
+/// Looks a book up in Audible's catalogue, or on Hardcover when it's
+/// connected (nothing otherwise), for Find details online.
+#[tauri::command]
+async fn search_details_more(
+    state: State<'_, AppLibrary>,
+    source: String,
+    title: String,
+    author: String,
+) -> CommandResult<Vec<tbv_core::lookup::Found>> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || match source.as_str() {
+        "audible" => tbv_core::lookup::search_audible(&title, &author),
+        "hardcover" => hardcover::lookup(&library, &title, &author).map(Option::unwrap_or_default),
+        other => Err(tbv_core::Error::Unsuitable(format!("unknown source {other}"))),
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
 fn localsend_inbox(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("LocalSend inbox"))
 }
@@ -1394,6 +1414,7 @@ pub fn run() {
             cancel_server_queue,
             clear_server_finished,
             set_server_connections,
+            search_details_more,
             localsend_status,
             set_localsend,
             answer_localsend,
