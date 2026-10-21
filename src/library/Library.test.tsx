@@ -9,6 +9,7 @@ const setFavorite = vi.fn(async () => {});
 vi.mock("../api", () => ({
   isApp: false,
   isWeb: false,
+  isHome: false,
   api: {
     kind: "app",
     getLibrary: (q: LibraryQuery) => getLibrary(q),
