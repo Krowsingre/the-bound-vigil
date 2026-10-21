@@ -122,6 +122,7 @@ export function ReaderBottomBar({
   onPrev,
   onNext,
   focus,
+  zoom,
 }: {
   position: PagePosition | null;
   fraction: number;
@@ -130,6 +131,8 @@ export function ReaderBottomBar({
   onPrev: () => void;
   onNext: () => void;
   focus: boolean;
+  /** PDFs and comics: the zoom buttons. */
+  zoom?: ReactNode;
 }) {
   // While dragging, the label shows where you'd land; the book moves on release.
   const [dragging, setDragging] = useState<number | null>(null);
@@ -141,7 +144,7 @@ export function ReaderBottomBar({
     setDragging(null);
   };
   return (
-    <footer className={`reader-bottom${focus ? " reader-bottom-focus" : ""}`}>
+    <footer className={`reader-bottom${focus ? " reader-bottom-focus" : ""}${zoom && !focus ? " has-zoom" : ""}`}>
       <span className="reader-bottom-page">{shownPage ? formatPage(shownPage) : " "}</span>
       <input
         type="range"
@@ -162,6 +165,7 @@ export function ReaderBottomBar({
       <span className="reader-bottom-chapter" title={chapter ?? undefined}>
         {chapter ?? ""}
       </span>
+      {!focus && zoom}
       {!focus && (
         <span className="reader-bottom-turns">
           <button type="button" className="icon-btn" aria-label="Previous page" title="Previous page (←)" onClick={onPrev}>

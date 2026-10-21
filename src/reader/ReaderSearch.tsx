@@ -14,8 +14,9 @@ export const ReaderSearch = forwardRef<
     run: (query: string) => AsyncGenerator<SearchResult> | null;
     clear: () => void;
     onGo: (cfi: string) => void;
+    autoFocus?: boolean;
   }
->(function ReaderSearch({ run, clear, onGo }, inputRef) {
+>(function ReaderSearch({ run, clear, onGo, autoFocus }, inputRef) {
   const [query, setQuery] = useState("");
   const [groups, setGroups] = useState<Group[]>([]);
   const [progress, setProgress] = useState<number | null>(null);
@@ -89,6 +90,7 @@ export const ReaderSearch = forwardRef<
               e.currentTarget.blur();
             }
           }}
+          autoFocus={autoFocus}
           autoComplete="off"
           spellCheck={false}
         />

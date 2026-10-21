@@ -9,6 +9,10 @@ import {
   LINE_HEIGHTS,
   PAGE_COLORS,
   SIZE_RANGE,
+  zoomStep,
+  ZOOM_RANGE,
+  type PageSpread,
+  type PageZoom,
   type ReaderSettings,
   type ReadingFlow,
   type ReadingTheme,
@@ -136,6 +140,112 @@ export function TextSettings({ settings, onChange }: { settings: ReaderSettings;
         <input type="checkbox" checked={settings.justify} onChange={(e) => onChange({ justify: e.target.checked })} />
         Justify text (even right edge)
       </label>
+    </div>
+  );
+}
+
+/** The zoom buttons: smaller, the size shown now (or how it fits), larger. */
+export function ZoomControls({
+  zoom,
+  scale,
+  onChange,
+  compact = false,
+}: {
+  zoom: PageZoom;
+  /** The scale shown now, 1 being the page's own size. */
+  scale: number;
+  onChange: (zoom: PageZoom) => void;
+  compact?: boolean;
+}) {
+  const label = zoom === "fit-page" ? "Fit page" : zoom === "fit-width" ? "Fit width" : `${Math.round(scale * 100)}%`;
+  const next = zoom === "fit-page" ? "fit-width" : "fit-page";
+  return (
+    <span className={`zoom-controls${compact ? " is-compact" : ""}`} role="group" aria-label="Zoom">
+      <button
+        type="button"
+        className="icon-btn"
+        aria-label="Zoom out (Ctrl −)"
+        title="Zoom out (Ctrl −)"
+        disabled={scale <= ZOOM_RANGE.min + 0.001}
+        onClick={() => onChange(zoomStep(scale, -1))}
+      >
+        <Icon name="minus" size={18} />
+      </button>
+      <button
+        type="button"
+        className="zoom-value"
+        title={next === "fit-width" ? "Fit the page's width to the screen" : "Fit the whole page on screen (Ctrl 0)"}
+        aria-label={`${label}. ${next === "fit-width" ? "Switch to fit width" : "Switch to fit page"}`}
+        onClick={() => onChange(next)}
+      >
+        {label}
+      </button>
+      <button
+        type="button"
+        className="icon-btn"
+        aria-label="Zoom in (Ctrl +)"
+        title="Zoom in (Ctrl +)"
+        disabled={scale >= ZOOM_RANGE.max - 0.001}
+        onClick={() => onChange(zoomStep(scale, 1))}
+      >
+        <Icon name="plus" size={18} />
+      </button>
+    </span>
+  );
+}
+
+/** The page panel for PDFs and comics: size, one or two pages, turning or scrolling. */
+export function PageSettings({
+  settings,
+  scale,
+  onChange,
+}: {
+  settings: ReaderSettings;
+  scale: number;
+  onChange: (s: Partial<ReaderSettings>) => void;
+}) {
+  return (
+    <div className="text-settings">
+      <fieldset className="choice">
+        <legend>Size</legend>
+        <ZoomControls zoom={settings.pageZoom} scale={scale} onChange={(pageZoom) => onChange({ pageZoom })} />
+      </fieldset>
+      <Choice<"fit-page" | "fit-width" | "set">
+        label="Fit"
+        value={typeof settings.pageZoom === "number" ? "set" : settings.pageZoom}
+        options={[
+          { value: "fit-page", label: "Whole page" },
+          { value: "fit-width", label: "Page width" },
+          { value: "set", label: "Set size" },
+        ]}
+        onChange={(fit) => onChange({ pageZoom: fit === "set" ? Math.round(scale * 100) / 100 : fit })}
+      />
+      <Choice<PageSpread>
+        label="Pages at a time"
+        value={settings.pageSpread}
+        options={[
+          { value: "one", label: "One" },
+          { value: "two", label: "Two" },
+          { value: "auto", label: "Two when wide" },
+        ]}
+        onChange={(pageSpread) => onChange({ pageSpread })}
+      />
+      {settings.pageSpread !== "one" && settings.pageFlow === "paginated" && (
+        <p className="settings-hint">The first page (the cover) shows on its own.</p>
+      )}
+      {settings.pageSpread !== "one" && settings.pageFlow === "scrolled" && (
+        <p className="settings-hint">Scrolling shows one page under another.</p>
+      )}
+      <Choice<ReadingFlow>
+        label="Moving through the book"
+        value={settings.pageFlow}
+        options={[
+          { value: "paginated", label: "Turn pages" },
+          { value: "scrolled", label: "Scroll" },
+        ]}
+        onChange={(pageFlow) => onChange({ pageFlow })}
+      />
+      <Choice<ReadingTheme> label="Colour around the pages" value={settings.theme} options={THEME_OPTIONS} onChange={(theme) => onChange({ theme })} />
     </div>
   );
 }
