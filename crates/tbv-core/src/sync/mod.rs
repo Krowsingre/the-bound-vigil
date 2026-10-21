@@ -17,7 +17,7 @@ pub mod tidy;
 pub mod webdav;
 
 use std::thread;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -678,6 +678,10 @@ const ALSO_LAST_SUCCESS: &str = "sync.also.last_success_at";
 const ALSO_LAST_ERROR: &str = "sync.also.last_error";
 const SESSION: &str = "sync.session";
 const PROJECT: &str = "sync.supabase";
+/// Books whose cover another device replaced, so this one's copy is old.
+const COVERS_STALE: &str = "sync.coversStale";
+/// The detail that says a book's cover changed, so other devices fetch it again.
+const COVER_REV: &str = "cover_rev";
 pub(crate) const PROVIDER: &str = "sync.provider";
 pub(crate) const APP_SETTINGS: &str = "app.settings";
 
@@ -1170,6 +1174,14 @@ impl Library {
             return Ok(Merge::Kept);
         }
         if self.write(kind, record)? {
+            if kind.name == "fetched" && record.data.is_some() {
+                let keys: Vec<Value> = serde_json::from_str(&record.key).unwrap_or_default();
+                if let [Value::String(book), Value::String(field)] = keys.as_slice() {
+                    if field == COVER_REV {
+                        self.cover_stale(book, true)?;
+                    }
+                }
+            }
             // Sent on to the other place: from the first, the second hasn't
             // got it; from the second, the first hasn't.
             self.stamp(record, record.changed_at.clone(), lane == Lane::Main)?;
@@ -1492,6 +1504,13 @@ impl Library {
     /// files): the new one goes up again, and a copy under another name is
     /// erased from the cloud.
     pub(crate) fn cover_changed(&self, book_id: &str, old: Option<&str>, new: Option<&str>) -> Result<()> {
+        // Synced like any detail, so devices that already have a cover fetch it again.
+        let now = now_utc();
+        self.conn.execute(
+            "INSERT INTO metadata_fetched (book_id, field, value, source, updated_at) VALUES (?1, ?2, ?3, 'cover', ?3)
+             ON CONFLICT(book_id, field) DO UPDATE SET value = excluded.value, source = excluded.source, updated_at = excluded.updated_at",
+            params![book_id, COVER_REV, now],
+        )?;
         let hex = book_id_hex(book_id);
         let cloud = |file: Option<&str>| file.and_then(|f| Path::new(f).extension()).map(|e| format!("covers/{hex}.{}", e.to_string_lossy()));
         let (old, new) = (cloud(old), cloud(new));
@@ -1507,6 +1526,44 @@ impl Library {
             }
         }
         Ok(())
+    }
+
+    fn covers_stale(&self) -> Result<Vec<String>> {
+        Ok(self.setting(COVERS_STALE)?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default())
+    }
+
+    fn cover_stale(&self, book_id: &str, stale: bool) -> Result<()> {
+        let mut books = self.covers_stale()?;
+        let had = books.iter().any(|b| b == book_id);
+        if stale == had {
+            return Ok(());
+        }
+        if stale {
+            books.push(book_id.to_string());
+        } else {
+            books.retain(|b| b != book_id);
+        }
+        let saved = if books.is_empty() { None } else { Some(serde_json::to_string(&books)?) };
+        self.put_setting(COVERS_STALE, saved.as_deref())
+    }
+
+    /// Books whose cover another device replaced and that have one here, by
+    /// hash, with the cover to replace.
+    fn stale_covers(&self) -> Result<Vec<(String, String, PathBuf)>> {
+        let mut out = Vec::new();
+        for book_id in self.covers_stale()? {
+            let cover: Option<String> = self
+                .conn
+                .query_row("SELECT cover_path FROM local_files WHERE book_id = ?1", params![book_id], |r| r.get(0))
+                .optional()?
+                .flatten();
+            match cover.filter(|c| Path::new(c).exists()) {
+                Some(cover) => out.push((book_id_hex(&book_id).to_string(), book_id, PathBuf::from(cover))),
+                // No cover here: the usual fetch of missing covers brings it.
+                None => self.cover_stale(&book_id, false)?,
+            }
+        }
+        Ok(out)
     }
 
     fn files_to_erase(&self, lane: Lane) -> Result<Vec<String>> {
@@ -1929,11 +1986,14 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
             }
         }
     }
-    let (bare, covers_dir) = {
+    let (bare, stale, covers_dir) = {
         let library = lock()?;
-        (library.books_without_covers()?, library.paths.covers_dir.clone())
+        (library.books_without_covers()?, library.stale_covers()?, library.paths.covers_dir.clone())
     };
-    if !bare.is_empty() {
+    // A cover another device replaced comes down under a new name, and only
+    // then takes the old one's place.
+    let mut replacing: HashMap<String, PathBuf> = HashMap::new();
+    if !bare.is_empty() || !stale.is_empty() {
         let in_cloud = remote.list("covers/")?;
         let library = lock()?;
         // A cover this computer is about to erase (one a reset took away) stays away.
@@ -1946,6 +2006,16 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
             }
             let what = library.file_named(&path);
             fetches.push((path, covers_dir.join(name), what, Some(book_id)));
+        }
+        let stamp = Utc::now().timestamp_millis();
+        for (hex, book_id, old) in stale {
+            // Not up yet: it's tried again next time.
+            let Some(name) = in_cloud.iter().find(|n| Path::new(n).file_stem().is_some_and(|s| s == hex.as_str())) else { continue };
+            let path = format!("covers/{name}");
+            let extension = Path::new(name).extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_else(|| "jpg".into());
+            let what = library.file_named(&path);
+            replacing.insert(book_id.clone(), old);
+            fetches.push((path, covers_dir.join(format!("{hex}.{stamp}.{extension}")), what, Some(book_id)));
         }
     }
     if !fetches.is_empty() {
@@ -1966,8 +2036,16 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
         file(Direction::Down, &path, &what, bytes, true, problem);
         if got? {
             let library = lock()?;
+            // The place has it already, so it's never sent back there.
+            library.lane_file_sent(&path, None, lane)?;
             match &cover_of {
-                Some(book_id) => library.set_cover(book_id, &local)?,
+                Some(book_id) => {
+                    library.set_cover(book_id, &local)?;
+                    if let Some(old) = replacing.get(book_id) {
+                        let _ = fs::remove_file(old);
+                    }
+                    library.cover_stale(book_id, false)?;
+                }
                 None if path.starts_with("pictures/avatar-") => library.tidy_avatars()?,
                 None => {}
             }

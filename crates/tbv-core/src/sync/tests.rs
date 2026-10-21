@@ -1501,3 +1501,29 @@ fn ranged_answers_give_the_part_asked_for_and_the_whole_size() {
     assert_eq!(super::ranged_answer(&mut answer, 20, 30).unwrap(), (Vec::new(), 10));
     server.join().unwrap();
 }
+
+#[test]
+fn a_replaced_cover_reaches_a_device_that_already_had_one() {
+    let cloud = FakeRemote::default();
+    let (a, b) = (Device::new(), Device::new());
+    let book = a.import("Dracula");
+    a.sync(&cloud);
+    b.sync(&cloud);
+    let before = b.lib().book(&book).unwrap().unwrap().cover_path.expect("the first cover came along");
+
+    let mut picture = Vec::new();
+    image::RgbImage::from_pixel(3, 5, image::Rgb([10, 120, 30]))
+        .write_to(&mut std::io::Cursor::new(&mut picture), image::ImageFormat::Png)
+        .unwrap();
+    assert!(a.lib().replace_cover(&book, &picture).unwrap());
+    a.sync(&cloud);
+    b.sync(&cloud);
+
+    let mine = fs::read(a.lib().book(&book).unwrap().unwrap().cover_path.unwrap()).unwrap();
+    let after = b.lib().book(&book).unwrap().unwrap().cover_path.unwrap();
+    assert_ne!(after, before);
+    assert_eq!(fs::read(&after).unwrap(), mine);
+    assert!(!Path::new(&before).exists(), "the old copy is gone");
+    // Once fetched, it isn't fetched again.
+    assert_eq!(b.sync(&cloud).files_received, 0);
+}
