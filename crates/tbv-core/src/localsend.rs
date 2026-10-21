@@ -232,7 +232,14 @@ fn serve(state: &State, stream: TcpStream) -> Result<()> {
     // One request per connection is plenty: LocalSend opens a fresh one each time.
     let Some(request) = read_head(&mut reader)? else { return Ok(()) };
     let (status, body) = route(state, &request, &mut reader);
-    respond(&mut out, status, &body)
+    respond(&mut out, status, &body)?;
+    // A refused request's body may still be on its way. Closing with it
+    // unread resets the connection, and the sender can lose the answer, so
+    // finish sending first and let the rest arrive (within reason).
+    let _ = out.shutdown(std::net::Shutdown::Write);
+    let _ = out.set_read_timeout(Some(Duration::from_secs(2)));
+    let _ = std::io::copy(&mut reader.take(64 * 1024 * 1024), &mut std::io::sink());
+    Ok(())
 }
 
 fn read_head(reader: &mut impl BufRead) -> Result<Option<Request>> {
