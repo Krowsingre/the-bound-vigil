@@ -486,6 +486,33 @@ mod queueing {
     }
 
     #[test]
+    fn several_audiobooks_in_one_folder_each_get_their_own_folder() {
+        use crate::audio::tests::silent_mp3;
+        let dir = tempfile::tempdir().unwrap();
+        let mut fake = Fake::default();
+        for (name, album) in [("Dracula 1.mp3", "Dracula"), ("Dracula 2.mp3", "Dracula"), ("Carmilla 1.mp3", "Carmilla"), ("Carmilla 2.mp3", "Carmilla")] {
+            fake.files.insert(format!("/home/wren/Mixed/{name}"), silent_mp3(10, name, album, "Someone"));
+        }
+        let (_, planned) = plan(&mut fake, &[chosen("/home/wren/Mixed", true)], &AtomicBool::new(false)).unwrap();
+        let mut queue = Queue::open(dir.path());
+        queue.add("s1", "Seedbox", planned).unwrap();
+        download_all(&mut queue, &mut fake);
+        let ready = queue.ready();
+        assert_eq!(ready.len(), 2);
+        for r in &ready {
+            assert!(r.source.is_dir(), "{:?}", r.source);
+            assert_eq!(crate::audio::folder_books(&r.source).len(), 1);
+            assert_eq!(r.ids.len(), 2);
+        }
+        // One going in (and its files going) leaves the other whole.
+        queue.imported(&ready[0].ids);
+        assert_eq!(crate::audio::folder_books(&ready[1].source)[0].1.len(), 2);
+        for f in queue.files().iter().filter(|f| ready[1].ids.contains(&f.id)) {
+            assert!(queue.path_of(f).exists(), "the queue knows where its files went");
+        }
+    }
+
+    #[test]
     fn a_crash_loses_nothing() {
         let dir = tempfile::tempdir().unwrap();
         let mut fake = library_tree();

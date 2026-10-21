@@ -137,6 +137,12 @@ impl ServerImports {
         self.queue.lock().map(|q| q.files().iter().skip(offset).take(limit.min(500)).cloned().collect()).unwrap_or_default()
     }
 
+    /// Closes a kept connection, after its server's settings change or it's removed.
+    pub fn forget(&self, server_id: &str) {
+        let kept = self.browsing.lock().ok().and_then(|mut b| b.remove(server_id));
+        drop(kept);
+    }
+
     /// A folder on a server, over a connection kept open between folders.
     pub fn browse(&self, server: &Server, path: Option<String>) -> tbv_core::Result<Listing> {
         let mut browsing = self.browsing.lock().map_err(|_| Error::Unsuitable("TBV is busy. Try again.".into()))?;

@@ -1067,13 +1067,21 @@ async fn list_servers(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_cor
 #[tauri::command]
 async fn save_server(
     state: State<'_, AppLibrary>,
+    queue: State<'_, Arc<servers::ServerImports>>,
     server: tbv_core::servers::ServerInput,
 ) -> CommandResult<tbv_core::servers::ServerView> {
-    with_library(state, move |library| library.save_server(&server)).await
+    let saved = with_library(state, move |library| library.save_server(&server)).await?;
+    queue.forget(&saved.id);
+    Ok(saved)
 }
 
 #[tauri::command]
-async fn remove_server(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
+async fn remove_server(
+    state: State<'_, AppLibrary>,
+    queue: State<'_, Arc<servers::ServerImports>>,
+    id: String,
+) -> CommandResult<()> {
+    queue.forget(&id);
     with_library(state, move |library| library.remove_server(&id)).await
 }
 

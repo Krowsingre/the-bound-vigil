@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -28,6 +28,12 @@ pub const PORT: u16 = 53317;
 const MULTICAST: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 167);
 /// How long a sender is kept waiting for the person to answer.
 const ANSWER_WITHIN: Duration = Duration::from_secs(120);
+/// A session nothing has arrived for in this long, with nothing arriving now,
+/// was abandoned (the sender lost Wi-Fi or quit) and makes way for the next.
+#[cfg(not(test))]
+const ABANDONED: Duration = Duration::from_secs(120);
+#[cfg(test)]
+const ABANDONED: Duration = Duration::from_millis(300);
 /// A request or upload that goes quiet this long is given up on.
 const IDLE: Duration = Duration::from_secs(60);
 /// Requests' own lines and JSON bodies; files are streamed, not held.
@@ -94,9 +100,13 @@ pub trait Host: Send + Sync {
 
 struct Session {
     folder: PathBuf,
-    /// Accepted files by LocalSend's id: their name and the token they must come with.
-    files: HashMap<String, (String, String)>,
+    /// Accepted files by LocalSend's id: their name, the token they must come
+    /// with and the size the sender gave.
+    files: HashMap<String, (String, String, u64)>,
     arrived: Vec<PathBuf>,
+    /// When something last arrived, and how many files are arriving now.
+    touched: Instant,
+    arriving: usize,
 }
 
 /// The receiver while it's switched on. Dropping it stops it.
@@ -356,6 +366,13 @@ fn route(state: &State, request: &Request, reader: &mut dyn BufRead) -> (u16, Va
 /// Someone wants to send files: ask the person, and wait for the answer.
 fn prepare(state: &State, body: Option<Value>) -> (u16, Value) {
     let Some(body) = body else { return (400, json!({ "message": "Invalid body" })) };
+    let abandoned: Vec<String> = match state.sessions.lock() {
+        Ok(sessions) => sessions.iter().filter(|(_, s)| s.arriving == 0 && s.touched.elapsed() > ABANDONED).map(|(id, _)| id.clone()).collect(),
+        Err(_) => return (500, Value::Null),
+    };
+    for id in abandoned {
+        finish(state, &id);
+    }
     if state.sessions.lock().map(|s| !s.is_empty()).unwrap_or(true) {
         return (409, json!({ "message": "Blocked by another session" }));
     }
@@ -396,14 +413,14 @@ fn prepare(state: &State, body: Option<Value>) -> (u16, Value) {
     if fs::create_dir_all(&folder).is_err() {
         return (500, json!({ "message": "TBV couldn't make room for the files." }));
     }
-    let accepted: HashMap<String, (String, String)> = files
+    let accepted: HashMap<String, (String, String, u64)> = files
         .into_iter()
         .filter(|f| f.importable)
-        .map(|f| (f.id, (f.name, crate::ids::new_record_id())))
+        .map(|f| (f.id, (f.name, crate::ids::new_record_id(), f.size)))
         .collect();
-    let tokens: serde_json::Map<String, Value> = accepted.iter().map(|(id, (_, token))| (id.clone(), json!(token))).collect();
+    let tokens: serde_json::Map<String, Value> = accepted.iter().map(|(id, (_, token, _))| (id.clone(), json!(token))).collect();
     if let Ok(mut sessions) = state.sessions.lock() {
-        sessions.insert(session.clone(), Session { folder, files: accepted, arrived: Vec::new() });
+        sessions.insert(session.clone(), Session { folder, files: accepted, arrived: Vec::new(), touched: Instant::now(), arriving: 0 });
     }
     (200, json!({ "sessionId": session, "files": tokens }))
 }
@@ -412,22 +429,37 @@ fn prepare(state: &State, body: Option<Value>) -> (u16, Value) {
 fn upload(state: &State, request: &Request, reader: &mut dyn BufRead) -> (u16, Value) {
     let q = |k: &str| request.query.get(k).cloned().unwrap_or_default();
     let (session, file, token) = (q("sessionId"), q("fileId"), q("token"));
-    let target = {
-        let Ok(sessions) = state.sessions.lock() else { return (500, Value::Null) };
-        let Some(s) = sessions.get(&session) else { return (403, json!({ "message": "No such session" })) };
-        match s.files.get(&file) {
-            Some((name, expected)) if *expected == token => unique_in(&s.folder, name),
+    let (target, size) = {
+        let Ok(mut sessions) = state.sessions.lock() else { return (500, Value::Null) };
+        let Some(s) = sessions.get_mut(&session) else { return (403, json!({ "message": "No such session" })) };
+        let found = match s.files.get(&file) {
+            Some((name, expected, size)) if *expected == token => (unique_in(&s.folder, name), *size),
             _ => return (403, json!({ "message": "Invalid token" })),
-        }
+        };
+        s.arriving += 1;
+        s.touched = Instant::now();
+        found
     };
+    let declared = request.headers.get("content-length").and_then(|l| l.parse::<u64>().ok());
     let partial = target.with_file_name(format!("{}.part", target.file_name().unwrap_or_default().to_string_lossy()));
     let written = (|| -> std::io::Result<()> {
         let mut out = fs::File::create(&partial)?;
-        std::io::copy(&mut body_reader(request, reader), &mut out)?;
+        let copied = std::io::copy(&mut body_reader(request, reader), &mut out)?;
+        // A connection that drops part way looks like the end of the file,
+        // so a file shorter than promised didn't arrive.
+        if (size > 0 && copied != size) || declared.is_some_and(|d| d != copied) {
+            return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "cut short"));
+        }
         out.flush()?;
         drop(out);
         fs::rename(&partial, &target)
     })();
+    if let Ok(mut sessions) = state.sessions.lock() {
+        if let Some(s) = sessions.get_mut(&session) {
+            s.arriving = s.arriving.saturating_sub(1);
+            s.touched = Instant::now();
+        }
+    }
     if written.is_err() {
         let _ = fs::remove_file(&partial);
         return (500, json!({ "message": "The file didn't arrive whole." }));
@@ -583,11 +615,24 @@ mod tests {
 
         let (status, _) = post(port, &format!("/api/localsend/v2/upload?sessionId={session}&fileId=a&token=wrong"), b"nope", false);
         assert_eq!(status, 403);
+        let (status, _) = post(port, &format!("/api/localsend/v2/upload?sessionId={session}&fileId=a&token={token}"), b"dra", false);
+        assert_eq!(status, 500, "a file shorter than the sender said didn't arrive whole");
+        assert!(host.received.lock().unwrap().is_empty());
         let (status, _) = post(port, &format!("/api/localsend/v2/upload?sessionId={session}&fileId=a&token={token}"), b"dracula", true);
         assert_eq!(status, 200);
         let received = host.received.lock().unwrap();
         assert_eq!(received.len(), 1, "the session ends with its last file");
         assert_eq!(fs::read_to_string(&received[0].1[0]).unwrap(), "dracula");
+    }
+
+    #[test]
+    fn a_sender_that_vanishes_makes_way_for_the_next() {
+        let (_dir, _host, receiver) = receiver(true);
+        let port = receiver.port();
+        assert_eq!(post(port, "/api/localsend/v2/prepare-upload", &offer(), false).0, 200);
+        assert_eq!(post(port, "/api/localsend/v2/prepare-upload", &offer(), false).0, 409, "one sender at a time");
+        thread::sleep(ABANDONED * 2);
+        assert_eq!(post(port, "/api/localsend/v2/prepare-upload", &offer(), false).0, 200);
     }
 
     #[test]
