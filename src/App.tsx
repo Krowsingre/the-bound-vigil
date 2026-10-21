@@ -7,7 +7,7 @@ import { BookDialogsHost } from "./library/BookDialogs";
 import { SendToEreaderHost } from "./ereaders/SendToEreader";
 import { BookDetailsPage } from "./details/BookDetailsPage";
 import { DetailsHost } from "./details/DetailsHost";
-import { onShowBookDetails } from "./details/openDetails";
+import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Notes } from "./notes/Notes";
 import { Audiobooks } from "./audio/Audiobooks";
@@ -132,6 +132,19 @@ export function App() {
         setRoute("book");
       }),
     [],
+  );
+
+  // Show series / Show author, from any book menu.
+  useEffect(
+    () =>
+      onShowInLibrary((kind, change) => {
+        setSearchText("");
+        if (kind === "documents") changeDocumentsView(change);
+        else if (kind === "audiobooks") changeAudiobooksView(change);
+        else changeLibraryView(change);
+        setRoute(kind === "books" ? "library" : kind);
+      }),
+    [changeLibraryView, changeDocumentsView, changeAudiobooksView],
   );
 
   const openLibrary = useCallback(

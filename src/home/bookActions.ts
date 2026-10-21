@@ -4,11 +4,12 @@ import { askAddToCollection } from "../collections/AddToCollection";
 import { openContextMenu } from "../components/ContextMenu";
 import type { MenuEntry } from "../components/Menu";
 import { StarRating } from "../components/StarRating";
-import { askEditDetails, showBookDetails } from "../details/openDetails";
+import { askEditDetails, showBookDetails, showInLibrary } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
 import { askDeleteBook, askEditTags, askRemoveBook } from "../library/BookDialogs";
 import { playAudiobook } from "../audio/player";
-import { isAudio } from "../lib/queryBooks";
+import { isAudio, kindOf } from "../lib/queryBooks";
+import { NO_FILTERS } from "../library/libraryView";
 
 export interface BookActions {
   open: (book: BookPreview) => void;
@@ -31,6 +32,24 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
   return [
     { label: "Book details", icon: "info", onSelect: () => showBookDetails(book.id) },
     { label: "Edit details…", icon: "edit", onSelect: () => askEditDetails([book]) },
+    ...(book.series
+      ? [
+          {
+            label: "Show series",
+            icon: "library" as const,
+            onSelect: () => showInLibrary(kindOf(book.format), { ...NO_FILTERS, tab: "all", series: [book.series!], sort: "series" }),
+          },
+        ]
+      : []),
+    ...(book.authors.length
+      ? [
+          {
+            label: book.authors.length > 1 ? `Show author (${book.authors[0]})` : "Show author",
+            icon: "search" as const,
+            onSelect: () => showInLibrary(kindOf(book.format), { ...NO_FILTERS, tab: "all", authors: [book.authors[0]] }),
+          },
+        ]
+      : []),
     {
       heading: createElement(
         "span",

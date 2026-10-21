@@ -325,6 +325,8 @@ export interface LibraryQuery {
   authors?: string[];
   /** Audiobooks read by any of these narrators. */
   narrators?: string[];
+  /** Books in any of these series. */
+  series?: string[];
   /** Only books, documents or audiobooks. Left out: all of them. */
   kind?: ItemKind | null;
   /** Zero-based. */

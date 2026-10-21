@@ -175,6 +175,13 @@ impl Library {
             values.extend(names.iter().map(|g| Value::Text(g.trim().to_lowercase())));
         }
 
+        if !query.series.is_empty() {
+            let start = values.len() + 1;
+            let slots: Vec<String> = (0..query.series.len()).map(|i| format!("?{}", start + i)).collect();
+            conditions.push(format!("tbv_fold(COALESCE({SERIES}, '')) IN ({})", slots.join(", ")));
+            values.extend(query.series.iter().map(|s| Value::Text(s.trim().to_lowercase())));
+        }
+
         if !query.languages.is_empty() {
             let start = values.len() + 1;
             let slots: Vec<String> = (0..query.languages.len()).map(|i| format!("?{}", start + i)).collect();
@@ -525,6 +532,23 @@ mod tests {
         assert_eq!(search("%"), "100% Wolf");
         assert_eq!(search("   "), "Oathbringer,100% Wolf,Dune");
         assert_eq!(search("nothing like this"), "");
+    }
+
+    #[test]
+    fn filters_by_series_ignoring_case() {
+        let (dir, mut library) = open_temp_library();
+        add(&mut library, dir.path(), "Dune", "Frank Herbert");
+        add_with(
+            &mut library,
+            dir.path(),
+            "Oathbringer",
+            "Brandon Sanderson",
+            r#"<meta name="calibre:series" content="The Stormlight Archive"/>"#,
+        );
+        let page = library
+            .library_page(&query(|q| q.series = vec!["the stormlight archive".into()]))
+            .unwrap();
+        assert_eq!(titles(&page), ["Oathbringer"]);
     }
 
     #[test]

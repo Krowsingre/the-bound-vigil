@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, isWeb } from "../api";
 import type { BookPreview, CollectionPreview, ItemKind, LibraryPage } from "../api/types";
 import { askEditDetails } from "../details/openDetails";
@@ -12,7 +12,7 @@ import { AddTagToMany, deleteWarning, removeWarning } from "./BookDialogs";
 import { BookGrid, BookList, BookTable, type Selection } from "./BookViews";
 import { CollectionsTab } from "./CollectionsTab";
 import { LibraryToolbar } from "./LibraryToolbar";
-import { PAGE_SIZE, type LibraryView } from "./libraryView";
+import { NO_FILTERS, PAGE_SIZE, type LibraryView } from "./libraryView";
 import { Pagination } from "./Pagination";
 
 type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
@@ -55,6 +55,8 @@ export function Library({
   const [reload, setReload] = useState(0);
   // Choosing books to change many at once.
   const [selected, setSelected] = useState<Map<string, BookPreview> | null>(null);
+  /** The book picked last, where a Shift-click range starts. */
+  const lastPicked = useRef<string | null>(null);
   const [tagging, setTagging] = useState(false);
   const [asking, setAsking] = useState<"remove" | "delete" | "download" | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -79,6 +81,7 @@ export function Library({
     languages: view.languages,
     downloadable: view.downloadable,
     authors: view.authors,
+    series: view.series,
     narrators: view.narrators,
     kind,
   };
@@ -96,6 +99,7 @@ export function Library({
         languages: view.languages,
         downloadable: view.downloadable,
         authors: view.authors,
+        series: view.series,
         narrators: view.narrators,
         kind,
         page: view.page,
@@ -108,7 +112,7 @@ export function Library({
     return () => {
       current = false;
     };
-  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.narrators, view.page, search, refreshKey, reload]);
+  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.series, view.narrators, view.page, search, refreshKey, reload]);
 
   useEffect(() => {
     if (view.tab !== "collections") return;
@@ -145,16 +149,23 @@ export function Library({
   const page = load.state === "ready" ? load.data : null;
   const counts = page?.counts ?? null;
   const filtered =
-    view.formats.length > 0 || view.location !== null || view.tags.length > 0 || view.genres.length > 0 || view.languages.length > 0 || view.downloadable || view.authors.length > 0 || view.narrators.length > 0;
+    view.formats.length > 0 || view.location !== null || view.tags.length > 0 || view.genres.length > 0 || view.languages.length > 0 || view.downloadable || view.authors.length > 0 || view.series.length > 0 || view.narrators.length > 0;
   const selection: Selection | null = selected && {
     has: (id) => selected.has(id),
-    toggle: (book) =>
+    toggle: (book, range) => {
+      const from = range?.findIndex((b) => b.id === lastPicked.current) ?? -1;
+      const to = range?.findIndex((b) => b.id === book.id) ?? -1;
+      lastPicked.current = book.id;
       setSelected((s) => {
         const next = new Map(s);
-        if (next.has(book.id)) next.delete(book.id);
+        if (range && from >= 0 && to >= 0) {
+          // Shift: everything between the last book picked and this one.
+          for (const b of range.slice(Math.min(from, to), Math.max(from, to) + 1)) next.set(b.id, b);
+        } else if (next.has(book.id)) next.delete(book.id);
         else next.set(book.id, book);
         return next;
-      }),
+      });
+    },
   };
   const chosen = selected ? [...selected.values()] : [];
 
@@ -269,7 +280,7 @@ export function Library({
             </button>
           )}
           {filtered && (
-            <button type="button" className="btn btn-quiet" onClick={() => onChange({ formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], narrators: [] })}>
+            <button type="button" className="btn btn-quiet" onClick={() => onChange(NO_FILTERS)}>
               Clear filters
             </button>
           )}

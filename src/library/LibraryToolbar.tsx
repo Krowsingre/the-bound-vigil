@@ -3,7 +3,7 @@ import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { formatLabel } from "../lib/queryBooks";
 import { languageName } from "../lib/language";
-import { SORTS, TABS, type Layout, type LibraryTab, type LibraryView } from "./libraryView";
+import { NO_FILTERS, SORTS, TABS, type Layout, type LibraryTab, type LibraryView } from "./libraryView";
 
 const COUNT_OF: Record<LibraryTab, keyof ShelfCounts> = {
   all: "all",
@@ -53,10 +53,10 @@ export function LibraryToolbar({
 }) {
   const sortLabel = SORTS.find((s) => s.sort === view.sort)?.label;
   const filterCount =
-    view.formats.length + (view.location ? 1 : 0) + view.tags.length + view.genres.length + view.languages.length + view.authors.length + view.narrators.length;
-  const toggle = (list: "authors" | "narrators", name: string) =>
+    view.formats.length + (view.location ? 1 : 0) + view.tags.length + view.genres.length + view.languages.length + view.authors.length + view.series.length + view.narrators.length;
+  const toggle = (list: "authors" | "series" | "narrators", name: string) =>
     onChange({ [list]: view[list].includes(name) ? view[list].filter((x) => x !== name) : [...view[list], name] });
-  const names = (list: "authors" | "narrators", heading: string, known: string[]): MenuEntry[] =>
+  const names = (list: "authors" | "series" | "narrators", heading: string, known: string[]): MenuEntry[] =>
     known.length || view[list].length
       ? [
           "divider",
@@ -74,6 +74,7 @@ export function LibraryToolbar({
   const setLocation = (l: Location) => onChange({ location: view.location === l ? null : l });
 
   const filterItems: MenuEntry[] = [
+    ...(filterCount ? ([{ label: "Clear filters", icon: "close", onSelect: () => onChange(NO_FILTERS) }, "divider"] as MenuEntry[]) : []),
     { heading: <strong>Format</strong> },
     ...formats.map((f) => ({ label: formatLabel(f), checked: view.formats.includes(f), onSelect: () => toggleFormat(f) })),
     "divider",
@@ -109,13 +110,8 @@ export function LibraryToolbar({
         ] as MenuEntry[])
       : []),
     ...names("authors", "Authors", authors),
+    ...names("series", "Series", []),
     ...names("narrators", "Narrators", narrators),
-    ...(filterCount
-      ? ([
-          "divider",
-          { label: "Clear filters", onSelect: () => onChange({ formats: [], location: null, tags: [], genres: [], languages: [], authors: [], narrators: [] }) },
-        ] as MenuEntry[])
-      : []),
   ];
 
   return (

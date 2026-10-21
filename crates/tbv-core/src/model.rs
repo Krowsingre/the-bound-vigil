@@ -289,6 +289,9 @@ pub struct LibraryQuery {
     /// Audiobooks read by any of these narrators. Empty means any.
     #[serde(default)]
     pub narrators: Vec<String>,
+    /// Books in any of these series. Empty means any.
+    #[serde(default)]
+    pub series: Vec<String>,
     /// Only books, documents or audiobooks. None means all of them.
     #[serde(default)]
     pub kind: Option<ItemKind>,
