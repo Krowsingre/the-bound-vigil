@@ -1489,6 +1489,30 @@ mod tidying {
     }
 
     #[test]
+    fn every_book_says_where_its_file_is() {
+        use crate::sync::places::{book_places, held};
+        let icloud = FakeRemote::default();
+        let pc = Device::new();
+        pc.set_options(json!({ "bookFiles": true }));
+        let both = pc.import("Dracula");
+        let only_cloud = pc.import("Carmilla");
+        let only_here = pc.import("Vampyre");
+        pc.sync(&icloud);
+        icloud.0.lock().unwrap().files.remove(&book_path(&only_here));
+        pc.lib().remove_download(&only_cloud).unwrap();
+        icloud.0.lock().unwrap().files.insert("audio/abc/part1.mp3".into(), vec![1]);
+
+        let main = held(&mut icloud.clone()).unwrap();
+        assert!(main.contains("abc"), "audiobook folders count");
+        let places = book_places(&pc.library, Some(&main), None).unwrap();
+        let find = |id: &str| places.iter().find(|p| p.book_id == id).unwrap().clone();
+        assert_eq!((find(&both).here, find(&both).main), (true, Some(true)));
+        assert_eq!((find(&only_cloud).here, find(&only_cloud).main), (false, Some(true)));
+        assert_eq!((find(&only_here).here, find(&only_here).main, find(&only_here).also), (true, Some(false), None));
+        assert_eq!(places.iter().map(|p| p.title.as_str()).collect::<Vec<_>>(), ["Carmilla", "Dracula", "Vampyre"]);
+    }
+
+    #[test]
     fn contents_are_listed_by_type_with_where_else_they_are_kept() {
         use crate::sync::contents::{list_contents, remove_contents};
         let supabase = FakeRemote::default();

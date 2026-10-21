@@ -18,6 +18,7 @@ export const Header = forwardRef<
     onImportFolder: () => void;
     onOpenSyncSettings: () => void;
     onOpenActivity?: () => void;
+    onOpenPlaces?: () => void;
     onChooseAvatar: () => void;
     onClearAvatar: () => void;
   }

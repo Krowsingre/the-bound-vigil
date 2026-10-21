@@ -186,6 +186,32 @@ export interface StoredFile {
   elsewhere: boolean;
 }
 
+/** One book and where its file is (the "Where your books are" page). */
+export interface BookPlaces {
+  bookId: string;
+  title: string;
+  authors: string[];
+  format: string;
+  /** Its file is on this computer. */
+  here: boolean;
+  /** In the main sync place; null when that place isn't set up or couldn't be checked. */
+  main: boolean | null;
+  /** In the second sync place, likewise. */
+  also: boolean | null;
+}
+
+/** A sync place as the page names it, and why it couldn't be checked. */
+export interface PlaceCheck {
+  provider: ProviderView;
+  problem: string | null;
+}
+
+export interface PlacesView {
+  main: PlaceCheck | null;
+  also: PlaceCheck | null;
+  books: BookPlaces[];
+}
+
 export interface RemoveReport {
   removed: number;
   failed: number;

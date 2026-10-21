@@ -21,6 +21,7 @@ import { useServerQueue } from "./imports/serverQueue";
 import { useLocalSendRows } from "./imports/LocalSendRows";
 import { LocalSendOffers } from "./imports/LocalSendOffer";
 import { SyncActivity } from "./sync/SyncActivity";
+import { BookPlacesPage } from "./sync/BookPlaces";
 import { importSummary } from "./lib/importSummary";
 import { Library } from "./library/Library";
 import { Reader } from "./reader/Reader";
@@ -360,6 +361,13 @@ export function App() {
             setReading(null);
             navigate("activity");
           },
+    onOpenPlaces:
+      api.kind === "web"
+        ? undefined
+        : () => {
+            setReading(null);
+            navigate("places");
+          },
   };
 
   if (reading) return <Reader key={reading.bookId} bookId={reading.bookId} openAt={reading.at} shell={shell} onClose={closeBook} />;
@@ -401,6 +409,7 @@ export function App() {
           onImportFolder={importFolder}
           onOpenSyncSettings={() => navigate("sync")}
           onOpenActivity={shell.onOpenActivity}
+          onOpenPlaces={shell.onOpenPlaces}
         />
         <main className="content">
           {route === "home" ? (
@@ -489,6 +498,8 @@ export function App() {
             />
           ) : route === "activity" ? (
             <SyncActivity sync={sync} onOpenSyncSettings={() => navigate("sync")} />
+          ) : route === "places" ? (
+            <BookPlacesPage onOpenSyncSettings={() => navigate("sync")} />
           ) : route === "notes" ? (
             <Notes search={searchText} refreshKey={refreshKey} onClearSearch={() => changeSearch("")} onOpenBook={openBook} />
           ) : (

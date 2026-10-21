@@ -8,6 +8,8 @@ export const MOVE_DESKTOP_ONLY = "Moving your library works in the desktop app."
 
 export const TIDY_DESKTOP_ONLY = "Tidying up Supabase works in the desktop app.";
 
+export const PLACES_DESKTOP_ONLY = "Seeing where every book is works in the desktop app.";
+
 export const IDLE_MOVE: MoveStatus = {
   running: false,
   mode: null,
@@ -37,6 +39,7 @@ type MoveApi = Pick<
   | "supabaseUsage"
   | "supabaseContents"
   | "removeSupabaseFiles"
+  | "bookPlaces"
 >;
 
 export function moveStub(): MoveApi {
@@ -60,5 +63,8 @@ export function moveStub(): MoveApi {
     supabaseUsage: tidyNo,
     supabaseContents: tidyNo,
     removeSupabaseFiles: tidyNo,
+    bookPlaces: async () => {
+      throw new Error(PLACES_DESKTOP_ONLY);
+    },
   };
 }

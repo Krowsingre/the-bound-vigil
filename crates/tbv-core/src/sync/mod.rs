@@ -12,6 +12,7 @@
 pub mod contents;
 pub mod files;
 pub mod moving;
+pub mod places;
 pub mod supabase;
 pub mod tidy;
 pub mod webdav;

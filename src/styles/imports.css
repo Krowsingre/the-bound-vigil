@@ -235,3 +235,111 @@
   gap: 10px;
   min-width: 0;
 }
+
+/* Where your books are: one row per book, a column per place. */
+.places-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 12px;
+}
+
+.segmented.places-filters {
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.places-filters button {
+  flex: none;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.places-count {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.places-search {
+  flex: 1 1 200px;
+  max-width: 320px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.places-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.places-table th {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.places-table th:first-child {
+  text-align: left;
+}
+
+.places-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  vertical-align: middle;
+}
+
+.places-table td:first-child {
+  width: 100%;
+  text-align: left;
+}
+
+.places-table tr.is-bad .import-name {
+  color: var(--danger, var(--text));
+}
+
+.places-book {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  max-width: 100%;
+  padding: 2px 0;
+  text-align: left;
+}
+
+.places-book:hover .import-name {
+  text-decoration: underline;
+}
+
+.places-mark {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 20px;
+}
+
+.places-mark.is-yes {
+  color: var(--accent);
+}
+
+.places-mark.is-no,
+.places-mark.is-unknown {
+  color: var(--text-muted);
+}
+
+.places-more {
+  margin: 12px auto 0;
+  display: block;
+}
