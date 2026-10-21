@@ -241,10 +241,94 @@ fn natural_key_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     a.len().cmp(&b.len())
 }
 
+/// Marks a path that stands for some of a folder's audio files: one of
+/// several audiobooks kept in the same folder. No real file name starts so.
+const GROUP: &str = "\u{1}audiobook ";
+
+/// The path standing for one audiobook among several in `dir`.
+pub fn group_path(dir: &Path, name: &str) -> PathBuf {
+    dir.join(format!("{GROUP}{name}"))
+}
+
+/// The folder and audiobook a `group_path` stands for.
+pub fn parse_group(path: &Path) -> Option<(PathBuf, String)> {
+    let name = path.file_name()?.to_str()?.strip_prefix(GROUP)?;
+    Some((path.parent()?.to_path_buf(), name.to_string()))
+}
+
+/// What a path shows as on the Imports page: a group by its audiobook's name.
+pub fn display_name(path: &Path) -> String {
+    match parse_group(path) {
+        Some((_, name)) => name,
+        None => path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+    }
+}
+
+/// The audiobooks among a folder's audio files, each named and in play order.
+/// One folder can hold one book in many parts (the usual case) or several
+/// books. They're told apart by their album tags; failing those, files that
+/// are whole books by themselves (M4B and M4A files, or files with their own
+/// chapters) are each a book. Anything else stays one book, as before.
+pub fn folder_books(dir: &Path) -> Vec<(String, Vec<PathBuf>)> {
+    let parts = folder_parts(dir);
+    let stem = |p: &Path| p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let folder_name = || dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Audiobook".into());
+    if parts.len() < 2 {
+        return if parts.is_empty() { Vec::new() } else { vec![(folder_name(), parts)] };
+    }
+    let infos: Vec<(Option<String>, bool)> = parts
+        .iter()
+        .map(|p| {
+            let ext = extension(p).unwrap_or_default();
+            let Ok(len) = fs::metadata(p).map(|m| m.len()) else { return (None, false) };
+            let Ok(mut slice) = File::open(p).and_then(|f| Slice::new(f, 0, len)) else { return (None, false) };
+            let info = read_part(&mut slice, &ext);
+            let whole = matches!(ext.as_str(), "m4b" | "m4a") || info.chapters.len() > 1;
+            (info.album, whole)
+        })
+        .collect();
+    let mut albums: Vec<String> = Vec::new();
+    for album in infos.iter().filter_map(|(a, _)| a.as_ref()) {
+        if !albums.iter().any(|seen| seen.eq_ignore_ascii_case(album)) {
+            albums.push(album.clone());
+        }
+    }
+    let mut books: Vec<(String, Vec<PathBuf>)> = Vec::new();
+    let mut add = |name: String, part: &PathBuf| match books.iter_mut().find(|(n, _)| n.eq_ignore_ascii_case(&name)) {
+        Some((_, list)) => list.push(part.clone()),
+        None => books.push((name, vec![part.clone()])),
+    };
+    if albums.len() > 1 {
+        for (part, (album, _)) in parts.iter().zip(&infos) {
+            add(album.clone().unwrap_or_else(|| stem(part)), part);
+        }
+    } else if albums.is_empty() && infos.iter().all(|(_, whole)| *whole) {
+        for part in &parts {
+            add(stem(part), part);
+        }
+    } else {
+        return vec![(folder_name(), parts)];
+    }
+    books
+}
+
+/// The audio files a source stands for: a folder's, or one group's.
+pub fn source_parts(source: &Path) -> Vec<PathBuf> {
+    match parse_group(source) {
+        Some((dir, name)) => folder_books(&dir).into_iter().find(|(n, _)| *n == name).map(|(_, parts)| parts).unwrap_or_default(),
+        None => folder_parts(source),
+    }
+}
+
 /// Writes a folder's audio files (and its cover picture, if any) into one
 /// bundle at `out`. The same folder always makes the same bytes.
 pub fn write_bundle(dir: &Path, out: &Path) -> Result<()> {
-    let parts = folder_parts(dir);
+    write_parts_bundle(&folder_parts(dir), dir, out)
+}
+
+/// As `write_bundle`, for the given parts of `dir`: one of several audiobooks
+/// in it. The folder's cover picture goes with each.
+pub fn write_parts_bundle(parts: &[PathBuf], dir: &Path, out: &Path) -> Result<()> {
     if parts.is_empty() {
         return Err(Error::Unsuitable("there are no audio files in that folder".into()));
     }
@@ -683,6 +767,46 @@ pub(crate) mod tests {
         let mut ten = [0u8; 10];
         part.read_exact(&mut ten).unwrap();
         assert_eq!(&ten, &bytes[10..20]);
+    }
+
+    #[test]
+    fn a_folder_of_several_audiobooks_is_told_apart() {
+        let dir = tempfile::tempdir().unwrap();
+        let mixed = dir.path().join("Audiobooks");
+        fs::create_dir(&mixed).unwrap();
+        fs::write(mixed.join("Dracula 1.mp3"), silent_mp3(10, "Chapter 1", "Dracula", "Bram Stoker")).unwrap();
+        fs::write(mixed.join("Dracula 2.mp3"), silent_mp3(10, "Chapter 2", "Dracula", "Bram Stoker")).unwrap();
+        fs::write(mixed.join("Carmilla.mp3"), silent_mp3(10, "Carmilla", "Carmilla", "Sheridan Le Fanu")).unwrap();
+        let books = folder_books(&mixed);
+        assert_eq!(books.iter().map(|(n, p)| (n.as_str(), p.len())).collect::<Vec<_>>(), vec![("Carmilla", 1), ("Dracula", 2)]);
+
+        // A book in parts, every part tagged with the same album, stays one book.
+        let one = dir.path().join("The Moonstone");
+        fs::create_dir(&one).unwrap();
+        fs::write(one.join("01.mp3"), silent_mp3(10, "First", "The Moonstone", "Wilkie Collins")).unwrap();
+        fs::write(one.join("02.mp3"), silent_mp3(10, "Second", "The Moonstone", "Wilkie Collins")).unwrap();
+        assert_eq!(folder_books(&one).len(), 1);
+
+        // Found as separate books, a two-part one bundled on its own.
+        let found = crate::library::find_book_files(std::slice::from_ref(&mixed), &dir.path().join("Library"));
+        assert_eq!(found.len(), 2);
+        let group = found.iter().find(|p| parse_group(p).is_some()).expect("Dracula is a group");
+        assert_eq!(display_name(group), "Dracula");
+        assert_eq!(source_parts(group).len(), 2);
+        let out = dir.path().join("dracula.tbvaudio");
+        write_parts_bundle(&source_parts(group), &mixed, &out).unwrap();
+        assert_eq!(bundle_entries(&out).unwrap().len(), 2);
+
+        let (_library_dir, mut library) = crate::library::tests::open_temp_library();
+        let results = library.import_files(&[mixed]);
+        let titles: Vec<String> = results
+            .iter()
+            .map(|r| match r {
+                crate::model::ImportResult::Imported { title, .. } => title.clone(),
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(titles.len(), 2, "two audiobooks, not one: {titles:?}");
     }
 
     #[test]

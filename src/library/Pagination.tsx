@@ -6,8 +6,11 @@ export function Pagination({
   pageSize,
   total,
   noun = ["book", "books"],
+  top = false,
   onPage,
 }: {
+  /** The copy above the list: only the page buttons, and only when there's more than one page. */
+  top?: boolean;
   /** What's being counted, one and many. */
   noun?: [string, string];
   page: number;
@@ -18,13 +21,16 @@ export function Pagination({
   const count = Math.max(1, Math.ceil(total / pageSize));
   const first = total === 0 ? 0 : page * pageSize + 1;
   const last = Math.min(total, (page + 1) * pageSize);
+  if (top && count <= 1) return null;
   return (
-    <div className="pagination">
-      <p className="muted num">
-        Showing {first}–{last} of {total} {total === 1 ? noun[0] : noun[1]}
-      </p>
+    <div className={`pagination${top ? " pagination-top" : ""}`}>
+      {!top && (
+        <p className="muted num">
+          Showing {first}–{last} of {total} {total === 1 ? noun[0] : noun[1]}
+        </p>
+      )}
       {count > 1 && (
-        <nav aria-label="Pages" className="pages">
+        <nav aria-label={top ? "Pages (top)" : "Pages"} className="pages">
           <button type="button" className="icon-btn" aria-label="Previous page" disabled={page === 0} onClick={() => onPage(page - 1)}>
             <Icon name="chevronLeft" />
           </button>

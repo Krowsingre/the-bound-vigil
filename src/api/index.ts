@@ -2,9 +2,11 @@
 // calls Rust commands; in a plain browser (design previews only) it serves a
 // clearly labelled sample library so screens can be looked at without the app.
 
+import type { Found } from "../lib/onlineDetails";
 import type {
   TidyPlan,
   TidyProgress,
+  SupabaseUsage,
   TidyReport,
   Audiobook,
   ProviderChoice,
@@ -31,7 +33,10 @@ import type {
   KindleEmailInput,
   KindleEmailView,
   ServerChoice,
-  ServerDownloadStatus,
+  ServerQueueView,
+  LocalSendOffer,
+  LocalSendStatus,
+  QueuedServerFile,
   ServerInput,
   ServerListing,
   ServerView,
@@ -183,6 +188,7 @@ export interface Api {
   planTidyCloud(): Promise<TidyPlan>;
   /** Tidies Supabase up, sending copies the other place lacks there first. */
   tidyCloud(onProgress: (progress: TidyProgress) => void): Promise<TidyReport>;
+  supabaseUsage(): Promise<SupabaseUsage>;
   /** How moving or backing up the library to another service stands. */
   moveStatus(): Promise<MoveStatus>;
   /** Signs in to a Supabase project to move to, leaving sync's own sign-in alone. False: confirm the email first. */
@@ -220,7 +226,9 @@ export interface Api {
   /** Takes away your edits, and with `fetched` what was fetched online too. */
   resetDetails(bookId: string, fetched: boolean): Promise<void>;
   /** Keeps details found online. Lists (authors, genres) as JSON arrays. */
-  saveFetched(bookId: string, source: "google" | "openlibrary", values: Record<string, string>): Promise<void>;
+  saveFetched(bookId: string, source: "google" | "openlibrary" | "audible" | "hardcover", values: Record<string, string>): Promise<void>;
+  /** Looks a book up in Audible's catalogue, or on Hardcover when it's connected (desktop app). */
+  searchDetailsMore(source: "audible" | "hardcover", title: string, author: string): Promise<Found[]>;
   /** Remembers that a group isn't duplicates, so it isn't shown again. */
   dismissDuplicates(key: string): Promise<void>;
   /** E-readers plugged in by cable now. */
@@ -245,12 +253,27 @@ export interface Api {
   testServer(id: string): Promise<string>;
   /** A folder on the server; null is where browsing starts. */
   browseServer(id: string, path: string | null): Promise<ServerListing>;
-  /** Brings down what was ticked, then hands it to the import queue. */
+  /** Lists every file in what was ticked and starts bringing them down; each joins the import queue as it arrives. */
   downloadFromServer(id: string, chosen: ServerChoice[]): Promise<void>;
-  serverDownloadStatus(): Promise<ServerDownloadStatus>;
-  cancelServerDownload(): Promise<void>;
-  clearServerDownload(): Promise<void>;
-  onServerDownload(listener: (status: ServerDownloadStatus) => void): () => void;
+  serverQueue(): Promise<ServerQueueView>;
+  /** Rows of the server list, in the order they were chosen. */
+  serverQueuePage(offset: number, limit: number): Promise<QueuedServerFile[]>;
+  retryServerFile(id: number): Promise<void>;
+  removeServerFile(id: number): Promise<void>;
+  /** Takes everything not yet down off the list. */
+  cancelServerQueue(): Promise<void>;
+  clearServerFinished(): Promise<void>;
+  /** How many files come down at once, 1 to 5. */
+  setServerConnections(count: number): Promise<void>;
+  onServerQueue(listener: () => void): () => void;
+  localSendStatus(): Promise<LocalSendStatus>;
+  /** Switches receiving from LocalSend on or off. */
+  setLocalSend(on: boolean): Promise<LocalSendStatus>;
+  answerLocalSend(session: string, accept: boolean): Promise<void>;
+  /** Someone nearby wants to send files; answer with `answerLocalSend`. */
+  onLocalSendOffer(listener: (offer: LocalSendOffer) => void): () => void;
+  /** Accepted files arrived and went to the import queue: how many books. */
+  onLocalSendReceived(listener: (books: number) => void): () => void;
   /** A private key file, for SFTP. */
   pickKeyFile(): Promise<string | null>;
   /** What sync is doing now, file by file, and what it did lately. */
@@ -266,6 +289,21 @@ export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in w
 export const isWeb = !isApp && import.meta.env.VITE_TBV_WEB === "1";
 
 const BOOK_EXTENSIONS = ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "txt", "docx", "doc"];
+
+/** Listens for one of the app's events until the returned function is called. */
+function onEvent<T>(name: string, listener: (payload: T) => void): () => void {
+  let stop: (() => void) | null = null;
+  let stopped = false;
+  void import("@tauri-apps/api/event").then(async ({ listen }) => {
+    const unlisten = await listen<T>(name, (e) => listener(e.payload));
+    if (stopped) unlisten();
+    else stop = unlisten;
+  });
+  return () => {
+    stopped = true;
+    stop?.();
+  };
+}
 
 function appApi(): Api {
   // Loaded lazily so the browser preview never touches Tauri internals.
@@ -483,6 +521,7 @@ function appApi(): Api {
       (await core).invoke<boolean>("move_sign_in", { project, email, password, create }),
     moveSignOut: async () => (await core).invoke("move_sign_out"),
     planTidyCloud: async () => (await core).invoke("plan_tidy_cloud"),
+    supabaseUsage: async () => (await core).invoke("supabase_usage"),
     tidyCloud: async (onProgress) => {
       const { listen } = await import("@tauri-apps/api/event");
       const stop = await listen<TidyProgress>("tidy-progress", (e) => onProgress(e.payload));
@@ -542,14 +581,24 @@ function appApi(): Api {
     testServer: async (id) => (await core).invoke<string>("test_server", { id }),
     browseServer: async (id, path) => (await core).invoke<ServerListing>("browse_server", { id, path }),
     downloadFromServer: async (id, chosen) => (await core).invoke("download_from_server", { id, chosen }),
-    serverDownloadStatus: async () => (await core).invoke<ServerDownloadStatus>("server_download_status"),
-    cancelServerDownload: async () => (await core).invoke("cancel_server_download"),
-    clearServerDownload: async () => (await core).invoke("clear_server_download"),
-    onServerDownload: (listener) => {
+    serverQueue: async () => (await core).invoke<ServerQueueView>("server_queue"),
+    serverQueuePage: async (offset, limit) => (await core).invoke<QueuedServerFile[]>("server_queue_page", { offset, limit }),
+    retryServerFile: async (id) => (await core).invoke("retry_server_file", { id }),
+    removeServerFile: async (id) => (await core).invoke("remove_server_file", { id }),
+    cancelServerQueue: async () => (await core).invoke("cancel_server_queue"),
+    clearServerFinished: async () => (await core).invoke("clear_server_finished"),
+    setServerConnections: async (count) => (await core).invoke("set_server_connections", { count }),
+    searchDetailsMore: async (source, title, author) => (await core).invoke<Found[]>("search_details_more", { source, title, author }),
+    localSendStatus: async () => (await core).invoke<LocalSendStatus>("localsend_status"),
+    setLocalSend: async (on) => (await core).invoke<LocalSendStatus>("set_localsend", { on }),
+    answerLocalSend: async (session, accept) => (await core).invoke("answer_localsend", { session, accept }),
+    onLocalSendOffer: (listener) => onEvent<LocalSendOffer>("localsend-offer", listener),
+    onLocalSendReceived: (listener) => onEvent<number>("localsend-received", listener),
+    onServerQueue: (listener) => {
       let stop: (() => void) | null = null;
       let stopped = false;
       void import("@tauri-apps/api/event").then(async ({ listen }) => {
-        const unlisten = await listen<ServerDownloadStatus>("server-download-changed", (e) => listener(e.payload));
+        const unlisten = await listen("server-queue-changed", () => listener());
         if (stopped) unlisten();
         else stop = unlisten;
       });

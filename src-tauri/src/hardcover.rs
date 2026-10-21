@@ -158,3 +158,20 @@ pub fn send_all(library: &Mutex<Library>) -> tbv_core::Result<SendAllReport> {
     }
     Ok(report)
 }
+
+/// Looks a book up on Hardcover for Find details online. Nothing when
+/// Hardcover isn't connected. A refreshed sign-in is kept.
+pub fn lookup(library: &Mutex<Library>, title: &str, author: &str) -> tbv_core::Result<Option<Vec<tbv_core::lookup::Found>>> {
+    let Some(saved) = lock(library)?.hardcover_account()? else { return Ok(None) };
+    let sending = saved.send_ratings;
+    let account = match hardcover::usable_account(&Http, Some(hardcover::Account { send_ratings: true, ..saved.clone() })) {
+        Ok(Some(account)) => account,
+        Ok(None) => return Ok(None),
+        Err(Error::SignedOut) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    if account.access_token != saved.access_token {
+        lock(library)?.save_hardcover_account(Some(&hardcover::Account { send_ratings: sending, ..account.clone() }))?;
+    }
+    tbv_core::lookup::search_hardcover(&Http, &account.access_token, title, author).map(Some)
+}

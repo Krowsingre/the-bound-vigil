@@ -5,6 +5,7 @@ mod activity;
 mod audio;
 mod hardcover;
 mod imports;
+mod localsend;
 mod moving;
 mod servers;
 mod sync;
@@ -287,11 +288,16 @@ async fn quit_app(
     worker: State<'_, Arc<sync::SyncWorker>>,
     sends: State<'_, Arc<hardcover::Sends>>,
 ) -> CommandResult<()> {
+    // The window goes at once; what's left finishes out of sight.
+    for window in app.webview_windows().values() {
+        let _ = window.hide();
+    }
     let worker = worker.inner().clone();
     let sends = sends.inner().clone();
     let _ = tauri::async_runtime::spawn_blocking(move || {
-        sends.finish(Duration::from_secs(10));
-        worker.finish(Duration::from_secs(15));
+        let ratings = std::thread::spawn(move || sends.finish(Duration::from_secs(5)));
+        worker.finish(Duration::from_secs(8));
+        let _ = ratings.join();
     })
     .await;
     app.exit(0);
@@ -839,6 +845,16 @@ async fn tidy_cloud(app: tauri::AppHandle, state: State<'_, AppLibrary>) -> Comm
         .map_err(|e| e.to_string())
 }
 
+/// How much of the Supabase project this library is using.
+#[tauri::command]
+async fn supabase_usage(state: State<'_, AppLibrary>) -> CommandResult<tbv_core::sync::supabase::Usage> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || sync::supabase_usage(&library))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 /// Fetches a book that's only in the cloud onto this device.
 #[tauri::command]
 async fn download_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
@@ -1051,13 +1067,21 @@ async fn list_servers(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_cor
 #[tauri::command]
 async fn save_server(
     state: State<'_, AppLibrary>,
+    queue: State<'_, Arc<servers::ServerImports>>,
     server: tbv_core::servers::ServerInput,
 ) -> CommandResult<tbv_core::servers::ServerView> {
-    with_library(state, move |library| library.save_server(&server)).await
+    let saved = with_library(state, move |library| library.save_server(&server)).await?;
+    queue.forget(&saved.id);
+    Ok(saved)
 }
 
 #[tauri::command]
-async fn remove_server(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
+async fn remove_server(
+    state: State<'_, AppLibrary>,
+    queue: State<'_, Arc<servers::ServerImports>>,
+    id: String,
+) -> CommandResult<()> {
+    queue.forget(&id);
     with_library(state, move |library| library.remove_server(&id)).await
 }
 
@@ -1092,31 +1116,26 @@ async fn test_server(state: State<'_, AppLibrary>, id: String) -> CommandResult<
 }
 
 /// A folder on a server: its folders and the files TBV can import. No path
-/// means where browsing starts.
+/// means where browsing starts. The connection stays open for the next folder.
 #[tauri::command]
 async fn browse_server(
     state: State<'_, AppLibrary>,
+    queue: State<'_, Arc<servers::ServerImports>>,
     id: String,
     path: Option<String>,
 ) -> CommandResult<tbv_core::servers::Listing> {
-    on_server(state, id, move |server| {
-        let mut connection = tbv_core::servers::connect(server)?;
-        let path = match path.filter(|p| !p.trim().is_empty()) {
-            Some(p) => tbv_core::servers::normalise(&p),
-            None => tbv_core::servers::start_folder(connection.as_mut(), server)?,
-        };
-        tbv_core::servers::list_importable(connection.as_mut(), &path)
-    })
-    .await
+    let queue = queue.inner().clone();
+    on_server(state, id, move |server| queue.browse(server, path)).await
 }
 
-/// Starts bringing down what was ticked; it then joins the import queue.
+/// Lists every file in what was ticked and starts bringing them down; each
+/// joins the import queue as it arrives.
 #[tauri::command]
 async fn download_from_server(
     app: tauri::AppHandle,
     state: State<'_, AppLibrary>,
     imports: State<'_, Arc<imports::Imports>>,
-    downloads: State<'_, Arc<servers::Downloads>>,
+    queue: State<'_, Arc<servers::ServerImports>>,
     id: String,
     chosen: Vec<tbv_core::servers::Chosen>,
 ) -> CommandResult<()> {
@@ -1131,23 +1150,133 @@ async fn download_from_server(
             .map_err(|e| e.to_string())?
             .map_err(servers::problem)?
     };
-    let into = tbv_core::servers::downloads_dir(&app.path().app_data_dir().map_err(|e| e.to_string())?);
-    downloads.inner().start(app, library, imports.inner().clone(), server, chosen, into)
+    queue.inner().bring_in(app, library, imports.inner().clone(), server, chosen);
+    Ok(())
 }
 
 #[tauri::command]
-fn server_download_status(downloads: State<'_, Arc<servers::Downloads>>) -> servers::DownloadStatus {
-    downloads.status()
+async fn server_queue(state: State<'_, AppLibrary>, queue: State<'_, Arc<servers::ServerImports>>) -> CommandResult<servers::ServerQueueView> {
+    let (library, queue) = (state.0.clone(), queue.inner().clone());
+    tauri::async_runtime::spawn_blocking(move || queue.view(&library)).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn cancel_server_download(downloads: State<'_, Arc<servers::Downloads>>) {
-    downloads.cancel();
+fn server_queue_page(
+    queue: State<'_, Arc<servers::ServerImports>>,
+    offset: usize,
+    limit: usize,
+) -> Vec<tbv_core::servers::queue::QueuedFile> {
+    queue.page(offset, limit)
 }
 
 #[tauri::command]
-fn clear_server_download(app: tauri::AppHandle, downloads: State<'_, Arc<servers::Downloads>>) {
-    downloads.clear(&app);
+async fn retry_server_file(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    imports: State<'_, Arc<imports::Imports>>,
+    queue: State<'_, Arc<servers::ServerImports>>,
+    id: u64,
+) -> CommandResult<()> {
+    let (library, imports, queue) = (state.0.clone(), imports.inner().clone(), queue.inner().clone());
+    tauri::async_runtime::spawn_blocking(move || queue.retry(&app, &library, &imports, id)).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn remove_server_file(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    imports: State<'_, Arc<imports::Imports>>,
+    queue: State<'_, Arc<servers::ServerImports>>,
+    id: u64,
+) -> CommandResult<()> {
+    let (library, imports, queue) = (state.0.clone(), imports.inner().clone(), queue.inner().clone());
+    tauri::async_runtime::spawn_blocking(move || queue.remove(&app, &library, &imports, id)).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cancel_server_queue(app: tauri::AppHandle, queue: State<'_, Arc<servers::ServerImports>>) {
+    queue.cancel(&app);
+}
+
+#[tauri::command]
+fn clear_server_finished(app: tauri::AppHandle, queue: State<'_, Arc<servers::ServerImports>>) {
+    queue.clear_finished(&app);
+}
+
+/// How many files come down from servers at once, 1 to 5.
+#[tauri::command]
+async fn set_server_connections(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    imports: State<'_, Arc<imports::Imports>>,
+    queue: State<'_, Arc<servers::ServerImports>>,
+    count: usize,
+) -> CommandResult<()> {
+    let (library, imports, queue) = (state.0.clone(), imports.inner().clone(), queue.inner().clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        let count = count.clamp(1, servers::MAX_CONNECTIONS);
+        library.lock().map_err(|_| "TBV is busy. Try again.".to_string())?.set_setting(servers::CONNECTIONS_KEY, &count.to_string()).map_err(|e| e.to_string())?;
+        // Fewer: downloads under way finish, and the extra ones stop after.
+        queue.start_workers(&app, &library, &imports);
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Looks a book up in Audible's catalogue, or on Hardcover when it's
+/// connected (nothing otherwise), for Find details online.
+#[tauri::command]
+async fn search_details_more(
+    state: State<'_, AppLibrary>,
+    source: String,
+    title: String,
+    author: String,
+) -> CommandResult<Vec<tbv_core::lookup::Found>> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || match source.as_str() {
+        "audible" => tbv_core::lookup::search_audible(&title, &author),
+        "hardcover" => hardcover::lookup(&library, &title, &author).map(Option::unwrap_or_default),
+        other => Err(tbv_core::Error::Unsuitable(format!("unknown source {other}"))),
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+fn localsend_inbox(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("LocalSend inbox"))
+}
+
+#[tauri::command]
+async fn localsend_status(state: State<'_, AppLibrary>, localsend: State<'_, Arc<localsend::LocalSend>>) -> CommandResult<localsend::LocalSendStatus> {
+    let (library, localsend) = (state.0.clone(), localsend.inner().clone());
+    tauri::async_runtime::spawn_blocking(move || localsend.status(&library)).await.map_err(|e| e.to_string())
+}
+
+/// Switches receiving from LocalSend on or off.
+#[tauri::command]
+async fn set_localsend(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    imports: State<'_, Arc<imports::Imports>>,
+    localsend: State<'_, Arc<localsend::LocalSend>>,
+    on: bool,
+) -> CommandResult<localsend::LocalSendStatus> {
+    let (library, imports, localsend) = (state.0.clone(), imports.inner().clone(), localsend.inner().clone());
+    let inbox = localsend_inbox(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        localsend.set(&app, &library, &imports, inbox, on).map_err(|e| e.to_string())?;
+        Ok(localsend.status(&library))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Accepts or turns down what someone is sending with LocalSend.
+#[tauri::command]
+fn answer_localsend(localsend: State<'_, Arc<localsend::LocalSend>>, session: String, accept: bool) {
+    localsend.answer(&session, accept);
 }
 
 /// Opens File Explorer at a file or folder TBV keeps.
@@ -1169,11 +1298,18 @@ pub fn run() {
             app.manage(Arc::new(sync::SyncWorker::start(app.handle().clone(), library.clone())));
             app.manage(AppLibrary(library));
             app.manage(Arc::new(hardcover::Sends::default()));
-            app.manage(Arc::new(imports::Imports::default()));
+            let imports = Arc::new(imports::Imports::default());
+            app.manage(imports.clone());
             app.manage(Arc::new(moving::Mover::default()));
-            app.manage(Arc::new(servers::Downloads::default()));
-            // Downloads left from last time were either imported or stopped.
-            let _ = std::fs::remove_dir_all(tbv_core::servers::downloads_dir(&data_dir));
+            // Files from servers that were coming down, or waiting to be
+            // added, when TBV last closed carry on where they were.
+            let server_imports = Arc::new(servers::ServerImports::open(&tbv_core::servers::downloads_dir(&data_dir)));
+            app.manage(server_imports.clone());
+            let library = app.state::<AppLibrary>().0.clone();
+            server_imports.resume(app.handle(), &library, &imports);
+            let receiving = Arc::new(localsend::LocalSend::default());
+            app.manage(receiving.clone());
+            receiving.start(app.handle(), &library, &imports, data_dir.join("LocalSend inbox"));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1268,6 +1404,7 @@ pub fn run() {
             download_book,
             plan_tidy_cloud,
             tidy_cloud,
+            supabase_usage,
             list_ereaders,
             copy_to_ereader,
             kindle_email_settings,
@@ -1289,9 +1426,17 @@ pub fn run() {
             test_server,
             browse_server,
             download_from_server,
-            server_download_status,
-            cancel_server_download,
-            clear_server_download,
+            server_queue,
+            server_queue_page,
+            retry_server_file,
+            remove_server_file,
+            cancel_server_queue,
+            clear_server_finished,
+            set_server_connections,
+            search_details_more,
+            localsend_status,
+            set_localsend,
+            answer_localsend,
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
         // page gets a moment to save the reading position first; then ratings
@@ -1304,12 +1449,19 @@ pub fn run() {
                 let app = window.app_handle().clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(Duration::from_secs(2));
-                    if let Some(sends) = app.try_state::<Arc<hardcover::Sends>>() {
-                        sends.finish(Duration::from_secs(10));
+                    for window in app.webview_windows().values() {
+                        let _ = window.hide();
                     }
+                    let sends = app.try_state::<Arc<hardcover::Sends>>().map(|s| s.inner().clone());
+                    let ratings = std::thread::spawn(move || {
+                        if let Some(sends) = sends {
+                            sends.finish(Duration::from_secs(5));
+                        }
+                    });
                     if let Some(worker) = app.try_state::<Arc<sync::SyncWorker>>() {
-                        worker.finish(Duration::from_secs(15));
+                        worker.finish(Duration::from_secs(8));
                     }
+                    let _ = ratings.join();
                     app.exit(0);
                 });
             }

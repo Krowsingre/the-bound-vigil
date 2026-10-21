@@ -100,7 +100,7 @@ test("choosing a shelf and a page reports the change", async () => {
   await screen.findAllByText("Book 1");
   fireEvent.click(screen.getByRole("tab", { name: /Favourites/ }));
   expect(onChange).toHaveBeenCalledWith({ tab: "favorites" });
-  fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "Page 2" })[0]);
   expect(onChange).toHaveBeenCalledWith({ page: 1 });
 });
 

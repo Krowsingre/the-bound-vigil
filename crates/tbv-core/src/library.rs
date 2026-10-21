@@ -434,7 +434,10 @@ impl Library {
 
     fn import_one(&mut self, source: &Path, adopt: bool) -> ImportResult {
         let path = source.display().to_string();
-        if !source.is_dir() && !extension_of(source).is_some_and(|ext| SUPPORTED_FORMATS.contains(&ext.as_str())) {
+        if !source.is_dir()
+            && crate::audio::parse_group(source).is_none()
+            && !extension_of(source).is_some_and(|ext| SUPPORTED_FORMATS.contains(&ext.as_str()))
+        {
             return ImportResult::Unsupported { path };
         }
         let staged = match stage_source(&self.paths, source) {
@@ -645,10 +648,22 @@ fn collect_books(dir: &Path, books_dir: &Path, out: &mut Vec<PathBuf>) {
     };
     let mut entries: Vec<_> = entries.flatten().collect();
     entries.sort_by_key(|e| e.file_name());
-    // A folder of audio files (one per chapter or CD) is one audiobook.
+    // A folder of audio files (one per chapter or CD) is one audiobook, unless
+    // it holds several: then each is its own, and a book in one file is just that file.
     let audio_folder = crate::audio::folder_parts(dir).len() > 1;
     if audio_folder {
-        out.push(dir.to_path_buf());
+        let books = crate::audio::folder_books(dir);
+        if books.len() == 1 {
+            out.push(dir.to_path_buf());
+        } else {
+            for (name, parts) in books {
+                if parts.len() == 1 {
+                    out.push(parts[0].clone());
+                } else {
+                    out.push(crate::audio::group_path(dir, &name));
+                }
+            }
+        }
     }
     for entry in entries {
         if audio_folder && crate::audio::is_part(&entry.path()) {
@@ -686,7 +701,8 @@ impl Staged {
 /// Readies a file or folder for import. Bundling a folder copies its audio,
 /// so it runs without the library like the rest of the slow work.
 pub fn stage_source(paths: &LibraryPaths, source: &Path) -> Result<Staged> {
-    if !source.is_dir() {
+    let group = crate::audio::parse_group(source);
+    if !source.is_dir() && group.is_none() {
         let format = extension_of(source)
             .filter(|ext| SUPPORTED_FORMATS.contains(&ext.as_str()))
             .ok_or_else(|| Error::Unsuitable("TBV can't read this kind of file".into()))?;
@@ -695,9 +711,13 @@ pub fn stage_source(paths: &LibraryPaths, source: &Path) -> Result<Staged> {
     // Named after the folder, so a book without tags is titled by it.
     let temp_dir = paths.books_dir.join(".incoming").join(crate::ids::new_record_id());
     fs::create_dir_all(&temp_dir)?;
-    let name = source.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Audiobook".into());
+    let name = crate::audio::display_name(source);
     let file = temp_dir.join(format!("{}.{}", safe_file_stem(&name), crate::audio::BUNDLE));
-    if let Err(e) = crate::audio::write_bundle(source, &file) {
+    let written = match &group {
+        Some((dir, _)) => crate::audio::write_parts_bundle(&crate::audio::source_parts(source), dir, &file),
+        None => crate::audio::write_bundle(source, &file),
+    };
+    if let Err(e) = written {
         let _ = fs::remove_dir_all(&temp_dir);
         return Err(e);
     }

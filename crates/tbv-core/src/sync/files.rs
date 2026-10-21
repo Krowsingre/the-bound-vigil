@@ -128,7 +128,7 @@ impl<S: Store> FileRemote<S> {
     }
 }
 
-impl<S: Store> Remote for FileRemote<S> {
+impl<S: Store + Send> Remote for FileRemote<S> {
     fn push(&mut self, records: &[Record]) -> Result<()> {
         if records.is_empty() {
             return Ok(());

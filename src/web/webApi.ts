@@ -162,6 +162,21 @@ export async function webApi(): Promise<Api> {
     return tagCache.map.get(id) ?? [];
   };
 
+  // Ebooks linked to an audiobook and audiobooks linked to an ebook, both still in the library.
+  let pairCache: { at: number; ids: Set<string> } | null = null;
+  const isPaired = (id: string) => {
+    if (pairCache?.at !== libraryVersion) {
+      const ids = new Set<string>();
+      for (const a of library.rows("audiobooks")) {
+        const audio = String(a.book_id);
+        const ebook = a.ebook_id ? String(a.ebook_id) : null;
+        if (ebook && library.book(audio) && library.book(ebook)) ids.add(audio).add(ebook);
+      }
+      pairCache = { at: libraryVersion, ids };
+    }
+    return pairCache.ids.has(id);
+  };
+
   /** A number typed as text; blank or not a number shows what's beneath. */
   const numberOr = (text: string | null | undefined, beneath: number | null) =>
     text?.trim() && Number.isFinite(Number(text)) ? Number(text) : beneath;
@@ -197,6 +212,7 @@ export async function webApi(): Promise<Api> {
       genres: listOf(edits?.get("genres") ?? null),
       durationMs: audioRow(b.id)?.duration_ms ?? null,
       narrators: listOf(edits?.get("narrators") ?? audioRow(b.id)?.narrators ?? null),
+      paired: isPaired(b.id),
     };
   };
 
@@ -993,6 +1009,7 @@ export async function webApi(): Promise<Api> {
           .map((o): [string, unknown[]] => [kind, [bookId, o.field]]);
       await library.remove([...mine("metadata_overrides", "override"), ...(alsoFetched ? mine("metadata_fetched", "fetched") : [])]);
     },
+    searchDetailsMore: async () => [],
     saveFetched: async (bookId, source, values) => {
       find(bookId);
       const at = now();

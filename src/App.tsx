@@ -17,6 +17,8 @@ import { useToast } from "./components/Toast";
 import { Home } from "./home/Home";
 import { Imports, importCounts } from "./imports/Imports";
 import { NO_IMPORTS as NOTHING_IMPORTED } from "./imports/view";
+import { useServerQueue } from "./imports/serverQueue";
+import { LocalSendOffers } from "./imports/LocalSendOffer";
 import { SyncActivity } from "./sync/SyncActivity";
 import { importSummary } from "./lib/importSummary";
 import { Library } from "./library/Library";
@@ -50,6 +52,8 @@ export function App() {
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [dropping, setDropping] = useState(false);
   const [imports, setImports] = useState<ImportsView>(NOTHING_IMPORTED);
+  const servers = useServerQueue(!isWeb);
+  const serverCounts = servers.view.counts;
   // PDF covers are drawn one at a time, in the background.
   const drawingCovers = useRef(false);
   const wasRunning = useRef(false);
@@ -305,7 +309,13 @@ export function App() {
         onNavigate={navigate}
         onToggle={toggleSidebar}
         preview={api.kind === "preview"}
-        imports={imports.total ? importCounts(imports) : null}
+        imports={
+          imports.total
+            ? importCounts(imports)
+            : serverCounts.total
+              ? { done: serverCounts.done, total: serverCounts.total, running: serverCounts.done + serverCounts.failed < serverCounts.total }
+              : null
+        }
       />
       <div className="main">
         <Header
@@ -398,6 +408,7 @@ export function App() {
           ) : route === "imports" ? (
             <Imports
               view={imports}
+              servers={isWeb ? undefined : servers}
               onCancel={() => void api.cancelImports().then(reloadImports)}
               onClear={() => {
                 void api.clearFinishedImports().then(reloadImports);
@@ -436,6 +447,7 @@ export function App() {
           Imported {importCounts(imports).done} of {importCounts(imports).total} books <span className="import-progress-link">View</span>
         </button>
       )}
+      {!isWeb && <LocalSendOffers />}
       <PlayerBar onShowAudiobooks={() => navigate("audiobooks")} />
       <AddToCollectionHost onChanged={refresh} />
       <BookDialogsHost onChanged={refresh} />

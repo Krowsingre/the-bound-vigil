@@ -106,12 +106,12 @@ export function Home({
         <ReadingActivity activity={home.activity} />
       </div>
       <div className="home-middle">
+        <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenLibrary({ tab: "in_progress" })} />
         <RecentlyAdded
           books={home.recentlyAdded}
           actions={actions}
           onViewAll={() => onOpenLibrary({ tab: "all", sort: "recently_added" })}
         />
-        <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenLibrary({ tab: "in_progress" })} />
       </div>
       <div className="home-bottom">
         <CollectionsPreview collections={home.collections} onViewAll={() => onNavigate("collections")} onOpenCollection={onOpenCollection} />

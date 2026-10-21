@@ -337,6 +337,13 @@
   margin-bottom: 0;
 }
 
+.pagination-top {
+  justify-content: flex-end;
+  margin: 0 0 20px;
+  padding: 0;
+  border-top: 0;
+}
+
 .book-grid + .pagination,
 .book-list + .pagination,
 .book-table + .pagination {

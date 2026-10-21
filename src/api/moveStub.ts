@@ -34,6 +34,7 @@ type MoveApi = Pick<
   | "onMove"
   | "planTidyCloud"
   | "tidyCloud"
+  | "supabaseUsage"
 >;
 
 export function moveStub(): MoveApi {
@@ -54,5 +55,6 @@ export function moveStub(): MoveApi {
     onMove: () => () => undefined,
     planTidyCloud: tidyNo,
     tidyCloud: tidyNo,
+    supabaseUsage: tidyNo,
   };
 }

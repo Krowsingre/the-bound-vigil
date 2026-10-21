@@ -86,8 +86,11 @@ impl SyncWorker {
         self.busy.load(Ordering::Relaxed)
     }
 
-    /// Lets a last sync finish before the app quits, up to `limit`.
+    /// Lets a last sync finish before the app quits, up to `limit`. Files
+    /// still waiting stay for next time: a sync already sending them stops
+    /// after the file it's on, and the last sync only exchanges records.
     pub fn finish(&self, limit: Duration) {
+        core_sync::wind_down();
         let (done_tx, done_rx) = mpsc::channel();
         let sent = self.wake.lock().map(|tx| tx.send(Wake::Closing(done_tx)).is_ok()).unwrap_or(false);
         if sent {
@@ -478,6 +481,19 @@ pub fn tidy(app: &AppHandle, library: &Arc<Mutex<Library>>) -> tbv_core::Result<
         },
     );
     let _ = std::fs::remove_dir_all(&temp);
+    if let Ok(l) = library.lock() {
+        keep_session(&l, &place, &outcome);
+    }
+    outcome
+}
+
+/// How much of the Supabase project this library is using.
+pub fn supabase_usage(library: &Arc<Mutex<Library>>) -> tbv_core::Result<core_sync::supabase::Usage> {
+    let ((mut place, _), _) = tidy_places(library)?;
+    let outcome = match &mut place {
+        Cloud::Supabase(client) => client.usage(),
+        Cloud::Files(_) => Err(Error::Unsuitable("This library doesn't sync with Supabase.".into())),
+    };
     if let Ok(l) = library.lock() {
         keep_session(&l, &place, &outcome);
     }

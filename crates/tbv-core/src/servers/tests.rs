@@ -440,3 +440,127 @@ fn sftp_signs_in_and_lists() {
     let folder = super::start_folder(connection.as_mut(), &server).unwrap();
     println!("listing {folder}: {:?}", super::list_importable(connection.as_mut(), &folder).map(|l| l.entries.len()));
 }
+
+mod queueing {
+    use super::*;
+    use crate::servers::queue::{FileState, Queue};
+
+    /// Brings down every waiting file, as the app's workers do.
+    fn download_all(queue: &mut Queue, fake: &mut Fake) {
+        while let Some(file) = queue.claim() {
+            let target = queue.path_of(&file);
+            let got = fetch_file(fake, &file.remote, &target, &mut |_| true);
+            queue.finished(file.id, got.map(|n| n.unwrap_or(0)).map_err(|e| e.to_string()));
+        }
+    }
+
+    #[test]
+    fn every_file_is_listed_and_an_audiobook_waits_for_its_parts() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut fake = library_tree();
+        let (_, planned) = plan(&mut fake, &[chosen("/home/wren/Audiobooks", true), chosen("/home/wren/Carmilla.epub", false)], &AtomicBool::new(false)).unwrap();
+        let mut queue = Queue::open(dir.path());
+        assert_eq!(queue.add("s1", "Seedbox", planned).unwrap(), 4, "one row per file, not per folder");
+        assert_eq!(queue.counts().waiting, 4);
+
+        // The book is down: it can go in while the audiobook's parts come.
+        let first = queue.claim().unwrap();
+        assert!(first.remote.ends_with("01 Chapter.mp3"));
+        let target = queue.path_of(&first);
+        queue.finished(first.id, fetch_file(&mut fake, &first.remote, &target, &mut |_| true).unwrap().ok_or_else(String::new));
+        assert!(queue.ready().is_empty(), "one part of three isn't an audiobook yet");
+        download_all(&mut queue, &mut fake);
+        let ready = queue.ready();
+        assert_eq!(ready.len(), 2);
+        let audiobook = ready.iter().find(|r| r.ids.len() == 3).expect("the three parts go in together");
+        assert!(audiobook.source.is_dir());
+        assert!(queue.ready().is_empty(), "handed over once");
+
+        // Done: the downloads go, and so does the batch's folder.
+        for r in &ready {
+            queue.imported(&r.ids);
+        }
+        assert_eq!(queue.counts().done, 4);
+        let left: Vec<_> = fs::read_dir(dir.path()).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(left, ["queue.json"]);
+    }
+
+    #[test]
+    fn several_audiobooks_in_one_folder_each_get_their_own_folder() {
+        use crate::audio::tests::silent_mp3;
+        let dir = tempfile::tempdir().unwrap();
+        let mut fake = Fake::default();
+        for (name, album) in [("Dracula 1.mp3", "Dracula"), ("Dracula 2.mp3", "Dracula"), ("Carmilla 1.mp3", "Carmilla"), ("Carmilla 2.mp3", "Carmilla")] {
+            fake.files.insert(format!("/home/wren/Mixed/{name}"), silent_mp3(10, name, album, "Someone"));
+        }
+        let (_, planned) = plan(&mut fake, &[chosen("/home/wren/Mixed", true)], &AtomicBool::new(false)).unwrap();
+        let mut queue = Queue::open(dir.path());
+        queue.add("s1", "Seedbox", planned).unwrap();
+        download_all(&mut queue, &mut fake);
+        let ready = queue.ready();
+        assert_eq!(ready.len(), 2);
+        for r in &ready {
+            assert!(r.source.is_dir(), "{:?}", r.source);
+            assert_eq!(crate::audio::folder_books(&r.source).len(), 1);
+            assert_eq!(r.ids.len(), 2);
+        }
+        // One going in (and its files going) leaves the other whole.
+        queue.imported(&ready[0].ids);
+        assert_eq!(crate::audio::folder_books(&ready[1].source)[0].1.len(), 2);
+        for f in queue.files().iter().filter(|f| ready[1].ids.contains(&f.id)) {
+            assert!(queue.path_of(f).exists(), "the queue knows where its files went");
+        }
+    }
+
+    #[test]
+    fn a_crash_loses_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut fake = library_tree();
+        let (_, planned) = plan(&mut fake, &[chosen("/home/wren/Carmilla.epub", false), chosen("/home/wren/Shelf", true)], &AtomicBool::new(false)).unwrap();
+        let mut queue = Queue::open(dir.path());
+        queue.add("s1", "Seedbox", planned).unwrap();
+        // Carmilla comes down and goes to the import queue; Lamps is part-way when TBV stops.
+        let carmilla = queue.claim().unwrap();
+        let path = queue.path_of(&carmilla);
+        queue.finished(carmilla.id, Ok(fetch_file(&mut fake, &carmilla.remote, &path, &mut |_| true).unwrap().unwrap()));
+        assert_eq!(queue.ready().len(), 1);
+        let lamps = queue.claim().unwrap();
+        let lamps_path = queue.path_of(&lamps);
+        fs::create_dir_all(lamps_path.parent().unwrap()).unwrap();
+        fs::write(crate::servers::queue::partial(&lamps_path), "pd").unwrap();
+        drop(queue);
+
+        let mut again = Queue::open(dir.path());
+        let states: Vec<_> = again.files().iter().map(|f| (f.name.as_str(), f.state)).collect();
+        assert_eq!(states, [("Carmilla.epub", FileState::Downloaded), ("Lamps.pdf", FileState::Waiting)]);
+        assert!(path.exists(), "the downloaded book is kept until it's in the library");
+        assert!(!crate::servers::queue::partial(&lamps_path).exists());
+        assert_eq!(again.ready().len(), 1, "and is added again");
+        download_all(&mut again, &mut fake);
+        assert_eq!(again.ready().len(), 1);
+    }
+
+    #[test]
+    fn failed_files_can_be_tried_again_or_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut fake = library_tree();
+        fake.fail_on = Some("/home/wren/Audiobooks/Dracula/02 Chapter.mp3".into());
+        let (_, planned) = plan(&mut fake, &[chosen("/home/wren/Audiobooks/Dracula", true)], &AtomicBool::new(false)).unwrap();
+        let mut queue = Queue::open(dir.path());
+        queue.add("s1", "Seedbox", planned).unwrap();
+        download_all(&mut queue, &mut fake);
+        assert_eq!(queue.counts().failed, 1);
+        assert!(queue.ready().is_empty(), "an audiobook missing a part waits");
+        let failed = queue.files().iter().find(|f| f.state == FileState::Failed).unwrap().id;
+        fake.fail_on = None;
+        queue.retry(failed);
+        download_all(&mut queue, &mut fake);
+        assert_eq!(queue.ready().len(), 1);
+
+        // Cancelling takes off only what hasn't come down.
+        let (_, more) = plan(&mut fake, &[chosen("/home/wren/Shelf", true)], &AtomicBool::new(false)).unwrap();
+        queue.add("s1", "Seedbox", more).unwrap();
+        queue.cancel();
+        assert_eq!(queue.counts().total, 3);
+    }
+}

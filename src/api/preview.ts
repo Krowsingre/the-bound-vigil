@@ -414,7 +414,7 @@ export function previewApi(): Api {
   // Book details in their layers: what each book started with, your edits and what was fetched.
   const own = new Map<string, Record<string, string | null>>();
   const edited = new Map<string, Record<string, string>>();
-  const fetched = new Map<string, Record<string, { value: string; source: "google" | "openlibrary" }>>();
+  const fetched = new Map<string, Record<string, { value: string; source: "google" | "openlibrary" | "audible" | "hardcover" }>>();
   const ownOf = (id: string) => {
     if (!own.has(id)) {
       const b = find(id);
@@ -467,6 +467,14 @@ export function previewApi(): Api {
       onProgress({ done: 1706, total: 1706 });
       return { removed: 1706, copied: 416, failed: 0, stopped: false };
     },
+    supabaseUsage: async () => ({
+      fileBytes: 742_000_000,
+      files: 18_412,
+      bookBytes: 590_000_000,
+      audioBytes: 0,
+      pictureBytes: 152_000_000,
+      databaseBytes: params.has("oldsetup") ? null : 61_000_000,
+    }),
     getHome: async () => home(),
     queueImports: async () => 0,
     importQueue: async () => importsViewOf(imports),
@@ -735,6 +743,7 @@ export function previewApi(): Api {
       if (alsoFetched) fetched.delete(bookId);
       relayer(bookId);
     },
+    searchDetailsMore: async () => [],
     saveFetched: async (bookId, source, values) => {
       ownOf(bookId);
       const found = { ...fetched.get(bookId) };

@@ -1,17 +1,17 @@
 // Importing from a server needs the desktop app. The web version answers with this.
 
 import type { Api } from "./index";
-import type { ServerDownloadStatus } from "./types";
+import type { ServerQueueView } from "./types";
 
 export const SERVERS_DESKTOP_ONLY = "Importing from a server works in the desktop app.";
 
-export const IDLE_SERVER_DOWNLOAD: ServerDownloadStatus = {
-  running: false,
-  server: null,
-  progress: { stage: "looking", filesDone: 0, filesTotal: 0, bytesDone: 0, bytesTotal: 0, current: null },
-  queued: null,
-  stopped: false,
-  error: null,
+export const NO_SERVER_QUEUE: ServerQueueView = {
+  counts: { total: 0, waiting: 0, downloading: 0, downloaded: 0, done: 0, failed: 0, bytesTotal: 0, bytesDone: 0 },
+  connections: 3,
+  looking: [],
+  problem: null,
+  active: [],
+  version: 0,
 };
 
 export type ServerApi = Pick<
@@ -23,10 +23,19 @@ export type ServerApi = Pick<
   | "testServer"
   | "browseServer"
   | "downloadFromServer"
-  | "serverDownloadStatus"
-  | "cancelServerDownload"
-  | "clearServerDownload"
-  | "onServerDownload"
+  | "serverQueue"
+  | "serverQueuePage"
+  | "retryServerFile"
+  | "removeServerFile"
+  | "cancelServerQueue"
+  | "clearServerFinished"
+  | "setServerConnections"
+  | "onServerQueue"
+  | "localSendStatus"
+  | "setLocalSend"
+  | "answerLocalSend"
+  | "onLocalSendOffer"
+  | "onLocalSendReceived"
   | "pickKeyFile"
 >;
 
@@ -42,10 +51,19 @@ export function serverStub(): ServerApi {
     testServer: no,
     browseServer: no,
     downloadFromServer: no,
-    serverDownloadStatus: async () => IDLE_SERVER_DOWNLOAD,
-    cancelServerDownload: async () => undefined,
-    clearServerDownload: async () => undefined,
-    onServerDownload: () => () => undefined,
+    serverQueue: async () => NO_SERVER_QUEUE,
+    serverQueuePage: async () => [],
+    retryServerFile: async () => undefined,
+    removeServerFile: async () => undefined,
+    cancelServerQueue: async () => undefined,
+    clearServerFinished: async () => undefined,
+    setServerConnections: async () => undefined,
+    onServerQueue: () => () => undefined,
+    localSendStatus: async () => ({ enabled: false, running: false, alias: "The Bound Vigil", problem: null }),
+    setLocalSend: no,
+    answerLocalSend: async () => undefined,
+    onLocalSendOffer: () => () => undefined,
+    onLocalSendReceived: () => () => undefined,
     pickKeyFile: async () => null,
   };
 }

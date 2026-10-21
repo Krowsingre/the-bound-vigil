@@ -8,7 +8,7 @@ import { Icon } from "./Icon";
 // Muted cloth tones for books that ship without cover art.
 const CLOTH = ["#2f3a44", "#3d3a33", "#33403a", "#41323a", "#2e3540", "#463c2e"];
 
-type CoverBook = Pick<BookPreview, "id" | "title" | "authors" | "coverPath"> & Partial<Pick<BookPreview, "availability" | "format">>;
+type CoverBook = Pick<BookPreview, "id" | "title" | "authors" | "coverPath"> & Partial<Pick<BookPreview, "availability" | "format" | "paired">>;
 
 export function BookCover({ book, size = "m" }: { book: CoverBook; size?: "s" | "m" | "l" }) {
   const [failed, setFailed] = useState(false);
@@ -22,6 +22,14 @@ export function BookCover({ book, size = "m" }: { book: CoverBook; size?: "s" | 
           <span className="cover-title">{book.title}</span>
           <span className="cover-author">{authorLine(book.authors)}</span>
         </div>
+      )}
+      {book.paired && book.format && (
+        <span
+          className="cover-pair"
+          title={isAudio(book.format) ? "Its ebook is in your library" : "Its audiobook is in your library"}
+        >
+          <Icon name={isAudio(book.format) ? "library" : "headphones"} size={12} label={isAudio(book.format) ? "Has its ebook" : "Has its audiobook"} />
+        </span>
       )}
       {book.format && isDocument(book.format) && (
         <span className="cover-doc" title={`A document (${book.format.toUpperCase()})`}>

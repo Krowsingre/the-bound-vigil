@@ -986,6 +986,66 @@ fn each_place_has_its_own_file_switches() {
     assert_eq!(pc.lib().book(&book).unwrap().unwrap().availability, Availability::Local);
 }
 
+/// A place whose book uploads wait until the other place has started one too.
+/// Run one after the other, the first would wait in vain.
+struct WaitsForTheOther(FakeRemote, Arc<std::sync::atomic::AtomicU32>);
+
+impl Remote for WaitsForTheOther {
+    fn push(&mut self, records: &[Record]) -> Result<()> {
+        self.0.push(records)
+    }
+    fn pull(&mut self, after: &str, limit: usize) -> Result<Page> {
+        self.0.pull(after, limit)
+    }
+    fn upload(&mut self, path: &str, file: &Path) -> Result<()> {
+        if path.starts_with("books/") {
+            self.1.fetch_add(1, Ordering::SeqCst);
+            let until = std::time::Instant::now() + StdDuration::from_secs(5);
+            while self.1.load(Ordering::SeqCst) < 2 {
+                if std::time::Instant::now() > until {
+                    return Err(Error::Cloud("the other place never started".into()));
+                }
+                std::thread::sleep(StdDuration::from_millis(5));
+            }
+        }
+        self.0.upload(path, file)
+    }
+    fn download(&mut self, path: &str, to: &Path) -> Result<bool> {
+        self.0.download(path, to)
+    }
+    fn list(&mut self, folder: &str) -> Result<Vec<String>> {
+        self.0.list(folder)
+    }
+    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+        self.0.list_sizes(folder)
+    }
+    fn remove(&mut self, path: &str) -> Result<()> {
+        self.0.remove(path)
+    }
+}
+
+#[test]
+fn both_places_upload_at_the_same_time() {
+    let (icloud, supabase) = (FakeRemote::default(), FakeRemote::default());
+    let pc = Device::new();
+    pc.add_second_place();
+    pc.set_options(json!({ "bookFiles": true, "alsoBookFiles": true }));
+    pc.import("Dracula");
+    let started = Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let epoch = pc.lib().sync_epoch();
+    let report = sync_both_since(
+        &pc.library,
+        &mut WaitsForTheOther(icloud.clone(), started.clone()),
+        Some(&mut WaitsForTheOther(supabase.clone(), started)),
+        epoch,
+    )
+    .unwrap();
+    assert_eq!(report.files_sent, 4, "a book and a cover to each place");
+    for cloud in [&icloud, &supabase] {
+        assert!(cloud.0.lock().unwrap().files.keys().any(|p| p.starts_with("books/")));
+    }
+}
+
 #[test]
 fn one_place_failing_leaves_the_other_working() {
     let supabase = FakeRemote::default();

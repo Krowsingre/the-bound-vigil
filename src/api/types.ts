@@ -63,6 +63,8 @@ export interface BookPreview {
   durationMs?: number | null;
   /** An audiobook's narrators. */
   narrators?: string[];
+  /** An ebook linked to an audiobook in the library, or an audiobook linked to an ebook. */
+  paired?: boolean;
 }
 
 export interface CollectionPreview {
@@ -163,6 +165,17 @@ export interface TidyPlan {
   lose: string[];
   /** Bytes freed, where Supabase says its files' sizes. */
   bytes: number;
+}
+
+/** How much of a Supabase project TBV is using. */
+export interface SupabaseUsage {
+  fileBytes: number;
+  files: number;
+  bookBytes: number;
+  audioBytes: number;
+  pictureBytes: number;
+  /** Unknown until the setup script is run again. */
+  databaseBytes: number | null;
 }
 
 export interface TidyReport {
@@ -367,7 +380,7 @@ export interface DetailField {
   own: string | null;
   /** Fetched online, or read from the file beyond the basics. */
   fetched: string | null;
-  fetchedFrom: "google" | "openlibrary" | "file" | null;
+  fetchedFrom: "google" | "openlibrary" | "audible" | "hardcover" | "file" | null;
   /** Your own edit. */
   edited: string | null;
 }
@@ -760,21 +773,61 @@ export interface ServerChoice {
   size: number;
 }
 
-export interface ServerDownloadStatus {
+export interface LocalSendStatus {
+  enabled: boolean;
   running: boolean;
-  server: string | null;
-  progress: {
-    stage: "looking" | "downloading";
-    filesDone: number;
-    filesTotal: number;
-    bytesDone: number;
-    bytesTotal: number;
-    current: string | null;
-  };
-  /** Books handed to the import queue once it finished. */
-  queued: number | null;
-  stopped: boolean;
+  /** How TBV shows in LocalSend's list of nearby devices. */
+  alias: string;
+  problem: string | null;
+}
+
+/** Files someone wants to send with LocalSend, waiting for an answer. */
+export interface LocalSendOffer {
+  session: string;
+  /** The sending device's name. */
+  from: string;
+  files: { id: string; name: string; size: number; importable: boolean }[];
+}
+
+/** One file from a server, from being chosen until its book is in the library. */
+export interface QueuedServerFile {
+  id: number;
+  serverName: string;
+  remote: string;
+  name: string;
+  size: number;
+  bytesDone: number;
+  state: "waiting" | "downloading" | "downloaded" | "importing" | "done" | "failed";
   error: string | null;
+  startedAt: IsoUtc | null;
+  finishedAt: IsoUtc | null;
+}
+
+export interface ServerQueueCounts {
+  total: number;
+  waiting: number;
+  downloading: number;
+  /** Down and on their way into the library. */
+  downloaded: number;
+  done: number;
+  failed: number;
+  bytesTotal: number;
+  bytesDone: number;
+}
+
+/** How bringing files down from servers stands. The rows come a page at a time. */
+export interface ServerQueueView {
+  counts: ServerQueueCounts;
+  /** How many come down at once, 1 to 5. */
+  connections: number;
+  /** Servers being looked through for what was chosen. */
+  looking: string[];
+  /** Why the last "Bring in" found nothing to bring down. */
+  problem: string | null;
+  /** The files coming down now. */
+  active: QueuedServerFile[];
+  /** Changes when rows come, go or change state. */
+  version: number;
 }
 
 /** One file a sync moved (or tried to), for the Sync activity page. */

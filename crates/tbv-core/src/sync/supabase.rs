@@ -250,6 +250,93 @@ impl Supabase {
     }
 }
 
+/// How much of a Supabase project TBV is using.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Usage {
+    /// Every file this account keeps there, in bytes and count.
+    pub file_bytes: u64,
+    pub files: u64,
+    /// Book files, audiobook files, and covers plus pictures.
+    pub book_bytes: u64,
+    pub audio_bytes: u64,
+    pub picture_bytes: u64,
+    /// The whole database. Unknown until the setup script is run again.
+    pub database_bytes: Option<u64>,
+}
+
+impl Usage {
+    fn add(&mut self, folder: &str, bytes: u64, files: u64) {
+        self.file_bytes += bytes;
+        self.files += files;
+        match folder {
+            "books" => self.book_bytes += bytes,
+            "audio" => self.audio_bytes += bytes,
+            _ => self.picture_bytes += bytes,
+        }
+    }
+
+    /// Reads what `tbv_usage()` answers.
+    fn from_answer(answer: &Value) -> Self {
+        let mut usage = Usage { database_bytes: answer.get("database_bytes").and_then(Value::as_u64), ..Usage::default() };
+        if let Some(folders) = answer.get("folders").and_then(Value::as_object) {
+            for (folder, row) in folders {
+                let n = |k: &str| row.get(k).and_then(Value::as_u64).unwrap_or(0);
+                usage.add(folder, n("bytes"), n("files"));
+            }
+        }
+        usage
+    }
+}
+
+impl Supabase {
+    /// Asks the project how much TBV keeps there. Projects set up before the
+    /// gauge existed lack `tbv_usage`, so their files are counted by listing
+    /// them and the database size is left unknown.
+    pub fn usage(&mut self) -> Result<Usage> {
+        let key = self.project.anon_key.clone();
+        let mut answer = self.call(&|agent, url, bearer| {
+            agent
+                .post(&format!("{url}/rest/v1/rpc/tbv_usage"))
+                .header("apikey", &key)
+                .header("Authorization", bearer)
+                .send_json(json!({}))
+        })?;
+        if answer.status().is_success() {
+            let found: Value = answer.body_mut().read_json().map_err(|e| Error::Cloud(e.to_string()))?;
+            return Ok(Usage::from_answer(&found));
+        }
+        if !matches!(answer.status().as_u16(), 404 | 400) {
+            return Err(rest_problem(&mut answer));
+        }
+        let mut usage = Usage::default();
+        for folder in ["books", "audio", "covers", "pictures"] {
+            let (bytes, files) = self.walk(&format!("{folder}/"))?;
+            usage.add(folder, bytes, files);
+        }
+        Ok(usage)
+    }
+
+    /// Adds up the files in a folder and the folders inside it.
+    fn walk(&mut self, folder: &str) -> Result<(u64, u64)> {
+        let (mut bytes, mut files) = (0, 0);
+        for (name, size) in self.list_sizes(folder)? {
+            match size {
+                Some(size) => {
+                    bytes += size;
+                    files += 1;
+                }
+                None => {
+                    let (b, f) = self.walk(&format!("{folder}{name}/"))?;
+                    bytes += b;
+                    files += f;
+                }
+            }
+        }
+        Ok((bytes, files))
+    }
+}
+
 impl Remote for Supabase {
     fn remove(&mut self, path: &str) -> Result<()> {
         let object = self.object_url(path);
@@ -434,6 +521,20 @@ mod tests {
         let mut response = Response::new(body);
         *response.status_mut() = ureq::http::StatusCode::from_u16(status).unwrap();
         response
+    }
+
+    #[test]
+    fn usage_is_read_by_folder() {
+        let found = json!({
+            "database_bytes": 12_000_000,
+            "folders": { "books": { "bytes": 700, "files": 2 }, "audio": { "bytes": 200, "files": 1 }, "covers": { "bytes": 50, "files": 5 }, "pictures": { "bytes": 5, "files": 1 } }
+        });
+        let usage = Usage::from_answer(&found);
+        assert_eq!(usage.file_bytes, 955);
+        assert_eq!(usage.files, 9);
+        assert_eq!((usage.book_bytes, usage.audio_bytes, usage.picture_bytes), (700, 200, 55));
+        assert_eq!(usage.database_bytes, Some(12_000_000));
+        assert_eq!(Usage::from_answer(&json!({})), Usage::default());
     }
 
     #[test]

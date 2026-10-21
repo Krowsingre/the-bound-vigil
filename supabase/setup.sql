@@ -2,12 +2,13 @@
 --
 -- Run this once in your project's SQL Editor (Supabase › SQL Editor › New
 -- query, paste, Run). Running it again is safe. Use a project made for TBV:
--- this adds a table, a function and a storage bucket, nothing else.
+-- this adds a table, two functions and a storage bucket, nothing else.
 --
 -- What it makes:
 --   tbv_records  one row per synced thing (a book, a note, a collection…),
 --                newest change kept, readable only by the person who owns it.
 --   tbv_push     how TBV sends changes: an older change never replaces a newer one.
+--   tbv_usage    how much TBV is using, for the gauge in Settings › Sync.
 --   tbv-files    a private bucket for book files, covers and collection pictures,
 --                each person's in a folder only they can open.
 
@@ -104,6 +105,34 @@ drop policy if exists "TBV: people remove their own files" on storage.objects;
 create policy "TBV: people remove their own files" on storage.objects
   for delete to authenticated
   using (bucket_id = 'tbv-files' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- How much TBV is using, for the gauge in Settings › Sync: the database's
+-- size and the signed-in person's files, added up by folder.
+create or replace function public.tbv_usage()
+returns jsonb
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select pg_catalog.jsonb_build_object(
+    'database_bytes', pg_catalog.pg_database_size(pg_catalog.current_database()),
+    'folders', coalesce((
+      select pg_catalog.jsonb_object_agg(f.folder, pg_catalog.jsonb_build_object('bytes', f.bytes, 'files', f.files))
+      from (
+        select coalesce((storage.foldername(o.name))[2], '') as folder,
+               sum(coalesce((o.metadata->>'size')::bigint, 0)) as bytes,
+               count(*) as files
+        from storage.objects o
+        where o.bucket_id = 'tbv-files' and (storage.foldername(o.name))[1] = (select auth.uid())::text
+        group by 1
+      ) f
+    ), '{}'::jsonb)
+  );
+$$;
+
+revoke all on function public.tbv_usage() from anon, public;
+grant execute on function public.tbv_usage() to authenticated;
 
 -- Ask the Data API to notice the new table and function straight away.
 notify pgrst, 'reload schema';

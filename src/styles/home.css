@@ -24,6 +24,7 @@
 .cover {
   position: relative;
   flex: none;
+  min-width: 0;
   aspect-ratio: 2 / 3;
   border-radius: 3px;
   overflow: hidden;
@@ -51,11 +52,17 @@
   object-fit: cover;
 }
 
+/* Stand-in covers fill their slot and never grow with a long title: a title
+   with no spaces (often a file name) used to widen the cover past its slot. */
 .cover-generated {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
   padding: 14% 10%;
   color: var(--ash-pale);
   text-align: center;
@@ -388,7 +395,7 @@
 /* Middle: recently added + in progress */
 .home-middle {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
   border-bottom: 1px solid var(--border);
 }
 
@@ -644,10 +651,11 @@
   }
 }
 
-/* Documents carry a small badge on their cover, wherever they show. */
+/* Documents carry a small badge on their cover, wherever they show. It sits
+   bottom left so it never covers the cloud or missing-file badge (bottom right). */
 .cover-doc {
   position: absolute;
-  right: 6px;
+  left: 6px;
   bottom: 6px;
   display: inline-flex;
   align-items: center;
@@ -661,8 +669,34 @@
 }
 
 .cover-s .cover-doc {
-  right: 2px;
+  left: 2px;
   bottom: 2px;
   padding: 1px 3px;
   font-size: 0;
+}
+
+/* An ebook with its audiobook in the library, or the other way round: top right. */
+.cover-pair {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgb(18 20 22 / 0.72);
+  color: var(--ash-pale);
+}
+
+.cover-s .cover-pair {
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+}
+
+.cover-s .cover-pair svg {
+  width: 10px;
+  height: 10px;
 }

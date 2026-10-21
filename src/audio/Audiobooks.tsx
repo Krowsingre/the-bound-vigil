@@ -94,13 +94,14 @@ export function Audiobooks({
   const shown = chosen ?? player.book?.book.id ?? listening?.[0]?.id ?? null;
   const showContinue = view.tab === "all" && !search.trim() && listening !== null && listening.length > 0;
 
-  const choose = useCallback(
-    (id: string) => {
-      setChosen(id);
-      void player.load(id);
-    },
-    [player],
-  );
+  // Clicking a cover shows the audiobook's details in the panel; playing stays on
+  // the panel's Listen button. Where the panel sits below the list, it scrolls into view.
+  const choose = useCallback((id: string) => {
+    setChosen(id);
+    if (window.matchMedia?.("(max-width: 1180px)").matches) {
+      requestAnimationFrame(() => document.querySelector(".audio-panel")?.scrollIntoView({ block: "start", behavior: "smooth" }));
+    }
+  }, []);
 
   return (
     <div className="audiobooks">
@@ -130,8 +131,8 @@ export function Audiobooks({
                       <button
                         type="button"
                         className="listen-open"
-                        onClick={() => setChosen(b.id)}
-                        onDoubleClick={() => choose(b.id)}
+                        onClick={() => choose(b.id)}
+                        onDoubleClick={() => void player.load(b.id)}
                       >
                         <BookCover book={b} size="m" />
                         <span className="listen-title">{b.title}</span>
