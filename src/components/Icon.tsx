@@ -39,6 +39,7 @@ const paths = {
   list: "M4 6h3v3H4zM10 7.5h10M4 15h3v3H4zM10 16.5h10",
   rows: "M4 6h16M4 10h16M4 14h16M4 18h16",
   filter: "M4 5h16l-6 7.5V19l-4-1.5v-5z",
+  sort: "M8 19V5M8 5 4.5 8.5M8 5l3.5 3.5M16 5v14M16 19l-3.5-3.5M16 19l3.5-3.5",
   chevronDown: "M7 10l5 5 5-5",
   chevronUp: "M7 14l5-5 5 5",
   chevronLeft: "M14.5 6.5 9 12l5.5 5.5",
@@ -92,15 +93,18 @@ export function Icon({
   size = 18,
   label,
   filled = false,
+  className,
 }: {
   name: IconName;
   size?: number;
   label?: string;
   /** Fills the shape, e.g. a bookmark that is set. */
   filled?: boolean;
+  className?: string;
 }) {
   return (
     <svg
+      className={className}
       width={size}
       height={size}
       viewBox="0 0 24 24"

@@ -1529,6 +1529,41 @@ impl Library {
         Ok(out)
     }
 
+    /// Book files this computer doesn't have that haven't reached `lane`
+    /// (a folder place, such as iCloud Drive): copied there from the other
+    /// place, so the folder holds every book. Follows that place's book and
+    /// audiobook file switches.
+    pub(crate) fn folder_gaps(&self, lane: Lane, options: &SyncOptions) -> Result<Vec<Relay>> {
+        let rows = self
+            .conn
+            .prepare(
+                "SELECT b.id, b.format FROM books b LEFT JOIN local_files lf ON lf.book_id = b.id
+                 WHERE b.deleted_at IS NULL AND lf.path IS NULL",
+            )?
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let retry_after = (Utc::now() - Duration::hours(RETRY_FILE_HOURS)).to_rfc3339_opts(SecondsFormat::Millis, true);
+        let sql = format!("SELECT uploaded_at, failed_at FROM {} WHERE path = ?1", lane.files_table());
+        let mut out = Vec::new();
+        for (book_id, format) in rows {
+            let wanted = if crate::audio::is_audio(&format) { options.audio_files } else { options.book_files };
+            if !wanted {
+                continue;
+            }
+            let path = format!("books/{}.{format}", book_id_hex(&book_id));
+            let done: Option<(Option<String>, Option<String>)> = self.conn.query_row(&sql, params![path], |r| Ok((r.get(0)?, r.get(1)?))).optional()?;
+            let due = match done {
+                None => true,
+                Some((Some(_), _)) => false,
+                Some((None, failed)) => failed.is_none_or(|f| f < retry_after),
+            };
+            if due {
+                out.push(Relay { book_id, path, send_book: true, cover: None });
+            }
+        }
+        Ok(out)
+    }
+
     fn file_sent(&self, remote: &str, error: Option<&str>) -> Result<()> {
         self.lane_file_sent(remote, error, Lane::Main)
     }
@@ -2074,17 +2109,25 @@ fn run_both(lock: Lock, mut main: Option<&mut dyn Remote>, mut also: Option<&mut
         return (first, second);
     }
     // Books chosen for the phone that are only in the other place go across
-    // directly, without being kept on this computer.
+    // directly, without being kept on this computer. And the folder place
+    // (iCloud Drive, say) gets every book file the other place has that it
+    // hasn't, so it holds the whole library.
     if let (Some(m), Some(a)) = (main, also) {
         match (m.covers_follow_files(), a.covers_follow_files()) {
             (false, true) => {
                 if let Some(outcome) = &mut second {
                     step(outcome, |r| relay_for_phone(lock, tell, m, a, Lane::Also, r));
                 }
+                if let Some(outcome) = &mut first {
+                    step(outcome, |r| fill_folder(lock, tell, a, m, &options, Lane::Main, r));
+                }
             }
             (true, false) => {
                 if let Some(outcome) = &mut first {
                     step(outcome, |r| relay_for_phone(lock, tell, a, m, Lane::Main, r));
+                }
+                if let Some(outcome) = &mut second {
+                    step(outcome, |r| fill_folder(lock, tell, m, a, &also_options, Lane::Also, r));
                 }
             }
             _ => {}
@@ -2098,6 +2141,42 @@ fn run_both(lock: Lock, mut main: Option<&mut dyn Remote>, mut also: Option<&mut
 /// passes through a temporary file that's removed straight after.
 fn relay_for_phone(lock: Lock, tell: Tell, source: &mut dyn Remote, target: &mut dyn Remote, lane: Lane, report: &mut SyncReport) -> Result<()> {
     let wanted = lock()?.phone_relays(lane)?;
+    relay(lock, tell, source, target, lane, wanted, report)
+}
+
+/// Copies to the folder place (`lane`) the book files this computer
+/// doesn't have and the folder lacks, from the other place. Files the folder
+/// has already are only noted, and ones neither place has are tried again
+/// a day later.
+fn fill_folder(lock: Lock, tell: Tell, source: &mut dyn Remote, target: &mut dyn Remote, options: &SyncOptions, lane: Lane, report: &mut SyncReport) -> Result<()> {
+    let gaps = lock()?.folder_gaps(lane, options)?;
+    if gaps.is_empty() {
+        return Ok(());
+    }
+    let there: HashSet<String> = target.list("books/")?.into_iter().map(|n| format!("books/{n}")).collect();
+    let mut elsewhere: Option<HashSet<String>> = None;
+    let mut wanted = Vec::new();
+    for gap in gaps {
+        if there.contains(&gap.path) {
+            lock()?.lane_file_sent(&gap.path, None, lane)?;
+            continue;
+        }
+        // Only listed once something is missing from the folder.
+        if elsewhere.is_none() {
+            elsewhere = Some(source.list("books/")?.into_iter().map(|n| format!("books/{n}")).collect());
+        }
+        if elsewhere.as_ref().is_some_and(|e| e.contains(&gap.path)) {
+            wanted.push(gap);
+        } else {
+            lock()?.lane_file_sent(&gap.path, Some("not in either sync place"), lane)?;
+        }
+    }
+    relay(lock, tell, source, target, lane, wanted, report)
+}
+
+/// Copies each book (and its cover) from `source` to `target`, through a
+/// temporary file that's removed straight after.
+fn relay(lock: Lock, tell: Tell, source: &mut dyn Remote, target: &mut dyn Remote, lane: Lane, wanted: Vec<Relay>, report: &mut SyncReport) -> Result<()> {
     if wanted.is_empty() {
         return Ok(());
     }
@@ -2333,6 +2412,7 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
     if !fetches.is_empty() {
         tell(SyncEvent::FilesPlanned { lane, direction: Direction::Down, count: fetches.len() as u32, bytes: 0 });
     }
+    let mut failed_in_a_row = 0;
     for (path, local, what, cover_of) in fetches {
         if winding_down() {
             break;
@@ -2346,7 +2426,21 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
         };
         let bytes = fs::metadata(&local).map(|m| m.len()).unwrap_or(0);
         file(Direction::Down, &path, &what, bytes, true, problem);
-        if got? {
+        // One file that won't come down (an iCloud cover still on its way,
+        // say) doesn't hold up the rest; many in a row means the place
+        // itself is in trouble.
+        let got = match got {
+            Ok(got) => {
+                failed_in_a_row = 0;
+                got
+            }
+            Err(_) if failed_in_a_row < 20 => {
+                failed_in_a_row += 1;
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
+        if got {
             let library = lock()?;
             // The place has it already, so it's never sent back there.
             library.lane_file_sent(&path, None, lane)?;

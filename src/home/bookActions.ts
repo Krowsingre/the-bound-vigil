@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import type { BookPreview } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
-import { openContextMenu } from "../components/ContextMenu";
+import { holdForMenu } from "../components/ContextMenu";
 import type { MenuEntry } from "../components/Menu";
 import { StarRating } from "../components/StarRating";
 import { askEditDetails, showBookDetails, showInLibrary } from "../details/openDetails";
@@ -12,7 +12,7 @@ import { isAudio, kindOf } from "../lib/queryBooks";
 import { NO_FILTERS } from "../library/libraryView";
 import { isApp, isHome, isWeb } from "../api";
 
-/** Where choosing books for the phone shows: on a computer (the Send to device shelf), and on the phone. */
+/** Where choosing books for the phone shows: on a computer (the Sent to device shelf), and on the phone. */
 export const phoneChoiceShown = () => (isApp && !isHome) || isWeb;
 
 export interface BookActions {
@@ -94,9 +94,9 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
   ];
 }
 
-/** Right-clicking a book opens its menu. Spread onto the book's card or row. */
+/** Right-clicking a book, or holding a finger on it, opens its menu. Spread onto the book's card or row. */
 export function bookContextMenu(book: BookPreview, actions: BookActions) {
-  return { onContextMenu: (e: React.MouseEvent) => openContextMenu(e, `More for ${book.title}`, bookMenu(book, actions)) };
+  return holdForMenu(`More for ${book.title}`, () => bookMenu(book, actions));
 }
 
 function downloadItem(book: BookPreview, actions: BookActions): MenuEntry {

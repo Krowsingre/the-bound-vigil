@@ -414,12 +414,13 @@ const MIGRATIONS: &[&str] = &[
 
 /// Early builds had four built-in shelves, but three of them repeated smart
 /// collections (Favourites, In progress, Read). Only Up next is kept
-/// (Send to device came later, in v16). Run at
+/// (Sent to device came later, in v16). Run at
 /// every open, so it also tidies a library restored from an old backup.
 const RETIRED_SHELVES: &str = r#"
     DELETE FROM collection_books WHERE collection_id IN ('shelf:favorites', 'shelf:reading', 'shelf:completed');
     DELETE FROM collections WHERE id IN ('shelf:favorites', 'shelf:reading', 'shelf:completed');
     UPDATE collections SET name = 'Up next' WHERE id = 'shelf:want_to_read' AND name = 'To be read';
+    UPDATE collections SET name = 'Sent to device' WHERE id = 'shelf:send_to_device' AND name = 'Send to device';
 "#;
 
 /// Brings a database up to the current schema, one step at a time.
@@ -1271,7 +1272,8 @@ pub(crate) mod tests {
         let library = Library::open(paths).unwrap();
         let stamps: Vec<(String, String)> = library
             .conn
-            .prepare("SELECT kind, changed_at FROM sync_clock WHERE pushed = 0 ORDER BY kind")
+            // (Built-in shelves renamed since are sent too.)
+            .prepare("SELECT kind, changed_at FROM sync_clock WHERE pushed = 0 AND kind != 'collection' ORDER BY kind")
             .unwrap()
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
             .unwrap()

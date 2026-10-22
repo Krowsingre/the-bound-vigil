@@ -92,7 +92,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
 
   let stored: Stored[] = [
     shelf("want_to_read", "Up next", "bookmark", "gallery:forest-shrine"),
-    shelf("send_to_device", "Send to device", "phone", "gallery:stormlight-beacon"),
+    shelf("send_to_device", "Sent to device", "phone", "gallery:stormlight-beacon"),
     ...(empty
       ? []
       : [

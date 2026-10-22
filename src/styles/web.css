@@ -208,18 +208,59 @@
     display: none;
   }
 
+  /* One row: the shelf on the left, then sort, filter, select and layout as icons. */
+  .library-toolbar {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 0;
+  }
+
   .library-toolbar .tabs-menu {
     display: inline-flex;
-    align-items: baseline;
+    align-items: center;
     gap: 6px;
-    margin: 10px 0;
-    font: 400 16px var(--font-serif);
+    min-width: 0;
+    margin-right: auto;
+    padding-left: 0;
+    font: 400 18px var(--font-serif);
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .toolbar-controls {
-    flex-wrap: wrap;
+    flex: none;
     margin-left: 0;
-    padding-bottom: 8px;
+  }
+
+  .toolbar-label {
+    display: none;
+  }
+
+  .toolbar-icon {
+    display: block;
+  }
+
+  .toolbar-controls .toolbar-button {
+    padding: 0 8px;
+  }
+
+  /* No list view on a phone, for now. */
+  .layout-switch [data-layout="list"] {
+    display: none;
+  }
+
+  .layout-switch {
+    margin-left: 6px;
+  }
+
+  .layout-switch button + button {
+    border-left: 1px solid var(--border);
+  }
+
+  /* All five counts fit across, with shorter names. */
+  .library-stats .stat {
+    padding: 0 8px;
   }
 
   /* Reader: the text fills the screen; the panels slide over it. */
@@ -317,4 +358,44 @@
 .is-ios-app #root {
   box-sizing: border-box;
   padding-top: env(safe-area-inset-top);
+}
+
+/* Pulling down from the top bar to go Home: shown once the pull is under way. */
+.pull-home {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .pull-home {
+    position: fixed;
+    z-index: 60;
+    top: calc(env(safe-area-inset-top) + 72px);
+    left: 50%;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    color: var(--text-muted);
+    font: 500 13px var(--font-sans);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%);
+    transition: opacity 0.1s;
+  }
+
+  .pull-home-ready,
+  .pull-home.is-ready .pull-home-far {
+    display: none;
+  }
+
+  .pull-home.is-ready {
+    color: var(--accent);
+  }
+
+  .pull-home.is-ready .pull-home-ready {
+    display: inline;
+  }
 }

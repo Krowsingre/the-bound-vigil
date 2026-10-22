@@ -23,6 +23,56 @@ export function openContextMenu(e: React.MouseEvent, label: string, items: MenuE
   listener({ x: e.clientX, y: e.clientY, label, items });
 }
 
+let held: { timer: number; x: number; y: number } | null = null;
+/** A press that opened a menu doesn't also click what was under the finger. */
+let swallowClickUntil = 0;
+
+const letGo = () => {
+  if (held) window.clearTimeout(held.timer);
+  held = null;
+};
+
+/** Holding a finger on something opens its menu, as a right-click does
+ *  (iPhone has no right-click). Spread onto the element. */
+export function holdForMenu(label: string, items: () => MenuEntry[]) {
+  return {
+    "data-hold": "",
+    onTouchStart: (e: React.TouchEvent) => {
+      letGo();
+      if (e.touches.length !== 1) return;
+      const { clientX: x, clientY: y } = e.touches[0];
+      held = {
+        x,
+        y,
+        timer: window.setTimeout(() => {
+          held = null;
+          swallowClickUntil = Date.now() + 800;
+          navigator.vibrate?.(10);
+          listener?.({ x, y, label, items: items() });
+        }, 500),
+      };
+    },
+    onTouchMove: (e: React.TouchEvent) => {
+      const t = e.touches[0];
+      if (held && t && Math.hypot(t.clientX - held.x, t.clientY - held.y) > 10) letGo();
+    },
+    onTouchEnd: letGo,
+    onTouchCancel: letGo,
+    onClickCapture: (e: React.MouseEvent) => {
+      if (Date.now() < swallowClickUntil) {
+        swallowClickUntil = 0;
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    },
+    onContextMenu: (e: React.MouseEvent) => {
+      // A phone that has its own long-press menu event: one menu, not two.
+      letGo();
+      openContextMenu(e, label, items());
+    },
+  };
+}
+
 export function ContextMenuHost() {
   const [request, setRequest] = useState<Request | null>(null);
   const [place, setPlace] = useState<CSSProperties>({ visibility: "hidden" });
