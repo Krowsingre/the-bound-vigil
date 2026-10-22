@@ -10,6 +10,9 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<!-- Sending books to LocalSend on devices on the same Wi-Fi. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>The Bound Vigil sends books to devices on your Wi-Fi that have LocalSend open.</string>
 	<!-- Only standard encryption (HTTPS), so TestFlight doesn't ask each time. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>

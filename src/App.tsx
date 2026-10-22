@@ -5,6 +5,7 @@ import { AddToCollectionHost } from "./collections/AddToCollection";
 import { ContextMenuHost } from "./components/ContextMenu";
 import { BookDialogsHost } from "./library/BookDialogs";
 import { SendToEreaderHost } from "./ereaders/SendToEreader";
+import { SendWithLocalSendHost } from "./localsend/SendWithLocalSend";
 import { BookDetailsPage } from "./details/BookDetailsPage";
 import { DetailsHost } from "./details/DetailsHost";
 import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
@@ -578,6 +579,7 @@ export function App() {
           navigate("settings");
         }}
       />
+      <SendWithLocalSendHost />
       <ContextMenuHost />
       <PairHost />
     </div>

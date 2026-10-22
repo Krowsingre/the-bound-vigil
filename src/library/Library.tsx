@@ -3,6 +3,7 @@ import { api, isHome, isWeb } from "../api";
 import type { BookPreview, CollectionPreview, ItemKind, LibraryPage } from "../api/types";
 import { askEditDetails } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
+import { askSendWithLocalSend, canSendWithLocalSend } from "../localsend/SendWithLocalSend";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry, type MenuItem } from "../components/Menu";
@@ -307,6 +308,7 @@ export function Library({
     { label: "Edit details", icon: "edit", disabled: none, onSelect: () => askEditDetails(chosen) },
     { label: "Tags", icon: "tag", disabled: none, onSelect: () => setTagging(true) },
     ...(kind !== "audiobooks" ? [{ label: "Send to e-reader", icon: "ereader", disabled: none, onSelect: () => askSendToEreader(chosen) } as MenuItem] : []),
+    ...(canSendWithLocalSend ? [{ label: "Send with LocalSend", icon: "upload", disabled: none, onSelect: () => askSendWithLocalSend(chosen) } as MenuItem] : []),
     ...(!isWeb && phoneChoiceShown()
       ? [
           { label: "Send to device", icon: "upload", disabled: none, onSelect: () => actions.setPhoneWanted?.(chosen, true) } as MenuItem,

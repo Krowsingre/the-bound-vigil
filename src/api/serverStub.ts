@@ -5,6 +5,8 @@ import type { ServerQueueView } from "./types";
 
 export const SERVERS_DESKTOP_ONLY = "Importing from a server works in the desktop app.";
 
+export const LOCALSEND_APP_ONLY = "Sending with LocalSend works in the TBV app, not the web version.";
+
 export const NO_SERVER_QUEUE: ServerQueueView = {
   counts: { total: 0, waiting: 0, downloading: 0, downloaded: 0, done: 0, failed: 0, bytesTotal: 0, bytesDone: 0 },
   connections: 3,
@@ -38,6 +40,11 @@ export type ServerApi = Pick<
   | "localSendFiles"
   | "clearLocalSendFinished"
   | "onLocalSendChanged"
+  | "localSendNearby"
+  | "localSendDeviceAt"
+  | "sendWithLocalSend"
+  | "stopSendingWithLocalSend"
+  | "onLocalSendSending"
   | "pickKeyFile"
 >;
 
@@ -68,6 +75,15 @@ export function serverStub(): ServerApi {
     localSendFiles: async () => [],
     clearLocalSendFinished: async () => undefined,
     onLocalSendChanged: () => () => undefined,
+    localSendNearby: async () => [],
+    localSendDeviceAt: async () => {
+      throw new Error(LOCALSEND_APP_ONLY);
+    },
+    sendWithLocalSend: async () => {
+      throw new Error(LOCALSEND_APP_ONLY);
+    },
+    stopSendingWithLocalSend: async () => undefined,
+    onLocalSendSending: () => () => undefined,
     pickKeyFile: async () => null,
   };
 }

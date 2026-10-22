@@ -2,7 +2,7 @@
 // without one. `?servers` starts with it saved.
 
 import { NO_SERVER_QUEUE, type ServerApi } from "../api/serverStub";
-import type { LocalSendOffer, LocalSendStatus, QueuedServerFile, RemoteEntry, SentFile, ServerView } from "../api/types";
+import type { LocalSendOffer, LocalSendSending, LocalSendStatus, NearbyDevice, QueuedServerFile, RemoteEntry, SentFile, ServerView } from "../api/types";
 
 const PRETEND_OFFER: LocalSendOffer = {
   session: "preview-offer",
@@ -54,6 +54,11 @@ const SEEDBOX: ServerView = {
   hostKey: "SHA256:q3Vx1d2Yw9pZ8bKcR4mT7nLs0aEfGhJiUoPyXwVb6kM",
 };
 
+const PRETEND_NEARBY: NearbyDevice[] = [
+  { alias: "Wren's iPhone", fingerprint: "wren", deviceType: "mobile", address: "192.168.1.24", port: 53317, https: true },
+  { alias: "Study laptop", fingerprint: "study", deviceType: "desktop", address: "192.168.1.31", port: 53317, https: true },
+];
+
 export function previewServers(): ServerApi {
   let servers: ServerView[] = new URLSearchParams(location.search).has("servers") ? [SEEDBOX] : [];
   // A pretend list of files coming down: a few at once, a step every half second.
@@ -64,6 +69,8 @@ export function previewServers(): ServerApi {
   const listeners = new Set<() => void>();
   let localSend: LocalSendStatus = { enabled: false, running: false, alias: "The Bound Vigil on PREVIEW", problem: null };
   const offerListeners = new Set<(offer: LocalSendOffer) => void>();
+  const sendingListeners = new Set<(sending: LocalSendSending) => void>();
+  let stopSending = false;
   const changedListeners = new Set<() => void>();
   let sent: SentFile[] = [];
   const tell = () => {
@@ -224,6 +231,32 @@ export function previewServers(): ServerApi {
     onLocalSendChanged: (listener) => {
       changedListeners.add(listener);
       return () => changedListeners.delete(listener);
+    },
+    localSendNearby: async () => {
+      await new Promise((r) => setTimeout(r, 1200));
+      return PRETEND_NEARBY;
+    },
+    localSendDeviceAt: async (address) => ({ ...PRETEND_NEARBY[0], alias: `LocalSend at ${address}`, address, fingerprint: address }),
+    sendWithLocalSend: async (device, bookIds) => {
+      // The preview pretends each book takes a moment to go.
+      stopSending = false;
+      for (let i = 0; i < bookIds.length; i++) {
+        const size = 2_000_000 + i * 700_000;
+        for (let bytes = 0; bytes <= size; bytes += size / 5) {
+          if (stopSending) throw new Error("Sending was stopped.");
+          sendingListeners.forEach((l) => l({ book: i + 1, books: bookIds.length, title: `Book ${i + 1}`, bytes, size }));
+          await new Promise((r) => setTimeout(r, 150));
+        }
+      }
+      if (device.deviceType === "headless") throw new Error(`${device.alias} turned them down.`);
+      return { sent: bookIds.length, skipped: [] };
+    },
+    stopSendingWithLocalSend: async () => {
+      stopSending = true;
+    },
+    onLocalSendSending: (listener) => {
+      sendingListeners.add(listener);
+      return () => sendingListeners.delete(listener);
     },
     onServerQueue: (listener) => {
       listeners.add(listener);

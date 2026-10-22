@@ -955,6 +955,34 @@ export interface LocalSendOffer {
   files: { id: string; name: string; size: number; importable: boolean }[];
 }
 
+/** A device nearby with LocalSend open, to send books to. */
+export interface NearbyDevice {
+  alias: string;
+  fingerprint: string;
+  /** "mobile", "desktop", "web", "headless" or "server", as the device says. */
+  deviceType: string;
+  address: string;
+  port: number;
+  https: boolean;
+}
+
+/** How sending with LocalSend is going. */
+export interface LocalSendSending {
+  /** Which book, counting from 1, of how many. */
+  book: number;
+  books: number;
+  title: string;
+  bytes: number;
+  size: number;
+}
+
+/** What sending with LocalSend did. */
+export interface SentWithLocalSend {
+  sent: number;
+  /** Books that couldn't go: [title, why]. */
+  skipped: [string, string][];
+}
+
 /** One file from a server, from being chosen until its book is in the library. */
 export interface QueuedServerFile {
   id: number;
