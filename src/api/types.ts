@@ -383,6 +383,8 @@ export interface LibraryQuery {
   narrators?: string[];
   /** Books in any of these series. */
   series?: string[];
+  /** Leaves out books marked read. */
+  hideRead?: boolean;
   /** Only books, documents or audiobooks. Left out: all of them. */
   kind?: ItemKind | null;
   /** Zero-based. */
@@ -487,6 +489,14 @@ export interface MissingBook extends SeriesEntry {
   key: string;
   /** Hidden by the person. */
   hidden: boolean;
+  /** Read somewhere else, as the person marked it. */
+  read: boolean;
+}
+
+/** A book of the series in the library, with its number (its own, or the list's). */
+export interface OwnedBook {
+  book: BookPreview;
+  position: number | null;
 }
 
 /** A book in the library that is probably in the series. */
@@ -508,6 +518,8 @@ export interface SeriesReview {
   owned: number;
   missing: MissingBook[];
   matches: SeriesMatch[];
+  /** The books here, in series order. */
+  ownedBooks: OwnedBook[];
 }
 
 /** "Use on your phone at home": the computer serving TBV to a phone on the same Wi-Fi. */
@@ -674,6 +686,13 @@ export interface SeriesSummary {
   count: number;
   authors: string[];
   covers: CoverRef[];
+  /** Books the library lacks, from the series' list online, after the covers here. Drawn greyed out. */
+  missing?: MissingCover[];
+}
+
+export interface MissingCover {
+  title: string;
+  coverUrl: string | null;
 }
 
 /** Enough of a book to draw its cover. */

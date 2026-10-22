@@ -23,6 +23,8 @@ export interface LibraryView {
   series: string[];
   /** Audiobooks read by any of these narrators. */
   narrators: string[];
+  /** Leaves out books marked read. Remembered, like sort and layout. */
+  hideRead: boolean;
   page: number;
   layout: Layout;
 }
@@ -40,6 +42,7 @@ export const NO_FILTERS: Partial<LibraryView> = {
   authors: [],
   series: [],
   narrators: [],
+  hideRead: false,
 };
 
 export const TABS: { tab: LibraryTab; label: string }[] = [
@@ -69,11 +72,12 @@ const keyOf = (kind: ItemKind) => (kind === "books" ? KEY : `tbv.${kind}View`);
 
 /** Sort and layout are remembered on this device, for each page of books; the rest starts fresh. */
 export function initialView(kind: ItemKind = "books"): LibraryView {
-  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], series: [], narrators: [], page: 0, layout: "grid" };
+  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], series: [], narrators: [], hideRead: false, page: 0, layout: "grid" };
   try {
     const saved = JSON.parse(localStorage.getItem(keyOf(kind)) ?? "{}") as Partial<LibraryView>;
     if (SORTS.some((s) => s.sort === saved.sort)) view.sort = saved.sort!;
     if (saved.layout === "grid" || saved.layout === "list" || saved.layout === "compact") view.layout = saved.layout;
+    view.hideRead = saved.hideRead === true;
   } catch {
     /* fall back to defaults */
   }
@@ -82,7 +86,7 @@ export function initialView(kind: ItemKind = "books"): LibraryView {
 
 export function rememberView(view: LibraryView, kind: ItemKind = "books") {
   try {
-    localStorage.setItem(keyOf(kind), JSON.stringify({ sort: view.sort, layout: view.layout }));
+    localStorage.setItem(keyOf(kind), JSON.stringify({ sort: view.sort, layout: view.layout, hideRead: view.hideRead }));
   } catch {
     /* the choice just won't be remembered */
   }

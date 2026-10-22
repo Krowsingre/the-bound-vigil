@@ -297,6 +297,9 @@ pub struct LibraryQuery {
     /// Audiobooks read by any of these narrators. Empty means any.
     #[serde(default)]
     pub narrators: Vec<String>,
+    /// Leaves out books marked read (Filter › Hide finished books).
+    #[serde(default)]
+    pub hide_read: bool,
     /// Books in any of these series. Empty means any.
     #[serde(default)]
     pub series: Vec<String>,
@@ -564,6 +567,18 @@ pub struct SeriesSummary {
     pub count: u32,
     pub authors: Vec<String>,
     pub covers: Vec<CoverRef>,
+    /// Books of the series the library lacks, from its list online, filling
+    /// the cover strip after the books here. Drawn greyed out.
+    #[serde(default)]
+    pub missing: Vec<MissingCover>,
+}
+
+/// A book of a series the library doesn't have, enough to draw its cover.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MissingCover {
+    pub title: String,
+    pub cover_url: Option<String>,
 }
 
 /// Enough of a book to draw its cover, or a cloth cover when it has none.

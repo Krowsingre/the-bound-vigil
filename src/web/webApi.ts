@@ -1120,8 +1120,17 @@ export async function webApi(): Promise<Api> {
     findSeriesBooks: async () => {
       throw new Error(DESKTOP_ONLY);
     },
-    seriesReview: async (name) => ({ name, checkedAt: null, listed: 0, owned: 0, missing: [], matches: [] }),
+    seriesReview: async (name) => ({ name, checkedAt: null, listed: 0, owned: 0, missing: [], matches: [], ownedBooks: [] }),
     hideSeriesBook: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    markSeriesBookRead: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    addSeriesBook: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    removeSeriesBook: async () => {
       throw new Error(DESKTOP_ONLY);
     },
     approveSeriesMatches: async () => {

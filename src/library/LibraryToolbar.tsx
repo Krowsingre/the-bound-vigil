@@ -54,7 +54,7 @@ export function LibraryToolbar({
 }) {
   const sortLabel = SORTS.find((s) => s.sort === view.sort)?.label;
   const filterCount =
-    view.formats.length + (view.location ? 1 : 0) + view.tags.length + view.genres.length + view.languages.length + view.authors.length + view.series.length + view.narrators.length;
+    view.formats.length + (view.location ? 1 : 0) + view.tags.length + view.genres.length + view.languages.length + view.authors.length + view.series.length + view.narrators.length + (view.hideRead ? 1 : 0);
   const toggle = (list: "authors" | "series" | "narrators", name: string) =>
     onChange({ [list]: view[list].includes(name) ? view[list].filter((x) => x !== name) : [...view[list], name] });
   const names = (list: "authors" | "series" | "narrators", heading: string, known: string[]): MenuEntry[] =>
@@ -76,6 +76,8 @@ export function LibraryToolbar({
 
   const filterItems: MenuEntry[] = [
     ...(filterCount ? ([{ label: "Clear filters", icon: "close", onSelect: () => onChange(NO_FILTERS) }, "divider"] as MenuEntry[]) : []),
+    { label: "Hide finished books", checked: view.hideRead, onSelect: () => onChange({ hideRead: !view.hideRead, page: 0 }) },
+    "divider",
     { heading: <strong>Format</strong> },
     ...formats.map((f) => ({ label: formatLabel(f), checked: view.formats.includes(f), onSelect: () => toggleFormat(f) })),
     "divider",

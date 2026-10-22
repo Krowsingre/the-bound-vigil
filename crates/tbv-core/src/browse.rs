@@ -176,6 +176,9 @@ impl Library {
             values.extend(names.iter().map(|g| Value::Text(g.trim().to_lowercase())));
         }
 
+        if query.hide_read {
+            conditions.push("b.status != 'read'".into());
+        }
         if !query.series.is_empty() {
             let start = values.len() + 1;
             let slots: Vec<String> = (0..query.series.len()).map(|i| format!("?{}", start + i)).collect();

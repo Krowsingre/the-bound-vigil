@@ -136,7 +136,7 @@ pub(crate) const KINDS: &[Kind] = &[
         name: "series",
         table: "series_lists",
         keys: &["id"],
-        cols: &["name", "books", "hidden", "denied", "checked_at", "updated_at"],
+        cols: &["name", "books", "hidden", "denied", "checked_at", "updated_at", "read"],
         category: Category::Metadata,
         creates: true,
     },

@@ -295,21 +295,35 @@ impl Library {
     fn series_summaries(&self) -> Result<Vec<SeriesSummary>> {
         let mut statement = self.conn.prepare(&format!(
             "SELECT {SERIES} AS s, b.id, COALESCE(o_title.value, f_title.value, b.title),
-                    COALESCE(o_authors.value, f_authors.value, b.authors), lf.cover_path
+                    COALESCE(o_authors.value, f_authors.value, b.authors), lf.cover_path,
+                    COALESCE(CAST(NULLIF(o_series_index.value, '') AS REAL), CAST(NULLIF(f_series_index.value, '') AS REAL), b.series_index)
              {BOOK_FROM} AND {SERIES} IS NOT NULL AND trim({SERIES}) != ''
              ORDER BY s COLLATE NOCASE, s, b.series_index IS NULL, b.series_index, {TITLE}"
         ))?;
         let rows = statement.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, Option<String>>(4)?))
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, Option<String>>(4)?,
+                r.get::<_, Option<f64>>(5)?,
+            ))
         })?;
         let mut out: Vec<SeriesSummary> = Vec::new();
+        // For each series: the numbers and titles here, to tell what's missing.
+        let mut owned: Vec<(Vec<f64>, Vec<String>)> = Vec::new();
         for row in rows {
-            let (name, id, title, authors, cover_path) = row?;
+            let (name, id, title, authors, cover_path, index) = row?;
             let authors: Vec<String> = serde_json::from_str(&authors).unwrap_or_default();
             if out.last().is_none_or(|last| last.name != name) {
-                out.push(SeriesSummary { name, count: 0, authors: Vec::new(), covers: Vec::new() });
+                out.push(SeriesSummary { name, count: 0, authors: Vec::new(), covers: Vec::new(), missing: Vec::new() });
+                owned.push(Default::default());
             }
             let series = out.last_mut().expect("just pushed");
+            let (numbers, titles) = owned.last_mut().expect("pushed with it");
+            numbers.extend(index);
+            titles.push(crate::manage::title_key(&title));
             series.count += 1;
             if let Some(first) = authors.first() {
                 if !series.authors.contains(first) {
@@ -320,7 +334,32 @@ impl Library {
                 series.covers.push(CoverRef { id, title, authors, cover_path });
             }
         }
+        self.fill_with_missing(&mut out, &owned)?;
         Ok(out)
+    }
+
+    /// Fills each series' cover strip with books it lacks, from the lists
+    /// found online, in series order. Hidden ones are left out.
+    fn fill_with_missing(&self, series: &mut [SeriesSummary], owned: &[(Vec<f64>, Vec<String>)]) -> Result<()> {
+        let mut statement = self.conn.prepare("SELECT id, books, hidden FROM series_lists")?;
+        let lists: std::collections::HashMap<String, (String, String)> = statement
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, (r.get::<_, String>(1)?, r.get::<_, String>(2)?))))?
+            .collect::<std::result::Result<_, _>>()?;
+        for (summary, (numbers, titles)) in series.iter_mut().zip(owned) {
+            let room = (COVER_STRIP as usize).saturating_sub(summary.covers.len());
+            let Some((books, hidden)) = lists.get(&crate::series::series_id(&summary.name)).filter(|_| room > 0) else { continue };
+            let books: Vec<crate::series::SeriesEntry> = serde_json::from_str(books).unwrap_or_default();
+            let hidden: Vec<String> = serde_json::from_str(hidden).unwrap_or_default();
+            summary.missing = books
+                .into_iter()
+                .filter(|b| !hidden.contains(&b.key()))
+                .filter(|b| !b.position.is_some_and(|p| numbers.iter().any(|n| (n - p).abs() < 1e-6)))
+                .filter(|b| !titles.contains(&crate::manage::title_key(&b.title)))
+                .take(room)
+                .map(|b| MissingCover { title: b.title, cover_url: b.cover_url })
+                .collect();
+        }
+        Ok(())
     }
 
     /// One collection with its books, in its own order.

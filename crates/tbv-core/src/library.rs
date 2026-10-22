@@ -367,6 +367,11 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (ebook_id, audiobook_id)
     );
     "#,
+    // v17: books of a series the person has read elsewhere (keys of
+    // `series_lists.books`, like `hidden`), so a missing book can be marked read.
+    r#"
+    ALTER TABLE series_lists ADD COLUMN read TEXT NOT NULL DEFAULT '[]';
+    "#,
     // v16: a second built-in shelf, Send to device: the books chosen for the
     // phone (`phone_wanted`), next to Up next. Every device adds the same row,
     // so its sync stamp is dropped and none of them overrules another's edits.

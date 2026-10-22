@@ -84,6 +84,7 @@ export function Library({
     authors: view.authors,
     series: view.series,
     narrators: view.narrators,
+    hideRead: view.hideRead,
     kind,
   };
   useEffect(() => {
@@ -102,6 +103,7 @@ export function Library({
         authors: view.authors,
         series: view.series,
         narrators: view.narrators,
+        hideRead: view.hideRead,
         kind,
         page: view.page,
         pageSize: PAGE_SIZE,
@@ -113,7 +115,7 @@ export function Library({
     return () => {
       current = false;
     };
-  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.series, view.narrators, view.page, search, refreshKey, reload]);
+  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.series, view.narrators, view.hideRead, view.page, search, refreshKey, reload]);
 
   useEffect(() => {
     if (view.tab !== "collections") return;
@@ -150,7 +152,7 @@ export function Library({
   const page = load.state === "ready" ? load.data : null;
   const counts = page?.counts ?? null;
   const filtered =
-    view.formats.length > 0 || view.location !== null || view.tags.length > 0 || view.genres.length > 0 || view.languages.length > 0 || view.downloadable || view.authors.length > 0 || view.series.length > 0 || view.narrators.length > 0;
+    view.formats.length > 0 || view.location !== null || view.tags.length > 0 || view.genres.length > 0 || view.languages.length > 0 || view.downloadable || view.authors.length > 0 || view.series.length > 0 || view.narrators.length > 0 || view.hideRead;
   const selection: Selection | null = selected && {
     has: (id) => selected.has(id),
     toggle: (book, range) => {

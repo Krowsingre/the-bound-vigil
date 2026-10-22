@@ -620,18 +620,94 @@ button.tag-chip-add:hover {
   margin: 0;
 }
 
+.series-panel > * {
+  min-width: 0;
+}
+
+/* Long series wrap into rows rather than running off the page. */
 .missing-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
   gap: 14px;
-  overflow-x: auto;
   padding-bottom: 6px;
 }
 
 .missing-card {
   display: grid;
   gap: 4px;
+  min-width: 0;
+  max-width: 140px;
+}
+
+.missing-card.is-read .missing-badge {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.missing-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.missing-actions .icon-btn.is-on {
+  color: var(--accent);
+}
+
+.owned-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.owned-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.owned-chip .cover {
   flex: 0 0 auto;
-  width: 112px;
+}
+
+.owned-text {
+  display: grid;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.owned-text .muted {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.series-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.series-add input {
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.series-add input:first-child {
+  flex: 1 1 220px;
+}
+
+.series-add input:nth-child(2) {
+  flex: 0 1 120px;
 }
 
 .missing-cover {
