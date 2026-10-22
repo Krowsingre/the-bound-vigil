@@ -810,7 +810,7 @@ impl Library {
         Ok(true)
     }
 
-    fn cover_of(&self, book_id: &BookId) -> Result<Option<String>> {
+    pub(crate) fn cover_of(&self, book_id: &BookId) -> Result<Option<String>> {
         let cover: Option<String> = self
             .conn
             .query_row(
@@ -991,6 +991,10 @@ impl ImportJob {
 /// A picture as a cover file: a JPEG no taller than covers are shown.
 fn jpeg_cover(picture: &[u8]) -> Result<Vec<u8>> {
     let image = image::load_from_memory(picture).map_err(|e| Error::Unsuitable(format!("That picture couldn't be read: {e}")))?;
+    // A JPEG already small enough is kept as it is, so copying a cover never blurs it.
+    if image.height() <= 900 && image::guess_format(picture).is_ok_and(|f| f == image::ImageFormat::Jpeg) {
+        return Ok(picture.to_vec());
+    }
     // Covers are shown small; a page drawn at full size would be wasted space.
     let image = if image.height() > 900 { image.resize(900, 900, image::imageops::FilterType::Triangle) } else { image };
     let mut bytes = Vec::new();

@@ -1197,6 +1197,9 @@ export async function webApi(): Promise<Api> {
       await library.writeAll(writes);
     },
     dismissDuplicates: async () => undefined,
+    shareBestCover: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
     // A browser can't reach drives or send email; the desktop app does that.
     listEreaders: async () => [],
     copyToEreader: async () => {

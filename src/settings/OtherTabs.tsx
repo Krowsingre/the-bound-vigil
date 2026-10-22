@@ -260,6 +260,26 @@ function DuplicatesDialog({ groups: start, onClose }: { groups: DuplicateGroup[]
       () => setGroups((list) => list.filter((x) => x.key !== g.key)),
       (e: unknown) => toast(String(e)),
     );
+  const [sharing, setSharing] = useState(false);
+  // A set can be helped when its covers differ in size, or some copies have none.
+  const canShare = (g: DuplicateGroup) => {
+    const areas = g.books.map((b) => (b.coverSize ? b.coverSize[0] * b.coverSize[1] : 0));
+    return Math.max(...areas) > 0 && areas.some((a) => a < Math.max(...areas));
+  };
+  const share = async (sets: DuplicateGroup[]) => {
+    setSharing(true);
+    try {
+      let changed = 0;
+      for (const g of sets) changed += await api.shareBestCover(g.books.map((b) => b.id));
+      const fresh = new Map((await api.findDuplicates()).map((g) => [g.key, g]));
+      setGroups((list) => list.map((g) => fresh.get(g.key) ?? g));
+      toast(changed ? `${changed} ${changed === 1 ? "copy now uses" : "copies now use"} the sharpest cover.` : "Those copies already share the sharpest cover.");
+    } catch (e) {
+      toast(`Couldn't change the covers: ${String(e)}`);
+    } finally {
+      setSharing(false);
+    }
+  };
   const remove = async (book: DuplicateGroup["books"][number]) => {
     setDeleting(null);
     try {
@@ -281,13 +301,30 @@ function DuplicatesDialog({ groups: start, onClose }: { groups: DuplicateGroup[]
         ) : (
           <p className="muted">
             {groups.length} {groups.length === 1 ? "set" : "sets"} of books look alike. Delete the copies you don't want, or mark a set as not duplicates.
+            The sharpest cover can go on every copy first, and it stays after the others are deleted.
           </p>
+        )}
+        {groups.filter(canShare).length > 1 && (
+          <button type="button" className="btn btn-quiet btn-small duplicate-share-all" disabled={sharing} onClick={() => void share(groups.filter(canShare))}>
+            <Icon name="image" size={14} /> Sharpest cover for every set
+          </button>
         )}
         <div className="duplicate-groups">
           {groups.map((g) => (
             <section key={g.key} className="duplicate-group">
               <header>
                 <span className="muted">{g.reason}</span>
+                {canShare(g) && (
+                  <button
+                    type="button"
+                    className="btn btn-quiet btn-small"
+                    disabled={sharing}
+                    title="Every copy gets the largest cover between them"
+                    onClick={() => void share([g])}
+                  >
+                    Use the sharpest cover
+                  </button>
+                )}
                 <button type="button" className="btn btn-quiet btn-small" onClick={() => dismiss(g)}>
                   Not duplicates
                 </button>
@@ -303,6 +340,7 @@ function DuplicatesDialog({ groups: start, onClose }: { groups: DuplicateGroup[]
                         {[
                           b.format.toUpperCase(),
                           b.fileSize ? formatBytes(b.fileSize) : null,
+                          b.coverSize ? `cover ${b.coverSize[0]}×${b.coverSize[1]}` : "no cover",
                           `added ${new Date(b.addedAt).toLocaleDateString()}`,
                           b.status === "in_progress" ? `${Math.round((b.totalProgression ?? 0) * 100)}% read` : b.status === "read" ? "read" : null,
                           b.notes ? `${b.notes} ${b.notes === 1 ? "note" : "notes"}` : null,

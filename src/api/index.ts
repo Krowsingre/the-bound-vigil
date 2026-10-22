@@ -290,6 +290,8 @@ export interface Api {
   denySeriesMatches(name: string, bookIds: string[]): Promise<SeriesReview>;
   /** Remembers that a group isn't duplicates, so it isn't shown again. */
   dismissDuplicates(key: string): Promise<void>;
+  /** Gives each of these books the largest cover any of them has; resolves to how many changed. */
+  shareBestCover(bookIds: string[]): Promise<number>;
   /** E-readers plugged in by cable now. */
   listEreaders(): Promise<Ereader[]>;
   /** Copies a book onto the reader plugged in at `root`. The library's copy is never changed. */
@@ -690,6 +692,7 @@ function appApi(): Api {
     removeDownload: async (bookId) => (await core).invoke("remove_download", { bookId }),
     findDuplicates: async () => (await core).invoke<DuplicateGroup[]>("find_duplicates"),
     dismissDuplicates: async (key) => (await core).invoke("dismiss_duplicates", { key }),
+    shareBestCover: async (bookIds) => (await core).invoke<number>("share_best_cover", { bookIds }),
     bookDetails: async (bookId) => (await core).invoke<BookDetails>("book_details", { bookId }),
     editDetails: async (bookIds, changes) => (await core).invoke("edit_details", { bookIds, changes }),
     resetDetails: async (bookId, fetched) => (await core).invoke("reset_details", { bookId, fetched }),

@@ -1082,6 +1082,11 @@ async fn find_duplicates(
 }
 
 #[tauri::command]
+async fn share_best_cover(state: State<'_, AppLibrary>, book_ids: Vec<String>) -> CommandResult<u32> {
+    with_library(state, move |library| library.share_best_cover(&book_ids)).await
+}
+
+#[tauri::command]
 async fn dismiss_duplicates(state: State<'_, AppLibrary>, key: String) -> CommandResult<()> {
     with_library(state, move |library| library.dismiss_duplicates(&key)).await
 }
@@ -1608,6 +1613,7 @@ pub fn run() {
             approve_series_matches,
             deny_series_matches,
             dismiss_duplicates,
+            share_best_cover,
             book_details,
             edit_details,
             reset_details,

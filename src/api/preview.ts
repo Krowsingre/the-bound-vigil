@@ -853,8 +853,13 @@ export function previewApi(): Api {
     findDuplicates: async () =>
       duplicateGroups(library())
         .filter((g) => !dismissed.has(g.key))
-        .map((g) => ({ ...g, books: g.books.map((b, i) => ({ ...b, fileSize: 412_000 + i * 2_300_000, notes: i ? 0 : 3 })) })),
+        .map((g) => ({ ...g, books: g.books.map((b, i) => ({ ...b, fileSize: 412_000 + i * 2_300_000, notes: i ? 0 : 3, coverSize: (i ? [300, 450] : [600, 900]) as [number, number] })) })),
     dismissDuplicates: async (key) => void dismissed.add(key),
+    shareBestCover: async (bookIds) => {
+      // Sample covers are drawn, so the first copy's stands in for the largest.
+      bookIds.forEach(find);
+      return bookIds.length - 1;
+    },
     bookDetails: async (bookId) => ({
       book: find(bookId),
       fields: detailFields(bookId),
