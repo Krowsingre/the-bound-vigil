@@ -57,11 +57,13 @@
   margin-bottom: 16px;
 }
 
-/* Phones: the sidebar becomes a bar of tabs along the bottom. */
+/* Phones: the sidebar becomes a menu that slides in from the left, opened
+   from the button beside the search box. */
 @media (max-width: 760px) {
   :root {
     --header-h: 52px;
-    --tabbar-h: calc(58px + env(safe-area-inset-bottom));
+    /* Nothing sits along the bottom; only the home bar's room is kept. */
+    --tabbar-h: env(safe-area-inset-bottom);
   }
 
   .app,
@@ -71,68 +73,45 @@
 
   .sidebar {
     position: fixed;
-    inset: auto 0 0 0;
-    z-index: 40;
-    height: var(--tabbar-h);
+    inset: 0 auto 0 0;
+    z-index: 60;
+    width: min(300px, 84vw);
+    padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
-    flex-direction: row;
-    overflow: hidden;
+    overflow-y: auto;
+    box-shadow: var(--shadow);
+    transform: translateX(-105%);
+    transition: transform 200ms ease;
+  }
+
+  .sidebar.is-drawer-open {
+    transform: none;
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 59;
+    background: rgb(0 0 0 / 0.4);
   }
 
   .sidebar-top,
-  .brand,
-  .sidebar-quote,
   .preview-badge {
     display: none;
   }
 
-  .sidebar nav {
-    flex: 1;
+  .nav-item {
+    min-height: 48px;
+    font-size: 16px;
   }
 
-  .nav,
-  .sidebar-collapsed .nav {
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, 1fr);
-    gap: 0;
-    height: 100%;
-    padding: 0 4px;
+  .header-menu {
+    display: grid;
   }
 
-  .nav-item,
-  .sidebar-collapsed .nav-item {
-    flex-direction: column;
-    justify-content: center;
-    gap: 3px;
-    height: 100%;
-    padding: 0;
-    font: 500 11px var(--font-sans);
-    background: none;
-  }
-
-  .nav-item:hover,
-  .nav-item.is-active {
-    background: none;
-  }
-
-  .nav-item.is-active::before {
-    inset: 0 30% auto;
-    width: auto;
-    height: 3px;
-  }
-
-  .sidebar-collapsed .nav-label,
-  .nav-label {
-    display: block;
-    max-width: calc(100% - 4px);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    letter-spacing: -0.01em;
-  }
-
-  .main {
-    padding-bottom: var(--tabbar-h);
+  /* Pages scroll right to the bottom edge, past the home bar. */
+  .content {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .header {
@@ -192,9 +171,22 @@
     border-bottom: 1px solid var(--border);
   }
 
+  /* The landing page's buttons stand in for the menu; a page has its back link. */
   .settings-eyebrow,
-  .settings-search {
+  .settings-page.is-landing .settings-menu:not(.settings-results) {
     display: none;
+  }
+
+  .settings-page:not(.is-landing) .settings-nav {
+    display: none;
+  }
+
+  .settings-page.is-landing .settings-nav {
+    border-bottom: 0;
+  }
+
+  .settings-search {
+    margin-bottom: 4px;
   }
 
   .settings-menu {
@@ -212,10 +204,88 @@
     padding: 20px 16px 40px;
   }
 
+  .library-toolbar .tabs {
+    display: none;
+  }
+
+  /* One row of icons, spread evenly from edge to edge: sort, filter and
+     select as boxed buttons like the layout pair, which stays joined. The
+     shelf is chosen in Filter, so its name isn't shown here. */
+  .library-toolbar {
+    flex-wrap: nowrap;
+    padding: 10px 0;
+  }
+
+  .library-toolbar .tabs-menu {
+    display: none;
+  }
+
   .toolbar-controls {
-    flex-wrap: wrap;
+    flex: 1;
+    justify-content: space-evenly;
     margin-left: 0;
-    padding-bottom: 8px;
+    gap: 0;
+  }
+
+  .toolbar-label {
+    display: none;
+  }
+
+  .toolbar-icon {
+    display: block;
+  }
+
+  .toolbar-controls .toolbar-button {
+    position: relative;
+    justify-content: center;
+    width: 40px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    color: var(--text-muted);
+  }
+
+  .toolbar-controls .toolbar-button.is-on {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  /* A filter count sits on the corner, keeping the buttons the same size. */
+  .toolbar-controls .toolbar-button .tab-count {
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    min-width: 16px;
+    padding: 1px 4px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-size: 10px;
+    line-height: 14px;
+    text-align: center;
+  }
+
+  .toolbar-controls .layout-switch button {
+    height: 34px;
+  }
+
+  /* No list view on a phone, for now. */
+  .layout-switch [data-layout="list"] {
+    display: none;
+  }
+
+  .layout-switch {
+    margin-left: 0;
+  }
+
+  .layout-switch button + button {
+    border-left: 1px solid var(--border);
+  }
+
+  /* All five counts fit across, with shorter names. */
+  .library-stats .stat {
+    padding: 0 8px;
   }
 
   /* Reader: the text fills the screen; the panels slide over it. */
@@ -307,4 +377,50 @@
 .segmented.library-reach button {
   height: 34px;
   font-size: 13px;
+}
+
+/* The iPhone app runs under the status bar and notch, so it keeps clear. */
+.is-ios-app #root {
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Pulling down from the top bar to go Home: shown once the pull is under way. */
+.pull-home {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .pull-home {
+    position: fixed;
+    z-index: 60;
+    top: calc(env(safe-area-inset-top) + 72px);
+    left: 50%;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    color: var(--text-muted);
+    font: 500 13px var(--font-sans);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%);
+    transition: opacity 0.1s;
+  }
+
+  .pull-home-ready,
+  .pull-home.is-ready .pull-home-far {
+    display: none;
+  }
+
+  .pull-home.is-ready {
+    color: var(--accent);
+  }
+
+  .pull-home.is-ready .pull-home-ready {
+    display: inline;
+  }
 }

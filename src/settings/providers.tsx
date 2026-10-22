@@ -1,5 +1,8 @@
 // The services a library can be kept in, as Settings › Sync shows them.
 
+import { Icon } from "../components/Icon";
+import { Menu } from "../components/Menu";
+
 export type Provider = "supabase" | "dropbox" | "gdrive" | "onedrive" | "icloud" | "mega" | "custom";
 
 export const PROVIDERS: { id: Provider; name: string; art: React.ReactNode }[] = [
@@ -78,3 +81,54 @@ export const PROVIDERS: { id: Provider; name: string; art: React.ReactNode }[] =
     ),
   },
 ];
+
+/**
+ * The place chosen, as a card, and every other one in a dropdown. With
+ * nothing chosen there is only the dropdown.
+ */
+export function ProviderPicker({
+  picked,
+  onPick,
+  label,
+  status,
+  inUse,
+}: {
+  picked: Provider | null;
+  onPick: (provider: Provider) => void;
+  label: string;
+  /** A line under each name, like whether it's set up. */
+  status?: (provider: Provider) => string;
+  /** The one syncing now, marked with a ready dot. */
+  inUse?: Provider | null;
+}) {
+  const card = PROVIDERS.find((p) => p.id === picked);
+  const others = PROVIDERS.filter((p) => p.id !== picked);
+  return (
+    <div className="provider-picker">
+      {card && (
+        <div className="provider-card is-active">
+          <span className="provider-art">{card.art}</span>
+          <span className="provider-text">
+            <span className="settings-row-label">{card.name}</span>
+            {status && (
+              <span className="settings-row-hint">
+                <span className={`status-dot${card.id === inUse ? " is-ready" : ""}`} aria-hidden />
+                {status(card.id)}
+              </span>
+            )}
+          </span>
+        </div>
+      )}
+      <Menu
+        label={label}
+        className="btn btn-quiet provider-more"
+        trigger={
+          <>
+            {card ? "Choose another place" : "Choose a place"} <Icon name="chevronDown" size={14} />
+          </>
+        }
+        items={others.map((p) => ({ label: p.name, hint: status?.(p.id), onSelect: () => onPick(p.id) }))}
+      />
+    </div>
+  );
+}

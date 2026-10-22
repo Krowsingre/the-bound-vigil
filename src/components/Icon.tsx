@@ -9,6 +9,7 @@ const paths = {
     "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z",
   search: "M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM20 20l-4.6-4.6",
   more: "M5 12h.01M12 12h.01M19 12h.01",
+  menu: "M4 6.5h16M4 12h16M4 17.5h16",
   cloud: "M7 18h10a4 4 0 0 0 .7-7.9A6 6 0 0 0 6.2 9.5 4.3 4.3 0 0 0 7 18z",
   cloudOff: "M7 18h10a4 4 0 0 0 .7-7.9A6 6 0 0 0 6.2 9.5 4.3 4.3 0 0 0 7 18zM4 4l16 16",
   sync: "M20 12a8 8 0 0 1-14.3 4.9M4 12a8 8 0 0 1 14.3-4.9M18.5 3v4.2h-4.2M5.5 21v-4.2h4.2",
@@ -38,6 +39,7 @@ const paths = {
   list: "M4 6h3v3H4zM10 7.5h10M4 15h3v3H4zM10 16.5h10",
   rows: "M4 6h16M4 10h16M4 14h16M4 18h16",
   filter: "M4 5h16l-6 7.5V19l-4-1.5v-5z",
+  sort: "M8 19V5M8 5 4.5 8.5M8 5l3.5 3.5M16 5v14M16 19l-3.5-3.5M16 19l3.5-3.5",
   chevronDown: "M7 10l5 5 5-5",
   chevronUp: "M7 14l5-5 5 5",
   chevronLeft: "M14.5 6.5 9 12l5.5 5.5",
@@ -91,15 +93,18 @@ export function Icon({
   size = 18,
   label,
   filled = false,
+  className,
 }: {
   name: IconName;
   size?: number;
   label?: string;
   /** Fills the shape, e.g. a bookmark that is set. */
   filled?: boolean;
+  className?: string;
 }) {
   return (
     <svg
+      className={className}
       width={size}
       height={size}
       viewBox="0 0 24 24"

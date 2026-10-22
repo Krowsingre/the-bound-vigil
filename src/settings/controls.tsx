@@ -1,8 +1,38 @@
 // The building blocks of every Settings page: sections, labelled rows,
 // switches and choices.
 
-import { useId } from "react";
+import { useEffect, useId, useState } from "react";
+import { Icon } from "../components/Icon";
 
+const OPENED_KEY = "tbv.settings.opened";
+
+/** Sections opened, remembered on this device. The rest start folded. */
+function readOpened(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(OPENED_KEY) ?? "[]") as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveOpened(id: string, opened: boolean) {
+  const all = readOpened();
+  if (opened) all.add(id);
+  else all.delete(id);
+  try {
+    localStorage.setItem(OPENED_KEY, JSON.stringify([...all]));
+  } catch {
+    // Not remembered; it still opens.
+  }
+}
+
+/** Opens a folded section, e.g. one found by searching settings. */
+export function unfoldSection(id: string) {
+  saveOpened(id, true);
+  window.dispatchEvent(new CustomEvent("tbv:unfold-section", { detail: id }));
+}
+
+/** A settings section, folded until its heading is tapped. */
 export function Section({
   id,
   title,
@@ -17,16 +47,35 @@ export function Section({
   aside?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const [folded, setFolded] = useState(() => !readOpened().has(id));
+  useEffect(() => {
+    const open = (e: Event) => (e as CustomEvent<string>).detail === id && setFolded(false);
+    window.addEventListener("tbv:unfold-section", open);
+    return () => window.removeEventListener("tbv:unfold-section", open);
+  }, [id]);
+  const toggle = () => {
+    saveOpened(id, folded);
+    setFolded(!folded);
+  };
   return (
-    <section className={`settings-section${aside ? " has-aside" : ""}`} id={`settings-${id}`} aria-labelledby={`settings-${id}-title`}>
+    <section
+      className={`settings-section${aside && !folded ? " has-aside" : ""}${folded ? " is-folded" : ""}`}
+      id={`settings-${id}`}
+      aria-labelledby={`settings-${id}-title`}
+    >
       <div className="settings-section-main">
         <header className="settings-section-head">
-          <h2 id={`settings-${id}-title`}>{title}</h2>
+          <h2 id={`settings-${id}-title`}>
+            <button type="button" className="settings-section-toggle" aria-expanded={!folded} onClick={toggle}>
+              {title}
+              <Icon name="chevronDown" size={18} />
+            </button>
+          </h2>
           {lede && <p className="muted">{lede}</p>}
         </header>
-        {children}
+        {!folded && children}
       </div>
-      {aside && <div className="settings-section-aside">{aside}</div>}
+      {aside && !folded && <div className="settings-section-aside">{aside}</div>}
     </section>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { isApp, isHome, isWeb } from "../api";
+import { isApp, isHome, isIOS, isWeb } from "../api";
 import type { Window as AppWindow } from "@tauri-apps/api/window";
 import { Icon } from "../components/Icon";
 import { runBeforeQuit } from "../lib/beforeQuit";
@@ -29,8 +29,8 @@ export function WindowControls() {
       .catch(() => win?.close());
   };
 
-  // A browser tab has its own.
-  if (isWeb || isHome) return null;
+  // A browser tab has its own, and an iPhone app has no window to manage.
+  if (isWeb || isHome || isIOS) return null;
   return (
     <div className="window-controls">
       <button type="button" aria-label="Minimize" title="Minimize" onClick={() => void win?.minimize()}>

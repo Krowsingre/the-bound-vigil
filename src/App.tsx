@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, isApp, isHome, isWeb } from "./api";
+import { api, isApp, isHome, isIOS, isWeb } from "./api";
 import type { CollectionRef, HomeViewModel, ImportsView, Profile, SyncStatus } from "./api/types";
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { ContextMenuHost } from "./components/ContextMenu";
@@ -34,6 +34,9 @@ import type { SettingsTab } from "./settings/settingsIndex";
 import { Header } from "./shell/Header";
 import { navFor, type Route } from "./shell/routes";
 import { Sidebar } from "./shell/Sidebar";
+import { Icon } from "./components/Icon";
+import { useNarrow } from "./lib/useNarrow";
+import { useSwipes } from "./shell/useSwipes";
 import { drawImportedCovers } from "./reader/formats";
 
 const COLLAPSE_KEY = "tbv.sidebarCollapsed";
@@ -51,7 +54,11 @@ function readCollapsed(): boolean {
 
 export function App() {
   const [route, setRoute] = useState<Route>("home");
-  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const [collapsedWide, setCollapsed] = useState(readCollapsed);
+  // On a phone the sidebar is a menu opened from the header, always with names.
+  const narrow = useNarrow();
+  const collapsed = collapsedWide && !narrow;
+  const [menuOpen, setMenuOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [dropping, setDropping] = useState(false);
@@ -72,18 +79,22 @@ export function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [reading, setReading] = useState<{ bookId: string; at?: string } | null>(null);
   const [openCollection, setOpenCollection] = useState<CollectionRef | null>(null);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
   const { refreshAdaptive, togglePrivacy } = useAppSettings();
 
   const navigate = useCallback((r: Route) => {
+    setMenuOpen(false);
     // The sidebar's Collections always starts at the overview.
     if (r === "collections") setOpenCollection(null);
     // Sync & Accounts is a page inside Settings.
     if (r === "sync") {
       setSettingsTab("sync");
       r = "settings";
+    } else if (r === "settings") {
+      // Settings opens at its landing page of tabs.
+      setSettingsTab(null);
     }
     setRoute(r);
   }, []);
@@ -370,13 +381,35 @@ export function App() {
           },
   };
 
+  // Phone swipes: from Home, left to the Library and right to Settings; from
+  // anywhere else, a long pull down from the top bar goes Home. The Reader
+  // keeps its swipes for turning pages.
+  const appRoot = useRef<HTMLDivElement>(null);
+  const pullHome = useRef<HTMLDivElement>(null);
+  const toLibrary = useCallback(() => navigate("library"), [navigate]);
+  const toSettings = useCallback(() => navigate("settings"), [navigate]);
+  const toHome = useCallback(() => navigate("home"), [navigate]);
+  useSwipes(appRoot, pullHome, narrow && !menuOpen && !reading, {
+    onLeft: route === "home" ? toLibrary : undefined,
+    onRight: route === "home" ? toSettings : undefined,
+    onPullDown: route !== "home" ? toHome : undefined,
+  });
+
   if (reading) return <Reader key={reading.bookId} bookId={reading.bookId} openAt={reading.at} shell={shell} onClose={closeBook} />;
 
   return (
-    <div className={`app${collapsed ? " sidebar-collapsed" : ""}${player.book ? " has-player" : ""}`}>
+    <div ref={appRoot} className={`app${collapsed ? " sidebar-collapsed" : ""}${player.book ? " has-player" : ""}`}>
+      {narrow && route !== "home" && (
+        <div ref={pullHome} className="pull-home" aria-hidden>
+          <Icon name="home" size={16} /> <span className="pull-home-far">Keep pulling for Home</span>
+          <span className="pull-home-ready">Let go for Home</span>
+        </div>
+      )}
       <Sidebar
         route={route === "book" && details ? details.from : route}
         collapsed={collapsed}
+        drawerOpen={narrow && menuOpen}
+        onCloseDrawer={() => setMenuOpen(false)}
         onNavigate={navigate}
         onToggle={toggleSidebar}
         preview={api.kind === "preview"}
@@ -397,6 +430,7 @@ export function App() {
       <div className="main">
         <Header
           ref={search}
+          onOpenMenu={() => setMenuOpen(true)}
           sync={sync}
           profile={profile}
           search={searchText}
@@ -532,7 +566,7 @@ export function App() {
           Imported {importCounts(imports).done} of {importCounts(imports).total} books <span className="import-progress-link">View</span>
         </button>
       )}
-      {!isWeb && !isHome && <LocalSendOffers />}
+      {!isWeb && !isHome && !isIOS && <LocalSendOffers />}
       <PlayerBar onShowAudiobooks={() => navigate("audiobooks")} />
       <AddToCollectionHost onChanged={refresh} />
       <BookDialogsHost onChanged={refresh} />

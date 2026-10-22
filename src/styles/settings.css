@@ -909,8 +909,19 @@
   color: var(--accent);
 }
 
+/* The licence sits under the description, so a long one never squeezes it. */
 .credit-list li {
-  grid-template-columns: 120px minmax(0, 1fr) auto;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: baseline;
+  row-gap: 2px;
+}
+
+.credit-list .credit-name {
+  grid-row: span 2;
+}
+
+.credit-list .credit-licence {
+  grid-column: 2;
 }
 
 .credit-name {
@@ -1337,4 +1348,98 @@ kbd {
 
 .contents-panel .dialog-actions > .muted {
   margin-right: auto;
+}
+
+/* Every section folds away from its heading. */
+.settings-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.settings-section-toggle svg {
+  flex: none;
+  color: var(--text-muted);
+  transition: transform 160ms ease;
+}
+
+.settings-section.is-folded .settings-section-toggle svg {
+  transform: rotate(-90deg);
+}
+
+.settings-section.is-folded {
+  gap: 0;
+}
+
+/* The place chosen, then a dropdown of the rest. */
+.provider-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.provider-picker .provider-card {
+  flex: 1 1 240px;
+  max-width: 360px;
+}
+
+/* The landing page: a button for each page of settings. */
+.settings-landing {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-landing-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  height: 100%;
+  padding: 18px;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  cursor: pointer;
+}
+
+.settings-landing-card:hover {
+  border-color: var(--accent);
+}
+
+.settings-landing-card > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.settings-landing-text {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-landing-name {
+  font: 400 18px var(--font-serif);
+}
+
+.settings-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  font-size: 13px;
 }

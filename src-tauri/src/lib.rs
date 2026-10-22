@@ -1526,13 +1526,31 @@ fn show_folder(path: String) -> CommandResult<()> {
     tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())
 }
 
+/// Asks for a folder in the iPhone's Files app (the iCloud Drive library
+/// folder). TBV can open it again after a restart. None if cancelled.
+#[tauri::command]
+async fn ios_pick_folder() -> CommandResult<Option<String>> {
+    #[cfg(target_os = "ios")]
+    {
+        tauri::async_runtime::spawn_blocking(tauri_plugin_tbv_ios::pick_folder).await.map_err(|e| e.to_string())?
+    }
+    #[cfg(not(target_os = "ios"))]
+    Err("Choosing a folder this way only works on iPhone.".into())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_opener::init());
+    #[cfg(target_os = "ios")]
+    let builder = builder.plugin(tauri_plugin_tbv_ios::init());
+    builder
         .register_asynchronous_uri_scheme_protocol("tbvaudio", audio::serve)
         .setup(|app| {
+            // iCloud on iPhone keeps only stand-ins for files until asked.
+            #[cfg(target_os = "ios")]
+            tbv_core::sync::files::set_fetcher(tauri_plugin_tbv_ios::fetch);
             let data_dir = app.path().app_data_dir()?;
             let cache_dir = app.path().app_cache_dir()?;
             let library = Arc::new(Mutex::new(Library::open(LibraryPaths::new(&data_dir, &cache_dir))?));
@@ -1557,15 +1575,20 @@ pub fn run() {
             server_imports.resume(app.handle(), &library, &imports);
             let receiving = Arc::new(localsend::LocalSend::default());
             app.manage(receiving.clone());
+            // An iPhone can't take books over LocalSend or serve the phone
+            // version: both need the computer's network.
+            #[cfg(desktop)]
             receiving.start(app.handle(), &library, &imports, data_dir.join("LocalSend inbox"));
             // A book half brought down from a catalog when TBV closed isn't kept.
             let _ = std::fs::remove_dir_all(writing::downloads_dir(&data_dir));
             let home = Arc::new(home::Home::default());
             app.manage(home.clone());
+            #[cfg(desktop)]
             home.resume(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            ios_pick_folder,
             writing::catalogs,
             writing::save_catalog,
             writing::remove_catalog,

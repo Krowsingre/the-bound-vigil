@@ -1554,6 +1554,31 @@ mod tidying {
     }
 
     #[test]
+    fn the_folder_place_gets_books_only_the_other_place_has() {
+        let icloud = FakeRemote::default();
+        let supabase = Short::default();
+        let pc = Device::new();
+        pc.add_second_place();
+        // At first only Supabase gets book files, and this computer lets its copy go.
+        pc.set_options(json!({ "bookFiles": false, "alsoBookFiles": true }));
+        let dracula = pc.import("Dracula");
+        let epoch = pc.lib().sync_epoch();
+        sync_both_since(&pc.library, &mut icloud.clone(), Some(&mut supabase.clone()), epoch).unwrap();
+        pc.lib().remove_download(&dracula).unwrap();
+        assert!(files(&supabase.0).contains(&book_path(&dracula)));
+        assert!(!files(&icloud).contains(&book_path(&dracula)));
+
+        pc.set_options(json!({ "bookFiles": true, "alsoBookFiles": true }));
+        sync_both_since(&pc.library, &mut icloud.clone(), Some(&mut supabase.clone()), epoch).unwrap();
+        assert!(files(&icloud).contains(&book_path(&dracula)), "copied across to iCloud");
+        assert_eq!(pc.lib().book(&dracula).unwrap().unwrap().availability, Availability::Cloud, "without staying here");
+        // Once there, it isn't copied again.
+        icloud.0.lock().unwrap().files.clear();
+        sync_both_since(&pc.library, &mut icloud.clone(), Some(&mut supabase.clone()), epoch).unwrap();
+        assert!(!files(&icloud).contains(&book_path(&dracula)));
+    }
+
+    #[test]
     fn every_book_says_where_its_file_is() {
         use crate::sync::places::{book_places, held};
         let icloud = FakeRemote::default();

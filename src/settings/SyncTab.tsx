@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, isApp, isWeb } from "../api";
+import { api, isApp, isIOS, isWeb } from "../api";
 import type { ProviderView, SupabaseProject, SyncOverview } from "../api/types";
 import { relativeTime } from "../lib/format";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -17,7 +17,7 @@ import { UsageSection } from "./UsageSection";
 import { ContentsSection } from "./ContentsSection";
 import { HardcoverSection } from "./HardcoverSection";
 import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
-import { PROVIDERS, type Provider } from "./providers";
+import { PROVIDERS, ProviderPicker, type Provider } from "./providers";
 import { ActionTile, RadioList, Row, Section, Select, Toggle } from "./controls";
 
 /** Sync's state in a few words, for the connection details. */
@@ -194,27 +194,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
           </div>
         }
       >
-        <div className="provider-cards" role="radiogroup" aria-label="Sync provider">
-          {PROVIDERS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              role="radio"
-              aria-checked={provider === p.id}
-              className={`provider-card${provider === p.id ? " is-active" : ""}`}
-              onClick={() => setProvider(p.id)}
-            >
-              <span className="provider-art">{p.art}</span>
-              <span className="provider-text">
-                <span className="settings-row-label">{p.name}</span>
-                <span className="settings-row-hint">
-                  <span className={`status-dot${p.id === inUse ? " is-ready" : ""}`} aria-hidden />
-                  {statusOf(p.id)}
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
+        <ProviderPicker picked={provider} onPick={setProvider} label="Sync provider" status={statusOf} inUse={inUse} />
 
         {provider === "supabase" && (editing || !project) && (
           <SupabaseProjectForm
@@ -267,10 +247,10 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
 
       {overview && !isWeb && <UsageSection overview={overview} />}
 
-      {overview && !isWeb && <PhoneSection overview={overview} />}
+      {overview && !isWeb && !isIOS && <PhoneSection overview={overview} />}
       {overview && !isWeb && <TidySection overview={overview} />}
       {overview && !isWeb && <ContentsSection overview={overview} />}
-      {!isWeb && <HomeSection />}
+      {!isWeb && !isIOS && <HomeSection />}
 
       <Section
         id="options"

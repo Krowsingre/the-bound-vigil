@@ -116,11 +116,11 @@ export const UP_NEXT: Row = {
   rules: null,
 };
 
-/** The built-in Send to device shelf: the books chosen for the phone. */
+/** The built-in Sent to device shelf: the books chosen for the phone. */
 export const SEND_TO_DEVICE: Row = {
   ...UP_NEXT,
   id: "shelf:send_to_device",
-  name: "Send to device",
+  name: "Sent to device",
   badge: "phone",
   picture: "gallery:stormlight-beacon",
   position: 1.5,

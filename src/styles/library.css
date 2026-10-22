@@ -1010,3 +1010,36 @@ button.tag-chip-add:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.tabs-menu {
+  display: none;
+}
+
+/* The sort arrows stand in for "Sort: …" on a phone. */
+.toolbar-icon {
+  display: none;
+}
+
+/* The end of the phone's endless list: more loading, or how many there are. */
+.library-end {
+  display: grid;
+  place-items: center;
+  min-height: 64px;
+  padding: 16px 0;
+  font-size: 13px;
+}
+
+.library-more {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: library-spin 0.8s linear infinite;
+}
+
+@keyframes library-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

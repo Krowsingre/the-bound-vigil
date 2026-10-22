@@ -381,6 +381,11 @@ export interface Api {
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 /** The pages TBV on the computer serves to a phone at home (Settings › Sync › Use on your phone at home). */
 export const isHome = !isApp && typeof document !== "undefined" && !!document.querySelector('meta[name="tbv-home"]');
+/** The iPhone app: the full app, laid out for a phone. iPads say they're Macs. */
+export const isIOS =
+  isApp &&
+  typeof navigator !== "undefined" &&
+  (/iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
 /** The web version, for phones: built with `npm run build:web`, syncing through Supabase. */
 export const isWeb = !isApp && import.meta.env.VITE_TBV_WEB === "1";
 
@@ -557,7 +562,9 @@ function appApi(): Api {
         }),
       ),
     pickFolder: async () =>
-      asList(await (await dialog).open({ directory: true, multiple: false, title: "Import a folder of books" })),
+      isIOS
+        ? asList(await (await core).invoke<string | null>("ios_pick_folder"))
+        : asList(await (await dialog).open({ directory: true, multiple: false, title: "Import a folder of books" })),
     coverUrl: (path) => (convert ? convert(path) : ""),
     openBook: async (bookId) => (await core).invoke<ReaderBook>("open_book", { bookId }),
     readBookFile: async (bookId) => {
@@ -628,6 +635,8 @@ function appApi(): Api {
     setSyncProvider: async (provider) => (await core).invoke<boolean>("set_sync_provider", { provider }),
     setAlsoSync: async (provider) => (await core).invoke<boolean>("set_also_sync", { provider }),
     chooseFolder: async (title, start) => {
+      // On iPhone a folder is chosen in Files, and TBV keeps permission to open it.
+      if (isIOS) return (await core).invoke<string | null>("ios_pick_folder");
       const picked = await (await dialog).open({ directory: true, multiple: false, title, defaultPath: start ?? undefined });
       return typeof picked === "string" ? picked : null;
     },
@@ -684,7 +693,9 @@ function appApi(): Api {
     deleteBook: async (bookId) => (await core).invoke("delete_book", { bookId }),
     removeFromLibrary: async (bookId) => (await core).invoke("remove_from_library", { bookId }),
     saveCopies: async (bookIds) => {
-      const picked = await (await dialog).open({ directory: true, multiple: false, title: "Save copies to this folder" });
+      const picked = isIOS
+        ? await (await core).invoke<string | null>("ios_pick_folder")
+        : await (await dialog).open({ directory: true, multiple: false, title: "Save copies to this folder" });
       if (typeof picked !== "string") return null;
       const saved = await (await core).invoke<number>("save_copies", { bookIds, folder: picked });
       return { saved, folder: picked };

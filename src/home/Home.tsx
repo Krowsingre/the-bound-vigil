@@ -89,7 +89,7 @@ export function Home({
             <button type="button" className="btn btn-quiet btn-large" onClick={onImportFolder}>
               <Icon name="folder" size={16} /> Import a folder
             </button>
-            <button type="button" className="btn btn-quiet btn-large" disabled title="Arrives with sync">
+            <button type="button" className="btn btn-quiet btn-large" onClick={() => onNavigate("sync")}>
               <Icon name="link" size={16} /> Join an existing library
             </button>
           </div>

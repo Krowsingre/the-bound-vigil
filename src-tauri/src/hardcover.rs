@@ -20,8 +20,16 @@ pub(crate) fn lock(library: &Mutex<Library>) -> tbv_core::Result<MutexGuard<'_, 
 pub fn sign_in(library: &Mutex<Library>) -> tbv_core::Result<HardcoverStatus> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let pending = hardcover::begin_sign_in(listener.local_addr()?.port())?;
+    // On iPhone the page opens over TBV rather than in Safari, so TBV stays
+    // awake to hear Hardcover's answer.
+    #[cfg(target_os = "ios")]
+    tauri_plugin_tbv_ios::open_sign_in(&pending.url).map_err(Error::Unsuitable)?;
+    #[cfg(not(target_os = "ios"))]
     tauri_plugin_opener::open_url(&pending.url, None::<&str>).map_err(|e| Error::Unsuitable(format!("The browser couldn't be opened: {e}")))?;
-    let answer = hardcover::wait_for_callback(&listener, Duration::from_secs(300))?;
+    let answer = hardcover::wait_for_callback(&listener, Duration::from_secs(300));
+    #[cfg(target_os = "ios")]
+    tauri_plugin_tbv_ios::close_sign_in();
+    let answer = answer?;
     let account = hardcover::finish_sign_in(&Http, &pending, &answer)?;
     let library = lock(library)?;
     library.save_hardcover_account(Some(&account))?;

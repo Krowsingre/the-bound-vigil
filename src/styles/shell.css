@@ -267,10 +267,15 @@
   color: var(--text);
 }
 
-.sync-idle > svg,
+/* Green when up to date, yellow while syncing, red when it failed. */
+.sync-idle > svg {
+  border-color: var(--sync-ok);
+  color: var(--sync-ok);
+}
+
 .sync-syncing > svg {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--sync-busy);
+  color: var(--sync-busy);
 }
 
 .sync-attention > svg,
@@ -383,6 +388,22 @@
   color: var(--text);
 }
 
+/* A heading that folds its group away (Library's Filter). */
+.menu-fold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: -4px 0;
+  padding: 4px 0;
+  text-align: left;
+  color: var(--text-muted);
+}
+
+.menu-fold strong {
+  flex: 1;
+}
+
 .menu-divider {
   height: 1px;
   margin: 6px 4px;
@@ -492,10 +513,14 @@
   color: var(--text-muted);
 }
 
-.sync-idle .sync-badge,
+.sync-idle .sync-badge {
+  border-color: var(--sync-ok);
+  color: var(--sync-ok);
+}
+
 .sync-syncing .sync-badge {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--sync-busy);
+  color: var(--sync-busy);
 }
 
 .sync-attention .sync-badge,
@@ -565,4 +590,18 @@
   font-weight: 400;
   color: var(--text-muted);
   white-space: normal;
+}
+
+/* The phone's menu button, beside the search box (see styles/web.css). */
+.header-menu {
+  display: none;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-m);
 }

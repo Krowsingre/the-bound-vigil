@@ -15,13 +15,14 @@ import { CollectionsTab } from "./CollectionsTab";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { excludeCount, NO_FILTERS, PAGE_SIZE, type LibraryView } from "./libraryView";
 import { Pagination } from "./Pagination";
+import { useNarrow } from "../lib/useNarrow";
 
 type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
 
 const WORDS = {
-  books: { title: "Library", eyebrow: "Your personal archive", one: "book", many: "books", total: "Total books" },
-  documents: { title: "Documents", eyebrow: "PDF, Word and text files", one: "document", many: "documents", total: "Total documents" },
-  audiobooks: { title: "Audiobooks", eyebrow: "Your listening shelf", one: "audiobook", many: "audiobooks", total: "Total audiobooks" },
+  books: { title: "Library", eyebrow: "Your personal archive", one: "book", many: "books", total: "Books" },
+  documents: { title: "Documents", eyebrow: "PDF, Word and text files", one: "document", many: "documents", total: "Documents" },
+  audiobooks: { title: "Audiobooks", eyebrow: "Your listening shelf", one: "audiobook", many: "audiobooks", total: "Audiobooks" },
 } as const;
 
 export function Library({
@@ -65,6 +66,13 @@ export function Library({
   const [allChosenFor, setAllChosenFor] = useState<string | null>(null);
   const toast = useToast();
   const words = WORDS[kind];
+  // On a phone there are no pages: more books load as the list nears its end.
+  const endless = useNarrow();
+  /** Phone: how many pages are shown, and the books of every page after the first. */
+  const [pages, setPages] = useState(1);
+  const [later, setLater] = useState<BookPreview[][]>([]);
+  const loadingMore = useRef(false);
+  const end = useRef<HTMLDivElement>(null);
   const actions = useMemo(
     () => makeBookActions(api, toast, () => setReload((n) => n + 1), onOpenBook),
     [toast, onOpenBook],
@@ -107,7 +115,7 @@ export function Library({
         hideRead: view.hideRead,
         exclude: view.exclude,
         kind,
-        page: view.page,
+        page: endless ? 0 : view.page,
         pageSize: PAGE_SIZE,
       })
       .then(
@@ -117,8 +125,54 @@ export function Library({
     return () => {
       current = false;
     };
-  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.series, view.narrators, view.hideRead, view.exclude, view.page, search, refreshKey, reload]);
+  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.series, view.narrators, view.hideRead, view.exclude, view.page, search, refreshKey, reload, endless]);
 
+  // A new search, filter, shelf or sort starts the phone's list from the top.
+  const queryKey = JSON.stringify(query);
+  useEffect(() => {
+    setPages(1);
+    setLater([]);
+  }, [queryKey, endless]);
+
+  // The later pages come again after a change (a book moved shelf, say), so the list keeps its place.
+  useEffect(() => {
+    if (!endless || pages < 2) return;
+    let current = true;
+    loadingMore.current = true;
+    Promise.all(Array.from({ length: pages - 1 }, (_, i) => api.getLibrary({ ...query, page: i + 1, pageSize: PAGE_SIZE })))
+      .then(
+        (got) => current && setLater(got.map((p, i) => (p.page === i + 1 ? p.books : []))),
+        () => {},
+      )
+      .finally(() => {
+        if (current) loadingMore.current = false;
+      });
+    return () => {
+      current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endless, refreshKey, reload]);
+
+  // The next page, once more of it is wanted.
+  useEffect(() => {
+    if (!endless || pages < 2 || later.length >= pages - 1) return;
+    let current = true;
+    loadingMore.current = true;
+    const want = pages - 1;
+    api
+      .getLibrary({ ...query, page: want, pageSize: PAGE_SIZE })
+      .then(
+        (p) => current && setLater((l) => (l.length === want - 1 && p.page === want ? [...l, p.books] : l)),
+        () => {},
+      )
+      .finally(() => {
+        loadingMore.current = false;
+      });
+    return () => {
+      current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endless, pages, later.length]);
   useEffect(() => {
     if (view.tab !== "collections") return;
     let current = true;
@@ -148,10 +202,30 @@ export function Library({
 
   // A new page starts at the top, like turning a page.
   useEffect(() => {
-    document.querySelector(".content")?.scrollTo({ top: 0 });
-  }, [view.page]);
+    if (!endless) document.querySelector(".content")?.scrollTo({ top: 0 });
+  }, [view.page, endless]);
 
-  const page = load.state === "ready" ? load.data : null;
+  const first = load.state === "ready" ? load.data : null;
+  // On a phone, the first page with every later one loaded so far.
+  const page = useMemo(
+    () => (first && endless && later.length ? { ...first, books: [...first.books, ...later.flat()] } : first),
+    [first, endless, later],
+  );
+  const hasMore = endless && page !== null && (later.length + 1) * PAGE_SIZE < page.total;
+
+  // Near the end of the list, the next page loads.
+  useEffect(() => {
+    const target = end.current;
+    if (!hasMore || !target || typeof IntersectionObserver !== "function") return;
+    const watch = new IntersectionObserver(
+      (seen) => {
+        if (seen.some((s) => s.isIntersecting) && !loadingMore.current) setPages((n) => Math.max(n, later.length + 2));
+      },
+      { root: document.querySelector(".content"), rootMargin: "800px 0px" },
+    );
+    watch.observe(target);
+    return () => watch.disconnect();
+  }, [hasMore, later.length]);
   const counts = page?.counts ?? null;
   const filtered =
     view.formats.length > 0 || view.location !== null || view.tags.length > 0 || view.genres.length > 0 || view.languages.length > 0 || view.downloadable || view.authors.length > 0 || view.series.length > 0 || view.narrators.length > 0 || view.hideRead || excludeCount(view.exclude) > 0;
@@ -298,8 +372,16 @@ export function Library({
       </div>
     );
   } else {
-    const Layout = { grid: BookGrid, list: BookList, compact: BookTable }[view.layout];
-    body = (
+    // The phone has no list view, for now.
+    const Layout = { grid: BookGrid, list: endless ? BookGrid : BookList, compact: BookTable }[view.layout];
+    body = endless ? (
+      <>
+        <Layout books={page.books} actions={actions} selection={selection} />
+        <div ref={end} className="library-end muted num">
+          {hasMore ? <span className="library-more" aria-busy="true" aria-label={`Loading more ${words.many}`} /> : `${page.total.toLocaleString()} ${page.total === 1 ? words.one : words.many}`}
+        </div>
+      </>
+    ) : (
       <>
         <Pagination top page={page.page} pageSize={page.pageSize} total={page.total} onPage={(p) => onChange({ page: p })} />
         <Layout books={page.books} actions={actions} selection={selection} />

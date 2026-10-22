@@ -27,7 +27,7 @@ import "./styles/web.css";
 import "./styles/privacy.css";
 import "./styles/writing.css";
 import "./styles/catalogs.css";
-import { isApp, isHome, isWeb } from "./api";
+import { isApp, isHome, isIOS, isWeb } from "./api";
 import { HomePair } from "./web/HomePair";
 import { WebGate } from "./web/WebConnect";
 import { runBeforeQuit } from "./lib/beforeQuit";
@@ -47,6 +47,12 @@ if (isApp) {
       await invoke("quit_app");
     }),
   );
+}
+
+// The iPhone app keeps clear of the notch, and doesn't zoom in when a box is tapped.
+if (isIOS) {
+  document.documentElement.classList.add("is-ios-app");
+  document.querySelector('meta[name="viewport"]')?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover");
 }
 
 // The web version keeps working offline once it has been opened (public/sw.js).

@@ -1,4 +1,4 @@
-//! The Collections page: the built-in Up next and Send to device shelves, smart collections that
+//! The Collections page: the built-in Up next and Sent to device shelves, smart collections that
 //! fill themselves, series read from the books, and the user's own
 //! collections and reading lists.
 
@@ -805,7 +805,7 @@ mod tests {
 
         let overview = library.collections_overview().unwrap();
         let names: Vec<_> = overview.pinned.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, ["Up next", "Send to device"], "only shelves that no smart collection repeats");
+        assert_eq!(names, ["Up next", "Sent to device"], "only shelves that no smart collection repeats");
         assert_eq!(overview.pinned[0].count, 1);
         assert_eq!(overview.pinned[1].count, 1, "the books chosen for the phone");
         assert_eq!(library.shelf_counts().unwrap().send_to_device, 1);
@@ -840,7 +840,7 @@ mod tests {
         assert_eq!(changed.name, "Up next");
         assert_eq!(changed.badge.as_deref(), Some("moon"));
         let pinned = library.collections_overview().unwrap().pinned;
-        assert_eq!(pinned.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Send to device"]);
+        assert_eq!(pinned.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Sent to device"]);
     }
 
     #[test]

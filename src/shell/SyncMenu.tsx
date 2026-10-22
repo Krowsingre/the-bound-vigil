@@ -86,7 +86,7 @@ export function SyncMenu({
             </>
           ),
         },
-        { label: "Sync now", icon: "sync", disabled: off || state === "syncing", onSelect: () => void api.syncNow() },
+        { label: state === "syncing" ? "Syncing…" : "Sync now", icon: "sync", disabled: off || state === "syncing", onSelect: () => void api.syncNow() },
         ...(onOpenActivity ? [{ label: "Sync activity", icon: "list" as const, hint: "File by file", onSelect: onOpenActivity }] : []),
         ...(onOpenPlaces ? [{ label: "Where your books are", icon: "cloud" as const, hint: "Computer and cloud", onSelect: onOpenPlaces }] : []),
         "divider",

@@ -6,6 +6,8 @@ import { isHome, isWeb } from "../api";
 export function Sidebar({
   route,
   collapsed,
+  drawerOpen = false,
+  onCloseDrawer,
   onNavigate,
   onToggle,
   preview,
@@ -15,87 +17,93 @@ export function Sidebar({
   imports: { done: number; total: number; running: boolean } | null;
   route: Route;
   collapsed: boolean;
+  /** On a phone: the menu is open over the page. */
+  drawerOpen?: boolean;
+  onCloseDrawer?: () => void;
   onNavigate: (route: Route) => void;
   onToggle: () => void;
   preview: boolean;
 }) {
   const active = navRouteOf(route);
   return (
-    <aside className={`sidebar${collapsed ? " is-collapsed" : ""}`}>
-      <div className="sidebar-top" data-tauri-drag-region>
-        <button
-          type="button"
-          className="sidebar-toggle"
-          onClick={onToggle}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-expanded={!collapsed}
-          title={`${collapsed ? "Expand" : "Collapse"} sidebar (Ctrl+\\)`}
-        >
-          <Icon name="more" size={20} />
-        </button>
-      </div>
+    <>
+      {drawerOpen && <div className="sidebar-backdrop" aria-hidden onClick={onCloseDrawer} />}
+      <aside className={`sidebar${collapsed ? " is-collapsed" : ""}${drawerOpen ? " is-drawer-open" : ""}`}>
+        <div className="sidebar-top" data-tauri-drag-region>
+          <button
+            type="button"
+            className="sidebar-toggle"
+            onClick={onToggle}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            title={`${collapsed ? "Expand" : "Collapse"} sidebar (Ctrl+\\)`}
+          >
+            <Icon name="more" size={20} />
+          </button>
+        </div>
 
-      <div className="brand" data-tauri-drag-region>
-        <span className="brand-emblem" aria-hidden dangerouslySetInnerHTML={{ __html: emblem }} />
-        {!collapsed && (
-          <>
-            <span className="brand-name">The Bound Vigil</span>
-            <span className="brand-tagline">Books endure</span>
-          </>
-        )}
-      </div>
-
-      <nav aria-label="Main">
-        <ul className="nav">
-          {navFor({ web: isWeb, home: isHome }).map((item, i) => (
-            <li key={item.route}>
-              <button
-                type="button"
-                className={`nav-item${active === item.route ? " is-active" : ""}`}
-                aria-current={active === item.route ? "page" : undefined}
-                onClick={() => onNavigate(item.route)}
-                title={collapsed ? `${item.label} (Ctrl+${i + 1})` : undefined}
-              >
-                <Icon name={item.icon} size={20} />
-                <span className="nav-label">{item.label}</span>
-              </button>
-            </li>
-          ))}
-          {imports && (
-            <li>
-              <button
-                type="button"
-                className={`nav-item nav-imports${active === "imports" ? " is-active" : ""}`}
-                aria-current={active === "imports" ? "page" : undefined}
-                onClick={() => onNavigate("imports")}
-                title={collapsed ? `Imports: ${imports.done} of ${imports.total}` : undefined}
-              >
-                <Icon name="download" size={20} />
-                <span className="nav-label">Imports</span>
-                <span className="nav-count">{imports.running ? `${imports.done}/${imports.total}` : "✓"}</span>
-                {imports.running && (
-                  <span className="nav-progress" aria-hidden>
-                    <span style={{ width: `${(imports.done / Math.max(1, imports.total)) * 100}%` }} />
-                  </span>
-                )}
-              </button>
-            </li>
+        <div className="brand" data-tauri-drag-region>
+          <span className="brand-emblem" aria-hidden dangerouslySetInnerHTML={{ __html: emblem }} />
+          {!collapsed && (
+            <>
+              <span className="brand-name">The Bound Vigil</span>
+              <span className="brand-tagline">Books endure</span>
+            </>
           )}
-        </ul>
-      </nav>
+        </div>
 
-      {!collapsed && (
-        <figure className="sidebar-quote" aria-hidden>
-          <blockquote>A wider world lives in these pages.</blockquote>
-          <figcaption className="sidebar-quote-by">Krowsingre</figcaption>
-          <span className="sidebar-rule" />
-        </figure>
-      )}
-      {preview && (
-        <p className="preview-badge" title="Sample books for design previews. The desktop app shows your own library.">
-          {collapsed ? "P" : "Preview · sample books"}
-        </p>
-      )}
-    </aside>
+        <nav aria-label="Main">
+          <ul className="nav">
+            {navFor({ web: isWeb, home: isHome }).map((item, i) => (
+              <li key={item.route}>
+                <button
+                  type="button"
+                  className={`nav-item${active === item.route ? " is-active" : ""}`}
+                  aria-current={active === item.route ? "page" : undefined}
+                  onClick={() => onNavigate(item.route)}
+                  title={collapsed ? `${item.label} (Ctrl+${i + 1})` : undefined}
+                >
+                  <Icon name={item.icon} size={20} />
+                  <span className="nav-label">{item.label}</span>
+                </button>
+              </li>
+            ))}
+            {imports && (
+              <li>
+                <button
+                  type="button"
+                  className={`nav-item nav-imports${active === "imports" ? " is-active" : ""}`}
+                  aria-current={active === "imports" ? "page" : undefined}
+                  onClick={() => onNavigate("imports")}
+                  title={collapsed ? `Imports: ${imports.done} of ${imports.total}` : undefined}
+                >
+                  <Icon name="download" size={20} />
+                  <span className="nav-label">Imports</span>
+                  <span className="nav-count">{imports.running ? `${imports.done}/${imports.total}` : "✓"}</span>
+                  {imports.running && (
+                    <span className="nav-progress" aria-hidden>
+                      <span style={{ width: `${(imports.done / Math.max(1, imports.total)) * 100}%` }} />
+                    </span>
+                  )}
+                </button>
+              </li>
+            )}
+          </ul>
+        </nav>
+
+        {!collapsed && (
+          <figure className="sidebar-quote" aria-hidden>
+            <blockquote>A wider world lives in these pages.</blockquote>
+            <figcaption className="sidebar-quote-by">Krowsingre</figcaption>
+            <span className="sidebar-rule" />
+          </figure>
+        )}
+        {preview && (
+          <p className="preview-badge" title="Sample books for design previews. The desktop app shows your own library.">
+            {collapsed ? "P" : "Preview · sample books"}
+          </p>
+        )}
+      </aside>
+    </>
   );
 }
