@@ -12,13 +12,14 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
-use tbv_core::localsend::{self, FileState, Host, Identity, Nearby, Offer, Receiver, SentFile, ToSend};
+use tbv_core::localsend::{self, FileState, Host, Identity, Nearby, Offer, Receiver, SentFile, ToSend, Tls};
 use tbv_core::Library;
 
 use crate::imports::{Hold, Imports};
 
 const ENABLED_KEY: &str = "localsend.enabled";
-const FINGERPRINT_KEY: &str = "localsend.fingerprint";
+const CERT_KEY: &str = "localsend.cert";
+const CERT_KEY_KEY: &str = "localsend.key";
 
 type Answer = Box<dyn FnOnce(bool) + Send>;
 
@@ -45,7 +46,7 @@ pub struct LocalSend {
     answers: Arc<Mutex<HashMap<String, Answer>>>,
     rows: Rows,
     /// Set to stop what's being sent.
-    stop_sending: Arc<AtomicBool>,
+    stop_sending: Mutex<Arc<AtomicBool>>,
 }
 
 /// How sending is going, for the person to follow.
@@ -192,8 +193,8 @@ impl LocalSend {
             rows: self.rows.clone(),
         });
         host.leftovers(&inbox);
-        let Some(fingerprint) = fingerprint(library) else { return };
-        let started = localsend::start(Identity { alias: alias(), fingerprint, port: localsend::PORT }, &inbox, host, true);
+        let Some((fingerprint, tls)) = credentials(library) else { return };
+        let started = localsend::start(Identity { alias: alias(), fingerprint, port: localsend::PORT, tls: Some(tls) }, &inbox, host, true);
         let problem = match started {
             Ok(r) => {
                 *receiver = Some(r);
@@ -208,9 +209,9 @@ impl LocalSend {
 
     /// How TBV shows itself when sending: the same as when receiving.
     fn identity(&self, library: &Mutex<Library>) -> tbv_core::Result<Identity> {
-        let fingerprint = fingerprint(library).ok_or_else(|| tbv_core::Error::Unsuitable("the library is unavailable".into()))?;
+        let (fingerprint, tls) = credentials(library).ok_or_else(|| tbv_core::Error::Unsuitable("TBV couldn't set itself up for LocalSend".into()))?;
         let port = self.receiver.lock().ok().and_then(|r| r.as_ref().map(Receiver::port)).unwrap_or(localsend::PORT);
-        Ok(Identity { alias: alias(), fingerprint, port })
+        Ok(Identity { alias: alias(), fingerprint, port, tls: Some(tls) })
     }
 
     /// Devices nearby with LocalSend open.
@@ -226,10 +227,14 @@ impl LocalSend {
     /// Sends books' files to a device nearby, telling the window how it goes.
     pub fn send(&self, app: &AppHandle, library: &Mutex<Library>, to: &Nearby, books: &[(String, ToSend)]) -> tbv_core::Result<usize> {
         let me = self.identity(library)?;
-        self.stop_sending.store(false, Ordering::SeqCst);
+        // A fresh flag each time: an earlier send that's still winding down keeps its own.
+        let stop = Arc::new(AtomicBool::new(false));
+        if let Ok(mut current) = self.stop_sending.lock() {
+            *current = stop.clone();
+        }
         let files: Vec<ToSend> = books.iter().map(|(_, f)| f.clone()).collect();
         let mut last = Instant::now() - Duration::from_secs(1);
-        localsend::send(&me, to, &files, &self.stop_sending, |i, bytes| {
+        localsend::send(&me, to, &files, &stop, |i, bytes| {
             let size = files[i].size;
             if bytes < size && last.elapsed() < Duration::from_millis(150) {
                 return;
@@ -241,7 +246,9 @@ impl LocalSend {
 
     /// Stops what's being sent.
     pub fn stop_sending(&self) {
-        self.stop_sending.store(true, Ordering::SeqCst);
+        if let Ok(current) = self.stop_sending.lock() {
+            current.store(true, Ordering::SeqCst);
+        }
     }
 
     /// Every file sent this run, newest delivery first.
@@ -291,17 +298,24 @@ impl AppHost {
     }
 }
 
-/// LocalSend tells devices apart by this; made once and kept.
-fn fingerprint(library: &Mutex<Library>) -> Option<String> {
+/// TBV's LocalSend certificate, made once and kept on this device, and the
+/// fingerprint LocalSend knows TBV by, which comes from it.
+fn credentials(library: &Mutex<Library>) -> Option<(String, Tls)> {
     let l = library.lock().ok()?;
-    Some(match l.setting(FINGERPRINT_KEY).ok().flatten() {
-        Some(f) => f,
+    let saved = match (l.setting(CERT_KEY).ok().flatten(), l.setting(CERT_KEY_KEY).ok().flatten()) {
+        (Some(cert), Some(key)) => Some(Tls { cert, key }),
+        _ => None,
+    };
+    let tls = match saved.filter(|t| t.fingerprint().is_ok()) {
+        Some(tls) => tls,
         None => {
-            let f = tbv_core::ids::new_record_id();
-            let _ = l.set_setting(FINGERPRINT_KEY, &f);
-            f
+            let tls = Tls::make().ok()?;
+            l.set_setting(CERT_KEY, &tls.cert).ok()?;
+            l.set_setting(CERT_KEY_KEY, &tls.key).ok()?;
+            tls
         }
-    })
+    };
+    Some((tls.fingerprint().ok()?, tls))
 }
 
 fn enabled(library: &Mutex<Library>) -> bool {

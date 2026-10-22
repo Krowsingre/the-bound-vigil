@@ -18,6 +18,7 @@ lettre = { version = "0.11", default-features = false, features = ["smtp-transpo
 lopdf = { version = "0.45", default-features = false }
 mp4ameta = "0.13"
 quick-xml = "0.37"
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
 russh = { version = "0.64", default-features = false, features = ["ring", "flate2", "rsa"] }
 russh-sftp = "3"
 rusqlite = { version = "0.37", features = ["bundled", "functions", "backup"] }

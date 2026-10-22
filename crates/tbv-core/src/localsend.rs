@@ -22,6 +22,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{json, Value};
+use sha2::Digest;
 
 use crate::error::{Error, Result};
 use crate::http::{body_reader, read_head, Request};
@@ -49,6 +50,37 @@ pub struct Identity {
     /// LocalSend tells devices apart by this; kept the same between runs.
     pub fingerprint: String,
     pub port: u16,
+    /// The certificate TBV shows LocalSend devices that take files over
+    /// HTTPS: they won't talk to a sender without one.
+    pub tls: Option<Tls>,
+}
+
+/// A certificate and its key, in PEM form, made once per device.
+#[derive(Debug, Clone)]
+pub struct Tls {
+    pub cert: String,
+    pub key: String,
+}
+
+impl Tls {
+    /// A new self-signed certificate, as LocalSend devices make their own.
+    pub fn make() -> Result<Tls> {
+        let made = rcgen::generate_simple_self_signed(vec!["localsend".to_string()])
+            .map_err(|e| Error::Unsuitable(format!("TBV couldn't make its LocalSend certificate ({e}).")))?;
+        Ok(Tls { cert: made.cert.pem(), key: made.key_pair.serialize_pem() })
+    }
+
+    /// How LocalSend knows a device that has a certificate: the SHA-256 of it, in capitals.
+    pub fn fingerprint(&self) -> Result<String> {
+        let cert = ureq::tls::Certificate::from_pem(self.cert.as_bytes()).map_err(|e| Error::Unsuitable(format!("TBV's LocalSend certificate is damaged ({e}).")))?;
+        Ok(hex::encode_upper(sha2::Sha256::digest(cert.der())))
+    }
+
+    fn client(&self) -> Option<ureq::tls::ClientCert> {
+        let cert = ureq::tls::Certificate::from_pem(self.cert.as_bytes()).ok()?;
+        let key = ureq::tls::PrivateKey::from_pem(self.key.as_bytes()).ok()?;
+        Some(ureq::tls::ClientCert::new_with_certs(&[cert], key))
+    }
 }
 
 impl Identity {
@@ -630,34 +662,51 @@ fn note_heard(info: &Value, from: IpAddr, me: &str) {
 }
 
 /// Looks for devices to send to: says TBV is here, then listens for `wait`
-/// for the answers. While receiving is on, its own listening hears them.
+/// for the answers. LocalSend devices answer by registering with TBV's own
+/// server; while receiving is on that server hears them, and otherwise a
+/// small one listens just for this. Devices announcing themselves are heard
+/// too.
 pub fn find_nearby(me: &Identity, wait: Duration) -> Vec<Nearby> {
     let started = Instant::now();
+    let done = Arc::new(AtomicBool::new(false));
+    let callbacks = TcpListener::bind(("0.0.0.0", me.port)).ok().map(|listener| {
+        let (me, done) = (me.clone(), done.clone());
+        thread::spawn(move || answer_registrations(&me, &listener, &done))
+    });
     let mut info = me.info();
     info["announce"] = json!(true);
     info["announcement"] = json!(true);
     let hello = serde_json::to_vec(&info).unwrap_or_default();
     let group = SocketAddrV4::new(MULTICAST, PORT);
-    match listening(PORT, Duration::from_millis(250)) {
-        // Nothing else here is listening: devices answer by multicast when
-        // they can't reach TBV's own server, so hear them here.
-        Ok(socket) => {
-            let _ = socket.send_to(&hello, group);
-            let mut buffer = [0u8; 8192];
-            while started.elapsed() < wait {
+    // Said a few times over, as LocalSend does, since one message is easily lost.
+    let mut say_at = [Duration::ZERO, Duration::from_millis(500), Duration::from_millis(2000)].into_iter().peekable();
+    let socket = listening(PORT, Duration::from_millis(100)).or_else(|_| {
+        let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
+        socket.set_read_timeout(Some(Duration::from_millis(100)))?;
+        Ok::<_, std::io::Error>(socket)
+    });
+    let mut buffer = [0u8; 8192];
+    while started.elapsed() < wait {
+        if say_at.peek().is_some_and(|at| started.elapsed() >= *at) {
+            say_at.next();
+            if let Ok(socket) = &socket {
+                let _ = socket.send_to(&hello, group);
+            }
+        }
+        match &socket {
+            Ok(socket) => {
                 if let Ok((n, from)) = socket.recv_from(&mut buffer) {
                     if let Ok(heard) = serde_json::from_slice::<Value>(&buffer[..n]) {
                         note_heard(&heard, from.ip(), &me.fingerprint);
                     }
                 }
             }
+            Err(_) => thread::sleep(Duration::from_millis(100)),
         }
-        Err(_) => {
-            if let Ok(socket) = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)) {
-                let _ = socket.send_to(&hello, group);
-            }
-            thread::sleep(wait);
-        }
+    }
+    done.store(true, Ordering::SeqCst);
+    if let Some(callbacks) = callbacks {
+        let _ = callbacks.join();
     }
     let mut found: Vec<Nearby> = HEARD
         .lock()
@@ -665,6 +714,34 @@ pub fn find_nearby(me: &Identity, wait: Duration) -> Vec<Nearby> {
         .unwrap_or_default();
     found.sort_by_key(|d| d.alias.to_lowercase());
     found
+}
+
+/// While looking with receiving off: devices answering register here.
+fn answer_registrations(me: &Identity, listener: &TcpListener, done: &AtomicBool) {
+    if listener.set_nonblocking(true).is_err() {
+        return;
+    }
+    while !done.load(Ordering::SeqCst) {
+        let Ok((stream, from)) = listener.accept() else {
+            thread::sleep(Duration::from_millis(50));
+            continue;
+        };
+        let _ = (|| -> Result<()> {
+            stream.set_nonblocking(false)?;
+            stream.set_read_timeout(Some(Duration::from_secs(2)))?;
+            let mut reader = BufReader::new(stream.try_clone()?);
+            let mut out = stream;
+            let Some(request) = read_head(&mut reader)? else { return Ok(()) };
+            if request.path.trim_end_matches('/').ends_with("/register") {
+                if let Some(info) = read_json(&request, &mut reader) {
+                    note_heard(&info, from.ip(), &me.fingerprint);
+                }
+                respond(&mut out, 200, &me.info())
+            } else {
+                respond(&mut out, 404, &json!({ "message": "Not found" }))
+            }
+        })();
+    }
 }
 
 /// The device at an address LocalSend shows (on its Receive screen), for
@@ -747,14 +824,15 @@ impl<R: Read> Read for Counting<'_, R> {
 /// Sends `files` to `to`, which first asks its person to accept them.
 /// `told(file, bytes)` follows each file's progress. Returns how many the
 /// other device took (it may already have some). `stop` gives up.
-pub fn send(me: &Identity, to: &Nearby, files: &[ToSend], stop: &AtomicBool, mut told: impl FnMut(usize, u64)) -> Result<usize> {
+pub fn send(me: &Identity, to: &Nearby, files: &[ToSend], stop: &Arc<AtomicBool>, mut told: impl FnMut(usize, u64)) -> Result<usize> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_connect(Some(Duration::from_secs(10)))
         // The other device waits for its person to accept before answering.
         .timeout_recv_response(Some(Duration::from_secs(5 * 60)))
         .http_status_as_error(false)
-        // LocalSend's devices make their own certificates, so there's none to check.
-        .tls_config(ureq::tls::TlsConfig::builder().disable_verification(true).build())
+        // LocalSend's devices make their own certificates, so there's none to
+        // check; TBV shows its own, which they ask for.
+        .tls_config(ureq::tls::TlsConfig::builder().disable_verification(true).client_cert(me.tls.as_ref().and_then(Tls::client)).build())
         .build()
         .into();
     let base = format!("{}://{}:{}/api/localsend/v2", if to.https { "https" } else { "http" }, host_part(&to.address), to.port);
@@ -764,10 +842,33 @@ pub fn send(me: &Identity, to: &Nearby, files: &[ToSend], stop: &AtomicBool, mut
         .enumerate()
         .map(|(i, f)| (i.to_string(), json!({ "id": i.to_string(), "fileName": f.name, "size": f.size, "fileType": file_type(&f.name) })))
         .collect();
-    let mut response = agent
-        .post(&format!("{base}/prepare-upload"))
-        .send_json(json!({ "info": me.info(), "files": listed }))
-        .map_err(offline)?;
+    // The answer waits on the other device's person, so it's waited for
+    // aside: Stop gives up at once, and an offer accepted after that is
+    // called off.
+    let (answered, answer) = std::sync::mpsc::channel();
+    {
+        let (agent, base, stop) = (agent.clone(), base.clone(), stop.clone());
+        let offer = json!({ "info": me.info(), "files": listed });
+        thread::spawn(move || {
+            let response = agent.post(&format!("{base}/prepare-upload")).send_json(offer);
+            if stop.load(Ordering::SeqCst) {
+                if let Ok(mut late) = response {
+                    if let Some(session) = late.body_mut().read_json::<Value>().ok().and_then(|v| v["sessionId"].as_str().map(str::to_string)) {
+                        let _ = agent.post(&format!("{base}/cancel?sessionId={}", query_part(&session))).send_empty();
+                    }
+                }
+                return;
+            }
+            let _ = answered.send(response);
+        });
+    }
+    let mut response = loop {
+        match answer.recv_timeout(Duration::from_millis(200)) {
+            Ok(response) => break response.map_err(offline)?,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) if !stop.load(Ordering::SeqCst) => continue,
+            Err(_) => return Err(Error::Unsuitable("Sending was stopped.".into())),
+        }
+    };
     let status = response.status().as_u16();
     match status {
         200 => {}
@@ -913,7 +1014,7 @@ mod tests {
     fn receiver(accept: bool) -> (tempfile::TempDir, Arc<Fake>, Receiver) {
         let dir = tempfile::tempdir().unwrap();
         let host = Arc::new(Fake { accept, ..Default::default() });
-        let me = Identity { alias: "TBV on test".into(), fingerprint: "tbv-test".into(), port: 0 };
+        let me = Identity { alias: "TBV on test".into(), fingerprint: "tbv-test".into(), port: 0, tls: None };
         let receiver = start(me, &dir.path().join("inbox"), host.clone(), false).unwrap();
         (dir, host, receiver)
     }
@@ -936,7 +1037,10 @@ mod tests {
         let (dir, host, desk) = receiver(true);
         let book = dir.path().join("dracula.epub");
         fs::write(&book, b"vampire").unwrap();
-        let me = Identity { alias: "TBV sender".into(), fingerprint: "sender".into(), port: 1 };
+        let tls = Tls::make().unwrap();
+        assert_eq!(tls.fingerprint().unwrap().len(), 64);
+        assert!(tls.client().is_some());
+        let me = Identity { alias: "TBV sender".into(), fingerprint: tls.fingerprint().unwrap(), port: 1, tls: Some(tls) };
         let to = Nearby {
             alias: "Desk".into(),
             fingerprint: "tbv-test".into(),
@@ -947,7 +1051,7 @@ mod tests {
         };
         let files = [ToSend { path: book, name: "Dracula - Bram Stoker.epub".into(), size: 7 }];
         let mut progress = Vec::new();
-        let sent = send(&me, &to, &files, &AtomicBool::new(false), |i, bytes| progress.push((i, bytes))).unwrap();
+        let sent = send(&me, &to, &files, &Arc::new(AtomicBool::new(false)), |i, bytes| progress.push((i, bytes))).unwrap();
         assert_eq!(sent, 1);
         assert_eq!(progress.last(), Some(&(0, 7)));
         assert_eq!(host.offers.lock().unwrap()[0].from, "TBV sender");
@@ -956,8 +1060,20 @@ mod tests {
         // Turned down: said plainly.
         let (_dir2, _host2, refusing) = receiver(false);
         let to = Nearby { port: refusing.port(), ..to };
-        let refused = send(&me, &to, &files, &AtomicBool::new(false), |_, _| {}).unwrap_err().to_string();
+        let refused = send(&me, &to, &files, &Arc::new(AtomicBool::new(false)), |_, _| {}).unwrap_err().to_string();
         assert!(refused.contains("turned them down"), "{refused}");
+    }
+
+    #[test]
+    fn looking_hears_devices_that_register_while_receiving_is_off() {
+        let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let me = Identity { alias: "TBV looking".into(), fingerprint: "looker".into(), port, tls: None };
+        let looking = thread::spawn(move || find_nearby(&me, Duration::from_millis(1500)));
+        thread::sleep(Duration::from_millis(400));
+        let hello = json!({ "alias": "Kit's Pixel", "fingerprint": "kit-pixel", "deviceType": "mobile", "port": 53317, "protocol": "https" });
+        let (status, info) = post(port, "/api/localsend/v2/register", hello.to_string().as_bytes(), false);
+        assert_eq!((status, info["alias"].as_str()), (200, Some("TBV looking")));
+        assert!(looking.join().unwrap().iter().any(|d| d.fingerprint == "kit-pixel"));
     }
 
     #[test]
