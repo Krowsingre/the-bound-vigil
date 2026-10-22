@@ -309,6 +309,10 @@ pub struct LibraryQuery {
     /// Only books, documents or audiobooks. None means all of them.
     #[serde(default)]
     pub kind: Option<ItemKind>,
+    /// Only these books (of those that match), to check which chosen ones a
+    /// search or filter still shows. None means any book.
+    #[serde(default)]
+    pub ids: Option<Vec<String>>,
     /// Zero-based.
     pub page: u32,
     pub page_size: u32,

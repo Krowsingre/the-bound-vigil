@@ -479,6 +479,17 @@ export function ListenAlongPanel({ readAlong, ebookId }: { readAlong: ReadAlong;
   const busy = !!ours && ["reading", "model", "listening"].includes(ours.stage);
   const elsewhere = !!work && !ours && ["reading", "model", "listening"].includes(work.stage);
   const mb = (n: number) => `${Math.round(n / 1024 / 1024)} MB`;
+  if (readAlong.manual)
+    return (
+      <div className="read-aloud listen-along">
+        <button type="button" className="btn btn-primary" onClick={readAlong.toggle}>
+          <Icon name={readAlong.playing ? "pause" : "play"} size={16} /> {readAlong.playing ? "Pause the audiobook" : "Play the audiobook"}
+        </button>
+        <p className="read-aloud-note" role="status">
+          This is a document, so TBV can't follow the narrator through it. Turn the pages yourself as it plays.
+        </p>
+      </div>
+    );
   return (
     <div className="read-aloud listen-along">
       <button type="button" className="btn btn-primary" onClick={readAlong.toggle}>

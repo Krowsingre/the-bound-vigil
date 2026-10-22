@@ -28,6 +28,7 @@ import type {
   AudioChapter,
   AudioPart,
   ImportResult,
+  TimeSpent,
 } from "../api/types";
 import { matches, usable } from "../collections/rules";
 import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
@@ -696,6 +697,23 @@ export async function webApi(): Promise<Api> {
         last_opened_at: now(),
         status: before.status === "unread" && positionMs > 0 ? "in_progress" : before.status,
       });
+    },
+    addTime: async (day, kind, seconds) => {
+      const add = Math.min(15 * 60, Math.round(seconds));
+      if (add <= 0) return;
+      const before = library.row("time_log", [sync.deviceId, day, kind]);
+      const total = Number(before?.seconds ?? 0) + add;
+      await library.write("time_log", { device_id: sync.deviceId, day, kind, seconds: total, updated_at: now() });
+    },
+    timeSpent: async () => {
+      const days = new Map<string, TimeSpent>();
+      for (const r of library.rows("time_log")) {
+        const day = String(r.day);
+        const spent = days.get(day) ?? { day, read: 0, listen: 0 };
+        if (r.kind === "read" || r.kind === "listen") spent[r.kind] += Number(r.seconds ?? 0);
+        days.set(day, spent);
+      }
+      return [...days.values()].sort((a, b) => a.day.localeCompare(b.day));
     },
     linkEbook: async (audiobookId, ebookId) => {
       const a = audioRow(audiobookId);

@@ -459,3 +459,53 @@ button.chapter-row:hover {
     width: 96px;
   }
 }
+
+/* On a phone the panel is a sheet over the list, opened by tapping an audiobook. */
+.audio-sheet-backdrop,
+.audio-sheet-close {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .audio-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    display: block;
+    background: rgb(0 0 0 / 0.35);
+  }
+
+  .audio-panel.is-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 46;
+    min-height: 0;
+    max-height: 82vh;
+    margin: 0;
+    padding: 28px 18px calc(24px + env(safe-area-inset-bottom));
+    border: 0;
+    border-radius: var(--radius-l) var(--radius-l) 0 0;
+    box-shadow: var(--shadow);
+  }
+
+  .has-player .audio-panel.is-sheet {
+    bottom: var(--player-h);
+    max-height: calc(82vh - var(--player-h));
+  }
+
+  .audio-sheet-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: grid;
+  }
+}
+
+@media (max-width: 760px) {
+  /* The player bar stays usable under an open sheet. */
+  .player-bar {
+    z-index: 47;
+  }
+}

@@ -6,9 +6,11 @@ import { Icon } from "../components/Icon";
 import type { MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { onBeforeQuit } from "../lib/beforeQuit";
+import { noteReading, recordReading } from "../lib/recordTime";
 import { SyncMenu } from "../shell/SyncMenu";
 import type { TocItem } from "../vendor/foliate-js/view.js";
 import { isBookmark, isNote } from "./annotations";
+import { isDocument } from "../lib/queryBooks";
 import { drawPdfCover, readerSource, type ReaderSource } from "./formats";
 import { contentsEntries, currentEntry, pageOf, pushJump, type Jump } from "./pages";
 import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars";
@@ -152,6 +154,9 @@ export function Reader({
 
   // Set below; the page engine reports zooming before that's defined.
   const changeSettingsRef = useRef<(change: Partial<ReaderSettings>) => void>(() => {});
+  // Time read counts while the book is open on screen and being read.
+  useEffect(() => recordReading(), []);
+
   const engine = useReaderEngine({
     host,
     file,
@@ -161,6 +166,7 @@ export function Reader({
     annotations,
     events: {
       onRelocate: (r) => {
+        noteReading();
         const page = pageOf(r.location);
         pending.current = {
           cfi: r.cfi,
@@ -201,6 +207,7 @@ export function Reader({
     ready: engine.ready,
     bookId,
     dark: theme === "dark",
+    manual: !!info && isDocument(info.book.format),
     onStart: readAloud.stop,
   });
 
@@ -488,10 +495,16 @@ export function Reader({
           {readAlong.audiobookId && (
             <Popover
               label="Listen along"
-              title={readAlong.following ? "Following the audiobook" : "Listen along: play the audiobook and follow it here"}
+              title={
+                readAlong.manual
+                  ? "Listen along: play the audiobook and turn the pages yourself"
+                  : readAlong.following
+                    ? "Following the audiobook"
+                    : "Listen along: play the audiobook and follow it here"
+              }
               trigger={<Icon name="headphones" size={20} />}
               className="read-aloud-popover"
-              on={readAlong.following}
+              on={readAlong.following || (readAlong.manual && readAlong.playing)}
             >
               <ListenAlongPanel readAlong={readAlong} ebookId={bookId} />
             </Popover>

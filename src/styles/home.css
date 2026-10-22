@@ -355,6 +355,11 @@
   font: 400 26px/1 var(--font-serif);
 }
 
+.stat-unit {
+  font-size: 0.55em;
+  color: var(--text-muted);
+}
+
 .stat-label {
   font-size: 12px;
   color: var(--text-muted);
@@ -384,7 +389,18 @@
 }
 
 .week-bar[data-active] {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
   background: var(--accent);
+}
+
+/* Listening sits at the foot of a day's bar, in a paler tone. */
+.week-listen {
+  display: block;
+  width: 100%;
+  background: color-mix(in srgb, var(--accent) 45%, var(--surface));
 }
 
 .week-label {

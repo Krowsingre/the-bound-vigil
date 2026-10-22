@@ -40,7 +40,9 @@ function excluded(b: BookPreview, x: LibraryExclude): boolean {
 export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectionCount: number): LibraryPage {
   const all = everything.filter((b) => ofKind(b, q.kind));
   const search = q.search?.trim().toLowerCase();
+  const only = q.ids && new Set(q.ids);
   let list = all.filter((b) => {
+    if (only && !only.has(b.id)) return false;
     if (q.shelf === "favorites" && !b.favorite) return false;
     if (q.shelf === "want_to_read" && !b.wantToRead) return false;
     if (q.shelf === "send_to_device" && !b.phoneWanted) return false;

@@ -10,6 +10,7 @@ vi.mock("../api", () => ({
   api: {
     kind: "app",
     getHome: () => getHome(),
+    timeSpent: async () => [],
     coverUrl: () => "",
     setBookStatus: vi.fn(),
     setFavorite: vi.fn(),
@@ -81,9 +82,8 @@ test("a library with nothing in progress invites the reader to begin", async () 
   renderHome();
   expect(await screen.findByText("Begin reading")).toBeInTheDocument();
   expect(screen.getAllByText("Dracula").length).toBeGreaterThan(0);
-  // No reading has been recorded, so no numbers are shown.
-  expect(screen.getByText(/Time spent reading will appear here/)).toBeInTheDocument();
-  expect(screen.queryByText("Hours read")).toBeNull();
+  // No reading has been recorded yet, so it says where the time will show.
+  expect(await screen.findByText(/Time spent reading and listening adds up here/)).toBeInTheDocument();
 });
 
 test("the resume hero shows the in-progress book and other devices' positions", async () => {

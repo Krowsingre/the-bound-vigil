@@ -9,6 +9,7 @@ import { useToast } from "../components/Toast";
 import { AUDIO_ONLY, cleanValue, DETAIL_FIELDS, effective, isList, listOf } from "../lib/details";
 import { isAudio } from "../lib/queryBooks";
 import { ChipInput } from "./ChipInput";
+import { AddOrReplace, joined, type ListMode } from "../components/AddOrReplace";
 
 /** The details that make sense to set on many books at once. */
 const MASS_FIELDS: DetailFieldName[] = ["authors", "series", "genres", "publisher", "published", "language"];
@@ -25,6 +26,10 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
   const [values, setValues] = useState<Values>({});
   // Many books: only the details ticked here change.
   const [chosen, setChosen] = useState<Set<DetailFieldName>>(new Set());
+  // Lists (authors, genres, narrators): add to what a book has, or replace it.
+  // Many books start on Add; one book shows its list to change.
+  const [modes, setModes] = useState<Partial<Record<DetailFieldName, ListMode>>>({});
+  const modeOf = (field: DetailFieldName): ListMode => modes[field] ?? (many ? "add" : "replace");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const close = useRef(onClose);
@@ -50,17 +55,28 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
     setError(null);
   };
 
-  const changes = (): DetailChange[] => {
+  /** A list a book has now, as it shows. */
+  const listNow = (book: BookPreview, field: DetailFieldName): string[] => {
+    if (!many) return listOf(effective(fields?.find((f) => f.field === field) ?? ({} as DetailField)) ?? null);
+    return (field === "authors" ? book.authors : field === "genres" ? book.genres : (book.narrators ?? [])) ?? [];
+  };
+  /** What's typed, joined to what `book` has where the field adds. */
+  const typedFor = (book: BookPreview, field: DetailFieldName, typed: string | string[]) =>
+    Array.isArray(typed) && modeOf(field) === "add" ? joined(listNow(book, field), typed) : typed;
+
+  const changes = (book: BookPreview): DetailChange[] => {
     if (many)
-      return [...chosen].map((field) => {
+      return [...chosen].flatMap((field) => {
         const v = values[field] ?? (isList(field) ? [] : "");
-        return { field, value: cleanValue(field, fromForm(v)) };
+        // Adding nothing changes nothing.
+        if (Array.isArray(v) && !v.length && modeOf(field) === "add") return [];
+        return [{ field, value: cleanValue(field, fromForm(typedFor(book, field, v))) }];
       });
     const out: DetailChange[] = [];
     for (const f of fields ?? []) {
       const typed = values[f.field];
       if (typed === undefined) continue;
-      const value = cleanValue(f.field, fromForm(typed));
+      const value = cleanValue(f.field, fromForm(typedFor(book, f.field, typed)));
       const shown = effective(f);
       if (value === (shown ?? (isList(f.field) ? "[]" : ""))) continue;
       // Back to what it would show anyway: take the edit away instead of keeping a copy.
@@ -71,19 +87,24 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
   };
 
   const save = () => {
-    let list: DetailChange[];
+    // Books whose changes come out the same are saved together.
+    const groups = new Map<string, { ids: string[]; list: DetailChange[] }>();
     try {
-      list = changes();
+      for (const book of books) {
+        const list = changes(book);
+        if (!list.length) continue;
+        const key = JSON.stringify(list);
+        const group = groups.get(key) ?? { ids: [], list };
+        group.ids.push(book.id);
+        groups.set(key, group);
+      }
     } catch (e) {
       return setError(e instanceof Error ? e.message : String(e));
     }
-    if (!list.length) return onClose(false);
+    if (!groups.size) return onClose(false);
     setSaving(true);
-    api
-      .editDetails(
-        books.map((b) => b.id),
-        list,
-      )
+    [...groups.values()]
+      .reduce<Promise<void>>((done, g) => done.then(() => api.editDetails(g.ids, g.list)), Promise.resolve())
       .then(
         () => {
           toast(many ? `Updated ${books.length} books.` : `Saved the details of “${books[0].title}”.`);
@@ -101,7 +122,20 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
   const shownFields = DETAIL_FIELDS.filter(
     (f) => (!many || MASS_FIELDS.includes(f.field) || (audio && f.field === "narrators")) && (audio || !AUDIO_ONLY.includes(f.field)),
   );
-  const undoEdit = (f: DetailField) => set(f.field, toForm(f.field, f.fetched ?? f.own));
+  const undoEdit = (f: DetailField) => {
+    setModes((m) => ({ ...m, [f.field]: "replace" }));
+    set(f.field, toForm(f.field, f.fetched ?? f.own));
+  };
+  const chooseMode = (field: DetailFieldName, mode: ListMode) => {
+    if (mode === modeOf(field)) return;
+    setModes((m) => ({ ...m, [field]: mode }));
+    // One book: Replace shows the list it has, Add starts empty.
+    if (!many) {
+      const had = listNow(books[0], field);
+      const typed = (values[field] as string[] | undefined) ?? [];
+      set(field, mode === "replace" ? joined(had, typed) : typed.filter((t) => !had.includes(t)));
+    }
+  };
 
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose(false)}>
@@ -153,6 +187,12 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
                       </button>
                     )}
                   </span>
+                  {Array.isArray(value) && (
+                    <AddOrReplace mode={modeOf(field)} onChange={(m) => chooseMode(field, m)} label={`Add to or replace ${label.toLowerCase()}`} />
+                  )}
+                  {Array.isArray(value) && modeOf(field) === "add" && !many && listNow(books[0], field).length > 0 && (
+                    <span className="details-origin">Joins {listNow(books[0], field).join(", ")}.</span>
+                  )}
                   {Array.isArray(value) ? (
                     <ChipInput
                       value={value}

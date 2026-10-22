@@ -222,6 +222,13 @@ impl Library {
             conditions.push(kind_condition(kind));
         }
 
+        if let Some(ids) = &query.ids {
+            let start = values.len() + 1;
+            let slots: Vec<String> = (0..ids.len()).map(|i| format!("?{}", start + i)).collect();
+            values.extend(ids.iter().cloned().map(Value::Text));
+            conditions.push(if ids.is_empty() { "0".into() } else { format!("b.id IN ({})", slots.join(", ")) });
+        }
+
         match query.location {
             Some(Location::OnDevice) => conditions.push("lf.path IS NOT NULL".into()),
             Some(Location::CloudOnly) => conditions.push("lf.path IS NULL".into()),
@@ -428,6 +435,16 @@ mod tests {
             }),
             ["Dracula"]
         );
+        // Of some chosen books, only those the search still shows.
+        let (a2, b2) = (a.clone(), b.clone());
+        assert_eq!(
+            sorted(&|q| {
+                q.ids = Some(vec![a2.clone(), b2.clone()]);
+                q.search = Some("carm".into());
+            }),
+            ["Carmilla"]
+        );
+        assert!(sorted(&|q| q.ids = Some(Vec::new())).is_empty());
         // Books with no series or language aren't left out by mistake.
         assert_eq!(sorted(&|q| q.exclude.series = vec!["Discworld".into()]).len(), 3);
         assert_eq!(sorted(&|q| q.exclude.languages = vec!["fr".into()]).len(), 3);

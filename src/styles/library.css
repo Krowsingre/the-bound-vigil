@@ -27,7 +27,8 @@
 }
 
 .stats-5 {
-  grid-template-columns: repeat(5, auto);
+  grid-auto-flow: column;
+  grid-auto-columns: auto;
 }
 
 .library-stats .stat {

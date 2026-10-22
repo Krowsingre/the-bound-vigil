@@ -7,7 +7,8 @@ import { StarRating } from "../components/StarRating";
 import { askEditDetails, showBookDetails, showInLibrary } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
 import { askDeleteBook, askEditTags, askRemoveBook } from "../library/BookDialogs";
-import { playAudiobook } from "../audio/player";
+import { cueAudiobook, playAudiobook } from "../audio/player";
+import { askPair } from "../audio/LinkEbook";
 import { isAudio, kindOf } from "../lib/queryBooks";
 import { NO_FILTERS } from "../library/libraryView";
 import { isApp, isHome, isWeb } from "../api";
@@ -36,8 +37,14 @@ export interface BookActions {
 /** The "…" menu for a book, and its right-click menu. */
 export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
   return [
+    ...(isAudio(book.format) ? [{ label: "Listen", icon: "play" as const, onSelect: () => playAudiobook(book.id) }] : []),
     { label: "Book details", icon: "info", onSelect: () => showBookDetails(book.id) },
     { label: "Edit details…", icon: "edit", onSelect: () => askEditDetails([book]) },
+    {
+      label: isAudio(book.format) ? "Pair with an ebook or document…" : "Pair with an audiobook…",
+      icon: "headphones",
+      onSelect: () => askPair(book),
+    },
     ...(book.series
       ? [
           {
@@ -94,6 +101,12 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
   ];
 }
 
+/** The audiobook tapped last, to tell a double tap (iPhone has no double-click). */
+const lastTap = { id: "", at: 0 };
+const DOUBLE_TAP_MS = 400;
+/** The Audiobooks page shows a tapped audiobook in its own panel. */
+const onAudiobooksPage = () => !!document.querySelector(".audiobooks");
+
 /** Right-clicking a book, or holding a finger on it, opens its menu. Spread onto the book's card or row. */
 export function bookContextMenu(book: BookPreview, actions: BookActions) {
   return holdForMenu(`More for ${book.title}`, () => bookMenu(book, actions));
@@ -146,10 +159,23 @@ export function makeBookActions(
     work.then(refresh, (e: unknown) => toast(`Couldn't update “${book.title}”: ${String(e)}`));
   return {
     open: (book) => {
+      // Audiobooks never start on a tap. One tap puts it in the player bar,
+      // ready to play (or, while another plays, shows its details); a second
+      // tap soon after opens its details page.
+      if (isAudio(book.format)) {
+        const now = Date.now();
+        if (lastTap.id === book.id && now - lastTap.at < DOUBLE_TAP_MS) {
+          lastTap.id = "";
+          showBookDetails(book.id);
+          return;
+        }
+        lastTap.id = book.id;
+        lastTap.at = now;
+        if (!cueAudiobook(book.id) && !onAudiobooksPage()) showBookDetails(book.id);
+        return;
+      }
       const reason = cannotOpen(book);
       if (reason) toast(reason);
-      // Audiobooks play in the player, wherever you are.
-      else if (isAudio(book.format)) playAudiobook(book.id);
       else openBook(book.id);
     },
     setStatus: (book, status) => void run(book, api.setBookStatus(book.id, status)),

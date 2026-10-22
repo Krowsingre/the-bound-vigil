@@ -14,6 +14,7 @@ vi.mock("../api", () => ({
     kind: "app",
     getLibrary: (q: LibraryQuery) => getLibrary(q),
     getCollections: async () => [],
+    timeSpent: async () => [],
     setFavorite: (...a: unknown[]) => setFavorite(...(a as [])),
     setWantToRead: vi.fn(),
     setBookStatus: vi.fn(),

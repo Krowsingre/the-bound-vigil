@@ -410,6 +410,19 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX idx_writing_chapters_project ON writing_chapters(project_id, position);
     "#,
+    // v19: time spent reading and listening, in seconds per day (the
+    // device's own date). Each device adds only to its own rows, so synced
+    // rows never overrule each other; totals add up every device's.
+    r#"
+    CREATE TABLE time_log (
+        device_id TEXT NOT NULL,
+        day TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('read', 'listen')),
+        seconds INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (device_id, day, kind)
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

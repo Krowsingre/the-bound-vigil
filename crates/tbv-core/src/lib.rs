@@ -31,6 +31,7 @@ pub mod series_sources;
 pub mod servers;
 pub mod sync;
 pub mod time;
+pub mod time_log;
 pub mod writing;
 
 pub use error::{Error, Result};
