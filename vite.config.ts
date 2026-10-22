@@ -54,6 +54,10 @@ function inlineTouchIcon(): Plugin {
 export default defineConfig(({ mode }) => ({
   base: mode === "web" ? "/the-bound-vigil/" : "/",
   plugins: [react(), pdfjsAssets(), inlineTouchIcon()],
+  // Workers load what they need as modules (speech recognition, for one).
+  worker: { format: "es" },
+  // Left as they are while developing, so ONNX Runtime finds its WebAssembly beside it.
+  optimizeDeps: { exclude: ["@huggingface/transformers", "onnxruntime-web"] },
   clearScreen: false,
   server: mode === "web" ? { port: 1421 } : { port: 1420, strictPort: true },
   envPrefix: ["VITE_", "TAURI_ENV_"],

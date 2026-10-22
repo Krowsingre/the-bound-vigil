@@ -448,6 +448,7 @@ export function previewApi(): Api {
     }));
   const relayer = (id: string) => update(id, previewFields(detailFields(id)));
   const linked = new Map<string, string>();
+  const timings = new Map<string, string>();
   const sounds = new Map<string, string>();
   const find = (bookId: string) => {
     const b = books.find((x) => x.id === bookId);
@@ -643,6 +644,14 @@ export function previewApi(): Api {
       else linked.delete(audiobookId);
     },
     audiobookForEbook: async (ebookId) => [...linked].find(([, e]) => e === ebookId)?.[0] ?? null,
+    audioClip: async () => {
+      throw new Error("Working out read-along timing needs the desktop app.");
+    },
+    audioClipsDone: async () => undefined,
+    readAlongTiming: async (ebookId, audiobookId) => timings.get(`${ebookId}|${audiobookId}`) ?? null,
+    saveReadAlongTiming: async (ebookId, audiobookId, timing) => {
+      timings.set(`${ebookId}|${audiobookId}`, timing);
+    },
     prepareStream: async () => null,
     homeStatus: async () => homeState,
     setHome: async (on) => (homeState = on ? { ...HOME_ON, phones: homeState.phones } : { ...HOME_OFF, phones: homeState.phones }),

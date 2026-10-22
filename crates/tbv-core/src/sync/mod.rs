@@ -125,6 +125,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "read_along",
+        table: "read_along",
+        keys: &["ebook_id", "audiobook_id"],
+        cols: &["timing", "updated_at"],
+        category: Category::Progress,
+        creates: true,
+    },
+    Kind {
         name: "series",
         table: "series_lists",
         keys: &["id"],
@@ -1362,6 +1370,7 @@ impl Library {
             "book_tag" => format!("The tag {}{}", key.get(1).and_then(Value::as_str).unwrap_or_default(), book(key.first())?),
             "profile" => "Your profile picture".into(),
             "series" => format!("The missing books of {}", field("name").unwrap_or_default()),
+            "read_along" => format!("Read-along timing{}", book(key.first())?),
             _ => format!("The note {}", field("title").filter(|t| !t.is_empty()).unwrap_or_else(|| "without a title".into())),
         })
     }

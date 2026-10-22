@@ -19,6 +19,8 @@ import {
   type ReadingWidth,
 } from "./settings";
 import type { ReadAloud } from "./useReadAloud";
+import type { ReadAlong } from "./useReadAlong";
+import { onPreparing, preparing, prepareTiming, stopPreparing, type Preparing } from "../readAlong/prepare";
 
 function Choice<T extends string | number>({
   label,
@@ -464,6 +466,63 @@ export function NoteDialog({
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/** Listening along with the linked audiobook, and working out its word timing. */
+export function ListenAlongPanel({ readAlong, ebookId }: { readAlong: ReadAlong; ebookId: string }) {
+  const [work, setWork] = useState<Preparing | null>(preparing());
+  useEffect(() => onPreparing(setWork), []);
+  const audiobookId = readAlong.audiobookId;
+  const ours = work && work.ebookId === ebookId && work.audiobookId === audiobookId ? work : null;
+  const busy = !!ours && ["reading", "model", "listening"].includes(ours.stage);
+  const elsewhere = !!work && !ours && ["reading", "model", "listening"].includes(work.stage);
+  const mb = (n: number) => `${Math.round(n / 1024 / 1024)} MB`;
+  return (
+    <div className="read-aloud listen-along">
+      <button type="button" className="btn btn-primary" onClick={readAlong.toggle}>
+        <Icon name={readAlong.following ? "pause" : "headphones"} size={16} /> {readAlong.following ? "Stop following" : "Play and follow"}
+      </button>
+      <p className="read-aloud-note" role="status">
+        {readAlong.timed === "all"
+          ? "Follows the narrator word by word."
+          : readAlong.timed === "some"
+            ? "Word timing is partly worked out. Past that, it follows by chapter."
+            : "Follows by chapter, so the highlight can be a sentence or two out."}
+      </p>
+      {isApp && readAlong.timed !== "all" && audiobookId && (
+        <div className="listen-along-timing">
+          {busy && ours ? (
+            <>
+              <p className="read-aloud-note">
+                {ours.stage === "reading"
+                  ? "Reading the book's words…"
+                  : ours.stage === "model" && ours.modelTotal
+                    ? `Getting the speech model: ${mb(ours.modelLoaded)} of ${mb(ours.modelTotal)}…`
+                    : ours.stage === "model"
+                      ? "Starting speech recognition…"
+                      : `Listening through the audiobook: ${Math.round(ours.fraction * 100)}%`}
+              </p>
+              <button type="button" className="btn btn-quiet" onClick={stopPreparing}>
+                Pause
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="read-aloud-note">
+                {ours?.stage === "failed"
+                  ? `Word timing stopped: ${ours.problem}`
+                  : "TBV can listen through the audiobook on this computer and match the narrator's words to the book. It hears a few seconds every minute and a half, in the background while TBV is open. The first time, it downloads a speech model (about 40 MB)."}
+              </p>
+              <button type="button" className="btn" disabled={elsewhere} onClick={() => void prepareTiming(ebookId, audiobookId)}>
+                {readAlong.timed === "some" || ours?.stage === "stopped" ? "Carry on working out word timing" : "Work out word timing"}
+              </button>
+              {elsewhere && <p className="read-aloud-note">Another book's timing is being worked out. This one can start when it's done.</p>}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

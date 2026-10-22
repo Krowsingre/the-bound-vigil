@@ -1277,6 +1277,20 @@ fn covers_travel_before_book_files_and_despite_them() {
 }
 
 #[test]
+fn read_along_timing_worked_out_on_one_computer_reaches_the_others() {
+    let cloud = FakeRemote::default();
+    let pc = Device::new();
+    let ebook = pc.import("Dracula");
+    pc.lib().save_read_along_timing(&ebook, "sha256:audio", r#"{"version":1,"anchors":[[0,0],[60000,150]]}"#).unwrap();
+    pc.sync(&cloud);
+    let laptop = Device::new();
+    laptop.sync(&cloud);
+    let timing = laptop.lib().read_along_timing(&ebook, "sha256:audio").unwrap().unwrap();
+    assert!(timing.contains("60000"));
+    assert!(pc.lib().save_read_along_timing(&ebook, "sha256:audio", "not json").is_err());
+}
+
+#[test]
 fn covers_go_to_short_places_phone_sized() {
     let temp = tempfile::tempdir().unwrap();
     let cover = temp.path().join("abc.png");

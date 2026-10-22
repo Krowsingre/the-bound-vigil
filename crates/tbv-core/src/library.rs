@@ -355,6 +355,18 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE books ADD COLUMN phone_has INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE books ADD COLUMN from_phone INTEGER NOT NULL DEFAULT 0;
     "#,
+    // v15: read-along timing, worked out once on a computer by hearing the
+    // audiobook: when the narrator reaches which word of the ebook (see
+    // src/readAlong/timing.ts for the JSON). Synced, so phones follow too.
+    r#"
+    CREATE TABLE read_along (
+        ebook_id TEXT NOT NULL,
+        audiobook_id TEXT NOT NULL,
+        timing TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (ebook_id, audiobook_id)
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

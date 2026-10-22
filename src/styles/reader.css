@@ -1188,3 +1188,14 @@
   width: auto;
   right: 0;
 }
+
+.listen-along .btn {
+  justify-self: start;
+}
+
+.listen-along-timing {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}

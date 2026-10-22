@@ -13,7 +13,7 @@ import { drawPdfCover, readerSource, type ReaderSource } from "./formats";
 import { contentsEntries, currentEntry, pageOf, pushJump, type Jump } from "./pages";
 import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars";
 import { LeftPanel, RightPanel, type AnnotationHandlers, type RightTab } from "./ReaderPanels";
-import { NoteDialog, PageSettings, ReadAloudPlayer, SelectionToolbar, TextSettings, ZoomControls } from "./ReaderPopovers";
+import { ListenAlongPanel, NoteDialog, PageSettings, ReadAloudPlayer, SelectionToolbar, TextSettings, ZoomControls } from "./ReaderPopovers";
 import { ReaderSearch } from "./ReaderSearch";
 import { useAppDark } from "../settings/appSettings";
 import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, resolveTheme, SETTINGS_KEY, zoomStep, type ReaderSettings } from "./settings";
@@ -486,20 +486,15 @@ export function Reader({
         readAloud={
           <>
           {readAlong.audiobookId && (
-            <button
-              type="button"
-              className={`icon-btn${readAlong.following ? " is-on" : ""}`}
-              aria-pressed={readAlong.following}
-              aria-label="Listen along"
-              title={
-                readAlong.following
-                  ? "Following the audiobook. Click to stop."
-                  : "Listen along: play the audiobook and follow it here"
-              }
-              onClick={readAlong.toggle}
+            <Popover
+              label="Listen along"
+              title={readAlong.following ? "Following the audiobook" : "Listen along: play the audiobook and follow it here"}
+              trigger={<Icon name="headphones" size={20} />}
+              className="read-aloud-popover"
+              on={readAlong.following}
             >
-              <Icon name="headphones" size={20} />
-            </button>
+              <ListenAlongPanel readAlong={readAlong} ebookId={bookId} />
+            </Popover>
           )}
           <Popover
             label="Read aloud"
