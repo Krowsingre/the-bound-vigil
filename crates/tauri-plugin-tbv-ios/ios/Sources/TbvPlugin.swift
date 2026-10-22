@@ -1,4 +1,5 @@
 import AVFoundation
+import AuthenticationServices
 import Tauri
 import UIKit
 import UniformTypeIdentifiers
@@ -8,14 +9,19 @@ class PathArgs: Decodable {
   let path: String
 }
 
+class UrlArgs: Decodable {
+  let url: String
+}
+
 /// The iPhone app's own pieces: folders chosen in Files (iCloud Drive's
 /// library folder), iCloud files brought down when TBV reads them, and
 /// audiobooks that keep playing with the screen locked.
-class TbvPlugin: Plugin, UIDocumentPickerDelegate {
+class TbvPlugin: Plugin, UIDocumentPickerDelegate, ASWebAuthenticationPresentationContextProviding {
   /// Folders chosen in Files, by path, kept as bookmarks so TBV can open
   /// them again after a restart.
   private static let foldersKey = "tbv.folders"
   private var picking: Invoke?
+  private var signIn: ASWebAuthenticationSession?
 
   override init() {
     super.init()
@@ -95,6 +101,40 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate {
       }
       invoke.resolve(["ok": files.fileExists(atPath: url.path)])
     }
+  }
+
+  /// Shows a sign-in page over TBV. Its answer goes to TBV's own listener on
+  /// this phone, which only hears it while TBV stays in front, as it does here.
+  @objc public func openSignIn(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(UrlArgs.self)
+    guard let url = URL(string: args.url) else {
+      invoke.reject("That sign-in address isn't valid.")
+      return
+    }
+    DispatchQueue.main.async {
+      self.signIn?.cancel()
+      // The answer comes back to TBV's listener, never to this scheme.
+      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "tbv-signin") { _, _ in }
+      session.presentationContextProvider = self
+      self.signIn = session
+      if session.start() {
+        invoke.resolve(["ok": true])
+      } else {
+        invoke.reject("TBV couldn't open the sign-in page.")
+      }
+    }
+  }
+
+  @objc public func closeSignIn(_ invoke: Invoke) throws {
+    DispatchQueue.main.async {
+      self.signIn?.cancel()
+      self.signIn = nil
+      invoke.resolve(["ok": true])
+    }
+  }
+
+  func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+    return manager.viewController?.view.window ?? ASPresentationAnchor()
   }
 }
 

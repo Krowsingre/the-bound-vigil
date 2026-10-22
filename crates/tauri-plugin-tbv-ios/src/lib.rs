@@ -46,6 +46,35 @@ pub fn pick_folder() -> Result<Option<String>, String> {
     Err("Choosing a folder this way only works on iPhone.".into())
 }
 
+#[cfg(target_os = "ios")]
+#[derive(serde::Serialize)]
+struct UrlArgs<'a> {
+    url: &'a str,
+}
+
+/// Shows a sign-in page over TBV (Hardcover's), so TBV stays awake to hear
+/// the answer. `close_sign_in` takes it away again.
+pub fn open_sign_in(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get().ok_or("The sign-in page isn't ready.")?;
+        swift.run_mobile_plugin::<serde_json::Value>("openSignIn", UrlArgs { url }).map(|_| ()).map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = url;
+        Err("This sign-in page only opens on iPhone.".into())
+    }
+}
+
+/// Takes the sign-in page away once its answer is in (or it timed out).
+pub fn close_sign_in() {
+    #[cfg(target_os = "ios")]
+    if let Some(swift) = SWIFT.get() {
+        let _ = swift.run_mobile_plugin::<serde_json::Value>("closeSignIn", ());
+    }
+}
+
 /// Brings down a file iCloud hasn't kept on the phone, waiting until it
 /// arrives. True once it's here.
 pub fn fetch(path: &Path) -> bool {

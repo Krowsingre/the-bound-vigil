@@ -29,8 +29,9 @@ export function Settings({
   onSidebarShown,
   onRestored,
 }: {
-  tab: SettingsTab;
-  onTab: (tab: SettingsTab) => void;
+  /** null: the landing page, with a button for each tab. */
+  tab: SettingsTab | null;
+  onTab: (tab: SettingsTab | null) => void;
   libraryLayout: Layout;
   librarySort: SortOrder;
   onLibraryView: (change: { layout?: Layout; sort?: SortOrder }) => void;
@@ -43,7 +44,7 @@ export function Settings({
   const [jumpTo, setJumpTo] = useState<string | null>(null);
   const body = useRef<HTMLDivElement>(null);
   const results = searchSettings(query).filter((r) => TABS.some((t) => t.tab === r.tab));
-  const page = SETTINGS_TABS.find((t) => t.tab === tab)!;
+  const page = SETTINGS_TABS.find((t) => t.tab === tab);
 
   // A new page starts at its top, or at the section picked from search.
   useEffect(() => {
@@ -98,7 +99,7 @@ export function Settings({
   })();
 
   return (
-    <div className="settings-page">
+    <div className={`settings-page${page ? "" : " is-landing"}`}>
       <nav className="settings-nav" aria-label="Settings">
         <p className="settings-eyebrow">Settings</p>
         <label className="search settings-search">
@@ -148,12 +149,43 @@ export function Settings({
         )}
       </nav>
       <div className="settings-body" ref={body}>
-        <header className="settings-head">
-          <h1>{page.label}</h1>
-          <p className="muted">{page.lede}</p>
-          {isHome && <p className="settings-row-hint">You're using TBV from your computer. Changes here last until this page reloads; the rest of the settings are on the computer.</p>}
-        </header>
-        {content}
+        {page ? (
+          <>
+            <header className="settings-head">
+              <button type="button" className="link-btn settings-back" onClick={() => onTab(null)}>
+                <Icon name="chevronLeft" size={16} /> All settings
+              </button>
+              <h1>{page.label}</h1>
+              <p className="muted">{page.lede}</p>
+              {isHome && (
+                <p className="settings-row-hint">
+                  You're using TBV from your computer. Changes here last until this page reloads; the rest of the settings are on the computer.
+                </p>
+              )}
+            </header>
+            {content}
+          </>
+        ) : (
+          <>
+            <header className="settings-head">
+              <h1>Settings</h1>
+              <p className="muted">Choose what to change.</p>
+            </header>
+            <ul className="settings-landing">
+              {TABS.map((t) => (
+                <li key={t.tab}>
+                  <button type="button" className="settings-landing-card" onClick={() => onTab(t.tab)}>
+                    <Icon name={t.icon} size={22} />
+                    <span className="settings-landing-text">
+                      <span className="settings-landing-name">{t.label}</span>
+                      <span className="settings-row-hint">{t.lede}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
     </div>
   );

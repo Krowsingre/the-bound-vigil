@@ -109,8 +109,9 @@
     display: grid;
   }
 
-  .main {
-    padding-bottom: var(--tabbar-h);
+  /* Pages scroll right to the bottom edge, past the home bar. */
+  .content {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .header {
@@ -170,9 +171,22 @@
     border-bottom: 1px solid var(--border);
   }
 
+  /* The landing page's buttons stand in for the menu; a page has its back link. */
   .settings-eyebrow,
-  .settings-search {
+  .settings-page.is-landing .settings-menu:not(.settings-results) {
     display: none;
+  }
+
+  .settings-page:not(.is-landing) .settings-nav {
+    display: none;
+  }
+
+  .settings-page.is-landing .settings-nav {
+    border-bottom: 0;
+  }
+
+  .settings-search {
+    margin-bottom: 4px;
   }
 
   .settings-menu {

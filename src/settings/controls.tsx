@@ -4,35 +4,35 @@
 import { useEffect, useId, useState } from "react";
 import { Icon } from "../components/Icon";
 
-const FOLDED_KEY = "tbv.settings.folded";
+const OPENED_KEY = "tbv.settings.opened";
 
-/** Sections folded away, remembered on this device. */
-function readFolded(): Set<string> {
+/** Sections opened, remembered on this device. The rest start folded. */
+function readOpened(): Set<string> {
   try {
-    return new Set(JSON.parse(localStorage.getItem(FOLDED_KEY) ?? "[]") as string[]);
+    return new Set(JSON.parse(localStorage.getItem(OPENED_KEY) ?? "[]") as string[]);
   } catch {
     return new Set();
   }
 }
 
-function saveFolded(id: string, folded: boolean) {
-  const all = readFolded();
-  if (folded) all.add(id);
+function saveOpened(id: string, opened: boolean) {
+  const all = readOpened();
+  if (opened) all.add(id);
   else all.delete(id);
   try {
-    localStorage.setItem(FOLDED_KEY, JSON.stringify([...all]));
+    localStorage.setItem(OPENED_KEY, JSON.stringify([...all]));
   } catch {
-    // Not remembered; it still folds.
+    // Not remembered; it still opens.
   }
 }
 
 /** Opens a folded section, e.g. one found by searching settings. */
 export function unfoldSection(id: string) {
-  saveFolded(id, false);
+  saveOpened(id, true);
   window.dispatchEvent(new CustomEvent("tbv:unfold-section", { detail: id }));
 }
 
-/** A settings section. Tapping its heading folds it away or opens it again. */
+/** A settings section, folded until its heading is tapped. */
 export function Section({
   id,
   title,
@@ -47,14 +47,14 @@ export function Section({
   aside?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const [folded, setFolded] = useState(() => readFolded().has(id));
+  const [folded, setFolded] = useState(() => !readOpened().has(id));
   useEffect(() => {
     const open = (e: Event) => (e as CustomEvent<string>).detail === id && setFolded(false);
     window.addEventListener("tbv:unfold-section", open);
     return () => window.removeEventListener("tbv:unfold-section", open);
   }, [id]);
   const toggle = () => {
-    saveFolded(id, !folded);
+    saveOpened(id, folded);
     setFolded(!folded);
   };
   return (

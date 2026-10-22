@@ -77,7 +77,7 @@ export function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [reading, setReading] = useState<{ bookId: string; at?: string } | null>(null);
   const [openCollection, setOpenCollection] = useState<CollectionRef | null>(null);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
   const { refreshAdaptive, togglePrivacy } = useAppSettings();
@@ -90,6 +90,9 @@ export function App() {
     if (r === "sync") {
       setSettingsTab("sync");
       r = "settings";
+    } else if (r === "settings") {
+      // Settings opens at its landing page of tabs.
+      setSettingsTab(null);
     }
     setRoute(r);
   }, []);
