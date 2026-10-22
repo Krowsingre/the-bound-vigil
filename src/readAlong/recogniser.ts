@@ -14,6 +14,16 @@ export class Recogniser {
       this.waiting.get(m.id)?.done(m);
       this.waiting.delete(m.id);
     };
+    // A worker that fails to start or crashes sends no answer, so everything waiting is let go.
+    const failAll = (message: string) => {
+      for (const [id, w] of this.waiting) w.done({ type: "failed", id, message });
+      this.waiting.clear();
+    };
+    this.worker.onerror = (event) => {
+      event.preventDefault();
+      failAll(event.message || "Speech recognition stopped working.");
+    };
+    this.worker.onmessageerror = () => failAll("Speech recognition sent something TBV couldn't read.");
   }
 
   hear(samples: Float32Array): Promise<{ text: string; timestamp: [number, number | null] }[]> {
