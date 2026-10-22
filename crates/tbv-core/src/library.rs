@@ -367,11 +367,6 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (ebook_id, audiobook_id)
     );
     "#,
-    // v17: books of a series the person has read elsewhere (keys of
-    // `series_lists.books`, like `hidden`), so a missing book can be marked read.
-    r#"
-    ALTER TABLE series_lists ADD COLUMN read TEXT NOT NULL DEFAULT '[]';
-    "#,
     // v16: a second built-in shelf, Send to device: the books chosen for the
     // phone (`phone_wanted`), next to Up next. Every device adds the same row,
     // so its sync stamp is dropped and none of them overrules another's edits.
@@ -379,6 +374,11 @@ const MIGRATIONS: &[&str] = &[
     INSERT OR IGNORE INTO collections (id, name, created_at, updated_at, kind, badge, picture, pinned, position) VALUES
         ('shelf:send_to_device', 'Send to device', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'phone', 'gallery:stormlight-beacon', 1, 1.5);
     DELETE FROM sync_clock WHERE kind = 'collection' AND key = json_array('shelf:send_to_device');
+    "#,
+    // v17: books of a series the person has read elsewhere (keys of
+    // `series_lists.books`, like `hidden`), so a missing book can be marked read.
+    r#"
+    ALTER TABLE series_lists ADD COLUMN read TEXT NOT NULL DEFAULT '[]';
     "#,
 ];
 

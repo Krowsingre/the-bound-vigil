@@ -1396,7 +1396,7 @@ impl Library {
         for (id, format, path, cover, for_phone) in rows {
             let hex = book_id_hex(&id);
             // Books chosen for the phone go whatever the file switches say.
-            let wanted_here = if chosen_only {
+            let wanted_here = if chosen_only || (covers_follow_files && for_phone) {
                 for_phone
             } else if crate::audio::is_audio(&format) {
                 options.audio_files
@@ -1474,21 +1474,21 @@ impl Library {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let retry_after = (Utc::now() - Duration::hours(RETRY_FILE_HOURS)).to_rfc3339_opts(SecondsFormat::Millis, true);
         let sql = format!("SELECT uploaded_at, failed_at FROM {} WHERE path = ?1", lane.files_table());
-        let due = |path: &str| -> Result<bool> {
+        // Some(true): to send now; Some(false): already there; None: failed lately, tried again later.
+        let state = |path: &str| -> Result<Option<bool>> {
             let done: Option<(Option<String>, Option<String>)> = self.conn.query_row(&sql, params![path], |r| Ok((r.get(0)?, r.get(1)?))).optional()?;
             Ok(match done {
-                None => true,
-                Some((Some(_), _)) => false,
-                Some((None, failed)) => failed.is_none_or(|f| f < retry_after),
+                None => Some(true),
+                Some((Some(_), _)) => Some(false),
+                Some((None, failed)) => failed.is_none_or(|f| f < retry_after).then_some(true),
             })
         };
+        let due = |path: &str| -> Result<bool> { Ok(state(path)? == Some(true)) };
         let mut out = Vec::new();
         for (book_id, format, cover) in rows {
             let hex = book_id_hex(&book_id);
             let path = format!("books/{hex}.{format}");
-            if !due(&path)? {
-                continue;
-            }
+            let Some(send_book) = state(&path)? else { continue };
             let cover = cover.map(PathBuf::from).map(|c| {
                 let extension = c.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default();
                 (format!("covers/{hex}.{extension}"), c)
@@ -1497,7 +1497,10 @@ impl Library {
                 Some((cloud, local)) if due(&cloud)? => Some((cloud, local)),
                 _ => None,
             };
-            out.push(Relay { book_id, path, cover });
+            // A book already there still gets its cover if that didn't make it.
+            if send_book || cover.is_some() {
+                out.push(Relay { book_id, path, send_book, cover });
+            }
         }
         Ok(out)
     }
@@ -2079,44 +2082,46 @@ fn relay_for_phone(lock: Lock, tell: Tell, source: &mut dyn Remote, target: &mut
         if winding_down() {
             break;
         }
-        let (what, temp) = {
-            let library = lock()?;
-            (library.file_named(&relay.path), library.download_target(&relay.book_id).with_extension("relay"))
-        };
-        file(&relay.path, &what, false, None);
-        match fetch(source, &relay.path, &temp) {
-            Ok(true) => {}
-            Ok(false) => {
-                let why = "not in the other sync place either".to_string();
-                lock()?.lane_file_sent(&relay.path, Some(&why), lane)?;
-                file(&relay.path, &what, true, Some(why));
-                continue;
+        if relay.send_book {
+            let (what, temp) = {
+                let library = lock()?;
+                (library.file_named(&relay.path), library.download_target(&relay.book_id).with_extension("relay"))
+            };
+            file(&relay.path, &what, false, None);
+            match fetch(source, &relay.path, &temp) {
+                Ok(true) => {}
+                Ok(false) => {
+                    let why = "not in the other sync place either".to_string();
+                    lock()?.lane_file_sent(&relay.path, Some(&why), lane)?;
+                    file(&relay.path, &what, true, Some(why));
+                    continue;
+                }
+                Err(e) => {
+                    // The other place can't hand it over now (an iCloud file
+                    // still downloading, say): tried again at a later sync.
+                    lock()?.lane_file_sent(&relay.path, Some(&e.to_string()), lane)?;
+                    file(&relay.path, &what, true, Some(e.to_string()));
+                    continue;
+                }
             }
-            Err(e) => {
-                // The other place can't hand it over now (an iCloud file
-                // still downloading, say): tried again at a later sync.
-                lock()?.lane_file_sent(&relay.path, Some(&e.to_string()), lane)?;
-                file(&relay.path, &what, true, Some(e.to_string()));
-                continue;
-            }
-        }
-        let sent = target.upload(&relay.path, &temp);
-        let _ = fs::remove_file(&temp);
-        match sent {
-            Ok(()) => {
-                lock()?.lane_file_sent(&relay.path, None, lane)?;
-                report.files_sent += 1;
-                file(&relay.path, &what, true, None);
-            }
-            Err(Error::Rejected(why)) => {
-                lock()?.lane_file_sent(&relay.path, Some(&why), lane)?;
-                report.skipped_files.push(format!("{what}: {why}"));
-                file(&relay.path, &what, true, Some(why));
-                continue;
-            }
-            Err(e) => {
-                file(&relay.path, &what, true, Some(e.to_string()));
-                return Err(e);
+            let sent = target.upload(&relay.path, &temp);
+            let _ = fs::remove_file(&temp);
+            match sent {
+                Ok(()) => {
+                    lock()?.lane_file_sent(&relay.path, None, lane)?;
+                    report.files_sent += 1;
+                    file(&relay.path, &what, true, None);
+                }
+                Err(Error::Rejected(why)) => {
+                    lock()?.lane_file_sent(&relay.path, Some(&why), lane)?;
+                    report.skipped_files.push(format!("{what}: {why}"));
+                    file(&relay.path, &what, true, Some(why));
+                    continue;
+                }
+                Err(e) => {
+                    file(&relay.path, &what, true, Some(e.to_string()));
+                    return Err(e);
+                }
             }
         }
         // Its cover goes with it, phone-sized.
@@ -2344,6 +2349,8 @@ pub(crate) struct Relay {
     pub book_id: String,
     /// Its file's path in both places.
     pub path: String,
+    /// False when the book is there already and only its cover is missing.
+    pub send_book: bool,
     /// Its cover: path in the cloud, and file here.
     pub cover: Option<(String, PathBuf)>,
 }
