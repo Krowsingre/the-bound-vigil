@@ -12,6 +12,8 @@ import {
   copiesOfFormat,
   DEFAULT_FORMAT_ORDER,
   formatOrder,
+  hasYourReading,
+  keeperAfter,
   matchesFilter,
   planCleanup,
   setFormats,
@@ -44,6 +46,9 @@ function facts(b: DuplicateBook) {
 }
 
 /** A set can be helped when its covers differ in size, or some copies have none. */
+/** Copies in different formats can be one book with several files. */
+const canKeepTogether = (g: DuplicateGroup) => setFormats(g).length > 1;
+
 function canShareCover(g: DuplicateGroup) {
   const areas = g.books.map((b) => (b.coverSize ? b.coverSize[0] * b.coverSize[1] : 0));
   return Math.max(...areas) > 0 && areas.some((a) => a < Math.max(...areas));
@@ -113,6 +118,9 @@ export function DuplicatesDialog({ groups: start, onClose }: { groups: Duplicate
   const removeOne = async (book: DuplicateBook) => {
     setDeleting(null);
     try {
+      const set = groups.find((g) => g.books.some((b) => b.id === book.id));
+      const keeper = set && keeperAfter(set, [book], order);
+      if (keeper) await api.mergeReading(keeper.id, book.id);
       await api.deleteBook(book.id);
       toast(`Deleted “${book.title}” (${book.format.toUpperCase()}).`);
       setGroups((list) => list.map((g) => ({ ...g, books: g.books.filter((b) => b.id !== book.id) })).filter((g) => g.books.length > 1));
@@ -128,9 +136,30 @@ export function DuplicatesDialog({ groups: start, onClose }: { groups: Duplicate
     setBulkFormat(null);
     const { done, failed } = await run(
       `Deleting every ${format} copy`,
-      bulk.remove.map((b) => () => api.deleteBook(b.id)),
+      bulk.remove.map((b) => async () => {
+        const keeper = bulk.into.get(b.id);
+        if (keeper) await api.mergeReading(keeper.id, b.id);
+        await api.deleteBook(b.id);
+      }),
     );
     toast(failed ? `Deleted ${copies(done - failed)}; ${copies(failed)} couldn't be deleted.` : `Deleted ${copies(done)}.`);
+  };
+
+  const keepTogether = async (list: DuplicateGroup[]) => {
+    const { done, failed } = await run(
+      "Keeping each set together as one book",
+      list.map((g) => async () => {
+        const main = keeperAfter(g, [], order);
+        if (main) await api.keepTogether(main.id, g.books.filter((b) => b.id !== main.id).map((b) => b.id));
+      }),
+    );
+    toast(
+      failed
+        ? `Kept ${sets(done - failed)} together; ${sets(failed)} couldn't be.`
+        : list.length === 1
+          ? "Kept together as one book. Its formats are listed in its details."
+          : `Kept ${sets(done)} together, each as one book.`,
+    );
   };
 
   const dismiss = (g: DuplicateGroup) =>
@@ -168,7 +197,11 @@ export function DuplicatesDialog({ groups: start, onClose }: { groups: Duplicate
               // One set at a time: its cover first, and its copies go only once that worked.
               const list = steps.map((s) => async () => {
                 if (withCover) await api.shareBestCover([s.keep.id, ...s.remove.map((b) => b.id)]);
-                for (const b of s.remove) await api.deleteBook(b.id);
+                // Your notes and place move first, so nothing of yours goes with a copy.
+                for (const b of s.remove) {
+                  await api.mergeReading(s.keep.id, b.id);
+                  await api.deleteBook(b.id);
+                }
               });
               const removed = steps.reduce((n, s) => n + s.remove.length, 0);
               const { done, failed } = await run(`Cleaning up ${sets(steps.length)}`, list);
@@ -238,6 +271,16 @@ export function DuplicatesDialog({ groups: start, onClose }: { groups: Duplicate
                     <button type="button" className="btn btn-primary btn-small" onClick={() => setView("cleanup")}>
                       <Icon name="check" size={14} /> Clean up by rule…
                     </button>
+                    {shown.some(canKeepTogether) && (
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-small"
+                        title="Each set becomes one book with a file per format, sharing its notes, highlights and place"
+                        onClick={() => void keepTogether(shown.filter(canKeepTogether))}
+                      >
+                        <Icon name="link" size={14} /> Keep every set together
+                      </button>
+                    )}
                     {shown.some(canShareCover) && (
                       <button type="button" className="btn btn-quiet btn-small" onClick={() => void shareCovers(shown.filter(canShareCover))}>
                         <Icon name="image" size={14} /> Sharpest cover for every set
@@ -276,6 +319,16 @@ export function DuplicatesDialog({ groups: start, onClose }: { groups: Duplicate
                         onClick={() => void shareCovers([g])}
                       >
                         Use the sharpest cover
+                      </button>
+                    )}
+                    {canKeepTogether(g) && (
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-small"
+                        title="One book with a file per format, sharing its notes, highlights and place"
+                        onClick={() => void keepTogether([g])}
+                      >
+                        Keep together
                       </button>
                     )}
                     <button type="button" className="btn btn-quiet btn-small" onClick={() => dismiss(g)}>
@@ -329,8 +382,8 @@ export function DuplicatesDialog({ groups: start, onClose }: { groups: Duplicate
           body={[
             bulk.remove.length
               ? `They leave your library on every device (${size(bulk.remove)}). Every set keeps at least one copy: where a set is all ${bulkFormat.toUpperCase()}, its best copy stays.`
-              : `Each of these is the last copy of its set, or has your notes, progress or other marks.`,
-            bulk.keptForReading ? `${copies(bulk.keptForReading)} with your notes, progress, ratings, tags or collections stay.` : "",
+              : `Each of these is the last copy of its set.`,
+            bulk.remove.some(hasYourReading) ? "Your notes, highlights and place on them move to the copy each set keeps." : "",
           ]
             .filter(Boolean)
             .join(" ")}
@@ -445,13 +498,6 @@ function CleanupView({
         {plan.steps.length
           ? `${sets(chosen.length)}: ${copies(removing.length)} to delete (${size(removing)}).`
           : "Nothing to clean up in the sets shown."}
-        {plan.yours.length > 0 && (
-          <span className="muted">
-            {" "}
-            {sets(plan.yours.length)} {plan.yours.length === 1 ? "has" : "have"} your notes, progress or other marks on more than one copy, so {plan.yours.length === 1 ? "it's" : "they're"} left
-            for you.
-          </span>
-        )}
       </p>
       <ul className="duplicate-plan">
         {plan.steps.slice(0, limit).map((s) => {

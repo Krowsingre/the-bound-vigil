@@ -48,7 +48,7 @@ impl Library {
             books_dir: self.paths.books_dir.display().to_string(),
             schema_version: Self::schema_version(),
             book_count: self.conn.query_row(
-                "SELECT COUNT(*) FROM books WHERE deleted_at IS NULL",
+                "SELECT COUNT(*) FROM books WHERE deleted_at IS NULL AND same_as IS NULL",
                 [],
                 |r| r.get(0),
             )?,

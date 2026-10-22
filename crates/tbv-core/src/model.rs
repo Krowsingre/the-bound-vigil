@@ -48,6 +48,16 @@ pub enum Availability {
     Missing,
 }
 
+/// One file of a book: its own, or a copy kept with it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BookFile {
+    pub id: BookId,
+    pub format: String,
+    pub size: u64,
+    pub downloaded: bool,
+}
+
 /// A layout-independent reading position. Never a pixel offset.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -74,6 +84,11 @@ pub struct ReaderLocator {
     /// For an audiobook: how far in, from the start of the whole book.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio_ms: Option<u64>,
+    /// The format this place was marked in, when it came from another copy
+    /// of the book (an EPUB's place on a PDF, say): its `cfi` is gone, and the
+    /// page, fraction and words find it instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
 }
 
 /// Another device's position for the same book, shown as "On Phone you're at 51%".
@@ -195,6 +210,9 @@ pub enum SyncState {
 pub struct SyncStatus {
     pub state: SyncState,
     pub last_success_at: Option<IsoUtc>,
+    /// Other devices whose changes haven't all reached this one yet.
+    #[serde(default)]
+    pub behind: Vec<crate::sync::Behind>,
 }
 
 /// Reading activity is only reported once reading sessions are recorded.

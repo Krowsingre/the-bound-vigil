@@ -40,6 +40,7 @@ export const KINDS: Kind[] = [
   { name: "audiobook", table: "audiobooks", keys: ["book_id"], cols: ["narrators", "duration_ms", "chapters", "parts", "ebook_id", "updated_at"] },
   { name: "read_along", table: "read_along", keys: ["ebook_id", "audiobook_id"], cols: ["timing", "updated_at"] },
   { name: "book_phone", table: "books", keys: ["id"], cols: ["phone_wanted", "phone_has", "from_phone"] },
+  { name: "book_same", table: "books", keys: ["id"], cols: ["same_as"] },
   { name: "book_progress", table: "books", keys: ["id"], cols: ["status", "total_progression", "resume_locator", "last_opened_at", "finished_at"] },
   { name: "book_shelves", table: "books", keys: ["id"], cols: ["favorite", "want_to_read", "rating"] },
   { name: "override", table: "metadata_overrides", keys: ["book_id", "field"], cols: ["value", "updated_at"] },
@@ -100,6 +101,8 @@ export interface BookRow {
   phone_has: number;
   /** Added on the phone, waiting for the computer to take it in. */
   from_phone: number;
+  /** Set when this file is another copy of that book, kept with it and not listed. */
+  same_as?: string | null;
 }
 
 /** The built-in Up next shelf, as every device starts with it. */
@@ -196,6 +199,11 @@ export class WebLibrary {
   /** The books still in the library. */
   books(): BookRow[] {
     return (this.rows("books") as unknown as BookRow[]).filter((b) => !b.deleted_at);
+  }
+
+  /** The books as they're listed: a copy kept with another book shows as that book. */
+  listed(): BookRow[] {
+    return this.books().filter((b) => !b.same_as);
   }
 
   book(id: string): BookRow | undefined {

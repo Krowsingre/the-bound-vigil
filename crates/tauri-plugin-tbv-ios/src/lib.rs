@@ -75,6 +75,18 @@ pub fn close_sign_in() {
     }
 }
 
+/// Asks iCloud for the latest of a folder or file, so new change files
+/// from other devices show up.
+pub fn refresh(path: &Path) {
+    #[cfg(target_os = "ios")]
+    if let Some(swift) = SWIFT.get() {
+        let path = path.to_string_lossy();
+        let _ = swift.run_mobile_plugin::<serde_json::Value>("refreshItem", PathArgs { path: &path });
+    }
+    #[cfg(not(target_os = "ios"))]
+    let _ = path;
+}
+
 /// Brings down a file iCloud hasn't kept on the phone, waiting until it
 /// arrives. True once it's here.
 pub fn fetch(path: &Path) -> bool {

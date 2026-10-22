@@ -37,14 +37,17 @@ describe("cleaning up duplicates", () => {
     ]);
   });
 
-  it("keeps the copy with your reading, and leaves sets with two of them to you", () => {
+  it("keeps the copy with your reading, and when several have some, the best copy takes them all", () => {
     const read = book("pdf", 5, { notes: 2 });
     const plain = book("epub", 50);
-    const both = set(book("epub", 1, { status: "in_progress" }), book("mobi", 1, { notes: 1 }));
-    const plan = planCleanup([set(plain, read), both], DEFAULT_FORMAT_ORDER);
-    expect(plan.steps).toHaveLength(1);
-    expect(plan.steps[0].keep.id).toBe(read.id);
-    expect(plan.yours).toEqual([both]);
+    const reading = book("epub", 1, { status: "in_progress" });
+    const noted = book("mobi", 1, { notes: 1 });
+    const plan = planCleanup([set(plain, read), set(noted, reading)], DEFAULT_FORMAT_ORDER);
+    expect(plan.steps.map((s) => [s.keep.id, s.remove.map((b) => b.id)])).toEqual([
+      [read.id, [plain.id]],
+      [reading.id, [noted.id]],
+    ]);
+    expect(plan.steps[1].why).toContain("move to it");
   });
 
   it("filters by the exact mix of formats, or one format only", () => {
@@ -57,19 +60,16 @@ describe("cleaning up duplicates", () => {
     expect(all.filter((g) => matchesFilter(g, { kind: "exactly", formats: ["mobi"] }))).toEqual([twoMobi]);
   });
 
-  it("deletes every copy of a format but never a set's last copy or your reading", () => {
+  it("deletes every copy of a format but never a set's last copy, moving your reading to the copy that stays", () => {
     const keepEpub = book("epub", 1);
     const goMobi = book("mobi", 1);
     const noted = book("mobi", 1, { notes: 1 });
     const onlyMobiSmall = book("mobi", 1);
     const onlyMobiBig = book("mobi", 9);
-    const { remove, keptForReading } = copiesOfFormat(
-      [set(keepEpub, goMobi, noted), set(onlyMobiSmall, onlyMobiBig)],
-      "MOBI",
-      DEFAULT_FORMAT_ORDER,
-    );
-    expect(remove.map((b) => b.id)).toEqual([goMobi.id, onlyMobiSmall.id]);
-    expect(keptForReading).toBe(1);
+    const { remove, into } = copiesOfFormat([set(keepEpub, goMobi, noted), set(onlyMobiSmall, onlyMobiBig)], "MOBI", DEFAULT_FORMAT_ORDER);
+    expect(remove.map((b) => b.id)).toEqual([goMobi.id, noted.id, onlyMobiSmall.id]);
+    expect(into.get(noted.id)?.id).toBe(keepEpub.id);
+    expect(into.get(onlyMobiSmall.id)?.id).toBe(onlyMobiBig.id);
   });
 
   it("orders formats as saved, then new ones A to Z, keeping unseen ones in place", () => {

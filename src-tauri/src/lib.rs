@@ -1079,6 +1079,28 @@ async fn save_copies(state: State<'_, AppLibrary>, book_ids: Vec<String>, folder
     Ok(saved)
 }
 
+/// Moves everything of yours from a copy of a book that's about to go to the one that stays.
+#[tauri::command]
+async fn merge_reading(state: State<'_, AppLibrary>, keep_id: String, from_id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.merge_reading_into(&keep_id, &from_id)).await
+}
+
+/// Makes copies more files of one book, listed as that book.
+#[tauri::command]
+async fn keep_together(state: State<'_, AppLibrary>, main_id: String, other_ids: Vec<String>) -> CommandResult<()> {
+    with_library(state, move |library| library.keep_together(&main_id, &other_ids)).await
+}
+
+#[tauri::command]
+async fn keep_apart(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.keep_apart(&book_id)).await
+}
+
+#[tauri::command]
+async fn book_files(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<Vec<tbv_core::model::BookFile>> {
+    with_library(state, move |library| library.book_files(&book_id)).await
+}
+
 #[tauri::command]
 async fn remove_download(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
     with_library(state, move |library| library.remove_download(&book_id)).await
@@ -1621,6 +1643,8 @@ pub fn run() {
             // iCloud on iPhone keeps only stand-ins for files until asked.
             #[cfg(target_os = "ios")]
             tbv_core::sync::files::set_fetcher(tauri_plugin_tbv_ios::fetch);
+            #[cfg(target_os = "ios")]
+            tbv_core::sync::files::set_refresher(tauri_plugin_tbv_ios::refresh);
             let data_dir = app.path().app_data_dir()?;
             let cache_dir = app.path().app_cache_dir()?;
             let library = Arc::new(Mutex::new(Library::open(LibraryPaths::new(&data_dir, &cache_dir))?));
@@ -1689,6 +1713,10 @@ pub fn run() {
             remove_download,
             remove_from_library,
             save_copies,
+            merge_reading,
+            keep_together,
+            keep_apart,
+            book_files,
             find_duplicates,
             find_series_books,
             prepare_stream,

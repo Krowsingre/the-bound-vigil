@@ -118,7 +118,9 @@ function downloadItem(book: BookPreview, actions: BookActions): MenuEntry {
   if (book.fileUnavailable) return { label: "Download to this device", icon: "download", hint: "File not in the cloud", disabled: true };
   if (book.availability === "cloud")
     return { label: "Download to this device", icon: "download", disabled: !actions.download, onSelect: () => actions.download?.(book) };
-  if (book.availability === "missing") return { label: "Remove download", icon: "cloudOff", hint: "File missing", disabled: true };
+  // Gone from this device, but the cloud may still have it.
+  if (book.availability === "missing")
+    return { label: "Download again", icon: "download", hint: "File missing here", disabled: !actions.download, onSelect: () => actions.download?.(book) };
   if (!book.inCloud) return { label: "Remove download", icon: "cloudOff", hint: "Not in the cloud yet", disabled: true };
   return { label: "Remove download (keep in cloud)", icon: "cloudOff", disabled: !actions.removeDownload, onSelect: () => actions.removeDownload?.(book) };
 }
@@ -140,13 +142,8 @@ function phoneItem(book: BookPreview, actions: BookActions): MenuEntry[] {
 /** Why a book can't be opened here, or null when it can. */
 export function cannotOpen(book: BookPreview): string | null {
   if (book.fileUnavailable) return `“${book.title}” isn't in the cloud yet, so it can't be opened here. Send its file from the computer that has it.`;
-  switch (book.availability) {
-    case "missing":
-      return `The file for “${book.title}” is missing from this device. Relinking arrives in a later step.`;
-    // A cloud book downloads as it opens.
-    default:
-      return null;
-  }
+  // A cloud book, or one whose file has gone from here, downloads as it opens.
+  return null;
 }
 
 /** The shared actions, refreshing the current view after each change. */

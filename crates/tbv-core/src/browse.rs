@@ -129,7 +129,10 @@ impl Filters<'_> {
         };
         if !self.formats.is_empty() {
             let s = slots(values, self.formats.iter().map(|f| f.to_lowercase()).collect());
-            conditions.push(format!("(b.format IN ({s}))"));
+            // A book kept with copies in other formats has those formats too.
+            conditions.push(format!(
+                "(b.format IN ({s}) OR EXISTS (SELECT 1 FROM books c WHERE c.same_as = b.id AND c.deleted_at IS NULL AND lower(c.format) IN ({s})))"
+            ));
         }
         if !self.tags.is_empty() {
             let s = slots(values, self.tags.iter().map(|t| t.trim().to_lowercase()).collect());
@@ -293,7 +296,7 @@ impl Library {
                     COALESCE(SUM(status = 'read'), 0),
                     COALESCE(SUM(status = 'unread'), 0),
                     (SELECT COUNT(*) FROM collections WHERE deleted_at IS NULL AND kind != 'shelf')
-             FROM books b WHERE deleted_at IS NULL{only}"),
+             FROM books b WHERE deleted_at IS NULL AND same_as IS NULL{only}"),
             [],
             |r| {
                 Ok(ShelfCounts {

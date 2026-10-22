@@ -1,5 +1,5 @@
 import { api } from "../api";
-import type { Profile, SyncStatus } from "../api/types";
+import type { Profile, SyncBehind, SyncStatus } from "../api/types";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { relativeTime } from "../lib/format";
@@ -13,6 +13,16 @@ const SUMMARY: Record<SyncStatus["state"], string> = {
   attention: "Sync needs your attention",
   error: "Sync failed",
 };
+
+/** In words, for the sync menu and Settings: which devices this one is behind. */
+export function behindText(behind: SyncBehind[]): string {
+  return behind
+    .map(
+      (b) =>
+        `${b.label} (${b.books.toLocaleString()} books) has ${(b.written - b.read).toLocaleString()} ${b.written - b.read === 1 ? "batch" : "batches"} of changes this device hasn't received yet. Its cloud app is still bringing them over.`,
+    )
+    .join(" ");
+}
 
 /**
  * The header circle. TBV has no account of its own, so this shows sync
@@ -43,6 +53,8 @@ export function SyncMenu({
   onClearAvatar: () => void;
 }) {
   const state = sync?.state ?? "disabled";
+  // Up to date as far as this device knows, but another has more.
+  const behind = state === "idle" && sync?.behind?.length ? sync.behind : null;
   const off = state === "disabled";
   const icon = off ? "cloudOff" : state === "syncing" ? "sync" : "cloud";
   const avatar = profile?.avatarPath ? api.coverUrl(profile.avatarPath) : "";
@@ -73,12 +85,14 @@ export function SyncMenu({
         {
           heading: (
             <>
-              <strong>{SUMMARY[state]}</strong>
+              <strong>{behind ? "Not caught up yet" : SUMMARY[state]}</strong>
               <span>
                 {off
                   ? "No cloud service connected yet."
                   : state === "attention"
                     ? "Some changes need you to choose. See Sync & Accounts."
+                    : behind
+                    ? behindText(behind)
                     : sync?.lastSuccessAt
                     ? `Last synced ${relativeTime(sync.lastSuccessAt)}`
                     : "Not synced yet"}

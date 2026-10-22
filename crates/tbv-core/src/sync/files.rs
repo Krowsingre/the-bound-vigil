@@ -9,6 +9,7 @@
 //! The Bound Vigil/
 //!   library.json              marks the folder as a TBV library
 //!   changes/<device>/0000000001.json   a batch of records, never changed
+//!   devices/<device>.json     how many batches the device has written, and its book count
 //!   books/<hash>.epub         book files (when Sync book files is on)
 //!   covers/<hash>.jpg         covers, and collection pictures under pictures/
 //! ```
@@ -27,6 +28,7 @@ use crate::error::{Error, Result};
 pub const LIBRARY_FOLDER: &str = "The Bound Vigil";
 const MARKER: &str = "library.json";
 const CHANGES: &str = "changes/";
+const DEVICES: &str = "devices/";
 
 /// Brings down a file the cloud app hasn't kept here yet, waiting until it
 /// arrives (true once it has). On iPhone, iCloud leaves a small
@@ -36,6 +38,27 @@ static FETCH: std::sync::OnceLock<fn(&Path) -> bool> = std::sync::OnceLock::new(
 /// How to bring down a file that only has a stand-in (the iPhone app's).
 pub fn set_fetcher(fetch: fn(&Path) -> bool) {
     let _ = FETCH.set(fetch);
+}
+
+/// Asks the cloud app for the latest of a folder or file (the iPhone app's),
+/// since iCloud on a phone doesn't always notice new files by itself.
+static REFRESH: std::sync::OnceLock<fn(&Path)> = std::sync::OnceLock::new();
+
+/// How to ask the cloud app for the latest of a folder or file.
+pub fn set_refresher(refresh: fn(&Path)) {
+    let _ = REFRESH.set(refresh);
+}
+
+fn refresh(path: &Path) {
+    if let Some(refresh) = REFRESH.get() {
+        refresh(path);
+    }
+}
+
+/// Whether a path is sync bookkeeping that must be read fresh: the change
+/// folders and the devices' notes.
+fn kept_fresh(path: &str) -> bool {
+    path.starts_with(CHANGES) || path.starts_with(DEVICES)
 }
 
 /// iCloud's stand-in for a file it hasn't brought down.
@@ -122,6 +145,17 @@ struct Marker {
 #[derive(Serialize, Deserialize)]
 struct Batch {
     records: Vec<Record>,
+}
+
+/// What a device tells the others: how far its changes go, and how many
+/// books it has, so another device can tell when it's behind.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DeviceNote {
+    written: u64,
+    books: u64,
+    #[serde(default)]
+    label: String,
+    at: String,
 }
 
 /// Change file names: numbers padded so they sort as text too.
@@ -236,6 +270,36 @@ impl<S: Store + Send> Remote for FileRemote<S> {
     fn read_range(&mut self, path: &str, start: u64, end: u64) -> Result<Option<(Vec<u8>, u64)>> {
         self.store.read_range(path, start, end)
     }
+
+    fn note_this_device(&mut self, books: u64) -> Result<()> {
+        let written = self.next_number()? - 1;
+        let path = format!("{DEVICES}{}.json", self.device);
+        let before = self.store.read(&path)?.and_then(|b| serde_json::from_slice::<DeviceNote>(&b).ok());
+        if before.is_some_and(|b| b.written == written && b.books == books) {
+            return Ok(());
+        }
+        let note = DeviceNote { written, books, label: super::device_label().into(), at: crate::time::now_utc() };
+        self.store.write(&path, &serde_json::to_vec(&note)?)
+    }
+
+    fn behind(&mut self, cursor: &str) -> Result<Vec<super::Behind>> {
+        let read: BTreeMap<String, u64> = serde_json::from_str(cursor).unwrap_or_default();
+        let mut behind = Vec::new();
+        for name in self.store.list(DEVICES)? {
+            let Some(device) = name.strip_suffix(".json") else { continue };
+            if device == self.device {
+                continue;
+            }
+            let Some(note) = self.store.read(&format!("{DEVICES}{name}"))?.and_then(|b| serde_json::from_slice::<DeviceNote>(&b).ok()) else {
+                continue;
+            };
+            let done = read.get(device).copied().unwrap_or(0);
+            if note.written > done {
+                behind.push(super::Behind { label: note.label, read: done, written: note.written, books: note.books });
+            }
+        }
+        Ok(behind)
+    }
 }
 
 /// A folder on this computer, usually one a cloud app keeps in sync.
@@ -286,6 +350,9 @@ impl FolderStore {
 impl Store for FolderStore {
     fn read(&mut self, path: &str) -> Result<Option<Vec<u8>>> {
         let at = self.at(path);
+        if path.starts_with(DEVICES) {
+            refresh(&at);
+        }
         bring_down(&at);
         match fs::read(at) {
             Ok(bytes) => Ok(Some(bytes)),
@@ -321,6 +388,9 @@ impl Store for FolderStore {
     }
 
     fn list(&mut self, folder: &str) -> Result<Vec<String>> {
+        if kept_fresh(folder) {
+            refresh(&self.at(folder));
+        }
         let entries = match fs::read_dir(self.at(folder)) {
             Ok(entries) => entries,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -390,6 +460,29 @@ pub(crate) mod tests {
 
     fn record(n: u32) -> Record {
         Record { kind: "book".into(), key: format!("[\"sha256:{n}\"]"), data: None, changed_at: IsoUtc::from(format!("2026-10-17T00:00:{n:02}.000Z")) }
+    }
+
+    #[test]
+    fn a_device_knows_when_another_has_changes_it_hasnt_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut a = FileRemote::new(FolderStore::open(dir.path()).unwrap(), "device-a".into());
+        let mut b = FileRemote::new(FolderStore::open(dir.path()).unwrap(), "device-b".into());
+        a.prepare().unwrap();
+        a.push(&[record(1)]).unwrap();
+        a.push(&[record(2)]).unwrap();
+        a.note_this_device(3050).unwrap();
+
+        let page = b.pull("", 500).unwrap();
+        assert!(b.behind(&page.cursor).unwrap().is_empty(), "read everything");
+
+        // A batch the cloud app hasn't brought here yet.
+        a.push(&[record(3)]).unwrap();
+        a.note_this_device(3049).unwrap();
+        fs::remove_file(dir.path().join(LIBRARY_FOLDER).join("changes/device-a/0000000003.json")).unwrap();
+        let page = b.pull(&page.cursor, 500).unwrap();
+        assert!(page.records.is_empty());
+        let behind = b.behind(&page.cursor).unwrap();
+        assert_eq!((behind.len(), behind[0].read, behind[0].written, behind[0].books), (1, 2, 3, 3049));
     }
 
     #[test]

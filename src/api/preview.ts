@@ -846,6 +846,16 @@ export function previewApi(): Api {
     },
     setBookTags: async (bookId, tags) =>
       update(bookId, { tags: [...new Set(tags.map(cleanTag).filter((t): t is string => !!t))].sort() }),
+    // The preview and the web version leave this to TBV on the computer, where duplicates are cleaned up.
+    mergeReading: async () => undefined,
+    keepTogether: async (_mainId, otherIds) => {
+      books = books.filter((b) => !otherIds.includes(b.id));
+    },
+    keepApart: async () => undefined,
+    bookFiles: async (bookId) => {
+      const b = find(bookId);
+      return [{ id: b.id, format: b.format, size: 48_000, downloaded: b.availability === "local" }];
+    },
     deleteBook: async (bookId) => {
       find(bookId);
       books = books.filter((b) => b.id !== bookId);

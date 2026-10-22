@@ -6,6 +6,14 @@ export type IsoUtc = string;
 export type ReadStatus = "unread" | "in_progress" | "read";
 export type Availability = "local" | "cloud" | "missing";
 
+/** One file of a book: its own, or a copy kept with it. */
+export interface BookFile {
+  id: string;
+  format: string;
+  size: number;
+  downloaded: boolean;
+}
+
 export interface ReaderLocator {
   href?: string;
   cfi?: string;
@@ -19,6 +27,8 @@ export interface ReaderLocator {
   chapter?: string;
   /** For an audiobook: how far in, from the start of the whole book. */
   audioMs?: number;
+  /** Marked in another copy of the book, in this format: found by page and fraction, not `cfi`. */
+  format?: string;
 }
 
 export interface RemotePosition {
@@ -101,7 +111,20 @@ export type SyncState = "disabled" | "idle" | "syncing" | "offline" | "attention
 export interface SyncStatus {
   state: SyncState;
   lastSuccessAt: IsoUtc | null;
+  /** Other devices whose changes haven't all reached this one yet. */
+  behind?: SyncBehind[];
 }
+
+/** Another device with changes this one hasn't received. */
+export interface SyncBehind {
+  /** "iPhone", "Windows PC". */
+  label: string;
+  /** Its change files received here, and how many it has made. */
+  read: number;
+  written: number;
+  books: number;
+}
+
 
 export interface SupabaseProject {
   url: string;

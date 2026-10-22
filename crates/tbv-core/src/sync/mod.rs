@@ -101,6 +101,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: false,
     },
     Kind {
+        name: "book_same",
+        table: "books",
+        keys: &["id"],
+        cols: &["same_as"],
+        category: Category::Library,
+        creates: false,
+    },
+    Kind {
         name: "book_shelves",
         table: "books",
         keys: &["id"],
@@ -423,6 +431,14 @@ impl Lane {
             Lane::Also => ALSO_LAST_ERROR,
         }
     }
+
+    /// Other devices whose changes haven't all arrived through this place.
+    fn behind_key(self) -> &'static str {
+        match self {
+            Lane::Main => "sync.behind",
+            Lane::Also => "sync.also.behind",
+        }
+    }
 }
 
 /// The Supabase project the user set up (Settings › Sync › Supabase).
@@ -532,6 +548,12 @@ impl Remote for Cloud {
     }
     fn covers_follow_files(&self) -> bool {
         matches!(self, Cloud::Supabase(_))
+    }
+    fn note_this_device(&mut self, books: u64) -> Result<()> {
+        self.remote().note_this_device(books)
+    }
+    fn behind(&mut self, cursor: &str) -> Result<Vec<Behind>> {
+        self.remote().behind(cursor)
     }
 }
 
@@ -664,6 +686,40 @@ pub trait Remote: Send {
     /// Elsewhere every cover is sent.
     fn covers_follow_files(&self) -> bool {
         false
+    }
+    /// Tells other devices how far this one's changes go and how many books
+    /// it has. Only a folder needs it; a server numbers changes itself.
+    fn note_this_device(&mut self, _books: u64) -> Result<()> {
+        Ok(())
+    }
+    /// Other devices with changes past `cursor` that couldn't be read yet.
+    fn behind(&mut self, _cursor: &str) -> Result<Vec<Behind>> {
+        Ok(Vec::new())
+    }
+}
+
+/// Another device whose changes haven't all reached this one.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Behind {
+    /// What kind of device: "iPhone", "Windows PC".
+    pub label: String,
+    /// Its change files read here, and how many it has written.
+    pub read: u64,
+    pub written: u64,
+    /// The books it has.
+    pub books: u64,
+}
+
+/// What this device is, for others to name it.
+pub fn device_label() -> &'static str {
+    match std::env::consts::OS {
+        "ios" => "iPhone",
+        "android" => "Android phone",
+        "windows" => "Windows PC",
+        "macos" => "Mac",
+        "linux" => "Linux computer",
+        _ => "Another device",
     }
 }
 
@@ -947,7 +1003,30 @@ impl Library {
         Ok(SyncStatus {
             state,
             last_success_at: self.setting(LAST_SUCCESS)?,
+            behind: self.behind()?,
         })
+    }
+
+    /// Other devices whose changes haven't all reached this one, through
+    /// either place.
+    pub fn behind(&self) -> Result<Vec<Behind>> {
+        let mut all: Vec<Behind> = Vec::new();
+        for lane in [Lane::Main, Lane::Also] {
+            if let Some(saved) = self.setting(lane.behind_key())? {
+                all.extend(serde_json::from_str::<Vec<Behind>>(&saved).unwrap_or_default());
+            }
+        }
+        Ok(all)
+    }
+
+    fn set_behind(&self, lane: Lane, behind: &[Behind]) -> Result<()> {
+        let saved = if behind.is_empty() { None } else { Some(serde_json::to_string(behind)?) };
+        self.put_setting(lane.behind_key(), saved.as_deref())
+    }
+
+    /// The books as they're listed here, for other devices to compare with.
+    fn listed_books(&self) -> Result<u64> {
+        Ok(self.conn.query_row("SELECT COUNT(*) FROM books WHERE deleted_at IS NULL AND same_as IS NULL", [], |r| r.get::<_, i64>(0))?.max(0) as u64)
     }
 
     pub fn sync_overview(&self) -> Result<SyncOverview> {
@@ -1385,6 +1464,7 @@ impl Library {
             "book_progress" => format!("Reading progress{}", book(key.first())?),
             "book_shelves" => format!("Favourite and To be read{}", book(key.first())?),
             "book_phone" => format!("Whether the phone has it{}", book(key.first())?),
+            "book_same" => format!("Copies kept together{}", book(key.first())?),
             "override" => format!("A corrected detail{}", book(key.first())?),
             "fetched" => format!("A detail found online{}", book(key.first())?),
             "audiobook" => format!("Chapters and narrators{}", book(key.first())?),
@@ -1878,6 +1958,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
                 "Not on the phone".into()
             }
         }
+        "book_same" => if text("same_as").is_empty() { "A book of its own".into() } else { "Kept with another copy".into() },
         "book" => short(text("title")),
         "override" | "fetched" => short(text("value")),
         "audiobook" => if data.get("ebook_id").and_then(|v| v.as_str()).is_some_and(|v| !v.is_empty()) { "Linked to its ebook".into() } else { "Chapters and narrators".into() },
@@ -2273,6 +2354,10 @@ fn pull(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, 
             break;
         }
     }
+    // A folder can hold changes this device can't read yet (its cloud app
+    // hasn't brought them down): say so rather than look up to date.
+    let behind = remote.behind(&cursor).unwrap_or_default();
+    lock()?.set_behind(lane, &behind)?;
     Ok(())
 }
 
@@ -2291,6 +2376,9 @@ fn push(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, 
         report.sent += fresh.len() as u32;
         tell(SyncEvent::Records { lane, received: report.received, sent: report.sent });
     }
+    let books = lock()?.listed_books()?;
+    // Only a help to other devices, so a failure here doesn't fail the sync.
+    let _ = remote.note_this_device(books);
     Ok(())
 }
 

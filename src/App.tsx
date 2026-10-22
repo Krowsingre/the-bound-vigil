@@ -79,7 +79,7 @@ export function App() {
   const [details, setDetails] = useState<{ bookId: string; from: Route } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [reading, setReading] = useState<{ bookId: string; at?: string } | null>(null);
+  const [reading, setReading] = useState<{ bookId: string; at?: string; fileId?: string } | null>(null);
   const [openCollection, setOpenCollection] = useState<CollectionRef | null>(null);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const search = useRef<HTMLInputElement>(null);
@@ -332,7 +332,7 @@ export function App() {
   }, [toggleSidebar, importBooks, reading, navigate, togglePrivacy, back]);
 
   const onHomeLoaded = useCallback((home: HomeViewModel) => setSync(home.sync), []);
-  const openBook = useCallback((bookId: string, at?: string) => setReading({ bookId, at }), []);
+  const openBook = useCallback((bookId: string, at?: string, fileId?: string) => setReading({ bookId, at, fileId }), []);
   const showCollection = useCallback((id: string) => {
     setOpenCollection({ kind: "collection", id });
     setRoute("collections");
@@ -398,7 +398,7 @@ export function App() {
     onPullDown: route !== "home" ? toHome : undefined,
   });
 
-  if (reading) return <Reader key={reading.bookId} bookId={reading.bookId} openAt={reading.at} shell={shell} onClose={closeBook} />;
+  if (reading) return <Reader key={`${reading.bookId}/${reading.fileId ?? ""}`} bookId={reading.bookId} fileId={reading.fileId} openAt={reading.at} shell={shell} onClose={closeBook} />;
 
   return (
     <div ref={appRoot} className={`app${collapsed ? " sidebar-collapsed" : ""}${player.book ? " has-player" : ""}`}>
