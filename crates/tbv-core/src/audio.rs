@@ -858,6 +858,30 @@ impl crate::library::Library {
         Ok(linked)
     }
 
+    /// Read-along timing for an ebook and its audiobook, if worked out yet.
+    pub fn read_along_timing(&self, ebook_id: &str, audiobook_id: &str) -> Result<Option<String>> {
+        use rusqlite::OptionalExtension;
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT timing FROM read_along WHERE ebook_id = ?1 AND audiobook_id = ?2",
+                rusqlite::params![ebook_id, audiobook_id],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Keeps read-along timing, which syncs to other devices.
+    pub fn save_read_along_timing(&self, ebook_id: &str, audiobook_id: &str, timing: &str) -> Result<()> {
+        serde_json::from_str::<serde_json::Value>(timing).map_err(|_| Error::Unsuitable("That read-along timing isn't readable.".into()))?;
+        self.conn.execute(
+            "INSERT INTO read_along (ebook_id, audiobook_id, timing, updated_at) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(ebook_id, audiobook_id) DO UPDATE SET timing = excluded.timing, updated_at = excluded.updated_at",
+            rusqlite::params![ebook_id, audiobook_id, timing, crate::time::now_utc()],
+        )?;
+        Ok(())
+    }
+
     /// The audiobook linked to an ebook, if any, for the reader.
     pub fn audiobook_for_ebook(&self, ebook_id: &str) -> Result<Option<String>> {
         use rusqlite::OptionalExtension;

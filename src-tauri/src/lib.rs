@@ -213,6 +213,45 @@ async fn audiobook(state: State<'_, AppLibrary>, book_id: String) -> CommandResu
     with_library(state, move |library| library.audiobook(&book_id)).await
 }
 
+/// The audiobook being listened to for read-along timing, kept open so
+/// stretch after stretch through it stays quick.
+static LISTENING: std::sync::Mutex<Option<(String, tbv_core::listen::Listener)>> = std::sync::Mutex::new(None);
+
+/// A stretch of an audiobook on this computer as 16 kHz mono samples
+/// (little-endian 32-bit floats), for read-along timing. An empty answer
+/// means the book has ended.
+#[tauri::command]
+async fn audio_clip(state: State<'_, AppLibrary>, book_id: String, start_ms: u64, len_ms: u64) -> CommandResult<tauri::ipc::Response> {
+    let library = state.0.clone();
+    let samples = tauri::async_runtime::spawn_blocking(move || -> tbv_core::Result<Vec<f32>> {
+        let mut listening = LISTENING.lock().unwrap_or_else(|e| e.into_inner());
+        if listening.as_ref().is_none_or(|(id, _)| *id != book_id) {
+            let (path, format, parts) = {
+                let l = library.lock().map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?;
+                let (path, format) = l.audio_file(&book_id)?;
+                (path, format, l.audiobook(&book_id)?.parts)
+            };
+            *listening = Some((book_id.clone(), tbv_core::listen::Listener::open(&path, &format, &parts)?));
+        }
+        let (_, listener) = listening.as_mut().expect("opened above");
+        listener.clip(start_ms, len_ms)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(samples.iter().flat_map(|s| s.to_le_bytes()).collect::<Vec<u8>>()))
+}
+
+#[tauri::command]
+async fn read_along_timing(state: State<'_, AppLibrary>, ebook_id: String, audiobook_id: String) -> CommandResult<Option<String>> {
+    with_library(state, move |library| library.read_along_timing(&ebook_id, &audiobook_id)).await
+}
+
+#[tauri::command]
+async fn save_read_along_timing(state: State<'_, AppLibrary>, ebook_id: String, audiobook_id: String, timing: String) -> CommandResult<()> {
+    with_library(state, move |library| library.save_read_along_timing(&ebook_id, &audiobook_id, &timing)).await
+}
+
 /// Gets an audiobook that isn't on this computer ready to play straight
 /// from the cloud, without downloading it.
 #[tauri::command]
@@ -1487,6 +1526,9 @@ pub fn run() {
             find_duplicates,
             find_series_books,
             prepare_stream,
+            audio_clip,
+            read_along_timing,
+            save_read_along_timing,
             home_status,
             set_home,
             new_home_code,
