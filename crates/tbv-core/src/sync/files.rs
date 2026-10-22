@@ -28,6 +28,40 @@ pub const LIBRARY_FOLDER: &str = "The Bound Vigil";
 const MARKER: &str = "library.json";
 const CHANGES: &str = "changes/";
 
+/// Brings down a file the cloud app hasn't kept here yet, waiting until it
+/// arrives (true once it has). On iPhone, iCloud leaves a small
+/// `.<name>.icloud` stand-in in a file's place until it's asked for.
+static FETCH: std::sync::OnceLock<fn(&Path) -> bool> = std::sync::OnceLock::new();
+
+/// How to bring down a file that only has a stand-in (the iPhone app's).
+pub fn set_fetcher(fetch: fn(&Path) -> bool) {
+    let _ = FETCH.set(fetch);
+}
+
+/// iCloud's stand-in for a file it hasn't brought down.
+fn stand_in(path: &Path) -> Option<PathBuf> {
+    let name = path.file_name()?.to_string_lossy();
+    Some(path.with_file_name(format!(".{name}.icloud")))
+}
+
+/// The file's name if `name` is iCloud's stand-in for it.
+fn stood_in_for(name: &str) -> Option<&str> {
+    name.strip_prefix('.')?.strip_suffix(".icloud").filter(|n| !n.is_empty())
+}
+
+/// Makes sure the file is really here, bringing it down if only its
+/// stand-in is.
+fn bring_down(path: &Path) {
+    if path.exists() {
+        return;
+    }
+    if let (Some(fetch), Some(stand_in)) = (FETCH.get(), stand_in(path)) {
+        if stand_in.exists() {
+            fetch(path);
+        }
+    }
+}
+
 /// A place files can be kept: paths are relative and use `/`.
 pub trait Store {
     /// The file's bytes, or `None` if there's no such file.
@@ -212,6 +246,8 @@ pub struct FolderStore {
 impl FolderStore {
     /// TBV's library folder inside `chosen`. The chosen folder must exist,
     /// since a missing one usually means its cloud app isn't running.
+    /// The library folder itself can be chosen too (the iPhone app can only
+    /// open the folder picked in Files).
     pub fn open(chosen: &Path) -> Result<Self> {
         if !chosen.is_dir() {
             return Err(Error::Offline(format!(
@@ -219,7 +255,9 @@ impl FolderStore {
                 chosen.display()
             )));
         }
-        let root = chosen.join(LIBRARY_FOLDER);
+        let inside = chosen.join(LIBRARY_FOLDER);
+        let is_library = chosen.file_name().is_some_and(|n| n == LIBRARY_FOLDER) && !inside.exists();
+        let root = if is_library { chosen.to_path_buf() } else { inside };
         fs::create_dir_all(&root)?;
         Ok(Self { root })
     }
@@ -247,7 +285,9 @@ impl FolderStore {
 
 impl Store for FolderStore {
     fn read(&mut self, path: &str) -> Result<Option<Vec<u8>>> {
-        match fs::read(self.at(path)) {
+        let at = self.at(path);
+        bring_down(&at);
+        match fs::read(at) {
             Ok(bytes) => Ok(Some(bytes)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
@@ -272,6 +312,7 @@ impl Store for FolderStore {
 
     fn get_file(&mut self, path: &str, to: &Path) -> Result<bool> {
         let from = self.at(path);
+        bring_down(&from);
         if !from.is_file() {
             return Ok(false);
         }
@@ -286,11 +327,20 @@ impl Store for FolderStore {
             Err(e) => return Err(e.into()),
         };
         let mut names = Vec::new();
+        let mut not_here = Vec::new();
         for entry in entries {
             let name = entry?.file_name().to_string_lossy().into_owned();
+            if let Some(real) = stood_in_for(&name) {
+                not_here.push(real.to_string());
             // Half-written files, and the cloud apps' own bookkeeping.
-            if !name.starts_with('.') && !name.ends_with(".tbv-partial") && !name.eq_ignore_ascii_case("desktop.ini") {
+            } else if !name.starts_with('.') && !name.ends_with(".tbv-partial") && !name.eq_ignore_ascii_case("desktop.ini") {
                 names.push(name);
+            }
+        }
+        // Files iCloud hasn't brought down yet are still there.
+        for real in not_here {
+            if !real.ends_with(".tbv-partial") && !names.contains(&real) {
+                names.push(real);
             }
         }
         Ok(names)
@@ -315,7 +365,9 @@ impl Store for FolderStore {
     /// it, as it would for any program; TBV doesn't keep a copy.
     fn read_range(&mut self, path: &str, start: u64, end: u64) -> Result<Option<(Vec<u8>, u64)>> {
         use std::io::{Read, Seek, SeekFrom};
-        let mut file = match fs::File::open(self.at(path)) {
+        let at = self.at(path);
+        bring_down(&at);
+        let mut file = match fs::File::open(at) {
             Ok(file) => file,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e.into()),
@@ -395,5 +447,35 @@ pub(crate) mod tests {
         assert!(!store.get_file("covers/none.jpg", &dir.path().join("x")).unwrap());
         assert!(store.list("books/").unwrap().is_empty());
         assert!(FolderStore::open(&dir.path().join("missing")).is_err());
+    }
+
+    #[test]
+    fn the_library_folder_itself_can_be_chosen() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = dir.path().join(LIBRARY_FOLDER);
+        fs::create_dir(&library).unwrap();
+        let mut store = FolderStore::open(&library).unwrap();
+        store.write("library.json", b"{}").unwrap();
+        assert!(library.join("library.json").is_file());
+        assert!(!library.join(LIBRARY_FOLDER).exists());
+    }
+
+    #[test]
+    fn files_icloud_has_not_brought_down_are_listed_and_fetched() {
+        // Stands in for iCloud: bringing a file down replaces its stand-in.
+        fn fetch(path: &Path) -> bool {
+            fs::rename(stand_in(path).unwrap(), path).is_ok()
+        }
+        set_fetcher(fetch);
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = FolderStore::open(dir.path()).unwrap();
+        let covers = dir.path().join(LIBRARY_FOLDER).join("covers");
+        fs::create_dir_all(&covers).unwrap();
+        fs::write(covers.join("here.jpg"), b"here").unwrap();
+        fs::write(covers.join(".away.jpg.icloud"), b"away").unwrap();
+        let mut names = store.list("covers/").unwrap();
+        names.sort();
+        assert_eq!(names, ["away.jpg", "here.jpg"]);
+        assert_eq!(store.read("covers/away.jpg").unwrap().unwrap(), b"away");
     }
 }

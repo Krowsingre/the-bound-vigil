@@ -3,7 +3,7 @@
 // server. TBV makes a folder called "The Bound Vigil" inside the one chosen.
 
 import { useEffect, useState } from "react";
-import { api, isApp } from "../api";
+import { api, isApp, isIOS } from "../api";
 import type { ProviderChoice, ProviderView } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
@@ -52,6 +52,21 @@ const SERVICE: Record<FolderService, { name: string; app: string; steps: string[
     ],
   },
 };
+
+/** On iPhone every folder is chosen in the Files app. */
+function iphoneSteps(service: FolderService, name: string): string[] {
+  const shows =
+    service === "icloud"
+      ? "iCloud Drive is already in the Files app if it's turned on (Settings › your name › iCloud)."
+      : service === "custom"
+        ? "If the service has an app, install it and sign in so it shows in the Files app."
+        : `Install the ${name} app and sign in, so ${name} shows in the Files app.`;
+  return [
+    shows,
+    "Tap Choose folder and pick the folder called The Bound Vigil that your computer made there.",
+    "No library there yet? Pick the place to start one instead, and TBV makes the folder.",
+  ];
+}
 
 export function serviceName(service: string | null): string {
   return service && service in SERVICE ? SERVICE[service as FolderService].name : "a folder";
@@ -109,7 +124,7 @@ export function SyncFolderPanel({
     <div className="settings-subpanel sync-folder">
       <h3>{service === "custom" ? "Another service" : `Sync with ${info.name}`}</h3>
       <ol className="setup-steps">
-        {info.steps.map((s) => (
+        {(isIOS ? iphoneSteps(service, info.name) : info.steps).map((s) => (
           <li key={s}>{s}</li>
         ))}
       </ol>

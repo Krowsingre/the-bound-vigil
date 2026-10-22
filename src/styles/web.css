@@ -308,3 +308,9 @@
   height: 34px;
   font-size: 13px;
 }
+
+/* The iPhone app runs under the status bar and notch, so it keeps clear. */
+.is-ios-app #root {
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top);
+}

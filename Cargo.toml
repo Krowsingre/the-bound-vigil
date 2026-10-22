@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/tbv-core", "src-tauri"]
+members = ["crates/tbv-core", "crates/tauri-plugin-tbv-ios", "src-tauri"]
 
 [workspace.package]
 edition = "2021"

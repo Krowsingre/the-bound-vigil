@@ -5827,6 +5827,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-tbv-ios"
+version = "1.10.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+]
+
+[[package]]
 name = "tauri-runtime"
 version = "2.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5928,7 +5938,7 @@ dependencies = [
 
 [[package]]
 name = "tbv-core"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "cfb",
  "chrono",
@@ -5988,7 +5998,7 @@ dependencies = [
 
 [[package]]
 name = "the-bound-vigil"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "qrcode",
  "serde",
@@ -5997,6 +6007,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
+ "tauri-plugin-tbv-ios",
  "tbv-core",
  "tempfile",
  "uuid",

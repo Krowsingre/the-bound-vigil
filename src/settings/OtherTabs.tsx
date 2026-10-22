@@ -737,7 +737,7 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
 ];
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.9.0");
+  const [version, setVersion] = useState("1.10.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

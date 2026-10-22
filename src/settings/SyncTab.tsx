@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, isApp, isWeb } from "../api";
+import { api, isApp, isIOS, isWeb } from "../api";
 import type { ProviderView, SupabaseProject, SyncOverview } from "../api/types";
 import { relativeTime } from "../lib/format";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -267,10 +267,10 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
 
       {overview && !isWeb && <UsageSection overview={overview} />}
 
-      {overview && !isWeb && <PhoneSection overview={overview} />}
+      {overview && !isWeb && !isIOS && <PhoneSection overview={overview} />}
       {overview && !isWeb && <TidySection overview={overview} />}
       {overview && !isWeb && <ContentsSection overview={overview} />}
-      {!isWeb && <HomeSection />}
+      {!isWeb && !isIOS && <HomeSection />}
 
       <Section
         id="options"
