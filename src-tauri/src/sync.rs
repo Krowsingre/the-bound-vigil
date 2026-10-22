@@ -155,7 +155,7 @@ fn keep(library: &Arc<Mutex<Library>>, mut cloud: Option<Cloud>) -> tbv_core::Re
 }
 
 pub fn status(library: &Library, busy: bool) -> SyncStatus {
-    let mut status = library.sync_status().unwrap_or(SyncStatus { state: SyncState::Error, last_success_at: None });
+    let mut status = library.sync_status().unwrap_or(SyncStatus { state: SyncState::Error, last_success_at: None, behind: Vec::new() });
     if busy && status.state != SyncState::Disabled {
         status.state = SyncState::Syncing;
     }

@@ -103,6 +103,25 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, ASWebAuthenticationPresentati
     }
   }
 
+  /// Asks iCloud for the latest of a folder or file: a coordinated read
+  /// makes it catch up first, since on a phone it doesn't always notice new
+  /// files another device made. Gives up waiting after 20 seconds.
+  @objc public func refreshItem(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(PathArgs.self)
+    let url = URL(fileURLWithPath: args.path)
+    DispatchQueue.global(qos: .userInitiated).async {
+      let done = DispatchSemaphore(value: 0)
+      DispatchQueue.global(qos: .userInitiated).async {
+        try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+        var failed: NSError?
+        NSFileCoordinator(filePresenter: nil).coordinate(readingItemAt: url, options: [], error: &failed) { _ in }
+        done.signal()
+      }
+      _ = done.wait(timeout: .now() + 20)
+      invoke.resolve(["ok": true])
+    }
+  }
+
   /// Shows a sign-in page over TBV. Its answer goes to TBV's own listener on
   /// this phone, which only hears it while TBV stays in front, as it does here.
   @objc public func openSignIn(_ invoke: Invoke) throws {

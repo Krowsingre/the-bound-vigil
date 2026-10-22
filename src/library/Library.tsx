@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, isHome, isWeb } from "../api";
 import type { BookPreview, CollectionPreview, ItemKind, LibraryPage } from "../api/types";
+import { askAddToCollection } from "../collections/AddToCollection";
 import { askEditDetails } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
 import { askSendWithLocalSend, canSendWithLocalSend } from "../localsend/SendWithLocalSend";
@@ -311,6 +312,7 @@ export function Library({
   const chosenActions: MenuEntry[] = [
     { label: "Edit details", icon: "edit", disabled: none, onSelect: () => askEditDetails(chosen) },
     { label: "Tags", icon: "tag", disabled: none, onSelect: () => setTagging(true) },
+    { label: "Add to or take out of a collection", icon: "collections", disabled: none, onSelect: () => askAddToCollection(chosen) },
     ...(kind !== "audiobooks" ? [{ label: "Send to e-reader", icon: "ereader", disabled: none, onSelect: () => askSendToEreader(chosen) } as MenuItem] : []),
     ...(canSendWithLocalSend ? [{ label: "Send with LocalSend", icon: "upload", disabled: none, onSelect: () => askSendWithLocalSend(chosen) } as MenuItem] : []),
     ...(!isWeb && phoneChoiceShown()
@@ -323,6 +325,12 @@ export function Library({
       : []),
     { label: "Save copies", icon: "copy", disabled: none || busy !== null, onSelect: () => void saveChosen() },
     {
+      label: "Download to this device",
+      icon: "download",
+      disabled: !chosen.some(downloadable) || busy !== null,
+      onSelect: () => void downloadChosen(),
+    },
+    {
       label: "Remove download",
       icon: "cloudOff",
       hint: "Keeps the cloud copy",
@@ -334,6 +342,24 @@ export function Library({
     { label: "Remove from library", icon: "close", disabled: none || busy !== null, onSelect: () => setAsking("remove") },
     { label: "Delete", icon: "trash", danger: true, disabled: none || busy !== null, onSelect: () => setAsking("delete") },
   ];
+
+  /** Downloads the chosen books that aren't on this device, one at a time. */
+  const downloadChosen = async () => {
+    const list = chosen.filter(downloadable);
+    let failed = 0;
+    for (let i = 0; i < list.length; i++) {
+      setBusy(`Downloading: ${i + 1} of ${list.length}…`);
+      try {
+        await api.downloadBook(list[i].id);
+      } catch {
+        failed++;
+      }
+    }
+    setBusy(null);
+    setReload((n) => n + 1);
+    const count = (n: number) => (n === 1 ? `1 ${words.one}` : `${n} ${words.many}`);
+    toast(failed ? `Downloaded ${count(list.length - failed)}. ${count(failed)} couldn't be downloaded.` : `Downloaded ${count(list.length)} to this device.`);
+  };
 
   /** Removes downloads, removes from the library, or deletes, one book at a time. */
   const changeChosen = async (what: "remove" | "delete" | "download") => {
@@ -610,6 +636,9 @@ export function Library({
     </div>
   );
 }
+
+/** A book that can be downloaded here: only in the cloud, or its file gone from here. */
+const downloadable = (b: BookPreview) => !b.fileUnavailable && (b.availability === "cloud" || b.availability === "missing");
 
 const KNOWN_LISTS = ["formats", "tags", "genres", "languages"] as const;
 

@@ -111,7 +111,20 @@ export type SyncState = "disabled" | "idle" | "syncing" | "offline" | "attention
 export interface SyncStatus {
   state: SyncState;
   lastSuccessAt: IsoUtc | null;
+  /** Other devices whose changes haven't all reached this one yet. */
+  behind?: SyncBehind[];
 }
+
+/** Another device with changes this one hasn't received. */
+export interface SyncBehind {
+  /** "iPhone", "Windows PC". */
+  label: string;
+  /** Its change files received here, and how many it has made. */
+  read: number;
+  written: number;
+  books: number;
+}
+
 
 export interface SupabaseProject {
   url: string;

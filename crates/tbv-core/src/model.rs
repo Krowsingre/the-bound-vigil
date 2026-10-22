@@ -210,6 +210,9 @@ pub enum SyncState {
 pub struct SyncStatus {
     pub state: SyncState,
     pub last_success_at: Option<IsoUtc>,
+    /// Other devices whose changes haven't all reached this one yet.
+    #[serde(default)]
+    pub behind: Vec<crate::sync::Behind>,
 }
 
 /// Reading activity is only reported once reading sessions are recorded.

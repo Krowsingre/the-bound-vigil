@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, isApp, isIOS, isWeb } from "../api";
 import type { ProviderView, SupabaseProject, SyncOverview } from "../api/types";
 import { relativeTime } from "../lib/format";
+import { behindText } from "../shell/SyncMenu";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
@@ -151,6 +152,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
               )}
             </dl>
             {showing && overview?.lastError && <p className="form-error">{overview.lastError}</p>}
+            {showing && !!overview?.status.behind?.length && <p className="muted">{behindText(overview.status.behind)}</p>}
             <div className="connection-actions">
               {showing && (
                 <button type="button" className="btn btn-primary" disabled={state === "syncing"} onClick={() => void api.syncNow()}>

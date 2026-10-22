@@ -502,7 +502,38 @@ impl Library {
         crate::sync::install_triggers(&library.conn)?;
         library.conn.execute_batch(RETIRED_SHELVES)?;
         library.adopt_device_avatar()?;
+        library.follow_moved_folders()?;
         Ok(library)
+    }
+
+    /// The iPhone gives an app a new folder path whenever it's updated, so
+    /// the paths kept for downloaded books and covers point at a folder
+    /// that's gone. When TBV's own folders have moved, the kept paths move
+    /// with them.
+    fn follow_moved_folders(&self) -> Result<()> {
+        for (key, now, column) in [
+            ("paths.books_dir", &self.paths.books_dir, "path"),
+            ("paths.covers_dir", &self.paths.covers_dir, "cover_path"),
+        ] {
+            let now = now.to_string_lossy().into_owned();
+            let before: Option<String> =
+                self.conn.query_row("SELECT value FROM device_settings WHERE key = ?1", params![key], |r| r.get(0)).optional()?;
+            if let Some(before) = before.filter(|b| *b != now) {
+                // Only paths inside the old folder, with a separator after it.
+                self.conn.execute(
+                    &format!(
+                        "UPDATE local_files SET {column} = ?2 || substr({column}, length(?1) + 1)
+                         WHERE substr({column}, 1, length(?1)) = ?1 AND substr({column}, length(?1) + 1, 1) IN ('/', '\\')"
+                    ),
+                    params![before, now],
+                )?;
+            }
+            self.conn.execute(
+                "INSERT INTO device_settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![key, now],
+            )?;
+        }
+        Ok(())
     }
 
     /// The schema this version of TBV writes.
@@ -1111,6 +1142,25 @@ pub(crate) mod tests {
         let paths = LibraryPaths::new(&dir.path().join("data"), &dir.path().join("cache"));
         let library = Library::open(paths).unwrap();
         (dir, library)
+    }
+
+    #[test]
+    fn downloaded_books_are_still_found_after_the_app_folder_moves() {
+        let dir = tempfile::tempdir().unwrap();
+        let (old, new) = (dir.path().join("Application-A"), dir.path().join("Application-B"));
+        {
+            let mut library = Library::open(LibraryPaths::new(&old.join("data"), &old.join("cache"))).unwrap();
+            let source = dir.path().join("Carmilla.epub");
+            write_test_epub(&source, "Carmilla", "J. Sheridan Le Fanu", true);
+            library.import_files(&[source]);
+            assert_eq!(library.home().unwrap().recently_added[0].availability, crate::model::Availability::Local);
+        }
+        // What an iPhone app update does: the same files, under a new folder.
+        fs::rename(&old, &new).unwrap();
+        let library = Library::open(LibraryPaths::new(&new.join("data"), &new.join("cache"))).unwrap();
+        let book = library.home().unwrap().recently_added[0].clone();
+        assert_eq!(book.availability, crate::model::Availability::Local);
+        assert!(book.cover_path.is_some_and(|c| c.starts_with(new.to_str().unwrap())));
     }
 
     #[test]

@@ -1643,6 +1643,8 @@ pub fn run() {
             // iCloud on iPhone keeps only stand-ins for files until asked.
             #[cfg(target_os = "ios")]
             tbv_core::sync::files::set_fetcher(tauri_plugin_tbv_ios::fetch);
+            #[cfg(target_os = "ios")]
+            tbv_core::sync::files::set_refresher(tauri_plugin_tbv_ios::refresh);
             let data_dir = app.path().app_data_dir()?;
             let cache_dir = app.path().app_cache_dir()?;
             let library = Arc::new(Mutex::new(Library::open(LibraryPaths::new(&data_dir, &cache_dir))?));
