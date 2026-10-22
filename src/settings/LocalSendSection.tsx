@@ -19,15 +19,15 @@ export function LocalSendSection() {
   return (
     <Section
       id="localsend"
-      title="LocalSend"
-      lede="Send books, documents and audiobooks to TBV from your phone with the free LocalSend app. Both need to be on the same Wi-Fi."
+      title="Grimoire"
+      lede="Grimoire passes books, documents and audiobooks between your devices on the same Wi-Fi: TBV on another phone, iPad or computer, or the free LocalSend app on a device without TBV."
     >
       <Toggle
-        label="Receive from LocalSend"
+        label="Receive with Grimoire"
         hint={
           status?.running
-            ? `TBV shows in LocalSend as “${status.alias}”. You're asked before anything is taken, and only books, documents and audiobooks are.`
-            : "While this is on, TBV shows in LocalSend's list of nearby devices."
+            ? `Other devices see this one as “${status.alias}”. You're asked before anything is taken, and only books, documents and audiobooks are.`
+            : "While this is on, other devices nearby can find this one and send to it."
         }
         checked={Boolean(status?.enabled)}
         disabled={!isApp && status === null}
@@ -37,7 +37,7 @@ export function LocalSendSection() {
       {error && <p className="form-error">{error}</p>}
       {status?.running && (
         <p className="settings-row-hint">
-          The first time, Windows may ask whether TBV can use your network. Allow it on private networks, or LocalSend won't find TBV.
+          The first time, Windows may ask whether TBV can use your network. Allow it on private networks, or other devices won't find this one.
         </p>
       )}
     </Section>

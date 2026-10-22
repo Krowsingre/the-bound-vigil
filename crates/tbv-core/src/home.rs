@@ -48,6 +48,15 @@ pub(crate) const BOOK_COLUMNS: &str = r#"
            b.phone_wanted, b.phone_has
 "#;
 
+/// Leaves out a book when a newer copy of it (same title and first author,
+/// in another file) is in the library, so lists of what's new show each
+/// book once.
+pub(crate) const NEWEST_COPY: &str = "NOT EXISTS (SELECT 1 FROM books d
+    WHERE d.id != b.id AND d.deleted_at IS NULL AND d.same_as IS NULL
+      AND tbv_fold(d.title) = tbv_fold(b.title)
+      AND lower(COALESCE(json_extract(d.authors, '$[0]'), '')) = lower(COALESCE(json_extract(b.authors, '$[0]'), ''))
+      AND (d.added_at > b.added_at OR (d.added_at = b.added_at AND d.id > b.id)))";
+
 /// Effective narrators, for filters.
 pub(crate) const NARRATORS: &str = "COALESCE((SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = 'narrators'),
     (SELECT value FROM metadata_fetched WHERE book_id = b.id AND field = 'narrators'),
@@ -94,7 +103,7 @@ impl Library {
         )?;
         Ok(HomeViewModel {
             resume_book: in_progress.first().cloned(),
-            recently_added: self.books(&format!("AND b.format NOT IN ({audio}) ORDER BY b.added_at DESC"), RECENTLY_ADDED_LIMIT)?,
+            recently_added: self.books(&format!("AND b.format NOT IN ({audio}) AND {NEWEST_COPY} ORDER BY b.added_at DESC"), RECENTLY_ADDED_LIMIT)?,
             in_progress,
             collections: self.collection_previews()?,
             annotations: self.annotation_previews()?,
@@ -299,6 +308,22 @@ mod tests {
         assert!(home.activity.is_none());
         assert_eq!(home.library_counts, LibraryCounts::default());
         assert_eq!(home.sync.state, SyncState::Disabled);
+    }
+
+    #[test]
+    fn recently_added_shows_a_book_once_and_never_a_deleted_one() {
+        let (dir, mut library) = open_temp_library();
+        let gone = import(&mut library, dir.path(), "Gone");
+        library.delete_book(&gone).unwrap();
+        let path = dir.path().join("Twice.epub");
+        crate::epub::tests::write_test_epub_with(&path, "Carmilla", "Le Fanu", false, "");
+        library.import_files(&[path]);
+        std::thread::sleep(std::time::Duration::from_millis(3));
+        let other = dir.path().join("Twice again.epub");
+        crate::epub::tests::write_test_epub_with(&other, "Carmilla", "Le Fanu", false, "<p>another edition</p>");
+        library.import_files(&[other]);
+        let titles: Vec<String> = library.home().unwrap().recently_added.into_iter().map(|b| b.title).collect();
+        assert_eq!(titles, ["Carmilla"]);
     }
 
     #[test]

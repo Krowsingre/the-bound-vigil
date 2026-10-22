@@ -65,7 +65,16 @@ async fn queue_imports(
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     let (library, imports) = (state.0.clone(), imports.inner().clone());
     // Looking through a big folder can take a while; not on the UI thread.
-    tauri::async_runtime::spawn_blocking(move || imports.add(&app, &library, paths)).await.map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        // On iPhone, a folder in iCloud Drive holds only stand-ins for files
+        // iCloud hasn't brought down; they come down before the books are found.
+        for path in paths.iter().filter(|p| p.is_dir()) {
+            tbv_core::sync::files::bring_down_folder(path);
+        }
+        imports.add(&app, &library, paths)
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 // Off the window's thread, so a busy queue never freezes the app.
@@ -1630,6 +1639,22 @@ async fn ios_pick_folder() -> CommandResult<Option<String>> {
     Err("Choosing a folder this way only works on iPhone.".into())
 }
 
+/// Asks for files in the iPhone's Files app, copied into TBV's own folder so
+/// they're there to import. Empty if cancelled.
+#[tauri::command]
+async fn ios_pick_files(keep: Option<bool>) -> CommandResult<Vec<String>> {
+    #[cfg(target_os = "ios")]
+    {
+        let keep = keep.unwrap_or(false);
+        tauri::async_runtime::spawn_blocking(move || tauri_plugin_tbv_ios::pick_files(keep)).await.map_err(|e| e.to_string())?
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = keep;
+        Err("Choosing files this way only works on iPhone.".into())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
@@ -1683,6 +1708,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             ios_pick_folder,
+            ios_pick_files,
             writing::catalogs,
             writing::save_catalog,
             writing::remove_catalog,

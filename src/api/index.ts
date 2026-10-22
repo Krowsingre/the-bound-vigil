@@ -447,6 +447,14 @@ function appApi(): Api {
 
   const asList = (picked: string | string[] | null) =>
     picked === null ? [] : Array.isArray(picked) ? picked : [picked];
+  // On iPhone the dialog answers with addresses the core can't open, and
+  // iCloud files may not be on the phone yet, so TBV's own picker copies
+  // them in first.
+  // `keep` is for a file read again later (a key file), not just imported.
+  const openFiles = async ({ keep, ...options }: { multiple: boolean; title: string; filters?: { name: string; extensions: string[] }[]; keep?: boolean }) =>
+    isIOS
+      ? (await (await core).invoke<string[]>("ios_pick_files", { keep: !!keep })).slice(0, options.multiple ? undefined : 1)
+      : asList(await (await dialog).open(options));
   const today = () => new Date().toISOString().slice(0, 10);
   const saveTo = async (command: string, title: string, defaultPath: string, name: string, extensions: string[]) => {
     const path = await (await dialog).save({ title, defaultPath, filters: [{ name, extensions }] });
@@ -506,13 +514,11 @@ function appApi(): Api {
     setPhoneWanted: async (bookIds, wanted) => (await core).invoke("set_phone_wanted", { bookIds, wanted }),
     setRating: async (bookId, rating) => (await core).invoke("set_rating", { bookId, rating }),
     importGoodreads: async () => {
-      const [path] = asList(
-        await (await dialog).open({
-          multiple: false,
-          title: "Import your Goodreads export",
-          filters: [{ name: "Goodreads export", extensions: ["csv"] }],
-        }),
-      );
+      const [path] = await openFiles({
+        multiple: false,
+        title: "Import your Goodreads export",
+        filters: [{ name: "Goodreads export", extensions: ["csv"] }],
+      });
       return path ? (await core).invoke<GoodreadsImport>("import_goodreads", { path }) : null;
     },
     exportGoodreads: async () => {
@@ -574,24 +580,20 @@ function appApi(): Api {
         : `${/windows|android/i.test(navigator.userAgent) ? "http://tbvaudio.localhost" : "tbvaudio://localhost"}/${encodeURIComponent(bookId)}/${part}`,
     getProfile: async () => (await core).invoke<Profile>("get_profile"),
     chooseAvatar: async () => {
-      const [path] = asList(
-        await (await dialog).open({
-          multiple: false,
-          title: "Choose a profile picture",
-          filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
-        }),
-      );
+      const [path] = await openFiles({
+        multiple: false,
+        title: "Choose a profile picture",
+        filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+      });
       return path ? (await core).invoke<Profile>("set_avatar", { path }) : null;
     },
     clearAvatar: async () => (await core).invoke<Profile>("clear_avatar"),
     pickBooks: async () =>
-      asList(
-        await (await dialog).open({
-          multiple: true,
-          title: "Import books",
-          filters: [{ name: "Books", extensions: BOOK_EXTENSIONS }],
-        }),
-      ),
+      openFiles({
+        multiple: true,
+        title: "Import books",
+        filters: [{ name: "Books", extensions: BOOK_EXTENSIONS }],
+      }),
     pickFolder: async () =>
       isIOS
         ? asList(await (await core).invoke<string | null>("ios_pick_folder"))
@@ -620,13 +622,11 @@ function appApi(): Api {
     setCollectionPicture: async (id, picture) =>
       (await core).invoke<CollectionSummary>("set_collection_picture", { id, picture }),
     pickCollectionPicture: async () => {
-      const [path] = asList(
-        await (await dialog).open({
-          multiple: false,
-          title: "Choose a picture for this collection",
-          filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
-        }),
-      );
+      const [path] = await openFiles({
+        multiple: false,
+        title: "Choose a picture for this collection",
+        filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+      });
       return path ?? null;
     },
     setCollectionPictureFile: async (id, path) => (await core).invoke<CollectionSummary>("set_collection_picture_file", { id, path }),
@@ -645,13 +645,11 @@ function appApi(): Api {
     exportNotesMarkdown: () => saveTo("export_notes_markdown", "Export notes", `TBV notes ${today()}.md`, "Markdown", ["md"]),
     createBackup: () => saveTo("create_backup", "Create a backup", `TBV backup ${today()}.tbvbackup`, "TBV backup", ["tbvbackup"]),
     restoreBackup: async () => {
-      const [path] = asList(
-        await (await dialog).open({
-          multiple: false,
-          title: "Restore from a backup",
-          filters: [{ name: "TBV backup", extensions: ["tbvbackup", "db", "sqlite"] }],
-        }),
-      );
+      const [path] = await openFiles({
+        multiple: false,
+        title: "Restore from a backup",
+        filters: [{ name: "TBV backup", extensions: ["tbvbackup", "db", "sqlite"] }],
+      });
       if (!path) return false;
       await (await core).invoke("restore_backup", { path });
       return true;
@@ -823,13 +821,11 @@ function appApi(): Api {
       return Array.isArray(bytes) ? new Uint8Array(bytes) : new Uint8Array(bytes);
     },
     pickWritingCover: async () => {
-      const [path] = asList(
-        await (await dialog).open({
-          multiple: false,
-          title: "Choose a cover picture",
-          filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
-        }),
-      );
+      const [path] = await openFiles({
+        multiple: false,
+        title: "Choose a cover picture",
+        filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+      });
       return path ?? null;
     },
     pickEpubSavePath: async (fileName) =>
@@ -839,8 +835,8 @@ function appApi(): Api {
         headers: { path: encodeURIComponent(path ?? ""), add: addToLibrary ? "1" : "0", "file-name": encodeURIComponent(fileName) },
       }),
     pickKeyFile: async () => {
-      const picked = await (await dialog).open({ multiple: false, title: "Choose your private key file" });
-      return typeof picked === "string" ? picked : null;
+      const [picked] = await openFiles({ multiple: false, title: "Choose your private key file", keep: true });
+      return picked ?? null;
     },
     onSync: ({ status, libraryChanged }) => {
       const stops: (() => void)[] = [];

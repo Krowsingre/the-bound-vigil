@@ -85,6 +85,24 @@ fn bring_down(path: &Path) {
     }
 }
 
+/// Brings down every file in a folder (and those inside it) that iCloud has
+/// only a stand-in for. Does nothing where there are no stand-ins.
+pub fn bring_down_folder(dir: &Path) {
+    if FETCH.get().is_none() {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if path.is_dir() {
+            bring_down_folder(&path);
+        } else if let Some(real) = stood_in_for(&name) {
+            bring_down(&dir.join(real));
+        }
+    }
+}
+
 /// A place files can be kept: paths are relative and use `/`.
 pub trait Store {
     /// The file's bytes, or `None` if there's no such file.

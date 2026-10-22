@@ -66,13 +66,13 @@ impl Tls {
     /// A new self-signed certificate, as LocalSend devices make their own.
     pub fn make() -> Result<Tls> {
         let made = rcgen::generate_simple_self_signed(vec!["localsend".to_string()])
-            .map_err(|e| Error::Unsuitable(format!("TBV couldn't make its LocalSend certificate ({e}).")))?;
+            .map_err(|e| Error::Unsuitable(format!("TBV couldn't make its Grimoire certificate ({e}).")))?;
         Ok(Tls { cert: made.cert.pem(), key: made.key_pair.serialize_pem() })
     }
 
     /// How LocalSend knows a device that has a certificate: the SHA-256 of it, in capitals.
     pub fn fingerprint(&self) -> Result<String> {
-        let cert = ureq::tls::Certificate::from_pem(self.cert.as_bytes()).map_err(|e| Error::Unsuitable(format!("TBV's LocalSend certificate is damaged ({e}).")))?;
+        let cert = ureq::tls::Certificate::from_pem(self.cert.as_bytes()).map_err(|e| Error::Unsuitable(format!("TBV's Grimoire certificate is damaged ({e}).")))?;
         Ok(hex::encode_upper(sha2::Sha256::digest(cert.der())))
     }
 
@@ -219,7 +219,7 @@ struct State {
 pub fn start(identity: Identity, inbox: &Path, host: Arc<dyn Host>, announce: bool) -> Result<Receiver> {
     let listener = TcpListener::bind(("0.0.0.0", identity.port)).map_err(|e| {
         Error::Unsuitable(format!(
-            "TBV couldn't listen for LocalSend on port {} ({e}). If LocalSend itself is open on this computer, close it and try again.",
+            "TBV couldn't listen for Grimoire on port {} ({e}). If the LocalSend app is open on this computer, close it and try again.",
             identity.port
         ))
     })?;
@@ -685,6 +685,12 @@ pub fn find_nearby(me: &Identity, wait: Duration) -> Vec<Nearby> {
         socket.set_read_timeout(Some(Duration::from_millis(100)))?;
         Ok::<_, std::io::Error>(socket)
     });
+    // Phones and iPads can't always announce themselves (an iPhone app needs
+    // Apple's leave to), so every address on this Wi-Fi is also asked.
+    let scanning = {
+        let (done, port) = (done.clone(), me.port);
+        thread::spawn(move || ask_every_address(port, &done))
+    };
     let mut buffer = [0u8; 8192];
     while started.elapsed() < wait {
         if say_at.peek().is_some_and(|at| started.elapsed() >= *at) {
@@ -708,12 +714,52 @@ pub fn find_nearby(me: &Identity, wait: Duration) -> Vec<Nearby> {
     if let Some(callbacks) = callbacks {
         let _ = callbacks.join();
     }
+    let _ = scanning.join();
     let mut found: Vec<Nearby> = HEARD
         .lock()
         .map(|heard| heard.iter().filter(|(_, at)| at.elapsed() < FORGOTTEN).map(|(d, _)| d.clone()).collect())
         .unwrap_or_default();
     found.sort_by_key(|d| d.alias.to_lowercase());
     found
+}
+
+/// This device's address on the local network, if it has a private one.
+fn local_address() -> Option<Ipv4Addr> {
+    // Connecting a UDP socket sends nothing; it only picks the way out.
+    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).ok()?;
+    socket.connect((Ipv4Addr::new(1, 1, 1, 1), 53)).ok()?;
+    match socket.local_addr().ok()?.ip() {
+        IpAddr::V4(ip) if ip.is_private() => Some(ip),
+        _ => None,
+    }
+}
+
+/// How many addresses are asked at once, and how long each may take to answer.
+const ASKED_AT_ONCE: usize = 64;
+const KNOCK: Duration = Duration::from_millis(400);
+
+/// Asks every other address on this network (the usual home kind, a.b.c.1
+/// to a.b.c.254) whether a device is listening for sends there. Those that
+/// are, and answer, are remembered like ones heard announcing.
+fn ask_every_address(port: u16, done: &AtomicBool) {
+    let Some(me) = local_address() else { return };
+    let [a, b, c, own] = me.octets();
+    let others: Vec<Ipv4Addr> = (1..=254u8).filter(|&d| d != own).map(|d| Ipv4Addr::new(a, b, c, d)).collect();
+    for group in others.chunks(ASKED_AT_ONCE) {
+        if done.load(Ordering::SeqCst) {
+            return;
+        }
+        let open: Vec<Ipv4Addr> = thread::scope(|scope| {
+            let knocks: Vec<_> = group
+                .iter()
+                .map(|&ip| scope.spawn(move || TcpStream::connect_timeout(&SocketAddr::from((ip, port)), KNOCK).is_ok().then_some(ip)))
+                .collect();
+            knocks.into_iter().filter_map(|k| k.join().ok().flatten()).collect()
+        });
+        for ip in open {
+            let _ = device_at(&format!("{ip}:{port}"));
+        }
+    }
 }
 
 /// While looking with receiving off: devices answering register here.
@@ -753,7 +799,7 @@ pub fn device_at(address: &str) -> Result<Nearby> {
         Some((h, p)) if !h.contains(':') => (h, p.parse().map_err(|_| Error::Unsuitable("That address's port isn't a number.".into()))?),
         _ => (address, PORT),
     };
-    let ip: IpAddr = host.trim_matches(['[', ']']).parse().map_err(|_| Error::Unsuitable("Type the address as LocalSend shows it, like 192.168.1.20.".into()))?;
+    let ip: IpAddr = host.trim_matches(['[', ']']).parse().map_err(|_| Error::Unsuitable("Type the address the other device shows, like 192.168.1.20.".into()))?;
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(5)))
         .tls_config(ureq::tls::TlsConfig::builder().disable_verification(true).build())
@@ -773,7 +819,7 @@ pub fn device_at(address: &str) -> Result<Nearby> {
             }
         }
     }
-    Err(Error::Unsuitable(format!("Nothing answered at {address}. Check LocalSend is open on that device and it's on the same Wi-Fi.")))
+    Err(Error::Unsuitable(format!("Nothing answered at {address}. Check TBV (or the LocalSend app) is open and receiving on that device, on the same Wi-Fi.")))
 }
 
 /// One file to send.
@@ -836,7 +882,7 @@ pub fn send(me: &Identity, to: &Nearby, files: &[ToSend], stop: &Arc<AtomicBool>
         .build()
         .into();
     let base = format!("{}://{}:{}/api/localsend/v2", if to.https { "https" } else { "http" }, host_part(&to.address), to.port);
-    let offline = |e: ureq::Error| Error::Unsuitable(format!("{} couldn't be reached ({e}). Check it's on the same Wi-Fi with LocalSend open.", to.alias));
+    let offline = |e: ureq::Error| Error::Unsuitable(format!("{} couldn't be reached ({e}). Check it's on the same Wi-Fi and receiving.", to.alias));
     let listed: serde_json::Map<String, Value> = files
         .iter()
         .enumerate()
@@ -873,7 +919,7 @@ pub fn send(me: &Identity, to: &Nearby, files: &[ToSend], stop: &Arc<AtomicBool>
     match status {
         200 => {}
         204 => return Ok(0),
-        401 => return Err(Error::Unsuitable(format!("{} asks for a PIN. Turn the PIN off in its LocalSend settings and try again.", to.alias))),
+        401 => return Err(Error::Unsuitable(format!("{} asks for a PIN. Turn the PIN off in its settings and try again.", to.alias))),
         403 => return Err(Error::Unsuitable(format!("{} turned them down.", to.alias))),
         409 => return Err(Error::Unsuitable(format!("{} is busy with another transfer. Try again once it's done.", to.alias))),
         429 => return Err(Error::Unsuitable(format!("{} is getting too many requests. Wait a moment and try again.", to.alias))),

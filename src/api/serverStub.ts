@@ -5,7 +5,7 @@ import type { ServerQueueView } from "./types";
 
 export const SERVERS_DESKTOP_ONLY = "Importing from a server works in the desktop app.";
 
-export const LOCALSEND_APP_ONLY = "Sending with LocalSend works in the TBV app, not the web version.";
+export const LOCALSEND_APP_ONLY = "Sending with Grimoire works in the TBV app, not the web version.";
 
 export const NO_SERVER_QUEUE: ServerQueueView = {
   counts: { total: 0, waiting: 0, downloading: 0, downloaded: 0, done: 0, failed: 0, bytesTotal: 0, bytesDone: 0 },

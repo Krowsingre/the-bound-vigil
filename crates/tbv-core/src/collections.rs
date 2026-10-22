@@ -127,8 +127,11 @@ impl Library {
                     ),
                     SmartKind::Favorites => ("b.favorite = 1", "b.added_at DESC", vec![]),
                 };
+                // What's new shows each book once, not every copy of it.
+                let condition =
+                    if matches!(smart, SmartKind::RecentlyAdded) { format!("{condition} AND {}", crate::home::NEWEST_COPY) } else { condition.into() };
                 Members {
-                    condition: condition.into(),
+                    condition,
                     order: format!("{order}, {TITLE}"),
                     values: values.into_iter().map(Value::Text).collect(),
                 }
