@@ -18,6 +18,7 @@ import { effective, listOf } from "../lib/details";
 import { formatLength, formatLabel, isAudio, isDocument } from "../lib/queryBooks";
 import { formatBytes } from "../settings/controls";
 import { askEditDetails, askFetchDetails } from "./openDetails";
+import { SeriesRow } from "./SeriesRow";
 
 type Load = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: BookDetails };
 
@@ -252,6 +253,8 @@ export function BookDetailsPage({
                 ))}
             </dl>
           </section>
+
+          {book.series && <SeriesRow name={book.series} author={book.authors[0] ?? ""} bookId={book.id} refreshKey={refreshKey + reload} />}
 
           <section className="details-section">
             <h2>Tags and collections</h2>

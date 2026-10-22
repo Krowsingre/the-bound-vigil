@@ -1,6 +1,6 @@
 // The Library page's filtering, sorting and paging, done in the page itself.
 
-import type { BookPreview, ItemKind, LibraryPage, LibraryQuery, TagCount } from "../api/types";
+import type { BookPreview, ItemKind, LibraryExclude, LibraryPage, LibraryQuery, TagCount } from "../api/types";
 
 /** The kinds of file the Documents page holds (DOCUMENT_FORMATS in the core). */
 export const DOCUMENT_FORMATS = ["pdf", "doc", "docx", "txt"];
@@ -18,6 +18,23 @@ const sortTitle = (b: BookPreview) => b.title.replace(articles, "").toLowerCase(
 const byTitle = (a: BookPreview, b: BookPreview) => sortTitle(a).localeCompare(sortTitle(b));
 const nullsLast = <T>(a: T | null, b: T | null, cmp: (x: T, y: T) => number) =>
   a === null ? (b === null ? 0 : 1) : b === null ? -1 : cmp(a, b);
+
+/** Whether a book has any of the things chosen to leave out. */
+function excluded(b: BookPreview, x: LibraryExclude): boolean {
+  const any = (has: (string | null | undefined)[], out: string[]) => {
+    const o = out.map((v) => v.toLowerCase());
+    return has.some((v) => v != null && o.includes(v.toLowerCase()));
+  };
+  return (
+    any([b.format], x.formats) ||
+    any(b.tags, x.tags) ||
+    any(b.genres ?? [], x.genres) ||
+    any(b.authors, x.authors) ||
+    any(b.narrators ?? [], x.narrators) ||
+    any([b.series], x.series) ||
+    any([b.language], x.languages)
+  );
+}
 
 /** Mirrors the core's Library query, for the browser preview and the web version. */
 export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectionCount: number): LibraryPage {
@@ -37,6 +54,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     if (q.hideRead && b.status === "read") return false;
     if (!hasAny(b.genres, q.genres) || !hasAny(b.authors, q.authors) || !hasAny(b.narrators, q.narrators)) return false;
     if (q.series?.length && !q.series.some((s) => s.toLowerCase() === (b.series ?? "").toLowerCase())) return false;
+    if (q.exclude && excluded(b, q.exclude)) return false;
     if (search && ![b.title, ...b.authors, b.series ?? ""].some((t) => t.toLowerCase().includes(search))) return false;
     return true;
   });

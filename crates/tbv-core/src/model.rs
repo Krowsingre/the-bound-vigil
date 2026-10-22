@@ -300,6 +300,9 @@ pub struct LibraryQuery {
     /// Leaves out books marked read (Filter › Hide finished books).
     #[serde(default)]
     pub hide_read: bool,
+    /// Books to leave out: any with one of these, whatever else matches.
+    #[serde(default)]
+    pub exclude: LibraryExclude,
     /// Books in any of these series. Empty means any.
     #[serde(default)]
     pub series: Vec<String>,
@@ -323,6 +326,19 @@ pub struct ShelfCounts {
     pub read: u32,
     pub unread: u32,
     pub collections: u32,
+}
+
+/// The Library filters turned round: books with any of these are left out.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LibraryExclude {
+    pub formats: Vec<String>,
+    pub tags: Vec<String>,
+    pub genres: Vec<String>,
+    pub authors: Vec<String>,
+    pub narrators: Vec<String>,
+    pub series: Vec<String>,
+    pub languages: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

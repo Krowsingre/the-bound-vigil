@@ -1,4 +1,4 @@
-import type { ItemKind, Location, Shelf, SortOrder } from "../api/types";
+import type { ItemKind, LibraryExclude, Location, Shelf, SortOrder } from "../api/types";
 
 export type LibraryTab = Shelf | "collections";
 export type Layout = "grid" | "list" | "compact";
@@ -25,11 +25,18 @@ export interface LibraryView {
   narrators: string[];
   /** Leaves out books marked read. Remembered, like sort and layout. */
   hideRead: boolean;
+  /** Filters turned round (a second click): books with any of these are left out. */
+  exclude: LibraryExclude;
   page: number;
   layout: Layout;
 }
 
 export const PAGE_SIZE = 24;
+
+export const NO_EXCLUDE: LibraryExclude = { formats: [], tags: [], genres: [], authors: [], narrators: [], series: [], languages: [] };
+
+/** How many things are left out. */
+export const excludeCount = (x: LibraryExclude) => Object.values(x).reduce((n, list) => n + list.length, 0);
 
 /** Every filter off. */
 export const NO_FILTERS: Partial<LibraryView> = {
@@ -43,6 +50,7 @@ export const NO_FILTERS: Partial<LibraryView> = {
   series: [],
   narrators: [],
   hideRead: false,
+  exclude: NO_EXCLUDE,
 };
 
 export const TABS: { tab: LibraryTab; label: string }[] = [
@@ -72,7 +80,7 @@ const keyOf = (kind: ItemKind) => (kind === "books" ? KEY : `tbv.${kind}View`);
 
 /** Sort and layout are remembered on this device, for each page of books; the rest starts fresh. */
 export function initialView(kind: ItemKind = "books"): LibraryView {
-  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], series: [], narrators: [], hideRead: false, page: 0, layout: "grid" };
+  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], series: [], narrators: [], hideRead: false, exclude: NO_EXCLUDE, page: 0, layout: "grid" };
   try {
     const saved = JSON.parse(localStorage.getItem(keyOf(kind)) ?? "{}") as Partial<LibraryView>;
     if (SORTS.some((s) => s.sort === saved.sort)) view.sort = saved.sort!;

@@ -1525,6 +1525,35 @@ mod tidying {
     }
 
     #[test]
+    fn a_book_only_in_icloud_goes_on_to_the_phone_without_staying_here() {
+        let icloud = FakeRemote::default();
+        let supabase = Short::default();
+        let pc = Device::new();
+        pc.add_second_place();
+        pc.set_options(json!({ "bookFiles": true, "alsoBookFiles": false, "phoneChosenOnly": true }));
+        let dracula = pc.import("Dracula");
+        let epoch = pc.lib().sync_epoch();
+        sync_both_since(&pc.library, &mut icloud.clone(), Some(&mut supabase.clone()), epoch).unwrap();
+        pc.lib().remove_download(&dracula).unwrap();
+        assert!(files(&icloud).contains(&book_path(&dracula)));
+        assert!(!files(&supabase.0).contains(&book_path(&dracula)));
+
+        pc.lib().set_phone_wanted(std::slice::from_ref(&dracula), true).unwrap();
+        let report = sync_both_since(&pc.library, &mut icloud.clone(), Some(&mut supabase.clone()), epoch).unwrap();
+        assert!(report.files_sent >= 1);
+        assert!(files(&supabase.0).contains(&book_path(&dracula)), "copied straight across");
+        assert_eq!(covers(&supabase.0), 1, "with its cover");
+        let book = pc.lib().book(&dracula).unwrap().unwrap();
+        assert_eq!(book.availability, Availability::Cloud, "and not kept on this computer");
+        let leftovers = fs::read_dir(pc.lib().books_dir()).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".relay")).count();
+        assert_eq!(leftovers, 0);
+        // Once there, it isn't copied again.
+        supabase.0.0.lock().unwrap().files.clear();
+        sync_both_since(&pc.library, &mut icloud.clone(), Some(&mut supabase.clone()), epoch).unwrap();
+        assert!(files(&supabase.0).is_empty());
+    }
+
+    #[test]
     fn every_book_says_where_its_file_is() {
         use crate::sync::places::{book_places, held};
         let icloud = FakeRemote::default();

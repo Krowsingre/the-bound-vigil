@@ -105,6 +105,60 @@ fn like_pattern(text: &str) -> String {
     format!("%{}%", escaped.to_lowercase())
 }
 
+/// One set of Library filters: a book matches when it has any of the
+/// names in each list that isn't empty.
+struct Filters<'q> {
+    formats: &'q [String],
+    tags: &'q [String],
+    genres: &'q [String],
+    authors: &'q [String],
+    narrators: &'q [String],
+    series: &'q [String],
+    languages: &'q [String],
+}
+
+impl Filters<'_> {
+    /// Each condition is whole in brackets and never NULL, so it can be turned round with NOT.
+    fn conditions(&self, values: &mut Vec<Value>) -> Vec<String> {
+        let mut conditions = Vec::new();
+        let slots = |values: &mut Vec<Value>, names: Vec<String>| {
+            let start = values.len() + 1;
+            let slots: Vec<String> = (0..names.len()).map(|i| format!("?{}", start + i)).collect();
+            values.extend(names.into_iter().map(Value::Text));
+            slots.join(", ")
+        };
+        if !self.formats.is_empty() {
+            let s = slots(values, self.formats.iter().map(|f| f.to_lowercase()).collect());
+            conditions.push(format!("(b.format IN ({s}))"));
+        }
+        if !self.tags.is_empty() {
+            let s = slots(values, self.tags.iter().map(|t| t.trim().to_lowercase()).collect());
+            conditions.push(format!(
+                "(EXISTS (SELECT 1 FROM book_tags t WHERE t.book_id = b.id AND t.removed_at IS NULL AND lower(t.tag) IN ({s})))"
+            ));
+        }
+        // Genres, authors and narrators are JSON lists: a book matches when any name does.
+        for (list, names) in [(GENRES, self.genres), (AUTHORS, self.authors), (NARRATORS, self.narrators)] {
+            if names.is_empty() {
+                continue;
+            }
+            let s = slots(values, names.iter().map(|g| g.trim().to_lowercase()).collect());
+            conditions.push(format!(
+                "(EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid({list}) THEN {list} ELSE '[]' END) g WHERE tbv_fold(g.value) IN ({s})))"
+            ));
+        }
+        if !self.series.is_empty() {
+            let s = slots(values, self.series.iter().map(|x| x.trim().to_lowercase()).collect());
+            conditions.push(format!("(tbv_fold(COALESCE({SERIES}, '')) IN ({s}))"));
+        }
+        if !self.languages.is_empty() {
+            let s = slots(values, self.languages.iter().map(|l| language_code(l).unwrap_or_default()).collect());
+            conditions.push(format!("(COALESCE(tbv_language({LANGUAGE}), '') IN ({s}))"));
+        }
+        conditions
+    }
+}
+
 impl Library {
     pub fn library_page(&self, query: &LibraryQuery) -> Result<LibraryPage> {
         let mut conditions: Vec<String> = Vec::new();
@@ -135,62 +189,33 @@ impl Library {
             values.push(Value::Text(like_pattern(search)));
         }
 
-        if !query.formats.is_empty() {
-            let start = values.len() + 1;
-            let slots: Vec<String> = (0..query.formats.len())
-                .map(|i| format!("?{}", start + i))
-                .collect();
-            conditions.push(format!("b.format IN ({})", slots.join(", ")));
-            values.extend(query.formats.iter().map(|f| Value::Text(f.to_lowercase())));
-        }
-
-        if !query.tags.is_empty() {
-            let start = values.len() + 1;
-            let slots: Vec<String> = (0..query.tags.len())
-                .map(|i| format!("?{}", start + i))
-                .collect();
-            conditions.push(format!(
-                "EXISTS (SELECT 1 FROM book_tags t WHERE t.book_id = b.id AND t.removed_at IS NULL \
-                 AND lower(t.tag) IN ({}))",
-                slots.join(", ")
-            ));
-            values.extend(
-                query
-                    .tags
-                    .iter()
-                    .map(|t| Value::Text(t.trim().to_lowercase())),
-            );
-        }
-
-        // Genres, authors and narrators are JSON lists: a book matches when any name does.
-        for (list, names) in [(GENRES, &query.genres), (AUTHORS, &query.authors), (NARRATORS, &query.narrators)] {
-            if names.is_empty() {
-                continue;
+        // The filters chosen to show, then those chosen to leave out.
+        let include = Filters {
+            formats: &query.formats,
+            tags: &query.tags,
+            genres: &query.genres,
+            authors: &query.authors,
+            narrators: &query.narrators,
+            series: &query.series,
+            languages: &query.languages,
+        };
+        let e = &query.exclude;
+        let exclude = Filters {
+            formats: &e.formats,
+            tags: &e.tags,
+            genres: &e.genres,
+            authors: &e.authors,
+            narrators: &e.narrators,
+            series: &e.series,
+            languages: &e.languages,
+        };
+        for (filters, keep) in [(include, true), (exclude, false)] {
+            for condition in filters.conditions(&mut values) {
+                conditions.push(if keep { condition } else { format!("NOT {condition}") });
             }
-            let start = values.len() + 1;
-            let slots: Vec<String> = (0..names.len()).map(|i| format!("?{}", start + i)).collect();
-            conditions.push(format!(
-                "EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid({list}) THEN {list} ELSE '[]' END) g WHERE tbv_fold(g.value) IN ({}))",
-                slots.join(", ")
-            ));
-            values.extend(names.iter().map(|g| Value::Text(g.trim().to_lowercase())));
         }
-
         if query.hide_read {
             conditions.push("b.status != 'read'".into());
-        }
-        if !query.series.is_empty() {
-            let start = values.len() + 1;
-            let slots: Vec<String> = (0..query.series.len()).map(|i| format!("?{}", start + i)).collect();
-            conditions.push(format!("tbv_fold(COALESCE({SERIES}, '')) IN ({})", slots.join(", ")));
-            values.extend(query.series.iter().map(|s| Value::Text(s.trim().to_lowercase())));
-        }
-
-        if !query.languages.is_empty() {
-            let start = values.len() + 1;
-            let slots: Vec<String> = (0..query.languages.len()).map(|i| format!("?{}", start + i)).collect();
-            conditions.push(format!("tbv_language({LANGUAGE}) IN ({})", slots.join(", ")));
-            values.extend(query.languages.iter().map(|l| Value::Text(language_code(l).unwrap_or_default())));
         }
 
         if let Some(kind) = query.kind {
@@ -376,6 +401,37 @@ mod tests {
         let mut q = LibraryQuery::default();
         f(&mut q);
         q
+    }
+
+    #[test]
+    fn filters_can_leave_books_out_as_well_as_pick_them() {
+        let (dir, mut library) = open_temp_library();
+        let a = add(&mut library, dir.path(), "Dracula", "Bram Stoker");
+        let b = add(&mut library, dir.path(), "Carmilla", "Sheridan Le Fanu");
+        add(&mut library, dir.path(), "Emma", "Jane Austen");
+        library.add_tag(&[a.clone(), b.clone()], "Gothic").unwrap();
+        library.set_status(&a, ReadStatus::Read).unwrap();
+        let sorted = |f: &dyn Fn(&mut LibraryQuery)| {
+            let page = library.library_page(&query(|q| {
+                q.sort = SortOrder::Title;
+                f(q)
+            }));
+            titles(&page.unwrap()).into_iter().map(str::to_string).collect::<Vec<_>>()
+        };
+        assert_eq!(sorted(&|q| q.exclude.tags = vec!["gothic".into()]), ["Emma"]);
+        assert_eq!(sorted(&|q| q.exclude.authors = vec!["Jane Austen".into()]), ["Carmilla", "Dracula"]);
+        // Both at once: Gothic books, but not Le Fanu's.
+        assert_eq!(
+            sorted(&|q| {
+                q.tags = vec!["Gothic".into()];
+                q.exclude.authors = vec!["sheridan le fanu".into()];
+            }),
+            ["Dracula"]
+        );
+        // Books with no series or language aren't left out by mistake.
+        assert_eq!(sorted(&|q| q.exclude.series = vec!["Discworld".into()]).len(), 3);
+        assert_eq!(sorted(&|q| q.exclude.languages = vec!["fr".into()]).len(), 3);
+        assert_eq!(sorted(&|q| q.hide_read = true), ["Carmilla", "Emma"]);
     }
 
     #[test]

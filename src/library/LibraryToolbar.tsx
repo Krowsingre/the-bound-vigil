@@ -3,7 +3,9 @@ import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { formatLabel } from "../lib/queryBooks";
 import { languageName } from "../lib/language";
-import { NO_FILTERS, SORTS, TABS, type Layout, type LibraryTab, type LibraryView } from "./libraryView";
+import { excludeCount, NO_FILTERS, SORTS, TABS, type Layout, type LibraryTab, type LibraryView } from "./libraryView";
+
+type FilterList = "formats" | "tags" | "genres" | "languages" | "authors" | "series" | "narrators";
 
 const COUNT_OF: Record<LibraryTab, keyof ShelfCounts> = {
   all: "all",
@@ -54,62 +56,65 @@ export function LibraryToolbar({
 }) {
   const sortLabel = SORTS.find((s) => s.sort === view.sort)?.label;
   const filterCount =
-    view.formats.length + (view.location ? 1 : 0) + view.tags.length + view.genres.length + view.languages.length + view.authors.length + view.series.length + view.narrators.length + (view.hideRead ? 1 : 0);
-  const toggle = (list: "authors" | "series" | "narrators", name: string) =>
-    onChange({ [list]: view[list].includes(name) ? view[list].filter((x) => x !== name) : [...view[list], name] });
+    view.formats.length +
+    (view.location ? 1 : 0) +
+    view.tags.length +
+    view.genres.length +
+    view.languages.length +
+    view.authors.length +
+    view.series.length +
+    view.narrators.length +
+    (view.hideRead ? 1 : 0) +
+    excludeCount(view.exclude);
+  // Each click moves a filter on: show only these, then leave these out, then off.
+  const cycle = (list: FilterList, value: string) => {
+    const shown = view[list].includes(value);
+    const hidden = view.exclude[list].includes(value);
+    const without = (l: string[]) => l.filter((x) => x !== value);
+    onChange({
+      [list]: shown ? without(view[list]) : hidden ? view[list] : [...view[list], value],
+      exclude: { ...view.exclude, [list]: shown ? [...view.exclude[list], value] : without(view.exclude[list]) },
+      page: 0,
+    });
+  };
+  const item = (list: FilterList, value: string, label: string): MenuEntry => ({
+    label,
+    checked: view[list].includes(value),
+    excluded: view.exclude[list].includes(value),
+    onSelect: () => cycle(list, value),
+  });
+  const all = (list: FilterList, known: string[]) => [...new Set([...known, ...view[list], ...view.exclude[list]])];
   const names = (list: "authors" | "series" | "narrators", heading: string, known: string[]): MenuEntry[] =>
-    known.length || view[list].length
-      ? [
-          "divider",
-          { heading: <strong>{heading}</strong> },
-          ...[...new Set([...known, ...view[list]])].map((n) => ({ label: n, checked: view[list].includes(n), onSelect: () => toggle(list, n) })),
-        ]
+    all(list, known).length
+      ? ["divider", { heading: <strong>{heading}</strong> }, ...all(list, known).map((n) => item(list, n, n))]
       : [];
-  const toggleGenre = (g: string) =>
-    onChange({ genres: view.genres.includes(g) ? view.genres.filter((x) => x !== g) : [...view.genres, g] });
-  const toggleLanguage = (l: string) =>
-    onChange({ languages: view.languages.includes(l) ? view.languages.filter((x) => x !== l) : [...view.languages, l] });
-  const toggleTag = (t: string) => onChange({ tags: view.tags.includes(t) ? view.tags.filter((x) => x !== t) : [...view.tags, t] });
-  const toggleFormat = (f: string) =>
-    onChange({ formats: view.formats.includes(f) ? view.formats.filter((x) => x !== f) : [...view.formats, f] });
   const setLocation = (l: Location) => onChange({ location: view.location === l ? null : l });
 
   const filterItems: MenuEntry[] = [
     ...(filterCount ? ([{ label: "Clear filters", icon: "close", onSelect: () => onChange(NO_FILTERS) }, "divider"] as MenuEntry[]) : []),
     { label: "Hide finished books", checked: view.hideRead, onSelect: () => onChange({ hideRead: !view.hideRead, page: 0 }) },
     "divider",
+    { heading: <span className="menu-tip">Click once to show only those, twice to hide them.</span> },
     { heading: <strong>Format</strong> },
-    ...formats.map((f) => ({ label: formatLabel(f), checked: view.formats.includes(f), onSelect: () => toggleFormat(f) })),
+    ...all("formats", formats).map((f) => item("formats", f, formatLabel(f))),
     "divider",
     { heading: <strong>Where the file is</strong> },
     { label: "On this device", checked: view.location === "on_device", onSelect: () => setLocation("on_device") },
     { label: "In the cloud only", checked: view.location === "cloud_only", onSelect: () => setLocation("cloud_only") },
-    ...(tags.length
-      ? ([
-          "divider",
-          { heading: <strong>Tags</strong> },
-          ...[...new Set([...tags, ...view.tags])].map((t) => ({ label: t, checked: view.tags.includes(t), onSelect: () => toggleTag(t) })),
-        ] as MenuEntry[])
+    ...(all("tags", tags).length
+      ? (["divider", { heading: <strong>Tags</strong> }, ...all("tags", tags).map((t) => item("tags", t, t))] as MenuEntry[])
       : []),
-    ...(genres.length || view.genres.length
-      ? ([
-          "divider",
-          { heading: <strong>Genres</strong> },
-          ...[...new Set([...genres, ...view.genres])].map((g) => ({
-            label: g,
-            checked: view.genres.includes(g),
-            onSelect: () => toggleGenre(g),
-          })),
-        ] as MenuEntry[])
+    ...(all("genres", genres).length
+      ? (["divider", { heading: <strong>Genres</strong> }, ...all("genres", genres).map((g) => item("genres", g, g))] as MenuEntry[])
       : []),
-    ...(languages.length > 1 || view.languages.length
+    ...(languages.length > 1 || view.languages.length || view.exclude.languages.length
       ? ([
           "divider",
           { heading: <strong>Language</strong> },
-          ...[...new Set([...languages, ...view.languages])]
+          ...all("languages", languages)
             .map((l) => ({ code: l, name: languageName(l) }))
             .sort((a, b) => a.name.localeCompare(b.name))
-            .map(({ code, name }) => ({ label: name, checked: view.languages.includes(code), onSelect: () => toggleLanguage(code) })),
+            .map(({ code, name }) => item("languages", code, name)),
         ] as MenuEntry[])
       : []),
     ...names("authors", "Authors", authors),

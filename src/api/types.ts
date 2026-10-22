@@ -385,11 +385,24 @@ export interface LibraryQuery {
   series?: string[];
   /** Leaves out books marked read. */
   hideRead?: boolean;
+  /** Books with any of these are left out. */
+  exclude?: LibraryExclude;
   /** Only books, documents or audiobooks. Left out: all of them. */
   kind?: ItemKind | null;
   /** Zero-based. */
   page: number;
   pageSize: number;
+}
+
+/** The Library filters turned round: books with any of these are left out. */
+export interface LibraryExclude {
+  formats: string[];
+  tags: string[];
+  genres: string[];
+  authors: string[];
+  narrators: string[];
+  series: string[];
+  languages: string[];
 }
 
 export interface ShelfCounts {
