@@ -171,6 +171,7 @@ describe("pictures, footnotes, front and back matter", () => {
 describe("helpers", () => {
   it("counts words and names files", () => {
     expect(countWords("<h2>Part one</h2><p>It was a <em>dark</em>&nbsp;night.</p><hr><p>— Then</p>")).toBe(8);
+    expect(countWords('<p>Night<sup data-footnote="A long one &amp; cold." class="writing-footnote"></sup> fell.</p>')).toBe(6);
     expect(epubFileName('War/Peace: "draft"')).toBe("War Peace draft.epub");
     expect(epubFileName("...")).toBe("Book.epub");
   });
@@ -178,6 +179,7 @@ describe("helpers", () => {
   it("says what stops an export", () => {
     expect(exportProblems([])).toEqual(["Add a chapter first."]);
     expect(exportProblems([chapter(1, "One", "<p></p>")])).toEqual(["Write something in a chapter first."]);
+    expect(exportProblems([chapter(1, "One", '<img src="data:image/png;base64,AA" alt="">')])).toEqual([]);
     expect(exportProblems(chapters)).toEqual([]);
   });
 

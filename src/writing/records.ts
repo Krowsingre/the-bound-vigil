@@ -34,9 +34,10 @@ type WritingCalls = Pick<
 
 const MAX_TITLE = 200;
 
-/** Words in a chapter's HTML, as the core counts them. */
+/** Words in a chapter's HTML, as the core counts them: footnotes' words (kept in their attribute) count too. */
 export function countWords(html: string): number {
-  const text = html.replace(/<[^>]*>/g, " ").replace(/&[^;\s]*;?/g, " ");
+  const notes = [...html.matchAll(/data-footnote="([^"]*)"/g)].map((m) => m[1]).join(" ");
+  const text = `${html.replace(/<[^>]*>/g, " ")} ${notes}`.replace(/&[^;\s]*;?/g, " ");
   return text.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 }
 

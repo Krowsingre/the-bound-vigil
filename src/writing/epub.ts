@@ -461,7 +461,7 @@ ${spine.join("\n")}
 export function exportProblems(chapters: WritingChapter[]): string[] {
   const problems: string[] = [];
   if (!chapters.length) problems.push("Add a chapter first.");
-  else if (chapters.every((c) => !c.body.replace(/<[^>]*>/g, "").trim())) problems.push("Write something in a chapter first.");
+  else if (chapters.every((c) => !c.body.replace(/<[^>]*>/g, "").trim() && !/<img\b/i.test(c.body))) problems.push("Write something in a chapter first.");
   return problems;
 }
 
