@@ -27,6 +27,7 @@ export type Table =
   | "personal_notes"
   | "writing_projects"
   | "writing_chapters"
+  | "bookmarks"
   | "time_log";
 
 /** Keep in step with KINDS in the core. */
@@ -68,6 +69,7 @@ export const KINDS: Kind[] = [
     cols: ["title", "author", "series", "series_index", "language", "description", "cover", "export", "created_at", "updated_at", "deleted_at"],
   },
   { name: "writing_chapter", table: "writing_chapters", keys: ["id"], cols: ["project_id", "title", "body", "position", "created_at", "updated_at", "deleted_at", "role"] },
+  { name: "bookmark", table: "bookmarks", keys: ["id"], cols: ["title", "url", "position", "created_at", "updated_at", "deleted_at"] },
   { name: "time_log", table: "time_log", keys: ["device_id", "day", "kind"], cols: ["seconds", "updated_at"] },
 ];
 

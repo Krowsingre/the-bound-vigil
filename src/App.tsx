@@ -12,7 +12,7 @@ import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Notes } from "./notes/Notes";
 import { Writing } from "./writing/Writing";
-import { Catalogs } from "./catalogs/Catalogs";
+import { Browse } from "./browse/Browse";
 import { Audiobooks } from "./audio/Audiobooks";
 import { PlayerBar } from "./audio/PlayerBar";
 import { usePlayer } from "./audio/player";
@@ -550,7 +550,7 @@ export function App() {
           ) : route === "writing" ? (
             <Writing refreshKey={refreshKey} />
           ) : route === "catalogs" ? (
-            <Catalogs />
+            <Browse refreshKey={refreshKey} onOpenBook={openBook} />
           ) : (
             <Settings
               tab={settingsTab}

@@ -209,6 +209,26 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
     }
   }
 
+  /// Browse › Browser: shows, moves, hides or steers the web view.
+  @objc public func browser(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(BrowserArgs.self)
+    TbvBrowser.shared.act(args, invoke)
+  }
+
+  /// The browser's next event (a page, or a download), once there is one.
+  @objc public func browserEvent(_ invoke: Invoke) throws {
+    TbvBrowser.shared.next(invoke)
+  }
+
+  /// Where the browser's downloads wait.
+  @objc public func browserDownloads(_ invoke: Invoke) throws {
+    invoke.resolve(["path": TbvBrowser.downloadsFolder.path])
+  }
+
+  override func load(webview: WKWebView) {
+    TbvBrowser.shared.tbv = webview
+  }
+
   /// Brings down a file iCloud hasn't kept on the phone yet, waiting until
   /// it's here. Answers whether it arrived.
   @objc public func fetchFile(_ invoke: Invoke) throws {

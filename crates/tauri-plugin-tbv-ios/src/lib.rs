@@ -81,6 +81,74 @@ pub fn pick_photo() -> Result<Option<String>, String> {
     Err("Choosing from Photos only works on iPhone and iPad.".into())
 }
 
+#[cfg(target_os = "ios")]
+#[derive(serde::Serialize)]
+struct BrowserArgs<'a> {
+    action: &'a str,
+    url: Option<&'a str>,
+    x: Option<f64>,
+    y: Option<f64>,
+    width: Option<f64>,
+    height: Option<f64>,
+}
+
+/// Browse › Browser: `show`, `place`, `hide`, `go`, `back`, `forward`,
+/// `reload`, `stop` or `clear`, with the space it takes as (x, y, width, height).
+pub fn browser(action: &str, url: Option<&str>, frame: Option<(f64, f64, f64, f64)>) -> Result<(), String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get().ok_or("The browser isn't ready.")?;
+        let (x, y, width, height) = match frame {
+            Some((x, y, w, h)) => (Some(x), Some(y), Some(w), Some(h)),
+            None => (None, None, None, None),
+        };
+        swift
+            .run_mobile_plugin::<serde_json::Value>("browser", BrowserArgs { action, url, x, y, width, height })
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = (action, url, frame);
+        Err("This browser is the iPhone's.".into())
+    }
+}
+
+/// Something the browser did.
+pub enum BrowserEvent {
+    Page { url: String, title: Option<String>, loading: bool },
+    Download { path: String, name: String, ok: bool },
+}
+
+/// Waits for the browser's next event. None now and then, when there was
+/// nothing to tell (or the browser isn't ready yet).
+pub fn browser_event() -> Option<BrowserEvent> {
+    #[cfg(target_os = "ios")]
+    {
+        let answer: serde_json::Value = SWIFT.get()?.run_mobile_plugin("browserEvent", ()).ok()?;
+        let text = |k: &str| answer.get(k).and_then(|v| v.as_str()).map(str::to_string);
+        let flag = |k: &str| answer.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
+        match text("kind")?.as_str() {
+            "page" => Some(BrowserEvent::Page { url: text("url").unwrap_or_default(), title: text("title"), loading: flag("loading") }),
+            "download" => Some(BrowserEvent::Download { path: text("path")?, name: text("name").unwrap_or_default(), ok: flag("ok") }),
+            _ => None,
+        }
+    }
+    #[cfg(not(target_os = "ios"))]
+    None
+}
+
+/// Where the browser's downloads wait on the phone.
+pub fn browser_downloads_dir() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "ios")]
+    {
+        let answer: serde_json::Value = SWIFT.get()?.run_mobile_plugin("browserDownloads", ()).ok()?;
+        answer.get("path").and_then(|p| p.as_str()).map(std::path::PathBuf::from)
+    }
+    #[cfg(not(target_os = "ios"))]
+    None
+}
+
 /// "iPhone" or "iPad", from the device itself.
 pub fn device_kind() -> Option<String> {
     #[cfg(target_os = "ios")]

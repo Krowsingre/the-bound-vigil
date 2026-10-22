@@ -13,6 +13,8 @@ import { isBookmark, isNote } from "./annotations";
 import { isDocument } from "../lib/queryBooks";
 import { drawPdfCover, readerSource, type ReaderSource } from "./formats";
 import { contentsEntries, currentEntry, pageOf, pushJump, type Jump } from "./pages";
+import { parseBibleTarget } from "../browse/bibleBooks";
+import { openChapter } from "../browse/openChapter";
 import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars";
 import { LeftPanel, RightPanel, type AnnotationHandlers, type RightTab } from "./ReaderPanels";
 import { ListenAlongPanel, NoteDialog, PageSettings, ReadAloudPlayer, SelectionToolbar, TextSettings, ZoomControls } from "./ReaderPopovers";
@@ -276,6 +278,18 @@ export function Reader({
   useEffect(() => {
     if (!openAt || openedAt.current || !engine.ready || !r?.cfi) return;
     openedAt.current = true;
+    // A chapter of the Bible, from Browse › Bible.
+    const chapter = parseBibleTarget(openAt);
+    if (chapter) {
+      const view = engine.getView();
+      remember();
+      if (view)
+        void openChapter(view, engine.toc as TocItem[], chapter.book, chapter.chapter).then(
+          (found) => !found && toast(`${chapter.book.name} ${chapter.chapter} couldn't be found in this copy, so it opened where you were.`),
+          () => undefined,
+        );
+      return;
+    }
     const mark = annotations.find((a) => a.locator.cfi === openAt);
     if (mark && !usable(mark.locator)) handlers.onGo(mark);
     else jumpTo(openAt);

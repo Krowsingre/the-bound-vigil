@@ -10,12 +10,12 @@ export const NAV: { route: Route; label: string; icon: IconName }[] = [
   { route: "audiobooks", label: "Audiobooks", icon: "headphones" },
   { route: "notes", label: "Notes", icon: "notes" },
   { route: "writing", label: "Writing", icon: "pen" },
-  { route: "catalogs", label: "Catalogs", icon: "globe" },
+  { route: "catalogs", label: "Browse", icon: "globe" },
   { route: "settings", label: "Settings", icon: "settings" },
 ];
 
-/** The pages this copy of TBV shows. Catalogs need the desktop app (a
- * browser can't reach most catalogs); writing needs synced records, which the
+/** The pages this copy of TBV shows. Browse needs the app (a web page can't
+ * reach most catalogs or hold a browser); writing needs synced records, which the
  * phone at home doesn't keep. */
 export function navFor({ web, home }: { web: boolean; home: boolean }) {
   return NAV.filter((n) => !(n.route === "catalogs" && (web || home)) && !(n.route === "writing" && home));

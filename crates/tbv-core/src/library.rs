@@ -437,6 +437,18 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE profile ADD COLUMN name TEXT;
     "#,
+    // v23: websites saved in Browse › Browser, synced so every device has them.
+    r#"
+    CREATE TABLE bookmarks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL DEFAULT '',
+        url TEXT NOT NULL,
+        position REAL NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

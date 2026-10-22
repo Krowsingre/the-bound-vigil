@@ -6,6 +6,10 @@ import { homeAudioUrl, homeCore, homeEvents } from "./homeCore";
 import type { Found } from "../lib/onlineDetails";
 import type {
   BookFile,
+  Bookmark,
+  BrowserDownload,
+  BrowserFrame,
+  BrowserPage,
   CatalogInput,
   CatalogView,
   OpdsFeed,
@@ -385,6 +389,27 @@ export interface Api {
   catalogSearch(id: string, search: string, words: string): Promise<OpdsFeed>;
   /** Brings a book down and adds it through the import queue. */
   downloadFromCatalog(id: string, file: OpdsFile, title: string): Promise<void>;
+  /** Brings a book down from a web address (a Bible, or a browser page's file) and adds it through the import queue. */
+  downloadWebBook(url: string, title: string): Promise<void>;
+  /** Websites saved in the browser, in order. */
+  bookmarks(): Promise<Bookmark[]>;
+  /** Saves a page; one saved already is only renamed. */
+  addBookmark(title: string, url: string): Promise<Bookmark>;
+  renameBookmark(id: string, title: string): Promise<void>;
+  removeBookmark(id: string): Promise<void>;
+  /** Shows the browser over `frame`, at `url` (or where it was). App only. */
+  browserShow(url: string | null, frame: BrowserFrame): Promise<void>;
+  browserPlace(frame: BrowserFrame): Promise<void>;
+  /** Hides the browser, which keeps its page. */
+  browserHide(): Promise<void>;
+  browserAct(action: "go" | "back" | "forward" | "reload" | "stop" | "clear", url?: string): Promise<void>;
+  onBrowserPage(listener: (page: BrowserPage) => void): () => void;
+  onBrowserDownload(listener: (download: BrowserDownload) => void): () => void;
+  /** Adds a file the browser brought down to the library. */
+  browserAddDownload(path: string): Promise<void>;
+  /** Moves a download to the Downloads folder; resolves to where it went. */
+  browserKeepDownload(path: string): Promise<string>;
+  browserDiscardDownload(path: string): Promise<void>;
   /** Books being written, most recently changed first. */
   writingProjects(): Promise<WritingProject[]>;
   writingProject(id: string): Promise<WritingProjectView>;
@@ -813,6 +838,20 @@ function appApi(): Api {
     catalogFeed: async (id, url) => (await core).invoke<OpdsFeed>("catalog_feed", { id, url }),
     catalogSearch: async (id, search, words) => (await core).invoke<OpdsFeed>("catalog_search", { id, search, words }),
     downloadFromCatalog: async (id, file, title) => (await core).invoke("download_from_catalog", { id, file, title }),
+    downloadWebBook: async (url, title) => (await core).invoke("download_web_book", { url, title }),
+    bookmarks: async () => (await core).invoke<Bookmark[]>("bookmarks"),
+    addBookmark: async (title, url) => (await core).invoke<Bookmark>("add_bookmark", { title, url }),
+    renameBookmark: async (id, title) => (await core).invoke("rename_bookmark", { id, title }),
+    removeBookmark: async (id) => (await core).invoke("remove_bookmark", { id }),
+    browserShow: async (url, frame) => (await core).invoke("browser_show", { url, frame }),
+    browserPlace: async (frame) => (await core).invoke("browser_place", { frame }),
+    browserHide: async () => (await core).invoke("browser_hide"),
+    browserAct: async (action, url) => (await core).invoke("browser_act", { action, url: url ?? null }),
+    onBrowserPage: (listener) => onEvent<BrowserPage>("browser-page", listener),
+    onBrowserDownload: (listener) => onEvent<BrowserDownload>("browser-download", listener),
+    browserAddDownload: async (path) => (await core).invoke("browser_add_download", { path }),
+    browserKeepDownload: async (path) => (await core).invoke<string>("browser_keep_download", { path }),
+    browserDiscardDownload: async (path) => (await core).invoke("browser_discard_download", { path }),
     writingProjects: async () => (await core).invoke<WritingProject[]>("writing_projects"),
     writingProject: async (id) => (await core).invoke<WritingProjectView>("writing_project", { id }),
     createWritingProject: async (title, author) => (await core).invoke<WritingProjectView>("create_writing_project", { title, author }),
