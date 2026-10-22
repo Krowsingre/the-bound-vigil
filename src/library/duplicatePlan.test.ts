@@ -13,6 +13,11 @@ const book = (format: string, fileSize: number, extra: Partial<DuplicateBook> = 
     notes: 0,
     coverSize: null,
     status: "unread",
+    rating: null,
+    favorite: false,
+    wantToRead: false,
+    tags: [],
+    collections: 0,
     totalProgression: null,
     addedAt: `2026-01-${String(n).padStart(2, "0")}T00:00:00Z`,
     ...extra,
@@ -67,8 +72,17 @@ describe("cleaning up duplicates", () => {
     expect(keptForReading).toBe(1);
   });
 
-  it("orders formats as saved, then the rest A to Z", () => {
+  it("orders formats as saved, then new ones A to Z, keeping unseen ones in place", () => {
     const groups = [set(book("pdf", 1), book("fb2", 1), book("epub", 1))];
     expect(formatOrder(["pdf", "epub"], groups)).toEqual(["pdf", "epub", "fb2"]);
+    expect(formatOrder(["epub", "mobi", "pdf"], [set(book("pdf", 1), book("epub", 1))])).toEqual(["epub", "mobi", "pdf"]);
+  });
+
+  it("keeps copies with a rating, favourite, tag or collection", () => {
+    for (const mark of [{ rating: 4 }, { favorite: true }, { wantToRead: true }, { tags: ["Gothic"] }, { collections: 1 }]) {
+      const marked = book("pdf", 1, mark);
+      const plan = planCleanup([set(book("epub", 9), marked)], DEFAULT_FORMAT_ORDER);
+      expect(plan.steps[0].keep.id).toBe(marked.id);
+    }
   });
 });

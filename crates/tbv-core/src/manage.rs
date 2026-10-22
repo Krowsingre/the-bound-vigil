@@ -45,6 +45,8 @@ pub struct DuplicateBook {
     pub book: BookPreview,
     pub file_size: u64,
     pub notes: u32,
+    /// The collections and shelves it's on, Up next included.
+    pub collections: u32,
     /// The cover's width and height in pixels, when there is one.
     pub cover_size: Option<[u32; 2]>,
 }
@@ -366,7 +368,8 @@ impl Library {
                     COALESCE((SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = 'isbn'),
                              (SELECT value FROM metadata_fetched WHERE book_id = b.id AND field = 'isbn'), b.isbn),
                     b.file_size,
-                    (SELECT COUNT(*) FROM annotations a WHERE a.book_id = b.id AND a.deleted_at IS NULL)
+                    (SELECT COUNT(*) FROM annotations a WHERE a.book_id = b.id AND a.deleted_at IS NULL),
+                    (SELECT COUNT(*) FROM collection_books c WHERE c.book_id = b.id AND c.removed_at IS NULL)
              {BOOK_FROM} ORDER BY b.added_at"
         );
         let mut statement = self.conn.prepare(&sql)?;
@@ -377,6 +380,7 @@ impl Library {
                     r.get::<_, Option<String>>(27)?,
                     r.get::<_, i64>(28)?,
                     r.get::<_, u32>(29)?,
+                    r.get::<_, u32>(30)?,
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -455,6 +459,7 @@ impl Library {
                         book: rows[i].0.clone(),
                         file_size: rows[i].2.max(0) as u64,
                         notes: rows[i].3,
+                        collections: rows[i].4,
                         cover_size: cover_size(rows[i].0.cover_path.as_deref()),
                     })
                     .collect(),

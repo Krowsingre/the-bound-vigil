@@ -165,10 +165,11 @@ export function DuplicatesDialog({ groups: start, onClose }: { groups: Duplicate
             onOrder={saveOrder}
             onBack={() => setView("list")}
             onRun={async (steps, withCover) => {
-              const list = steps.flatMap((s) => [
-                ...(withCover ? [() => api.shareBestCover([s.keep.id, ...s.remove.map((b) => b.id)])] : []),
-                ...s.remove.map((b) => () => api.deleteBook(b.id)),
-              ]);
+              // One set at a time: its cover first, and its copies go only once that worked.
+              const list = steps.map((s) => async () => {
+                if (withCover) await api.shareBestCover([s.keep.id, ...s.remove.map((b) => b.id)]);
+                for (const b of s.remove) await api.deleteBook(b.id);
+              });
               const removed = steps.reduce((n, s) => n + s.remove.length, 0);
               const { done, failed } = await run(`Cleaning up ${sets(steps.length)}`, list);
               setView("list");
@@ -176,7 +177,7 @@ export function DuplicatesDialog({ groups: start, onClose }: { groups: Duplicate
                 done < list.length
                   ? "Stopped. What was done stays done."
                   : failed
-                    ? `Cleaned up, but ${failed} ${failed === 1 ? "step" : "steps"} didn't work. Those copies are still listed.`
+                    ? `Cleaned up, but ${sets(failed)} didn't work. Those are still listed.`
                     : `Cleaned up ${sets(steps.length)} and deleted ${copies(removed)}.`,
               );
             }}
@@ -328,8 +329,8 @@ export function DuplicatesDialog({ groups: start, onClose }: { groups: Duplicate
           body={[
             bulk.remove.length
               ? `They leave your library on every device (${size(bulk.remove)}). Every set keeps at least one copy: where a set is all ${bulkFormat.toUpperCase()}, its best copy stays.`
-              : `Each of these is the last copy of its set, or has your notes or progress.`,
-            bulk.keptForReading ? `${copies(bulk.keptForReading)} with your notes or progress stay.` : "",
+              : `Each of these is the last copy of its set, or has your notes, progress or other marks.`,
+            bulk.keptForReading ? `${copies(bulk.keptForReading)} with your notes, progress, ratings, tags or collections stay.` : "",
           ]
             .filter(Boolean)
             .join(" ")}
@@ -432,7 +433,7 @@ function CleanupView({
         <ul className="muted duplicate-rule-notes">
           <li>The copy in the format highest on this list stays. Drag to change the order.</li>
           <li>When copies share that format, the largest file stays.</li>
-          <li>A copy with your notes, highlights or progress always stays.</li>
+          <li>A copy with your notes, progress, rating, favourite, tags or collections always stays.</li>
         </ul>
         <label className="check-row">
           <input type="checkbox" checked={withCover} onChange={(e) => setWithCover(e.target.checked)} />
@@ -447,7 +448,7 @@ function CleanupView({
         {plan.yours.length > 0 && (
           <span className="muted">
             {" "}
-            {sets(plan.yours.length)} {plan.yours.length === 1 ? "has" : "have"} your notes or progress in more than one copy, so {plan.yours.length === 1 ? "it's" : "they're"} left
+            {sets(plan.yours.length)} {plan.yours.length === 1 ? "has" : "have"} your notes, progress or other marks on more than one copy, so {plan.yours.length === 1 ? "it's" : "they're"} left
             for you.
           </span>
         )}

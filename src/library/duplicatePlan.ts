@@ -9,17 +9,33 @@ export type DuplicateBook = DuplicateGroup["books"][number];
 /** The formats in the order a copy is preferred, best first, until changed. */
 export const DEFAULT_FORMAT_ORDER = ["epub", "kepub", "azw3", "azw", "mobi", "fb2", "cbz", "cbr", "pdf", "docx", "doc", "txt"];
 
-/** Your notes, highlights or reading progress live with this copy. */
+/**
+ * Something of yours lives with this copy and would go with it: notes,
+ * highlights, progress, a rating, a favourite, tags, or a place on a
+ * collection or shelf (Up next too).
+ */
 export function hasYourReading(book: DuplicateBook): boolean {
-  return book.notes > 0 || book.status === "in_progress" || book.status === "read" || (book.totalProgression ?? 0) > 0;
+  return (
+    book.notes > 0 ||
+    book.status === "in_progress" ||
+    book.status === "read" ||
+    (book.totalProgression ?? 0) > 0 ||
+    book.rating != null ||
+    book.favorite ||
+    book.wantToRead ||
+    book.tags.length > 0 ||
+    book.collections > 0
+  );
 }
 
-/** Every format in the order to prefer them: the saved order, then any others seen, A to Z. */
+/**
+ * Every format in the order to prefer them: the saved order as it is (formats
+ * not in these sets keep their places), then any new ones, A to Z.
+ */
 export function formatOrder(saved: string[], groups: DuplicateGroup[]): string[] {
   const seen = new Set(groups.flatMap((g) => g.books.map((b) => b.format.toLowerCase())));
   const order = saved.map((f) => f.toLowerCase()).filter((f, i, all) => all.indexOf(f) === i);
-  const rest = [...seen].filter((f) => !order.includes(f)).sort();
-  return [...order.filter((f) => seen.has(f)), ...rest, ...order.filter((f) => !seen.has(f))];
+  return [...order, ...[...seen].filter((f) => !order.includes(f)).sort()];
 }
 
 export interface CleanupStep {
@@ -59,7 +75,7 @@ export function planCleanup(groups: DuplicateGroup[], order: string[]): CleanupP
     const keep = read[0] ?? bestCopy(g.books, order);
     const sameFormat = g.books.every((b) => b.format.toLowerCase() === keep.format.toLowerCase());
     const why = read.length
-      ? "It has your notes or progress."
+      ? "It has your notes, progress, rating, tags or collections."
       : sameFormat
         ? "The largest file."
         : `${keep.format.toUpperCase()} comes first in your order.`;
