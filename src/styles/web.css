@@ -57,11 +57,13 @@
   margin-bottom: 16px;
 }
 
-/* Phones: the sidebar becomes a bar of tabs along the bottom. */
+/* Phones: the sidebar becomes a menu that slides in from the left, opened
+   from the button beside the search box. */
 @media (max-width: 760px) {
   :root {
     --header-h: 52px;
-    --tabbar-h: calc(58px + env(safe-area-inset-bottom));
+    /* Nothing sits along the bottom; only the home bar's room is kept. */
+    --tabbar-h: env(safe-area-inset-bottom);
   }
 
   .app,
@@ -71,64 +73,40 @@
 
   .sidebar {
     position: fixed;
-    inset: auto 0 0 0;
-    z-index: 40;
-    height: var(--tabbar-h);
+    inset: 0 auto 0 0;
+    z-index: 60;
+    width: min(300px, 84vw);
+    padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
-    flex-direction: row;
-    overflow: hidden;
+    overflow-y: auto;
+    box-shadow: var(--shadow);
+    transform: translateX(-105%);
+    transition: transform 200ms ease;
+  }
+
+  .sidebar.is-drawer-open {
+    transform: none;
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 59;
+    background: rgb(0 0 0 / 0.4);
   }
 
   .sidebar-top,
-  .brand,
-  .sidebar-quote,
   .preview-badge {
     display: none;
   }
 
-  .sidebar nav {
-    flex: 1;
+  .nav-item {
+    min-height: 48px;
+    font-size: 16px;
   }
 
-  .nav,
-  .sidebar-collapsed .nav {
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, 1fr);
-    gap: 0;
-    height: 100%;
-    padding: 0 4px;
-  }
-
-  .nav-item,
-  .sidebar-collapsed .nav-item {
-    flex-direction: column;
-    justify-content: center;
-    gap: 3px;
-    height: 100%;
-    padding: 0;
-    font: 500 11px var(--font-sans);
-    background: none;
-  }
-
-  .nav-item:hover,
-  .nav-item.is-active {
-    background: none;
-  }
-
-  .nav-item.is-active::before {
-    inset: 0 30% auto;
-    width: auto;
-    height: 3px;
-  }
-
-  .sidebar-collapsed .nav-label,
-  .nav-label {
-    display: block;
-    max-width: calc(100% - 4px);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    letter-spacing: -0.01em;
+  .header-menu {
+    display: grid;
   }
 
   .main {

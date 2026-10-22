@@ -17,7 +17,7 @@ import { UsageSection } from "./UsageSection";
 import { ContentsSection } from "./ContentsSection";
 import { HardcoverSection } from "./HardcoverSection";
 import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
-import { PROVIDERS, type Provider } from "./providers";
+import { PROVIDERS, ProviderPicker, type Provider } from "./providers";
 import { ActionTile, RadioList, Row, Section, Select, Toggle } from "./controls";
 
 /** Sync's state in a few words, for the connection details. */
@@ -194,27 +194,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
           </div>
         }
       >
-        <div className="provider-cards" role="radiogroup" aria-label="Sync provider">
-          {PROVIDERS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              role="radio"
-              aria-checked={provider === p.id}
-              className={`provider-card${provider === p.id ? " is-active" : ""}`}
-              onClick={() => setProvider(p.id)}
-            >
-              <span className="provider-art">{p.art}</span>
-              <span className="provider-text">
-                <span className="settings-row-label">{p.name}</span>
-                <span className="settings-row-hint">
-                  <span className={`status-dot${p.id === inUse ? " is-ready" : ""}`} aria-hidden />
-                  {statusOf(p.id)}
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
+        <ProviderPicker picked={provider} onPick={setProvider} label="Sync provider" status={statusOf} inUse={inUse} />
 
         {provider === "supabase" && (editing || !project) && (
           <SupabaseProjectForm

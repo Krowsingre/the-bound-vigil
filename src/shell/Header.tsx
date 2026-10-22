@@ -21,10 +21,17 @@ export const Header = forwardRef<
     onOpenPlaces?: () => void;
     onChooseAvatar: () => void;
     onClearAvatar: () => void;
+    /** Opens the menu of pages, on a phone. */
+    onOpenMenu?: () => void;
   }
->(function Header({ sync, profile, search, placeholder, onSearchChange, onSearchSubmit, ...menu }, searchRef) {
+>(function Header({ sync, profile, search, placeholder, onSearchChange, onSearchSubmit, onOpenMenu, ...menu }, searchRef) {
   return (
     <header className="header" data-tauri-drag-region>
+      {onOpenMenu && (
+        <button type="button" className="header-menu" aria-label="Menu" onClick={onOpenMenu}>
+          <Icon name="menu" size={22} />
+        </button>
+      )}
       <form
         className="search"
         role="search"

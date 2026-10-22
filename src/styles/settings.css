@@ -1338,3 +1338,46 @@ kbd {
 .contents-panel .dialog-actions > .muted {
   margin-right: auto;
 }
+
+/* Every section folds away from its heading. */
+.settings-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.settings-section-toggle svg {
+  flex: none;
+  color: var(--text-muted);
+  transition: transform 160ms ease;
+}
+
+.settings-section.is-folded .settings-section-toggle svg {
+  transform: rotate(-90deg);
+}
+
+.settings-section.is-folded {
+  gap: 0;
+}
+
+/* The place chosen, then a dropdown of the rest. */
+.provider-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.provider-picker .provider-card {
+  flex: 1 1 240px;
+  max-width: 360px;
+}

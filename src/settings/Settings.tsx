@@ -10,6 +10,7 @@ import { EreadersTab } from "./EreadersTab";
 import { ServersTab } from "./ServersTab";
 import { isHome, isWeb } from "../api";
 import { WebSyncTab } from "../web/WebConnect";
+import { unfoldSection } from "./controls";
 
 /** The pages the web version has: the rest are about files and features on a computer. */
 const WEB_TABS = new Set<SettingsTab>(["appearance", "reading", "collections", "sync", "accessibility", "about"]);
@@ -46,6 +47,7 @@ export function Settings({
 
   // A new page starts at its top, or at the section picked from search.
   useEffect(() => {
+    if (jumpTo) unfoldSection(jumpTo);
     const target = jumpTo ? document.getElementById(`settings-${jumpTo}`) : null;
     if (target) {
       target.scrollIntoView({ block: "start" });

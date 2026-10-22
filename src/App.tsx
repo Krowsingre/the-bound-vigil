@@ -34,6 +34,7 @@ import type { SettingsTab } from "./settings/settingsIndex";
 import { Header } from "./shell/Header";
 import { navFor, type Route } from "./shell/routes";
 import { Sidebar } from "./shell/Sidebar";
+import { useNarrow } from "./lib/useNarrow";
 import { drawImportedCovers } from "./reader/formats";
 
 const COLLAPSE_KEY = "tbv.sidebarCollapsed";
@@ -51,7 +52,11 @@ function readCollapsed(): boolean {
 
 export function App() {
   const [route, setRoute] = useState<Route>("home");
-  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const [collapsedWide, setCollapsed] = useState(readCollapsed);
+  // On a phone the sidebar is a menu opened from the header, always with names.
+  const narrow = useNarrow();
+  const collapsed = collapsedWide && !narrow;
+  const [menuOpen, setMenuOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [dropping, setDropping] = useState(false);
@@ -78,6 +83,7 @@ export function App() {
   const { refreshAdaptive, togglePrivacy } = useAppSettings();
 
   const navigate = useCallback((r: Route) => {
+    setMenuOpen(false);
     // The sidebar's Collections always starts at the overview.
     if (r === "collections") setOpenCollection(null);
     // Sync & Accounts is a page inside Settings.
@@ -377,6 +383,8 @@ export function App() {
       <Sidebar
         route={route === "book" && details ? details.from : route}
         collapsed={collapsed}
+        drawerOpen={narrow && menuOpen}
+        onCloseDrawer={() => setMenuOpen(false)}
         onNavigate={navigate}
         onToggle={toggleSidebar}
         preview={api.kind === "preview"}
@@ -397,6 +405,7 @@ export function App() {
       <div className="main">
         <Header
           ref={search}
+          onOpenMenu={() => setMenuOpen(true)}
           sync={sync}
           profile={profile}
           search={searchText}

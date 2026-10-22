@@ -566,3 +566,17 @@
   color: var(--text-muted);
   white-space: normal;
 }
+
+/* The phone's menu button, beside the search box (see styles/web.css). */
+.header-menu {
+  display: none;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-m);
+}
