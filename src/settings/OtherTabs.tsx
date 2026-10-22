@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { api, isApp, openExternal } from "../api";
 import type { DuplicateGroup, GoodreadsImport, LibraryInfo, SortOrder, TagCount } from "../api/types";
-import { BookCover } from "../components/BookCover";
-import { authorLine } from "../lib/format";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
+import { DuplicatesDialog } from "./DuplicatesDialog";
 import { SORTS, type Layout } from "../library/libraryView";
 import { TextSettings } from "../reader/ReaderPopovers";
 import { PAGE_COLORS, resolveTheme, WIDTHS } from "../reader/settings";
@@ -251,133 +250,6 @@ function DuplicatesSection() {
   );
 }
 
-function DuplicatesDialog({ groups: start, onClose }: { groups: DuplicateGroup[]; onClose: () => void }) {
-  const toast = useToast();
-  const [groups, setGroups] = useState(start);
-  const [deleting, setDeleting] = useState<DuplicateGroup["books"][number] | null>(null);
-  const dismiss = (g: DuplicateGroup) =>
-    void api.dismissDuplicates(g.key).then(
-      () => setGroups((list) => list.filter((x) => x.key !== g.key)),
-      (e: unknown) => toast(String(e)),
-    );
-  const [sharing, setSharing] = useState(false);
-  // A set can be helped when its covers differ in size, or some copies have none.
-  const canShare = (g: DuplicateGroup) => {
-    const areas = g.books.map((b) => (b.coverSize ? b.coverSize[0] * b.coverSize[1] : 0));
-    return Math.max(...areas) > 0 && areas.some((a) => a < Math.max(...areas));
-  };
-  const share = async (sets: DuplicateGroup[]) => {
-    setSharing(true);
-    try {
-      let changed = 0;
-      for (const g of sets) changed += await api.shareBestCover(g.books.map((b) => b.id));
-      const fresh = new Map((await api.findDuplicates()).map((g) => [g.key, g]));
-      setGroups((list) => list.map((g) => fresh.get(g.key) ?? g));
-      toast(changed ? `${changed} ${changed === 1 ? "copy now uses" : "copies now use"} the sharpest cover.` : "Those copies already share the sharpest cover.");
-    } catch (e) {
-      toast(`Couldn't change the covers: ${String(e)}`);
-    } finally {
-      setSharing(false);
-    }
-  };
-  const remove = async (book: DuplicateGroup["books"][number]) => {
-    setDeleting(null);
-    try {
-      await api.deleteBook(book.id);
-      toast(`Deleted “${book.title}” (${book.format.toUpperCase()}).`);
-      setGroups((list) =>
-        list.map((g) => ({ ...g, books: g.books.filter((b) => b.id !== book.id) })).filter((g) => g.books.length > 1),
-      );
-    } catch (e) {
-      toast(`Couldn't delete it: ${String(e)}`);
-    }
-  };
-  return (
-    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog duplicates-dialog" role="dialog" aria-label="Duplicate books" onKeyDown={(e) => !deleting && e.key === "Escape" && onClose()}>
-        <h2>Duplicate books</h2>
-        {groups.length === 0 ? (
-          <p className="muted">All sorted. No more duplicates to look at.</p>
-        ) : (
-          <p className="muted">
-            {groups.length} {groups.length === 1 ? "set" : "sets"} of books look alike. Delete the copies you don't want, or mark a set as not duplicates.
-            The sharpest cover can go on every copy first, and it stays after the others are deleted.
-          </p>
-        )}
-        {groups.filter(canShare).length > 1 && (
-          <button type="button" className="btn btn-quiet btn-small duplicate-share-all" disabled={sharing} onClick={() => void share(groups.filter(canShare))}>
-            <Icon name="image" size={14} /> Sharpest cover for every set
-          </button>
-        )}
-        <div className="duplicate-groups">
-          {groups.map((g) => (
-            <section key={g.key} className="duplicate-group">
-              <header>
-                <span className="muted">{g.reason}</span>
-                {canShare(g) && (
-                  <button
-                    type="button"
-                    className="btn btn-quiet btn-small"
-                    disabled={sharing}
-                    title="Every copy gets the largest cover between them"
-                    onClick={() => void share([g])}
-                  >
-                    Use the sharpest cover
-                  </button>
-                )}
-                <button type="button" className="btn btn-quiet btn-small" onClick={() => dismiss(g)}>
-                  Not duplicates
-                </button>
-              </header>
-              <ul>
-                {g.books.map((b) => (
-                  <li key={b.id} className="duplicate-book">
-                    <BookCover book={b} size="s" />
-                    <span className="duplicate-text">
-                      <strong>{b.title}</strong>
-                      <span className="muted">{authorLine(b.authors)}</span>
-                      <span className="muted duplicate-facts">
-                        {[
-                          b.format.toUpperCase(),
-                          b.fileSize ? formatBytes(b.fileSize) : null,
-                          b.coverSize ? `cover ${b.coverSize[0]}×${b.coverSize[1]}` : "no cover",
-                          `added ${new Date(b.addedAt).toLocaleDateString()}`,
-                          b.status === "in_progress" ? `${Math.round((b.totalProgression ?? 0) * 100)}% read` : b.status === "read" ? "read" : null,
-                          b.notes ? `${b.notes} ${b.notes === 1 ? "note" : "notes"}` : null,
-                          b.availability === "cloud" ? "in the cloud" : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </span>
-                    </span>
-                    <button type="button" className="btn btn-quiet btn-small" onClick={() => setDeleting(b)}>
-                      <Icon name="trash" size={14} /> Delete
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
-        <div className="dialog-actions">
-          <button type="button" className="btn btn-primary" onClick={onClose}>
-            Done
-          </button>
-        </div>
-      </div>
-      {deleting && (
-        <ConfirmDialog
-          title={`Delete this copy of “${deleting.title}”?`}
-          body={`The ${deleting.format.toUpperCase()} copy leaves your library on every device${deleting.notes ? `, with its ${deleting.notes} ${deleting.notes === 1 ? "note" : "notes"}` : ""}. The other copies stay.`}
-          confirm="Delete copy"
-          danger
-          onCancel={() => setDeleting(null)}
-          onConfirm={() => void remove(deleting)}
-        />
-      )}
-    </div>
-  );
-}
 
 function GoodreadsSection() {
   const toast = useToast();
@@ -865,7 +737,7 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
 ];
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.8.0");
+  const [version, setVersion] = useState("1.9.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

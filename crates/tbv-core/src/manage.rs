@@ -45,6 +45,8 @@ pub struct DuplicateBook {
     pub book: BookPreview,
     pub file_size: u64,
     pub notes: u32,
+    /// The collections and shelves it's on, Up next included.
+    pub collections: u32,
     /// The cover's width and height in pixels, when there is one.
     pub cover_size: Option<[u32; 2]>,
 }
@@ -366,7 +368,8 @@ impl Library {
                     COALESCE((SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = 'isbn'),
                              (SELECT value FROM metadata_fetched WHERE book_id = b.id AND field = 'isbn'), b.isbn),
                     b.file_size,
-                    (SELECT COUNT(*) FROM annotations a WHERE a.book_id = b.id AND a.deleted_at IS NULL)
+                    (SELECT COUNT(*) FROM annotations a WHERE a.book_id = b.id AND a.deleted_at IS NULL),
+                    (SELECT COUNT(*) FROM collection_books c WHERE c.book_id = b.id AND c.removed_at IS NULL)
              {BOOK_FROM} ORDER BY b.added_at"
         );
         let mut statement = self.conn.prepare(&sql)?;
@@ -377,6 +380,7 @@ impl Library {
                     r.get::<_, Option<String>>(27)?,
                     r.get::<_, i64>(28)?,
                     r.get::<_, u32>(29)?,
+                    r.get::<_, u32>(30)?,
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -384,6 +388,8 @@ impl Library {
         let mut by_isbn: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let mut by_title: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         for (i, (book, isbn, ..)) in rows.iter().enumerate() {
+            // An audiobook and the ebook of the same title are a pair, not two copies.
+            let kind = if crate::audio::is_audio(&book.format) { "audio" } else { "text" };
             if let Some(isbn) = isbn
                 .as_deref()
                 .map(|s| {
@@ -393,12 +399,12 @@ impl Library {
                 })
                 .filter(|s| s.len() >= 10)
             {
-                by_isbn.entry(isbn).or_default().push(i);
+                by_isbn.entry(format!("{kind}|{isbn}")).or_default().push(i);
             }
             let title = title_key(&book.title);
             if !title.is_empty() {
                 by_title
-                    .entry(format!("{title}|{}", author_key(&book.authors)))
+                    .entry(format!("{kind}|{title}|{}", author_key(&book.authors)))
                     .or_default()
                     .push(i);
             }
@@ -453,6 +459,7 @@ impl Library {
                         book: rows[i].0.clone(),
                         file_size: rows[i].2.max(0) as u64,
                         notes: rows[i].3,
+                        collections: rows[i].4,
                         cover_size: cover_size(rows[i].0.cover_path.as_deref()),
                     })
                     .collect(),
@@ -740,6 +747,16 @@ mod tests {
         // The larger copy goes; the one kept still has its cover.
         library.delete_book(&large).unwrap();
         assert_eq!(now(&library, &small), Some([600, 900]));
+    }
+
+    #[test]
+    fn an_audiobook_and_its_ebook_are_not_duplicates() {
+        let (dir, mut library) = open_temp_library();
+        add(&mut library, dir.path(), "a", "The Moonstone", "Wilkie Collins", "");
+        let mp3 = dir.path().join("moonstone.mp3");
+        fs::write(&mp3, crate::audio::tests::silent_mp3(40, "The Moonstone", "The Moonstone", "Wilkie Collins")).unwrap();
+        assert!(matches!(library.import_files(&[mp3]).remove(0), ImportResult::Imported { .. }));
+        assert!(library.find_duplicates().unwrap().is_empty());
     }
 
     #[test]

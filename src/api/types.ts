@@ -484,7 +484,7 @@ export interface DuplicateGroup {
   key: string;
   /** Why they look alike, in words. */
   reason: string;
-  books: (BookPreview & { fileSize: number; notes: number; coverSize: [number, number] | null })[];
+  books: (BookPreview & { fileSize: number; notes: number; collections: number; coverSize: [number, number] | null })[];
 }
 
 /** One book of a series, as an online source lists it. */
