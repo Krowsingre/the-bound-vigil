@@ -334,15 +334,15 @@ export function ExportDialog({
           <label className="field">
             <span>Paragraphs</span>
             <select value={settings.paragraphs} onChange={(e) => set({ paragraphs: e.target.value as ExportSettings["paragraphs"] })}>
-              <option value="indent">Indented, as in print</option>
-              <option value="space">A blank line between</option>
+              <option value="indent">Indented</option>
+              <option value="space">Spaced</option>
             </select>
           </label>
           <label className="field">
             <span>Lines</span>
             <select value={settings.align} onChange={(e) => set({ align: e.target.value as ExportSettings["align"] })}>
-              <option value="justify">Even on both sides</option>
-              <option value="left">Ragged on the right</option>
+              <option value="justify">Justified</option>
+              <option value="left">Ragged right</option>
             </select>
           </label>
           <label className="field">

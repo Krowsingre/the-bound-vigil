@@ -150,7 +150,7 @@ function Toolbar({ editor }: { editor: Editor }) {
             autoFocus
             value={noting}
             placeholder="The footnote's words"
-            aria-label="Footnote"
+            aria-label="Footnote words"
             maxLength={2000}
             onChange={(e) => setNoting(e.target.value)}
             onKeyDown={(e) => e.key === "Escape" && setNoting(null)}
