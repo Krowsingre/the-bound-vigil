@@ -8,6 +8,8 @@ import { chapterLength, usePlayer } from "../audio/player";
 import type { Draw } from "../vendor/foliate-js/overlayer.js";
 import type { TocItem, View } from "../vendor/foliate-js/view.js";
 import { chaptersUsable, matchChapters, sentenceAt, type TocEntry } from "./readAlong";
+import { onPreparing, STEP_MS } from "../readAlong/prepare";
+import { placeOf, readTiming, wordAt, wordsIn, type Timing } from "../readAlong/timing";
 
 const MARK_KEY = "tbv-read-along";
 const MARK_LIGHT = "#5f84ad";
@@ -21,6 +23,8 @@ export interface ReadAlong {
   following: boolean;
   /** Starts the audiobook and follows it, or stops following (and pauses it). */
   toggle: () => void;
+  /** Word timing worked out for this pair: all of it, some of it, or none yet. */
+  timed: "all" | "some" | null;
 }
 
 function flatten(items: TocItem[] | undefined, view: View, out: TocEntry[] = []): TocEntry[] {
@@ -43,11 +47,20 @@ function textOf(doc: Document) {
     nodes.push({ node: text, start: length });
     length += text.data.length;
   }
+  let starts: number[] | null = null;
   return {
     length,
+    /** Where the section's `n`th word starts, counted as read-along timing counts them. */
+    wordStart(n: number): number | null {
+      starts ??= wordsIn(nodes.map((x) => x.node.data).join("")).map((w) => w.at);
+      return starts[Math.min(n, starts.length - 1)] ?? null;
+    },
     /** The sentence `fraction` of the way through the section. */
     sentence(fraction: number): Range | null {
-      const at = Math.floor(fraction * length);
+      return this.sentenceAt(Math.floor(fraction * length));
+    },
+    /** The sentence holding the character `at` of the section's text. */
+    sentenceAt(at: number): Range | null {
       let hit = nodes[0];
       for (const x of nodes) if (x.start <= at) hit = x;
       if (!hit) return null;
@@ -96,6 +109,30 @@ export function useReadAlong({
     shown: null as { index: number; start: number; node: Node } | null,
     text: null as { index: number; doc: Document; t: ReturnType<typeof textOf> } | null,
   }).current;
+
+  // Word timing, once worked out; reloaded now and then while it's being worked out.
+  const [timing, setTiming] = useState<Timing | null>(null);
+  useEffect(() => {
+    if (!audiobookId) return setTiming(null);
+    let current = true;
+    let loadedAt = 0;
+    const load = () => {
+      loadedAt = Date.now();
+      api.readAlongTiming(bookId, audiobookId).then(
+        (json) => current && setTiming(readTiming(json)),
+        () => undefined,
+      );
+    };
+    load();
+    const stop = onPreparing((p) => {
+      if (p?.ebookId !== bookId || p.audiobookId !== audiobookId) return;
+      if (p.stage !== "listening" || Date.now() - loadedAt > 30_000) load();
+    });
+    return () => {
+      current = false;
+      stop();
+    };
+  }, [bookId, audiobookId]);
 
   useEffect(() => {
     let current = true;
@@ -150,12 +187,19 @@ export function useReadAlong({
   const position = player.positionMs;
   useEffect(() => {
     if (!following || !view || !book || book.book.id !== audiobookId || Date.now() < s.heldUntil) return;
-    // Where the narrator is: a section and how far through it.
+    // Where the narrator is: a section and how far through it, or which word of it.
     let index: number | undefined;
     let fraction = 0;
+    let word: number | null = null;
     const ci = player.chapterIndex;
     const section = chapters?.[ci];
-    if (chapters && section !== null && section !== undefined) {
+    const said = timing ? wordAt(timing, position, STEP_MS * 2) : null;
+    const place = timing && said !== null ? placeOf(timing, said) : null;
+    if (timing && place) {
+      index = place.section;
+      word = place.word;
+      fraction = timing.sections[index] ? place.word / timing.sections[index] : 0;
+    } else if (chapters && section !== null && section !== undefined) {
       index = section;
       const length = chapterLength(book, ci);
       fraction = length ? (position - book.chapters[ci].startMs) / length : 0;
@@ -181,7 +225,8 @@ export function useReadAlong({
       }
       if (view.isFixedLayout) return;
       if (s.text?.doc !== contents.doc) s.text = { index: index!, doc: contents.doc, t: textOf(contents.doc) };
-      const range = s.text.t.sentence(fraction);
+      const start = word === null ? null : s.text.t.wordStart(word);
+      const range = start === null ? s.text.t.sentence(fraction) : s.text.t.sentenceAt(start);
       if (!range) return;
       if (s.shown?.node === range.startContainer && s.shown.start === range.startOffset) return;
       s.shown = { index: index!, node: range.startContainer, start: range.startOffset };
@@ -202,7 +247,7 @@ export function useReadAlong({
       }
     };
     void run();
-  }, [following, view, book, audiobookId, position, chapters, player.chapterIndex, dark, s]);
+  }, [following, view, book, audiobookId, position, chapters, player.chapterIndex, dark, s, timing]);
 
   useEffect(() => {
     if (!following) clear();
@@ -221,5 +266,5 @@ export function useReadAlong({
     void player.load(audiobookId, true);
   }, [audiobookId, following, player, onStart, s]);
 
-  return { audiobookId, following, toggle };
+  return { audiobookId, following, toggle, timed: timing?.anchors.length ? (timing.done ? "all" : "some") : null };
 }

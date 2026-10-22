@@ -114,6 +114,13 @@ export interface Api {
   linkEbook(audiobookId: string, ebookId: string | null): Promise<void>;
   /** The audiobook linked to an ebook, for reading along. */
   audiobookForEbook(ebookId: string): Promise<string | null>;
+  /** A stretch of an audiobook on this computer as 16 kHz mono samples; empty past its end. Desktop only. */
+  audioClip(audiobookId: string, startMs: number, lengthMs: number): Promise<Float32Array>;
+  /** Read-along timing for an ebook and its audiobook (JSON, see readAlong/timing.ts), or null. */
+  /** Lets go of the audiobook `audioClip` was reading. */
+  audioClipsDone(): Promise<void>;
+  readAlongTiming(ebookId: string, audiobookId: string): Promise<string | null>;
+  saveReadAlongTiming(ebookId: string, audiobookId: string, timing: string): Promise<void>;
   /** Where the player streams one part of an audiobook from, or null where it can't play here. */
   audioUrl(bookId: string, part: number): string | null;
   /**
@@ -462,6 +469,13 @@ function appApi(): Api {
       (await core).invoke("save_listening", { bookId, positionMs: Math.max(0, Math.round(positionMs)), chapter }),
     linkEbook: async (audiobookId, ebookId) => (await core).invoke("link_ebook", { audiobookId, ebookId }),
     audiobookForEbook: async (ebookId) => (await core).invoke<string | null>("audiobook_for_ebook", { ebookId }),
+    audioClip: async (bookId, startMs, lenMs) => {
+      const bytes = await (await core).invoke<ArrayBuffer | number[]>("audio_clip", { bookId, startMs: Math.round(startMs), lenMs: Math.round(lenMs) });
+      return new Float32Array(Array.isArray(bytes) ? new Uint8Array(bytes).buffer : bytes);
+    },
+    audioClipsDone: async () => (await core).invoke("audio_clips_done"),
+    readAlongTiming: async (ebookId, audiobookId) => (await core).invoke<string | null>("read_along_timing", { ebookId, audiobookId }),
+    saveReadAlongTiming: async (ebookId, audiobookId, timing) => (await core).invoke("save_read_along_timing", { ebookId, audiobookId, timing }),
     // Windows and Android reach custom schemes through http://<scheme>.localhost.
     prepareStream: async (bookId) => {
       await (await core).invoke("prepare_stream", { bookId });

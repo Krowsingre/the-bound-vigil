@@ -654,6 +654,17 @@ export async function webApi(): Promise<Api> {
     },
     audiobookForEbook: async (ebookId) =>
       (library.rows("audiobooks").find((a) => a.ebook_id === ebookId && library.book(String(a.book_id)))?.book_id as string) ?? null,
+    audioClip: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    audioClipsDone: async () => undefined,
+    readAlongTiming: async (ebookId, audiobookId) => {
+      const timing = library.row("read_along", [ebookId, audiobookId])?.timing;
+      return typeof timing === "string" ? timing : null;
+    },
+    saveReadAlongTiming: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
     // Audiobooks stream from Supabase here; nothing is kept on the phone.
     audioUrl: () => null,
     prepareStream: async (bookId) => {

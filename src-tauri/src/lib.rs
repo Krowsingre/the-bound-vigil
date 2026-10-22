@@ -242,6 +242,12 @@ async fn audio_clip(state: State<'_, AppLibrary>, book_id: String, start_ms: u64
     Ok(tauri::ipc::Response::new(samples.iter().flat_map(|s| s.to_le_bytes()).collect::<Vec<u8>>()))
 }
 
+/// Lets go of the audiobook read for timing, so its file can be moved or deleted.
+#[tauri::command]
+fn audio_clips_done() {
+    *LISTENING.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
 #[tauri::command]
 async fn read_along_timing(state: State<'_, AppLibrary>, ebook_id: String, audiobook_id: String) -> CommandResult<Option<String>> {
     with_library(state, move |library| library.read_along_timing(&ebook_id, &audiobook_id)).await
@@ -1527,6 +1533,7 @@ pub fn run() {
             find_series_books,
             prepare_stream,
             audio_clip,
+            audio_clips_done,
             read_along_timing,
             save_read_along_timing,
             home_status,
