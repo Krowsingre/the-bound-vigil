@@ -2,13 +2,14 @@
 //! `supabase/setup.sql`), files in one private storage bucket, both visible
 //! only to the signed-in person.
 
+use std::collections::HashMap;
 use std::fs::File;
-use std::io;
+use std::io::{self, Read, Write};
 use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use ureq::http::Response;
 use ureq::{Agent, Body};
@@ -17,6 +18,49 @@ use super::{seq_after, Page, Record, Remote, Session, SupabaseProject};
 use crate::error::{Error, Result};
 
 const BUCKET: &str = "tbv-files";
+
+/// Supabase's free plan takes files of up to 50 MB, so a bigger one (most
+/// audiobooks) goes up in pieces: `<path>.pieces/0000`, `0001`… and last an
+/// index, `<path>.pieces/pieces.json`. Everything above this file reads it
+/// as the one file at `<path>`. The phone version joins pieces the same way.
+pub const PIECE_BYTES: u64 = 45 * 1024 * 1024;
+const PIECES: &str = ".pieces";
+const PIECE_INDEX: &str = "pieces.json";
+
+/// A file kept in pieces, as its index says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Pieces {
+    /// The whole file's size.
+    pub size: u64,
+    pub count: u64,
+    /// Each piece's size; the last may be smaller.
+    pub piece: u64,
+}
+
+impl Pieces {
+    fn of(size: u64) -> Self {
+        Pieces { size, count: size.div_ceil(PIECE_BYTES).max(1), piece: PIECE_BYTES }
+    }
+
+    /// The pieces holding bytes `start..=end`, each with the stretch of it wanted.
+    fn covering(&self, start: u64, end: u64) -> Vec<(u64, u64, u64)> {
+        let end = end.min(self.size.saturating_sub(1));
+        let mut out = Vec::new();
+        let mut at = start;
+        while at <= end && at < self.size {
+            let index = at / self.piece;
+            let from = at - index * self.piece;
+            let to = (end - index * self.piece).min(self.piece - 1);
+            out.push((index, from, to));
+            at = (index + 1) * self.piece;
+        }
+        out
+    }
+}
+
+fn piece_path(path: &str, index: u64) -> String {
+    format!("{path}{PIECES}/{index:04}")
+}
 const SETUP_HINT: &str = "TBV's tables aren't in this Supabase project yet. Run the setup script from Settings › Sync, then try again";
 
 fn agent() -> Agent {
@@ -228,11 +272,13 @@ pub struct Supabase {
     agent: Agent,
     renewed: bool,
     keeper: Option<Arc<dyn SessionKeeper>>,
+    /// What each big file's piece index says, once read.
+    pieces: HashMap<String, Pieces>,
 }
 
 impl Supabase {
     pub fn new(project: SupabaseProject, session: Session, device_id: String) -> Self {
-        Self { project, session, device_id, agent: agent(), renewed: false, keeper: None }
+        Self { project, session, device_id, agent: agent(), renewed: false, keeper: None, pieces: HashMap::new() }
     }
 
     pub fn keep_session_with(&mut self, keeper: Arc<dyn SessionKeeper>) {
@@ -313,6 +359,22 @@ impl Supabase {
             }
             std::thread::sleep(Duration::from_millis(500 << tries));
         }
+    }
+
+    /// What a file's piece index says, or None if it isn't kept in pieces.
+    fn pieces_of(&mut self, path: &str) -> Result<Option<Pieces>> {
+        if let Some(known) = self.pieces.get(path) {
+            return Ok(Some(*known));
+        }
+        let index = format!("{path}{PIECES}/{PIECE_INDEX}");
+        let found = match self.read_range_whole(&index, 0, 64 * 1024)? {
+            Some((bytes, _)) => serde_json::from_slice::<Pieces>(&bytes).ok().filter(|p| p.piece > 0),
+            None => None,
+        };
+        if let Some(pieces) = found {
+            self.pieces.insert(path.to_string(), pieces);
+        }
+        Ok(found)
     }
 
     fn object_url(&self, path: &str) -> String {
@@ -407,8 +469,73 @@ impl Supabase {
     }
 }
 
-impl Remote for Supabase {
-    fn read_range(&mut self, path: &str, start: u64, end: u64) -> Result<Option<(Vec<u8>, u64)>> {
+impl Supabase {
+    fn upload_whole(&mut self, path: &str, file: &Path) -> Result<()> {
+        let file = file.to_path_buf();
+        self.upload_with(path, &|| Ok(Box::new(File::open(&file)?) as Box<dyn Read>))
+    }
+
+    fn upload_with(&mut self, path: &str, open: &dyn Fn() -> io::Result<Box<dyn Read>>) -> Result<()> {
+        let object = self.object_url(path);
+        let key = self.project.anon_key.clone();
+        let mut answer = self.call(&|agent, url, bearer| {
+            let body = ureq::SendBody::from_owned_reader(open().map_err(ureq::Error::Io)?);
+            agent
+                .post(&format!("{url}/storage/v1/object/{object}"))
+                .header("apikey", &key)
+                .header("Authorization", bearer)
+                .header("x-upsert", "true")
+                .content_type("application/octet-stream")
+                .send(body)
+        })?;
+        match answer.status().as_u16() {
+            200..=299 => Ok(()),
+            413 => Err(Error::Rejected("too big for this Supabase project's file size limit".into())),
+            status => {
+                let why = message(&mut answer);
+                if why.contains("Bucket not found") {
+                    Err(Error::Cloud(SETUP_HINT.into()))
+                } else if why.to_lowercase().contains("exceeded the maximum allowed size") || why.contains("Payload too large") {
+                    Err(Error::Rejected("too big for this Supabase project's file size limit".into()))
+                } else if status == 400 || status == 415 {
+                    Err(Error::Rejected(why))
+                } else {
+                    Err(Error::Cloud(why))
+                }
+            }
+        }
+    }
+
+    fn download_whole(&mut self, path: &str, to: &Path) -> Result<bool> {
+        let object = self.object_url(path);
+        let key = self.project.anon_key.clone();
+        let mut answer = self.call(&|agent, url, bearer| {
+            agent
+                .get(&format!("{url}/storage/v1/object/authenticated/{object}"))
+                .header("apikey", &key)
+                .header("Authorization", bearer)
+                .call()
+        })?;
+        match answer.status().as_u16() {
+            200..=299 => {
+                let mut out = File::create(to)?;
+                let mut body = answer.body_mut().with_config().limit(u64::MAX).reader();
+                io::copy(&mut body, &mut out).map_err(|e| Error::Offline(e.to_string()))?;
+                Ok(true)
+            }
+            400 | 404 => {
+                let why = message(&mut answer);
+                if why.contains("Bucket not found") {
+                    Err(Error::Cloud(SETUP_HINT.into()))
+                } else {
+                    Ok(false)
+                }
+            }
+            _ => Err(Error::Cloud(message(&mut answer))),
+        }
+    }
+
+    fn read_range_whole(&mut self, path: &str, start: u64, end: u64) -> Result<Option<(Vec<u8>, u64)>> {
         let object = self.object_url(path);
         let key = self.project.anon_key.clone();
         let range = format!("bytes={start}-{end}");
@@ -427,7 +554,8 @@ impl Remote for Supabase {
         }
     }
 
-    fn remove(&mut self, path: &str) -> Result<()> {
+
+    fn remove_whole(&mut self, path: &str) -> Result<()> {
         let object = self.object_url(path);
         let key = self.project.anon_key.clone();
         let mut answer = self.call(&|agent, url, bearer| {
@@ -443,6 +571,145 @@ impl Remote for Supabase {
             400 => Err(Error::Cloud(SETUP_HINT.into())),
             _ => Err(Error::Cloud(message(&mut answer))),
         }
+    }
+
+    /// Storage lists each file's size in its metadata (folders have none).
+    fn list_raw(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+        #[derive(Deserialize)]
+        struct Item {
+            name: String,
+            #[serde(default)]
+            metadata: Option<Value>,
+        }
+        let prefix = format!("{}/{}", self.session.user_id, folder.trim_end_matches('/'));
+        let key = self.project.anon_key.clone();
+        let mut names = Vec::new();
+        loop {
+            let body = json!({ "prefix": prefix, "limit": 1000, "offset": names.len(), "sortBy": { "column": "name", "order": "asc" } });
+            let mut answer = self.call(&|agent, url, bearer| {
+                agent
+                    .post(&format!("{url}/storage/v1/object/list/{BUCKET}"))
+                    .header("apikey", &key)
+                    .header("Authorization", bearer)
+                    .send_json(&body)
+            })?;
+            if !answer.status().is_success() {
+                let why = message(&mut answer);
+                return Err(Error::Cloud(if why.contains("Bucket not found") { SETUP_HINT.into() } else { why }));
+            }
+            let page: Vec<Item> = answer.body_mut().read_json().map_err(|e| Error::Cloud(e.to_string()))?;
+            let full = page.len() == 1000;
+            names.extend(page.into_iter().map(|i| {
+                let size = i.metadata.as_ref().and_then(|m| m.get("size")).and_then(Value::as_u64);
+                (i.name, size)
+            }));
+            if !full {
+                return Ok(names);
+            }
+        }
+    }
+}
+
+impl Remote for Supabase {
+    fn upload(&mut self, path: &str, file: &Path) -> Result<()> {
+        let size = std::fs::metadata(file)?.len();
+        self.pieces.remove(path);
+        if size <= PIECE_BYTES {
+            return self.upload_whole(path, file);
+        }
+        // Pieces first and the index last, so a half-sent file is never read as whole.
+        let pieces = Pieces::of(size);
+        for index in 0..pieces.count {
+            if super::winding_down() {
+                return Err(Error::Offline("TBV is closing".into()));
+            }
+            let file = file.to_path_buf();
+            let start = index * pieces.piece;
+            self.upload_with(&piece_path(path, index), &|| {
+                let mut f = File::open(&file)?;
+                io::Seek::seek(&mut f, io::SeekFrom::Start(start))?;
+                Ok(Box::new(f.take(PIECE_BYTES)) as Box<dyn Read>)
+            })?;
+        }
+        let index = serde_json::to_vec(&pieces)?;
+        self.upload_with(&format!("{path}{PIECES}/{PIECE_INDEX}"), &|| Ok(Box::new(io::Cursor::new(index.clone())) as Box<dyn Read>))?;
+        // A copy kept whole before (a paid plan, say) would be read first.
+        self.remove_whole(path)?;
+        self.pieces.insert(path.to_string(), pieces);
+        Ok(())
+    }
+
+    fn download(&mut self, path: &str, to: &Path) -> Result<bool> {
+        if self.download_whole(path, to)? {
+            return Ok(true);
+        }
+        let Some(pieces) = self.pieces_of(path)? else { return Ok(false) };
+        let mut out = File::create(to)?;
+        for index in 0..pieces.count {
+            let piece = to.with_extension("piece");
+            let found = self.download_whole(&piece_path(path, index), &piece);
+            let joined = found.and_then(|found| {
+                if !found {
+                    return Err(Error::Cloud("a piece of this file is missing from Supabase".into()));
+                }
+                io::copy(&mut File::open(&piece)?, &mut out)?;
+                Ok(())
+            });
+            let _ = std::fs::remove_file(&piece);
+            joined?;
+        }
+        out.flush()?;
+        if out.metadata()?.len() != pieces.size {
+            return Err(Error::Cloud("this file's pieces in Supabase don't add up".into()));
+        }
+        Ok(true)
+    }
+
+    fn read_range(&mut self, path: &str, start: u64, end: u64) -> Result<Option<(Vec<u8>, u64)>> {
+        // Known to be in pieces: no need to ask for it whole each time.
+        if !self.pieces.contains_key(path) {
+            if let Some(found) = self.read_range_whole(path, start, end)? {
+                return Ok(Some(found));
+            }
+        }
+        let Some(pieces) = self.pieces_of(path)? else { return Ok(None) };
+        let mut bytes = Vec::new();
+        for (index, from, to) in pieces.covering(start, end) {
+            match self.read_range_whole(&piece_path(path, index), from, to)? {
+                Some((part, _)) => bytes.extend_from_slice(&part),
+                None => return Err(Error::Cloud("a piece of this file is missing from Supabase".into())),
+            }
+        }
+        Ok(Some((bytes, pieces.size)))
+    }
+
+    fn remove(&mut self, path: &str) -> Result<()> {
+        self.remove_whole(path)?;
+        self.pieces.remove(path);
+        let folder = format!("{path}{PIECES}/");
+        for (name, _) in self.list_raw(&folder)? {
+            self.remove_whole(&format!("{folder}{name}"))?;
+        }
+        Ok(())
+    }
+
+    /// A file kept in pieces is listed as the one file, once its index is there.
+    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+        let folder = format!("{}/", folder.trim_end_matches('/'));
+        let mut out = Vec::new();
+        for (name, size) in self.list_raw(&folder)? {
+            match name.strip_suffix(PIECES) {
+                Some(whole) if size.is_none() => {
+                    let inside = self.list_raw(&format!("{folder}{name}/"))?;
+                    if inside.iter().any(|(n, _)| n == PIECE_INDEX) {
+                        let bytes = inside.iter().filter(|(n, _)| n != PIECE_INDEX).filter_map(|(_, s)| *s).sum();
+                        out.push((whole.to_string(), Some(bytes)));
+                    }
+                }
+                _ => out.push((name, size)),
+            }
+        }
+        Ok(out)
     }
 
     fn covers_follow_files(&self) -> bool {
@@ -503,106 +770,12 @@ impl Remote for Supabase {
         }
     }
 
-    fn upload(&mut self, path: &str, file: &Path) -> Result<()> {
-        let object = self.object_url(path);
-        let key = self.project.anon_key.clone();
-        let file = file.to_path_buf();
-        let mut answer = self.call(&|agent, url, bearer| {
-            let body = File::open(&file).map_err(ureq::Error::Io)?;
-            agent
-                .post(&format!("{url}/storage/v1/object/{object}"))
-                .header("apikey", &key)
-                .header("Authorization", bearer)
-                .header("x-upsert", "true")
-                .content_type("application/octet-stream")
-                .send(&body)
-        })?;
-        match answer.status().as_u16() {
-            200..=299 => Ok(()),
-            413 => Err(Error::Rejected("too big for this Supabase plan's file size limit".into())),
-            status => {
-                let why = message(&mut answer);
-                if why.contains("Bucket not found") {
-                    Err(Error::Cloud(SETUP_HINT.into()))
-                } else if why.to_lowercase().contains("exceeded the maximum allowed size") || why.contains("Payload too large") {
-                    Err(Error::Rejected("too big for this Supabase plan's file size limit".into()))
-                } else if status == 400 || status == 415 {
-                    Err(Error::Rejected(why))
-                } else {
-                    Err(Error::Cloud(why))
-                }
-            }
-        }
-    }
 
-    fn download(&mut self, path: &str, to: &Path) -> Result<bool> {
-        let object = self.object_url(path);
-        let key = self.project.anon_key.clone();
-        let mut answer = self.call(&|agent, url, bearer| {
-            agent
-                .get(&format!("{url}/storage/v1/object/authenticated/{object}"))
-                .header("apikey", &key)
-                .header("Authorization", bearer)
-                .call()
-        })?;
-        match answer.status().as_u16() {
-            200..=299 => {
-                let mut out = File::create(to)?;
-                let mut body = answer.body_mut().with_config().limit(u64::MAX).reader();
-                io::copy(&mut body, &mut out).map_err(|e| Error::Offline(e.to_string()))?;
-                Ok(true)
-            }
-            400 | 404 => {
-                let why = message(&mut answer);
-                if why.contains("Bucket not found") {
-                    Err(Error::Cloud(SETUP_HINT.into()))
-                } else {
-                    Ok(false)
-                }
-            }
-            _ => Err(Error::Cloud(message(&mut answer))),
-        }
-    }
 
     fn list(&mut self, folder: &str) -> Result<Vec<String>> {
         Ok(self.list_sizes(folder)?.into_iter().map(|(name, _)| name).collect())
     }
 
-    /// Storage lists each file's size in its metadata (folders have none).
-    fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
-        #[derive(Deserialize)]
-        struct Item {
-            name: String,
-            #[serde(default)]
-            metadata: Option<Value>,
-        }
-        let prefix = format!("{}/{}", self.session.user_id, folder.trim_end_matches('/'));
-        let key = self.project.anon_key.clone();
-        let mut names = Vec::new();
-        loop {
-            let body = json!({ "prefix": prefix, "limit": 1000, "offset": names.len(), "sortBy": { "column": "name", "order": "asc" } });
-            let mut answer = self.call(&|agent, url, bearer| {
-                agent
-                    .post(&format!("{url}/storage/v1/object/list/{BUCKET}"))
-                    .header("apikey", &key)
-                    .header("Authorization", bearer)
-                    .send_json(&body)
-            })?;
-            if !answer.status().is_success() {
-                let why = message(&mut answer);
-                return Err(Error::Cloud(if why.contains("Bucket not found") { SETUP_HINT.into() } else { why }));
-            }
-            let page: Vec<Item> = answer.body_mut().read_json().map_err(|e| Error::Cloud(e.to_string()))?;
-            let full = page.len() == 1000;
-            names.extend(page.into_iter().map(|i| {
-                let size = i.metadata.as_ref().and_then(|m| m.get("size")).and_then(Value::as_u64);
-                (i.name, size)
-            }));
-            if !full {
-                return Ok(names);
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -614,6 +787,19 @@ mod tests {
         let mut response = Response::new(body);
         *response.status_mut() = ureq::http::StatusCode::from_u16(status).unwrap();
         response
+    }
+
+    #[test]
+    fn big_files_are_read_back_across_their_pieces() {
+        let pieces = Pieces::of(PIECE_BYTES * 2 + 10);
+        assert_eq!(pieces.count, 3);
+        assert_eq!(Pieces::of(PIECE_BYTES).count, 1);
+        // Within one piece, across two, and past the end.
+        assert_eq!(pieces.covering(5, 9), vec![(0, 5, 9)]);
+        assert_eq!(pieces.covering(PIECE_BYTES - 2, PIECE_BYTES + 1), vec![(0, PIECE_BYTES - 2, PIECE_BYTES - 1), (1, 0, 1)]);
+        assert_eq!(pieces.covering(PIECE_BYTES * 2 + 5, u64::MAX - 1), vec![(2, 5, 9)]);
+        assert!(pieces.covering(PIECE_BYTES * 3, PIECE_BYTES * 3 + 5).is_empty());
+        assert_eq!(piece_path("books/ab.m4b", 2), "books/ab.m4b.pieces/0002");
     }
 
     #[test]

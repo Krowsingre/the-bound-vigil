@@ -26,6 +26,7 @@ export function SyncMenu({
   onImportFolder,
   onOpenSyncSettings,
   onOpenActivity,
+  onOpenPlaces,
   onChooseAvatar,
   onClearAvatar,
 }: {
@@ -36,6 +37,8 @@ export function SyncMenu({
   onOpenSyncSettings: () => void;
   /** The Sync activity page; left out where there's none (the phone version). */
   onOpenActivity?: () => void;
+  /** The Where your books are page; desktop only too. */
+  onOpenPlaces?: () => void;
   onChooseAvatar: () => void;
   onClearAvatar: () => void;
 }) {
@@ -85,6 +88,7 @@ export function SyncMenu({
         },
         { label: "Sync now", icon: "sync", disabled: off || state === "syncing", onSelect: () => void api.syncNow() },
         ...(onOpenActivity ? [{ label: "Sync activity", icon: "list" as const, hint: "File by file", onSelect: onOpenActivity }] : []),
+        ...(onOpenPlaces ? [{ label: "Where your books are", icon: "cloud" as const, hint: "Computer and cloud", onSelect: onOpenPlaces }] : []),
         "divider",
         { label: "Import books…", icon: "importFile", hint: "Ctrl+O", onSelect: onImportBooks },
         { label: "Import a folder…", icon: "folder", onSelect: onImportFolder },

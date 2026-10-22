@@ -6,6 +6,29 @@ import type { SupabaseProject } from "../api/types";
 
 export const BUCKET = "tbv-files";
 
+/**
+ * Supabase's free plan takes files of up to 50 MB, so bigger ones are kept in
+ * pieces, `<path>.pieces/0000`… with an index, `<path>.pieces/pieces.json`,
+ * sent last. The desktop app does the same (sync/supabase.rs).
+ */
+export const PIECE_BYTES = 45 * 1024 * 1024;
+const PIECES = ".pieces";
+const PIECE_INDEX = "pieces.json";
+
+export interface Pieces {
+  size: number;
+  count: number;
+  piece: number;
+}
+
+export const piecePath = (path: string, index: number) => `${path}${PIECES}/${String(index).padStart(4, "0")}`;
+
+/** The logical name of a listed entry: a folder of pieces counts as its file. */
+export function listedName(name: string, folder: boolean): string | null {
+  if (!folder) return name;
+  return name.endsWith(PIECES) ? name.slice(0, -PIECES.length) : null;
+}
+
 export interface Session {
   userId: string;
   email: string;
@@ -216,12 +239,40 @@ export class Supabase {
     return `${BUCKET}/${this.session.userId}/${path}`;
   }
 
-  /** A file from the bucket, or null if it isn't there. */
+  /** A file from the bucket, joined from its pieces if it's kept in them, or null if it isn't there. */
   async download(path: string): Promise<Blob | null> {
+    const whole = await this.downloadWhole(path);
+    if (whole) return whole;
+    const pieces = await this.piecesOf(path);
+    if (!pieces) return null;
+    const parts: Blob[] = [];
+    for (let i = 0; i < pieces.count; i++) {
+      const part = await this.downloadWhole(piecePath(path, i));
+      if (!part) throw new Error("A piece of this file is missing from Supabase.");
+      parts.push(part);
+    }
+    const joined = new Blob(parts);
+    if (joined.size !== pieces.size) throw new Error("This file's pieces in Supabase don't add up.");
+    return joined;
+  }
+
+  private async downloadWhole(path: string): Promise<Blob | null> {
     const answer = await this.call(`/storage/v1/object/authenticated/${this.object(path)}`);
     if (answer.status === 404 || answer.status === 400) return null;
     if (!answer.ok) throw await problem(answer);
     return answer.blob();
+  }
+
+  /** What a file's piece index says, or null if it isn't kept in pieces. */
+  async piecesOf(path: string): Promise<Pieces | null> {
+    const index = await this.downloadWhole(`${path}${PIECES}/${PIECE_INDEX}`);
+    if (!index) return null;
+    try {
+      const pieces = JSON.parse(await index.text()) as Pieces;
+      return pieces.piece > 0 && pieces.count > 0 ? pieces : null;
+    } catch {
+      return null;
+    }
   }
 
   /** A link that plays a file straight from the bucket for a few hours, or null if it isn't there. */
@@ -238,6 +289,15 @@ export class Supabase {
   }
 
   async upload(path: string, file: Blob): Promise<void> {
+    if (file.size <= PIECE_BYTES) return this.uploadWhole(path, file);
+    // Pieces first and the index last, so a half-sent file is never read as whole.
+    const pieces: Pieces = { size: file.size, count: Math.ceil(file.size / PIECE_BYTES), piece: PIECE_BYTES };
+    for (let i = 0; i < pieces.count; i++) await this.uploadWhole(piecePath(path, i), file.slice(i * PIECE_BYTES, (i + 1) * PIECE_BYTES));
+    await this.uploadWhole(`${path}${PIECES}/${PIECE_INDEX}`, new Blob([JSON.stringify(pieces)]));
+    await this.remove(path, false);
+  }
+
+  private async uploadWhole(path: string, file: Blob): Promise<void> {
     const answer = await this.call(`/storage/v1/object/${this.object(path)}`, {
       method: "POST",
       headers: { "x-upsert": "true", "Content-Type": "application/octet-stream" },
@@ -247,24 +307,31 @@ export class Supabase {
     if (!answer.ok) throw await problem(answer);
   }
 
-  /** Erases a file. Fine if it isn't there. */
-  async remove(path: string): Promise<void> {
+  /** Erases a file, and its pieces too unless `pieces` is false. Fine if it isn't there. */
+  async remove(path: string, pieces = true): Promise<void> {
     const answer = await this.call(`/storage/v1/object/${this.object(path)}`, { method: "DELETE" });
     if (!answer.ok && answer.status !== 404 && answer.status !== 400) throw await problem(answer);
+    if (!pieces) return;
+    const folder = `${path}${PIECES}/`;
+    for (const name of await this.listRaw(folder)) if (!name.folder) await this.remove(`${folder}${name.name}`, false);
   }
 
-  /** The names of the files in one folder of the bucket. */
+  /** The names of the files in one folder of the bucket. A file kept in pieces is listed as itself. */
   async list(folder: string): Promise<string[]> {
-    const names: string[] = [];
+    return (await this.listRaw(folder)).map((n) => listedName(n.name, n.folder)).filter((n): n is string => n !== null);
+  }
+
+  private async listRaw(folder: string): Promise<{ name: string; folder: boolean }[]> {
+    const names: { name: string; folder: boolean }[] = [];
     for (let offset = 0; ; offset += 1000) {
       const answer = await this.call(`/storage/v1/object/list/${BUCKET}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prefix: `${this.session.userId}/${folder}`, limit: 1000, offset }),
+        body: JSON.stringify({ prefix: `${this.session.userId}/${folder.replace(/\/$/, "")}`, limit: 1000, offset }),
       });
       if (!answer.ok) throw await problem(answer);
       const page: { name: string; id: string | null }[] = await answer.json();
-      names.push(...page.filter((f) => f.id !== null).map((f) => f.name));
+      names.push(...page.map((f) => ({ name: f.name, folder: f.id === null })));
       if (page.length < 1000) return names;
     }
   }

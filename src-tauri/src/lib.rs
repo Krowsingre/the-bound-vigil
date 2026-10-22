@@ -901,6 +901,16 @@ async fn remove_supabase_files(
         .map_err(|e| e.to_string())
 }
 
+/// Where every book's file is: here, and in each sync place.
+#[tauri::command]
+async fn book_places(state: State<'_, AppLibrary>) -> CommandResult<tbv_core::sync::places::PlacesView> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || sync::book_places(&library))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 /// How much of the Supabase project this library is using.
 #[tauri::command]
 async fn supabase_usage(state: State<'_, AppLibrary>) -> CommandResult<tbv_core::sync::supabase::Usage> {
@@ -1569,6 +1579,7 @@ pub fn run() {
             tidy_cloud,
             supabase_usage,
             supabase_contents,
+            book_places,
             remove_supabase_files,
             list_ereaders,
             copy_to_ereader,

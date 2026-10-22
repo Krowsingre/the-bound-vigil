@@ -539,3 +539,54 @@ pub fn supabase_usage(library: &Arc<Mutex<Library>>) -> tbv_core::Result<core_sy
     }
     outcome
 }
+
+/// Where every book's file is: here, and in each sync place, from the
+/// places' own listings. A place that can't be reached says why.
+pub fn book_places(library: &Arc<Mutex<Library>>) -> tbv_core::Result<core_sync::places::PlacesView> {
+    let unavailable = || Error::Unsuitable("the library is unavailable".into());
+    let (main_provider, also_provider) = {
+        let l = library.lock().map_err(|_| unavailable())?;
+        (l.sync_provider()?, l.sync_also()?)
+    };
+    let check = |cloud: tbv_core::Result<Option<Cloud>>| -> (Option<std::collections::HashSet<String>>, Option<String>) {
+        match cloud {
+            Ok(Some(mut cloud)) => {
+                let held = core_sync::places::held(&mut cloud);
+                if let Ok(l) = library.lock() {
+                    keep_session(&l, &cloud, &held);
+                }
+                match held {
+                    Ok(held) => (Some(held), None),
+                    Err(e) => (None, Some(e.to_string())),
+                }
+            }
+            Ok(None) => (None, Some("Not signed in.".into())),
+            Err(e) => (None, Some(e.to_string())),
+        }
+    };
+    let (main_held, main_problem) = if main_provider == Provider::Off {
+        (None, None)
+    } else {
+        // A folder or WebDAV server is opened with the library free, as sync does:
+        // a slow server mustn't hold up the rest of the app.
+        let cloud = match &main_provider {
+            Provider::Supabase => library.lock().map_err(|_| unavailable()).and_then(|l| connect(library, &l)),
+            other => {
+                let device = library.lock().map_err(|_| unavailable()).and_then(|l| l.device_id())?;
+                core_sync::open_files(other, device).map(|(files, _)| Some(Cloud::Files(files)))
+            }
+        };
+        check(cloud)
+    };
+    let (also_held, also_problem) = match &also_provider {
+        None | Some(Provider::Off) => (None, None),
+        Some(_) => check(connect_second(library).ok_or_else(|| Error::Unsuitable("TBV couldn't reach it.".into())).map(Some)),
+    };
+    let books = core_sync::places::book_places(library, main_held.as_ref(), also_held.as_ref())?;
+    let place = |provider: &Provider, problem| core_sync::places::PlaceCheck { provider: provider.view(), problem };
+    Ok(core_sync::places::PlacesView {
+        main: (main_provider != Provider::Off).then(|| place(&main_provider, main_problem)),
+        also: also_provider.as_ref().filter(|p| **p != Provider::Off).map(|p| place(p, also_problem)),
+        books,
+    })
+}

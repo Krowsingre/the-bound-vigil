@@ -7,6 +7,7 @@ import type { Found } from "../lib/onlineDetails";
 import type {
   TidyPlan,
   StoredFile,
+  PlacesView,
   RemoveReport,
   TidyProgress,
   SentFile,
@@ -213,6 +214,8 @@ export interface Api {
   supabaseUsage(): Promise<SupabaseUsage>;
   /** Every file TBV keeps in Supabase, by type. */
   supabaseContents(): Promise<StoredFile[]>;
+  /** Every book and where its file is: this computer and each sync place. */
+  bookPlaces(): Promise<PlacesView>;
   /** Removes the chosen files from Supabase. */
   removeSupabaseFiles(paths: string[], onProgress: (progress: TidyProgress) => void): Promise<RemoveReport>;
   /** How moving or backing up the library to another service stands. */
@@ -578,6 +581,7 @@ function appApi(): Api {
     planTidyCloud: async () => (await core).invoke("plan_tidy_cloud"),
     supabaseUsage: async () => (await core).invoke("supabase_usage"),
     supabaseContents: async () => (await core).invoke("supabase_contents"),
+    bookPlaces: async () => (await core).invoke("book_places"),
     removeSupabaseFiles: async (paths, onProgress) => {
       const { listen } = await tauriEvents();
       const stop = await listen<TidyProgress>("tidy-progress", (e) => onProgress(e.payload));

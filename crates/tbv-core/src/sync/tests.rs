@@ -1276,6 +1276,28 @@ fn covers_travel_before_book_files_and_despite_them() {
     assert!(seen.cover_path.is_some());
 }
 
+#[test]
+fn covers_go_to_short_places_phone_sized() {
+    let temp = tempfile::tempdir().unwrap();
+    let cover = temp.path().join("abc.png");
+    let noisy = image::RgbImage::from_fn(1200, 1800, |x, y| image::Rgb([(x * 7 % 251) as u8, (y * 13 % 251) as u8, ((x ^ y) % 251) as u8]));
+    noisy.save(&cover).unwrap();
+    let dir = temp.path().join("small");
+    let small = small_cover(&cover, &dir);
+    assert_eq!(small, dir.join("abc.jpg"));
+    let made = image::open(&small).unwrap();
+    assert_eq!((made.width(), made.height()), (267, 400));
+    assert!(fs::metadata(&small).unwrap().len() < fs::metadata(&cover).unwrap().len());
+    // Made once, then kept.
+    let when = fs::metadata(&small).unwrap().modified().unwrap();
+    assert_eq!(small_cover(&cover, &dir), small);
+    assert_eq!(fs::metadata(&small).unwrap().modified().unwrap(), when);
+    // Something that isn't a picture goes as it is.
+    let odd = temp.path().join("odd.jpg");
+    fs::write(&odd, b"not a picture").unwrap();
+    assert_eq!(small_cover(&odd, &dir), odd);
+}
+
 mod tidying {
     use super::*;
     use crate::sync::tidy::{plan_tidy, tidy, TidyPlan};
@@ -1486,6 +1508,30 @@ mod tidying {
         sync_once(&pc.library, &mut supabase.clone()).unwrap();
         assert!(pc.lib().book(&carmilla).unwrap().unwrap().phone_has);
         assert!(plan_tidy(&pc.library, &mut supabase.clone(), None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn every_book_says_where_its_file_is() {
+        use crate::sync::places::{book_places, held};
+        let icloud = FakeRemote::default();
+        let pc = Device::new();
+        pc.set_options(json!({ "bookFiles": true }));
+        let both = pc.import("Dracula");
+        let only_cloud = pc.import("Carmilla");
+        let only_here = pc.import("Vampyre");
+        pc.sync(&icloud);
+        icloud.0.lock().unwrap().files.remove(&book_path(&only_here));
+        pc.lib().remove_download(&only_cloud).unwrap();
+        icloud.0.lock().unwrap().files.insert("books/abc/part1.mp3".into(), vec![1]);
+
+        let main = held(&mut icloud.clone()).unwrap();
+        assert!(main.contains("abc"), "files listed inside a folder count");
+        let places = book_places(&pc.library, Some(&main), None).unwrap();
+        let find = |id: &str| places.iter().find(|p| p.book_id == id).unwrap().clone();
+        assert_eq!((find(&both).here, find(&both).main), (true, Some(true)));
+        assert_eq!((find(&only_cloud).here, find(&only_cloud).main), (false, Some(true)));
+        assert_eq!((find(&only_here).here, find(&only_here).main, find(&only_here).also), (true, Some(false), None));
+        assert_eq!(places.iter().map(|p| p.title.as_str()).collect::<Vec<_>>(), ["Carmilla", "Dracula", "Vampyre"]);
     }
 
     #[test]

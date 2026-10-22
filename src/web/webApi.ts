@@ -950,7 +950,7 @@ export async function webApi(): Promise<Api> {
     },
     showFolder: async () => undefined,
     syncOverview: async () => sync.overview(),
-    syncNow: () => sync.now(),
+    syncNow: () => sync.now(true),
     syncSignIn: (email, password, create) => sync.signIn(email, password, create),
     syncSignOut: () => sync.signOut(),
     setSupabaseProject: (project) => sync.setProject(project),

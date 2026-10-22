@@ -282,7 +282,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
               <Icon name="info" size={18} /> About book file syncing
             </h3>
             <p>Book files are not synced unless you turn it on. Without it, other devices list your books and their covers, and a book opens where its file is.</p>
-            <p>With it on, any of your devices can open any book, and downloads it the first time. TBV never changes the files themselves. Supabase's free plan holds 1 GB, and files over 50 MB are skipped.</p>
+            <p>With it on, any of your devices can open any book, and downloads it the first time. TBV never changes the files themselves. Supabase's free plan holds 1 GB and takes files up to 50 MB, so bigger ones go up in pieces.</p>
           </div>
         }
       >

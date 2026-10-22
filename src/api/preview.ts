@@ -540,6 +540,22 @@ export function previewApi(): Api {
       );
       return files;
     },
+    bookPlaces: async () => {
+      const titles = ["Carmilla", "Dracula", "Frankenstein", "The Turn of the Screw", "The Valley of Fear", "Uncle Silas", "Wuthering Heights"];
+      return {
+        main: { provider: { kind: "folder", service: "icloud", location: "C:\\Users\\embre\\iCloudDrive\\The Bound Vigil", username: null }, problem: null },
+        also: { provider: { kind: "supabase", service: null, location: null, username: null }, problem: null },
+        books: titles.map((title, i) => ({
+          bookId: `sha256:${i}`,
+          title,
+          authors: ["Someone"],
+          format: i === 3 ? "pdf" : "epub",
+          here: i % 4 !== 1,
+          main: i !== 5,
+          also: i % 3 === 0,
+        })),
+      };
+    },
     removeSupabaseFiles: async (paths, onProgress) => {
       onProgress({ done: paths.length, total: paths.length });
       return { removed: paths.length, failed: 0, stopped: false };

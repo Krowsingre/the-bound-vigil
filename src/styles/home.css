@@ -393,9 +393,10 @@
 }
 
 /* Middle: recently added + in progress */
+/* In progress sits above Recently added, each across the whole page. */
 .home-middle {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  grid-template-columns: minmax(0, 1fr);
   border-bottom: 1px solid var(--border);
 }
 
@@ -404,7 +405,12 @@
 }
 
 .home-middle > .section + .section {
-  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+}
+
+.home-middle .progress-list {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  column-gap: 28px;
 }
 
 .shelf {
@@ -619,18 +625,6 @@
   .snapshot {
     grid-column: 1 / -1;
   }
-}
-
-@media (max-width: 1100px) {
-  .home-middle {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .home-middle > .section + .section {
-    border-left: 0;
-    border-top: 1px solid var(--border);
-  }
-
 }
 
 @media (max-width: 900px) {

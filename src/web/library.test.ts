@@ -65,3 +65,13 @@ describe("the web version's library", () => {
     expect(library.book("sha256:p")?.title).toBe("Carmilla");
   });
 });
+
+describe("files kept in pieces", () => {
+  it("lists a folder of pieces as its file", async () => {
+    const { listedName, piecePath } = await import("./supabase");
+    expect(listedName("ab.m4b.pieces", true)).toBe("ab.m4b");
+    expect(listedName("someone", true)).toBeNull();
+    expect(listedName("ab.epub", false)).toBe("ab.epub");
+    expect(piecePath("books/ab.m4b", 3)).toBe("books/ab.m4b.pieces/0003");
+  });
+});
