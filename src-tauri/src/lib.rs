@@ -1642,13 +1642,17 @@ async fn ios_pick_folder() -> CommandResult<Option<String>> {
 /// Asks for files in the iPhone's Files app, copied into TBV's own folder so
 /// they're there to import. Empty if cancelled.
 #[tauri::command]
-async fn ios_pick_files() -> CommandResult<Vec<String>> {
+async fn ios_pick_files(keep: Option<bool>) -> CommandResult<Vec<String>> {
     #[cfg(target_os = "ios")]
     {
-        tauri::async_runtime::spawn_blocking(tauri_plugin_tbv_ios::pick_files).await.map_err(|e| e.to_string())?
+        let keep = keep.unwrap_or(false);
+        tauri::async_runtime::spawn_blocking(move || tauri_plugin_tbv_ios::pick_files(keep)).await.map_err(|e| e.to_string())?
     }
     #[cfg(not(target_os = "ios"))]
-    Err("Choosing files this way only works on iPhone.".into())
+    {
+        let _ = keep;
+        Err("Choosing files this way only works on iPhone.".into())
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

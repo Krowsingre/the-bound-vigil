@@ -450,9 +450,10 @@ function appApi(): Api {
   // On iPhone the dialog answers with addresses the core can't open, and
   // iCloud files may not be on the phone yet, so TBV's own picker copies
   // them in first.
-  const openFiles = async (options: { multiple: boolean; title: string; filters?: { name: string; extensions: string[] }[] }) =>
+  // `keep` is for a file read again later (a key file), not just imported.
+  const openFiles = async ({ keep, ...options }: { multiple: boolean; title: string; filters?: { name: string; extensions: string[] }[]; keep?: boolean }) =>
     isIOS
-      ? (await (await core).invoke<string[]>("ios_pick_files")).slice(0, options.multiple ? undefined : 1)
+      ? (await (await core).invoke<string[]>("ios_pick_files", { keep: !!keep })).slice(0, options.multiple ? undefined : 1)
       : asList(await (await dialog).open(options));
   const today = () => new Date().toISOString().slice(0, 10);
   const saveTo = async (command: string, title: string, defaultPath: string, name: string, extensions: string[]) => {
@@ -834,7 +835,7 @@ function appApi(): Api {
         headers: { path: encodeURIComponent(path ?? ""), add: addToLibrary ? "1" : "0", "file-name": encodeURIComponent(fileName) },
       }),
     pickKeyFile: async () => {
-      const [picked] = await openFiles({ multiple: false, title: "Choose your private key file" });
+      const [picked] = await openFiles({ multiple: false, title: "Choose your private key file", keep: true });
       return picked ?? null;
     },
     onSync: ({ status, libraryChanged }) => {
