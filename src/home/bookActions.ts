@@ -93,7 +93,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
       : []),
     "divider",
     ...(isAudio(book.format) ? [] : [{ label: "Send to e-reader…", icon: "ereader" as const, onSelect: () => askSendToEreader([book]) }]),
-    ...(canSendWithLocalSend ? [{ label: "Send with LocalSend…", icon: "upload" as const, onSelect: () => askSendWithLocalSend([book]) }] : []),
+    ...(canSendWithLocalSend ? [{ label: "Send with Grimoire…", icon: "upload" as const, onSelect: () => askSendWithLocalSend([book]) }] : []),
     ...(actions.saveCopy ? [{ label: "Save a copy…", icon: "copy" as const, onSelect: () => actions.saveCopy?.(book) }] : []),
     downloadItem(book, actions),
     ...phoneItem(book, actions),

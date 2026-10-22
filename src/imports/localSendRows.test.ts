@@ -14,7 +14,7 @@ const file = (change: Partial<SentFile>): SentFile => ({
   ...change,
 });
 
-describe("LocalSend rows", () => {
+describe("Grimoire rows", () => {
   it("say where each file has got to, and why one failed or wasn't taken", () => {
     expect(sentText(file({})).tone).toBe("wait");
     expect(sentText(file({ state: "arriving", bytes: 1024 * 1024 })).text).toMatch(/^Arriving 1(\.0)? MB of 2(\.0)? MB$/);

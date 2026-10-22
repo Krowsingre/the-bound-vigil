@@ -70,8 +70,8 @@ export function SendWithLocalSendHost() {
   const close = () => (stage.at === "sending" ? setShown(false) : finish());
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="dialog send-dialog" role="dialog" aria-label="Send with LocalSend" onKeyDown={(e) => e.key === "Escape" && close()}>
-        <h2>Send with LocalSend</h2>
+      <div className="dialog send-dialog" role="dialog" aria-label="Send with Grimoire" onKeyDown={(e) => e.key === "Escape" && close()}>
+        <h2>Send with Grimoire</h2>
         <p className="muted add-dialog-book">{what}</p>
         {stage.at === "choosing" ? (
           <Devices onSend={send} onClose={close} />
@@ -87,7 +87,7 @@ export function SendWithLocalSendHost() {
               </div>
             ) : (
               <p className="localsend-waiting">
-                Waiting for {stage.to.alias} to accept. Tap <strong>Accept</strong> in LocalSend on that device.
+                Waiting for {stage.to.alias} to accept. Tap <strong>Accept</strong> on that device.
               </p>
             )}
             <div className="dialog-actions">
@@ -153,7 +153,7 @@ function Devices({ onSend, onClose }: { onSend: (to: NearbyDevice) => void; onCl
     <>
       {devices === null ? (
         <p className="muted send-empty" aria-busy="true">
-          Looking for devices nearby with LocalSend open…
+          Looking for devices nearby…
         </p>
       ) : (
         <>
@@ -172,13 +172,13 @@ function Devices({ onSend, onClose }: { onSend: (to: NearbyDevice) => void; onCl
           </ul>
           {!devices.length && (
             <p className="muted send-empty">
-              No devices found. Open LocalSend on the other device and keep it on the same Wi-Fi, then look again.
+              No devices found. On the other device, open TBV and turn on Receive with Grimoire (or open the LocalSend app), keep it on the same Wi-Fi, then look again.
             </p>
           )}
         </>
       )}
       <form className="localsend-address" onSubmit={typed}>
-        <label htmlFor="localsend-address">Not listed? Type the address LocalSend shows on its Receive screen.</label>
+        <label htmlFor="localsend-address">Not listed? Type the address the other device shows for receiving.</label>
         <span className="localsend-address-row">
           <input id="localsend-address" className="input" value={address} placeholder="192.168.1.20" inputMode="decimal" onChange={(e) => setAddress(e.target.value)} />
           <button type="submit" className="btn btn-quiet" disabled={!address.trim()}>

@@ -236,7 +236,7 @@ export function previewServers(): ServerApi {
       await new Promise((r) => setTimeout(r, 1200));
       return PRETEND_NEARBY;
     },
-    localSendDeviceAt: async (address) => ({ ...PRETEND_NEARBY[0], alias: `LocalSend at ${address}`, address, fingerprint: address }),
+    localSendDeviceAt: async (address) => ({ ...PRETEND_NEARBY[0], alias: `Grimoire at ${address}`, address, fingerprint: address }),
     sendWithLocalSend: async (device, bookIds) => {
       // The preview pretends each book takes a moment to go.
       stopSending = false;

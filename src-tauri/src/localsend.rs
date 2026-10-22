@@ -209,7 +209,7 @@ impl LocalSend {
 
     /// How TBV shows itself when sending: the same as when receiving.
     fn identity(&self, library: &Mutex<Library>) -> tbv_core::Result<Identity> {
-        let (fingerprint, tls) = credentials(library).ok_or_else(|| tbv_core::Error::Unsuitable("TBV couldn't set itself up for LocalSend".into()))?;
+        let (fingerprint, tls) = credentials(library).ok_or_else(|| tbv_core::Error::Unsuitable("TBV couldn't set itself up for Grimoire".into()))?;
         let port = self.receiver.lock().ok().and_then(|r| r.as_ref().map(Receiver::port)).unwrap_or(localsend::PORT);
         Ok(Identity { alias: alias(), fingerprint, port, tls: Some(tls) })
     }

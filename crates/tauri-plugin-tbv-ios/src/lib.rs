@@ -46,6 +46,24 @@ pub fn pick_folder() -> Result<Option<String>, String> {
     Err("Choosing a folder this way only works on iPhone.".into())
 }
 
+/// Asks for files in Files, copied into TBV's own folder (iCloud brings
+/// them down first), and waits for their paths. Empty when cancelled. Must
+/// not be called on the main thread.
+pub fn pick_files() -> Result<Vec<String>, String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get().ok_or("The Files picker isn't ready.")?;
+        let answer: serde_json::Value = swift.run_mobile_plugin("pickFiles", ()).map_err(|e| e.to_string())?;
+        Ok(answer
+            .get("paths")
+            .and_then(|p| p.as_array())
+            .map(|list| list.iter().filter_map(|p| p.as_str().map(str::to_string)).collect())
+            .unwrap_or_default())
+    }
+    #[cfg(not(target_os = "ios"))]
+    Err("Choosing files this way only works on iPhone.".into())
+}
+
 #[cfg(target_os = "ios")]
 #[derive(serde::Serialize)]
 struct UrlArgs<'a> {

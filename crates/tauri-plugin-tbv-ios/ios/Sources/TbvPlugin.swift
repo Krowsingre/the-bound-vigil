@@ -21,6 +21,8 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, ASWebAuthenticationPresentati
   /// them again after a restart.
   private static let foldersKey = "tbv.folders"
   private var picking: Invoke?
+  /// Whether the picker showing is for files (copied in) rather than a folder.
+  private var pickingFiles = false
   private var signIn: ASWebAuthenticationSession?
 
   override init() {
@@ -51,6 +53,7 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, ASWebAuthenticationPresentati
         earlier.resolve(["cancelled": true])
       }
       self.picking = invoke
+      self.pickingFiles = false
       let picker = UIDocumentPickerViewController(forOpeningContentTypes: [UTType.folder])
       picker.delegate = self
       picker.allowsMultipleSelection = false
@@ -63,9 +66,58 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, ASWebAuthenticationPresentati
     }
   }
 
+  /// Asks for files in Files (books, documents, audio). iCloud brings each
+  /// one down and the picker copies it into TBV's own folder, so it's there
+  /// to import however long the queue takes. Answers their paths.
+  @objc public func pickFiles(_ invoke: Invoke) throws {
+    DispatchQueue.main.async {
+      if let earlier = self.picking {
+        earlier.resolve(["cancelled": true])
+      }
+      self.picking = invoke
+      self.pickingFiles = true
+      let picker = UIDocumentPickerViewController(forOpeningContentTypes: [UTType.item], asCopy: true)
+      picker.delegate = self
+      picker.allowsMultipleSelection = true
+      guard let shown = self.manager.viewController else {
+        self.picking = nil
+        invoke.reject("TBV couldn't show the Files picker.")
+        return
+      }
+      shown.present(picker, animated: true)
+    }
+  }
+
+  /// Moves picked copies out of the picker's inbox, which the system may
+  /// empty, into a folder of TBV's own. Copies from earlier picks that are
+  /// over a day old are cleared away first.
+  private func keepPicked(_ urls: [URL]) -> [String] {
+    let files = FileManager.default
+    guard let caches = files.urls(for: .cachesDirectory, in: .userDomainMask).first else { return urls.map(\.path) }
+    let picked = caches.appendingPathComponent("Picked", isDirectory: true)
+    let dayAgo = Date().addingTimeInterval(-86_400)
+    for old in (try? files.contentsOfDirectory(at: picked, includingPropertiesForKeys: [.creationDateKey])) ?? [] {
+      let made = (try? old.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+      if made < dayAgo { try? files.removeItem(at: old) }
+    }
+    let here = picked.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try? files.createDirectory(at: here, withIntermediateDirectories: true)
+    return urls.map { url in
+      let target = here.appendingPathComponent(url.lastPathComponent)
+      if (try? files.moveItem(at: url, to: target)) != nil { return target.path }
+      if (try? files.copyItem(at: url, to: target)) != nil { return target.path }
+      return url.path
+    }
+  }
+
   func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
     guard let invoke = picking else { return }
     picking = nil
+    if pickingFiles {
+      pickingFiles = false
+      invoke.resolve(["paths": keepPicked(urls)])
+      return
+    }
     guard let url = urls.first, url.startAccessingSecurityScopedResource() else {
       invoke.reject("TBV wasn't allowed into that folder.")
       return
@@ -81,6 +133,7 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, ASWebAuthenticationPresentati
   func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
     guard let invoke = picking else { return }
     picking = nil
+    pickingFiles = false
     invoke.resolve(["cancelled": true])
   }
 

@@ -58,10 +58,10 @@ export function LocalSendRows({ rows }: { rows: SentFile[] }) {
   const coming = count("waiting") + count("arriving");
   const [failed, skipped] = [count("failed"), count("skipped")];
   return (
-    <section className="imports-group server-rows" aria-label="From LocalSend">
+    <section className="imports-group server-rows" aria-label="From Grimoire">
       <div className="server-rows-head">
         <h3 className="section-label">
-          From LocalSend · {rows.length} {rows.length === 1 ? "file" : "files"}
+          From Grimoire · {rows.length} {rows.length === 1 ? "file" : "files"}
           {coming > 0 && ` · ${coming} still coming`}
           {failed > 0 && ` · ${failed} failed`}
           {skipped > 0 && ` · ${skipped} not taken`}
