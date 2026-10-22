@@ -10,6 +10,15 @@ import { askDeleteBook, askEditTags, askRemoveBook } from "../library/BookDialog
 import { playAudiobook } from "../audio/player";
 import { isAudio, kindOf } from "../lib/queryBooks";
 import { NO_FILTERS } from "../library/libraryView";
+import { isApp, isHome, isWeb } from "../api";
+
+/** Whether this computer sends Supabase only the books chosen for the phone (Settings › Sync). */
+let choosingForPhone = false;
+export function setChoosingForPhone(on: boolean) {
+  choosingForPhone = on;
+}
+/** Where choosing books for the phone shows: on a computer that chooses them, and on the phone. */
+export const phoneChoiceShown = () => (isApp && !isHome && choosingForPhone) || isWeb;
 
 export interface BookActions {
   open: (book: BookPreview) => void;
@@ -23,6 +32,8 @@ export interface BookActions {
   removeDownload?: (book: BookPreview) => void;
   /** Saves a copy named "Title - Author" somewhere of your choosing. */
   saveCopy?: (book: BookPreview) => void;
+  /** On a computer: chooses books for the phone. On the phone: asks the computer to send them. */
+  setPhoneWanted?: (books: BookPreview[], wanted: boolean) => void;
   /** Set when the books are shown inside one of the user's collections. */
   removeFromCollection?: { name: string; remove: (book: BookPreview) => void };
 }
@@ -81,6 +92,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     ...(isAudio(book.format) ? [] : [{ label: "Send to e-reader…", icon: "ereader" as const, onSelect: () => askSendToEreader([book]) }]),
     ...(actions.saveCopy ? [{ label: "Save a copy…", icon: "copy" as const, onSelect: () => actions.saveCopy?.(book) }] : []),
     downloadItem(book, actions),
+    ...phoneItem(book, actions),
     "divider",
     { label: "Remove from library…", icon: "close", onSelect: () => askRemoveBook(book) },
     { label: "Delete for good…", icon: "trash", danger: true, onSelect: () => askDeleteBook(book) },
@@ -101,6 +113,20 @@ function downloadItem(book: BookPreview, actions: BookActions): MenuEntry {
   return { label: "Remove download (keep in cloud)", icon: "cloudOff", disabled: !actions.removeDownload, onSelect: () => actions.removeDownload?.(book) };
 }
 
+function phoneItem(book: BookPreview, actions: BookActions): MenuEntry[] {
+  const set = actions.setPhoneWanted;
+  if (!set || !phoneChoiceShown()) return [];
+  if (isWeb) {
+    // Only a book whose file isn't in Supabase needs asking for.
+    if (!book.fileUnavailable) return [];
+    return book.phoneWanted
+      ? [{ label: "Don't ask the computer for it", icon: "close", hint: "Asked for", onSelect: () => set([book], false) }]
+      : [{ label: "Ask the computer to send it", icon: "download", onSelect: () => set([book], true) }];
+  }
+  if (book.phoneWanted) return [{ label: "Stop sending to phone", icon: "cloudOff", hint: book.phoneHas ? "On the phone" : undefined, onSelect: () => set([book], false) }];
+  return [{ label: "Send to phone", icon: "upload", hint: book.phoneHas ? "On the phone" : undefined, onSelect: () => set([book], true) }];
+}
+
 /** Why a book can't be opened here, or null when it can. */
 export function cannotOpen(book: BookPreview): string | null {
   if (book.fileUnavailable) return `“${book.title}” isn't in the cloud yet, so it can't be opened here. Send its file from the computer that has it.`;
@@ -116,7 +142,7 @@ export function cannotOpen(book: BookPreview): string | null {
 /** The shared actions, refreshing the current view after each change. */
 export function makeBookActions(
   api: Pick<import("../api").Api, "setBookStatus" | "setFavorite" | "setWantToRead" | "setRating"> &
-    Partial<Pick<import("../api").Api, "downloadBook" | "removeDownload" | "saveCopies">>,
+    Partial<Pick<import("../api").Api, "downloadBook" | "removeDownload" | "saveCopies" | "setPhoneWanted">>,
   toast: (text: string) => void,
   refresh: () => void,
   openBook: (bookId: string) => void,
@@ -141,6 +167,20 @@ export function makeBookActions(
     }),
     removeDownload: api.removeDownload && ((book) =>
       void run(book, api.removeDownload!(book.id).then(() => toast(`Removed the copy of “${book.title}” here. It's still in the cloud.`)))),
+    setPhoneWanted: api.setPhoneWanted && ((books, wanted) => {
+      const what = books.length === 1 ? `“${books[0].title}”` : `${books.length} books`;
+      void api.setPhoneWanted!(books.map((b) => b.id), wanted).then(
+        () => {
+          toast(
+            isWeb
+              ? wanted ? `Asked the computer for ${what}. It sends it at its next sync.` : `Stopped asking for ${what}.`
+              : wanted ? `${what} will go to your phone at the next sync.` : `${what} won't be sent to your phone.`,
+          );
+          refresh();
+        },
+        (e: unknown) => toast(`Couldn't change ${what}: ${String(e)}`),
+      );
+    }),
     saveCopy: api.saveCopies && ((book) =>
       void api.saveCopies!([book.id]).then(
         (done) => done && toast(`Saved a copy of “${book.title}” to ${done.folder}.`),

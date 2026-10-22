@@ -7,7 +7,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { SeriesPanel } from "./SeriesPanel";
 import { useToast } from "../components/Toast";
-import { makeBookActions } from "../home/bookActions";
+import { makeBookActions, phoneChoiceShown } from "../home/bookActions";
 import { Stat } from "../home/ReadingActivity";
 import { AddTagToMany, deleteWarning, removeWarning } from "./BookDialogs";
 import { BookGrid, BookList, BookTable, type Selection } from "./BookViews";
@@ -382,6 +382,18 @@ export function Library({
               <button type="button" className="btn btn-quiet" disabled={!selected.size} onClick={() => askSendToEreader(chosen)}>
                 <Icon name="ereader" size={16} /> Send to e-reader
               </button>
+            )}
+            {!isWeb && phoneChoiceShown() && (
+              <>
+                <button type="button" className="btn btn-quiet" disabled={!selected.size} onClick={() => actions.setPhoneWanted?.(chosen, true)}>
+                  <Icon name="upload" size={16} /> Send to phone
+                </button>
+                {chosen.some((b) => b.phoneWanted) && (
+                  <button type="button" className="btn btn-quiet" onClick={() => actions.setPhoneWanted?.(chosen.filter((b) => b.phoneWanted), false)}>
+                    <Icon name="cloudOff" size={16} /> Stop sending to phone
+                  </button>
+                )}
+              </>
             )}
             <button type="button" className="btn btn-quiet" disabled={!selected.size || busy !== null} onClick={() => void saveChosen()}>
               <Icon name="copy" size={16} /> Save copies

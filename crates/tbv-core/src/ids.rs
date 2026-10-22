@@ -7,20 +7,24 @@ use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::model::BookId;
 
 pub const BOOK_ID_PREFIX: &str = "sha256:";
 
+/// Why a book stopped part way through being read.
+pub const CANCELLED: &str = "Cancelled";
+
 /// Hashes the whole file, streaming, so large PDFs never sit in memory.
 pub fn book_id_for_file(path: &Path) -> Result<BookId> {
-    book_id_for_file_with_progress(path, &mut |_| {})
+    book_id_for_file_with_progress(path, &mut |_| true)
 }
 
 /// As `book_id_for_file`, telling `read_so_far` how many bytes are done.
 /// Reading a file a cloud app hasn't downloaded yet brings it down first,
-/// so this is where a slow import spends its time.
-pub fn book_id_for_file_with_progress(path: &Path, read_so_far: &mut dyn FnMut(u64)) -> Result<BookId> {
+/// so this is where a slow import spends its time. `read_so_far` returns
+/// false to stop (the import was cancelled).
+pub fn book_id_for_file_with_progress(path: &Path, read_so_far: &mut dyn FnMut(u64) -> bool) -> Result<BookId> {
     let mut reader = BufReader::with_capacity(1 << 20, File::open(path)?);
     let mut hasher = Sha256::new();
     let mut buffer = vec![0u8; 1 << 20];
@@ -32,7 +36,9 @@ pub fn book_id_for_file_with_progress(path: &Path, read_so_far: &mut dyn FnMut(u
         }
         hasher.update(&buffer[..read]);
         done += read as u64;
-        read_so_far(done);
+        if !read_so_far(done) {
+            return Err(Error::Unsuitable(CANCELLED.into()));
+        }
     }
     Ok(format!(
         "{BOOK_ID_PREFIX}{}",
@@ -53,6 +59,20 @@ pub fn new_record_id() -> String {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn reading_stops_when_asked() {
+        let dir = tempfile::tempdir().unwrap();
+        let big = dir.path().join("big.pdf");
+        File::create(&big).unwrap().write_all(&vec![7u8; 3 << 20]).unwrap();
+        let mut seen = 0;
+        let stopped = book_id_for_file_with_progress(&big, &mut |_| {
+            seen += 1;
+            false
+        });
+        assert!(matches!(stopped, Err(Error::Unsuitable(reason)) if reason == CANCELLED));
+        assert_eq!(seen, 1, "stops after the first part");
+    }
 
     #[test]
     fn same_bytes_give_same_id_regardless_of_path() {

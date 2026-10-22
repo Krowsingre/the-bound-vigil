@@ -104,7 +104,6 @@ export function Collections({
   const [editing, setEditing] = useState<Editing>(null);
   const [deleting, setDeleting] = useState<CollectionSummary | null>(null);
   const toast = useToast();
-  const narrow = useNarrow();
   const { settings } = useAppSettings();
 
   useEffect(() => {
@@ -340,7 +339,11 @@ export function Collections({
     series: overview.series.length,
   };
   // Without room for the side panel, a click opens the collection straight away.
-  const pick = (ref: CollectionRef) => (narrow ? onOpen(ref) : setSelected(ref));
+  // One click opens a collection; the side panel then shows it on the way back.
+  const pick = (ref: CollectionRef) => {
+    setSelected(ref);
+    onOpen(ref);
+  };
   const isSel = (ref: CollectionRef) => sameRef(selected, ref);
 
   return (
@@ -568,16 +571,3 @@ export function Collections({
   );
 }
 
-
-function useNarrow() {
-  const query = "(max-width: 1200px)";
-  const [narrow, setNarrow] = useState(() => window.matchMedia?.(query).matches ?? false);
-  useEffect(() => {
-    const list = window.matchMedia?.(query);
-    if (!list) return;
-    const change = () => setNarrow(list.matches);
-    list.addEventListener("change", change);
-    return () => list.removeEventListener("change", change);
-  }, []);
-  return narrow;
-}

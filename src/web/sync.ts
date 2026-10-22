@@ -306,6 +306,34 @@ export class WebSync {
     if (added % 12) this.library.changed();
   }
 
+  /**
+   * Sends a book added on this phone, and its cover, to Supabase, keeping a
+   * copy here so it opens straight away.
+   */
+  async sendBook(hex: string, format: string, file: Blob, cover: Blob | null): Promise<void> {
+    const cloud = this.connection();
+    if (!cloud) throw new Error("Sign in to Supabase to add books from the phone.");
+    if (!navigator.onLine) throw new Error("The phone is offline. Try again once it's connected.");
+    await cloud.upload(`books/${hex}.${format}`, file);
+    this.bookFiles.add(hex);
+    await this.db.setMeta(BOOK_FILES, JSON.stringify([...this.bookFiles]));
+    await this.db.putFile(`books/${hex}.${format}`, file).catch(() => undefined);
+    if (cover) {
+      const name = `${hex}.jpg`;
+      // The book counts as added without its cover.
+      await cloud.upload(`covers/${name}`, cover).then(
+        async () => {
+          this.covers.set(hex, name);
+          await this.db.putFile(`covers/${name}`, cover).catch(() => undefined);
+          const old = this.coverUrls.get(hex);
+          if (old) URL.revokeObjectURL(old);
+          this.coverUrls.set(hex, URL.createObjectURL(cover));
+        },
+        () => undefined,
+      );
+    }
+  }
+
   /** The book's file: from this browser if it was opened before, else from the cloud. */
   /** Erases a deleted book's file and cover from the cloud. */
   async eraseBook(id: string, format: string): Promise<void> {

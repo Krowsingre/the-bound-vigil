@@ -83,6 +83,8 @@ export interface Api {
   getCollections(): Promise<CollectionPreview[]>;
   setFavorite(bookId: string, favorite: boolean): Promise<void>;
   setWantToRead(bookId: string, want: boolean): Promise<void>;
+  /** Chooses books to go to the phone (when only chosen ones do), or stops. On the phone: asks a computer to send them. */
+  setPhoneWanted(bookIds: string[], wanted: boolean): Promise<void>;
   /** 1 to 5 stars, or null to clear. */
   setRating(bookId: string, rating: number | null): Promise<void>;
   /** Asks for a Goodreads export file and brings it in. Null if cancelled. */
@@ -411,6 +413,7 @@ function appApi(): Api {
     getCollections: async () => (await core).invoke<CollectionPreview[]>("get_collections"),
     setFavorite: async (bookId, favorite) => (await core).invoke("set_favorite", { bookId, favorite }),
     setWantToRead: async (bookId, want) => (await core).invoke("set_want_to_read", { bookId, want }),
+    setPhoneWanted: async (bookIds, wanted) => (await core).invoke("set_phone_wanted", { bookIds, wanted }),
     setRating: async (bookId, rating) => (await core).invoke("set_rating", { bookId, rating }),
     importGoodreads: async () => {
       const [path] = asList(

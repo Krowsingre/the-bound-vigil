@@ -53,4 +53,15 @@ describe("the web version's library", () => {
     expect(stampAfter(future)).toBe("2999-01-01T00:00:00.001Z");
     expect(stampAfter(undefined) <= new Date().toISOString()).toBe(true);
   });
+
+  it("says whether the phone has a book, as its own record", async () => {
+    const library = new WebLibrary(await WebDb.open());
+    await library.merge([book("sha256:p", "Carmilla")]);
+    expect(library.book("sha256:p")?.phone_has).toBe(0);
+    await library.write("book_phone", { ...library.book("sha256:p"), phone_has: 1 });
+    const [sent] = library.outbox(10);
+    expect(sent.kind).toBe("book_phone");
+    expect(sent.data).toEqual({ id: "sha256:p", phone_wanted: 0, phone_has: 1, from_phone: 0 });
+    expect(library.book("sha256:p")?.title).toBe("Carmilla");
+  });
 });

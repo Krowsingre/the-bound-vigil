@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
-use tbv_core::ids::book_id_for_file_with_progress;
+use tbv_core::ids::{book_id_for_file_with_progress, CANCELLED};
 use tbv_core::library::{find_book_files, stage_source, ImportPlan, Staged};
 use tbv_core::model::ImportResult;
 use tbv_core::servers::TempFolder;
@@ -84,6 +84,8 @@ struct Queue {
     /// What the waiting books need kept (a folder of downloads, say), let go
     /// as each is done.
     holds: HashMap<u64, Hold>,
+    /// Goes up at each cancel, so books being read when it came stop too.
+    cancels: u64,
 }
 
 /// Kept while a book is in the queue, and dropped once it's done.
@@ -211,12 +213,15 @@ impl Imports {
         added
     }
 
-    /// Takes the books still waiting off the list.
+    /// Takes the books still waiting off the list, and stops the ones being
+    /// read. A book already being copied in finishes (a moment), so no half
+    /// copy is left behind.
     pub fn cancel(&self, app: &AppHandle) {
         // Holds are let go with the queue unlocked: letting go can tell others.
         let _released: Vec<Hold> = match self.queue.lock() {
             Ok(mut queue) => {
-                queue.items.retain(|i| i.stage != Stage::Waiting);
+                queue.cancels += 1;
+                queue.items.retain(|i| i.stage == Stage::Done || i.stage == Stage::Adding);
                 let left: Vec<u64> = queue.items.iter().map(|i| i.id).collect();
                 let gone: Vec<u64> = queue.holds.keys().copied().filter(|id| !left.contains(id)).collect();
                 gone.iter().filter_map(|id| queue.holds.remove(id)).collect()
@@ -243,12 +248,16 @@ impl Imports {
                     return None;
                 };
                 item.stage = Stage::Reading;
-                Some((item.id, PathBuf::from(&item.path)))
+                Some((item.id, PathBuf::from(&item.path), queue.cancels))
             });
-            let Some((id, path)) = next else { break };
+            let Some((id, path, cancels)) = next else { break };
             self.tell(app, false);
 
-            let result = self.import(id, &path, app, library).unwrap_or_else(|e| failed(&path, &e.to_string()));
+            let result = self.import(id, &path, cancels, app, library).unwrap_or_else(|e| failed(&path, &e.to_string()));
+            if self.cancelled_since(cancels) && matches!(&result, ImportResult::Failed { reason, .. } if reason == CANCELLED) {
+                // Off the list already; its hold went with it.
+                continue;
+            }
             let added = matches!(result, ImportResult::Imported { .. } | ImportResult::AlreadyInLibrary { .. });
             if let ImportResult::Imported { book_id, path, .. } = &result {
                 if path.to_ascii_lowercase().ends_with(".pdf") {
@@ -273,12 +282,20 @@ impl Imports {
         }
         // The last thread out tells the pages.
         if self.queue.lock().is_ok_and(|q| q.workers == 0) {
+            // New audiobooks and ebooks find their other half, once per batch.
+            if let Ok(library) = library.lock() {
+                let _ = library.auto_link_audiobooks();
+            }
             self.tell(app, true);
             let _ = app.emit("library-changed", ());
         }
     }
 
-    fn import(&self, id: u64, path: &Path, app: &AppHandle, library: &Mutex<Library>) -> tbv_core::Result<ImportResult> {
+    fn cancelled_since(&self, cancels: u64) -> bool {
+        self.queue.lock().is_ok_and(|q| q.cancels != cancels)
+    }
+
+    fn import(&self, id: u64, path: &Path, cancels: u64, app: &AppHandle, library: &Mutex<Library>) -> tbv_core::Result<ImportResult> {
         let lock = || library.lock().map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()));
         let display = path.display().to_string();
         let supported = path
@@ -291,17 +308,23 @@ impl Imports {
         // A folder of audio files is bundled into one audiobook first.
         let paths = lock()?.paths().clone();
         let staged = stage_source(&paths, path)?;
-        let result = self.import_staged(id, &staged, app, library);
+        let result = self.import_staged(id, &staged, cancels, app, library);
         staged.clean_up();
         result.map(|r| r.from_path(display))
     }
 
-    fn import_staged(&self, id: u64, staged: &Staged, app: &AppHandle, library: &Mutex<Library>) -> tbv_core::Result<ImportResult> {
+    fn import_staged(&self, id: u64, staged: &Staged, cancels: u64, app: &AppHandle, library: &Mutex<Library>) -> tbv_core::Result<ImportResult> {
         let lock = || library.lock().map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()));
+        let stopped = || tbv_core::Error::Unsuitable(CANCELLED.into());
         let book_id = book_id_for_file_with_progress(&staged.file, &mut |read| {
             self.update(id, |item| item.bytes_read = read);
             self.tell(app, false);
+            !self.cancelled_since(cancels)
         })?;
+        // The last moment to stop: from here the file is copied in.
+        if self.cancelled_since(cancels) {
+            return Err(stopped());
+        }
         self.update(id, |item| item.stage = Stage::Adding);
         self.tell(app, false);
         let job = match lock()?.import_plan(&staged.file, &staged.format, book_id)? {

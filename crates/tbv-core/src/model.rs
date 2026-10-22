@@ -132,6 +132,12 @@ pub struct BookPreview {
     /// An ebook linked to an audiobook in the library, or an audiobook linked to an ebook.
     #[serde(default)]
     pub paired: bool,
+    /// Chosen to be sent to the phone (see `SyncOptions::phone_chosen_only`).
+    #[serde(default)]
+    pub phone_wanted: bool,
+    /// Downloaded on a phone.
+    #[serde(default)]
+    pub phone_has: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

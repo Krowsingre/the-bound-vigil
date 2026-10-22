@@ -97,3 +97,6 @@ export interface View extends HTMLElement {
   initTTS(granularity?: "word" | "sentence", highlight?: (range: Range) => void): Promise<void>;
   tts?: TTS | null;
 }
+
+/** Opens a book file (EPUB, Kindle, FB2, comic or PDF) without showing it. */
+export function makeBook(file: File | string): Promise<FoliateBook>;

@@ -92,6 +92,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: false,
     },
     Kind {
+        name: "book_phone",
+        table: "books",
+        keys: &["id"],
+        cols: &["phone_wanted", "phone_has", "from_phone"],
+        category: Category::Library,
+        creates: false,
+    },
+    Kind {
         name: "book_shelves",
         table: "books",
         keys: &["id"],
@@ -267,6 +275,9 @@ pub struct SyncOptions {
     pub also_book_files: bool,
     /// …and audiobook files, which may not fit there.
     pub also_audio_files: bool,
+    /// Supabase (the phone's place) gets only the books chosen for the
+    /// phone, rather than every book on this computer.
+    pub phone_chosen_only: bool,
 }
 
 impl Default for SyncOptions {
@@ -284,6 +295,7 @@ impl Default for SyncOptions {
             conflicts: ConflictRule::Recent,
             also_book_files: true,
             also_audio_files: false,
+            phone_chosen_only: false,
         }
     }
 }
@@ -1339,6 +1351,7 @@ impl Library {
             "book" => format!("Details of {}", field("title").unwrap_or_else(|| "a book".into())),
             "book_progress" => format!("Reading progress{}", book(key.first())?),
             "book_shelves" => format!("Favourite and To be read{}", book(key.first())?),
+            "book_phone" => format!("Whether the phone has it{}", book(key.first())?),
             "override" => format!("A corrected detail{}", book(key.first())?),
             "fetched" => format!("A detail found online{}", book(key.first())?),
             "audiobook" => format!("Chapters and narrators{}", book(key.first())?),
@@ -1360,14 +1373,26 @@ impl Library {
         let rows = self
             .conn
             .prepare(
-                "SELECT b.id, b.format, lf.path, lf.cover_path FROM books b JOIN local_files lf ON lf.book_id = b.id
+                "SELECT b.id, b.format, lf.path, lf.cover_path, b.phone_wanted OR b.phone_has
+                 FROM books b JOIN local_files lf ON lf.book_id = b.id
                  WHERE b.deleted_at IS NULL",
             )?
-            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, Option<String>>(3)?)))?
+            .query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, bool>(4)?))
+            })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        for (id, format, path, cover) in rows {
+        // The phone's place, when only chosen books go there.
+        let chosen_only = covers_follow_files && options.phone_chosen_only;
+        for (id, format, path, cover, for_phone) in rows {
             let hex = book_id_hex(&id);
-            let wanted_here = if crate::audio::is_audio(&format) { options.audio_files } else { options.book_files };
+            // Books chosen for the phone go whatever the file switches say.
+            let wanted_here = if chosen_only {
+                for_phone
+            } else if crate::audio::is_audio(&format) {
+                options.audio_files
+            } else {
+                options.book_files
+            };
             if let Some(cover) = cover.filter(|_| !covers_follow_files || (wanted_here && path.is_some())) {
                 let extension = Path::new(&cover).extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default();
                 wanted.push((format!("covers/{hex}.{extension}"), PathBuf::from(cover)));
@@ -1615,6 +1640,38 @@ impl Library {
         Ok(format.map(|f| format!("books/{}.{f}", book_id_hex(book_id))))
     }
 
+    /// Books added on a phone whose file isn't on this computer yet. Ones
+    /// that are here already are marked collected on the way.
+    pub(crate) fn books_from_phone(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare("SELECT id FROM books WHERE from_phone AND deleted_at IS NULL")?;
+        let ids = stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<Vec<String>>>()?;
+        let mut waiting = Vec::new();
+        for id in ids {
+            // Already here (imported on this computer too): nothing to fetch.
+            if self.has_local_file(&id)? {
+                self.collected_from_phone(&id)?;
+            } else {
+                waiting.push(id);
+            }
+        }
+        Ok(waiting)
+    }
+
+    /// A book added on a phone is on this computer now.
+    pub(crate) fn collected_from_phone(&self, book_id: &str) -> Result<()> {
+        self.conn.execute("UPDATE books SET from_phone = 0 WHERE id = ?1", params![book_id])?;
+        Ok(())
+    }
+
+    /// Chooses books to be sent to the phone (when only chosen ones are),
+    /// or stops choosing them.
+    pub fn set_phone_wanted(&self, book_ids: &[String], wanted: bool) -> Result<()> {
+        for id in book_ids {
+            self.conn.execute("UPDATE books SET phone_wanted = ?2 WHERE id = ?1 AND phone_wanted IS NOT ?2", params![id, wanted])?;
+        }
+        Ok(())
+    }
+
     /// A temporary file in the library folder to download into.
     pub fn download_target(&self, book_id: &str) -> PathBuf {
         self.paths.books_dir.join(format!(".{}.download", book_id_hex(book_id)))
@@ -1675,9 +1732,21 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
                 (false, false) => "Neither".into(),
             }
         }
+        "book_phone" => {
+            let on = |name: &str| data.get(name).and_then(Value::as_i64) == Some(1);
+            if on("from_phone") {
+                "Added on the phone".into()
+            } else if on("phone_has") {
+                "Downloaded on the phone".into()
+            } else if on("phone_wanted") {
+                "Chosen for the phone".into()
+            } else {
+                "Not on the phone".into()
+            }
+        }
         "book" => short(text("title")),
         "override" | "fetched" => short(text("value")),
-        "audiobook" => if data.get("ebook_id").is_some_and(|v| !v.is_null()) { "Linked to its ebook".into() } else { "Chapters and narrators".into() },
+        "audiobook" => if data.get("ebook_id").and_then(|v| v.as_str()).is_some_and(|v| !v.is_empty()) { "Linked to its ebook".into() } else { "Chapters and narrators".into() },
         "collection" => short(text("name")),
         "collection_book" => "In the collection".into(),
         "book_tag" => if data.get("removed_at").is_some_and(|v| !v.is_null()) { "Tag taken off".into() } else { "Tagged".into() },
@@ -1828,6 +1897,11 @@ fn run_lanes(library: &Mutex<Library>, main: Option<&mut dyn Remote>, also: Opti
             if let Some(outcome) = &also_outcome {
                 library.record_result(outcome, Lane::Also)?;
             }
+            // Books from elsewhere may be the other half of an audiobook here.
+            let received = |o: &Option<Result<SyncReport>>| o.as_ref().is_some_and(|o| o.as_ref().is_ok_and(|r| r.received > 0));
+            if received(&main_outcome) || received(&also_outcome) {
+                let _ = library.auto_link_audiobooks();
+            }
             let Some(main_outcome) = main_outcome else {
                 return also_outcome.unwrap_or_else(|| Ok(SyncReport::default()));
             };
@@ -1898,6 +1972,12 @@ fn run_both(lock: Lock, mut main: Option<&mut dyn Remote>, mut also: Option<&mut
     if stopped(&first, &second) {
         return (first, second);
     }
+    // Books added on a phone come down before either place's files are
+    // sent, so the other place gets them in this same run.
+    both(collect_from_phone, &mut first, &mut second);
+    if stopped(&first, &second) {
+        return (first, second);
+    }
     both(files, &mut first, &mut second);
     (first, second)
 }
@@ -1939,6 +2019,54 @@ fn push(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, 
         lock()?.lane_mark_sent(&fresh, lane)?;
         report.sent += fresh.len() as u32;
         tell(SyncEvent::Records { lane, received: report.received, sent: report.sent });
+    }
+    Ok(())
+}
+
+/// Fetches the books added on a phone that this computer hasn't got yet,
+/// from the phone's place (Supabase), and keeps them here like any import.
+/// A book whose file hasn't arrived there yet is tried again next time.
+fn collect_from_phone(lock: Lock, tell: Tell, remote: &mut dyn Remote, _: &SyncOptions, lane: Lane, report: &mut SyncReport) -> Result<()> {
+    if !remote.covers_follow_files() {
+        return Ok(());
+    }
+    let waiting = lock()?.books_from_phone()?;
+    for book_id in waiting {
+        let (path, target, what) = {
+            let library = lock()?;
+            let Some(path) = library.cloud_book_path(&book_id)? else { continue };
+            let what = library.file_named(&path);
+            (path, library.download_target(&book_id), what)
+        };
+        let file = |done: bool, problem: Option<String>| {
+            tell(SyncEvent::File { lane, direction: Direction::Down, path: path.clone(), what: what.clone(), bytes: 0, done, problem })
+        };
+        file(false, None);
+        let got = fetch(remote, &path, &target);
+        let kept = match got {
+            Ok(true) => {
+                let format = path.rsplit('.').next().unwrap_or("epub").to_string();
+                let mut library = lock()?;
+                let result = library.adopt_download(&book_id, &target, &format).and_then(|_| {
+                    // The phone's place has it already, so it isn't sent back there.
+                    library.lane_file_sent(&path, None, lane)?;
+                    library.collected_from_phone(&book_id)
+                });
+                drop(library);
+                let _ = fs::remove_file(&target);
+                result.map(|_| true)
+            }
+            Ok(false) => Ok(false),
+            Err(e) => Err(e),
+        };
+        match kept {
+            Ok(true) => {
+                report.files_received += 1;
+                file(true, None);
+            }
+            Ok(false) => file(true, Some("Not in the cloud yet".into())),
+            Err(e) => file(true, Some(e.to_string())),
+        }
     }
     Ok(())
 }

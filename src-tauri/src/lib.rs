@@ -67,22 +67,23 @@ async fn queue_imports(
     tauri::async_runtime::spawn_blocking(move || imports.add(&app, &library, paths)).await.map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+// Off the window's thread, so a busy queue never freezes the app.
+#[tauri::command(async)]
 fn import_queue(imports: State<'_, Arc<imports::Imports>>) -> imports::ImportsView {
     imports.view()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn take_pdf_covers(imports: State<'_, Arc<imports::Imports>>) -> Vec<String> {
     imports.take_pdf_covers()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn cancel_imports(app: tauri::AppHandle, imports: State<'_, Arc<imports::Imports>>) {
     imports.cancel(&app);
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn clear_finished_imports(app: tauri::AppHandle, imports: State<'_, Arc<imports::Imports>>) {
     imports.clear_finished(&app);
 }
@@ -266,6 +267,11 @@ async fn set_want_to_read(
         library.set_want_to_read(&book_id, want)
     })
     .await
+}
+
+#[tauri::command]
+async fn set_phone_wanted(state: State<'_, AppLibrary>, book_ids: Vec<String>, wanted: bool) -> CommandResult<()> {
+    with_library(state, move |library| library.set_phone_wanted(&book_ids, wanted)).await
 }
 
 #[tauri::command]
@@ -640,12 +646,12 @@ async fn sync_overview(
 }
 
 /// What sync is doing now, and the files it moved lately.
-#[tauri::command]
+#[tauri::command(async)]
 fn sync_activity() -> activity::SyncActivity {
     activity::current()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn sync_now(worker: State<'_, Arc<sync::SyncWorker>>) {
     worker.sync_now();
 }
@@ -775,7 +781,7 @@ async fn set_also_sync(
 }
 
 /// How moving or backing up the library to another service stands.
-#[tauri::command]
+#[tauri::command(async)]
 fn move_status(mover: State<'_, Arc<moving::Mover>>) -> moving::MoveStatus {
     mover.status()
 }
@@ -835,12 +841,12 @@ async fn retry_move(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn cancel_move(mover: State<'_, Arc<moving::Mover>>) {
     mover.cancel();
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn clear_move(app: tauri::AppHandle, mover: State<'_, Arc<moving::Mover>>) {
     mover.clear(&app);
 }
@@ -1210,7 +1216,7 @@ async fn server_queue(state: State<'_, AppLibrary>, queue: State<'_, Arc<servers
     tauri::async_runtime::spawn_blocking(move || queue.view(&library)).await.map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn server_queue_page(
     queue: State<'_, Arc<servers::ServerImports>>,
     offset: usize,
@@ -1243,12 +1249,12 @@ async fn remove_server_file(
     tauri::async_runtime::spawn_blocking(move || queue.remove(&app, &library, &imports, id)).await.map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn cancel_server_queue(app: tauri::AppHandle, queue: State<'_, Arc<servers::ServerImports>>) {
     queue.cancel(&app);
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn clear_server_finished(app: tauri::AppHandle, queue: State<'_, Arc<servers::ServerImports>>) {
     queue.clear_finished(&app);
 }
@@ -1400,17 +1406,17 @@ async fn set_localsend(
 
 /// Accepts or turns down what someone is sending with LocalSend.
 /// Every file sent with LocalSend this run, for the Imports page.
-#[tauri::command]
+#[tauri::command(async)]
 fn localsend_files(localsend: State<'_, Arc<localsend::LocalSend>>) -> Vec<tbv_core::localsend::SentFile> {
     localsend.rows()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn clear_localsend_finished(app: tauri::AppHandle, localsend: State<'_, Arc<localsend::LocalSend>>) {
     localsend.clear_finished(&app);
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn answer_localsend(localsend: State<'_, Arc<localsend::LocalSend>>, session: String, accept: bool) {
     localsend.answer(&session, accept);
 }
@@ -1431,6 +1437,13 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             let cache_dir = app.path().app_cache_dir()?;
             let library = Arc::new(Mutex::new(Library::open(LibraryPaths::new(&data_dir, &cache_dir))?));
+            // Audiobooks and ebooks already here find their other half.
+            let linking = library.clone();
+            std::thread::spawn(move || {
+                if let Ok(library) = linking.lock() {
+                    let _ = library.auto_link_audiobooks();
+                }
+            });
             app.manage(Arc::new(sync::SyncWorker::start(app.handle().clone(), library.clone())));
             app.manage(AppLibrary(library));
             app.manage(Arc::new(hardcover::Sends::default()));
@@ -1500,6 +1513,7 @@ pub fn run() {
             get_collections,
             set_favorite,
             set_want_to_read,
+            set_phone_wanted,
             set_rating,
             import_goodreads,
             get_profile,
