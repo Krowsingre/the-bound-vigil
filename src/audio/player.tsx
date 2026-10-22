@@ -153,6 +153,8 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
   const part = useRef(-1);
   /** A book put in the bar by a tap, not loaded to play yet. */
   const cued = useRef<string | null>(null);
+  /** Counts taps, so only the latest one's book shows. */
+  const cueTurn = useRef(0);
   /** Links to play the book's parts from the cloud, when it's streamed that way. */
   const streaming = useRef<string[] | null>(null);
   const streamAudio = useRef(true);
@@ -244,6 +246,8 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
       audio?.removeAttribute("src");
       part.current = -1;
       cued.current = null;
+      // A tap still on its way doesn't replace the book being loaded.
+      cueTurn.current++;
       streaming.current = links;
       // A finished book starts again from the beginning.
       const at = book.positionMs >= book.durationMs - 1000 ? 0 : book.positionMs;
@@ -268,10 +272,14 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
     cueing = (id) => {
       if (now.current.book?.book.id === id) return true;
       if (audio && !audio.paused) return false;
+      const turn = ++cueTurn.current;
       void (async () => {
         try {
           const book = await api.audiobook(id);
+          // Another tap came after this one, or something started playing: that wins.
+          if (turn !== cueTurn.current || (audio && !audio.paused)) return;
           if (now.current.book) await save();
+          if (turn !== cueTurn.current) return;
           audio?.removeAttribute("src");
           part.current = -1;
           streaming.current = null;
@@ -414,7 +422,8 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
 
   // Time listened: while sound plays, even with the screen off, where
   // timers slow to about once a minute.
-  useEffect(() => (audio ? recordTime("listen", () => !audio.paused && !audio.ended, 90_000) : undefined), [audio]);
+  // A stalled stream (waiting for more of the file) isn't listening.
+  useEffect(() => (audio ? recordTime("listen", () => !audio.paused && !audio.ended && audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA, 90_000) : undefined), [audio]);
 
   // Media keys and the system's now-playing controls.
   useEffect(() => {
