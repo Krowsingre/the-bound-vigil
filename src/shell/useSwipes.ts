@@ -15,7 +15,7 @@ export interface Swipes {
 /** Whether something under the finger scrolls sideways, or takes the swipe itself. */
 function takesSideways(target: Element | null, root: Element): boolean {
   for (let el = target; el && el !== root; el = el.parentElement) {
-    if (el.matches("input, textarea, select, [role=slider], [role=dialog], .menu, .sidebar")) return true;
+    if (el.matches("input, textarea, select, [contenteditable=true], [role=slider], [role=dialog], .menu, .sidebar")) return true;
     if (el.scrollWidth > el.clientWidth + 1) {
       const overflow = getComputedStyle(el).overflowX;
       if (overflow === "auto" || overflow === "scroll") return true;

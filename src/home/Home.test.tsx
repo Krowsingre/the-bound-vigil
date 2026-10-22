@@ -7,6 +7,8 @@ import { Home } from "./Home";
 const getHome = vi.fn<() => Promise<HomeViewModel>>();
 vi.mock("../api", () => ({
   isApp: false,
+  isWeb: false,
+  isHome: false,
   api: {
     kind: "app",
     getHome: () => getHome(),

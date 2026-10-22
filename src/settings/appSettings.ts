@@ -64,6 +64,8 @@ export interface AppSettings {
   strongFocus: boolean;
   underlineLinks: boolean;
   showProgress: boolean;
+  /** The Library scrolls on without pages on a computer too (a phone always does). */
+  scrollLibrary: boolean;
   showSmartCollections: boolean;
   showSeries: boolean;
   /** Imports leave out books that were deleted before, instead of bringing them back. */
@@ -86,6 +88,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   strongFocus: false,
   underlineLinks: false,
   showProgress: true,
+  scrollLibrary: false,
   showSmartCollections: true,
   showSeries: true,
   skipDeletedImports: false,
@@ -143,6 +146,7 @@ export function parseAppSettings(json: string | null): AppSettings {
     showProgress: flag(raw.showProgress, d.showProgress),
     showSmartCollections: flag(raw.showSmartCollections, d.showSmartCollections),
     showSeries: flag(raw.showSeries, d.showSeries),
+    scrollLibrary: flag(raw.scrollLibrary, d.scrollLibrary),
     skipDeletedImports: flag(raw.skipDeletedImports, d.skipDeletedImports),
     privacy: {
       on: flag(p.on, d.privacy.on),

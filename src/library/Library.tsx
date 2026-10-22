@@ -19,6 +19,7 @@ import { LibraryToolbar } from "./LibraryToolbar";
 import { excludeCount, NO_FILTERS, PAGE_SIZE, type LibraryView } from "./libraryView";
 import { Pagination } from "./Pagination";
 import { useNarrow } from "../lib/useNarrow";
+import { useAppSettings } from "../settings/appSettings";
 
 type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
 
@@ -70,7 +71,10 @@ export function Library({
   const toast = useToast();
   const words = WORDS[kind];
   // On a phone there are no pages: more books load as the list nears its end.
-  const endless = useNarrow();
+  // A computer can ask for the same in Settings.
+  const narrow = useNarrow();
+  const { scrollLibrary } = useAppSettings().settings;
+  const endless = narrow || scrollLibrary;
   /** Phone: how many pages are shown, and the books of every page after the first. */
   const [pages, setPages] = useState(1);
   const [later, setLater] = useState<BookPreview[][]>([]);
@@ -437,7 +441,7 @@ export function Library({
     );
   } else {
     // The phone has no list view, for now.
-    const Layout = { grid: BookGrid, list: endless ? BookGrid : BookList, compact: BookTable }[view.layout];
+    const Layout = { grid: BookGrid, list: narrow ? BookGrid : BookList, compact: BookTable }[view.layout];
     body = endless ? (
       <>
         <Layout books={page.books} actions={actions} selection={selection} />
