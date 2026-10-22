@@ -265,11 +265,17 @@ export interface Api {
   saveFetched(bookId: string, source: "google" | "openlibrary" | "audible" | "hardcover", values: Record<string, string>): Promise<void>;
   /** Looks a book up in Audible's catalogue, or on Hardcover when it's connected (desktop app). */
   searchDetailsMore(source: "audible" | "hardcover", title: string, author: string): Promise<Found[]>;
-  /** Looks a series' books up online (Hardcover when connected, then Audible) and keeps the list. Desktop app. */
+  /** Looks a series' books up online (Hardcover when connected, Wikidata, the ISFDB, Audible, Google Books) and keeps the list. Desktop app. */
   findSeriesBooks(name: string, author: string): Promise<SeriesReview>;
   /** What's missing from a series, and books that probably belong to it. */
   seriesReview(name: string): Promise<SeriesReview>;
   hideSeriesBook(name: string, key: string, hidden: boolean): Promise<SeriesReview>;
+  /** Marks a missing book as read somewhere else, or not. */
+  markSeriesBookRead(name: string, key: string, read: boolean): Promise<SeriesReview>;
+  /** Adds a book no source knows to the series' list. */
+  addSeriesBook(name: string, title: string, position: number | null, authors: string[]): Promise<SeriesReview>;
+  /** Takes a book added by hand off the list. */
+  removeSeriesBook(name: string, key: string): Promise<SeriesReview>;
   /** Puts the books in the series with their numbers, as details edits. */
   approveSeriesMatches(name: string, approvals: { bookId: string; position: number | null }[]): Promise<SeriesReview>;
   /** Remembers the books aren't in the series. */
@@ -675,6 +681,9 @@ function appApi(): Api {
     findSeriesBooks: async (name, author) => (await core).invoke<SeriesReview>("find_series_books", { name, author }),
     seriesReview: async (name) => (await core).invoke<SeriesReview>("series_review", { name }),
     hideSeriesBook: async (name, key, hidden) => (await core).invoke<SeriesReview>("hide_series_book", { name, key, hidden }),
+    markSeriesBookRead: async (name, key, read) => (await core).invoke<SeriesReview>("mark_series_book_read", { name, key, read }),
+    addSeriesBook: async (name, title, position, authors) => (await core).invoke<SeriesReview>("add_series_book", { name, title, position, authors }),
+    removeSeriesBook: async (name, key) => (await core).invoke<SeriesReview>("remove_series_book", { name, key }),
     approveSeriesMatches: async (name, approvals) => (await core).invoke<SeriesReview>("approve_series_matches", { name, approvals }),
     denySeriesMatches: async (name, bookIds) => (await core).invoke<SeriesReview>("deny_series_matches", { name, bookIds }),
     localSendStatus: async () => (await core).invoke<LocalSendStatus>("localsend_status"),

@@ -12,13 +12,8 @@ import { isAudio, kindOf } from "../lib/queryBooks";
 import { NO_FILTERS } from "../library/libraryView";
 import { isApp, isHome, isWeb } from "../api";
 
-/** Whether this computer sends Supabase only the books chosen for the phone (Settings › Sync). */
-let choosingForPhone = false;
-export function setChoosingForPhone(on: boolean) {
-  choosingForPhone = on;
-}
-/** Where choosing books for the phone shows: on a computer that chooses them, and on the phone. */
-export const phoneChoiceShown = () => (isApp && !isHome && choosingForPhone) || isWeb;
+/** Where choosing books for the phone shows: on a computer (the Send to device shelf), and on the phone. */
+export const phoneChoiceShown = () => (isApp && !isHome) || isWeb;
 
 export interface BookActions {
   open: (book: BookPreview) => void;
@@ -123,8 +118,8 @@ function phoneItem(book: BookPreview, actions: BookActions): MenuEntry[] {
       ? [{ label: "Don't ask the computer for it", icon: "close", hint: "Asked for", onSelect: () => set([book], false) }]
       : [{ label: "Ask the computer to send it", icon: "download", onSelect: () => set([book], true) }];
   }
-  if (book.phoneWanted) return [{ label: "Stop sending to phone", icon: "cloudOff", hint: book.phoneHas ? "On the phone" : undefined, onSelect: () => set([book], false) }];
-  return [{ label: "Send to phone", icon: "upload", hint: book.phoneHas ? "On the phone" : undefined, onSelect: () => set([book], true) }];
+  if (book.phoneWanted) return [{ label: "Stop sending to device", icon: "cloudOff", hint: book.phoneHas ? "On the phone" : undefined, onSelect: () => set([book], false) }];
+  return [{ label: "Send to device", icon: "upload", hint: book.phoneHas ? "On the phone" : undefined, onSelect: () => set([book], true) }];
 }
 
 /** Why a book can't be opened here, or null when it can. */

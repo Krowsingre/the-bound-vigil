@@ -231,6 +231,8 @@ pub enum Shelf {
     All,
     Favorites,
     WantToRead,
+    /// Chosen to go to the phone (web version): Send to device.
+    SendToDevice,
     InProgress,
     Read,
     Unread,
@@ -295,6 +297,12 @@ pub struct LibraryQuery {
     /// Audiobooks read by any of these narrators. Empty means any.
     #[serde(default)]
     pub narrators: Vec<String>,
+    /// Leaves out books marked read (Filter › Hide finished books).
+    #[serde(default)]
+    pub hide_read: bool,
+    /// Books to leave out: any with one of these, whatever else matches.
+    #[serde(default)]
+    pub exclude: LibraryExclude,
     /// Books in any of these series. Empty means any.
     #[serde(default)]
     pub series: Vec<String>,
@@ -312,10 +320,25 @@ pub struct ShelfCounts {
     pub all: u32,
     pub favorites: u32,
     pub want_to_read: u32,
+    #[serde(default)]
+    pub send_to_device: u32,
     pub in_progress: u32,
     pub read: u32,
     pub unread: u32,
     pub collections: u32,
+}
+
+/// The Library filters turned round: books with any of these are left out.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LibraryExclude {
+    pub formats: Vec<String>,
+    pub tags: Vec<String>,
+    pub genres: Vec<String>,
+    pub authors: Vec<String>,
+    pub narrators: Vec<String>,
+    pub series: Vec<String>,
+    pub languages: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -361,8 +384,17 @@ pub enum ImportResult {
         path: String,
         book_id: BookId,
         title: String,
+        /// Deleted before and brought back: put in the Previously deleted collection.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        returned: bool,
     },
     AlreadyInLibrary {
+        path: String,
+        book_id: BookId,
+        title: String,
+    },
+    /// Deleted before, and Settings › Library says to leave such books out.
+    SkippedDeleted {
         path: String,
         book_id: BookId,
         title: String,
@@ -380,7 +412,8 @@ impl ImportResult {
     /// The same result, reported under the path the person chose.
     pub fn from_path(self, path: String) -> Self {
         match self {
-            Self::Imported { book_id, title, .. } => Self::Imported { path, book_id, title },
+            Self::Imported { book_id, title, returned, .. } => Self::Imported { path, book_id, title, returned },
+            Self::SkippedDeleted { book_id, title, .. } => Self::SkippedDeleted { path, book_id, title },
             Self::AlreadyInLibrary { book_id, title, .. } => Self::AlreadyInLibrary { path, book_id, title },
             Self::Unsupported { .. } => Self::Unsupported { path },
             Self::Failed { reason, .. } => Self::Failed { path, reason },
@@ -550,6 +583,18 @@ pub struct SeriesSummary {
     pub count: u32,
     pub authors: Vec<String>,
     pub covers: Vec<CoverRef>,
+    /// Books of the series the library lacks, from its list online, filling
+    /// the cover strip after the books here. Drawn greyed out.
+    #[serde(default)]
+    pub missing: Vec<MissingCover>,
+}
+
+/// A book of a series the library doesn't have, enough to draw its cover.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MissingCover {
+    pub title: String,
+    pub cover_url: Option<String>,
 }
 
 /// Enough of a book to draw its cover, or a cloth cover when it has none.

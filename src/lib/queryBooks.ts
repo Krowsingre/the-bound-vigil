@@ -1,6 +1,6 @@
 // The Library page's filtering, sorting and paging, done in the page itself.
 
-import type { BookPreview, ItemKind, LibraryPage, LibraryQuery, TagCount } from "../api/types";
+import type { BookPreview, ItemKind, LibraryExclude, LibraryPage, LibraryQuery, TagCount } from "../api/types";
 
 /** The kinds of file the Documents page holds (DOCUMENT_FORMATS in the core). */
 export const DOCUMENT_FORMATS = ["pdf", "doc", "docx", "txt"];
@@ -19,6 +19,23 @@ const byTitle = (a: BookPreview, b: BookPreview) => sortTitle(a).localeCompare(s
 const nullsLast = <T>(a: T | null, b: T | null, cmp: (x: T, y: T) => number) =>
   a === null ? (b === null ? 0 : 1) : b === null ? -1 : cmp(a, b);
 
+/** Whether a book has any of the things chosen to leave out. */
+function excluded(b: BookPreview, x: LibraryExclude): boolean {
+  const any = (has: (string | null | undefined)[], out: string[]) => {
+    const o = out.map((v) => v.toLowerCase());
+    return has.some((v) => v != null && o.includes(v.toLowerCase()));
+  };
+  return (
+    any([b.format], x.formats) ||
+    any(b.tags, x.tags) ||
+    any(b.genres ?? [], x.genres) ||
+    any(b.authors, x.authors) ||
+    any(b.narrators ?? [], x.narrators) ||
+    any([b.series], x.series) ||
+    any([b.language], x.languages)
+  );
+}
+
 /** Mirrors the core's Library query, for the browser preview and the web version. */
 export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectionCount: number): LibraryPage {
   const all = everything.filter((b) => ofKind(b, q.kind));
@@ -26,6 +43,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
   let list = all.filter((b) => {
     if (q.shelf === "favorites" && !b.favorite) return false;
     if (q.shelf === "want_to_read" && !b.wantToRead) return false;
+    if (q.shelf === "send_to_device" && !b.phoneWanted) return false;
     if ((q.shelf === "in_progress" || q.shelf === "read" || q.shelf === "unread") && b.status !== q.shelf) return false;
     if (q.formats.length && !q.formats.includes(b.format)) return false;
     if (q.location === "on_device" && b.availability === "cloud") return false;
@@ -33,8 +51,10 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     if (q.tags?.length && !b.tags.some((t) => q.tags!.some((w) => w.toLowerCase() === t.toLowerCase()))) return false;
     if (q.languages?.length && !q.languages.includes(b.language ?? "")) return false;
     if (q.downloadable && !b.inCloud) return false;
+    if (q.hideRead && b.status === "read") return false;
     if (!hasAny(b.genres, q.genres) || !hasAny(b.authors, q.authors) || !hasAny(b.narrators, q.narrators)) return false;
     if (q.series?.length && !q.series.some((s) => s.toLowerCase() === (b.series ?? "").toLowerCase())) return false;
+    if (q.exclude && excluded(b, q.exclude)) return false;
     if (search && ![b.title, ...b.authors, b.series ?? ""].some((t) => t.toLowerCase().includes(search))) return false;
     return true;
   });
@@ -65,6 +85,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
       all: all.length,
       favorites: all.filter((b) => b.favorite).length,
       wantToRead: all.filter((b) => b.wantToRead).length,
+      sendToDevice: all.filter((b) => b.phoneWanted).length,
       inProgress: all.filter((b) => b.status === "in_progress").length,
       read: all.filter((b) => b.status === "read").length,
       unread: all.filter((b) => b.status === "unread").length,

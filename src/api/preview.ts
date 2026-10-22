@@ -467,15 +467,18 @@ export function previewApi(): Api {
   let homeState: HomeStatus = HOME_OFF;
 
   // Find missing books: a made-up online list for each series asked about.
-  const seriesLists = new Map<string, { list: SeriesEntry[]; hidden: Set<string>; denied: Set<string> }>();
+  const seriesLists = new Map<string, { list: SeriesEntry[]; hidden: Set<string>; denied: Set<string>; read: Set<string> }>();
   const seriesReviewOf = (name: string): SeriesReview => {
     const id = name.toLowerCase();
     const inside = library().filter((b) => b.series?.toLowerCase() === id);
     const saved = seriesLists.get(id);
-    if (!saved) return { name, checkedAt: null, listed: 0, owned: inside.length, missing: [], matches: [] };
+    const ownedBooks = inside
+      .map((book) => ({ book, position: book.seriesIndex ?? saved?.list.find((e) => e.title.toLowerCase() === book.title.toLowerCase())?.position ?? null }))
+      .sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9));
+    if (!saved) return { name, checkedAt: null, listed: 0, owned: inside.length, missing: [], matches: [], ownedBooks };
     const missing = saved.list
       .filter((e) => !inside.some((b) => b.seriesIndex === e.position || b.title.toLowerCase() === e.title.toLowerCase()))
-      .map((e) => ({ ...e, key: String(e.position), hidden: saved.hidden.has(String(e.position)) }));
+      .map((e) => ({ ...e, key: String(e.position), hidden: saved.hidden.has(String(e.position)), read: saved.read.has(String(e.position)) }));
     const matches = missing.flatMap((m) =>
       m.hidden
         ? []
@@ -483,7 +486,7 @@ export function previewApi(): Api {
             .filter((b) => !saved.denied.has(b.id) && b.series?.toLowerCase() !== id && b.title.toLowerCase() === m.title.toLowerCase())
             .map((book) => ({ book, position: m.position, reason: "The same title and author, with no series in its details" })),
     );
-    return { name, checkedAt: new Date().toISOString(), listed: saved.list.length, owned: inside.length, missing, matches };
+    return { name, checkedAt: new Date().toISOString(), listed: saved.list.length, owned: inside.length, missing, matches, ownedBooks };
   };
   const HOLMES = ["A Study in Scarlet", "The Sign of the Four", "The Adventures of Sherlock Holmes", "The Memoirs of Sherlock Holmes", "The Hound of the Baskervilles", "The Return of Sherlock Holmes", "The Valley of Fear", "His Last Bow", "The Case-Book of Sherlock Holmes"];
 
@@ -495,13 +498,38 @@ export function previewApi(): Api {
       const titles = name.toLowerCase() === "sherlock holmes" ? HOLMES : Array.from({ length: 5 }, (_, i) => `${name}, book ${i + 1}`);
       const list = titles.map((title, i) => ({ title, position: i + 1, authors: [author], coverUrl: null, source: "audible" }));
       const old = seriesLists.get(name.toLowerCase());
-      seriesLists.set(name.toLowerCase(), { list, hidden: old?.hidden ?? new Set(), denied: old?.denied ?? new Set() });
+      const byHand = old?.list.filter((e) => e.source === "you") ?? [];
+      seriesLists.set(name.toLowerCase(), {
+        list: [...list, ...byHand].sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9)),
+        hidden: old?.hidden ?? new Set(),
+        denied: old?.denied ?? new Set(),
+        read: old?.read ?? new Set(),
+      });
       return seriesReviewOf(name);
     },
     seriesReview: async (name) => seriesReviewOf(name),
     hideSeriesBook: async (name, key, hidden) => {
       const saved = seriesLists.get(name.toLowerCase());
       if (saved) hidden ? saved.hidden.add(key) : saved.hidden.delete(key);
+      return seriesReviewOf(name);
+    },
+    markSeriesBookRead: async (name, key, read) => {
+      const saved = seriesLists.get(name.toLowerCase());
+      if (saved) read ? saved.read.add(key) : saved.read.delete(key);
+      return seriesReviewOf(name);
+    },
+    addSeriesBook: async (name, title, position, authors) => {
+      const id = name.toLowerCase();
+      const saved = seriesLists.get(id) ?? { list: [], hidden: new Set<string>(), denied: new Set<string>(), read: new Set<string>() };
+      saved.list = [...saved.list.filter((e) => e.position !== position), { title, position, authors, coverUrl: null, source: "you" }].sort(
+        (a, b) => (a.position ?? 1e9) - (b.position ?? 1e9),
+      );
+      seriesLists.set(id, saved);
+      return seriesReviewOf(name);
+    },
+    removeSeriesBook: async (name, key) => {
+      const saved = seriesLists.get(name.toLowerCase());
+      if (saved) saved.list = saved.list.filter((e) => !(e.source === "you" && String(e.position) === key));
       return seriesReviewOf(name);
     },
     approveSeriesMatches: async (name, approvals) => {

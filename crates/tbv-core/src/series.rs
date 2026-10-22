@@ -52,6 +52,17 @@ pub struct MissingBook {
     pub entry: SeriesEntry,
     /// Hidden by the person (a short story they don't want, say).
     pub hidden: bool,
+    /// Read somewhere else (borrowed, say), as the person marked it.
+    pub read: bool,
+}
+
+/// A book of the series the library has, with its number: from its details,
+/// or from the list when its title is in it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnedBook {
+    pub book: BookPreview,
+    pub position: Option<f64>,
 }
 
 /// A book in the library that is probably in the series.
@@ -78,6 +89,8 @@ pub struct SeriesReview {
     pub owned: usize,
     pub missing: Vec<MissingBook>,
     pub matches: Vec<SeriesMatch>,
+    /// The books here, in series order.
+    pub owned_books: Vec<OwnedBook>,
 }
 
 /// An approved match: the book and the number it gets.
@@ -97,7 +110,7 @@ fn number_text(n: f64) -> String {
     }
 }
 
-fn series_id(name: &str) -> String {
+pub(crate) fn series_id(name: &str) -> String {
     name.trim().to_lowercase()
 }
 
@@ -288,7 +301,19 @@ struct Saved {
     books: Vec<SeriesEntry>,
     hidden: Vec<String>,
     denied: Vec<String>,
+    read: Vec<String>,
     checked_at: Option<String>,
+}
+
+/// Books the person added to a series list by hand.
+pub const BY_HAND: &str = "you";
+
+/// Turns a key on or off in one of a series' lists of keys.
+fn toggle(list: &mut Vec<String>, key: &str, on: bool) {
+    list.retain(|k| k != key);
+    if on {
+        list.push(key.to_string());
+    }
 }
 
 impl Library {
@@ -296,25 +321,35 @@ impl Library {
         let row = self
             .conn
             .query_row(
-                "SELECT name, books, hidden, denied, checked_at FROM series_lists WHERE id = ?1",
+                "SELECT name, books, hidden, denied, checked_at, read FROM series_lists WHERE id = ?1",
                 params![series_id(name)],
-                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, Option<String>>(4)?)),
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                        r.get::<_, Option<String>>(4)?,
+                        r.get::<_, String>(5)?,
+                    ))
+                },
             )
             .optional()?;
-        Ok(row.map(|(name, books, hidden, denied, checked_at)| Saved {
+        Ok(row.map(|(name, books, hidden, denied, checked_at, read)| Saved {
             name,
             books: serde_json::from_str(&books).unwrap_or_default(),
             hidden: serde_json::from_str(&hidden).unwrap_or_default(),
             denied: serde_json::from_str(&denied).unwrap_or_default(),
+            read: serde_json::from_str(&read).unwrap_or_default(),
             checked_at,
         }))
     }
 
     fn save_series(&self, saved: &Saved) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO series_lists (id, name, books, hidden, denied, checked_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "INSERT INTO series_lists (id, name, books, hidden, denied, checked_at, updated_at, read) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(id) DO UPDATE SET name = excluded.name, books = excluded.books, hidden = excluded.hidden,
-                denied = excluded.denied, checked_at = excluded.checked_at, updated_at = excluded.updated_at",
+                denied = excluded.denied, checked_at = excluded.checked_at, updated_at = excluded.updated_at, read = excluded.read",
             params![
                 series_id(&saved.name),
                 saved.name.trim(),
@@ -323,17 +358,19 @@ impl Library {
                 serde_json::to_string(&saved.denied)?,
                 saved.checked_at,
                 now_utc(),
+                serde_json::to_string(&saved.read)?,
             ],
         )?;
         Ok(())
     }
 
-    /// Keeps the list just looked up online for a series. What was hidden
-    /// or denied stays so.
+    /// Keeps the list just looked up online for a series. What was hidden,
+    /// denied or marked read stays so, and books added by hand stay listed.
     pub fn save_series_found(&self, name: &str, books: Vec<SeriesEntry>) -> Result<SeriesReview> {
         let mut saved = self.saved_series(name)?.unwrap_or_default();
         saved.name = name.trim().to_string();
-        saved.books = books;
+        let by_hand: Vec<SeriesEntry> = saved.books.iter().filter(|b| b.source == BY_HAND).cloned().collect();
+        saved.books = merge(vec![by_hand, books]);
         saved.checked_at = Some(now_utc().to_string());
         self.save_series(&saved)?;
         self.series_review(name)
@@ -342,10 +379,44 @@ impl Library {
     /// Hides one missing book of a series, or shows it again.
     pub fn hide_series_book(&self, name: &str, key: &str, hidden: bool) -> Result<SeriesReview> {
         let mut saved = self.saved_series(name)?.ok_or_else(|| Error::Unsuitable(format!("TBV hasn't looked up {name} yet")))?;
-        saved.hidden.retain(|k| k != key);
-        if hidden {
-            saved.hidden.push(key.to_string());
+        toggle(&mut saved.hidden, key, hidden);
+        self.save_series(&saved)?;
+        self.series_review(name)
+    }
+
+    /// Marks one missing book of a series as read elsewhere, or not.
+    pub fn mark_series_book_read(&self, name: &str, key: &str, read: bool) -> Result<SeriesReview> {
+        let mut saved = self.saved_series(name)?.ok_or_else(|| Error::Unsuitable(format!("TBV hasn't looked up {name} yet")))?;
+        toggle(&mut saved.read, key, read);
+        self.save_series(&saved)?;
+        self.series_review(name)
+    }
+
+    /// Adds a book no source knows to the series' list.
+    pub fn add_series_book(&self, name: &str, title: &str, position: Option<f64>, authors: Vec<String>) -> Result<SeriesReview> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err(Error::Unsuitable("give the book a title".into()));
         }
+        if position.is_some_and(|p| !p.is_finite() || p < 0.0) {
+            return Err(Error::Unsuitable("its number in the series should be 0 or more".into()));
+        }
+        let mut saved = self.saved_series(name)?.unwrap_or_default();
+        saved.name = name.trim().to_string();
+        let entry = SeriesEntry { title: title.to_string(), position, authors, cover_url: None, source: BY_HAND.into() };
+        // Takes the place of a listed book with the same number.
+        let key = entry.key();
+        saved.books.retain(|b| b.key() != key);
+        saved.books.push(entry);
+        saved.books = merge(vec![std::mem::take(&mut saved.books)]);
+        self.save_series(&saved)?;
+        self.series_review(name)
+    }
+
+    /// Takes a book added by hand off the series' list.
+    pub fn remove_series_book(&self, name: &str, key: &str) -> Result<SeriesReview> {
+        let mut saved = self.saved_series(name)?.ok_or_else(|| Error::Unsuitable(format!("TBV hasn't looked up {name} yet")))?;
+        saved.books.retain(|b| !(b.source == BY_HAND && b.key() == key));
         self.save_series(&saved)?;
         self.series_review(name)
     }
@@ -386,7 +457,16 @@ impl Library {
             books.into_iter().partition(|b| b.series.as_deref().is_some_and(|s| series_id(s) == id));
 
         let Some(saved) = saved else {
-            return Ok(SeriesReview { name: name.trim().to_string(), checked_at: None, listed: 0, owned: inside.len(), missing: Vec::new(), matches: Vec::new() });
+            let owned_books = owned_in_order(&inside, &[]);
+            return Ok(SeriesReview {
+                name: name.trim().to_string(),
+                checked_at: None,
+                listed: 0,
+                owned: inside.len(),
+                missing: Vec::new(),
+                matches: Vec::new(),
+                owned_books,
+            });
         };
         let denied: HashSet<&str> = saved.denied.iter().map(String::as_str).collect();
         let same_author = |entry: &SeriesEntry, book: &BookPreview| {
@@ -399,6 +479,8 @@ impl Library {
         // Each book here stands for one book of the list: first those whose
         // number says which, then those whose title does.
         let mut used: HashSet<&str> = HashSet::new();
+        // Which book of the list each book here is.
+        let mut places: Vec<(&str, Option<f64>)> = Vec::new();
         let numbered: Vec<bool> = saved
             .books
             .iter()
@@ -414,6 +496,7 @@ impl Library {
             let by_title = inside.iter().find(|b| !used.contains(b.id.as_str()) && alike(&b.title, &entry.title).is_some());
             if let Some(book) = by_title {
                 used.insert(book.id.as_str());
+                places.push((book.id.as_str(), entry.position));
                 // In the series already, but without its number.
                 if book.series_index.is_none() && entry.position.is_some() && !denied.contains(book.id.as_str()) && offered.insert(book.id.to_string()) {
                     matches.push(SeriesMatch { book: book.clone(), position: entry.position, reason: "In the series, but without its number".into() });
@@ -422,7 +505,8 @@ impl Library {
             }
             let key = entry.key();
             let hidden = saved.hidden.contains(&key);
-            missing.push(MissingBook { key, entry: entry.clone(), hidden });
+            let read = saved.read.contains(&key);
+            missing.push(MissingBook { key, entry: entry.clone(), hidden, read });
             if hidden {
                 continue;
             }
@@ -441,6 +525,7 @@ impl Library {
                 }
             }
         }
+        let owned_books = owned_in_order(&inside, &places);
         Ok(SeriesReview {
             name: saved.name.clone(),
             checked_at: saved.checked_at.clone(),
@@ -448,8 +533,23 @@ impl Library {
             owned: inside.len(),
             missing,
             matches,
+            owned_books,
         })
     }
+}
+
+/// The library's books of a series in order, each with its number: its own,
+/// or the one the list gives its title (`places`).
+fn owned_in_order(inside: &[BookPreview], places: &[(&str, Option<f64>)]) -> Vec<OwnedBook> {
+    let mut owned: Vec<OwnedBook> = inside
+        .iter()
+        .map(|b| {
+            let listed = places.iter().find(|(id, _)| *id == b.id.as_str()).and_then(|(_, p)| *p);
+            OwnedBook { book: b.clone(), position: b.series_index.or(listed) }
+        })
+        .collect();
+    owned.sort_by(|a, b| a.position.unwrap_or(f64::MAX).total_cmp(&b.position.unwrap_or(f64::MAX)));
+    owned
 }
 
 #[cfg(test)]
@@ -502,6 +602,39 @@ mod tests {
         assert!(review.missing.iter().any(|m| m.key == "4" && m.hidden));
         let review = library.save_series_found("Discworld", vec![entry("Mort", 4.0)]).unwrap();
         assert!(review.missing[0].hidden);
+    }
+
+    #[test]
+    fn missing_books_can_be_marked_read_or_added_by_hand_and_owned_books_show_their_number() {
+        let (dir, mut library) = open_temp_library();
+        add(&mut library, dir.path(), "Mort", Some(("Discworld", 4)));
+        let loose = add(&mut library, dir.path(), "Sourcery", None);
+        library.approve_series_matches("Discworld", &[Approval { book_id: loose.clone(), position: None }]).unwrap();
+        let review = library.save_series_found("Discworld", vec![entry("The Colour of Magic", 1.0), entry("Mort", 4.0), entry("Sourcery", 5.0)]).unwrap();
+        // Sourcery has no number of its own; the list's title gives it one.
+        let owned: Vec<(&str, Option<f64>)> = review.owned_books.iter().map(|o| (o.book.title.as_str(), o.position)).collect();
+        assert_eq!(owned, [("Mort", Some(4.0)), ("Sourcery", Some(5.0))]);
+
+        let review = library.mark_series_book_read("Discworld", "1", true).unwrap();
+        assert!(review.missing[0].read);
+        let review = library.add_series_book("Discworld", "Troll Bridge", Some(2.5), vec![]).unwrap();
+        assert_eq!(review.missing.iter().map(|m| (m.entry.title.as_str(), m.entry.source.as_str())).collect::<Vec<_>>(), [("The Colour of Magic", "test"), ("Troll Bridge", BY_HAND)]);
+        assert!(library.add_series_book("Discworld", " ", None, vec![]).is_err());
+        // Looking it up again keeps what was added by hand and marked read.
+        let review = library.save_series_found("Discworld", vec![entry("The Colour of Magic", 1.0)]).unwrap();
+        assert_eq!(review.missing.len(), 2);
+        assert!(review.missing[0].read);
+        let review = library.remove_series_book("Discworld", "2.5").unwrap();
+        assert_eq!(review.missing.len(), 1);
+
+        // The Collections page's series card fills its strip with what's missing.
+        let mut with_cover = entry("Eric", 9.0);
+        with_cover.cover_url = Some("https://x/eric.jpg".into());
+        library.save_series_found("Discworld", vec![entry("The Colour of Magic", 1.0), entry("Mort", 4.0), with_cover]).unwrap();
+        library.hide_series_book("Discworld", "1", true).unwrap();
+        let card = library.collections_overview().unwrap().series.into_iter().find(|s| s.name == "Discworld").unwrap();
+        assert_eq!(card.covers.len(), 2);
+        assert_eq!(card.missing.iter().map(|m| (m.title.as_str(), m.cover_url.as_deref())).collect::<Vec<_>>(), [("Eric", Some("https://x/eric.jpg"))]);
     }
 
     #[test]

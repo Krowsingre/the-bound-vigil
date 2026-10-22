@@ -18,6 +18,8 @@ export interface MenuItem {
   danger?: boolean;
   /** Shown as a tick; the menu stays open so several can be toggled. */
   checked?: boolean;
+  /** With `checked`: turned round, so it's left out (shown as a cross). */
+  excluded?: boolean;
   onSelect?: () => void;
 }
 
@@ -181,8 +183,8 @@ export const MenuList = forwardRef<
             key={i}
             type="button"
             role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
-            aria-checked={item.checked}
-            className={`menu-item${item.danger ? " menu-item-danger" : ""}`}
+            aria-checked={item.excluded ? "mixed" : item.checked}
+            className={`menu-item${item.danger ? " menu-item-danger" : ""}${item.excluded ? " menu-item-excluded" : ""}`}
             disabled={item.disabled}
             onClick={() => {
               if (item.checked === undefined) onClose();
@@ -191,13 +193,13 @@ export const MenuList = forwardRef<
           >
             {item.checked !== undefined ? (
               <span className="menu-check">
-                {item.checked && <Icon name="check" size={16} />}
+                {item.excluded ? <Icon name="close" size={16} /> : item.checked && <Icon name="check" size={16} />}
               </span>
             ) : (
               item.icon && <Icon name={item.icon} size={16} />
             )}
             <span className="menu-label">{item.label}</span>
-            {item.hint && <span className="menu-hint">{item.hint}</span>}
+            {(item.excluded ? "Hidden" : item.hint) && <span className="menu-hint">{item.excluded ? "Hidden" : item.hint}</span>}
           </button>
         ),
       )}

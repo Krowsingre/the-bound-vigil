@@ -1,6 +1,6 @@
 // Settings › Sync › Books for your phone: whether Supabase (the phone's
 // place) gets every book on this computer, or only the ones chosen for the
-// phone. Books are chosen with "Send to phone" on a book's menu, or asked
+// phone. Books are chosen with "Send to device" on a book's menu, or asked
 // for from the phone itself.
 
 import type { SyncOverview } from "../api/types";
@@ -21,7 +21,7 @@ export function PhoneSection({ overview }: { overview: SyncOverview }) {
           {
             value: "chosen",
             label: "Only the books I choose",
-            hint: "Choose them with Send to phone on a book's menu, or ask for one on the phone. Books the phone has downloaded always stay.",
+            hint: "Choose them with Send to device on a book's menu, or ask for one on the phone. Books the phone has downloaded always stay.",
           },
         ]}
         onChange={(v) => changeSync({ phoneChosenOnly: v === "chosen" })}

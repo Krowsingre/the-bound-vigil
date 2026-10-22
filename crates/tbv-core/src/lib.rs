@@ -26,6 +26,7 @@ pub mod profile;
 pub mod reader;
 pub mod rules;
 pub mod series;
+pub mod series_sources;
 pub mod servers;
 pub mod sync;
 pub mod time;

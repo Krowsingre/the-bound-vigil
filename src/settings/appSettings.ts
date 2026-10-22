@@ -66,6 +66,8 @@ export interface AppSettings {
   showProgress: boolean;
   showSmartCollections: boolean;
   showSeries: boolean;
+  /** Imports leave out books that were deleted before, instead of bringing them back. */
+  skipDeletedImports: boolean;
   privacy: PrivacySettings;
   sync: SyncSettings;
 }
@@ -86,6 +88,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showProgress: true,
   showSmartCollections: true,
   showSeries: true,
+  skipDeletedImports: false,
   privacy: { on: false, style: "titles", avatar: true },
   sync: {
     progress: true,
@@ -140,6 +143,7 @@ export function parseAppSettings(json: string | null): AppSettings {
     showProgress: flag(raw.showProgress, d.showProgress),
     showSmartCollections: flag(raw.showSmartCollections, d.showSmartCollections),
     showSeries: flag(raw.showSeries, d.showSeries),
+    skipDeletedImports: flag(raw.skipDeletedImports, d.skipDeletedImports),
     privacy: {
       on: flag(p.on, d.privacy.on),
       style: oneOf(p.style, ["titles", "blank"], d.privacy.style),

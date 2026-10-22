@@ -1,4 +1,5 @@
-import type { CollectionSummary, CoverRef, SeriesSummary, SmartSummary } from "../api/types";
+import { useState } from "react";
+import type { CollectionSummary, CoverRef, MissingCover, SeriesSummary, SmartSummary } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
@@ -36,17 +37,37 @@ export function CollectionPicture({
   );
 }
 
-export function CoverStrip({ covers, count }: { covers: CoverRef[]; count: number }) {
+export function CoverStrip({ covers, count, missing = [] }: { covers: CoverRef[]; count: number; missing?: MissingCover[] }) {
+  const lacking = missing.slice(0, Math.max(0, 3 - covers.length));
   return (
     <span className="cover-strip">
       {covers.map((c) => (
         <BookCover key={c.id} book={c} size="m" />
       ))}
-      {Array.from({ length: Math.max(0, 3 - covers.length) }, (_, i) => (
+      {lacking.map((m, i) => (
+        <MissingStripCover key={`missing-${i}`} book={m} />
+      ))}
+      {Array.from({ length: Math.max(0, 3 - covers.length - lacking.length) }, (_, i) => (
         <span key={i} className="cover-strip-empty" aria-hidden>
           {i === 0 && count === 0 ? "Empty" : ""}
         </span>
       ))}
+    </span>
+  );
+}
+
+/** A book of the series the library lacks, greyed out as on the series' own page. */
+function MissingStripCover({ book }: { book: MissingCover }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className="cover cover-m missing-cover" title={`${book.title} (missing)`}>
+      {book.coverUrl && !failed ? (
+        <img className="private-picture" src={book.coverUrl} alt="" draggable={false} onError={() => setFailed(true)} />
+      ) : (
+        <span className="cover-generated missing-blank">
+          <span className="cover-title">{book.title}</span>
+        </span>
+      )}
     </span>
   );
 }
@@ -188,7 +209,7 @@ export function SeriesCard({
           </span>
         </span>
         {layout === "grid" ? (
-          <CoverStrip covers={series.covers} count={series.count} />
+          <CoverStrip covers={series.covers} count={series.count} missing={series.missing} />
         ) : (
           <span className="collection-card-desc">{series.authors.join(", ")}</span>
         )}

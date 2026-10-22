@@ -1,4 +1,4 @@
-import type { ItemKind, Location, Shelf, SortOrder } from "../api/types";
+import type { ItemKind, LibraryExclude, Location, Shelf, SortOrder } from "../api/types";
 
 export type LibraryTab = Shelf | "collections";
 export type Layout = "grid" | "list" | "compact";
@@ -23,11 +23,20 @@ export interface LibraryView {
   series: string[];
   /** Audiobooks read by any of these narrators. */
   narrators: string[];
+  /** Leaves out books marked read. Remembered, like sort and layout. */
+  hideRead: boolean;
+  /** Filters turned round (a second click): books with any of these are left out. */
+  exclude: LibraryExclude;
   page: number;
   layout: Layout;
 }
 
 export const PAGE_SIZE = 24;
+
+export const NO_EXCLUDE: LibraryExclude = { formats: [], tags: [], genres: [], authors: [], narrators: [], series: [], languages: [] };
+
+/** How many things are left out. */
+export const excludeCount = (x: LibraryExclude) => Object.values(x).reduce((n, list) => n + list.length, 0);
 
 /** Every filter off. */
 export const NO_FILTERS: Partial<LibraryView> = {
@@ -40,12 +49,15 @@ export const NO_FILTERS: Partial<LibraryView> = {
   authors: [],
   series: [],
   narrators: [],
+  hideRead: false,
+  exclude: NO_EXCLUDE,
 };
 
 export const TABS: { tab: LibraryTab; label: string }[] = [
   { tab: "all", label: "All books" },
   { tab: "favorites", label: "Favourites" },
   { tab: "want_to_read", label: "Up next" },
+  { tab: "send_to_device", label: "Send to device" },
   { tab: "in_progress", label: "In progress" },
   { tab: "read", label: "Read" },
   { tab: "unread", label: "Unread" },
@@ -68,11 +80,12 @@ const keyOf = (kind: ItemKind) => (kind === "books" ? KEY : `tbv.${kind}View`);
 
 /** Sort and layout are remembered on this device, for each page of books; the rest starts fresh. */
 export function initialView(kind: ItemKind = "books"): LibraryView {
-  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], series: [], narrators: [], page: 0, layout: "grid" };
+  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], series: [], narrators: [], hideRead: false, exclude: NO_EXCLUDE, page: 0, layout: "grid" };
   try {
     const saved = JSON.parse(localStorage.getItem(keyOf(kind)) ?? "{}") as Partial<LibraryView>;
     if (SORTS.some((s) => s.sort === saved.sort)) view.sort = saved.sort!;
     if (saved.layout === "grid" || saved.layout === "list" || saved.layout === "compact") view.layout = saved.layout;
+    view.hideRead = saved.hideRead === true;
   } catch {
     /* fall back to defaults */
   }
@@ -81,7 +94,7 @@ export function initialView(kind: ItemKind = "books"): LibraryView {
 
 export function rememberView(view: LibraryView, kind: ItemKind = "books") {
   try {
-    localStorage.setItem(keyOf(kind), JSON.stringify({ sort: view.sort, layout: view.layout }));
+    localStorage.setItem(keyOf(kind), JSON.stringify({ sort: view.sort, layout: view.layout, hideRead: view.hideRead }));
   } catch {
     /* the choice just won't be remembered */
   }

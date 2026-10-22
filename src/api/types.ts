@@ -307,8 +307,9 @@ export interface HomeViewModel {
 }
 
 export type ImportResult =
-  | { outcome: "imported"; path: string; bookId: BookId; title: string }
+  | { outcome: "imported"; path: string; bookId: BookId; title: string; /** Deleted before, now in Previously deleted. */ returned?: boolean }
   | { outcome: "alreadyInLibrary"; path: string; bookId: BookId; title: string }
+  | { outcome: "skippedDeleted"; path: string; bookId: BookId; title: string }
   | { outcome: "unsupported"; path: string }
   | { outcome: "failed"; path: string; reason: string };
 
@@ -334,6 +335,10 @@ export interface ImportsView {
   done: number;
   added: number;
   already: number;
+  /** Deleted before and left out. */
+  skippedDeleted: number;
+  /** Deleted before and brought back into Previously deleted. */
+  returned: number;
   unsupported: number;
   failed: number;
   /** The title when exactly one book was added. */
@@ -352,7 +357,7 @@ export interface ImportsView {
   pdfCovers: number;
 }
 
-export type Shelf = "all" | "favorites" | "want_to_read" | "in_progress" | "read" | "unread";
+export type Shelf = "all" | "favorites" | "want_to_read" | "send_to_device" | "in_progress" | "read" | "unread";
 export type SortOrder = "recently_added" | "recently_opened" | "title" | "author" | "series" | "progress" | "rating" | "genre";
 /** Ebooks live in the Library; PDF, DOC, DOCX and TXT on the Documents page. */
 export type ItemKind = "books" | "documents" | "audiobooks";
@@ -378,6 +383,10 @@ export interface LibraryQuery {
   narrators?: string[];
   /** Books in any of these series. */
   series?: string[];
+  /** Leaves out books marked read. */
+  hideRead?: boolean;
+  /** Books with any of these are left out. */
+  exclude?: LibraryExclude;
   /** Only books, documents or audiobooks. Left out: all of them. */
   kind?: ItemKind | null;
   /** Zero-based. */
@@ -385,10 +394,22 @@ export interface LibraryQuery {
   pageSize: number;
 }
 
+/** The Library filters turned round: books with any of these are left out. */
+export interface LibraryExclude {
+  formats: string[];
+  tags: string[];
+  genres: string[];
+  authors: string[];
+  narrators: string[];
+  series: string[];
+  languages: string[];
+}
+
 export interface ShelfCounts {
   all: number;
   favorites: number;
   wantToRead: number;
+  sendToDevice: number;
   inProgress: number;
   read: number;
   unread: number;
@@ -481,6 +502,14 @@ export interface MissingBook extends SeriesEntry {
   key: string;
   /** Hidden by the person. */
   hidden: boolean;
+  /** Read somewhere else, as the person marked it. */
+  read: boolean;
+}
+
+/** A book of the series in the library, with its number (its own, or the list's). */
+export interface OwnedBook {
+  book: BookPreview;
+  position: number | null;
 }
 
 /** A book in the library that is probably in the series. */
@@ -502,6 +531,8 @@ export interface SeriesReview {
   owned: number;
   missing: MissingBook[];
   matches: SeriesMatch[];
+  /** The books here, in series order. */
+  ownedBooks: OwnedBook[];
 }
 
 /** "Use on your phone at home": the computer serving TBV to a phone on the same Wi-Fi. */
@@ -668,6 +699,13 @@ export interface SeriesSummary {
   count: number;
   authors: string[];
   covers: CoverRef[];
+  /** Books the library lacks, from the series' list online, after the covers here. Drawn greyed out. */
+  missing?: MissingCover[];
+}
+
+export interface MissingCover {
+  title: string;
+  coverUrl: string | null;
 }
 
 /** Enough of a book to draw its cover. */

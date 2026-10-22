@@ -1355,26 +1355,43 @@ async fn search_details_more(
     .map_err(|e| e.to_string())
 }
 
-/// Looks the books of a series up online (Hardcover when it's connected,
-/// then Audible) and keeps the list, for showing what's missing.
+/// Looks the books of a series up online, in every source at once
+/// (Hardcover when it's connected, Wikidata, the ISFDB, Audible and Google
+/// Books), and keeps the merged list, for showing what's missing.
 #[tauri::command]
 async fn find_series_books(state: State<'_, AppLibrary>, name: String, author: String) -> CommandResult<tbv_core::series::SeriesReview> {
     let library = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let hardcover = hardcover::series(&library, &name);
-        let audible = tbv_core::series::search_audible_series(&name, &author);
-        let problem = match (&hardcover, &audible) {
-            (Err(e), Err(_)) => Some(e.to_string()),
-            _ => None,
-        };
-        let lists = vec![hardcover.ok().flatten().unwrap_or_default(), audible.unwrap_or_default()];
+        use tbv_core::series::{search_audible_series, SeriesEntry};
+        use tbv_core::series_sources::{search_google_series, search_isfdb_series, search_wikidata_series};
+        type Found = tbv_core::Result<Vec<SeriesEntry>>;
+        let (name, author) = (name.as_str(), author.as_str());
+        // Earlier sources' numbers win when they disagree.
+        let results: Vec<Found> = std::thread::scope(|scope| {
+            let hardcover = scope.spawn(|| hardcover::series(&library, name).map(Option::unwrap_or_default));
+            let others: Vec<_> = [
+                search_wikidata_series as fn(&str, &str) -> Found,
+                search_isfdb_series,
+                search_audible_series,
+                search_google_series,
+            ]
+            .into_iter()
+            .map(|search| scope.spawn(move || search(name, author)))
+            .collect();
+            std::iter::once(hardcover)
+                .chain(others)
+                .map(|h| h.join().unwrap_or_else(|_| Err(tbv_core::Error::Offline("a search stopped unexpectedly".into()))))
+                .collect()
+        });
+        let problem = results.iter().all(Result::is_err).then(|| results.iter().find_map(|r| r.as_ref().err().map(ToString::to_string))).flatten();
+        let lists: Vec<Vec<SeriesEntry>> = results.into_iter().map(Result::unwrap_or_default).collect();
         let books = tbv_core::series::merge(lists);
         if books.is_empty() {
             return Err(tbv_core::Error::Unsuitable(
                 problem.unwrap_or_else(|| format!("No list of the books in {name} was found online.")),
             ));
         }
-        hardcover::lock(&library)?.save_series_found(&name, books)
+        hardcover::lock(&library)?.save_series_found(name, books)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1389,6 +1406,27 @@ async fn series_review(state: State<'_, AppLibrary>, name: String) -> CommandRes
 #[tauri::command]
 async fn hide_series_book(state: State<'_, AppLibrary>, name: String, key: String, hidden: bool) -> CommandResult<tbv_core::series::SeriesReview> {
     with_library(state, move |library| library.hide_series_book(&name, &key, hidden)).await
+}
+
+#[tauri::command]
+async fn mark_series_book_read(state: State<'_, AppLibrary>, name: String, key: String, read: bool) -> CommandResult<tbv_core::series::SeriesReview> {
+    with_library(state, move |library| library.mark_series_book_read(&name, &key, read)).await
+}
+
+#[tauri::command]
+async fn add_series_book(
+    state: State<'_, AppLibrary>,
+    name: String,
+    title: String,
+    position: Option<f64>,
+    authors: Vec<String>,
+) -> CommandResult<tbv_core::series::SeriesReview> {
+    with_library(state, move |library| library.add_series_book(&name, &title, position, authors)).await
+}
+
+#[tauri::command]
+async fn remove_series_book(state: State<'_, AppLibrary>, name: String, key: String) -> CommandResult<tbv_core::series::SeriesReview> {
+    with_library(state, move |library| library.remove_series_book(&name, &key)).await
 }
 
 #[tauri::command]
@@ -1542,6 +1580,9 @@ pub fn run() {
             forget_home_phones,
             series_review,
             hide_series_book,
+            mark_series_book_read,
+            add_series_book,
+            remove_series_book,
             approve_series_matches,
             deny_series_matches,
             dismiss_duplicates,

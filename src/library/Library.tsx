@@ -13,7 +13,7 @@ import { AddTagToMany, deleteWarning, removeWarning } from "./BookDialogs";
 import { BookGrid, BookList, BookTable, type Selection } from "./BookViews";
 import { CollectionsTab } from "./CollectionsTab";
 import { LibraryToolbar } from "./LibraryToolbar";
-import { NO_FILTERS, PAGE_SIZE, type LibraryView } from "./libraryView";
+import { excludeCount, NO_FILTERS, PAGE_SIZE, type LibraryView } from "./libraryView";
 import { Pagination } from "./Pagination";
 
 type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
@@ -84,6 +84,8 @@ export function Library({
     authors: view.authors,
     series: view.series,
     narrators: view.narrators,
+    hideRead: view.hideRead,
+    exclude: view.exclude,
     kind,
   };
   useEffect(() => {
@@ -102,6 +104,8 @@ export function Library({
         authors: view.authors,
         series: view.series,
         narrators: view.narrators,
+        hideRead: view.hideRead,
+        exclude: view.exclude,
         kind,
         page: view.page,
         pageSize: PAGE_SIZE,
@@ -113,7 +117,7 @@ export function Library({
     return () => {
       current = false;
     };
-  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.series, view.narrators, view.page, search, refreshKey, reload]);
+  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.series, view.narrators, view.hideRead, view.exclude, view.page, search, refreshKey, reload]);
 
   useEffect(() => {
     if (view.tab !== "collections") return;
@@ -150,7 +154,7 @@ export function Library({
   const page = load.state === "ready" ? load.data : null;
   const counts = page?.counts ?? null;
   const filtered =
-    view.formats.length > 0 || view.location !== null || view.tags.length > 0 || view.genres.length > 0 || view.languages.length > 0 || view.downloadable || view.authors.length > 0 || view.series.length > 0 || view.narrators.length > 0;
+    view.formats.length > 0 || view.location !== null || view.tags.length > 0 || view.genres.length > 0 || view.languages.length > 0 || view.downloadable || view.authors.length > 0 || view.series.length > 0 || view.narrators.length > 0 || view.hideRead || excludeCount(view.exclude) > 0;
   const selection: Selection | null = selected && {
     has: (id) => selected.has(id),
     toggle: (book, range) => {
@@ -386,11 +390,11 @@ export function Library({
             {!isWeb && phoneChoiceShown() && (
               <>
                 <button type="button" className="btn btn-quiet" disabled={!selected.size} onClick={() => actions.setPhoneWanted?.(chosen, true)}>
-                  <Icon name="upload" size={16} /> Send to phone
+                  <Icon name="upload" size={16} /> Send to device
                 </button>
                 {chosen.some((b) => b.phoneWanted) && (
                   <button type="button" className="btn btn-quiet" onClick={() => actions.setPhoneWanted?.(chosen.filter((b) => b.phoneWanted), false)}>
-                    <Icon name="cloudOff" size={16} /> Stop sending to phone
+                    <Icon name="cloudOff" size={16} /> Stop sending to device
                   </button>
                 )}
               </>

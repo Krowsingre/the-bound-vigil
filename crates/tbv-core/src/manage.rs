@@ -471,7 +471,7 @@ mod tests {
     use super::*;
     use crate::epub::tests::write_test_epub_with;
     use crate::library::tests::open_temp_library;
-    use crate::model::{ImportResult, LibraryQuery};
+    use crate::model::{CollectionRef, ImportResult, LibraryQuery};
 
     fn add(
         library: &mut Library,
@@ -558,6 +558,42 @@ mod tests {
                 .total,
             1
         );
+    }
+
+    #[test]
+    fn a_deleted_book_imported_again_goes_into_previously_deleted_or_is_skipped() {
+        use crate::collections::PREVIOUSLY_DELETED;
+        let (dir, mut library) = open_temp_library();
+        let a = add(&mut library, dir.path(), "a", "Carmilla", "Le Fanu", "");
+        let b = add(&mut library, dir.path(), "b", "Dracula", "Stoker", "");
+        let members = |l: &Library| -> Vec<String> {
+            let detail = l.collection_detail(&CollectionRef::Collection { id: PREVIOUSLY_DELETED.into() });
+            detail.map(|d| d.books.into_iter().map(|b| b.id).collect()).unwrap_or_default()
+        };
+        assert!(library.collection(PREVIOUSLY_DELETED).is_err(), "made only when needed");
+
+        library.delete_book(&a).unwrap();
+        let again = library.import_files(&[dir.path().join("a.epub")]).remove(0);
+        assert!(matches!(again, ImportResult::Imported { returned: true, .. }), "{again:?}");
+        assert_eq!(members(&library), vec![a.clone()]);
+        // A book that was never deleted comes in as usual.
+        let fresh = dir.path().join("c.epub");
+        write_test_epub_with(&fresh, "Laura", "Le Fanu", false, "");
+        let c = library.import_files(&[fresh]).remove(0);
+        assert!(matches!(c, ImportResult::Imported { returned: false, .. }), "{c:?}");
+
+        // Deleting the collection, then another book returning, starts it afresh.
+        library.delete_collection(PREVIOUSLY_DELETED).unwrap();
+        library.remove_from_library(&b).unwrap();
+        library.import_files(&[dir.path().join("b.epub")]);
+        assert_eq!(members(&library), vec![b.clone()]);
+
+        // With Skip books I've deleted, they stay out.
+        library.set_setting(crate::sync::APP_SETTINGS, r#"{"skipDeletedImports":true}"#).unwrap();
+        library.delete_book(&a).unwrap();
+        let skipped = library.import_files(&[dir.path().join("a.epub")]).remove(0);
+        assert!(matches!(&skipped, ImportResult::SkippedDeleted { title, .. } if title == "Carmilla"), "{skipped:?}");
+        assert_eq!(library.library_page(&LibraryQuery::default()).unwrap().total, 2);
     }
 
     #[test]

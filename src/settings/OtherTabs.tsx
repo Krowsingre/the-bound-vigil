@@ -128,6 +128,7 @@ export function LibraryTab({
       </Section>
       <TagsSection />
       <DuplicatesSection />
+      <DeletedBooksSection />
       <GoodreadsSection />
     </>
   );
@@ -185,6 +186,31 @@ function TagsSection() {
           onConfirm={() => void remove(removing)}
         />
       )}
+    </Section>
+  );
+}
+
+/** What happens when an import brings back a book that was deleted before. */
+function DeletedBooksSection() {
+  const { settings, change } = useAppSettings();
+  return (
+    <Section
+      id="deleted"
+      title="Deleted books"
+      lede="TBV remembers the books you've deleted, on any of your devices, by the file itself, so renamed copies are recognised too."
+    >
+      <div className="toggle-list">
+        <Toggle
+          label="Skip books I've deleted"
+          hint={
+            settings.skipDeletedImports
+              ? "Imports leave them out. The Imports page lists them as skipped."
+              : "Imports bring them back and put them in the Previously deleted collection, so you can look them over."
+          }
+          checked={settings.skipDeletedImports}
+          onChange={(skipDeletedImports) => change({ skipDeletedImports })}
+        />
+      </div>
     </Section>
   );
 }
@@ -801,7 +827,7 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
 ];
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.0.0");
+  const [version, setVersion] = useState("1.7.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

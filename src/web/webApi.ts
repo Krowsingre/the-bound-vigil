@@ -35,7 +35,7 @@ import { cleanValue, DETAIL_FIELDS, listOf } from "../lib/details";
 import { copyName } from "../lib/format";
 import { DESKTOP_ONLY as SENDING_DESKTOP_ONLY } from "../ereaders/ereaders";
 import { WebDb } from "./db";
-import { UP_NEXT, WebLibrary, type BookRow } from "./library";
+import { SEND_TO_DEVICE, UP_NEXT, WebLibrary, type BookRow } from "./library";
 import { WebSync } from "./sync";
 import { moveStub } from "../api/moveStub";
 import { serverStub } from "../api/serverStub";
@@ -315,7 +315,10 @@ export async function webApi(): Promise<Api> {
 
   const membersOf = (c: Row, all = bookById()): BookPreview[] => {
     const list = [...all.values()];
-    if (c.kind === "shelf") return c.id === UP_NEXT.id ? list.filter((b) => b.wantToRead).sort((a, b) => newest(a.addedAt, b.addedAt) || byTitle(a, b)) : [];
+    if (c.kind === "shelf") {
+      const on = c.id === UP_NEXT.id ? (b: BookPreview) => !!b.wantToRead : c.id === SEND_TO_DEVICE.id ? (b: BookPreview) => !!b.phoneWanted : () => false;
+      return list.filter(on).sort((a, b) => newest(a.addedAt, b.addedAt) || byTitle(a, b));
+    }
     const rules = rulesOf(c);
     if (rules) return list.filter((b) => matches(b, rules, extras(b.id))).sort((a, b) => newest(a.addedAt, b.addedAt) || byTitle(a, b));
     const members = memberRows(String(c.id));
@@ -1117,8 +1120,17 @@ export async function webApi(): Promise<Api> {
     findSeriesBooks: async () => {
       throw new Error(DESKTOP_ONLY);
     },
-    seriesReview: async (name) => ({ name, checkedAt: null, listed: 0, owned: 0, missing: [], matches: [] }),
+    seriesReview: async (name) => ({ name, checkedAt: null, listed: 0, owned: 0, missing: [], matches: [], ownedBooks: [] }),
     hideSeriesBook: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    markSeriesBookRead: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    addSeriesBook: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    removeSeriesBook: async () => {
       throw new Error(DESKTOP_ONLY);
     },
     approveSeriesMatches: async () => {
