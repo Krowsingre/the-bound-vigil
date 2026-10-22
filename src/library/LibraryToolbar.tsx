@@ -9,6 +9,7 @@ const COUNT_OF: Record<LibraryTab, keyof ShelfCounts> = {
   all: "all",
   favorites: "favorites",
   want_to_read: "wantToRead",
+  send_to_device: "sendToDevice",
   in_progress: "inProgress",
   read: "read",
   unread: "unread",

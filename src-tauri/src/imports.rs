@@ -51,6 +51,10 @@ pub struct ImportsView {
     pub done: usize,
     pub added: usize,
     pub already: usize,
+    /// Deleted before, and left out (Settings › Library › Deleted books).
+    pub skipped_deleted: usize,
+    /// Deleted before, and brought back into Previously deleted.
+    pub returned: usize,
     pub unsupported: usize,
     pub failed: usize,
     /// The title when exactly one book was added.
@@ -124,11 +128,13 @@ impl Imports {
                 Stage::Done => {
                     view.done += 1;
                     match &item.result {
-                        Some(ImportResult::Imported { title, .. }) => {
+                        Some(ImportResult::Imported { title, returned, .. }) => {
                             view.added += 1;
+                            view.returned += usize::from(*returned);
                             view.only_added = Some(title.clone());
                         }
                         Some(ImportResult::AlreadyInLibrary { .. }) => view.already += 1,
+                        Some(ImportResult::SkippedDeleted { .. }) => view.skipped_deleted += 1,
                         Some(ImportResult::Unsupported { .. }) => view.unsupported += 1,
                         Some(ImportResult::Failed { reason, .. }) => {
                             view.failed += 1;

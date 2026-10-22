@@ -21,7 +21,9 @@ function size(bytes: number): string {
 function outcome(result: ImportResult | null): { text: string; tone: "ok" | "same" | "bad" } {
   switch (result?.outcome) {
     case "imported":
-      return { text: "Added", tone: "ok" };
+      return result.returned ? { text: "Deleted before, added to Previously deleted", tone: "same" } : { text: "Added", tone: "ok" };
+    case "skippedDeleted":
+      return { text: "Deleted before, skipped", tone: "same" };
     case "alreadyInLibrary":
       return { text: "Already in your library", tone: "same" };
     case "unsupported":
@@ -96,7 +98,9 @@ export function Imports({
               <h2>{running ? `Adding ${Math.min(done + 1, total)} of ${total} ${total === 1 ? "book" : "books"}` : `Finished: ${total} ${total === 1 ? "book" : "books"}`}</h2>
               <p className="settings-row-hint">
                 {added} added
+                {view.returned > 0 && ` (${view.returned} previously deleted, in the Previously deleted collection)`}
                 {view.already > 0 && `, ${view.already} already in your library`}
+                {view.skippedDeleted > 0 && `, ${view.skippedDeleted} previously deleted and skipped`}
                 {problems > 0 && `, ${problems} couldn't be added`}
                 {running && ". You can keep using TBV meanwhile."}
               </p>

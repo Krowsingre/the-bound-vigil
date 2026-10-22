@@ -92,6 +92,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
 
   let stored: Stored[] = [
     shelf("want_to_read", "Up next", "bookmark", "gallery:forest-shrine"),
+    shelf("send_to_device", "Send to device", "phone", "gallery:stormlight-beacon"),
     ...(empty
       ? []
       : [
@@ -137,6 +138,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
 
   const shelfBooks: Record<string, (b: BookPreview) => boolean> = {
     "shelf:want_to_read": (b) => b.wantToRead,
+    "shelf:send_to_device": (b) => !!b.phoneWanted,
   };
   const smartBooks: Record<SmartKind, (b: BookPreview) => boolean> = {
     recently_added: (b) => Date.now() - Date.parse(b.addedAt) < 30 * day,

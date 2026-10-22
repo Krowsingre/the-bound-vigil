@@ -307,8 +307,9 @@ export interface HomeViewModel {
 }
 
 export type ImportResult =
-  | { outcome: "imported"; path: string; bookId: BookId; title: string }
+  | { outcome: "imported"; path: string; bookId: BookId; title: string; /** Deleted before, now in Previously deleted. */ returned?: boolean }
   | { outcome: "alreadyInLibrary"; path: string; bookId: BookId; title: string }
+  | { outcome: "skippedDeleted"; path: string; bookId: BookId; title: string }
   | { outcome: "unsupported"; path: string }
   | { outcome: "failed"; path: string; reason: string };
 
@@ -334,6 +335,10 @@ export interface ImportsView {
   done: number;
   added: number;
   already: number;
+  /** Deleted before and left out. */
+  skippedDeleted: number;
+  /** Deleted before and brought back into Previously deleted. */
+  returned: number;
   unsupported: number;
   failed: number;
   /** The title when exactly one book was added. */
@@ -352,7 +357,7 @@ export interface ImportsView {
   pdfCovers: number;
 }
 
-export type Shelf = "all" | "favorites" | "want_to_read" | "in_progress" | "read" | "unread";
+export type Shelf = "all" | "favorites" | "want_to_read" | "send_to_device" | "in_progress" | "read" | "unread";
 export type SortOrder = "recently_added" | "recently_opened" | "title" | "author" | "series" | "progress" | "rating" | "genre";
 /** Ebooks live in the Library; PDF, DOC, DOCX and TXT on the Documents page. */
 export type ItemKind = "books" | "documents" | "audiobooks";
@@ -389,6 +394,7 @@ export interface ShelfCounts {
   all: number;
   favorites: number;
   wantToRead: number;
+  sendToDevice: number;
   inProgress: number;
   read: number;
   unread: number;

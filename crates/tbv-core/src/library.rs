@@ -367,10 +367,19 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (ebook_id, audiobook_id)
     );
     "#,
+    // v16: a second built-in shelf, Send to device: the books chosen for the
+    // phone (`phone_wanted`), next to Up next. Every device adds the same row,
+    // so its sync stamp is dropped and none of them overrules another's edits.
+    r#"
+    INSERT OR IGNORE INTO collections (id, name, created_at, updated_at, kind, badge, picture, pinned, position) VALUES
+        ('shelf:send_to_device', 'Send to device', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'shelf', 'phone', 'gallery:stormlight-beacon', 1, 1.5);
+    DELETE FROM sync_clock WHERE kind = 'collection' AND key = json_array('shelf:send_to_device');
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
-/// collections (Favourites, In progress, Read). Only Up next is kept. Run at
+/// collections (Favourites, In progress, Read). Only Up next is kept
+/// (Send to device came later, in v16). Run at
 /// every open, so it also tidies a library restored from an old backup.
 const RETIRED_SHELVES: &str = r#"
     DELETE FROM collection_books WHERE collection_id IN ('shelf:favorites', 'shelf:reading', 'shelf:completed');
@@ -520,6 +529,11 @@ impl Library {
                 return Ok(ImportPlan::Finished(ImportResult::AlreadyInLibrary { path, book_id, title: title.clone() }));
             }
         }
+        if known.is_none() && self.skips_deleted()? {
+            if let Some(title) = self.deleted_title(&book_id)? {
+                return Ok(ImportPlan::Finished(ImportResult::SkippedDeleted { path, book_id, title }));
+            }
+        }
         let cover = if known.is_some() { self.cover_of(&book_id)? } else { None };
         Ok(ImportPlan::Prepare(ImportJob { source: source.to_path_buf(), format: format.to_string(), book_id, known, cover }))
     }
@@ -551,6 +565,7 @@ impl Library {
             return Ok(ImportResult::AlreadyInLibrary { path, book_id, title });
         }
 
+        let returned = self.deleted_title(&book_id)?.is_some();
         let tx = self.conn.transaction()?;
         tx.execute(
             // A book deleted earlier comes back when its file is imported again.
@@ -587,7 +602,34 @@ impl Library {
         if let Some(audio) = &metadata.audio {
             self.keep_audio_details(&book_id, audio)?;
         }
-        Ok(ImportResult::Imported { path, book_id, title })
+        if returned {
+            self.add_to_previously_deleted(&book_id)?;
+        }
+        Ok(ImportResult::Imported { path, book_id, title, returned })
+    }
+
+    /// The title of a book that was in the library and has been deleted
+    /// (here, or on another device and synced).
+    fn deleted_title(&self, book_id: &BookId) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT title FROM books WHERE id = ?1 AND deleted_at IS NOT NULL",
+                params![book_id],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Settings › Library › Skip books I've deleted.
+    fn skips_deleted(&self) -> Result<bool> {
+        #[derive(serde::Deserialize, Default)]
+        #[serde(default, rename_all = "camelCase")]
+        struct App {
+            skip_deleted_imports: bool,
+        }
+        let saved = self.setting(crate::sync::APP_SETTINGS)?;
+        Ok(saved.and_then(|s| serde_json::from_str::<App>(&s).ok()).unwrap_or_default().skip_deleted_imports)
     }
 
     fn added_on_phone(&self, book_id: &BookId) -> Result<bool> {
@@ -1050,7 +1092,7 @@ pub(crate) mod tests {
         let library = Library::open(paths()).unwrap();
         let shelves: Vec<(String, String)> = library
             .conn
-            .prepare("SELECT id, name FROM collections WHERE kind = 'shelf'")
+            .prepare("SELECT id, name FROM collections WHERE kind = 'shelf' AND id != 'shelf:send_to_device'")
             .unwrap()
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
             .unwrap()

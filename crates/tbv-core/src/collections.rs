@@ -1,4 +1,4 @@
-//! The Collections page: the built-in Up next shelf, smart collections that
+//! The Collections page: the built-in Up next and Send to device shelves, smart collections that
 //! fill themselves, series read from the books, and the user's own
 //! collections and reading lists.
 
@@ -21,6 +21,8 @@ const MAX_PICTURE_BYTES: u64 = 15 * 1024 * 1024;
 const MAX_NAME_CHARS: usize = 80;
 const MAX_DESCRIPTION_CHARS: usize = 600;
 const COVER_STRIP: u32 = 3;
+/// Where imports put deleted books they bring back.
+pub const PREVIOUSLY_DELETED: &str = "collection:previously_deleted";
 
 const TITLE: &str = "COALESCE(o_title.value, f_title.value, b.title) COLLATE NOCASE";
 const SERIES: &str = "COALESCE(o_series.value, f_series.value, b.series)";
@@ -29,6 +31,7 @@ const SERIES: &str = "COALESCE(o_series.value, f_series.value, b.series)";
 fn shelf_condition(id: &str) -> Option<(&'static str, &'static str)> {
     Some(match id {
         "shelf:want_to_read" => ("b.want_to_read = 1", "b.added_at DESC"),
+        "shelf:send_to_device" => ("b.phone_wanted = 1", "b.added_at DESC"),
         _ => return None,
     })
 }
@@ -502,6 +505,36 @@ impl Library {
         Ok(())
     }
 
+    /// Puts a deleted book that an import brought back into the Previously
+    /// deleted collection, made (or brought back) the first time it's needed.
+    /// Its id is the same on every device, so their copies are one collection.
+    pub(crate) fn add_to_previously_deleted(&self, book_id: &BookId) -> Result<()> {
+        let now = now_utc();
+        // Deleted by the person: it comes back empty, not with the books it had then.
+        self.conn.execute(
+            "UPDATE collection_books SET removed_at = ?2, updated_at = ?2
+             WHERE collection_id = ?1 AND removed_at IS NULL
+               AND EXISTS (SELECT 1 FROM collections WHERE id = ?1 AND deleted_at IS NOT NULL)",
+            params![PREVIOUSLY_DELETED, now],
+        )?;
+        self.conn.execute(
+            "INSERT INTO collections (id, name, description, kind, badge, pinned, position, created_at, updated_at)
+             VALUES (?1, 'Previously deleted', ?2, 'collection', 'hourglass', 0,
+                     (SELECT COALESCE(MAX(position), 0) + 1 FROM collections), ?3, ?3)
+             ON CONFLICT(id) DO UPDATE SET deleted_at = NULL, updated_at = excluded.updated_at
+             WHERE collections.deleted_at IS NOT NULL",
+            params![
+                PREVIOUSLY_DELETED,
+                "Books you had deleted that came back with an import. Delete them again, or remove them from here to keep them.",
+                now
+            ],
+        )?;
+        if self.collection_rules(PREVIOUSLY_DELETED)?.is_some() {
+            return Ok(());
+        }
+        self.add_to_collection(PREVIOUSLY_DELETED, std::slice::from_ref(book_id))
+    }
+
     /// Adds books to the end of a collection. Books already in it stay put.
     pub fn add_to_collection(&self, id: &str, book_ids: &[BookId]) -> Result<()> {
         if self.collection_kind(id)? == CollectionKind::Shelf {
@@ -721,11 +754,16 @@ mod tests {
         let a = add(&mut library, dir.path(), "Alpha", "");
         add(&mut library, dir.path(), "Beta", "");
         library.set_want_to_read(&a, true).unwrap();
+        library.set_phone_wanted(std::slice::from_ref(&a), true).unwrap();
 
         let overview = library.collections_overview().unwrap();
         let names: Vec<_> = overview.pinned.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, ["Up next"], "only shelves that no smart collection repeats");
+        assert_eq!(names, ["Up next", "Send to device"], "only shelves that no smart collection repeats");
         assert_eq!(overview.pinned[0].count, 1);
+        assert_eq!(overview.pinned[1].count, 1, "the books chosen for the phone");
+        assert_eq!(library.shelf_counts().unwrap().send_to_device, 1);
+        let chosen = library.library_page(&LibraryQuery { shelf: Shelf::SendToDevice, ..Default::default() }).unwrap();
+        assert_eq!(chosen.books.iter().map(|b| b.id.clone()).collect::<Vec<_>>(), vec![a.clone()]);
         assert!(
             overview.collections.is_empty(),
             "shelves aren't listed as the user's own"
@@ -754,7 +792,8 @@ mod tests {
             .unwrap();
         assert_eq!(changed.name, "Up next");
         assert_eq!(changed.badge.as_deref(), Some("moon"));
-        assert!(library.collections_overview().unwrap().pinned.is_empty());
+        let pinned = library.collections_overview().unwrap().pinned;
+        assert_eq!(pinned.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Send to device"]);
     }
 
     #[test]

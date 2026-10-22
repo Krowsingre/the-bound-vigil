@@ -386,11 +386,11 @@ export function Library({
             {!isWeb && phoneChoiceShown() && (
               <>
                 <button type="button" className="btn btn-quiet" disabled={!selected.size} onClick={() => actions.setPhoneWanted?.(chosen, true)}>
-                  <Icon name="upload" size={16} /> Send to phone
+                  <Icon name="upload" size={16} /> Send to device
                 </button>
                 {chosen.some((b) => b.phoneWanted) && (
                   <button type="button" className="btn btn-quiet" onClick={() => actions.setPhoneWanted?.(chosen.filter((b) => b.phoneWanted), false)}>
-                    <Icon name="cloudOff" size={16} /> Stop sending to phone
+                    <Icon name="cloudOff" size={16} /> Stop sending to device
                   </button>
                 )}
               </>

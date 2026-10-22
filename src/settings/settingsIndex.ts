@@ -181,6 +181,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "library",
+    section: "deleted",
+    label: "Deleted books",
+    words: "deleted removed books come back again import previously skip",
+  },
+  {
+    tab: "library",
     section: "goodreads",
     label: "Goodreads",
     words: "goodreads import export csv file upload ratings stars shelves read dates",

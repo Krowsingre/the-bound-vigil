@@ -114,6 +114,7 @@ impl Library {
             Shelf::All => {}
             Shelf::Favorites => conditions.push("b.favorite = 1".into()),
             Shelf::WantToRead => conditions.push("b.want_to_read = 1".into()),
+            Shelf::SendToDevice => conditions.push("b.phone_wanted = 1".into()),
             Shelf::InProgress => conditions.push("b.status = 'in_progress'".into()),
             Shelf::Read => conditions.push("b.status = 'read'".into()),
             Shelf::Unread => conditions.push("b.status = 'unread'".into()),
@@ -252,6 +253,7 @@ impl Library {
             &format!("SELECT COUNT(*),
                     COALESCE(SUM(favorite = 1), 0),
                     COALESCE(SUM(want_to_read = 1), 0),
+                    COALESCE(SUM(phone_wanted = 1), 0),
                     COALESCE(SUM(status = 'in_progress'), 0),
                     COALESCE(SUM(status = 'read'), 0),
                     COALESCE(SUM(status = 'unread'), 0),
@@ -263,10 +265,11 @@ impl Library {
                     all: r.get(0)?,
                     favorites: r.get(1)?,
                     want_to_read: r.get(2)?,
-                    in_progress: r.get(3)?,
-                    read: r.get(4)?,
-                    unread: r.get(5)?,
-                    collections: r.get(6)?,
+                    send_to_device: r.get(3)?,
+                    in_progress: r.get(4)?,
+                    read: r.get(5)?,
+                    unread: r.get(6)?,
+                    collections: r.get(7)?,
                 })
             },
         )?)

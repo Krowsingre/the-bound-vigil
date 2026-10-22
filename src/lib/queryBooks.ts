@@ -26,6 +26,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
   let list = all.filter((b) => {
     if (q.shelf === "favorites" && !b.favorite) return false;
     if (q.shelf === "want_to_read" && !b.wantToRead) return false;
+    if (q.shelf === "send_to_device" && !b.phoneWanted) return false;
     if ((q.shelf === "in_progress" || q.shelf === "read" || q.shelf === "unread") && b.status !== q.shelf) return false;
     if (q.formats.length && !q.formats.includes(b.format)) return false;
     if (q.location === "on_device" && b.availability === "cloud") return false;
@@ -65,6 +66,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
       all: all.length,
       favorites: all.filter((b) => b.favorite).length,
       wantToRead: all.filter((b) => b.wantToRead).length,
+      sendToDevice: all.filter((b) => b.phoneWanted).length,
       inProgress: all.filter((b) => b.status === "in_progress").length,
       read: all.filter((b) => b.status === "read").length,
       unread: all.filter((b) => b.status === "unread").length,

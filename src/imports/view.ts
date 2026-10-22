@@ -14,6 +14,8 @@ export function importsViewOf(items: ImportItem[], show = 100): ImportsView {
     done: done.length,
     added: added.length,
     already: count("alreadyInLibrary"),
+    skippedDeleted: count("skippedDeleted"),
+    returned: added.filter((i) => i.result?.outcome === "imported" && i.result.returned).length,
     unsupported: count("unsupported"),
     failed: failed.length,
     onlyAdded: only && "title" in only ? only.title : null,

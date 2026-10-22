@@ -107,6 +107,16 @@ export const UP_NEXT: Row = {
   rules: null,
 };
 
+/** The built-in Send to device shelf: the books chosen for the phone. */
+export const SEND_TO_DEVICE: Row = {
+  ...UP_NEXT,
+  id: "shelf:send_to_device",
+  name: "Send to device",
+  badge: "phone",
+  picture: "gallery:stormlight-beacon",
+  position: 1.5,
+};
+
 const BOOK_DEFAULTS = { status: "unread", total_progression: null, resume_locator: null, last_opened_at: null, finished_at: null, favorite: 0, want_to_read: 0, rating: null, phone_wanted: 0, phone_has: 0, from_phone: 0 };
 
 /** A time that sorts after `previous`, so a change on this device never looks older than the last. */
@@ -156,8 +166,10 @@ export class WebLibrary {
       }
     }
     const collections = tables.get("collections")!;
-    const upNext = JSON.stringify([UP_NEXT.id]);
-    if (!collections.has(upNext)) collections.set(upNext, UP_NEXT);
+    for (const shelf of [UP_NEXT, SEND_TO_DEVICE]) {
+      const key = JSON.stringify([shelf.id]);
+      if (!collections.has(key)) collections.set(key, shelf);
+    }
     this.cached = { version: this.version, tables };
     return tables;
   }

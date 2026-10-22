@@ -33,7 +33,6 @@ import { Header } from "./shell/Header";
 import { NAV, type Route } from "./shell/routes";
 import { Sidebar } from "./shell/Sidebar";
 import { drawImportedCovers } from "./reader/formats";
-import { setChoosingForPhone } from "./home/bookActions";
 
 const COLLAPSE_KEY = "tbv.sidebarCollapsed";
 const NO_IMPORTS = isHome
@@ -74,8 +73,7 @@ export function App() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
-  const { settings: appSettings, refreshAdaptive, togglePrivacy } = useAppSettings();
-  setChoosingForPhone(appSettings.sync.phoneChosenOnly);
+  const { refreshAdaptive, togglePrivacy } = useAppSettings();
 
   const navigate = useCallback((r: Route) => {
     // The sidebar's Collections always starts at the overview.
