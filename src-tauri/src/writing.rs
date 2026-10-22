@@ -100,6 +100,24 @@ pub async fn set_writing_cover(state: State<'_, AppLibrary>, id: String, path: O
     with_library(state, move |library| library.set_writing_cover(&id, path.as_deref().map(Path::new))).await
 }
 
+/// A cover made in TBV, sent as the picture's raw bytes with its id and kind of file in headers.
+#[tauri::command]
+pub async fn set_writing_cover_bytes(state: State<'_, AppLibrary>, request: tauri::ipc::Request<'_>) -> CommandResult<WritingProject> {
+    let tauri::ipc::InvokeBody::Raw(picture) = request.body() else {
+        return Err("expected a picture".into());
+    };
+    let header = |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
+    let id = header("project-id").ok_or("which book?")?;
+    let extension = header("extension").unwrap_or_else(|| "png".into());
+    let picture = picture.clone();
+    with_library(state, move |library| library.set_writing_cover_bytes(&id, &picture, &extension)).await
+}
+
+#[tauri::command]
+pub async fn set_writing_chapter_role(state: State<'_, AppLibrary>, id: String, role: String) -> CommandResult<WritingChapter> {
+    with_library(state, move |library| library.set_writing_chapter_role(&id, &role)).await
+}
+
 #[tauri::command]
 pub async fn delete_writing_project(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
     with_library(state, move |library| library.delete_writing_project(&id)).await

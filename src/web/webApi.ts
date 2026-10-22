@@ -539,6 +539,9 @@ export async function webApi(): Promise<Api> {
       await library.write("writing_project", { ...row, cover: null, updated_at: new Date().toISOString() });
       return (await api.writingProjects()).find((p) => p.id === id)!;
     },
+    setWritingCoverPicture: async () => {
+      throw new Error("Make a cover on the computer.");
+    },
     pickWritingCover: async () => null,
     pickEpubSavePath: async () => null,
     saveWritingEpub: async (bytes, fileName, _path, addToLibrary) => {

@@ -49,7 +49,12 @@ pub struct WritingChapter {
     pub position: f64,
     pub words: u32,
     pub updated_at: IsoUtc,
+    /// `chapter`, `front` (dedication, foreword…) or `back` (acknowledgements…).
+    pub role: String,
 }
+
+/// Where a section of a written book goes.
+pub const CHAPTER_ROLES: &[&str] = &["chapter", "front", "back"];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -121,10 +126,11 @@ fn chapter_from(r: &Row) -> rusqlite::Result<WritingChapter> {
         body,
         position: r.get(4)?,
         updated_at: r.get(5)?,
+        role: r.get(6)?,
     })
 }
 
-const CHAPTER_COLUMNS: &str = "id, project_id, title, body, position, updated_at";
+const CHAPTER_COLUMNS: &str = "id, project_id, title, body, position, updated_at, role";
 
 impl Library {
     /// Every book being written, most recently changed first.
@@ -256,6 +262,21 @@ impl Library {
         self.writing_project_row(id)
     }
 
+    /// Uses a picture made in TBV (the cover maker) as the cover. `extension`
+    /// is its kind of file: png, jpg or webp.
+    pub fn set_writing_cover_bytes(&self, id: &str, bytes: &[u8], extension: &str) -> Result<WritingProject> {
+        let extension = extension.trim_start_matches('.').to_ascii_lowercase();
+        if !["png", "jpg", "jpeg", "webp"].contains(&extension.as_str()) {
+            return Err(Error::Unsuitable("a cover is a PNG, JPEG or WebP picture".into()));
+        }
+        std::fs::create_dir_all(&self.paths.pictures_dir)?;
+        let made = self.paths.pictures_dir.join(format!(".made-{}.{extension}", new_record_id()));
+        std::fs::write(&made, bytes)?;
+        let result = self.set_writing_cover(id, Some(&made));
+        let _ = std::fs::remove_file(&made);
+        result
+    }
+
     pub fn delete_writing_project(&self, id: &str) -> Result<()> {
         let now = now_utc();
         self.conn.execute(
@@ -320,6 +341,22 @@ impl Library {
             self.conn.execute(
                 "UPDATE writing_chapters SET title = ?2, body = ?3, updated_at = ?4 WHERE id = ?1",
                 params![id, title, body, now_utc()],
+            )?;
+            self.touch_writing_project(&chapter.project_id)?;
+        }
+        self.writing_chapter(id)
+    }
+
+    /// Makes a chapter front matter, back matter, or a chapter again.
+    pub fn set_writing_chapter_role(&self, id: &str, role: &str) -> Result<WritingChapter> {
+        if !CHAPTER_ROLES.contains(&role) {
+            return Err(Error::Unsuitable("a section is a chapter, front matter or back matter".into()));
+        }
+        let chapter = self.writing_chapter(id)?;
+        if chapter.role != role {
+            self.conn.execute(
+                "UPDATE writing_chapters SET role = ?2, updated_at = ?3 WHERE id = ?1",
+                params![id, role, now_utc()],
             )?;
             self.touch_writing_project(&chapter.project_id)?;
         }
@@ -418,5 +455,28 @@ mod tests {
         assert_eq!(library.writing_cover_bytes(&view.project.id).unwrap().unwrap().1, "png");
         library.delete_writing_project(&view.project.id).unwrap();
         assert!(!Path::new(&path).exists());
+    }
+
+    #[test]
+    fn a_made_cover_is_kept_like_a_chosen_one() {
+        let (_dir, library) = open_temp_library();
+        let view = library.create_writing_project("Made cover", None).unwrap();
+        let project = library.set_writing_cover_bytes(&view.project.id, b"\x89PNG made", "png").unwrap();
+        assert!(project.cover.as_deref().is_some_and(|c| c.starts_with("picture:") && c.ends_with(".png")));
+        assert!(Path::new(&project.cover_path.unwrap()).exists());
+        // Only the kept copy is left in the pictures folder.
+        let files = std::fs::read_dir(&library.paths().pictures_dir).unwrap().count();
+        assert_eq!(files, 1);
+        assert!(library.set_writing_cover_bytes(&view.project.id, b"x", "exe").is_err());
+    }
+
+    #[test]
+    fn sections_can_be_front_or_back_matter() {
+        let (_dir, library) = open_temp_library();
+        let view = library.create_writing_project("Roles", None).unwrap();
+        let first = &view.chapters[0];
+        assert_eq!(first.role, "chapter");
+        assert_eq!(library.set_writing_chapter_role(&first.id, "front").unwrap().role, "front");
+        assert!(library.set_writing_chapter_role(&first.id, "appendix").is_err());
     }
 }

@@ -21,6 +21,8 @@ type Calls = Pick<
   | "updateWritingDetails"
   | "setWritingExport"
   | "setWritingCover"
+  | "setWritingCoverPicture"
+  | "setWritingChapterRole"
   | "deleteWritingProject"
   | "addWritingChapter"
   | "saveWritingChapter"
@@ -42,13 +44,14 @@ const CLASSICS: [string, string, string][] = [
 ];
 
 export function previewWriting(): Calls {
+  const pictures = new Map<string, string>();
   const tables = { writing_projects: new Map<string, Row>(), writing_chapters: new Map<string, Row>() };
   const store = {
     rows: (table: keyof typeof tables) => [...tables[table].values()],
     write: async (kind: "writing_project" | "writing_chapter", row: Row) => {
       tables[kind === "writing_project" ? "writing_projects" : "writing_chapters"].set(String(row.id), row);
     },
-    pictureUrl: () => null,
+    pictureUrl: (picture: string) => pictures.get(picture) ?? null,
     newId: () => crypto.randomUUID(),
   };
   const calls = writingCalls(store);
@@ -149,6 +152,13 @@ export function previewWriting(): Calls {
       await new Promise((r) => setTimeout(r, 600));
     },
     setWritingCover: async (id) => (await calls.writingProjects()).find((p) => p.id === id)!,
+    setWritingCoverPicture: async (id, bytes, extension) => {
+      const picture = `picture:made-${crypto.randomUUID()}.${extension}`;
+      pictures.set(picture, URL.createObjectURL(new Blob([bytes as BlobPart], { type: extension === "png" ? "image/png" : "image/jpeg" })));
+      const row = tables.writing_projects.get(id)!;
+      await store.write("writing_project", { ...row, cover: picture, updated_at: new Date().toISOString() });
+      return (await calls.writingProjects()).find((p) => p.id === id)!;
+    },
     pickWritingCover: async () => null,
     pickEpubSavePath: async (fileName) => fileName,
     saveWritingEpub: async () => {},

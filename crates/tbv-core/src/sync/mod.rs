@@ -202,7 +202,7 @@ pub(crate) const KINDS: &[Kind] = &[
         name: "writing_chapter",
         table: "writing_chapters",
         keys: &["id"],
-        cols: &["project_id", "title", "body", "position", "created_at", "updated_at", "deleted_at"],
+        cols: &["project_id", "title", "body", "position", "created_at", "updated_at", "deleted_at", "role"],
         category: Category::Notes,
         creates: true,
     },

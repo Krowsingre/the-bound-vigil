@@ -28,6 +28,7 @@ type WritingCalls = Pick<
   | "saveWritingChapter"
   | "orderWritingChapters"
   | "deleteWritingChapter"
+  | "setWritingChapterRole"
   | "writingCover"
 >;
 
@@ -64,6 +65,7 @@ export function writingCalls(store: WritingStore): WritingCalls {
     position: Number(r.position),
     words: countWords(String(r.body ?? "")),
     updatedAt: String(r.updated_at),
+    role: r.role === "front" || r.role === "back" ? r.role : "chapter",
   });
   const project = (r: Row): WritingProject => {
     const chapters = chapterRows(String(r.id));
@@ -105,7 +107,7 @@ export function writingCalls(store: WritingStore): WritingCalls {
           ? Number(rows[rows.length - 1].position) + 1
           : 1;
     const at_ = now();
-    const row = { id: store.newId(), project_id: projectId, title: title.trim().slice(0, MAX_TITLE), body: "", position, created_at: at_, updated_at: at_, deleted_at: null };
+    const row = { id: store.newId(), project_id: projectId, title: title.trim().slice(0, MAX_TITLE), body: "", position, created_at: at_, updated_at: at_, deleted_at: null, role: "chapter" };
     await store.write("writing_chapter", row);
     await touch(projectId);
     return chapter(row);
@@ -190,6 +192,14 @@ export function writingCalls(store: WritingStore): WritingCalls {
       const at = now();
       await store.write("writing_chapter", { ...row, deleted_at: at, updated_at: at });
       await touch(String(row.project_id));
+    },
+    setWritingChapterRole: async (id, role) => {
+      const row = chapterRow(id);
+      if ((row.role ?? "chapter") !== role) {
+        await store.write("writing_chapter", { ...row, role, updated_at: now() });
+        await touch(String(row.project_id));
+      }
+      return chapter(chapterRow(id));
     },
     writingCover: async (id) => {
       const cover = project(projectRow(id)).coverPath;

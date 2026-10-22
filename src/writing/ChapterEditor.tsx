@@ -10,6 +10,8 @@ import type { WritingChapter } from "../api/types";
 import { Icon, type IconName } from "../components/Icon";
 import { onBeforeQuit } from "../lib/beforeQuit";
 import { countWords } from "./records";
+import { Footnote, Picture, pictureAddress } from "./extensions";
+import { useToast } from "../components/Toast";
 
 const SAVE_AFTER_MS = 800;
 
@@ -63,12 +65,34 @@ function Toolbar({ editor }: { editor: Editor }) {
       bullets: e.isActive("bulletList"),
       numbers: e.isActive("orderedList"),
       link: e.isActive("link"),
+      footnote: e.isActive("footnote") ? ((e.getAttributes("footnote").text as string) ?? "") : null,
       canUndo: e.can().undo(),
       canRedo: e.can().redo(),
     }),
   });
   const [linking, setLinking] = useState<string | null>(null);
+  const [noting, setNoting] = useState<string | null>(null);
+  const picking = useRef<HTMLInputElement>(null);
+  const toast = useToast();
   const run = () => editor.chain().focus();
+  const addPicture = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      run().insertPicture(await pictureAddress(file), file.name.replace(/\.[^.]+$/, "")).run();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const saveNote = () => {
+    const text = (noting ?? "").trim();
+    if (text) run().setFootnote(text).run();
+    else if (state.footnote !== null) run().deleteSelection().run();
+    setNoting(null);
+  };
+  // Choosing a footnote in the text opens its words to change.
+  useEffect(() => {
+    if (state.footnote !== null) setNoting(state.footnote);
+  }, [state.footnote]);
   const saveLink = () => {
     const url = (linking ?? "").trim();
     if (!url) run().extendMarkRange("link").unsetLink().run();
@@ -88,6 +112,23 @@ function Toolbar({ editor }: { editor: Editor }) {
       <Tool label="List" icon="listBullet" active={state.bullets} onClick={() => run().toggleBulletList().run()} />
       <Tool label="Numbered list" icon="listNumber" active={state.numbers} onClick={() => run().toggleOrderedList().run()} />
       <Tool label="Scene break" text="⁂" onClick={() => run().setHorizontalRule().run()} />
+      <Tool label="Picture" icon="image" onClick={() => picking.current?.click()} />
+      <Tool
+        label={state.footnote !== null ? "Change footnote" : "Footnote"}
+        text="¹"
+        active={state.footnote !== null || noting !== null}
+        onClick={() => setNoting(noting === null ? (state.footnote ?? "") : null)}
+      />
+      <input
+        ref={picking}
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        hidden
+        onChange={(e) => {
+          void addPicture(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
       <Tool
         label={state.link ? "Change link" : "Link"}
         icon="link"
@@ -97,6 +138,28 @@ function Toolbar({ editor }: { editor: Editor }) {
       <span className="writing-tool-gap" />
       <Tool label="Undo" shortcut="Ctrl+Z" icon="undo" disabled={!state.canUndo} onClick={() => run().undo().run()} />
       <Tool label="Redo" shortcut="Ctrl+Y" icon="redo" disabled={!state.canRedo} onClick={() => run().redo().run()} />
+      {noting !== null && (
+        <form
+          className="writing-link writing-note"
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveNote();
+          }}
+        >
+          <input
+            autoFocus
+            value={noting}
+            placeholder="The footnote's words"
+            aria-label="Footnote"
+            maxLength={2000}
+            onChange={(e) => setNoting(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && setNoting(null)}
+          />
+          <button type="submit" className="btn btn-primary btn-small">
+            {noting.trim() ? (state.footnote !== null ? "Change" : "Add footnote") : state.footnote !== null ? "Remove footnote" : "Cancel"}
+          </button>
+        </form>
+      )}
       {linking !== null && (
         <form
           className="writing-link"
@@ -184,6 +247,8 @@ export function ChapterEditor({
         codeBlock: false,
         link: { openOnClick: false, autolink: true, protocols: ["mailto"] },
       }),
+      Picture,
+      Footnote,
     ],
     content: chapter.body || "<p></p>",
     editorProps: { attributes: { class: "writing-page", spellcheck: "true", "aria-label": "Chapter text" } },

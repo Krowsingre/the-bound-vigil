@@ -373,6 +373,10 @@ export interface Api {
   saveWritingChapter(id: string, title: string, body: string): Promise<WritingChapter>;
   orderWritingChapters(projectId: string, order: string[]): Promise<WritingChapter[]>;
   deleteWritingChapter(id: string): Promise<void>;
+  /** Makes a section front matter, back matter, or a chapter. */
+  setWritingChapterRole(id: string, role: WritingChapter["role"]): Promise<WritingChapter>;
+  /** A cover made in TBV (the cover maker), as a PNG or JPEG. Desktop only. */
+  setWritingCoverPicture(id: string, bytes: Uint8Array, extension: "png" | "jpg"): Promise<WritingProject>;
   /** The cover picture's bytes, for the EPUB; empty when there's none. */
   writingCover(id: string): Promise<Uint8Array>;
   /** A cover picture for a book being written; null when none was picked. */
@@ -782,6 +786,9 @@ function appApi(): Api {
     saveWritingChapter: async (id, title, body) => (await core).invoke<WritingChapter>("save_writing_chapter", { id, title, body }),
     orderWritingChapters: async (projectId, order) => (await core).invoke<WritingChapter[]>("order_writing_chapters", { projectId, order }),
     deleteWritingChapter: async (id) => (await core).invoke("delete_writing_chapter", { id }),
+    setWritingChapterRole: async (id, role) => (await core).invoke<WritingChapter>("set_writing_chapter_role", { id, role }),
+    setWritingCoverPicture: async (id, bytes, extension) =>
+      (await core).invoke<WritingProject>("set_writing_cover_bytes", bytes, { headers: { "project-id": id, extension } }),
     writingCover: async (id) => {
       const bytes = await (await core).invoke<ArrayBuffer | number[]>("writing_cover", { id });
       return Array.isArray(bytes) ? new Uint8Array(bytes) : new Uint8Array(bytes);

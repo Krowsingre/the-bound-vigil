@@ -1611,6 +1611,8 @@ pub fn run() {
             writing::update_writing_details,
             writing::set_writing_export,
             writing::set_writing_cover,
+            writing::set_writing_cover_bytes,
+            writing::set_writing_chapter_role,
             writing::delete_writing_project,
             writing::add_writing_chapter,
             writing::save_writing_chapter,

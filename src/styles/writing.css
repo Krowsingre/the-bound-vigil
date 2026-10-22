@@ -559,3 +559,126 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Pictures sit on their own line, no wider than the page. */
+.writing-sheet .tiptap .writing-picture {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  margin: 1.2em auto;
+  border-radius: 2px;
+}
+
+.writing-sheet .tiptap .writing-picture.ProseMirror-selectednode {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+/* Footnotes are numbered in order through the chapter. */
+.writing-sheet .tiptap {
+  counter-reset: footnote;
+}
+
+.writing-sheet .tiptap .writing-footnote {
+  counter-increment: footnote;
+  padding: 0 1px;
+  color: var(--accent);
+  font: 600 0.7em/1 var(--font-sans);
+  cursor: pointer;
+}
+
+.writing-sheet .tiptap .writing-footnote::after {
+  content: counter(footnote);
+}
+
+.writing-sheet .tiptap .writing-footnote.ProseMirror-selectednode {
+  border-radius: 3px;
+  background: var(--surface-sunk);
+}
+
+/* Front matter, chapters and back matter are labelled in the chapter list. */
+.writing-chapter-group {
+  margin: 12px 0 4px;
+  padding: 0 10px;
+  color: var(--text-muted);
+  font: 600 11px/1.4 var(--font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.writing-export-styles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 760px) {
+  .writing-export-styles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The cover maker: the cover beside its choices. */
+.cover-maker {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.cover-maker-grid {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.cover-maker-preview {
+  width: 100%;
+  aspect-ratio: 1600 / 2560;
+  height: auto;
+  border-radius: 3px;
+  box-shadow: var(--shadow);
+}
+
+.cover-maker-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.cover-maker-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cover-maker-swatch {
+  width: 30px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.cover-maker-swatch[aria-checked="true"] {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.cover-maker-picture {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.cover-maker .segmented {
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .cover-maker-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cover-maker-preview {
+    width: 160px;
+    justify-self: center;
+  }
+}

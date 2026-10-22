@@ -1,7 +1,7 @@
 // The Writing page: books you write in TBV. The shelf of books first; open
 // one to write its chapters, change its details, and export it as an EPUB.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { api, isWeb } from "../api";
 import type { WritingChapter, WritingProject, WritingProjectView } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -10,6 +10,10 @@ import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { ChapterEditor, type SaveState } from "./ChapterEditor";
 import { DetailsDialog, ExportDialog, NewBookDialog } from "./WritingDialogs";
+
+/** Front matter first, then chapters, then back matter: the order the EPUB uses. */
+const ROLE_ORDER = { front: 0, chapter: 1, back: 2 } as const;
+const inBookOrder = (list: WritingChapter[]) => [...list].sort((a, b) => ROLE_ORDER[a.role ?? "chapter"] - ROLE_ORDER[b.role ?? "chapter"]);
 
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
 
@@ -149,7 +153,7 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
     void load();
   }, [load, refreshKey]);
 
-  const chapters = view?.chapters ?? [];
+  const chapters = inBookOrder(view?.chapters ?? []);
   const chapter = chapters.find((c) => c.id === chapterId) ?? chapters[0] ?? null;
 
   const saveChapter = (cid: string) => async (title: string, body: string) => {
@@ -197,9 +201,23 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
     if (other) void move(c.id, other.id);
   };
 
+  const setRole = async (c: WritingChapter, role: WritingChapter["role"]) => {
+    try {
+      const saved = await api.setWritingChapterRole(c.id, role);
+      setView((v) => v && { ...v, chapters: v.chapters.map((x) => (x.id === c.id ? { ...x, role: saved.role } : x)) });
+    } catch (e) {
+      toast(String(e));
+    }
+  };
+
   const chapterMenu = (c: WritingChapter, i: number): MenuEntry[] => [
     { label: "Move up", icon: "chevronUp", disabled: i === 0, onSelect: () => nudge(c, -1) },
     { label: "Move down", icon: "chevronDown", disabled: i === chapters.length - 1, onSelect: () => nudge(c, 1) },
+    "divider",
+    { heading: <span className="menu-tip">Where it goes in the book</span> },
+    { label: "Front matter", hint: "Dedication, foreword", checked: c.role === "front", onSelect: () => void setRole(c, "front") },
+    { label: "Chapter", checked: (c.role ?? "chapter") === "chapter", onSelect: () => void setRole(c, "chapter") },
+    { label: "Back matter", hint: "Acknowledgements, about the author", checked: c.role === "back", onSelect: () => void setRole(c, "back") },
     "divider",
     { label: "Delete chapter…", icon: "trash", danger: true, disabled: chapters.length === 1, onSelect: () => setDeletingChapter(c) },
   ];
@@ -260,8 +278,13 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
           </div>
           <ol className="writing-chapter-list">
             {chapters.map((c, i) => (
+              <Fragment key={c.id}>
+                {c.role !== chapters[i - 1]?.role && (c.role !== "chapter" || i > 0) && (
+                  <li className="writing-chapter-group" aria-hidden>
+                    {{ front: "Front matter", chapter: "Chapters", back: "Back matter" }[c.role ?? "chapter"]}
+                  </li>
+                )}
               <li
-                key={c.id}
                 draggable
                 className={`${c.id === chapter?.id ? "is-current" : ""}${dragging === c.id ? " is-dragging" : ""}`}
                 onDragStart={(e) => {
@@ -278,15 +301,16 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
                 }}
               >
                 <button type="button" className="writing-chapter" onClick={() => void saving.current.then(() => setChapterId(c.id))}>
-                  <span className="writing-chapter-number num">{i + 1}</span>
+                  <span className="writing-chapter-number num">{c.role === "chapter" ? chapters.slice(0, i + 1).filter((x) => x.role === "chapter").length : "·"}</span>
                   <span className="writing-chapter-name">{c.title || "Untitled chapter"}</span>
                   <span className="muted num writing-chapter-words">{c.words.toLocaleString()}</span>
                 </button>
                 <Menu label={`More for ${c.title || "this chapter"}`} className="writing-chapter-more" trigger={<Icon name="more" size={16} />} items={chapterMenu(c, i)} />
               </li>
+              </Fragment>
             ))}
           </ol>
-          <p className="muted writing-hint">Drag chapters to put them in order.</p>
+          <p className="muted writing-hint">Drag chapters to put them in order. Use a chapter's ••• menu to make it front or back matter.</p>
         </aside>
         <section className="writing-main">
           {!listOpen && (
