@@ -10,6 +10,8 @@ import { DetailsHost } from "./details/DetailsHost";
 import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Notes } from "./notes/Notes";
+import { Writing } from "./writing/Writing";
+import { Catalogs } from "./catalogs/Catalogs";
 import { Audiobooks } from "./audio/Audiobooks";
 import { PlayerBar } from "./audio/PlayerBar";
 import { usePlayer } from "./audio/player";
@@ -30,7 +32,7 @@ import { useAppSettings } from "./settings/appSettings";
 import { Settings } from "./settings/Settings";
 import type { SettingsTab } from "./settings/settingsIndex";
 import { Header } from "./shell/Header";
-import { NAV, type Route } from "./shell/routes";
+import { navFor, type Route } from "./shell/routes";
 import { Sidebar } from "./shell/Sidebar";
 import { drawImportedCovers } from "./reader/formats";
 
@@ -308,7 +310,7 @@ export function App() {
       if (e.key === "\\") toggleSidebar();
       else if (e.key.toLowerCase() === "o" && !e.shiftKey) importBooks();
       else if (e.key.toLowerCase() === "f" || e.key.toLowerCase() === "k") search.current?.focus();
-      else if (n >= 1 && n <= NAV.length) navigate(NAV[n - 1].route);
+      else if (n >= 1 && n <= navFor({ web: isWeb, home: isHome }).length) navigate(navFor({ web: isWeb, home: isHome })[n - 1].route);
       else return;
       e.preventDefault();
     };
@@ -500,6 +502,10 @@ export function App() {
             <BookPlacesPage onOpenSyncSettings={() => navigate("sync")} />
           ) : route === "notes" ? (
             <Notes search={searchText} refreshKey={refreshKey} onClearSearch={() => changeSearch("")} onOpenBook={openBook} />
+          ) : route === "writing" ? (
+            <Writing refreshKey={refreshKey} />
+          ) : route === "catalogs" ? (
+            <Catalogs />
           ) : (
             <Settings
               tab={settingsTab}

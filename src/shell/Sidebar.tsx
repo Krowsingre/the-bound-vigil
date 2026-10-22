@@ -1,6 +1,7 @@
 import emblem from "../assets/emblem.svg?raw";
 import { Icon } from "../components/Icon";
-import { NAV, navRouteOf, type Route } from "./routes";
+import { navFor, navRouteOf, type Route } from "./routes";
+import { isHome, isWeb } from "../api";
 
 export function Sidebar({
   route,
@@ -46,7 +47,7 @@ export function Sidebar({
 
       <nav aria-label="Main">
         <ul className="nav">
-          {NAV.map((item, i) => (
+          {navFor({ web: isWeb, home: isHome }).map((item, i) => (
             <li key={item.route}>
               <button
                 type="button"
