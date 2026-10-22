@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { BookPreview, HomeViewModel } from "../api/types";
+import type { Route } from "../shell/routes";
 import { ToastProvider } from "../components/Toast";
 import { Home } from "./Home";
 
@@ -52,20 +53,22 @@ const dracula: BookPreview = {
   genres: [],
 };
 
-function renderHome() {
+function renderHome(onNavigate: (route: Route) => void = () => {}) {
   return render(
     <ToastProvider>
-      <Home refreshKey={0} onNavigate={() => {}} onOpenLibrary={() => {}} onImportBooks={() => {}} onImportFolder={() => {}} onOpenBook={() => {}} onOpenCollection={() => {}} />
+      <Home refreshKey={0} onNavigate={onNavigate} onOpenLibrary={() => {}} onImportBooks={() => {}} onImportFolder={() => {}} onOpenBook={() => {}} onOpenCollection={() => {}} />
     </ToastProvider>,
   );
 }
 
 test("an empty library offers import and invents nothing", async () => {
   getHome.mockResolvedValue(emptyHome);
-  renderHome();
+  const onNavigate = vi.fn();
+  renderHome(onNavigate);
   expect(await screen.findByText("Your library is empty")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Import books/ })).toBeEnabled();
-  expect(screen.getByRole("button", { name: /Join an existing library/ })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: /Join an existing library/ }));
+  expect(onNavigate).toHaveBeenCalledWith("sync");
   expect(screen.queryByText(/Reading activity/i)).toBeNull();
 });
 
