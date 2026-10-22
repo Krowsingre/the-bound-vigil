@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
-import { bibleTarget, NEW_TESTAMENT, OLD_TESTAMENT, TRANSLATIONS, type BibleBook, type Translation } from "./bible";
+import { bibleTarget, NEW_TESTAMENT, OLD_TESTAMENT, TRANSLATIONS, type BibleBook, type Translation } from "./bibleBooks";
 
 const CHOSEN_KEY = "tbv.bible.translation";
 

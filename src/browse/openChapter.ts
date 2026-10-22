@@ -2,7 +2,7 @@
 // made: its contents list, its file names, or the marks on its pages.
 
 import type { TocItem, View } from "../vendor/foliate-js/view.js";
-import { bookFiles, booksInContents, chapterEntry, chapterFile, chapterMark, type BibleBook } from "./bible";
+import { bookFiles, booksInContents, chapterEntry, chapterFile, chapterMark, type BibleBook } from "./bibleBooks";
 
 const rangeOf = (el: Element) => (doc: Document) => {
   const range = doc.createRange();

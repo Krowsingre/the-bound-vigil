@@ -13,7 +13,7 @@ import { isBookmark, isNote } from "./annotations";
 import { isDocument } from "../lib/queryBooks";
 import { drawPdfCover, readerSource, type ReaderSource } from "./formats";
 import { contentsEntries, currentEntry, pageOf, pushJump, type Jump } from "./pages";
-import { parseBibleTarget } from "../browse/bible";
+import { parseBibleTarget } from "../browse/bibleBooks";
 import { openChapter } from "../browse/openChapter";
 import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars";
 import { LeftPanel, RightPanel, type AnnotationHandlers, type RightTab } from "./ReaderPanels";

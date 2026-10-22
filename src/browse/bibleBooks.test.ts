@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bibleTarget, booksInContents, chapterEntry, chapterFile, chapterMark, parseBibleTarget, TRANSLATIONS, BIBLE_BOOKS } from "./bible";
+import { bibleTarget, booksInContents, chapterEntry, chapterFile, chapterMark, parseBibleTarget, TRANSLATIONS, BIBLE_BOOKS } from "./bibleBooks";
 
 describe("the Bible tab", () => {
   it("knows all 66 books and 1,189 chapters", () => {
