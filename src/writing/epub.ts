@@ -18,20 +18,41 @@ export interface ExportSettings {
   sceneBreak: SceneBreak;
   /** 1: chapters; 2: and their headings; 3: and sub-headings. */
   tocDepth: 1 | 2 | 3;
+  /** Paragraphs set apart by an indent (as in print) or a blank line (as online). */
+  paragraphs: "indent" | "space";
+  /** Lines even on both sides, or ragged on the right. */
+  align: "justify" | "left";
+  /** Where chapter titles sit. */
+  titles: "center" | "left";
+  /** A large first letter at the start of each chapter. */
+  dropCap: boolean;
 }
 
-export const DEFAULT_EXPORT: ExportSettings = { font: "none", newPage: true, sceneBreak: "asterisks", tocDepth: 1 };
+export const DEFAULT_EXPORT: ExportSettings = {
+  font: "none",
+  newPage: true,
+  sceneBreak: "asterisks",
+  tocDepth: 1,
+  paragraphs: "indent",
+  align: "justify",
+  titles: "center",
+  dropCap: false,
+};
+
+const oneOf = <T,>(value: unknown, allowed: readonly T[], fallback: T): T => (allowed.includes(value as T) ? (value as T) : fallback);
 
 export function readExport(json: string | null | undefined): ExportSettings {
   try {
     const saved = JSON.parse(json || "{}") as Partial<ExportSettings>;
     return {
-      font: (["lora", "echolume", "none"] as const).includes(saved.font as BookFont) ? (saved.font as BookFont) : DEFAULT_EXPORT.font,
+      font: oneOf(saved.font, ["lora", "echolume", "none"] as const, DEFAULT_EXPORT.font),
       newPage: typeof saved.newPage === "boolean" ? saved.newPage : DEFAULT_EXPORT.newPage,
-      sceneBreak: (["asterisks", "ornament", "space", "line"] as const).includes(saved.sceneBreak as SceneBreak)
-        ? (saved.sceneBreak as SceneBreak)
-        : DEFAULT_EXPORT.sceneBreak,
-      tocDepth: ([1, 2, 3] as const).includes(saved.tocDepth as 1) ? (saved.tocDepth as 1 | 2 | 3) : DEFAULT_EXPORT.tocDepth,
+      sceneBreak: oneOf(saved.sceneBreak, ["asterisks", "ornament", "space", "line"] as const, DEFAULT_EXPORT.sceneBreak),
+      tocDepth: oneOf(saved.tocDepth, [1, 2, 3] as const, DEFAULT_EXPORT.tocDepth),
+      paragraphs: oneOf(saved.paragraphs, ["indent", "space"] as const, DEFAULT_EXPORT.paragraphs),
+      align: oneOf(saved.align, ["justify", "left"] as const, DEFAULT_EXPORT.align),
+      titles: oneOf(saved.titles, ["center", "left"] as const, DEFAULT_EXPORT.titles),
+      dropCap: typeof saved.dropCap === "boolean" ? saved.dropCap : DEFAULT_EXPORT.dropCap,
     };
   } catch {
     return DEFAULT_EXPORT;
@@ -88,6 +109,30 @@ export interface Heading {
   id: string;
 }
 
+/** A picture placed in a chapter, taken out of the editor's HTML into its own file. */
+export interface Picture {
+  /** Its path inside the EPUB's OEBPS folder, e.g. "images/c1-1.jpg". */
+  path: string;
+  mime: string;
+  bytes: Uint8Array;
+}
+
+const PICTURE_TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp" };
+
+/** A picture's bytes from the `data:` address the editor keeps it as, or null for anything else. */
+export function pictureFrom(src: string): { mime: string; bytes: Uint8Array } | null {
+  const found = /^data:(image\/(?:jpeg|png|gif|webp));base64,([A-Za-z0-9+/=\s]+)$/.exec(src);
+  if (!found) return null;
+  try {
+    const raw = atob(found[2].replace(/\s+/g, ""));
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return { mime: found[1], bytes };
+  } catch {
+    return null;
+  }
+}
+
 const INLINE: Record<string, string> = { strong: "strong", b: "strong", em: "em", i: "em", u: "u", s: "s", strike: "s", del: "s", code: "code", sub: "sub", sup: "sup" };
 const BLOCK: Record<string, string> = { p: "p", blockquote: "blockquote", ul: "ul", ol: "ol", li: "li", pre: "pre" };
 
@@ -97,9 +142,15 @@ const BLOCK: Record<string, string> = { p: "p", blockquote: "blockquote", ul: "u
  * lists, links and scene breaks. Anything else keeps its words but not its
  * tag. Headings get ids for the table of contents.
  */
-export function chapterXhtml(html: string, sceneBreak: SceneBreak, idPrefix: string): { body: string; headings: Heading[] } {
+export function chapterXhtml(
+  html: string,
+  sceneBreak: SceneBreak,
+  idPrefix: string,
+): { body: string; headings: Heading[]; pictures: Picture[]; notes: string } {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
   const headings: Heading[] = [];
+  const pictures: Picture[] = [];
+  const notes: string[] = [];
   const out: string[] = [];
   const walk = (node: Node, inBlock: boolean) => {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -114,7 +165,24 @@ export function chapterXhtml(html: string, sceneBreak: SceneBreak, idPrefix: str
     const el = node as Element;
     const tag = el.tagName.toLowerCase();
     const children = (block: boolean) => el.childNodes.forEach((c) => walk(c, block));
-    if (tag === "hr") {
+    if (tag === "img") {
+      // Only pictures kept inside the book travel; links to the web are left out.
+      const picture = pictureFrom(el.getAttribute("src") ?? "");
+      if (!picture) return;
+      const path = `images/${idPrefix}-${pictures.length + 1}.${PICTURE_TYPES[picture.mime]}`;
+      pictures.push({ path, ...picture });
+      const img = `<img src="${path}" alt="${escapeXml(el.getAttribute("alt") ?? "")}"/>`;
+      out.push(inBlock ? img : `<div class="picture">${img}</div>`);
+    } else if (tag === "sup" && el.hasAttribute("data-footnote")) {
+      // A footnote: a number here, the note at the end of the chapter, each linking to the other.
+      const n = notes.length + 1;
+      const note = `${idPrefix}-fn${n}`;
+      const ref = `${idPrefix}-ref${n}`;
+      const text = escapeXml(el.getAttribute("data-footnote") ?? "");
+      notes.push(`<aside epub:type="footnote" id="${note}" class="footnote"><p><a href="#${ref}">${n}.</a> ${text}</p></aside>`);
+      const mark = `<sup><a epub:type="noteref" href="#${note}" id="${ref}">${n}</a></sup>`;
+      out.push(inBlock ? mark : `<p>${mark}</p>`);
+    } else if (tag === "hr") {
       out.push(sceneBreak === "line" ? `<hr class="scene"/>` : `<p class="scene">${SCENE_MARK[sceneBreak]}</p>`);
     } else if (tag === "br") {
       out.push("<br/>");
@@ -155,7 +223,7 @@ export function chapterXhtml(html: string, sceneBreak: SceneBreak, idPrefix: str
     }
   };
   doc.body.childNodes.forEach((c) => walk(c, false));
-  return { body: out.join(""), headings };
+  return { body: out.join(""), headings, pictures, notes: notes.length ? `<section class="footnotes" epub:type="footnotes">${notes.join("")}</section>` : "" };
 }
 
 function page(title: string, lang: string, body: string, bodyClass = ""): string {
@@ -183,11 +251,20 @@ function stylesheet(settings: ExportSettings, font: EmbeddedFont | null | undefi
 ${family}  margin: 0 5%;
   line-height: 1.5;
 }
-h1 { font-size: 1.6em; text-align: center; margin: 2em 0 1.5em; font-weight: normal; }
+h1 { font-size: 1.6em; text-align: ${settings.titles}; margin: 2em 0 1.5em; font-weight: normal; }
 h2 { font-size: 1.25em; margin: 1.5em 0 0.75em; }
 h3 { font-size: 1.1em; margin: 1.25em 0 0.5em; }
-p { margin: 0; text-indent: 1.5em; text-align: justify; }
-h1 + p, h2 + p, h3 + p, .scene + p, hr + p, blockquote + p, .blank + p, p:first-child { text-indent: 0; }
+${
+  settings.paragraphs === "indent"
+    ? `p { margin: 0; text-indent: 1.5em; text-align: ${settings.align}; }`
+    : `p { margin: 0 0 0.9em; text-indent: 0; text-align: ${settings.align}; }`
+}
+h1 + p, h2 + p, h3 + p, .scene + p, hr + p, blockquote + p, .blank + p, .picture + p, p:first-child { text-indent: 0; }
+${settings.dropCap ? "section.chapter > h1 + p::first-letter { float: left; font-size: 3.2em; line-height: 0.85; margin: 0.05em 0.08em 0 0; }\n" : ""}.picture { text-align: center; text-indent: 0; margin: 1em 0; }
+.picture img, p img { max-width: 100%; }
+sup a { text-decoration: none; }
+.footnotes { margin-top: 2em; border-top: 1px solid currentColor; padding-top: 0.5em; font-size: 0.85em; }
+.footnote p { text-indent: 0; text-align: left; margin: 0 0 0.4em; }
 .blank { text-indent: 0; }
 blockquote { margin: 1em 2em; font-style: italic; }
 blockquote p { text-indent: 0; }
@@ -195,7 +272,7 @@ blockquote p { text-indent: 0; }
 hr.scene { border: none; border-top: 1px solid currentColor; width: 25%; margin: 1.5em auto; }
 ul, ol { margin: 1em 0 1em 1.5em; }
 pre { white-space: pre-wrap; font-family: monospace; }
-section.chapter { ${settings.newPage ? "page-break-before: always; break-before: page;" : "margin-top: 3em;"} }
+section.chapter, section.frontmatter, section.backmatter { ${settings.newPage ? "page-break-before: always; break-before: page;" : "margin-top: 3em;"} }
 .titlepage { text-align: center; }
 .titlepage .title { font-size: 2em; margin: 30% 0 0.5em; text-indent: 0; text-align: center; }
 .titlepage .author { font-size: 1.2em; text-indent: 0; text-align: center; }
@@ -227,13 +304,19 @@ export function epubFiles({ project, chapters, settings, cover, font, now = new 
   const coverExt = cover ? IMAGE_EXT[cover.mime] : undefined;
   const useCover = !!cover && !!coverExt && cover.bytes.length > 0;
 
-  // Chapters, each with its headings.
-  const parts = chapters.map((c, i) => {
+  // Front matter first, then the chapters, then back matter, each in its own order.
+  const ordered = [...chapters.filter((c) => c.role === "front"), ...chapters.filter((c) => (c.role ?? "chapter") === "chapter"), ...chapters.filter((c) => c.role === "back")];
+  let chapterCount = 0;
+  const parts = ordered.map((c, i) => {
     const n = i + 1;
-    const { body, headings } = chapterXhtml(c.body, settings.sceneBreak, `c${n}`);
-    const heading = c.title.trim() || `Chapter ${n}`;
-    const section = `<section class="chapter" epub:type="chapter" id="c${n}">\n<h1>${escapeXml(heading)}</h1>\n${body}\n</section>`;
-    return { n, heading, section, headings };
+    const role = c.role ?? "chapter";
+    const { body, headings, pictures, notes } = chapterXhtml(c.body, settings.sceneBreak, `c${n}`);
+    // Only chapters are numbered; untitled front or back matter is named by what it is.
+    const heading = c.title.trim() || (role === "chapter" ? `Chapter ${++chapterCount}` : role === "front" ? "Front matter" : "Back matter");
+    if (role === "chapter" && c.title.trim()) chapterCount++;
+    const type = role === "chapter" ? "chapter" : role === "front" ? "frontmatter" : "backmatter";
+    const section = `<section class="${type}" epub:type="${type}" id="c${n}">\n<h1>${escapeXml(heading)}</h1>\n${body}\n${notes}</section>`;
+    return { n, heading, section, headings, pictures, role };
   });
   const chapterFile = (n: number) => (settings.newPage ? `chapter-${n}.xhtml` : "text.xhtml");
   const content: [string, string][] = settings.newPage
@@ -260,7 +343,8 @@ export function epubFiles({ project, chapters, settings, cover, font, now = new 
   });
   const navList = (list: Point[]): string =>
     `<ol>\n${list.map((p) => `<li><a href="${p.href}">${escapeXml(p.label)}</a>${p.children.length ? navList(p.children) : ""}</li>`).join("\n")}\n</ol>`;
-  const firstText = settings.newPage ? chapterFile(1) : "text.xhtml";
+  const firstChapter = parts.find((p) => p.role === "chapter") ?? parts[0];
+  const firstText = settings.newPage ? chapterFile(firstChapter?.n ?? 1) : `text.xhtml${firstChapter ? `#c${firstChapter.n}` : ""}`;
   const nav = page(
     "Contents",
     lang,
@@ -306,6 +390,7 @@ ${navPoints(points)}
     ? page("Cover", lang, `<section class="cover" epub:type="cover"><img src="images/cover.${coverExt}" alt="${escapeXml(title)}"/></section>`, "cover")
     : null;
 
+  const pictures = parts.flatMap((p) => p.pictures);
   const fontItems = (font?.files ?? []).map((f, i) => `<item id="font${i + 1}" href="fonts/${f.name}" media-type="font/woff2"/>`);
   const manifest = [
     `<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>`,
@@ -319,6 +404,7 @@ ${navPoints(points)}
       : []),
     `<item id="titlepage" href="titlepage.xhtml" media-type="application/xhtml+xml"/>`,
     ...content.map(([name], i) => `<item id="text${i + 1}" href="${name}" media-type="application/xhtml+xml"/>`),
+    ...pictures.map((p, i) => `<item id="picture${i + 1}" href="${p.path}" media-type="${p.mime}"/>`),
     ...fontItems,
   ];
   const spine = [...(useCover ? [`<itemref idref="cover"/>`] : []), `<itemref idref="titlepage"/>`, ...content.map((_, i) => `<itemref idref="text${i + 1}"/>`)];
@@ -365,6 +451,7 @@ ${spine.join("\n")}
     ...(useCover ? ([[`OEBPS/images/cover.${coverExt}`, cover!.bytes]] as [string, Uint8Array][]) : []),
     ["OEBPS/titlepage.xhtml", titlePage],
     ...content.map(([name, text]) => [`OEBPS/${name}`, text] as [string, string]),
+    ...pictures.map((p) => [`OEBPS/${p.path}`, p.bytes] as [string, Uint8Array]),
     ...(font?.files ?? []).map((f) => [`OEBPS/fonts/${f.name}`, f.bytes] as [string, Uint8Array]),
   ];
   return { files };
@@ -374,7 +461,7 @@ ${spine.join("\n")}
 export function exportProblems(chapters: WritingChapter[]): string[] {
   const problems: string[] = [];
   if (!chapters.length) problems.push("Add a chapter first.");
-  else if (chapters.every((c) => !c.body.replace(/<[^>]*>/g, "").trim())) problems.push("Write something in a chapter first.");
+  else if (chapters.every((c) => !c.body.replace(/<[^>]*>/g, "").trim() && !/<img\b/i.test(c.body))) problems.push("Write something in a chapter first.");
   return problems;
 }
 

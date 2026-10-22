@@ -4,6 +4,7 @@ import type { WritingChapter, WritingDetails, WritingProject } from "../api/type
 import { useToast } from "../components/Toast";
 import { buildEpub, epubFileName, exportProblems, readExport, type ExportSettings } from "./epub";
 import { imageMime, loadFont } from "./fonts";
+import { CoverMaker } from "./CoverMaker";
 
 /** Starting a new book. */
 export function NewBookDialog({ onCreated, onCancel }: { onCreated: (id: string) => void; onCancel: () => void }) {
@@ -80,6 +81,7 @@ export function DetailsDialog({
     description: project.description,
   });
   const [cover, setCover] = useState(project);
+  const [making, setMaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (change: Partial<WritingDetails>) => setDetails((d) => ({ ...d, ...change }));
@@ -130,6 +132,11 @@ export function DetailsDialog({
             {!isWeb && (
               <button type="button" className="btn btn-quiet btn-small" onClick={() => void pickCover()}>
                 {cover.cover ? "Change cover" : "Choose a cover"}
+              </button>
+            )}
+            {!isWeb && (
+              <button type="button" className="btn btn-quiet btn-small" onClick={() => setMaking(true)}>
+                Make a cover
               </button>
             )}
             {cover.cover && (
@@ -187,6 +194,16 @@ export function DetailsDialog({
           </button>
         </div>
       </form>
+      {making && (
+        <CoverMaker
+          project={{ ...cover, title: details.title || cover.title, author: details.author ?? cover.author }}
+          onCancel={() => setMaking(false)}
+          onMade={(p) => {
+            setCover(p);
+            setMaking(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -313,9 +330,36 @@ export function ExportDialog({
             ))}
           </select>
         </label>
+        <div className="writing-export-styles">
+          <label className="field">
+            <span>Paragraphs</span>
+            <select value={settings.paragraphs} onChange={(e) => set({ paragraphs: e.target.value as ExportSettings["paragraphs"] })}>
+              <option value="indent">Indented</option>
+              <option value="space">Spaced</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Lines</span>
+            <select value={settings.align} onChange={(e) => set({ align: e.target.value as ExportSettings["align"] })}>
+              <option value="justify">Justified</option>
+              <option value="left">Ragged right</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Chapter titles</span>
+            <select value={settings.titles} onChange={(e) => set({ titles: e.target.value as ExportSettings["titles"] })}>
+              <option value="center">Centred</option>
+              <option value="left">On the left</option>
+            </select>
+          </label>
+        </div>
         <label className="check-row">
           <input type="checkbox" checked={settings.newPage} onChange={(e) => set({ newPage: e.target.checked })} />
           <span>Start each chapter on a new page</span>
+        </label>
+        <label className="check-row">
+          <input type="checkbox" checked={settings.dropCap} onChange={(e) => set({ dropCap: e.target.checked })} />
+          <span>A large first letter at the start of each chapter</span>
         </label>
         <div className="writing-export-where">
           <strong>Where it goes</strong>

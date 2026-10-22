@@ -1116,6 +1116,8 @@ export interface WritingChapter {
   position: number;
   words: number;
   updatedAt: IsoUtc;
+  /** A chapter, or front matter (dedication, foreword) or back matter (acknowledgements, about the author). */
+  role: "chapter" | "front" | "back";
 }
 
 export interface WritingProjectView {

@@ -66,7 +66,7 @@ export const KINDS: Kind[] = [
     keys: ["id"],
     cols: ["title", "author", "series", "series_index", "language", "description", "cover", "export", "created_at", "updated_at", "deleted_at"],
   },
-  { name: "writing_chapter", table: "writing_chapters", keys: ["id"], cols: ["project_id", "title", "body", "position", "created_at", "updated_at", "deleted_at"] },
+  { name: "writing_chapter", table: "writing_chapters", keys: ["id"], cols: ["project_id", "title", "body", "position", "created_at", "updated_at", "deleted_at", "role"] },
   { name: "time_log", table: "time_log", keys: ["device_id", "day", "kind"], cols: ["seconds", "updated_at"] },
 ];
 

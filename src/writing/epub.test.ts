@@ -33,6 +33,7 @@ const chapter = (n: number, title: string, body: string): WritingChapter => ({
   position: n,
   words: 0,
   updatedAt: project.updatedAt,
+  role: "chapter",
 });
 
 const chapters = [
@@ -117,18 +118,60 @@ describe("the EPUB", () => {
   it.runIf(!!process.env.EPUBCHECK_JAR)("passes the official EPUB checker", () => {
     const dir = mkdtempSync(join(tmpdir(), "tbv-epub-"));
     const cover = { bytes: new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==", "base64")), mime: "image/png" };
-    for (const [i, s] of [settings({ tocDepth: 3 }), settings({ newPage: false, sceneBreak: "line" })].entries()) {
+    const withExtras = [...chapters, { ...chapter(3, "Thanks", `<p>Thanks<sup data-footnote="And more."></sup>.</p><img src="data:image/png;base64,${cover.bytes.length ? Buffer.from(cover.bytes).toString("base64") : ""}" alt="">`), role: "back" as const }];
+    for (const [i, s] of [settings({ tocDepth: 3, dropCap: true }), settings({ newPage: false, sceneBreak: "line", paragraphs: "space" })].entries()) {
       const file = join(dir, `book-${i}.epub`);
       const font = { family: "Lora", files: [{ name: "lora-400-normal.woff2", bytes: new Uint8Array(readFileSync("node_modules/@fontsource/lora/files/lora-latin-400-normal.woff2")), weight: "400", style: "normal" as const }] };
-      writeFileSync(file, buildEpub({ project, chapters, settings: s, cover, font: i === 0 ? font : null }));
+      writeFileSync(file, buildEpub({ project, chapters: withExtras, settings: s, cover, font: i === 0 ? font : null }));
       execFileSync("java", ["-jar", process.env.EPUBCHECK_JAR!, file], { stdio: "pipe" });
     }
   }, 120_000);
 });
 
+// A one-pixel PNG, as the editor keeps a picture.
+const PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
+
+describe("pictures, footnotes, front and back matter", () => {
+  const written = [
+    { ...chapter(1, "Acknowledgements", "<p>Thanks to all.</p>"), role: "back" as const },
+    chapter(2, "", `<p>The road<sup data-footnote="Built by the old empire &amp; never mended."></sup> ran east.</p><img src="${PIXEL}" alt="A map"><p>End.</p>`),
+    { ...chapter(3, "For Wren", "<p>Who kept the letter.</p>"), role: "front" as const },
+  ];
+
+  it("takes pictures into files and footnotes to the chapter's end", () => {
+    const { body, pictures, notes } = chapterXhtml(written[1].body, "asterisks", "c2");
+    expect(pictures).toHaveLength(1);
+    expect(pictures[0]).toMatchObject({ path: "images/c2-1.png", mime: "image/png" });
+    expect(body).toContain(`<div class="picture"><img src="images/c2-1.png" alt="A map"/></div>`);
+    expect(body).toContain(`<sup><a epub:type="noteref" href="#c2-fn1" id="c2-ref1">1</a></sup>`);
+    expect(notes).toContain(`<aside epub:type="footnote" id="c2-fn1" class="footnote"><p><a href="#c2-ref1">1.</a> Built by the old empire &amp; never mended.</p></aside>`);
+  });
+
+  it("puts front matter first and back matter last, numbering only chapters", () => {
+    const { files } = epubFiles({ project, chapters: written, settings: settings() });
+    const nav = text(files, "OEBPS/nav.xhtml");
+    expect(nav.indexOf("For Wren")).toBeLessThan(nav.indexOf("Chapter 1"));
+    expect(nav.indexOf("Chapter 1")).toBeLessThan(nav.indexOf("Acknowledgements"));
+    expect(nav).toContain(`<a epub:type="bodymatter" href="chapter-2.xhtml">Start</a>`);
+    expect(text(files, "OEBPS/chapter-1.xhtml")).toContain(`epub:type="frontmatter"`);
+    expect(text(files, "OEBPS/content.opf")).toContain(`<item id="picture1" href="images/c2-1.png" media-type="image/png"/>`);
+    expect(files.map(([n]) => n)).toContain("OEBPS/images/c2-1.png");
+  });
+
+  it("styles paragraphs, lines, titles and first letters as chosen", () => {
+    const css = (s: Partial<ExportSettings>) => text(epubFiles({ project, chapters, settings: settings(s) }).files, "OEBPS/styles.css");
+    expect(css({})).toContain("text-indent: 1.5em; text-align: justify;");
+    expect(css({ paragraphs: "space", align: "left" })).toContain("p { margin: 0 0 0.9em; text-indent: 0; text-align: left; }");
+    expect(css({ titles: "left" })).toContain("h1 { font-size: 1.6em; text-align: left;");
+    expect(css({ dropCap: true })).toContain("::first-letter");
+    expect(css({})).not.toContain("::first-letter");
+  });
+});
+
 describe("helpers", () => {
   it("counts words and names files", () => {
     expect(countWords("<h2>Part one</h2><p>It was a <em>dark</em>&nbsp;night.</p><hr><p>— Then</p>")).toBe(8);
+    expect(countWords('<p>Night<sup data-footnote="A long one &amp; cold." class="writing-footnote"></sup> fell.</p>')).toBe(6);
     expect(epubFileName('War/Peace: "draft"')).toBe("War Peace draft.epub");
     expect(epubFileName("...")).toBe("Book.epub");
   });
@@ -136,11 +179,20 @@ describe("helpers", () => {
   it("says what stops an export", () => {
     expect(exportProblems([])).toEqual(["Add a chapter first."]);
     expect(exportProblems([chapter(1, "One", "<p></p>")])).toEqual(["Write something in a chapter first."]);
+    expect(exportProblems([chapter(1, "One", '<img src="data:image/png;base64,AA" alt="">')])).toEqual([]);
     expect(exportProblems(chapters)).toEqual([]);
   });
 
   it("reads saved settings, falling back for anything odd", () => {
-    expect(readExport('{"font":"echolume","tocDepth":2,"newPage":false,"sceneBreak":"ornament"}')).toEqual({ font: "echolume", tocDepth: 2, newPage: false, sceneBreak: "ornament" });
+    expect(readExport('{"font":"echolume","tocDepth":2,"newPage":false,"sceneBreak":"ornament","paragraphs":"space","dropCap":true}')).toEqual({
+      ...readExport("{}"),
+      font: "echolume",
+      tocDepth: 2,
+      newPage: false,
+      sceneBreak: "ornament",
+      paragraphs: "space",
+      dropCap: true,
+    });
     expect(readExport('{"font":"comic sans","tocDepth":9}')).toEqual(readExport("{}"));
     expect(readExport("not json")).toEqual(readExport(null));
   });

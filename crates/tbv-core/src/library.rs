@@ -423,6 +423,11 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (device_id, day, kind)
     );
     "#,
+    // v20: a written book's front matter (dedication, foreword) and back
+    // matter (acknowledgements, about the author) apart from its chapters.
+    r#"
+    ALTER TABLE writing_chapters ADD COLUMN role TEXT NOT NULL DEFAULT 'chapter';
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
