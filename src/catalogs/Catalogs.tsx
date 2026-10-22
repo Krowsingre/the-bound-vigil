@@ -1,4 +1,4 @@
-// The Catalogs page: OPDS bookshelves online (Project Gutenberg, Standard
+// Browse › Catalogs: OPDS bookshelves online (Project Gutenberg, Standard
 // Ebooks, your own Calibre library…). Browse their shelves, search, and bring
 // a book in; it joins the import queue like any other.
 
@@ -273,18 +273,12 @@ export function Catalogs() {
   const books = feed?.entries.filter((e) => !shelves.includes(e)) ?? [];
 
   return (
-    <div className="library catalogs-page">
-      <header className="library-head">
-        <div>
-          <h1 className="library-title">Catalogs</h1>
-          <p className="eyebrow">Online bookshelves to browse and bring books in from</p>
-        </div>
-        <button type="button" className="btn btn-primary" onClick={() => setEditing("new")}>
-          <span aria-hidden>+</span> Add a catalog
-        </button>
-      </header>
+    <div className="catalogs-page">
       <div className="catalogs-layout">
         <nav className="catalogs-list" aria-label="Your catalogs">
+          <button type="button" className="btn btn-primary btn-small catalogs-add" onClick={() => setEditing("new")}>
+            <span aria-hidden>+</span> Add a catalog
+          </button>
           {(catalogs ?? []).map((c) => (
             <div key={c.id} className={`catalogs-item${c.id === current ? " is-current" : ""}`}>
               <button type="button" onClick={() => setCurrent(c.id)} aria-current={c.id === current ? "true" : undefined}>

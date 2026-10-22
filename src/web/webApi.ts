@@ -3,6 +3,7 @@
 // It is lighter than the desktop app: no importing, backups, folder sync or
 // Hardcover, and books open from the cloud.
 
+import { browseStub } from "../preview/browse";
 import type { Api } from "../api";
 import type {
   Annotation,
@@ -524,6 +525,7 @@ export async function webApi(): Promise<Api> {
   const api: Api = {
     kind: "web",
     ...moveStub(),
+    ...browseStub(),
     ...writingCalls({
       rows: (table) => library.rows(table),
       write: (kind, row) => library.write(kind, row),

@@ -1,0 +1,237 @@
+/* Browse: its tabs, the Bible and the browser. Catalogs has its own sheet. */
+.browse-page > .library-toolbar {
+  margin-bottom: 20px;
+}
+
+.catalogs-add {
+  align-self: flex-start;
+  margin-bottom: 10px;
+}
+
+/* The Bible tab. */
+.bible-translations {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bible-translation {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m, 10px);
+  background: var(--surface);
+}
+
+.bible-translation > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bible-translation strong {
+  font: 600 16px var(--font-serif);
+}
+
+.bible-translation p {
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+
+.bible-translation .btn {
+  align-self: flex-start;
+}
+
+.bible-note,
+.bible-empty {
+  margin: 12px 0 0;
+  font-size: 13px;
+}
+
+.bible-picker {
+  margin-top: 28px;
+}
+
+.bible-picker-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.bible-picker h2 {
+  margin: 0;
+  font: 600 20px var(--font-serif);
+}
+
+.bible-testament h3,
+.bible-chapters h3 {
+  margin: 20px 0 10px;
+  font: 600 13px var(--font-sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bible-chapters h3 {
+  text-transform: none;
+  letter-spacing: 0;
+  font: 600 16px var(--font-serif);
+  color: var(--text);
+}
+
+.bible-books {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bible-books button {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius-s);
+  text-align: left;
+  font: 400 14px var(--font-serif);
+}
+
+.bible-books button:hover {
+  background: var(--surface-sunk);
+}
+
+.bible-books button.is-current {
+  background: var(--accent-soft, var(--surface-sunk));
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.bible-chapters {
+  padding: 4px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m, 10px);
+}
+
+.bible-chapters ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bible-chapters button {
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  font: 400 14px var(--font-sans);
+}
+
+.bible-chapters button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* The Browser tab: its toolbar, then the page, which fills what's left. */
+.browse-browser {
+  height: 100%;
+  padding-bottom: 0;
+}
+
+.browse-browser > .library-toolbar {
+  margin-bottom: 0;
+}
+
+.browser {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 0;
+}
+
+.browser-bar .toolbar-button {
+  justify-content: center;
+  width: 36px;
+  padding: 0;
+}
+
+.browser-address {
+  flex: 1;
+  min-width: 0;
+  margin: 0 6px;
+}
+
+.browser-address input {
+  width: 100%;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: var(--surface-sunk);
+  color: var(--text);
+  font: 400 14px var(--font-sans);
+  outline: none;
+  user-select: text;
+}
+
+.browser-address input:focus {
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.browser-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-s);
+  background: var(--surface-sunk);
+  font-size: 14px;
+}
+
+.browser-offer > span {
+  flex: 1;
+  min-width: 180px;
+}
+
+.browser-view {
+  flex: 1;
+  min-height: 320px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+}
+
+@media (max-width: 700px) {
+  .browser-bar .toolbar-button:nth-of-type(4) {
+    display: none;
+  }
+
+  .browser-view {
+    margin-bottom: 8px;
+  }
+}
+
+.browser-view > .library-empty {
+  padding: 24px;
+}

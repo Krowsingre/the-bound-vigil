@@ -749,6 +749,13 @@ impl CatalogAccess {
     }
 }
 
+/// Brings a book down from any web address (Browse's Bible and browser),
+/// with no sign-in. Its format comes from what the site says it is.
+pub fn download_book(url: &str, title: &str, folder: &Path) -> Result<PathBuf> {
+    let anyone = Saved { id: String::new(), name: String::new(), url: url.to_string(), username: String::new(), password: String::new() };
+    CatalogAccess(anyone).download(&OpdsFile { url: url.to_string(), mime: String::new(), format: None, label: None }, title, folder)
+}
+
 /// Takes `{name?}` fields out of a filled-in OpenSearch address.
 fn strip_optional_fields(url: &str) -> String {
     let mut out = String::with_capacity(url.len());

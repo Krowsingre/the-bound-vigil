@@ -15,6 +15,7 @@ import { cleanValue, DETAIL_FIELDS, previewFields } from "../lib/details";
 import { DESKTOP_ONLY } from "../ereaders/ereaders";
 import { importsViewOf } from "../imports/view";
 import { previewWriting } from "../preview/writing";
+import { browseStub } from "../preview/browse";
 import type {
   StoredFile,
   Audiobook,
@@ -498,6 +499,7 @@ export function previewApi(): Api {
     kind: "preview",
     ...previewMove(params),
     ...previewWriting(),
+    ...browseStub(),
     findSeriesBooks: async (name, author) => {
       await new Promise((r) => setTimeout(r, 600));
       const titles = name.toLowerCase() === "sherlock holmes" ? HOLMES : Array.from({ length: 5 }, (_, i) => `${name}, book ${i + 1}`);

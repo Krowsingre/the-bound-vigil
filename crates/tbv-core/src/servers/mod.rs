@@ -681,6 +681,11 @@ impl TempFolder {
         Ok(Self(path))
     }
 
+    /// A folder that's there already, cleared away the same way once let go.
+    pub fn adopt(path: PathBuf) -> Self {
+        Self(path)
+    }
+
     pub fn path(&self) -> &Path {
         &self.0
     }

@@ -1188,3 +1188,33 @@ export interface WritingDetails {
   language: string | null;
   description: string | null;
 }
+
+/** A website saved in Browse › Browser, synced to every device. */
+export interface Bookmark {
+  id: string;
+  title: string;
+  url: string;
+}
+
+/** The space the Browser tab keeps for web pages, in the window's points. */
+export interface BrowserFrame {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Where the browser is: sent as pages start and finish loading. */
+export interface BrowserPage {
+  url: string;
+  /** Sent once the page has told its title. */
+  title?: string | null;
+  loading: boolean;
+}
+
+/** A file the browser brought down, waiting to be added or kept. */
+export interface BrowserDownload {
+  path: string;
+  name: string;
+  ok: boolean;
+}

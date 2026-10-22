@@ -3,6 +3,7 @@
 
 mod activity;
 mod audio;
+mod browser;
 mod hardcover;
 mod home;
 mod imports;
@@ -1737,6 +1738,8 @@ pub fn run() {
             app.manage(receiving.clone());
             // iPhones and iPads take books with Grimoire too, while TBV is open.
             receiving.start(app.handle(), &library, &imports, data_dir.join("LocalSend inbox"));
+            #[cfg(mobile)]
+            browser::listen(app.handle().clone());
             // A book half brought down from a catalog when TBV closed isn't kept.
             let _ = std::fs::remove_dir_all(writing::downloads_dir(&data_dir));
             let home = Arc::new(home::Home::default());
@@ -1749,6 +1752,18 @@ pub fn run() {
             ios_pick_folder,
             ios_pick_files,
             ios_pick_photo,
+            browser::browser_show,
+            browser::browser_place,
+            browser::browser_hide,
+            browser::browser_act,
+            browser::browser_add_download,
+            browser::browser_keep_download,
+            browser::browser_discard_download,
+            browser::download_web_book,
+            browser::bookmarks,
+            browser::add_bookmark,
+            browser::rename_bookmark,
+            browser::remove_bookmark,
             writing::catalogs,
             writing::save_catalog,
             writing::remove_catalog,
