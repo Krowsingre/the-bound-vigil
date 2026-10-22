@@ -2,6 +2,7 @@
 // for the browser preview and the web version.
 
 import type { BookPreview } from "../api/types";
+import { isAudio } from "./queryBooks";
 
 /** A title as it compares: lowercase words, without a leading article or a subtitle. */
 export function titleKey(title: string): string {
@@ -26,7 +27,8 @@ export function duplicateGroups<B extends BookPreview>(books: B[]): { key: strin
   for (const b of [...books].sort((x, y) => x.addedAt.localeCompare(y.addedAt))) {
     const title = titleKey(b.title);
     if (!title) continue;
-    const k = `${title}|${authorKey(b.authors)}`;
+    // An audiobook and the ebook of the same title are a pair, not two copies.
+    const k = `${isAudio(b.format) ? "audio" : "text"}|${title}|${authorKey(b.authors)}`;
     byTitle.set(k, [...(byTitle.get(k) ?? []), b]);
   }
   return [...byTitle.values()]

@@ -384,6 +384,8 @@ impl Library {
         let mut by_isbn: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let mut by_title: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         for (i, (book, isbn, ..)) in rows.iter().enumerate() {
+            // An audiobook and the ebook of the same title are a pair, not two copies.
+            let kind = if crate::audio::is_audio(&book.format) { "audio" } else { "text" };
             if let Some(isbn) = isbn
                 .as_deref()
                 .map(|s| {
@@ -393,12 +395,12 @@ impl Library {
                 })
                 .filter(|s| s.len() >= 10)
             {
-                by_isbn.entry(isbn).or_default().push(i);
+                by_isbn.entry(format!("{kind}|{isbn}")).or_default().push(i);
             }
             let title = title_key(&book.title);
             if !title.is_empty() {
                 by_title
-                    .entry(format!("{title}|{}", author_key(&book.authors)))
+                    .entry(format!("{kind}|{title}|{}", author_key(&book.authors)))
                     .or_default()
                     .push(i);
             }
@@ -740,6 +742,16 @@ mod tests {
         // The larger copy goes; the one kept still has its cover.
         library.delete_book(&large).unwrap();
         assert_eq!(now(&library, &small), Some([600, 900]));
+    }
+
+    #[test]
+    fn an_audiobook_and_its_ebook_are_not_duplicates() {
+        let (dir, mut library) = open_temp_library();
+        add(&mut library, dir.path(), "a", "The Moonstone", "Wilkie Collins", "");
+        let mp3 = dir.path().join("moonstone.mp3");
+        fs::write(&mp3, crate::audio::tests::silent_mp3(40, "The Moonstone", "The Moonstone", "Wilkie Collins")).unwrap();
+        assert!(matches!(library.import_files(&[mp3]).remove(0), ImportResult::Imported { .. }));
+        assert!(library.find_duplicates().unwrap().is_empty());
     }
 
     #[test]

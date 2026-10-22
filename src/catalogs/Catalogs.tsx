@@ -10,6 +10,7 @@ import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { formatLabel } from "../lib/queryBooks";
+import { sameAddress, SUGGESTED_CATALOGS } from "./suggested";
 
 const NEEDS_LOGIN = "needs-login";
 
@@ -20,7 +21,18 @@ function fileLabel(file: OpdsFile): string {
   return file.label && file.label.toLowerCase() !== format.toLowerCase() ? `${format}: ${file.label}` : format;
 }
 
-function CatalogDialog({ catalog, onSaved, onCancel }: { catalog: CatalogView | null; onSaved: (c: CatalogView) => void; onCancel: () => void }) {
+function CatalogDialog({
+  catalog,
+  existing,
+  onSaved,
+  onCancel,
+}: {
+  catalog: CatalogView | null;
+  /** Addresses already added, so suggestions leave them out. */
+  existing: string[];
+  onSaved: (c: CatalogView) => void;
+  onCancel: () => void;
+}) {
   const [form, setForm] = useState<CatalogInput>({
     id: catalog?.id ?? null,
     name: catalog?.name ?? "",
@@ -34,6 +46,16 @@ function CatalogDialog({ catalog, onSaved, onCancel }: { catalog: CatalogView | 
     setBusy(true);
     try {
       onSaved(await api.saveCatalog({ ...form, username: form.username?.trim() || null, password: form.password || null }));
+    } catch (e) {
+      setError(String(e));
+      setBusy(false);
+    }
+  };
+  const suggestions = catalog ? [] : SUGGESTED_CATALOGS.filter((s) => !existing.some((u) => sameAddress(u, s.url)));
+  const addSuggested = async (name: string, url: string) => {
+    setBusy(true);
+    try {
+      onSaved(await api.saveCatalog({ id: null, name, url, username: null, password: null }));
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -81,6 +103,24 @@ function CatalogDialog({ catalog, onSaved, onCancel }: { catalog: CatalogView | 
           </label>
         </div>
         <p className="muted writing-hint">The password stays on this computer and is never put in a backup.</p>
+        {suggestions.length > 0 && (
+          <section className="catalog-suggested" aria-label="Free catalogs">
+            <strong>Or add a free one</strong>
+            <ul>
+              {suggestions.map((s) => (
+                <li key={s.url}>
+                  <span>
+                    <b>{s.name}</b>
+                    <span className="muted">{s.about}</span>
+                  </span>
+                  <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => void addSuggested(s.name, s.url)}>
+                    <Icon name="plus" size={14} /> Add
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {error && (
           <p className="form-error" role="alert">
             {error}
@@ -368,6 +408,7 @@ export function Catalogs() {
       {editing && (
         <CatalogDialog
           catalog={editing === "new" ? null : editing}
+          existing={catalogs?.map((c) => c.url) ?? []}
           onCancel={() => setEditing(null)}
           onSaved={(c) => {
             setEditing(null);
