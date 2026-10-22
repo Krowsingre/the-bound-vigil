@@ -4,9 +4,11 @@
 
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { isApp } from "../api";
 import type { WritingChapter } from "../api/types";
 import { Icon, type IconName } from "../components/Icon";
+import { onBeforeQuit } from "../lib/beforeQuit";
 import { countWords } from "./records";
 
 const SAVE_AFTER_MS = 800;
@@ -124,10 +126,13 @@ export function ChapterEditor({
   chapter,
   onSave,
   onSaveState,
+  flushRef,
 }: {
   chapter: WritingChapter;
   onSave: (title: string, body: string) => Promise<void>;
   onSaveState: (state: SaveState, words: number) => void;
+  /** Set to a function that saves what's waiting now, and resolves once it's saved. */
+  flushRef?: MutableRefObject<(() => Promise<void>) | null>;
 }) {
   const [title, setTitle] = useState(chapter.title);
   const pending = useRef<{ title: string; body: string } | null>(null);
@@ -138,22 +143,30 @@ export function ChapterEditor({
   const stateRef = useRef(onSaveState);
   stateRef.current = onSaveState;
 
+  const inFlight = useRef<Promise<void>>(Promise.resolve());
+
   const flush = async () => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     const next = pending.current;
-    if (!next) return;
+    // Nothing new waiting: a save already on its way is still waited for.
+    if (!next) return inFlight.current;
     pending.current = null;
-    stateRef.current("saving", countWords(next.body));
-    try {
-      await saveRef.current(next.title, next.body);
-      stateRef.current(pending.current ? "unsaved" : "saved", countWords(next.body));
-    } catch {
-      // Kept to try again with the next change, or when the chapter is left.
-      pending.current = pending.current ?? next;
-      stateRef.current("failed", countWords(next.body));
-    }
+    const run = (async () => {
+      stateRef.current("saving", countWords(next.body));
+      try {
+        await saveRef.current(next.title, next.body);
+        stateRef.current(pending.current ? "unsaved" : "saved", countWords(next.body));
+      } catch {
+        // Kept to try again with the next change, or when the chapter is left.
+        pending.current = pending.current ?? next;
+        stateRef.current("failed", countWords(next.body));
+      }
+    })();
+    inFlight.current = run;
+    return run;
   };
+  if (flushRef) flushRef.current = flush;
 
   const change = (part: Partial<{ title: string; body: string }>) => {
     latest.current = { ...latest.current, ...part };
@@ -177,12 +190,19 @@ export function ChapterEditor({
     onUpdate: ({ editor: e }) => change({ body: e.getHTML() }),
   });
 
-  // Leaving the chapter (or the page) saves what's waiting.
+  // Leaving the chapter saves what's waiting. Quitting the app waits for it;
+  // a browser tab asks before closing while words are unsaved.
   useEffect(() => {
     stateRef.current("saved", countWords(chapter.body));
-    const beforeClose = () => void flush();
+    const unregister = onBeforeQuit(flush);
+    const beforeClose = (e: BeforeUnloadEvent) => {
+      if (!pending.current || isApp) return;
+      void flush();
+      e.preventDefault();
+    };
     window.addEventListener("beforeunload", beforeClose);
     return () => {
+      unregister();
       window.removeEventListener("beforeunload", beforeClose);
       void flush();
     };

@@ -130,6 +130,7 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
   const toast = useToast();
   // Waiting saves, so the EPUB and other chapters see the latest words.
   const saving = useRef<Promise<void>>(Promise.resolve());
+  const flushEditor = useRef<(() => Promise<void>) | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -299,6 +300,7 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
               chapter={chapter}
               onSave={saveChapter(chapter.id)}
               onSaveState={(state, w) => setSave({ state, words: w })}
+              flushRef={flushEditor}
             />
           )}
           <footer className="writing-status muted" aria-live="polite">
@@ -326,6 +328,8 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
           project={project}
           chapters={chapters}
           onFlush={async () => {
+            // Words typed a moment ago haven't been handed over to save yet.
+            await flushEditor.current?.();
             await saving.current;
             return (await load())?.chapters ?? chapters;
           }}

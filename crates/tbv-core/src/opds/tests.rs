@@ -205,3 +205,75 @@ fn a_signed_in_catalog_is_browsed_and_a_book_brought_down() {
     let err = library.catalog_access(&wrong.id).unwrap().feed(None).unwrap_err();
     assert_eq!(err.to_string(), NEEDS_LOGIN);
 }
+
+/// A catalog server that answers from `answer(first line, signed in)` and
+/// reports, per request, whether a password came with it.
+/// Status line, extra headers and body.
+type Answer = (String, String, Vec<u8>);
+
+fn serve_with(count: usize, answer: fn(&str, bool, &str) -> Answer) -> (String, std::sync::mpsc::Receiver<bool>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!("http://{}", listener.local_addr().unwrap());
+    let base = address.clone();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().take(count) {
+            let mut stream = stream.unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut first = String::new();
+            reader.read_line(&mut first).unwrap();
+            let mut authorized = false;
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line.trim().is_empty() {
+                    break;
+                }
+                authorized |= line.to_ascii_lowercase().starts_with("authorization:");
+            }
+            let _ = tx.send(authorized);
+            let (status, extra, body) = answer(&first, authorized, &base);
+            let _ = write!(stream, "HTTP/1.1 {status}\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+            let _ = stream.write_all(&body);
+        }
+    });
+    (address, rx)
+}
+
+#[test]
+fn a_catalog_that_moves_is_read_from_where_it_landed() {
+    let (dir, library) = open_temp_library();
+    let (address, asked) = serve_with(3, |first, authorized, base| {
+        if first.contains("/shelf ") {
+            ("301 Moved".into(), format!("Location: {base}/shelf/\r\n"), Vec::new())
+        } else if !authorized {
+            ("401 Unauthorized".into(), String::new(), b"no".to_vec())
+        } else {
+            let feed = r#"<feed xmlns="http://www.w3.org/2005/Atom"><title>Shelf</title><entry><title>Ash</title><id>1</id>
+                <link rel="http://opds-spec.org/acquisition" type="application/epub+zip" href="books/1"/></entry></feed>"#;
+            ("200 OK".into(), "Content-Type: application/atom+xml\r\n".into(), feed.as_bytes().to_vec())
+        }
+    });
+    let view = library
+        .save_catalog(&CatalogInput { id: None, name: "Calibre".into(), url: format!("{address}/shelf"), username: Some("embre".into()), password: Some("pw".into()) })
+        .unwrap();
+    let feed = library.catalog_access(&view.id).unwrap().feed(None).unwrap();
+    // The link is relative to the page after the redirect, not before it.
+    assert_eq!(feed.entries[0].files[0].url, format!("{address}/shelf/books/1"));
+    assert_eq!(feed.url, format!("{address}/shelf/"));
+    // Signed in, moved (the password isn't carried along), then asked again at the new address.
+    assert_eq!(asked.try_iter().collect::<Vec<_>>(), [true, false, true]);
+    drop(dir);
+}
+
+#[test]
+fn a_password_only_goes_to_the_same_scheme_host_and_port() {
+    let (_dir, library) = open_temp_library();
+    let (other, asked) = serve_with(1, |_, _, _| ("200 OK".into(), "Content-Type: application/atom+xml\r\n".into(), br#"<feed xmlns="http://www.w3.org/2005/Atom"><title>x</title></feed>"#.to_vec()));
+    // The saved catalog is on another port of the same computer.
+    let view = library
+        .save_catalog(&CatalogInput { id: None, name: "Calibre".into(), url: "http://127.0.0.1:1/opds".into(), username: Some("embre".into()), password: Some("pw".into()) })
+        .unwrap();
+    library.catalog_access(&view.id).unwrap().feed(Some(&format!("{other}/opds"))).unwrap();
+    assert_eq!(asked.try_iter().collect::<Vec<_>>(), [false]);
+}

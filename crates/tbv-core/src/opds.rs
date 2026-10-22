@@ -504,6 +504,8 @@ pub(crate) fn digest_answer(challenge: &str, username: &str, password: &str, met
 
 /// What a catalog sent: its type, its body, and where it ended up after redirects.
 struct Fetched {
+    /// The address that answered, after any redirects: links in the page are relative to it.
+    url: Url,
     mime: String,
     body: Box<dyn Read + Send + 'static>,
     filename: Option<String>,
@@ -521,31 +523,44 @@ fn agent() -> ureq::Agent {
         .into()
 }
 
+/// Where a response came from, after any redirects.
+fn answered_from(response: &ureq::http::Response<ureq::Body>) -> Option<Url> {
+    use ureq::ResponseExt;
+    Url::parse(&response.get_uri().to_string()).ok()
+}
+
 fn get(catalog: &Saved, url: &str) -> Result<Fetched> {
     let agent = agent();
-    let parsed = Url::parse(url).map_err(|_| Error::Unsuitable("That catalog address isn't a web address.".into()))?;
-    // Only send the password to the catalog's own server.
-    let own = Url::parse(&catalog.url).ok().is_some_and(|c| c.host_str() == parsed.host_str());
-    let signed_in = own && !catalog.username.is_empty();
-    let request = |authorization: Option<&str>| {
-        let mut r = agent.get(url).header("Accept", "application/atom+xml, application/opds+json, application/json;q=0.9, */*;q=0.5");
+    let mut target = Url::parse(url).map_err(|_| Error::Unsuitable("That catalog address isn't a web address.".into()))?;
+    // Only send the password to the catalog's own server: same scheme, host and port.
+    let home = Url::parse(&catalog.url).ok();
+    let may_sign_in = |u: &Url| !catalog.username.is_empty() && home.as_ref().is_some_and(|h| h.origin() == u.origin());
+    let request = |to: &Url, authorization: Option<&str>| {
+        let mut r = agent.get(to.as_str()).header("Accept", "application/atom+xml, application/opds+json, application/json;q=0.9, */*;q=0.5");
         if let Some(a) = authorization {
             r = r.header("Authorization", a);
         }
         r.call().map_err(|e| Error::Unsuitable(format!("The catalog couldn't be reached ({e}).")))
     };
-    let basic = signed_in.then(|| format!("Basic {}", base64(format!("{}:{}", catalog.username, catalog.password).as_bytes())));
-    let mut response = request(basic.as_deref())?;
-    if response.status() == 401 && signed_in {
+    let basic = format!("Basic {}", base64(format!("{}:{}", catalog.username, catalog.password).as_bytes()));
+    let mut response = request(&target, may_sign_in(&target).then_some(basic.as_str()))?;
+    // A redirect drops the password, so a catalog that moved within its own server is asked again at the new address.
+    if response.status() == 401 {
+        if let Some(landed) = answered_from(&response).filter(|l| *l != target && may_sign_in(l)) {
+            target = landed;
+            response = request(&target, Some(&basic))?;
+        }
+    }
+    if response.status() == 401 && may_sign_in(&target) {
         let challenge = response.headers().get_all("www-authenticate").iter().filter_map(|v| v.to_str().ok()).find(|v| v.to_ascii_lowercase().starts_with("digest")).map(str::to_string);
         if let Some(challenge) = challenge {
-            let uri = match parsed.query() {
-                Some(q) => format!("{}?{q}", parsed.path()),
-                None => parsed.path().to_string(),
+            let uri = match target.query() {
+                Some(q) => format!("{}?{q}", target.path()),
+                None => target.path().to_string(),
             };
             let cnonce = new_record_id().replace('-', "");
             if let Some(answer) = digest_answer(&challenge, &catalog.username, &catalog.password, "GET", &uri, &cnonce) {
-                response = request(Some(&answer))?;
+                response = request(&target, Some(&answer))?;
             }
         }
     }
@@ -561,8 +576,9 @@ fn get(catalog: &Saved, url: &str) -> Result<Fetched> {
         .get("content-disposition")
         .and_then(|v| v.to_str().ok())
         .and_then(|d| d.split(';').find_map(|p| p.trim().strip_prefix("filename=").map(|f| f.trim_matches('"').to_string())));
+    let url = answered_from(&response).unwrap_or(target);
     let body = Box::new(response.into_body().into_reader());
-    Ok(Fetched { mime, body, filename })
+    Ok(Fetched { url, mime, body, filename })
 }
 
 fn read_text(fetched: Fetched) -> Result<String> {
@@ -630,7 +646,7 @@ impl Library {
         let saved = match input.id.as_deref().and_then(|id| catalogs.iter_mut().find(|c| c.id == id)) {
             Some(c) => {
                 // A different server must not be handed the old password.
-                let same_host = Url::parse(&c.url).ok().and_then(|u| u.host_str().map(str::to_string)) == parsed.host_str().map(str::to_string);
+                let same_host = Url::parse(&c.url).ok().is_some_and(|u| u.origin() == parsed.origin());
                 c.name = name;
                 c.url = parsed.to_string();
                 if username.is_empty() || !same_host {
@@ -673,15 +689,18 @@ impl CatalogAccess {
         let url = url.unwrap_or(&self.0.url).to_string();
         let fetched = get(&self.0, &url)?;
         let json = fetched.mime.contains("json");
+        let base = fetched.url.clone();
         let body = read_text(fetched)?;
-        let base = Url::parse(&url).map_err(|_| Error::Unsuitable("That catalog address isn't a web address.".into()))?;
         if json || body.trim_start().starts_with('{') {
             return parse_json(&body, &base);
         }
         let (mut feed, search) = parse_atom(&body, &base)?;
         feed.search = match search {
             Some(SearchLink::Template(t)) => Some(t),
-            Some(SearchLink::Description(d)) => get(&self.0, &d).and_then(read_text).ok().and_then(|xml| parse_opensearch(&xml, &Url::parse(&d).ok()?)),
+            Some(SearchLink::Description(d)) => get(&self.0, &d).ok().and_then(|f| {
+                let base = f.url.clone();
+                parse_opensearch(&read_text(f).ok()?, &base)
+            }),
             None => None,
         };
         if feed.title.is_empty() {
