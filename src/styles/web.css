@@ -208,29 +208,23 @@
     display: none;
   }
 
-  /* One row: the shelf on the left, then sort, filter, select and layout as icons. */
+  /* One row of icons, spread evenly from edge to edge: sort, filter and
+     select as boxed buttons like the layout pair, which stays joined. The
+     shelf is chosen in Filter, so its name isn't shown here. */
   .library-toolbar {
     flex-wrap: nowrap;
-    align-items: center;
-    gap: 4px;
-    padding: 8px 0;
+    padding: 10px 0;
   }
 
   .library-toolbar .tabs-menu {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    margin-right: auto;
-    padding-left: 0;
-    font: 400 18px var(--font-serif);
-    overflow: hidden;
-    text-overflow: ellipsis;
+    display: none;
   }
 
   .toolbar-controls {
-    flex: none;
+    flex: 1;
+    justify-content: space-evenly;
     margin-left: 0;
+    gap: 0;
   }
 
   .toolbar-label {
@@ -242,7 +236,38 @@
   }
 
   .toolbar-controls .toolbar-button {
-    padding: 0 8px;
+    position: relative;
+    justify-content: center;
+    width: 40px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    color: var(--text-muted);
+  }
+
+  .toolbar-controls .toolbar-button.is-on {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  /* A filter count sits on the corner, keeping the buttons the same size. */
+  .toolbar-controls .toolbar-button .tab-count {
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    min-width: 16px;
+    padding: 1px 4px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-size: 10px;
+    line-height: 14px;
+    text-align: center;
+  }
+
+  .toolbar-controls .layout-switch button {
+    height: 34px;
   }
 
   /* No list view on a phone, for now. */
@@ -251,7 +276,7 @@
   }
 
   .layout-switch {
-    margin-left: 6px;
+    margin-left: 0;
   }
 
   .layout-switch button + button {

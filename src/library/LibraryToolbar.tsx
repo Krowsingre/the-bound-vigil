@@ -136,6 +136,8 @@ export function LibraryToolbar({
       onIn(list),
       all(list, known).map((n) => item(list, n, n)),
     );
+  // On a phone a shelf is chosen in Filter, so it counts there too.
+  const filterBadge = filterCount + (narrow && view.tab !== "all" ? 1 : 0);
   const setLocation = (l: Location) => onChange({ location: view.location === l ? null : l });
 
   // Clear filters, then where the file is, the shelves (phone), genre and
@@ -240,11 +242,11 @@ export function LibraryToolbar({
           )}
           <Menu
             label="Filter"
-            className={`toolbar-button${filterCount ? " is-on" : ""}`}
+            className={`toolbar-button${filterBadge ? " is-on" : ""}`}
             trigger={
               <>
                 <Icon name="filter" size={16} /> <span className="toolbar-label">Filter</span>
-                {filterCount > 0 && <span className="tab-count num">{filterCount}</span>}
+                {filterBadge > 0 && <span className="tab-count num">{filterBadge}</span>}
                 <Icon name="chevronDown" size={14} className="toolbar-label" />
               </>
             }
