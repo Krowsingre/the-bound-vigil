@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{Decoder, DecoderOptions};
+use symphonia::core::codecs::{Decoder, DecoderOptions, CODEC_TYPE_OPUS};
 use symphonia::core::errors::Error as AudioError;
 use symphonia::core::formats::{FormatOptions, FormatReader};
 use symphonia::core::io::{MediaSource, MediaSourceStream};
@@ -85,6 +85,9 @@ impl Listener {
         let track_id = track.id;
         let rate = track.codec_params.sample_rate.ok_or_else(|| Error::Unsuitable("This audiobook doesn't say its sample rate.".into()))?;
         let time_base = track.codec_params.time_base.unwrap_or_else(|| TimeBase::new(1, rate));
+        if track.codec_params.codec == CODEC_TYPE_OPUS {
+            return Err(Error::Unsuitable("TBV can't time Opus audiobooks yet. MP3, M4B, FLAC and Ogg Vorbis work.".into()));
+        }
         let decoder = symphonia::default::get_codecs().make(&track.codec_params, &DecoderOptions::default()).map_err(unreadable)?;
         let start_ms = if self.format == BUNDLE { self.parts.get(index).map_or(0, |p| p.start_ms) } else { 0 };
         Ok(self.open.insert(Open { index, start_ms, reader, decoder, track_id, rate, time_base, at: 0.0 }))

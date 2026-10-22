@@ -12,6 +12,9 @@ export const STEP_MS = 90_000;
 export const LENGTH_MS = 20_000;
 /** Saved after this many stretches, so little is lost if TBV closes. */
 const SAVE_EVERY = 8;
+/** A finished match needs this many matched spots, spread over this share of the book. */
+const ENOUGH_ANCHORS = 10;
+const ENOUGH_REACH = 0.5;
 
 export interface Preparing {
   ebookId: string;
@@ -85,6 +88,9 @@ export async function prepareTiming(ebookId: string, audiobookId: string): Promi
   try {
     const audiobook = await api.audiobook(audiobookId);
     const duration = audiobook.durationMs;
+    // The speech model only knows English.
+    const language = (await api.bookDetails(ebookId)).book.language;
+    if (language && !/^en\b/i.test(language)) throw new Error("Word timing only works for books in English so far.");
     const { words, sections } = await bookWords(ebookId);
     if (!words.length) throw new Error("TBV couldn't find any words in this ebook to match.");
     const saved = readTiming(await api.readAlongTiming(ebookId, audiobookId));
@@ -120,6 +126,14 @@ export async function prepareTiming(ebookId: string, audiobookId: string): Promi
       timing.anchors = thin(rising(found));
       timing.heard = start + LENGTH_MS;
       if (++count % SAVE_EVERY === 0) await save();
+    }
+    // A few stray matches would be stretched over the whole book and follow the wrong words,
+    // so a match that doesn't reach across most of the book is thrown away.
+    const anchors = timing.anchors;
+    const reach = anchors.length ? (anchors[anchors.length - 1][1] - anchors[0][1]) / words.length : 0;
+    if (anchors.length < ENOUGH_ANCHORS || reach < ENOUGH_REACH) {
+      await api.saveReadAlongTiming(ebookId, audiobookId, JSON.stringify(fresh));
+      throw new Error("TBV couldn't match this audiobook to the ebook. They may be different editions.");
     }
     timing.done = true;
     timing.heard = duration;
