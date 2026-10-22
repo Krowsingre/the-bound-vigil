@@ -1010,3 +1010,7 @@ button.tag-chip-add:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.tabs-menu {
+  display: none;
+}

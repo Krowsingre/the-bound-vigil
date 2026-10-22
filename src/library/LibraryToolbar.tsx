@@ -122,6 +122,8 @@ export function LibraryToolbar({
     ...names("narrators", "Narrators", narrators),
   ];
 
+  const tabName = (tab: LibraryTab) => (tab === "all" && allLabel ? allLabel : (TABS.find((t) => t.tab === tab)?.label ?? ""));
+
   return (
     <div className="library-toolbar">
       <div className="tabs" role="tablist" aria-label="Shelves">
@@ -142,6 +144,24 @@ export function LibraryToolbar({
           );
         })}
       </div>
+      {/* On a phone the shelves don't fit in a row, so they're a dropdown. */}
+      <Menu
+        label="Shelf"
+        className="toolbar-button tabs-menu"
+        trigger={
+          <>
+            {tabName(view.tab)}
+            {counts?.[COUNT_OF[view.tab]] !== undefined && <span className="tab-count num">{counts[COUNT_OF[view.tab]]}</span>}
+            <Icon name="chevronDown" size={14} />
+          </>
+        }
+        items={TABS.map(({ tab }) => ({
+          label: tabName(tab),
+          hint: counts?.[COUNT_OF[tab]] !== undefined ? String(counts[COUNT_OF[tab]]) : undefined,
+          checked: view.tab === tab,
+          onSelect: () => onChange({ tab }),
+        }))}
+      />
 
       {view.tab !== "collections" && (
         <div className="toolbar-controls">

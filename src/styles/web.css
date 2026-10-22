@@ -212,6 +212,18 @@
     padding: 20px 16px 40px;
   }
 
+  .library-toolbar .tabs {
+    display: none;
+  }
+
+  .library-toolbar .tabs-menu {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    margin: 10px 0;
+    font: 400 16px var(--font-serif);
+  }
+
   .toolbar-controls {
     flex-wrap: wrap;
     margin-left: 0;
