@@ -573,6 +573,11 @@ button.tag-chip-add:hover {
   background: var(--surface);
 }
 
+.series-panel .series-panel {
+  margin: 0;
+  background: var(--bg);
+}
+
 .series-head {
   display: flex;
   align-items: center;

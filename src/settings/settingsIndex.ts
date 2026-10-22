@@ -224,6 +224,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "sync",
+    section: "contents",
+    label: "What's in Supabase",
+    words: "supabase files contents storage space remove delete covers pictures ebooks documents audiobooks free plan full",
+  },
+  {
+    tab: "sync",
     section: "options",
     label: "Sync options",
     words: "progress notes highlights collections metadata book files audiobook audio stream streaming play without downloading",

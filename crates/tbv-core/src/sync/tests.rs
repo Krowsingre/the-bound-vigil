@@ -1345,6 +1345,105 @@ mod tidying {
         assert!(plan_tidy(&pc.library, &mut supabase.clone(), Some(&mut icloud.clone())).unwrap().is_empty());
     }
 
+    /// Supabase, short of room: covers only go with their book's file.
+    #[derive(Clone, Default)]
+    struct Short(FakeRemote);
+
+    impl Remote for Short {
+        fn push(&mut self, records: &[Record]) -> Result<()> {
+            self.0.push(records)
+        }
+        fn pull(&mut self, after: &str, limit: usize) -> Result<Page> {
+            self.0.pull(after, limit)
+        }
+        fn upload(&mut self, path: &str, file: &Path) -> Result<()> {
+            self.0.upload(path, file)
+        }
+        fn download(&mut self, path: &str, to: &Path) -> Result<bool> {
+            self.0.download(path, to)
+        }
+        fn list(&mut self, folder: &str) -> Result<Vec<String>> {
+            self.0.list(folder)
+        }
+        fn list_sizes(&mut self, folder: &str) -> Result<Vec<(String, Option<u64>)>> {
+            self.0.list_sizes(folder)
+        }
+        fn remove(&mut self, path: &str) -> Result<()> {
+            self.0.remove(path)
+        }
+        fn covers_follow_files(&self) -> bool {
+            true
+        }
+    }
+
+    fn covers(cloud: &FakeRemote) -> usize {
+        cloud.0.lock().unwrap().files.keys().filter(|p| p.starts_with("covers/")).count()
+    }
+
+    #[test]
+    fn where_room_is_short_covers_only_go_with_their_books_and_tidying_removes_the_rest() {
+        let pc = Device::new();
+        let dracula = pc.import("Dracula");
+        let carmilla = pc.import("Carmilla");
+        // Book files aren't sent, so neither are covers.
+        let supabase = Short::default();
+        sync_once(&pc.library, &mut supabase.clone()).unwrap();
+        assert_eq!(covers(&supabase.0), 0);
+        // A folder place gets every cover regardless.
+        let laptop = Device::new();
+        laptop.import("Dracula");
+        let elsewhere = FakeRemote::default();
+        laptop.sync(&elsewhere);
+        assert_eq!(covers(&elsewhere), 1);
+
+        pc.set_options(json!({ "bookFiles": true }));
+        sync_once(&pc.library, &mut supabase.clone()).unwrap();
+        assert_eq!(covers(&supabase.0), 2);
+
+        // Carmilla's file leaves this computer: tidying removes its copy and its cover.
+        pc.lib().remove_download(&carmilla).unwrap();
+        let icloud = FakeRemote::default();
+        let plan = plan_tidy(&pc.library, &mut supabase.clone(), Some(&mut icloud.clone())).unwrap();
+        assert_eq!(plan.covers.len(), 1);
+        assert!(plan.covers[0].contains(crate::ids::book_id_hex(&carmilla)));
+        let temp = tempfile::tempdir().unwrap();
+        let report = tidy(&pc.library, &mut supabase.clone(), Lane::Main, Some((&mut icloud.clone(), Lane::Also)), &plan, temp.path(), &AtomicBool::new(false), &mut |_| {}).unwrap();
+        assert_eq!(report.failed, 0);
+        let left: Vec<String> = supabase.0.0.lock().unwrap().files.keys().filter(|p| p.starts_with("covers/")).cloned().collect();
+        assert_eq!(left.len(), 1);
+        assert!(left[0].contains(crate::ids::book_id_hex(&dracula)));
+    }
+
+    #[test]
+    fn contents_are_listed_by_type_with_where_else_they_are_kept() {
+        use crate::sync::contents::{list_contents, remove_contents};
+        let supabase = FakeRemote::default();
+        let pc = Device::new();
+        pc.set_options(json!({ "bookFiles": true }));
+        let here = pc.import("Dracula");
+        let gone = pc.import("Carmilla");
+        pc.sync(&supabase);
+        pc.lib().remove_download(&gone).unwrap();
+        supabase.0.lock().unwrap().files.insert("books/stranger.mp3".into(), vec![1, 2, 3]);
+
+        let stored = list_contents(&pc.library, &mut supabase.clone(), None).unwrap();
+        let find = |path: &str| stored.iter().find(|f| f.path == path).unwrap();
+        assert_eq!(find(&book_path(&here)).kind, "ebook");
+        assert!(find(&book_path(&here)).elsewhere);
+        assert_eq!(find(&book_path(&here)).title.as_deref(), Some("Dracula"));
+        assert!(!find(&book_path(&gone)).elsewhere);
+        assert_eq!(find("books/stranger.mp3").kind, "audiobook");
+        assert!(find("books/stranger.mp3").book_id.is_none());
+        assert_eq!(stored.iter().filter(|f| f.kind == "cover").count(), 2);
+
+        let report = remove_contents(&mut supabase.clone(), &[book_path(&gone), "../escape".into()], &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+        assert_eq!((report.removed, report.failed), (1, 1));
+        assert!(!files(&supabase).contains(&book_path(&gone)));
+        // Sync doesn't send back what was removed.
+        pc.sync(&supabase);
+        assert_eq!(list_contents(&pc.library, &mut supabase.clone(), None).unwrap().len(), stored.len() - 1);
+    }
+
     #[test]
     fn with_no_other_place_the_copies_are_named_as_lost_and_a_failed_copy_stays() {
         let supabase = FakeRemote::default();
@@ -1401,4 +1500,30 @@ fn ranged_answers_give_the_part_asked_for_and_the_whole_size() {
     let mut answer = agent.get(&url).call().unwrap();
     assert_eq!(super::ranged_answer(&mut answer, 20, 30).unwrap(), (Vec::new(), 10));
     server.join().unwrap();
+}
+
+#[test]
+fn a_replaced_cover_reaches_a_device_that_already_had_one() {
+    let cloud = FakeRemote::default();
+    let (a, b) = (Device::new(), Device::new());
+    let book = a.import("Dracula");
+    a.sync(&cloud);
+    b.sync(&cloud);
+    let before = b.lib().book(&book).unwrap().unwrap().cover_path.expect("the first cover came along");
+
+    let mut picture = Vec::new();
+    image::RgbImage::from_pixel(3, 5, image::Rgb([10, 120, 30]))
+        .write_to(&mut std::io::Cursor::new(&mut picture), image::ImageFormat::Png)
+        .unwrap();
+    assert!(a.lib().replace_cover(&book, &picture).unwrap());
+    a.sync(&cloud);
+    b.sync(&cloud);
+
+    let mine = fs::read(a.lib().book(&book).unwrap().unwrap().cover_path.unwrap()).unwrap();
+    let after = b.lib().book(&book).unwrap().unwrap().cover_path.unwrap();
+    assert_ne!(after, before);
+    assert_eq!(fs::read(&after).unwrap(), mine);
+    assert!(!Path::new(&before).exists(), "the old copy is gone");
+    // Once fetched, it isn't fetched again.
+    assert_eq!(b.sync(&cloud).files_received, 0);
 }

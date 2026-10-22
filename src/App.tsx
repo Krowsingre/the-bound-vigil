@@ -256,8 +256,48 @@ export function App() {
     return () => unlisten?.();
   }, [runImport]);
 
+  // Back (Alt + Left, or the mouse's back button): the page before, as it was.
+  type Place = { route: Route; collection: CollectionRef | null; details: typeof details };
+  const past = useRef<Place[]>([]);
+  const here = useRef<Place>({ route, collection: openCollection, details });
+  const goingBack = useRef(false);
+  useEffect(() => {
+    const now = { route, collection: openCollection, details };
+    const was = here.current;
+    const same =
+      was.route === now.route &&
+      JSON.stringify(was.collection) === JSON.stringify(now.collection) &&
+      was.details?.bookId === now.details?.bookId;
+    if (same) return;
+    if (!goingBack.current) past.current = [...past.current.slice(-49), was];
+    goingBack.current = false;
+    here.current = now;
+  }, [route, openCollection, details]);
+  const back = useCallback(() => {
+    const was = past.current.pop();
+    if (!was) return;
+    goingBack.current = true;
+    setDetails(was.details);
+    setOpenCollection(was.collection);
+    setRoute(was.route);
+  }, []);
+  useEffect(() => {
+    const onMouse = (e: MouseEvent) => {
+      if (e.button !== 3 || reading) return;
+      e.preventDefault();
+      back();
+    };
+    window.addEventListener("mouseup", onMouse);
+    return () => window.removeEventListener("mouseup", onMouse);
+  }, [back, reading]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === "ArrowLeft" && !reading) {
+        e.preventDefault();
+        back();
+        return;
+      }
       // Privacy mode works everywhere, the reader included.
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "h") {
         e.preventDefault();
@@ -275,7 +315,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleSidebar, importBooks, reading, navigate, togglePrivacy]);
+  }, [toggleSidebar, importBooks, reading, navigate, togglePrivacy, back]);
 
   const onHomeLoaded = useCallback((home: HomeViewModel) => setSync(home.sync), []);
   const openBook = useCallback((bookId: string, at?: string) => setReading({ bookId, at }), []);

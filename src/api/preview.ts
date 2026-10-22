@@ -14,6 +14,7 @@ import { cleanValue, DETAIL_FIELDS, previewFields } from "../lib/details";
 import { DESKTOP_ONLY } from "../ereaders/ereaders";
 import { importsViewOf } from "../imports/view";
 import type {
+  StoredFile,
   Audiobook,
   AudioChapter,
   DetailField,
@@ -515,6 +516,7 @@ export function previewApi(): Api {
       remove: Array.from({ length: 1290 }, (_, i) => `books/${i}.epub`),
       copyFirst: Array.from({ length: 416 }, (_, i) => `books/c${i}.epub`),
       lose: [],
+      covers: Array.from({ length: 7900 }, (_, i) => `covers/${i}.jpg`),
       bytes: 912_000_000,
     }),
     tidyCloud: async (onProgress) => {
@@ -524,6 +526,23 @@ export function previewApi(): Api {
       }
       onProgress({ done: 1706, total: 1706 });
       return { removed: 1706, copied: 416, failed: 0, stopped: false };
+    },
+    supabaseContents: async () => {
+      const titles = ["Dracula", "Carmilla", "The Valley of Fear", "Frankenstein", "The Turn of the Screw", "Uncle Silas"];
+      const files: StoredFile[] = titles.flatMap((title, i) => [
+        { path: `books/${i}.epub`, kind: "ebook" as const, bookId: `sha256:${i}`, title, bytes: 400_000 + i * 90_000, elsewhere: i % 3 !== 2 },
+        { path: `covers/${i}.jpg`, kind: "cover" as const, bookId: `sha256:${i}`, title, bytes: 92_000, elsewhere: true },
+      ]);
+      files.push(
+        { path: "books/a.pdf", kind: "document", bookId: "sha256:a", title: "Field notes", bytes: 2_300_000, elsewhere: true },
+        { path: "books/b.m4b", kind: "audiobook", bookId: "sha256:b", title: "Dracula (audiobook)", bytes: 41_000_000, elsewhere: false },
+        { path: "pictures/me.webp", kind: "picture", bookId: null, title: null, bytes: 30_000, elsewhere: true },
+      );
+      return files;
+    },
+    removeSupabaseFiles: async (paths, onProgress) => {
+      onProgress({ done: paths.length, total: paths.length });
+      return { removed: paths.length, failed: 0, stopped: false };
     },
     supabaseUsage: async () => ({
       fileBytes: 742_000_000,

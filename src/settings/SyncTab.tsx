@@ -13,6 +13,7 @@ import { AlsoSection } from "./AlsoSection";
 import { TidySection } from "./TidySection";
 import { HomeSection } from "./HomeSection";
 import { UsageSection } from "./UsageSection";
+import { ContentsSection } from "./ContentsSection";
 import { HardcoverSection } from "./HardcoverSection";
 import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
 import { PROVIDERS, type Provider } from "./providers";
@@ -266,6 +267,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
       {overview && !isWeb && <UsageSection overview={overview} />}
 
       {overview && !isWeb && <TidySection overview={overview} />}
+      {overview && !isWeb && <ContentsSection overview={overview} />}
       {!isWeb && <HomeSection />}
 
       <Section

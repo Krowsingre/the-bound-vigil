@@ -23,6 +23,8 @@ export interface EngineEvents {
   onAnnotationClick?: (cfi: string, rect: DOMRect) => void;
   /** Key presses inside the book's frames, which the window never sees. */
   onKey?: (event: KeyboardEvent) => void;
+  /** PDFs and comics: zoomed with Ctrl+wheel or two fingers, to this scale. */
+  onZoom?: (zoom: number) => void;
 }
 
 export interface ReaderEngine {
@@ -42,6 +44,12 @@ export interface ReaderEngine {
   deselect: () => void;
   /** The engine itself, for reading aloud. Null until a book is open. */
   getView: () => View | null;
+  /** PDFs, comics and other books of fixed pages, which zoom rather than reflow. */
+  fixed: boolean;
+  /** Fixed pages: the scale they're shown at now, 1 being their own size. */
+  scale: number;
+  /** Fixed pages: scrolls a little up or down (arrow keys). */
+  scrollStep: (direction: 1 | -1) => void;
 }
 
 const drawable = (a: Annotation) => a.kind !== "bookmark" && !!a.locator.cfi;
@@ -58,6 +66,15 @@ const isDarkPage = (colors: PageColors) => luminance(hexToRgb(colors.background)
 /** Styles inside the pages, and page layout around them. */
 function applyLayout(view: View, settings: ReaderSettings, colors: PageColors) {
   const r = view.renderer;
+  if (view.isFixedLayout) {
+    // Pages keep their own look; only their size and arrangement change.
+    const set = (name: string, value: string) => r.getAttribute(name) !== value && r.setAttribute(name, value);
+    set("zoom", String(settings.pageZoom));
+    set("spread", settings.pageSpread === "one" ? "none" : settings.pageSpread === "two" ? "both" : "auto");
+    set("flow", settings.pageFlow);
+    for (const { doc } of r.getContents?.() ?? []) fitTextToPage(doc, colors, isDarkPage(colors));
+    return;
+  }
   if (r.getAttribute("flow") !== settings.flow) r.setAttribute("flow", settings.flow);
   r.setAttribute("max-inline-size", `${WIDTHS[settings.width]}px`);
   r.setAttribute("max-column-count", "1");
@@ -91,6 +108,8 @@ export function useReaderEngine({
   const [relocation, setRelocation] = useState<Relocation | null>(null);
   const [toc, setToc] = useState<TocItem[]>([]);
   const [sectionStarts, setSectionStarts] = useState<number[]>([]);
+  const [fixed, setFixed] = useState(false);
+  const [scale, setScale] = useState(1);
 
   // Latest values, read from inside the engine's event handlers.
   const eventsRef = useRef(events);
@@ -186,6 +205,12 @@ export function useReaderEngine({
           if (doc) eventsRef.current.onAnnotationClick?.(value, windowRect(doc, range));
         });
 
+        if (v.isFixedLayout) {
+          v.renderer.addEventListener("scale", (e) => setScale((e as CustomEvent<{ scale: number }>).detail.scale));
+          v.renderer.addEventListener("zoom-change", (e) => eventsRef.current.onZoom?.((e as CustomEvent<{ zoom: number }>).detail.zoom));
+        }
+        setFixed(v.isFixedLayout);
+
         v.addEventListener("external-link", (e) => {
           // Links to websites open in the browser, never inside the reader.
           e.preventDefault();
@@ -219,10 +244,10 @@ export function useReaderEngine({
 
   // Reading settings changed while the book is open. The read aloud voice
   // and speed don't change the page, so they don't lay it out again.
-  const { font, size, lineHeight, width, flow, theme, justify } = settings;
+  const { font, size, lineHeight, width, flow, theme, justify, pageZoom, pageSpread, pageFlow } = settings;
   const look = useMemo(
-    () => ({ ...DEFAULT_SETTINGS, font, size, lineHeight, width, flow, theme, justify }),
-    [font, size, lineHeight, width, flow, theme, justify],
+    () => ({ ...DEFAULT_SETTINGS, font, size, lineHeight, width, flow, theme, justify, pageZoom, pageSpread, pageFlow }),
+    [font, size, lineHeight, width, flow, theme, justify, pageZoom, pageSpread, pageFlow],
   );
   useEffect(() => {
     const view = viewRef.current;
@@ -275,11 +300,27 @@ export function useReaderEngine({
       // Matches get a quiet slate outline rather than foliate's default red.
       return (async function* () {
         const { Overlayer } = await import("../vendor/foliate-js/overlayer.js");
-        yield* view.search({ query, draw: Overlayer.outline, drawOptions: { color: "#5f84ad", width: 2 } });
+        for await (const result of view.search({ query, draw: Overlayer.outline, drawOptions: { color: "#5f84ad", width: 2 } })) {
+          // PDF and comic matches are grouped by page, which is what readers look for there.
+          if (view.isFixedLayout && typeof result === "object" && "subitems" in result && result.subitems[0]) {
+            const index = view.resolveNavigation(result.subitems[0].cfi)?.index;
+            if (index != null) {
+              const page = `Page ${index + 1}`;
+              yield { ...result, label: result.label && result.label !== page ? `${page} · ${result.label}` : page };
+              continue;
+            }
+          }
+          yield result;
+        }
       })();
     }, []),
     clearSearch: useCallback(() => viewRef.current?.clearSearch(), []),
     deselect: useCallback(() => viewRef.current?.deselect(), []),
     getView: useCallback(() => viewRef.current, []),
+    fixed,
+    scale,
+    scrollStep: useCallback((direction: 1 | -1) => {
+      viewRef.current?.renderer.scrollStep?.(direction);
+    }, []),
   };
 }

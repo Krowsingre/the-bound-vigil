@@ -295,6 +295,8 @@ impl Library {
                     self.keep_file_details(book_id, &metadata.subjects, metadata.published.as_deref())?;
                 }
             }
+            // And the cover it came with, if one found online replaced it.
+            self.restore_cover(book_id)?;
         }
         Ok(())
     }
@@ -355,6 +357,49 @@ mod tests {
     use crate::epub::tests::write_test_epub;
     use crate::library::tests::open_temp_library;
     use crate::model::{ItemKind, LibraryQuery, SortOrder};
+
+    fn png() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        image::RgbImage::from_pixel(4, 6, image::Rgb([200, 40, 40]))
+            .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .unwrap();
+        bytes
+    }
+
+    fn cover(library: &Library, id: &BookId) -> Option<String> {
+        library.conn.query_row("SELECT cover_path FROM local_files WHERE book_id = ?1", params![id], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn a_cover_found_online_replaces_the_books_own_until_a_reset() {
+        let (dir, mut library) = open_temp_library();
+        let path = dir.path().join("Frankenstein.epub");
+        write_test_epub(&path, "Frankenstein", "Mary Shelley", true);
+        library.import_files(&[path]);
+        let id = library.home().unwrap().recently_added[0].id.clone();
+        let own = cover(&library, &id).unwrap();
+        let own_bytes = std::fs::read(&own).unwrap();
+
+        assert!(library.replace_cover(&id, &png()).unwrap());
+        let fetched = cover(&library, &id).unwrap();
+        assert_ne!(fetched, own);
+        assert!(!std::path::Path::new(&own).exists());
+        // A second one replaces the first, and the book's own is still kept.
+        assert!(library.replace_cover(&id, &png()).unwrap());
+        assert!(!std::path::Path::new(&fetched).exists());
+
+        library.reset_details(&id, true).unwrap();
+        assert_eq!(cover(&library, &id).as_deref(), Some(own.as_str()));
+        assert_eq!(std::fs::read(&own).unwrap(), own_bytes);
+        assert!(!library.restore_cover(&id).unwrap());
+
+        // A book that had none goes back to none.
+        let bare = import(&mut library, dir.path(), "Mathilda");
+        assert!(library.replace_cover(&bare, &png()).unwrap());
+        assert!(cover(&library, &bare).is_some());
+        library.reset_details(&bare, true).unwrap();
+        assert_eq!(cover(&library, &bare), None);
+    }
 
     fn import(library: &mut Library, dir: &std::path::Path, title: &str) -> BookId {
         let path = dir.join(format!("{title}.epub"));

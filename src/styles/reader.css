@@ -1117,3 +1117,74 @@
   background: var(--surface-sunk);
   color: var(--text);
 }
+
+/* Zoom for PDFs and comics: − size + */
+.reader-bottom.has-zoom {
+  grid-template-columns: auto minmax(120px, 1fr) auto minmax(0, max-content) auto auto;
+}
+
+.zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.zoom-value {
+  min-width: 76px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  font: 400 13px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.zoom-controls.is-compact .zoom-value {
+  min-width: 68px;
+  border-color: color-mix(in srgb, var(--page-muted) 30%, transparent);
+  background: transparent;
+  color: var(--page-text);
+}
+
+.zoom-controls.is-compact .zoom-value:hover {
+  background: color-mix(in srgb, var(--page-muted) 15%, transparent);
+}
+
+.text-settings .settings-hint {
+  margin: -6px 0 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+/* Phones: search opened from the menu, across the top of the page. */
+.reader-phone-search {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.reader-phone-search .reader-search {
+  flex: 1;
+  min-width: 0;
+}
+
+.reader-phone-search kbd {
+  display: none;
+}
+
+.reader-phone-search .reader-search-results {
+  width: auto;
+  right: 0;
+}

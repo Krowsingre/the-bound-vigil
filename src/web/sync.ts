@@ -18,6 +18,8 @@ const LAST_SUCCESS = "sync.last_success_at";
 const LAST_ERROR = "sync.last_error";
 const COVERS = "sync.covers";
 const BOOK_FILES = "sync.book_files";
+/** Which change of each book's cover the copy here is (see `cover_rev`). */
+const COVER_REVS = "sync.cover_revs";
 /** Pictures chosen here that the cloud doesn't have yet, by name. */
 const PICTURES_TO_SEND = "sync.pictures_to_send";
 
@@ -252,26 +254,41 @@ export class WebSync {
     this.covers = new Map(names.map((n) => [n.split(".")[0], n]));
     await this.db.setMeta(COVERS, JSON.stringify(Object.fromEntries(this.covers)));
     let added = 0;
+    // A cover changed on another device (its `cover_rev` detail moved on) comes down again.
+    const latest = new Map<string, string>();
+    for (const row of this.library.rows("metadata_fetched")) {
+      if (row.field === "cover_rev" && typeof row.value === "string") latest.set(String(row.book_id).replace(/^sha256:/, ""), row.value);
+    }
+    let revs: Record<string, string> = {};
+    try {
+      revs = JSON.parse(this.db.meta.get(COVER_REVS) ?? "{}");
+    } catch {
+      /* start afresh */
+    }
     // Newest books first, a few at once: a big library has thousands of covers.
     const wanted = [...this.library.books()]
       .sort((a, b) => String(b.added_at).localeCompare(String(a.added_at)))
       .map((book) => book.id.replace(/^sha256:/, ""))
-      .filter((hex) => this.covers.has(hex) && !this.coverUrls.has(hex));
+      .filter((hex) => this.covers.has(hex) && (!this.coverUrls.has(hex) || (revs[hex] ?? null) !== (latest.get(hex) ?? null)));
     const fetchOne = async (hex: string) => {
       const name = this.covers.get(hex)!;
       const blob = await cloud.download(`covers/${name}`);
       if (!blob) return;
       await this.db.putFile(`covers/${name}`, blob);
+      const old = this.coverUrls.get(hex);
+      if (old) URL.revokeObjectURL(old);
       this.coverUrls.set(hex, URL.createObjectURL(blob));
+      if (latest.has(hex)) revs[hex] = latest.get(hex)!;
       // Show covers as they arrive, a few at a time.
       if (++added % 24 === 0) this.library.changed();
     };
     let next = 0;
     await Promise.all(
-      Array.from({ length: 4 }, async () => {
+      Array.from({ length: 2 }, async () => {
         while (next < wanted.length) await fetchOne(wanted[next++]);
       }),
     );
+    await this.db.setMeta(COVER_REVS, JSON.stringify(revs));
     const avatar = this.library.row("profile", ["me"])?.avatar;
     const pictures = [
       ...(typeof avatar === "string" ? [`picture:${avatar}`] : []),

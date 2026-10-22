@@ -10,6 +10,7 @@ import { bookContextMenu, makeBookActions } from "../home/bookActions";
 import { BookGrid, BookList } from "../library/BookViews";
 import { authorLine, percent } from "../lib/format";
 import { Badge } from "./badges";
+import { CollectionSeries } from "./CollectionSeries";
 import { CollectionPicture } from "./CollectionCards";
 import { bookCount, KIND_LABEL, SMART_INFO } from "./collectionInfo";
 import { describeRules } from "./rules";
@@ -181,6 +182,8 @@ export function CollectionView({
           </div>
         )}
       </div>
+
+      <CollectionSeries collection={collection} books={detail.books} refreshKey={refreshKey + reload} onChanged={changed} />
 
       {detail.books.length === 0 ? (
         <div className="library-empty">

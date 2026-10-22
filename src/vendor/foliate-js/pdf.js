@@ -9,23 +9,70 @@ import annotationLayerBuilderCSS from './vendor/pdfjs/annotation_layer_builder.c
 const pdfjsPath = path => new URL(`${import.meta.env.BASE_URL}pdfjs/${path}`, location.href).toString()
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsPath('pdf.worker.min.mjs')
 
+// TBV: PDF sizes are in points (1/72 inch); pages are laid out in CSS pixels
+// (1/96 inch), so 100% is the page's real size, as in other PDF readers.
+const CSS_UNITS = 96 / 72
+
+// TBV: phones refuse canvases above about 16 million pixels (iPhone), so a
+// page zoomed far in is drawn a little softer rather than not at all.
+const MAX_CANVAS_PIXELS = 16_000_000
+
+// TBV: what each page's frame holds between drawings, so zooming draws the
+// picture again but keeps the text layer (where highlights are anchored).
+const drawn = new WeakMap()
+
 const render = async (page, doc, zoom) => {
-    const scale = zoom * devicePixelRatio
-    doc.documentElement.style.transform = `scale(${1 / devicePixelRatio})`
+    const state = drawn.get(doc) ?? {}
+    drawn.set(doc, state)
+    const token = state.token = (state.token ?? 0) + 1
+    state.task?.cancel()
+
+    const dpr = devicePixelRatio || 1
+    const cssViewport = page.getViewport({ scale: zoom * CSS_UNITS * dpr })
+    doc.documentElement.style.transform = `scale(${1 / dpr})`
     doc.documentElement.style.transformOrigin = 'top left'
-    doc.documentElement.style.setProperty('--scale-factor', scale)
-    const viewport = page.getViewport({ scale })
+    doc.documentElement.style.setProperty('--scale-factor', zoom * CSS_UNITS * dpr)
+
+    // The old picture is stretched to the new size until the new one is ready.
+    const old = doc.querySelector('#canvas canvas')
+    if (old) Object.assign(old.style, {
+        width: `${cssViewport.width}px`, height: `${cssViewport.height}px` })
+
+    const pixels = cssViewport.width * cssViewport.height
+    const shrink = pixels > MAX_CANVAS_PIXELS ? Math.sqrt(MAX_CANVAS_PIXELS / pixels) : 1
+    const viewport = shrink < 1
+        ? page.getViewport({ scale: zoom * CSS_UNITS * dpr * shrink }) : cssViewport
 
     // the canvas must be in the `PDFDocument`'s `ownerDocument`
     // (`globalThis.document` by default); that's where the fonts are loaded
     const canvas = document.createElement('canvas')
-    canvas.height = viewport.height
-    canvas.width = viewport.width
+    canvas.width = Math.floor(viewport.width)
+    canvas.height = Math.floor(viewport.height)
+    Object.assign(canvas.style, {
+        width: `${cssViewport.width}px`, height: `${cssViewport.height}px`, display: 'block' })
     const canvasContext = canvas.getContext('2d')
-    await page.render({ canvasContext, viewport }).promise
+    const task = state.task = page.render({ canvasContext, viewport })
+    try {
+        await task.promise
+    } catch (e) {
+        if (e?.name === 'RenderingCancelledException') return false
+        throw e
+    }
+    // A newer drawing (another zoom) has started; it will show instead.
+    if (token !== state.token) return false
+    state.task = null
     doc.querySelector('#canvas').replaceChildren(doc.adoptNode(canvas))
 
-    // TBV: a page drawn again (at a new size) starts from empty layers
+    // The text and link layers are built once, then only resized.
+    state.layers ??= buildLayers(page, doc, cssViewport)
+    const { textLayer, annotationLayer } = await state.layers
+    if (token !== state.token) return false
+    textLayer.update({ viewport: cssViewport })
+    annotationLayer.update({ viewport: cssViewport })
+    return true
+}
+
+const buildLayers = async (page, doc, viewport) => {
     const container = doc.querySelector('.textLayer')
     container.replaceChildren()
     const textLayer = new pdfjsLib.TextLayer({
@@ -62,13 +109,39 @@ const render = async (page, doc, zoom) => {
         getDestinationHash: dest => JSON.stringify(dest),
         addLinkAttributes: (link, url) => link.href = url,
     }
-    await new pdfjsLib.AnnotationLayer({ page, viewport, div, linkService })
-        .render({ annotations: await page.getAnnotations() })
+    const annotationLayer = new pdfjsLib.AnnotationLayer({ page, viewport, div, linkService })
+    await annotationLayer.render({ annotations: await page.getAnnotations() })
+    return { textLayer, annotationLayer }
+}
+
+// TBV: the page's words laid out as the text layer lays them out (spans,
+// and a line break where a line ends), without drawing anything. Search
+// reads these, and what it finds points at the same words on the page.
+const textDocument = async page => {
+    const doc = document.implementation.createHTMLDocument('')
+    const canvas = doc.createElement('div')
+    canvas.id = 'canvas'
+    const layer = doc.createElement('div')
+    layer.className = 'textLayer'
+    const annotations = doc.createElement('div')
+    annotations.className = 'annotationLayer'
+    doc.body.append(canvas, layer, annotations)
+    const { items } = await page.getTextContent()
+    for (const item of items) {
+        if (item.str === undefined) continue
+        if (item.str !== '') {
+            const span = doc.createElement('span')
+            span.textContent = item.str
+            layer.append(span)
+        }
+        if (item.hasEOL) layer.append(doc.createElement('br'))
+    }
+    return doc
 }
 
 const renderPage = async (page, getImageBlob) => {
-    const viewport = page.getViewport({ scale: 1 })
     if (getImageBlob) {
+        const viewport = page.getViewport({ scale: 1 })
         const canvas = document.createElement('canvas')
         canvas.height = viewport.height
         canvas.width = viewport.width
@@ -76,6 +149,7 @@ const renderPage = async (page, getImageBlob) => {
         await page.render({ canvasContext, viewport }).promise
         return new Promise(resolve => canvas.toBlob(resolve))
     }
+    const viewport = page.getViewport({ scale: CSS_UNITS })
     const src = URL.createObjectURL(new Blob([`
         <!DOCTYPE html>
         <html lang="en">
@@ -159,6 +233,7 @@ export const makePDF = async file => {
             return url
         },
         size: 1000,
+        createDocument: async () => textDocument(await pdf.getPage(i + 1)),
     }))
     book.isExternal = uri => /^\w+:/i.test(uri)
     book.resolveHref = async href => {

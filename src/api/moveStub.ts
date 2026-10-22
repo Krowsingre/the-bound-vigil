@@ -35,6 +35,8 @@ type MoveApi = Pick<
   | "planTidyCloud"
   | "tidyCloud"
   | "supabaseUsage"
+  | "supabaseContents"
+  | "removeSupabaseFiles"
 >;
 
 export function moveStub(): MoveApi {
@@ -56,5 +58,7 @@ export function moveStub(): MoveApi {
     planTidyCloud: tidyNo,
     tidyCloud: tidyNo,
     supabaseUsage: tidyNo,
+    supabaseContents: tidyNo,
+    removeSupabaseFiles: tidyNo,
   };
 }

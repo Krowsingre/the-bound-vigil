@@ -38,7 +38,7 @@ const MARK_DARK = "#8fa3b5";
 const SETTLE_MS = 350;
 
 export const NO_SPEECH = "Reading aloud isn't available in this browser.";
-export const FIXED_PAGES = "PDFs, comics and other fixed-page books can't be read aloud.";
+export const FIXED_PAGES = "Comics and other books made only of pictures can't be read aloud.";
 
 function useVoices(): SpeechSynthesisVoice[] {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => synth?.getVoices() ?? []);
@@ -108,7 +108,10 @@ export function useReadAloud({
   const [error, setError] = useState<string | null>(null);
 
   const view = ready ? getView() : null;
-  const unavailable = !synth ? NO_SPEECH : view?.isFixedLayout ? FIXED_PAGES : null;
+  // Fixed pages with words on them (PDFs, fixed-layout EPUBs) can be read;
+  // comics, made of pictures alone, can't.
+  const pictures = !!view?.isFixedLayout && !view.book.sections.some((x) => x.createDocument);
+  const unavailable = !synth ? NO_SPEECH : pictures ? FIXED_PAGES : null;
 
   // Everything below runs from speech and engine events, so it reads refs.
   const s = useRef({
@@ -176,7 +179,7 @@ export function useReadAloud({
     }
     // A sentence running onto the next page is read from this one, so the page
     // turns when the next sentence starts there.
-    if (!s.held && !wholeOnScreen(range, v.lastLocation?.range)) void move(() => v.renderer.scrollToAnchor?.(range));
+    if (!s.held && (v.isFixedLayout || !wholeOnScreen(range, v.lastLocation?.range))) void move(() => v.renderer.scrollToAnchor?.(range));
   };
 
   /** Where a sentence is, asked of the engine without highlighting it. */
@@ -226,10 +229,17 @@ export function useReadAloud({
   /** Takes in `first`, or the paragraphs after it, until one has something to say. */
   const advance = async (run: number, first?: string): Promise<boolean> => {
     let ssml = first;
+    // Scanned PDFs are pictures of pages, with no words to read: give up
+    // after a few empty pages rather than turning through the whole book.
+    let empty = 0;
     while (run === s.run) {
       if (take(ssml)) return true;
       ssml = s.tts?.next();
       if (ssml === undefined) {
+        if (opts.current.getView()?.isFixedLayout && ++empty > 3) {
+          setError("There are no words to read on these pages. A scanned PDF is pictures of pages, which can't be read aloud.");
+          return false;
+        }
         if (!(await nextSection(run))) return false;
         ssml = s.tts?.start();
       }

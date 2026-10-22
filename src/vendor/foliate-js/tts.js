@@ -269,7 +269,7 @@ export class TTS {
         return this.#speak(doc, ssml => this.#getMarkElement(ssml, mark))
     }
     setMark(mark) {
-        const range = this.#ranges.get(mark)
+        const range = this.#ranges?.get(mark)
         if (range) {
             this.#lastMark = mark
             this.highlight(range.cloneRange())

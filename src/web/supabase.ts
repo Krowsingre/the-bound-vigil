@@ -33,6 +33,41 @@ const SETUP_HINT = "TBV's tables aren't in this Supabase project yet. Run the se
 
 const now = () => Math.floor(Date.now() / 1000);
 
+/** Tries before giving up on a busy Supabase, waiting longer each time. */
+const BUSY_TRIES = 6;
+
+/**
+ * Whether an answer means "too busy, try again soon" rather than a real
+ * problem. Supabase's file service sometimes puts its real status (and
+ * "too many connections") inside a 400 or 500 answer's body.
+ */
+export async function busy(answer: Response): Promise<boolean> {
+  if ([429, 502, 503, 504, 544].includes(answer.status)) return true;
+  if (answer.status !== 400 && answer.status !== 500) return false;
+  const body = (await answer.clone().text().catch(() => "")).toLowerCase();
+  return ["too many connections", "timeout", "timed out", "rate limit", '"statuscode":"429"', '"statuscode":"503"', '"statuscode":"544"'].some((w) =>
+    body.includes(w),
+  );
+}
+
+// A few requests with Supabase at once: the free plan's file service shares a
+// small pool of database connections, and too many at once get turned away.
+const AT_ONCE = 3;
+let inFlight = 0;
+const waiting: (() => void)[] = [];
+function takeTurn(): Promise<void> {
+  if (inFlight < AT_ONCE) {
+    inFlight++;
+    return Promise.resolve();
+  }
+  return new Promise((go) => waiting.push(go));
+}
+function endTurn() {
+  const next = waiting.shift();
+  if (next) next();
+  else inFlight--;
+}
+
 async function send(url: string, init: RequestInit): Promise<Response> {
   try {
     return await fetch(url, init);
@@ -130,20 +165,30 @@ export class Supabase {
     return this.renewing;
   }
 
+  /** Waits and tries again when Supabase is too busy, rather than failing the whole sync. */
   private async call(path: string, init: RequestInit = {}): Promise<Response> {
     if (this.session.expiresAt - 60 < now()) await this.renew();
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const answer = await send(`${this.project.url}${path}`, {
-        ...init,
-        headers: { ...init.headers, apikey: this.project.anonKey, Authorization: `Bearer ${this.session.accessToken}` },
-      });
-      if (answer.status === 401 && attempt === 0) {
+    let renewed = false;
+    for (let tries = 1; ; tries++) {
+      await takeTurn();
+      let answer: Response;
+      try {
+        answer = await send(`${this.project.url}${path}`, {
+          ...init,
+          headers: { ...init.headers, apikey: this.project.anonKey, Authorization: `Bearer ${this.session.accessToken}` },
+        });
+      } finally {
+        endTurn();
+      }
+      if (answer.status === 401) {
+        if (renewed) throw new SignedOut("signed out");
+        renewed = true;
         await this.renew();
         continue;
       }
-      return answer;
+      if (tries >= BUSY_TRIES || !(await busy(answer))) return answer;
+      await new Promise((done) => setTimeout(done, 500 * 2 ** tries));
     }
-    throw new SignedOut("signed out");
   }
 
   async push(records: Record[]): Promise<void> {

@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isApp } from "../api";
 import type { BookDetails, BookPreview, DetailFieldName } from "../api/types";
+import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { AUDIO_ONLY, DETAIL_FIELDS, detailLabel, effective, isList, listOf } from "../lib/details";
@@ -93,6 +94,7 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
         }),
       ),
     );
+    // Offered for every book; ticked to start with only where there's none.
     setCover(Boolean(found.coverUrl && !book.coverPath && isApp));
   };
 
@@ -228,14 +230,14 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
                   </label>
                 );
               })}
-              {chosen.coverUrl && !book.coverPath && isApp && (
+              {chosen.coverUrl && isApp && (
                 <label className="fetch-row" role="row">
                   <span role="cell" className="fetch-field">
                     <input type="checkbox" checked={cover} onChange={(e) => setCover(e.target.checked)} />
                     Cover
                   </span>
                   <span role="cell" className="fetch-now">
-                    <em className="muted">None</em>
+                    {book.coverPath ? <BookCover book={book} size="s" /> : <em className="muted">None</em>}
                   </span>
                   <span role="cell" className="fetch-found">
                     <img className="fetch-cover" src={chosen.coverUrl} alt="" />

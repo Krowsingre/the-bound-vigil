@@ -66,6 +66,41 @@ pub(crate) fn title_key(title: &str) -> String {
     words[skip..].join(" ")
 }
 
+/// The number a title gives a book of a series: the main title's last word
+/// ("Dark City Girls 3"), and, as `tagged`, one marked anywhere ("Book 2",
+/// "Vol. 4", "#1").
+struct TitleNumber {
+    main: Option<u64>,
+    tagged: Option<u64>,
+}
+
+fn title_number(title: &str) -> TitleNumber {
+    let lower = title.to_lowercase();
+    let main_part = lower.split([':', '(', '[']).next().unwrap_or(&lower);
+    let main = main_part.split(|c: char| !c.is_alphanumeric()).rfind(|w| !w.is_empty()).and_then(|w| w.parse().ok());
+    let words: Vec<&str> = lower.split(|c: char| !c.is_alphanumeric() && c != '#').filter(|w| !w.is_empty()).collect();
+    let mut tagged = None;
+    for (i, word) in words.iter().enumerate() {
+        if let Some(n) = word.strip_prefix('#').and_then(|n| n.parse().ok()) {
+            tagged = Some(n);
+        } else if matches!(*word, "book" | "volume" | "vol" | "part" | "no" | "tome" | "episode") {
+            if let Some(n) = words.get(i + 1).and_then(|n| n.trim_start_matches('#').parse().ok()) {
+                tagged = Some(n);
+            }
+        }
+    }
+    TitleNumber { main, tagged: tagged.or(main) }
+}
+
+/// Whether two titles name different books of a series by their numbers:
+/// "Dark City Girls" and "Dark City Girls 3", or "Saga: Book 2" and
+/// "Saga: Book 3". A number only one of them marks in brackets ("(Discworld
+/// #1)") doesn't count.
+pub(crate) fn numbered_apart(a: &str, b: &str) -> bool {
+    let (a, b) = (title_number(a), title_number(b));
+    a.main != b.main || matches!((a.tagged, b.tagged), (Some(x), Some(y)) if x != y)
+}
+
 /// The first author's surname, as it compares with others.
 pub(crate) fn author_key(authors: &[String]) -> String {
     let first = authors.first().map(String::as_str).unwrap_or_default();
@@ -375,6 +410,23 @@ impl Library {
                 .into_values()
                 .map(|g| (g, "The same title and author")),
         );
+        // Books of one series that share a title apart from their number
+        // aren't duplicates, so a group splits by number.
+        let apart = |i: usize, j: usize| {
+            let (a, b) = (&rows[i].0, &rows[j].0);
+            numbered_apart(&a.title, &b.title)
+                || matches!((a.series_index, b.series_index), (Some(x), Some(y)) if (x - y).abs() > 1e-6)
+        };
+        let candidates = candidates.flat_map(|(members, reason)| {
+            let mut parts: Vec<Vec<usize>> = Vec::new();
+            for i in members {
+                match parts.iter_mut().find(|p| p.iter().all(|&j| !apart(i, j))) {
+                    Some(part) => part.push(i),
+                    None => parts.push(vec![i]),
+                }
+            }
+            parts.into_iter().map(move |p| (p, reason))
+        });
         for (members, reason) in candidates {
             if members.len() < 2 || !seen.insert(members.clone()) {
                 continue;
@@ -586,6 +638,18 @@ mod tests {
         assert_eq!(groups[0].books.len(), 2);
         library.dismiss_duplicates(&groups[0].key).unwrap();
         assert!(library.find_duplicates().unwrap().is_empty());
+    }
+
+    #[test]
+    fn book_numbers_keep_a_series_apart() {
+        assert!(numbered_apart("Dark City Girls 2", "Dark City Girls 3"));
+        assert!(numbered_apart("Dark City Girls", "Dark City Girls 3: An Urban Fantasy"));
+        assert!(numbered_apart("Saga: Book 2", "Saga: Book 3"));
+        assert!(numbered_apart("Saga (Vol. 1)", "Saga (Vol. 2)"));
+        assert!(!numbered_apart("Dark City Girls 3: An Urban Fantasy", "Dark City Girls 3"));
+        assert!(!numbered_apart("The Colour of Magic", "The Colour of Magic (Discworld #1)"));
+        assert!(!numbered_apart("Dracula", "Dracula (1897)"));
+        assert!(!numbered_apart("Catch-22", "Catch-22: A Novel"));
     }
 
     #[test]

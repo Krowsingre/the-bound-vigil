@@ -29,7 +29,7 @@ export type SearchResult =
 export interface FoliateBook {
   metadata?: { title?: unknown; author?: unknown; language?: unknown };
   toc?: TocItem[];
-  sections: { id?: string; linear?: string }[];
+  sections: { id?: string; linear?: string; createDocument?(): Promise<Document> }[];
   dir?: string;
   splitTOCHref?(href: string): [string, unknown];
   resolveHref(href: string): { index: number; anchor?: unknown } | null;
@@ -48,6 +48,8 @@ export interface Paginator extends HTMLElement {
   /** Brings a range into view, a page turn or scroll if needed. */
   scrollToAnchor?(anchor: Range | Element, select?: boolean): Promise<void>;
   nextSection?(): Promise<void>;
+  /** Fixed-layout pages only: scrolls a little, for the arrow keys. */
+  scrollStep?(direction: number): void;
   /** Shows a section, at a fraction of the way through it or at a range. */
   goTo(target: { index: number; anchor?: number | ((doc: Document) => Range) }): Promise<void>;
 }
