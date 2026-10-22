@@ -550,15 +550,16 @@ pub fn book_places(library: &Arc<Mutex<Library>>) -> tbv_core::Result<core_sync:
     };
     let check = |cloud: tbv_core::Result<Option<Cloud>>| -> (Option<std::collections::HashSet<String>>, Option<String>) {
         match cloud {
-            Ok(Some(mut cloud)) => match core_sync::places::held(&mut cloud) {
-                Ok(held) => {
-                    if let Ok(l) = library.lock() {
-                        keep_session(&l, &cloud, &Ok::<(), Error>(()));
-                    }
-                    (Some(held), None)
+            Ok(Some(mut cloud)) => {
+                let held = core_sync::places::held(&mut cloud);
+                if let Ok(l) = library.lock() {
+                    keep_session(&l, &cloud, &held);
                 }
-                Err(e) => (None, Some(e.to_string())),
-            },
+                match held {
+                    Ok(held) => (Some(held), None),
+                    Err(e) => (None, Some(e.to_string())),
+                }
+            }
             Ok(None) => (None, Some("Not signed in.".into())),
             Err(e) => (None, Some(e.to_string())),
         }
@@ -566,7 +567,15 @@ pub fn book_places(library: &Arc<Mutex<Library>>) -> tbv_core::Result<core_sync:
     let (main_held, main_problem) = if main_provider == Provider::Off {
         (None, None)
     } else {
-        let cloud = library.lock().map_err(|_| unavailable()).and_then(|l| connect(library, &l));
+        // A folder or WebDAV server is opened with the library free, as sync does:
+        // a slow server mustn't hold up the rest of the app.
+        let cloud = match &main_provider {
+            Provider::Supabase => library.lock().map_err(|_| unavailable()).and_then(|l| connect(library, &l)),
+            other => {
+                let device = library.lock().map_err(|_| unavailable()).and_then(|l| l.device_id())?;
+                core_sync::open_files(other, device).map(|(files, _)| Some(Cloud::Files(files)))
+            }
+        };
         check(cloud)
     };
     let (also_held, also_problem) = match &also_provider {

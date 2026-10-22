@@ -42,6 +42,8 @@ const KEEP = (key: string) => !key.startsWith("sync.") || key === DEVICE || key 
 export class WebSync {
   private running: Promise<void> | null = null;
   private again = false;
+  /** The link to the audiobook last joined from its pieces, for playing. */
+  private joinedUrl: string | null = null;
   /** Asked to sync by the person: the cloud's file lists are read too. */
   private full = false;
   private soon: ReturnType<typeof setTimeout> | undefined;
@@ -385,7 +387,12 @@ export class WebSync {
     const path = `books/${id.replace(/^sha256:/, "")}.${format}`;
     const url = await cloud.signedUrl(path, 6 * 60 * 60);
     // Over 50 MB, it's kept in pieces: they're fetched and joined here first.
-    if (!url && (await cloud.piecesOf(path))) return URL.createObjectURL(await this.bookFile(id, format));
+    if (!url && (await cloud.piecesOf(path))) {
+      // One joined audiobook held at a time: the last one's memory is let go.
+      if (this.joinedUrl) URL.revokeObjectURL(this.joinedUrl);
+      this.joinedUrl = URL.createObjectURL(await this.bookFile(id, format));
+      return this.joinedUrl;
+    }
     if (!url)
       throw new Error(
         "This audiobook's file isn't in Supabase. On the computer that has it, turn on Settings › Sync › Sync audiobook files, and let it sync.",
