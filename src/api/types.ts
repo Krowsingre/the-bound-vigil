@@ -6,6 +6,14 @@ export type IsoUtc = string;
 export type ReadStatus = "unread" | "in_progress" | "read";
 export type Availability = "local" | "cloud" | "missing";
 
+/** One file of a book: its own, or a copy kept with it. */
+export interface BookFile {
+  id: string;
+  format: string;
+  size: number;
+  downloaded: boolean;
+}
+
 export interface ReaderLocator {
   href?: string;
   cfi?: string;

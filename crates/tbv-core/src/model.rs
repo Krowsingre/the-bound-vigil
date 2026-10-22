@@ -48,6 +48,16 @@ pub enum Availability {
     Missing,
 }
 
+/// One file of a book: its own, or a copy kept with it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BookFile {
+    pub id: BookId,
+    pub format: String,
+    pub size: u64,
+    pub downloaded: bool,
+}
+
 /// A layout-independent reading position. Never a pixel offset.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

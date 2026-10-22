@@ -428,6 +428,11 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE writing_chapters ADD COLUMN role TEXT NOT NULL DEFAULT 'chapter';
     "#,
+    // v21: copies of one book kept together. A copy with `same_as` set is
+    // another file of that book and isn't listed on its own.
+    r#"
+    ALTER TABLE books ADD COLUMN same_as TEXT;
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

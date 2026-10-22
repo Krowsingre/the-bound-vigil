@@ -73,7 +73,7 @@ pub(crate) const BOOK_FROM: &str = r#"
     LEFT JOIN metadata_fetched f_publisher ON f_publisher.book_id = b.id AND f_publisher.field = 'publisher'
     LEFT JOIN metadata_fetched f_language ON f_language.book_id = b.id AND f_language.field = 'language'
     LEFT JOIN metadata_fetched f_genres ON f_genres.book_id = b.id AND f_genres.field = 'genres'
-    WHERE b.deleted_at IS NULL
+    WHERE b.deleted_at IS NULL AND b.same_as IS NULL
 "#;
 
 /// Effective publisher and language, for rules and the reader.
@@ -139,7 +139,7 @@ impl Library {
                     COALESCE(SUM(status = 'unread'), 0),
                     COALESCE(SUM(status = 'in_progress'), 0),
                     COALESCE(SUM(status = 'read'), 0)
-             FROM books WHERE deleted_at IS NULL",
+             FROM books WHERE deleted_at IS NULL AND same_as IS NULL",
             [],
             |r| {
                 Ok(LibraryCounts {
@@ -161,7 +161,7 @@ impl Library {
         let mut statement = self.conn.prepare(
             "SELECT c.id, c.name,
                     (SELECT COUNT(*) FROM collection_books cb JOIN books b ON b.id = cb.book_id
-                     WHERE cb.collection_id = c.id AND cb.removed_at IS NULL AND b.deleted_at IS NULL)
+                     WHERE cb.collection_id = c.id AND cb.removed_at IS NULL AND b.deleted_at IS NULL AND b.same_as IS NULL)
              FROM collections c WHERE c.deleted_at IS NULL AND c.kind != 'shelf'
              ORDER BY c.created_at DESC LIMIT ?1",
         )?;

@@ -46,6 +46,9 @@ function facts(b: DuplicateBook) {
 }
 
 /** A set can be helped when its covers differ in size, or some copies have none. */
+/** Copies in different formats can be one book with several files. */
+const canKeepTogether = (g: DuplicateGroup) => setFormats(g).length > 1;
+
 function canShareCover(g: DuplicateGroup) {
   const areas = g.books.map((b) => (b.coverSize ? b.coverSize[0] * b.coverSize[1] : 0));
   return Math.max(...areas) > 0 && areas.some((a) => a < Math.max(...areas));
@@ -140,6 +143,23 @@ export function DuplicatesDialog({ groups: start, onClose }: { groups: Duplicate
       }),
     );
     toast(failed ? `Deleted ${copies(done - failed)}; ${copies(failed)} couldn't be deleted.` : `Deleted ${copies(done)}.`);
+  };
+
+  const keepTogether = async (list: DuplicateGroup[]) => {
+    const { done, failed } = await run(
+      "Keeping each set together as one book",
+      list.map((g) => async () => {
+        const main = keeperAfter(g, [], order);
+        if (main) await api.keepTogether(main.id, g.books.filter((b) => b.id !== main.id).map((b) => b.id));
+      }),
+    );
+    toast(
+      failed
+        ? `Kept ${sets(done - failed)} together; ${sets(failed)} couldn't be.`
+        : list.length === 1
+          ? "Kept together as one book. Its formats are listed in its details."
+          : `Kept ${sets(done)} together, each as one book.`,
+    );
   };
 
   const dismiss = (g: DuplicateGroup) =>
@@ -251,6 +271,16 @@ export function DuplicatesDialog({ groups: start, onClose }: { groups: Duplicate
                     <button type="button" className="btn btn-primary btn-small" onClick={() => setView("cleanup")}>
                       <Icon name="check" size={14} /> Clean up by rule…
                     </button>
+                    {shown.some(canKeepTogether) && (
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-small"
+                        title="Each set becomes one book with a file per format, sharing its notes, highlights and place"
+                        onClick={() => void keepTogether(shown.filter(canKeepTogether))}
+                      >
+                        <Icon name="link" size={14} /> Keep every set together
+                      </button>
+                    )}
                     {shown.some(canShareCover) && (
                       <button type="button" className="btn btn-quiet btn-small" onClick={() => void shareCovers(shown.filter(canShareCover))}>
                         <Icon name="image" size={14} /> Sharpest cover for every set
@@ -289,6 +319,16 @@ export function DuplicatesDialog({ groups: start, onClose }: { groups: Duplicate
                         onClick={() => void shareCovers([g])}
                       >
                         Use the sharpest cover
+                      </button>
+                    )}
+                    {canKeepTogether(g) && (
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-small"
+                        title="One book with a file per format, sharing its notes, highlights and place"
+                        onClick={() => void keepTogether([g])}
+                      >
+                        Keep together
                       </button>
                     )}
                     <button type="button" className="btn btn-quiet btn-small" onClick={() => dismiss(g)}>

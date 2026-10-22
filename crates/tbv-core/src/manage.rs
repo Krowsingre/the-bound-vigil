@@ -283,6 +283,15 @@ impl Library {
         if !self.book_exists(book_id)? {
             return Ok(());
         }
+        // Copies kept with it are files of the same book, so they go too.
+        let kept: Vec<String> = {
+            let mut statement = self.conn.prepare("SELECT id FROM books WHERE same_as = ?1 AND deleted_at IS NULL")?;
+            let rows = statement.query_map(params![book_id], |r| r.get(0))?;
+            rows.collect::<std::result::Result<_, _>>()?
+        };
+        for id in kept {
+            self.remove_from_library(&id)?;
+        }
         let copy = self.own_copy(book_id)?;
         let tx = self.conn.unchecked_transaction()?;
         tx.execute("UPDATE books SET deleted_at = ?2 WHERE id = ?1", params![book_id, now_utc()])?;
@@ -301,6 +310,15 @@ impl Library {
     pub fn delete_book(&self, book_id: &str) -> Result<()> {
         if !self.book_exists(book_id)? {
             return Ok(());
+        }
+        // Copies kept with it are files of the same book, so they go too.
+        let kept: Vec<String> = {
+            let mut statement = self.conn.prepare("SELECT id FROM books WHERE same_as = ?1 AND deleted_at IS NULL")?;
+            let rows = statement.query_map(params![book_id], |r| r.get(0))?;
+            rows.collect::<std::result::Result<_, _>>()?
+        };
+        for id in kept {
+            self.delete_book(&id)?;
         }
         let copy = self.own_copy(book_id)?;
         self.erase_from_cloud(book_id)?;
@@ -556,10 +574,9 @@ impl Library {
             let Ok(mut place) = serde_json::from_str::<crate::model::ReaderLocator>(locator) else {
                 return locator.to_string();
             };
+            // The CFI only finds the place in that format's file; the reader checks.
             if place.format.is_none() {
                 place.format = Some(f.format.clone());
-                place.cfi = None;
-                place.href = None;
             }
             serde_json::to_string(&place).unwrap_or_else(|_| locator.to_string())
         };
@@ -635,6 +652,52 @@ impl Library {
         tx.commit()?;
         Ok(())
     }
+
+    /// Makes `others` more files of `main`: their notes, highlights and
+    /// places move to it, and they stop being listed on their own.
+    pub fn keep_together(&self, main: &str, others: &[BookId]) -> Result<()> {
+        if !self.book_exists(main)? {
+            return Ok(());
+        }
+        // A copy kept with another book is kept with that book's main copy.
+        let main: String = self
+            .conn
+            .query_row("SELECT COALESCE(same_as, id) FROM books WHERE id = ?1", params![main], |r| r.get(0))?;
+        for other in others {
+            if *other == main || !self.book_exists(other)? {
+                continue;
+            }
+            self.merge_reading_into(&main, other)?;
+            let tx = self.conn.unchecked_transaction()?;
+            // Copies already kept with this one come along.
+            tx.execute("UPDATE books SET same_as = ?1 WHERE same_as = ?2 AND deleted_at IS NULL", params![main, other])?;
+            tx.execute("UPDATE books SET same_as = ?1 WHERE id = ?2", params![main, other])?;
+            tx.execute("UPDATE books SET same_as = NULL WHERE id = ?1", params![main])?;
+            tx.commit()?;
+        }
+        Ok(())
+    }
+
+    /// Lists a copy kept with another book on its own again. Notes and
+    /// places stay with the book they were moved to.
+    pub fn keep_apart(&self, copy: &str) -> Result<()> {
+        self.conn.execute("UPDATE books SET same_as = NULL WHERE id = ?1", params![copy])?;
+        Ok(())
+    }
+
+    /// A book's files: its own first, then the copies kept with it.
+    pub fn book_files(&self, book_id: &str) -> Result<Vec<crate::model::BookFile>> {
+        let mut statement = self.conn.prepare(
+            "SELECT b.id, lower(b.format), b.file_size, lf.path IS NOT NULL AND lf.path != ''
+             FROM books b LEFT JOIN local_files lf ON lf.book_id = b.id
+             WHERE (b.id = ?1 OR b.same_as = ?1) AND b.deleted_at IS NULL
+             ORDER BY b.id != ?1, b.format, b.id",
+        )?;
+        let rows = statement.query_map(params![book_id], |r| {
+            Ok(crate::model::BookFile { id: r.get(0)?, format: r.get(1)?, size: r.get(2)?, downloaded: r.get(3)? })
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
 }
 
 #[cfg(test)]
@@ -658,6 +721,41 @@ mod tests {
             ImportResult::Imported { book_id, .. } => book_id,
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn copies_kept_together_are_one_book_with_several_files() {
+        let (dir, mut library) = open_temp_library();
+        let main = add(&mut library, dir.path(), "a", "Carmilla", "Le Fanu", "");
+        let pdf = add(&mut library, dir.path(), "b", "Carmilla", "Le Fanu", "<p>other</p>");
+        library.conn.execute("UPDATE books SET format = 'pdf' WHERE id = ?1", params![pdf]).unwrap();
+        let place: crate::model::ReaderLocator =
+            serde_json::from_value(serde_json::json!({ "cfi": "epubcfi(/6/4!/4/2)", "totalProgression": 0.4 })).unwrap();
+        library.open_book(&pdf).unwrap();
+        library.save_position(&pdf, &place).unwrap();
+
+        library.keep_together(&main, std::slice::from_ref(&pdf)).unwrap();
+
+        let page = library.library_page(&LibraryQuery::default()).unwrap();
+        assert_eq!((page.total, page.books[0].id.clone()), (1, main.clone()));
+        assert_eq!(page.books[0].total_progression, Some(0.4));
+        // The place keeps its CFI, marked as the PDF's.
+        let resume = page.books[0].resume_locator.clone().unwrap();
+        assert_eq!((resume.cfi.as_deref(), resume.format.as_deref()), (Some("epubcfi(/6/4!/4/2)"), Some("pdf")));
+        let formats: Vec<String> = library.book_files(&main).unwrap().into_iter().map(|f| f.format).collect();
+        assert_eq!(formats, ["epub", "pdf"]);
+        // Asking for PDFs finds the book that has one.
+        let pdfs = library.library_page(&LibraryQuery { formats: vec!["pdf".into()], ..Default::default() }).unwrap();
+        assert_eq!(pdfs.total, 1);
+        assert!(library.find_duplicates().unwrap().is_empty());
+
+        library.keep_apart(&pdf).unwrap();
+        assert_eq!(library.library_page(&LibraryQuery::default()).unwrap().total, 2);
+        library.keep_together(&main, std::slice::from_ref(&pdf)).unwrap();
+        // Deleting the book deletes all its files.
+        library.delete_book(&main).unwrap();
+        let left: i64 = library.conn.query_row("SELECT COUNT(*) FROM books WHERE deleted_at IS NULL", [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0);
     }
 
     #[test]
@@ -689,8 +787,8 @@ mod tests {
         let marks = library.book_annotations(&keep).unwrap();
         assert_eq!(marks.len(), 1);
         assert_eq!(marks[0].note.as_deref(), Some("Mine"));
-        // Marked in the PDF: no CFI, but the page, fraction and words, and where it came from.
-        assert_eq!((marks[0].locator.cfi.as_deref(), marks[0].locator.format.as_deref(), marks[0].locator.page_index), (None, Some("pdf"), Some(41)));
+        // Marked in the PDF: the page, fraction and words, and which file the CFI belongs to.
+        assert_eq!((marks[0].locator.format.as_deref(), marks[0].locator.page_index), (Some("pdf"), Some(41)));
         assert!(library.book_annotations(&from).unwrap().is_empty());
         let (progress, rating, status): (Option<f64>, Option<u8>, String) = library
             .conn

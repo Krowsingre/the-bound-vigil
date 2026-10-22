@@ -5,6 +5,7 @@
 import { homeAudioUrl, homeCore, homeEvents } from "./homeCore";
 import type { Found } from "../lib/onlineDetails";
 import type {
+  BookFile,
   CatalogInput,
   CatalogView,
   OpdsFeed,
@@ -266,6 +267,12 @@ export interface Api {
   deleteBook(bookId: string): Promise<void>;
   /** Moves your notes, highlights, place, rating, tags and collections from one copy of a book to another. */
   mergeReading(keepId: string, fromId: string): Promise<void>;
+  /** Makes other copies more files of one book: their notes and places move to it and they're no longer listed apart. */
+  keepTogether(mainId: string, otherIds: string[]): Promise<void>;
+  /** Lists a copy kept with another book on its own again. */
+  keepApart(bookId: string): Promise<void>;
+  /** A book's files: its own first, then copies kept with it. */
+  bookFiles(bookId: string): Promise<BookFile[]>;
   /** Takes a book out of the library, keeping its notes and cloud file for when it's imported again. */
   removeFromLibrary(bookId: string): Promise<void>;
   /** Saves copies of the books, named "Title - Author", into a folder chosen now. Null if none was chosen. */
@@ -716,6 +723,9 @@ function appApi(): Api {
     setBookTags: async (bookId, tags) => (await core).invoke("set_book_tags", { bookId, tags }),
     deleteBook: async (bookId) => (await core).invoke("delete_book", { bookId }),
     mergeReading: async (keepId, fromId) => (await core).invoke("merge_reading", { keepId, fromId }),
+    keepTogether: async (mainId, otherIds) => (await core).invoke("keep_together", { mainId, otherIds }),
+    keepApart: async (bookId) => (await core).invoke("keep_apart", { bookId }),
+    bookFiles: async (bookId) => (await core).invoke<BookFile[]>("book_files", { bookId }),
     removeFromLibrary: async (bookId) => (await core).invoke("remove_from_library", { bookId }),
     saveCopies: async (bookIds) => {
       const picked = isIOS

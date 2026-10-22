@@ -1085,6 +1085,22 @@ async fn merge_reading(state: State<'_, AppLibrary>, keep_id: String, from_id: S
     with_library(state, move |library| library.merge_reading_into(&keep_id, &from_id)).await
 }
 
+/// Makes copies more files of one book, listed as that book.
+#[tauri::command]
+async fn keep_together(state: State<'_, AppLibrary>, main_id: String, other_ids: Vec<String>) -> CommandResult<()> {
+    with_library(state, move |library| library.keep_together(&main_id, &other_ids)).await
+}
+
+#[tauri::command]
+async fn keep_apart(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.keep_apart(&book_id)).await
+}
+
+#[tauri::command]
+async fn book_files(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<Vec<tbv_core::model::BookFile>> {
+    with_library(state, move |library| library.book_files(&book_id)).await
+}
+
 #[tauri::command]
 async fn remove_download(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
     with_library(state, move |library| library.remove_download(&book_id)).await
@@ -1696,6 +1712,9 @@ pub fn run() {
             remove_from_library,
             save_copies,
             merge_reading,
+            keep_together,
+            keep_apart,
+            book_files,
             find_duplicates,
             find_series_books,
             prepare_stream,

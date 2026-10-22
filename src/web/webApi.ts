@@ -234,7 +234,7 @@ export async function webApi(): Promise<Api> {
 
   const books = (): BookPreview[] => {
     const edits = overrides();
-    return library.books().map((b) => preview(b, edits.get(b.id)));
+    return library.listed().map((b) => preview(b, edits.get(b.id)));
   };
   const bookById = () => new Map(books().map((b) => [b.id as string, b]));
   const find = (id: string) => {
@@ -1012,7 +1012,7 @@ export async function webApi(): Promise<Api> {
     libraryInfo: async () => {
       let bytes = 0;
       for (const p of await db.filePaths()) bytes += (await db.getFile(p))?.size ?? 0;
-      return { database: "This browser", booksDir: "This browser", schemaVersion: 8, bookCount: library.books().length, databaseBytes: 0, booksBytes: bytes };
+      return { database: "This browser", booksDir: "This browser", schemaVersion: 8, bookCount: library.listed().length, databaseBytes: 0, booksBytes: bytes };
     },
     exportLibrary: async () => {
       throw new Error(DESKTOP_ONLY);
@@ -1085,6 +1085,16 @@ export async function webApi(): Promise<Api> {
     },
     // The preview and the web version leave this to TBV on the computer, where duplicates are cleaned up.
     mergeReading: async () => undefined,
+    keepTogether: async () => {
+      throw new Error("Keep copies together on your computer.");
+    },
+    keepApart: async (bookId) => library.write("book_same", { ...find(bookId), same_as: null }),
+    bookFiles: async (bookId) =>
+      library
+        .books()
+        .filter((b) => b.id === bookId || b.same_as === bookId)
+        .sort((a, b) => Number(a.id !== bookId) - Number(b.id !== bookId) || a.format.localeCompare(b.format))
+        .map((b) => ({ id: b.id, format: b.format.toLowerCase(), size: b.file_size ?? 0, downloaded: downloaded.has(b.id.replace(/^sha256:/, "")) })),
     deleteBook: async (bookId) => {
       const b = find(bookId);
       const at = now();

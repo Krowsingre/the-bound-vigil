@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-import type { BookDetails, DetailField, DetailFieldName } from "../api/types";
+import type { BookDetails, BookFile, DetailField, DetailFieldName } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
 import { BookCover } from "../components/BookCover";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -18,6 +18,7 @@ import { effective, listOf } from "../lib/details";
 import { formatLength, formatLabel, isAudio, isDocument } from "../lib/queryBooks";
 import { formatBytes } from "../settings/controls";
 import { askEditDetails, askFetchDetails } from "./openDetails";
+import { FormatsRow } from "./FormatsRow";
 import { PairRow } from "./PairRow";
 import { SeriesRow } from "./SeriesRow";
 
@@ -44,7 +45,8 @@ export function BookDetailsPage({
   bookId: string;
   refreshKey: number;
   onBack: () => void;
-  onOpenBook: (bookId: string) => void;
+  /** Opens the book; `fileId` picks one of its files when copies are kept together. */
+  onOpenBook: (bookId: string, at?: string, fileId?: string) => void;
   onOpenCollection: (id: string) => void;
   /** Shows the Library (or Documents) filtered to one genre. */
   onOpenLibrary: (genre: string, documents: boolean) => void;
@@ -56,11 +58,22 @@ export function BookDetailsPage({
   const refresh = () => setReload((n) => n + 1);
   const actions = useMemo(() => makeBookActions(api, toast, () => setReload((n) => n + 1), onOpenBook), [toast, onOpenBook]);
 
+  const [files, setFiles] = useState<BookFile[]>([]);
   useEffect(() => {
     let current = true;
     api.bookDetails(bookId).then(
       (data) => current && setLoad({ state: "ready", data }),
       (e: unknown) => current && setLoad({ state: "error", message: String(e) }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [bookId, refreshKey, reload]);
+  useEffect(() => {
+    let current = true;
+    api.bookFiles(bookId).then(
+      (list) => current && setFiles(list),
+      () => current && setFiles([]),
     );
     return () => {
       current = false;
@@ -110,8 +123,9 @@ export function BookDetailsPage({
           ["Length", formatLength(book.durationMs), null],
         ] as [string, string | null, DetailFieldName | null][])
       : []),
-    ["Format", formatLabel(book.format), null],
-    ["File size", fileSize ? formatBytes(fileSize) : null, null],
+    // Several files are listed under Formats instead.
+    ["Format", files.length > 1 ? null : formatLabel(book.format), null],
+    ["File size", fileSize && files.length <= 1 ? formatBytes(fileSize) : null, null],
     ["Added", new Date(book.addedAt).toLocaleDateString(), null],
     ["Finished", book.finishedAt ? new Date(book.finishedAt).toLocaleDateString() : null, null],
     [
@@ -252,6 +266,7 @@ export function BookDetailsPage({
                     </dd>
                   </div>
                 ))}
+              {files.length > 1 && <FormatsRow bookId={book.id} files={files} onOpen={(fileId) => onOpenBook(book.id, undefined, fileId)} onChanged={refresh} />}
               <PairRow book={book} refreshKey={refreshKey + reload} />
             </dl>
           </section>

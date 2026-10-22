@@ -101,6 +101,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: false,
     },
     Kind {
+        name: "book_same",
+        table: "books",
+        keys: &["id"],
+        cols: &["same_as"],
+        category: Category::Library,
+        creates: false,
+    },
+    Kind {
         name: "book_shelves",
         table: "books",
         keys: &["id"],
@@ -1385,6 +1393,7 @@ impl Library {
             "book_progress" => format!("Reading progress{}", book(key.first())?),
             "book_shelves" => format!("Favourite and To be read{}", book(key.first())?),
             "book_phone" => format!("Whether the phone has it{}", book(key.first())?),
+            "book_same" => format!("Copies kept together{}", book(key.first())?),
             "override" => format!("A corrected detail{}", book(key.first())?),
             "fetched" => format!("A detail found online{}", book(key.first())?),
             "audiobook" => format!("Chapters and narrators{}", book(key.first())?),
@@ -1878,6 +1887,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
                 "Not on the phone".into()
             }
         }
+        "book_same" => if text("same_as").is_empty() { "A book of its own".into() } else { "Kept with another copy".into() },
         "book" => short(text("title")),
         "override" | "fetched" => short(text("value")),
         "audiobook" => if data.get("ebook_id").and_then(|v| v.as_str()).is_some_and(|v| !v.is_empty()) { "Linked to its ebook".into() } else { "Chapters and narrators".into() },

@@ -126,6 +126,14 @@
   margin: 2px 0 0;
 }
 
+/* A book's files, one per line, when copies are kept together. */
+.details-format {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
 /* Editing details */
 .details-dialog,
 .fetch-dialog {

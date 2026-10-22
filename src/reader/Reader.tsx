@@ -62,11 +62,14 @@ const isTyping = (target: EventTarget | null) =>
 /** The reading screen. It replaces the sidebar and header while a book is open. */
 export function Reader({
   bookId,
+  fileId,
   openAt,
   shell,
   onClose,
 }: {
   bookId: string;
+  /** One of the book's files, when copies in other formats are kept with it. */
+  fileId?: string;
   /** A place to go to once the book is open (a highlight from Notes). */
   openAt?: string;
   shell: ReaderShellProps;
@@ -75,6 +78,8 @@ export function Reader({
   const toast = useToast();
   const [info, setInfo] = useState<ReaderBook | null>(null);
   const [file, setFile] = useState<ReaderSource | null>(null);
+  // The format of the file open now, when it isn't the book's own.
+  const [fileFormat, setFileFormat] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
@@ -108,16 +113,27 @@ export function Reader({
         setInfo(opened);
         setAnnotations(list);
         setSettings(parseSettings(saved));
-        const blob = await api.readBookFile(bookId);
-        const { format, title, authors, coverPath } = opened.book;
+        const { title, authors, coverPath } = opened.book;
+        // With copies kept together: the file asked for, the one a mark
+        // being opened was made in, or else the one last read.
+        const lastIn = (openAt ? list.find((a) => a.locator.cfi === openAt)?.locator : opened.book.resumeLocator)?.format;
+        const chosen =
+          fileId || (lastIn && lastIn !== opened.book.format)
+            ? (await api.bookFiles(bookId).catch(() => [])).find((f) => (fileId ? f.id === fileId : f.format === lastIn))
+            : undefined;
+        if (cancelled) return;
+        const reading = chosen ?? { id: bookId, format: opened.book.format };
+        setFileFormat(reading.format === opened.book.format ? null : reading.format);
+        const blob = await api.readBookFile(reading.id);
+        const format = reading.format;
         // The page engine tells formats apart partly by file name.
         // A CBR arrives already made into a zip.
         const opensAs = format === "cbr" ? "cbz" : format;
         const named = new File([blob], `book.${opensAs}`, { type: blob.type });
-        const source = await readerSource(named, opensAs, bookId, { title, author: authors.join(", "), language: opened.language });
+        const source = await readerSource(named, opensAs, reading.id, { title, author: authors.join(", "), language: opened.language });
         if (!cancelled) setFile(source);
         // A PDF imported elsewhere, or whose cover couldn't be drawn then.
-        if (format === "pdf" && !coverPath) {
+        if (format === "pdf" && !coverPath && reading.id === bookId) {
           void drawPdfCover(blob)
             .then(async (cover) => cover && api.fillCover(bookId, new Uint8Array(await cover.arrayBuffer())))
             .catch(() => undefined);
@@ -129,7 +145,16 @@ export function Reader({
     return () => {
       cancelled = true;
     };
-  }, [bookId]);
+  }, [bookId, fileId]);
+
+  // A place or mark is found by its CFI only in the format it was made in;
+  // in another of the book's files it's found by how far through it was.
+  const mainFormat = info?.book.format;
+  const usable = useCallback(
+    (at: ReaderLocator | null | undefined) => !!at?.cfi && (at.format ?? mainFormat) === (fileFormat ?? mainFormat),
+    [mainFormat, fileFormat],
+  );
+  const drawn = useMemo(() => annotations.filter((a) => usable(a.locator)), [annotations, usable]);
 
   // Positions are saved shortly after the reader stops moving, and on leaving.
   const pending = useRef<ReaderLocator | null>(null);
@@ -160,10 +185,10 @@ export function Reader({
   const engine = useReaderEngine({
     host,
     file,
-    startCfi: info?.book.resumeLocator?.cfi ?? null,
+    startCfi: usable(info?.book.resumeLocator) ? info!.book.resumeLocator!.cfi! : null,
     settings,
     colors,
-    annotations,
+    annotations: drawn,
     events: {
       onRelocate: (r) => {
         noteReading();
@@ -173,6 +198,7 @@ export function Reader({
           totalProgression: r.fraction,
           pageIndex: page ? page.page - 1 : undefined,
           chapter: r.tocItem?.label?.trim() || undefined,
+          format: fileFormat ?? undefined,
         };
         clearTimeout(timer.current);
         timer.current = setTimeout(() => void flush(), SAVE_DELAY_MS);
@@ -220,8 +246,9 @@ export function Reader({
       totalProgression: r?.fraction,
       pageIndex: position ? position.page - 1 : undefined,
       chapter: r?.tocItem?.label?.trim() || undefined,
+      format: fileFormat ?? undefined,
     }),
-    [r, position],
+    [r, position, fileFormat],
   );
 
   const entries = useMemo(
@@ -249,18 +276,21 @@ export function Reader({
   useEffect(() => {
     if (!openAt || openedAt.current || !engine.ready || !r?.cfi) return;
     openedAt.current = true;
-    jumpTo(openAt);
+    const mark = annotations.find((a) => a.locator.cfi === openAt);
+    if (mark && !usable(mark.locator)) handlers.onGo(mark);
+    else jumpTo(openAt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openAt, engine.ready, r, jumpTo]);
 
-  // A place carried over from another copy of the book (an EPUB's on this
-  // PDF, say) has no CFI here, so it opens by how far through it was.
+  // A place from another of the book's files (an EPUB's in this PDF, say)
+  // opens by how far through it was.
   const startedFar = useRef(false);
   useEffect(() => {
     const at = info?.book.resumeLocator;
-    if (startedFar.current || !engine.ready || openAt || !at || at.cfi || !at.totalProgression) return;
+    if (startedFar.current || !engine.ready || openAt || !at || usable(at) || !at.totalProgression) return;
     startedFar.current = true;
     void engine.goToFraction(at.totalProgression);
-  }, [engine, info, openAt]);
+  }, [engine, info, openAt, usable]);
 
   const goBack = () => {
     const last = jumps.at(-1);
@@ -344,8 +374,8 @@ export function Reader({
 
   const handlers: AnnotationHandlers = {
     onGo: (a) => {
-      if (a.locator.cfi) return jumpTo(a.locator.cfi);
-      // Marked in another copy of the book: found by how far through it is.
+      if (usable(a.locator)) return jumpTo(a.locator.cfi!);
+      // Marked in another of the book's files: found by how far through it is.
       if (a.locator.totalProgression != null) {
         remember();
         void engine.goToFraction(a.locator.totalProgression);
