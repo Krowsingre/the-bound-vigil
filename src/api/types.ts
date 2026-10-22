@@ -19,6 +19,8 @@ export interface ReaderLocator {
   chapter?: string;
   /** For an audiobook: how far in, from the start of the whole book. */
   audioMs?: number;
+  /** Marked in another copy of the book, in this format: found by page and fraction, not `cfi`. */
+  format?: string;
 }
 
 export interface RemotePosition {

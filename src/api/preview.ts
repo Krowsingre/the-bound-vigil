@@ -846,6 +846,8 @@ export function previewApi(): Api {
     },
     setBookTags: async (bookId, tags) =>
       update(bookId, { tags: [...new Set(tags.map(cleanTag).filter((t): t is string => !!t))].sort() }),
+    // The preview and the web version leave this to TBV on the computer, where duplicates are cleaned up.
+    mergeReading: async () => undefined,
     deleteBook: async (bookId) => {
       find(bookId);
       books = books.filter((b) => b.id !== bookId);

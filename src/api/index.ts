@@ -264,6 +264,8 @@ export interface Api {
   /** Takes a book out of the library on every device, with its notes. */
   /** Deletes a book for good: its notes, and its file and cover in the cloud, go too. */
   deleteBook(bookId: string): Promise<void>;
+  /** Moves your notes, highlights, place, rating, tags and collections from one copy of a book to another. */
+  mergeReading(keepId: string, fromId: string): Promise<void>;
   /** Takes a book out of the library, keeping its notes and cloud file for when it's imported again. */
   removeFromLibrary(bookId: string): Promise<void>;
   /** Saves copies of the books, named "Title - Author", into a folder chosen now. Null if none was chosen. */
@@ -713,6 +715,7 @@ function appApi(): Api {
     removeTag: async (bookIds, tag) => (await core).invoke("remove_tag", { bookIds, tag }),
     setBookTags: async (bookId, tags) => (await core).invoke("set_book_tags", { bookId, tags }),
     deleteBook: async (bookId) => (await core).invoke("delete_book", { bookId }),
+    mergeReading: async (keepId, fromId) => (await core).invoke("merge_reading", { keepId, fromId }),
     removeFromLibrary: async (bookId) => (await core).invoke("remove_from_library", { bookId }),
     saveCopies: async (bookIds) => {
       const picked = isIOS

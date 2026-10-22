@@ -252,6 +252,16 @@ export function Reader({
     jumpTo(openAt);
   }, [openAt, engine.ready, r, jumpTo]);
 
+  // A place carried over from another copy of the book (an EPUB's on this
+  // PDF, say) has no CFI here, so it opens by how far through it was.
+  const startedFar = useRef(false);
+  useEffect(() => {
+    const at = info?.book.resumeLocator;
+    if (startedFar.current || !engine.ready || openAt || !at || at.cfi || !at.totalProgression) return;
+    startedFar.current = true;
+    void engine.goToFraction(at.totalProgression);
+  }, [engine, info, openAt]);
+
   const goBack = () => {
     const last = jumps.at(-1);
     if (!last) return;
@@ -333,7 +343,14 @@ export function Reader({
     );
 
   const handlers: AnnotationHandlers = {
-    onGo: (a) => a.locator.cfi && jumpTo(a.locator.cfi),
+    onGo: (a) => {
+      if (a.locator.cfi) return jumpTo(a.locator.cfi);
+      // Marked in another copy of the book: found by how far through it is.
+      if (a.locator.totalProgression != null) {
+        remember();
+        void engine.goToFraction(a.locator.totalProgression);
+      }
+    },
     onEditNote: (a) => setNoteEdit({ a }),
     onRecolor: (a, color) => void update(a, { color }),
     onDelete: (a) => void remove(a),

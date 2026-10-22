@@ -1079,6 +1079,12 @@ async fn save_copies(state: State<'_, AppLibrary>, book_ids: Vec<String>, folder
     Ok(saved)
 }
 
+/// Moves everything of yours from a copy of a book that's about to go to the one that stays.
+#[tauri::command]
+async fn merge_reading(state: State<'_, AppLibrary>, keep_id: String, from_id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.merge_reading_into(&keep_id, &from_id)).await
+}
+
 #[tauri::command]
 async fn remove_download(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
     with_library(state, move |library| library.remove_download(&book_id)).await
@@ -1689,6 +1695,7 @@ pub fn run() {
             remove_download,
             remove_from_library,
             save_copies,
+            merge_reading,
             find_duplicates,
             find_series_books,
             prepare_stream,

@@ -1083,6 +1083,8 @@ export async function webApi(): Promise<Api> {
       for (const t of have) if (!wanted.has(t.toLowerCase())) await api.removeTag([bookId], t);
       for (const t of wanted.values()) if (!have.some((h) => h.toLowerCase() === t.toLowerCase())) await api.addTag([bookId], t);
     },
+    // The preview and the web version leave this to TBV on the computer, where duplicates are cleaned up.
+    mergeReading: async () => undefined,
     deleteBook: async (bookId) => {
       const b = find(bookId);
       const at = now();

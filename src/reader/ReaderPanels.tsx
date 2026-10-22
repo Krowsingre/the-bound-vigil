@@ -53,6 +53,7 @@ function Where({ a, totalPages }: { a: Annotation; totalPages: number }) {
     <p className="ann-where">
       {page !== null && <span>Page {formatNumber(page)}</span>}
       {a.locator.chapter && <span>{a.locator.chapter}</span>}
+      {a.locator.format && <span>Marked in the {a.locator.format.toUpperCase()}</span>}
     </p>
   );
 }

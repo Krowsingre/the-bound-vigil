@@ -10,9 +10,9 @@ export type DuplicateBook = DuplicateGroup["books"][number];
 export const DEFAULT_FORMAT_ORDER = ["epub", "kepub", "azw3", "azw", "mobi", "fb2", "cbz", "cbr", "pdf", "docx", "doc", "txt"];
 
 /**
- * Something of yours lives with this copy and would go with it: notes,
- * highlights, progress, a rating, a favourite, tags, or a place on a
- * collection or shelf (Up next too).
+ * Something of yours lives with this copy: notes, highlights, progress, a
+ * rating, a favourite, tags, or a place on a collection or shelf (Up next
+ * too). When a copy goes, all of it moves to the copy that stays.
  */
 export function hasYourReading(book: DuplicateBook): boolean {
   return (
@@ -48,8 +48,6 @@ export interface CleanupStep {
 
 export interface CleanupPlan {
   steps: CleanupStep[];
-  /** Sets where more than one copy holds your notes or progress: left for you to choose. */
-  yours: DuplicateGroup[];
 }
 
 const rank = (order: string[], format: string) => {
@@ -64,24 +62,34 @@ export function bestCopy(books: DuplicateBook[], order: string[]): DuplicateBook
   )[0];
 }
 
+/**
+ * Which copy of each set stays. Your notes, highlights and place on the
+ * copies that go move to it, so they belong to the book whichever copy it
+ * is; a copy that alone holds them stays, as they fit its own file exactly.
+ */
 export function planCleanup(groups: DuplicateGroup[], order: string[]): CleanupPlan {
-  const plan: CleanupPlan = { steps: [], yours: [] };
+  const plan: CleanupPlan = { steps: [] };
   for (const g of groups) {
     const read = g.books.filter(hasYourReading);
-    if (read.length > 1) {
-      plan.yours.push(g);
-      continue;
-    }
-    const keep = read[0] ?? bestCopy(g.books, order);
+    const keep = read.length === 1 ? read[0] : bestCopy(g.books, order);
     const sameFormat = g.books.every((b) => b.format.toLowerCase() === keep.format.toLowerCase());
-    const why = read.length
-      ? "It has your notes, progress, rating, tags or collections."
-      : sameFormat
-        ? "The largest file."
-        : `${keep.format.toUpperCase()} comes first in your order.`;
-    plan.steps.push({ key: g.key, keep, remove: g.books.filter((b) => b.id !== keep.id), why });
+    const remove = g.books.filter((b) => b.id !== keep.id);
+    const why =
+      read.length === 1
+        ? "It has your notes, progress, rating, tags or collections."
+        : sameFormat
+          ? "The largest file."
+          : `${keep.format.toUpperCase()} comes first in your order.`;
+    const moving = remove.some(hasYourReading) ? " Your notes, highlights and place on the others move to it." : "";
+    plan.steps.push({ key: g.key, keep, remove, why: why + moving });
   }
   return plan;
+}
+
+/** The copy a set keeps once `gone` leave it: the best of the rest. */
+export function keeperAfter(g: DuplicateGroup, gone: DuplicateBook[], order: string[]): DuplicateBook | null {
+  const rest = g.books.filter((b) => !gone.some((x) => x.id === b.id));
+  return rest.length ? bestCopy(rest, order) : null;
 }
 
 export type FormatFilter = { kind: "all" } | { kind: "same" } | { kind: "exactly"; formats: string[] };
@@ -102,24 +110,25 @@ export function matchesFilter(g: DuplicateGroup, filter: FormatFilter): boolean 
 }
 
 /**
- * Every copy of `format` in these sets that can go: a set always keeps at
- * least one copy (the best of that format, when all are that format), and
- * copies with your notes or progress stay.
+ * Every copy of `format` in these sets that can go, each with the copy its
+ * notes and place move to: a set always keeps at least one copy (the best of
+ * that format, when all are that format).
  */
-export function copiesOfFormat(groups: DuplicateGroup[], format: string, order: string[]): { remove: DuplicateBook[]; keptForReading: number } {
+export function copiesOfFormat(groups: DuplicateGroup[], format: string, order: string[]): { remove: DuplicateBook[]; into: Map<string, DuplicateBook> } {
   const f = format.toLowerCase();
   const remove: DuplicateBook[] = [];
-  let keptForReading = 0;
+  const into = new Map<string, DuplicateBook>();
   for (const g of groups) {
     const ofFormat = g.books.filter((b) => b.format.toLowerCase() === f);
     if (!ofFormat.length) continue;
     // All one format: the best copy stays, so the book isn't lost.
     const spared = ofFormat.length === g.books.length ? bestCopy(ofFormat, order) : null;
-    for (const b of ofFormat) {
-      if (b === spared) continue;
-      if (hasYourReading(b)) keptForReading++;
-      else remove.push(b);
+    const going = ofFormat.filter((b) => b !== spared);
+    const keeper = keeperAfter(g, going, order);
+    for (const b of going) {
+      remove.push(b);
+      if (keeper) into.set(b.id, keeper);
     }
   }
-  return { remove, keptForReading };
+  return { remove, into };
 }

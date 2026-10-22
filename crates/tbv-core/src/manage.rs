@@ -508,6 +508,133 @@ impl Library {
         }
         self.set_setting(DISMISSED, &serde_json::to_string(&list)?)
     }
+
+    /// Before a copy of a book leaves in a duplicate clean-up, everything of
+    /// yours on it moves to the copy that stays: highlights, notes and
+    /// bookmarks, your place, status, rating, favourite, Up next, tags,
+    /// collections and your own edits to its details (the kept copy's own
+    /// win). Your marks belong to the book, not to one file of it. Places
+    /// marked in another format keep their page, fraction and words, and say
+    /// which format they came from.
+    pub fn merge_reading_into(&self, keep: &str, from: &str) -> Result<()> {
+        if keep == from || !self.book_exists(keep)? || !self.book_exists(from)? {
+            return Ok(());
+        }
+        struct Copy {
+            format: String,
+            status: String,
+            progression: Option<f64>,
+            resume: Option<String>,
+            opened: Option<String>,
+            rating: Option<u8>,
+            finished: Option<String>,
+        }
+        let read = |id: &str| -> Result<Copy> {
+            Ok(self.conn.query_row(
+                "SELECT lower(format), status, total_progression, resume_locator, last_opened_at, rating, finished_at FROM books WHERE id = ?1",
+                params![id],
+                |r| {
+                    Ok(Copy {
+                        format: r.get(0)?,
+                        status: r.get(1)?,
+                        progression: r.get(2)?,
+                        resume: r.get(3)?,
+                        opened: r.get(4)?,
+                        rating: r.get(5)?,
+                        finished: r.get(6)?,
+                    })
+                },
+            )?)
+        };
+        let (k, f) = (read(keep)?, read(from)?);
+        let elsewhere = k.format != f.format;
+        // A place from another format keeps what finds it there, and says where it came from.
+        let carry = |locator: &str| -> String {
+            if !elsewhere {
+                return locator.to_string();
+            }
+            let Ok(mut place) = serde_json::from_str::<crate::model::ReaderLocator>(locator) else {
+                return locator.to_string();
+            };
+            if place.format.is_none() {
+                place.format = Some(f.format.clone());
+                place.cfi = None;
+                place.href = None;
+            }
+            serde_json::to_string(&place).unwrap_or_else(|_| locator.to_string())
+        };
+        let now = now_utc();
+        let tx = self.conn.unchecked_transaction()?;
+
+        let marks: Vec<(String, String)> = {
+            let mut statement = tx.prepare("SELECT id, locator FROM annotations WHERE book_id = ?1 AND deleted_at IS NULL")?;
+            let rows = statement.query_map(params![from], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect::<std::result::Result<_, _>>()?
+        };
+        for (id, locator) in marks {
+            tx.execute(
+                "UPDATE annotations SET book_id = ?2, locator = ?3, updated_at = ?4 WHERE id = ?1",
+                params![id, keep, carry(&locator), now],
+            )?;
+        }
+
+        // The most recently read copy's place is where you are.
+        let later = f.opened.is_some() && (k.opened.is_none() || f.opened > k.opened);
+        if later || (k.progression.unwrap_or(0.0) == 0.0 && f.progression.unwrap_or(0.0) > 0.0) {
+            tx.execute(
+                "UPDATE books SET total_progression = ?2, resume_locator = ?3, last_opened_at = COALESCE(?4, last_opened_at) WHERE id = ?1",
+                params![keep, f.progression, f.resume.as_deref().map(carry), f.opened],
+            )?;
+        }
+        let rank = |s: &str| match s {
+            "read" => 2,
+            "in_progress" => 1,
+            _ => 0,
+        };
+        if rank(&f.status) > rank(&k.status) {
+            tx.execute("UPDATE books SET status = ?2 WHERE id = ?1", params![keep, f.status])?;
+        }
+        let finished = match (&k.finished, &f.finished) {
+            (Some(a), Some(b)) => Some(a.min(b).clone()),
+            (a, b) => a.clone().or_else(|| b.clone()),
+        };
+        tx.execute(
+            "UPDATE books SET rating = COALESCE(rating, ?2), finished_at = ?3,
+                 favorite = MAX(favorite, (SELECT favorite FROM books WHERE id = ?4)),
+                 want_to_read = MAX(want_to_read, (SELECT want_to_read FROM books WHERE id = ?4)),
+                 phone_wanted = MAX(phone_wanted, (SELECT phone_wanted FROM books WHERE id = ?4))
+             WHERE id = ?1",
+            params![keep, f.rating, finished, from],
+        )?;
+
+        tx.execute(
+            "INSERT INTO book_tags (book_id, tag, added_at, updated_at)
+             SELECT ?1, tag, ?3, ?3 FROM book_tags t WHERE t.book_id = ?2 AND t.removed_at IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM book_tags k WHERE k.book_id = ?1 AND lower(k.tag) = lower(t.tag) AND k.removed_at IS NULL)
+             ON CONFLICT(book_id, tag) DO UPDATE SET removed_at = NULL, added_at = excluded.added_at, updated_at = excluded.updated_at",
+            params![keep, from, now],
+        )?;
+        tx.execute(
+            "INSERT INTO collection_books (collection_id, book_id, added_at, updated_at, position)
+             SELECT collection_id, ?1, added_at, ?3, position FROM collection_books WHERE book_id = ?2 AND removed_at IS NULL
+             ON CONFLICT(collection_id, book_id) DO UPDATE SET
+                 updated_at = CASE WHEN removed_at IS NULL THEN updated_at ELSE excluded.updated_at END,
+                 removed_at = NULL",
+            params![keep, from, now],
+        )?;
+        tx.execute(
+            "INSERT OR IGNORE INTO metadata_overrides (book_id, field, value, updated_at)
+             SELECT ?1, field, value, ?3 FROM metadata_overrides WHERE book_id = ?2",
+            params![keep, from, now],
+        )?;
+        // An audiobook read along with the copy that goes now goes with the one that stays.
+        tx.execute(
+            "UPDATE audiobooks SET ebook_id = ?1, updated_at = ?3 WHERE ebook_id = ?2",
+            params![keep, from, now],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -531,6 +658,47 @@ mod tests {
             ImportResult::Imported { book_id, .. } => book_id,
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn a_copy_that_goes_leaves_your_marks_with_the_one_that_stays() {
+        let (dir, mut library) = open_temp_library();
+        let keep = add(&mut library, dir.path(), "a", "Carmilla", "Le Fanu", "");
+        let from = add(&mut library, dir.path(), "b", "Carmilla", "Le Fanu", "<p>other</p>");
+        library.conn.execute("UPDATE books SET format = 'pdf' WHERE id = ?1", params![from]).unwrap();
+        let place: crate::model::ReaderLocator =
+            serde_json::from_value(serde_json::json!({ "cfi": "epubcfi(/6/4!/4/2)", "totalProgression": 0.4, "pageIndex": 41, "textHighlight": "a dark night" })).unwrap();
+        library
+            .save_annotation(&crate::model::AnnotationInput {
+                id: None,
+                book_id: from.clone(),
+                kind: serde_json::from_value(serde_json::json!("highlight")).unwrap(),
+                excerpt: "a dark night".into(),
+                note: Some("Mine".into()),
+                color: Some("rose".into()),
+                locator: place.clone(),
+            })
+            .unwrap();
+        library.open_book(&from).unwrap();
+        library.save_position(&from, &place).unwrap();
+        library.set_rating(&from, Some(4)).unwrap();
+        library.add_tag(std::slice::from_ref(&from), "Gothic").unwrap();
+
+        library.merge_reading_into(&keep, &from).unwrap();
+
+        let marks = library.book_annotations(&keep).unwrap();
+        assert_eq!(marks.len(), 1);
+        assert_eq!(marks[0].note.as_deref(), Some("Mine"));
+        // Marked in the PDF: no CFI, but the page, fraction and words, and where it came from.
+        assert_eq!((marks[0].locator.cfi.as_deref(), marks[0].locator.format.as_deref(), marks[0].locator.page_index), (None, Some("pdf"), Some(41)));
+        assert!(library.book_annotations(&from).unwrap().is_empty());
+        let (progress, rating, status): (Option<f64>, Option<u8>, String) = library
+            .conn
+            .query_row("SELECT total_progression, rating, status FROM books WHERE id = ?1", params![keep], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap();
+        assert_eq!((progress, rating), (Some(0.4), Some(4)));
+        assert_eq!(status, "in_progress");
+        assert_eq!(library.book_tags(&keep).unwrap(), vec!["Gothic".to_string()]);
     }
 
     #[test]

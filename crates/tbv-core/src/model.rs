@@ -74,6 +74,11 @@ pub struct ReaderLocator {
     /// For an audiobook: how far in, from the start of the whole book.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio_ms: Option<u64>,
+    /// The format this place was marked in, when it came from another copy
+    /// of the book (an EPUB's place on a PDF, say): its `cfi` is gone, and the
+    /// page, fraction and words find it instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
 }
 
 /// Another device's position for the same book, shown as "On Phone you're at 51%".
