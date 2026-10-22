@@ -22,6 +22,7 @@ pub mod details;
 pub mod manage;
 pub mod model;
 pub mod notes;
+pub mod opds;
 pub mod profile;
 pub mod reader;
 pub mod rules;
@@ -30,6 +31,7 @@ pub mod series_sources;
 pub mod servers;
 pub mod sync;
 pub mod time;
+pub mod writing;
 
 pub use error::{Error, Result};
 pub use library::{Library, LibraryPaths, SUPPORTED_FORMATS};

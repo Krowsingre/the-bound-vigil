@@ -38,6 +38,7 @@ import { WebDb } from "./db";
 import { SEND_TO_DEVICE, UP_NEXT, WebLibrary, type BookRow } from "./library";
 import { WebSync } from "./sync";
 import { moveStub } from "../api/moveStub";
+import { writingCalls } from "../writing/records";
 import { serverStub } from "../api/serverStub";
 import { projectFromLink } from "./link";
 import { formatOf, PHONE_MAX_BYTES, PhoneImports, readDetails, sha256Hex, smallCover } from "./phoneImport";
@@ -46,6 +47,17 @@ import { languageCode } from "../lib/language";
 type Row = { [column: string]: unknown };
 
 const DESKTOP_ONLY = "This works in the desktop app.";
+
+function downloadFile(bytes: Uint8Array, fileName: string) {
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/epub+zip" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
 const SMART: SmartKind[] = ["recently_added", "unread", "in_progress", "read", "favorites"];
 const DAY = 86_400_000;
 const MAX_NAME = 80;
@@ -497,6 +509,41 @@ export async function webApi(): Promise<Api> {
   const api: Api = {
     kind: "web",
     ...moveStub(),
+    ...writingCalls({
+      rows: (table) => library.rows(table),
+      write: (kind, row) => library.write(kind, row),
+      pictureUrl: (picture) => (picture.startsWith("picture:") ? (sync.pictureUrls.get(picture.slice(8)) ?? null) : null),
+      newId: () => crypto.randomUUID(),
+    }),
+    catalogs: async () => [],
+    saveCatalog: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    removeCatalog: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    catalogFeed: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    catalogSearch: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    downloadFromCatalog: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    setWritingCover: async (id, path) => {
+      if (path) throw new Error("Choose a cover on the computer.");
+      const row = library.rows("writing_projects").find((p) => p.id === id && !p.deleted_at);
+      if (!row) throw new Error("That book no longer exists.");
+      await library.write("writing_project", { ...row, cover: null, updated_at: new Date().toISOString() });
+      return (await api.writingProjects()).find((p) => p.id === id)!;
+    },
+    pickWritingCover: async () => null,
+    pickEpubSavePath: async () => null,
+    saveWritingEpub: async (bytes, fileName, _path, addToLibrary) => {
+      if (addToLibrary) throw new Error("Adding it to your library works in the desktop app. It has been downloaded instead.");
+      downloadFile(bytes, fileName);
+    },
     getHome: async (): Promise<HomeViewModel> => {
       const all = books();
       // Home is for reading; audiobooks have their own page.

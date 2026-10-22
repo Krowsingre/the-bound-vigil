@@ -380,6 +380,36 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE series_lists ADD COLUMN read TEXT NOT NULL DEFAULT '[]';
     "#,
+    // v18: books being written on the Writing page (see writing.rs), each a
+    // project of chapters. `cover` is a picture (`picture:<file>`), `export`
+    // the EPUB settings as JSON. Synced with notes.
+    r#"
+    CREATE TABLE writing_projects (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        author TEXT,
+        series TEXT,
+        series_index REAL,
+        language TEXT,
+        description TEXT,
+        cover TEXT,
+        export TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE TABLE writing_chapters (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
+        body TEXT NOT NULL DEFAULT '',
+        position REAL NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX idx_writing_chapters_project ON writing_chapters(project_id, position);
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

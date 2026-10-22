@@ -190,6 +190,22 @@ pub(crate) const KINDS: &[Kind] = &[
         category: Category::Notes,
         creates: true,
     },
+    Kind {
+        name: "writing_project",
+        table: "writing_projects",
+        keys: &["id"],
+        cols: &["title", "author", "series", "series_index", "language", "description", "cover", "export", "created_at", "updated_at", "deleted_at"],
+        category: Category::Notes,
+        creates: true,
+    },
+    Kind {
+        name: "writing_chapter",
+        table: "writing_chapters",
+        keys: &["id"],
+        cols: &["project_id", "title", "body", "position", "created_at", "updated_at", "deleted_at"],
+        category: Category::Notes,
+        creates: true,
+    },
 ];
 
 fn kind_named(name: &str) -> Option<&'static Kind> {
@@ -1416,10 +1432,18 @@ impl Library {
         if let Some(name) = self.avatar_name()? {
             wanted.push((format!("pictures/{name}"), self.paths.profile_dir.join(name)));
         }
+        let mut sources = Vec::new();
         if options.collections {
+            sources.push("SELECT picture FROM collections WHERE deleted_at IS NULL");
+        }
+        // Covers of books being written travel with notes.
+        if options.notes {
+            sources.push("SELECT cover AS picture FROM writing_projects WHERE deleted_at IS NULL");
+        }
+        if !sources.is_empty() {
             let pictures = self
                 .conn
-                .prepare("SELECT DISTINCT picture FROM collections WHERE deleted_at IS NULL AND picture LIKE 'picture:%'")?
+                .prepare(&format!("SELECT DISTINCT picture FROM ({}) WHERE picture LIKE 'picture:%'", sources.join(" UNION ALL ")))?
                 .query_map([], |r| r.get::<_, String>(0))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             for picture in pictures {
@@ -1522,7 +1546,10 @@ impl Library {
     fn pictures_to_fetch(&self) -> Result<Vec<(String, PathBuf)>> {
         let pictures = self
             .conn
-            .prepare("SELECT DISTINCT picture FROM collections WHERE deleted_at IS NULL AND picture LIKE 'picture:%'")?
+            .prepare(
+                "SELECT DISTINCT picture FROM collections WHERE deleted_at IS NULL AND picture LIKE 'picture:%'
+                 UNION SELECT cover FROM writing_projects WHERE deleted_at IS NULL AND cover LIKE 'picture:%'",
+            )?
             .query_map([], |r| r.get::<_, String>(0))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(pictures

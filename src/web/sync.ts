@@ -313,6 +313,7 @@ export class WebSync {
     const pictures = [
       ...(typeof avatar === "string" ? [`picture:${avatar}`] : []),
       ...this.library.rows("collections").map((c) => (typeof c.picture === "string" && !c.deleted_at ? c.picture : "")),
+      ...this.library.rows("writing_projects").map((p) => (typeof p.cover === "string" && !p.deleted_at ? p.cover : "")),
     ];
     for (const picture of pictures) {
       const name = picture.startsWith("picture:") ? picture.slice(8) : "";

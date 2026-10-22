@@ -24,7 +24,9 @@ export type Table =
   | "annotations"
   | "profile"
   | "read_along"
-  | "personal_notes";
+  | "personal_notes"
+  | "writing_projects"
+  | "writing_chapters";
 
 /** Keep in step with KINDS in the core. */
 export const KINDS: Kind[] = [
@@ -57,6 +59,13 @@ export const KINDS: Kind[] = [
   },
   { name: "profile", table: "profile", keys: ["id"], cols: ["avatar", "updated_at"] },
   { name: "personal_note", table: "personal_notes", keys: ["id"], cols: ["title", "body", "created_at", "updated_at", "deleted_at"] },
+  {
+    name: "writing_project",
+    table: "writing_projects",
+    keys: ["id"],
+    cols: ["title", "author", "series", "series_index", "language", "description", "cover", "export", "created_at", "updated_at", "deleted_at"],
+  },
+  { name: "writing_chapter", table: "writing_chapters", keys: ["id"], cols: ["project_id", "title", "body", "position", "created_at", "updated_at", "deleted_at"] },
 ];
 
 const kindNamed = new Map(KINDS.map((k) => [k.name, k]));
