@@ -43,16 +43,13 @@ pub struct PlacesView {
     pub books: Vec<BookPlaces>,
 }
 
-/// The books a place holds, by hash. Book files and audiobook folders both count.
+/// The books a place holds, by hash.
 pub fn held(place: &mut dyn Remote) -> Result<HashSet<String>> {
     let mut out = HashSet::new();
-    for folder in ["books/", "audio/"] {
-        for name in place.list(folder)? {
-            // A folder's files may be listed under it ("<hash>/part 1.mp3").
-            let name = name.split('/').next().unwrap_or_default();
-            if name.is_empty() || name.starts_with('.') {
-                continue;
-            }
+    for name in place.list("books/")? {
+        // Some places list what's inside folders too ("<hash>/part 1.mp3").
+        let name = name.split('/').next().unwrap_or_default();
+        if !name.is_empty() && !name.starts_with('.') {
             out.insert(name.split('.').next().unwrap_or_default().to_string());
         }
     }

@@ -27,6 +27,14 @@ const PAGE = 500;
 const BATCH = 200;
 const SOON_MS = 2500;
 const EVERY_MS = 5 * 60_000;
+/** When the cloud's lists of book files and covers were last read. */
+const LISTED_AT = "sync.listed_at";
+/**
+ * Those lists run to megabytes in a big library, and every read counts
+ * against Supabase's free 5 GB a month of downloads. So they're read again
+ * only when other devices changed something, when asked to sync, or hourly.
+ */
+const LIST_EVERY_MS = 60 * 60_000;
 
 /** Settings kept when the library is cleared: how this device looks and reads. */
 const KEEP = (key: string) => !key.startsWith("sync.") || key === DEVICE || key === PROJECT;
@@ -34,6 +42,8 @@ const KEEP = (key: string) => !key.startsWith("sync.") || key === DEVICE || key 
 export class WebSync {
   private running: Promise<void> | null = null;
   private again = false;
+  /** Asked to sync by the person: the cloud's file lists are read too. */
+  private full = false;
   private soon: ReturnType<typeof setTimeout> | undefined;
   private state: SyncStatus["state"] = "disabled";
   private readonly statusListeners = new Set<(s: SyncStatus) => void>();
@@ -140,8 +150,9 @@ export class WebSync {
     this.soon = setTimeout(() => void this.now(), SOON_MS);
   }
 
-  /** Syncs now, or once more after the run that's going. */
-  now(): Promise<void> {
+  /** Syncs now, or once more after the run that's going. `full` reads the cloud's file lists however recent. */
+  now(full = false): Promise<void> {
+    if (full) this.full = true;
     if (this.running) {
       this.again = true;
       return this.running;
@@ -166,8 +177,10 @@ export class WebSync {
     this.setState("syncing");
     try {
       let cursor = Number(this.db.meta.get(CURSOR) ?? 0) || 0;
+      let pulled = 0;
       for (;;) {
         const page = await cloud.pull(cursor, PAGE);
+        pulled += page.records.length;
         await this.library.merge(page.records);
         cursor = page.cursor;
         await this.db.setMeta(CURSOR, String(cursor));
@@ -179,8 +192,13 @@ export class WebSync {
         if (batch.length < BATCH && !this.library.waiting()) break;
       }
       await this.sendPictures(cloud);
-      await this.listBookFiles(cloud);
-      await this.fetchCovers(cloud);
+      const listedAt = Number(this.db.meta.get(LISTED_AT) ?? 0) || 0;
+      if (this.full || pulled > 0 || Date.now() - listedAt > LIST_EVERY_MS) {
+        this.full = false;
+        await this.listBookFiles(cloud);
+        await this.fetchCovers(cloud);
+        await this.db.setMeta(LISTED_AT, String(Date.now()));
+      }
       await this.db.setMeta(LAST_SUCCESS, new Date().toISOString());
       await this.db.setMeta(LAST_ERROR, null);
       this.setState("idle");
@@ -364,7 +382,10 @@ export class WebSync {
   async streamUrl(id: string, format: string): Promise<string> {
     const cloud = this.connection();
     if (!cloud) throw new Error("Sign in to play your audiobooks.");
-    const url = await cloud.signedUrl(`books/${id.replace(/^sha256:/, "")}.${format}`, 6 * 60 * 60);
+    const path = `books/${id.replace(/^sha256:/, "")}.${format}`;
+    const url = await cloud.signedUrl(path, 6 * 60 * 60);
+    // Over 50 MB, it's kept in pieces: they're fetched and joined here first.
+    if (!url && (await cloud.piecesOf(path))) return URL.createObjectURL(await this.bookFile(id, format));
     if (!url)
       throw new Error(
         "This audiobook's file isn't in Supabase. On the computer that has it, turn on Settings › Sync › Sync audiobook files, and let it sync.",

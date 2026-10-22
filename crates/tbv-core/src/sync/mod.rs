@@ -458,14 +458,14 @@ impl Provider {
 
 /// A connection to wherever the library is kept.
 pub enum Cloud {
-    Supabase(supabase::Supabase),
+    Supabase(Box<supabase::Supabase>),
     Files(files::FileRemote<Box<dyn files::Store + Send>>),
 }
 
 impl Cloud {
     fn remote(&mut self) -> &mut dyn Remote {
         match self {
-            Cloud::Supabase(s) => s,
+            Cloud::Supabase(s) => s.as_mut(),
             Cloud::Files(f) => f,
         }
     }
@@ -857,7 +857,7 @@ impl Library {
         match provider {
             Provider::Supabase => {
                 let (Some(project), Some(session)) = (self.supabase_project()?, self.sync_session()?) else { return Ok(None) };
-                Ok(Some(Cloud::Supabase(supabase::Supabase::new(project, session, self.device_id()?))))
+                Ok(Some(Cloud::Supabase(Box::new(supabase::Supabase::new(project, session, self.device_id()?)))))
             }
             Provider::Off => Ok(None),
             _ => Ok(Some(Cloud::Files(open_files(provider, self.device_id()?)?.0))),
@@ -1423,17 +1423,27 @@ impl Library {
 
     /// Books this device has that the cloud doesn't, as (cloud path, file).
     fn files_to_send(&self, options: &SyncOptions, lane: Lane, covers_follow_files: bool) -> Result<Vec<(String, PathBuf)>> {
+        if covers_follow_files {
+            // Covers sent full-size before they went phone-sized are sent again, once.
+            let key = format!("sync.small_covers.{}", lane.files_table());
+            if self.setting(&key)?.is_none() {
+                self.conn.execute(&format!("DELETE FROM {} WHERE path LIKE 'covers/%'", lane.files_table()), [])?;
+                self.set_setting(&key, "1")?;
+            }
+        }
         let retry_after = (Utc::now() - Duration::hours(RETRY_FILE_HOURS)).to_rfc3339_opts(SecondsFormat::Millis, true);
         let wanted = self.files_kept(options, covers_follow_files)?;
         let mut out = Vec::new();
-        let sql = format!("SELECT uploaded_at, failed_at FROM {} WHERE path = ?1", lane.files_table());
+        let sql = format!("SELECT uploaded_at, failed_at, error FROM {} WHERE path = ?1", lane.files_table());
         for (remote, file) in wanted {
-            let done: Option<(Option<String>, Option<String>)> =
-                self.conn.query_row(&sql, params![remote], |r| Ok((r.get(0)?, r.get(1)?))).optional()?;
+            let done: Option<(Option<String>, Option<String>, Option<String>)> =
+                self.conn.query_row(&sql, params![remote], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).optional()?;
             let due = match done {
                 None => true,
-                Some((Some(_), _)) => false,
-                Some((None, failed)) => failed.is_none_or(|f| f < retry_after),
+                Some((Some(_), ..)) => false,
+                // Turned away as too big before big files went to Supabase in pieces: try now.
+                Some((None, _, Some(error))) if error == "too big for this Supabase plan's file size limit" => true,
+                Some((None, failed, _)) => failed.is_none_or(|f| f < retry_after),
             };
             if due && file.exists() {
                 out.push((remote, file));
@@ -2187,6 +2197,39 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
 
 type Upload = (String, PathBuf, String, u64);
 
+/// Phone-sized copies of covers, for places where room is short.
+const SMALL_COVERS: &str = "small";
+/// About 25 KB a cover: a phone shows them a few centimetres tall.
+const SMALL_COVER_HEIGHT: u32 = 400;
+
+/// A phone-sized JPEG of a cover, made once and kept in `dir`. The cover
+/// itself if it can't be read as a picture.
+fn small_cover(cover: &Path, dir: &Path) -> PathBuf {
+    let Some(stem) = cover.file_stem() else { return cover.to_path_buf() };
+    let out = dir.join(stem).with_extension("jpg");
+    let modified = |p: &Path| fs::metadata(p).and_then(|m| m.modified()).ok();
+    if out.exists() && modified(&out) >= modified(cover) {
+        return out;
+    }
+    let made = (|| -> Option<()> {
+        let image = image::open(cover).ok()?;
+        let image = if image.height() > SMALL_COVER_HEIGHT { image.resize(SMALL_COVER_HEIGHT, SMALL_COVER_HEIGHT, image::imageops::FilterType::Triangle) } else { image };
+        fs::create_dir_all(dir).ok()?;
+        let mut bytes = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, 78).encode_image(&image.to_rgb8()).ok()?;
+        // Only worth it if it came out smaller.
+        if bytes.len() as u64 >= fs::metadata(cover).ok()?.len() {
+            return None;
+        }
+        fs::write(&out, bytes).ok()
+    })();
+    if made.is_some() {
+        out
+    } else {
+        cover.to_path_buf()
+    }
+}
+
 /// Uploads files in turn, telling the page about each.
 fn send(
     lock: Lock,
@@ -2203,11 +2246,17 @@ fn send(
         let bytes = to_send.iter().map(|(_, _, _, b)| b).sum();
         tell(SyncEvent::FilesPlanned { lane, direction: Direction::Up, count: to_send.len() as u32, bytes });
     }
+    // Where room and downloads are short (Supabase), covers go phone-sized.
+    let small_covers = remote.covers_follow_files().then(|| lock().map(|l| l.paths.covers_dir.join(SMALL_COVERS))).transpose()?;
     for (path, local, what, bytes) in to_send {
         if winding_down() {
             break;
         }
         file(Direction::Up, &path, &what, bytes, false, None);
+        let local = match &small_covers {
+            Some(dir) if path.starts_with("covers/") => small_cover(&local, dir),
+            _ => local,
+        };
         match remote.upload(&path, &local) {
             Ok(()) => {
                 lock()?.lane_file_sent(&path, None, lane)?;
