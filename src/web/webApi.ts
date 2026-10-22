@@ -377,6 +377,13 @@ export async function webApi(): Promise<Api> {
     };
   };
 
+  /** Each book once, keeping the first of its copies (same title and first author): what's new shows a book, not every file of it. */
+  const onceEach = (list: BookPreview[]) => {
+    const seen = new Set<string>();
+    const key = (b: BookPreview) => `${b.title.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().trim()}\u0000${(b.authors[0] ?? "").toLowerCase()}`;
+    return list.filter((b) => !seen.has(key(b)) && !!seen.add(key(b)));
+  };
+
   const smartBooks: Record<SmartKind, (b: BookPreview) => boolean> = {
     recently_added: (b) => Date.now() - Date.parse(b.addedAt) < 30 * DAY,
     unread: (b) => b.status === "unread",
@@ -398,9 +405,10 @@ export async function webApi(): Promise<Api> {
       return books()
         .filter((b) => b.series === ref.name)
         .sort((a, b) => (a.seriesIndex ?? 1e9) - (b.seriesIndex ?? 1e9) || byTitle(a, b));
-    return books()
+    const members = books()
       .filter(smartBooks[ref.smart])
       .sort((a, b) => smartOrder[ref.smart](a, b) || byTitle(a, b));
+    return ref.smart === "recently_added" ? onceEach(members) : members;
   };
 
   const previews = (): CollectionPreview[] => {
@@ -556,7 +564,7 @@ export async function webApi(): Promise<Api> {
       const titles = new Map(all.map((b) => [b.id as string, b.title]));
       return {
         resumeBook: inProgress[0] ?? null,
-        recentlyAdded: [...reading].sort((a, b) => newest(a.addedAt, b.addedAt)).slice(0, 5),
+        recentlyAdded: onceEach([...reading].sort((a, b) => newest(a.addedAt, b.addedAt))).slice(0, 5),
         inProgress: inProgress.slice(0, 3),
         collections: previews().slice(0, 4),
         annotations: annotationRows()
@@ -790,7 +798,8 @@ export async function webApi(): Promise<Api> {
       return {
         pinned: rows.filter((c) => c.pinned).map((c) => summary(c, all)),
         smart: SMART.map((kind) => {
-          const members = list.filter(smartBooks[kind]);
+          const matching = list.filter(smartBooks[kind]);
+          const members = kind === "recently_added" ? onceEach(matching.sort(smartOrder[kind])) : matching;
           return { kind, count: members.length, rating: averageRating(members) };
         }),
         collections: rows.filter((c) => c.kind !== "shelf").map((c) => summary(c, all)),
