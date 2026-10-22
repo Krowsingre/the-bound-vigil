@@ -312,9 +312,18 @@
 .select-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 6px 14px;
   margin-left: auto;
   min-width: 0;
+}
+
+.select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .select-mark {

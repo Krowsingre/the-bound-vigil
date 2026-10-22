@@ -5,6 +5,7 @@ import { askEditDetails } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
+import { Menu, type MenuEntry, type MenuItem } from "../components/Menu";
 import { SeriesPanel } from "./SeriesPanel";
 import { useToast } from "../components/Toast";
 import { makeBookActions, phoneChoiceShown } from "../home/bookActions";
@@ -65,7 +66,6 @@ export function Library({
   const [asking, setAsking] = useState<"remove" | "delete" | "download" | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   /** The search and filters everything was last chosen for. */
-  const [allChosenFor, setAllChosenFor] = useState<string | null>(null);
   const toast = useToast();
   const words = WORDS[kind];
   // On a phone there are no pages: more books load as the list nears its end.
@@ -198,10 +198,6 @@ export function Library({
     });
   }, [load]);
 
-  useEffect(() => {
-    if (!selected?.size) setAllChosenFor(null);
-  }, [selected]);
-
   // Only books the search and filters show stay chosen: when they change,
   // chosen books they now leave out are let go, so changing many never
   // reaches a book you can't see.
@@ -296,13 +292,42 @@ export function Library({
         if (got.page < p || (got.page + 1) * got.pageSize >= got.total) break;
       }
       setSelected(all);
-      setAllChosenFor(JSON.stringify(query));
     } catch (e) {
       toast(`Couldn't choose them all: ${String(e)}`);
     } finally {
       setBusy(null);
     }
   };
+
+  const none = !selected?.size;
+  const pageAllChosen = !!page?.books.length && page.books.every((b) => selected?.has(b.id));
+  // Books a search or filter hides are let go from the choice, so this many means all of them.
+  const libraryAllChosen = !!page?.total && (selected?.size ?? 0) >= page.total;
+  const chosenActions: MenuEntry[] = [
+    { label: "Edit details", icon: "edit", disabled: none, onSelect: () => askEditDetails(chosen) },
+    { label: "Tags", icon: "tag", disabled: none, onSelect: () => setTagging(true) },
+    ...(kind !== "audiobooks" ? [{ label: "Send to e-reader", icon: "ereader", disabled: none, onSelect: () => askSendToEreader(chosen) } as MenuItem] : []),
+    ...(!isWeb && phoneChoiceShown()
+      ? [
+          { label: "Send to device", icon: "upload", disabled: none, onSelect: () => actions.setPhoneWanted?.(chosen, true) } as MenuItem,
+          ...(chosen.some((b) => b.phoneWanted)
+            ? [{ label: "Stop sending to device", icon: "cloudOff", onSelect: () => actions.setPhoneWanted?.(chosen.filter((b) => b.phoneWanted), false) } as MenuItem]
+            : []),
+        ]
+      : []),
+    { label: "Save copies", icon: "copy", disabled: none || busy !== null, onSelect: () => void saveChosen() },
+    {
+      label: "Remove download",
+      icon: "cloudOff",
+      hint: "Keeps the cloud copy",
+      disabled: !chosen.some((b) => b.availability === "local" && b.inCloud) || busy !== null,
+      onSelect: () => setAsking("download"),
+    },
+    "divider",
+    { label: "Clear choice", icon: "close", disabled: none || busy !== null, onSelect: () => setSelected(new Map()) },
+    { label: "Remove from library", icon: "close", disabled: none || busy !== null, onSelect: () => setAsking("remove") },
+    { label: "Delete", icon: "trash", danger: true, disabled: none || busy !== null, onSelect: () => setAsking("delete") },
+  ];
 
   /** Removes downloads, removes from the library, or deletes, one book at a time. */
   const changeChosen = async (what: "remove" | "delete" | "download") => {
@@ -480,69 +505,45 @@ export function Library({
           <span className="select-count">
             {selected.size ? `${selected.size} chosen` : `Click ${words.many} to choose them`}
           </span>
-          {page && page.books.some((b) => !selected.has(b.id)) && (
-            <button type="button" className="view-all" onClick={() => setSelected(new Map([...selected, ...page.books.map((b) => [b.id, b] as const)]))}>
-              Choose all on this page
-            </button>
-          )}
-          {page && page.total > page.books.length && allChosenFor !== JSON.stringify(query) && (
-            <button type="button" className="view-all" disabled={busy !== null} onClick={() => void chooseAll()}>
-              Choose all {page.total}
-            </button>
-          )}
-          {selected.size > 0 && (
-            <button type="button" className="view-all" disabled={busy !== null} onClick={() => setSelected(new Map())}>
-              Clear
-            </button>
-          )}
           {busy && <span className="select-count">{busy}</span>}
           <span className="select-actions">
-            <button type="button" className="btn btn-quiet" disabled={!selected.size} onClick={() => askEditDetails(chosen)}>
-              <Icon name="edit" size={16} /> Edit details
-            </button>
-            <button type="button" className="btn btn-quiet" disabled={!selected.size} onClick={() => setTagging(true)}>
-              <Icon name="tag" size={16} /> Tags
-            </button>
-            {kind !== "audiobooks" && (
-              <button type="button" className="btn btn-quiet" disabled={!selected.size} onClick={() => askSendToEreader(chosen)}>
-                <Icon name="ereader" size={16} /> Send to e-reader
-              </button>
-            )}
-            {!isWeb && phoneChoiceShown() && (
-              <>
-                <button type="button" className="btn btn-quiet" disabled={!selected.size} onClick={() => actions.setPhoneWanted?.(chosen, true)}>
-                  <Icon name="upload" size={16} /> Send to device
-                </button>
-                {chosen.some((b) => b.phoneWanted) && (
-                  <button type="button" className="btn btn-quiet" onClick={() => actions.setPhoneWanted?.(chosen.filter((b) => b.phoneWanted), false)}>
-                    <Icon name="cloudOff" size={16} /> Stop sending to device
-                  </button>
-                )}
-              </>
-            )}
-            <button type="button" className="btn btn-quiet" disabled={!selected.size || busy !== null} onClick={() => void saveChosen()}>
-              <Icon name="copy" size={16} /> Save copies
-            </button>
-            <button
-              type="button"
+            <Menu
+              label={`Do something with the chosen ${words.many}`}
               className="btn btn-quiet"
-              disabled={!chosen.some((b) => b.availability === "local" && b.inCloud) || busy !== null}
-              title="Frees space here. The books stay in your library and in the cloud."
-              onClick={() => setAsking("download")}
-            >
-              <Icon name="cloudOff" size={16} /> Remove download
-            </button>
-            <button type="button" className="btn btn-quiet" disabled={!selected.size || busy !== null} onClick={() => setAsking("remove")}>
-              <Icon name="close" size={16} /> Remove from library
-            </button>
-            <button
-              type="button"
-              className="btn btn-quiet btn-danger-text"
-              disabled={!selected.size || busy !== null}
-              onClick={() => setAsking("delete")}
-            >
-              <Icon name="trash" size={16} /> Delete
-            </button>
+              align="start"
+              trigger={
+                <>
+                  Actions <Icon name="chevronDown" size={13} />
+                </>
+              }
+              items={chosenActions}
+            />
+            {/* The phone has no pages, so only "All in library" there. */}
+            {!endless && (
+              <label className="select-all">
+                <input
+                  type="checkbox"
+                  checked={pageAllChosen}
+                  disabled={!page?.books.length || busy !== null}
+                  onChange={(e) => {
+                    if (!page) return;
+                    const next = new Map(selected);
+                    page.books.forEach((b) => (e.target.checked ? next.set(b.id, b) : next.delete(b.id)));
+                    setSelected(next);
+                  }}
+                />
+                All on page
+              </label>
+            )}
+            <label className="select-all">
+              <input
+                type="checkbox"
+                checked={libraryAllChosen}
+                disabled={!page?.total || busy !== null}
+                onChange={(e) => (e.target.checked ? void chooseAll() : setSelected(new Map()))}
+              />
+              All in library
+            </label>
             <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => setSelected(null)}>
               Done
             </button>
