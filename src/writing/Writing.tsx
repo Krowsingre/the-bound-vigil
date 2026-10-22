@@ -182,8 +182,11 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
     }
   };
 
+  // Front matter, chapters and back matter each keep their own order: a move
+  // stays within its group, and "Where it goes in the book" moves between them.
+  const roleOf = (cid: string) => chapters.find((c) => c.id === cid)?.role;
   const move = async (from: string, to: string) => {
-    if (from === to) return;
+    if (from === to || roleOf(from) !== roleOf(to)) return;
     const order = chapters.map((c) => c.id).filter((c) => c !== from);
     order.splice(order.indexOf(to) + (chapters.findIndex((c) => c.id === from) < chapters.findIndex((c) => c.id === to) ? 1 : 0), 0, from);
     setView((v) => v && { ...v, chapters: order.map((o) => v.chapters.find((c) => c.id === o)!) });
@@ -198,7 +201,7 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
   const nudge = (c: WritingChapter, by: -1 | 1) => {
     const i = chapters.findIndex((x) => x.id === c.id);
     const other = chapters[i + by];
-    if (other) void move(c.id, other.id);
+    if (other?.role === c.role) void move(c.id, other.id);
   };
 
   const setRole = async (c: WritingChapter, role: WritingChapter["role"]) => {
@@ -211,8 +214,8 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
   };
 
   const chapterMenu = (c: WritingChapter, i: number): MenuEntry[] => [
-    { label: "Move up", icon: "chevronUp", disabled: i === 0, onSelect: () => nudge(c, -1) },
-    { label: "Move down", icon: "chevronDown", disabled: i === chapters.length - 1, onSelect: () => nudge(c, 1) },
+    { label: "Move up", icon: "chevronUp", disabled: chapters[i - 1]?.role !== c.role, onSelect: () => nudge(c, -1) },
+    { label: "Move down", icon: "chevronDown", disabled: chapters[i + 1]?.role !== c.role, onSelect: () => nudge(c, 1) },
     "divider",
     { heading: <span className="menu-tip">Where it goes in the book</span> },
     { label: "Front matter", hint: "Dedication, foreword", checked: c.role === "front", onSelect: () => void setRole(c, "front") },
@@ -293,7 +296,7 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
                   e.dataTransfer.setData("text/plain", c.id);
                 }}
                 onDragEnd={() => setDragging(null)}
-                onDragOver={(e) => dragging && e.preventDefault()}
+                onDragOver={(e) => dragging && roleOf(dragging) === c.role && e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
                   if (dragging) void move(dragging, c.id);

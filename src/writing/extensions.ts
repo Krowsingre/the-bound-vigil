@@ -83,6 +83,8 @@ const LONGEST_SIDE = 1600;
 const QUALITY = 0.85;
 /** Pictures already this small are kept as they are. */
 const SMALL_ENOUGH = 300_000;
+/** The largest GIF kept, since GIFs can't be made smaller here. */
+const MAX_GIF = 4_000_000;
 
 /** A picture file as a `data:` address, made smaller first when it's large. */
 export async function pictureAddress(file: File): Promise<string> {
@@ -92,10 +94,15 @@ export async function pictureAddress(file: File): Promise<string> {
     reader.onerror = () => reject(new Error("That picture couldn't be read."));
     reader.readAsDataURL(file);
   });
+  // A canvas keeps only a GIF's first frame, so GIFs stay as they are, moving or not.
+  if (file.type === "image/gif") {
+    if (file.size > MAX_GIF) throw new Error("That GIF is too large to keep in a chapter (over 4 MB). Make it smaller first.");
+    return original;
+  }
   const bitmap = await createImageBitmap(file).catch(() => null);
   if (!bitmap) throw new Error("That picture couldn't be opened. Try a JPEG or PNG.");
   const scale = Math.min(1, LONGEST_SIDE / Math.max(bitmap.width, bitmap.height));
-  if (scale === 1 && file.size <= SMALL_ENOUGH && /^image\/(jpeg|png|gif|webp)$/.test(file.type)) return original;
+  if (scale === 1 && file.size <= SMALL_ENOUGH && /^image\/(jpeg|png|webp)$/.test(file.type)) return original;
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bitmap.width * scale);
   canvas.height = Math.round(bitmap.height * scale);

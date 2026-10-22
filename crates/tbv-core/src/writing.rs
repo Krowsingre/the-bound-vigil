@@ -87,8 +87,21 @@ fn title_of(text: &str) -> Result<String> {
     Ok(title.chars().take(MAX_TITLE_CHARS).collect())
 }
 
-/// Words in a chapter's HTML: tags and entities left out.
+/// Words in a chapter's HTML: tags and entities left out, footnotes'
+/// words (kept in their `data-footnote` attribute) counted in.
 pub fn count_words(html: &str) -> u32 {
+    const NOTE: &str = "data-footnote=\"";
+    let notes: u32 = html
+        .match_indices(NOTE)
+        .map(|(at, _)| {
+            let rest = &html[at + NOTE.len()..];
+            words_outside_tags(&rest[..rest.find('"').unwrap_or(rest.len())])
+        })
+        .sum();
+    words_outside_tags(html) + notes
+}
+
+fn words_outside_tags(html: &str) -> u32 {
     let mut text = String::with_capacity(html.len());
     let mut in_tag = false;
     let mut chars = html.chars().peekable();
@@ -412,6 +425,7 @@ mod tests {
     fn words_are_counted_without_the_html() {
         assert_eq!(count_words("<h2>Part one</h2><p>It was a <em>dark</em>&nbsp;night.</p><hr><p>— Then</p>"), 8);
         assert_eq!(count_words(""), 0);
+        assert_eq!(count_words(r#"<p>Night<sup data-footnote="A long one &amp; cold." class="writing-footnote"></sup> fell.</p>"#), 6);
     }
 
     #[test]
