@@ -509,11 +509,17 @@ export async function webApi(): Promise<Api> {
   /** Where early web versions kept a picture for this browser only. */
   const AVATAR = "profile.avatar";
   /** The library's profile picture, shared by every device; else one this browser kept before pictures synced. */
+  const DEVICE_NAME = "profile.device";
   const profile = () => {
-    const avatar = library.row("profile", ["me"])?.avatar;
-    if (typeof avatar === "string") return { avatarPath: sync.pictureUrls.get(avatar) ?? null };
-    return { avatarPath: avatar === null ? null : (db.meta.get(AVATAR) ?? null) };
+    const row = library.row("profile", ["me"]);
+    const avatar = row?.avatar;
+    const named = { name: typeof row?.name === "string" && row.name.trim() ? row.name.trim() : null, deviceName: db.meta.get(DEVICE_NAME) || "This phone" };
+    if (typeof avatar === "string") return { avatarPath: sync.pictureUrls.get(avatar) ?? null, ...named };
+    return { avatarPath: avatar === null ? null : (db.meta.get(AVATAR) ?? null), ...named };
   };
+  /** The profile row with some of it changed, keeping the rest. */
+  const writeProfile = (change: Record<string, unknown>) =>
+    library.write("profile", { id: "me", avatar: library.row("profile", ["me"])?.avatar ?? null, name: library.row("profile", ["me"])?.name ?? null, ...change, updated_at: now() });
 
   const api: Api = {
     kind: "web",
@@ -648,12 +654,21 @@ export async function webApi(): Promise<Api> {
       const name = `avatar-${crypto.randomUUID()}.${extension}`;
       await sync.addPicture(name, file);
       await db.setMeta(AVATAR, null);
-      await library.write("profile", { id: "me", avatar: name, updated_at: now() });
+      await writeProfile({ avatar: name });
       return profile();
     },
     clearAvatar: async () => {
       await db.setMeta(AVATAR, null);
-      await library.write("profile", { id: "me", avatar: null, updated_at: now() });
+      await writeProfile({ avatar: null });
+      return profile();
+    },
+    setAccountName: async (name) => {
+      const tidy = name.split(/\s+/).filter(Boolean).join(" ").slice(0, 60);
+      await writeProfile({ name: tidy || null });
+      return profile();
+    },
+    setDeviceName: async (name) => {
+      await db.setMeta(DEVICE_NAME, name.split(/\s+/).filter(Boolean).join(" ").slice(0, 60) || null);
       return profile();
     },
     pickBooks: () => phoneImports.pick(false),

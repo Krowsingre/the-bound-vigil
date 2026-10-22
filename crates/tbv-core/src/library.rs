@@ -433,6 +433,10 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE books ADD COLUMN same_as TEXT;
     "#,
+    // v22: the account's name, shown with the profile picture on every device.
+    r#"
+    ALTER TABLE profile ADD COLUMN name TEXT;
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

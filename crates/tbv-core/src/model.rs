@@ -392,6 +392,12 @@ pub struct LibraryPage {
 pub struct Profile {
     /// The picture shown inside the sync circle, copied into the app's data folder.
     pub avatar_path: Option<String>,
+    /// The account's own name, the same on every device.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// What this device is called: in Grimoire's list and in sync's notes.
+    #[serde(default)]
+    pub device_name: String,
 }
 
 /// What happened to one file handed to import.

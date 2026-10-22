@@ -68,6 +68,30 @@ pub fn pick_files(keep: bool) -> Result<Vec<String>, String> {
     }
 }
 
+/// Asks for a picture from Photos and waits: its path (a JPEG in TBV's own
+/// folder), or None when cancelled. Must not be called on the main thread.
+pub fn pick_photo() -> Result<Option<String>, String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get().ok_or("Photos isn't ready.")?;
+        let answer: serde_json::Value = swift.run_mobile_plugin("pickPhoto", ()).map_err(|e| e.to_string())?;
+        Ok(answer.get("path").and_then(|p| p.as_str()).map(str::to_string))
+    }
+    #[cfg(not(target_os = "ios"))]
+    Err("Choosing from Photos only works on iPhone and iPad.".into())
+}
+
+/// "iPhone" or "iPad", from the device itself.
+pub fn device_kind() -> Option<String> {
+    #[cfg(target_os = "ios")]
+    {
+        let answer: serde_json::Value = SWIFT.get()?.run_mobile_plugin("deviceKind", ()).ok()?;
+        answer.get("kind").and_then(|k| k.as_str()).map(str::to_string)
+    }
+    #[cfg(not(target_os = "ios"))]
+    None
+}
+
 #[cfg(target_os = "ios")]
 #[derive(serde::Serialize)]
 struct UrlArgs<'a> {

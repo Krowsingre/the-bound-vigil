@@ -19,7 +19,7 @@ export const Header = forwardRef<
     onOpenSyncSettings: () => void;
     onOpenActivity?: () => void;
     onOpenPlaces?: () => void;
-    onChooseAvatar: () => void;
+    onChooseAvatar: (from?: "photos" | "files") => void;
     onClearAvatar: () => void;
     /** Opens the menu of pages, on a phone. */
     onOpenMenu?: () => void;

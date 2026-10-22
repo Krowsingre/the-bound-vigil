@@ -59,7 +59,7 @@ export const KINDS: Kind[] = [
     keys: ["id"],
     cols: ["book_id", "kind", "excerpt", "note", "locator", "color", "created_at", "updated_at", "deleted_at"],
   },
-  { name: "profile", table: "profile", keys: ["id"], cols: ["avatar", "updated_at"] },
+  { name: "profile", table: "profile", keys: ["id"], cols: ["avatar", "name", "updated_at"] },
   { name: "personal_note", table: "personal_notes", keys: ["id"], cols: ["title", "body", "created_at", "updated_at", "deleted_at"] },
   {
     name: "writing_project",

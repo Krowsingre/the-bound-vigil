@@ -20,6 +20,34 @@ const MAX_AVATAR_BYTES: u64 = 10 * 1024 * 1024;
 const AVATAR_KEY: &str = "avatar_path";
 const ME: &str = "me";
 
+const DEVICE_NAME_KEY: &str = "device.name";
+
+/// What kind of device this is ("iPad"), when the app knows better than the
+/// system does. Set once at startup.
+static DEVICE_KIND: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+pub fn set_device_kind(kind: &str) {
+    if !kind.trim().is_empty() {
+        let _ = DEVICE_KIND.set(kind.trim().to_string());
+    }
+}
+
+/// A computer's own name, else what kind of device it is.
+fn default_device_name() -> String {
+    let computer = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_default();
+    let computer = computer.trim();
+    if !computer.is_empty() && !cfg!(target_os = "ios") {
+        return computer.to_string();
+    }
+    DEVICE_KIND.get().cloned().unwrap_or_else(|| crate::sync::device_label().to_string())
+}
+
+/// A name as typed, kept to one line of sensible length; None when empty.
+fn tidy_name(name: &str) -> Option<String> {
+    let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!name.is_empty()).then(|| name.chars().take(60).collect())
+}
+
 /// A name TBV gave a picture, safe to use as a file name.
 fn is_avatar_name(name: &str) -> bool {
     name.starts_with("avatar-") && !name.contains(['/', '\\']) && !name.contains("..")
@@ -59,7 +87,38 @@ impl Library {
 
     pub fn profile(&self) -> Result<Profile> {
         let path = self.avatar_name()?.map(|n| self.paths.profile_dir.join(n)).filter(|p| p.exists());
-        Ok(Profile { avatar_path: path.map(|p| p.display().to_string()) })
+        Ok(Profile { avatar_path: path.map(|p| p.display().to_string()), name: self.account_name()?, device_name: self.device_name()? })
+    }
+
+    fn account_name(&self) -> Result<Option<String>> {
+        let name: Option<Option<String>> = self.conn.query_row("SELECT name FROM profile WHERE id = ?1", params![ME], |r| r.get(0)).optional()?;
+        Ok(name.flatten().map(|n| n.trim().to_string()).filter(|n| !n.is_empty()))
+    }
+
+    /// The account's name, the same on every device. Empty takes it away.
+    pub fn set_account_name(&self, name: &str) -> Result<Profile> {
+        let name = tidy_name(name);
+        self.conn.execute(
+            "INSERT INTO profile (id, name, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at",
+            params![ME, name, now_utc()],
+        )?;
+        self.profile()
+    }
+
+    /// What this device is called. Until it's named: the computer's own name,
+    /// or what kind of device it is.
+    pub fn device_name(&self) -> Result<String> {
+        if let Some(name) = self.setting(DEVICE_NAME_KEY)?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) {
+            return Ok(name);
+        }
+        Ok(default_device_name())
+    }
+
+    /// Names this device; empty goes back to the name it started with.
+    pub fn set_device_name(&self, name: &str) -> Result<Profile> {
+        self.set_setting(DEVICE_NAME_KEY, &tidy_name(name).unwrap_or_default())?;
+        self.profile()
     }
 
     /// Copies the picture into TBV's profile folder and uses it from now on.
@@ -114,6 +173,23 @@ impl Library {
 mod tests {
     use crate::library::tests::open_temp_library;
     use std::fs;
+
+    #[test]
+    fn the_account_and_device_have_names() {
+        let (_dir, library) = open_temp_library();
+        let start = library.profile().unwrap();
+        assert_eq!(start.name, None);
+        assert!(!start.device_name.is_empty(), "a device always has a name");
+        assert_eq!(library.set_account_name("  embre   K ").unwrap().name.as_deref(), Some("embre K"));
+        assert_eq!(library.set_device_name("embre's iPad").unwrap().device_name, "embre's iPad");
+        assert_eq!(library.set_device_name(" ").unwrap().device_name, start.device_name);
+        assert_eq!(library.set_account_name("").unwrap().name, None);
+        // The picture and the name are kept apart.
+        let picture = _dir.path().join("me.png");
+        fs::write(&picture, b"png").unwrap();
+        library.set_account_name("embre").unwrap();
+        assert_eq!(library.set_avatar(&picture).unwrap().name.as_deref(), Some("embre"));
+    }
 
     #[test]
     fn avatar_is_copied_replaced_and_cleared() {

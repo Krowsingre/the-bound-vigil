@@ -17,6 +17,7 @@ import { HomeSection } from "./HomeSection";
 import { UsageSection } from "./UsageSection";
 import { ContentsSection } from "./ContentsSection";
 import { HardcoverSection } from "./HardcoverSection";
+import { NamesSection } from "./NamesSection";
 import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
 import { PROVIDERS, ProviderPicker, type Provider } from "./providers";
 import { ActionTile, RadioList, Row, Section, Select, Toggle } from "./controls";
@@ -107,6 +108,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
 
   return (
     <>
+      <NamesSection />
       <Section
         id="provider"
         title="Sync provider"
