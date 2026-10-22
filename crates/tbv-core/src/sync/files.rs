@@ -289,14 +289,14 @@ impl<S: Store + Send> Remote for FileRemote<S> {
         self.store.read_range(path, start, end)
     }
 
-    fn note_this_device(&mut self, books: u64) -> Result<()> {
+    fn note_this_device(&mut self, books: u64, label: &str) -> Result<()> {
         let written = self.next_number()? - 1;
         let path = format!("{DEVICES}{}.json", self.device);
         let before = self.store.read(&path)?.and_then(|b| serde_json::from_slice::<DeviceNote>(&b).ok());
-        if before.is_some_and(|b| b.written == written && b.books == books) {
+        if before.is_some_and(|b| b.written == written && b.books == books && b.label == label) {
             return Ok(());
         }
-        let note = DeviceNote { written, books, label: super::device_label().into(), at: crate::time::now_utc() };
+        let note = DeviceNote { written, books, label: label.into(), at: crate::time::now_utc() };
         self.store.write(&path, &serde_json::to_vec(&note)?)
     }
 
@@ -488,14 +488,14 @@ pub(crate) mod tests {
         a.prepare().unwrap();
         a.push(&[record(1)]).unwrap();
         a.push(&[record(2)]).unwrap();
-        a.note_this_device(3050).unwrap();
+        a.note_this_device(3050, "Windows PC").unwrap();
 
         let page = b.pull("", 500).unwrap();
         assert!(b.behind(&page.cursor).unwrap().is_empty(), "read everything");
 
         // A batch the cloud app hasn't brought here yet.
         a.push(&[record(3)]).unwrap();
-        a.note_this_device(3049).unwrap();
+        a.note_this_device(3049, "Windows PC").unwrap();
         fs::remove_file(dir.path().join(LIBRARY_FOLDER).join("changes/device-a/0000000003.json")).unwrap();
         let page = b.pull(&page.cursor, 500).unwrap();
         assert!(page.records.is_empty());

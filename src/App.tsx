@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, isApp, isHome, isIOS, isWeb } from "./api";
+import { api, isApp, isHome, isWeb } from "./api";
 import type { CollectionRef, HomeViewModel, ImportsView, Profile, SyncStatus } from "./api/types";
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { ContextMenuHost } from "./components/ContextMenu";
@@ -23,6 +23,7 @@ import { NO_IMPORTS as NOTHING_IMPORTED } from "./imports/view";
 import { useServerQueue } from "./imports/serverQueue";
 import { useLocalSendRows } from "./imports/LocalSendRows";
 import { LocalSendOffers } from "./imports/LocalSendOffer";
+import { PROFILE_CHANGED } from "./settings/NamesSection";
 import { SyncActivity } from "./sync/SyncActivity";
 import { BookPlacesPage } from "./sync/BookPlaces";
 import { importSummary } from "./lib/importSummary";
@@ -191,9 +192,16 @@ export function App() {
     return api.onSync({ libraryChanged: () => void load() });
   }, []);
 
-  const chooseAvatar = useCallback(() => {
+  // Names changed in Settings show in the sync circle's menu straight away.
+  useEffect(() => {
+    const changed = (e: Event) => setProfile((e as CustomEvent<Profile>).detail);
+    window.addEventListener(PROFILE_CHANGED, changed);
+    return () => window.removeEventListener(PROFILE_CHANGED, changed);
+  }, []);
+
+  const chooseAvatar = useCallback((from?: "photos" | "files") => {
     if (!isApp && !isWeb) return toast("Choosing a picture works in the desktop app.");
-    api.chooseAvatar().then(
+    api.chooseAvatar(from).then(
       (p) => p && setProfile(p),
       (e: unknown) => toast(`That picture couldn't be used: ${String(e)}`),
     );
@@ -569,7 +577,7 @@ export function App() {
           Imported {importCounts(imports).done} of {importCounts(imports).total} books <span className="import-progress-link">View</span>
         </button>
       )}
-      {!isWeb && !isHome && !isIOS && <LocalSendOffers />}
+      {!isWeb && !isHome && <LocalSendOffers />}
       <PlayerBar onShowAudiobooks={() => navigate("audiobooks")} />
       <AddToCollectionHost onChanged={refresh} />
       <BookDialogsHost onChanged={refresh} />

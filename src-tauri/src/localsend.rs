@@ -145,14 +145,9 @@ impl Host for AppHost {
     }
 }
 
-/// The computer's name, for LocalSend's list.
-fn alias() -> String {
-    let name = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_default();
-    if name.trim().is_empty() {
-        "The Bound Vigil".into()
-    } else {
-        format!("The Bound Vigil on {}", name.trim())
-    }
+/// This device's name, for Grimoire's list (and LocalSend's).
+fn alias(library: &Mutex<Library>) -> String {
+    library.lock().ok().and_then(|l| l.device_name().ok()).unwrap_or_else(|| "The Bound Vigil".into())
 }
 
 impl LocalSend {
@@ -160,7 +155,7 @@ impl LocalSend {
         LocalSendStatus {
             enabled: enabled(library),
             running: self.receiver.lock().is_ok_and(|r| r.is_some()),
-            alias: alias(),
+            alias: alias(library),
             problem: self.problem.lock().ok().and_then(|p| p.clone()),
         }
     }
@@ -174,6 +169,17 @@ impl LocalSend {
             *receiver = None;
         }
         Ok(())
+    }
+
+    /// Starts receiving again, if it's on (under a new name, say).
+    pub fn restart(&self, app: &AppHandle, library: &Arc<Mutex<Library>>, imports: &Arc<Imports>, inbox: PathBuf) {
+        let was = self.receiver.lock().ok().and_then(|mut r| r.take());
+        if was.is_some() {
+            drop(was);
+            // The old listener lets go of the port once it notices.
+            std::thread::sleep(Duration::from_millis(400));
+        }
+        self.start(app, library, imports, inbox);
     }
 
     /// Starts receiving if it's switched on. Leftovers from last time go first.
@@ -194,7 +200,7 @@ impl LocalSend {
         });
         host.leftovers(&inbox);
         let Some((fingerprint, tls)) = credentials(library) else { return };
-        let started = localsend::start(Identity { alias: alias(), fingerprint, port: localsend::PORT, tls: Some(tls) }, &inbox, host, true);
+        let started = localsend::start(Identity { alias: alias(library), fingerprint, port: localsend::PORT, tls: Some(tls) }, &inbox, host, true);
         let problem = match started {
             Ok(r) => {
                 *receiver = Some(r);
@@ -211,7 +217,7 @@ impl LocalSend {
     fn identity(&self, library: &Mutex<Library>) -> tbv_core::Result<Identity> {
         let (fingerprint, tls) = credentials(library).ok_or_else(|| tbv_core::Error::Unsuitable("TBV couldn't set itself up for Grimoire".into()))?;
         let port = self.receiver.lock().ok().and_then(|r| r.as_ref().map(Receiver::port)).unwrap_or(localsend::PORT);
-        Ok(Identity { alias: alias(), fingerprint, port, tls: Some(tls) })
+        Ok(Identity { alias: alias(library), fingerprint, port, tls: Some(tls) })
     }
 
     /// Devices nearby with LocalSend open.

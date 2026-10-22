@@ -211,6 +211,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "sync",
+    section: "names",
+    label: "Your name and this device's name",
+    words: "name account profile person user device computer phone ipad iphone called rename grimoire",
+  },
+  {
+    tab: "sync",
     section: "provider",
     label: "Sync provider",
     words:

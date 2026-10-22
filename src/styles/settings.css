@@ -1443,3 +1443,10 @@ kbd {
   margin-bottom: 8px;
   font-size: 13px;
 }
+
+/* Settings › Sync & Accounts › Names: the two name boxes side by side. */
+.names-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}

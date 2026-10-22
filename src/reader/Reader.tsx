@@ -29,7 +29,7 @@ export interface ReaderShellProps {
   onImportBooks: () => void;
   onImportFolder: () => void;
   onOpenSyncSettings: () => void;
-  onChooseAvatar: () => void;
+  onChooseAvatar: (from?: "photos" | "files") => void;
   onClearAvatar: () => void;
 }
 

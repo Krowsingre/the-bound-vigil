@@ -156,8 +156,13 @@ export interface Api {
   onHomeChanged(listener: () => void): () => void;
   getProfile(): Promise<Profile>;
   /** Asks for a picture, copies it into TBV, and returns the new profile. Null if cancelled. */
-  chooseAvatar(): Promise<Profile | null>;
+  /** A picture from the computer, or on iPhone and iPad from Photos or Files. */
+  chooseAvatar(from?: "photos" | "files"): Promise<Profile | null>;
   clearAvatar(): Promise<Profile>;
+  /** The account's name, the same on every device; empty takes it away. */
+  setAccountName(name: string): Promise<Profile>;
+  /** What this device is called; empty goes back to the name it started with. */
+  setDeviceName(name: string): Promise<Profile>;
   pickBooks(): Promise<string[]>;
   pickFolder(): Promise<string[]>;
   coverUrl(path: string): string;
@@ -579,7 +584,11 @@ function appApi(): Api {
         ? homeAudioUrl(bookId, part)
         : `${/windows|android/i.test(navigator.userAgent) ? "http://tbvaudio.localhost" : "tbvaudio://localhost"}/${encodeURIComponent(bookId)}/${part}`,
     getProfile: async () => (await core).invoke<Profile>("get_profile"),
-    chooseAvatar: async () => {
+    chooseAvatar: async (from) => {
+      if (from === "photos" && isIOS) {
+        const photo = await (await core).invoke<string | null>("ios_pick_photo");
+        return photo ? (await core).invoke<Profile>("set_avatar", { path: photo }) : null;
+      }
       const [path] = await openFiles({
         multiple: false,
         title: "Choose a profile picture",
@@ -588,6 +597,8 @@ function appApi(): Api {
       return path ? (await core).invoke<Profile>("set_avatar", { path }) : null;
     },
     clearAvatar: async () => (await core).invoke<Profile>("clear_avatar"),
+    setAccountName: async (name) => (await core).invoke<Profile>("set_account_name", { name }),
+    setDeviceName: async (name) => (await core).invoke<Profile>("set_device_name", { name }),
     pickBooks: async () =>
       openFiles({
         multiple: true,

@@ -583,6 +583,10 @@ export interface HomeStatus {
 
 export interface Profile {
   avatarPath: string | null;
+  /** The account's own name, the same on every device. */
+  name?: string | null;
+  /** What this device is called: in Grimoire's list and in sync's notes. */
+  deviceName?: string;
 }
 
 export type HighlightColor = "rose" | "amber" | "sage" | "slate";

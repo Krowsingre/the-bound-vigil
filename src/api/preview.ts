@@ -416,7 +416,7 @@ function previewSync(): SyncOverview {
 
 export function previewApi(): Api {
   let sync = previewSync();
-  let profile: Profile = { avatarPath: params.has("avatar") ? SAMPLE_AVATAR : null };
+  let profile: Profile = { avatarPath: params.has("avatar") ? SAMPLE_AVATAR : null, name: null, deviceName: "This computer" };
   const settings = new Map<string, string>();
   const dismissed = new Set<string>();
   // Book details in their layers: what each book started with, your edits and what was fetched.
@@ -707,7 +707,9 @@ export function previewApi(): Api {
     },
     getProfile: async () => profile,
     chooseAvatar: async () => null,
-    clearAvatar: async () => (profile = { avatarPath: null }),
+    clearAvatar: async () => (profile = { ...profile, avatarPath: null }),
+    setAccountName: async (name) => (profile = { ...profile, name: name.trim() || null }),
+    setDeviceName: async (name) => (profile = { ...profile, deviceName: name.trim() || "This computer" }),
     pickBooks: async () => [],
     pickFolder: async () => [],
     coverUrl: (path) => (path.startsWith("data:") ? path : ""),

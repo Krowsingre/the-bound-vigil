@@ -357,6 +357,29 @@ async fn clear_avatar(state: State<'_, AppLibrary>) -> CommandResult<Profile> {
     with_library(state, |library| library.clear_avatar()).await
 }
 
+/// The account's name, the same on every device.
+#[tauri::command]
+async fn set_account_name(state: State<'_, AppLibrary>, name: String) -> CommandResult<Profile> {
+    with_library(state, move |library| library.set_account_name(&name)).await
+}
+
+/// What this device is called, in Grimoire's list and in sync's notes.
+/// Grimoire starts again under the new name, so other devices see it.
+#[tauri::command]
+async fn set_device_name(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    imports: State<'_, Arc<imports::Imports>>,
+    localsend: State<'_, Arc<localsend::LocalSend>>,
+    name: String,
+) -> CommandResult<Profile> {
+    let (library, imports, localsend) = (state.0.clone(), imports.inner().clone(), localsend.inner().clone());
+    let profile = with_library(state, move |l| l.set_device_name(&name)).await?;
+    let inbox = localsend_inbox(&app)?;
+    tauri::async_runtime::spawn_blocking(move || localsend.restart(&app, &library, &imports, inbox)).await.map_err(|e| e.to_string())?;
+    Ok(profile)
+}
+
 #[tauri::command]
 fn supported_formats() -> Vec<&'static str> {
     SUPPORTED_FORMATS.to_vec()
@@ -1655,6 +1678,17 @@ async fn ios_pick_files(keep: Option<bool>) -> CommandResult<Vec<String>> {
     }
 }
 
+/// A picture from Photos on iPhone and iPad; None if cancelled.
+#[tauri::command]
+async fn ios_pick_photo() -> CommandResult<Option<String>> {
+    #[cfg(target_os = "ios")]
+    {
+        tauri::async_runtime::spawn_blocking(tauri_plugin_tbv_ios::pick_photo).await.map_err(|e| e.to_string())?
+    }
+    #[cfg(not(target_os = "ios"))]
+    Err("Choosing from Photos only works on iPhone and iPad.".into())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
@@ -1670,6 +1704,13 @@ pub fn run() {
             tbv_core::sync::files::set_fetcher(tauri_plugin_tbv_ios::fetch);
             #[cfg(target_os = "ios")]
             tbv_core::sync::files::set_refresher(tauri_plugin_tbv_ios::refresh);
+            // An iPad says it's an iPad, not an iPhone.
+            #[cfg(target_os = "ios")]
+            std::thread::spawn(|| {
+                if let Some(kind) = tauri_plugin_tbv_ios::device_kind() {
+                    tbv_core::profile::set_device_kind(&kind);
+                }
+            });
             let data_dir = app.path().app_data_dir()?;
             let cache_dir = app.path().app_cache_dir()?;
             let library = Arc::new(Mutex::new(Library::open(LibraryPaths::new(&data_dir, &cache_dir))?));
@@ -1694,9 +1735,7 @@ pub fn run() {
             server_imports.resume(app.handle(), &library, &imports);
             let receiving = Arc::new(localsend::LocalSend::default());
             app.manage(receiving.clone());
-            // An iPhone can't take books over LocalSend or serve the phone
-            // version: both need the computer's network.
-            #[cfg(desktop)]
+            // iPhones and iPads take books with Grimoire too, while TBV is open.
             receiving.start(app.handle(), &library, &imports, data_dir.join("LocalSend inbox"));
             // A book half brought down from a catalog when TBV closed isn't kept.
             let _ = std::fs::remove_dir_all(writing::downloads_dir(&data_dir));
@@ -1709,6 +1748,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ios_pick_folder,
             ios_pick_files,
+            ios_pick_photo,
             writing::catalogs,
             writing::save_catalog,
             writing::remove_catalog,
@@ -1798,6 +1838,8 @@ pub fn run() {
             get_profile,
             set_avatar,
             clear_avatar,
+            set_account_name,
+            set_device_name,
             supported_formats,
             quit_app,
             open_book,

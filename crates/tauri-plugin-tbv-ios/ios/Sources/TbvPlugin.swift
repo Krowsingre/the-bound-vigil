@@ -1,5 +1,6 @@
 import AVFoundation
 import AuthenticationServices
+import PhotosUI
 import Tauri
 import UIKit
 import UniformTypeIdentifiers
@@ -22,7 +23,7 @@ class UrlArgs: Decodable {
 /// The iPhone app's own pieces: folders chosen in Files (iCloud Drive's
 /// library folder), iCloud files brought down when TBV reads them, and
 /// audiobooks that keep playing with the screen locked.
-class TbvPlugin: Plugin, UIDocumentPickerDelegate, ASWebAuthenticationPresentationContextProviding {
+class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegate, ASWebAuthenticationPresentationContextProviding {
   /// Folders chosen in Files, by path, kept as bookmarks so TBV can open
   /// them again after a restart.
   private static let foldersKey = "tbv.folders"
@@ -153,6 +154,59 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, ASWebAuthenticationPresentati
     picking = nil
     pickingFiles = false
     invoke.resolve(["cancelled": true])
+  }
+
+  /// What kind of device this is: "iPhone" or "iPad".
+  @objc public func deviceKind(_ invoke: Invoke) throws {
+    invoke.resolve(["kind": UIDevice.current.model])
+  }
+
+  /// Asks for a picture from Photos (a profile picture). It's saved as a
+  /// JPEG in TBV's own folder; answers its path, or no path if cancelled.
+  @objc public func pickPhoto(_ invoke: Invoke) throws {
+    DispatchQueue.main.async {
+      if let earlier = self.picking {
+        earlier.resolve(["cancelled": true])
+      }
+      var config = PHPickerConfiguration()
+      config.filter = .images
+      config.selectionLimit = 1
+      let picker = PHPickerViewController(configuration: config)
+      picker.delegate = self
+      guard let shown = self.manager.viewController else {
+        invoke.reject("TBV couldn't show your photos.")
+        return
+      }
+      self.picking = invoke
+      self.pickingFiles = false
+      shown.present(picker, animated: true)
+    }
+  }
+
+  func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+    picker.dismiss(animated: true)
+    guard let invoke = picking else { return }
+    picking = nil
+    guard let item = results.first?.itemProvider, item.canLoadObject(ofClass: UIImage.self) else {
+      invoke.resolve(["cancelled": true])
+      return
+    }
+    item.loadObject(ofClass: UIImage.self) { object, _ in
+      guard let image = object as? UIImage, let jpeg = image.jpegData(compressionQuality: 0.9) else {
+        invoke.reject("That photo couldn't be read.")
+        return
+      }
+      let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        .appendingPathComponent("Picked", isDirectory: true).appendingPathComponent(UUID().uuidString, isDirectory: true)
+      try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+      let target = folder.appendingPathComponent("photo.jpg")
+      do {
+        try jpeg.write(to: target)
+        invoke.resolve(["path": target.path])
+      } catch {
+        invoke.reject("That photo couldn't be saved.")
+      }
+    }
   }
 
   /// Brings down a file iCloud hasn't kept on the phone yet, waiting until

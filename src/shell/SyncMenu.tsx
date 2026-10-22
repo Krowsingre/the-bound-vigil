@@ -1,4 +1,4 @@
-import { api } from "../api";
+import { api, isIOS } from "../api";
 import type { Profile, SyncBehind, SyncStatus } from "../api/types";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
@@ -49,7 +49,8 @@ export function SyncMenu({
   onOpenActivity?: () => void;
   /** The Where your books are page; desktop only too. */
   onOpenPlaces?: () => void;
-  onChooseAvatar: () => void;
+  /** On iPhone and iPad, from Photos or from Files. */
+  onChooseAvatar: (from?: "photos" | "files") => void;
   onClearAvatar: () => void;
 }) {
   const state = sync?.state ?? "disabled";
@@ -82,6 +83,19 @@ export function SyncMenu({
         </>
       }
       items={[
+        ...(profile?.name || profile?.deviceName
+          ? [
+              {
+                heading: (
+                  <>
+                    <strong>{profile.name ?? "No name yet"}</strong>
+                    <span>{profile.deviceName ? `On ${profile.deviceName}` : ""}</span>
+                  </>
+                ),
+              },
+              "divider" as const,
+            ]
+          : []),
         {
           heading: (
             <>
@@ -123,7 +137,13 @@ export function SyncMenu({
           onSelect: togglePrivacy,
         },
         "divider",
-        { label: avatar ? "Change profile picture…" : "Choose a profile picture…", icon: "image", onSelect: onChooseAvatar },
+        ...(isIOS
+          ? [
+              { label: avatar ? "Change picture from Photos…" : "Choose a picture from Photos…", icon: "image" as const, onSelect: () => onChooseAvatar("photos") },
+              { label: avatar ? "Change picture from Files…" : "Choose a picture from Files…", icon: "folder" as const, onSelect: () => onChooseAvatar("files") },
+            ]
+          : [{ label: avatar ? "Change profile picture…" : "Choose a profile picture…", icon: "image" as const, onSelect: () => onChooseAvatar() }]),
+        { label: "Your name and this device's name", icon: "edit", onSelect: onOpenSyncSettings },
         ...(avatar ? [{ label: "Remove profile picture", onSelect: onClearAvatar }] : []),
       ]}
     />

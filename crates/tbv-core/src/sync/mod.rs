@@ -186,7 +186,7 @@ pub(crate) const KINDS: &[Kind] = &[
         name: "profile",
         table: "profile",
         keys: &["id"],
-        cols: &["avatar", "updated_at"],
+        cols: &["avatar", "name", "updated_at"],
         category: Category::Library,
         creates: true,
     },
@@ -549,8 +549,8 @@ impl Remote for Cloud {
     fn covers_follow_files(&self) -> bool {
         matches!(self, Cloud::Supabase(_))
     }
-    fn note_this_device(&mut self, books: u64) -> Result<()> {
-        self.remote().note_this_device(books)
+    fn note_this_device(&mut self, books: u64, label: &str) -> Result<()> {
+        self.remote().note_this_device(books, label)
     }
     fn behind(&mut self, cursor: &str) -> Result<Vec<Behind>> {
         self.remote().behind(cursor)
@@ -689,7 +689,7 @@ pub trait Remote: Send {
     }
     /// Tells other devices how far this one's changes go and how many books
     /// it has. Only a folder needs it; a server numbers changes itself.
-    fn note_this_device(&mut self, _books: u64) -> Result<()> {
+    fn note_this_device(&mut self, _books: u64, _label: &str) -> Result<()> {
         Ok(())
     }
     /// Other devices with changes past `cursor` that couldn't be read yet.
@@ -1472,7 +1472,7 @@ impl Library {
             "collection_book" => format!("A book's place in a collection{}", book(key.get(1))?),
             "annotation" => format!("A note or highlight{}", book(data.and_then(|d| d.get("book_id")))?),
             "book_tag" => format!("The tag {}{}", key.get(1).and_then(Value::as_str).unwrap_or_default(), book(key.first())?),
-            "profile" => "Your profile picture".into(),
+            "profile" => "Your name and profile picture".into(),
             "series" => format!("The missing books of {}", field("name").unwrap_or_default()),
             "read_along" => format!("Read-along timing{}", book(key.first())?),
             _ => format!("The note {}", field("title").filter(|t| !t.is_empty()).unwrap_or_else(|| "without a title".into())),
@@ -1965,6 +1965,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "collection" => short(text("name")),
         "collection_book" => "In the collection".into(),
         "book_tag" => if data.get("removed_at").is_some_and(|v| !v.is_null()) { "Tag taken off".into() } else { "Tagged".into() },
+        "profile" if !text("name").is_empty() => short(text("name")),
         "profile" => if text("avatar").is_empty() { "No picture".into() } else { "A picture".into() },
         "series" => short(text("name")),
         "annotation" => short(if text("note").is_empty() { text("excerpt") } else { text("note") }),
@@ -2376,9 +2377,12 @@ fn push(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, 
         report.sent += fresh.len() as u32;
         tell(SyncEvent::Records { lane, received: report.received, sent: report.sent });
     }
-    let books = lock()?.listed_books()?;
+    let (books, label) = {
+        let library = lock()?;
+        (library.listed_books()?, library.device_name()?)
+    };
     // Only a help to other devices, so a failure here doesn't fail the sync.
-    let _ = remote.note_this_device(books);
+    let _ = remote.note_this_device(books, &label);
     Ok(())
 }
 
