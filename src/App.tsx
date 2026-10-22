@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, isApp, isWeb } from "./api";
+import { api, isApp, isHome, isWeb } from "./api";
 import type { CollectionRef, HomeViewModel, ImportsView, Profile, SyncStatus } from "./api/types";
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { ContextMenuHost } from "./components/ContextMenu";
@@ -7,7 +7,7 @@ import { BookDialogsHost } from "./library/BookDialogs";
 import { SendToEreaderHost } from "./ereaders/SendToEreader";
 import { BookDetailsPage } from "./details/BookDetailsPage";
 import { DetailsHost } from "./details/DetailsHost";
-import { onShowBookDetails } from "./details/openDetails";
+import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Notes } from "./notes/Notes";
 import { Audiobooks } from "./audio/Audiobooks";
@@ -18,6 +18,7 @@ import { Home } from "./home/Home";
 import { Imports, importCounts } from "./imports/Imports";
 import { NO_IMPORTS as NOTHING_IMPORTED } from "./imports/view";
 import { useServerQueue } from "./imports/serverQueue";
+import { useLocalSendRows } from "./imports/LocalSendRows";
 import { LocalSendOffers } from "./imports/LocalSendOffer";
 import { SyncActivity } from "./sync/SyncActivity";
 import { importSummary } from "./lib/importSummary";
@@ -35,6 +36,8 @@ import { drawImportedCovers } from "./reader/formats";
 const COLLAPSE_KEY = "tbv.sidebarCollapsed";
 const NO_IMPORTS = isWeb
   ? "Add books with the desktop app. They show up here once they sync."
+  : isHome
+    ? "Add books in TBV on the computer. They show up here straight away."
   : "Importing works in the desktop app. This browser preview uses sample books.";
 
 function readCollapsed(): boolean {
@@ -52,8 +55,9 @@ export function App() {
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [dropping, setDropping] = useState(false);
   const [imports, setImports] = useState<ImportsView>(NOTHING_IMPORTED);
-  const servers = useServerQueue(!isWeb);
+  const servers = useServerQueue(!isWeb && !isHome);
   const serverCounts = servers.view.counts;
+  const sent = useLocalSendRows(!isWeb && !isHome);
   // PDF covers are drawn one at a time, in the background.
   const drawingCovers = useRef(false);
   const wasRunning = useRef(false);
@@ -130,6 +134,19 @@ export function App() {
         setRoute("book");
       }),
     [],
+  );
+
+  // Show series / Show author, from any book menu.
+  useEffect(
+    () =>
+      onShowInLibrary((kind, change) => {
+        setSearchText("");
+        if (kind === "documents") changeDocumentsView(change);
+        else if (kind === "audiobooks") changeAudiobooksView(change);
+        else changeLibraryView(change);
+        setRoute(kind === "books" ? "library" : kind);
+      }),
+    [changeLibraryView, changeDocumentsView, changeAudiobooksView],
   );
 
   const openLibrary = useCallback(
@@ -320,7 +337,13 @@ export function App() {
             ? importCounts(imports)
             : serverCounts.total
               ? { done: serverCounts.done, total: serverCounts.total, running: serverCounts.done + serverCounts.failed < serverCounts.total }
-              : null
+              : sent.length
+                ? {
+                    done: sent.filter((f) => f.state !== "waiting" && f.state !== "arriving").length,
+                    total: sent.length,
+                    running: sent.some((f) => f.state === "waiting" || f.state === "arriving"),
+                  }
+                : null
         }
       />
       <div className="main">
@@ -415,6 +438,7 @@ export function App() {
             <Imports
               view={imports}
               servers={isWeb ? undefined : servers}
+              sent={sent}
               onCancel={() => void api.cancelImports().then(reloadImports)}
               onClear={() => {
                 void api.clearFinishedImports().then(reloadImports);
@@ -453,7 +477,7 @@ export function App() {
           Imported {importCounts(imports).done} of {importCounts(imports).total} books <span className="import-progress-link">View</span>
         </button>
       )}
-      {!isWeb && <LocalSendOffers />}
+      {!isWeb && !isHome && <LocalSendOffers />}
       <PlayerBar onShowAudiobooks={() => navigate("audiobooks")} />
       <AddToCollectionHost onChanged={refresh} />
       <BookDialogsHost onChanged={refresh} />

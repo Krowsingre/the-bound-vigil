@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { isApp, isWeb } from "../api";
+import { isApp, isHome, isWeb } from "../api";
 import type { Window as AppWindow } from "@tauri-apps/api/window";
 import { Icon } from "../components/Icon";
 import { runBeforeQuit } from "../lib/beforeQuit";
@@ -30,7 +30,7 @@ export function WindowControls() {
   };
 
   // A browser tab has its own.
-  if (isWeb) return null;
+  if (isWeb || isHome) return null;
   return (
     <div className="window-controls">
       <button type="button" aria-label="Minimize" title="Minimize" onClick={() => void win?.minimize()}>

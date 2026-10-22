@@ -115,6 +115,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "series",
+        table: "series_lists",
+        keys: &["id"],
+        cols: &["name", "books", "hidden", "denied", "checked_at", "updated_at"],
+        category: Category::Metadata,
+        creates: true,
+    },
+    Kind {
         name: "collection",
         table: "collections",
         keys: &["id"],
@@ -447,6 +455,11 @@ impl Cloud {
             Cloud::Files(f) => f,
         }
     }
+
+    /// Part of a file in the cloud, and its size, for streaming. See [`Remote::read_range`].
+    pub fn read_range(&mut self, path: &str, start: u64, end: u64) -> Result<Option<(Vec<u8>, u64)>> {
+        self.remote().read_range(path, start, end)
+    }
 }
 
 impl Remote for Cloud {
@@ -591,9 +604,39 @@ pub trait Remote: Send {
     }
     /// Erases the file at `path`. Fine if it isn't there.
     fn remove(&mut self, path: &str) -> Result<()>;
+    /// Bytes `start..=end` of the file at `path` (fewer at its end), and the
+    /// whole file's size, for playing it without downloading it. None if
+    /// the cloud doesn't have it.
+    fn read_range(&mut self, _path: &str, _start: u64, _end: u64) -> Result<Option<(Vec<u8>, u64)>> {
+        Err(Error::Unsuitable("This place can't play a file without downloading it.".into()))
+    }
 }
 
 const PAGE: usize = 500;
+
+/// Reads a ranged answer: the bytes asked for and the file's whole size.
+/// A server that ignores the range sends the whole file, so only the part
+/// asked for is read from it.
+pub(crate) fn ranged_answer(answer: &mut ureq::http::Response<ureq::Body>, start: u64, end: u64) -> Result<(Vec<u8>, u64)> {
+    let header = |name: &str| answer.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
+    let total = header("content-range").and_then(|r| r.rsplit('/').next().and_then(|t| t.trim().parse::<u64>().ok()));
+    let length = header("content-length").and_then(|l| l.parse::<u64>().ok());
+    let status = answer.status().as_u16();
+    if status == 416 {
+        return Ok((Vec::new(), total.unwrap_or(start)));
+    }
+    let want = end.saturating_sub(start) + 1;
+    let mut reader = answer.body_mut().with_config().limit(u64::MAX).reader();
+    let mut bytes = Vec::new();
+    if status == 206 {
+        std::io::Read::read_to_end(&mut std::io::Read::take(&mut reader, want), &mut bytes).map_err(|e| Error::Offline(e.to_string()))?;
+        let total = total.ok_or_else(|| Error::Cloud("the answer didn't say how big the file is".into()))?;
+        return Ok((bytes, total));
+    }
+    std::io::copy(&mut std::io::Read::take(&mut reader, start), &mut std::io::sink()).map_err(|e| Error::Offline(e.to_string()))?;
+    std::io::Read::read_to_end(&mut std::io::Read::take(&mut reader, want), &mut bytes).map_err(|e| Error::Offline(e.to_string()))?;
+    Ok((bytes, length.unwrap_or(start + want)))
+}
 
 /// Set when the app is closing: files still waiting are left for next time,
 /// so the last sync only exchanges records and the app can quit promptly.
@@ -1282,6 +1325,7 @@ impl Library {
             "annotation" => format!("A note or highlight{}", book(data.and_then(|d| d.get("book_id")))?),
             "book_tag" => format!("The tag {}{}", key.get(1).and_then(Value::as_str).unwrap_or_default(), book(key.first())?),
             "profile" => "Your profile picture".into(),
+            "series" => format!("The missing books of {}", field("name").unwrap_or_default()),
             _ => format!("The note {}", field("title").filter(|t| !t.is_empty()).unwrap_or_else(|| "without a title".into())),
         })
     }
@@ -1549,6 +1593,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "collection_book" => "In the collection".into(),
         "book_tag" => if data.get("removed_at").is_some_and(|v| !v.is_null()) { "Tag taken off".into() } else { "Tagged".into() },
         "profile" => if text("avatar").is_empty() { "No picture".into() } else { "A picture".into() },
+        "series" => short(text("name")),
         "annotation" => short(if text("note").is_empty() { text("excerpt") } else { text("note") }),
         _ => short(text("body")),
     }

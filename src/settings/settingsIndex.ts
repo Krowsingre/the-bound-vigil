@@ -226,7 +226,13 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "sync",
     section: "options",
     label: "Sync options",
-    words: "progress notes highlights collections metadata book files",
+    words: "progress notes highlights collections metadata book files audiobook audio stream streaming play without downloading",
+  },
+  {
+    tab: "sync",
+    section: "home",
+    label: "Use on your phone at home",
+    words: "phone iphone wifi wi-fi home network qr code pair pairing serve local stream icloud",
   },
   {
     tab: "sync",
@@ -250,7 +256,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "files",
     section: "formats",
     label: "Book formats",
-    words: "epub pdf mobi azw azw3 cbz fb2 fbz txt text docx doc word formats supported",
+    words: "epub pdf mobi azw azw3 cbz cbr comics fb2 fbz txt text docx doc word formats supported",
   },
   {
     tab: "files",

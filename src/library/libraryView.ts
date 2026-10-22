@@ -17,8 +17,10 @@ export interface LibraryView {
   languages: string[];
   /** Phone version: only books that can be downloaded here. */
   downloadable: boolean;
-  /** Audiobooks by any of these authors. */
+  /** Books by any of these authors. */
   authors: string[];
+  /** Books in any of these series (Show series, in a book's menu). */
+  series: string[];
   /** Audiobooks read by any of these narrators. */
   narrators: string[];
   page: number;
@@ -26,6 +28,19 @@ export interface LibraryView {
 }
 
 export const PAGE_SIZE = 24;
+
+/** Every filter off. */
+export const NO_FILTERS: Partial<LibraryView> = {
+  formats: [],
+  location: null,
+  tags: [],
+  genres: [],
+  languages: [],
+  downloadable: false,
+  authors: [],
+  series: [],
+  narrators: [],
+};
 
 export const TABS: { tab: LibraryTab; label: string }[] = [
   { tab: "all", label: "All books" },
@@ -53,7 +68,7 @@ const keyOf = (kind: ItemKind) => (kind === "books" ? KEY : `tbv.${kind}View`);
 
 /** Sort and layout are remembered on this device, for each page of books; the rest starts fresh. */
 export function initialView(kind: ItemKind = "books"): LibraryView {
-  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], narrators: [], page: 0, layout: "grid" };
+  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], series: [], narrators: [], page: 0, layout: "grid" };
   try {
     const saved = JSON.parse(localStorage.getItem(keyOf(kind)) ?? "{}") as Partial<LibraryView>;
     if (SORTS.some((s) => s.sort === saved.sort)) view.sort = saved.sort!;

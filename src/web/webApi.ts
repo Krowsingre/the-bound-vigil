@@ -585,8 +585,15 @@ export async function webApi(): Promise<Api> {
     },
     audiobookForEbook: async (ebookId) =>
       (library.rows("audiobooks").find((a) => a.ebook_id === ebookId && library.book(String(a.book_id)))?.book_id as string) ?? null,
-    // Audiobooks play in the desktop app; here you see them and where you are.
+    // Audiobooks stream from Supabase here; nothing is kept on the phone.
     audioUrl: () => null,
+    prepareStream: async (bookId) => {
+      const b = library.book(bookId);
+      if (!b) throw new Error("That audiobook's details haven't arrived here yet.");
+      if (b.format === "tbvaudio")
+        throw new Error("This audiobook is a folder of several files, which plays in the desktop app. Single-file audiobooks (M4B, MP3) play here.");
+      return [await sync.streamUrl(bookId, String(b.format))];
+    },
     getAnnotations: async (bookId) =>
       annotationRows()
         .filter((a) => a.book_id === bookId && a.kind !== "book_note")
@@ -1010,6 +1017,32 @@ export async function webApi(): Promise<Api> {
       await library.remove([...mine("metadata_overrides", "override"), ...(alsoFetched ? mine("metadata_fetched", "fetched") : [])]);
     },
     searchDetailsMore: async () => [],
+    // The phone version served by the computer is turned on there.
+    homeStatus: async () => ({ on: false, addresses: [], code: null, qr: null, phones: 0, problem: null }),
+    setHome: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    newHomeCode: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    forgetHomePhones: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    onHomeChanged: () => () => undefined,
+    // Finding a series' missing books happens in the desktop app.
+    findSeriesBooks: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    seriesReview: async (name) => ({ name, checkedAt: null, listed: 0, owned: 0, missing: [], matches: [] }),
+    hideSeriesBook: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    approveSeriesMatches: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    denySeriesMatches: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
     saveFetched: async (bookId, source, values) => {
       find(bookId);
       const at = now();

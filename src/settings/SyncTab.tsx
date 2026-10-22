@@ -11,6 +11,7 @@ import { SupabaseProjectForm } from "./SupabaseSetup";
 import { MoveSection } from "./MoveSection";
 import { AlsoSection } from "./AlsoSection";
 import { TidySection } from "./TidySection";
+import { HomeSection } from "./HomeSection";
 import { UsageSection } from "./UsageSection";
 import { HardcoverSection } from "./HardcoverSection";
 import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
@@ -265,6 +266,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
       {overview && !isWeb && <UsageSection overview={overview} />}
 
       {overview && !isWeb && <TidySection overview={overview} />}
+      {!isWeb && <HomeSection />}
 
       <Section
         id="options"
@@ -316,6 +318,12 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
             hint="Audiobooks are large, so this is separate. Their chapters and your place sync either way."
             checked={sync.audioFiles}
             onChange={(audioFiles) => changeSync({ audioFiles })}
+          />
+          <Toggle
+            label="Stream audiobooks that aren't on this computer"
+            hint="Play them straight from the cloud without downloading. Turn off to download each one before it plays."
+            checked={sync.streamAudio}
+            onChange={(streamAudio) => changeSync({ streamAudio })}
           />
         </div>
       </Section>

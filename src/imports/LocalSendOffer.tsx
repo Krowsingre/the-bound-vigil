@@ -12,21 +12,11 @@ export function LocalSendOffers() {
   const [offers, setOffers] = useState<LocalSendOffer[]>([]);
   const toast = useToast();
   useEffect(() => api.onLocalSendOffer((offer) => setOffers((list) => [...list, offer])), []);
-  useEffect(
-    () =>
-      api.onLocalSendReceived((books) => {
-        toast(
-          books === 0
-            ? "Nothing that arrived could be imported."
-            : `${books === 1 ? "1 book" : `${books} books`} arrived from LocalSend. Follow along in Imports.`,
-        );
-      }),
-    [toast],
-  );
   const offer = offers[0];
   if (!offer) return null;
   const answer = (accept: boolean) => {
     void api.answerLocalSend(offer.session, accept);
+    if (accept) toast("Accepted. Follow each file on the Imports page.");
     setOffers((list) => list.slice(1));
   };
   const taken = offer.files.filter((f) => f.importable);

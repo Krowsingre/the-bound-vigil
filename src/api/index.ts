@@ -2,10 +2,12 @@
 // calls Rust commands; in a plain browser (design previews only) it serves a
 // clearly labelled sample library so screens can be looked at without the app.
 
+import { homeAudioUrl, homeCore, homeEvents } from "./homeCore";
 import type { Found } from "../lib/onlineDetails";
 import type {
   TidyPlan,
   TidyProgress,
+  SentFile,
   SupabaseUsage,
   TidyReport,
   Audiobook,
@@ -22,6 +24,8 @@ import type {
   CollectionsOverview,
   DetailChange,
   DuplicateGroup,
+  SeriesReview,
+  HomeStatus,
   CopiedToEreader,
   Ereader,
   GoodreadsImport,
@@ -107,6 +111,20 @@ export interface Api {
   audiobookForEbook(ebookId: string): Promise<string | null>;
   /** Where the player streams one part of an audiobook from, or null where it can't play here. */
   audioUrl(bookId: string, part: number): string | null;
+  /**
+   * Gets an audiobook that isn't on this device ready to play from the cloud without downloading.
+   * The links to play each part from, or null to use `audioUrl`. Throws when it can't be streamed.
+   */
+  prepareStream(bookId: string): Promise<string[] | null>;
+  /** "Use on your phone at home" (desktop app). */
+  homeStatus(): Promise<HomeStatus>;
+  setHome(on: boolean): Promise<HomeStatus>;
+  /** A new pairing code, for another phone. */
+  newHomeCode(): Promise<HomeStatus>;
+  /** Every paired phone has to pair again. */
+  forgetHomePhones(): Promise<HomeStatus>;
+  /** Hears a phone pairing. Returns a way to stop. */
+  onHomeChanged(listener: () => void): () => void;
   getProfile(): Promise<Profile>;
   /** Asks for a picture, copies it into TBV, and returns the new profile. Null if cancelled. */
   chooseAvatar(): Promise<Profile | null>;
@@ -229,6 +247,15 @@ export interface Api {
   saveFetched(bookId: string, source: "google" | "openlibrary" | "audible" | "hardcover", values: Record<string, string>): Promise<void>;
   /** Looks a book up in Audible's catalogue, or on Hardcover when it's connected (desktop app). */
   searchDetailsMore(source: "audible" | "hardcover", title: string, author: string): Promise<Found[]>;
+  /** Looks a series' books up online (Hardcover when connected, then Audible) and keeps the list. Desktop app. */
+  findSeriesBooks(name: string, author: string): Promise<SeriesReview>;
+  /** What's missing from a series, and books that probably belong to it. */
+  seriesReview(name: string): Promise<SeriesReview>;
+  hideSeriesBook(name: string, key: string, hidden: boolean): Promise<SeriesReview>;
+  /** Puts the books in the series with their numbers, as details edits. */
+  approveSeriesMatches(name: string, approvals: { bookId: string; position: number | null }[]): Promise<SeriesReview>;
+  /** Remembers the books aren't in the series. */
+  denySeriesMatches(name: string, bookIds: string[]): Promise<SeriesReview>;
   /** Remembers that a group isn't duplicates, so it isn't shown again. */
   dismissDuplicates(key: string): Promise<void>;
   /** E-readers plugged in by cable now. */
@@ -272,8 +299,11 @@ export interface Api {
   answerLocalSend(session: string, accept: boolean): Promise<void>;
   /** Someone nearby wants to send files; answer with `answerLocalSend`. */
   onLocalSendOffer(listener: (offer: LocalSendOffer) => void): () => void;
-  /** Accepted files arrived and went to the import queue: how many books. */
-  onLocalSendReceived(listener: (books: number) => void): () => void;
+  /** Every file sent with LocalSend this run, newest delivery first. */
+  localSendFiles(): Promise<SentFile[]>;
+  clearLocalSendFinished(): Promise<void>;
+  /** A sent file's state or progress changed. */
+  onLocalSendChanged(listener: () => void): () => void;
   /** A private key file, for SFTP. */
   pickKeyFile(): Promise<string | null>;
   /** What sync is doing now, file by file, and what it did lately. */
@@ -285,16 +315,21 @@ export interface Api {
 }
 
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+/** The pages TBV on the computer serves to a phone at home (Settings › Sync › Use on your phone at home). */
+export const isHome = !isApp && typeof document !== "undefined" && !!document.querySelector('meta[name="tbv-home"]');
 /** The web version, for phones: built with `npm run build:web`, syncing through Supabase. */
 export const isWeb = !isApp && import.meta.env.VITE_TBV_WEB === "1";
 
-const BOOK_EXTENSIONS = ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "txt", "docx", "doc"];
+const BOOK_EXTENSIONS = ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "cbr", "txt", "docx", "doc"];
+
+// At home on the phone there's no app window to hear events from.
+const tauriEvents = () => (isHome ? Promise.resolve(homeEvents) : import("@tauri-apps/api/event")) as Promise<typeof import("@tauri-apps/api/event")>;
 
 /** Listens for one of the app's events until the returned function is called. */
 function onEvent<T>(name: string, listener: (payload: T) => void): () => void {
   let stop: (() => void) | null = null;
   let stopped = false;
-  void import("@tauri-apps/api/event").then(async ({ listen }) => {
+  void tauriEvents().then(async ({ listen }) => {
     const unlisten = await listen<T>(name, (e) => listener(e.payload));
     if (stopped) unlisten();
     else stop = unlisten;
@@ -307,7 +342,7 @@ function onEvent<T>(name: string, listener: (payload: T) => void): () => void {
 
 function appApi(): Api {
   // Loaded lazily so the browser preview never touches Tauri internals.
-  const core = import("@tauri-apps/api/core");
+  const core = (isHome ? Promise.resolve(homeCore) : import("@tauri-apps/api/core")) as Promise<typeof import("@tauri-apps/api/core")>;
   const dialog = import("@tauri-apps/plugin-dialog");
   let convert: ((path: string) => string) | null = null;
   void core.then((c) => (convert = c.convertFileSrc));
@@ -334,7 +369,7 @@ function appApi(): Api {
     onSyncActivity: (listener) => {
       let stop: (() => void) | null = null;
       let stopped = false;
-      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+      void tauriEvents().then(async ({ listen }) => {
         let heard = false;
         const unlisten = await listen<SyncActivity>("sync-activity", (e) => {
           heard = true;
@@ -355,7 +390,7 @@ function appApi(): Api {
     onImports: (listener) => {
       let stop: (() => void) | null = null;
       let stopped = false;
-      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+      void tauriEvents().then(async ({ listen }) => {
         const unlisten = await listen<ImportsView>("imports-changed", (e) => listener(e.payload));
         if (stopped) unlisten();
         else stop = unlisten;
@@ -397,7 +432,7 @@ function appApi(): Api {
     onHardcoverNotice: (listener) => {
       let stop: (() => void) | null = null;
       let stopped = false;
-      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+      void tauriEvents().then(async ({ listen }) => {
         const unlisten = await listen<{ message: string }>("hardcover-notice", (e) => listener(e.payload.message));
         if (stopped) unlisten();
         else stop = unlisten;
@@ -416,8 +451,19 @@ function appApi(): Api {
     linkEbook: async (audiobookId, ebookId) => (await core).invoke("link_ebook", { audiobookId, ebookId }),
     audiobookForEbook: async (ebookId) => (await core).invoke<string | null>("audiobook_for_ebook", { ebookId }),
     // Windows and Android reach custom schemes through http://<scheme>.localhost.
+    prepareStream: async (bookId) => {
+      await (await core).invoke("prepare_stream", { bookId });
+      return null;
+    },
+    homeStatus: async () => (await core).invoke<HomeStatus>("home_status"),
+    setHome: async (on) => (await core).invoke<HomeStatus>("set_home", { on }),
+    newHomeCode: async () => (await core).invoke<HomeStatus>("new_home_code"),
+    forgetHomePhones: async () => (await core).invoke<HomeStatus>("forget_home_phones"),
+    onHomeChanged: (listener) => onEvent<null>("home-changed", () => listener()),
     audioUrl: (bookId, part) =>
-      `${/windows|android/i.test(navigator.userAgent) ? "http://tbvaudio.localhost" : "tbvaudio://localhost"}/${encodeURIComponent(bookId)}/${part}`,
+      isHome
+        ? homeAudioUrl(bookId, part)
+        : `${/windows|android/i.test(navigator.userAgent) ? "http://tbvaudio.localhost" : "tbvaudio://localhost"}/${encodeURIComponent(bookId)}/${part}`,
     getProfile: async () => (await core).invoke<Profile>("get_profile"),
     chooseAvatar: async () => {
       const [path] = asList(
@@ -523,7 +569,7 @@ function appApi(): Api {
     planTidyCloud: async () => (await core).invoke("plan_tidy_cloud"),
     supabaseUsage: async () => (await core).invoke("supabase_usage"),
     tidyCloud: async (onProgress) => {
-      const { listen } = await import("@tauri-apps/api/event");
+      const { listen } = await tauriEvents();
       const stop = await listen<TidyProgress>("tidy-progress", (e) => onProgress(e.payload));
       try {
         return await (await core).invoke<TidyReport>("tidy_cloud");
@@ -538,7 +584,7 @@ function appApi(): Api {
     onMove: (listener) => {
       let stop: (() => void) | null = null;
       let stopped = false;
-      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+      void tauriEvents().then(async ({ listen }) => {
         const unlisten = await listen<MoveStatus>("move-changed", (e) => listener(e.payload));
         if (stopped) unlisten();
         else stop = unlisten;
@@ -589,15 +635,22 @@ function appApi(): Api {
     clearServerFinished: async () => (await core).invoke("clear_server_finished"),
     setServerConnections: async (count) => (await core).invoke("set_server_connections", { count }),
     searchDetailsMore: async (source, title, author) => (await core).invoke<Found[]>("search_details_more", { source, title, author }),
+    findSeriesBooks: async (name, author) => (await core).invoke<SeriesReview>("find_series_books", { name, author }),
+    seriesReview: async (name) => (await core).invoke<SeriesReview>("series_review", { name }),
+    hideSeriesBook: async (name, key, hidden) => (await core).invoke<SeriesReview>("hide_series_book", { name, key, hidden }),
+    approveSeriesMatches: async (name, approvals) => (await core).invoke<SeriesReview>("approve_series_matches", { name, approvals }),
+    denySeriesMatches: async (name, bookIds) => (await core).invoke<SeriesReview>("deny_series_matches", { name, bookIds }),
     localSendStatus: async () => (await core).invoke<LocalSendStatus>("localsend_status"),
     setLocalSend: async (on) => (await core).invoke<LocalSendStatus>("set_localsend", { on }),
     answerLocalSend: async (session, accept) => (await core).invoke("answer_localsend", { session, accept }),
     onLocalSendOffer: (listener) => onEvent<LocalSendOffer>("localsend-offer", listener),
-    onLocalSendReceived: (listener) => onEvent<number>("localsend-received", listener),
+    localSendFiles: async () => (await core).invoke<SentFile[]>("localsend_files"),
+    clearLocalSendFinished: async () => (await core).invoke("clear_localsend_finished"),
+    onLocalSendChanged: (listener) => onEvent<null>("localsend-changed", () => listener()),
     onServerQueue: (listener) => {
       let stop: (() => void) | null = null;
       let stopped = false;
-      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+      void tauriEvents().then(async ({ listen }) => {
         const unlisten = await listen("server-queue-changed", () => listener());
         if (stopped) unlisten();
         else stop = unlisten;
@@ -614,7 +667,7 @@ function appApi(): Api {
     onSync: ({ status, libraryChanged }) => {
       const stops: (() => void)[] = [];
       let stopped = false;
-      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+      void tauriEvents().then(async ({ listen }) => {
         const add = (stop: () => void) => (stopped ? stop() : stops.push(stop));
         if (status) add(await listen<SyncStatus>("sync-status", (e) => status(e.payload)));
         if (libraryChanged) add(await listen("library-changed", () => libraryChanged()));
@@ -634,7 +687,7 @@ export async function openExternal(url: string): Promise<void> {
   else window.open(url, "_blank", "noopener");
 }
 
-export const api: Api = isApp
+export const api: Api = isApp || isHome
   ? appApi()
   : isWeb
     ? await (await import("../web/webApi")).webApi()

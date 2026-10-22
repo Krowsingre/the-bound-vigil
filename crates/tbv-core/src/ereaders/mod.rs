@@ -59,8 +59,8 @@ impl ReaderKind {
     fn formats(self) -> &'static [&'static str] {
         match self {
             ReaderKind::Kindle => &["mobi", "azw", "azw3", "pdf", "txt"],
-            ReaderKind::Kobo => &["epub", "pdf", "mobi", "txt", "cbz"],
-            ReaderKind::PocketBook => &["epub", "pdf", "mobi", "azw3", "fb2", "fbz", "txt", "doc", "docx", "cbz"],
+            ReaderKind::Kobo => &["epub", "pdf", "mobi", "txt", "cbz", "cbr"],
+            ReaderKind::PocketBook => &["epub", "pdf", "mobi", "azw3", "fb2", "fbz", "txt", "doc", "docx", "cbz", "cbr"],
             ReaderKind::Nook => &["epub", "pdf"],
             ReaderKind::Sony => &["epub", "pdf", "txt"],
             ReaderKind::Other => &[],

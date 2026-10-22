@@ -55,7 +55,7 @@ fn clean_tag(tag: &str) -> Option<String> {
 
 /// A title as it compares with others: lowercase, letters and digits only,
 /// without a leading article or a subtitle.
-fn title_key(title: &str) -> String {
+pub(crate) fn title_key(title: &str) -> String {
     let main = title.split([':', '(', '[']).next().unwrap_or(title);
     let words: Vec<String> = main
         .split(|c: char| !c.is_alphanumeric())
@@ -67,7 +67,7 @@ fn title_key(title: &str) -> String {
 }
 
 /// The first author's surname, as it compares with others.
-fn author_key(authors: &[String]) -> String {
+pub(crate) fn author_key(authors: &[String]) -> String {
     let first = authors.first().map(String::as_str).unwrap_or_default();
     // "Stoker, Bram" and "Bram Stoker" alike.
     let surname = match first.split_once(',') {

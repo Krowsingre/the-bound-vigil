@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter};
 use tbv_core::hardcover::{self, HardcoverStatus, Http, SendAllReport, Sent};
 use tbv_core::{Error, Library};
 
-fn lock(library: &Mutex<Library>) -> tbv_core::Result<MutexGuard<'_, Library>> {
+pub(crate) fn lock(library: &Mutex<Library>) -> tbv_core::Result<MutexGuard<'_, Library>> {
     library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))
 }
 
@@ -162,6 +162,18 @@ pub fn send_all(library: &Mutex<Library>) -> tbv_core::Result<SendAllReport> {
 /// Looks a book up on Hardcover for Find details online. Nothing when
 /// Hardcover isn't connected. A refreshed sign-in is kept.
 pub fn lookup(library: &Mutex<Library>, title: &str, author: &str) -> tbv_core::Result<Option<Vec<tbv_core::lookup::Found>>> {
+    let Some(token) = token(library)? else { return Ok(None) };
+    tbv_core::lookup::search_hardcover(&Http, &token, title, author).map(Some)
+}
+
+/// Looks a series' books up on Hardcover. Nothing when Hardcover isn't connected.
+pub fn series(library: &Mutex<Library>, name: &str) -> tbv_core::Result<Option<Vec<tbv_core::series::SeriesEntry>>> {
+    let Some(token) = token(library)? else { return Ok(None) };
+    tbv_core::series::search_hardcover_series(&Http, &token, name).map(Some)
+}
+
+/// A usable Hardcover sign-in, refreshed and kept when it had run out.
+fn token(library: &Mutex<Library>) -> tbv_core::Result<Option<String>> {
     let Some(saved) = lock(library)?.hardcover_account()? else { return Ok(None) };
     let sending = saved.send_ratings;
     let account = match hardcover::usable_account(&Http, Some(hardcover::Account { send_ratings: true, ..saved.clone() })) {
@@ -173,5 +185,5 @@ pub fn lookup(library: &Mutex<Library>, title: &str, author: &str) -> tbv_core::
     if account.access_token != saved.access_token {
         lock(library)?.save_hardcover_account(Some(&hardcover::Account { send_ratings: sending, ..account.clone() }))?;
     }
-    tbv_core::lookup::search_hardcover(&Http, &account.access_token, title, author).map(Some)
+    Ok(Some(account.access_token))
 }

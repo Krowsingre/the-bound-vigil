@@ -1,7 +1,7 @@
 //! Reads the details (title, authors, cover and so on) from each kind of
 //! book file TBV imports. Like the EPUB reader, nothing here changes a file.
 
-mod comic;
+pub mod comic;
 pub mod doc;
 mod docx;
 mod fb2;
@@ -23,6 +23,7 @@ pub fn read_metadata(path: &Path, format: &str) -> Result<BookMetadata> {
         "fb2" => fb2::read(path, false),
         "fbz" => fb2::read(path, true),
         "cbz" => comic::read(path),
+        "cbr" => comic::read_rar(path),
         "mobi" | "azw" | "azw3" => mobi::read(path),
         "docx" => docx::read(path),
         "doc" => doc::read_metadata(path),

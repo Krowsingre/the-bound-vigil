@@ -47,6 +47,10 @@ pub trait Store {
     }
     /// Erases a file. Fine if there's no such file.
     fn remove(&mut self, path: &str) -> Result<()>;
+    /// Part of a file and its whole size, for streaming. None if there's no such file.
+    fn read_range(&mut self, _path: &str, _start: u64, _end: u64) -> Result<Option<(Vec<u8>, u64)>> {
+        Err(Error::Unsuitable("This place can't play a file without downloading it.".into()))
+    }
 }
 
 impl<T: Store + ?Sized> Store for Box<T> {
@@ -70,6 +74,9 @@ impl<T: Store + ?Sized> Store for Box<T> {
     }
     fn remove(&mut self, path: &str) -> Result<()> {
         (**self).remove(path)
+    }
+    fn read_range(&mut self, path: &str, start: u64, end: u64) -> Result<Option<(Vec<u8>, u64)>> {
+        (**self).read_range(path, start, end)
     }
 }
 
@@ -191,6 +198,10 @@ impl<S: Store + Send> Remote for FileRemote<S> {
     fn remove(&mut self, path: &str) -> Result<()> {
         self.store.remove(path)
     }
+
+    fn read_range(&mut self, path: &str, start: u64, end: u64) -> Result<Option<(Vec<u8>, u64)>> {
+        self.store.read_range(path, start, end)
+    }
 }
 
 /// A folder on this computer, usually one a cloud app keeps in sync.
@@ -298,6 +309,25 @@ impl Store for FolderStore {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
             _ => Ok(()),
         }
+    }
+
+    /// Reading part of a file in a cloud app's folder makes that app fetch
+    /// it, as it would for any program; TBV doesn't keep a copy.
+    fn read_range(&mut self, path: &str, start: u64, end: u64) -> Result<Option<(Vec<u8>, u64)>> {
+        use std::io::{Read, Seek, SeekFrom};
+        let mut file = match fs::File::open(self.at(path)) {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
+        let len = file.metadata()?.len();
+        if start >= len {
+            return Ok(Some((Vec::new(), len)));
+        }
+        file.seek(SeekFrom::Start(start))?;
+        let mut bytes = Vec::new();
+        file.take(end.min(len - 1) + 1 - start).read_to_end(&mut bytes)?;
+        Ok(Some((bytes, len)))
     }
 }
 

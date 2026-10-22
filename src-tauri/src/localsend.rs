@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
-use tbv_core::localsend::{self, Host, Identity, Offer, Receiver};
+use tbv_core::localsend::{self, FileState, Host, Identity, Offer, Receiver, SentFile};
 use tbv_core::Library;
 
 use crate::imports::{Hold, Imports};
@@ -29,19 +29,34 @@ pub struct LocalSendStatus {
     pub problem: Option<String>,
 }
 
+/// The most rows the Imports page keeps for LocalSend.
+const MAX_ROWS: usize = 1000;
+
+/// Every file sent this run, newest delivery first, for the Imports page.
+type Rows = Arc<Mutex<Vec<SentFile>>>;
+
 #[derive(Default)]
 pub struct LocalSend {
     receiver: Mutex<Option<Receiver>>,
     problem: Mutex<Option<String>>,
     answers: Arc<Mutex<HashMap<String, Answer>>>,
+    rows: Rows,
 }
 
-/// A received session's folder, deleted once its books are in.
+/// Received files, deleted once their book is in, along with their
+/// delivery's folder when that's empty.
 struct Inbox(PathBuf);
 
 impl Drop for Inbox {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        if self.0.is_dir() {
+            let _ = std::fs::remove_dir_all(&self.0);
+        } else {
+            let _ = std::fs::remove_file(&self.0);
+        }
+        if let Some(parent) = self.0.parent() {
+            let _ = std::fs::remove_dir(parent);
+        }
     }
 }
 
@@ -50,6 +65,14 @@ struct AppHost {
     library: Arc<Mutex<Library>>,
     imports: Arc<Imports>,
     answers: Arc<Mutex<HashMap<String, Answer>>>,
+    rows: Rows,
+}
+
+impl AppHost {
+    fn import(&self, sources: Vec<PathBuf>) {
+        let sources = sources.into_iter().map(|f| (f.clone(), Some(Arc::new(Inbox(f)) as Hold))).collect();
+        self.imports.queue_sources(&self.app, &self.library, sources);
+    }
 }
 
 impl Host for AppHost {
@@ -60,17 +83,47 @@ impl Host for AppHost {
         let _ = self.app.emit("localsend-offer", offer);
     }
 
-    fn progress(&self, session: &str, received: usize, of: usize) {
-        let _ = self.app.emit("localsend-progress", serde_json::json!({ "session": session, "received": received, "of": of }));
+    fn file(&self, file: &SentFile) {
+        if let Ok(mut rows) = self.rows.lock() {
+            match rows.iter_mut().find(|r| r.session == file.session && r.id == file.id) {
+                Some(row) => *row = file.clone(),
+                None => {
+                    // A new delivery goes above older ones, its files in order.
+                    let at = rows.iter().rposition(|r| r.session == file.session).map_or(0, |p| p + 1);
+                    rows.insert(at, file.clone());
+                    rows.truncate(MAX_ROWS);
+                }
+            }
+        }
+        let _ = self.app.emit("localsend-changed", ());
     }
 
-    fn received(&self, _session: &str, folder: PathBuf, _files: Vec<PathBuf>) {
-        let hold: Arc<Inbox> = Arc::new(Inbox(folder.clone()));
-        // Through the folder, so a phone's audiobook parts stay one book.
+    fn arrived(&self, path: PathBuf) {
+        self.import(vec![path]);
+    }
+
+    fn finished(&self, folder: PathBuf, audio: Vec<PathBuf>) {
+        if audio.is_empty() {
+            // Empty once its books are in; until then they remove it.
+            let _ = std::fs::remove_dir(&folder);
+            return;
+        }
+        // The parts move to a folder of their own, so they're found as
+        // audiobooks without picking up the delivery's other books again.
+        let parts = folder.join("Audiobooks");
+        if std::fs::create_dir_all(&parts).is_err() {
+            return;
+        }
+        for part in &audio {
+            if let Some(name) = part.file_name() {
+                let _ = std::fs::rename(part, parts.join(name));
+            }
+        }
         let books_dir = self.library.lock().map(|l| l.books_dir().to_path_buf()).unwrap_or_default();
-        let found = tbv_core::library::find_book_files(std::slice::from_ref(&folder), &books_dir);
-        let count = self.imports.queue_sources(&self.app, &self.library, found.into_iter().map(|f| (f, Some(hold.clone() as Hold))).collect());
-        let _ = self.app.emit("localsend-received", count);
+        let found = tbv_core::library::find_book_files(std::slice::from_ref(&parts), &books_dir);
+        let hold: Hold = Arc::new(Inbox(parts));
+        let sources = found.into_iter().map(|f| (f, Some(hold.clone()))).collect();
+        self.imports.queue_sources(&self.app, &self.library, sources);
     }
 }
 
@@ -114,7 +167,14 @@ impl LocalSend {
         if receiver.is_some() {
             return;
         }
-        let _ = std::fs::remove_dir_all(&inbox);
+        let host = Arc::new(AppHost {
+            app: app.clone(),
+            library: library.clone(),
+            imports: imports.clone(),
+            answers: self.answers.clone(),
+            rows: self.rows.clone(),
+        });
+        host.leftovers(&inbox);
         let fingerprint = {
             let Ok(l) = library.lock() else { return };
             match l.setting(FINGERPRINT_KEY).ok().flatten() {
@@ -126,7 +186,6 @@ impl LocalSend {
                 }
             }
         };
-        let host = Arc::new(AppHost { app: app.clone(), library: library.clone(), imports: imports.clone(), answers: self.answers.clone() });
         let started = localsend::start(Identity { alias: alias(), fingerprint, port: localsend::PORT }, &inbox, host, true);
         let problem = match started {
             Ok(r) => {
@@ -140,10 +199,49 @@ impl LocalSend {
         }
     }
 
+    /// Every file sent this run, newest delivery first.
+    pub fn rows(&self) -> Vec<SentFile> {
+        self.rows.lock().map(|r| r.clone()).unwrap_or_default()
+    }
+
+    /// Clears the rows of deliveries that are over.
+    pub fn clear_finished(&self, app: &AppHandle) {
+        if let Ok(mut rows) = self.rows.lock() {
+            let live: Vec<String> =
+                rows.iter().filter(|r| matches!(r.state, FileState::Waiting | FileState::Arriving)).map(|r| r.session.clone()).collect();
+            rows.retain(|r| live.contains(&r.session));
+        }
+        let _ = app.emit("localsend-changed", ());
+    }
+
     /// The person's answer to an offer.
     pub fn answer(&self, session: &str, accept: bool) {
         if let Some(answer) = self.answers.lock().ok().and_then(|mut a| a.remove(session)) {
             answer(accept);
+        }
+    }
+}
+
+impl AppHost {
+    /// Books that arrived last time but weren't in the library when TBV
+    /// closed are added now; files cut off part way are dropped.
+    fn leftovers(&self, inbox: &std::path::Path) {
+        let Ok(deliveries) = std::fs::read_dir(inbox) else { return };
+        let books_dir = self.library.lock().map(|l| l.books_dir().to_path_buf()).unwrap_or_default();
+        for delivery in deliveries.flatten().map(|e| e.path()).filter(|p| p.is_dir()) {
+            for file in std::fs::read_dir(&delivery).into_iter().flatten().flatten().map(|e| e.path()) {
+                if file.extension().is_some_and(|e| e == "part") {
+                    let _ = std::fs::remove_file(&file);
+                }
+            }
+            let found = tbv_core::library::find_book_files(std::slice::from_ref(&delivery), &books_dir);
+            if found.is_empty() {
+                let _ = std::fs::remove_dir_all(&delivery);
+                continue;
+            }
+            let hold: Hold = Arc::new(Inbox(delivery));
+            let sources = found.into_iter().map(|f| (f, Some(hold.clone()))).collect();
+            self.imports.queue_sources(&self.app, &self.library, sources);
         }
     }
 }

@@ -2,7 +2,7 @@
 // without one. `?servers` starts with it saved.
 
 import { NO_SERVER_QUEUE, type ServerApi } from "../api/serverStub";
-import type { LocalSendOffer, LocalSendStatus, QueuedServerFile, RemoteEntry, ServerView } from "../api/types";
+import type { LocalSendOffer, LocalSendStatus, QueuedServerFile, RemoteEntry, SentFile, ServerView } from "../api/types";
 
 const PRETEND_OFFER: LocalSendOffer = {
   session: "preview-offer",
@@ -64,7 +64,8 @@ export function previewServers(): ServerApi {
   const listeners = new Set<() => void>();
   let localSend: LocalSendStatus = { enabled: false, running: false, alias: "The Bound Vigil on PREVIEW", problem: null };
   const offerListeners = new Set<(offer: LocalSendOffer) => void>();
-  const receivedListeners = new Set<(books: number) => void>();
+  const changedListeners = new Set<() => void>();
+  let sent: SentFile[] = [];
   const tell = () => {
     version += 1;
     listeners.forEach((l) => l());
@@ -186,15 +187,43 @@ export function previewServers(): ServerApi {
       return { ...localSend };
     },
     answerLocalSend: async (_session, accept) => {
-      if (accept) setTimeout(() => receivedListeners.forEach((l) => l(2)), 800);
+      const row = (f: (typeof PRETEND_OFFER.files)[number]): SentFile => ({
+        session: PRETEND_OFFER.session,
+        id: f.id,
+        from: PRETEND_OFFER.from,
+        name: f.name,
+        size: f.size,
+        bytes: 0,
+        state: !f.importable ? "skipped" : accept ? "waiting" : "skipped",
+        reason: !f.importable ? `TBV doesn't take .${f.name.split(".").pop()} files` : accept ? null : "Turned down",
+      });
+      sent = PRETEND_OFFER.files.map(row);
+      changedListeners.forEach((l) => l());
+      if (!accept) return;
+      // The first arrives, the second is cut off part way.
+      setTimeout(() => {
+        sent = sent.map((f, i) =>
+          f.state !== "waiting"
+            ? f
+            : i === 0
+              ? { ...f, state: "arrived", bytes: f.size }
+              : { ...f, state: "failed", bytes: Math.round(f.size / 3), reason: "The connection dropped after 103.3 MB of 295.6 MB" },
+        );
+        changedListeners.forEach((l) => l());
+      }, 800);
     },
     onLocalSendOffer: (listener) => {
       offerListeners.add(listener);
       return () => offerListeners.delete(listener);
     },
-    onLocalSendReceived: (listener) => {
-      receivedListeners.add(listener);
-      return () => receivedListeners.delete(listener);
+    localSendFiles: async () => sent,
+    clearLocalSendFinished: async () => {
+      sent = sent.filter((f) => f.state === "waiting" || f.state === "arriving");
+      changedListeners.forEach((l) => l());
+    },
+    onLocalSendChanged: (listener) => {
+      changedListeners.add(listener);
+      return () => changedListeners.delete(listener);
     },
     onServerQueue: (listener) => {
       listeners.add(listener);

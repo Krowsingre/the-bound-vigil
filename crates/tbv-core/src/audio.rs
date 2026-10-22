@@ -145,7 +145,12 @@ pub struct Entry {
 
 /// The parts of a bundle, in playing order.
 pub fn bundle_entries(path: &Path) -> Result<Vec<Entry>> {
-    let mut archive = zip::ZipArchive::new(File::open(path)?).map_err(|e| Error::Unsuitable(format!("this audiobook couldn't be read: {e}")))?;
+    bundle_entries_in(File::open(path)?)
+}
+
+/// As `bundle_entries`, for a bundle read some other way (from the cloud, say).
+pub fn bundle_entries_in<R: Read + Seek>(reader: R) -> Result<Vec<Entry>> {
+    let mut archive = zip::ZipArchive::new(reader).map_err(|e| Error::Unsuitable(format!("this audiobook couldn't be read: {e}")))?;
     let mut entries = Vec::new();
     for i in 0..archive.len() {
         let file = archive.by_index_raw(i).map_err(|e| Error::Unsuitable(format!("this audiobook couldn't be read: {e}")))?;
@@ -175,6 +180,126 @@ pub fn open_part(path: &Path, format: &str, index: usize) -> Result<(Slice, Stri
     }
     let len = fs::metadata(path)?.len();
     Ok((Slice::new(File::open(path)?, 0, len)?, format.to_string()))
+}
+
+/// A file read in pieces through `fetch(start, end)`, which gives the
+/// bytes from `start` to `end` inclusive. The last few pieces are kept, so
+/// reading a ZIP's index costs only a request or two.
+pub struct Ranged<F: FnMut(u64, u64) -> io::Result<Vec<u8>>> {
+    fetch: F,
+    len: u64,
+    pos: u64,
+    blocks: Vec<(u64, Vec<u8>)>,
+}
+
+const BLOCK: u64 = 256 * 1024;
+
+impl<F: FnMut(u64, u64) -> io::Result<Vec<u8>>> Ranged<F> {
+    pub fn new(len: u64, fetch: F) -> Self {
+        Self { fetch, len, pos: 0, blocks: Vec::new() }
+    }
+
+    fn block(&mut self, index: u64) -> io::Result<&[u8]> {
+        if let Some(at) = self.blocks.iter().position(|(i, _)| *i == index) {
+            let kept = self.blocks.remove(at);
+            self.blocks.push(kept);
+        } else {
+            let start = index * BLOCK;
+            let bytes = (self.fetch)(start, (start + BLOCK).min(self.len) - 1)?;
+            if self.blocks.len() >= 8 {
+                self.blocks.remove(0);
+            }
+            self.blocks.push((index, bytes));
+        }
+        Ok(self.blocks.last().map(|(_, b)| b.as_slice()).unwrap_or_default())
+    }
+}
+
+impl<F: FnMut(u64, u64) -> io::Result<Vec<u8>>> Read for Ranged<F> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.pos >= self.len || buf.is_empty() {
+            return Ok(0);
+        }
+        let (index, within) = (self.pos / BLOCK, (self.pos % BLOCK) as usize);
+        let block = self.block(index)?;
+        let n = block.len().saturating_sub(within).min(buf.len());
+        if n == 0 {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "the cloud sent less than the file holds"));
+        }
+        buf[..n].copy_from_slice(&block[within..within + n]);
+        self.pos += n as u64;
+        Ok(n)
+    }
+}
+
+impl<F: FnMut(u64, u64) -> io::Result<Vec<u8>>> Seek for Ranged<F> {
+    fn seek(&mut self, to: SeekFrom) -> io::Result<u64> {
+        let next = match to {
+            SeekFrom::Start(n) => n as i128,
+            SeekFrom::End(n) => self.len as i128 + n as i128,
+            SeekFrom::Current(n) => self.pos as i128 + n as i128,
+        };
+        if next < 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "before the start of the file"));
+        }
+        self.pos = next as u64;
+        Ok(self.pos)
+    }
+}
+
+/// An audiobook played straight from the cloud, without downloading it:
+/// each part is a stretch of the cloud file, fetched a piece at a time as
+/// the player asks.
+pub struct Stream {
+    cloud: crate::sync::Cloud,
+    path: String,
+    len: u64,
+    /// Each part's (start, length, extension) in the cloud file.
+    parts: Vec<(u64, u64, String)>,
+}
+
+impl Stream {
+    /// None if this place doesn't have the book's file.
+    pub fn open(mut cloud: crate::sync::Cloud, path: &str, format: &str) -> Result<Option<Self>> {
+        let Some((_, len)) = cloud.read_range(path, 0, 0)? else { return Ok(None) };
+        let parts = if format == BUNDLE {
+            let reader = Ranged::new(len, |start, end| {
+                cloud
+                    .read_range(path, start, end)
+                    .map_err(|e| io::Error::other(e.to_string()))?
+                    .map(|(bytes, _)| bytes)
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "the file left the cloud"))
+            });
+            bundle_entries_in(reader)?
+                .into_iter()
+                .map(|e| (e.start, e.len, extension(Path::new(&e.name)).unwrap_or_default()))
+                .collect()
+        } else {
+            vec![(0, len, format.to_string())]
+        };
+        Ok(Some(Self { cloud, path: path.to_string(), len, parts }))
+    }
+
+    /// A part's length and extension.
+    pub fn part(&self, index: usize) -> Option<(u64, &str)> {
+        self.parts.get(index).map(|(_, len, ext)| (*len, ext.as_str()))
+    }
+
+    /// Bytes `start..=end` of one part.
+    pub fn read(&mut self, index: usize, start: u64, end: u64) -> Result<Vec<u8>> {
+        let (offset, len, _) = self.parts.get(index).cloned().ok_or_else(|| Error::Unsuitable("that part of the audiobook isn't there".into()))?;
+        if len == 0 || start >= len {
+            return Ok(Vec::new());
+        }
+        let (from, to) = (offset + start, (offset + end.min(len - 1)).min(self.len.saturating_sub(1)));
+        let (bytes, _) = self.cloud.read_range(&self.path, from, to)?.ok_or_else(|| Error::Unsuitable("the audiobook is no longer in the cloud".into()))?;
+        Ok(bytes)
+    }
+
+    /// The connection, to save a renewed sign-in from.
+    pub fn cloud(&self) -> &crate::sync::Cloud {
+        &self.cloud
+    }
 }
 
 /// The MIME type to play a part with.
@@ -767,6 +892,39 @@ pub(crate) mod tests {
         let mut ten = [0u8; 10];
         part.read_exact(&mut ten).unwrap();
         assert_eq!(&ten, &bytes[10..20]);
+    }
+
+    #[test]
+    fn a_bundle_streams_from_a_cloud_folder_byte_for_byte() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("The Moonstone");
+        fs::create_dir(&folder).unwrap();
+        fs::write(folder.join("01 First.mp3"), silent_mp3(1000, "The First Period", "The Moonstone", "Wilkie Collins")).unwrap();
+        fs::write(folder.join("02 Second.mp3"), silent_mp3(30, "The Second Period", "The Moonstone", "Wilkie Collins")).unwrap();
+        let cloud_dir = dir.path().join("iCloud");
+        fs::create_dir(&cloud_dir).unwrap();
+        let store = crate::sync::files::FolderStore::open(&cloud_dir).unwrap();
+        let local = dir.path().join("a.tbvaudio");
+        write_bundle(&folder, &local).unwrap();
+        let in_cloud = cloud_dir.join(crate::sync::files::LIBRARY_FOLDER).join("books");
+        fs::create_dir_all(&in_cloud).unwrap();
+        fs::copy(&local, in_cloud.join("x.tbvaudio")).unwrap();
+        let cloud = crate::sync::Cloud::Files(crate::sync::files::FileRemote::new(Box::new(store), "pc".into()));
+
+        let mut stream = Stream::open(cloud, "books/x.tbvaudio", BUNDLE).unwrap().unwrap();
+        for index in 0..2 {
+            let (mut part, ext) = open_part(&local, BUNDLE, index).unwrap();
+            let mut whole = Vec::new();
+            part.read_to_end(&mut whole).unwrap();
+            assert_eq!(stream.part(index), Some((whole.len() as u64, ext.as_str())));
+            assert_eq!(stream.read(index, 0, whole.len() as u64 + 99).unwrap(), whole);
+            assert_eq!(stream.read(index, 10, 19).unwrap(), &whole[10..20]);
+        }
+        let empty = crate::sync::Cloud::Files(crate::sync::files::FileRemote::new(
+            Box::new(crate::sync::files::FolderStore::open(&cloud_dir).unwrap()),
+            "pc".into(),
+        ));
+        assert!(Stream::open(empty, "books/missing.mp3", "mp3").unwrap().is_none());
     }
 
     #[test]

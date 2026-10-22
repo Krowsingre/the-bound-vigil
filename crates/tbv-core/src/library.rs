@@ -17,7 +17,7 @@ use crate::time::now_utc;
 /// Formats TBV accepts on import. Only EPUB metadata is read today; the rest
 /// are titled from their file name until their readers land.
 pub const SUPPORTED_FORMATS: &[&str] = &[
-    "epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "txt", "docx", "doc",
+    "epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "cbr", "txt", "docx", "doc",
     "m4b", "m4a", "mp3", "aac", "ogg", "oga", "opus", "flac", "tbvaudio",
 ];
 
@@ -327,6 +327,21 @@ const MIGRATIONS: &[&str] = &[
     CREATE TABLE profile (
         id TEXT PRIMARY KEY,
         avatar TEXT,
+        updated_at TEXT NOT NULL
+    );
+    "#,
+    // v13: the books of a series as looked up online, per series (its
+    // name in lower case), for showing what's missing. `hidden` holds the
+    // missing books the person doesn't want shown, `denied` the books in
+    // the library they said aren't in it. Synced.
+    r#"
+    CREATE TABLE series_lists (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        books TEXT NOT NULL DEFAULT '[]',
+        hidden TEXT NOT NULL DEFAULT '[]',
+        denied TEXT NOT NULL DEFAULT '[]',
+        checked_at TEXT,
         updated_at TEXT NOT NULL
     );
     "#,

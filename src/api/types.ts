@@ -325,6 +325,8 @@ export interface LibraryQuery {
   authors?: string[];
   /** Audiobooks read by any of these narrators. */
   narrators?: string[];
+  /** Books in any of these series. */
+  series?: string[];
   /** Only books, documents or audiobooks. Left out: all of them. */
   kind?: ItemKind | null;
   /** Zero-based. */
@@ -411,6 +413,58 @@ export interface DuplicateGroup {
   /** Why they look alike, in words. */
   reason: string;
   books: (BookPreview & { fileSize: number; notes: number })[];
+}
+
+/** One book of a series, as an online source lists it. */
+export interface SeriesEntry {
+  title: string;
+  /** Its number in the series. Novellas can be 2.5. */
+  position: number | null;
+  authors: string[];
+  coverUrl: string | null;
+  source: string;
+}
+
+/** A book of the series the library doesn't have. */
+export interface MissingBook extends SeriesEntry {
+  key: string;
+  /** Hidden by the person. */
+  hidden: boolean;
+}
+
+/** A book in the library that is probably in the series. */
+export interface SeriesMatch {
+  book: BookPreview;
+  /** The number it would get. */
+  position: number | null;
+  /** Why TBV thinks it fits, in words. */
+  reason: string;
+}
+
+export interface SeriesReview {
+  name: string;
+  /** When the list was last looked up online. Null: never. */
+  checkedAt: string | null;
+  /** How many books the online list has. */
+  listed: number;
+  /** How many books of the series the library has. */
+  owned: number;
+  missing: MissingBook[];
+  matches: SeriesMatch[];
+}
+
+/** "Use on your phone at home": the computer serving TBV to a phone on the same Wi-Fi. */
+export interface HomeStatus {
+  on: boolean;
+  /** Addresses to open on the phone, best first. */
+  addresses: string[];
+  /** The pairing code, while one is offered. */
+  code: string | null;
+  /** A QR code (SVG) that opens the first address and pairs. */
+  qr: string | null;
+  phones: number;
+  /** Why it couldn't start, in words. */
+  problem: string | null;
 }
 
 export interface Profile {
@@ -782,6 +836,20 @@ export interface LocalSendStatus {
 }
 
 /** Files someone wants to send with LocalSend, waiting for an answer. */
+/** One file sent with LocalSend, as the Imports page shows it. */
+export interface SentFile {
+  session: string;
+  id: string;
+  from: string;
+  name: string;
+  /** The size the sender gave, and how much has arrived. */
+  size: number;
+  bytes: number;
+  state: "waiting" | "arriving" | "arrived" | "failed" | "skipped";
+  /** Why it failed or was skipped. */
+  reason: string | null;
+}
+
 export interface LocalSendOffer {
   session: string;
   /** The sending device's name. */

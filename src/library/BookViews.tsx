@@ -11,13 +11,15 @@ import { bookContextMenu, bookMenu, type BookActions } from "../home/bookActions
 /** While choosing books for a change to many at once, a click picks a book instead of opening it. */
 export interface Selection {
   has: (bookId: string) => boolean;
-  toggle: (book: BookPreview) => void;
+  /** `range` holds the books shown, when Shift was held: every book from the
+   *  last one picked to this one is chosen. */
+  toggle: (book: BookPreview, range?: BookPreview[]) => void;
 }
 
 type Props = { books: BookPreview[]; actions: BookActions; selection?: Selection | null };
 
-const press = (book: BookPreview, actions: BookActions, selection?: Selection | null) =>
-  selection ? selection.toggle(book) : actions.open(book);
+const press = (book: BookPreview, actions: BookActions, selection: Selection | null | undefined, books: BookPreview[], shift: boolean) =>
+  selection ? selection.toggle(book, shift ? books : undefined) : actions.open(book);
 
 /** The tick on a chosen book, and the props that say it's chosen. */
 function picked(book: BookPreview, selection?: Selection | null) {
@@ -85,7 +87,7 @@ export function BookGrid({ books, actions, selection }: Props) {
             <button
               type="button"
               className="grid-open"
-              onClick={() => press(book, actions, selection)}
+              onClick={(e) => press(book, actions, selection, books, e.shiftKey)}
               title={`${book.title}, ${authorLine(book.authors)}`}
               {...props}
             >
@@ -121,7 +123,7 @@ export function BookList({ books, actions, selection }: Props) {
             className={`list-row${selection?.has(book.id) ? " is-selected" : ""}`}
             {...bookContextMenu(book, actions)}
           >
-            <button type="button" className="list-open" onClick={() => press(book, actions, selection)} {...props}>
+            <button type="button" className="list-open" onClick={(e) => press(book, actions, selection, books, e.shiftKey)} {...props}>
               {mark}
               <BookCover book={book} size="s" />
               <span className="list-text">
@@ -171,7 +173,7 @@ export function BookTable({ books, actions, selection }: Props) {
           return (
             <tr key={book.id} className={selection?.has(book.id) ? "is-selected" : undefined} {...bookContextMenu(book, actions)}>
               <td>
-                <button type="button" className="table-title" onClick={() => press(book, actions, selection)} {...props}>
+                <button type="button" className="table-title" onClick={(e) => press(book, actions, selection, books, e.shiftKey)} {...props}>
                   {mark}
                   {book.title}
                 </button>

@@ -32,7 +32,7 @@ const YES_NO = [
 /** As the core allows (rules.rs). */
 export const MAX_RULES = 12;
 
-export const FORMATS = ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "txt", "docx", "doc"];
+export const FORMATS = ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "cbr", "txt", "docx", "doc"];
 
 export const FIELDS: FieldInfo[] = [
   { field: "title", label: "Title", ops: TEXT_OPS },

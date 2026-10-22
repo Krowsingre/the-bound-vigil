@@ -8,12 +8,14 @@ import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex
 import { SyncTab } from "./SyncTab";
 import { EreadersTab } from "./EreadersTab";
 import { ServersTab } from "./ServersTab";
-import { isWeb } from "../api";
+import { isHome, isWeb } from "../api";
 import { WebSyncTab } from "../web/WebConnect";
 
 /** The pages the web version has: the rest are about files and features on a computer. */
 const WEB_TABS = new Set<SettingsTab>(["appearance", "reading", "collections", "sync", "accessibility", "about"]);
-const TABS = isWeb ? SETTINGS_TABS.filter((t) => WEB_TABS.has(t.tab)) : SETTINGS_TABS;
+// On the phone at home, the computer keeps the settings; these change only how this phone shows things.
+const HOME_TABS = new Set<SettingsTab>(["appearance", "reading", "accessibility", "about"]);
+const TABS = isWeb ? SETTINGS_TABS.filter((t) => WEB_TABS.has(t.tab)) : isHome ? SETTINGS_TABS.filter((t) => HOME_TABS.has(t.tab)) : SETTINGS_TABS;
 
 /** Settings: its own menu of pages on the left, the chosen page on the right. */
 export function Settings({
@@ -147,6 +149,7 @@ export function Settings({
         <header className="settings-head">
           <h1>{page.label}</h1>
           <p className="muted">{page.lede}</p>
+          {isHome && <p className="settings-row-hint">You're using TBV from your computer. Changes here last until this page reloads; the rest of the settings are on the computer.</p>}
         </header>
         {content}
       </div>

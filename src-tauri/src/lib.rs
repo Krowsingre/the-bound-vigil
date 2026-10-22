@@ -4,6 +4,7 @@
 mod activity;
 mod audio;
 mod hardcover;
+mod home;
 mod imports;
 mod localsend;
 mod moving;
@@ -211,6 +212,17 @@ async fn audiobook(state: State<'_, AppLibrary>, book_id: String) -> CommandResu
     with_library(state, move |library| library.audiobook(&book_id)).await
 }
 
+/// Gets an audiobook that isn't on this computer ready to play straight
+/// from the cloud, without downloading it.
+#[tauri::command]
+async fn prepare_stream(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || audio::prepare(&library, &book_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn save_listening(state: State<'_, AppLibrary>, book_id: String, position_ms: u64, chapter: Option<String>) -> CommandResult<()> {
     with_library(state, move |library| library.save_listening(&book_id, position_ms, chapter)).await
@@ -315,6 +327,11 @@ async fn read_book_file(
     state: State<'_, AppLibrary>,
     book_id: String,
 ) -> CommandResult<tauri::ipc::Response> {
+    Ok(tauri::ipc::Response::new(book_bytes(state, book_id).await?))
+}
+
+/// A book's bytes, fetched from the cloud first if it's only there.
+async fn book_bytes(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<Vec<u8>> {
     let library = state.0.clone();
     let id = book_id.clone();
     let path = match with_library(state, move |library| library.book_file(&id)).await {
@@ -331,11 +348,17 @@ async fn read_book_file(
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?,
     };
-    let bytes = tauri::async_runtime::spawn_blocking(move || std::fs::read(path))
-        .await
+    // The reader opens comics as zips; a CBR is made into one in memory.
+    let bytes = tauri::async_runtime::spawn_blocking(move || -> std::io::Result<Vec<u8>> {
+        if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("cbr")) {
+            return tbv_core::formats::comic::rar_as_zip(&path).map_err(std::io::Error::other);
+        }
+        std::fs::read(path)
+    })
+    .await
         .map_err(|e| e.to_string())?
         .map_err(|e| format!("the book file couldn't be read: {e}"))?;
-    Ok(tauri::ipc::Response::new(bytes))
+    Ok(bytes)
 }
 
 #[tauri::command]
@@ -653,6 +676,7 @@ async fn sync_sign_out(app: tauri::AppHandle, state: State<'_, AppLibrary>) -> C
     let library = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
         sync::sign_out(&library)?;
+        audio::forget(None);
         announce(&app, &library);
         Ok::<_, tbv_core::Error>(())
     })
@@ -721,6 +745,7 @@ async fn set_sync_provider(
 ) -> CommandResult<bool> {
     let joined = blocking(state, move |library| {
         let joined = sync::choose(library, provider)?;
+        audio::forget(None);
         announce(&app, library);
         Ok(joined)
     })
@@ -740,6 +765,7 @@ async fn set_also_sync(
 ) -> CommandResult<bool> {
     let joined = blocking(state, move |library| {
         let joined = sync::choose_also(library, provider)?;
+        audio::forget(None);
         announce(&app, library);
         Ok(joined)
     })
@@ -1244,6 +1270,81 @@ async fn search_details_more(
     .map_err(|e| e.to_string())
 }
 
+/// Looks the books of a series up online (Hardcover when it's connected,
+/// then Audible) and keeps the list, for showing what's missing.
+#[tauri::command]
+async fn find_series_books(state: State<'_, AppLibrary>, name: String, author: String) -> CommandResult<tbv_core::series::SeriesReview> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let hardcover = hardcover::series(&library, &name);
+        let audible = tbv_core::series::search_audible_series(&name, &author);
+        let problem = match (&hardcover, &audible) {
+            (Err(e), Err(_)) => Some(e.to_string()),
+            _ => None,
+        };
+        let lists = vec![hardcover.ok().flatten().unwrap_or_default(), audible.unwrap_or_default()];
+        let books = tbv_core::series::merge(lists);
+        if books.is_empty() {
+            return Err(tbv_core::Error::Unsuitable(
+                problem.unwrap_or_else(|| format!("No list of the books in {name} was found online.")),
+            ));
+        }
+        hardcover::lock(&library)?.save_series_found(&name, books)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn series_review(state: State<'_, AppLibrary>, name: String) -> CommandResult<tbv_core::series::SeriesReview> {
+    with_library(state, move |library| library.series_review(&name)).await
+}
+
+#[tauri::command]
+async fn hide_series_book(state: State<'_, AppLibrary>, name: String, key: String, hidden: bool) -> CommandResult<tbv_core::series::SeriesReview> {
+    with_library(state, move |library| library.hide_series_book(&name, &key, hidden)).await
+}
+
+#[tauri::command]
+async fn approve_series_matches(
+    state: State<'_, AppLibrary>,
+    name: String,
+    approvals: Vec<tbv_core::series::Approval>,
+) -> CommandResult<tbv_core::series::SeriesReview> {
+    with_library(state, move |library| library.approve_series_matches(&name, &approvals)).await
+}
+
+#[tauri::command]
+async fn deny_series_matches(state: State<'_, AppLibrary>, name: String, book_ids: Vec<String>) -> CommandResult<tbv_core::series::SeriesReview> {
+    with_library(state, move |library| library.deny_series_matches(&name, &book_ids)).await
+}
+
+#[tauri::command]
+async fn home_status(app: tauri::AppHandle, home: State<'_, Arc<home::Home>>) -> CommandResult<home::HomeStatus> {
+    let home = home.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || home.status(&app)).await.map_err(|e| e.to_string())
+}
+
+/// Turns "Use on your phone at home" on or off.
+#[tauri::command]
+async fn set_home(app: tauri::AppHandle, home: State<'_, Arc<home::Home>>, on: bool) -> CommandResult<home::HomeStatus> {
+    let home = home.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || home.set(&app, on)).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn new_home_code(app: tauri::AppHandle, home: State<'_, Arc<home::Home>>) -> CommandResult<home::HomeStatus> {
+    let home = home.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || home.new_code(&app)).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn forget_home_phones(app: tauri::AppHandle, home: State<'_, Arc<home::Home>>) -> CommandResult<home::HomeStatus> {
+    let home = home.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || home.forget_phones(&app)).await.map_err(|e| e.to_string())
+}
+
 fn localsend_inbox(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("LocalSend inbox"))
 }
@@ -1274,6 +1375,17 @@ async fn set_localsend(
 }
 
 /// Accepts or turns down what someone is sending with LocalSend.
+/// Every file sent with LocalSend this run, for the Imports page.
+#[tauri::command]
+fn localsend_files(localsend: State<'_, Arc<localsend::LocalSend>>) -> Vec<tbv_core::localsend::SentFile> {
+    localsend.rows()
+}
+
+#[tauri::command]
+fn clear_localsend_finished(app: tauri::AppHandle, localsend: State<'_, Arc<localsend::LocalSend>>) {
+    localsend.clear_finished(&app);
+}
+
 #[tauri::command]
 fn answer_localsend(localsend: State<'_, Arc<localsend::LocalSend>>, session: String, accept: bool) {
     localsend.answer(&session, accept);
@@ -1310,6 +1422,9 @@ pub fn run() {
             let receiving = Arc::new(localsend::LocalSend::default());
             app.manage(receiving.clone());
             receiving.start(app.handle(), &library, &imports, data_dir.join("LocalSend inbox"));
+            let home = Arc::new(home::Home::default());
+            app.manage(home.clone());
+            home.resume(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1323,6 +1438,16 @@ pub fn run() {
             remove_from_library,
             save_copies,
             find_duplicates,
+            find_series_books,
+            prepare_stream,
+            home_status,
+            set_home,
+            new_home_code,
+            forget_home_phones,
+            series_review,
+            hide_series_book,
+            approve_series_matches,
+            deny_series_matches,
             dismiss_duplicates,
             book_details,
             edit_details,
@@ -1437,6 +1562,8 @@ pub fn run() {
             localsend_status,
             set_localsend,
             answer_localsend,
+            localsend_files,
+            clear_localsend_finished,
         ])
         // Alt+F4 or closing from the taskbar ends the app the same way. The
         // page gets a moment to save the reading position first; then ratings

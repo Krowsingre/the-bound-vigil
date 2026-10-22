@@ -31,6 +31,7 @@ ureq = { version = "3", features = ["json"] }
 uuid = { version = "1", features = ["v4", "v7"] }
 webpki-roots = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+unrar = "0.5.8"
 
 [dev-dependencies]
 libunftp = { version = "0.23", default-features = false, features = ["ring"] }
