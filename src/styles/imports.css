@@ -343,3 +343,27 @@
   margin: 12px auto 0;
   display: block;
 }
+
+/* Sending with LocalSend */
+.localsend-address {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.localsend-address-row {
+  display: flex;
+  gap: 8px;
+}
+
+.localsend-address-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.localsend-waiting,
+.localsend-progress p {
+  margin: 12px 0;
+}

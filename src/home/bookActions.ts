@@ -6,6 +6,7 @@ import type { MenuEntry } from "../components/Menu";
 import { StarRating } from "../components/StarRating";
 import { askEditDetails, showBookDetails, showInLibrary } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
+import { askSendWithLocalSend, canSendWithLocalSend } from "../localsend/SendWithLocalSend";
 import { askDeleteBook, askEditTags, askRemoveBook } from "../library/BookDialogs";
 import { cueAudiobook, playAudiobook } from "../audio/player";
 import { askPair } from "../audio/LinkEbook";
@@ -92,6 +93,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
       : []),
     "divider",
     ...(isAudio(book.format) ? [] : [{ label: "Send to e-reader…", icon: "ereader" as const, onSelect: () => askSendToEreader([book]) }]),
+    ...(canSendWithLocalSend ? [{ label: "Send with LocalSend…", icon: "upload" as const, onSelect: () => askSendWithLocalSend([book]) }] : []),
     ...(actions.saveCopy ? [{ label: "Save a copy…", icon: "copy" as const, onSelect: () => actions.saveCopy?.(book) }] : []),
     downloadItem(book, actions),
     ...phoneItem(book, actions),

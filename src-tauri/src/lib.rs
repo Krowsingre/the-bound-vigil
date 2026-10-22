@@ -1530,6 +1530,66 @@ fn answer_localsend(localsend: State<'_, Arc<localsend::LocalSend>>, session: St
     localsend.answer(&session, accept);
 }
 
+/// Devices nearby with LocalSend open, to send books to.
+#[tauri::command]
+async fn localsend_nearby(state: State<'_, AppLibrary>, localsend: State<'_, Arc<localsend::LocalSend>>) -> CommandResult<Vec<tbv_core::localsend::Nearby>> {
+    let (library, localsend) = (state.0.clone(), localsend.inner().clone());
+    tauri::async_runtime::spawn_blocking(move || localsend.nearby(&library)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+}
+
+/// The device at an address LocalSend shows, typed in by hand.
+#[tauri::command]
+async fn localsend_device_at(localsend: State<'_, Arc<localsend::LocalSend>>, address: String) -> CommandResult<tbv_core::localsend::Nearby> {
+    let localsend = localsend.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || localsend.device_at(&address)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+}
+
+/// What sending with LocalSend did.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SentWithLocalSend {
+    sent: usize,
+    /// Books that couldn't go, and why.
+    skipped: Vec<(String, String)>,
+}
+
+/// Sends books to a device nearby with LocalSend. Cloud-only books are
+/// fetched first; the library's own copies are only read.
+#[tauri::command]
+async fn localsend_send(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    localsend: State<'_, Arc<localsend::LocalSend>>,
+    device: tbv_core::localsend::Nearby,
+    book_ids: Vec<String>,
+) -> CommandResult<SentWithLocalSend> {
+    let mut books = Vec::new();
+    let mut skipped = Vec::new();
+    for id in book_ids {
+        match outgoing(state.clone(), id.clone()).await {
+            Ok(book) => books.push((book.title, tbv_core::localsend::ToSend { path: book.path, name: book.file_name, size: book.size })),
+            Err(e) => {
+                let title = with_library(state.clone(), move |l| Ok(l.book_facts(&id)?.map(|f| f.title))).await.ok().flatten().unwrap_or_else(|| "A book".into());
+                skipped.push((title, e));
+            }
+        }
+    }
+    if books.is_empty() {
+        return Ok(SentWithLocalSend { sent: 0, skipped });
+    }
+    let (library, localsend) = (state.0.clone(), localsend.inner().clone());
+    let sent = tauri::async_runtime::spawn_blocking(move || localsend.send(&app, &library, &device, &books))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    Ok(SentWithLocalSend { sent, skipped })
+}
+
+#[tauri::command(async)]
+fn localsend_stop_sending(localsend: State<'_, Arc<localsend::LocalSend>>) {
+    localsend.stop_sending();
+}
+
 /// Opens File Explorer at a file or folder TBV keeps.
 #[tauri::command]
 fn show_folder(path: String) -> CommandResult<()> {
@@ -1768,6 +1828,10 @@ pub fn run() {
             localsend_status,
             set_localsend,
             answer_localsend,
+            localsend_nearby,
+            localsend_device_at,
+            localsend_send,
+            localsend_stop_sending,
             localsend_files,
             clear_localsend_finished,
         ])

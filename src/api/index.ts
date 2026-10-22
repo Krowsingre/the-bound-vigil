@@ -50,7 +50,10 @@ import type {
   ServerChoice,
   ServerQueueView,
   LocalSendOffer,
+  LocalSendSending,
   LocalSendStatus,
+  NearbyDevice,
+  SentWithLocalSend,
   QueuedServerFile,
   ServerInput,
   ServerListing,
@@ -343,6 +346,14 @@ export interface Api {
   clearLocalSendFinished(): Promise<void>;
   /** A sent file's state or progress changed. */
   onLocalSendChanged(listener: () => void): () => void;
+  /** Devices nearby with LocalSend open. Takes a few seconds to listen. */
+  localSendNearby(): Promise<NearbyDevice[]>;
+  /** The device at an address LocalSend shows, typed in by hand. */
+  localSendDeviceAt(address: string): Promise<NearbyDevice>;
+  /** Sends books to a device nearby, once its person accepts them. */
+  sendWithLocalSend(device: NearbyDevice, bookIds: string[]): Promise<SentWithLocalSend>;
+  stopSendingWithLocalSend(): Promise<void>;
+  onLocalSendSending(listener: (sending: LocalSendSending) => void): () => void;
   /** A private key file, for SFTP. */
   pickKeyFile(): Promise<string | null>;
   /** What sync is doing now, file by file, and what it did lately. */
@@ -756,6 +767,11 @@ function appApi(): Api {
     localSendFiles: async () => (await core).invoke<SentFile[]>("localsend_files"),
     clearLocalSendFinished: async () => (await core).invoke("clear_localsend_finished"),
     onLocalSendChanged: (listener) => onEvent<null>("localsend-changed", () => listener()),
+    localSendNearby: async () => (await core).invoke<NearbyDevice[]>("localsend_nearby"),
+    localSendDeviceAt: async (address) => (await core).invoke<NearbyDevice>("localsend_device_at", { address }),
+    sendWithLocalSend: async (device, bookIds) => (await core).invoke<SentWithLocalSend>("localsend_send", { device, bookIds }),
+    stopSendingWithLocalSend: async () => (await core).invoke("localsend_stop_sending"),
+    onLocalSendSending: (listener) => onEvent<LocalSendSending>("localsend-sending", listener),
     onServerQueue: (listener) => {
       let stop: (() => void) | null = null;
       let stopped = false;

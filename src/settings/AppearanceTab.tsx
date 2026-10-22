@@ -186,6 +186,14 @@ export function AppearanceTab({
         <Row label="Sidebar" hint="The ••• button at the top left does the same.">
           <Toggle label="Show the full sidebar" checked={sidebarShown} onChange={onSidebarShown} />
         </Row>
+        <Row label="Library pages" hint="On a phone the Library always scrolls on without pages.">
+          <Toggle
+            label="Scroll on without page numbers"
+            hint="More books load as you reach the end."
+            checked={settings.scrollLibrary}
+            onChange={(scrollLibrary) => change({ scrollLibrary })}
+          />
+        </Row>
         <Row label="Cover display" hint="How the Library page shows your books.">
           <div className="cover-styles" role="radiogroup" aria-label="Cover display">
             {(

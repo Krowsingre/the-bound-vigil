@@ -1,7 +1,7 @@
 import { useEffect, type RefObject } from "react";
 
 /** How far down the screen a pull from the top bar must reach to go Home. */
-export const PULL_HOME = 0.8;
+export const PULL_HOME = 0.6;
 
 export interface Swipes {
   /** Finger moved right to left. */
@@ -15,7 +15,7 @@ export interface Swipes {
 /** Whether something under the finger scrolls sideways, or takes the swipe itself. */
 function takesSideways(target: Element | null, root: Element): boolean {
   for (let el = target; el && el !== root; el = el.parentElement) {
-    if (el.matches("input, textarea, select, [role=slider], [role=dialog], .menu, .sidebar")) return true;
+    if (el.matches("input, textarea, select, [contenteditable=true], [role=slider], [role=dialog], .menu, .sidebar")) return true;
     if (el.scrollWidth > el.clientWidth + 1) {
       const overflow = getComputedStyle(el).overflowX;
       if (overflow === "auto" || overflow === "scroll") return true;
@@ -28,7 +28,7 @@ function takesSideways(target: Element | null, root: Element): boolean {
  * Phone swipes on `root`. A sideways swipe counts when the finger moves
  * mostly sideways and either a third of the screen or quickly; anything
  * else is left to scroll. A pull down counts only when it starts in the top
- * bar and ends 80% of the way down. `pull` is drawn while pulling.
+ * bar and ends 60% of the way down. `pull` is drawn while pulling.
  */
 export function useSwipes(root: RefObject<HTMLElement | null>, pull: RefObject<HTMLElement | null>, enabled: boolean, swipes: Swipes) {
   const { onLeft, onRight, onPullDown } = swipes;

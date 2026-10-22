@@ -5,6 +5,7 @@ import { AddToCollectionHost } from "./collections/AddToCollection";
 import { ContextMenuHost } from "./components/ContextMenu";
 import { BookDialogsHost } from "./library/BookDialogs";
 import { SendToEreaderHost } from "./ereaders/SendToEreader";
+import { SendWithLocalSendHost } from "./localsend/SendWithLocalSend";
 import { BookDetailsPage } from "./details/BookDetailsPage";
 import { DetailsHost } from "./details/DetailsHost";
 import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
@@ -391,8 +392,9 @@ export function App() {
   const toSettings = useCallback(() => navigate("settings"), [navigate]);
   const toHome = useCallback(() => navigate("home"), [navigate]);
   useSwipes(appRoot, pullHome, narrow && !menuOpen && !reading, {
-    onLeft: route === "home" ? toLibrary : undefined,
-    onRight: route === "home" ? toSettings : undefined,
+    // From any page but the one it leads to.
+    onLeft: route !== "library" ? toLibrary : undefined,
+    onRight: route !== "settings" ? toSettings : undefined,
     onPullDown: route !== "home" ? toHome : undefined,
   });
 
@@ -578,6 +580,7 @@ export function App() {
           navigate("settings");
         }}
       />
+      <SendWithLocalSendHost />
       <ContextMenuHost />
       <PairHost />
     </div>
