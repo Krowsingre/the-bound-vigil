@@ -8,8 +8,9 @@ import { Icon } from "../components/Icon";
 import { SeriesPanel } from "./SeriesPanel";
 import { useToast } from "../components/Toast";
 import { makeBookActions, phoneChoiceShown } from "../home/bookActions";
-import { Stat } from "../home/ReadingActivity";
-import { AddTagToMany, deleteWarning, removeWarning } from "./BookDialogs";
+import { Spent, Stat } from "../home/ReadingActivity";
+import { useTimeSpent } from "../home/useTimeSpent";
+import { TagsDialog, deleteWarning, removeWarning } from "./BookDialogs";
 import { BookGrid, BookList, BookTable, type Selection } from "./BookViews";
 import { CollectionsTab } from "./CollectionsTab";
 import { LibraryToolbar } from "./LibraryToolbar";
@@ -53,6 +54,7 @@ export function Library({
   intro?: React.ReactNode;
 }) {
   const [load, setLoad] = useState<Load<LibraryPage>>({ state: "loading" });
+  const spent = useTimeSpent(refreshKey);
   const [collections, setCollections] = useState<CollectionPreview[] | null>(null);
   const [reload, setReload] = useState(0);
   // Choosing books to change many at once.
@@ -200,6 +202,32 @@ export function Library({
     if (!selected?.size) setAllChosenFor(null);
   }, [selected]);
 
+  // Only books the search and filters show stay chosen: when they change,
+  // chosen books they now leave out are let go, so changing many never
+  // reaches a book you can't see.
+  const chosenIds = useRef<string[]>([]);
+  chosenIds.current = selected ? [...selected.keys()] : [];
+  useEffect(() => {
+    const ids = chosenIds.current;
+    if (!ids.length) return;
+    let current = true;
+    const chunks = Array.from({ length: Math.ceil(ids.length / 200) }, (_, i) => ids.slice(i * 200, i * 200 + 200));
+    Promise.all(chunks.map((chunk) => api.getLibrary({ ...query, ids: chunk, page: 0, pageSize: 200 }))).then(
+      (pages) => {
+        if (!current) return;
+        const shown = new Set<string>(pages.flatMap((p) => p.books.map((b) => b.id)));
+        setSelected((s) => {
+          if (!s || [...s.keys()].every((id) => shown.has(id))) return s;
+          return new Map([...s].filter(([id]) => shown.has(id)));
+        });
+      },
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, [queryKey, refreshKey, reload]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // A new page starts at the top, like turning a page.
   useEffect(() => {
     if (!endless) document.querySelector(".content")?.scrollTo({ top: 0 });
@@ -212,6 +240,15 @@ export function Library({
     [first, endless, later],
   );
   const hasMore = endless && page !== null && (later.length + 1) * PAGE_SIZE < page.total;
+
+  // Genres, tags, formats and languages come from the books themselves: a
+  // filter on one that no book has any more (its last book changed or went)
+  // is dropped, so the lists never hold names the library doesn't.
+  useEffect(() => {
+    if (!first) return;
+    const change = gone(view, first);
+    if (change) onChange(change);
+  }, [first]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Near the end of the list, the next page loads.
   useEffect(() => {
@@ -403,7 +440,9 @@ export function Library({
             <Stat value={counts.read} label="Read" />
             <Stat value={counts.inProgress} label="In progress" />
             <Stat value={counts.unread} label="Unread" />
-            <Stat value={counts.collections} label="Collections" />
+            {/* The Audiobooks page has its panel beside it, so listening time takes the collections' place. */}
+            {kind !== "audiobooks" && <Stat value={counts.collections} label="Collections" />}
+            {spent && (kind === "audiobooks" ? <Stat value={<Spent seconds={spent.listen} />} label="Listened" /> : <Stat value={<Spent seconds={spent.read} />} label="Time read" />)}
           </div>
         )}
       </header>
@@ -462,7 +501,7 @@ export function Library({
               <Icon name="edit" size={16} /> Edit details
             </button>
             <button type="button" className="btn btn-quiet" disabled={!selected.size} onClick={() => setTagging(true)}>
-              <Icon name="tag" size={16} /> Add a tag
+              <Icon name="tag" size={16} /> Tags
             </button>
             {kind !== "audiobooks" && (
               <button type="button" className="btn btn-quiet" disabled={!selected.size} onClick={() => askSendToEreader(chosen)}>
@@ -531,7 +570,7 @@ export function Library({
         />
       )}
       {tagging && (
-        <AddTagToMany
+        <TagsDialog
           books={chosen}
           onClose={(changed) => {
             setTagging(false);
@@ -563,4 +602,24 @@ export function Library({
       <div className="library-body">{body}</div>
     </div>
   );
+}
+
+const KNOWN_LISTS = ["formats", "tags", "genres", "languages"] as const;
+
+/** The filters to keep when some of `view`'s names aren't in the library any more, or null when all are. */
+export function gone(view: LibraryView, page: Pick<LibraryPage, (typeof KNOWN_LISTS)[number]>): Partial<LibraryView> | null {
+  const change: Partial<LibraryView> = {};
+  const exclude = { ...view.exclude };
+  let changed = false;
+  for (const list of KNOWN_LISTS) {
+    const known = new Set(page[list].map((n) => n.toLowerCase()));
+    const keep = (names: string[]) => names.filter((n) => known.has(n.toLowerCase()));
+    const shown = keep(view[list]);
+    const hidden = keep(view.exclude[list]);
+    if (shown.length !== view[list].length) change[list] = shown;
+    if (hidden.length !== view.exclude[list].length) exclude[list] = hidden;
+    changed ||= shown.length !== view[list].length || hidden.length !== view.exclude[list].length;
+  }
+  if (!changed) return null;
+  return { ...change, exclude, page: 0 };
 }

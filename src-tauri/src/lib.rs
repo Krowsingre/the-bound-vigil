@@ -276,6 +276,16 @@ async fn save_listening(state: State<'_, AppLibrary>, book_id: String, position_
 }
 
 #[tauri::command]
+async fn add_time(state: State<'_, AppLibrary>, day: String, kind: String, seconds: u32) -> CommandResult<()> {
+    with_library(state, move |library| library.add_time(&day, &kind, seconds)).await
+}
+
+#[tauri::command]
+async fn time_spent(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::time_log::TimeSpent>> {
+    with_library(state, |library| library.time_spent()).await
+}
+
+#[tauri::command]
 async fn link_ebook(state: State<'_, AppLibrary>, audiobook_id: String, ebook_id: Option<String>) -> CommandResult<()> {
     with_library(state, move |library| library.link_ebook(&audiobook_id, ebook_id.as_deref())).await
 }
@@ -1657,6 +1667,8 @@ pub fn run() {
             fetch_cover,
             audiobook,
             save_listening,
+            add_time,
+            time_spent,
             link_ebook,
             audiobook_for_ebook,
             set_book_status,

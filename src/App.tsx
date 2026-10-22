@@ -35,6 +35,7 @@ import { Header } from "./shell/Header";
 import { navFor, type Route } from "./shell/routes";
 import { Sidebar } from "./shell/Sidebar";
 import { Icon } from "./components/Icon";
+import { PairHost } from "./audio/LinkEbook";
 import { useNarrow } from "./lib/useNarrow";
 import { useSwipes } from "./shell/useSwipes";
 import { drawImportedCovers } from "./reader/formats";
@@ -578,6 +579,7 @@ export function App() {
         }}
       />
       <ContextMenuHost />
+      <PairHost />
     </div>
   );
 }

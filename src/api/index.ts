@@ -72,6 +72,7 @@ import type {
   SupabaseProject,
   SyncOverview,
   SyncStatus,
+  TimeSpent,
   TagCount,
 } from "./types";
 
@@ -118,6 +119,10 @@ export interface Api {
   audiobook(bookId: string): Promise<Audiobook>;
   /** Remembers where you are in an audiobook. */
   saveListening(bookId: string, positionMs: number, chapter: string | null): Promise<void>;
+  /** Adds time spent reading or listening on `day` (`YYYY-MM-DD`, this device's date). */
+  addTime(day: string, kind: "read" | "listen", seconds: number): Promise<void>;
+  /** Every day with time spent reading or listening, oldest first. */
+  timeSpent(): Promise<TimeSpent[]>;
   /** Links an audiobook to its ebook for reading along, or unlinks it with null. */
   linkEbook(audiobookId: string, ebookId: string | null): Promise<void>;
   /** The audiobook linked to an ebook, for reading along. */
@@ -518,6 +523,8 @@ function appApi(): Api {
     audiobook: async (bookId) => (await core).invoke<Audiobook>("audiobook", { bookId }),
     saveListening: async (bookId, positionMs, chapter) =>
       (await core).invoke("save_listening", { bookId, positionMs: Math.max(0, Math.round(positionMs)), chapter }),
+    addTime: async (day, kind, seconds) => (await core).invoke("add_time", { day, kind, seconds: Math.round(seconds) }),
+    timeSpent: async () => (await core).invoke<TimeSpent[]>("time_spent"),
     linkEbook: async (audiobookId, ebookId) => (await core).invoke("link_ebook", { audiobookId, ebookId }),
     audiobookForEbook: async (ebookId) => (await core).invoke<string | null>("audiobook_for_ebook", { ebookId }),
     audioClip: async (bookId, startMs, lenMs) => {

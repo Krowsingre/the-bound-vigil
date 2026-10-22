@@ -8,6 +8,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { cleanTag } from "../lib/queryBooks";
+import { AddOrReplace, joined, type ListMode } from "../components/AddOrReplace";
 
 type Ask = { kind: "tags"; book: BookPreview } | { kind: "delete"; book: BookPreview } | { kind: "remove"; book: BookPreview };
 
@@ -47,7 +48,7 @@ export function BookDialogsHost({ onChanged }: { onChanged: () => void }) {
     setAsk(null);
     if (changed) onChanged();
   };
-  if (ask.kind === "tags") return <TagEditor key={ask.book.id} book={ask.book} onClose={close} />;
+  if (ask.kind === "tags") return <TagsDialog key={ask.book.id} books={[ask.book]} onClose={close} />;
   const { book } = ask;
   const removing = ask.kind === "remove";
   return (
@@ -73,11 +74,19 @@ export function BookDialogsHost({ onChanged }: { onChanged: () => void }) {
   );
 }
 
-function TagEditor({ book, onClose }: { book: BookPreview; onClose: (changed: boolean) => void }) {
+/**
+ * Tags for one book or many. "Add to them" puts the tags here beside the ones
+ * each book has; "Replace them" makes these its only tags. With one book,
+ * Replace starts from the tags it has, so any can be taken off.
+ */
+export function TagsDialog({ books, onClose }: { books: BookPreview[]; onClose: (changed: boolean) => void }) {
   const toast = useToast();
-  const [tags, setTags] = useState<string[]>(book.tags);
+  const many = books.length > 1;
+  const [mode, setMode] = useState<ListMode>(many ? "add" : "replace");
+  const [tags, setTags] = useState<string[]>(many ? [] : books[0].tags);
   const [all, setAll] = useState<TagCount[]>([]);
   const [typed, setTyped] = useState("");
+  const [saving, setSaving] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -85,6 +94,12 @@ function TagEditor({ book, onClose }: { book: BookPreview; onClose: (changed: bo
     input.current?.focus();
   }, []);
 
+  const choose = (m: ListMode) => {
+    if (m === mode) return;
+    setMode(m);
+    // One book: Replace shows its tags to change, Add starts empty.
+    if (!many) setTags(m === "replace" ? joined(books[0].tags, tags) : tags.filter((t) => !books[0].tags.includes(t)));
+  };
   const has = (t: string) => tags.some((x) => x.toLowerCase() === t.toLowerCase());
   const add = (t: string) => {
     const clean = cleanTag(t);
@@ -98,19 +113,42 @@ function TagEditor({ book, onClose }: { book: BookPreview; onClose: (changed: bo
   const q = typed.trim().toLowerCase();
   const suggestions = all.filter((t) => !has(t.name) && (!q || t.name.toLowerCase().includes(q))).slice(0, 12);
 
-  const save = () => {
-    const final = typed.trim() && !has(typed.trim()) ? [...tags, typed.trim()] : tags;
-    api.setBookTags(book.id, final).then(
-      () => onClose(true),
-      (e: unknown) => toast(`Couldn't save the tags: ${String(e)}`),
-    );
+  const save = async () => {
+    const clean = cleanTag(typed);
+    const final = clean && !has(clean) ? [...tags, all.find((x) => x.name.toLowerCase() === clean.toLowerCase())?.name ?? clean] : tags;
+    if (mode === "add" && !final.length) return onClose(false);
+    setSaving(true);
+    let changed = 0;
+    for (const book of books) {
+      const next = mode === "add" ? joined(book.tags, final) : final;
+      if (next.length === book.tags.length && next.every((t, i) => t === book.tags[i])) continue;
+      try {
+        await api.setBookTags(book.id, next);
+        changed += 1;
+      } catch (e) {
+        toast(`Couldn't change the tags of “${book.title}”: ${String(e)}`);
+      }
+    }
+    if (many) toast(changed ? `Changed the tags of ${changed} ${changed === 1 ? "book" : "books"}.` : "Those books already had those tags.");
+    onClose(changed > 0);
   };
+
+  const note = many
+    ? mode === "add"
+      ? `${books.length} books. These join the tags each one has.`
+      : `${books.length} books. Each one's tags become just these; leave it empty to take every tag off.`
+    : mode === "add"
+      ? books[0].tags.length
+        ? `${books[0].title}. These join the tags it has: ${books[0].tags.join(", ")}.`
+        : `${books[0].title}. It has no tags yet.`
+      : books[0].title;
 
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose(false)}>
       <div className="dialog tag-dialog" role="dialog" aria-label="Tags" onKeyDown={(e) => e.key === "Escape" && onClose(false)}>
-        <h2>Tags</h2>
-        <p className="muted add-dialog-book">{book.title}</p>
+        <h2>{many ? `Tags for ${books.length} books` : "Tags"}</h2>
+        <AddOrReplace mode={mode} onChange={choose} label="Add to their tags or replace them" />
+        <p className="muted add-dialog-book">{note}</p>
         <div className="tag-field" onClick={() => input.current?.focus()}>
           {tags.map((t) => (
             <span key={t} className="tag-chip">
@@ -131,7 +169,7 @@ function TagEditor({ book, onClose }: { book: BookPreview; onClose: (changed: bo
               if (e.key === "Enter" || e.key === ",") {
                 e.preventDefault();
                 if (typed.trim()) add(typed);
-                else if (e.key === "Enter") save();
+                else if (e.key === "Enter") void save();
               } else if (e.key === "Backspace" && !typed && tags.length) {
                 setTags(tags.slice(0, -1));
               }
@@ -152,88 +190,8 @@ function TagEditor({ book, onClose }: { book: BookPreview; onClose: (changed: bo
           <button type="button" className="btn btn-quiet" onClick={() => onClose(false)}>
             Cancel
           </button>
-          <button type="button" className="btn btn-primary" onClick={save}>
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Adds one tag to many books, keeping the tags they already have. */
-export function AddTagToMany({ books, onClose }: { books: BookPreview[]; onClose: (changed: boolean) => void }) {
-  const toast = useToast();
-  const [typed, setTyped] = useState("");
-  const [all, setAll] = useState<TagCount[]>([]);
-  const [saving, setSaving] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    void api.allTags().then(setAll, () => undefined);
-    input.current?.focus();
-  }, []);
-
-  const save = async (text: string) => {
-    const clean = cleanTag(text);
-    if (!clean) return;
-    const tag = all.find((t) => t.name.toLowerCase() === clean.toLowerCase())?.name ?? clean;
-    setSaving(true);
-    let done = 0;
-    for (const book of books) {
-      if (book.tags.some((t) => t.toLowerCase() === tag.toLowerCase())) continue;
-      try {
-        await api.setBookTags(book.id, [...book.tags, tag]);
-        done += 1;
-      } catch (e) {
-        toast(`Couldn't tag “${book.title}”: ${String(e)}`);
-      }
-    }
-    toast(done ? `Tagged ${done} ${done === 1 ? "book" : "books"} “${tag}”.` : `Those books were already tagged “${tag}”.`);
-    onClose(done > 0);
-  };
-  const q = typed.trim().toLowerCase();
-  const suggestions = all.filter((t) => !q || t.name.toLowerCase().includes(q)).slice(0, 12);
-
-  return (
-    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose(false)}>
-      <div className="dialog tag-dialog" role="dialog" aria-label="Add a tag" onKeyDown={(e) => e.key === "Escape" && onClose(false)}>
-        <h2>Add a tag</h2>
-        <p className="muted add-dialog-book">
-          To {books.length} {books.length === 1 ? "book" : "books"}. Tags they already have stay.
-        </p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void save(typed);
-          }}
-        >
-          <div className="tag-field">
-            <input
-              ref={input}
-              value={typed}
-              maxLength={40}
-              placeholder="Type a tag"
-              aria-label="Tag"
-              onChange={(e) => setTyped(e.target.value)}
-            />
-          </div>
-        </form>
-        {suggestions.length > 0 && (
-          <div className="tag-suggestions">
-            <span className="muted">Your tags</span>
-            {suggestions.map((t) => (
-              <button key={t.name} type="button" className="tag-chip tag-chip-add" disabled={saving} onClick={() => void save(t.name)}>
-                <Icon name="plus" size={12} /> {t.name}
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="dialog-actions">
-          <button type="button" className="btn btn-quiet" onClick={() => onClose(false)}>
-            Cancel
-          </button>
-          <button type="button" className="btn btn-primary" disabled={saving || !typed.trim()} onClick={() => void save(typed)}>
-            Add tag
+          <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void save()}>
+            {mode === "add" ? "Add tags" : "Replace tags"}
           </button>
         </div>
       </div>

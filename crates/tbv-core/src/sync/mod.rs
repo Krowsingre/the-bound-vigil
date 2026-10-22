@@ -206,6 +206,14 @@ pub(crate) const KINDS: &[Kind] = &[
         category: Category::Notes,
         creates: true,
     },
+    Kind {
+        name: "time_log",
+        table: "time_log",
+        keys: &["device_id", "day", "kind"],
+        cols: &["seconds", "updated_at"],
+        category: Category::Progress,
+        creates: true,
+    },
 ];
 
 fn kind_named(name: &str) -> Option<&'static Kind> {

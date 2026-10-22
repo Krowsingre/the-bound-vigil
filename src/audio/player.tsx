@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { api, isHome } from "../api";
 import type { AudioChapter, Audiobook } from "../api/types";
 import { useToast } from "../components/Toast";
+import { recordTime } from "../lib/recordTime";
 import { onBeforeQuit } from "../lib/beforeQuit";
 import { useAppSettings } from "../settings/appSettings";
 
@@ -87,6 +88,21 @@ export function playAudiobook(bookId: string) {
   startListening?.(bookId);
 }
 
+// Tapping an audiobook anywhere puts it in the player bar, ready to play.
+let cueing: ((bookId: string) => boolean) | null = null;
+const cueWatchers = new Set<(bookId: string) => void>();
+/** Puts an audiobook in the player bar without playing it. False when
+ *  another audiobook is playing, which is left alone. */
+export function cueAudiobook(bookId: string): boolean {
+  cueWatchers.forEach((watch) => watch(bookId));
+  return cueing?.(bookId) ?? false;
+}
+/** Hears each audiobook tapped (the Audiobooks page shows it in its panel). */
+export function onCue(watch: (bookId: string) => void): () => void {
+  cueWatchers.add(watch);
+  return () => cueWatchers.delete(watch);
+}
+
 const PlayerContext = createContext<Player | null>(null);
 
 export function usePlayer(): Player {
@@ -135,6 +151,10 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
   const now = useRef(state);
   now.current = state;
   const part = useRef(-1);
+  /** A book put in the bar by a tap, not loaded to play yet. */
+  const cued = useRef<string | null>(null);
+  /** Counts taps, so only the latest one's book shows. */
+  const cueTurn = useRef(0);
   /** Links to play the book's parts from the cloud, when it's streamed that way. */
   const streaming = useRef<string[] | null>(null);
   const streamAudio = useRef(true);
@@ -191,7 +211,7 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
   const load = useCallback(
     async (bookId: string, play = true) => {
       const current = now.current.book;
-      if (current?.book.id === bookId) {
+      if (current?.book.id === bookId && cued.current !== bookId) {
         if (play && audio?.paused) goTo(now.current.positionMs, true);
         return;
       }
@@ -225,6 +245,9 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
       audio?.pause();
       audio?.removeAttribute("src");
       part.current = -1;
+      cued.current = null;
+      // A tap still on its way doesn't replace the book being loaded.
+      cueTurn.current++;
       streaming.current = links;
       // A finished book starts again from the beginning.
       const at = book.positionMs >= book.durationMs - 1000 ? 0 : book.positionMs;
@@ -242,6 +265,37 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
       startListening = null;
     };
   }, [load]);
+
+  // A tap shows the book in the bar; Play there loads it properly (fetching
+  // or streaming it as needed).
+  useEffect(() => {
+    cueing = (id) => {
+      if (now.current.book?.book.id === id) return true;
+      if (audio && !audio.paused) return false;
+      const turn = ++cueTurn.current;
+      void (async () => {
+        try {
+          const book = await api.audiobook(id);
+          // Another tap came after this one, or something started playing: that wins.
+          if (turn !== cueTurn.current || (audio && !audio.paused)) return;
+          if (now.current.book) await save();
+          if (turn !== cueTurn.current) return;
+          audio?.removeAttribute("src");
+          part.current = -1;
+          streaming.current = null;
+          cued.current = id;
+          const at = book.positionMs >= book.durationMs - 1000 ? 0 : book.positionMs;
+          update({ book, positionMs: at, playing: false, loading: false });
+        } catch (e) {
+          toast(`This audiobook couldn't be opened: ${String(e)}`);
+        }
+      })();
+      return true;
+    };
+    return () => {
+      cueing = null;
+    };
+  }, [audio, save, toast, update]);
 
   // Follow the audio element.
   useEffect(() => {
@@ -323,9 +377,10 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
 
   const toggle = useCallback(() => {
     if (!audio || !now.current.book) return;
+    if (cued.current === now.current.book.book.id) return void load(cued.current, true);
     if (audio.paused) goTo(now.current.positionMs, true);
     else audio.pause();
-  }, [audio, goTo]);
+  }, [audio, goTo, load]);
 
   const seek = useCallback(
     (ms: number) => {
@@ -364,6 +419,11 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
       () => undefined,
     );
   }, [update]);
+
+  // Time listened: while sound plays, even with the screen off, where
+  // timers slow to about once a minute.
+  // A stalled stream (waiting for more of the file) isn't listening.
+  useEffect(() => (audio ? recordTime("listen", () => !audio.paused && !audio.ended && audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA, 90_000) : undefined), [audio]);
 
   // Media keys and the system's now-playing controls.
   useEffect(() => {

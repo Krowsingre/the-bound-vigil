@@ -25,6 +25,10 @@ export interface ReadAlong {
   toggle: () => void;
   /** Word timing worked out for this pair: all of it, some of it, or none yet. */
   timed: "all" | "some" | null;
+  /** A document: the audiobook plays, but the pages are turned by hand. */
+  manual: boolean;
+  /** The linked audiobook is playing. */
+  playing: boolean;
 }
 
 function flatten(items: TocItem[] | undefined, view: View, out: TocEntry[] = []): TocEntry[] {
@@ -90,12 +94,15 @@ export function useReadAlong({
   ready,
   bookId,
   dark,
+  manual = false,
   onStart,
 }: {
   getView: () => View | null;
   ready: boolean;
   bookId: string;
   dark: boolean;
+  /** A document: TBV can't follow it, so the audiobook only plays alongside. */
+  manual?: boolean;
   /** Called as following starts, to stop reading aloud. */
   onStart: () => void;
 }): ReadAlong {
@@ -148,7 +155,7 @@ export function useReadAlong({
   const playingOurs = !!audiobookId && player.book?.book.id === audiobookId;
   // Opened from the audiobook while it plays: follow straight away.
   useEffect(() => {
-    if (playingOurs && player.playing && ready) setFollowing(true);
+    if (playingOurs && player.playing && ready && !manual) setFollowing(true);
     // Only as the book opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, audiobookId]);
@@ -255,6 +262,14 @@ export function useReadAlong({
 
   const toggle = useCallback(() => {
     if (!audiobookId) return;
+    if (manual) {
+      if (player.book?.book.id === audiobookId && player.playing) player.toggle();
+      else {
+        onStart();
+        void player.load(audiobookId, true);
+      }
+      return;
+    }
     if (following) {
       setFollowing(false);
       if (player.playing) player.toggle();
@@ -264,7 +279,14 @@ export function useReadAlong({
     s.heldUntil = 0;
     setFollowing(true);
     void player.load(audiobookId, true);
-  }, [audiobookId, following, player, onStart, s]);
+  }, [audiobookId, following, player, onStart, s, manual]);
 
-  return { audiobookId, following, toggle, timed: timing?.anchors.length ? (timing.done ? "all" : "some") : null };
+  return {
+    audiobookId,
+    following,
+    toggle,
+    timed: timing?.anchors.length ? (timing.done ? "all" : "some") : null,
+    manual,
+    playing: playingOurs && player.playing,
+  };
 }

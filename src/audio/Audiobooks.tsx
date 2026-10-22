@@ -17,7 +17,8 @@ import type { LibraryView } from "../library/libraryView";
 import { formatLength } from "../lib/queryBooks";
 import { formatBytes } from "../settings/controls";
 import { LinkEbook } from "./LinkEbook";
-import { chapterAt, chapterLength, clock, usePlayer } from "./player";
+import { useNarrow } from "../lib/useNarrow";
+import { chapterAt, chapterLength, clock, onCue, usePlayer } from "./player";
 
 type PanelTab = "chapters" | "details" | "files" | "collections";
 const PANEL_TABS: { tab: PanelTab; label: string }[] = [
@@ -94,14 +95,22 @@ export function Audiobooks({
   const shown = chosen ?? player.book?.book.id ?? listening?.[0]?.id ?? null;
   const showContinue = view.tab === "all" && !search.trim() && listening !== null && listening.length > 0;
 
-  // Clicking a cover shows the audiobook's details in the panel; playing stays on
-  // the panel's Listen button. Where the panel sits below the list, it scrolls into view.
-  const choose = useCallback((id: string) => {
-    setChosen(id);
-    if (window.matchMedia?.("(max-width: 1180px)").matches) {
-      requestAnimationFrame(() => document.querySelector(".audio-panel")?.scrollIntoView({ block: "start", behavior: "smooth" }));
-    }
-  }, []);
+  // Tapping a cover shows the audiobook in the panel (and the player bar);
+  // playing stays on the Listen and Play buttons. On a phone the panel opens
+  // as a sheet over the list; where it sits below the list, it scrolls into view.
+  const narrow = useNarrow();
+  const [sheet, setSheet] = useState(false);
+  const choose = useCallback(
+    (id: string) => {
+      setChosen(id);
+      if (narrow) setSheet(true);
+      else if (window.matchMedia?.("(max-width: 1180px)").matches) {
+        requestAnimationFrame(() => document.querySelector(".audio-panel")?.scrollIntoView({ block: "start", behavior: "smooth" }));
+      }
+    },
+    [narrow],
+  );
+  useEffect(() => onCue(choose), [choose]);
 
   return (
     <div className="audiobooks">
@@ -128,12 +137,7 @@ export function Audiobooks({
                       className={`listen-card${b.id === shown ? " is-chosen" : ""}`}
                       {...bookContextMenu(b, actions)}
                     >
-                      <button
-                        type="button"
-                        className="listen-open"
-                        onClick={() => choose(b.id)}
-                        onDoubleClick={() => void player.load(b.id)}
-                      >
+                      <button type="button" className="listen-open" onClick={() => actions.open(b)}>
                         <BookCover book={b} size="m" />
                         <span className="listen-title">{b.title}</span>
                         <span className="muted listen-author">{b.authors.join(", ") || "Unknown author"}</span>
@@ -153,15 +157,19 @@ export function Audiobooks({
           }
         />
       </div>
-      {shown && (
-        <AudiobookPanel
-          key={shown}
-          bookId={shown}
-          refreshKey={refreshKey + reload}
-          onOpenCollection={onOpenCollection}
-          onReadAlong={onReadAlong}
-          onChanged={() => setReload((n) => n + 1)}
-        />
+      {shown && (!narrow || sheet) && (
+        <>
+          {narrow && <div className="audio-sheet-backdrop" aria-hidden onClick={() => setSheet(false)} />}
+          <AudiobookPanel
+            key={shown}
+            bookId={shown}
+            refreshKey={refreshKey + reload}
+            onOpenCollection={onOpenCollection}
+            onReadAlong={onReadAlong}
+            onChanged={() => setReload((n) => n + 1)}
+            onClose={narrow ? () => setSheet(false) : undefined}
+          />
+        </>
       )}
     </div>
   );
@@ -173,12 +181,15 @@ function AudiobookPanel({
   onOpenCollection,
   onReadAlong,
   onChanged,
+  onClose,
 }: {
   bookId: string;
   refreshKey: number;
   onOpenCollection: (id: string) => void;
   onReadAlong: (ebookId: string) => void;
   onChanged: () => void;
+  /** On a phone, where the panel is a sheet: closes it. */
+  onClose?: () => void;
 }) {
   const player = usePlayer();
   const [book, setBook] = useState<Audiobook | null>(null);
@@ -202,7 +213,7 @@ function AudiobookPanel({
     };
   }, [bookId, refreshKey]);
 
-  if (!book) return <aside className="audio-panel" aria-busy="true" />;
+  if (!book) return <aside className={`audio-panel${onClose ? " is-sheet" : ""}`} aria-busy="true" />;
 
   const playing = player.book?.book.id === bookId;
   const at = playing ? player.positionMs : book.positionMs;
@@ -212,7 +223,12 @@ function AudiobookPanel({
   const started = at > 0 && at < book.durationMs - 1000;
 
   return (
-    <aside className="audio-panel" aria-label={`About ${b.title}`}>
+    <aside className={`audio-panel${onClose ? " is-sheet" : ""}`} aria-label={`About ${b.title}`}>
+      {onClose && (
+        <button type="button" className="icon-btn audio-sheet-close" aria-label="Close" onClick={onClose}>
+          <Icon name="close" size={18} />
+        </button>
+      )}
       <div className="audio-panel-head">
         <BookCover book={b} size="l" />
         <div className="audio-panel-title">

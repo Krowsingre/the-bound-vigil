@@ -9,6 +9,7 @@ import { sampleEpub } from "../preview/sampleEpub";
 import { previewMove } from "../preview/move";
 import { previewServers } from "../preview/servers";
 import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
+import { sampleTime } from "../lib/timeSpent";
 import { duplicateGroups } from "../lib/duplicates";
 import { cleanValue, DETAIL_FIELDS, previewFields } from "../lib/details";
 import { DESKTOP_ONLY } from "../ereaders/ereaders";
@@ -34,6 +35,7 @@ import type {
   HomeStatus,
   SyncOverview,
   SyncActivity,
+  TimeSpent,
 } from "./types";
 
 const day = 86_400_000;
@@ -449,6 +451,7 @@ export function previewApi(): Api {
     }));
   const relayer = (id: string) => update(id, previewFields(detailFields(id)));
   const linked = new Map<string, string>();
+  const timeLog = new Map<string, TimeSpent>(sampleTime().map((t) => [t.day, t]));
   const timings = new Map<string, string>();
   const sounds = new Map<string, string>();
   const find = (bookId: string) => {
@@ -669,6 +672,12 @@ export function previewApi(): Api {
         status: b.status === "unread" && positionMs > 0 ? "in_progress" : b.status,
       });
     },
+    addTime: async (day, kind, seconds) => {
+      const spent = timeLog.get(day) ?? { day, read: 0, listen: 0 };
+      spent[kind] += Math.round(seconds);
+      timeLog.set(day, spent);
+    },
+    timeSpent: async () => [...timeLog.values()].sort((a, b) => a.day.localeCompare(b.day)),
     linkEbook: async (audiobookId, ebookId) => {
       if (ebookId) linked.set(audiobookId, ebookId);
       else linked.delete(audiobookId);

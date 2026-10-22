@@ -18,6 +18,7 @@ import { effective, listOf } from "../lib/details";
 import { formatLength, formatLabel, isAudio, isDocument } from "../lib/queryBooks";
 import { formatBytes } from "../settings/controls";
 import { askEditDetails, askFetchDetails } from "./openDetails";
+import { PairRow } from "./PairRow";
 import { SeriesRow } from "./SeriesRow";
 
 type Load = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: BookDetails };
@@ -251,6 +252,7 @@ export function BookDetailsPage({
                     </dd>
                   </div>
                 ))}
+              <PairRow book={book} refreshKey={refreshKey + reload} />
             </dl>
           </section>
 

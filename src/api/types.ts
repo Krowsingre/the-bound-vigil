@@ -295,6 +295,13 @@ export interface ReadingActivity {
   weeklySeconds: number[];
 }
 
+/** Seconds spent on one day (`YYYY-MM-DD`), added up across devices. */
+export interface TimeSpent {
+  day: string;
+  read: number;
+  listen: number;
+}
+
 export interface HomeViewModel {
   resumeBook: BookPreview | null;
   recentlyAdded: BookPreview[];
@@ -389,6 +396,8 @@ export interface LibraryQuery {
   exclude?: LibraryExclude;
   /** Only books, documents or audiobooks. Left out: all of them. */
   kind?: ItemKind | null;
+  /** Only these books (of those that match). */
+  ids?: string[];
   /** Zero-based. */
   page: number;
   pageSize: number;
