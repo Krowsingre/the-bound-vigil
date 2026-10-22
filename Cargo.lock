@@ -5928,7 +5928,7 @@ dependencies = [
 
 [[package]]
 name = "tbv-core"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "cfb",
  "chrono",
@@ -5941,6 +5941,7 @@ dependencies = [
  "libunftp",
  "lofty",
  "lopdf",
+ "md-5 0.10.6",
  "mp4ameta",
  "quick-xml 0.37.5",
  "rusqlite",
@@ -5957,6 +5958,7 @@ dependencies = [
  "unftp-sbe-fs",
  "unrar",
  "ureq",
+ "url",
  "uuid",
  "webpki-roots",
  "zip",
@@ -5986,7 +5988,7 @@ dependencies = [
 
 [[package]]
 name = "the-bound-vigil"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "qrcode",
  "serde",

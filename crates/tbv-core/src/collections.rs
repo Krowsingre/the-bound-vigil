@@ -500,6 +500,13 @@ impl Library {
         source: &Path,
     ) -> Result<CollectionSummary> {
         self.collection_kind(id)?;
+        let file = self.copy_picture(source)?;
+        self.write_picture(id, Some(&format!("picture:{file}")))
+    }
+
+    /// Copies a picture into TBV's pictures folder, named by its content, and
+    /// gives its file name there.
+    pub(crate) fn copy_picture(&self, source: &Path) -> Result<String> {
         let extension = source
             .extension()
             .map(|e| e.to_string_lossy().to_ascii_lowercase())
@@ -515,7 +522,7 @@ impl Library {
         if !target.exists() {
             fs::copy(source, &target)?;
         }
-        self.write_picture(id, Some(&format!("picture:{file}")))
+        Ok(file)
     }
 
     fn write_picture(&self, id: &str, picture: Option<&str>) -> Result<CollectionSummary> {
@@ -527,13 +534,14 @@ impl Library {
         self.collection(id)
     }
 
-    /// Removes copied pictures no collection uses any more.
-    fn forget_unused_pictures(&self) -> Result<()> {
+    /// Removes copied pictures no collection or book being written uses any more.
+    pub(crate) fn forget_unused_pictures(&self) -> Result<()> {
         let Ok(entries) = fs::read_dir(&self.paths.pictures_dir) else {
             return Ok(());
         };
         let mut used = self.conn.prepare(
-            "SELECT 1 FROM collections WHERE picture = ?1 AND deleted_at IS NULL LIMIT 1",
+            "SELECT 1 FROM collections WHERE picture = ?1 AND deleted_at IS NULL
+             UNION ALL SELECT 1 FROM writing_projects WHERE cover = ?1 AND deleted_at IS NULL LIMIT 1",
         )?;
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();

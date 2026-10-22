@@ -380,6 +380,36 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE series_lists ADD COLUMN read TEXT NOT NULL DEFAULT '[]';
     "#,
+    // v18: books being written on the Writing page (see writing.rs), each a
+    // project of chapters. `cover` is a picture (`picture:<file>`), `export`
+    // the EPUB settings as JSON. Synced with notes.
+    r#"
+    CREATE TABLE writing_projects (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        author TEXT,
+        series TEXT,
+        series_index REAL,
+        language TEXT,
+        description TEXT,
+        cover TEXT,
+        export TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE TABLE writing_chapters (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
+        body TEXT NOT NULL DEFAULT '',
+        position REAL NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX idx_writing_chapters_project ON writing_chapters(project_id, position);
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
@@ -780,7 +810,7 @@ impl Library {
         Ok(true)
     }
 
-    fn cover_of(&self, book_id: &BookId) -> Result<Option<String>> {
+    pub(crate) fn cover_of(&self, book_id: &BookId) -> Result<Option<String>> {
         let cover: Option<String> = self
             .conn
             .query_row(
@@ -961,6 +991,10 @@ impl ImportJob {
 /// A picture as a cover file: a JPEG no taller than covers are shown.
 fn jpeg_cover(picture: &[u8]) -> Result<Vec<u8>> {
     let image = image::load_from_memory(picture).map_err(|e| Error::Unsuitable(format!("That picture couldn't be read: {e}")))?;
+    // A JPEG already small enough is kept as it is, so copying a cover never blurs it.
+    if image.height() <= 900 && image::guess_format(picture).is_ok_and(|f| f == image::ImageFormat::Jpeg) {
+        return Ok(picture.to_vec());
+    }
     // Covers are shown small; a page drawn at full size would be wasted space.
     let image = if image.height() > 900 { image.resize(900, 900, image::imageops::FilterType::Triangle) } else { image };
     let mut bytes = Vec::new();

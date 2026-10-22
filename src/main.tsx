@@ -25,6 +25,8 @@ import "./styles/audio.css";
 import "./styles/ereaders.css";
 import "./styles/web.css";
 import "./styles/privacy.css";
+import "./styles/writing.css";
+import "./styles/catalogs.css";
 import { isApp, isHome, isWeb } from "./api";
 import { HomePair } from "./web/HomePair";
 import { WebGate } from "./web/WebConnect";

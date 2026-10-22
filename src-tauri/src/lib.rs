@@ -10,6 +10,7 @@ mod localsend;
 mod moving;
 mod servers;
 mod sync;
+mod writing;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -1081,6 +1082,11 @@ async fn find_duplicates(
 }
 
 #[tauri::command]
+async fn share_best_cover(state: State<'_, AppLibrary>, book_ids: Vec<String>) -> CommandResult<u32> {
+    with_library(state, move |library| library.share_best_cover(&book_ids)).await
+}
+
+#[tauri::command]
 async fn dismiss_duplicates(state: State<'_, AppLibrary>, key: String) -> CommandResult<()> {
     with_library(state, move |library| library.dismiss_duplicates(&key)).await
 }
@@ -1552,12 +1558,33 @@ pub fn run() {
             let receiving = Arc::new(localsend::LocalSend::default());
             app.manage(receiving.clone());
             receiving.start(app.handle(), &library, &imports, data_dir.join("LocalSend inbox"));
+            // A book half brought down from a catalog when TBV closed isn't kept.
+            let _ = std::fs::remove_dir_all(writing::downloads_dir(&data_dir));
             let home = Arc::new(home::Home::default());
             app.manage(home.clone());
             home.resume(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            writing::catalogs,
+            writing::save_catalog,
+            writing::remove_catalog,
+            writing::catalog_feed,
+            writing::catalog_search,
+            writing::download_from_catalog,
+            writing::writing_projects,
+            writing::writing_project,
+            writing::create_writing_project,
+            writing::update_writing_details,
+            writing::set_writing_export,
+            writing::set_writing_cover,
+            writing::delete_writing_project,
+            writing::add_writing_chapter,
+            writing::save_writing_chapter,
+            writing::order_writing_chapters,
+            writing::delete_writing_chapter,
+            writing::writing_cover,
+            writing::save_writing_epub,
             get_home,
             all_tags,
             add_tag,
@@ -1586,6 +1613,7 @@ pub fn run() {
             approve_series_matches,
             deny_series_matches,
             dismiss_duplicates,
+            share_best_cover,
             book_details,
             edit_details,
             reset_details,

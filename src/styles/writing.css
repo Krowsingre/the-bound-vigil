@@ -1,0 +1,561 @@
+/* Writing page: a shelf of books being written, and the chapter editor. */
+.writing-shelf {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 24px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.writing-book {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.writing-book:hover .writing-cover,
+.writing-book:focus-visible .writing-cover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow), 0 8px 22px rgb(18 20 22 / 0.12);
+}
+
+.writing-cover {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  margin-bottom: 8px;
+  border-radius: var(--radius-s);
+  object-fit: cover;
+  box-shadow: var(--shadow);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.writing-cover-blank {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  background: linear-gradient(160deg, var(--ink-bloom), var(--crow-ink));
+  color: var(--ash-pale);
+  text-align: center;
+  overflow: hidden;
+}
+
+.writing-cover-title {
+  font: 600 17px/1.25 var(--font-serif);
+  overflow-wrap: anywhere;
+}
+
+.writing-cover-author {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.writing-book-title {
+  font: 600 15px/1.3 var(--font-serif);
+}
+
+.writing-book-meta {
+  font-size: 12px;
+}
+
+/* One book open */
+.writing-project {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 420px;
+  padding: 16px 32px 20px;
+}
+
+.writing-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.writing-head-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.writing-head-title h1 {
+  margin: 0;
+  font: 600 22px/1.2 var(--font-serif);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.writing-head-title .muted {
+  font-size: 12px;
+}
+
+.writing-head-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.writing-body {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+  padding-top: 16px;
+}
+
+.is-list-closed .writing-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.is-list-closed .writing-chapters {
+  display: none;
+}
+
+.writing-chapters {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.writing-chapters-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.writing-chapters-head strong {
+  flex: 1;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.writing-list-toggle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.writing-list-toggle:hover {
+  background: var(--surface-sunk);
+  color: var(--text);
+}
+
+.writing-list-toggle.is-floating {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+}
+
+.writing-chapter-list {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.writing-chapter-list li {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-s);
+}
+
+.writing-chapter-list li:hover {
+  background: var(--surface-sunk);
+}
+
+.writing-chapter-list li.is-current {
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.writing-chapter-list li.is-dragging {
+  opacity: 0.4;
+}
+
+.writing-chapter {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 4px 8px 10px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.writing-chapter-number {
+  min-width: 18px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.writing-chapter-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.writing-chapter-words {
+  font-size: 11px;
+}
+
+.writing-chapter-more {
+  opacity: 0;
+}
+
+.writing-chapter-list li:hover .writing-chapter-more,
+.writing-chapter-list li.is-current .writing-chapter-more,
+.catalogs-item:hover .writing-chapter-more,
+.writing-chapter-more:focus-within {
+  opacity: 1;
+}
+
+.writing-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.writing-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.writing-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.writing-toolbar {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunk);
+}
+
+.is-list-closed .writing-toolbar {
+  padding-left: 40px;
+}
+
+.writing-tool {
+  display: grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.writing-tool:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.writing-tool.is-on {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.writing-tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.writing-tool-text {
+  font: 600 15px/1 var(--font-serif);
+}
+
+.writing-tool[aria-label="Italic"] .writing-tool-text {
+  font-style: italic;
+}
+
+.writing-tool[aria-label="Underline"] .writing-tool-text {
+  text-decoration: underline;
+}
+
+.writing-tool[aria-label="Strikethrough"] .writing-tool-text {
+  text-decoration: line-through;
+}
+
+.writing-tool[aria-label="Smaller heading"] .writing-tool-text {
+  font-size: 13px;
+}
+
+.writing-tool-gap {
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--border);
+}
+
+.writing-link {
+  display: flex;
+  gap: 6px;
+  flex-basis: 100%;
+  margin-top: 6px;
+}
+
+.writing-link input {
+  flex: 1;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text);
+  font: 400 13px/1.4 var(--font-sans);
+  outline: none;
+  user-select: text;
+}
+
+.writing-sheet {
+  flex: 1;
+  overflow: auto;
+  padding: 36px max(28px, calc((100% - 680px) / 2)) 60px;
+  cursor: text;
+}
+
+.writing-chapter-title {
+  width: 100%;
+  margin: 0 0 20px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: 600 28px/1.25 "Lora", var(--font-serif);
+  outline: none;
+  user-select: text;
+}
+
+.writing-chapter-title::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.writing-sheet .tiptap {
+  min-height: 300px;
+  outline: none;
+  font: 400 18px/1.7 "Lora", var(--font-serif);
+  user-select: text;
+}
+
+.writing-sheet .tiptap p {
+  margin: 0 0 0.9em;
+}
+
+.writing-sheet .tiptap h2 {
+  margin: 1.4em 0 0.5em;
+  font: 600 22px/1.3 "Lora", var(--font-serif);
+}
+
+.writing-sheet .tiptap h3 {
+  margin: 1.2em 0 0.4em;
+  font: 600 18px/1.3 "Lora", var(--font-serif);
+}
+
+.writing-sheet .tiptap blockquote {
+  margin: 0 0 0.9em;
+  padding-left: 18px;
+  border-left: 3px solid var(--border);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.writing-sheet .tiptap ul,
+.writing-sheet .tiptap ol {
+  margin: 0 0 0.9em;
+  padding-left: 1.5em;
+}
+
+.writing-sheet .tiptap hr {
+  margin: 1.6em auto;
+  border: 0;
+  text-align: center;
+}
+
+.writing-sheet .tiptap hr::after {
+  content: "* * *";
+  color: var(--text-muted);
+  letter-spacing: 0.4em;
+}
+
+.writing-sheet .tiptap hr.ProseMirror-selectednode::after {
+  color: var(--focus);
+}
+
+.writing-sheet .tiptap a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.writing-status {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 4px 0;
+  font-size: 12px;
+}
+
+.writing-status .is-problem {
+  color: var(--danger);
+}
+
+/* Dialogs */
+.writing-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+
+.writing-dialog h2 {
+  margin-bottom: 0;
+}
+
+.writing-dialog .dialog-lede,
+.writing-dialog .dialog-actions {
+  margin: 0;
+}
+
+.writing-dialog .field select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text);
+  font: 400 14px/1.4 var(--font-sans);
+}
+
+.writing-details {
+  width: min(680px, calc(100vw - 48px));
+}
+
+.writing-details-grid {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 20px;
+}
+
+.writing-details-cover {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.writing-details-cover img,
+.writing-details-cover .writing-cover-blank {
+  width: 140px;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-s);
+  object-fit: cover;
+  box-shadow: var(--shadow);
+  font: 600 14px/1.25 var(--font-serif);
+}
+
+.writing-details-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.writing-details-row {
+  display: flex;
+  gap: 10px;
+}
+
+.writing-details-row > .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.writing-details-row > .writing-number {
+  flex: 0 0 90px;
+}
+
+.writing-export-where {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .writing-project {
+    height: auto;
+  }
+
+  .writing-head {
+    flex-wrap: wrap;
+  }
+
+  .writing-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .writing-chapter-list {
+    max-height: 200px;
+  }
+
+  .writing-sheet {
+    padding: 20px 16px 40px;
+  }
+
+  .writing-details-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

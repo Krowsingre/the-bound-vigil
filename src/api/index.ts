@@ -5,6 +5,14 @@
 import { homeAudioUrl, homeCore, homeEvents } from "./homeCore";
 import type { Found } from "../lib/onlineDetails";
 import type {
+  CatalogInput,
+  CatalogView,
+  OpdsFeed,
+  OpdsFile,
+  WritingChapter,
+  WritingDetails,
+  WritingProject,
+  WritingProjectView,
   TidyPlan,
   StoredFile,
   PlacesView,
@@ -282,6 +290,8 @@ export interface Api {
   denySeriesMatches(name: string, bookIds: string[]): Promise<SeriesReview>;
   /** Remembers that a group isn't duplicates, so it isn't shown again. */
   dismissDuplicates(key: string): Promise<void>;
+  /** Gives each of these books the largest cover any of them has; resolves to how many changed. */
+  shareBestCover(bookIds: string[]): Promise<number>;
   /** E-readers plugged in by cable now. */
   listEreaders(): Promise<Ereader[]>;
   /** Copies a book onto the reader plugged in at `root`. The library's copy is never changed. */
@@ -336,6 +346,36 @@ export interface Api {
   onSyncActivity(listener: (activity: SyncActivity) => void): () => void;
   /** Hears sync starting and finishing, and library changes it brings. Returns a way to stop. */
   onSync(listener: { status?: (status: SyncStatus) => void; libraryChanged?: () => void }): () => void;
+  /** OPDS catalogs saved on this device (desktop only). */
+  catalogs(): Promise<CatalogView[]>;
+  saveCatalog(catalog: CatalogInput): Promise<CatalogView>;
+  removeCatalog(id: string): Promise<void>;
+  /** A page of a catalog; its start when `url` is null. Fails with "needs-login" when it wants a sign-in. */
+  catalogFeed(id: string, url: string | null): Promise<OpdsFeed>;
+  catalogSearch(id: string, search: string, words: string): Promise<OpdsFeed>;
+  /** Brings a book down and adds it through the import queue. */
+  downloadFromCatalog(id: string, file: OpdsFile, title: string): Promise<void>;
+  /** Books being written, most recently changed first. */
+  writingProjects(): Promise<WritingProject[]>;
+  writingProject(id: string): Promise<WritingProjectView>;
+  createWritingProject(title: string, author: string | null): Promise<WritingProjectView>;
+  updateWritingDetails(id: string, details: WritingDetails): Promise<WritingProject>;
+  setWritingExport(id: string, exportSettings: string): Promise<void>;
+  /** A picture from the computer as the cover, or none (desktop only for a new picture). */
+  setWritingCover(id: string, path: string | null): Promise<WritingProject>;
+  deleteWritingProject(id: string): Promise<void>;
+  addWritingChapter(projectId: string, title: string, after: string | null): Promise<WritingChapter>;
+  saveWritingChapter(id: string, title: string, body: string): Promise<WritingChapter>;
+  orderWritingChapters(projectId: string, order: string[]): Promise<WritingChapter[]>;
+  deleteWritingChapter(id: string): Promise<void>;
+  /** The cover picture's bytes, for the EPUB; empty when there's none. */
+  writingCover(id: string): Promise<Uint8Array>;
+  /** A cover picture for a book being written; null when none was picked. */
+  pickWritingCover(): Promise<string | null>;
+  /** Where to save an EPUB; null when cancelled (or on the phone, which downloads instead). */
+  pickEpubSavePath(fileName: string): Promise<string | null>;
+  /** Saves a finished EPUB at `path` (desktop), downloads it (phone), and/or adds it to the library. */
+  saveWritingEpub(bytes: Uint8Array, fileName: string, path: string | null, addToLibrary: boolean): Promise<void>;
 }
 
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -652,6 +692,7 @@ function appApi(): Api {
     removeDownload: async (bookId) => (await core).invoke("remove_download", { bookId }),
     findDuplicates: async () => (await core).invoke<DuplicateGroup[]>("find_duplicates"),
     dismissDuplicates: async (key) => (await core).invoke("dismiss_duplicates", { key }),
+    shareBestCover: async (bookIds) => (await core).invoke<number>("share_best_cover", { bookIds }),
     bookDetails: async (bookId) => (await core).invoke<BookDetails>("book_details", { bookId }),
     editDetails: async (bookIds, changes) => (await core).invoke("edit_details", { bookIds, changes }),
     resetDetails: async (bookId, fetched) => (await core).invoke("reset_details", { bookId, fetched }),
@@ -706,6 +747,43 @@ function appApi(): Api {
         stop?.();
       };
     },
+    catalogs: async () => (await core).invoke<CatalogView[]>("catalogs"),
+    saveCatalog: async (catalog) => (await core).invoke<CatalogView>("save_catalog", { catalog }),
+    removeCatalog: async (id) => (await core).invoke("remove_catalog", { id }),
+    catalogFeed: async (id, url) => (await core).invoke<OpdsFeed>("catalog_feed", { id, url }),
+    catalogSearch: async (id, search, words) => (await core).invoke<OpdsFeed>("catalog_search", { id, search, words }),
+    downloadFromCatalog: async (id, file, title) => (await core).invoke("download_from_catalog", { id, file, title }),
+    writingProjects: async () => (await core).invoke<WritingProject[]>("writing_projects"),
+    writingProject: async (id) => (await core).invoke<WritingProjectView>("writing_project", { id }),
+    createWritingProject: async (title, author) => (await core).invoke<WritingProjectView>("create_writing_project", { title, author }),
+    updateWritingDetails: async (id, details) => (await core).invoke<WritingProject>("update_writing_details", { id, details }),
+    setWritingExport: async (id, exportSettings) => (await core).invoke("set_writing_export", { id, export: exportSettings }),
+    setWritingCover: async (id, path) => (await core).invoke<WritingProject>("set_writing_cover", { id, path }),
+    deleteWritingProject: async (id) => (await core).invoke("delete_writing_project", { id }),
+    addWritingChapter: async (projectId, title, after) => (await core).invoke<WritingChapter>("add_writing_chapter", { projectId, title, after }),
+    saveWritingChapter: async (id, title, body) => (await core).invoke<WritingChapter>("save_writing_chapter", { id, title, body }),
+    orderWritingChapters: async (projectId, order) => (await core).invoke<WritingChapter[]>("order_writing_chapters", { projectId, order }),
+    deleteWritingChapter: async (id) => (await core).invoke("delete_writing_chapter", { id }),
+    writingCover: async (id) => {
+      const bytes = await (await core).invoke<ArrayBuffer | number[]>("writing_cover", { id });
+      return Array.isArray(bytes) ? new Uint8Array(bytes) : new Uint8Array(bytes);
+    },
+    pickWritingCover: async () => {
+      const [path] = asList(
+        await (await dialog).open({
+          multiple: false,
+          title: "Choose a cover picture",
+          filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+        }),
+      );
+      return path ?? null;
+    },
+    pickEpubSavePath: async (fileName) =>
+      (await (await dialog).save({ title: "Save the EPUB", defaultPath: fileName, filters: [{ name: "EPUB", extensions: ["epub"] }] })) ?? null,
+    saveWritingEpub: async (bytes, fileName, path, addToLibrary) =>
+      (await core).invoke("save_writing_epub", bytes, {
+        headers: { path: encodeURIComponent(path ?? ""), add: addToLibrary ? "1" : "0", "file-name": encodeURIComponent(fileName) },
+      }),
     pickKeyFile: async () => {
       const picked = await (await dialog).open({ multiple: false, title: "Choose your private key file" });
       return typeof picked === "string" ? picked : null;

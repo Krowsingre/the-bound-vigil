@@ -45,6 +45,13 @@ pub struct DuplicateBook {
     pub book: BookPreview,
     pub file_size: u64,
     pub notes: u32,
+    /// The cover's width and height in pixels, when there is one.
+    pub cover_size: Option<[u32; 2]>,
+}
+
+/// A cover picture's width and height, read from its header only.
+fn cover_size(path: Option<&str>) -> Option<[u32; 2]> {
+    image::image_dimensions(path?).ok().map(|(w, h)| [w, h])
 }
 
 fn clean_tag(tag: &str) -> Option<String> {
@@ -446,11 +453,41 @@ impl Library {
                         book: rows[i].0.clone(),
                         file_size: rows[i].2.max(0) as u64,
                         notes: rows[i].3,
+                        cover_size: cover_size(rows[i].0.cover_path.as_deref()),
                     })
                     .collect(),
             });
         }
         Ok(groups)
+    }
+
+    /// Gives every one of these books the largest cover any of them has.
+    /// The cover is a copy, so it stays when the other books are deleted, and
+    /// resetting a book's details brings back its own. Returns how many changed.
+    pub fn share_best_cover(&self, book_ids: &[BookId]) -> Result<u32> {
+        let covers = book_ids
+            .iter()
+            .map(|id| {
+                let path = self.cover_of(id)?;
+                let size = cover_size(path.as_deref());
+                Ok((id, path, size))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let area = |size: &Option<[u32; 2]>| size.map_or(0, |[w, h]| u64::from(w) * u64::from(h));
+        let Some((_, Some(best_path), best_size)) = covers.iter().max_by_key(|(_, _, size)| area(size)).cloned() else {
+            return Ok(0);
+        };
+        let picture = fs::read(&best_path)?;
+        let mut changed = 0;
+        for (id, path, size) in &covers {
+            if path.as_deref() == Some(best_path.as_str()) || area(size) >= area(&best_size) {
+                continue;
+            }
+            if self.replace_cover(id, &picture)? {
+                changed += 1;
+            }
+        }
+        Ok(changed)
     }
 
     /// Remembers that these books aren't duplicates, so they aren't shown again.
@@ -674,6 +711,35 @@ mod tests {
         assert_eq!(groups[0].books.len(), 2);
         library.dismiss_duplicates(&groups[0].key).unwrap();
         assert!(library.find_duplicates().unwrap().is_empty());
+    }
+
+    fn png(width: u32, height: u32) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        image::RgbImage::new(width, height).write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png).unwrap();
+        bytes
+    }
+
+    #[test]
+    fn duplicates_share_the_largest_cover_and_keep_it_after_the_other_goes() {
+        let (dir, mut library) = open_temp_library();
+        let small = add(&mut library, dir.path(), "a", "Carmilla", "Le Fanu", "");
+        let large = add(&mut library, dir.path(), "b", "Carmilla", "Le Fanu", "<p>Another edition.</p>");
+        let none = add(&mut library, dir.path(), "c", "Carmilla", "Le Fanu", "<p>A third.</p>");
+        library.replace_cover(&small, &png(200, 300)).unwrap();
+        library.replace_cover(&large, &png(600, 900)).unwrap();
+        let group = library.find_duplicates().unwrap().remove(0);
+        let size = |id: &str| group.books.iter().find(|b| b.book.id == id).unwrap().cover_size;
+        assert_eq!((size(&small), size(&large), size(&none)), (Some([200, 300]), Some([600, 900]), None));
+
+        assert_eq!(library.share_best_cover(&[small.clone(), large.clone(), none.clone()]).unwrap(), 2);
+        let now = |l: &Library, id: &str| cover_size(l.cover_of(&id.to_string()).unwrap().as_deref());
+        assert_eq!(now(&library, &small), Some([600, 900]));
+        assert_eq!(now(&library, &none), Some([600, 900]));
+        // Already the best everywhere: nothing more to do.
+        assert_eq!(library.share_best_cover(&[small.clone(), large.clone()]).unwrap(), 0);
+        // The larger copy goes; the one kept still has its cover.
+        library.delete_book(&large).unwrap();
+        assert_eq!(now(&library, &small), Some([600, 900]));
     }
 
     #[test]

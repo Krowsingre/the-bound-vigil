@@ -296,7 +296,7 @@ impl Library {
 }
 
 /// Settings that belong to this device and its sign-in, never to a backup.
-const DEVICE_ONLY: [&str; 8] = [
+const DEVICE_ONLY: [&str; 9] = [
     "sync.session",
     "sync.supabase",
     "sync.device_id",
@@ -305,18 +305,20 @@ const DEVICE_ONLY: [&str; 8] = [
     crate::hardcover::ACCOUNT_KEY,
     crate::ereaders::email::SETTINGS_KEY,
     crate::servers::SETTINGS_KEY,
+    crate::opds::SETTINGS_KEY,
 ];
 
 /// Sign-ins (and the sync choice, which can hold a WebDAV password, the
 /// Kindle email settings, which hold an email password, and saved servers,
 /// which hold theirs): never written into a backup file.
-const SIGN_INS: [&str; 6] = [
+const SIGN_INS: [&str; 7] = [
     "sync.session",
     crate::sync::PROVIDER,
     crate::sync::ALSO,
     crate::hardcover::ACCOUNT_KEY,
     crate::ereaders::email::SETTINGS_KEY,
     crate::servers::SETTINGS_KEY,
+    crate::opds::SETTINGS_KEY,
 ];
 
 /// Settings that hold a password or sign-in. The page's general settings

@@ -484,7 +484,7 @@ export interface DuplicateGroup {
   key: string;
   /** Why they look alike, in words. */
   reason: string;
-  books: (BookPreview & { fileSize: number; notes: number })[];
+  books: (BookPreview & { fileSize: number; notes: number; coverSize: [number, number] | null })[];
 }
 
 /** One book of a series, as an online source lists it. */
@@ -1022,4 +1022,103 @@ export interface SyncActivity {
   places: PlaceActivity[];
   /** Newest first. */
   recent: FileActivity[];
+}
+
+/** An OPDS catalog saved on this device (Catalogs page). */
+export interface CatalogView {
+  id: string;
+  name: string;
+  url: string;
+  username: string | null;
+  hasPassword: boolean;
+}
+
+/** What the Catalogs page saves. No id adds one; no password keeps the saved one. */
+export interface CatalogInput {
+  id: string | null;
+  name: string;
+  url: string;
+  username: string | null;
+  password: string | null;
+}
+
+export interface OpdsFile {
+  url: string;
+  mime: string;
+  /** TBV's name for the format ("epub"), when it can open it. */
+  format: string | null;
+  label: string | null;
+}
+
+export interface OpdsEntry {
+  id: string;
+  title: string;
+  authors: string[];
+  summary: string | null;
+  language: string | null;
+  published: string | null;
+  cover: string | null;
+  /** A shelf or list rather than a book: the page it leads to. */
+  navigation: string | null;
+  /** The book's files, best first. */
+  files: OpdsFile[];
+  /** Must be bought or borrowed, which TBV can't do. */
+  notFree: boolean;
+}
+
+/** One page of a catalog. */
+export interface OpdsFeed {
+  url: string;
+  title: string;
+  entries: OpdsEntry[];
+  next: string | null;
+  previous: string | null;
+  /** Search address with `{searchTerms}` where the words go. */
+  search: string | null;
+}
+
+/** A book being written on the Writing page. */
+export interface WritingProject {
+  id: string;
+  title: string;
+  author: string | null;
+  series: string | null;
+  seriesIndex: number | null;
+  language: string | null;
+  description: string | null;
+  /** `picture:<file>`. */
+  cover: string | null;
+  /** The cover's file here (or a picture address on the phone). */
+  coverPath: string | null;
+  /** EPUB settings as JSON (see writing/epub.ts). */
+  export: string;
+  chapters: number;
+  words: number;
+  createdAt: IsoUtc;
+  updatedAt: IsoUtc;
+}
+
+export interface WritingChapter {
+  id: string;
+  projectId: string;
+  title: string;
+  /** The editor's HTML. */
+  body: string;
+  position: number;
+  words: number;
+  updatedAt: IsoUtc;
+}
+
+export interface WritingProjectView {
+  project: WritingProject;
+  chapters: WritingChapter[];
+}
+
+export interface WritingDetails {
+  title: string;
+  author: string | null;
+  series: string | null;
+  seriesIndex: number | null;
+  language: string | null;
+  description: string | null;
 }

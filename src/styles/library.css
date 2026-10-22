@@ -519,9 +519,19 @@ button.tag-chip-add:hover {
   border-radius: var(--radius-m);
 }
 
+.duplicate-group header > span {
+  flex: 1;
+}
+
+.duplicate-share-all {
+  display: inline-flex;
+  margin-bottom: 10px;
+}
+
 .duplicate-group header {
   display: flex;
   align-items: center;
+  gap: 6px;
   justify-content: space-between;
   padding: 8px 8px 8px 14px;
   border-bottom: 1px solid var(--border);
