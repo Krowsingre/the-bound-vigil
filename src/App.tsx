@@ -477,7 +477,7 @@ export function App() {
                 : route === "catalogs"
                   ? "Search or enter a website…"
                   : route === "collections"
-                    ? "Search collections…"
+                    ? "Search the Compendium…"
                   : undefined
           }
           onSearchSubmit={() => {

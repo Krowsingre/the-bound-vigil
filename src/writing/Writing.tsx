@@ -127,7 +127,7 @@ export function Writing({
   return (
     <div className={`library writing-home scribe writing-${showing}`}>
       <header className="library-head scribe-head">
-        <h1 className="library-title">{booksShown ? "Scribe" : "Notes"}</h1>
+        <h1 className="library-title">Scribe</h1>
         {/* New starts a note to write freely; the arrow has the other kinds. */}
         <div className="split-button">
           <button type="button" className="btn btn-primary split-main" onClick={() => newNote("personal")}>

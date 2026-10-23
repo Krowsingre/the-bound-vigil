@@ -15,7 +15,7 @@ export function CollectionsTab({
       <div className="library-empty">
         <h2>No collections yet</h2>
         <p className="muted">
-          Collections group books your way, like a reading list for winter. Make them on the Collections page, or from any book's … menu.
+          Collections group books your way, like a reading list for winter. Make them in the Compendium, or from any book's … menu.
         </p>
       </div>
     );

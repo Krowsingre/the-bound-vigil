@@ -408,7 +408,7 @@ export function NotesTab() {
   const [sort, setSort] = useState<NotesSortChoice>(saved.sort === "updated" || saved.sort === "book" ? saved.sort : "recent");
   return (
     <>
-      <Section id="view" title="Notes view" lede="How the Notes page shows your notes.">
+      <Section id="view" title="Notes view" lede="How Scribe shows your notes.">
         <Row label="Layout">
           <Segmented<NotesLayout>
             label="Notes layout"
@@ -743,7 +743,7 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
 ];
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.21.0");
+  const [version, setVersion] = useState("1.22.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));
