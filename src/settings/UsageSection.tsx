@@ -1,4 +1,4 @@
-// Settings › Sync › Supabase space: how much of the free plan's room TBV is
+// Preferences › Sync › Supabase space: how much of the free plan's room TBV is
 // using, so a big library doesn't fill it without warning.
 
 import { useEffect, useState } from "react";

@@ -1,4 +1,4 @@
-// Settings › Sync & Accounts › Hardcover: sign in, and send ratings there.
+// Preferences › Sync & Accounts › Hardcover: sign in, and send ratings there.
 
 import { useEffect, useState } from "react";
 import { api, isApp, openExternal } from "../api";

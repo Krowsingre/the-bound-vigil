@@ -221,7 +221,7 @@ impl Home {
         }
         if let Some(rest) = path.strip_prefix("/tbv/") {
             if !Self::paired(app, request) {
-                return Reply::json(401, &json!({ "error": "Pair this phone again in TBV on the computer (Settings › Sync › Use on your phone at home)." }));
+                return Reply::json(401, &json!({ "error": "Pair this phone again in TBV on the computer (Preferences › Sync › Use on your phone at home)." }));
             }
             if let Some(command) = rest.strip_prefix("invoke/") {
                 let args: Value = serde_json::from_slice(body).unwrap_or(Value::Null);
@@ -247,7 +247,7 @@ impl Home {
     fn take_code(&self, tried: &str) -> Result<(), &'static str> {
         let mut code = lock(&self.code);
         let Some((wanted, wrong)) = code.as_mut() else {
-            return Err("Ask TBV on the computer for a new code (Settings › Sync › Use on your phone at home).");
+            return Err("Ask TBV on the computer for a new code (Preferences › Sync › Use on your phone at home).");
         };
         if tried.trim() == wanted.as_str() {
             *code = None;

@@ -350,7 +350,7 @@ export function Collections({
     <div className="collections-page">
       <header className="collections-head">
         <div className="collections-heading">
-          <h1 className="library-title">Collections</h1>
+          <h1 className="library-title">Compendium</h1>
           <p className="collections-lede">Organize your library. Shape your reading journey.</p>
         </div>
         <div className="collections-actions">

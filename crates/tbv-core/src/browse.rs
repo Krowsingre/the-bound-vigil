@@ -3,7 +3,7 @@
 use rusqlite::{params, params_from_iter, types::Value};
 
 use crate::error::{Error, Result};
-use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM, DOCUMENT_FORMATS, LANGUAGE, NARRATORS};
+use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM, DOCUMENT_FORMATS, LANGUAGE, NARRATORS, PAIRED};
 use crate::library::Library;
 use crate::model::*;
 
@@ -223,6 +223,12 @@ impl Library {
 
         if let Some(kind) = query.kind {
             conditions.push(kind_condition(kind));
+        }
+
+        match query.paired {
+            Some(true) => conditions.push(PAIRED.into()),
+            Some(false) => conditions.push(format!("NOT {PAIRED}")),
+            None => {}
         }
 
         if let Some(ids) = &query.ids {

@@ -94,9 +94,9 @@ export function LibraryTab({
   const info = useLibraryInfo();
   return (
     <>
-      <Section id="view" title="Library view" lede="How the Library page starts out. Changing it there is remembered too.">
+      <Section id="view" title="Archive view" lede="How the Archive starts out. Changing it there is remembered too.">
         <Row label="Layout">
-          <Segmented<Layout> label="Library layout" value={layout} options={LIBRARY_LAYOUTS} onChange={(l) => onChange({ layout: l })} />
+          <Segmented<Layout> label="Archive layout" value={layout} options={LIBRARY_LAYOUTS} onChange={(l) => onChange({ layout: l })} />
         </Row>
         <Row label="Sort books by">
           <Select<SortOrder>
@@ -109,7 +109,7 @@ export function LibraryTab({
       </Section>
       <Section
         id="folder"
-        title="Library folder"
+        title="Archive folder"
         lede="TBV keeps its own copy of every book you import here. The originals you imported from are left alone."
       >
         {info ? (
@@ -157,7 +157,7 @@ function TagsSection() {
     load();
   };
   return (
-    <Section id="tags" title="Tags" lede="Your own labels for books. Add them from any book's menu, right-click a book, or filter the Library by them.">
+    <Section id="tags" title="Tags" lede="Your own labels for books. Add them from any book's menu, right-click a book, or filter the Archive by them.">
       {tags === null ? null : tags.length === 0 ? (
         <p className="settings-row-hint">No tags yet. Right-click a book, or open its … menu, and choose Add tags.</p>
       ) : (
@@ -364,7 +364,7 @@ export function CollectionsTab() {
   const { settings, change } = useAppSettings();
   const [layout, setLayout] = useState<"grid" | "list">(() => (readLocal(COLLECTIONS_PREFS).layout === "list" ? "list" : "grid"));
   return (
-    <Section id="show" title="What Collections shows" lede="Sorting and your own order are set on the Collections page itself.">
+    <Section id="show" title="What the Compendium shows" lede="Sorting and your own order are set in the Compendium itself.">
       <div className="toggle-list">
         <Toggle
           label="Show smart collections"
@@ -381,7 +381,7 @@ export function CollectionsTab() {
       </div>
       <Row label="Your collections appear as">
         <Segmented<"grid" | "list">
-          label="Collections layout"
+          label="Compendium layout"
           value={layout}
           options={[
             { value: "grid", label: "Cards" },
@@ -565,7 +565,7 @@ export function AccessibilityTab() {
 }
 
 const EVERYWHERE: [string, string][] = [
-  ["Ctrl + 1 to 5", "Go to Home, Library, Collections, Notes or Settings"],
+  ["Ctrl + 1 to 7", "Go to Sanctum, Archive, Compendium, Resonance, Scribe, Discover or Preferences"],
   ["Ctrl + F  or  Ctrl + K", "Search"],
   ["Ctrl + O", "Import books"],
   ["Ctrl + \\", "Show or hide the sidebar"],
@@ -645,7 +645,7 @@ export function AdvancedTab() {
       <Section
         id="reset"
         title="Reset settings"
-        lede="Puts Appearance, Collections, Accessibility and Sync choices back as they came. Your books, notes and collections are not touched."
+        lede="Puts Appearance, Compendium, Accessibility and Sync choices back as they came. Your books, notes and collections are not touched."
       >
         <button type="button" className="btn btn-quiet" onClick={() => setConfirming(true)}>
           Reset settings…
@@ -737,7 +737,7 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
 ];
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.18.0");
+  const [version, setVersion] = useState("1.19.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

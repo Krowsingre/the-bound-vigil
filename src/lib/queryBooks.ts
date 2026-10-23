@@ -54,6 +54,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     if (q.languages?.length && !q.languages.includes(b.language ?? "")) return false;
     if (q.downloadable && !b.inCloud) return false;
     if (q.hideRead && b.status === "read") return false;
+    if (q.paired != null && !!b.paired !== q.paired) return false;
     if (!hasAny(b.genres, q.genres) || !hasAny(b.authors, q.authors) || !hasAny(b.narrators, q.narrators)) return false;
     if (q.series?.length && !q.series.some((s) => s.toLowerCase() === (b.series ?? "").toLowerCase())) return false;
     if (q.exclude && excluded(b, q.exclude)) return false;

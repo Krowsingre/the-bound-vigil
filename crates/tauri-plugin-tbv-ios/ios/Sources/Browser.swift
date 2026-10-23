@@ -85,6 +85,14 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         invoke.resolve(["ok": true])
         return
       }
+      // Clearing needs no page open: the data lives in the shared store.
+      if args.action == "clear" {
+        WKWebsiteDataStore.default().removeData(
+          ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast
+        ) {}
+        invoke.resolve(["ok": true])
+        return
+      }
       guard let view = self.made() else {
         invoke.reject("TBV couldn't show the browser.")
         return

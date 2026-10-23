@@ -1,4 +1,4 @@
-// Settings › Sync: moving the library to another cloud service, or keeping
+// Preferences › Sync: moving the library to another cloud service, or keeping
 // a copy there. A short wizard (what to do, where, set it up, which books),
 // then progress, then the check that nothing was missed. The copying runs in
 // the background in the desktop app, so TBV can be used meanwhile.

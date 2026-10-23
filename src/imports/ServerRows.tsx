@@ -1,5 +1,5 @@
 // Files from servers on the Imports page: every one chosen, in order, with
-// how its download went. A few come down at once (Settings › Servers ›
+// how its download went. A few come down at once (Preferences › Servers ›
 // Connections); each joins the import queue as it arrives.
 
 import type { QueuedServerFile } from "../api/types";
@@ -67,7 +67,7 @@ export function ServerRows({ queue }: { queue: ServerQueue }) {
         <>
           <ProgressBar value={c.bytesTotal ? c.bytesDone / c.bytesTotal : 0} label="Downloaded from servers" />
           <p className="settings-row-hint">
-            {formatBytes(c.bytesDone)} of {formatBytes(c.bytesTotal)} · up to {view.connections} at once (Settings › Servers)
+            {formatBytes(c.bytesDone)} of {formatBytes(c.bytesTotal)} · up to {view.connections} at once (Preferences › Servers)
           </p>
         </>
       )}

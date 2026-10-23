@@ -375,7 +375,7 @@ pub fn download(library: &Arc<Mutex<Library>>, book_id: &str) -> tbv_core::Resul
     let second = connect_second(library);
     if client.is_none() && second.is_none() {
         return Err(Error::Unsuitable(
-            "This book's file is on another device. Set up sync (Settings › Sync) to download it here.".into(),
+            "This book's file is on another device. Set up sync (Preferences › Sync) to download it here.".into(),
         ));
     }
     let what = library.lock().ok().and_then(|l| l.cloud_book_path(book_id).ok().flatten().map(|p| l.file_named(&p))).unwrap_or_else(|| "A book".into());
@@ -461,7 +461,7 @@ fn tidy_places(library: &Arc<Mutex<Library>>) -> tbv_core::Result<TidyPlaces> {
         connect(library, &l)?
     };
     let also = connect_second(library);
-    let signed_out = || Error::Unsuitable("Sign in to Supabase (Settings › Sync) first.".into());
+    let signed_out = || Error::Unsuitable("Sign in to Supabase (Preferences › Sync) first.".into());
     if main_is {
         Ok(((main.ok_or_else(signed_out)?, Lane::Main), also.map(|c| (c, Lane::Also))))
     } else {

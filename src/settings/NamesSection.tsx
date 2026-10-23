@@ -1,4 +1,4 @@
-// Settings › Sync & Accounts › Names: the account's name, the same on every
+// Preferences › Sync & Accounts › Names: the account's name, the same on every
 // device, and this device's own name, which other devices see in Grimoire
 // and in sync's notes.
 

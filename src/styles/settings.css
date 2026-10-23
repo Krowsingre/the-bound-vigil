@@ -1158,7 +1158,7 @@ kbd {
   gap: 10px;
 }
 
-/* Settings › Sync: moving or backing up the library. */
+/* Preferences › Sync: moving or backing up the library. */
 .move-panel {
   gap: 12px;
 }
@@ -1282,7 +1282,7 @@ kbd {
   gap: 8px;
 }
 
-/* Settings › Sync › What's in Supabase. */
+/* Preferences › Sync › What's in Supabase. */
 .contents-panel {
   display: grid;
   gap: 10px;
@@ -1444,9 +1444,30 @@ kbd {
   font-size: 13px;
 }
 
-/* Settings › Sync & Accounts › Names: the two name boxes side by side. */
+/* Preferences › Sync & Accounts › Names: the two name boxes side by side. */
 .names-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
+}
+
+/* The landing page has no menu beside it: its cards are the menu, with the search up top. */
+.settings-page.is-landing {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.settings-landing-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-landing-head .settings-search {
+  flex: 0 1 320px;
+}
+
+.settings-page.is-landing .settings-results {
+  max-width: 560px;
 }

@@ -1,4 +1,4 @@
-// Settings › Sync › What's in Supabase: every file TBV keeps there, by type,
+// Preferences › Sync › What's in Supabase: every file TBV keeps there, by type,
 // and removing any of them. Tidy up Supabase does the usual clear-out; this
 // is for choosing exactly what goes.
 

@@ -171,18 +171,14 @@
     border-bottom: 1px solid var(--border);
   }
 
-  /* The landing page's buttons stand in for the menu; a page has its back link. */
+  /* A page has its back link instead of the menu. */
   .settings-eyebrow,
-  .settings-page.is-landing .settings-menu:not(.settings-results) {
-    display: none;
-  }
-
   .settings-page:not(.is-landing) .settings-nav {
     display: none;
   }
 
-  .settings-page.is-landing .settings-nav {
-    border-bottom: 0;
+  .settings-landing-head .settings-search {
+    flex-basis: 100%;
   }
 
   .settings-search {
@@ -216,7 +212,8 @@
     padding: 10px 0;
   }
 
-  .library-toolbar .tabs-menu {
+  .library-toolbar .tabs-menu,
+  .library-toolbar.is-compact .tabs-menu {
     display: none;
   }
 
@@ -286,6 +283,24 @@
   /* All five counts fit across, with shorter names. */
   .library-stats .stat {
     padding: 0 8px;
+  }
+
+  /* The counters with their icons go three to a row. */
+  .library-stats.stats-5 {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 14px;
+    overflow: visible;
+  }
+
+  .library-stats .stat:nth-child(3n + 1) {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  /* Boxed icons only: the chevrons don't fit. */
+  .toolbar-chevron {
+    display: none;
   }
 
   /* Reader: the text fills the screen; the panels slide over it. */

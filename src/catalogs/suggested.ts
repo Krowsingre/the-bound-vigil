@@ -1,5 +1,6 @@
 // Free OPDS catalogs known to work (checked October 2026), offered when
-// adding a catalog. Project Gutenberg comes built in.
+// adding a catalogue. Project Gutenberg comes built in, and is offered again
+// here if it was removed.
 
 export interface SuggestedCatalog {
   name: string;
@@ -9,6 +10,7 @@ export interface SuggestedCatalog {
 }
 
 export const SUGGESTED_CATALOGS: SuggestedCatalog[] = [
+  { name: "Project Gutenberg", url: "https://www.gutenberg.org/ebooks.opds/", about: "Over 70,000 free classics, in English and many other languages." },
   {
     name: "Standard Ebooks",
     url: "https://standardebooks.org/feeds/opds",

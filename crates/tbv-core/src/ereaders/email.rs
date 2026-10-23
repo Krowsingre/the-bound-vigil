@@ -190,7 +190,7 @@ fn content_type(format: &str) -> ContentType {
 }
 
 fn mailbox(address: &str, what: &str) -> Result<Mailbox> {
-    address.parse().map_err(|_| Error::Unsuitable(format!("{what} doesn't look like an email address. Check it in Settings › E-readers.")))
+    address.parse().map_err(|_| Error::Unsuitable(format!("{what} doesn't look like an email address. Check it in Preferences › E-readers.")))
 }
 
 /// One email to the Kindle with the book attached.

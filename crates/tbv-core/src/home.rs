@@ -48,6 +48,13 @@ pub(crate) const BOOK_COLUMNS: &str = r#"
            b.phone_wanted, b.phone_has
 "#;
 
+/// Whether an audiobook has its ebook, or an ebook its audiobook: the same
+/// test as the paired column above, for Resonance's switch.
+pub(crate) const PAIRED: &str = "(EXISTS (SELECT 1 FROM audiobooks ab JOIN books e ON e.id = ab.ebook_id
+     WHERE ab.book_id = b.id AND e.deleted_at IS NULL)
+    OR EXISTS (SELECT 1 FROM audiobooks ab JOIN books a ON a.id = ab.book_id
+     WHERE ab.ebook_id = b.id AND a.deleted_at IS NULL))";
+
 /// Leaves out a book when a newer copy of it (same title and first author,
 /// in another file) is in the library, so lists of what's new show each
 /// book once.
@@ -109,8 +116,21 @@ impl Library {
             annotations: self.annotation_previews()?,
             library_counts: self.counts()?,
             activity: None,
+            finished_dates: self.finished_dates()?,
             sync: self.sync_status()?,
         })
+    }
+
+    /// When books were finished in the last 400 days, newest first.
+    fn finished_dates(&self) -> Result<Vec<IsoUtc>> {
+        let since = (chrono::Utc::now() - chrono::Duration::days(400)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let mut statement = self.conn.prepare(
+            "SELECT finished_at FROM books
+             WHERE deleted_at IS NULL AND same_as IS NULL AND status = 'read' AND finished_at >= ?1
+             ORDER BY finished_at DESC",
+        )?;
+        let rows = statement.query_map([since], |r| r.get(0))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
     /// Sets read status explicitly. Status is never inferred from a percentage.

@@ -63,7 +63,7 @@ pub fn send_one(library: &Mutex<Library>, book_id: &str) -> tbv_core::Result<(Se
         Ok(None) => return Ok((Sent::Off, label)),
         Err(Error::SignedOut) => {
             lock(library)?.save_hardcover_account(None)?;
-            return Err(Error::Unsuitable("Hardcover signed TBV out. Sign in again in Settings › Sync & Accounts.".into()));
+            return Err(Error::Unsuitable("Hardcover signed TBV out. Sign in again in Preferences › Sync & Accounts.".into()));
         }
         Err(e) => return Err(e),
     };
@@ -77,7 +77,7 @@ pub fn send_one(library: &Mutex<Library>, book_id: &str) -> tbv_core::Result<(Se
         }
         Err(Error::SignedOut) => {
             lock(library)?.save_hardcover_account(None)?;
-            Err(Error::Unsuitable("Hardcover signed TBV out. Sign in again in Settings › Sync & Accounts.".into()))
+            Err(Error::Unsuitable("Hardcover signed TBV out. Sign in again in Preferences › Sync & Accounts.".into()))
         }
         Err(e) => Err(e),
     }

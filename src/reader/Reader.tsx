@@ -487,7 +487,7 @@ export function Reader({
           <h1>This book couldn't be opened</h1>
           <p>{loadError}</p>
           <button type="button" className="btn btn-primary" onClick={onClose}>
-            Back to Home
+            Back to Sanctum
           </button>
         </div>
       </div>
@@ -709,7 +709,7 @@ export function Reader({
 function ReaderTopBarFallback({ onHome }: { onHome: () => void }) {
   return (
     <header className="reader-top" data-tauri-drag-region>
-      <button type="button" className="icon-btn" aria-label="Back to Home" title="Back to Home" onClick={onHome}>
+      <button type="button" className="icon-btn" aria-label="Back to Sanctum" title="Back to Sanctum" onClick={onHome}>
         <Icon name="home" size={20} />
       </button>
       <span className="reader-top-spacer" data-tauri-drag-region />

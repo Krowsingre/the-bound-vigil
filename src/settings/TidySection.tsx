@@ -1,4 +1,4 @@
-// Settings › Sync › Tidy up Supabase: removes Supabase's copies of books that
+// Preferences › Sync › Tidy up Supabase: removes Supabase's copies of books that
 // aren't on this computer, so a phone shows only those as ready to download.
 // Copies the other sync place hasn't got are sent there first.
 

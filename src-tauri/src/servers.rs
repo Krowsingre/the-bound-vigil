@@ -1,4 +1,4 @@
-//! Importing from a server (Settings › Servers, shown on the Imports page).
+//! Importing from a server (Preferences › Servers, shown on the Imports page).
 //! Every file chosen gets its own row, kept on disk (see
 //! `tbv_core::servers::queue`), and a few come down at once, each over its
 //! own connection: the "Connections" setting says how many. Browsing keeps
@@ -31,7 +31,7 @@ pub const MAX_CONNECTIONS: usize = 5;
 const BROWSE_IDLE: Duration = Duration::from_secs(4 * 60);
 const TELL_EVERY: Duration = Duration::from_millis(250);
 
-/// How the server list stands, for the Imports page and Settings › Servers.
+/// How the server list stands, for the Imports page and Preferences › Servers.
 /// The rows themselves come a page at a time (`page`): a big folder can be
 /// thousands of files.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -298,7 +298,7 @@ impl ServerImports {
         file: &QueuedFile,
         target: &Path,
     ) -> Result<u64, String> {
-        let server = saved(library, &file.server_id).map_err(|_| "That server is no longer saved in Settings › Servers.".to_string())?;
+        let server = saved(library, &file.server_id).map_err(|_| "That server is no longer saved in Preferences › Servers.".to_string())?;
         for attempt in 0..2 {
             let connection = match open.remove(&server.id) {
                 Some(c) => c,

@@ -129,7 +129,7 @@ let hardcover: HardcoverStatus = new URLSearchParams(location.search).has("hardc
   ? { available: true, username: "wrenhale", sendRatings: true }
   : { available: true, username: null, sendRatings: false };
 // `?ereaders` shows a Kindle and a Kobo plugged in, and Kindle by email set
-// up, for reviewing the Send dialog and Settings › E-readers. Sending itself
+// up, for reviewing the Send dialog and Preferences › E-readers. Sending itself
 // only works in the desktop app.
 const showReaders = new URLSearchParams(location.search).has("ereaders");
 const sampleReaders: Ereader[] = showReaders
@@ -367,6 +367,7 @@ function home(): HomeViewModel {
       read: all.filter((b) => b.status === "read").length,
     },
     activity: null,
+    finishedDates: [ago(1), ago(4), ago(12), ago(40)],
     sync: previewSync().status,
   };
 }

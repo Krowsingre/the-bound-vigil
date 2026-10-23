@@ -223,7 +223,7 @@ impl WebDav {
             200..=299 => Ok(()),
             413 => Err(Error::Rejected("too big for this server".into())),
             507 => Err(Error::Rejected("the server is full".into())),
-            401 | 403 => Err(Error::Cloud("the server didn't accept the sign-in. Check it in Settings › Sync".into())),
+            401 | 403 => Err(Error::Cloud("the server didn't accept the sign-in. Check it in Preferences › Sync".into())),
             status => Err(Error::Cloud(format!("the server wouldn't save a file (status {status})"))),
         }
     }
@@ -233,7 +233,7 @@ impl WebDav {
         match answer.status().as_u16() {
             200..=299 => Ok(Some(answer)),
             404 | 410 => Ok(None),
-            401 | 403 => Err(Error::Cloud("the server didn't accept the sign-in. Check it in Settings › Sync".into())),
+            401 | 403 => Err(Error::Cloud("the server didn't accept the sign-in. Check it in Preferences › Sync".into())),
             status => Err(Error::Cloud(format!("the server wouldn't send a file (status {status})"))),
         }
     }
@@ -244,7 +244,7 @@ impl Store for WebDav {
         let answer = self.send("DELETE", &self.url(path), None, Vec::new())?;
         match answer.status().as_u16() {
             200..=299 | 404 | 410 => Ok(()),
-            401 | 403 => Err(Error::Cloud("the server didn't accept the sign-in. Check it in Settings › Sync".into())),
+            401 | 403 => Err(Error::Cloud("the server didn't accept the sign-in. Check it in Preferences › Sync".into())),
             status => Err(Error::Cloud(format!("the server wouldn't erase a file (status {status})"))),
         }
     }
@@ -261,7 +261,7 @@ impl Store for WebDav {
         match answer.status().as_u16() {
             200..=299 | 416 => super::ranged_answer(&mut answer, start, end).map(Some),
             404 | 410 => Ok(None),
-            401 | 403 => Err(Error::Cloud("the server didn't accept the sign-in. Check it in Settings › Sync".into())),
+            401 | 403 => Err(Error::Cloud("the server didn't accept the sign-in. Check it in Preferences › Sync".into())),
             status => Err(Error::Cloud(format!("the server wouldn't send a file (status {status})"))),
         }
     }

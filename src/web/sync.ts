@@ -374,7 +374,7 @@ export class WebSync {
     const blob = await cloud.download(path);
     if (!blob)
       throw new Error(
-        "This book's file isn't in the cloud yet. On the computer that has it, turn on Settings › Sync › Sync book files, and let it sync.",
+        "This book's file isn't in the cloud yet. On the computer that has it, turn on Preferences › Sync › Sync book files, and let it sync.",
       );
     await this.db.putFile(path, blob).catch(() => undefined);
     this.library.changed();
@@ -396,7 +396,7 @@ export class WebSync {
     }
     if (!url)
       throw new Error(
-        "This audiobook's file isn't in Supabase. On the computer that has it, turn on Settings › Sync › Sync audiobook files, and let it sync.",
+        "This audiobook's file isn't in Supabase. On the computer that has it, turn on Preferences › Sync › Sync audiobook files, and let it sync.",
       );
     return url;
   }

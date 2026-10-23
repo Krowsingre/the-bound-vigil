@@ -1,4 +1,4 @@
-// The services a library can be kept in, as Settings › Sync shows them.
+// The services a library can be kept in, as Preferences › Sync shows them.
 
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";

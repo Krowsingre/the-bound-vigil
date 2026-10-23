@@ -11,7 +11,8 @@ import { DetailsHost } from "./details/DetailsHost";
 import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Writing } from "./writing/Writing";
-import { Browse } from "./browse/Browse";
+import { Browse, CataloguesButton } from "./browse/Browse";
+import { BROWSER_GO } from "./browse/Browser";
 import { Audiobooks } from "./audio/Audiobooks";
 import { PlayerBar } from "./audio/PlayerBar";
 import { usePlayer } from "./audio/player";
@@ -26,7 +27,7 @@ import { PROFILE_CHANGED } from "./settings/NamesSection";
 import { SyncActivity } from "./sync/SyncActivity";
 import { BookPlacesPage } from "./sync/BookPlaces";
 import { importSummary } from "./lib/importSummary";
-import { Library } from "./library/Library";
+import { Library, PageSwitch } from "./library/Library";
 import { Reader } from "./reader/Reader";
 import { initialView, rememberView, type LibraryView } from "./library/libraryView";
 import { useAppSettings } from "./settings/appSettings";
@@ -390,18 +391,31 @@ export function App() {
           },
   };
 
-  // Phone swipes: from Home, left to the Library and right to Settings; from
-  // anywhere else, a long pull down from the top bar goes Home. The Reader
-  // keeps its swipes for turning pages.
+  // Phone swipes: left to the Archive, right opens the sidebar; a long pull
+  // down from the top bar goes to Sanctum. The Reader keeps its swipes for
+  // turning pages.
   const appRoot = useRef<HTMLDivElement>(null);
   const pullHome = useRef<HTMLDivElement>(null);
   const toLibrary = useCallback(() => navigate("library"), [navigate]);
-  const toSettings = useCallback(() => navigate("settings"), [navigate]);
+  const openMenu = useCallback(() => setMenuOpen(true), []);
+  const [catalogues, setCatalogues] = useState(false);
+  // The Archive holds books and documents, one switch apart.
+  const archiveSwitch = (
+    <PageSwitch<"library" | "documents">
+      label="Books or documents"
+      value={route === "documents" ? "documents" : "library"}
+      options={[
+        { value: "library", label: "Books" },
+        { value: "documents", label: "Documents" },
+      ]}
+      onChange={(next) => next !== route && navigate(next)}
+    />
+  );
   const toHome = useCallback(() => navigate("home"), [navigate]);
   useSwipes(appRoot, pullHome, narrow && !menuOpen && !reading, {
-    // From any page but the one it leads to.
+    // Left goes to the library from any other page; right opens the menu of pages.
     onLeft: route !== "library" ? toLibrary : undefined,
-    onRight: route !== "settings" ? toSettings : undefined,
+    onRight: openMenu,
     onPullDown: route !== "home" ? toHome : undefined,
   });
 
@@ -445,8 +459,23 @@ export function App() {
           profile={profile}
           search={searchText}
           onSearchChange={changeSearch}
-          placeholder={route === "notes" ? "Search notes, books, authors or words…" : route === "audiobooks" ? "Search audiobooks…" : undefined}
-          onSearchSubmit={() => route !== "notes" && route !== "documents" && route !== "audiobooks" && setRoute("library")}
+          placeholder={
+            route === "notes" || route === "writing"
+              ? "Search notes, books, authors or words…"
+              : route === "audiobooks"
+                ? "Search audiobooks…"
+                : route === "catalogs"
+                  ? "Search or enter a website…"
+                  : undefined
+          }
+          onSearchSubmit={() => {
+            // On Discover the top search box is the browser's address bar.
+            if (route === "catalogs") {
+              window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: searchText }));
+              changeSearch("");
+            } else if (route !== "notes" && route !== "writing" && route !== "documents" && route !== "audiobooks") setRoute("library");
+          }}
+          pageAction={route === "catalogs" ? <CataloguesButton onClick={() => setCatalogues(true)} /> : undefined}
           onChooseAvatar={chooseAvatar}
           onClearAvatar={clearAvatar}
           onImportBooks={importBooks}
@@ -469,6 +498,7 @@ export function App() {
             />
           ) : route === "library" ? (
             <Library
+              switcher={archiveSwitch}
               view={libraryView}
               search={searchText}
               refreshKey={refreshKey}
@@ -482,6 +512,7 @@ export function App() {
           ) : route === "documents" ? (
             <Library
               kind="documents"
+              switcher={archiveSwitch}
               view={documentsView}
               search={searchText}
               refreshKey={refreshKey}
@@ -546,8 +577,6 @@ export function App() {
             <BookPlacesPage onOpenSyncSettings={() => navigate("sync")} />
           ) : route === "notes" || route === "writing" ? (
             <Writing
-              tab={route === "writing" ? "books" : "notes"}
-              onTab={(t) => navigate(t === "books" ? "writing" : "notes")}
               booksShown={!isHome}
               search={searchText}
               refreshKey={refreshKey}
@@ -555,7 +584,7 @@ export function App() {
               onOpenBook={openBook}
             />
           ) : route === "catalogs" ? (
-            <Browse refreshKey={refreshKey} onOpenBook={openBook} />
+            <Browse refreshKey={refreshKey} onOpenBook={openBook} catalogues={catalogues} onCloseCatalogues={() => setCatalogues(false)} />
           ) : (
             <Settings
               tab={settingsTab}

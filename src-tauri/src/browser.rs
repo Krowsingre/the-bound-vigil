@@ -94,7 +94,7 @@ mod view {
         }
         let start = url.unwrap_or_else(|| tauri::Url::parse("about:blank").expect("a fixed address"));
         let window = app.get_window("main").ok_or("TBV's window isn't open.")?;
-        let data = app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("Browser");
+        let data = data_dir(app)?;
         let (pages, titles, windows, downloads) = (app.clone(), app.clone(), app.clone(), app.clone());
         let saves = downloads_dir(app)?;
         let builder = WebviewBuilder::new(LABEL, WebviewUrl::External(start))
@@ -174,8 +174,23 @@ mod view {
         Ok(())
     }
 
+    /// The browser's own cookies and storage, kept apart from TBV's.
+    fn data_dir(app: &tauri::AppHandle) -> CommandResult<std::path::PathBuf> {
+        Ok(app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("Browser"))
+    }
+
     pub fn act(app: &tauri::AppHandle, action: &str, url: Option<tauri::Url>) -> CommandResult<()> {
-        let view = app.get_webview(LABEL).ok_or("The browser isn't open.")?;
+        let Some(view) = app.get_webview(LABEL) else {
+            // Cleared from Preferences before the browser was opened: its folder can simply go.
+            if action == "clear" {
+                let data = data_dir(app)?;
+                if data.exists() {
+                    std::fs::remove_dir_all(&data).map_err(|e| e.to_string())?;
+                }
+                return Ok(());
+            }
+            return Err("The browser isn't open.".into());
+        };
         match (action, url) {
             ("go", Some(url)) => view.navigate(url),
             ("back", _) => view.eval("history.back()"),

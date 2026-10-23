@@ -438,7 +438,7 @@ export interface Api {
 }
 
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-/** The pages TBV on the computer serves to a phone at home (Settings › Sync › Use on your phone at home). */
+/** The pages TBV on the computer serves to a phone at home (Preferences › Sync › Use on your phone at home). */
 export const isHome = !isApp && typeof document !== "undefined" && !!document.querySelector('meta[name="tbv-home"]');
 /** The iPhone app: the full app, laid out for a phone. iPads say they're Macs. */
 export const isIOS =

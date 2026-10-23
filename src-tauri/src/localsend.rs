@@ -1,4 +1,4 @@
-//! LocalSend in the app (Settings › Servers): while it's on, TBV shows up in
+//! LocalSend in the app (Preferences › Servers): while it's on, TBV shows up in
 //! LocalSend on phones and computers on the same Wi-Fi. Each offer is put to
 //! the person first; the books they accept go into the import queue, and the
 //! received files are deleted once they're in. Books can be sent the other

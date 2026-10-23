@@ -35,6 +35,40 @@ export interface TimeTotals {
   listen: number;
   /** Monday first, this week, seconds read and listened together. */
   week: { read: number; listen: number }[];
+  /** Every day with time on it, oldest first. */
+  days: TimeSpent[];
+}
+
+export type Period = "week" | "month" | "year" | "all";
+
+export const PERIODS: { value: Period; label: string }[] = [
+  { value: "week", label: "This week" },
+  { value: "month", label: "This month" },
+  { value: "year", label: "This year" },
+  { value: "all", label: "All time" },
+];
+
+/** The first day of the period (`YYYY-MM-DD`, weeks starting Monday), or null for all time. */
+export function periodStart(period: Period, today = new Date()): string | null {
+  const [y, m, d] = [today.getFullYear(), today.getMonth(), today.getDate()];
+  if (period === "week") return dayOf(new Date(y, m, d - ((today.getDay() + 6) % 7)));
+  if (period === "month") return dayOf(new Date(y, m, 1));
+  if (period === "year") return dayOf(new Date(y, 0, 1));
+  return null;
+}
+
+/** Seconds read and listened from `start` (a day) on; everything when it's null. */
+export function spentSince(days: TimeSpent[], start: string | null): { read: number; listen: number } {
+  const counted = start ? days.filter((d) => d.day >= start) : days;
+  return { read: counted.reduce((sum, d) => sum + d.read, 0), listen: counted.reduce((sum, d) => sum + d.listen, 0) };
+}
+
+/** How many of these finishing times (UTC) fall on or after `start`, by this device's date. */
+export function finishedSince(times: string[], start: string): number {
+  return times.filter((t) => {
+    const date = new Date(t);
+    return !Number.isNaN(date.getTime()) && dayOf(date) >= start;
+  }).length;
 }
 
 export function totals(days: TimeSpent[], today = new Date()): TimeTotals {
@@ -45,6 +79,7 @@ export function totals(days: TimeSpent[], today = new Date()): TimeTotals {
     read: days.reduce((sum, d) => sum + d.read, 0),
     listen: days.reduce((sum, d) => sum + d.listen, 0),
     week: weekDays.map((day) => ({ read: byDay.get(day)?.read ?? 0, listen: byDay.get(day)?.listen ?? 0 })),
+    days,
   };
 }
 

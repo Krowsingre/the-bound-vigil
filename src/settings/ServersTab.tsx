@@ -1,4 +1,4 @@
-// Settings › Servers: seedboxes, NAS drives and other computers to bring
+// Preferences › Servers: seedboxes, NAS drives and other computers to bring
 // books and audiobooks in from, over FTP, FTPS or SFTP.
 
 import { useCallback, useEffect, useState } from "react";

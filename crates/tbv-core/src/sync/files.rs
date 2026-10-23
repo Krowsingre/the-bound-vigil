@@ -85,6 +85,37 @@ fn bring_down(path: &Path) {
     }
 }
 
+/// When to ask the cloud about a folder again: listing a big one is slow.
+const FOLDER_ASKED_AGAIN: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+static FOLDERS_ASKED: std::sync::Mutex<BTreeMap<PathBuf, std::time::Instant>> = std::sync::Mutex::new(BTreeMap::new());
+
+/// As `bring_down`, for a file TBV knows should be there. iCloud on a phone
+/// may not have heard of it yet (no file and no stand-in), so it's asked
+/// about the file, then its folder, before the file counts as missing.
+fn bring_down_expected(path: &Path) {
+    bring_down(path);
+    if path.exists() || REFRESH.get().is_none() {
+        return;
+    }
+    let here = |p: &Path| p.exists() || stand_in(p).is_some_and(|s| s.exists());
+    refresh(path);
+    if !here(path) {
+        if let Some(folder) = path.parent() {
+            let due = FOLDERS_ASKED.lock().map(|mut asked| {
+                let due = asked.get(folder).is_none_or(|at| at.elapsed() >= FOLDER_ASKED_AGAIN);
+                if due {
+                    asked.insert(folder.to_path_buf(), std::time::Instant::now());
+                }
+                due
+            });
+            if due.unwrap_or(true) {
+                refresh(folder);
+            }
+        }
+    }
+    bring_down(path);
+}
+
 /// Brings down every file in a folder (and those inside it) that iCloud has
 /// only a stand-in for. Does nothing where there are no stand-ins.
 pub fn bring_down_folder(dir: &Path) {
@@ -397,7 +428,12 @@ impl Store for FolderStore {
 
     fn get_file(&mut self, path: &str, to: &Path) -> Result<bool> {
         let from = self.at(path);
-        bring_down(&from);
+        // A book is asked about by name; other files (covers) just as they are.
+        if path.starts_with("books/") {
+            bring_down_expected(&from);
+        } else {
+            bring_down(&from);
+        }
         if !from.is_file() {
             return Ok(false);
         }

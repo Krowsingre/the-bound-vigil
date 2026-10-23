@@ -179,7 +179,7 @@ impl Library {
         self.servers()?
             .into_iter()
             .find(|s| s.id == id)
-            .ok_or_else(|| Error::Unsuitable("That server isn't saved any more. Add it again in Settings › Servers.".into()))
+            .ok_or_else(|| Error::Unsuitable("That server isn't saved any more. Add it again in Preferences › Servers.".into()))
     }
 
     fn save_servers(&self, servers: &[Server]) -> Result<()> {

@@ -564,3 +564,98 @@
     width: 100%;
   }
 }
+
+/* Scribe: the heading with its split New button, then chips beside sort and filter. */
+.library-head.scribe-head {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.scribe-head .library-title {
+  margin-bottom: 0;
+}
+
+.split-button {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.split-button .split-main {
+  gap: 6px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.split-button .menu-root {
+  display: flex;
+}
+
+.split-button .split-arrow {
+  height: 100%;
+  padding: 0 10px;
+  border-left: 1px solid color-mix(in srgb, var(--accent-text) 30%, transparent);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.scribe-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chip {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  font: 400 14px var(--font-serif);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.chip:hover {
+  color: var(--text);
+}
+
+.chip.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.scribe-toolbar {
+  margin-bottom: 24px;
+}
+
+.scribe-books {
+  display: grid;
+  gap: 14px;
+  padding: 20px 0 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.scribe-books .writing-shelf {
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+}
+
+.scribe-empty-art {
+  color: var(--text-muted);
+  opacity: 0.6;
+  margin: 0 auto 8px;
+}
+
+@media (max-width: 760px) {
+  .scribe-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .notes-page .library-toolbar.is-compact {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+}

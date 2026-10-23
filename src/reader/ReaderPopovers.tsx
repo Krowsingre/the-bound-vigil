@@ -304,7 +304,7 @@ export function ReadAloudPlayer({
         {ra.error ??
           (noVoices && stopped
             ? isApp
-              ? "No voices were listed yet. If nothing is heard, add voices in Windows Settings › Time & language › Speech."
+              ? "No voices were listed yet. If nothing is heard, add voices in Windows Preferences › Time & language › Speech."
               : "Uses this device's own voice. Others can be chosen here once the device lists them."
             : playing
               ? "Reading. The pages turn as it goes."
