@@ -176,6 +176,34 @@
   flex: 1;
 }
 
+/* Between the tabs and the page's own buttons. */
+.browser-bar-divider {
+  width: 1px;
+  height: 22px;
+  margin: 0 6px;
+  background: var(--border);
+}
+
+/* Buttons inside the address box: Reload at its left, the row arrow at its right. */
+.search-action {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin: 0 -6px;
+  padding: 0;
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+  border-radius: 15px;
+}
+
+.search-action:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
 .browser-downloads-button {
   position: relative;
 }
@@ -345,13 +373,19 @@
   min-width: 180px;
 }
 
+/* The page runs to the bottom of the window, with no frame below it. */
 .browser-view {
   flex: 1;
   min-height: 320px;
-  margin-bottom: 16px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-s);
+  border-bottom: 0;
+  border-radius: var(--radius-s) var(--radius-s) 0 0;
   background: var(--bg);
+}
+
+.content:has(> .browse-browser),
+.library.browse-browser {
+  padding-bottom: 0;
 }
 
 .browser-view {
@@ -359,7 +393,7 @@
   overflow: hidden;
 }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
   .browser-bar {
     gap: 0;
     padding: 6px 0;
@@ -369,8 +403,21 @@
     width: 34px;
   }
 
+  /* The phone's row spreads its buttons across the width. */
+  .browser-bar {
+    justify-content: space-between;
+    padding: 6px 4px;
+  }
+
+  .browser-bar-space {
+    display: none;
+  }
+
+  /* On a phone it fills the width too, edge to edge. */
   .browser-view {
-    margin-bottom: 8px;
+    margin: 0 -16px;
+    border-width: 1px 0 0;
+    border-radius: 0;
   }
 }
 
@@ -429,7 +476,7 @@
   font-size: 14px;
 }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
   .browser-reader {
     padding: 0 16px 32px;
   }
@@ -614,7 +661,7 @@
   margin-top: 8px;
 }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
   .dialog.catalogues-panel {
     width: 100vw;
     height: 100%;
@@ -625,7 +672,7 @@
 }
 
 /* On a phone the row sits right under the top bar. */
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
   .browse-browser {
     padding-top: 2px;
   }

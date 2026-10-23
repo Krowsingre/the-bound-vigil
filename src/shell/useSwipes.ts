@@ -10,12 +10,15 @@ export interface Swipes {
   onRight?: () => void;
   /** Pulled from the top bar most of the way down the screen. */
   onPullDown?: () => void;
+  /** Swipes count over the menu of pages too (for closing it). */
+  overMenu?: boolean;
 }
 
 /** Whether something under the finger scrolls sideways, or takes the swipe itself. */
-function takesSideways(target: Element | null, root: Element): boolean {
+function takesSideways(target: Element | null, root: Element, overMenu = false): boolean {
   for (let el = target; el && el !== root; el = el.parentElement) {
-    if (el.matches("input, textarea, select, [contenteditable=true], [role=slider], [role=dialog], .menu, .sidebar")) return true;
+    if (el.matches("input, textarea, select, [contenteditable=true], [role=slider], [role=dialog], .menu")) return true;
+    if (!overMenu && el.matches(".sidebar")) return true;
     if (el.scrollWidth > el.clientWidth + 1) {
       const overflow = getComputedStyle(el).overflowX;
       if (overflow === "auto" || overflow === "scroll") return true;
@@ -31,7 +34,7 @@ function takesSideways(target: Element | null, root: Element): boolean {
  * bar and ends 60% of the way down. `pull` is drawn while pulling.
  */
 export function useSwipes(root: RefObject<HTMLElement | null>, pull: RefObject<HTMLElement | null>, enabled: boolean, swipes: Swipes) {
-  const { onLeft, onRight, onPullDown } = swipes;
+  const { onLeft, onRight, onPullDown, overMenu } = swipes;
   useEffect(() => {
     const el = root.current;
     if (!enabled || !el) return;
@@ -56,7 +59,7 @@ export function useSwipes(root: RefObject<HTMLElement | null>, pull: RefObject<H
         x: t.clientX,
         y: t.clientY,
         at: e.timeStamp,
-        sideways: (!!onLeft || !!onRight) && !takesSideways(target, el),
+        sideways: (!!onLeft || !!onRight) && !takesSideways(target, el, overMenu),
         fromTop: !!onPullDown && !!target.closest(".header") && !target.closest(".menu"),
       };
     };
@@ -102,5 +105,5 @@ export function useSwipes(root: RefObject<HTMLElement | null>, pull: RefObject<H
       el.removeEventListener("touchend", up);
       el.removeEventListener("touchcancel", cancel);
     };
-  }, [root, pull, enabled, onLeft, onRight, onPullDown]);
+  }, [root, pull, enabled, onLeft, onRight, onPullDown, overMenu]);
 }

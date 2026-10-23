@@ -29,6 +29,8 @@ export interface BrowserPrefs {
   /** Ebook downloads join the library without asking first. */
   addWithoutAsking: boolean;
   protection: ProtectionLevel;
+  /** Videos and sound go on playing after leaving Discover (otherwise they pause). */
+  keepPlaying: boolean;
   /** Sites (hosts, without "www.") whose protection was lowered from Discover's ••• menu. */
   lowered: string[];
 }
@@ -52,6 +54,7 @@ export function readBrowserPrefs(): BrowserPrefs {
     search: SEARCH_ENGINES.some((e) => e.value === saved.search) ? (saved.search as SearchEngine) : "duckduckgo",
     home,
     addWithoutAsking: saved.addWithoutAsking === true,
+    keepPlaying: saved.keepPlaying === true,
     protection: PROTECTION_LEVELS.some((p) => p.value === saved.protection) ? (saved.protection as ProtectionLevel) : "strict",
     lowered: Array.isArray(saved.lowered) ? saved.lowered.filter((h): h is string => typeof h === "string") : [],
   };

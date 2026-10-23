@@ -20,6 +20,11 @@ export const BROWSER_GO = "tbv:browser-go";
 /** The page in front, told to the header so its search box can show the address. */
 export const BROWSER_PAGE = "tbv:browser-page";
 
+/** The top bar's Home and Reload buttons, on Discover, ask the browser here. */
+const BROWSER_DO = "tbv:browser-do";
+/** Whether the page in front is loading, told to the top bar's Reload button. */
+const BROWSER_BUSY = "tbv:browser-busy";
+
 /** Book sites to start from, until you've bookmarked your own. */
 export const SUGGESTED_SITES: { title: string; url: string }[] = [
   { title: "Project Gutenberg", url: "https://www.gutenberg.org/" },
@@ -69,12 +74,44 @@ export function useBrowserRow(): [boolean, () => void] {
   return [open, toggle];
 }
 
-/** The top bar's arrow, between the search box and the sync circle, that folds the row. */
+/** The arrow inside the right end of the address that folds the row. */
 export function BrowserRowToggle() {
   const [open, toggle] = useBrowserRow();
   return (
-    <button type="button" className="header-action browser-row-toggle" aria-expanded={open} aria-label={open ? "Hide the browser buttons" : "Show the browser buttons"} onClick={toggle}>
-      <Icon name={open ? "chevronUp" : "chevronDown"} size={20} />
+    <button type="button" className="search-action browser-row-toggle" onPointerDown={(e) => e.preventDefault()} aria-expanded={open} aria-label={open ? "Hide the browser buttons" : "Show the browser buttons"} onClick={toggle}>
+      <Icon name={open ? "chevronUp" : "chevronDown"} size={18} />
+    </button>
+  );
+}
+
+/** The top bar's Home button, between the menu button and the address. */
+export function BrowserHomeButton() {
+  return (
+    <button type="button" className="header-action" aria-label="Home page" title="Home page" onClick={() => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: "home" }))}>
+      <Icon name="home" size={21} />
+    </button>
+  );
+}
+
+/** Reload, inside the left of the address, where the magnifier sits on other pages; Stop while loading. */
+export function BrowserReloadButton() {
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const heard = (e: Event) => setBusy((e as CustomEvent<boolean>).detail);
+    window.addEventListener(BROWSER_BUSY, heard);
+    return () => window.removeEventListener(BROWSER_BUSY, heard);
+  }, []);
+  return (
+    <button
+      type="button"
+      className="search-action"
+      aria-label={busy ? "Stop" : "Reload"}
+      title={busy ? "Stop" : "Reload"}
+      // Kept from taking the box's focus, which would put the address up for typing.
+      onPointerDown={(e) => e.preventDefault()}
+      onClick={() => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: busy ? "stop" : "reload" }))}
+    >
+      <Icon name={busy ? "close" : "sync"} size={18} />
     </button>
   );
 }
@@ -90,6 +127,12 @@ const fileTitle = (url: string) => {
 };
 
 const titleOf = (title: string | null, url: string) => title?.trim() || siteOf(url) || url;
+
+/** Pauses every video and sound on a page, for leaving Discover. */
+const PAUSE_ALL = `(function () {
+  document.querySelectorAll("video, audio").forEach(function (m) { try { m.pause(); } catch (e) {} });
+  return JSON.stringify(null);
+})()`;
 
 /** Something on top (a menu, a dialog, the phone's menu of pages) would be hidden under the page, so the page steps aside. */
 const covered = () => !!document.querySelector(".dialog-backdrop, [role=menu], [role=alertdialog], .sidebar-backdrop");
@@ -121,6 +164,11 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   /** Tabs whose page view has been made. */
   const made = useRef(new Set<string>());
   const shown = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => void (mounted.current = false);
+  }, []);
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   /** Reader mode covers the page, so the page's view steps aside. */
@@ -160,6 +208,10 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
     const fresh = !made.current.has(tab.id);
     await api.browserShow(tab.id, fresh ? tab.url : null, at, protectionOf(readBrowserPrefs()));
     made.current.add(tab.id);
+    // A new tab's page can take a moment to come up (iPhone readies its
+    // protection first). Left Discover, or covered, in that moment: the page
+    // would show over whatever's there now, so it goes away again.
+    if (!mounted.current || covered() || aside.current) await api.browserHide();
   }, []);
 
   const reloadMarks = useCallback(() => api.bookmarks().then(setMarks, () => undefined), []);
@@ -248,8 +300,9 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
       }
     };
     refit.current = () => {
-      // A different tab in front: show it, whatever was placed before.
-      hidden = true;
+      // A different tab in front, or the page stepping aside: shown or hidden
+      // again, whatever was done before.
+      hidden = !(covered() || aside.current || !frame());
       fit();
     };
     // Once laid out, so the space has its size.
@@ -280,6 +333,8 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
       watching.disconnect();
       window.removeEventListener("resize", fit);
       void api.browserHide();
+      // Chosen in Preferences › Browser: whatever was playing stops on leaving.
+      if (!readBrowserPrefs().keepPlaying) for (const id of made.current) void api.browserRead(id, PAUSE_ALL).catch(() => undefined);
     };
   }, [showActive]);
 
@@ -327,6 +382,20 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   const busy = !!loading[active.id];
   const coming = fetched.filter((d) => d.state === "coming").length;
   const asking = fetched.filter((d) => d.asking);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(BROWSER_BUSY, { detail: busy }));
+  }, [busy]);
+  const fromTop = useRef<(what: string) => void>(() => undefined);
+  fromTop.current = (what) => (what === "home" ? go(readBrowserPrefs().home) : act(what === "stop" ? "stop" : "reload"));
+  useEffect(() => {
+    const heard = (e: Event) => fromTop.current((e as CustomEvent<string>).detail);
+    window.addEventListener(BROWSER_DO, heard);
+    return () => {
+      window.removeEventListener(BROWSER_DO, heard);
+      window.dispatchEvent(new CustomEvent(BROWSER_BUSY, { detail: false }));
+    };
+  }, []);
+
 
   const toggleMark = async () => {
     if (!url.startsWith("http")) return;
@@ -384,8 +453,6 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
     { heading: <strong>{marks.length ? "Bookmarks" : "Book sites to start with"}</strong> },
     ...sites.map((m) => ({ label: m.title, icon: "globe" as const, onSelect: () => go(m.url) })),
   ];
-  // On a narrow phone, Bookmarks and Add a catalogue fold into •••.
-  const folded = narrow && typeof matchMedia === "function" && matchMedia("(max-width: 400px)").matches;
   const moreItems: MenuEntry[] = [
     { label: "Copy link", icon: "copy", disabled: !url.startsWith("http"), onSelect: () => void navigator.clipboard?.writeText(url).then(() => toast("Link copied.")) },
     { label: "Open in your normal browser", icon: "link", disabled: !url.startsWith("http"), onSelect: () => void openExternal(url) },
@@ -398,7 +465,10 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
       onSelect: changeProtection,
     },
     { label: "Clear cookies and site data", icon: "trash", onSelect: () => void api.browserClear().then(() => toast("Every site's cookies and data are cleared.")) },
-    ...(folded ? (["divider", { label: "Add a catalogue", icon: "globePlus", onSelect: onOpenCatalogues }, "divider", ...bookmarkItems] as MenuEntry[]) : []),
+    "divider",
+    { label: "Add a catalogue", icon: "globePlus", onSelect: onOpenCatalogues },
+    "divider",
+    ...bookmarkItems,
   ];
 
   const button = (label: string, icon: Parameters<typeof Icon>[0]["name"], onClick: () => void, extra = "") => (
@@ -431,21 +501,18 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
         <div className="browser-bar">
           {button("Back", "arrowLeft", () => act("back"))}
           {button("Forward", "arrowRight", () => act("forward"))}
-          {button(busy ? "Stop" : "Reload", busy ? "close" : "sync", () => act(busy ? "stop" : "reload"))}
-          {button("Home page", "home", () => go(readBrowserPrefs().home))}
           <button type="button" className={`toolbar-button${marked ? " is-on" : ""}`} aria-pressed={!!marked} aria-label={marked ? "Remove bookmark" : "Bookmark this page"} title={marked ? "Remove bookmark" : "Bookmark this page"} onClick={() => void toggleMark()}>
             <Icon name="bookmark" size={17} />
           </button>
-          {!folded && <Menu label="Bookmarks" className="toolbar-button" trigger={<Icon name="listBullet" size={17} />} items={bookmarkItems} align="start" />}
-          {!folded && button("Add a catalogue", "globePlus", onOpenCatalogues)}
-          {button("Reader view", "readingA", () => void (article ? setArticle(null) : openReader()), article ? " is-on" : "")}
-          {isFile && button("Add to library", "download", () => void addThisFile(), " is-on")}
-          <span className="browser-bar-space" />
           {narrow && (
-            <button type="button" className="toolbar-button browser-count" aria-label={`Tabs: ${tabs.tabs.length} open`} title="Tabs" onClick={() => setPanel("tabs")}>
+            <button type="button" className={`toolbar-button browser-count${panel === "tabs" ? " is-on" : ""}`} aria-label={`Tabs: ${tabs.tabs.length} open`} title="Tabs" onClick={() => setPanel(panel === "tabs" ? null : "tabs")}>
               <span>{tabs.tabs.length}</span>
             </button>
           )}
+          <span className="browser-bar-divider" aria-hidden />
+          {button("Reader view", "bookOpen", () => void (article ? setArticle(null) : openReader()), article ? " is-on" : "")}
+          {isFile && button("Add to library", "plus", () => void addThisFile(), " is-on")}
+          <span className="browser-bar-space" />
           <button type="button" className="toolbar-button browser-downloads-button" aria-label={coming ? `Downloads, ${coming} coming down` : "Downloads"} title="Downloads" onClick={() => setPanel("downloads")}>
             <Icon name="download" size={17} />
             {(coming > 0 || asking.length > 0) && <span className="browser-badge">{coming || asking.length}</span>}

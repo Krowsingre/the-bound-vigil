@@ -551,7 +551,7 @@
 }
 
 /* On a phone the kinds of note scroll sideways instead of hiding. */
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
   .notes-page .library-toolbar {
     flex-wrap: wrap;
   }
@@ -653,14 +653,14 @@
 /* 1.20, from embre's Scribe picture: All is a dark pill; the other kinds are
    plain words with thin lines between them; sort and filter are plain icons in
    the same row. */
-.scribe .scribe-chips {
+:is(.scribe, .compendium) .scribe-chips {
   flex-wrap: nowrap;
   align-items: center;
   gap: 0;
 }
 
-.scribe .scribe-chips,
-.scribe .chip {
+:is(.scribe, .compendium) .scribe-chips,
+:is(.scribe, .compendium) .chip {
   flex: none;
 }
 
@@ -669,7 +669,7 @@
   padding-bottom: 14px;
 }
 
-.scribe .chip {
+:is(.scribe, .compendium) .chip {
   height: 34px;
   padding: 0 14px;
   border: 0;
@@ -677,7 +677,7 @@
   font-size: 15px;
 }
 
-.scribe .chip:not(.is-active) + .chip:not(.is-active)::before {
+:is(.scribe, .compendium) .chip:not(.is-active) + .chip:not(.is-active)::before {
   content: "";
   display: inline-block;
   width: 1px;
@@ -687,7 +687,7 @@
   background: var(--border);
 }
 
-.scribe .chip.is-active + .chip {
+:is(.scribe, .compendium) .chip.is-active + .chip {
   margin-left: 6px;
 }
 
@@ -737,12 +737,12 @@
   font: 400 16px/1.5 var(--font-serif);
 }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
   .scribe-chips {
     flex-wrap: nowrap;
   }
 
-  .scribe .chip {
+  :is(.scribe, .compendium) .chip {
     padding: 0 10px;
     font-size: 14px;
   }
@@ -762,7 +762,7 @@
     flex-wrap: nowrap;
   }
 
-  .scribe .chip:not(.is-active) + .chip:not(.is-active)::before {
+  :is(.scribe, .compendium) .chip:not(.is-active) + .chip:not(.is-active)::before {
     margin: 0 10px 0 -10px;
   }
 

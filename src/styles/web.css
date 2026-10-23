@@ -59,7 +59,7 @@
 
 /* Phones: the sidebar becomes a menu that slides in from the left, opened
    from the button beside the search box. */
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
   :root {
     --header-h: 52px;
     /* Nothing sits along the bottom; only the home bar's room is kept. */
@@ -75,7 +75,7 @@
     position: fixed;
     inset: 0 auto 0 0;
     z-index: 60;
-    width: min(300px, 84vw);
+    width: min(360px, 84vw);
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     overflow-y: auto;
@@ -86,6 +86,11 @@
 
   .sidebar.is-drawer-open {
     transform: none;
+  }
+
+  /* An upright phone: the menu of pages fills the screen, closed with the cross. */
+  .sidebar-close {
+    display: none;
   }
 
   .sidebar-backdrop {
@@ -140,7 +145,8 @@
   }
 
   /* Library */
-  .library {
+  .library,
+  .collections-page {
     padding: 0 16px 24px;
   }
 
@@ -367,12 +373,13 @@
   padding-right: env(safe-area-inset-right);
 }
 
-/* A phone held sideways keeps the phone layout (see useNarrow.ts), with
-   more covers to a row, since the screen is wide but short. */
-@media (max-height: 500px) and (pointer: coarse) and (orientation: landscape) {
+/* A phone held sideways, or a tablet held sideways, keeps the phone layout
+   (see useNarrow.ts), with more covers to a row and a menu of pages wide
+   enough for its captions. */
+@media (pointer: coarse) and (max-width: 1400px) and (orientation: landscape) {
   .sidebar {
     padding-left: env(safe-area-inset-left);
-    width: min(340px, 60vw);
+    width: min(380px, 60vw);
   }
 
   .shelf {
@@ -407,7 +414,7 @@
   display: none;
 }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
   .pull-home {
     position: fixed;
     z-index: 60;
@@ -439,5 +446,28 @@
 
   .pull-home.is-ready .pull-home-ready {
     display: inline;
+  }
+}
+
+@media (max-width: 500px) {
+  .sidebar {
+    width: 100vw;
+    box-shadow: none;
+  }
+
+  .sidebar-close {
+    position: absolute;
+    top: calc(env(safe-area-inset-top) + 10px);
+    left: 12px;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-m);
+    background: none;
+    color: var(--sidebar-text);
   }
 }

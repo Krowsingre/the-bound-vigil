@@ -389,7 +389,7 @@
   background: var(--surface-sunk);
 }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
   .book-details {
     padding: 12px 16px 32px;
   }

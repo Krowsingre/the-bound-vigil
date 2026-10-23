@@ -40,6 +40,9 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
   private var views = [String: WKWebView]()
   private var front: String?
   private var frame = CGRect.zero
+  /// Counts shows and hides, so a show that waited (for protection rules)
+  /// doesn't bring a page up after a later hide.
+  private var turn = 0
   private var waiting: Invoke?
   private var queue = [[String: Any]]()
   /// Downloads under way: their id, where each is saved, its tab and address.
@@ -151,6 +154,8 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         let corner = self.tbv?.frame.origin ?? .zero
         self.frame = CGRect(x: corner.x + f.x, y: corner.y + f.y, width: max(f.width, 1), height: max(f.height, 1))
       }
+      if args.action == "show" || args.action == "hide" { self.turn += 1 }
+      let mine = self.turn
       switch args.action {
       case "hide":
         for view in self.views.values { view.isHidden = true }
@@ -201,7 +206,7 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         let address = args.url.flatMap { URL(string: $0) }
         switch args.action {
         case "show":
-          self.bringForward(tab)
+          if mine == self.turn { self.bringForward(tab) } else { self.front = tab }
           if let address = address { view.load(URLRequest(url: address)) }
         case "go":
           if let address = address { view.load(URLRequest(url: address)) }

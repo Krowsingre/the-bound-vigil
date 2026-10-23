@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
-/** Phone-sized screens, held upright or sideways, where the layout folds into one column (see styles/web.css). */
-export const NARROW = "(max-width: 760px), (max-height: 500px) and (pointer: coarse)";
+/** Phones held either way, and tablets (touch screens up to an iPad's width), where the layout folds into one column with the menu of pages sliding in (see styles/web.css). */
+export const NARROW = "(max-width: 760px), (pointer: coarse) and (max-width: 1400px)";
 
 export const isNarrow = () => typeof matchMedia === "function" && matchMedia(NARROW).matches;
 

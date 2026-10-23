@@ -12,7 +12,7 @@ import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Writing } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
-import { BROWSER_GO, BROWSER_PAGE, BrowserRowToggle } from "./browse/Browser";
+import { BROWSER_GO, BROWSER_PAGE, BrowserHomeButton, BrowserReloadButton, BrowserRowToggle } from "./browse/Browser";
 import { Audiobooks } from "./audio/Audiobooks";
 import { PlayerBar } from "./audio/PlayerBar";
 import { usePlayer } from "./audio/player";
@@ -425,6 +425,9 @@ export function App() {
     onRight: openMenu,
     onPullDown: route !== "home" ? toHome : undefined,
   });
+  // With the menu of pages open, a swipe left closes it, back to the page underneath.
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  useSwipes(appRoot, pullHome, narrow && menuOpen && !reading, { onLeft: closeMenu, overMenu: true });
 
   if (reading) return <Reader key={`${reading.bookId}/${reading.fileId ?? ""}`} bookId={reading.bookId} fileId={reading.fileId} openAt={reading.at} shell={shell} onClose={closeBook} />;
 
@@ -473,6 +476,8 @@ export function App() {
                 ? "Search audiobooks…"
                 : route === "catalogs"
                   ? "Search or enter a website…"
+                  : route === "collections"
+                    ? "Search collections…"
                   : undefined
           }
           onSearchSubmit={() => {
@@ -480,10 +485,12 @@ export function App() {
             if (route === "catalogs") {
               window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: searchText }));
               changeSearch("");
-            } else if (route !== "notes" && route !== "writing" && route !== "documents" && route !== "audiobooks") setRoute("library");
+            } else if (route !== "notes" && route !== "writing" && route !== "documents" && route !== "audiobooks" && route !== "collections") setRoute("library");
           }}
           address={route === "catalogs" ? browserAddress : undefined}
-          afterSearch={route === "catalogs" ? <BrowserRowToggle /> : undefined}
+          pageAction={route === "catalogs" ? <BrowserHomeButton /> : undefined}
+          searchStart={route === "catalogs" ? <BrowserReloadButton /> : undefined}
+          searchEnd={route === "catalogs" ? <BrowserRowToggle /> : undefined}
           onChooseAvatar={chooseAvatar}
           onClearAvatar={clearAvatar}
           onImportBooks={importBooks}
@@ -552,6 +559,7 @@ export function App() {
               onOpen={setOpenCollection}
               onOpenBook={openBook}
               onChanged={refresh}
+              search={searchText}
             />
           ) : route === "audiobooks" ? (
             <Audiobooks

@@ -29,6 +29,11 @@ export function Sidebar({
     <>
       {drawerOpen && <div className="sidebar-backdrop" aria-hidden onClick={onCloseDrawer} />}
       <aside className={`sidebar${collapsed ? " is-collapsed" : ""}${drawerOpen ? " is-drawer-open" : ""}`}>
+        {drawerOpen && (
+          <button type="button" className="sidebar-close" aria-label="Close the menu" onClick={onCloseDrawer}>
+            <Icon name="menu" size={22} />
+          </button>
+        )}
         <div className="sidebar-top" data-tauri-drag-region>
           <button
             type="button"
