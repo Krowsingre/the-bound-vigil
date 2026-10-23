@@ -12,7 +12,7 @@ import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Writing } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
-import { BROWSER_GO, BROWSER_PAGE, BrowserRowToggle } from "./browse/Browser";
+import { BROWSER_GO, BROWSER_PAGE, BrowserHomeButton, BrowserReloadButton, BrowserRowToggle } from "./browse/Browser";
 import { Audiobooks } from "./audio/Audiobooks";
 import { PlayerBar } from "./audio/PlayerBar";
 import { usePlayer } from "./audio/player";
@@ -485,7 +485,9 @@ export function App() {
             } else if (route !== "notes" && route !== "writing" && route !== "documents" && route !== "audiobooks" && route !== "collections") setRoute("library");
           }}
           address={route === "catalogs" ? browserAddress : undefined}
-          afterSearch={route === "catalogs" ? <BrowserRowToggle /> : undefined}
+          pageAction={route === "catalogs" ? <BrowserHomeButton /> : undefined}
+          searchStart={route === "catalogs" ? <BrowserReloadButton /> : undefined}
+          searchEnd={route === "catalogs" ? <BrowserRowToggle /> : undefined}
           onChooseAvatar={chooseAvatar}
           onClearAvatar={clearAvatar}
           onImportBooks={importBooks}

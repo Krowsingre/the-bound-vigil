@@ -27,10 +27,12 @@ export const Header = forwardRef<
     pageAction?: ReactNode;
     /** On Discover: the page's address, shown in the search box while nothing's being typed. */
     address?: string;
-    /** A button between the search box and the sync circle (Discover's row arrow). */
-    afterSearch?: ReactNode;
+    /** In place of the magnifier, inside the left of the search box (Discover's reload). */
+    searchStart?: ReactNode;
+    /** Inside the right end of the search box (Discover's row arrow). */
+    searchEnd?: ReactNode;
   }
->(function Header({ sync, profile, search, placeholder, onSearchChange, onSearchSubmit, onOpenMenu, pageAction, address, afterSearch, ...menu }, searchRef) {
+>(function Header({ sync, profile, search, placeholder, onSearchChange, onSearchSubmit, onOpenMenu, pageAction, address, searchStart, searchEnd, ...menu }, searchRef) {
   const [typing, setTyping] = useState(false);
   const showing = address !== undefined && !typing && !search ? address : search;
   return (
@@ -49,7 +51,7 @@ export const Header = forwardRef<
           onSearchSubmit();
         }}
       >
-        <Icon name="search" size={18} />
+        {searchStart ?? <Icon name="search" size={18} />}
         <label className="visually-hidden" htmlFor="global-search">
           Search
         </label>
@@ -83,8 +85,8 @@ export const Header = forwardRef<
           autoComplete="off"
           spellCheck={false}
         />
+        {searchEnd}
       </form>
-      {afterSearch}
       <div className="header-spacer" data-tauri-drag-region />
       <SyncMenu sync={sync} profile={profile} {...menu} />
       <WindowControls />

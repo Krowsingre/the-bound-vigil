@@ -176,6 +176,34 @@
   flex: 1;
 }
 
+/* Between the tabs and the page's own buttons. */
+.browser-bar-divider {
+  width: 1px;
+  height: 22px;
+  margin: 0 6px;
+  background: var(--border);
+}
+
+/* Buttons inside the address box: Reload at its left, the row arrow at its right. */
+.search-action {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin: 0 -6px;
+  padding: 0;
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+  border-radius: 15px;
+}
+
+.search-action:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
 .browser-downloads-button {
   position: relative;
 }
@@ -373,6 +401,16 @@
 
   .browser-bar .toolbar-button {
     width: 34px;
+  }
+
+  /* The phone's row spreads its buttons across the width. */
+  .browser-bar {
+    justify-content: space-between;
+    padding: 6px 4px;
+  }
+
+  .browser-bar-space {
+    display: none;
   }
 
   /* On a phone it fills the width too, edge to edge. */
