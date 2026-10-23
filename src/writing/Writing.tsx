@@ -1,5 +1,5 @@
-// The Writing page: books you write in TBV. The shelf of books first; open
-// one to write its chapters, change its details, and export it as an EPUB.
+// The Writing page: books you write in TBV (open one to write its chapters,
+// change its details and export an EPUB), and your notes from reading.
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { api, isWeb } from "../api";
@@ -8,7 +8,10 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
+import { Notes, type NewNoteKind } from "../notes/Notes";
 import { ChapterEditor, type SaveState } from "./ChapterEditor";
+import { quoteHtml } from "./fromNotes";
+import { QuoteDrawer } from "./QuoteDrawer";
 import { DetailsDialog, ExportDialog, NewBookDialog } from "./WritingDialogs";
 
 /** Front matter first, then chapters, then back matter: the order the EPUB uses. */
@@ -29,25 +32,35 @@ function Cover({ project }: { project: WritingProject }) {
   );
 }
 
-export function Writing({ refreshKey }: { refreshKey: number }) {
-  const [projects, setProjects] = useState<WritingProject[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export type WritingTab = "books" | "notes";
+
+/** Writing: the books you write (Books) and everything you've noted while reading or on your own (Notes). */
+export function Writing({
+  tab,
+  onTab,
+  refreshKey,
+  search,
+  onClearSearch,
+  onOpenBook,
+  booksShown = true,
+}: {
+  tab: WritingTab;
+  onTab: (tab: WritingTab) => void;
+  refreshKey: number;
+  /** The header's search box, which searches notes. */
+  search: string;
+  onClearSearch: () => void;
+  onOpenBook: (bookId: string, cfi?: string) => void;
+  /** False where your own books aren't kept (the phone web app): only Notes shows. */
+  booksShown?: boolean;
+}) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [ask, setAsk] = useState<{ kind: NewNoteKind; n: number } | null>(null);
   const [reload, setReload] = useState(0);
+  const showing: WritingTab = booksShown ? tab : "notes";
 
-  useEffect(() => {
-    let current = true;
-    api.writingProjects().then(
-      (p) => current && (setProjects(p), setError(null)),
-      (e: unknown) => current && setError(String(e)),
-    );
-    return () => {
-      current = false;
-    };
-  }, [refreshKey, reload, openId]);
-
-  if (openId)
+  if (openId && showing === "books")
     return (
       <ProjectView
         id={openId}
@@ -60,54 +73,62 @@ export function Writing({ refreshKey }: { refreshKey: number }) {
       />
     );
 
+  const newNote = (kind: NewNoteKind) => {
+    onTab("notes");
+    setAsk((a) => ({ kind, n: (a?.n ?? 0) + 1 }));
+  };
+  const newItems: MenuEntry[] = [
+    ...(booksShown ? [{ label: "Book to write", icon: "pen" as const, onSelect: () => (onTab("books"), setCreating(true)) }] : []),
+    { label: "Personal note", icon: "notes", onSelect: () => newNote("personal") },
+    { label: "Note about a book…", icon: "library", onSelect: () => newNote("book_note") },
+  ];
+
   return (
-    <div className="library writing-page-list">
+    <div className={`library writing-home writing-${showing}`}>
       <header className="library-head">
         <div>
-          <h1 className="library-title">Writing</h1>
-          <p className="eyebrow">Books you're writing, ready to export as EPUB</p>
-        </div>
-        <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}>
-          <span aria-hidden>+</span> New book
-        </button>
-      </header>
-      {error ? (
-        <div className="library-empty" role="alert">
-          <h2>Your writing couldn't be loaded</h2>
-          <p className="muted">{error}</p>
-          <button type="button" className="btn btn-primary" onClick={() => setReload((n) => n + 1)}>
-            Try again
-          </button>
-        </div>
-      ) : !projects ? (
-        <div className="library-loading" aria-busy="true" aria-label="Loading your writing" />
-      ) : projects.length === 0 ? (
-        <div className="library-empty">
-          <h2>Write a book</h2>
-          <p className="muted">
-            Write chapter by chapter, add the book's details and a cover, then export an EPUB for your library, a Kindle or a store. Your writing syncs
-            with your notes, so you can carry on on your phone.
+          <h1 className="library-title">{booksShown ? "Writing" : "Notes"}</h1>
+          <p className="eyebrow">
+            {showing === "books" ? "Books you're writing, ready to export as EPUB" : "Highlights, annotations and reflections from your reading"}
           </p>
-          <div className="hero-actions">
-            <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}>
-              Start a book
-            </button>
-          </div>
         </div>
-      ) : (
-        <ul className="writing-shelf">
-          {projects.map((p) => (
-            <li key={p.id}>
-              <button type="button" className="writing-book" onClick={() => setOpenId(p.id)}>
-                <Cover project={p} />
-                <span className="writing-book-title">{p.title}</span>
-                <span className="muted writing-book-meta">
-                  {p.chapters} {p.chapters === 1 ? "chapter" : "chapters"} · {words(p.words)}
-                </span>
-              </button>
-            </li>
+        <Menu
+          label="New"
+          className="btn btn-primary"
+          trigger={
+            <>
+              <span aria-hidden>+</span> New
+            </>
+          }
+          items={newItems}
+        />
+      </header>
+      {booksShown && (
+        <div className="page-tabs tabs" role="tablist" aria-label="Writing">
+          {(
+            [
+              ["books", "Books"],
+              ["notes", "Notes"],
+            ] as const
+          ).map(([t, label]) => (
+            <button key={t} type="button" role="tab" aria-selected={showing === t} className={`tab${showing === t ? " is-active" : ""}`} onClick={() => onTab(t)}>
+              {label}
+            </button>
           ))}
-        </ul>
+        </div>
+      )}
+      {showing === "books" ? (
+        <BookShelf refreshKey={refreshKey} reload={reload} onOpen={setOpenId} onCreate={() => setCreating(true)} />
+      ) : (
+        <Notes
+          embedded
+          ask={ask}
+          search={search}
+          refreshKey={refreshKey}
+          onClearSearch={onClearSearch}
+          onOpenBook={onOpenBook}
+          onGoToBooks={booksShown ? () => onTab("books") : undefined}
+        />
       )}
       {creating && (
         <NewBookDialog
@@ -119,6 +140,62 @@ export function Writing({ refreshKey }: { refreshKey: number }) {
         />
       )}
     </div>
+  );
+}
+
+function BookShelf({ refreshKey, reload: outside, onOpen, onCreate }: { refreshKey: number; reload: number; onOpen: (id: string) => void; onCreate: () => void }) {
+  const [projects, setProjects] = useState<WritingProject[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
+    let current = true;
+    api.writingProjects().then(
+      (p) => current && (setProjects(p), setError(null)),
+      (e: unknown) => current && setError(String(e)),
+    );
+    return () => {
+      current = false;
+    };
+  }, [refreshKey, reload, outside]);
+
+  return error ? (
+    <div className="library-empty" role="alert">
+      <h2>Your writing couldn't be loaded</h2>
+      <p className="muted">{error}</p>
+      <button type="button" className="btn btn-primary" onClick={() => setReload((n) => n + 1)}>
+        Try again
+      </button>
+    </div>
+  ) : !projects ? (
+    <div className="library-loading" aria-busy="true" aria-label="Loading your writing" />
+  ) : projects.length === 0 ? (
+    <div className="library-empty">
+      <h2>Write a book</h2>
+      <p className="muted">
+        Write chapter by chapter, add the book's details and a cover, then export an EPUB for your library, a Kindle or a store. Your notes and
+        highlights are a tap away while you write, and any note can become a chapter.
+      </p>
+      <div className="hero-actions">
+        <button type="button" className="btn btn-primary" onClick={onCreate}>
+          Start a book
+        </button>
+      </div>
+    </div>
+  ) : (
+    <ul className="writing-shelf">
+      {projects.map((p) => (
+        <li key={p.id}>
+          <button type="button" className="writing-book" onClick={() => onOpen(p.id)}>
+            <Cover project={p} />
+            <span className="writing-book-title">{p.title}</span>
+            <span className="muted writing-book-meta">
+              {p.chapters} {p.chapters === 1 ? "chapter" : "chapters"} · {words(p.words)}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -135,6 +212,8 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
   // Waiting saves, so the EPUB and other chapters see the latest words.
   const saving = useRef<Promise<void>>(Promise.resolve());
   const flushEditor = useRef<(() => Promise<void>) | null>(null);
+  const insertInEditor = useRef<((html: string) => void) | null>(null);
+  const [quotes, setQuotes] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -240,7 +319,7 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
   const saveLabel = { saved: "Saved", saving: "Saving…", unsaved: "Saving soon", failed: "Not saved yet. Trying again with your next change." }[save.state];
 
   return (
-    <div className={`writing-project${listOpen ? "" : " is-list-closed"}`}>
+    <div className={`writing-project${listOpen ? "" : " is-list-closed"}${quotes ? " has-quotes" : ""}`}>
       <header className="writing-head">
         <button type="button" className="btn btn-quiet btn-small" onClick={() => void saving.current.then(onBack)}>
           <Icon name="arrowLeft" size={16} /> Your books
@@ -253,6 +332,9 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
           </span>
         </div>
         <div className="writing-head-actions">
+          <button type="button" className={`btn btn-quiet${quotes ? " is-on" : ""}`} aria-pressed={quotes} onClick={() => setQuotes((q) => !q)}>
+            <Icon name="notes" size={16} /> Notes
+          </button>
           <button type="button" className="btn btn-quiet" onClick={() => setDialog("details")}>
             <Icon name="info" size={16} /> Book details
           </button>
@@ -328,6 +410,7 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
               onSave={saveChapter(chapter.id)}
               onSaveState={(state, w) => setSave({ state, words: w })}
               flushRef={flushEditor}
+              insertRef={insertInEditor}
             />
           )}
           <footer className="writing-status muted" aria-live="polite">
@@ -335,6 +418,7 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
             <span className={save.state === "failed" ? "is-problem" : undefined}>{saveLabel}</span>
           </footer>
         </section>
+        {quotes && <QuoteDrawer refreshKey={refreshKey} onInsert={(n) => insertInEditor.current?.(quoteHtml(n))} onClose={() => setQuotes(false)} />}
       </div>
 
       {dialog === "details" && (

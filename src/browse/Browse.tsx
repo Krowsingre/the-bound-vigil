@@ -1,5 +1,5 @@
-// The Browse page: online catalogs (Project Gutenberg, Standard Ebooks, your
-// own), the Bible in three public-domain translations, and a web browser.
+// The Browse page: online catalogs (Project Gutenberg and any you add), the
+// Bible in three public-domain translations, and a web browser.
 // Whatever comes in joins the import queue like any other book.
 
 import { useState } from "react";
@@ -50,14 +50,12 @@ export function Browse({ refreshKey, onOpenBook }: { refreshKey: number; onOpenB
           <p className="eyebrow">{LEDE[tab]}</p>
         </div>
       </header>
-      <div className="library-toolbar">
-        <div className="tabs" role="tablist" aria-label="What to browse">
-          {TABS.map((t) => (
-            <button key={t.tab} type="button" role="tab" aria-selected={tab === t.tab} className={`tab${tab === t.tab ? " is-active" : ""}`} onClick={() => choose(t.tab)}>
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <div className="page-tabs tabs" role="tablist" aria-label="What to browse">
+        {TABS.map((t) => (
+          <button key={t.tab} type="button" role="tab" aria-selected={tab === t.tab} className={`tab${tab === t.tab ? " is-active" : ""}`} onClick={() => choose(t.tab)}>
+            {t.label}
+          </button>
+        ))}
       </div>
       {tab === "catalogs" && <Catalogs />}
       {tab === "bible" && <Bible refreshKey={refreshKey} onOpenBook={onOpenBook} />}

@@ -81,7 +81,6 @@ export function previewWriting(): Calls {
 
   let catalogs: CatalogView[] = [
     { id: "gutenberg", name: "Project Gutenberg", url: "https://www.gutenberg.org/ebooks.opds/", username: null, hasPassword: false },
-    { id: "standard-ebooks", name: "Standard Ebooks", url: "https://standardebooks.org/feeds/opds", username: null, hasPassword: false },
   ];
   const book = ([title, author, summary]: [string, string, string], i: number): OpdsEntry => ({
     id: `book-${i}`,

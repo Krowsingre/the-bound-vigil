@@ -1044,3 +1044,21 @@ button.tag-chip-add:hover {
     transform: rotate(360deg);
   }
 }
+
+/* A page's own tabs (Writing's Books and Notes, Browse's three), shown on
+   every screen size, unlike a shelf toolbar's. */
+.page-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.page-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.library-head:has(+ .page-tabs) {
+  border-bottom: none;
+  padding-bottom: 12px;
+}

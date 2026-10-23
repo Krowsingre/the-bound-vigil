@@ -1,5 +1,5 @@
 // Free OPDS catalogs known to work (checked October 2026), offered when
-// adding a catalog. Project Gutenberg and Standard Ebooks come built in.
+// adding a catalog. Project Gutenberg comes built in.
 
 export interface SuggestedCatalog {
   name: string;
@@ -9,6 +9,11 @@ export interface SuggestedCatalog {
 }
 
 export const SUGGESTED_CATALOGS: SuggestedCatalog[] = [
+  {
+    name: "Standard Ebooks",
+    url: "https://standardebooks.org/feeds/opds",
+    about: "Carefully edited classics. Its catalog is for Patrons Circle members: sign in with the email you joined with.",
+  },
   { name: "Open Library", url: "https://openlibrary.org/opds/", about: "English and more. Many books are borrow-only on its website." },
   { name: "Ebooks libres et gratuits", url: "https://www.ebooksgratuits.com/opds/", about: "French classics" },
   { name: "textos.info", url: "https://textos.info/opds", about: "Spanish classics" },
