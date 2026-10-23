@@ -89,8 +89,7 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
       if args.action == "clear" {
         WKWebsiteDataStore.default().removeData(
           ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast
-        ) {}
-        invoke.resolve(["ok": true])
+        ) { invoke.resolve(["ok": true]) }
         return
       }
       guard let view = self.made() else {

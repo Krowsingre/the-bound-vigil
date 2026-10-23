@@ -99,6 +99,7 @@ export function Audiobooks({
         kind: "audiobooks",
         shelf: "in_progress",
         sort: "recently_opened",
+        paired: pairing === "all" ? null : pairing === "paired",
         search: null,
         formats: [],
         location: null,
@@ -112,7 +113,7 @@ export function Audiobooks({
     return () => {
       current = false;
     };
-  }, [refreshKey, reload, player.playing]);
+  }, [refreshKey, reload, player.playing, pairing]);
 
   // The panel shows the book chosen, else the one playing, else the last listened to.
   const shown = chosen ?? player.book?.book.id ?? listening?.[0]?.id ?? null;

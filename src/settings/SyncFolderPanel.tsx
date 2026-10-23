@@ -57,7 +57,7 @@ const SERVICE: Record<FolderService, { name: string; app: string; steps: string[
 function iphoneSteps(service: FolderService, name: string): string[] {
   const shows =
     service === "icloud"
-      ? "iCloud Drive is already in the Files app if it's turned on (Preferences › your name › iCloud)."
+      ? "iCloud Drive is already in the Files app if it's turned on (Settings › your name › iCloud)."
       : service === "custom"
         ? "If the service has an app, install it and sign in so it shows in the Files app."
         : `Install the ${name} app and sign in, so ${name} shows in the Files app.`;
@@ -182,7 +182,7 @@ export function SyncFolderPanel({
             </label>
           </div>
           <p className="settings-row-hint">
-            Many services want an app password here rather than your usual one (Nextcloud: Preferences › Security). It's kept on this computer only.
+            Many services want an app password here rather than your usual one (Nextcloud: Settings › Security). It's kept on this computer only.
           </p>
           <div className="dialog-actions">
             <button type="submit" className="btn btn-primary" disabled={!davReady || busy}>
