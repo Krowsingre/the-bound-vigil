@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
-import { clearHistory, dayLabel, onHistory, readHistory, removeFromHistory, type HistoryEntry } from "./browserHistory";
+import { clearHistory, dayLabel, onHistory, readHistory, removeFromHistory, trimHistory, trimmed, type HistoryEntry } from "./browserHistory";
 import { readBrowserPrefs, siteOf } from "./browserPrefs";
 
 type Showing = "all" | "page" | "search";
@@ -15,20 +15,33 @@ type Showing = "all" | "page" | "search";
 const AT_ONCE = 200;
 const HOUR = 3_600_000;
 
-const CLEARS: { label: string; since: number | null }[] = [
-  { label: "The last hour", since: HOUR },
-  { label: "Today", since: 24 * HOUR },
-  { label: "The last week", since: 7 * 24 * HOUR },
-  { label: "Everything", since: null },
+/** Since local midnight, for "Today". */
+function sinceMidnight(now = Date.now()): number {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  return now - start.getTime();
+}
+
+const CLEARS: { label: string; since: () => number | null }[] = [
+  { label: "The last hour", since: () => HOUR },
+  { label: "Today", since: () => sinceMidnight() },
+  { label: "The last week", since: () => 7 * 24 * HOUR },
+  { label: "Everything", since: () => null },
 ];
 
+/** What's kept, never older than Preferences › Browser allows. */
+const kept = () => trimmed(readHistory(), readBrowserPrefs().historyKeep);
+
 export function HistoryPanel({ onGo, onClose }: { onGo: (url: string) => void; onClose: () => void }) {
-  const [list, setList] = useState(readHistory);
+  const [list, setList] = useState(kept);
   const [find, setFind] = useState("");
   const [showing, setShowing] = useState<Showing>("all");
   const [shown, setShown] = useState(AT_ONCE);
   const [clearing, setClearing] = useState<(typeof CLEARS)[number] | null>(null);
-  useEffect(() => onHistory(() => setList(readHistory())), []);
+  useEffect(() => {
+    trimHistory(readBrowserPrefs().historyKeep);
+    return onHistory(() => setList(kept()));
+  }, []);
   useEffect(() => setShown(AT_ONCE), [find, showing]);
 
   const matching = useMemo(() => {
@@ -120,13 +133,13 @@ export function HistoryPanel({ onGo, onClose }: { onGo: (url: string) => void; o
       </div>
       {clearing && (
         <ConfirmDialog
-          title={clearing.since === null ? "Clear all history?" : `Clear ${clearing.label.toLocaleLowerCase()}?`}
+          title={clearing.label === "Everything" ? "Clear all history?" : `Clear ${clearing.label.toLocaleLowerCase()}?`}
           body="The pages and searches go from Discover's history. Bookmarks, tabs and site sign-ins stay."
           confirm="Clear"
           danger
           onCancel={() => setClearing(null)}
           onConfirm={() => {
-            clearHistory(clearing.since);
+            clearHistory(clearing.since());
             setClearing(null);
           }}
         />
