@@ -381,6 +381,7 @@ mod view {
         if let Some(view) = app.get_webview(&label(&tab)) {
             super::windows::cancel(&view, url);
         }
+        #[cfg(not(windows))]
         let _ = (app, url, tab);
         Ok(())
     }
