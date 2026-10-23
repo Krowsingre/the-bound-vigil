@@ -134,7 +134,11 @@ function startingTabs(): TabsState {
   const { home, comeBack } = readBrowserPrefs();
   const first = !openedThisRun;
   openedThisRun = true;
-  return comeBack === "leave" || (comeBack === "close" && first) ? freshTabs(home) : readTabs(home);
+  if (!(comeBack === "leave" || (comeBack === "close" && first))) return readTabs(home);
+  // Pages kept from before (when the choice was still to keep them) would
+  // otherwise go on without a tab to close them by.
+  if (!first) for (const t of readTabs(home).tabs) void api.browserAct(t.id, "close").catch(() => undefined);
+  return freshTabs(home);
 }
 
 const titleOf = (title: string | null, url: string) => title?.trim() || siteOf(url) || url;
