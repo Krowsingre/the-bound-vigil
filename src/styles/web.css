@@ -114,9 +114,11 @@
     display: grid;
   }
 
-  /* Pages scroll right to the bottom edge, past the home bar. */
+  /* Pages scroll right to the bottom edge, past the home bar. Up and
+     down only: nothing drags the page sideways, so swipes keep working. */
   .content {
     padding-bottom: env(safe-area-inset-bottom);
+    overflow-x: hidden;
   }
 
   .header {

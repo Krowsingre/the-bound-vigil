@@ -691,7 +691,7 @@
   margin-left: 6px;
 }
 
-.scribe .library-toolbar.is-compact {
+:is(.scribe, .compendium) .library-toolbar.is-compact {
   gap: 0;
   flex-wrap: nowrap;
   overflow-x: auto;
@@ -748,7 +748,7 @@
   }
 
   /* Cards only on a phone: the layout pair doesn't fit beside the kinds. */
-  .scribe .library-toolbar.is-compact .layout-switch {
+  :is(.scribe, .compendium) .library-toolbar.is-compact .layout-switch {
     display: none;
   }
 

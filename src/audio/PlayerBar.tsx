@@ -21,7 +21,7 @@ export function PlayerBar({ onShowAudiobooks }: { onShowAudiobooks: () => void }
 
   return (
     <div className="player-bar" role="region" aria-label="Audiobook player">
-      <button type="button" className="player-book" onClick={onShowAudiobooks} title="Show in Audiobooks">
+      <button type="button" className="player-book" onClick={onShowAudiobooks} title="Show in Resonance">
         <BookCover book={book.book} size="s" />
         <span className="player-book-text">
           <strong>{book.book.title}</strong>

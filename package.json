@@ -2,7 +2,7 @@
   "name": "the-bound-vigil",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
-  "version": "1.21.0",
+  "version": "1.22.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

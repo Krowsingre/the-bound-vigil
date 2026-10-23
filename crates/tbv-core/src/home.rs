@@ -57,12 +57,20 @@ pub(crate) const PAIRED: &str = "(EXISTS (SELECT 1 FROM audiobooks ab JOIN books
 
 /// Leaves out a book when a newer copy of it (same title and first author,
 /// in another file) is in the library, so lists of what's new show each
-/// book once.
+/// book once. Asked book by book, so quick for a short list (Sanctum's).
 pub(crate) const NEWEST_COPY: &str = "NOT EXISTS (SELECT 1 FROM books d
     WHERE d.id != b.id AND d.deleted_at IS NULL AND d.same_as IS NULL
       AND tbv_fold(d.title) = tbv_fold(b.title)
       AND lower(COALESCE(json_extract(d.authors, '$[0]'), '')) = lower(COALESCE(json_extract(b.authors, '$[0]'), ''))
       AND (d.added_at > b.added_at OR (d.added_at = b.added_at AND d.id > b.id)))";
+
+/// The same, worked out once for the whole library, for counting every
+/// new book: asked book by book, that took 17 seconds with 8,000 new books.
+pub(crate) const NEWEST_COPY_ALL: &str = "b.id IN (SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (
+      PARTITION BY tbv_fold(title), lower(COALESCE(json_extract(authors, '$[0]'), ''))
+      ORDER BY added_at DESC, id DESC) AS newest
+    FROM books WHERE deleted_at IS NULL AND same_as IS NULL) WHERE newest = 1)";
 
 /// Effective narrators, for filters.
 pub(crate) const NARRATORS: &str = "COALESCE((SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = 'narrators'),

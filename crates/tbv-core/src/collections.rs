@@ -129,7 +129,7 @@ impl Library {
                 };
                 // What's new shows each book once, not every copy of it.
                 let condition =
-                    if matches!(smart, SmartKind::RecentlyAdded) { format!("{condition} AND {}", crate::home::NEWEST_COPY) } else { condition.into() };
+                    if matches!(smart, SmartKind::RecentlyAdded) { format!("{condition} AND {}", crate::home::NEWEST_COPY_ALL) } else { condition.into() };
                 Members {
                     condition,
                     order: format!("{order}, {TITLE}"),
