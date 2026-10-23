@@ -1,4 +1,4 @@
-import { closeTab, freshTabs, openTab, readTabs, updateTab, writeTabs, type TabsState } from "./browserTabs";
+import { closeTab, freshTabs, moveTab, openTab, readTabs, updateTab, writeTabs, type TabsState } from "./browserTabs";
 
 const HOME = "https://www.gutenberg.org/";
 
@@ -44,5 +44,20 @@ describe("starting afresh", () => {
   it("is one tab at the home page", () => {
     const fresh = freshTabs("https://example.org/");
     expect(fresh.tabs).toEqual([{ id: fresh.active, url: "https://example.org/", title: null }]);
+  });
+});
+
+describe("moving tabs", () => {
+  const three: TabsState = {
+    tabs: ["a", "b", "c"].map((id) => ({ id, url: `https://${id}.org/`, title: null })),
+    active: "b",
+  };
+  const order = (s: TabsState) => s.tabs.map((t) => t.id).join("");
+  it("takes the place of the tab it's dropped on, either way", () => {
+    expect(order(moveTab(three, "a", "c"))).toBe("bca");
+    expect(order(moveTab(three, "c", "a"))).toBe("cab");
+    expect(order(moveTab(three, "a", "b"))).toBe("bac");
+    expect(moveTab(three, "a", "c").active).toBe("b");
+    expect(moveTab(three, "a", "a")).toBe(three);
   });
 });

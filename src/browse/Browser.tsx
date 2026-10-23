@@ -11,8 +11,11 @@ import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { formatLabel } from "../lib/queryBooks";
 import { useNarrow } from "../lib/useNarrow";
-import { addressFor, lowerFor, onBrowserPrefs, protectionOf, readBrowserPrefs, siteOf, writeBrowserPrefs } from "./browserPrefs";
-import { closeTab, freshTabs, newTabId, openTab, readTabs, updateTab, writeTabs, type TabsState } from "./browserTabs";
+import { addressFor, isAddress, lowerFor, onBrowserPrefs, protectionOf, readBrowserPrefs, siteOf, writeBrowserPrefs } from "./browserPrefs";
+import { closeTab, freshTabs, moveTab, newTabId, openTab, readTabs, updateTab, writeTabs, type TabsState } from "./browserTabs";
+import { addToHistory } from "./browserHistory";
+import { HistoryPanel } from "./HistoryPanel";
+import { useTabDrag } from "./useTabDrag";
 import { articleByline, articleEpub, articleFrom, cleanArticle, readerScript } from "./readerArticle";
 
 /** The header's search box, on Discover, sends what's typed here. */
@@ -169,7 +172,7 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [marks, setMarks] = useState<Bookmark[]>([]);
   const [fetched, setFetched] = useState<Fetched[]>([]);
-  const [panel, setPanel] = useState<null | "downloads" | "tabs">(null);
+  const [panel, setPanel] = useState<null | "downloads" | "tabs" | "history">(null);
   const [finding, setFinding] = useState<string | null>(null);
   const [article, setArticle] = useState<ReaderArticle | null>(null);
   const [saving, setSaving] = useState(false);
@@ -257,8 +260,11 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   useEffect(() => {
     const heard = (ev: BrowserEvent) => {
       switch (ev.kind) {
-        case "page":
+        case "page": {
           setLoading((l) => ({ ...l, [ev.tab]: ev.loading }));
+          // Chosen in Preferences › Browser: each page visited goes in History.
+          const keep = readBrowserPrefs();
+          if (!ev.loading && keep.historyOn && /^https?:/i.test(ev.url)) addToHistory({ kind: "page", url: ev.url, title: ev.title ?? null }, keep.historyKeep);
           if (/^https?:/i.test(ev.url)) {
             setTabs((s) => {
               const before = s.tabs.find((t) => t.id === ev.tab);
@@ -267,6 +273,7 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
             });
           }
           break;
+        }
         case "newTab": {
           const id = ev.tab ?? newTabId();
           // On iPhone a pop-up's view is made already, still joined to its page.
@@ -366,8 +373,12 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   const act = (action: "back" | "forward" | "reload" | "stop") => void api.browserAct(active.id, action).catch(() => undefined);
 
   const go = (text: string) => {
-    const to = addressFor(text, readBrowserPrefs().search);
+    const prefsNow = readBrowserPrefs();
+    const to = addressFor(text, prefsNow.search);
     if (!to) return;
+    // Words rather than an address: a search, kept in History if chosen.
+    if (prefsNow.historyOn && prefsNow.historySearches && !isAddress(text))
+      addToHistory({ kind: "search", url: to, title: text.trim() }, prefsNow.historyKeep);
     setArticle(null);
     setTabs((s) => updateTab(s, s.active, { url: to, title: null }));
     if (made.current.has(tabsRef.current.active)) void api.browserAct(tabsRef.current.active, "go", to).catch((e: unknown) => toast(String(e)));
@@ -391,6 +402,7 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
     setPanel(null);
     setTabs((s) => ({ ...s, active: id }));
   };
+  const drag = useTabDrag((id, onto) => setTabs((s) => moveTab(s, id, onto)));
   const close = (id: string) => {
     made.current.delete(id);
     void api.browserAct(id, "close");
@@ -478,6 +490,7 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   const moreItems: MenuEntry[] = [
     { label: "Copy link", icon: "copy", disabled: !url.startsWith("http"), onSelect: () => void navigator.clipboard?.writeText(url).then(() => toast("Link copied.")) },
     { label: "Open in your normal browser", icon: "link", disabled: !url.startsWith("http"), onSelect: () => void openExternal(url) },
+    { label: "History", icon: "clock", onSelect: () => setPanel("history") },
     { label: "Find on page", icon: "search", onSelect: () => setFinding("") },
     { label: "Make this your home page", icon: "home", disabled: !url.startsWith("http"), onSelect: () => (writeBrowserPrefs({ home: url }), toast("This is your home page now.")) },
     {
@@ -504,7 +517,7 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
       {!narrow && (
         <div className="browser-tabs" role="tablist" aria-label="Tabs">
           {tabs.tabs.map((t) => (
-            <div key={t.id} className={`browser-tab${t.id === tabs.active ? " is-active" : ""}`}>
+            <div key={t.id} className={`browser-tab${t.id === tabs.active ? " is-active" : ""}`} {...drag(t.id)}>
               <button type="button" role="tab" aria-selected={t.id === tabs.active} className="browser-tab-name" title={t.url} onClick={() => switchTo(t.id)}>
                 {loading[t.id] ? <span className="browser-tab-busy" aria-hidden /> : <Icon name="globe" size={13} />}
                 <span>{titleOf(t.title, t.url)}</span>
@@ -614,6 +627,7 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
               <h2>
                 {tabs.tabs.length} {tabs.tabs.length === 1 ? "tab" : "tabs"}
               </h2>
+              {tabs.tabs.length > 1 && <span className="muted browser-grid-hint">Hold a tab to move it</span>}
               <button type="button" className="btn btn-quiet btn-small" onClick={newTab}>
                 <Icon name="plus" size={14} /> New tab
               </button>
@@ -623,7 +637,7 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
             </div>
             <div className="browser-grid-tabs">
               {tabs.tabs.map((t) => (
-                <div key={t.id} className={`browser-grid-tab${t.id === tabs.active ? " is-active" : ""}`}>
+                <div key={t.id} className={`browser-grid-tab${t.id === tabs.active ? " is-active" : ""}`} {...drag(t.id)}>
                   <button type="button" className="browser-grid-open" onClick={() => switchTo(t.id)}>
                     <Icon name="globe" size={22} />
                     <strong>{titleOf(t.title, t.url)}</strong>
@@ -638,6 +652,7 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
           </div>
         )}
       </div>
+      {panel === "history" && <HistoryPanel onGo={(to) => (setPanel(null), go(to))} onClose={() => setPanel(null)} />}
       {panel === "downloads" && (
         <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && setPanel(null)}>
           <div className="dialog browser-downloads" role="dialog" aria-label="Downloads" onKeyDown={(e) => e.key === "Escape" && setPanel(null)}>
