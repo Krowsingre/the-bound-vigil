@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type {
   CollectionDetail,
@@ -594,14 +594,14 @@ const SERIES_AT_ONCE = 60;
  */
 function useShownBit(total: number, resetKey: string) {
   const [shown, setShown] = useState(SERIES_AT_ONCE);
-  const more = useRef<HTMLLIElement | null>(null);
+  // A callback ref, so a fresh end marker (back from a collection) is watched too.
+  const [end, more] = useState<HTMLLIElement | null>(null);
   useEffect(() => setShown(SERIES_AT_ONCE), [resetKey]);
   useEffect(() => {
-    const end = more.current;
     if (!end || shown >= total || typeof IntersectionObserver !== "function") return;
     const watching = new IntersectionObserver((seen) => seen.some((e) => e.isIntersecting) && setShown((n) => n + SERIES_AT_ONCE), { rootMargin: "600px" });
     watching.observe(end);
     return () => watching.disconnect();
-  }, [shown, total]);
+  }, [end, shown, total]);
   return { shown, more };
 }
