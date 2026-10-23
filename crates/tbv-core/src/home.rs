@@ -11,6 +11,13 @@ use crate::model::*;
 use crate::time::now_utc;
 
 const RECENTLY_ADDED_LIMIT: u32 = 5;
+/// How long a book counts as recently added (embre, 2026-10-23).
+pub(crate) const RECENT_DAYS: i64 = 7;
+
+/// When a book added now stops counting as recently added, as stored.
+fn recent_since() -> String {
+    (chrono::Utc::now() - chrono::Duration::days(RECENT_DAYS)).to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
 const IN_PROGRESS_LIMIT: u32 = 3;
 const COLLECTIONS_LIMIT: u32 = 4;
 const ANNOTATIONS_LIMIT: u32 = 2;
@@ -118,7 +125,7 @@ impl Library {
         )?;
         Ok(HomeViewModel {
             resume_book: in_progress.first().cloned(),
-            recently_added: self.books(&format!("AND b.format NOT IN ({audio}) AND {NEWEST_COPY} ORDER BY b.added_at DESC"), RECENTLY_ADDED_LIMIT)?,
+            recently_added: self.books(&format!("AND b.format NOT IN ({audio}) AND b.added_at >= '{}' AND {NEWEST_COPY} ORDER BY b.added_at DESC", recent_since()), RECENTLY_ADDED_LIMIT)?,
             in_progress,
             collections: self.collection_previews()?,
             annotations: self.annotation_previews()?,

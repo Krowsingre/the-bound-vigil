@@ -23,6 +23,14 @@ export const PROTECTION_LEVELS: { value: ProtectionLevel; label: string; hint: s
   { value: "off", label: "Off", hint: "Blocks nothing." },
 ];
 
+export type ComeBack = "keep" | "leave" | "close";
+
+export const COME_BACK: { value: ComeBack; label: string }[] = [
+  { value: "keep", label: "Where you left off, with your tabs" },
+  { value: "leave", label: "At the home page, after leaving Discover" },
+  { value: "close", label: "At the home page, after closing TBV" },
+];
+
 export interface BrowserPrefs {
   search: SearchEngine;
   home: string;
@@ -31,6 +39,9 @@ export interface BrowserPrefs {
   protection: ProtectionLevel;
   /** Videos and sound go on playing after leaving Discover (otherwise they pause). */
   keepPlaying: boolean;
+  /** Where Discover is when you come back: as you left it, or at the home
+   * page with the other tabs closed after leaving Discover or after closing TBV. */
+  comeBack: ComeBack;
   /** Sites (hosts, without "www.") whose protection was lowered from Discover's ••• menu. */
   lowered: string[];
 }
@@ -55,6 +66,7 @@ export function readBrowserPrefs(): BrowserPrefs {
     home,
     addWithoutAsking: saved.addWithoutAsking === true,
     keepPlaying: saved.keepPlaying === true,
+    comeBack: COME_BACK.some((c) => c.value === saved.comeBack) ? (saved.comeBack as ComeBack) : "keep",
     protection: PROTECTION_LEVELS.some((p) => p.value === saved.protection) ? (saved.protection as ProtectionLevel) : "strict",
     lowered: Array.isArray(saved.lowered) ? saved.lowered.filter((h): h is string => typeof h === "string") : [],
   };

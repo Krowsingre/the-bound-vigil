@@ -32,7 +32,7 @@ const day = 86_400_000;
 const stamp = () => new Date().toISOString();
 const ago = (days: number) => new Date(Date.now() - days * day).toISOString();
 const coverOf = ({ id, title, authors, coverPath }: BookPreview) => ({ id, title, authors, coverPath });
-const SMART: SmartKind[] = ["recently_added", "unread", "in_progress", "read", "favorites"];
+const SMART: SmartKind[] = ["send_to_device", "in_progress", "up_next", "favorites", "read"];
 
 type CollectionsApi = Pick<
   Api,
@@ -141,11 +141,13 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
     "shelf:send_to_device": (b) => !!b.phoneWanted,
   };
   const smartBooks: Record<SmartKind, (b: BookPreview) => boolean> = {
-    recently_added: (b) => Date.now() - Date.parse(b.addedAt) < 30 * day,
+    recently_added: (b) => Date.now() - Date.parse(b.addedAt) < 7 * day,
     unread: (b) => b.status === "unread",
     read: (b) => b.status === "read",
     in_progress: (b) => b.status === "in_progress",
     favorites: (b) => b.favorite,
+    up_next: (b) => b.wantToRead,
+    send_to_device: (b) => !!b.phoneWanted,
   };
 
   function membersOf(c: Stored): BookPreview[] {
@@ -206,7 +208,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
       const series = new Map<string, BookPreview[]>();
       for (const b of books()) if (b.series) series.set(b.series, [...(series.get(b.series) ?? []), b]);
       return {
-        pinned: stored.filter((c) => c.pinned).map(summary),
+        pinned: stored.filter((c) => c.pinned && c.kind !== "shelf").map(summary),
         smart: SMART.map((kind) => {
           const list = books().filter(smartBooks[kind]);
           return { kind, count: list.length, rating: averageRating(list) };

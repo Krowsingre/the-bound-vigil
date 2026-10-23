@@ -20,8 +20,11 @@ import { CollectionView } from "./CollectionView";
 import { moved, useReorder } from "./useReorder";
 import { useAppSettings } from "../settings/appSettings";
 import { Stat } from "../home/ReadingActivity";
+import { PageSwitch } from "../library/Library";
 
-type Tab = "all" | "collections" | "reading_lists" | "series";
+type Tab = "all" | "collections" | "reading_lists";
+/** Compendium's two sides (embre, 2026-10-23): your compendiums, or series alone. */
+type Side = "compendiums" | "series";
 type Sort = "custom" | "name" | "size" | "rating" | "created" | "changed";
 type SmartSort = "custom" | "name" | "size" | "rating";
 
@@ -46,8 +49,27 @@ const byRating = (a: { rating: number | null }, b: { rating: number | null }) =>
   (b.rating ?? -1) - (a.rating ?? -1);
 
 const PREFS_KEY = "tbv.collections.view";
-/** Your order for the smart collections, kept with this device's settings. */
-const SMART_ORDER_KEY = "collections.smartOrder";
+/** Your order for the smart compendiums, kept with this device's settings. A
+ * new name since the set changed in 1.23, so it starts in the usual order. */
+const SMART_ORDER_KEY = "compendium.smartOrder";
+const SIDE_KEY = "tbv.compendium.side";
+const SMART_FOLDED_KEY = "tbv.compendium.smartFolded";
+
+function readStored(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function store(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* just not remembered */
+  }
+}
 
 interface Prefs {
   sort: Sort;
@@ -102,6 +124,16 @@ export function Collections({
   const [reload, setReload] = useState(0);
   const [selected, setSelected] = useState<CollectionRef | null>(null);
   const [tab, setTab] = useState<Tab>("all");
+  const [side, setSide] = useState<Side>(() => (readStored(SIDE_KEY) === "series" ? "series" : "compendiums"));
+  const [smartFolded, setSmartFolded] = useState(() => readStored(SMART_FOLDED_KEY) === "1");
+  const changeSide = (next: Side) => {
+    setSide(next);
+    store(SIDE_KEY, next);
+  };
+  const foldSmart = () => {
+    setSmartFolded(!smartFolded);
+    store(SMART_FOLDED_KEY, smartFolded ? "0" : "1");
+  };
   const [prefs, setPrefs] = useState(readPrefs);
   const [smartOrder, setSmartOrder] = useState<string[]>([]);
   const filter = search;
@@ -304,10 +336,10 @@ export function Collections({
   );
 
   const series = (settings.showSeries ? (overview?.series ?? []) : []).filter(
-    (s) => (tab === "all" || tab === "series") && matches(s.name, ...s.authors),
+    (s) => side === "series" && matches(s.name, ...s.authors),
   );
 
-  const { shown: seriesShown, more } = useShownBit(series.length, `${tab}/${q}`);
+  const { shown: seriesShown, more } = useShownBit(series.length, `${side}/${q}`);
 
   if (open)
     return (
@@ -339,8 +371,7 @@ export function Collections({
     );
   if (!overview) return <div className="collections-page library-loading" aria-busy="true" aria-label="Loading your collections" />;
 
-  const counts: Record<Tab, number> = {
-    all: overview.collections.length + overview.series.length,
+  const counts = {
     collections: overview.collections.filter((c) => c.kind === "collection").length,
     reading_lists: overview.collections.filter((c) => c.kind === "reading_list").length,
     series: overview.series.length,
@@ -358,9 +389,17 @@ export function Collections({
       <header className="library-head is-stacked compendium-head">
         <div className="library-title-row">
           <h1 className="library-title">Compendium</h1>
-          <button type="button" className="btn btn-primary" onClick={() => setEditing({ books: [] })}>
-            <Icon name="plus" size={15} /> New
-          </button>
+          {settings.showSeries && (
+            <PageSwitch<Side>
+              label="Compendiums or series"
+              value={side}
+              options={[
+                { value: "compendiums", label: "Compendiums" },
+                { value: "series", label: "Series" },
+              ]}
+              onChange={changeSide}
+            />
+          )}
         </div>
         <div className="stats stats-5 library-stats">
           <Stat icon="squares" value={counts.collections} label="Collections" />
@@ -371,6 +410,36 @@ export function Collections({
 
       <div className="collections-layout">
         <div className="collections-main">
+          {side === "series" && settings.showSeries ? (
+            <section className="collections-section">
+              {series.length === 0 ? (
+                <div className="library-empty collections-empty">
+                  {q ? (
+                    <>
+                      <h2>Nothing matches</h2>
+                      <p className="muted">No series match “{filter.trim()}”.</p>
+                    </>
+                  ) : (
+                    <>
+                      <h2>No series yet</h2>
+                      <p className="muted">Series appear here when your books say which series they belong to.</p>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <ul className={`collection-cards collection-cards-${prefs.layout}`}>
+                  {series.slice(0, seriesShown).map((s) => {
+                    const ref: CollectionRef = { kind: "series", name: s.name };
+                    return (
+                      <SeriesCard key={s.name} series={s} layout={prefs.layout} selected={isSel(ref)} onSelect={() => pick(ref)} onOpen={() => onOpen(ref)} />
+                    );
+                  })}
+                  {series.length > seriesShown && <li ref={more} className="collection-more" aria-hidden />}
+                </ul>
+              )}
+            </section>
+          ) : (
+            <>
           {overview.pinned.length > 0 && !q && (
             <section aria-label="Pinned">
               <ul className="pinned-row">
@@ -394,13 +463,16 @@ export function Collections({
           {!q && settings.showSmartCollections && (
             <section className="collections-section">
               <div className="section-head section-head-tools">
-                <h2>Smart collections</h2>
-                <Menu
-                  label="Sort smart collections"
+                <button type="button" className="section-fold" aria-expanded={!smartFolded} onClick={foldSmart}>
+                  <h2>Smart compendiums</h2>
+                  <Icon name={smartFolded ? "chevronDown" : "chevronUp"} size={18} />
+                </button>
+                {!smartFolded && <Menu
+                  label="Sort smart compendiums"
                   className="toolbar-button"
                   trigger={
                     <>
-                      Sort: {SMART_SORTS.find((s) => s.sort === prefs.smartSort)?.label} <Icon name="chevronDown" size={14} />
+                      <Icon name="sort" size={16} /> <Icon name="chevronDown" size={12} />
                     </>
                   }
                   items={SMART_SORTS.map((s) => ({
@@ -408,9 +480,9 @@ export function Collections({
                     checked: prefs.smartSort === s.sort,
                     onSelect: () => changePrefs({ smartSort: s.sort }),
                   }))}
-                />
+                />}
               </div>
-              <ul className="smart-row">
+              {!smartFolded && <ul className="smart-row">
                 {smart.map((s) => {
                   const ref: CollectionRef = { kind: "smart", smart: s.kind };
                   return (
@@ -424,13 +496,16 @@ export function Collections({
                     />
                   );
                 })}
-              </ul>
+              </ul>}
             </section>
           )}
 
           <section className="collections-section">
-            <div className="section-head">
-              <h2>Your collections</h2>
+            <div className="section-head section-head-tools">
+              <h2>Your compendiums</h2>
+              <button type="button" className="btn btn-primary btn-small" onClick={() => setEditing({ books: [] })}>
+                <Icon name="plus" size={14} /> New
+              </button>
             </div>
             <div className="library-toolbar is-compact">
               <div className="scribe-chips" role="tablist" aria-label="Kinds of collection">
@@ -439,11 +514,8 @@ export function Collections({
                     ["all", "All"],
                     ["collections", "Collections"],
                     ["reading_lists", "Reading lists"],
-                    ["series", "Series"],
                   ] as const
-                )
-                  .filter(([value]) => value !== "series" || settings.showSeries)
-                  .map(([value, label]) => (
+                ).map(([value, label]) => (
                   <button
                     key={value}
                     type="button"
@@ -491,17 +563,12 @@ export function Collections({
               </div>
             </div>
 
-            {own.length + series.length === 0 ? (
+            {own.length === 0 ? (
               <div className="library-empty collections-empty">
                 {q ? (
                   <>
                     <h2>Nothing matches</h2>
                     <p className="muted">No collections match “{filter.trim()}”.</p>
-                  </>
-                ) : tab === "series" ? (
-                  <>
-                    <h2>No series yet</h2>
-                    <p className="muted">Series appear here when your books say which series they belong to.</p>
                   </>
                 ) : (
                   <>
@@ -530,14 +597,7 @@ export function Collections({
                     />
                   );
                 })}
-                {series.slice(0, seriesShown).map((s) => {
-                  const ref: CollectionRef = { kind: "series", name: s.name };
-                  return (
-                    <SeriesCard key={s.name} series={s} layout={prefs.layout} selected={isSel(ref)} onSelect={() => pick(ref)} onOpen={() => onOpen(ref)} />
-                  );
-                })}
-                {series.length > seriesShown && <li ref={more} className="collection-more" aria-hidden />}
-                {tab !== "series" && !q && (
+                {!q && (
                   <li className="collection-card collection-card-new">
                     <button type="button" className="collection-card-open" onClick={() => setEditing({ books: [] })}>
                       <span className="new-plus" aria-hidden>
@@ -553,6 +613,8 @@ export function Collections({
               </ul>
             )}
           </section>
+            </>
+          )}
         </div>
 
         {selected && wide && (

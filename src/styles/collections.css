@@ -1130,3 +1130,29 @@
   justify-content: space-between;
   gap: 6px 16px;
 }
+
+/* Smart compendiums fold away under their heading. */
+.section-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.section-fold h2 {
+  margin: 0;
+}
+
+.section-fold svg {
+  color: var(--text-muted);
+}
+
+.section-fold h2 {
+  text-align: left;
+  white-space: nowrap;
+}
+.section-head-tools > .btn { margin-left: auto; }

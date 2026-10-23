@@ -333,7 +333,7 @@ function home(): HomeViewModel {
     .sort((a, b) => (b.lastOpenedAt ?? "").localeCompare(a.lastOpenedAt ?? ""));
   return {
     resumeBook: inProgress[0] ?? null,
-    recentlyAdded: [...reading].sort((a, b) => b.addedAt.localeCompare(a.addedAt)).slice(0, 5),
+    recentlyAdded: reading.filter((b) => Date.now() - Date.parse(b.addedAt) < 7 * 86_400_000).sort((a, b) => b.addedAt.localeCompare(a.addedAt)).slice(0, 5),
     inProgress: inProgress.slice(0, 3),
     collections: collections.previews().slice(0, 4),
     annotations: empty
