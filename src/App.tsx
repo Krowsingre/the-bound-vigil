@@ -425,6 +425,9 @@ export function App() {
     onRight: openMenu,
     onPullDown: route !== "home" ? toHome : undefined,
   });
+  // With the menu of pages open, a swipe left closes it, back to the page underneath.
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  useSwipes(appRoot, pullHome, narrow && menuOpen && !reading, { onLeft: closeMenu, overMenu: true });
 
   if (reading) return <Reader key={`${reading.bookId}/${reading.fileId ?? ""}`} bookId={reading.bookId} fileId={reading.fileId} openAt={reading.at} shell={shell} onClose={closeBook} />;
 

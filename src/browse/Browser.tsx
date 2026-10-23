@@ -164,6 +164,11 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   /** Tabs whose page view has been made. */
   const made = useRef(new Set<string>());
   const shown = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => void (mounted.current = false);
+  }, []);
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   /** Reader mode covers the page, so the page's view steps aside. */
@@ -203,6 +208,10 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
     const fresh = !made.current.has(tab.id);
     await api.browserShow(tab.id, fresh ? tab.url : null, at, protectionOf(readBrowserPrefs()));
     made.current.add(tab.id);
+    // A new tab's page can take a moment to come up (iPhone readies its
+    // protection first). Left Discover, or covered, in that moment: the page
+    // would show over whatever's there now, so it goes away again.
+    if (!mounted.current || covered() || aside.current) await api.browserHide();
   }, []);
 
   const reloadMarks = useCallback(() => api.bookmarks().then(setMarks, () => undefined), []);
