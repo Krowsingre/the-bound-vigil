@@ -528,3 +528,39 @@
     order: -1;
   }
 }
+
+/* Notes as Writing's tab: Writing has the heading and the New button. */
+.notes-page.is-embedded {
+  padding: 0;
+  min-height: 0;
+  flex: 1;
+}
+
+.writing-home .library-head {
+  align-items: center;
+}
+
+.writing-home .library-head > .menu-root .btn {
+  gap: 6px;
+}
+
+.writing-home > .writing-shelf,
+.writing-home > .library-empty,
+.writing-home > .library-loading {
+  margin-top: 24px;
+}
+
+/* On a phone the kinds of note scroll sideways instead of hiding. */
+@media (max-width: 760px) {
+  .notes-page .library-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .notes-page .library-toolbar .tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    width: 100%;
+  }
+}

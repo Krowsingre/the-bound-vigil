@@ -28,10 +28,12 @@ const MAX_FEED_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_BOOK_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 /// Offered the first time, and kept unless the person removes them.
-const STARTERS: [(&str, &str, &str); 2] = [
-    ("gutenberg", "Project Gutenberg", "https://www.gutenberg.org/ebooks.opds/"),
-    ("standard-ebooks", "Standard Ebooks", "https://standardebooks.org/feeds/opds"),
-];
+const STARTERS: [(&str, &str, &str); 1] = [("gutenberg", "Project Gutenberg", "https://www.gutenberg.org/ebooks.opds/")];
+
+/// Standard Ebooks came built in until 1.18. Its catalog is for paying
+/// supporters only, so now it's offered under "Add a catalog" instead, and the
+/// old built-in copy goes unless someone signed in to it.
+const RETIRED_STARTER: &str = "standard-ebooks";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct Saved {
@@ -617,7 +619,7 @@ fn download_format(offered: Option<&str>, mime: &str, filename: Option<&str>, ur
 impl Library {
     fn saved_catalogs(&self) -> Result<Vec<Saved>> {
         match self.setting(SETTINGS_KEY)? {
-            Some(s) => Ok(serde_json::from_str(&s).unwrap_or_default()),
+            Some(s) => Ok(serde_json::from_str::<Vec<Saved>>(&s).unwrap_or_default().into_iter().filter(|c| !(c.id == RETIRED_STARTER && c.username.is_empty())).collect()),
             None => Ok(STARTERS.iter().map(|(id, name, url)| Saved { id: id.to_string(), name: name.to_string(), url: url.to_string(), username: String::new(), password: String::new() }).collect()),
         }
     }

@@ -8,20 +8,22 @@ export const NAV: { route: Route; label: string; icon: IconName }[] = [
   { route: "documents", label: "Documents", icon: "file" },
   { route: "collections", label: "Collections", icon: "collections" },
   { route: "audiobooks", label: "Audiobooks", icon: "headphones" },
-  { route: "notes", label: "Notes", icon: "notes" },
   { route: "writing", label: "Writing", icon: "pen" },
   { route: "catalogs", label: "Browse", icon: "globe" },
   { route: "settings", label: "Settings", icon: "settings" },
 ];
 
 /** The pages this copy of TBV shows. Browse needs the app (a web page can't
- * reach most catalogs or hold a browser); writing needs synced records, which the
- * phone at home doesn't keep. */
+ * reach most catalogs or hold a browser). Writing holds Notes too; the books you
+ * write need synced records, which the phone at home doesn't keep, so there
+ * it's only Notes. */
 export function navFor({ web, home }: { web: boolean; home: boolean }) {
-  return NAV.filter((n) => !(n.route === "catalogs" && (web || home)) && !(n.route === "writing" && home));
+  return NAV.filter((n) => !(n.route === "catalogs" && (web || home))).map((n) =>
+    n.route === "writing" && home ? { ...n, label: "Notes", icon: "notes" as IconName } : n,
+  );
 }
 
-/** Sync & Accounts lives inside Settings, so Settings stays highlighted. */
+/** Sync & Accounts lives inside Settings, so Settings stays highlighted; Notes is a tab of Writing. */
 export function navRouteOf(route: Route): Route {
-  return route === "sync" ? "settings" : route;
+  return route === "sync" ? "settings" : route === "notes" ? "writing" : route;
 }

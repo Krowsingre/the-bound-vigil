@@ -1,5 +1,5 @@
 /* Browse: its tabs, the Bible and the browser. Catalogs has its own sheet. */
-.browse-page > .library-toolbar {
+.browse-page > .page-tabs {
   margin-bottom: 20px;
 }
 
@@ -148,7 +148,7 @@
   padding-bottom: 0;
 }
 
-.browse-browser > .library-toolbar {
+.browse-browser > .page-tabs {
   margin-bottom: 0;
 }
 

@@ -6,6 +6,7 @@ import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { HIGHLIGHT_COLORS } from "../reader/settings";
+import { NoteToBookDialog } from "../writing/NoteToBookDialog";
 import { NewNoteDialog } from "./NewNoteDialog";
 import { KIND_LABEL } from "./noteInfo";
 import { NotePanel } from "./NotePanel";
@@ -45,19 +46,29 @@ function readPrefs(): { sort: NotesSort; layout: NotesLayout } {
   }
 }
 
-type Writing = { kind: "personal" | "book_note" } | null;
+export type NewNoteKind = "personal" | "book_note";
+type Writing = { kind: NewNoteKind } | null;
 
 export function Notes({
   search,
   refreshKey,
   onClearSearch,
   onOpenBook,
+  embedded = false,
+  ask = null,
+  onGoToBooks,
 }: {
   /** The header's search box, which searches notes on this page. */
   search: string;
   refreshKey: number;
   onClearSearch: () => void;
   onOpenBook: (bookId: string, cfi?: string) => void;
+  /** Shown as a tab of Writing, which has the page's heading and New button. */
+  embedded?: boolean;
+  /** Writing's New button asking for a note; a new `n` asks again. */
+  ask?: { kind: NewNoteKind; n: number } | null;
+  /** Where "Add to a book I'm writing" sends you when there's no book yet. Left out, notes aren't offered to books. */
+  onGoToBooks?: () => void;
 }) {
   const [tab, setTab] = useState<NotesTab>("all");
   const [prefs, setPrefs] = useState(readPrefs);
@@ -70,7 +81,12 @@ export function Notes({
   const [writing, setWriting] = useState<Writing>(null);
   const [deleting, setDeleting] = useState<NoteItem | null>(null);
   const [related, setRelated] = useState<NoteItem[]>([]);
+  const [toBook, setToBook] = useState<NoteItem | null>(null);
   const toast = useToast();
+
+  useEffect(() => {
+    if (ask) setWriting({ kind: ask.kind });
+  }, [ask]);
 
   const query: NotesQuery = useMemo(
     () => ({ tab, sort: prefs.sort, search: search.trim() || null, bookId: bookId as NotesQuery["bookId"], colors }),
@@ -151,6 +167,7 @@ export function Notes({
       ? [{ label: n.locator?.cfi ? "Open in Reader" : "Open the book", icon: "arrowRight" as const, onSelect: () => openInReader(n) }]
       : []),
     { label: "Copy", icon: "copy", onSelect: () => copy(n) },
+    ...(onGoToBooks ? [{ label: "Add to a book I'm writing…", icon: "pen" as const, onSelect: () => setToBook(n) }] : []),
     ...(n.kind === "highlight" || n.kind === "annotation"
       ? ([
           "divider",
@@ -283,7 +300,8 @@ export function Notes({
     );
 
   return (
-    <div className="library notes-page">
+    <div className={`library notes-page${embedded ? " is-embedded" : ""}`}>
+{!embedded && (
       <header className="library-head">
         <div>
           <h1 className="library-title">Notes</h1>
@@ -303,6 +321,7 @@ export function Notes({
           ]}
         />
       </header>
+      )}
 
       <div className="library-toolbar">
         <div className="tabs" role="tablist" aria-label="Kinds of note">
@@ -394,6 +413,16 @@ export function Notes({
             setTab("all");
             setSelectedId(n.id);
             changed();
+          }}
+        />
+      )}
+      {toBook && onGoToBooks && (
+        <NoteToBookDialog
+          note={toBook}
+          onClose={() => setToBook(null)}
+          onGoToBooks={() => {
+            setToBook(null);
+            onGoToBooks();
           }}
         />
       )}

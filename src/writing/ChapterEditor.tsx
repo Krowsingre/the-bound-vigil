@@ -190,12 +190,15 @@ export function ChapterEditor({
   onSave,
   onSaveState,
   flushRef,
+  insertRef,
 }: {
   chapter: WritingChapter;
   onSave: (title: string, body: string) => Promise<void>;
   onSaveState: (state: SaveState, words: number) => void;
   /** Set to a function that saves what's waiting now, and resolves once it's saved. */
   flushRef?: MutableRefObject<(() => Promise<void>) | null>;
+  /** Set to a function that puts HTML in where the cursor is (a quote from your notes). */
+  insertRef?: MutableRefObject<((html: string) => void) | null>;
 }) {
   const [title, setTitle] = useState(chapter.title);
   const pending = useRef<{ title: string; body: string } | null>(null);
@@ -254,6 +257,7 @@ export function ChapterEditor({
     editorProps: { attributes: { class: "writing-page", spellcheck: "true", "aria-label": "Chapter text" } },
     onUpdate: ({ editor: e }) => change({ body: e.getHTML() }),
   });
+  if (insertRef) insertRef.current = editor ? (html) => void editor.chain().focus().insertContent(html).run() : null;
 
   // Leaving the chapter saves what's waiting. Quitting the app waits for it;
   // a browser tab asks before closing while words are unsaved.

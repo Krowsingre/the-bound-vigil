@@ -124,9 +124,16 @@ fn a_download_knows_its_format_from_what_it_can() {
 }
 
 #[test]
-fn catalogs_start_with_two_free_ones_and_keep_passwords_to_their_own_server() {
+fn catalogs_start_with_gutenberg_and_keep_passwords_to_their_own_server() {
     let (_dir, library) = open_temp_library();
     let names = |l: &Library| l.catalogs().unwrap().into_iter().map(|c| c.name).collect::<Vec<_>>();
+    assert_eq!(names(&library), ["Project Gutenberg"]);
+    // Standard Ebooks, built in before 1.18, goes unless someone signed in to it.
+    let old = r#"[{"id":"gutenberg","name":"Project Gutenberg","url":"https://www.gutenberg.org/ebooks.opds/"},{"id":"standard-ebooks","name":"Standard Ebooks","url":"https://standardebooks.org/feeds/opds"}]"#;
+    library.set_setting(SETTINGS_KEY, old).unwrap();
+    assert_eq!(names(&library), ["Project Gutenberg"]);
+    let signed_in = old.replace(r#"feeds/opds"}"#, r#"feeds/opds","username":"me@example.com"}"#);
+    library.set_setting(SETTINGS_KEY, &signed_in).unwrap();
     assert_eq!(names(&library), ["Project Gutenberg", "Standard Ebooks"]);
     library.remove_catalog("standard-ebooks").unwrap();
     let calibre = library

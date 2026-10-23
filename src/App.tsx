@@ -10,7 +10,6 @@ import { BookDetailsPage } from "./details/BookDetailsPage";
 import { DetailsHost } from "./details/DetailsHost";
 import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
-import { Notes } from "./notes/Notes";
 import { Writing } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
 import { Audiobooks } from "./audio/Audiobooks";
@@ -545,10 +544,16 @@ export function App() {
             <SyncActivity sync={sync} onOpenSyncSettings={() => navigate("sync")} />
           ) : route === "places" ? (
             <BookPlacesPage onOpenSyncSettings={() => navigate("sync")} />
-          ) : route === "notes" ? (
-            <Notes search={searchText} refreshKey={refreshKey} onClearSearch={() => changeSearch("")} onOpenBook={openBook} />
-          ) : route === "writing" ? (
-            <Writing refreshKey={refreshKey} />
+          ) : route === "notes" || route === "writing" ? (
+            <Writing
+              tab={route === "writing" ? "books" : "notes"}
+              onTab={(t) => navigate(t === "books" ? "writing" : "notes")}
+              booksShown={!isHome}
+              search={searchText}
+              refreshKey={refreshKey}
+              onClearSearch={() => changeSearch("")}
+              onOpenBook={openBook}
+            />
           ) : route === "catalogs" ? (
             <Browse refreshKey={refreshKey} onOpenBook={openBook} />
           ) : (
