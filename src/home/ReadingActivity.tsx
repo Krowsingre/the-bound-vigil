@@ -46,7 +46,7 @@ export function ReadingActivity({ finished, finishedDates, refreshKey }: { finis
       }
     >
       <div className="stats stats-3">
-        <Stat value={finishedInPeriod} label="Books finished" />
+        <Stat value={finishedInPeriod} label="Read" />
         <Stat value={inPeriod ? <Spent seconds={inPeriod.read} /> : "—"} label="Time read" />
         <Stat value={inPeriod ? <Spent seconds={inPeriod.listen} /> : "—"} label="Time listened" />
       </div>
