@@ -581,7 +581,7 @@ pub struct CollectionSummary {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SmartKind {
-    /// Added in the last 30 days.
+    /// Added in the last 7 days. No longer shown; kept so an old link still opens.
     RecentlyAdded,
     /// Not opened yet.
     Unread,
@@ -590,15 +590,20 @@ pub enum SmartKind {
     /// Started and not finished.
     InProgress,
     Favorites,
+    /// The Up next shelf's books.
+    UpNext,
+    /// The Sent to device shelf's books.
+    SendToDevice,
 }
 
 impl SmartKind {
+    /// The ones Compendium shows (embre, 2026-10-23), in their usual order.
     pub const ALL: [SmartKind; 5] = [
-        SmartKind::RecentlyAdded,
-        SmartKind::Unread,
+        SmartKind::SendToDevice,
         SmartKind::InProgress,
-        SmartKind::Read,
+        SmartKind::UpNext,
         SmartKind::Favorites,
+        SmartKind::Read,
     ];
 }
 

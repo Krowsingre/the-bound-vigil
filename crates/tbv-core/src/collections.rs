@@ -112,7 +112,7 @@ impl Library {
             CollectionRef::Smart { smart } => {
                 let (condition, order, values) = match smart {
                     SmartKind::RecentlyAdded => {
-                        ("b.added_at >= ?1", "b.added_at DESC", vec![days_ago(30)])
+                        ("b.added_at >= ?1", "b.added_at DESC", vec![days_ago(crate::home::RECENT_DAYS)])
                     }
                     SmartKind::Unread => ("b.status = 'unread'", "b.added_at DESC", vec![]),
                     SmartKind::Read => (
@@ -126,6 +126,11 @@ impl Library {
                         vec![],
                     ),
                     SmartKind::Favorites => ("b.favorite = 1", "b.added_at DESC", vec![]),
+                    SmartKind::UpNext | SmartKind::SendToDevice => {
+                        let shelf = if matches!(smart, SmartKind::UpNext) { "shelf:want_to_read" } else { "shelf:send_to_device" };
+                        let (condition, order) = shelf_condition(shelf).expect("a built-in shelf");
+                        (condition, order, vec![])
+                    }
                 };
                 // What's new shows each book once, not every copy of it.
                 let condition =
@@ -285,7 +290,9 @@ impl Library {
             })
             .collect::<Result<_>>()?;
         Ok(CollectionsOverview {
-            pinned: self.summaries("AND pinned = 1")?,
+            // The built-in shelves show among the smart ones, so they're never
+            // pinned here (unpinning one used to make it vanish).
+            pinned: self.summaries("AND pinned = 1 AND kind != 'shelf'")?,
             smart,
             collections: self.summaries("AND kind != 'shelf'")?,
             series: self.series_summaries()?,
@@ -807,10 +814,10 @@ mod tests {
         library.set_phone_wanted(std::slice::from_ref(&a), true).unwrap();
 
         let overview = library.collections_overview().unwrap();
-        let names: Vec<_> = overview.pinned.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, ["Up next", "Sent to device"], "only shelves that no smart collection repeats");
-        assert_eq!(overview.pinned[0].count, 1);
-        assert_eq!(overview.pinned[1].count, 1, "the books chosen for the phone");
+        assert!(overview.pinned.is_empty(), "the shelves show among the smart ones instead");
+        let smart = |kind| overview.smart.iter().find(|s| s.kind == kind).unwrap().count;
+        assert_eq!(smart(SmartKind::UpNext), 1);
+        assert_eq!(smart(SmartKind::SendToDevice), 1, "the books chosen for the phone");
         assert_eq!(library.shelf_counts().unwrap().send_to_device, 1);
         let chosen = library.library_page(&LibraryQuery { shelf: Shelf::SendToDevice, ..Default::default() }).unwrap();
         assert_eq!(chosen.books.iter().map(|b| b.id.clone()).collect::<Vec<_>>(), vec![a.clone()]);
@@ -842,8 +849,10 @@ mod tests {
             .unwrap();
         assert_eq!(changed.name, "Up next");
         assert_eq!(changed.badge.as_deref(), Some("moon"));
-        let pinned = library.collections_overview().unwrap().pinned;
-        assert_eq!(pinned.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Sent to device"]);
+        // Unpinned, it's still there among the smart ones.
+        let overview = library.collections_overview().unwrap();
+        assert!(overview.pinned.is_empty());
+        assert!(overview.smart.iter().any(|s| s.kind == SmartKind::UpNext));
     }
 
     #[test]
@@ -985,8 +994,13 @@ mod tests {
                 .unwrap()
                 .count
         };
-        assert_eq!(count(SmartKind::RecentlyAdded), 3);
-        assert_eq!(count(SmartKind::Unread), 2);
+        assert_eq!(
+            overview.smart.iter().map(|s| s.kind).collect::<Vec<_>>(),
+            SmartKind::ALL,
+            "Sent to device, In progress, Up next, Favourites, Read"
+        );
+        let recent = CollectionRef::Smart { smart: SmartKind::RecentlyAdded };
+        assert_eq!(library.collection_detail(&recent).unwrap().books.len(), 3);
         assert_eq!(count(SmartKind::Read), 0);
         assert_eq!(count(SmartKind::InProgress), 1);
         assert_eq!(count(SmartKind::Favorites), 0);

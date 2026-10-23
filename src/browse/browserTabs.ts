@@ -23,6 +23,12 @@ export function newTabId(): string {
   return `t${Math.random().toString(36).slice(2, 12)}`;
 }
 
+/** One tab at the home page: Discover starting afresh. */
+export function freshTabs(home: string): TabsState {
+  const id = newTabId();
+  return { tabs: [{ id, url: home, title: null }], active: id };
+}
+
 export function readTabs(home: string): TabsState {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<TabsState> | null;

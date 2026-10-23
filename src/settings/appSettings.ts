@@ -66,6 +66,8 @@ export interface AppSettings {
   showProgress: boolean;
   /** The Library scrolls on without pages on a computer too (a phone always does). */
   scrollLibrary: boolean;
+  /** On a phone held upright, the menu of pages fills the whole screen. */
+  fullMenu: boolean;
   showSmartCollections: boolean;
   showSeries: boolean;
   /** Imports leave out books that were deleted before, instead of bringing them back. */
@@ -89,6 +91,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   underlineLinks: false,
   showProgress: true,
   scrollLibrary: false,
+  fullMenu: false,
   showSmartCollections: true,
   showSeries: true,
   skipDeletedImports: false,
@@ -147,6 +150,7 @@ export function parseAppSettings(json: string | null): AppSettings {
     showSmartCollections: flag(raw.showSmartCollections, d.showSmartCollections),
     showSeries: flag(raw.showSeries, d.showSeries),
     scrollLibrary: flag(raw.scrollLibrary, d.scrollLibrary),
+    fullMenu: flag(raw.fullMenu, d.fullMenu),
     skipDeletedImports: flag(raw.skipDeletedImports, d.skipDeletedImports),
     privacy: {
       on: flag(p.on, d.privacy.on),
@@ -245,6 +249,7 @@ export function applyAppSettings(settings: AppSettings, dark: boolean, adaptive:
   root.toggleAttribute("data-strong-focus", settings.strongFocus);
   root.toggleAttribute("data-underline-links", settings.underlineLinks);
   root.toggleAttribute("data-hide-progress", !settings.showProgress);
+  root.toggleAttribute("data-full-menu", settings.fullMenu);
   root.style.setProperty("zoom", String(SCALES[settings.scale]));
   applyPrivacy(settings.privacy);
   for (const [name, value] of [

@@ -60,7 +60,7 @@ function downloadFile(bytes: Uint8Array, fileName: string) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
-const SMART: SmartKind[] = ["recently_added", "unread", "in_progress", "read", "favorites"];
+const SMART: SmartKind[] = ["send_to_device", "in_progress", "up_next", "favorites", "read"];
 const DAY = 86_400_000;
 const MAX_NAME = 80;
 const MAX_DESCRIPTION = 500;
@@ -386,16 +386,20 @@ export async function webApi(): Promise<Api> {
   };
 
   const smartBooks: Record<SmartKind, (b: BookPreview) => boolean> = {
-    recently_added: (b) => Date.now() - Date.parse(b.addedAt) < 30 * DAY,
+    recently_added: (b) => Date.now() - Date.parse(b.addedAt) < 7 * DAY,
     unread: (b) => b.status === "unread",
     read: (b) => b.status === "read",
     in_progress: (b) => b.status === "in_progress",
     favorites: (b) => b.favorite,
+    up_next: (b) => b.wantToRead,
+    send_to_device: (b) => !!b.phoneWanted,
   };
   const smartOrder: Record<SmartKind, (a: BookPreview, b: BookPreview) => number> = {
     recently_added: (a, b) => newest(a.addedAt, b.addedAt),
     unread: (a, b) => newest(a.addedAt, b.addedAt),
     favorites: (a, b) => newest(a.addedAt, b.addedAt),
+    up_next: (a, b) => newest(a.addedAt, b.addedAt),
+    send_to_device: (a, b) => newest(a.addedAt, b.addedAt),
     read: (a, b) => Number(!a.lastOpenedAt) - Number(!b.lastOpenedAt) || newest(a.lastOpenedAt, b.lastOpenedAt),
     in_progress: (a, b) => Number(!a.lastOpenedAt) - Number(!b.lastOpenedAt) || newest(a.lastOpenedAt, b.lastOpenedAt),
   };
@@ -572,7 +576,7 @@ export async function webApi(): Promise<Api> {
       const titles = new Map(all.map((b) => [b.id as string, b.title]));
       return {
         resumeBook: inProgress[0] ?? null,
-        recentlyAdded: onceEach([...reading].sort((a, b) => newest(a.addedAt, b.addedAt))).slice(0, 5),
+        recentlyAdded: onceEach(reading.filter((b) => Date.now() - Date.parse(b.addedAt) < 7 * DAY).sort((a, b) => newest(a.addedAt, b.addedAt))).slice(0, 5),
         inProgress: inProgress.slice(0, 3),
         collections: previews().slice(0, 4),
         annotations: annotationRows()
@@ -818,7 +822,7 @@ export async function webApi(): Promise<Api> {
       const series = new Map<string, BookPreview[]>();
       for (const b of list) if (b.series?.trim()) series.set(b.series, [...(series.get(b.series) ?? []), b]);
       return {
-        pinned: rows.filter((c) => c.pinned).map((c) => summary(c, all)),
+        pinned: rows.filter((c) => c.pinned && c.kind !== "shelf").map((c) => summary(c, all)),
         smart: SMART.map((kind) => {
           const matching = list.filter(smartBooks[kind]);
           const members = kind === "recently_added" ? onceEach(matching.sort(smartOrder[kind])) : matching;

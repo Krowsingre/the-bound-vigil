@@ -185,6 +185,12 @@ export function AppearanceTab({
         </Row>
         <Row label="Sidebar" hint="The ••• button at the top left does the same.">
           <Toggle label="Show the full sidebar" checked={sidebarShown} onChange={onSidebarShown} />
+          <Toggle
+            label="Full-screen menu on a phone"
+            hint="When the phone is upright, the menu of pages fills the screen."
+            checked={settings.fullMenu}
+            onChange={(fullMenu) => change({ fullMenu })}
+          />
         </Row>
         <Row label="Archive pages" hint="On a phone the Archive always scrolls on without pages.">
           <Toggle

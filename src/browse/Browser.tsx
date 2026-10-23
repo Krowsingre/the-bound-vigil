@@ -12,7 +12,7 @@ import { useToast } from "../components/Toast";
 import { formatLabel } from "../lib/queryBooks";
 import { useNarrow } from "../lib/useNarrow";
 import { addressFor, lowerFor, onBrowserPrefs, protectionOf, readBrowserPrefs, siteOf, writeBrowserPrefs } from "./browserPrefs";
-import { closeTab, newTabId, openTab, readTabs, updateTab, writeTabs, type TabsState } from "./browserTabs";
+import { closeTab, freshTabs, newTabId, openTab, readTabs, updateTab, writeTabs, type TabsState } from "./browserTabs";
 import { articleByline, articleEpub, articleFrom, cleanArticle, readerScript } from "./readerArticle";
 
 /** The header's search box, on Discover, sends what's typed here. */
@@ -126,6 +126,21 @@ const fileTitle = (url: string) => {
   }
 };
 
+/** Whether Discover has opened since TBV started, for starting afresh after closing TBV. */
+let openedThisRun = false;
+
+/** The tabs Discover opens with, as chosen in Preferences › Browser. */
+function startingTabs(): TabsState {
+  const { home, comeBack } = readBrowserPrefs();
+  const first = !openedThisRun;
+  openedThisRun = true;
+  if (!(comeBack === "leave" || (comeBack === "close" && first))) return readTabs(home);
+  // Pages kept from before (when the choice was still to keep them) would
+  // otherwise go on without a tab to close them by.
+  if (!first) for (const t of readTabs(home).tabs) void api.browserAct(t.id, "close").catch(() => undefined);
+  return freshTabs(home);
+}
+
 const titleOf = (title: string | null, url: string) => title?.trim() || siteOf(url) || url;
 
 /** Pauses every video and sound on a page, for leaving Discover. */
@@ -150,7 +165,7 @@ interface Fetched {
 export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) {
   const narrow = useNarrow();
   const [rowOpen] = useBrowserRow();
-  const [tabs, setTabs] = useState<TabsState>(() => readTabs(readBrowserPrefs().home));
+  const [tabs, setTabs] = useState<TabsState>(startingTabs);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [marks, setMarks] = useState<Bookmark[]>([]);
   const [fetched, setFetched] = useState<Fetched[]>([]);
@@ -333,6 +348,13 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
       watching.disconnect();
       window.removeEventListener("resize", fit);
       void api.browserHide();
+      // Chosen in Preferences › Browser: back to the home page next time, so
+      // every tab's page is closed now.
+      if (readBrowserPrefs().comeBack === "leave") {
+        for (const id of made.current) void api.browserAct(id, "close").catch(() => undefined);
+        made.current.clear();
+        return;
+      }
       // Chosen in Preferences › Browser: whatever was playing stops on leaving.
       if (!readBrowserPrefs().keepPlaying) for (const id of made.current) void api.browserRead(id, PAUSE_ALL).catch(() => undefined);
     };

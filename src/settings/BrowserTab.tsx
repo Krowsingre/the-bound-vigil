@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { useToast } from "../components/Toast";
 import {
+  COME_BACK,
   DEFAULT_HOME,
   lowerFor,
   onBrowserPrefs,
@@ -11,6 +12,7 @@ import {
   SEARCH_ENGINES,
   writeBrowserPrefs,
   type BrowserPrefs,
+  type ComeBack,
   type ProtectionLevel,
   type SearchEngine,
 } from "../browse/browserPrefs";
@@ -81,6 +83,14 @@ export function BrowserTab() {
             Use Project Gutenberg
           </button>
         </div>
+        <Row label="Coming back to Discover" hint="Starting at the home page closes your other tabs.">
+          <Select<ComeBack>
+            label="Coming back to Discover"
+            value={prefs.comeBack}
+            options={COME_BACK}
+            onChange={(comeBack) => writeBrowserPrefs({ comeBack })}
+          />
+        </Row>
       </Section>
       <Section id="downloads" title="Downloads" lede="Ebooks you download in Discover.">
         <Toggle

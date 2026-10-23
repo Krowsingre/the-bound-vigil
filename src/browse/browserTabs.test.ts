@@ -1,4 +1,4 @@
-import { closeTab, openTab, readTabs, updateTab, writeTabs, type TabsState } from "./browserTabs";
+import { closeTab, freshTabs, openTab, readTabs, updateTab, writeTabs, type TabsState } from "./browserTabs";
 
 const HOME = "https://www.gutenberg.org/";
 
@@ -38,4 +38,11 @@ test("a page change updates only its tab", () => {
   const state = { tabs: [{ id: "a", url: HOME, title: null }], active: "a" };
   expect(updateTab(state, "a", { title: "Gutenberg" }).tabs[0].title).toBe("Gutenberg");
   expect(updateTab(state, "zz", { title: "x" })).toBe(state);
+});
+
+describe("starting afresh", () => {
+  it("is one tab at the home page", () => {
+    const fresh = freshTabs("https://example.org/");
+    expect(fresh.tabs).toEqual([{ id: fresh.active, url: "https://example.org/", title: null }]);
+  });
 });

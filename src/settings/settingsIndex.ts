@@ -136,7 +136,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "appearance",
     section: "layout",
     label: "Interface layout",
-    words: "scale size zoom sidebar cover display grid list",
+    words: "scale size zoom sidebar menu full screen phone cover display grid list",
   },
   {
     tab: "appearance",
@@ -226,7 +226,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "browser",
     section: "home",
     label: "Browser home page",
-    words: "discover browser home page start gutenberg website address",
+    words: "discover browser home page start gutenberg website address coming back tabs close reset last page",
   },
   {
     tab: "browser",

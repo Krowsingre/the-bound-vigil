@@ -451,13 +451,14 @@
   }
 }
 
+/* Chosen in Preferences › Appearance: an upright phone's menu fills the screen. */
 @media (max-width: 500px) {
-  .sidebar {
+  :root[data-full-menu] .sidebar {
     width: 100vw;
     box-shadow: none;
   }
 
-  .sidebar-close {
+  :root[data-full-menu] .sidebar-close {
     position: absolute;
     top: calc(env(safe-area-inset-top) + 10px);
     left: 12px;
