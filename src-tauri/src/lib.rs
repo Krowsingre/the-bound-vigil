@@ -9,6 +9,7 @@ mod home;
 mod imports;
 mod localsend;
 mod moving;
+mod protection;
 mod servers;
 mod sync;
 mod writing;
@@ -1756,6 +1757,12 @@ pub fn run() {
             browser::browser_place,
             browser::browser_hide,
             browser::browser_act,
+            browser::browser_clear,
+            browser::browser_find,
+            browser::browser_protect,
+            browser::browser_read,
+            browser::browser_cancel_download,
+            browser::browser_fetch_picture,
             browser::browser_add_download,
             browser::browser_keep_download,
             browser::browser_discard_download,

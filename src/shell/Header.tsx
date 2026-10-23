@@ -1,4 +1,4 @@
-import { forwardRef, type ReactNode } from "react";
+import { forwardRef, useState, type ReactNode } from "react";
 import type { Profile, SyncStatus } from "../api/types";
 import { Icon } from "../components/Icon";
 import { SyncMenu } from "./SyncMenu";
@@ -23,10 +23,16 @@ export const Header = forwardRef<
     onClearAvatar: () => void;
     /** Opens the menu of pages, on a phone. */
     onOpenMenu?: () => void;
-    /** A button for the page showing, beside the menu button (Discover's catalogues). */
+    /** A button for the page showing, beside the menu button. */
     pageAction?: ReactNode;
+    /** On Discover: the page's address, shown in the search box while nothing's being typed. */
+    address?: string;
+    /** A button between the search box and the sync circle (Discover's row arrow). */
+    afterSearch?: ReactNode;
   }
->(function Header({ sync, profile, search, placeholder, onSearchChange, onSearchSubmit, onOpenMenu, pageAction, ...menu }, searchRef) {
+>(function Header({ sync, profile, search, placeholder, onSearchChange, onSearchSubmit, onOpenMenu, pageAction, address, afterSearch, ...menu }, searchRef) {
+  const [typing, setTyping] = useState(false);
+  const showing = address !== undefined && !typing && !search ? address : search;
   return (
     <header className="header" data-tauri-drag-region>
       {onOpenMenu && (
@@ -52,7 +58,21 @@ export const Header = forwardRef<
           ref={searchRef}
           type="search"
           placeholder={placeholder ?? "Search books, authors or series…"}
-          value={search}
+          value={showing}
+          onFocus={(e) => {
+            if (address === undefined) return;
+            setTyping(true);
+            if (!search && address) {
+              onSearchChange(address);
+              const box = e.currentTarget;
+              requestAnimationFrame(() => box.select());
+            }
+          }}
+          onBlur={() => {
+            setTyping(false);
+            // Left without going anywhere: back to showing the page's address.
+            if (address !== undefined && search === address) onSearchChange("");
+          }}
           onChange={(e) => onSearchChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
@@ -64,6 +84,7 @@ export const Header = forwardRef<
           spellCheck={false}
         />
       </form>
+      {afterSearch}
       <div className="header-spacer" data-tauri-drag-region />
       <SyncMenu sync={sync} profile={profile} {...menu} />
       <WindowControls />

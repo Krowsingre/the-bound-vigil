@@ -1,6 +1,6 @@
 // Discover: a web browser, with ebooks you download offered to your library.
-// The globe-plus button in the top bar opens the catalogues: the Bible in
-// three public-domain translations, Project Gutenberg and any you add.
+// The row's globe-plus button opens the catalogues: the Bible in three
+// public-domain translations, Project Gutenberg and any you add.
 // Whatever comes in joins the import queue like any other book.
 
 import { Catalogs } from "../catalogs/Catalogs";
@@ -11,17 +11,19 @@ export function Browse({
   refreshKey,
   onOpenBook,
   catalogues,
+  onOpenCatalogues,
   onCloseCatalogues,
 }: {
   refreshKey: number;
   onOpenBook: (bookId: string, at?: string) => void;
   /** The catalogues panel is open over the browser. */
   catalogues: boolean;
+  onOpenCatalogues: () => void;
   onCloseCatalogues: () => void;
 }) {
   return (
     <div className="library browse-page browse-browser">
-      <Browser />
+      <Browser onOpenCatalogues={onOpenCatalogues} />
       {catalogues && (
         <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onCloseCatalogues()}>
           <div className="dialog catalogues-panel" role="dialog" aria-label="Catalogues" onKeyDown={(e) => e.key === "Escape" && onCloseCatalogues()}>
@@ -45,11 +47,3 @@ export function Browse({
   );
 }
 
-/** The top bar's button on Discover that opens the catalogues. */
-export function CataloguesButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button type="button" className="header-action" aria-label="Add a catalogue" title="Catalogues" onClick={onClick}>
-      <Icon name="globePlus" size={20} />
-    </button>
-  );
-}

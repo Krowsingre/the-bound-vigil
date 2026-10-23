@@ -758,6 +758,30 @@ pub fn download_book(url: &str, title: &str, folder: &Path) -> Result<PathBuf> {
     CatalogAccess(anyone).download(&OpdsFile { url: url.to_string(), mime: String::new(), format: None, label: None }, title, folder)
 }
 
+/// A picture from a web page (for an article saved from the browser's reader
+/// mode): JPEG, PNG, GIF or WebP, at most 10 MB.
+pub fn fetch_picture(url: &str) -> Result<Vec<u8>> {
+    const MOST: u64 = 10 * 1024 * 1024;
+    let response = agent()
+        .get(url)
+        .header("Accept", "image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.9,*/*;q=0.5")
+        .call()
+        .map_err(|e| Error::Unsuitable(format!("The picture couldn't be reached ({e}).")))?;
+    if !response.status().is_success() {
+        return Err(Error::Unsuitable(format!("The picture's site answered {}.", response.status().as_u16())));
+    }
+    let mut bytes = Vec::new();
+    response.into_body().into_reader().take(MOST + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MOST {
+        return Err(Error::Unsuitable("That picture is over 10 MB.".into()));
+    }
+    let picture = bytes.starts_with(&[0xFF, 0xD8, 0xFF]) || bytes.starts_with(b"\x89PNG") || bytes.starts_with(b"GIF8") || (bytes.len() > 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP");
+    if !picture {
+        return Err(Error::Unsuitable("That isn't a picture TBV can keep.".into()));
+    }
+    Ok(bytes)
+}
+
 /// Takes `{name?}` fields out of a filled-in OpenSearch address.
 fn strip_optional_fields(url: &str) -> String {
     let mut out = String::with_capacity(url.len());

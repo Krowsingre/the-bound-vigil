@@ -1308,7 +1308,7 @@ button.tag-chip-add:hover {
   color: var(--accent-text);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .library-title-row .library-title {
     font-size: 40px;
   }

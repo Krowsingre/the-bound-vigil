@@ -389,7 +389,7 @@ button.chapter-row:hover {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   :root {
     --player-h: 156px;
   }
@@ -466,7 +466,7 @@ button.chapter-row:hover {
   display: none;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .audio-sheet-backdrop {
     position: fixed;
     inset: 0;
@@ -503,7 +503,7 @@ button.chapter-row:hover {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   /* The player bar stays usable under an open sheet. */
   .player-bar {
     z-index: 47;

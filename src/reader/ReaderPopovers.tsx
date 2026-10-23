@@ -12,6 +12,7 @@ import {
   zoomStep,
   ZOOM_RANGE,
   type PageSpread,
+  type TextSpread,
   type PageZoom,
   type ReaderSettings,
   type ReadingFlow,
@@ -137,6 +138,17 @@ export function TextSettings({ settings, onChange }: { settings: ReaderSettings;
         ]}
         onChange={(flow) => onChange({ flow })}
       />
+      {settings.flow === "paginated" && (
+        <Choice<TextSpread>
+          label="Pages at a time"
+          value={settings.textSpread}
+          options={[
+            { value: "one", label: "One" },
+            { value: "auto", label: "Two when there's room" },
+          ]}
+          onChange={(textSpread) => onChange({ textSpread })}
+        />
+      )}
       <Choice<ReadingTheme> label="Page colour" value={settings.theme} options={THEME_OPTIONS} onChange={(theme) => onChange({ theme })} />
       <label className="check-row">
         <input type="checkbox" checked={settings.justify} onChange={(e) => onChange({ justify: e.target.checked })} />

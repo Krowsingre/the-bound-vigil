@@ -551,7 +551,7 @@
 }
 
 /* On a phone the kinds of note scroll sideways instead of hiding. */
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .notes-page .library-toolbar {
     flex-wrap: wrap;
   }
@@ -737,7 +737,7 @@
   font: 400 16px/1.5 var(--font-serif);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .scribe-chips {
     flex-wrap: nowrap;
   }

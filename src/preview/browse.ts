@@ -15,8 +15,13 @@ type Calls = Pick<
   | "browserPlace"
   | "browserHide"
   | "browserAct"
-  | "onBrowserPage"
-  | "onBrowserDownload"
+  | "browserClear"
+  | "browserFind"
+  | "browserProtect"
+  | "browserRead"
+  | "browserCancelDownload"
+  | "browserFetchPicture"
+  | "onBrowserEvent"
   | "browserAddDownload"
   | "browserKeepDownload"
   | "browserDiscardDownload"
@@ -50,8 +55,17 @@ export function browseStub(): Calls {
     browserPlace: async () => undefined,
     browserHide: async () => undefined,
     browserAct: async () => undefined,
-    onBrowserPage: () => () => undefined,
-    onBrowserDownload: () => () => undefined,
+    browserClear: async () => undefined,
+    browserFind: async () => undefined,
+    browserProtect: async () => undefined,
+    browserRead: async () => {
+      throw new Error(APP_ONLY);
+    },
+    browserCancelDownload: async () => undefined,
+    browserFetchPicture: async () => {
+      throw new Error(APP_ONLY);
+    },
+    onBrowserEvent: () => () => undefined,
     browserAddDownload: async () => {
       throw new Error(APP_ONLY);
     },

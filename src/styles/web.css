@@ -59,7 +59,7 @@
 
 /* Phones: the sidebar becomes a menu that slides in from the left, opened
    from the button beside the search box. */
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   :root {
     --header-h: 52px;
     /* Nothing sits along the bottom; only the home bar's room is kept. */
@@ -358,10 +358,48 @@
   font-size: 13px;
 }
 
-/* The iPhone app runs under the status bar and notch, so it keeps clear. */
+/* The iPhone app runs under the status bar and notch, so it keeps clear,
+   along the top upright and along the sides held sideways. */
 .is-ios-app #root {
   box-sizing: border-box;
   padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* A phone held sideways keeps the phone layout (see useNarrow.ts), with
+   more covers to a row, since the screen is wide but short. */
+@media (max-height: 500px) and (pointer: coarse) and (orientation: landscape) {
+  .sidebar {
+    padding-left: env(safe-area-inset-left);
+    width: min(340px, 60vw);
+  }
+
+  .shelf {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .shelf > li:nth-child(n + 4) {
+    display: block;
+  }
+
+  .shelf > li:nth-child(n + 7) {
+    display: none;
+  }
+
+  .scribe-books .writing-shelf {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  /* Continue reading and Reading activity side by side again. */
+  .home-top {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+
+  .home-top > .activity {
+    border-top: 0;
+    border-left: 1px solid var(--border);
+  }
 }
 
 /* Pulling down from the top bar to go Home: shown once the pull is under way. */
@@ -369,7 +407,7 @@
   display: none;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .pull-home {
     position: fixed;
     z-index: 60;

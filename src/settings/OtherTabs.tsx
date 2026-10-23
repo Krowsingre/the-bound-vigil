@@ -699,6 +699,12 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
     url: "https://github.com/mozilla/pdf.js",
   },
   {
+    name: "Readability",
+    what: "Discover's reader mode, by Mozilla",
+    licence: "Apache 2.0",
+    url: "https://github.com/mozilla/readability",
+  },
+  {
     name: "Mammoth",
     what: "Reading Word documents",
     licence: "BSD 2-Clause",
@@ -737,7 +743,7 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
 ];
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.19.0");
+  const [version, setVersion] = useState("1.20.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

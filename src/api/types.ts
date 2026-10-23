@@ -1208,17 +1208,33 @@ export interface BrowserFrame {
   height: number;
 }
 
-/** Where the browser is: sent as pages start and finish loading. */
-export interface BrowserPage {
-  url: string;
-  /** Sent once the page has told its title. */
-  title?: string | null;
-  loading: boolean;
+/** Discover's protection: the level chosen, and the sites (hosts) it's lowered for. */
+export interface BrowserProtection {
+  level: "strict" | "balanced" | "off";
+  lowered: string[];
 }
 
-/** A file the browser brought down, waiting to be added or kept. */
-export interface BrowserDownload {
-  path: string;
-  name: string;
-  ok: boolean;
+/** Something a browser tab did. */
+export type BrowserEvent =
+  /** Where a tab is: sent as pages start and finish loading, and when the title is known. */
+  | { kind: "page"; tab: string; url: string; title?: string | null; loading: boolean }
+  /** A file started coming down. */
+  | { kind: "downloadStart"; tab: string; id: string; name: string; url: string }
+  /** A file finished coming down (`ok`), or failed. */
+  | { kind: "download"; tab: string; id: string; path: string; name: string; ok: boolean }
+  /** A link that wants a new window. With `tab`, the tab is made already (a pop-up on iPhone). */
+  | { kind: "newTab"; url: string; from: string; tab?: string }
+  /** A page that closed itself. */
+  | { kind: "closed"; tab: string };
+
+/** An article found on a page by reader mode (Mozilla's Readability). */
+export interface ReaderArticle {
+  title: string;
+  byline: string | null;
+  siteName: string | null;
+  /** The article's HTML, its links and pictures with full addresses. */
+  content: string;
+  excerpt: string | null;
+  lang: string | null;
+  url: string;
 }
