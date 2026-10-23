@@ -2,6 +2,8 @@
 // home page, whether ebook downloads go straight into the library, and how
 // much the browser blocks (and for which sites that's lowered).
 
+import { HISTORY_KEEPS, type HistoryKeep } from "./browserHistory";
+
 export type SearchEngine = "duckduckgo" | "google" | "bing" | "brave" | "startpage" | "ecosia";
 
 export const SEARCH_ENGINES: { value: SearchEngine; label: string; url: string }[] = [
@@ -42,6 +44,12 @@ export interface BrowserPrefs {
   /** Where Discover is when you come back: as you left it, or at the home
    * page with the other tabs closed after leaving Discover or after closing TBV. */
   comeBack: ComeBack;
+  /** Pages visited are kept in History (••• › History). */
+  historyOn: boolean;
+  /** Words searched for from the address box are kept too. */
+  historySearches: boolean;
+  /** How long History keeps things. */
+  historyKeep: HistoryKeep;
   /** Sites (hosts, without "www.") whose protection was lowered from Discover's ••• menu. */
   lowered: string[];
 }
@@ -66,6 +74,9 @@ export function readBrowserPrefs(): BrowserPrefs {
     home,
     addWithoutAsking: saved.addWithoutAsking === true,
     keepPlaying: saved.keepPlaying === true,
+    historyOn: saved.historyOn !== false,
+    historySearches: saved.historySearches !== false,
+    historyKeep: HISTORY_KEEPS.some((k) => k.value === saved.historyKeep) ? (saved.historyKeep as HistoryKeep) : "quarter",
     comeBack: COME_BACK.some((c) => c.value === saved.comeBack) ? (saved.comeBack as ComeBack) : "keep",
     protection: PROTECTION_LEVELS.some((p) => p.value === saved.protection) ? (saved.protection as ProtectionLevel) : "strict",
     lowered: Array.isArray(saved.lowered) ? saved.lowered.filter((h): h is string => typeof h === "string") : [],
@@ -89,11 +100,17 @@ export function onBrowserPrefs(listener: () => void): () => void {
 }
 
 /** What was typed, as an address: a web address as is, anything else searched for. */
+/** Whether what's typed is a web address rather than words to search for. */
+export function isAddress(typed: string): boolean {
+  const text = typed.trim();
+  return /^https?:\/\//i.test(text) || (!/\s/.test(text) && /^[^/]+\.[a-z]{2,}(\/|$|:)/i.test(text));
+}
+
 export function addressFor(typed: string, engine: SearchEngine = "duckduckgo"): string | null {
   const text = typed.trim();
   if (!text) return null;
   if (/^https?:\/\//i.test(text)) return text;
-  if (!/\s/.test(text) && /^[^/]+\.[a-z]{2,}(\/|$|:)/i.test(text)) return `https://${text}`;
+  if (isAddress(text)) return `https://${text}`;
   const search = SEARCH_ENGINES.find((e) => e.value === engine) ?? SEARCH_ENGINES[0];
   return `${search.url}${encodeURIComponent(text)}`;
 }

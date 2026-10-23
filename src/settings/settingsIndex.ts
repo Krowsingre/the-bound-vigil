@@ -230,6 +230,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "browser",
+    section: "history",
+    label: "Browser history",
+    words: "discover browser history pages visited searches searched clear delete keep days privacy",
+  },
+  {
+    tab: "browser",
     section: "downloads",
     label: "Browser downloads",
     words: "discover browser download downloads ebook add library automatically without asking",

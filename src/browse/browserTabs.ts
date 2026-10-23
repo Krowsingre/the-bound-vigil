@@ -80,3 +80,13 @@ export function updateTab(state: TabsState, id: string, change: Partial<Omit<Bro
   if (!state.tabs.some((t) => t.id === id)) return state;
   return { ...state, tabs: state.tabs.map((t) => (t.id === id ? { ...t, ...change } : t)) };
 }
+
+/** Moves a tab to where `onto` is, the others making room; which tab is in front stays. */
+export function moveTab(state: TabsState, id: string, onto: string): TabsState {
+  const tab = state.tabs.find((t) => t.id === id);
+  const to = state.tabs.findIndex((t) => t.id === onto);
+  if (!tab || to < 0 || id === onto) return state;
+  const tabs = state.tabs.filter((t) => t.id !== id);
+  tabs.splice(to, 0, tab);
+  return { ...state, tabs };
+}

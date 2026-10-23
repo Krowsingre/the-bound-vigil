@@ -17,6 +17,8 @@ import {
   type SearchEngine,
 } from "../browse/browserPrefs";
 import { Row, Section, Select, Toggle } from "./controls";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { clearHistory, HISTORY_KEEPS, trimHistory, type HistoryKeep } from "../browse/browserHistory";
 
 /** Tells an open browser about a change to protection; it's read afresh when the browser next opens anyway. */
 const protect = (prefs: BrowserPrefs) => void api.browserProtect(protectionOf(prefs)).catch(() => undefined);
@@ -26,6 +28,7 @@ export function BrowserTab() {
   const toast = useToast();
   const [prefs, setPrefs] = useState(readBrowserPrefs);
   const [home, setHome] = useState(prefs.home);
+  const [clearing, setClearing] = useState(false);
   useEffect(() => onBrowserPrefs(() => setPrefs(readBrowserPrefs())), []);
   useEffect(() => setHome(prefs.home), [prefs.home]);
 
@@ -91,6 +94,46 @@ export function BrowserTab() {
             onChange={(comeBack) => writeBrowserPrefs({ comeBack })}
           />
         </Row>
+      </Section>
+      <Section id="history" title="History" lede="Pages visited and words searched for in Discover, kept on this device only. Open it from Discover's ••• menu.">
+        <Toggle label="Keep a history of pages visited" checked={prefs.historyOn} onChange={(historyOn) => writeBrowserPrefs({ historyOn })} />
+        <Toggle
+          label="Keep searches too"
+          hint="Words typed into the address box that aren't a web address."
+          checked={prefs.historySearches}
+          disabled={!prefs.historyOn}
+          onChange={(historySearches) => writeBrowserPrefs({ historySearches })}
+        />
+        <Row label="Keep history for">
+          <Select<HistoryKeep>
+            label="Keep history for"
+            value={prefs.historyKeep}
+            options={HISTORY_KEEPS.map((k) => ({ value: k.value, label: k.label }))}
+            onChange={(historyKeep) => {
+              writeBrowserPrefs({ historyKeep });
+              trimHistory(historyKeep);
+            }}
+          />
+        </Row>
+        <Row label="Clear history" hint="Bookmarks, tabs and site sign-ins stay.">
+          <button type="button" className="btn btn-quiet" onClick={() => setClearing(true)}>
+            Clear history
+          </button>
+        </Row>
+        {clearing && (
+          <ConfirmDialog
+            title="Clear all history?"
+            body="Every page and search goes from Discover's history."
+            confirm="Clear"
+            danger
+            onCancel={() => setClearing(false)}
+            onConfirm={() => {
+              clearHistory();
+              setClearing(false);
+              toast("Discover's history is cleared.");
+            }}
+          />
+        )}
       </Section>
       <Section id="downloads" title="Downloads" lede="Ebooks you download in Discover.">
         <Toggle
