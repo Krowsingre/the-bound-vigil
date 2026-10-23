@@ -75,6 +75,7 @@ function siteName(url: string): string | null {
 }
 
 const MOST_PICTURES = 40;
+const AT_ONCE = 3;
 
 function base64(bytes: Uint8Array): string {
   let text = "";
@@ -102,20 +103,20 @@ export async function articleEpub(
 ): Promise<{ bytes: Uint8Array; fileName: string }> {
   const doc = new DOMParser().parseFromString(`<body>${cleanArticle(article.content)}</body>`, "text/html");
   const pictures = [...doc.body.querySelectorAll("img")];
-  await Promise.all(
-    pictures.map(async (img, i) => {
-      const src = img.getAttribute("src") ?? "";
-      try {
-        if (i >= MOST_PICTURES) throw new Error("enough");
-        const bytes = await fetchPicture(src);
-        const mime = mimeOf(bytes);
-        if (!mime) throw new Error("not a picture");
-        img.setAttribute("src", `data:${mime};base64,${base64(bytes)}`);
-      } catch {
-        img.remove();
-      }
-    }),
-  );
+  pictures.slice(MOST_PICTURES).forEach((img) => img.remove());
+  // A few at a time, so a page full of large pictures can't use up a phone's memory.
+  const bring = async (img: HTMLImageElement) => {
+    try {
+      const bytes = await fetchPicture(img.getAttribute("src") ?? "");
+      const mime = mimeOf(bytes);
+      if (!mime) throw new Error("not a picture");
+      img.setAttribute("src", `data:${mime};base64,${base64(bytes)}`);
+    } catch {
+      img.remove();
+    }
+  };
+  const kept = pictures.slice(0, MOST_PICTURES);
+  for (let i = 0; i < kept.length; i += AT_ONCE) await Promise.all(kept.slice(i, i + AT_ONCE).map(bring));
   const site = article.siteName ?? siteName(article.url);
   const saved = now.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
   const project: WritingProject = {

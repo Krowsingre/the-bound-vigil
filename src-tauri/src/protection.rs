@@ -215,6 +215,16 @@ impl Protection {
         self.lowered.iter().any(|h| under(site, h.trim_start_matches("www.")))
     }
 
+    /// The level for a page on `site`: off where protection was lowered for it.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn level_for(&self, site: &str) -> Level {
+        if self.lowered_for(site) {
+            Level::Off
+        } else {
+            self.level
+        }
+    }
+
     /// Whether a request to `url`, made by a page on `site`, is refused.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub fn blocks(&self, url: &str, site: &str) -> bool {

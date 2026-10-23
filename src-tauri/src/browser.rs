@@ -129,6 +129,18 @@ mod view {
         }
     }
 
+    /// Windows' own tracking prevention is one setting shared by every tab, so
+    /// it follows the tab in front: off while that tab's site has protection lowered.
+    fn follow_front(app: &tauri::AppHandle) {
+        #[cfg(windows)]
+        if let Some(tab) = ACTIVE.lock().ok().and_then(|a| a.clone()) {
+            if let Some(view) = app.get_webview(&label(&tab)) {
+                super::windows::tracking(&view, protection().level_for(&site_of(&tab)));
+            }
+        }
+        let _ = app;
+    }
+
     fn label(tab: &str) -> String {
         format!("{PREFIX}{tab}")
     }
@@ -156,6 +168,7 @@ mod view {
                 set_site(tab, &url);
                 view.navigate(url).map_err(|e| e.to_string())?;
             }
+            follow_front(app);
             return Ok(());
         }
         let start = url.unwrap_or_else(|| tauri::Url::parse("about:blank").expect("a fixed address"));
@@ -171,6 +184,7 @@ mod view {
             .on_page_load(move |_, payload| {
                 if matches!(payload.event(), PageLoadEvent::Started) {
                     set_site(&page_tab, payload.url());
+                    follow_front(&pages);
                 }
                 tell(
                     &pages,
@@ -269,6 +283,7 @@ mod view {
         #[cfg(windows)]
         super::windows::tab(&view, app.clone(), tab.to_string());
         let _ = view;
+        follow_front(app);
         // With a second view in it, TBV's own page has to be told to keep filling the window.
         if let Some(main) = app.get_webview("main") {
             let _ = main.set_auto_resize(true);
@@ -342,16 +357,10 @@ mod view {
     }
 
     pub fn set_protection(app: &tauri::AppHandle, protection: Protection) {
-        #[cfg(windows)]
-        let level = protection.level;
         if let Ok(mut p) = PROTECTION.lock() {
             *p = Some(protection);
         }
-        #[cfg(windows)]
-        for view in tabs(app) {
-            super::windows::tracking(&view, level);
-        }
-        let _ = app;
+        follow_front(app);
     }
 
     /// Runs `script` in the tab and answers what it returned (as JSON).

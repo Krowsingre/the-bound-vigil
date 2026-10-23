@@ -133,6 +133,14 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   const url = active?.url ?? "";
 
   useEffect(() => writeTabs(tabs), [tabs]);
+  // A tab that's gone (the oldest, past the most kept) has its page closed too.
+  useEffect(() => {
+    for (const id of [...made.current]) {
+      if (tabs.tabs.some((t) => t.id === id)) continue;
+      made.current.delete(id);
+      void api.browserAct(id, "close");
+    }
+  }, [tabs.tabs]);
   useEffect(() => onBrowserPrefs(() => setPrefs(readBrowserPrefs())), []);
   // The top bar shows the address of the page in front.
   useEffect(() => {
@@ -160,7 +168,6 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   const answer = useCallback(
     async (d: Fetched, how: "add" | "keep" | "drop") => {
       if (!d.path) return;
-      setFetched((list) => (how === "drop" ? list.filter((x) => x.id !== d.id) : list.map((x) => (x.id === d.id ? { ...x, asking: false, state: how === "add" ? "added" : "kept" } : x))));
       try {
         if (how === "add") {
           await api.browserAddDownload(d.path);
@@ -170,8 +177,11 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
           toast(`Saved to ${where}`);
         } else await api.browserDiscardDownload(d.path);
       } catch (e) {
+        // Left as it was, so it can be tried again.
         toast(String(e));
+        return;
       }
+      setFetched((list) => (how === "drop" ? list.filter((x) => x.id !== d.id) : list.map((x) => (x.id === d.id ? { ...x, asking: false, state: how === "add" ? "added" : "kept" } : x))));
     },
     [toast],
   );
