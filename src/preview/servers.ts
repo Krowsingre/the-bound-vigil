@@ -1,4 +1,4 @@
-// The browser preview's pretend seedbox, so Settings › Servers can be tried
+// The browser preview's pretend seedbox, so Preferences › Servers can be tried
 // without one. `?servers` starts with it saved.
 
 import { NO_SERVER_QUEUE, type ServerApi } from "../api/serverStub";
@@ -92,7 +92,7 @@ export function previewServers(): ServerApi {
   setInterval(() => files.some((f) => f.state === "waiting" || f.state === "downloading") && step(), 500);
   const find = (id: string) => {
     const s = servers.find((x) => x.id === id);
-    if (!s) throw new Error("That server isn't saved any more. Add it again in Settings › Servers.");
+    if (!s) throw new Error("That server isn't saved any more. Add it again in Preferences › Servers.");
     return s;
   };
   return {

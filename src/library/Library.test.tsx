@@ -74,6 +74,12 @@ function renderLibrary(props: Partial<React.ComponentProps<typeof Library>> = {}
 
 beforeEach(() => getLibrary.mockReset());
 
+function openShelves() {
+  fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+  const fold = screen.getByRole("button", { name: /Collections/ });
+  if (fold.getAttribute("aria-expanded") !== "true") fireEvent.click(fold);
+}
+
 test("shows the shelf counts, the page of books and where it is in the list", async () => {
   getLibrary.mockResolvedValue({
     books: [book(1, { status: "in_progress", totalProgression: 0.56 }), book(2)],
@@ -92,7 +98,9 @@ test("shows the shelf counts, the page of books and where it is in the list", as
   expect((await screen.findAllByText("Book 1")).length).toBeGreaterThan(0);
   expect(screen.getByText("56%")).toBeInTheDocument();
   expect(screen.getByText("Showing 1–24 of 30 books")).toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: /Read 3/ })).toBeInTheDocument();
+  // The shelves, with their counts, are in Filter under Collections.
+  openShelves();
+  expect(screen.getByRole("menuitemcheckbox", { name: /Read\s*3/ })).toBeInTheDocument();
   expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ shelf: "all", page: 0, pageSize: 24, search: null }));
 });
 
@@ -100,7 +108,8 @@ test("choosing a shelf and a page reports the change", async () => {
   getLibrary.mockResolvedValue({ books: [book(1)], total: 30, page: 0, pageSize: 24, counts, formats: ["epub"], tags: [], genres: [], languages: [], authors: [], narrators: [] });
   const onChange = renderLibrary();
   await screen.findAllByText("Book 1");
-  fireEvent.click(screen.getByRole("tab", { name: /Favourites/ }));
+  openShelves();
+  fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Favourites/ }));
   expect(onChange).toHaveBeenCalledWith({ tab: "favorites" });
   fireEvent.click(screen.getAllByRole("button", { name: "Page 2" })[0]);
   expect(onChange).toHaveBeenCalledWith({ page: 1 });

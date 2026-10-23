@@ -1,6 +1,7 @@
-// Browse › Catalogs: OPDS bookshelves online (Project Gutenberg, Standard
-// Ebooks, your own Calibre library…). Browse their shelves, search, and bring
-// a book in; it joins the import queue like any other.
+// Discover's catalogues: the Bible in three translations, then OPDS
+// bookshelves online (Project Gutenberg, Standard Ebooks, your own Calibre
+// library…). Browse their shelves, search, and bring a book in; it joins the
+// import queue like any other.
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
@@ -10,7 +11,12 @@ import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { formatLabel } from "../lib/queryBooks";
+import { Bible } from "../browse/Bible";
+import { TRANSLATIONS } from "../browse/bibleBooks";
 import { sameAddress, SUGGESTED_CATALOGS } from "./suggested";
+
+/** The Bibles' place in the list, ahead of the catalogues. */
+const BIBLES = "bibles";
 
 const NEEDS_LOGIN = "needs-login";
 
@@ -24,10 +30,13 @@ function fileLabel(file: OpdsFile): string {
 function CatalogDialog({
   catalog,
   existing,
+  bibles,
   onSaved,
   onCancel,
 }: {
   catalog: CatalogView | null;
+  /** The Bibles are offered first, where they can be opened afterwards. */
+  bibles: boolean;
   /** Addresses already added, so suggestions leave them out. */
   existing: string[];
   onSaved: (c: CatalogView) => void;
@@ -42,6 +51,7 @@ function CatalogDialog({
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const toast = useToast();
   const save = async () => {
     setBusy(true);
     try {
@@ -52,6 +62,17 @@ function CatalogDialog({
     }
   };
   const suggestions = catalog ? [] : SUGGESTED_CATALOGS.filter((s) => !existing.some((u) => sameAddress(u, s.url)));
+  const addBible = async (t: (typeof TRANSLATIONS)[number]) => {
+    setBusy(true);
+    try {
+      await api.downloadWebBook(t.url, t.name);
+      toast(`The ${t.name} is being added to your library.`);
+      onCancel();
+    } catch (e) {
+      setError(`The ${t.name} couldn't be brought in: ${String(e)}`);
+      setBusy(false);
+    }
+  };
   const addSuggested = async (name: string, url: string) => {
     setBusy(true);
     try {
@@ -66,21 +87,60 @@ function CatalogDialog({
       <form
         className="dialog writing-dialog"
         role="dialog"
-        aria-label={catalog ? "Edit catalog" : "Add a catalog"}
+        aria-label={catalog ? "Edit catalogue" : "Add a catalogue"}
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
         onKeyDown={(e) => e.key === "Escape" && !busy && onCancel()}
       >
-        <h2>{catalog ? "Edit catalog" : "Add a catalog"}</h2>
+        <h2>{catalog ? "Edit catalogue" : "Add a catalogue"}</h2>
+        {!catalog && bibles && (
+          <section className="catalog-suggested" aria-label="Bibles">
+            <strong>Bibles</strong>
+            <ul>
+              {TRANSLATIONS.map((t) => (
+                <li key={t.id}>
+                  <span>
+                    <b>
+                      {t.name} ({t.short})
+                    </b>
+                    <span className="muted">{t.about}</span>
+                  </span>
+                  <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => void addBible(t)}>
+                    <Icon name="plus" size={14} /> Add
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {suggestions.length > 0 && (
+          <section className="catalog-suggested" aria-label="Free catalogues">
+            <strong>Free catalogues</strong>
+            <ul>
+              {suggestions.map((s) => (
+                <li key={s.url}>
+                  <span>
+                    <b>{s.name}</b>
+                    <span className="muted">{s.about}</span>
+                  </span>
+                  <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => void addSuggested(s.name, s.url)}>
+                    <Icon name="plus" size={14} /> Add
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {!catalog && <strong className="catalog-own">Or your own address</strong>}
         <p className="muted dialog-lede">
-          Any OPDS catalog works. For your own Calibre library, start Calibre's content server (Connect/share › Start Content server) and enter its address
+          Any OPDS catalogue works. For your own Calibre library, start Calibre's content server (Connect/share › Start Content server) and enter its address
           with /opds at the end, like http://192.168.1.20:8080/opds.
         </p>
         <label className="field">
           <span>Address</span>
-          <input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" autoFocus={!catalog} inputMode="url" />
+          <input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" autoFocus={!!catalog} inputMode="url" />
         </label>
         <label className="field">
           <span>Name</span>
@@ -103,24 +163,6 @@ function CatalogDialog({
           </label>
         </div>
         <p className="muted writing-hint">The password stays on this computer and is never put in a backup.</p>
-        {suggestions.length > 0 && (
-          <section className="catalog-suggested" aria-label="Free catalogs">
-            <strong>Or add a free one</strong>
-            <ul>
-              {suggestions.map((s) => (
-                <li key={s.url}>
-                  <span>
-                    <b>{s.name}</b>
-                    <span className="muted">{s.about}</span>
-                  </span>
-                  <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => void addSuggested(s.name, s.url)}>
-                    <Icon name="plus" size={14} /> Add
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
         {error && (
           <p className="form-error" role="alert">
             {error}
@@ -197,7 +239,7 @@ function EntryCard({
   );
 }
 
-export function Catalogs() {
+export function Catalogs({ refreshKey = 0, onOpenBook }: { refreshKey?: number; onOpenBook?: (bookId: string, at?: string) => void }) {
   const [catalogs, setCatalogs] = useState<CatalogView[] | null>(null);
   const [current, setCurrent] = useState<string | null>(null);
   const [trail, setTrail] = useState<Step[]>([]);
@@ -209,19 +251,20 @@ export function Catalogs() {
   const [removing, setRemoving] = useState<CatalogView | null>(null);
   const [downloads, setDownloads] = useState<Record<string, "busy" | "done">>({});
   const toast = useToast();
+  const bibles = !!onOpenBook;
 
   const reloadCatalogs = useCallback(async () => {
     const list = await api.catalogs();
     setCatalogs(list);
-    setCurrent((c) => (c && list.some((x) => x.id === c) ? c : (list[0]?.id ?? null)));
-  }, []);
+    setCurrent((c) => (c && (c === BIBLES || list.some((x) => x.id === c)) ? c : bibles ? BIBLES : (list[0]?.id ?? null)));
+  }, [bibles]);
   useEffect(() => {
     void reloadCatalogs().catch((e) => setProblem(String(e)));
   }, [reloadCatalogs]);
 
   const step = trail[trail.length - 1] ?? null;
   useEffect(() => {
-    if (!current || !step) return;
+    if (!current || current === BIBLES || !step) return;
     let live = true;
     setLoading(true);
     setProblem(null);
@@ -239,7 +282,7 @@ export function Catalogs() {
 
   // A new catalog starts at its first page.
   useEffect(() => {
-    if (current) setTrail([{ title: catalogs?.find((c) => c.id === current)?.name ?? "Catalog", url: null }]);
+    if (current) setTrail([{ title: catalogs?.find((c) => c.id === current)?.name ?? "Catalogue", url: null }]);
     setFeed(null);
     setWords("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -275,10 +318,18 @@ export function Catalogs() {
   return (
     <div className="catalogs-page">
       <div className="catalogs-layout">
-        <nav className="catalogs-list" aria-label="Your catalogs">
+        <nav className="catalogs-list" aria-label="Your catalogues">
           <button type="button" className="btn btn-primary btn-small catalogs-add" onClick={() => setEditing("new")}>
-            <span aria-hidden>+</span> Add a catalog
+            <span aria-hidden>+</span> Add a catalogue
           </button>
+          {bibles && (
+            <div className={`catalogs-item${current === BIBLES ? " is-current" : ""}`}>
+              <button type="button" onClick={() => setCurrent(BIBLES)} aria-current={current === BIBLES ? "true" : undefined}>
+                <Icon name="bookOpen" size={16} />
+                <span>Bibles</span>
+              </button>
+            </div>
+          )}
           {(catalogs ?? []).map((c) => (
             <div key={c.id} className={`catalogs-item${c.id === current ? " is-current" : ""}`}>
               <button type="button" onClick={() => setCurrent(c.id)} aria-current={c.id === current ? "true" : undefined}>
@@ -296,9 +347,10 @@ export function Catalogs() {
               />
             </div>
           ))}
-          {catalogs?.length === 0 && <p className="muted writing-hint">No catalogs yet. Add one to start.</p>}
+          {catalogs?.length === 0 && <p className="muted writing-hint">No catalogues yet. Add one to start.</p>}
         </nav>
         <section className="catalogs-main" aria-busy={loading}>
+          {current === BIBLES && onOpenBook && <Bible refreshKey={refreshKey} onOpenBook={onOpenBook} />}
           {catalog && (
             <>
               <div className="catalogs-bar">
@@ -350,7 +402,7 @@ export function Catalogs() {
                   )}
                 </div>
               ) : loading && !feed ? (
-                <div className="library-loading" aria-label="Loading the catalog" />
+                <div className="library-loading" aria-label="Loading the catalogue" />
               ) : feed ? (
                 <div className={loading ? "is-loading" : undefined}>
                   {shelves.length > 0 && (
@@ -403,6 +455,7 @@ export function Catalogs() {
         <CatalogDialog
           catalog={editing === "new" ? null : editing}
           existing={catalogs?.map((c) => c.url) ?? []}
+          bibles={bibles}
           onCancel={() => setEditing(null)}
           onSaved={(c) => {
             setEditing(null);

@@ -10,10 +10,11 @@ import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { formatLabel } from "../lib/queryBooks";
+import { addressFor, readBrowserPrefs, writeBrowserPrefs } from "./browserPrefs";
 
 const LAST_KEY = "tbv.browser.last";
-const HOME_KEY = "tbv.browser.home";
-const DEFAULT_HOME = "https://www.gutenberg.org/";
+/** The header's search box, on Discover, sends what's typed here. */
+export const BROWSER_GO = "tbv:browser-go";
 
 /** Book sites to start from, until you've bookmarked your own. */
 export const SUGGESTED_SITES: { title: string; url: string }[] = [
@@ -43,15 +44,6 @@ const write = (key: string, value: string) => {
   }
 };
 
-/** What was typed, as an address: a web address as is, anything else searched for. */
-export function addressFor(typed: string): string | null {
-  const text = typed.trim();
-  if (!text) return null;
-  if (/^https?:\/\//i.test(text)) return text;
-  if (!/\s/.test(text) && /^[^/]+\.[a-z]{2,}(\/|$|:)/i.test(text)) return `https://${text}`;
-  return `https://duckduckgo.com/?q=${encodeURIComponent(text)}`;
-}
-
 /** A file name from an address, for its title in the library. */
 const fileTitle = (url: string) => {
   try {
@@ -62,8 +54,8 @@ const fileTitle = (url: string) => {
   }
 };
 
-/** Something on top (a menu or dialog) would be hidden under the page, so the page steps aside. */
-const covered = () => !!document.querySelector(".dialog-backdrop, [role=menu], [role=alertdialog]");
+/** Something on top (a menu, a dialog, the phone's menu of pages) would be hidden under the page, so the page steps aside. */
+const covered = () => !!document.querySelector(".dialog-backdrop, [role=menu], [role=alertdialog], .sidebar-backdrop");
 
 export function Browser() {
   const [page, setPage] = useState<BrowserPage | null>(null);
@@ -90,7 +82,17 @@ export function Browser() {
       setPage((before) => ({ ...p, title: p.title ?? (before?.url === p.url ? before.title : null) }));
       if (p.url.startsWith("http")) write(LAST_KEY, p.url);
     });
-    const stopDownload = api.onBrowserDownload((d) => setDownloads((list) => [...list.filter((x) => x.path !== d.path), d]));
+    const stopDownload = api.onBrowserDownload((d) => {
+      // Chosen in Preferences › Browser: ebooks go straight in.
+      if (d.ok && BOOK_FILE.test(d.name) && readBrowserPrefs().addWithoutAsking) {
+        api.browserAddDownload(d.path).then(
+          () => toast(`${d.name} is being added to your library.`),
+          (e: unknown) => toast(String(e)),
+        );
+        return;
+      }
+      setDownloads((list) => [...list.filter((x) => x.path !== d.path), d]);
+    });
     return () => {
       stopPage();
       stopDownload();
@@ -121,7 +123,7 @@ export function Browser() {
       const start = frame();
       if (!start) return;
       placed = JSON.stringify(start);
-      api.browserShow(read(LAST_KEY) ?? read(HOME_KEY) ?? DEFAULT_HOME, start).then(
+      api.browserShow(read(LAST_KEY) ?? readBrowserPrefs().home, start).then(
         () => {
           shown.current = true;
           if (!live) void api.browserHide();
@@ -147,11 +149,18 @@ export function Browser() {
   }, []);
 
   const go = (text: string) => {
-    const url = addressFor(text);
+    const url = addressFor(text, readBrowserPrefs().search);
     if (!url) return;
     setEditing(false);
     void api.browserAct("go", url).catch((e: unknown) => toast(String(e)));
   };
+  const goRef = useRef(go);
+  goRef.current = go;
+  useEffect(() => {
+    const fromHeader = (e: Event) => goRef.current((e as CustomEvent<string>).detail);
+    window.addEventListener(BROWSER_GO, fromHeader);
+    return () => window.removeEventListener(BROWSER_GO, fromHeader);
+  }, []);
 
   const url = page?.url ?? "";
   const marked = marks.find((m) => m.url === url) ?? null;
@@ -197,7 +206,7 @@ export function Browser() {
     { heading: <strong>{marks.length ? "Bookmarks" : "Book sites to start with"}</strong> },
     ...sites.map((m) => ({ label: m.title, icon: "globe" as const, onSelect: () => go(m.url) })),
     "divider",
-    { label: "Make this page your home page", icon: "home", disabled: !url.startsWith("http"), onSelect: () => (write(HOME_KEY, url), toast("This is your home page now.")) },
+    { label: "Make this page your home page", icon: "home", disabled: !url.startsWith("http"), onSelect: () => (writeBrowserPrefs({ home: url }), toast("This is your home page now.")) },
     { label: "Clear cookies and site data", icon: "trash", onSelect: () => void api.browserAct("clear").then(() => toast("Every site's cookies and data are cleared.")) },
   ];
 
@@ -218,7 +227,7 @@ export function Browser() {
         >
           <Icon name={page?.loading ? "close" : "sync"} size={16} />
         </button>
-        <button type="button" className="toolbar-button" aria-label="Home page" onClick={() => go(read(HOME_KEY) ?? DEFAULT_HOME)}>
+        <button type="button" className="toolbar-button" aria-label="Home page" onClick={() => go(readBrowserPrefs().home)}>
           <Icon name="home" size={16} />
         </button>
         <form

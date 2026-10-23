@@ -3,6 +3,7 @@ import type { SortOrder } from "../api/types";
 import { Icon } from "../components/Icon";
 import type { Layout } from "../library/libraryView";
 import { AppearanceTab } from "./AppearanceTab";
+import { BrowserTab } from "./BrowserTab";
 import { AboutTab, AccessibilityTab, AdvancedTab, CollectionsTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
 import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex";
 import { SyncTab } from "./SyncTab";
@@ -79,6 +80,8 @@ export function Settings({
         return <CollectionsTab />;
       case "notes":
         return <NotesTab />;
+      case "browser":
+        return <BrowserTab />;
       case "sync":
         return isWeb ? <WebSyncTab /> : <SyncTab onRestored={onRestored} />;
       case "files":
@@ -98,38 +101,80 @@ export function Settings({
     }
   })();
 
-  return (
-    <div className={`settings-page${page ? "" : " is-landing"}`}>
-      <nav className="settings-nav" aria-label="Settings">
-        <p className="settings-eyebrow">Settings</p>
-        <label className="search settings-search">
-          <Icon name="search" size={16} />
-          <input type="search" placeholder="Search settings…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search settings" />
-        </label>
-        {query.trim() ? (
-          <ul className="settings-menu settings-results">
-            {results.length === 0 ? (
-              <li className="settings-row-hint settings-no-results">Nothing in Settings matches “{query.trim()}”.</li>
-            ) : (
-              results.map((r) => (
-                <li key={`${r.tab}-${r.section}`}>
-                  <button
-                    type="button"
-                    className="settings-menu-item"
-                    onClick={() => {
-                      onTab(r.tab);
-                      setJumpTo(r.section);
-                    }}
-                  >
-                    <span>
-                      {r.label}
-                      <span className="settings-result-page">{SETTINGS_TABS.find((t) => t.tab === r.tab)?.label}</span>
+  const search = (
+    <label className="search settings-search">
+      <Icon name="search" size={16} />
+      <input type="search" placeholder="Search preferences…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search preferences" />
+    </label>
+  );
+  const found = (
+    <ul className="settings-menu settings-results">
+      {results.length === 0 ? (
+        <li className="settings-row-hint settings-no-results">Nothing in Preferences matches “{query.trim()}”.</li>
+      ) : (
+        results.map((r) => (
+          <li key={`${r.tab}-${r.section}`}>
+            <button
+              type="button"
+              className="settings-menu-item"
+              onClick={() => {
+                setQuery("");
+                onTab(r.tab);
+                setJumpTo(r.section);
+              }}
+            >
+              <span>
+                {r.label}
+                <span className="settings-result-page">{SETTINGS_TABS.find((t) => t.tab === r.tab)?.label}</span>
+              </span>
+            </button>
+          </li>
+        ))
+      )}
+    </ul>
+  );
+
+  // The landing page's cards are the menu, so the list of pages shows only inside one.
+  if (!page) {
+    return (
+      <div className="settings-page is-landing">
+        <div className="settings-body" ref={body}>
+          <header className="settings-head settings-landing-head">
+            <div>
+              <h1>Preferences</h1>
+              <p className="muted">Choose what to change.</p>
+            </div>
+            {search}
+          </header>
+          {query.trim() ? (
+            found
+          ) : (
+            <ul className="settings-landing">
+              {TABS.map((t) => (
+                <li key={t.tab}>
+                  <button type="button" className="settings-landing-card" onClick={() => onTab(t.tab)}>
+                    <Icon name={t.icon} size={22} />
+                    <span className="settings-landing-text">
+                      <span className="settings-landing-name">{t.label}</span>
+                      <span className="settings-row-hint">{t.lede}</span>
                     </span>
                   </button>
                 </li>
-              ))
-            )}
-          </ul>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-page">
+      <nav className="settings-nav" aria-label="Preferences">
+        <p className="settings-eyebrow">Preferences</p>
+        {search}
+        {query.trim() ? (
+          found
         ) : (
           <ul className="settings-menu">
             {TABS.map((t) => (
@@ -149,43 +194,19 @@ export function Settings({
         )}
       </nav>
       <div className="settings-body" ref={body}>
-        {page ? (
-          <>
-            <header className="settings-head">
-              <button type="button" className="link-btn settings-back" onClick={() => onTab(null)}>
-                <Icon name="chevronLeft" size={16} /> All settings
-              </button>
-              <h1>{page.label}</h1>
-              <p className="muted">{page.lede}</p>
-              {isHome && (
-                <p className="settings-row-hint">
-                  You're using TBV from your computer. Changes here last until this page reloads; the rest of the settings are on the computer.
-                </p>
-              )}
-            </header>
-            {content}
-          </>
-        ) : (
-          <>
-            <header className="settings-head">
-              <h1>Settings</h1>
-              <p className="muted">Choose what to change.</p>
-            </header>
-            <ul className="settings-landing">
-              {TABS.map((t) => (
-                <li key={t.tab}>
-                  <button type="button" className="settings-landing-card" onClick={() => onTab(t.tab)}>
-                    <Icon name={t.icon} size={22} />
-                    <span className="settings-landing-text">
-                      <span className="settings-landing-name">{t.label}</span>
-                      <span className="settings-row-hint">{t.lede}</span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+        <header className="settings-head">
+          <button type="button" className="link-btn settings-back" onClick={() => onTab(null)}>
+            <Icon name="chevronLeft" size={16} /> All preferences
+          </button>
+          <h1>{page.label}</h1>
+          <p className="muted">{page.lede}</p>
+          {isHome && (
+            <p className="settings-row-hint">
+              You're using TBV from your computer. Changes here last until this page reloads; the rest of the settings are on the computer.
+            </p>
+          )}
+        </header>
+        {content}
       </div>
     </div>
   );

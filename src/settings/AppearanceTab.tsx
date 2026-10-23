@@ -186,7 +186,7 @@ export function AppearanceTab({
         <Row label="Sidebar" hint="The ••• button at the top left does the same.">
           <Toggle label="Show the full sidebar" checked={sidebarShown} onChange={onSidebarShown} />
         </Row>
-        <Row label="Library pages" hint="On a phone the Library always scrolls on without pages.">
+        <Row label="Archive pages" hint="On a phone the Archive always scrolls on without pages.">
           <Toggle
             label="Scroll on without page numbers"
             hint="More books load as you reach the end."
@@ -194,7 +194,7 @@ export function AppearanceTab({
             onChange={(scrollLibrary) => change({ scrollLibrary })}
           />
         </Row>
-        <Row label="Cover display" hint="How the Library page shows your books.">
+        <Row label="Cover display" hint="How the Archive shows your books.">
           <div className="cover-styles" role="radiogroup" aria-label="Cover display">
             {(
               [
@@ -312,7 +312,7 @@ export function AppearanceTab({
         <div className="toggle-list">
           <Toggle
             label="Show progress bars on books"
-            hint="In the Library and Collections. Home always shows what you're reading."
+            hint="In the Archive and Compendium. Sanctum always shows what you're reading."
             checked={settings.showProgress}
             onChange={(showProgress) => change({ showProgress })}
           />

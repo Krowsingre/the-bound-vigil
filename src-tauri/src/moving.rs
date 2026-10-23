@@ -18,7 +18,7 @@ use tbv_core::{Error, Library};
 
 use crate::sync::{self, SyncWorker};
 
-/// How a move or backup stands, for Settings › Sync.
+/// How a move or backup stands, for Preferences › Sync.
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MoveStatus {

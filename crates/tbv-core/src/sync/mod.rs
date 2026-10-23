@@ -36,7 +36,7 @@ use crate::library::Library;
 use crate::model::{ImportResult, IsoUtc, SyncState, SyncStatus};
 use crate::time::now_utc;
 
-/// The groups of things the user can choose to sync (Settings › Sync options).
+/// The groups of things the user can choose to sync (Preferences › Sync options).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Category {
     /// Which books are in the library. Always synced, since everything else hangs off it.
@@ -305,7 +305,7 @@ pub enum Frequency {
     Manual,
 }
 
-/// The user's choices from Settings › Sync, read from `app.settings`.
+/// The user's choices from Preferences › Sync, read from `app.settings`.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct SyncOptions {
@@ -449,7 +449,7 @@ impl Lane {
     }
 }
 
-/// The Supabase project the user set up (Settings › Sync › Supabase).
+/// The Supabase project the user set up (Preferences › Sync › Supabase).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SupabaseProject {
@@ -590,7 +590,7 @@ pub struct Session {
     pub expires_at: i64,
 }
 
-/// How sync stands, for Settings › Sync and the header circle.
+/// How sync stands, for Preferences › Sync and the header circle.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncOverview {
@@ -2697,7 +2697,9 @@ pub fn download_book(library: &Mutex<Library>, remote: &mut dyn Remote, book_id:
 
 /// The answer when no place has a book's file.
 pub fn not_in_cloud() -> Error {
-    Error::Unsuitable("This book's file isn't in the cloud. Turn on Sync book files on the device that has it.".into())
+    Error::Unsuitable(
+        "TBV couldn't find this book's file in the cloud. If it's syncing from another device, the cloud may not have brought it here yet: try again in a minute. If not, turn on Sync book files on the device that has it.".into(),
+    )
 }
 
 /// As `download_book`, from either place. False if that place hasn't got the file.

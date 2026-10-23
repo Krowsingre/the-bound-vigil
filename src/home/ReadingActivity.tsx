@@ -1,22 +1,58 @@
-import type { ReactNode } from "react";
-import { spentParts, spentText } from "../lib/timeSpent";
+import { useState, type ReactNode } from "react";
+import { Icon, type IconName } from "../components/Icon";
+import { finishedSince, periodStart, PERIODS, spentParts, spentSince, spentText, type Period } from "../lib/timeSpent";
 import { Section } from "./Section";
 import { useTimeSpent } from "./useTimeSpent";
 
 const DAYS = ["M", "T", "W", "T", "F", "S", "S"];
 
-/** Books finished, and time spent reading and listening in TBV on every device, with this week by day. */
-export function ReadingActivity({ finished, refreshKey }: { finished: number; refreshKey?: number }) {
+const PERIOD_KEY = "tbv.home.activityPeriod";
+
+function readPeriod(): Period {
+  try {
+    const saved = localStorage.getItem(PERIOD_KEY);
+    return PERIODS.some((p) => p.value === saved) ? (saved as Period) : "week";
+  } catch {
+    return "week";
+  }
+}
+
+/** Books finished, and time spent reading and listening in TBV on every device, over a chosen period, with this week by day. */
+export function ReadingActivity({ finished, finishedDates, refreshKey }: { finished: number; finishedDates?: string[]; refreshKey?: number }) {
   const spent = useTimeSpent(refreshKey);
+  const [period, setPeriod] = useState(readPeriod);
+  const start = periodStart(period);
+  const inPeriod = spent ? spentSince(spent.days, start) : null;
+  const finishedInPeriod = start && finishedDates ? finishedSince(finishedDates, start) : finished;
   const week = spent?.week ?? DAYS.map(() => ({ read: 0, listen: 0 }));
   const max = Math.max(1, ...week.map((d) => d.read + d.listen));
   const any = !!spent && spent.read + spent.listen > 0;
+  const choose = (next: Period) => {
+    setPeriod(next);
+    try {
+      localStorage.setItem(PERIOD_KEY, next);
+    } catch {
+      // Remembered until TBV closes.
+    }
+  };
   return (
-    <Section title="Reading activity" className="activity">
+    <Section
+      title="Reading activity"
+      className="activity"
+      action={
+        <select className="activity-period" aria-label="Period" value={period} onChange={(e) => choose(e.target.value as Period)}>
+          {PERIODS.map((p) => (
+            <option key={p.value} value={p.value}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      }
+    >
       <div className="stats stats-3">
-        <Stat value={finished} label="Books finished" />
-        <Stat value={spent ? <Spent seconds={spent.read} /> : "—"} label="Time read" />
-        <Stat value={spent ? <Spent seconds={spent.listen} /> : "—"} label="Time listened" />
+        <Stat value={finishedInPeriod} label="Books finished" />
+        <Stat value={inPeriod ? <Spent seconds={inPeriod.read} /> : "—"} label="Time read" />
+        <Stat value={inPeriod ? <Spent seconds={inPeriod.listen} /> : "—"} label="Time listened" />
       </div>
       {spent && !any && <p className="empty-note">Time spent reading and listening adds up here as you use TBV.</p>}
       <div className="week" role="img" aria-label={weekLabel(week)}>
@@ -53,9 +89,10 @@ export function Spent({ seconds }: { seconds: number }) {
   );
 }
 
-export function Stat({ value, label }: { value: ReactNode; label: string }) {
+export function Stat({ value, label, icon }: { value: ReactNode; label: string; icon?: IconName }) {
   return (
-    <div className="stat">
+    <div className={`stat${icon ? " has-icon" : ""}`}>
+      {icon && <Icon name={icon} size={18} className="stat-icon" />}
       <span className="stat-value">{typeof value === "number" ? value.toLocaleString() : value}</span>
       <span className="stat-label">{label}</span>
     </div>

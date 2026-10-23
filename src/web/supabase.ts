@@ -52,7 +52,7 @@ export class Offline extends Error {}
 /** The sign-in ran out and couldn't be renewed. */
 export class SignedOut extends Error {}
 
-const SETUP_HINT = "TBV's tables aren't in this Supabase project yet. Run the setup script from the desktop app's Settings › Sync, then try again";
+const SETUP_HINT = "TBV's tables aren't in this Supabase project yet. Run the setup script from the desktop app's Preferences › Sync, then try again";
 
 const now = () => Math.floor(Date.now() / 1000);
 

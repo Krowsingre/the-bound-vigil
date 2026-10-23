@@ -45,7 +45,7 @@ export function ReaderTopBar({
 }) {
   return (
     <header className={`reader-top${focus ? " reader-top-focus" : ""}`} data-tauri-drag-region>
-      <button type="button" className="icon-btn" aria-label="Back to Home" title="Back to Home" onClick={onHome}>
+      <button type="button" className="icon-btn" aria-label="Back to Sanctum" title="Back to Sanctum" onClick={onHome}>
         <Icon name="home" size={20} />
       </button>
       {!focus && (

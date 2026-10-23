@@ -4,7 +4,6 @@ import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { formatLabel } from "../lib/queryBooks";
 import { languageName } from "../lib/language";
-import { useNarrow } from "../lib/useNarrow";
 import { excludeCount, NO_FILTERS, SORTS, TABS, type Layout, type LibraryTab, type LibraryView } from "./libraryView";
 
 type FilterList = "formats" | "tags" | "genres" | "languages" | "authors" | "series" | "narrators";
@@ -67,8 +66,7 @@ export function LibraryToolbar({
   onChange: (change: Partial<LibraryView>) => void;
 }) {
   const sortLabel = SORTS.find((s) => s.sort === view.sort)?.label;
-  // On a phone the shelves don't fit in a row, so they're in Filter, under Collections.
-  const narrow = useNarrow();
+  // The shelves are chosen in Filter, under Collections, leaving one row of icons.
   const tabName = (tab: LibraryTab) => (tab === "all" && allLabel ? allLabel : (TABS.find((t) => t.tab === tab)?.label ?? ""));
   // Filter's groups start folded; the ones opened stay open next time.
   const [opened, setOpened] = useState(readOpened);
@@ -136,11 +134,11 @@ export function LibraryToolbar({
       onIn(list),
       all(list, known).map((n) => item(list, n, n)),
     );
-  // On a phone a shelf is chosen in Filter, so it counts there too.
-  const filterBadge = filterCount + (narrow && view.tab !== "all" ? 1 : 0);
+  // A shelf is chosen in Filter, so it counts there too.
+  const filterBadge = filterCount + (view.tab !== "all" ? 1 : 0);
   const setLocation = (l: Location) => onChange({ location: view.location === l ? null : l });
 
-  // Clear filters, then where the file is, the shelves (phone), genre and
+  // Clear filters, then where the file is, the shelves, genre and
   // language, then the rest.
   const filterItems: MenuEntry[] = [
     ...(filterCount ? ([{ label: "Clear filters", icon: "close", onSelect: () => onChange(NO_FILTERS) }] as MenuEntry[]) : []),
@@ -149,18 +147,16 @@ export function LibraryToolbar({
       { label: "Downloaded", checked: view.location === "on_device", onSelect: () => setLocation("on_device") },
       { label: "Not downloaded", checked: view.location === "cloud_only", onSelect: () => setLocation("cloud_only") },
     ]),
-    ...(narrow
-      ? group(
-          "Collections",
-          view.tab === "all" ? 0 : 1,
-          TABS.map(({ tab }) => ({
-            label: tabName(tab),
-            hint: counts?.[COUNT_OF[tab]] !== undefined ? String(counts[COUNT_OF[tab]]) : undefined,
-            checked: view.tab === tab,
-            onSelect: () => onChange({ tab }),
-          })),
-        )
-      : []),
+    ...group(
+      "Collections",
+      view.tab === "all" ? 0 : 1,
+      TABS.map(({ tab }) => ({
+        label: tabName(tab),
+        hint: counts?.[COUNT_OF[tab]] !== undefined ? String(counts[COUNT_OF[tab]]) : undefined,
+        checked: view.tab === tab,
+        onSelect: () => onChange({ tab }),
+      })),
+    ),
     ...group(
       "Genres",
       onIn("genres"),
@@ -194,96 +190,75 @@ export function LibraryToolbar({
   ];
 
   return (
-    <div className="library-toolbar">
-      <div className="tabs" role="tablist" aria-label="Shelves">
-        {TABS.map(({ tab, label }) => {
-          const count = counts?.[COUNT_OF[tab]];
-          return (
-            <button
-              key={tab}
-              type="button"
-              role="tab"
-              aria-selected={view.tab === tab}
-              className={`tab${view.tab === tab ? " is-active" : ""}`}
-              onClick={() => onChange({ tab })}
-            >
-              {tab === "all" && allLabel ? allLabel : label}
-              {count !== undefined && <span className="tab-count num">{count}</span>}
-            </button>
-          );
-        })}
-      </div>
-      {/* On a phone the shelf is only named here; it's chosen in Filter. */}
+    <div className="library-toolbar is-compact">
+      {/* The shelf is only named here; it's chosen in Filter. */}
       <span className="tabs-menu">
         {tabName(view.tab)}
         {view.location === "on_device" && view.tab !== "collections" && " · Downloaded"}
       </span>
 
-      {(view.tab !== "collections" || narrow) && (
-        <div className="toolbar-controls">
-          {view.tab !== "collections" && (
-            <Menu
-              label={`Sort by ${sortLabel}`}
-              className="toolbar-button"
-              trigger={
-                <>
-                  <Icon name="sort" size={16} className="toolbar-icon" />
-                  <span className="toolbar-label">
-                    <span className="muted">Sort:</span> {sortLabel} <Icon name="chevronDown" size={14} />
-                  </span>
-                </>
-              }
-              items={SORTS.map((s) => ({
-                label: s.label,
-                checked: s.sort === view.sort,
-                onSelect: () => onChange({ sort: s.sort }),
-              }))}
-            />
-          )}
+      <div className="toolbar-controls">
+        {view.tab !== "collections" && (
           <Menu
-            label="Filter"
-            className={`toolbar-button${filterBadge ? " is-on" : ""}`}
+            label={`Sort by ${sortLabel}`}
+            className="toolbar-button"
             trigger={
               <>
-                <Icon name="filter" size={16} /> <span className="toolbar-label">Filter</span>
-                {filterBadge > 0 && <span className="tab-count num">{filterBadge}</span>}
-                <Icon name="chevronDown" size={14} className="toolbar-label" />
+                <Icon name="sort" size={16} className="toolbar-icon" />
+                <Icon name="chevronDown" size={12} className="toolbar-chevron" />
               </>
             }
-            items={filterItems}
+            items={SORTS.map((s) => ({
+              label: s.label,
+              checked: s.sort === view.sort,
+              onSelect: () => onChange({ sort: s.sort }),
+            }))}
           />
-          {view.tab !== "collections" && (
+        )}
+        <Menu
+          label="Filter"
+          className={`toolbar-button${filterBadge ? " is-on" : ""}`}
+          trigger={
             <>
-              <button
-                type="button"
-                className={`toolbar-button${selecting ? " is-on" : ""}`}
-                aria-pressed={selecting}
-                title="Choose books to change many at once"
-                onClick={() => onSelecting(!selecting)}
-              >
-                <Icon name="check" size={16} /> <span className="toolbar-label">Select</span>
-              </button>
-              <div className="layout-switch" role="radiogroup" aria-label="Layout">
-                {LAYOUTS.map((l) => (
-                  <button
-                    key={l.layout}
-                    type="button"
-                    data-layout={l.layout}
-                    role="radio"
-                    aria-checked={view.layout === l.layout}
-                    aria-label={l.label}
-                    title={l.label}
-                    className={view.layout === l.layout ? "is-active" : undefined}
-                    onClick={() => onChange({ layout: l.layout })}
-                  >
-                    <Icon name={l.icon} size={18} />
-                  </button>
-                ))}
-              </div>
+              <Icon name="filter" size={16} />
+              {filterBadge > 0 && <span className="tab-count num">{filterBadge}</span>}
+              <Icon name="chevronDown" size={12} className="toolbar-chevron" />
             </>
-          )}
-        </div>
-      )}
+          }
+          items={filterItems}
+        />
+        {view.tab !== "collections" && (
+          <>
+            <button
+              type="button"
+              className={`toolbar-button${selecting ? " is-on" : ""}`}
+              aria-pressed={selecting}
+              title="Choose books to change many at once"
+              aria-label="Select"
+              onClick={() => onSelecting(!selecting)}
+            >
+              <Icon name="check" size={16} />
+            </button>
+            <div className="layout-switch" role="radiogroup" aria-label="Layout">
+              {LAYOUTS.map((l) => (
+                <button
+                  key={l.layout}
+                  type="button"
+                  data-layout={l.layout}
+                  role="radio"
+                  aria-checked={view.layout === l.layout}
+                  aria-label={l.label}
+                  title={l.label}
+                  className={view.layout === l.layout ? "is-active" : undefined}
+                  onClick={() => onChange({ layout: l.layout })}
+                >
+                  <Icon name={l.icon} size={18} />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

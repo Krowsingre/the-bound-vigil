@@ -1143,10 +1143,14 @@ pub(crate) mod tests {
         assert_eq!(library.auto_link_audiobooks().unwrap(), 1);
         assert_eq!(library.audiobook_for_ebook(&ebook_id).unwrap(), Some(audio_id.clone()));
         assert!(page(ItemKind::Books).books[0].paired && page(ItemKind::Audiobooks).books[0].paired);
+        // Resonance's switch: Paired, or Audiobooks only.
+        let audio_paired = |paired| library.library_page(&LibraryQuery { kind: Some(ItemKind::Audiobooks), paired: Some(paired), ..Default::default() }).unwrap().total;
+        assert_eq!((audio_paired(true), audio_paired(false)), (1, 0));
         // Unlinked by hand: left alone from then on.
         library.link_ebook(&audio_id, None).unwrap();
         assert_eq!(library.auto_link_audiobooks().unwrap(), 0);
         assert!(!page(ItemKind::Books).books[0].paired);
+        assert_eq!((audio_paired(true), audio_paired(false)), (0, 1));
         library.link_ebook(&audio_id, Some(&ebook_id)).unwrap();
         assert_eq!(library.audiobook_for_ebook(&ebook_id).unwrap(), Some(audio_id.clone()));
         assert_eq!(library.audiobook(&audio_id).unwrap().ebook.map(|e| e.name), Some("Persuasion".into()));

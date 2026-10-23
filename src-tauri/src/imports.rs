@@ -51,7 +51,7 @@ pub struct ImportsView {
     pub done: usize,
     pub added: usize,
     pub already: usize,
-    /// Deleted before, and left out (Settings › Library › Deleted books).
+    /// Deleted before, and left out (Preferences › Library › Deleted books).
     pub skipped_deleted: usize,
     /// Deleted before, and brought back into Previously deleted.
     pub returned: usize,

@@ -237,6 +237,9 @@ pub struct HomeViewModel {
     pub annotations: Vec<AnnotationPreview>,
     pub library_counts: LibraryCounts,
     pub activity: Option<ReadingActivity>,
+    /// When each book was finished, over the last year or so, for "this week" and "this month".
+    #[serde(default)]
+    pub finished_dates: Vec<IsoUtc>,
     pub sync: SyncStatus,
 }
 
@@ -327,6 +330,10 @@ pub struct LibraryQuery {
     /// Only books, documents or audiobooks. None means all of them.
     #[serde(default)]
     pub kind: Option<ItemKind>,
+    /// Resonance's switch: only audiobooks paired with their ebook (true), or
+    /// only those with none (false). None means both.
+    #[serde(default)]
+    pub paired: Option<bool>,
     /// Only these books (of those that match), to check which chosen ones a
     /// search or filter still shows. None means any book.
     #[serde(default)]
@@ -421,7 +428,7 @@ pub enum ImportResult {
         book_id: BookId,
         title: String,
     },
-    /// Deleted before, and Settings › Library says to leave such books out.
+    /// Deleted before, and Preferences › Library says to leave such books out.
     SkippedDeleted {
         path: String,
         book_id: BookId,

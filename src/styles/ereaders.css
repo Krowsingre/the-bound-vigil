@@ -1,4 +1,4 @@
-/* Send to e-reader, and Settings › E-readers */
+/* Send to e-reader, and Preferences › E-readers */
 
 .send-dialog {
   width: min(480px, calc(100vw - 32px));
@@ -161,7 +161,7 @@
   gap: 2px;
 }
 
-/* Settings › Servers */
+/* Preferences › Servers */
 .server-item {
   align-items: center;
 }

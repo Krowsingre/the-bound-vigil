@@ -8,6 +8,7 @@ export type SettingsTab =
   | "library"
   | "collections"
   | "notes"
+  | "browser"
   | "sync"
   | "files"
   | "ereaders"
@@ -37,21 +38,27 @@ export const SETTINGS_TABS: {
   },
   {
     tab: "library",
-    label: "Library",
+    label: "Archive",
     icon: "library",
-    lede: "How your library is shown, and where its files live.",
+    lede: "How your books and documents are shown, and where their files live.",
   },
   {
     tab: "collections",
-    label: "Collections",
-    icon: "grid",
-    lede: "What the Collections page shows.",
+    label: "Compendium",
+    icon: "layers",
+    lede: "What the Compendium shows.",
   },
   {
     tab: "notes",
-    label: "Notes",
+    label: "Scribe",
     icon: "notes",
     lede: "How your notes are shown, and taking them with you.",
+  },
+  {
+    tab: "browser",
+    label: "Browser",
+    icon: "compass",
+    lede: "Discover's search engine, home page, downloads and site data.",
   },
   {
     tab: "sync",
@@ -158,14 +165,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   {
     tab: "library",
     section: "view",
-    label: "Library view",
-    words: "default layout grid list compact sort order",
+    label: "Archive view",
+    words: "library default layout grid list compact sort order",
   },
   {
     tab: "library",
     section: "folder",
-    label: "Library folder",
-    words: "folder location storage files explorer size",
+    label: "Archive folder",
+    words: "library folder location storage files explorer size",
   },
   {
     tab: "library",
@@ -194,20 +201,44 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   {
     tab: "collections",
     section: "show",
-    label: "What Collections shows",
-    words: "smart collections series layout cards list",
+    label: "What the Compendium shows",
+    words: "collections smart series layout cards list",
   },
   {
     tab: "notes",
     section: "view",
     label: "Notes view",
-    words: "layout cards list compact sort",
+    words: "notes layout cards list compact sort",
   },
   {
     tab: "notes",
     section: "export",
     label: "Export notes",
     words: "markdown export highlights annotations",
+  },
+  {
+    tab: "browser",
+    section: "search",
+    label: "Search engine",
+    words: "discover browser search engine duckduckgo google bing brave startpage ecosia web",
+  },
+  {
+    tab: "browser",
+    section: "home",
+    label: "Browser home page",
+    words: "discover browser home page start gutenberg website address",
+  },
+  {
+    tab: "browser",
+    section: "downloads",
+    label: "Browser downloads",
+    words: "discover browser download downloads ebook add library automatically without asking",
+  },
+  {
+    tab: "browser",
+    section: "sitedata",
+    label: "Browser site data",
+    words: "discover browser cookies site data clear logins signed in privacy",
   },
   {
     tab: "sync",

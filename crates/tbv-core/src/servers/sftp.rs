@@ -125,7 +125,7 @@ pub(crate) fn key_problem(server: &Server, seen: Option<String>) -> Option<Error
     match &server.host_key {
         None => Some(Error::NewHostKey(seen)),
         Some(trusted) if *trusted != seen => Some(Error::Unsuitable(format!(
-            "{} isn't showing the fingerprint it showed before, so TBV didn't connect. If whoever runs the server has just set it up again, remove it from Settings › Servers and add it again. If not, someone may be pretending to be your server: don't connect until you've checked.",
+            "{} isn't showing the fingerprint it showed before, so TBV didn't connect. If whoever runs the server has just set it up again, remove it from Preferences › Servers and add it again. If not, someone may be pretending to be your server: don't connect until you've checked.",
             server.host
         ))),
         Some(_) => None,

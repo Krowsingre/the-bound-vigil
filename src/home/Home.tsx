@@ -103,7 +103,7 @@ export function Home({
     <div className="home">
       <div className="home-top">
         <ResumeHero book={home.resumeBook} actions={actions} onOpenLibrary={openLibrary} />
-        <ReadingActivity finished={home.libraryCounts.read} refreshKey={refreshKey} />
+        <ReadingActivity finished={home.libraryCounts.read} finishedDates={home.finishedDates} refreshKey={refreshKey} />
       </div>
       <div className="home-middle">
         <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenLibrary({ tab: "in_progress" })} />

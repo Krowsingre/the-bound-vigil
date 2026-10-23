@@ -1,4 +1,4 @@
-//! What a sync place holds, file by file and by type, for Settings › Sync ›
+//! What a sync place holds, file by file and by type, for Preferences › Sync ›
 //! What's in Supabase: each file says which book it belongs to and whether
 //! a copy is kept anywhere else, and any of them can be removed.
 

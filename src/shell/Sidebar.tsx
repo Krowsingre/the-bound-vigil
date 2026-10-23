@@ -64,7 +64,10 @@ export function Sidebar({
                   title={collapsed ? `${item.label} (Ctrl+${i + 1})` : undefined}
                 >
                   <Icon name={item.icon} size={20} />
-                  <span className="nav-label">{item.label}</span>
+                  <span className="nav-label">
+                    {item.label}
+                    <span className="nav-caption">{item.caption}</span>
+                  </span>
                 </button>
               </li>
             ))}

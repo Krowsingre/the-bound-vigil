@@ -36,7 +36,7 @@ export interface SyncSettings {
   bookFiles: boolean;
   /** Audiobook files are large, so they have a switch of their own. */
   audioFiles: boolean;
-  /** What the second place is sent (see Settings › Sync › Second sync). */
+  /** What the second place is sent (see Preferences › Sync › Second sync). */
   alsoBookFiles: boolean;
   alsoAudioFiles: boolean;
   /** Supabase (the phone's place) gets only the books chosen for the phone. */

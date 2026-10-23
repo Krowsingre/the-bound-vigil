@@ -235,3 +235,61 @@
 .browser-view > .library-empty {
   padding: 24px;
 }
+
+/* Discover is the browser alone; its page starts at the top. */
+.browse-browser {
+  padding-top: 16px;
+}
+
+/* The top bar's catalogues button, beside the menu button on a phone. */
+.header-action {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-m);
+}
+
+.header-action:hover {
+  background: var(--surface-sunk);
+}
+
+/* The catalogues, in a large panel over the browser. */
+.dialog.catalogues-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(1080px, calc(100vw - 48px));
+  height: min(820px, calc(100vh - 48px));
+  overflow: auto;
+}
+
+.catalogues-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.catalogues-head h2 {
+  margin: 0;
+}
+
+.catalog-own {
+  display: block;
+  margin-top: 8px;
+}
+
+@media (max-width: 760px) {
+  .dialog.catalogues-panel {
+    width: 100vw;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+    padding: 16px;
+  }
+}

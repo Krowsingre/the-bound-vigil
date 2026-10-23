@@ -61,7 +61,7 @@ impl Pieces {
 fn piece_path(path: &str, index: u64) -> String {
     format!("{path}{PIECES}/{index:04}")
 }
-const SETUP_HINT: &str = "TBV's tables aren't in this Supabase project yet. Run the setup script from Settings › Sync, then try again";
+const SETUP_HINT: &str = "TBV's tables aren't in this Supabase project yet. Run the setup script from Preferences › Sync, then try again";
 
 fn agent() -> Agent {
     Agent::config_builder()
@@ -168,7 +168,7 @@ fn rest_problem(response: &mut Response<Body>) -> Error {
         "PGRST205" | "PGRST202" | "42P01" | "42883" => SETUP_HINT,
         // The project only shares other schemas (Supabase's "dedicated API schema" choice).
         "PGRST106" => "This Supabase project's Data API doesn't include the public schema, where TBV's table lives. In Supabase, open Project Settings › Data API, add public to Exposed schemas and save, then try again",
-        "42501" => "TBV's table is there, but signed-in accounts aren't allowed to use it. Run the setup script from Settings › Sync again, then try again",
+        "42501" => "TBV's table is there, but signed-in accounts aren't allowed to use it. Run the setup script from Preferences › Sync again, then try again",
         _ if status == 404 => "Supabase's Data API didn't answer. In Supabase, open Project Settings › Data API and check it's turned on, and that the setup script ran without errors, then try again",
         _ => return Error::Cloud(said),
     };

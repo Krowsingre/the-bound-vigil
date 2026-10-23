@@ -1,65 +1,55 @@
-// The Browse page: online catalogs (Project Gutenberg and any you add), the
-// Bible in three public-domain translations, and a web browser.
+// Discover: a web browser, with ebooks you download offered to your library.
+// The globe-plus button in the top bar opens the catalogues: the Bible in
+// three public-domain translations, Project Gutenberg and any you add.
 // Whatever comes in joins the import queue like any other book.
 
-import { useState } from "react";
 import { Catalogs } from "../catalogs/Catalogs";
-import { Bible } from "./Bible";
+import { Icon } from "../components/Icon";
 import { Browser } from "./Browser";
 
-type Tab = "catalogs" | "bible" | "browser";
-
-const TABS: { tab: Tab; label: string }[] = [
-  { tab: "catalogs", label: "Catalogs" },
-  { tab: "bible", label: "Bible" },
-  { tab: "browser", label: "Browser" },
-];
-
-const TAB_KEY = "tbv.browse.tab";
-
-function readTab(): Tab {
-  try {
-    const t = localStorage.getItem(TAB_KEY);
-    return TABS.some((x) => x.tab === t) ? (t as Tab) : "catalogs";
-  } catch {
-    return "catalogs";
-  }
+export function Browse({
+  refreshKey,
+  onOpenBook,
+  catalogues,
+  onCloseCatalogues,
+}: {
+  refreshKey: number;
+  onOpenBook: (bookId: string, at?: string) => void;
+  /** The catalogues panel is open over the browser. */
+  catalogues: boolean;
+  onCloseCatalogues: () => void;
+}) {
+  return (
+    <div className="library browse-page browse-browser">
+      <Browser />
+      {catalogues && (
+        <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onCloseCatalogues()}>
+          <div className="dialog catalogues-panel" role="dialog" aria-label="Catalogues" onKeyDown={(e) => e.key === "Escape" && onCloseCatalogues()}>
+            <header className="catalogues-head">
+              <h2>Catalogues</h2>
+              <button type="button" className="icon-btn" aria-label="Close" onClick={onCloseCatalogues}>
+                <Icon name="close" size={18} />
+              </button>
+            </header>
+            <Catalogs
+              refreshKey={refreshKey}
+              onOpenBook={(id, at) => {
+                onCloseCatalogues();
+                onOpenBook(id, at);
+              }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
-const LEDE: Record<Tab, string> = {
-  catalogs: "Online bookshelves to browse and bring books in from",
-  bible: "The Bible in three free translations, opened at any chapter",
-  browser: "Any website, with ebooks you download offered to your library",
-};
-
-export function Browse({ refreshKey, onOpenBook }: { refreshKey: number; onOpenBook: (bookId: string, at?: string) => void }) {
-  const [tab, setTab] = useState<Tab>(readTab);
-  const choose = (t: Tab) => {
-    setTab(t);
-    try {
-      localStorage.setItem(TAB_KEY, t);
-    } catch {
-      // Remembered for this visit only.
-    }
-  };
+/** The top bar's button on Discover that opens the catalogues. */
+export function CataloguesButton({ onClick }: { onClick: () => void }) {
   return (
-    <div className={`library browse-page browse-${tab}`}>
-      <header className="library-head">
-        <div>
-          <h1 className="library-title">Browse</h1>
-          <p className="eyebrow">{LEDE[tab]}</p>
-        </div>
-      </header>
-      <div className="page-tabs tabs" role="tablist" aria-label="What to browse">
-        {TABS.map((t) => (
-          <button key={t.tab} type="button" role="tab" aria-selected={tab === t.tab} className={`tab${tab === t.tab ? " is-active" : ""}`} onClick={() => choose(t.tab)}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-      {tab === "catalogs" && <Catalogs />}
-      {tab === "bible" && <Bible refreshKey={refreshKey} onOpenBook={onOpenBook} />}
-      {tab === "browser" && <Browser />}
-    </div>
+    <button type="button" className="header-action" aria-label="Add a catalogue" title="Catalogues" onClick={onClick}>
+      <Icon name="globePlus" size={20} />
+    </button>
   );
 }

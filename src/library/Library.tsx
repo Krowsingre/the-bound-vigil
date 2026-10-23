@@ -25,10 +25,33 @@ import { useAppSettings } from "../settings/appSettings";
 type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
 
 const WORDS = {
-  books: { title: "Library", eyebrow: "Your personal archive", one: "book", many: "books", total: "Books" },
-  documents: { title: "Documents", eyebrow: "PDF, Word and text files", one: "document", many: "documents", total: "Documents" },
-  audiobooks: { title: "Audiobooks", eyebrow: "Your listening shelf", one: "audiobook", many: "audiobooks", total: "Audiobooks" },
+  books: { title: "Archive", one: "book", many: "books", total: "Items" },
+  documents: { title: "Archive", one: "document", many: "documents", total: "Items" },
+  audiobooks: { title: "Resonance", one: "audiobook", many: "audiobooks", total: "Items" },
 } as const;
+
+/** The switch at the top right of the Archive and Resonance: Books or Documents, Paired or Audiobooks only. */
+export function PageSwitch<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="segmented page-switch" role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} onClick={() => onChange(o.value)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function Library({
   kind = "books",
@@ -42,6 +65,8 @@ export function Library({
   onOpenBook,
   onOpenCollection,
   intro,
+  switcher,
+  paired = null,
 }: {
   /** Books (the Library), documents (PDF, Word and text files) or audiobooks. */
   kind?: ItemKind;
@@ -56,6 +81,10 @@ export function Library({
   onOpenCollection: (id: string) => void;
   /** Shown above the books, like Continue listening. */
   intro?: React.ReactNode;
+  /** Beside the page's name, like the Books / Documents switch. */
+  switcher?: React.ReactNode;
+  /** Resonance: only audiobooks with (true) or without (false) their ebook. */
+  paired?: boolean | null;
 }) {
   const [load, setLoad] = useState<Load<LibraryPage>>({ state: "loading" });
   const spent = useTimeSpent(refreshKey);
@@ -103,6 +132,7 @@ export function Library({
     hideRead: view.hideRead,
     exclude: view.exclude,
     kind,
+    paired,
   };
   useEffect(() => {
     let current = true;
@@ -123,6 +153,7 @@ export function Library({
         hideRead: view.hideRead,
         exclude: view.exclude,
         kind,
+        paired,
         page: endless ? 0 : view.page,
         pageSize: PAGE_SIZE,
       })
@@ -133,7 +164,7 @@ export function Library({
     return () => {
       current = false;
     };
-  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.series, view.narrators, view.hideRead, view.exclude, view.page, search, refreshKey, reload, endless]);
+  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.series, view.narrators, view.hideRead, view.exclude, view.page, paired, search, refreshKey, reload, endless]);
 
   // A new search, filter, shelf or sort starts the phone's list from the top.
   const queryKey = JSON.stringify(query);
@@ -486,20 +517,25 @@ export function Library({
 
   return (
     <div className="library">
-      <header className="library-head">
-        <div>
+      <header className="library-head is-stacked">
+        <div className="library-title-row">
           <h1 className="library-title">{words.title}</h1>
-          <p className="eyebrow">{words.eyebrow}</p>
+          {switcher}
         </div>
         {counts && (
           <div className="stats stats-5 library-stats">
-            <Stat value={counts.all} label={words.total} />
-            <Stat value={counts.read} label="Read" />
-            <Stat value={counts.inProgress} label="In progress" />
-            <Stat value={counts.unread} label="Unread" />
-            {/* The Audiobooks page has its panel beside it, so listening time takes the collections' place. */}
-            {kind !== "audiobooks" && <Stat value={counts.collections} label="Collections" />}
-            {spent && (kind === "audiobooks" ? <Stat value={<Spent seconds={spent.listen} />} label="Listened" /> : <Stat value={<Spent seconds={spent.read} />} label="Time read" />)}
+            <Stat icon={kind === "audiobooks" ? "headphones" : "library"} value={counts.all} label={words.total} />
+            <Stat icon="check" value={counts.read} label="Read" />
+            <Stat icon="bookOpen" value={counts.inProgress} label="In progress" />
+            <Stat icon="bookClosed" value={counts.unread} label="Unread" />
+            {/* Resonance has its panel beside it, so listening time takes the collections' place. */}
+            {kind !== "audiobooks" && <Stat icon="layers" value={counts.collections} label="Collections" />}
+            {spent &&
+              (kind === "audiobooks" ? (
+                <Stat icon="clock" value={<Spent seconds={spent.listen} />} label="Listened" />
+              ) : (
+                <Stat icon="clock" value={<Spent seconds={spent.read} />} label="Time read" />
+              ))}
           </div>
         )}
       </header>

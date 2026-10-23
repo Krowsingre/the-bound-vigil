@@ -1062,3 +1062,129 @@ button.tag-chip-add:hover {
   border-bottom: none;
   padding-bottom: 12px;
 }
+
+/* The toolbar on every size: the shelf's name on the left, then boxed icons
+   for sort, filter and select beside the layout pair. Shelves are in Filter. */
+.library-toolbar.is-compact {
+  flex-wrap: nowrap;
+  padding: 10px 0;
+}
+
+.library-toolbar.is-compact .tabs-menu {
+  display: block;
+  min-width: 0;
+  font: 400 15px var(--font-serif);
+  color: var(--text-muted);
+}
+
+.library-toolbar.is-compact .toolbar-controls {
+  gap: 8px;
+}
+
+.library-toolbar.is-compact .toolbar-icon {
+  display: block;
+}
+
+.library-toolbar.is-compact .toolbar-controls .toolbar-button {
+  position: relative;
+  justify-content: center;
+  gap: 4px;
+  min-width: 40px;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+}
+
+.library-toolbar.is-compact .toolbar-controls .toolbar-button:hover,
+.library-toolbar.is-compact .toolbar-controls .toolbar-button[aria-expanded="true"] {
+  color: var(--text);
+}
+
+.library-toolbar.is-compact .toolbar-controls .toolbar-button.is-on {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.toolbar-chevron {
+  opacity: 0.7;
+}
+
+/* A filter count sits on the corner, keeping the buttons the same size. */
+.library-toolbar.is-compact .toolbar-controls .toolbar-button .tab-count {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 16px;
+  padding: 1px 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+}
+
+.library-toolbar.is-compact .layout-switch {
+  margin-left: 0;
+}
+
+.library-toolbar.is-compact .layout-switch button {
+  height: 32px;
+}
+
+/* The Archive and Resonance: the name with its switch, then the counters. */
+.library-head.is-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px;
+}
+
+.library-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+
+.library-title-row .library-title {
+  margin-bottom: 0;
+}
+
+.page-switch button {
+  min-width: 96px;
+}
+
+.library-stats .stat.has-icon {
+  grid-template-columns: auto auto;
+  grid-template-areas: "icon value" "icon label";
+  align-items: center;
+  justify-content: start;
+  gap: 2px 10px;
+  text-align: left;
+}
+
+.stat.has-icon .stat-icon {
+  grid-area: icon;
+  color: var(--accent);
+}
+
+.stat.has-icon .stat-value {
+  grid-area: value;
+}
+
+.stat.has-icon .stat-label {
+  grid-area: label;
+}
+
+.segmented.page-switch {
+  margin: 0;
+}
+
+.segmented.page-switch button {
+  height: 32px;
+  padding: 0 14px;
+  font: 400 14px var(--font-serif);
+}

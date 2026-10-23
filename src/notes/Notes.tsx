@@ -57,6 +57,10 @@ export function Notes({
   embedded = false,
   ask = null,
   onGoToBooks,
+  kindTab,
+  chips,
+  above,
+  emptyAll,
 }: {
   /** The header's search box, which searches notes on this page. */
   search: string;
@@ -69,8 +73,23 @@ export function Notes({
   ask?: { kind: NewNoteKind; n: number } | null;
   /** Where "Add to a book I'm writing" sends you when there's no book yet. Left out, notes aren't offered to books. */
   onGoToBooks?: () => void;
+  /** Scribe's chips choose the kind of note, in place of the tabs here. */
+  kindTab?: NotesTab;
+  chips?: React.ReactNode;
+  /** Shown above the notes, like the books you're writing. */
+  above?: React.ReactNode;
+  /** In place of "No notes yet" when there's nothing at all. */
+  emptyAll?: React.ReactNode;
 }) {
-  const [tab, setTab] = useState<NotesTab>("all");
+  const [ownTab, setOwnTab] = useState<NotesTab>("all");
+  // Under Scribe's All, Filter narrows to highlights or annotations.
+  const [onlyKind, setOnlyKind] = useState<"highlights" | "annotations" | null>(null);
+  const base = kindTab ?? ownTab;
+  const tab: NotesTab = base === "all" && onlyKind ? onlyKind : base;
+  const setTab = (t: NotesTab) => {
+    setOnlyKind(null);
+    setOwnTab(t);
+  };
   const [prefs, setPrefs] = useState(readPrefs);
   const [bookId, setBookId] = useState<string | null>(null);
   const [colors, setColors] = useState<HighlightColor[]>([]);
@@ -198,10 +217,24 @@ export function Notes({
     }
   };
 
-  const filterCount = (bookId ? 1 : 0) + colors.length;
+  const filterCount = (bookId ? 1 : 0) + colors.length + (kindTab && onlyKind ? 1 : 0);
+  const clearFilters = () => {
+    setBookId(null);
+    setColors([]);
+    setOnlyKind(null);
+  };
   const toggleColor = (c: HighlightColor) => setColors((cs) => (cs.includes(c) ? cs.filter((x) => x !== c) : [...cs, c]));
   const filterBook = page?.books.find((b) => b.id === bookId);
   const filterItems: MenuEntry[] = [
+    ...(kindTab === "all"
+      ? ([
+          { heading: <strong>Show</strong> },
+          { label: "Everything", checked: !onlyKind, onSelect: () => setOnlyKind(null) },
+          { label: "Highlights", checked: onlyKind === "highlights", onSelect: () => setOnlyKind("highlights") },
+          { label: "Annotations", checked: onlyKind === "annotations", onSelect: () => setOnlyKind("annotations") },
+          "divider",
+        ] as MenuEntry[])
+      : []),
     { heading: <strong>Highlight colour</strong> },
     ...HIGHLIGHT_COLORS.map((c) => ({ label: c.label, checked: colors.includes(c.value), onSelect: () => toggleColor(c.value) })),
     "divider",
@@ -209,7 +242,7 @@ export function Notes({
     { label: "Every book", checked: !bookId, onSelect: () => setBookId(null) },
     ...(page?.books ?? []).map((b) => ({ label: b.title, checked: bookId === b.id, onSelect: () => setBookId(b.id) })),
     ...(filterCount
-      ? (["divider", { label: "Clear filters", onSelect: () => (setBookId(null), setColors([])) }] as MenuEntry[])
+      ? (["divider", { label: "Clear filters", onSelect: clearFilters }] as MenuEntry[])
       : []),
   ];
 
@@ -229,6 +262,7 @@ export function Notes({
       </div>
     );
   else if (!page) body = <div className="library-loading" aria-busy="true" aria-label="Loading your notes" />;
+  else if (!anyNotes && emptyAll) body = emptyAll;
   else if (!anyNotes)
     body = (
       <div className="library-empty">
@@ -261,7 +295,7 @@ export function Notes({
             </button>
           )}
           {filterCount > 0 && (
-            <button type="button" className="btn btn-quiet" onClick={() => (setBookId(null), setColors([]))}>
+            <button type="button" className="btn btn-quiet" onClick={clearFilters}>
               Clear filters
             </button>
           )}
@@ -323,7 +357,8 @@ export function Notes({
       </header>
       )}
 
-      <div className="library-toolbar">
+      <div className="library-toolbar is-compact">
+        {chips ?? (
         <div className="tabs" role="tablist" aria-label="Kinds of note">
           {TABS.map((t) => (
             <button
@@ -338,24 +373,27 @@ export function Notes({
             </button>
           ))}
         </div>
+        )}
         <div className="toolbar-controls">
           <Menu
-            label="Sort notes"
+            label={`Sort notes: ${SORTS.find((s) => s.sort === prefs.sort)?.label}`}
             className="toolbar-button"
             trigger={
               <>
-                Sort: {SORTS.find((s) => s.sort === prefs.sort)?.label} <Icon name="chevronDown" size={14} />
+                <Icon name="sort" size={16} className="toolbar-icon" />
+                <Icon name="chevronDown" size={12} className="toolbar-chevron" />
               </>
             }
             items={SORTS.map((s) => ({ label: s.label, checked: prefs.sort === s.sort, onSelect: () => changePrefs({ sort: s.sort }) }))}
           />
           <Menu
             label="Filter notes"
-            className="toolbar-button"
+            className={`toolbar-button${filterCount ? " is-on" : ""}`}
             trigger={
               <>
-                <Icon name="filter" size={15} /> Filter{filterCount > 0 && <span className="tab-count">{filterCount}</span>}{" "}
-                <Icon name="chevronDown" size={14} />
+                <Icon name="filter" size={16} />
+                {filterCount > 0 && <span className="tab-count num">{filterCount}</span>}
+                <Icon name="chevronDown" size={12} className="toolbar-chevron" />
               </>
             }
             items={filterItems}
@@ -385,6 +423,7 @@ export function Notes({
             search.trim() && `Showing notes matching “${search.trim()}”`,
             filterBook && `from ${filterBook.title}`,
             colors.length > 0 && `in ${colors.join(", ")}`,
+            kindTab && onlyKind && `(${onlyKind} only)`,
           ]
             .filter(Boolean)
             .join(" ")}
@@ -393,8 +432,7 @@ export function Notes({
             className="view-all"
             onClick={() => {
               onClearSearch();
-              setBookId(null);
-              setColors([]);
+              clearFilters();
             }}
           >
             Clear
@@ -402,6 +440,7 @@ export function Notes({
         </p>
       )}
 
+      {above}
       <div className="library-body">{body}</div>
 
       {writing && (

@@ -1,5 +1,5 @@
-// The Writing page: books you write in TBV (open one to write its chapters,
-// change its details and export an EPUB), and your notes from reading.
+// Scribe (the Writing page): books you write in TBV (open one to write its
+// chapters, change its details and export an EPUB), and your notes from reading.
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { api, isWeb } from "../api";
@@ -32,35 +32,41 @@ function Cover({ project }: { project: WritingProject }) {
   );
 }
 
-export type WritingTab = "books" | "notes";
+/** Scribe's chips: everything, your own notes, notes about books, or the books you write. */
+type Chip = "all" | "notes" | "book_notes" | "books";
+const CHIPS: { chip: Chip; label: string }[] = [
+  { chip: "all", label: "All" },
+  { chip: "notes", label: "Notes" },
+  { chip: "book_notes", label: "Book notes" },
+  { chip: "books", label: "Books" },
+];
+const NOTES_TAB = { all: "all", notes: "personal", book_notes: "book_notes" } as const;
 
-/** Writing: the books you write (Books) and everything you've noted while reading or on your own (Notes). */
+/** Scribe: the books you write and everything you've noted while reading or on your own, in one list. */
 export function Writing({
-  tab,
-  onTab,
   refreshKey,
   search,
   onClearSearch,
   onOpenBook,
   booksShown = true,
 }: {
-  tab: WritingTab;
-  onTab: (tab: WritingTab) => void;
   refreshKey: number;
   /** The header's search box, which searches notes. */
   search: string;
   onClearSearch: () => void;
   onOpenBook: (bookId: string, cfi?: string) => void;
-  /** False where your own books aren't kept (the phone web app): only Notes shows. */
+  /** False where your own books aren't kept (the phone web app): only notes show. */
   booksShown?: boolean;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [ask, setAsk] = useState<{ kind: NewNoteKind; n: number } | null>(null);
   const [reload, setReload] = useState(0);
-  const showing: WritingTab = booksShown ? tab : "notes";
+  const [chip, setChip] = useState<Chip>("all");
+  const showing: Chip = booksShown || chip !== "books" ? chip : "all";
+  const projects = useProjects(booksShown, refreshKey, reload);
 
-  if (openId && showing === "books")
+  if (openId && booksShown)
     return (
       <ProjectView
         id={openId}
@@ -74,60 +80,90 @@ export function Writing({
     );
 
   const newNote = (kind: NewNoteKind) => {
-    onTab("notes");
+    if (showing === "books") setChip("all");
     setAsk((a) => ({ kind, n: (a?.n ?? 0) + 1 }));
   };
+  const newBook = () => {
+    setChip("books");
+    setCreating(true);
+  };
   const newItems: MenuEntry[] = [
-    ...(booksShown ? [{ label: "Book to write", icon: "pen" as const, onSelect: () => (onTab("books"), setCreating(true)) }] : []),
-    { label: "Personal note", icon: "notes", onSelect: () => newNote("personal") },
-    { label: "Note about a book…", icon: "library", onSelect: () => newNote("book_note") },
+    { label: "Note", icon: "notes", onSelect: () => newNote("personal") },
+    { label: "Book note", icon: "library", onSelect: () => newNote("book_note") },
+    ...(booksShown ? [{ label: "Book", icon: "pen" as const, onSelect: newBook }] : []),
   ];
+  const books = projects.state === "ready" ? projects.list : [];
+
+  const chips = (
+    <div className="scribe-chips" role="tablist" aria-label="What to show">
+      {CHIPS.filter((c) => booksShown || c.chip !== "books").map((c) => (
+        <button
+          key={c.chip}
+          type="button"
+          role="tab"
+          aria-selected={showing === c.chip}
+          className={`chip${showing === c.chip ? " is-active" : ""}`}
+          onClick={() => setChip(c.chip)}
+        >
+          {c.label}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
-    <div className={`library writing-home writing-${showing}`}>
-      <header className="library-head">
-        <div>
-          <h1 className="library-title">{booksShown ? "Writing" : "Notes"}</h1>
-          <p className="eyebrow">
-            {showing === "books" ? "Books you're writing, ready to export as EPUB" : "Highlights, annotations and reflections from your reading"}
-          </p>
+    <div className={`library writing-home scribe writing-${showing}`}>
+      <header className="library-head scribe-head">
+        <h1 className="library-title">{booksShown ? "Scribe" : "Notes"}</h1>
+        {/* New starts a note to write freely; the arrow has the other kinds. */}
+        <div className="split-button">
+          <button type="button" className="btn btn-primary split-main" onClick={() => newNote("personal")}>
+            <Icon name="plus" size={15} /> New
+          </button>
+          <Menu
+            label="Other kinds of new"
+            className="btn btn-primary split-arrow"
+            align="end"
+            trigger={<Icon name="chevronDown" size={14} />}
+            items={newItems}
+          />
         </div>
-        <Menu
-          label="New"
-          className="btn btn-primary"
-          trigger={
-            <>
-              <span aria-hidden>+</span> New
-            </>
-          }
-          items={newItems}
-        />
       </header>
-      {booksShown && (
-        <div className="page-tabs tabs" role="tablist" aria-label="Writing">
-          {(
-            [
-              ["books", "Books"],
-              ["notes", "Notes"],
-            ] as const
-          ).map(([t, label]) => (
-            <button key={t} type="button" role="tab" aria-selected={showing === t} className={`tab${showing === t ? " is-active" : ""}`} onClick={() => onTab(t)}>
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
       {showing === "books" ? (
-        <BookShelf refreshKey={refreshKey} reload={reload} onOpen={setOpenId} onCreate={() => setCreating(true)} />
+        <>
+          <div className="library-toolbar scribe-toolbar">{chips}</div>
+          <BookShelf projects={projects} onOpen={setOpenId} onCreate={newBook} onRetry={() => setReload((n) => n + 1)} />
+        </>
       ) : (
         <Notes
           embedded
+          kindTab={NOTES_TAB[showing]}
+          chips={chips}
           ask={ask}
           search={search}
           refreshKey={refreshKey}
           onClearSearch={onClearSearch}
           onOpenBook={onOpenBook}
-          onGoToBooks={booksShown ? () => onTab("books") : undefined}
+          onGoToBooks={booksShown ? () => setChip("books") : undefined}
+          above={
+            showing === "all" && books.length > 0 ? (
+              <section className="scribe-books" aria-label="Books you're writing">
+                <h2 className="section-title">Books you're writing</h2>
+                <BookShelf projects={projects} onOpen={setOpenId} onCreate={newBook} onRetry={() => setReload((n) => n + 1)} />
+              </section>
+            ) : null
+          }
+          emptyAll={
+            showing === "all" && books.length === 0 ? (
+              <div className="library-empty scribe-empty">
+                <Icon name="notes" size={44} className="scribe-empty-art" />
+                <h2>No writing yet</h2>
+                <p className="muted">
+                  Press New to write freely. Highlights from your reading gather here too, and {booksShown ? "a book you write sits beside them." : "so do notes about whole books."}
+                </p>
+              </div>
+            ) : undefined
+          }
         />
       )}
       {creating && (
@@ -135,6 +171,7 @@ export function Writing({
           onCancel={() => setCreating(false)}
           onCreated={(id) => {
             setCreating(false);
+            setReload((n) => n + 1);
             setOpenId(id);
           }}
         />
@@ -143,33 +180,37 @@ export function Writing({
   );
 }
 
-function BookShelf({ refreshKey, reload: outside, onOpen, onCreate }: { refreshKey: number; reload: number; onOpen: (id: string) => void; onCreate: () => void }) {
-  const [projects, setProjects] = useState<WritingProject[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [reload, setReload] = useState(0);
+type Projects = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; list: WritingProject[] };
 
+/** The books you're writing, loaded again when something changes. */
+function useProjects(shown: boolean, refreshKey: number, reload: number): Projects {
+  const [projects, setProjects] = useState<Projects>({ state: "loading" });
   useEffect(() => {
+    if (!shown) return setProjects({ state: "ready", list: [] });
     let current = true;
     api.writingProjects().then(
-      (p) => current && (setProjects(p), setError(null)),
-      (e: unknown) => current && setError(String(e)),
+      (list) => current && setProjects({ state: "ready", list }),
+      (e: unknown) => current && setProjects({ state: "error", message: String(e) }),
     );
     return () => {
       current = false;
     };
-  }, [refreshKey, reload, outside]);
+  }, [shown, refreshKey, reload]);
+  return projects;
+}
 
-  return error ? (
+function BookShelf({ projects, onOpen, onCreate, onRetry }: { projects: Projects; onOpen: (id: string) => void; onCreate: () => void; onRetry: () => void }) {
+  return projects.state === "error" ? (
     <div className="library-empty" role="alert">
       <h2>Your writing couldn't be loaded</h2>
-      <p className="muted">{error}</p>
-      <button type="button" className="btn btn-primary" onClick={() => setReload((n) => n + 1)}>
+      <p className="muted">{projects.message}</p>
+      <button type="button" className="btn btn-primary" onClick={onRetry}>
         Try again
       </button>
     </div>
-  ) : !projects ? (
+  ) : projects.state === "loading" ? (
     <div className="library-loading" aria-busy="true" aria-label="Loading your writing" />
-  ) : projects.length === 0 ? (
+  ) : projects.list.length === 0 ? (
     <div className="library-empty">
       <h2>Write a book</h2>
       <p className="muted">
@@ -184,7 +225,7 @@ function BookShelf({ refreshKey, reload: outside, onOpen, onCreate }: { refreshK
     </div>
   ) : (
     <ul className="writing-shelf">
-      {projects.map((p) => (
+      {projects.list.map((p) => (
         <li key={p.id}>
           <button type="button" className="writing-book" onClick={() => onOpen(p.id)}>
             <Cover project={p} />

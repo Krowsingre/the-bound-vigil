@@ -1,4 +1,4 @@
-import { forwardRef } from "react";
+import { forwardRef, type ReactNode } from "react";
 import type { Profile, SyncStatus } from "../api/types";
 import { Icon } from "../components/Icon";
 import { SyncMenu } from "./SyncMenu";
@@ -23,8 +23,10 @@ export const Header = forwardRef<
     onClearAvatar: () => void;
     /** Opens the menu of pages, on a phone. */
     onOpenMenu?: () => void;
+    /** A button for the page showing, beside the menu button (Discover's catalogues). */
+    pageAction?: ReactNode;
   }
->(function Header({ sync, profile, search, placeholder, onSearchChange, onSearchSubmit, onOpenMenu, ...menu }, searchRef) {
+>(function Header({ sync, profile, search, placeholder, onSearchChange, onSearchSubmit, onOpenMenu, pageAction, ...menu }, searchRef) {
   return (
     <header className="header" data-tauri-drag-region>
       {onOpenMenu && (
@@ -32,6 +34,7 @@ export const Header = forwardRef<
           <Icon name="menu" size={22} />
         </button>
       )}
+      {pageAction}
       <form
         className="search"
         role="search"

@@ -196,7 +196,7 @@ export interface TidyPlan {
   bytes: number;
 }
 
-/** One file TBV keeps in Supabase (Settings › Sync › What's in Supabase). */
+/** One file TBV keeps in Supabase (Preferences › Sync › What's in Supabase). */
 export interface StoredFile {
   /** Like `books/<hash>.epub`. */
   path: string;
@@ -333,6 +333,8 @@ export interface HomeViewModel {
   annotations: AnnotationPreview[];
   libraryCounts: LibraryCounts;
   activity: ReadingActivity | null;
+  /** When each book was finished, over the last year or so, newest first. */
+  finishedDates?: IsoUtc[];
   sync: SyncStatus;
 }
 
@@ -419,6 +421,8 @@ export interface LibraryQuery {
   exclude?: LibraryExclude;
   /** Only books, documents or audiobooks. Left out: all of them. */
   kind?: ItemKind | null;
+  /** Audiobooks with their ebook paired (true), or with none (false). Null or missing: both. */
+  paired?: boolean | null;
   /** Only these books (of those that match). */
   ids?: string[];
   /** Zero-based. */

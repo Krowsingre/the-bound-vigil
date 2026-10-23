@@ -12,7 +12,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { showBookDetails } from "../details/openDetails";
 import { bookContextMenu, makeBookActions } from "../home/bookActions";
 import { useToast } from "../components/Toast";
-import { Library } from "../library/Library";
+import { Library, PageSwitch } from "../library/Library";
 import type { LibraryView } from "../library/libraryView";
 import { formatLength } from "../lib/queryBooks";
 import { formatBytes } from "../settings/controls";
@@ -33,6 +33,18 @@ function timeLeft(book: BookPreview): string | null {
   if (!book.durationMs) return null;
   const left = book.durationMs - (book.resumeLocator?.audioMs ?? 0);
   return left > 0 ? `${formatLength(left)} left` : null;
+}
+
+type Pairing = "all" | "paired" | "alone";
+const PAIRING_KEY = "tbv.audiobooks.pairing";
+
+function readPairing(): Pairing {
+  try {
+    const saved = localStorage.getItem(PAIRING_KEY);
+    return saved === "paired" || saved === "alone" ? saved : "all";
+  } catch {
+    return "all";
+  }
 }
 
 export function Audiobooks({
@@ -59,6 +71,17 @@ export function Audiobooks({
 }) {
   const player = usePlayer();
   const [chosen, setChosen] = useState<string | null>(null);
+  // Resonance's switch: every audiobook, the ones paired with their ebook, or the ones on their own.
+  const [pairing, setPairing] = useState(readPairing);
+  const choosePairing = (next: Pairing) => {
+    setPairing(next);
+    onChange({ page: 0 });
+    try {
+      localStorage.setItem(PAIRING_KEY, next);
+    } catch {
+      // Remembered until TBV closes.
+    }
+  };
   const [listening, setListening] = useState<BookPreview[] | null>(null);
   const [reload, setReload] = useState(0);
   const toast = useToast();
@@ -76,6 +99,7 @@ export function Audiobooks({
         kind: "audiobooks",
         shelf: "in_progress",
         sort: "recently_opened",
+        paired: pairing === "all" ? null : pairing === "paired",
         search: null,
         formats: [],
         location: null,
@@ -89,7 +113,7 @@ export function Audiobooks({
     return () => {
       current = false;
     };
-  }, [refreshKey, reload, player.playing]);
+  }, [refreshKey, reload, player.playing, pairing]);
 
   // The panel shows the book chosen, else the one playing, else the last listened to.
   const shown = chosen ?? player.book?.book.id ?? listening?.[0]?.id ?? null;
@@ -117,6 +141,19 @@ export function Audiobooks({
       <div className="audiobooks-main">
         <Library
           kind="audiobooks"
+          paired={pairing === "all" ? null : pairing === "paired"}
+          switcher={
+            <PageSwitch<Pairing>
+              label="Which audiobooks"
+              value={pairing}
+              options={[
+                { value: "all", label: "All" },
+                { value: "paired", label: "Paired" },
+                { value: "alone", label: "Audiobooks only" },
+              ]}
+              onChange={choosePairing}
+            />
+          }
           view={view}
           search={search}
           refreshKey={refreshKey + reload}

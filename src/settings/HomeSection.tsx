@@ -1,4 +1,4 @@
-// Settings › Sync › Use on your phone at home: TBV on this computer serves
+// Preferences › Sync › Use on your phone at home: TBV on this computer serves
 // itself to a phone on the same Wi-Fi, so books and audiobooks here (and in
 // a cloud app's folder, like iCloud) open on the phone without Supabase.
 

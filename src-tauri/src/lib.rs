@@ -1216,7 +1216,7 @@ async fn forget_kindle_email(state: State<'_, AppLibrary>) -> CommandResult<()> 
 async fn kindle_settings(state: State<'_, AppLibrary>) -> CommandResult<email::KindleEmail> {
     with_library(state, |library| library.kindle_email())
         .await?
-        .ok_or_else(|| "Set up Kindle by email first, in Settings › E-readers.".to_string())
+        .ok_or_else(|| "Set up Kindle by email first, in Preferences › E-readers.".to_string())
 }
 
 /// Emails a book to the person's Kindle. The email service is waited on

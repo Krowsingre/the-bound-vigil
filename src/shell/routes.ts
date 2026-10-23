@@ -2,28 +2,39 @@ import type { IconName } from "../components/Icon";
 
 export type Route = "home" | "library" | "documents" | "collections" | "audiobooks" | "notes" | "settings" | "sync" | "imports" | "activity" | "places" | "book" | "writing" | "catalogs";
 
-export const NAV: { route: Route; label: string; icon: IconName }[] = [
-  { route: "home", label: "Home", icon: "home" },
-  { route: "library", label: "Library", icon: "library" },
-  { route: "documents", label: "Documents", icon: "file" },
-  { route: "collections", label: "Collections", icon: "collections" },
-  { route: "audiobooks", label: "Audiobooks", icon: "headphones" },
-  { route: "writing", label: "Writing", icon: "pen" },
-  { route: "catalogs", label: "Browse", icon: "globe" },
-  { route: "settings", label: "Settings", icon: "settings" },
+/** Each page's name, and the few words under it in the sidebar. */
+export const PAGE: Record<"home" | "library" | "collections" | "audiobooks" | "writing" | "catalogs" | "settings", { label: string; caption: string }> = {
+  home: { label: "Sanctum", caption: "Your home" },
+  library: { label: "Archive", caption: "Books & documents" },
+  collections: { label: "Compendium", caption: "Your collections" },
+  audiobooks: { label: "Resonance", caption: "Audiobooks" },
+  writing: { label: "Scribe", caption: "Notes & manuscripts" },
+  catalogs: { label: "Discover", caption: "Find new books" },
+  settings: { label: "Preferences", caption: "Settings & sync" },
+};
+
+export const NAV: { route: Route; label: string; caption: string; icon: IconName }[] = [
+  { route: "home", ...PAGE.home, icon: "home" },
+  { route: "library", ...PAGE.library, icon: "library" },
+  { route: "collections", ...PAGE.collections, icon: "layers" },
+  { route: "audiobooks", ...PAGE.audiobooks, icon: "headphones" },
+  { route: "writing", ...PAGE.writing, icon: "pen" },
+  { route: "catalogs", ...PAGE.catalogs, icon: "compass" },
+  { route: "settings", ...PAGE.settings, icon: "settings" },
 ];
 
-/** The pages this copy of TBV shows. Browse needs the app (a web page can't
- * reach most catalogs or hold a browser). Writing holds Notes too; the books you
+/** The pages this copy of TBV shows. Discover needs the app (a web page can't
+ * reach most catalogs or hold a browser). Scribe holds notes too; the books you
  * write need synced records, which the phone at home doesn't keep, so there
- * it's only Notes. */
+ * it's only notes. */
 export function navFor({ web, home }: { web: boolean; home: boolean }) {
   return NAV.filter((n) => !(n.route === "catalogs" && (web || home))).map((n) =>
-    n.route === "writing" && home ? { ...n, label: "Notes", icon: "notes" as IconName } : n,
+    n.route === "writing" && home ? { ...n, caption: "Your notes" } : n,
   );
 }
 
-/** Sync & Accounts lives inside Settings, so Settings stays highlighted; Notes is a tab of Writing. */
+/** Sync & Accounts lives inside Preferences, so Preferences stays highlighted;
+ * notes are part of Scribe, and documents of the Archive. */
 export function navRouteOf(route: Route): Route {
-  return route === "sync" ? "settings" : route === "notes" ? "writing" : route;
+  return route === "sync" ? "settings" : route === "notes" ? "writing" : route === "documents" ? "library" : route;
 }

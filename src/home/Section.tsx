@@ -3,11 +3,14 @@ import type { ReactNode } from "react";
 export function Section({
   title,
   onViewAll,
+  action,
   className = "",
   children,
 }: {
   title: string;
   onViewAll?: () => void;
+  /** Something else in the heading's row, such as a choice of period. */
+  action?: ReactNode;
   className?: string;
   children: ReactNode;
 }) {
@@ -18,6 +21,7 @@ export function Section({
         <h2 id={id} className="section-title">
           {title}
         </h2>
+        {action}
         {onViewAll && (
           <button type="button" className="view-all" onClick={onViewAll}>
             View all <span aria-hidden>→</span>

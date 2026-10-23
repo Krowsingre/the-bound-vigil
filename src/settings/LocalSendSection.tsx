@@ -1,4 +1,4 @@
-// Settings › Servers › LocalSend: TBV shows up in the LocalSend app on phones
+// Preferences › Servers › LocalSend: TBV shows up in the LocalSend app on phones
 // and computers on the same Wi-Fi, and asks before taking anything.
 
 import { useEffect, useState } from "react";

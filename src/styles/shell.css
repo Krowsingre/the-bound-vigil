@@ -605,3 +605,32 @@
   border: 0;
   border-radius: var(--radius-m);
 }
+
+/* Each page's name with a few words under it. */
+.nav-item {
+  height: 56px;
+}
+
+.nav-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 17px;
+  line-height: 1.1;
+}
+
+.nav-caption {
+  font: 500 10px var(--font-sans);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Imports has no caption, so it keeps the old height. */
+.nav-imports {
+  height: 44px;
+}

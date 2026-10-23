@@ -77,7 +77,7 @@ export function NoteToBookDialog({ note, onClose, onGoToBooks }: { note: NoteIte
       >
         <h2>Add to a book I'm writing</h2>
         {projects && projects.length === 0 ? (
-          <p className="muted">You aren't writing a book yet. Start one under Writing › Books, then come back to add this note to it.</p>
+          <p className="muted">You aren't writing a book yet. Start one in Scribe, then come back to add this note to it.</p>
         ) : (
           <>
             <label className="field">

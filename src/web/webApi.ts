@@ -588,6 +588,11 @@ export async function webApi(): Promise<Api> {
           read: all.filter((b) => b.status === "read").length,
         },
         activity: null,
+        finishedDates: all
+          .filter((b) => b.status === "read" && b.finishedAt)
+          .map((b) => b.finishedAt!)
+          .sort()
+          .reverse(),
         sync: sync.status(),
       };
     },
