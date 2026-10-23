@@ -1188,3 +1188,213 @@ button.tag-chip-add:hover {
   padding: 0 14px;
   font: 400 14px var(--font-serif);
 }
+
+/* 1.20, from embre's Archive picture.
+   The Books / Documents switch: a pale pill with the chosen side filled dark. */
+.segmented.page-switch {
+  padding: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.segmented.page-switch button {
+  height: 34px;
+  min-width: 92px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font: 400 14px var(--font-sans);
+  color: var(--text-muted);
+  background: transparent;
+  box-shadow: none;
+}
+
+.segmented.page-switch button[aria-checked="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* The counters: all in one row, each with its icon above the number. */
+.library-stats.stats-5 {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  max-width: 760px;
+  overflow: visible;
+}
+
+.library-stats .stat.has-icon {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "icon" "value" "label";
+  justify-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  text-align: center;
+}
+
+.library-stats .stat.has-icon:first-child {
+  padding-left: 0;
+}
+
+.stat.has-icon .stat-icon {
+  color: var(--text);
+  opacity: 0.85;
+}
+
+.library-stats .stat-value {
+  font-size: 22px;
+  white-space: nowrap;
+}
+
+.library-stats .stat-label {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* The toolbar: sort, filter and select as boxed buttons with a small arrow,
+   a thin divider, then the joined grid / list pair at the far right. */
+.library-toolbar.is-compact .toolbar-controls {
+  flex: 1;
+  margin-left: 0;
+  gap: 10px;
+}
+
+.library-toolbar.is-compact .toolbar-controls .toolbar-button {
+  height: 34px;
+  min-width: 52px;
+  padding: 0 10px;
+  gap: 6px;
+  background: var(--surface);
+}
+
+.library-toolbar.is-compact .toolbar-chevron {
+  display: block;
+}
+
+.toolbar-divider {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 4px;
+  background: var(--border);
+}
+
+.library-toolbar.is-compact .tabs-menu {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-toolbar.is-compact .layout-switch {
+  margin-left: auto;
+  flex: none;
+  background: var(--surface);
+}
+
+.library-toolbar.is-compact .layout-switch button {
+  width: 44px;
+  height: 34px;
+}
+
+.library-toolbar.is-compact .layout-switch button + button {
+  border-left: 1px solid var(--border);
+}
+
+.library-toolbar.is-compact .layout-switch button.is-active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+@media (max-width: 760px) {
+  .library-title-row .library-title {
+    font-size: 40px;
+  }
+
+  .library-head.is-stacked {
+    gap: 16px;
+    padding: 20px 0 16px;
+  }
+
+  .library-stats.stats-5 {
+    max-width: none;
+  }
+
+  .library-stats .stat.has-icon {
+    padding: 2px 2px;
+    gap: 5px;
+  }
+
+  .library-stats .stat-value {
+    font-size: 17px;
+  }
+
+  .library-stats .stat-label {
+    font-size: 10px;
+  }
+
+  .library-stats .stat-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .library-toolbar.is-compact {
+    padding: 12px 0;
+  }
+
+  /* Covers or the plain list on a phone; the list with pictures needs more room. */
+  .library-toolbar.is-compact .layout-switch [data-layout="list"] {
+    display: none;
+  }
+
+  /* The plain list keeps the title, author, how far along and the ••• menu. */
+  .book-table {
+    table-layout: fixed;
+  }
+
+  .book-table :is(th, td):is(:nth-child(3), :nth-child(5), :nth-child(6), :nth-child(7)) {
+    display: none;
+  }
+
+  .book-table :is(th, td):nth-child(1) {
+    width: 52%;
+  }
+
+  .book-table :is(th, td):nth-child(4) {
+    width: 72px;
+    text-align: right;
+  }
+
+  .book-table td:last-child,
+  .book-table th:last-child {
+    width: 32px;
+  }
+
+  .book-table td {
+    max-width: none;
+  }
+
+  .book-table .table-title {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .segmented.page-switch button {
+    height: 32px;
+    min-width: 0;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+
+  .library-toolbar.is-compact .toolbar-controls {
+    gap: 8px;
+  }
+
+  .library-toolbar.is-compact .toolbar-controls .toolbar-button {
+    min-width: 48px;
+    padding: 0 8px;
+  }
+}

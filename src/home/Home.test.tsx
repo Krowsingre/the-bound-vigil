@@ -59,7 +59,7 @@ const dracula: BookPreview = {
 function renderHome(onNavigate: (route: Route) => void = () => {}) {
   return render(
     <ToastProvider>
-      <Home refreshKey={0} onNavigate={onNavigate} onOpenLibrary={() => {}} onImportBooks={() => {}} onImportFolder={() => {}} onOpenBook={() => {}} onOpenCollection={() => {}} />
+      <Home refreshKey={0} onNavigate={onNavigate} onOpenLibrary={() => {}} onImportBooks={() => {}} onImportFolder={() => {}} onOpenBook={() => {}} />
     </ToastProvider>,
   );
 }

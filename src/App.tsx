@@ -494,7 +494,6 @@ export function App() {
               onImportFolder={importFolder}
               onLoaded={onHomeLoaded}
               onOpenBook={openBook}
-              onOpenCollection={showCollection}
             />
           ) : route === "library" ? (
             <Library

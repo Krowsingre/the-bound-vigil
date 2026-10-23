@@ -524,12 +524,12 @@ export function Library({
         </div>
         {counts && (
           <div className="stats stats-5 library-stats">
-            <Stat icon={kind === "audiobooks" ? "headphones" : "library"} value={counts.all} label={words.total} />
-            <Stat icon="check" value={counts.read} label="Read" />
-            <Stat icon="bookOpen" value={counts.inProgress} label="In progress" />
-            <Stat icon="bookClosed" value={counts.unread} label="Unread" />
+            <Stat icon={kind === "audiobooks" ? "headphones" : "bookOpen"} value={counts.all} label={words.total} />
+            <Stat icon="checkCircle" value={counts.read} label="Read" />
+            <Stat icon="circleProgress" value={counts.inProgress} label="In progress" />
+            <Stat icon="circle" value={counts.unread} label="Unread" />
             {/* Resonance has its panel beside it, so listening time takes the collections' place. */}
-            {kind !== "audiobooks" && <Stat icon="layers" value={counts.collections} label="Collections" />}
+            {kind !== "audiobooks" && <Stat icon="squares" value={counts.collections} label="Collections" />}
             {spent &&
               (kind === "audiobooks" ? (
                 <Stat icon="clock" value={<Spent seconds={spent.listen} />} label="Listened" />
@@ -565,6 +565,7 @@ export function Library({
         allLabel={kind === "books" ? undefined : `All ${words.many}`}
         selecting={selected !== null}
         onSelecting={(on) => setSelected(on ? new Map() : null)}
+        onSelectAll={() => void chooseAll()}
         onChange={onChange}
       />
 

@@ -267,42 +267,6 @@
     height: 34px;
   }
 
-  /* No list view on a phone, for now. */
-  .layout-switch [data-layout="list"] {
-    display: none;
-  }
-
-  .layout-switch {
-    margin-left: 0;
-  }
-
-  .layout-switch button + button {
-    border-left: 1px solid var(--border);
-  }
-
-  /* All five counts fit across, with shorter names. */
-  .library-stats .stat {
-    padding: 0 8px;
-  }
-
-  /* The counters with their icons go three to a row. */
-  .library-stats.stats-5 {
-    grid-auto-flow: row;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    row-gap: 14px;
-    overflow: visible;
-  }
-
-  .library-stats .stat:nth-child(3n + 1) {
-    border-left: 0;
-    padding-left: 0;
-  }
-
-  /* Boxed icons only: the chevrons don't fit. */
-  .toolbar-chevron {
-    display: none;
-  }
-
   /* Reader: the text fills the screen; the panels slide over it. */
   .reader .reader-body,
   .reader.has-left .reader-body,

@@ -7,10 +7,7 @@ import { greeting } from "../lib/format";
 import type { LibraryView } from "../library/libraryView";
 import type { Route } from "../shell/routes";
 import { makeBookActions } from "./bookActions";
-import { CollectionsPreview } from "./CollectionsPreview";
 import { InProgress } from "./InProgress";
-import { LibrarySnapshot } from "./LibrarySnapshot";
-import { NotesPreview } from "./NotesPreview";
 import { ReadingActivity } from "./ReadingActivity";
 import { RecentlyAdded } from "./RecentlyAdded";
 import { ResumeHero } from "./ResumeHero";
@@ -25,7 +22,6 @@ export function Home({
   onImportFolder,
   onLoaded,
   onOpenBook,
-  onOpenCollection,
 }: {
   refreshKey: number;
   onNavigate: (route: Route) => void;
@@ -34,7 +30,6 @@ export function Home({
   onImportFolder: () => void;
   onLoaded?: (home: HomeViewModel) => void;
   onOpenBook: (bookId: string) => void;
-  onOpenCollection: (id: string) => void;
 }) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [reload, setReload] = useState(0);
@@ -112,11 +107,6 @@ export function Home({
           actions={actions}
           onViewAll={() => onOpenLibrary({ tab: "all", sort: "recently_added" })}
         />
-      </div>
-      <div className="home-bottom">
-        <CollectionsPreview collections={home.collections} onViewAll={() => onNavigate("collections")} onOpenCollection={onOpenCollection} />
-        <NotesPreview notes={home.annotations} onViewAll={() => onNavigate("notes")} />
-        <LibrarySnapshot counts={home.libraryCounts} onOpenLibrary={openLibrary} />
       </div>
     </div>
   );

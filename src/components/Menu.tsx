@@ -14,6 +14,8 @@ export interface MenuItem {
   label: string;
   icon?: IconName;
   hint?: string;
+  /** A second, smaller line under the label, with a larger icon beside both. */
+  description?: string;
   disabled?: boolean;
   danger?: boolean;
   /** Shown as a tick; the menu stays open so several can be toggled. */
@@ -184,7 +186,7 @@ export const MenuList = forwardRef<
             type="button"
             role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
             aria-checked={item.excluded ? "mixed" : item.checked}
-            className={`menu-item${item.danger ? " menu-item-danger" : ""}${item.excluded ? " menu-item-excluded" : ""}`}
+            className={`menu-item${item.danger ? " menu-item-danger" : ""}${item.excluded ? " menu-item-excluded" : ""}${item.description ? " has-description" : ""}`}
             disabled={item.disabled}
             onClick={() => {
               if (item.checked === undefined) onClose();
@@ -196,9 +198,16 @@ export const MenuList = forwardRef<
                 {item.excluded ? <Icon name="close" size={16} /> : item.checked && <Icon name="check" size={16} />}
               </span>
             ) : (
-              item.icon && <Icon name={item.icon} size={16} />
+              item.icon && <Icon name={item.icon} size={item.description ? 24 : 16} />
             )}
-            <span className="menu-label">{item.label}</span>
+            {item.description ? (
+              <span className="menu-label">
+                {item.label}
+                <span className="menu-description">{item.description}</span>
+              </span>
+            ) : (
+              <span className="menu-label">{item.label}</span>
+            )}
             {(item.excluded ? "Hidden" : item.hint) && <span className="menu-hint">{item.excluded ? "Hidden" : item.hint}</span>}
           </button>
         ),

@@ -13,10 +13,13 @@
   --bg: var(--ash-pale-soft);
   --surface: #faf9f6;
   --surface-sunk: var(--ash-pale);
-  --sidebar-bg: var(--crow-ink);
+  --sidebar-bg: #14191d;
   --sidebar-text: var(--ash-pale);
   --sidebar-muted: #9a9ea3;
   --sidebar-hover: var(--crow-ink-soft);
+  /* The open page in the sidebar: a faint blue box with a pale-blue bar. */
+  --sidebar-active: #1f282f;
+  --sidebar-mark: #8cc0f0;
   --text: var(--crow-ink);
   --text-muted: var(--weathered-iron);
   --border: var(--ash-pale-dim);
