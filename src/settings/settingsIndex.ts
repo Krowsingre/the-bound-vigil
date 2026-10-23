@@ -236,6 +236,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "browser",
+    section: "protection",
+    label: "Browser protection",
+    words: "discover browser protection trackers ads advertising block blocking strict balanced off privacy cookies lowered sites",
+  },
+  {
+    tab: "browser",
     section: "sitedata",
     label: "Browser site data",
     words: "discover browser cookies site data clear logins signed in privacy",

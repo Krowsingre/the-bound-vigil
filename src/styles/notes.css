@@ -551,7 +551,7 @@
 }
 
 /* On a phone the kinds of note scroll sideways instead of hiding. */
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .notes-page .library-toolbar {
     flex-wrap: wrap;
   }
@@ -643,15 +643,127 @@
 }
 
 .scribe-empty-art {
+  display: block;
+  width: 104px;
+  height: 104px;
+  margin: 0 auto 4px;
   color: var(--text-muted);
-  opacity: 0.6;
-  margin: 0 auto 8px;
 }
 
-@media (max-width: 760px) {
+/* 1.20, from embre's Scribe picture: All is a dark pill; the other kinds are
+   plain words with thin lines between them; sort and filter are plain icons in
+   the same row. */
+.scribe .scribe-chips {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
+}
+
+.scribe .scribe-chips,
+.scribe .chip {
+  flex: none;
+}
+
+.library-head.scribe-head {
+  border-bottom: 0;
+  padding-bottom: 14px;
+}
+
+.scribe .chip {
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  font-size: 15px;
+}
+
+.scribe .chip:not(.is-active) + .chip:not(.is-active)::before {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 22px;
+  margin: 0 14px 0 -14px;
+  vertical-align: middle;
+  background: var(--border);
+}
+
+.scribe .chip.is-active + .chip {
+  margin-left: 6px;
+}
+
+.scribe .library-toolbar.is-compact {
+  gap: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.scribe .library-toolbar.is-compact::-webkit-scrollbar {
+  display: none;
+}
+
+.scribe .library-toolbar.is-compact .toolbar-controls {
+  flex: 1 0 auto;
+  justify-content: flex-start;
+  gap: 2px;
+  margin-left: 6px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
+.scribe .library-toolbar.is-compact .toolbar-controls .toolbar-button {
+  min-width: 36px;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  color: var(--text);
+}
+
+.scribe .library-toolbar.is-compact .toolbar-chevron {
+  display: none;
+}
+
+.scribe .library-toolbar.is-compact .toolbar-controls .layout-switch {
+  margin-left: auto;
+}
+
+.scribe-empty h2 {
+  font: 400 24px var(--font-serif);
+}
+
+.scribe-empty p {
+  max-width: 340px;
+  margin: 0 auto;
+  font: 400 16px/1.5 var(--font-serif);
+}
+
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .scribe-chips {
     flex-wrap: nowrap;
-    overflow-x: auto;
+  }
+
+  .scribe .chip {
+    padding: 0 10px;
+    font-size: 14px;
+  }
+
+  /* Cards only on a phone: the layout pair doesn't fit beside the kinds. */
+  .scribe .library-toolbar.is-compact .layout-switch {
+    display: none;
+  }
+
+  .scribe-books .writing-shelf {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .notes-page.scribe .library-toolbar.is-compact,
+  .scribe .notes-page .library-toolbar.is-compact,
+  .scribe .library-toolbar.is-compact {
+    flex-wrap: nowrap;
+  }
+
+  .scribe .chip:not(.is-active) + .chip:not(.is-active)::before {
+    margin: 0 10px 0 -10px;
   }
 
   .notes-page .library-toolbar.is-compact {

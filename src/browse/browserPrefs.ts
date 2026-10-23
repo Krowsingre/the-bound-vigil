@@ -1,5 +1,6 @@
 // Discover's browser choices, kept on this device: the search engine, the
-// home page, and whether ebook downloads go straight into the library.
+// home page, whether ebook downloads go straight into the library, and how
+// much the browser blocks (and for which sites that's lowered).
 
 export type SearchEngine = "duckduckgo" | "google" | "bing" | "brave" | "startpage" | "ecosia";
 
@@ -14,11 +15,22 @@ export const SEARCH_ENGINES: { value: SearchEngine; label: string; url: string }
 
 export const DEFAULT_HOME = "https://www.gutenberg.org/";
 
+export type ProtectionLevel = "strict" | "balanced" | "off";
+
+export const PROTECTION_LEVELS: { value: ProtectionLevel; label: string; hint: string }[] = [
+  { value: "strict", label: "Strict", hint: "Blocks trackers, advertising, cryptocurrency miners and fingerprinting, and cookies from other sites." },
+  { value: "balanced", label: "Balanced", hint: "Blocks trackers and miners, and lets advertising and sign-in cookies through." },
+  { value: "off", label: "Off", hint: "Blocks nothing." },
+];
+
 export interface BrowserPrefs {
   search: SearchEngine;
   home: string;
   /** Ebook downloads join the library without asking first. */
   addWithoutAsking: boolean;
+  protection: ProtectionLevel;
+  /** Sites (hosts, without "www.") whose protection was lowered from Discover's ••• menu. */
+  lowered: string[];
 }
 
 const KEY = "tbv.browser.prefs";
@@ -40,6 +52,8 @@ export function readBrowserPrefs(): BrowserPrefs {
     search: SEARCH_ENGINES.some((e) => e.value === saved.search) ? (saved.search as SearchEngine) : "duckduckgo",
     home,
     addWithoutAsking: saved.addWithoutAsking === true,
+    protection: PROTECTION_LEVELS.some((p) => p.value === saved.protection) ? (saved.protection as ProtectionLevel) : "strict",
+    lowered: Array.isArray(saved.lowered) ? saved.lowered.filter((h): h is string => typeof h === "string") : [],
   };
 }
 
@@ -67,4 +81,25 @@ export function addressFor(typed: string, engine: SearchEngine = "duckduckgo"): 
   if (!/\s/.test(text) && /^[^/]+\.[a-z]{2,}(\/|$|:)/i.test(text)) return `https://${text}`;
   const search = SEARCH_ENGINES.find((e) => e.value === engine) ?? SEARCH_ENGINES[0];
   return `${search.url}${encodeURIComponent(text)}`;
+}
+
+/** A page's site, as protection is lowered for it: its host without "www.". */
+export function siteOf(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    return /^https?:$/.test(parsed.protocol) ? parsed.hostname.replace(/^www\./, "").toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** What the browser is told about protection. */
+export function protectionOf(prefs: BrowserPrefs): { level: ProtectionLevel; lowered: string[] } {
+  return { level: prefs.protection, lowered: prefs.lowered };
+}
+
+/** Lowers protection for a site, or puts it back. */
+export function lowerFor(site: string, lowered: boolean): BrowserPrefs {
+  const list = readBrowserPrefs().lowered.filter((h) => h !== site);
+  return writeBrowserPrefs({ lowered: lowered ? [...list, site] : list });
 }

@@ -1,10 +1,25 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { useToast } from "../components/Toast";
-import { DEFAULT_HOME, onBrowserPrefs, readBrowserPrefs, SEARCH_ENGINES, writeBrowserPrefs, type SearchEngine } from "../browse/browserPrefs";
+import {
+  DEFAULT_HOME,
+  lowerFor,
+  onBrowserPrefs,
+  PROTECTION_LEVELS,
+  protectionOf,
+  readBrowserPrefs,
+  SEARCH_ENGINES,
+  writeBrowserPrefs,
+  type BrowserPrefs,
+  type ProtectionLevel,
+  type SearchEngine,
+} from "../browse/browserPrefs";
 import { Row, Section, Select, Toggle } from "./controls";
 
-/** Discover's browser: what it searches with, where it starts, and what happens to downloads. */
+/** Tells an open browser about a change to protection; it's read afresh when the browser next opens anyway. */
+const protect = (prefs: BrowserPrefs) => void api.browserProtect(protectionOf(prefs)).catch(() => undefined);
+
+/** Discover's browser: what it searches with, where it starts, what it blocks, and what happens to downloads. */
 export function BrowserTab() {
   const toast = useToast();
   const [prefs, setPrefs] = useState(readBrowserPrefs);
@@ -75,6 +90,28 @@ export function BrowserTab() {
           onChange={(addWithoutAsking) => writeBrowserPrefs({ addWithoutAsking })}
         />
       </Section>
+      <Section id="protection" title="Protection" lede="What Discover blocks on the websites you visit. A site that won't work properly can have its protection lowered from Discover's ••• menu.">
+        <Row label="Protection" hint={PROTECTION_LEVELS.find((p) => p.value === prefs.protection)?.hint}>
+          <Select<ProtectionLevel>
+            label="Protection"
+            value={prefs.protection}
+            options={PROTECTION_LEVELS.map((p) => ({ value: p.value, label: p.value === "strict" ? `${p.label} (recommended)` : p.label }))}
+            onChange={(protection) => protect(writeBrowserPrefs({ protection }))}
+          />
+        </Row>
+        {prefs.lowered.length > 0 && (
+          <>
+            <p className="muted">Sites with protection lowered:</p>
+            {prefs.lowered.map((site) => (
+              <Row key={site} label={site}>
+                <button type="button" className="btn btn-quiet" onClick={() => protect(lowerFor(site, false))}>
+                  Restore protection
+                </button>
+              </Row>
+            ))}
+          </>
+        )}
+      </Section>
       <Section id="sitedata" title="Site data" lede="Cookies and saved logins from websites you've visited in Discover. TBV's own data isn't touched.">
         <Row label="Clear cookies and site data" hint="You'll be signed out of every website in Discover.">
           <button
@@ -82,7 +119,7 @@ export function BrowserTab() {
             className="btn btn-quiet"
             onClick={() =>
               void api
-                .browserAct("clear")
+                .browserClear()
                 .then(() => toast("Every site's cookies and data are cleared."))
                 .catch((e: unknown) => toast(String(e)))
             }

@@ -76,8 +76,9 @@ function applyLayout(view: View, settings: ReaderSettings, colors: PageColors) {
     return;
   }
   if (r.getAttribute("flow") !== settings.flow) r.setAttribute("flow", settings.flow);
+  // Read when the pages are laid out, which setting their width does next.
+  r.setAttribute("max-column-count", settings.textSpread === "auto" ? "2" : "1");
   r.setAttribute("max-inline-size", `${WIDTHS[settings.width]}px`);
-  r.setAttribute("max-column-count", "1");
   r.setAttribute("gap", "6%");
   r.setAttribute("margin", "32px");
   // Fixed-layout books (comics, pre-paginated EPUBs) keep their own styles.
@@ -244,10 +245,10 @@ export function useReaderEngine({
 
   // Reading settings changed while the book is open. The read aloud voice
   // and speed don't change the page, so they don't lay it out again.
-  const { font, size, lineHeight, width, flow, theme, justify, pageZoom, pageSpread, pageFlow } = settings;
+  const { font, size, lineHeight, width, flow, textSpread, theme, justify, pageZoom, pageSpread, pageFlow } = settings;
   const look = useMemo(
-    () => ({ ...DEFAULT_SETTINGS, font, size, lineHeight, width, flow, theme, justify, pageZoom, pageSpread, pageFlow }),
-    [font, size, lineHeight, width, flow, theme, justify, pageZoom, pageSpread, pageFlow],
+    () => ({ ...DEFAULT_SETTINGS, font, size, lineHeight, width, flow, textSpread, theme, justify, pageZoom, pageSpread, pageFlow }),
+    [font, size, lineHeight, width, flow, textSpread, theme, justify, pageZoom, pageSpread, pageFlow],
   );
   useEffect(() => {
     const view = viewRef.current;

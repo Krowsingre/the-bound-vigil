@@ -25,6 +25,8 @@ export type ReadingWidth = "narrow" | "medium" | "wide";
 export type PageZoom = "fit-page" | "fit-width" | number;
 /** PDFs and comics: one page at a time, two side by side, or two when the window is wide. */
 export type PageSpread = "one" | "two" | "auto";
+/** Books of flowing text: one page at a time, or two side by side when there's room (a phone held sideways, a wide window). */
+export type TextSpread = "one" | "auto";
 
 export interface ReaderSettings {
   font: ReadingFont;
@@ -33,6 +35,8 @@ export interface ReaderSettings {
   lineHeight: number;
   width: ReadingWidth;
   flow: ReadingFlow;
+  /** With `flow` "paginated": two pages side by side when there's room. */
+  textSpread: TextSpread;
   theme: ReadingTheme;
   justify: boolean;
   /** Read aloud: the voice chosen for each language ("en" → voiceURI). */
@@ -53,6 +57,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   lineHeight: 1.6,
   width: "medium",
   flow: "paginated",
+  textSpread: "one",
   theme: "auto",
   justify: false,
   voices: {},
@@ -111,6 +116,7 @@ export function parseSettings(json: string | null): ReaderSettings {
     lineHeight: typeof raw.lineHeight === "number" ? clamp(raw.lineHeight, 1.2, 2.2) : d.lineHeight,
     width: oneOf(raw.width, ["narrow", "medium", "wide"], d.width),
     flow: oneOf(raw.flow, ["paginated", "scrolled"], d.flow),
+    textSpread: oneOf(raw.textSpread, ["one", "auto"], d.textSpread),
     theme: oneOf(raw.theme, ["auto", "light", "paper", "dark"], d.theme),
     justify: typeof raw.justify === "boolean" ? raw.justify : d.justify,
     voices: parseVoices(raw.voices),

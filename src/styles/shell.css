@@ -75,6 +75,28 @@
   color: var(--sidebar-muted);
 }
 
+/* A thin line with a small diamond at its middle, under the tagline. */
+.brand-divider {
+  position: relative;
+  display: block;
+  width: min(156px, 70%);
+  height: 1px;
+  margin-top: 18px;
+  background: linear-gradient(to right, transparent, var(--weathered-iron) 15%, var(--weathered-iron) 85%, transparent);
+}
+
+.brand-divider::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--weathered-iron);
+  background: var(--sidebar-bg);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
 .sidebar-collapsed .brand {
   padding: 4px 0 24px;
 }
@@ -113,7 +135,7 @@
 }
 
 .nav-item.is-active {
-  background: var(--sidebar-hover);
+  background: var(--sidebar-active);
   color: var(--sidebar-text);
 }
 
@@ -125,7 +147,7 @@
   bottom: 8px;
   width: 3px;
   border-radius: 2px;
-  background: #8fa3b5;
+  background: var(--sidebar-mark);
 }
 
 .sidebar-collapsed .nav {
@@ -159,6 +181,10 @@
   letter-spacing: 0.04em;
 }
 
+.sidebar-quote > .sidebar-rule:first-child {
+  margin: 0 auto 18px;
+}
+
 .sidebar-quote-by::before {
   content: "— ";
 }
@@ -167,7 +193,7 @@
   display: block;
   width: 28px;
   height: 1px;
-  margin: 14px auto 0;
+  margin: 18px auto 0;
   background: var(--weathered-iron);
 }
 
@@ -366,6 +392,46 @@
 .menu-label {
   flex: 1;
   white-space: nowrap;
+}
+
+/* An item with a second line: as in Scribe's New menu, which stays narrow. */
+.menu:has(> .menu-item.has-description) {
+  min-width: 0;
+  width: 212px;
+}
+
+.menu-item.has-description {
+  height: auto;
+  min-height: 56px;
+  gap: 12px;
+  padding: 10px 12px;
+  align-items: center;
+}
+
+.menu-item.has-description + .menu-item.has-description {
+  position: relative;
+}
+
+.menu-item.has-description + .menu-item.has-description::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 1px;
+  background: var(--border);
+}
+
+.menu-item.has-description .menu-label {
+  display: grid;
+  gap: 3px;
+  font: 400 15px/1.2 var(--font-serif);
+  white-space: normal;
+}
+
+.menu-description {
+  font: 400 12px/1.35 var(--font-serif);
+  color: var(--text-muted);
 }
 
 .menu-hint {
@@ -606,15 +672,23 @@
   border-radius: var(--radius-m);
 }
 
-/* Each page's name with a few words under it. */
+/* Each page's name with a few words under it. The names stay bright; only
+   the captions are muted. */
 .nav-item {
-  height: 56px;
+  height: 58px;
+  gap: 20px;
+  padding: 0 18px;
+  color: var(--sidebar-text);
+}
+
+.nav {
+  gap: 6px;
 }
 
 .nav-label {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 5px;
   min-width: 0;
   font-size: 17px;
   line-height: 1.1;
@@ -622,9 +696,9 @@
 
 .nav-caption {
   font: 500 10px var(--font-sans);
-  letter-spacing: 0.18em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  opacity: 0.75;
+  color: var(--sidebar-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

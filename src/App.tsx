@@ -11,8 +11,8 @@ import { DetailsHost } from "./details/DetailsHost";
 import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Writing } from "./writing/Writing";
-import { Browse, CataloguesButton } from "./browse/Browse";
-import { BROWSER_GO } from "./browse/Browser";
+import { Browse } from "./browse/Browse";
+import { BROWSER_GO, BROWSER_PAGE, BrowserRowToggle } from "./browse/Browser";
 import { Audiobooks } from "./audio/Audiobooks";
 import { PlayerBar } from "./audio/PlayerBar";
 import { usePlayer } from "./audio/player";
@@ -399,6 +399,13 @@ export function App() {
   const toLibrary = useCallback(() => navigate("library"), [navigate]);
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const [catalogues, setCatalogues] = useState(false);
+  // On Discover the top search box shows the address of the page in front.
+  const [browserAddress, setBrowserAddress] = useState("");
+  useEffect(() => {
+    const heard = (e: Event) => setBrowserAddress((e as CustomEvent<string>).detail);
+    window.addEventListener(BROWSER_PAGE, heard);
+    return () => window.removeEventListener(BROWSER_PAGE, heard);
+  }, []);
   // The Archive holds books and documents, one switch apart.
   const archiveSwitch = (
     <PageSwitch<"library" | "documents">
@@ -475,7 +482,8 @@ export function App() {
               changeSearch("");
             } else if (route !== "notes" && route !== "writing" && route !== "documents" && route !== "audiobooks") setRoute("library");
           }}
-          pageAction={route === "catalogs" ? <CataloguesButton onClick={() => setCatalogues(true)} /> : undefined}
+          address={route === "catalogs" ? browserAddress : undefined}
+          afterSearch={route === "catalogs" ? <BrowserRowToggle /> : undefined}
           onChooseAvatar={chooseAvatar}
           onClearAvatar={clearAvatar}
           onImportBooks={importBooks}
@@ -494,7 +502,6 @@ export function App() {
               onImportFolder={importFolder}
               onLoaded={onHomeLoaded}
               onOpenBook={openBook}
-              onOpenCollection={showCollection}
             />
           ) : route === "library" ? (
             <Library
@@ -584,7 +591,7 @@ export function App() {
               onOpenBook={openBook}
             />
           ) : route === "catalogs" ? (
-            <Browse refreshKey={refreshKey} onOpenBook={openBook} catalogues={catalogues} onCloseCatalogues={() => setCatalogues(false)} />
+            <Browse refreshKey={refreshKey} onOpenBook={openBook} catalogues={catalogues} onOpenCatalogues={() => setCatalogues(true)} onCloseCatalogues={() => setCatalogues(false)} />
           ) : (
             <Settings
               tab={settingsTab}

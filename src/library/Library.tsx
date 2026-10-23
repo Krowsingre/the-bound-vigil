@@ -25,9 +25,9 @@ import { useAppSettings } from "../settings/appSettings";
 type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
 
 const WORDS = {
-  books: { title: "Archive", one: "book", many: "books", total: "Items" },
-  documents: { title: "Archive", one: "document", many: "documents", total: "Items" },
-  audiobooks: { title: "Resonance", one: "audiobook", many: "audiobooks", total: "Items" },
+  books: { title: "Archive", one: "book", many: "books", total: "Total" },
+  documents: { title: "Archive", one: "document", many: "documents", total: "Total" },
+  audiobooks: { title: "Resonance", one: "audiobook", many: "audiobooks", total: "Total" },
 } as const;
 
 /** The switch at the top right of the Archive and Resonance: Books or Documents, Paired or Audiobooks only. */
@@ -524,12 +524,10 @@ export function Library({
         </div>
         {counts && (
           <div className="stats stats-5 library-stats">
-            <Stat icon={kind === "audiobooks" ? "headphones" : "library"} value={counts.all} label={words.total} />
-            <Stat icon="check" value={counts.read} label="Read" />
-            <Stat icon="bookOpen" value={counts.inProgress} label="In progress" />
-            <Stat icon="bookClosed" value={counts.unread} label="Unread" />
-            {/* Resonance has its panel beside it, so listening time takes the collections' place. */}
-            {kind !== "audiobooks" && <Stat icon="layers" value={counts.collections} label="Collections" />}
+            <Stat icon="circleProgress" value={counts.inProgress} label="In progress" />
+            <Stat icon="checkCircle" value={counts.read} label="Read" />
+            <Stat icon="circle" value={counts.unread} label="Unread" />
+            <Stat icon={kind === "audiobooks" ? "headphones" : "bookOpen"} value={counts.all} label={words.total} />
             {spent &&
               (kind === "audiobooks" ? (
                 <Stat icon="clock" value={<Spent seconds={spent.listen} />} label="Listened" />
@@ -565,6 +563,7 @@ export function Library({
         allLabel={kind === "books" ? undefined : `All ${words.many}`}
         selecting={selected !== null}
         onSelecting={(on) => setSelected(on ? new Map() : null)}
+        onSelectAll={() => void chooseAll()}
         onChange={onChange}
       />
 

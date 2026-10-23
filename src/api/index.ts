@@ -7,9 +7,9 @@ import type { Found } from "../lib/onlineDetails";
 import type {
   BookFile,
   Bookmark,
-  BrowserDownload,
   BrowserFrame,
-  BrowserPage,
+  BrowserEvent,
+  BrowserProtection,
   CatalogInput,
   CatalogView,
   OpdsFeed,
@@ -397,14 +397,22 @@ export interface Api {
   addBookmark(title: string, url: string): Promise<Bookmark>;
   renameBookmark(id: string, title: string): Promise<void>;
   removeBookmark(id: string): Promise<void>;
-  /** Shows the browser over `frame`, at `url` (or where it was). App only. */
-  browserShow(url: string | null, frame: BrowserFrame): Promise<void>;
+  /** Shows tab `tab` over `frame` (made at `url` if it's new), with the others hidden. App only. */
+  browserShow(tab: string, url: string | null, frame: BrowserFrame, protection?: BrowserProtection): Promise<void>;
   browserPlace(frame: BrowserFrame): Promise<void>;
-  /** Hides the browser, which keeps its page. */
+  /** Hides every tab; they keep their pages. */
   browserHide(): Promise<void>;
-  browserAct(action: "go" | "back" | "forward" | "reload" | "stop" | "clear", url?: string): Promise<void>;
-  onBrowserPage(listener: (page: BrowserPage) => void): () => void;
-  onBrowserDownload(listener: (download: BrowserDownload) => void): () => void;
+  browserAct(tab: string, action: "go" | "back" | "forward" | "reload" | "stop" | "close", url?: string): Promise<void>;
+  /** Clears every site's cookies, saved logins and data. */
+  browserClear(): Promise<void>;
+  browserFind(tab: string, text: string, backwards: boolean): Promise<void>;
+  browserProtect(protection: BrowserProtection): Promise<void>;
+  /** Runs reader mode's article finder in the tab; null when the page has no article. */
+  browserRead(tab: string, script: string): Promise<unknown>;
+  browserCancelDownload(id: string): Promise<void>;
+  /** A picture from the web, for an article saved to the library. */
+  browserFetchPicture(url: string): Promise<Uint8Array>;
+  onBrowserEvent(listener: (event: BrowserEvent) => void): () => void;
   /** Adds a file the browser brought down to the library. */
   browserAddDownload(path: string): Promise<void>;
   /** Moves a download to the Downloads folder; resolves to where it went. */
@@ -843,12 +851,17 @@ function appApi(): Api {
     addBookmark: async (title, url) => (await core).invoke<Bookmark>("add_bookmark", { title, url }),
     renameBookmark: async (id, title) => (await core).invoke("rename_bookmark", { id, title }),
     removeBookmark: async (id) => (await core).invoke("remove_bookmark", { id }),
-    browserShow: async (url, frame) => (await core).invoke("browser_show", { url, frame }),
+    browserShow: async (tab, url, frame, protection) => (await core).invoke("browser_show", { tab, url, frame, protection: protection ?? null }),
     browserPlace: async (frame) => (await core).invoke("browser_place", { frame }),
     browserHide: async () => (await core).invoke("browser_hide"),
-    browserAct: async (action, url) => (await core).invoke("browser_act", { action, url: url ?? null }),
-    onBrowserPage: (listener) => onEvent<BrowserPage>("browser-page", listener),
-    onBrowserDownload: (listener) => onEvent<BrowserDownload>("browser-download", listener),
+    browserAct: async (tab, action, url) => (await core).invoke("browser_act", { tab, action, url: url ?? null }),
+    browserClear: async () => (await core).invoke("browser_clear"),
+    browserFind: async (tab, text, backwards) => (await core).invoke("browser_find", { tab, text, backwards }),
+    browserProtect: async (protection) => (await core).invoke("browser_protect", { protection }),
+    browserRead: async (tab, script) => (await core).invoke<unknown>("browser_read", { tab, script }),
+    browserCancelDownload: async (id) => (await core).invoke("browser_cancel_download", { id }),
+    browserFetchPicture: async (url) => new Uint8Array(await (await core).invoke<ArrayBuffer>("browser_fetch_picture", { url })),
+    onBrowserEvent: (listener) => onEvent<BrowserEvent>("browser-event", listener),
     browserAddDownload: async (path) => (await core).invoke("browser_add_download", { path }),
     browserKeepDownload: async (path) => (await core).invoke<string>("browser_keep_download", { path }),
     browserDiscardDownload: async (path) => (await core).invoke("browser_discard_download", { path }),

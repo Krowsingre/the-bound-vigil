@@ -48,6 +48,7 @@ export function Sidebar({
             <>
               <span className="brand-name">The Bound Vigil</span>
               <span className="brand-tagline">Books endure</span>
+              <span className="brand-divider" aria-hidden />
             </>
           )}
         </div>
@@ -63,7 +64,7 @@ export function Sidebar({
                   onClick={() => onNavigate(item.route)}
                   title={collapsed ? `${item.label} (Ctrl+${i + 1})` : undefined}
                 >
-                  <Icon name={item.icon} size={20} />
+                  <Icon name={item.icon} size={22} />
                   <span className="nav-label">
                     {item.label}
                     <span className="nav-caption">{item.caption}</span>
@@ -96,6 +97,7 @@ export function Sidebar({
 
         {!collapsed && (
           <figure className="sidebar-quote" aria-hidden>
+            <span className="sidebar-rule" />
             <blockquote>A wider world lives in these pages.</blockquote>
             <figcaption className="sidebar-quote-by">Krowsingre</figcaption>
             <span className="sidebar-rule" />

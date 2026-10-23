@@ -47,6 +47,7 @@ export function LibraryToolbar({
   allLabel,
   selecting,
   onSelecting,
+  onSelectAll,
   onChange,
 }: {
   view: LibraryView;
@@ -63,6 +64,8 @@ export function LibraryToolbar({
   allLabel?: string;
   selecting: boolean;
   onSelecting: (on: boolean) => void;
+  /** Starts choosing with every book the page shows already chosen. */
+  onSelectAll?: () => void;
   onChange: (change: Partial<LibraryView>) => void;
 }) {
   const sortLabel = SORTS.find((s) => s.sort === view.sort)?.label;
@@ -191,12 +194,6 @@ export function LibraryToolbar({
 
   return (
     <div className="library-toolbar is-compact">
-      {/* The shelf is only named here; it's chosen in Filter. */}
-      <span className="tabs-menu">
-        {tabName(view.tab)}
-        {view.location === "on_device" && view.tab !== "collections" && " · Downloaded"}
-      </span>
-
       <div className="toolbar-controls">
         {view.tab !== "collections" && (
           <Menu
@@ -227,18 +224,33 @@ export function LibraryToolbar({
           }
           items={filterItems}
         />
+        {view.tab === "collections" && <span className="tabs-menu">{tabName(view.tab)}</span>}
         {view.tab !== "collections" && (
           <>
-            <button
-              type="button"
+            <Menu
+              label="Select"
               className={`toolbar-button${selecting ? " is-on" : ""}`}
-              aria-pressed={selecting}
-              title="Choose books to change many at once"
-              aria-label="Select"
-              onClick={() => onSelecting(!selecting)}
-            >
-              <Icon name="check" size={16} />
-            </button>
+              trigger={
+                <>
+                  <Icon name="check" size={16} />
+                  <Icon name="chevronDown" size={12} className="toolbar-chevron" />
+                </>
+              }
+              items={[
+                selecting
+                  ? { label: "Done choosing", onSelect: () => onSelecting(false) }
+                  : { label: "Choose books", onSelect: () => onSelecting(true) },
+                ...(onSelectAll ? [{ label: "Choose everything shown", onSelect: onSelectAll }] : []),
+              ]}
+            />
+            <span className="toolbar-divider" aria-hidden />
+            {/* A shelf other than everything is named here; it's chosen in Filter. */}
+            {(view.tab !== "all" || view.location === "on_device") && (
+              <span className="tabs-menu">
+                {tabName(view.tab)}
+                {view.location === "on_device" && " · Downloaded"}
+              </span>
+            )}
             <div className="layout-switch" role="radiogroup" aria-label="Layout">
               {LAYOUTS.map((l) => (
                 <button

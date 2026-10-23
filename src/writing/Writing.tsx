@@ -32,6 +32,19 @@ function Cover({ project }: { project: WritingProject }) {
   );
 }
 
+/** Two sheets of paper, one tilted behind the other: Scribe with nothing in it. */
+function PaperArt() {
+  return (
+    <svg className="scribe-empty-art" viewBox="0 0 104 104" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <g opacity="0.45">
+        <rect x="16" y="24" width="50" height="66" rx="4" transform="rotate(-10 41 57)" fill="var(--surface)" />
+      </g>
+      <rect x="36" y="12" width="52" height="70" rx="4" fill="var(--surface)" opacity="0.9" />
+      <path d="M46 28h32M46 38h32M46 48h32M46 58h18" opacity="0.6" />
+    </svg>
+  );
+}
+
 /** Scribe's chips: everything, your own notes, notes about books, or the books you write. */
 type Chip = "all" | "notes" | "book_notes" | "books";
 const CHIPS: { chip: Chip; label: string }[] = [
@@ -88,9 +101,9 @@ export function Writing({
     setCreating(true);
   };
   const newItems: MenuEntry[] = [
-    { label: "Note", icon: "notes", onSelect: () => newNote("personal") },
-    { label: "Book note", icon: "library", onSelect: () => newNote("book_note") },
-    ...(booksShown ? [{ label: "Book", icon: "pen" as const, onSelect: newBook }] : []),
+    { label: "Note", icon: "noteLines", description: "Write freely", onSelect: () => newNote("personal") },
+    { label: "Book note", icon: "notePen", description: "Write about a book in your library", onSelect: () => newNote("book_note") },
+    ...(booksShown ? [{ label: "Book", icon: "bookOpen" as const, description: "Create a manuscript for EPUB export", onSelect: newBook }] : []),
   ];
   const books = projects.state === "ready" ? projects.list : [];
 
@@ -156,10 +169,10 @@ export function Writing({
           emptyAll={
             showing === "all" && books.length === 0 ? (
               <div className="library-empty scribe-empty">
-                <Icon name="notes" size={44} className="scribe-empty-art" />
+                <PaperArt />
                 <h2>No writing yet</h2>
                 <p className="muted">
-                  Press New to write freely. Highlights from your reading gather here too, and {booksShown ? "a book you write sits beside them." : "so do notes about whole books."}
+                  {booksShown ? "Create a note, a book note, or start a new book to begin writing." : "Create a note or a book note to begin writing."}
                 </p>
               </div>
             ) : undefined
