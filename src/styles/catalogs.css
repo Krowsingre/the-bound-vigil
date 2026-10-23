@@ -225,7 +225,7 @@
   margin-top: 20px;
 }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
   .catalogs-layout {
     grid-template-columns: minmax(0, 1fr);
   }

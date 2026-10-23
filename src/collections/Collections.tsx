@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type {
   CollectionDetail,
@@ -19,6 +19,7 @@ import { CollectionPanel } from "./CollectionPanel";
 import { CollectionView } from "./CollectionView";
 import { moved, useReorder } from "./useReorder";
 import { useAppSettings } from "../settings/appSettings";
+import { Stat } from "../home/ReadingActivity";
 
 type Tab = "all" | "collections" | "reading_lists" | "series";
 type Sort = "custom" | "name" | "size" | "rating" | "created" | "changed";
@@ -84,7 +85,10 @@ export function Collections({
   onOpen,
   onOpenBook,
   onChanged,
+  search,
 }: {
+  /** What's typed in the top bar's search box: the collections are filtered by it. */
+  search: string;
   /** The collection shown full page, or null for the overview. */
   open: CollectionRef | null;
   refreshKey: number;
@@ -100,7 +104,8 @@ export function Collections({
   const [tab, setTab] = useState<Tab>("all");
   const [prefs, setPrefs] = useState(readPrefs);
   const [smartOrder, setSmartOrder] = useState<string[]>([]);
-  const [filter, setFilter] = useState("");
+  const filter = search;
+  const wide = useWide();
   const [editing, setEditing] = useState<Editing>(null);
   const [deleting, setDeleting] = useState<CollectionSummary | null>(null);
   const toast = useToast();
@@ -302,6 +307,8 @@ export function Collections({
     (s) => (tab === "all" || tab === "series") && matches(s.name, ...s.authors),
   );
 
+  const { shown: seriesShown, more } = useShownBit(series.length, `${tab}/${q}`);
+
   if (open)
     return (
       <>
@@ -347,20 +354,18 @@ export function Collections({
   const isSel = (ref: CollectionRef) => sameRef(selected, ref);
 
   return (
-    <div className="collections-page">
-      <header className="collections-head">
-        <div className="collections-heading">
+    <div className="collections-page compendium">
+      <header className="library-head is-stacked compendium-head">
+        <div className="library-title-row">
           <h1 className="library-title">Compendium</h1>
-          <p className="collections-lede">Organize your library. Shape your reading journey.</p>
-        </div>
-        <div className="collections-actions">
-          <label className="search collections-search">
-            <Icon name="search" size={16} />
-            <input type="search" placeholder="Search collections…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Search collections" />
-          </label>
           <button type="button" className="btn btn-primary" onClick={() => setEditing({ books: [] })}>
-            <span aria-hidden>+</span> New collection
+            <Icon name="plus" size={15} /> New
           </button>
+        </div>
+        <div className="stats stats-5 library-stats">
+          <Stat icon="squares" value={counts.collections} label="Collections" />
+          <Stat icon="listNumber" value={counts.reading_lists} label="Reading lists" />
+          {settings.showSeries && <Stat icon="layers" value={counts.series} label="Series" />}
         </div>
       </header>
 
@@ -390,9 +395,6 @@ export function Collections({
             <section className="collections-section">
               <div className="section-head section-head-tools">
                 <h2>Smart collections</h2>
-                <p className="muted">
-                  These fill themselves as you read.{prefs.smartSort === "custom" && " Drag them into any order."}
-                </p>
                 <Menu
                   label="Sort smart collections"
                   className="toolbar-button"
@@ -429,12 +431,9 @@ export function Collections({
           <section className="collections-section">
             <div className="section-head">
               <h2>Your collections</h2>
-              <p className="muted">
-                Your own groupings, plus series found in your books.{prefs.sort === "custom" && !q && " Drag yours into any order."}
-              </p>
             </div>
-            <div className="library-toolbar">
-              <div className="tabs" role="tablist" aria-label="Kinds of collection">
+            <div className="library-toolbar is-compact">
+              <div className="scribe-chips" role="tablist" aria-label="Kinds of collection">
                 {(
                   [
                     ["all", "All"],
@@ -450,10 +449,10 @@ export function Collections({
                     type="button"
                     role="tab"
                     aria-selected={tab === value}
-                    className={`tab${tab === value ? " is-active" : ""}`}
+                    className={`chip${tab === value ? " is-active" : ""}`}
                     onClick={() => setTab(value)}
                   >
-                    {label} <span className="tab-count">{counts[value]}</span>
+                    {label}
                   </button>
                 ))}
               </div>
@@ -463,7 +462,7 @@ export function Collections({
                   className="toolbar-button"
                   trigger={
                     <>
-                      Sort: {SORTS.find((s) => s.sort === prefs.sort)?.label} <Icon name="chevronDown" size={14} />
+                      <Icon name="sort" size={16} /> <Icon name="chevronDown" size={12} />
                     </>
                   }
                   items={SORTS.map((s) => ({ label: s.label, checked: prefs.sort === s.sort, onSelect: () => changePrefs({ sort: s.sort }) }))}
@@ -531,12 +530,13 @@ export function Collections({
                     />
                   );
                 })}
-                {series.map((s) => {
+                {series.slice(0, seriesShown).map((s) => {
                   const ref: CollectionRef = { kind: "series", name: s.name };
                   return (
                     <SeriesCard key={s.name} series={s} layout={prefs.layout} selected={isSel(ref)} onSelect={() => pick(ref)} onOpen={() => onOpen(ref)} />
                   );
                 })}
+                {series.length > seriesShown && <li ref={more} className="collection-more" aria-hidden />}
                 {tab !== "series" && !q && (
                   <li className="collection-card collection-card-new">
                     <button type="button" className="collection-card-open" onClick={() => setEditing({ books: [] })}>
@@ -555,7 +555,7 @@ export function Collections({
           </section>
         </div>
 
-        {selected && (
+        {selected && wide && (
           <CollectionPanel
             selected={selected}
             series={overview.series}
@@ -571,3 +571,37 @@ export function Collections({
   );
 }
 
+
+/** Wide enough for the side panel beside the collections (see collections.css). */
+function useWide(): boolean {
+  const query = "(min-width: 1201px)";
+  const [wide, setWide] = useState(() => typeof matchMedia === "function" && matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return;
+    const list = matchMedia(query);
+    const change = () => setWide(list.matches);
+    list.addEventListener("change", change);
+    return () => list.removeEventListener("change", change);
+  }, []);
+  return wide;
+}
+
+const SERIES_AT_ONCE = 60;
+
+/**
+ * How many series cards to draw: a first lot, then more as the end comes
+ * into view, so thousands of series (and their covers) don't all load at once.
+ */
+function useShownBit(total: number, resetKey: string) {
+  const [shown, setShown] = useState(SERIES_AT_ONCE);
+  const more = useRef<HTMLLIElement | null>(null);
+  useEffect(() => setShown(SERIES_AT_ONCE), [resetKey]);
+  useEffect(() => {
+    const end = more.current;
+    if (!end || shown >= total || typeof IntersectionObserver !== "function") return;
+    const watching = new IntersectionObserver((seen) => seen.some((e) => e.isIntersecting) && setShown((n) => n + SERIES_AT_ONCE), { rootMargin: "600px" });
+    watching.observe(end);
+    return () => watching.disconnect();
+  }, [shown, total]);
+  return { shown, more };
+}

@@ -537,7 +537,7 @@
 }
 
 /* Phones: three covers to a row, as in the design. */
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
   .home-top > .hero,
   .home-top > .activity,
   .home-middle > .section {

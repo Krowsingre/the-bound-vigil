@@ -473,6 +473,8 @@ export function App() {
                 ? "Search audiobooks…"
                 : route === "catalogs"
                   ? "Search or enter a website…"
+                  : route === "collections"
+                    ? "Search collections…"
                   : undefined
           }
           onSearchSubmit={() => {
@@ -480,7 +482,7 @@ export function App() {
             if (route === "catalogs") {
               window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: searchText }));
               changeSearch("");
-            } else if (route !== "notes" && route !== "writing" && route !== "documents" && route !== "audiobooks") setRoute("library");
+            } else if (route !== "notes" && route !== "writing" && route !== "documents" && route !== "audiobooks" && route !== "collections") setRoute("library");
           }}
           address={route === "catalogs" ? browserAddress : undefined}
           afterSearch={route === "catalogs" ? <BrowserRowToggle /> : undefined}
@@ -552,6 +554,7 @@ export function App() {
               onOpen={setOpenCollection}
               onOpenBook={openBook}
               onChanged={refresh}
+              search={searchText}
             />
           ) : route === "audiobooks" ? (
             <Audiobooks

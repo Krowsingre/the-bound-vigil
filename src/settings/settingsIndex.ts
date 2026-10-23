@@ -236,6 +236,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "browser",
+    section: "playing",
+    label: "Browser videos and sound",
+    words: "discover browser video videos sound music audio youtube background playing keep pause leave",
+  },
+  {
+    tab: "browser",
     section: "protection",
     label: "Browser protection",
     words: "discover browser protection trackers ads advertising block blocking strict balanced off privacy cookies lowered sites",

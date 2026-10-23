@@ -90,6 +90,14 @@ export function BrowserTab() {
           onChange={(addWithoutAsking) => writeBrowserPrefs({ addWithoutAsking })}
         />
       </Section>
+      <Section id="playing" title="Videos and sound" lede="What happens to a video or music playing in Discover when you go to another page.">
+        <Toggle
+          label="Keep playing after leaving Discover"
+          hint="Off: videos and sound pause when you leave Discover."
+          checked={prefs.keepPlaying}
+          onChange={(keepPlaying) => writeBrowserPrefs({ keepPlaying })}
+        />
+      </Section>
       <Section id="protection" title="Protection" lede="What Discover blocks on the websites you visit. A site that won't work properly can have its protection lowered from Discover's ••• menu.">
         <Row label="Protection" hint={PROTECTION_LEVELS.find((p) => p.value === prefs.protection)?.hint}>
           <Select<ProtectionLevel>

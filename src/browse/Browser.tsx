@@ -91,6 +91,12 @@ const fileTitle = (url: string) => {
 
 const titleOf = (title: string | null, url: string) => title?.trim() || siteOf(url) || url;
 
+/** Pauses every video and sound on a page, for leaving Discover. */
+const PAUSE_ALL = `(function () {
+  document.querySelectorAll("video, audio").forEach(function (m) { try { m.pause(); } catch (e) {} });
+  return JSON.stringify(null);
+})()`;
+
 /** Something on top (a menu, a dialog, the phone's menu of pages) would be hidden under the page, so the page steps aside. */
 const covered = () => !!document.querySelector(".dialog-backdrop, [role=menu], [role=alertdialog], .sidebar-backdrop");
 
@@ -280,6 +286,8 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
       watching.disconnect();
       window.removeEventListener("resize", fit);
       void api.browserHide();
+      // Chosen in Preferences › Browser: whatever was playing stops on leaving.
+      if (!readBrowserPrefs().keepPlaying) for (const id of made.current) void api.browserRead(id, PAUSE_ALL).catch(() => undefined);
     };
   }, [showActive]);
 
