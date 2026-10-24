@@ -40,6 +40,8 @@ jobs:
   windows:
     name: Windows installer
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -50,10 +52,15 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build the app and installers
-        run: npx tauri build
+        shell: pwsh
+        run: |
+          # With the update signing key, the installer is signed for TBV's own updater too.
+          if ($env:TAURI_SIGNING_PRIVATE_KEY) { npx tauri build --config src-tauri/tauri.updater.conf.json } else { npx tauri build }
         env:
           # Google's desktop sign-in "secret" (not a real one, but kept off GitHub's pages).
           TBV_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
       # The setup program on its own, so it's the first thing in the download.
       - name: Upload the installer
         uses: actions/upload-artifact@v4
@@ -67,3 +74,28 @@ jobs:
           name: the-bound-vigil-windows-msi
           path: target/release/bundle/msi/*.msi
           if-no-files-found: error
+      # Puts each new version where TBV's updater looks: a GitHub release with
+      # the installer, its signature, and latest.json. Off until the
+      # repository variable PUBLISH_UPDATES is set to true.
+      - name: Publish the update
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PUBLISH_UPDATES == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $tag = "v$version"
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -eq 0) { Write-Host "$tag is already published."; exit 0 }
+          $exe = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $sig = Get-Content "$($exe.FullName).sig" -Raw
+          $name = "The-Bound-Vigil-$version-setup.exe"
+          Copy-Item $exe.FullName $name
+          $latest = @{
+            version = $version
+            notes = "The Bound Vigil $version"
+            pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = @{ "windows-x86_64" = @{ signature = $sig.Trim(); url = "https://github.com/${{ github.repository }}/releases/download/$tag/$name" } }
+          }
+          $latest | ConvertTo-Json -Depth 5 | Set-Content latest.json -Encoding utf8NoBOM
+          gh release create $tag $name latest.json --title "The Bound Vigil $version" --notes "The Bound Vigil $version" --latest

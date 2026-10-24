@@ -17,6 +17,7 @@ import { Audiobooks } from "./audio/Audiobooks";
 import { PlayerBar } from "./audio/PlayerBar";
 import { usePlayer } from "./audio/player";
 import { useToast } from "./components/Toast";
+import { useStartupUpdateCheck } from "./settings/updates";
 import { Home } from "./home/Home";
 import { Imports, importCounts } from "./imports/Imports";
 import { NO_IMPORTS as NOTHING_IMPORTED } from "./imports/view";
@@ -86,6 +87,7 @@ export function App() {
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
   const { refreshAdaptive, togglePrivacy } = useAppSettings();
+  useStartupUpdateCheck();
 
   const navigate = useCallback((r: Route) => {
     setMenuOpen(false);

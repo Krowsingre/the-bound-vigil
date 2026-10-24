@@ -8,11 +8,13 @@ mod cloud;
 mod hardcover;
 mod home;
 mod imports;
+mod license;
 mod localsend;
 mod moving;
 mod protection;
 mod servers;
 mod sync;
+mod updates;
 mod writing;
 
 use std::path::PathBuf;
@@ -195,6 +197,24 @@ async fn cloud_sign_in(service: tbv_core::sync::cloud::Service) -> CommandResult
     tauri::async_runtime::spawn_blocking(move || cloud::sign_in(service).map_err(|e| e.to_string()))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// Whether TBV is being tried, bought, or its trial is over.
+#[tauri::command]
+async fn license_status(app: tauri::AppHandle, state: State<'_, AppLibrary>) -> CommandResult<tbv_core::license::LicenseView> {
+    blocking(state, move |library| license::status(&app, library)).await
+}
+
+/// Opens the store's sheet for buying the unlock.
+#[tauri::command]
+async fn license_buy(app: tauri::AppHandle, state: State<'_, AppLibrary>) -> CommandResult<tbv_core::license::LicenseView> {
+    blocking(state, move |library| license::buy(&app, library)).await
+}
+
+/// Looks for a purchase made before.
+#[tauri::command]
+async fn license_restore(app: tauri::AppHandle, state: State<'_, AppLibrary>) -> CommandResult<tbv_core::license::LicenseView> {
+    blocking(state, move |library| license::restore(&app, library)).await
 }
 
 /// Which of Dropbox, Google Drive and OneDrive this copy of TBV can sign in to.
@@ -1713,6 +1733,8 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init());
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build()).manage(updates::Found::default());
     #[cfg(target_os = "ios")]
     let builder = builder.plugin(tauri_plugin_tbv_ios::init());
     builder
@@ -1857,7 +1879,12 @@ pub fn run() {
             hardcover_set_sending,
             hardcover_sign_in,
             cloud_sign_in,
+            updates::update_check,
+            updates::update_install,
             cloud_services,
+            license_status,
+            license_buy,
+            license_restore,
             hardcover_sign_out,
             hardcover_send_all,
             book_text,

@@ -156,6 +156,32 @@ export interface ProviderView {
 /** A service TBV can sign in to directly. */
 export type CloudService = "dropbox" | "google" | "onedrive";
 
+/** Whether there's a newer version of TBV (Preferences › About). */
+export interface UpdateInfo {
+  /** False where updates come from an app store. */
+  canUpdate: boolean;
+  current: string;
+  version: string | null;
+  notes: string | null;
+}
+
+export interface UpdateProgress {
+  downloaded: number;
+  total: number | null;
+}
+
+/** Paying for TBV: a 30-day trial, then a one-time unlock from a store. */
+export interface LicenseView {
+  state: "trial" | "expired" | "owned";
+  daysLeft: number;
+  /** Seconds since 1970. */
+  trialEnds: number;
+  /** Where it's bought: "none" for a copy from outside a store. */
+  shop: "microsoft" | "apple" | "none";
+  /** As the store shows it, like "$14.99". */
+  price: string | null;
+}
+
 /** A choice of where to keep the library, as sent to the core. */
 export type ProviderChoice =
   | { kind: "supabase" }

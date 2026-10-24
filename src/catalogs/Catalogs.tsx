@@ -146,7 +146,7 @@ function CatalogDialog({
             {(
               [
                 [false, "OPDS catalogue"],
-                [true, "Audiobookshelf server"],
+                [true, "Audiobookshelf"],
               ] as const
             ).map(([value, label]) => (
               <button

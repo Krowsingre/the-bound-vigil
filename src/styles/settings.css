@@ -1489,3 +1489,24 @@ kbd {
 .settings-page.is-landing .settings-results {
   max-width: 560px;
 }
+
+/* About › Your copy and Updates. */
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.update-notes {
+  white-space: pre-line;
+  margin: 0 0 12px;
+}
+
+.license-gate {
+  height: 100vh;
+}
+
+.license-gate .btn {
+  justify-content: center;
+}

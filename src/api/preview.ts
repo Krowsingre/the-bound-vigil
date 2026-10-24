@@ -27,6 +27,7 @@ import type {
   BookPreview,
   Ereader,
   HardcoverStatus,
+  LicenseView,
   HomeViewModel,
   KindleEmailView,
   ImportItem,
@@ -124,6 +125,15 @@ let imports: ImportItem[] = new URLSearchParams(location.search).has("imports")
       };
     })
   : [];
+// `?license=expired` (or `=ending`, `=owned`) shows that state of the trial.
+const licenseParam = new URLSearchParams(location.search).get("license");
+let previewLicense: LicenseView = {
+  state: licenseParam === "expired" ? "expired" : licenseParam === "owned" ? "owned" : "trial",
+  daysLeft: licenseParam === "expired" || licenseParam === "owned" ? 0 : licenseParam === "ending" ? 2 : 21,
+  trialEnds: Math.floor(Date.now() / 1000) + (licenseParam === "ending" ? 2 : 21) * 86_400,
+  shop: "microsoft",
+  price: "$14.99",
+};
 // `?hardcover` shows Hardcover signed in, for reviewing Settings.
 let hardcover: HardcoverStatus = new URLSearchParams(location.search).has("hardcover")
   ? { available: true, username: "wrenhale", sendRatings: true }
@@ -832,6 +842,14 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
+    checkForUpdate: async () => ({ canUpdate: true, current: "1.25.0", version: "1.26.0", notes: "The Bound Vigil 1.26.0" }),
+    installUpdate: async () => {
+      throw new Error("The preview can't install updates.");
+    },
+    onUpdateProgress: () => () => undefined,
+    licenseStatus: async () => previewLicense,
+    buyLicense: async () => (previewLicense = { ...previewLicense, state: "owned", daysLeft: 0 }),
+    restoreLicense: async () => previewLicense,
     suggestSyncFolder: async (service) =>
       ({ icloud: "C:\\Users\\you\\iCloudDrive", dropbox: "C:\\Users\\you\\Dropbox", onedrive: "C:\\Users\\you\\OneDrive", gdrive: "G:\\My Drive" })[service] ?? null,
     resolveSyncConflict: async (_kind, key) => {

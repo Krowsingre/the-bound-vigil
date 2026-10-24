@@ -29,6 +29,9 @@ import type {
   Audiobook,
   ProviderChoice,
   CloudService,
+  LicenseView,
+  UpdateInfo,
+  UpdateProgress,
   Annotation,
   AnnotationInput,
   CollectionDetail,
@@ -240,6 +243,17 @@ export interface Api {
   cloudSignIn(service: CloudService): Promise<ProviderChoice>;
   /** Which of those this copy of TBV can sign in to. */
   cloudServices(): Promise<CloudService[]>;
+  /** Asks whether there's a newer version of TBV. */
+  checkForUpdate(): Promise<UpdateInfo>;
+  /** Downloads and installs the newer version, then starts TBV again. */
+  installUpdate(): Promise<void>;
+  onUpdateProgress(listener: (progress: UpdateProgress) => void): () => void;
+  /** Whether TBV is being tried, is bought, or its trial is over. */
+  licenseStatus(): Promise<LicenseView>;
+  /** Opens the store's sheet for buying TBV. */
+  buyLicense(): Promise<LicenseView>;
+  /** Looks for a purchase made before, on this or another device. */
+  restoreLicense(): Promise<LicenseView>;
   /** Where a cloud app usually keeps its folder on this computer, if it's there. */
   suggestSyncFolder(service: string): Promise<string | null>;
   resolveSyncConflict(kind: string, key: string, keepCloud: boolean): Promise<void>;
@@ -723,6 +737,12 @@ function appApi(): Api {
     suggestSyncFolder: async (service) => (await core).invoke<string | null>("suggest_sync_folder", { service }),
     cloudSignIn: async (service) => (await core).invoke<ProviderChoice>("cloud_sign_in", { service }),
     cloudServices: async () => (await core).invoke<CloudService[]>("cloud_services"),
+    checkForUpdate: async () => (await core).invoke<UpdateInfo>("update_check"),
+    installUpdate: async () => (await core).invoke("update_install"),
+    onUpdateProgress: (listener) => onEvent<UpdateProgress>("update-progress", listener),
+    licenseStatus: async () => (await core).invoke<LicenseView>("license_status"),
+    buyLicense: async () => (await core).invoke<LicenseView>("license_buy"),
+    restoreLicense: async () => (await core).invoke<LicenseView>("license_restore"),
     resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
     downloadBook: async (bookId) => (await core).invoke("download_book", { bookId }),
     moveStatus: async () => (await core).invoke<MoveStatus>("move_status"),

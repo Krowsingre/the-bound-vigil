@@ -17,6 +17,7 @@ pub mod home;
 pub mod http;
 pub mod ids;
 pub mod library;
+pub mod license;
 pub mod localsend;
 pub mod listen;
 pub mod lookup;

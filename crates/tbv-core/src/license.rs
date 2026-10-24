@@ -1,0 +1,138 @@
+//! Paying for TBV: 30 days to try it in full, then a one-time unlock bought
+//! in the Microsoft Store on a computer or the App Store on iPhone and iPad.
+//! The stores say whether it was bought; this keeps the trial's dates and
+//! remembers the last time a store said yes, so TBV stays open offline.
+
+use serde::Serialize;
+
+use crate::error::Result;
+use crate::library::Library;
+
+pub const TRIAL_DAYS: i64 = 30;
+const DAY: i64 = 86_400;
+
+const STARTED: &str = "license.trial_started";
+/// The latest time TBV has seen, so turning the clock back doesn't add days.
+const SEEN: &str = "license.seen";
+/// When a store last said it was bought.
+const OWNED: &str = "license.owned";
+
+/// Where it's bought.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Shop {
+    Microsoft,
+    Apple,
+    /// A copy from outside a store (a test build): it can't be bought in.
+    None,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LicenseState {
+    Trial,
+    Expired,
+    Owned,
+}
+
+/// What the app shows about paying.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LicenseView {
+    pub state: LicenseState,
+    /// Whole days of the trial left (0 once it's over).
+    pub days_left: i64,
+    /// When the trial ends, as seconds since 1970.
+    pub trial_ends: i64,
+    pub shop: Shop,
+    /// The price as the store shows it, like "$14.99".
+    pub price: Option<String>,
+}
+
+/// What a store says, when it could be asked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoreAnswer {
+    pub owned: bool,
+    pub price: Option<String>,
+}
+
+impl Library {
+    fn seconds(&self, key: &str) -> Result<Option<i64>> {
+        Ok(self.setting(key)?.and_then(|s| s.parse().ok()))
+    }
+
+    /// When the trial started: the first time TBV opened here, or `outside`
+    /// (a note kept outside the library) if that's earlier.
+    pub fn trial_started(&self, now: i64, outside: Option<i64>) -> Result<i64> {
+        let saved = self.seconds(STARTED)?;
+        let start = [saved, outside, Some(now)].into_iter().flatten().min().unwrap_or(now);
+        if saved != Some(start) {
+            self.set_setting(STARTED, &start.to_string())?;
+        }
+        Ok(start)
+    }
+
+    /// The paying state now. `answer` is what the store said, or None when
+    /// it couldn't be asked (offline, or a copy from outside a store).
+    pub fn license(&self, now: i64, outside_start: Option<i64>, shop: Shop, answer: Option<&StoreAnswer>) -> Result<LicenseView> {
+        let start = self.trial_started(now, outside_start)?;
+        let seen = self.seconds(SEEN)?.unwrap_or(now).max(now);
+        self.set_setting(SEEN, &seen.to_string())?;
+        let owned = match answer {
+            Some(a) if a.owned => {
+                self.set_setting(OWNED, &now.to_string())?;
+                true
+            }
+            // The store says it isn't (refunded, say).
+            Some(_) => {
+                self.conn.execute("DELETE FROM device_settings WHERE key = ?1", [OWNED])?;
+                false
+            }
+            None => self.seconds(OWNED)?.is_some(),
+        };
+        let ends = start + TRIAL_DAYS * DAY;
+        let left = ((ends - seen) as f64 / DAY as f64).ceil().max(0.0) as i64;
+        let state = if owned {
+            LicenseState::Owned
+        } else if seen < ends {
+            LicenseState::Trial
+        } else {
+            LicenseState::Expired
+        };
+        Ok(LicenseView { state, days_left: if owned { 0 } else { left }, trial_ends: ends, shop, price: answer.and_then(|a| a.price.clone()) })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_trial_runs_thirty_days_and_a_purchase_is_remembered() {
+        let (_dir, library) = crate::library::tests::open_temp_library();
+        let start = 1_800_000_000;
+        let day1 = library.license(start, None, Shop::Microsoft, None).unwrap();
+        assert_eq!((day1.state, day1.days_left), (LicenseState::Trial, 30));
+        let later = library.license(start + 29 * DAY + 3600, None, Shop::Microsoft, None).unwrap();
+        assert_eq!((later.state, later.days_left), (LicenseState::Trial, 1));
+        // Turning the clock back doesn't give days back.
+        assert_eq!(library.license(start + DAY, None, Shop::Microsoft, None).unwrap().days_left, 1);
+        let over = library.license(start + 31 * DAY, None, Shop::Microsoft, None).unwrap();
+        assert_eq!((over.state, over.days_left), (LicenseState::Expired, 0));
+        // Bought: kept while the store can't be asked; gone if it says no.
+        let yes = StoreAnswer { owned: true, price: Some("$14.99".into()) };
+        assert_eq!(library.license(start + 32 * DAY, None, Shop::Microsoft, Some(&yes)).unwrap().state, LicenseState::Owned);
+        assert_eq!(library.license(start + 40 * DAY, None, Shop::Microsoft, None).unwrap().state, LicenseState::Owned);
+        let no = StoreAnswer { owned: false, price: None };
+        assert_eq!(library.license(start + 41 * DAY, None, Shop::Microsoft, Some(&no)).unwrap().state, LicenseState::Expired);
+    }
+
+    #[test]
+    fn an_earlier_start_kept_elsewhere_counts() {
+        let (_dir, library) = crate::library::tests::open_temp_library();
+        let now = 1_800_000_000;
+        let view = library.license(now, Some(now - 40 * DAY), Shop::None, None).unwrap();
+        assert_eq!(view.state, LicenseState::Expired);
+        assert_eq!(library.trial_started(now, None).unwrap(), now - 40 * DAY);
+    }
+}
