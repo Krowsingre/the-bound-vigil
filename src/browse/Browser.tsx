@@ -176,7 +176,13 @@ export function BrowserSiteButton({ url }: { url: string }) {
 /** What a link for another app will do, for asking first. */
 export function appLinkAsk(url: string): string {
   const [scheme, ...rest] = url.split(":");
-  const what = decodeURIComponent(rest.join(":").replace(/^\/\//, "").split("?")[0]);
+  const raw = rest.join(":").replace(/^\/\//, "").split("?")[0];
+  let what = raw;
+  try {
+    what = decodeURIComponent(raw);
+  } catch {
+    // A badly written address is shown as it is.
+  }
   switch (scheme.toLowerCase()) {
     case "mailto":
       return what ? `This page wants to open your mail app to write to ${what}.` : "This page wants to open your mail app.";

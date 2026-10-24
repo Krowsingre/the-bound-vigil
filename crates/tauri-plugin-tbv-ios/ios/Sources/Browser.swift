@@ -495,6 +495,8 @@ extension TbvBrowser: WKDownloadDelegate {
 
   func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
     guard let saved = saving.removeValue(forKey: ObjectIdentifier(download)) else { return }
+    // A failed one may be tried again straight away.
+    recent.removeValue(forKey: saved.url)
     // Cancelled from TBV: nothing to tell, and nothing kept.
     if downloads.removeValue(forKey: saved.id) == nil {
       try? FileManager.default.removeItem(at: saved.target.deletingLastPathComponent())
