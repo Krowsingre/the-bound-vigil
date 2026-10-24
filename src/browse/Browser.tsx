@@ -539,7 +539,7 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
             label: p.title.trim() || readableAddress(p.url),
             icon: "globe" as const,
             hint: siteOf(p.url) ?? undefined,
-            onSelect: () => void api.browserRead(tab, `(function () { history.go(${way === "back" ? -(i + 1) : i + 1}); return JSON.stringify(null); })()`).catch(() => undefined),
+            onSelect: () => void api.browserRead(tab, `(function () { history.go(${(way === "back" ? -1 : 1) * (p.step ?? i + 1)}); return JSON.stringify(null); })()`).catch(() => undefined),
           })),
         );
       },

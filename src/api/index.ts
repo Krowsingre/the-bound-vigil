@@ -461,7 +461,7 @@ export interface Api {
   /** Opens a link for another app (mail, a phone number). */
   browserOpenApp(url: string): Promise<void>;
   /** The pages behind and ahead of a tab's page, nearest first. */
-  browserTravelled(tab: string): Promise<{ back: { title: string; url: string }[]; forward: { title: string; url: string }[] }>;
+  browserTravelled(tab: string): Promise<{ back: { title: string; url: string; step?: number }[]; forward: { title: string; url: string; step?: number }[] }>;
   /** Discover's history as the library keeps it, newest first. */
   browserHistory(): Promise<HistoryEntry[]>;
   putBrowserHistory(entries: HistoryEntry[]): Promise<void>;

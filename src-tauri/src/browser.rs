@@ -78,6 +78,9 @@ pub(crate) enum Event {
 pub struct Visited {
     pub title: String,
     pub url: String,
+    /// How many steps away it is, when pages between were left out of the list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<i64>,
 }
 
 /// The pages behind and ahead of the one a tab shows, nearest first.
@@ -697,10 +700,11 @@ mod windows {
         }
         let history: History = serde_json::from_str(&answer).map_err(|e| e.to_string())?;
         let at = history.current_index.min(history.entries.len());
-        let web = |v: &super::Visited| v.url.starts_with("http");
+        // Blank and data pages are left out, so each keeps its real distance.
+        let web = |(step, v): (usize, &super::Visited)| v.url.starts_with("http").then(|| super::Visited { step: Some(step as i64 + 1), ..v.clone() });
         Ok(super::Travelled {
-            back: history.entries[..at].iter().rev().filter(|v| web(v)).cloned().collect(),
-            forward: history.entries.iter().skip(at + 1).filter(|v| web(v)).cloned().collect(),
+            back: history.entries[..at].iter().rev().enumerate().filter_map(web).collect(),
+            forward: history.entries.iter().skip(at + 1).enumerate().filter_map(web).collect(),
         })
     }
 

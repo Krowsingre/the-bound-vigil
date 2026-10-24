@@ -11,6 +11,8 @@ use crate::{Error, Library, Result};
 
 /// The most kept; past this the oldest go.
 pub const MOST_HISTORY: i64 = 5000;
+/// How long a cleared visit is kept as a marker, so every device hears it was cleared.
+pub const KEEP_CLEARED_DAYS: i64 = 180;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,10 +93,16 @@ impl Library {
         use std::sync::atomic::Ordering;
         self.sync_live.store(false, Ordering::Relaxed);
         let done = (|| -> Result<()> {
-            self.conn.execute("DELETE FROM browser_history WHERE at < ?1", params![before])?;
+            // Cleared visits stay as markers a while, so other devices still
+            // hear that they were cleared even if this one syncs late.
+            self.conn.execute("DELETE FROM browser_history WHERE at < ?1 AND deleted_at IS NULL", params![before])?;
+            self.conn.execute(
+                "DELETE FROM browser_history WHERE deleted_at IS NOT NULL AND deleted_at < ?1",
+                params![(chrono::Utc::now() - chrono::Duration::days(KEEP_CLEARED_DAYS)).to_rfc3339_opts(chrono::SecondsFormat::Millis, true)],
+            )?;
             // And past the most kept, the oldest.
             self.conn.execute(
-                "DELETE FROM browser_history WHERE id IN (SELECT id FROM browser_history ORDER BY at DESC LIMIT -1 OFFSET ?1)",
+                "DELETE FROM browser_history WHERE id IN (SELECT id FROM browser_history WHERE deleted_at IS NULL ORDER BY at DESC LIMIT -1 OFFSET ?1)",
                 params![MOST_HISTORY],
             )?;
             self.conn.execute(
@@ -131,6 +139,9 @@ mod tests {
         assert_eq!(ids(&library), ["c"]);
         library.trim_browser_history(3).unwrap();
         assert!(ids(&library).is_empty());
+        // Cleared visits stay as markers, so the clearing still reaches other devices.
+        let markers: i64 = library.conn.query_row("SELECT COUNT(*) FROM browser_history WHERE deleted_at IS NOT NULL", [], |r| r.get(0)).unwrap();
+        assert_eq!(markers, 2);
         assert!(library.put_browser_history(&[HistoryEntry { url: "javascript:alert(1)".into(), ..entry("d", 1) }]).is_err());
     }
 }
