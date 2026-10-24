@@ -1,16 +1,14 @@
-// Discover's history: the pages visited and the words searched for, kept on
-// this device only (never synced), for as long as Preferences › Discover says.
+// Discover's history: the pages visited and the words searched for, for as
+// long as Preferences › Discover says. The library keeps it (and syncs it
+// when Preferences › Sync says so); a copy here is read straight away.
 
-export interface HistoryEntry {
-  id: string;
-  kind: "page" | "search";
-  /** The page's address, or the search's results page. */
-  url: string;
-  /** The page's title, or the words searched for. */
-  title: string | null;
-  /** When, as milliseconds since 1970. */
-  at: number;
-}
+import { api } from "../api";
+import type { HistoryEntry } from "../api/types";
+
+export type { HistoryEntry };
+
+/** Every change goes to the library too; outside the app (previews) there's none to tell. */
+const tell = (done: Promise<void>) => void done.catch(() => undefined);
 
 export type HistoryKeep = "forever" | "day" | "week" | "month" | "quarter";
 
@@ -61,12 +59,21 @@ export function trimmed(list: HistoryEntry[], keep: HistoryKeep, now = Date.now(
   return days === null ? list : list.filter((e) => now - e.at < days * DAY);
 }
 
+/** The oldest time `keep` keeps, or null for keeping everything. */
+const keptFrom = (keep: HistoryKeep, now: number) => {
+  const days = HISTORY_KEEPS.find((k) => k.value === keep)?.days ?? null;
+  return days === null ? null : now - days * DAY;
+};
+
 /**
  * Adds a visit or a search, newest first. The same page again straight
  * after (a reload, or its title arriving) updates the entry already there.
  */
 export function addToHistory(entry: Omit<HistoryEntry, "id" | "at">, keep: HistoryKeep, now = Date.now()) {
-  const list = trimmed(readHistory(), keep, now);
+  const all = readHistory();
+  const list = trimmed(all, keep, now);
+  const from = keptFrom(keep, now);
+  if (list.length !== all.length && from !== null) tell(api.trimBrowserHistory(from));
   const last = list[0];
   if (last && last.kind === entry.kind && last.url === entry.url) {
     list[0] = { ...last, title: entry.title ?? last.title, at: now };
@@ -74,16 +81,19 @@ export function addToHistory(entry: Omit<HistoryEntry, "id" | "at">, keep: Histo
     list.unshift({ ...entry, id: `h${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`, at: now });
   }
   save(list);
+  tell(api.putBrowserHistory([list[0]]));
 }
 
 export function removeFromHistory(ids: string[]) {
   const gone = new Set(ids);
   save(readHistory().filter((e) => !gone.has(e.id)));
+  tell(api.removeBrowserHistory(ids));
 }
 
 /** Clears what's newer than `since` (milliseconds ago), or everything. */
 export function clearHistory(since: number | null = null, now = Date.now()) {
   save(since === null ? [] : readHistory().filter((e) => now - e.at > since));
+  tell(api.clearBrowserHistory(since === null ? null : now - since));
 }
 
 /** Applies a shorter keeping time straight away. */
@@ -91,6 +101,41 @@ export function trimHistory(keep: HistoryKeep) {
   const list = readHistory();
   const kept = trimmed(list, keep);
   if (kept.length !== list.length) save(kept);
+  const from = keptFrom(keep, Date.now());
+  if (from !== null) tell(api.trimBrowserHistory(from));
+}
+
+const MOVED = "tbv.browser.history.moved";
+
+/**
+ * Takes the library's history into the copy here: at start, and when sync
+ * brings history from other devices. The first time, the history kept here
+ * before the library kept it moves there.
+ */
+export async function loadHistory(keep: HistoryKeep): Promise<void> {
+  let moved = false;
+  try {
+    moved = localStorage.getItem(MOVED) === "1";
+  } catch {
+    // Asked again next time.
+  }
+  try {
+    if (!moved) {
+      const here = readHistory();
+      // Oldest first, so a long history goes in a few at a time.
+      for (let i = 0; i < here.length; i += 500) await api.putBrowserHistory(here.slice(i, i + 500));
+      try {
+        localStorage.setItem(MOVED, "1");
+      } catch {
+        // Moved again next time; the same entries just update.
+      }
+    }
+    const from = keptFrom(keep, Date.now());
+    if (from !== null) await api.trimBrowserHistory(from);
+    save((await api.browserHistory()).slice(0, MOST_HISTORY));
+  } catch {
+    // Outside the app, or the library isn't open yet: the copy here stays as it is.
+  }
 }
 
 /** Today, Yesterday, or the date, for grouping the list. */

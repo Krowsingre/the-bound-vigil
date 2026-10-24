@@ -4,6 +4,7 @@
 pub mod audio;
 pub mod audiobookshelf;
 pub mod bookmarks;
+pub mod browser_history;
 pub mod quick_links;
 pub mod site_icon;
 pub mod browse;

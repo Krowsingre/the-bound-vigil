@@ -1272,7 +1272,9 @@ export type BrowserEvent =
   /** A page that couldn't open, and why, in plain words. */
   | { kind: "failed"; tab: string; url: string; reason: string }
   /** A link for another app (mail, a phone number), not opened yet. */
-  | { kind: "external"; tab: string; url: string };
+  | { kind: "external"; tab: string; url: string }
+  /** Chosen from a link's own menu: open it in a new tab, or bring its book into the library. */
+  | { kind: "menu"; tab: string; action: "newTab" | "addBook"; url: string };
 
 /** An article found on a page by reader mode (Mozilla's Readability). */
 export interface ReaderArticle {
@@ -1284,4 +1286,16 @@ export interface ReaderArticle {
   excerpt: string | null;
   lang: string | null;
   url: string;
+}
+
+/** A page visited or words searched for in Discover. */
+export interface HistoryEntry {
+  id: string;
+  kind: "page" | "search";
+  /** The page's address, or the search's results page. */
+  url: string;
+  /** The page's title, or the words searched for. */
+  title: string | null;
+  /** When, as milliseconds since 1970. */
+  at: number;
 }

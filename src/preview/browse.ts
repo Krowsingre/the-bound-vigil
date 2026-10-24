@@ -46,6 +46,12 @@ type Calls = Pick<
   | "browserClearSite"
   | "browserShare"
   | "browserOpenApp"
+  | "browserHistory"
+  | "browserTravelled"
+  | "putBrowserHistory"
+  | "removeBrowserHistory"
+  | "clearBrowserHistory"
+  | "trimBrowserHistory"
 >;
 
 const APP_ONLY = "The browser works in the TBV app.";
@@ -130,5 +136,20 @@ export function browseStub(): Calls {
     browserOpenApp: async () => {
       throw new Error(APP_ONLY);
     },
+    // History stays in the page's own copy in previews.
+    browserHistory: async () => {
+      throw new Error(APP_ONLY);
+    },
+    putBrowserHistory: async () => undefined,
+    browserTravelled: async () => ({
+      back: [
+        { url: "https://www.gutenberg.org/ebooks/search/?query=shelley", title: "Books: shelley | Project Gutenberg" },
+        { url: "https://www.gutenberg.org/", title: "Free eBooks | Project Gutenberg" },
+      ],
+      forward: [],
+    }),
+    removeBrowserHistory: async () => undefined,
+    clearBrowserHistory: async () => undefined,
+    trimBrowserHistory: async () => undefined,
   };
 }

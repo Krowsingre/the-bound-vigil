@@ -15,6 +15,7 @@ import { Browse } from "./browse/Browse";
 import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserHomeButton, BrowserRowToggle, BrowserSiteButton } from "./browse/Browser";
 import { AddressSuggestions } from "./browse/AddressSuggestions";
 import { readBrowserPrefs, shortAddress } from "./browse/browserPrefs";
+import { loadHistory } from "./browse/browserHistory";
 import { Audiobooks } from "./audio/Audiobooks";
 import { PlayerBar } from "./audio/PlayerBar";
 import { usePlayer } from "./audio/player";
@@ -192,6 +193,14 @@ export function App() {
   // Chosen in Preferences › Discover: every site's cookies and data go each time TBV starts.
   useEffect(() => {
     if (api.kind === "app" && readBrowserPrefs().clearOnStart) void api.browserClear().catch(() => undefined);
+  }, []);
+
+  // Discover's history comes from the library, and again when sync brings some from another device.
+  useEffect(() => {
+    if (api.kind !== "app") return;
+    const load = () => void loadHistory(readBrowserPrefs().historyKeep);
+    load();
+    return api.onSync({ libraryChanged: load });
   }, []);
 
   useEffect(() => {

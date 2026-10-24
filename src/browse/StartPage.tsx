@@ -76,6 +76,7 @@ export function StartPage({
   onScrolled,
   closed,
   onReopen,
+  privately = false,
 }: {
   onGo: (url: string) => void;
   onNewTab: (url: string) => void;
@@ -87,6 +88,8 @@ export function StartPage({
   /** Tabs closed lately, for the Recently closed fold-out. */
   closed: ClosedTab[];
   onReopen: (index: number) => void;
+  /** In a private tab, which says what it keeps. */
+  privately?: boolean;
 }) {
   const toast = useToast();
   const [links, setLinks] = useState<QuickLink[]>([]);
@@ -118,6 +121,14 @@ export function StartPage({
       <div className="start-inner">
         <h1 className="start-title">Discover</h1>
         <span className="start-rule" aria-hidden />
+        {privately && (
+          <p className="start-private">
+            <Icon name="eyeOff" size={18} />
+            <span>
+              <b>Private tab.</b> Pages you visit here aren't kept in History, and the sites' cookies and sign-ins go when you close it. Downloads and bookmarks you make are kept.
+            </span>
+          </p>
+        )}
         <button type="button" className="start-search" onClick={onSearch}>
           <Icon name="search" size={20} />
           <span>Search the web…</span>

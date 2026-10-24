@@ -238,7 +238,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "browser",
     section: "history",
     label: "Discover history",
-    words: "discover browser history pages visited searches searched clear delete keep days privacy",
+    words: "discover browser history pages visited searches searched clear delete keep days privacy sync synced every device",
   },
   {
     tab: "browser",

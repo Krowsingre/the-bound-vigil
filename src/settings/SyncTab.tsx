@@ -310,6 +310,12 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
             onChange={(collections) => changeSync({ collections })}
           />
           <Toggle
+            label="Sync Discover history"
+            hint="Pages visited and searches in Discover, so every device has the same history. Off: each device keeps its own."
+            checked={sync.browserHistory}
+            onChange={(browserHistory) => changeSync({ browserHistory })}
+          />
+          <Toggle
             label="Sync library details"
             hint="Titles, authors, series and other details you've corrected."
             checked={sync.metadata}
