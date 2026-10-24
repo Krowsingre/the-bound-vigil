@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "../api";
+import { api, isIOS } from "../api";
 import { useToast } from "../components/Toast";
 import {
   COME_BACK,
@@ -9,7 +9,10 @@ import {
   PROTECTION_LEVELS,
   protectionOf,
   readBrowserPrefs,
+  resetSite,
   SEARCH_ENGINES,
+  sitesWithSettings,
+  zoomLabel,
   writeBrowserPrefs,
   type BrowserPrefs,
   type ComeBack,
@@ -187,7 +190,7 @@ export function BrowserTab() {
           onChange={(keepPlaying) => writeBrowserPrefs({ keepPlaying })}
         />
       </Section>
-      <Section id="protection" title="Protection" lede="What Discover blocks on the websites you visit. A site that won't work properly can have its protection lowered from Discover's ••• menu.">
+      <Section id="protection" title="Protection" lede="What Discover blocks on the websites you visit. A site that won't work properly can have its protection lowered from its Site information sheet (the lock in the address box).">
         <Row label="Protection" hint={PROTECTION_LEVELS.find((p) => p.value === prefs.protection)?.hint}>
           <Select<ProtectionLevel>
             label="Protection"
@@ -209,7 +212,49 @@ export function BrowserTab() {
           </>
         )}
       </Section>
+      <Section id="sites" title="Sites with their own settings" lede="Choices made for one site from its Site information sheet (the lock in the address box).">
+        {sitesWithSettings(prefs).length === 0 ? (
+          <p className="muted">None yet. Every site uses the choices above.</p>
+        ) : (
+          sitesWithSettings(prefs).map((site) => {
+            const own = prefs.sites[site] ?? {};
+            const what = [
+              prefs.lowered.includes(site) && "Protection lowered",
+              own.zoom && `Zoom ${zoomLabel(own.zoom)}`,
+              own.desktop && isIOS && "Desktop version",
+            ].filter(Boolean);
+            return (
+              <Row key={site} label={site} hint={what.join(" · ") || undefined}>
+                <button
+                  type="button"
+                  className="btn btn-quiet"
+                  onClick={() => {
+                    protect(resetSite(site));
+                    toast(`${site} is back to the usual settings.`);
+                  }}
+                >
+                  Reset
+                </button>
+              </Row>
+            );
+          })
+        )}
+      </Section>
+      <Section id="apps" title="Links for other apps" lede="Links that open another app, such as an email address or a phone number.">
+        <Toggle
+          label="Ask before opening other apps"
+          hint="Off: they open straight away."
+          checked={prefs.askApps}
+          onChange={(askApps) => writeBrowserPrefs({ askApps })}
+        />
+      </Section>
       <Section id="sitedata" title="Site data" lede="Cookies and saved logins from websites you've visited in Discover. TBV's own data isn't touched.">
+        <Toggle
+          label="Clear cookies and site data each time TBV starts"
+          hint="You'll be signed out of every website each time. Bookmarks, History and tabs stay."
+          checked={prefs.clearOnStart}
+          onChange={(clearOnStart) => writeBrowserPrefs({ clearOnStart })}
+        />
         <Row label="Clear cookies and site data" hint="You'll be signed out of every website in Discover.">
           <button
             type="button"

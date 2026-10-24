@@ -810,14 +810,6 @@
   color: var(--danger);
 }
 
-.browser-site-head {
-  display: grid;
-  gap: 4px;
-  max-width: 260px;
-  white-space: normal;
-  font-weight: 400;
-}
-
 /* What drops down under the address while typing. */
 .search {
   position: relative;
@@ -1420,4 +1412,150 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A tab card's ⋮ menu, left of its close button. */
+.browser-grid-tab .browser-grid-more {
+  position: absolute;
+  top: 6px;
+  right: 30px;
+}
+
+.browser-grid-tab .browser-grid-open {
+  padding-right: 60px;
+}
+
+.browser-grid-closed {
+  margin-top: 20px;
+}
+
+.browser-grid-closed h3 {
+  margin: 0 0 6px;
+  font: 600 15px var(--font-serif);
+}
+
+/* TBV's own page for one that didn't open. */
+.browser-failed {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.browser-failed h2 {
+  margin: 8px 0 0;
+  color: var(--text);
+  font: 600 22px var(--font-serif);
+}
+
+.browser-failed p {
+  max-width: 44ch;
+  margin: 0;
+  color: var(--text);
+}
+
+.browser-failed .browser-failed-url {
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.browser-failed-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* The Site information sheet. */
+.dialog.site-info {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(460px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 48px));
+  overflow: auto;
+}
+
+.site-info .catalogues-head {
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.site-info .catalogues-head h2 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.site-info-secure {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  background: var(--surface-sunk);
+  color: var(--accent);
+}
+
+.site-info-secure.is-unsafe {
+  color: var(--danger);
+}
+
+.site-info-secure > span,
+.site-info-row > span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text);
+}
+
+.site-info-secure .muted,
+.site-info-row .muted {
+  font-size: 13px;
+}
+
+.site-info-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.site-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.site-info-zoom,
+.site-info-confirm {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.site-info-zoom output {
+  min-width: 48px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.site-info-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }

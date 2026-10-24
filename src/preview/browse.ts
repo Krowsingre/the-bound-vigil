@@ -41,6 +41,11 @@ type Calls = Pick<
   | "browserAddDownload"
   | "browserKeepDownload"
   | "browserDiscardDownload"
+  | "browserZoom"
+  | "browserDesktopSites"
+  | "browserClearSite"
+  | "browserShare"
+  | "browserOpenApp"
 >;
 
 const APP_ONLY = "The browser works in the TBV app.";
@@ -104,7 +109,11 @@ export function browseStub(): Calls {
     browserFetchPicture: async () => {
       throw new Error(APP_ONLY);
     },
-    onBrowserEvent: () => () => undefined,
+    // Design previews can act out what a page did: window.tbvPreviewBrowserEvent({ kind: "failed", … }).
+    onBrowserEvent: (listener) => {
+      (window as unknown as { tbvPreviewBrowserEvent?: typeof listener }).tbvPreviewBrowserEvent = listener;
+      return () => undefined;
+    },
     browserAddDownload: async () => {
       throw new Error(APP_ONLY);
     },
@@ -112,5 +121,14 @@ export function browseStub(): Calls {
       throw new Error(APP_ONLY);
     },
     browserDiscardDownload: async () => undefined,
+    browserZoom: async () => undefined,
+    browserDesktopSites: async () => undefined,
+    browserClearSite: async () => undefined,
+    browserShare: async () => {
+      throw new Error(APP_ONLY);
+    },
+    browserOpenApp: async () => {
+      throw new Error(APP_ONLY);
+    },
   };
 }

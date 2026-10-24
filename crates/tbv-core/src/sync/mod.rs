@@ -902,7 +902,15 @@ impl Library {
             sync: SyncOptions,
         }
         let saved = self.setting(APP_SETTINGS)?;
-        Ok(saved.and_then(|s| serde_json::from_str::<App>(&s).ok()).unwrap_or_default().sync)
+        let mut options = saved.and_then(|s| serde_json::from_str::<App>(&s).ok()).unwrap_or_default().sync;
+        // A phone always sends the books added on it, or other devices list
+        // them without being able to open them. Ones it brought down from the
+        // cloud are marked as there already (`download_book_from`), so they
+        // aren't sent back up.
+        if cfg!(any(target_os = "ios", target_os = "android")) {
+            options.book_files = true;
+        }
+        Ok(options)
     }
 
     pub fn supabase_project(&self) -> Result<Option<SupabaseProject>> {

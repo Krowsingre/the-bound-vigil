@@ -6,16 +6,56 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isIOS, openExternal } from "../api";
 import type { Bookmark, BrowserEvent, BrowserFrame, ReaderArticle } from "../api/types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { openContextMenu } from "../components/ContextMenu";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
+import { askSendWithLocalSend } from "../localsend/SendWithLocalSend";
 import { formatLabel } from "../lib/queryBooks";
 import { useNarrow } from "../lib/useNarrow";
-import { addressFor, homeOf, isAddress, isStartPage, lowerFor, onBrowserPrefs, protectionOf, readBrowserPrefs, siteOf, START_PAGE, writeBrowserPrefs } from "./browserPrefs";
-import { closeTab, freshTabs, moveTab, newTabId, openTab, readTabs, updateTab, writeTabs, type TabsState } from "./browserTabs";
+import {
+  addressFor,
+  desktopHosts,
+  homeOf,
+  isAddress,
+  isStartPage,
+  lowerFor,
+  onBrowserPrefs,
+  protectionOf,
+  readableAddress,
+  readBrowserPrefs,
+  setSiteSettings,
+  siteOf,
+  siteSettings,
+  START_PAGE,
+  writeBrowserPrefs,
+} from "./browserPrefs";
+import {
+  closeOtherTabs,
+  closeTab,
+  duplicateTab,
+  freshTabs,
+  moveTab,
+  newTabId,
+  onClosedTabs,
+  openTab,
+  readClosedTabs,
+  readTabs,
+  rememberClosed,
+  reopenTab,
+  takeClosed,
+  updateTab,
+  writeTabs,
+  type ClosedTab,
+  type TabsState,
+} from "./browserTabs";
+import { downloadState, readDownloads, writeDownloads, type Fetched } from "./browserDownloads";
 import { addToHistory } from "./browserHistory";
 import { HistoryPanel } from "./HistoryPanel";
 import { addToReadingList, bookIdOf } from "./readingList";
+import { ClosedList } from "./ClosedList";
+import { SiteInfo } from "./SiteInfo";
 import { BookmarksPanel, ReadingListPanel } from "./StartPanels";
 import { StartPage, type StartPanel } from "./StartPage";
 import { useTabDrag } from "./useTabDrag";
@@ -26,7 +66,7 @@ export const BROWSER_GO = "tbv:browser-go";
 /** The page in front, told to the header so its search box can show the address. */
 export const BROWSER_PAGE = "tbv:browser-page";
 
-/** The top bar's buttons, on Discover, ask the browser here: "home", "reload", "stop", "top" (back to the top of the page). */
+/** The top bar's buttons, on Discover, ask the browser here: "home", "reload", "stop", "top" (back to the top of the page), "site" (the Site information sheet). */
 const BROWSER_DO = "tbv:browser-do";
 /** The address suggestions' "Switch to tab", with the tab's id. */
 export const BROWSER_SWITCH = "tbv:browser-switch";
@@ -112,48 +152,47 @@ export function BrowserHomeButton() {
 
 /**
  * Inside the left of the address, where the magnifier sits on other pages: a
- * lock for a secure page, a warning for one that isn't, opening a little menu
- * about the site.
+ * lock for a secure page, a warning for one that isn't, opening the Site
+ * information sheet.
  */
 export function BrowserSiteButton({ url }: { url: string }) {
-  const [prefs, setPrefs] = useState(readBrowserPrefs);
-  useEffect(() => onBrowserPrefs(() => setPrefs(readBrowserPrefs())), []);
-  const toast = useToast();
   const web = /^https?:/i.test(url);
   if (!web) return <Icon name={url ? "compass" : "search"} size={18} />;
   const secure = /^https:/i.test(url);
-  const site = siteOf(url);
-  const lowered = !!site && prefs.lowered.includes(site);
   return (
-    <Menu
-      label={secure ? "Secure connection: about this site" : "Not secure: about this site"}
+    <button
+      type="button"
       className={`search-action browser-site${secure ? "" : " is-unsafe"}`}
-      align="start"
-      trigger={<Icon name={secure ? "lock" : "warning"} size={17} />}
-      items={[
-        {
-          heading: (
-            <span className="browser-site-head">
-              <strong>{site}</strong>
-              <span className="muted">{secure ? "The connection is secure. What you send and see here is private between you and the site." : "Not secure. Don't type passwords or card numbers on this page."}</span>
-            </span>
-          ),
-        },
-        {
-          label: lowered ? "Restore protection for this site" : "Lower protection for this site",
-          icon: "eyeOff",
-          disabled: !site || prefs.protection === "off",
-          onSelect: () => {
-            if (!site) return;
-            const next = lowerFor(site, !lowered);
-            void api.browserProtect(protectionOf(next)).then(() => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: "reload" })));
-            toast(lowered ? `Protection is back on for ${site}.` : `Protection is lowered for ${site}.`);
-          },
-        },
-        { label: "Copy link", icon: "copy", onSelect: () => void navigator.clipboard?.writeText(url).then(() => toast("Link copied.")) },
-      ]}
-    />
+      onPointerDown={(e) => e.preventDefault()}
+      aria-label={secure ? "Secure connection: about this site" : "Not secure: about this site"}
+      title="About this site"
+      onClick={() => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: "site" }))}
+    >
+      <Icon name={secure ? "lock" : "warning"} size={17} />
+    </button>
   );
+}
+
+/** What a link for another app will do, for asking first. */
+export function appLinkAsk(url: string): string {
+  const [scheme, ...rest] = url.split(":");
+  const raw = rest.join(":").replace(/^\/\//, "").split("?")[0];
+  let what = raw;
+  try {
+    what = decodeURIComponent(raw);
+  } catch {
+    // A badly written address is shown as it is.
+  }
+  switch (scheme.toLowerCase()) {
+    case "mailto":
+      return what ? `This page wants to open your mail app to write to ${what}.` : "This page wants to open your mail app.";
+    case "tel":
+      return `This page wants to call ${what}.`;
+    case "sms":
+      return `This page wants to send a text message to ${what}.`;
+    default:
+      return `This page wants to open another app with a "${scheme}:" link.`;
+  }
 }
 
 /** A file name from an address, for its title in the library. */
@@ -197,15 +236,8 @@ const PAUSE_ALL = `(function () {
 /** Something on top (a menu, a dialog, the phone's menu of pages) would be hidden under the page, so the page steps aside. */
 const covered = () => !!document.querySelector(".dialog-backdrop, [role=menu], [role=alertdialog], .sidebar-backdrop, .address-suggestions");
 
-/** A file the browser is bringing down, or brought down. */
-interface Fetched {
-  id: string;
-  name: string;
-  state: "coming" | "done" | "failed" | "added" | "kept";
-  path?: string;
-  /** Still waiting for an answer: add it, keep it, or not. */
-  asking?: boolean;
-}
+const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
+const clean = (e: unknown) => String(e).replace(/^Error: /, "");
 
 export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: () => void; onOpenBook: (bookId: string) => void }) {
   const narrow = useNarrow();
@@ -213,8 +245,15 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
   const [tabs, setTabs] = useState<TabsState>(startingTabs);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [marks, setMarks] = useState<Bookmark[]>([]);
-  const [fetched, setFetched] = useState<Fetched[]>([]);
-  const [panel, setPanel] = useState<null | "tabs" | StartPanel>(null);
+  const [fetched, setFetched] = useState<Fetched[]>(readDownloads);
+  const [panel, setPanel] = useState<null | "tabs" | "site" | StartPanel>(null);
+  /** Pages that couldn't open, by tab: TBV's own page says why. */
+  const [failed, setFailed] = useState<Record<string, { url: string; reason: string }>>({});
+  /** Tabs just closed, for the Undo line. */
+  const [undo, setUndo] = useState<{ count: number; at: number } | null>(null);
+  const [closedTabs, setClosedTabs] = useState(readClosedTabs);
+  /** A link for another app, waiting for an answer. */
+  const [appLink, setAppLink] = useState<string | null>(null);
   /** Scrolled down the page: the row is out of the way until it scrolls back up. */
   const [scrolledAway, setScrolledAway] = useState(false);
   const [finding, setFinding] = useState<string | null>(null);
@@ -233,17 +272,27 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
   }, []);
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
+  const fetchedRef = useRef(fetched);
+  fetchedRef.current = fetched;
   const refit = useRef<() => void>(() => undefined);
   const toast = useToast();
 
   const active = tabs.tabs.find((t) => t.id === tabs.active) ?? tabs.tabs[0];
   const url = active?.url ?? "";
   const onStart = isStartPage(url);
-  /** Reader mode, the tab grid and the start page cover the page, so the page's view steps aside. */
+  const failure = onStart ? null : failed[active.id] ?? null;
+  /** Reader mode, the tab grid, the start page and the error page cover the page, so the page's view steps aside. */
   const aside = useRef(false);
-  aside.current = !!article || panel === "tabs" || onStart;
+  aside.current = !!article || panel === "tabs" || onStart || !!failure;
 
   useEffect(() => writeTabs(tabs), [tabs]);
+  useEffect(() => writeDownloads(fetched), [fetched]);
+  useEffect(() => onClosedTabs(() => setClosedTabs(readClosedTabs())), []);
+  useEffect(() => {
+    if (!undo) return;
+    const gone = window.setTimeout(() => setUndo(null), 7000);
+    return () => window.clearTimeout(gone);
+  }, [undo]);
   // A tab that's gone (the oldest, past the most kept) has its page closed too.
   useEffect(() => {
     for (const id of [...made.current]) {
@@ -253,6 +302,26 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     }
   }, [tabs.tabs]);
   useEffect(() => onBrowserPrefs(() => setPrefs(readBrowserPrefs())), []);
+
+  /** The zoom each tab's page has now, so it's changed only when its site wants another. */
+  const zoomed = useRef<Record<string, number>>({});
+  const fitZoom = useCallback((tab: string, at: string) => {
+    if (!/^https?:/i.test(at) || !made.current.has(tab)) return;
+    const want = siteSettings(siteOf(at)).zoom ?? 1;
+    if ((zoomed.current[tab] ?? 1) === want) return;
+    zoomed.current[tab] = want;
+    void api.browserZoom(tab, want).catch(() => undefined);
+  }, []);
+  // A site's zoom changed in its sheet, or was reset in Preferences.
+  useEffect(() => {
+    for (const t of tabsRef.current.tabs) fitZoom(t.id, t.url);
+  }, [prefs.sites, fitZoom]);
+  // iPhone and iPad: the sites shown in their computer version.
+  const desktopList = desktopHosts(prefs).join("\n");
+  useEffect(() => {
+    if (isIOS) void api.browserDesktopSites(desktopList ? desktopList.split("\n") : []).catch(() => undefined);
+  }, [desktopList]);
+
   // The top bar shows the address of the page in front.
   useEffect(() => {
     window.dispatchEvent(new CustomEvent(BROWSER_PAGE, { detail: isStartPage(url) ? "" : url }));
@@ -273,11 +342,12 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     const fresh = !made.current.has(tab.id);
     await api.browserShow(tab.id, fresh ? tab.url : null, at, protectionOf(readBrowserPrefs()));
     made.current.add(tab.id);
+    if (fresh) fitZoom(tab.id, tab.url);
     // A new tab's page can take a moment to come up (iPhone readies its
     // protection first). Left Discover, or covered, in that moment: the page
     // would show over whatever's there now, so it goes away again.
     if (!mounted.current || covered() || aside.current) await api.browserHide();
-  }, []);
+  }, [fitZoom]);
 
   const reloadMarks = useCallback(() => api.bookmarks().then(setMarks, () => undefined), []);
   useEffect(() => void reloadMarks(), [reloadMarks]);
@@ -285,9 +355,10 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
   const answer = useCallback(
     async (d: Fetched, how: "add" | "keep" | "drop") => {
       if (!d.path) return;
+      let bookId: string | undefined;
       try {
         if (how === "add") {
-          await api.browserAddDownload(d.path);
+          bookId = await api.browserAddDownload(d.path);
           toast(`${d.name} is being added to your library.`);
         } else if (how === "keep") {
           const where = await api.browserKeepDownload(d.path);
@@ -298,7 +369,9 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
         toast(String(e));
         return;
       }
-      setFetched((list) => (how === "drop" ? list.filter((x) => x.id !== d.id) : list.map((x) => (x.id === d.id ? { ...x, asking: false, state: how === "add" ? "added" : "kept" } : x))));
+      setFetched((list) =>
+        how === "drop" ? list.filter((x) => x.id !== d.id) : list.map((x) => (x.id === d.id ? { ...x, asking: false, state: how === "add" ? "added" : "kept", bookId: bookId ?? x.bookId } : x)),
+      );
     },
     [toast],
   );
@@ -309,6 +382,9 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
       switch (ev.kind) {
         case "page": {
           setLoading((l) => ({ ...l, [ev.tab]: ev.loading }));
+          // Loading again (Try again, or another page): the error page goes.
+          if (ev.loading) setFailed((f) => (f[ev.tab] ? Object.fromEntries(Object.entries(f).filter(([t]) => t !== ev.tab)) : f));
+          fitZoom(ev.tab, ev.url);
           // Chosen in Preferences › Discover: each page visited goes in History.
           const keep = readBrowserPrefs();
           if (!ev.loading && keep.historyOn && /^https?:/i.test(ev.url)) addToHistory({ kind: "page", url: ev.url, title: ev.title ?? null }, keep.historyKeep);
@@ -330,16 +406,25 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
           setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null }));
           break;
         }
+        case "failed":
+          setFailed((f) => ({ ...f, [ev.tab]: { url: ev.url, reason: ev.reason } }));
+          if (/^https?:/i.test(ev.url)) setTabs((s) => updateTab(s, ev.tab, { url: ev.url }));
+          break;
+        case "external":
+          if (readBrowserPrefs().askApps) setAppLink(ev.url);
+          else void api.browserOpenApp(ev.url).catch((e: unknown) => toast(clean(e)));
+          break;
         case "closed":
           made.current.delete(ev.tab);
           void api.browserAct(ev.tab, "close");
           setTabs((s) => closeTab(s, ev.tab, homeOf()));
           break;
         case "downloadStart":
-          setFetched((list) => [{ id: ev.id, name: ev.name, state: "coming" as const }, ...list.filter((x) => x.id !== ev.id)].slice(0, 30));
+          setFetched((list) => [{ id: ev.id, name: ev.name, state: "coming" as const, url: ev.url, tab: ev.tab, at: Date.now() }, ...list.filter((x) => x.id !== ev.id)]);
           break;
         case "download": {
-          const done: Fetched = { id: ev.id, name: ev.name, path: ev.path, state: ev.ok ? "done" : "failed", asking: ev.ok };
+          const before = fetchedRef.current.find((x) => x.id === ev.id);
+          const done: Fetched = { ...before, id: ev.id, name: ev.name, path: ev.path, state: ev.ok ? "done" : "failed", asking: ev.ok, tab: ev.tab, at: before?.at ?? Date.now() };
           // Chosen in Preferences › Discover: ebooks go straight in.
           const straightIn = ev.ok && BOOK_FILE.test(ev.name) && readBrowserPrefs().addWithoutAsking;
           setFetched((list) => [done, ...list.filter((x) => x.id !== ev.id)]);
@@ -349,7 +434,7 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
       }
     };
     return api.onBrowserEvent(heard);
-  }, [answer]);
+  }, [answer, fitZoom, toast]);
 
   // The page shows over the space below the row, follows it as it moves,
   // and steps aside for menus, dialogs and reader mode. Hidden on leaving.
@@ -416,8 +501,8 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     };
   }, [showActive]);
 
-  // Another tab came forward, or reader mode opened or closed.
-  useEffect(() => refit.current(), [tabs.active, article, panel]);
+  // Another tab came forward, reader mode opened or closed, or a page failed or came back.
+  useEffect(() => refit.current(), [tabs.active, article, panel, !!failure]);
 
   const act = (action: "back" | "forward" | "reload" | "stop") => void api.browserAct(active.id, action).catch(() => undefined);
 
@@ -471,16 +556,92 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     setTabs((s) => ({ ...s, active: id }));
   };
   const drag = useTabDrag((id, onto) => setTabs((s) => moveTab(s, id, onto)));
+  /** Closes tabs' pages; the tabs are remembered for Reopen closed tab and Undo. */
+  const forget = (ids: string[]) => {
+    const remembered = tabsRef.current.tabs.filter((t) => ids.includes(t.id) && /^https?:/i.test(t.url)).length;
+    rememberClosed(tabsRef.current, ids);
+    for (const id of ids) {
+      made.current.delete(id);
+      delete zoomed.current[id];
+      void api.browserAct(id, "close");
+    }
+    setFailed((f) => Object.fromEntries(Object.entries(f).filter(([t]) => !ids.includes(t))));
+    setUndo(remembered ? { count: remembered, at: Date.now() } : null);
+  };
   const close = (id: string) => {
-    made.current.delete(id);
-    void api.browserAct(id, "close");
+    forget([id]);
     setTabs((s) => closeTab(s, id, homeOf()));
   };
+  const closeOthers = (id: string) => {
+    setArticle(null);
+    forget(tabsRef.current.tabs.filter((t) => t.id !== id).map((t) => t.id));
+    setTabs((s) => closeOtherTabs(s, id));
+  };
+  const duplicate = (id: string) => {
+    setArticle(null);
+    setPanel(null);
+    setTabs((s) => duplicateTab(s, id));
+  };
+  /** Opens closed tabs again, back where they were: the last `count`, or the one at `index` in the list. */
+  const reopen = (count = 1, index?: number) => {
+    const back: ClosedTab[] = [];
+    for (let i = 0; i < count; i++) {
+      const taken = takeClosed(index ?? 0);
+      if (taken) back.push(taken);
+    }
+    if (!back.length) return;
+    setArticle(null);
+    setPanel(null);
+    setUndo(null);
+    setTabs((s) => back.sort((a, b) => a.at - b.at).reduce(reopenTab, s));
+  };
+  const tabMenu = (id: string): MenuEntry[] => [
+    { label: "New tab", icon: "plus", onSelect: newTab },
+    { label: "Duplicate tab", icon: "copy", disabled: isStartPage(tabsRef.current.tabs.find((t) => t.id === id)?.url ?? ""), onSelect: () => duplicate(id) },
+    { label: "Reopen closed tab", icon: "undo", disabled: !closedTabs.length, onSelect: () => reopen() },
+    "divider",
+    { label: "Close other tabs", icon: "layers", disabled: tabs.tabs.length < 2, onSelect: () => closeOthers(id) },
+    { label: "Close tab", icon: "close", onSelect: () => close(id) },
+  ];
+  // Phone: a sideways swipe along the address box goes to the next tab, or the one before.
+  const switchBy = useRef<(by: number) => void>(() => undefined);
+  switchBy.current = (by) => {
+    const list = tabsRef.current.tabs;
+    const at = list.findIndex((t) => t.id === tabsRef.current.active);
+    const to = list[at + by];
+    if (to) switchTo(to.id);
+  };
+  useEffect(() => {
+    if (!narrow) return;
+    const pill = document.getElementById("global-search")?.closest("form");
+    if (!pill) return;
+    pill.dataset.ownSwipe = "";
+    let start: { x: number; y: number } | null = null;
+    const down = (e: TouchEvent) => {
+      start = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+    };
+    const up = (e: TouchEvent) => {
+      const from = start;
+      start = null;
+      const t = e.changedTouches[0];
+      // While typing, a sideways drag moves along the words instead.
+      if (!from || !t || document.activeElement?.id === "global-search") return;
+      const dx = t.clientX - from.x;
+      if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(t.clientY - from.y) * 1.5) return;
+      switchBy.current(dx < 0 ? 1 : -1);
+    };
+    pill.addEventListener("touchstart", down, { passive: true });
+    pill.addEventListener("touchend", up);
+    return () => {
+      delete pill.dataset.ownSwipe;
+      pill.removeEventListener("touchstart", down);
+      pill.removeEventListener("touchend", up);
+    };
+  }, [narrow]);
 
   const marked = marks.find((m) => m.url === url) ?? null;
   const isFile = BOOK_FILE.test(url);
   const site = siteOf(url);
-  const lowered = !!site && prefs.lowered.includes(site);
   const busy = !!loading[active.id];
   const coming = fetched.filter((d) => d.state === "coming").length;
   const asking = fetched.filter((d) => d.asking);
@@ -490,6 +651,7 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
   const fromTop = useRef<(what: string) => void>(() => undefined);
   fromTop.current = (what) => {
     if (what === "home") goHome();
+    else if (what === "site") setPanel("site");
     else if (what === "top") {
       setScrolledAway(false);
       if (onStart) document.querySelector(".start-page")?.scrollTo({ top: 0, behavior: "smooth" });
@@ -552,6 +714,81 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
   }, [watchScroll, active.id, url]);
 
 
+  const share = (to: string, title: string) => {
+    setPanel(null);
+    void api.browserShare(to, title, null).catch((e: unknown) => toast(clean(e)));
+  };
+
+  const tryAgain = () => {
+    if (!failure) return;
+    const id = active.id;
+    setFailed((f) => Object.fromEntries(Object.entries(f).filter(([t]) => t !== id)));
+    void api.browserAct(id, "go", failure.url || url).catch((e: unknown) => toast(clean(e)));
+  };
+
+  /** Downloads › Retry: the same address again, in its tab if that's still open. */
+  const retry = (d: Fetched) => {
+    if (!d.url) return;
+    setFetched((list) => list.filter((x) => x.id !== d.id));
+    const tab = d.tab && made.current.has(d.tab) ? d.tab : made.current.has(active.id) && !onStart ? active.id : null;
+    if (tab) void api.browserAct(tab, "go", d.url).catch((e: unknown) => toast(clean(e)));
+    else go(d.url);
+  };
+
+  /** The book a download became, once the library has it (it can take a moment to be added). */
+  const bookOf = async (d: Fetched) => {
+    if (!d.bookId) return null;
+    for (let tries = 0; tries < 30; tries++) {
+      try {
+        return await api.bookDetails(d.bookId);
+      } catch {
+        if (tries === 0) toast("It's still being added. One moment…");
+        await wait(1500);
+      }
+    }
+    toast("It isn't in your library yet. Try again in a moment.");
+    return null;
+  };
+  const readNow = async (d: Fetched) => {
+    const found = await bookOf(d);
+    if (!found) return;
+    setPanel(null);
+    onOpenBook(found.book.id);
+  };
+  const sendWithGrimoire = async (d: Fetched) => {
+    const found = await bookOf(d);
+    if (!found) return;
+    setPanel(null);
+    askSendWithLocalSend([found.book]);
+  };
+
+  const siteActions = {
+    onProtection: (lower: boolean) => {
+      if (!site) return;
+      void api.browserProtect(protectionOf(lowerFor(site, lower))).then(() => act("reload"));
+    },
+    onZoom: (zoom: number) => site && setSiteSettings(site, { zoom }),
+    onDesktop: (desktop: boolean) => {
+      if (!site) return;
+      const hosts = desktopHosts(setSiteSettings(site, { desktop }));
+      // Told first, so the reload asks for the right version.
+      void api.browserDesktopSites(hosts).then(() => act("reload"), () => undefined);
+    },
+    onClearData: () => {
+      if (!site) return;
+      void api.browserClearSite(site).then(
+        () => {
+          toast(`${site}'s cookies and data are cleared.`);
+          act("reload");
+        },
+        (e: unknown) => toast(clean(e)),
+      );
+    },
+    onCopy: () => void navigator.clipboard?.writeText(url).then(() => toast("Link copied.")),
+    onShare: () => share(url, titleOf(active.title, url)),
+    onClose: () => setPanel(null),
+  };
+
   const toggleMark = async () => {
     if (!url.startsWith("http")) return;
     try {
@@ -609,13 +846,6 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     }
   };
 
-  const changeProtection = () => {
-    if (!site) return;
-    const next = lowerFor(site, !lowered);
-    void api.browserProtect(protectionOf(next)).then(() => act("reload"));
-    toast(lowered ? `Protection is back on for ${site}.` : `Protection is lowered for ${site}.`);
-  };
-
   const sites = marks.length ? marks : SUGGESTED_SITES.map((s, i) => ({ id: `suggested-${i}`, ...s }));
   const bookmarkItems: MenuEntry[] = [
     { heading: <strong>{marks.length ? "Bookmarks" : "Book sites to start with"}</strong> },
@@ -623,19 +853,16 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
   ];
   const moreItems: MenuEntry[] = [
     { label: "Copy link", icon: "copy", disabled: !url.startsWith("http"), onSelect: () => void navigator.clipboard?.writeText(url).then(() => toast("Link copied.")) },
+    { label: "Share…", icon: "share", disabled: !url.startsWith("http"), onSelect: () => share(url, titleOf(active.title, url)) },
     { label: "Open in your normal browser", icon: "link", disabled: !url.startsWith("http"), onSelect: () => void openExternal(url) },
     { label: "Save to Reading List", icon: "notes", disabled: !url.startsWith("http") || saving, onSelect: () => void saveToReadingList() },
     { label: "Bookmarks", icon: "bookmark", onSelect: () => setPanel("bookmarks") },
     { label: "Reading List", icon: "bookOpen", onSelect: () => setPanel("reading") },
     { label: "History", icon: "clock", onSelect: () => setPanel("history") },
     { label: "Find on page", icon: "search", onSelect: () => setFinding("") },
+    { label: "Reopen closed tab", icon: "undo", disabled: !closedTabs.length, onSelect: () => reopen() },
     { label: "Make this your home page", icon: "home", disabled: !url.startsWith("http"), onSelect: () => (writeBrowserPrefs({ home: url }), toast("This is your home page now.")) },
-    {
-      label: lowered ? "Restore protection for this site" : "Lower protection for this site",
-      icon: "eyeOff",
-      disabled: !site || prefs.protection === "off",
-      onSelect: changeProtection,
-    },
+    { label: "Site information", icon: "info", disabled: !site, onSelect: () => setPanel("site") },
     { label: "Clear cookies and site data", icon: "trash", onSelect: () => void api.browserClear().then(() => toast("Every site's cookies and data are cleared.")) },
     "divider",
     { label: "Add a catalogue", icon: "globePlus", onSelect: onOpenCatalogues },
@@ -654,7 +881,7 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
       {!narrow && (
         <div className="browser-tabs" role="tablist" aria-label="Tabs">
           {tabs.tabs.map((t) => (
-            <div key={t.id} className={`browser-tab${t.id === tabs.active ? " is-active" : ""}`} {...drag(t.id)}>
+            <div key={t.id} className={`browser-tab${t.id === tabs.active ? " is-active" : ""}`} {...drag(t.id)} onContextMenu={(e) => openContextMenu(e, `${titleOf(t.title, t.url)}: tab`, tabMenu(t.id))}>
               <button type="button" role="tab" aria-selected={t.id === tabs.active} className="browser-tab-name" title={t.url} onClick={() => switchTo(t.id)}>
                 {loading[t.id] ? <span className="browser-tab-busy" aria-hidden /> : <Icon name="globe" size={13} />}
                 <span>{titleOf(t.title, t.url)}</span>
@@ -710,6 +937,17 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
           {button("Close find", "close", () => setFinding(null))}
         </form>
       )}
+      {undo && (
+        <div className="browser-offer" role="status">
+          <span>{undo.count === 1 ? "Tab closed." : `${undo.count} tabs closed.`}</span>
+          <button type="button" className="btn btn-primary btn-small" onClick={() => reopen(undo.count)}>
+            <Icon name="undo" size={14} /> Undo
+          </button>
+          <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setUndo(null)}>
+            <Icon name="close" size={14} />
+          </button>
+        </div>
+      )}
       {asking.map((d) => (
         <div key={d.id} className="browser-offer" role="status">
           <span>
@@ -737,7 +975,33 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
         </div>
       )}
       <div className="browser-view" ref={area}>
-        {onStart && !article && <StartPage onGo={go} onNewTab={openInNewTab} onPanel={setPanel} onScrolled={startScrolled} onSearch={() => document.getElementById("global-search")?.focus()} />}
+        {onStart && !article && (
+          <StartPage
+            onGo={go}
+            onNewTab={openInNewTab}
+            onPanel={setPanel}
+            onScrolled={startScrolled}
+            onSearch={() => document.getElementById("global-search")?.focus()}
+            closed={closedTabs}
+            onReopen={(index) => reopen(1, index)}
+          />
+        )}
+        {failure && !article && (
+          <div className="browser-failed" role="alert">
+            <Icon name="cloudOff" size={44} />
+            <h2>This page didn't open</h2>
+            <p>{failure.reason}</p>
+            {failure.url && <p className="muted browser-failed-url">{readableAddress(failure.url)}</p>}
+            <div className="browser-failed-actions">
+              <button type="button" className="btn btn-primary" onClick={tryAgain}>
+                <Icon name="sync" size={15} /> Try again
+              </button>
+              <button type="button" className="btn btn-quiet" onClick={goHome}>
+                <Icon name="home" size={15} /> Home
+              </button>
+            </div>
+          </div>
+        )}
         {problem && !onStart && (
           <div className="library-empty" role="alert">
             <h2>The browser couldn't open</h2>
@@ -783,17 +1047,40 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
                     <strong>{titleOf(t.title, t.url)}</strong>
                     <span className="muted">{siteOf(t.url)}</span>
                   </button>
+                  <span className="browser-grid-more">
+                    <Menu label={`More for ${titleOf(t.title, t.url)}`} trigger={<Icon name="moreVertical" size={16} />} items={tabMenu(t.id)} />
+                  </span>
                   <button type="button" className="browser-tab-close" aria-label={`Close ${titleOf(t.title, t.url)}`} onClick={() => close(t.id)}>
                     <Icon name="close" size={14} />
                   </button>
                 </div>
               ))}
             </div>
+            {closedTabs.length > 0 && (
+              <section className="browser-grid-closed" aria-labelledby="grid-closed">
+                <h3 id="grid-closed">Recently closed</h3>
+                <ClosedList closed={closedTabs} onReopen={(index) => reopen(1, index)} />
+              </section>
+            )}
           </div>
         )}
       </div>
       {panel === "bookmarks" && <BookmarksPanel onGo={(to) => (setPanel(null), go(to))} onClose={() => setPanel(null)} />}
       {panel === "reading" && <ReadingListPanel onOpenBook={onOpenBook} onClose={() => setPanel(null)} />}
+      {panel === "site" && site && <SiteInfo url={url} actions={siteActions} />}
+      {appLink && (
+        <ConfirmDialog
+          title="Open another app?"
+          body={appLinkAsk(appLink)}
+          confirm="Open"
+          onCancel={() => setAppLink(null)}
+          onConfirm={() => {
+            const to = appLink;
+            setAppLink(null);
+            void api.browserOpenApp(to).catch((e: unknown) => toast(clean(e)));
+          }}
+        />
+      )}
       {panel === "history" && <HistoryPanel onGo={(to) => (setPanel(null), go(to))} onClose={() => setPanel(null)} />}
       {panel === "downloads" && (
         <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && setPanel(null)}>
@@ -814,7 +1101,8 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
                     <span className="browser-download-name">
                       <b>{d.name}</b>
                       <span className="muted">
-                        {d.state === "coming" ? "Coming down…" : d.state === "failed" ? "Didn't finish" : d.state === "added" ? "Added to your library" : d.state === "kept" ? "Kept in Downloads" : "Downloaded"}
+                        {downloadState(d)}
+                        {d.at > 0 && d.state !== "coming" && ` · ${new Date(d.at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`}
                       </span>
                     </span>
                     {d.state === "coming" && (
@@ -828,6 +1116,24 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
                       >
                         Cancel
                       </button>
+                    )}
+                    {d.state === "failed" && d.url && (
+                      <button type="button" className="btn btn-quiet btn-small" onClick={() => retry(d)}>
+                        Retry
+                      </button>
+                    )}
+                    {d.state === "added" && d.bookId && (
+                      <>
+                        <button type="button" className="btn btn-primary btn-small" onClick={() => void readNow(d)}>
+                          Read now
+                        </button>
+                        <Menu
+                          label={`More for ${d.name}`}
+                          className="icon-btn"
+                          trigger={<Icon name="moreVertical" size={16} />}
+                          items={[{ label: "Send with Grimoire", icon: "upload", onSelect: () => void sendWithGrimoire(d) }]}
+                        />
+                      </>
                     )}
                     {d.asking && (
                       <>
@@ -856,3 +1162,4 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     </div>
   );
 }
+

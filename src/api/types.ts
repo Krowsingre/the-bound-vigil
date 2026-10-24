@@ -1268,7 +1268,11 @@ export type BrowserEvent =
   /** A link that wants a new window. With `tab`, the tab is made already (a pop-up on iPhone). */
   | { kind: "newTab"; url: string; from: string; tab?: string }
   /** A page that closed itself. */
-  | { kind: "closed"; tab: string };
+  | { kind: "closed"; tab: string }
+  /** A page that couldn't open, and why, in plain words. */
+  | { kind: "failed"; tab: string; url: string; reason: string }
+  /** A link for another app (mail, a phone number), not opened yet. */
+  | { kind: "external"; tab: string; url: string };
 
 /** An article found on a page by reader mode (Mozilla's Readability). */
 export interface ReaderArticle {

@@ -90,3 +90,80 @@ export function moveTab(state: TabsState, id: string, onto: string): TabsState {
   tabs.splice(to, 0, tab);
   return { ...state, tabs };
 }
+
+/** A copy of a tab, opened beside it and brought forward. */
+export function duplicateTab(state: TabsState, id: string): TabsState {
+  const tab = state.tabs.find((t) => t.id === id);
+  if (!tab) return state;
+  return openTab({ ...state, active: id }, { id: newTabId(), url: tab.url, title: tab.title });
+}
+
+/** Closes every tab but `id`, which comes forward. */
+export function closeOtherTabs(state: TabsState, id: string): TabsState {
+  const tab = state.tabs.find((t) => t.id === id);
+  return tab ? { tabs: [tab], active: id } : state;
+}
+
+/** A tab closed lately, for Reopen closed tab. */
+export interface ClosedTab {
+  url: string;
+  title: string | null;
+  /** Where it was in the row. */
+  at: number;
+  closed: number;
+}
+
+const CLOSED_KEY = "tbv.browser.closed";
+const CLOSED_CHANGED = "tbv:browser-closed";
+/** How many closed tabs are remembered, newest first. */
+export const MOST_CLOSED = 10;
+
+export function readClosedTabs(): ClosedTab[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CLOSED_KEY) ?? "[]") as unknown;
+    if (!Array.isArray(saved)) return [];
+    return saved.filter((t): t is ClosedTab => !!t && typeof t.url === "string" && /^https?:\/\//i.test(t.url) && typeof t.at === "number" && typeof t.closed === "number");
+  } catch {
+    return [];
+  }
+}
+
+function writeClosed(list: ClosedTab[]) {
+  try {
+    localStorage.setItem(CLOSED_KEY, JSON.stringify(list.slice(0, MOST_CLOSED)));
+  } catch {
+    // Forgotten after this visit.
+  }
+  window.dispatchEvent(new CustomEvent(CLOSED_CHANGED));
+}
+
+export function onClosedTabs(listener: () => void): () => void {
+  window.addEventListener(CLOSED_CHANGED, listener);
+  return () => window.removeEventListener(CLOSED_CHANGED, listener);
+}
+
+/** Remembers tabs as they close. The start page isn't worth reopening. */
+export function rememberClosed(state: TabsState, ids: string[], now = Date.now()): void {
+  const gone = state.tabs
+    .map((t, at) => ({ t, at }))
+    .filter(({ t }) => ids.includes(t.id) && /^https?:\/\//i.test(t.url))
+    .map(({ t, at }) => ({ url: t.url, title: t.title, at, closed: now }))
+    .reverse();
+  if (gone.length) writeClosed([...gone, ...readClosedTabs()]);
+}
+
+/** Takes a closed tab off the list (the newest, without `index`) to open it again. */
+export function takeClosed(index = 0): ClosedTab | null {
+  const list = readClosedTabs();
+  const taken = list[index] ?? null;
+  if (taken) writeClosed(list.filter((_, i) => i !== index));
+  return taken;
+}
+
+/** Opens a closed tab again, back where it was in the row. */
+export function reopenTab(state: TabsState, closed: ClosedTab): TabsState {
+  const tab = { id: newTabId(), url: closed.url, title: closed.title };
+  const tabs = [...state.tabs];
+  tabs.splice(Math.min(closed.at, tabs.length), 0, tab);
+  return { tabs: tabs.length > MOST_TABS ? tabs.filter((t) => t.id !== tabs.find((x) => x.id !== tab.id)!.id) : tabs, active: tab.id };
+}

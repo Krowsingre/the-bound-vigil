@@ -446,8 +446,18 @@ export interface Api {
   /** A picture from the web, for an article saved to the library. */
   browserFetchPicture(url: string): Promise<Uint8Array>;
   onBrowserEvent(listener: (event: BrowserEvent) => void): () => void;
-  /** Adds a file the browser brought down to the library. */
-  browserAddDownload(path: string): Promise<void>;
+  /** Adds a file the browser brought down to the library; resolves to the id the book will have. */
+  browserAddDownload(path: string): Promise<string>;
+  /** How large the tab's page is drawn (1 is the site's own size). */
+  browserZoom(tab: string, zoom: number): Promise<void>;
+  /** iPhone and iPad: the sites shown in their computer version. */
+  browserDesktopSites(hosts: string[]): Promise<void>;
+  /** Clears one site's cookies and stored data. */
+  browserClearSite(site: string): Promise<void>;
+  /** The system's Share panel for a page; `anchor` is the button it opens from. */
+  browserShare(url: string, title: string, anchor: BrowserFrame | null): Promise<void>;
+  /** Opens a link for another app (mail, a phone number). */
+  browserOpenApp(url: string): Promise<void>;
   /** Moves a download to the Downloads folder; resolves to where it went. */
   browserKeepDownload(path: string): Promise<string>;
   browserDiscardDownload(path: string): Promise<void>;
@@ -911,7 +921,12 @@ function appApi(): Api {
     browserCancelDownload: async (id) => (await core).invoke("browser_cancel_download", { id }),
     browserFetchPicture: async (url) => new Uint8Array(await (await core).invoke<ArrayBuffer>("browser_fetch_picture", { url })),
     onBrowserEvent: (listener) => onEvent<BrowserEvent>("browser-event", listener),
-    browserAddDownload: async (path) => (await core).invoke("browser_add_download", { path }),
+    browserAddDownload: async (path) => (await core).invoke<string>("browser_add_download", { path }),
+    browserZoom: async (tab, zoom) => (await core).invoke("browser_zoom", { tab, zoom }),
+    browserDesktopSites: async (hosts) => (await core).invoke("browser_desktop_sites", { hosts }),
+    browserClearSite: async (site) => (await core).invoke("browser_clear_site", { site }),
+    browserShare: async (url, title, anchor) => (await core).invoke("browser_share", { url, title, anchor }),
+    browserOpenApp: async (url) => (await core).invoke("browser_open_app", { url }),
     browserKeepDownload: async (path) => (await core).invoke<string>("browser_keep_download", { path }),
     browserDiscardDownload: async (path) => (await core).invoke("browser_discard_download", { path }),
     writingProjects: async () => (await core).invoke<WritingProject[]>("writing_projects"),
