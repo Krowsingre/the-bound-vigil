@@ -23,7 +23,7 @@ export function Browse({
 }) {
   return (
     <div className="library browse-page browse-browser">
-      <Browser onOpenCatalogues={onOpenCatalogues} />
+      <Browser onOpenCatalogues={onOpenCatalogues} onOpenBook={onOpenBook} />
       {catalogues && (
         <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onCloseCatalogues()}>
           <div className="dialog catalogues-panel" role="dialog" aria-label="Catalogues" onKeyDown={(e) => e.key === "Escape" && onCloseCatalogues()}>

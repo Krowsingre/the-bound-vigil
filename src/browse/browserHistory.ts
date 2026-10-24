@@ -1,5 +1,5 @@
 // Discover's history: the pages visited and the words searched for, kept on
-// this device only (never synced), for as long as Preferences › Browser says.
+// this device only (never synced), for as long as Preferences › Discover says.
 
 export interface HistoryEntry {
   id: string;

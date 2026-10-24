@@ -52,6 +52,24 @@ export interface BrowserPrefs {
   historyKeep: HistoryKeep;
   /** Sites (hosts, without "www.") whose protection was lowered from Discover's ••• menu. */
   lowered: string[];
+  /** New tabs and the Home button open TBV's own start page, not the home page website. */
+  startPage: boolean;
+  /** The start page lists sites from History. */
+  showRecent: boolean;
+  /** The button row hides while a page scrolls down, and comes back scrolling up. */
+  hideBar: boolean;
+  /** The address box suggests from History, bookmarks, Quick Links and open tabs. */
+  suggest: boolean;
+}
+
+/** What a tab showing TBV's start page has for its address. */
+export const START_PAGE = "tbv:start";
+
+export const isStartPage = (url: string) => url === START_PAGE;
+
+/** Where new tabs and the Home button go. */
+export function homeOf(prefs: BrowserPrefs = readBrowserPrefs()): string {
+  return prefs.startPage ? START_PAGE : prefs.home;
 }
 
 const KEY = "tbv.browser.prefs";
@@ -80,6 +98,10 @@ export function readBrowserPrefs(): BrowserPrefs {
     comeBack: COME_BACK.some((c) => c.value === saved.comeBack) ? (saved.comeBack as ComeBack) : "keep",
     protection: PROTECTION_LEVELS.some((p) => p.value === saved.protection) ? (saved.protection as ProtectionLevel) : "strict",
     lowered: Array.isArray(saved.lowered) ? saved.lowered.filter((h): h is string => typeof h === "string") : [],
+    startPage: saved.startPage !== false,
+    showRecent: saved.showRecent !== false,
+    hideBar: saved.hideBar !== false,
+    suggest: saved.suggest !== false,
   };
 }
 
@@ -123,6 +145,16 @@ export function siteOf(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** The address box's address while not typing: just the site, without "www.". */
+export function shortAddress(url: string): string {
+  return siteOf(url) ?? url;
+}
+
+/** An address as people read it: without "https://", "www." or a lone "/" at the end. */
+export function readableAddress(url: string): string {
+  return url.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/$/, "");
 }
 
 /** What the browser is told about protection. */

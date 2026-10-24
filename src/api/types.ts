@@ -1234,6 +1234,15 @@ export interface Bookmark {
   url: string;
 }
 
+/** A favourite website on Discover's start page, on one of the gallery paintings. */
+export interface QuickLink {
+  id: string;
+  title: string;
+  url: string;
+  /** The gallery painting's name. */
+  picture: string;
+}
+
 /** The space the Browser tab keeps for web pages, in the window's points. */
 export interface BrowserFrame {
   x: number;

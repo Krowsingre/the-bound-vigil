@@ -31,10 +31,19 @@ export const Header = forwardRef<
     searchStart?: ReactNode;
     /** Inside the right end of the search box (Discover's row arrow). */
     searchEnd?: ReactNode;
+    /** On Discover: the address as shown while not typing (just the site). */
+    addressLabel?: string;
+    /** Drops down under the box while typing (Discover's suggestions); `done` empties and leaves the box. */
+    typingPanel?: (typed: string, done: () => void) => ReactNode;
   }
->(function Header({ sync, profile, search, placeholder, onSearchChange, onSearchSubmit, onOpenMenu, pageAction, address, searchStart, searchEnd, ...menu }, searchRef) {
+>(function Header({ sync, profile, search, placeholder, onSearchChange, onSearchSubmit, onOpenMenu, pageAction, address, searchStart, searchEnd, addressLabel, typingPanel, ...menu }, searchRef) {
   const [typing, setTyping] = useState(false);
-  const showing = address !== undefined && !typing && !search ? address : search;
+  const showing = address !== undefined && !typing && !search ? (addressLabel ?? address) : search;
+  const done = () => {
+    onSearchChange("");
+    setTyping(false);
+    (document.getElementById("global-search") as HTMLInputElement | null)?.blur();
+  };
   return (
     <header className="header" data-tauri-drag-region>
       {onOpenMenu && (
@@ -49,6 +58,11 @@ export const Header = forwardRef<
         onSubmit={(e) => {
           e.preventDefault();
           onSearchSubmit();
+          // On Discover, going somewhere leaves the box, so the suggestions close and the page shows.
+          if (address !== undefined) {
+            setTyping(false);
+            (document.getElementById("global-search") as HTMLInputElement | null)?.blur();
+          }
         }}
       >
         {searchStart ?? <Icon name="search" size={18} />}
@@ -86,6 +100,7 @@ export const Header = forwardRef<
           spellCheck={false}
         />
         {searchEnd}
+        {typing && typingPanel?.(search, done)}
       </form>
       <div className="header-spacer" data-tauri-drag-region />
       <SyncMenu sync={sync} profile={profile} {...menu} />

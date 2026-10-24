@@ -32,7 +32,7 @@ export function freshTabs(home: string): TabsState {
 export function readTabs(home: string): TabsState {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<TabsState> | null;
-    const tabs = (saved?.tabs ?? []).filter((t): t is BrowserTab => !!t && /^[a-z0-9-]{1,40}$/i.test(t.id) && /^https?:\/\//i.test(t.url));
+    const tabs = (saved?.tabs ?? []).filter((t): t is BrowserTab => !!t && /^[a-z0-9-]{1,40}$/i.test(t.id) && (/^https?:\/\//i.test(t.url) || t.url === "tbv:start"));
     if (tabs.length) return { tabs, active: tabs.some((t) => t.id === saved?.active) ? saved!.active! : tabs[0].id };
   } catch {
     // Start afresh.

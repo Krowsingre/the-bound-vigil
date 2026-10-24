@@ -449,6 +449,20 @@ const MIGRATIONS: &[&str] = &[
         deleted_at TEXT
     );
     "#,
+    // v24: Quick Links on Discover's start page, each with a gallery painting,
+    // synced so every device has the same ones.
+    r#"
+    CREATE TABLE quick_links (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL DEFAULT '',
+        url TEXT NOT NULL,
+        picture TEXT NOT NULL DEFAULT '',
+        position REAL NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
