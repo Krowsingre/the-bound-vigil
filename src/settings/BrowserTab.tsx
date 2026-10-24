@@ -134,7 +134,7 @@ export function BrowserTab() {
           onChange={(hideBar) => writeBrowserPrefs({ hideBar })}
         />
       </Section>
-      <Section id="history" title="History" lede="Pages visited and words searched for in Discover, kept on this device only. Open it from Discover's ••• menu.">
+      <Section id="history" title="History" lede="Pages visited and words searched for in Discover. Open it from Discover's ••• menu. To have the same history on every device, turn on Sync Discover history in Preferences › Sync & Backup.">
         <Toggle label="Keep a history of pages visited" checked={prefs.historyOn} onChange={(historyOn) => writeBrowserPrefs({ historyOn })} />
         <Toggle
           label="Keep searches too"

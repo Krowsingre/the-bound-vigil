@@ -89,3 +89,20 @@ test("closed tabs reopen where they were, newest first, start pages left out", (
   expect(reopened.active).toBe(reopened.tabs[1].id);
   expect(readClosedTabs()).toHaveLength(1);
 });
+
+test("private tabs are never kept or remembered", () => {
+  const state: TabsState = {
+    tabs: [
+      { id: "a", url: "https://a.org/", title: "A" },
+      { id: "p", url: "https://secret.org/", title: "Secret", private: true },
+    ],
+    active: "p",
+  };
+  writeTabs(state);
+  const back = readTabs(HOME);
+  expect(back.tabs.map((t) => t.id)).toEqual(["a"]);
+  expect(back.active).toBe("a");
+  rememberClosed(state, ["p"]);
+  expect(readClosedTabs()).toEqual([]);
+  expect(duplicateTab(state, "p").tabs[2].private).toBe(true);
+});

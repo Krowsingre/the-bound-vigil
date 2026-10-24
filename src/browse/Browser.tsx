@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isIOS, openExternal } from "../api";
 import type { Bookmark, BrowserEvent, BrowserFrame, ReaderArticle } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { openContextMenu } from "../components/ContextMenu";
+import { openContextMenu, openContextMenuAt } from "../components/ContextMenu";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
@@ -221,7 +221,7 @@ function startingTabs(): TabsState {
   return freshTabs(home);
 }
 
-const titleOf = (title: string | null, url: string) => (isStartPage(url) ? "Start page" : title?.trim() || siteOf(url) || url);
+const titleOf = (title: string | null, url: string, privately = false) => (isStartPage(url) ? (privately ? "Private tab" : "Start page") : title?.trim() || siteOf(url) || url);
 
 /** How far down the page is, for hiding the row while scrolling. */
 const SCROLL_Y = `JSON.stringify(Math.round(window.scrollY || (document.scrollingElement && document.scrollingElement.scrollTop) || 0))`;
@@ -340,7 +340,7 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     // TBV's own start page: no web page to show.
     if (isStartPage(tab.url)) return api.browserHide();
     const fresh = !made.current.has(tab.id);
-    await api.browserShow(tab.id, fresh ? tab.url : null, at, protectionOf(readBrowserPrefs()));
+    await api.browserShow(tab.id, fresh ? tab.url : null, at, protectionOf(readBrowserPrefs()), !!tab.private);
     made.current.add(tab.id);
     if (fresh) fitZoom(tab.id, tab.url);
     // A new tab's page can take a moment to come up (iPhone readies its
@@ -385,9 +385,10 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
           // Loading again (Try again, or another page): the error page goes.
           if (ev.loading) setFailed((f) => (f[ev.tab] ? Object.fromEntries(Object.entries(f).filter(([t]) => t !== ev.tab)) : f));
           fitZoom(ev.tab, ev.url);
-          // Chosen in Preferences › Discover: each page visited goes in History.
+          // Chosen in Preferences › Discover: each page visited goes in History (not from a private tab).
           const keep = readBrowserPrefs();
-          if (!ev.loading && keep.historyOn && /^https?:/i.test(ev.url)) addToHistory({ kind: "page", url: ev.url, title: ev.title ?? null }, keep.historyKeep);
+          const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.tab)?.private;
+          if (!ev.loading && !privately && keep.historyOn && /^https?:/i.test(ev.url)) addToHistory({ kind: "page", url: ev.url, title: ev.title ?? null }, keep.historyKeep);
           if (/^https?:/i.test(ev.url)) {
             setTabs((s) => {
               const before = s.tabs.find((t) => t.id === ev.tab);
@@ -403,7 +404,9 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
           const id = ev.tab ?? newTabId();
           // On iPhone a pop-up's view is made already, still joined to its page.
           if (ev.tab) made.current.add(id);
-          setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null }));
+          // Opened from a private tab, it's private too.
+          const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.from)?.private;
+          setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null, private: privately || undefined }));
           break;
         }
         case "failed":
@@ -413,6 +416,18 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
         case "external":
           if (readBrowserPrefs().askApps) setAppLink(ev.url);
           else void api.browserOpenApp(ev.url).catch((e: unknown) => toast(clean(e)));
+          break;
+        case "menu":
+          if (!/^https?:/i.test(ev.url)) break;
+          if (ev.action === "newTab") {
+            const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.tab)?.private;
+            setTabs((s) => openTab(s, { id: newTabId(), url: ev.url, title: null, private: privately || undefined }));
+          } else {
+            void api.downloadWebBook(ev.url, fileTitle(ev.url)).then(
+              () => toast("It's being added to your library."),
+              (e: unknown) => toast(clean(e)),
+            );
+          }
           break;
         case "closed":
           made.current.delete(ev.tab);
@@ -506,12 +521,69 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
 
   const act = (action: "back" | "forward" | "reload" | "stop") => void api.browserAct(active.id, action).catch(() => undefined);
 
+  /** Holding Back or Forward (or right-clicking it) lists the pages that way, to jump to one. */
+  const travelHeld = useRef<{ timer: number; x: number; y: number } | null>(null);
+  const swallowClick = useRef(0);
+  const showTravel = (way: "back" | "forward", x: number, y: number) => {
+    const tab = active.id;
+    if (!made.current.has(tab)) return;
+    void api.browserTravelled(tab).then(
+      (pages) => {
+        const list = pages[way].slice(0, 15);
+        if (!list.length) return;
+        openContextMenuAt(
+          x,
+          y,
+          way === "back" ? "Pages behind" : "Pages ahead",
+          list.map((p, i) => ({
+            label: p.title.trim() || readableAddress(p.url),
+            icon: "globe" as const,
+            hint: siteOf(p.url) ?? undefined,
+            onSelect: () => void api.browserRead(tab, `(function () { history.go(${(way === "back" ? -1 : 1) * (p.step ?? i + 1)}); return JSON.stringify(null); })()`).catch(() => undefined),
+          })),
+        );
+      },
+      () => undefined,
+    );
+  };
+  const travelProps = (way: "back" | "forward") => ({
+    onContextMenu: (e: React.MouseEvent) => {
+      e.preventDefault();
+      showTravel(way, e.clientX, e.clientY);
+    },
+    onTouchStart: (e: React.TouchEvent) => {
+      const t = e.touches[0];
+      if (!t) return;
+      const at = { x: t.clientX, y: t.clientY };
+      travelHeld.current = {
+        ...at,
+        timer: window.setTimeout(() => {
+          travelHeld.current = null;
+          swallowClick.current = Date.now() + 800;
+          showTravel(way, at.x, at.y);
+        }, 500),
+      };
+    },
+    onTouchEnd: () => {
+      if (travelHeld.current) window.clearTimeout(travelHeld.current.timer);
+      travelHeld.current = null;
+    },
+    onClickCapture: (e: React.MouseEvent) => {
+      // The press that opened the list doesn't also go back a page.
+      if (Date.now() < swallowClick.current) {
+        swallowClick.current = 0;
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    },
+  });
+
   const go = (text: string) => {
     const prefsNow = readBrowserPrefs();
     const to = addressFor(text, prefsNow.search);
     if (!to) return;
     // Words rather than an address: a search, kept in History if chosen.
-    if (prefsNow.historyOn && prefsNow.historySearches && !isAddress(text))
+    if (prefsNow.historyOn && prefsNow.historySearches && !isAddress(text) && !tabsRef.current.tabs.find((t) => t.id === tabsRef.current.active)?.private)
       addToHistory({ kind: "search", url: to, title: text.trim() }, prefsNow.historyKeep);
     setArticle(null);
     setTabs((s) => updateTab(s, s.active, { url: to, title: null }));
@@ -526,10 +598,10 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     return () => window.removeEventListener(BROWSER_GO, fromHeader);
   }, []);
 
-  const newTab = () => {
+  const newTab = (privately = false) => {
     setArticle(null);
     setPanel(null);
-    setTabs((s) => openTab(s, { id: newTabId(), url: homeOf(), title: null }));
+    setTabs((s) => openTab(s, { id: newTabId(), url: homeOf(), title: null, private: privately || undefined }));
   };
   /** A page in a tab of its own, from the start page's ⋮ menus. */
   const openInNewTab = (to: string) => {
@@ -596,7 +668,8 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     setTabs((s) => back.sort((a, b) => a.at - b.at).reduce(reopenTab, s));
   };
   const tabMenu = (id: string): MenuEntry[] => [
-    { label: "New tab", icon: "plus", onSelect: newTab },
+    { label: "New tab", icon: "plus", onSelect: () => newTab() },
+    { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) },
     { label: "Duplicate tab", icon: "copy", disabled: isStartPage(tabsRef.current.tabs.find((t) => t.id === id)?.url ?? ""), onSelect: () => duplicate(id) },
     { label: "Reopen closed tab", icon: "undo", disabled: !closedTabs.length, onSelect: () => reopen() },
     "divider",
@@ -860,6 +933,7 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     { label: "Reading List", icon: "bookOpen", onSelect: () => setPanel("reading") },
     { label: "History", icon: "clock", onSelect: () => setPanel("history") },
     { label: "Find on page", icon: "search", onSelect: () => setFinding("") },
+    { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) },
     { label: "Reopen closed tab", icon: "undo", disabled: !closedTabs.length, onSelect: () => reopen() },
     { label: "Make this your home page", icon: "home", disabled: !url.startsWith("http"), onSelect: () => (writeBrowserPrefs({ home: url }), toast("This is your home page now.")) },
     { label: "Site information", icon: "info", disabled: !site, onSelect: () => setPanel("site") },
@@ -870,8 +944,8 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     ...bookmarkItems,
   ];
 
-  const button = (label: string, icon: Parameters<typeof Icon>[0]["name"], onClick: () => void, extra = "") => (
-    <button type="button" className={`toolbar-button${extra}`} aria-label={label} title={label} onClick={onClick}>
+  const button = (label: string, icon: Parameters<typeof Icon>[0]["name"], onClick: () => void, extra = "", more: React.ButtonHTMLAttributes<HTMLButtonElement> = {}) => (
+    <button type="button" className={`toolbar-button${extra}`} aria-label={label} title={label} onClick={onClick} {...more}>
       <Icon name={icon} size={17} />
     </button>
   );
@@ -881,17 +955,17 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
       {!narrow && (
         <div className="browser-tabs" role="tablist" aria-label="Tabs">
           {tabs.tabs.map((t) => (
-            <div key={t.id} className={`browser-tab${t.id === tabs.active ? " is-active" : ""}`} {...drag(t.id)} onContextMenu={(e) => openContextMenu(e, `${titleOf(t.title, t.url)}: tab`, tabMenu(t.id))}>
+            <div key={t.id} className={`browser-tab${t.id === tabs.active ? " is-active" : ""}${t.private ? " is-private" : ""}`} {...drag(t.id)} onContextMenu={(e) => openContextMenu(e, `${titleOf(t.title, t.url, t.private)}: tab`, tabMenu(t.id))}>
               <button type="button" role="tab" aria-selected={t.id === tabs.active} className="browser-tab-name" title={t.url} onClick={() => switchTo(t.id)}>
-                {loading[t.id] ? <span className="browser-tab-busy" aria-hidden /> : <Icon name="globe" size={13} />}
-                <span>{titleOf(t.title, t.url)}</span>
+                {loading[t.id] ? <span className="browser-tab-busy" aria-hidden /> : <Icon name={t.private ? "eyeOff" : "globe"} size={13} />}
+                <span>{titleOf(t.title, t.url, t.private)}</span>
               </button>
-              <button type="button" className="browser-tab-close" aria-label={`Close ${titleOf(t.title, t.url)}`} onClick={() => close(t.id)}>
+              <button type="button" className="browser-tab-close" aria-label={`Close ${titleOf(t.title, t.url, t.private)}`} onClick={() => close(t.id)}>
                 <Icon name="close" size={12} />
               </button>
             </div>
           ))}
-          <button type="button" className="browser-tab-new" aria-label="New tab" title="New tab" onClick={newTab}>
+          <button type="button" className="browser-tab-new" aria-label="New tab" title="New tab (right-click for a private one)" onClick={() => newTab()} onContextMenu={(e) => openContextMenu(e, "New tab", [{ label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) }])}>
             <Icon name="plus" size={15} />
           </button>
         </div>
@@ -899,8 +973,8 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
       {busy && !onStart && <span className="browser-loading" role="progressbar" aria-label="Loading" />}
       {(prefs.hideBar ? !scrolledAway : rowOpen) && (
         <div className="browser-bar">
-          {button("Back", "arrowLeft", () => act("back"))}
-          {button("Forward", "arrowRight", () => act("forward"))}
+          {button("Back", "arrowLeft", () => act("back"), "", travelProps("back"))}
+          {button("Forward", "arrowRight", () => act("forward"), "", travelProps("forward"))}
           {button(busy ? "Stop" : "Reload", busy ? "close" : "sync", () => act(busy ? "stop" : "reload"))}
           <button type="button" className={`toolbar-button${marked ? " is-on" : ""}`} aria-pressed={!!marked} aria-label={marked ? "Remove bookmark" : "Bookmark this page"} title={marked ? "Remove bookmark" : "Bookmark this page"} onClick={() => void toggleMark()}>
             <Icon name="bookmark" size={17} />
@@ -984,6 +1058,7 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
             onSearch={() => document.getElementById("global-search")?.focus()}
             closed={closedTabs}
             onReopen={(index) => reopen(1, index)}
+            privately={!!active.private}
           />
         )}
         {failure && !article && (
@@ -1032,8 +1107,11 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
                 {tabs.tabs.length} {tabs.tabs.length === 1 ? "tab" : "tabs"}
               </h2>
               {tabs.tabs.length > 1 && <span className="muted browser-grid-hint">Hold a tab to move it</span>}
-              <button type="button" className="btn btn-quiet btn-small" onClick={newTab}>
+              <button type="button" className="btn btn-quiet btn-small" onClick={() => newTab()}>
                 <Icon name="plus" size={14} /> New tab
+              </button>
+              <button type="button" className="btn btn-quiet btn-small" aria-label="New private tab" onClick={() => newTab(true)}>
+                <Icon name="eyeOff" size={14} /> Private
               </button>
               <button type="button" className="btn btn-primary btn-small" onClick={() => setPanel(null)}>
                 Done
@@ -1041,16 +1119,16 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
             </div>
             <div className="browser-grid-tabs">
               {tabs.tabs.map((t) => (
-                <div key={t.id} className={`browser-grid-tab${t.id === tabs.active ? " is-active" : ""}`} {...drag(t.id)}>
+                <div key={t.id} className={`browser-grid-tab${t.id === tabs.active ? " is-active" : ""}${t.private ? " is-private" : ""}`} {...drag(t.id)}>
                   <button type="button" className="browser-grid-open" onClick={() => switchTo(t.id)}>
-                    <Icon name="globe" size={22} />
-                    <strong>{titleOf(t.title, t.url)}</strong>
-                    <span className="muted">{siteOf(t.url)}</span>
+                    <Icon name={t.private ? "eyeOff" : "globe"} size={22} />
+                    <strong>{titleOf(t.title, t.url, t.private)}</strong>
+                    <span className="muted">{t.private ? `Private${siteOf(t.url) ? ` · ${siteOf(t.url)}` : ""}` : siteOf(t.url)}</span>
                   </button>
                   <span className="browser-grid-more">
-                    <Menu label={`More for ${titleOf(t.title, t.url)}`} trigger={<Icon name="moreVertical" size={16} />} items={tabMenu(t.id)} />
+                    <Menu label={`More for ${titleOf(t.title, t.url, t.private)}`} trigger={<Icon name="moreVertical" size={16} />} items={tabMenu(t.id)} />
                   </span>
-                  <button type="button" className="browser-tab-close" aria-label={`Close ${titleOf(t.title, t.url)}`} onClick={() => close(t.id)}>
+                  <button type="button" className="browser-tab-close" aria-label={`Close ${titleOf(t.title, t.url, t.private)}`} onClick={() => close(t.id)}>
                     <Icon name="close" size={14} />
                   </button>
                 </div>

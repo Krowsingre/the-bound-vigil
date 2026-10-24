@@ -5,6 +5,8 @@ export interface BrowserTab {
   id: string;
   url: string;
   title: string | null;
+  /** A private tab: no history, cookies or storage kept, and gone when TBV closes. */
+  private?: boolean;
 }
 
 export interface TabsState {
@@ -47,9 +49,12 @@ export function readTabs(home: string): TabsState {
   return { tabs: [first], active: first.id };
 }
 
+/** Private tabs aren't kept. */
 export function writeTabs(state: TabsState): void {
+  const kept = state.tabs.filter((t) => !t.private);
+  const active = kept.some((t) => t.id === state.active) ? state.active : kept[0]?.id;
   try {
-    localStorage.setItem(KEY, JSON.stringify({ tabs: state.tabs.map(({ id, url, title }) => ({ id, url, title })), active: state.active }));
+    localStorage.setItem(KEY, JSON.stringify({ tabs: kept.map(({ id, url, title }) => ({ id, url, title })), active }));
   } catch {
     // Forgotten after this visit.
   }
@@ -95,7 +100,7 @@ export function moveTab(state: TabsState, id: string, onto: string): TabsState {
 export function duplicateTab(state: TabsState, id: string): TabsState {
   const tab = state.tabs.find((t) => t.id === id);
   if (!tab) return state;
-  return openTab({ ...state, active: id }, { id: newTabId(), url: tab.url, title: tab.title });
+  return openTab({ ...state, active: id }, { id: newTabId(), url: tab.url, title: tab.title, private: tab.private });
 }
 
 /** Closes every tab but `id`, which comes forward. */
@@ -142,11 +147,11 @@ export function onClosedTabs(listener: () => void): () => void {
   return () => window.removeEventListener(CLOSED_CHANGED, listener);
 }
 
-/** Remembers tabs as they close. The start page isn't worth reopening. */
+/** Remembers tabs as they close. The start page isn't worth reopening, and private tabs leave nothing behind. */
 export function rememberClosed(state: TabsState, ids: string[], now = Date.now()): void {
   const gone = state.tabs
     .map((t, at) => ({ t, at }))
-    .filter(({ t }) => ids.includes(t.id) && /^https?:\/\//i.test(t.url))
+    .filter(({ t }) => ids.includes(t.id) && !t.private && /^https?:\/\//i.test(t.url))
     .map(({ t, at }) => ({ url: t.url, title: t.title, at, closed: now }))
     .reverse();
   if (gone.length) writeClosed([...gone, ...readClosedTabs()]);

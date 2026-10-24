@@ -15,6 +15,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, EventTarget, Manager, State};
 use tbv_core::bookmarks::Bookmark;
+use tbv_core::browser_history::HistoryEntry;
 use tbv_core::quick_links::QuickLink;
 use tbv_core::servers::TempFolder;
 
@@ -65,6 +66,40 @@ pub(crate) enum Event {
     /// TBV's page asks first, if chosen, then opens it with `browser_open_app`.
     #[serde(rename_all = "camelCase")]
     External { tab: String, url: String },
+    /// Chosen from a link's own menu (right-click, or holding it): `newTab`
+    /// (open it in a new tab) or `addBook` (bring the book it links to into the library).
+    #[serde(rename_all = "camelCase")]
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Menu { tab: String, action: String, url: String },
+}
+
+/// A page the tab went through, for the Back and Forward buttons' menus.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Visited {
+    pub title: String,
+    pub url: String,
+    /// How many steps away it is, when pages between were left out of the list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<i64>,
+}
+
+/// The pages behind and ahead of the one a tab shows, nearest first.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Travelled {
+    pub back: Vec<Visited>,
+    pub forward: Vec<Visited>,
+}
+
+/// TBV's own items for a link's menu: a new tab, and the library for a book file.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn link_menu(url: &str) -> Vec<(&'static str, &'static str)> {
+    let mut items = vec![("Open link in new tab", "newTab")];
+    let path = tauri::Url::parse(url).map(|u| u.path().to_ascii_lowercase()).unwrap_or_default();
+    let book = ["epub", "kepub", "pdf", "mobi", "azw", "azw3", "fb2", "cbz", "cbr", "djvu", "m4b", "mp3"];
+    if path.rsplit_once('.').is_some_and(|(_, ext)| book.contains(&ext)) {
+        items.push(("Add to TBV library", "addBook"));
+    }
+    items
 }
 
 #[cfg_attr(mobile, allow(dead_code))]
@@ -159,7 +194,7 @@ mod view {
         app.webviews().into_iter().filter(|(l, _)| l.starts_with(PREFIX) && !l.starts_with("browser-popup-")).map(|(_, v)| v).collect()
     }
 
-    pub fn show(app: &tauri::AppHandle, tab: &str, url: Option<tauri::Url>, frame: Frame, protection: Option<Protection>) -> CommandResult<()> {
+    pub fn show(app: &tauri::AppHandle, tab: &str, url: Option<tauri::Url>, frame: Frame, protection: Option<Protection>, private: bool) -> CommandResult<()> {
         if let Some(p) = protection {
             set_protection(app, p);
         }
@@ -191,6 +226,8 @@ mod view {
         let builder = WebviewBuilder::new(label(tab), WebviewUrl::External(start))
             // Its own cookies, saved logins and storage, so clearing them leaves TBV's alone.
             .data_directory(data)
+            // A private tab keeps nothing once it's closed.
+            .incognito(private)
             .on_page_load(move |_, payload| {
                 if matches!(payload.event(), PageLoadEvent::Started) {
                     set_site(&page_tab, payload.url());
@@ -224,6 +261,7 @@ mod view {
                         WebviewUrl::External(tauri::Url::parse("about:blank").expect("a fixed address")),
                     )
                     .window_features(features)
+                    .incognito(private)
                     .title(url.host_str().unwrap_or("Sign in"))
                     .on_document_title_changed(|window, title| {
                         let _ = window.set_title(&title);
@@ -448,6 +486,17 @@ mod view {
     pub fn open_app(_app: &tauri::AppHandle, url: &str) -> CommandResult<()> {
         tauri_plugin_opener::open_url(url, None::<&str>).map_err(|_| "No app on this computer opens that link.".to_string())
     }
+
+    pub fn travelled(app: &tauri::AppHandle, tab: &str) -> CommandResult<super::Travelled> {
+        let view = app.get_webview(&label(tab)).ok_or("That tab isn't open.")?;
+        #[cfg(windows)]
+        return super::windows::travelled(&view);
+        #[cfg(not(windows))]
+        {
+            let _ = view;
+            Ok(super::Travelled::default())
+        }
+    }
 }
 
 /// The parts that need Windows' own web view (WebView2): tracking prevention,
@@ -460,8 +509,8 @@ mod windows {
 
     use webview2_com::Microsoft::Web::WebView2::Win32::*;
     use webview2_com::{
-        take_pwstr, CallDevToolsProtocolMethodCompletedHandler, DownloadStartingEventHandler, NavigationCompletedEventHandler, WebResourceRequestedEventHandler,
-        WindowCloseRequestedEventHandler,
+        take_pwstr, CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler, CustomItemSelectedEventHandler, DownloadStartingEventHandler,
+        NavigationCompletedEventHandler, WebResourceRequestedEventHandler, WindowCloseRequestedEventHandler,
     };
     use windows_core::{Interface, BOOL, HSTRING, PWSTR};
 
@@ -512,6 +561,7 @@ mod windows {
         }
         let _ = set_tracking(&core, view::protection().level);
         let mut token = 0i64;
+        let _ = context_menu(&core, environment.clone(), app.clone(), tab.clone());
         let (failed_app, failing) = (app.clone(), tab.clone());
         // A page that couldn't open: TBV says why on a page of its own.
         core.add_NavigationCompleted(
@@ -577,6 +627,85 @@ mod windows {
             )?;
         }
         Ok(())
+    }
+
+    /// A link's right-click menu gets TBV's own items at the top.
+    unsafe fn context_menu(core: &ICoreWebView2, environment: ICoreWebView2Environment, app: tauri::AppHandle, tab: String) -> windows_core::Result<()> {
+        let core = core.cast::<ICoreWebView2_11>()?;
+        let environment = environment.cast::<ICoreWebView2Environment9>()?;
+        let mut token = 0i64;
+        core.add_ContextMenuRequested(
+            &ContextMenuRequestedEventHandler::create(Box::new(move |_, args| {
+                let Some(args) = args else { return Ok(()) };
+                let target = args.ContextMenuTarget()?;
+                let mut has = BOOL::default();
+                target.HasLinkUri(&mut has)?;
+                if !has.as_bool() {
+                    return Ok(());
+                }
+                let mut uri = PWSTR::null();
+                target.LinkUri(&mut uri)?;
+                let link = take_pwstr(uri);
+                if !(link.starts_with("https://") || link.starts_with("http://")) {
+                    return Ok(());
+                }
+                let items = args.MenuItems()?;
+                // WebView2's own "Open link in new window" would open a tab anyway; TBV's says so.
+                let mut count = 0u32;
+                items.Count(&mut count)?;
+                for i in (0..count).rev() {
+                    let mut name = PWSTR::null();
+                    items.GetValueAtIndex(i)?.Name(&mut name)?;
+                    if take_pwstr(name) == "openLinkInNewWindow" {
+                        items.RemoveValueAtIndex(i)?;
+                    }
+                }
+                for (at, (label, action)) in super::link_menu(&link).into_iter().enumerate() {
+                    let item = environment.CreateContextMenuItem(&HSTRING::from(label), None::<&windows::Win32::System::Com::IStream>, COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_COMMAND)?;
+                    let (app, tab, link) = (app.clone(), tab.clone(), link.clone());
+                    let mut chosen = 0i64;
+                    item.add_CustomItemSelected(
+                        &CustomItemSelectedEventHandler::create(Box::new(move |_, _| {
+                            tell(&app, Event::Menu { tab: tab.clone(), action: action.into(), url: link.clone() });
+                            Ok(())
+                        })),
+                        &mut chosen,
+                    )?;
+                    items.InsertValueAtIndex(at as u32, &item)?;
+                }
+                Ok(())
+            })),
+            &mut token,
+        )
+    }
+
+    /// The pages behind and ahead, from the web view's own history.
+    pub fn travelled(view: &tauri::Webview) -> crate::CommandResult<super::Travelled> {
+        let (send, receive) = std::sync::mpsc::channel::<String>();
+        view.with_webview(move |platform| unsafe {
+            let Ok(core) = platform.controller().CoreWebView2() else { return };
+            let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move |_, answer| {
+                let _ = send.send(answer);
+                Ok(())
+            }));
+            let _ = core.CallDevToolsProtocolMethod(windows_core::w!("Page.getNavigationHistory"), windows_core::w!("{}"), &done);
+        })
+        .map_err(|e| e.to_string())?;
+        let answer = receive.recv_timeout(std::time::Duration::from_secs(5)).map_err(|_| "The page took too long to answer.".to_string())?;
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct History {
+            current_index: usize,
+            entries: Vec<super::Visited>,
+        }
+        let history: History = serde_json::from_str(&answer).map_err(|e| e.to_string())?;
+        let at = history.current_index.min(history.entries.len());
+        // Blank and data pages are left out, so each keeps its real distance.
+        let web = |(step, v): (usize, &super::Visited)| v.url.starts_with("http").then(|| super::Visited { step: Some(step as i64 + 1), ..v.clone() });
+        Ok(super::Travelled {
+            back: history.entries[..at].iter().rev().enumerate().filter_map(web).collect(),
+            forward: history.entries.iter().skip(at + 1).enumerate().filter_map(web).collect(),
+        })
     }
 
     /// Why a page couldn't open, for TBV's page; None for what isn't a real
@@ -708,8 +837,8 @@ mod view {
         serde_json::json!({ "level": protection.level_name(), "rules": protection.apple_rules() })
     }
 
-    pub fn show(_app: &tauri::AppHandle, tab: &str, url: Option<tauri::Url>, frame: Frame, protection: Option<Protection>) -> CommandResult<()> {
-        let mut args = serde_json::json!({ "action": "show", "tab": tab, "url": url.map(|u| u.to_string()), "frame": frame_of(frame) });
+    pub fn show(_app: &tauri::AppHandle, tab: &str, url: Option<tauri::Url>, frame: Frame, protection: Option<Protection>, private: bool) -> CommandResult<()> {
+        let mut args = serde_json::json!({ "action": "show", "tab": tab, "url": url.map(|u| u.to_string()), "frame": frame_of(frame), "incognito": private });
         if let Some(p) = protection {
             args["protection"] = rules(&p);
         }
@@ -770,6 +899,11 @@ mod view {
     pub fn open_app(_app: &tauri::AppHandle, url: &str) -> CommandResult<()> {
         ask(serde_json::json!({ "action": "openApp", "url": url })).map(|_| ())
     }
+
+    pub fn travelled(_app: &tauri::AppHandle, tab: &str) -> CommandResult<super::Travelled> {
+        let answer = ask(serde_json::json!({ "action": "history", "tab": tab }))?;
+        Ok(serde_json::from_value(answer).unwrap_or_default())
+    }
 }
 
 /// A link for another app that TBV may open: never the computer's own files or a page's script.
@@ -793,12 +927,13 @@ pub fn listen(app: tauri::AppHandle) {
     });
 }
 
-/// Shows tab `tab` in `frame` (making it, at `url`, if it's new) and hides the others.
+/// Shows tab `tab` in `frame` (making it, at `url`, if it's new) and hides
+/// the others. A new `private` tab keeps no cookies, storage or history.
 #[tauri::command]
-pub async fn browser_show(app: tauri::AppHandle, tab: String, url: Option<String>, frame: Frame, protection: Option<Protection>) -> CommandResult<()> {
+pub async fn browser_show(app: tauri::AppHandle, tab: String, url: Option<String>, frame: Frame, protection: Option<Protection>, private: Option<bool>) -> CommandResult<()> {
     let tab = tab_name(&tab)?;
     let url = url.as_deref().map(web_url).transpose()?;
-    view::show(&app, &tab, url, frame, protection)
+    view::show(&app, &tab, url, frame, protection, private.unwrap_or(false))
 }
 
 /// Moves the tab in front when the space for it moves or changes size.
@@ -902,6 +1037,13 @@ pub async fn browser_open_app(app: tauri::AppHandle, url: String) -> CommandResu
         return Err("TBV doesn't open that kind of link.".into());
     }
     view::open_app(&app, url)
+}
+
+/// The pages behind and ahead of the tab's page, for the Back and Forward buttons' menus.
+#[tauri::command]
+pub async fn browser_travelled(app: tauri::AppHandle, tab: String) -> CommandResult<Travelled> {
+    let tab = tab_name(&tab)?;
+    tauri::async_runtime::spawn_blocking(move || view::travelled(&app, &tab)).await.map_err(|e| e.to_string())?
 }
 
 /// A picture from a web page, for an article saved from reader mode. At most 10 MB.
@@ -1058,4 +1200,32 @@ pub async fn site_icon(url: String) -> CommandResult<String> {
     tauri::async_runtime::spawn_blocking(move || tbv_core::site_icon::site_icon(&url).map_err(|e| e.to_string()))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// Discover's history, newest first.
+#[tauri::command]
+pub async fn browser_history(state: State<'_, AppLibrary>) -> CommandResult<Vec<HistoryEntry>> {
+    with_library(state, |library| library.browser_history()).await
+}
+
+#[tauri::command]
+pub async fn put_browser_history(state: State<'_, AppLibrary>, entries: Vec<HistoryEntry>) -> CommandResult<()> {
+    with_library(state, move |library| library.put_browser_history(&entries)).await
+}
+
+#[tauri::command]
+pub async fn remove_browser_history(state: State<'_, AppLibrary>, ids: Vec<String>) -> CommandResult<()> {
+    with_library(state, move |library| library.remove_browser_history(&ids)).await
+}
+
+/// Clears what's from `since` (milliseconds since 1970) on, or everything.
+#[tauri::command]
+pub async fn clear_browser_history(state: State<'_, AppLibrary>, since: Option<i64>) -> CommandResult<()> {
+    with_library(state, move |library| library.clear_browser_history(since)).await
+}
+
+/// Lets go of what's older than `before` on this device only.
+#[tauri::command]
+pub async fn trim_browser_history(state: State<'_, AppLibrary>, before: i64) -> CommandResult<()> {
+    with_library(state, move |library| library.trim_browser_history(before)).await
 }
