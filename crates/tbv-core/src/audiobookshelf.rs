@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
 use url::Url;
 
@@ -607,8 +608,14 @@ impl crate::library::Library {
         Ok(books)
     }
 
-    /// Takes a listening place from the server, dated when it moved there.
+    /// Takes a listening place from the server, dated when it moved there,
+    /// unless the book was listened to here since (while TBV was asking).
     pub fn take_listening_place(&self, moved: &Moved) -> Result<()> {
+        let opened: Option<String> = self.conn.query_row("SELECT last_opened_at FROM books WHERE id = ?1", [&moved.book_id], |r| r.get(0)).optional()?.flatten();
+        let here_ms = opened.and_then(|o| chrono::DateTime::parse_from_rfc3339(&o).ok()).map(|t| t.timestamp_millis()).unwrap_or(0);
+        if here_ms >= moved.at_ms {
+            return Ok(());
+        }
         self.save_listening(&moved.book_id, moved.position_ms, None)?;
         let at = chrono::DateTime::from_timestamp_millis(moved.at_ms).map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)).unwrap_or_else(crate::time::now_utc);
         self.conn.execute("UPDATE books SET last_opened_at = ?2 WHERE id = ?1", rusqlite::params![moved.book_id, at])?;

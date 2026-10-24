@@ -95,9 +95,36 @@ impl OneDrive {
         }
     }
 
+    /// Makes the folders a file goes in, one level at a time, for when
+    /// OneDrive says the place to put it isn't there.
+    fn make_parents(&self, path: &str) -> Result<()> {
+        let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
+        for depth in 1..parts.len() {
+            let parent = parts[..depth - 1].join("/");
+            let body = json!({ "name": parts[depth - 1], "folder": {}, "@microsoft.graph.conflictBehavior": "fail" }).to_string().into_bytes();
+            let answer = self.send(Method::POST, &format!("{}/children", item(&parent)), &[("Content-Type", "application/json".into())], body)?;
+            let (status, body) = read_json(answer)?;
+            // 409: it's there already.
+            if !(200..300).contains(&status) && status != 409 {
+                return Err(problem(status, &body, "make a folder"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Sends an upload, making its folders first if OneDrive says they're missing.
+    fn with_parents(&self, path: &str, send: impl Fn() -> Result<Response<Body>>) -> Result<Response<Body>> {
+        let answer = send()?;
+        if answer.status().as_u16() != 404 || !path.trim_matches('/').contains('/') {
+            return Ok(answer);
+        }
+        self.make_parents(path)?;
+        send()
+    }
+
     fn upload_in_pieces(&self, path: &str, file: &Path, size: u64) -> Result<()> {
         let body = json!({ "item": { "@microsoft.graph.conflictBehavior": "replace" } }).to_string().into_bytes();
-        let answer = self.send(Method::POST, &format!("{}/createUploadSession", item(path)), &[("Content-Type", "application/json".into())], body)?;
+        let answer = self.with_parents(path, || self.send(Method::POST, &format!("{}/createUploadSession", item(path)), &[("Content-Type", "application/json".into())], body.clone()))?;
         let (status, session) = read_json(answer)?;
         if !(200..300).contains(&status) {
             return Err(problem(status, &session, "save a file"));
@@ -169,7 +196,7 @@ impl Store for OneDrive {
     }
 
     fn write(&mut self, path: &str, bytes: &[u8]) -> Result<()> {
-        let answer = self.send(Method::PUT, &format!("{}/content", item(path)), &[("Content-Type", "application/octet-stream".into())], bytes.to_vec())?;
+        let answer = self.with_parents(path, || self.send(Method::PUT, &format!("{}/content", item(path)), &[("Content-Type", "application/octet-stream".into())], bytes.to_vec()))?;
         let status = answer.status().as_u16();
         if (200..300).contains(&status) {
             return Ok(());
