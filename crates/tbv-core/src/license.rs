@@ -12,13 +12,13 @@ use crate::library::Library;
 pub const TRIAL_DAYS: i64 = 30;
 const DAY: i64 = 86_400;
 
-const STARTED: &str = "license.trial_started";
+pub const STARTED: &str = "license.trial_started";
 /// The latest time TBV has seen, so turning the clock back doesn't add days.
-const SEEN: &str = "license.seen";
+pub const SEEN: &str = "license.seen";
 /// When a store last said it was bought.
-const OWNED: &str = "license.owned";
+pub const OWNED: &str = "license.owned";
 /// Set when the owner's code was entered, for copies that can't be bought in.
-const CODE: &str = "license.code";
+pub const CODE: &str = "license.code";
 /// The owner's code, kept only as a fingerprint so the code itself isn't public.
 const CODE_HASH: &str = "8132f096cbb4223ed9038be1d17c4f8c9701d8c5406cbdc1b8eb691a035f5b7e";
 

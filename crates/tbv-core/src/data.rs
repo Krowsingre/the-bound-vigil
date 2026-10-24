@@ -296,7 +296,7 @@ impl Library {
 }
 
 /// Settings that belong to this device and its sign-in, never to a backup.
-const DEVICE_ONLY: [&str; 9] = [
+const DEVICE_ONLY: [&str; 13] = [
     "sync.session",
     "sync.supabase",
     "sync.device_id",
@@ -306,6 +306,11 @@ const DEVICE_ONLY: [&str; 9] = [
     crate::ereaders::email::SETTINGS_KEY,
     crate::servers::SETTINGS_KEY,
     crate::opds::SETTINGS_KEY,
+    // The trial and the unlock belong to this device, not to a backup.
+    crate::license::STARTED,
+    crate::license::SEEN,
+    crate::license::OWNED,
+    crate::license::CODE,
 ];
 
 /// Sign-ins (and the sync choice, which can hold a WebDAV password, the
@@ -319,6 +324,11 @@ const SIGN_INS: [&str; 7] = [
     crate::ereaders::email::SETTINGS_KEY,
     crate::servers::SETTINGS_KEY,
     crate::opds::SETTINGS_KEY,
+    // The trial and the unlock belong to this device, not to a backup.
+    crate::license::STARTED,
+    crate::license::SEEN,
+    crate::license::OWNED,
+    crate::license::CODE,
 ];
 
 /// Settings that hold a password or sign-in. The page's general settings
