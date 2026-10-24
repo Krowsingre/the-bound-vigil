@@ -1101,6 +1101,9 @@ export async function webApi(): Promise<Api> {
     restoreLicense: async () => {
       throw new Error("Buying TBV happens in the app.");
     },
+    unlockLicense: async () => {
+      throw new Error("Buying TBV happens in the app.");
+    },
     resolveSyncConflict: async () => undefined,
     downloadBook: async (bookId) => {
       await api.readBookFile(bookId);

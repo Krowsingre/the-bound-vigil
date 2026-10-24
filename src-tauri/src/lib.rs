@@ -217,6 +217,12 @@ async fn license_restore(app: tauri::AppHandle, state: State<'_, AppLibrary>) ->
     blocking(state, move |library| license::restore(&app, library)).await
 }
 
+/// Unlocks with the owner's code; nothing back when the code is wrong.
+#[tauri::command]
+async fn license_unlock(app: tauri::AppHandle, state: State<'_, AppLibrary>, code: String) -> CommandResult<Option<tbv_core::license::LicenseView>> {
+    blocking(state, move |library| license::unlock(&app, library, &code)).await
+}
+
 /// Which of Dropbox, Google Drive and OneDrive this copy of TBV can sign in to.
 #[tauri::command]
 fn cloud_services() -> Vec<tbv_core::sync::cloud::Service> {
@@ -1885,6 +1891,7 @@ pub fn run() {
             license_status,
             license_buy,
             license_restore,
+            license_unlock,
             hardcover_sign_out,
             hardcover_send_all,
             book_text,

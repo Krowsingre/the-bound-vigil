@@ -86,6 +86,15 @@ pub fn buy(app: &AppHandle, library: &Mutex<Library>) -> tbv_core::Result<Licens
     status(app, library)
 }
 
+/// Unlocks with the owner's code. Nothing back if it's wrong.
+pub fn unlock(app: &AppHandle, library: &Mutex<Library>, code: &str) -> tbv_core::Result<Option<LicenseView>> {
+    let right = library.lock().map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?.unlock_with_code(code)?;
+    if !right {
+        return Ok(None);
+    }
+    status(app, library).map(Some)
+}
+
 /// Asks the store again for a purchase made before (on another device, say).
 pub fn restore(app: &AppHandle, library: &Mutex<Library>) -> tbv_core::Result<LicenseView> {
     #[cfg(target_os = "ios")]

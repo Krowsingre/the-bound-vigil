@@ -5,7 +5,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { DuplicatesDialog } from "./DuplicatesDialog";
-import { shopName, useLicense } from "../license/License";
+import { OwnerCode, shopName, useLicense } from "../license/License";
 import { canSelfUpdate, useUpdater, type UpdateState } from "./updates";
 import { SORTS, type Layout } from "../library/libraryView";
 import { TextSettings } from "../reader/ReaderPopovers";
@@ -768,6 +768,7 @@ function YourCopy() {
       {license.state !== "owned" && license.shop === "none" && (
         <p className="settings-row-hint">This copy didn't come from a store, so it can't be bought in. The Bound Vigil will be sold in the Microsoft Store and the App Store.</p>
       )}
+      {license.state !== "owned" && <OwnerCode />}
     </Section>
   );
 }
@@ -822,7 +823,7 @@ function Updates() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.25.0");
+  const [version, setVersion] = useState("1.26.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

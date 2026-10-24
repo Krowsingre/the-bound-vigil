@@ -4,6 +4,7 @@
 //! remembers the last time a store said yes, so TBV stays open offline.
 
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 use crate::error::Result;
 use crate::library::Library;
@@ -16,6 +17,21 @@ const STARTED: &str = "license.trial_started";
 const SEEN: &str = "license.seen";
 /// When a store last said it was bought.
 const OWNED: &str = "license.owned";
+/// Set when the owner's code was entered, for copies that can't be bought in.
+const CODE: &str = "license.code";
+/// The owner's code, kept only as a fingerprint so the code itself isn't public.
+const CODE_HASH: &str = "8132f096cbb4223ed9038be1d17c4f8c9701d8c5406cbdc1b8eb691a035f5b7e";
+
+/// Tidies a typed code: capitals, and dashes between groups of five.
+fn tidy_code(code: &str) -> String {
+    let letters: String = code.chars().filter(|c| c.is_ascii_alphanumeric()).map(|c| c.to_ascii_uppercase()).collect();
+    letters.as_bytes().chunks(5).map(|c| String::from_utf8_lossy(c).into_owned()).collect::<Vec<_>>().join("-")
+}
+
+fn code_matches(code: &str) -> bool {
+    let digest = Sha256::digest(tidy_code(code).as_bytes());
+    digest.iter().map(|b| format!("{b:02x}")).collect::<String>() == CODE_HASH
+}
 
 /// Where it's bought.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -72,13 +88,23 @@ impl Library {
         Ok(start)
     }
 
+    /// Unlocks this device with the owner's code. False if the code is wrong.
+    pub fn unlock_with_code(&self, code: &str) -> Result<bool> {
+        if !code_matches(code) {
+            return Ok(false);
+        }
+        self.set_setting(CODE, "1")?;
+        Ok(true)
+    }
+
     /// The paying state now. `answer` is what the store said, or None when
     /// it couldn't be asked (offline, or a copy from outside a store).
     pub fn license(&self, now: i64, outside_start: Option<i64>, shop: Shop, answer: Option<&StoreAnswer>) -> Result<LicenseView> {
         let start = self.trial_started(now, outside_start)?;
         let seen = self.seconds(SEEN)?.unwrap_or(now).max(now);
         self.set_setting(SEEN, &seen.to_string())?;
-        let owned = match answer {
+        let coded = self.setting(CODE)?.is_some();
+        let bought = match answer {
             Some(a) if a.owned => {
                 self.set_setting(OWNED, &now.to_string())?;
                 true
@@ -90,6 +116,7 @@ impl Library {
             }
             None => self.seconds(OWNED)?.is_some(),
         };
+        let owned = bought || coded;
         let ends = start + TRIAL_DAYS * DAY;
         let left = ((ends - seen) as f64 / DAY as f64).ceil().max(0.0) as i64;
         let state = if owned {
@@ -125,6 +152,17 @@ mod tests {
         assert_eq!(library.license(start + 40 * DAY, None, Shop::Microsoft, None).unwrap().state, LicenseState::Owned);
         let no = StoreAnswer { owned: false, price: None };
         assert_eq!(library.license(start + 41 * DAY, None, Shop::Microsoft, Some(&no)).unwrap().state, LicenseState::Expired);
+    }
+
+    #[test]
+    fn the_owners_code_unlocks_and_others_dont() {
+        let (_dir, library) = crate::library::tests::open_temp_library();
+        let now = 1_800_000_000;
+        assert_eq!(tidy_code("abcde fghij-k"), "ABCDE-FGHIJ-K");
+        assert!(!library.unlock_with_code("AAAAA-AAAAA-AAAAA-AAAAA").unwrap());
+        assert_eq!(library.license(now + 40 * DAY, Some(now), Shop::None, None).unwrap().state, LicenseState::Expired);
+        library.set_setting(CODE, "1").unwrap();
+        assert_eq!(library.license(now + 40 * DAY, Some(now), Shop::None, None).unwrap().state, LicenseState::Owned);
     }
 
     #[test]
