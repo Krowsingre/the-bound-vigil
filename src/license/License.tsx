@@ -18,9 +18,11 @@ interface LicenseContext {
   busy: boolean;
   buy(): Promise<void>;
   restore(): Promise<void>;
+  /** False when the code is wrong. */
+  unlock(code: string): Promise<boolean>;
 }
 
-const Context = createContext<LicenseContext>({ license: null, busy: false, buy: async () => undefined, restore: async () => undefined });
+const Context = createContext<LicenseContext>({ license: null, busy: false, buy: async () => undefined, restore: async () => undefined, unlock: async () => false });
 
 export function useLicense() {
   return useContext(Context);
@@ -69,8 +71,24 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     [run, toast],
   );
 
+  const unlock = useCallback(
+    async (code: string) => {
+      try {
+        const view = await api.unlockLicense(code);
+        if (!view) return false;
+        setLicense(view);
+        toast("This device is unlocked.");
+        return true;
+      } catch (e) {
+        toast(String(e));
+        return false;
+      }
+    },
+    [toast],
+  );
+
   return (
-    <Context.Provider value={{ license, busy, buy, restore }}>
+    <Context.Provider value={{ license, busy, buy, restore, unlock }}>
       {license?.state === "expired" ? <LicenseGate /> : children}
     </Context.Provider>
   );
@@ -106,6 +124,7 @@ function LicenseGate() {
             </button>
           </>
         )}
+        <OwnerCode />
         <button
           type="button"
           className="btn btn-quiet"
@@ -115,5 +134,37 @@ function LicenseGate() {
         </button>
       </div>
     </div>
+  );
+}
+
+/** A box for the owner's code, behind a link so it stays out of the way. */
+export function OwnerCode() {
+  const { unlock } = useLicense();
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [wrong, setWrong] = useState(false);
+  if (!open)
+    return (
+      <button type="button" className="link-btn owner-code-link" onClick={() => setOpen(true)}>
+        I have an owner's code
+      </button>
+    );
+  return (
+    <form
+      className="owner-code"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (code.trim()) void unlock(code).then((ok) => setWrong(!ok));
+      }}
+    >
+      <label className="field">
+        <span>Owner's code</span>
+        <input value={code} autoFocus autoComplete="off" spellCheck={false} placeholder="XXXXX-XXXXX-XXXXX-XXXXX" onChange={(e) => (setCode(e.target.value), setWrong(false))} />
+      </label>
+      {wrong && <p className="form-error">That code isn't right.</p>}
+      <button type="submit" className="btn btn-quiet" disabled={!code.trim()}>
+        Unlock
+      </button>
+    </form>
   );
 }

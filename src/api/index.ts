@@ -254,6 +254,8 @@ export interface Api {
   buyLicense(): Promise<LicenseView>;
   /** Looks for a purchase made before, on this or another device. */
   restoreLicense(): Promise<LicenseView>;
+  /** Unlocks this device with the owner's code. Null if the code is wrong. */
+  unlockLicense(code: string): Promise<LicenseView | null>;
   /** Where a cloud app usually keeps its folder on this computer, if it's there. */
   suggestSyncFolder(service: string): Promise<string | null>;
   resolveSyncConflict(kind: string, key: string, keepCloud: boolean): Promise<void>;
@@ -743,6 +745,7 @@ function appApi(): Api {
     licenseStatus: async () => (await core).invoke<LicenseView>("license_status"),
     buyLicense: async () => (await core).invoke<LicenseView>("license_buy"),
     restoreLicense: async () => (await core).invoke<LicenseView>("license_restore"),
+    unlockLicense: async (code) => (await core).invoke<LicenseView | null>("license_unlock", { code }),
     resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
     downloadBook: async (bookId) => (await core).invoke("download_book", { bookId }),
     moveStatus: async () => (await core).invoke<MoveStatus>("move_status"),
