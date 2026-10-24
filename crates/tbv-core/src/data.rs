@@ -324,11 +324,6 @@ const SIGN_INS: [&str; 7] = [
     crate::ereaders::email::SETTINGS_KEY,
     crate::servers::SETTINGS_KEY,
     crate::opds::SETTINGS_KEY,
-    // The trial and the unlock belong to this device, not to a backup.
-    crate::license::STARTED,
-    crate::license::SEEN,
-    crate::license::OWNED,
-    crate::license::CODE,
 ];
 
 /// Settings that hold a password or sign-in. The page's general settings
