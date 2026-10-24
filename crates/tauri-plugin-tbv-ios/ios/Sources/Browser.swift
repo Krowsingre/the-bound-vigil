@@ -28,6 +28,8 @@ class BrowserArgs: Decodable {
   let script: String?
   let id: String?
   let zoom: Double?
+  /// A private tab: nothing it does is kept.
+  let incognito: Bool?
 }
 
 /// Discover's browser on iPhone and iPad: a tab is one of Apple's web views,
@@ -56,6 +58,8 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
   private var rules: WKContentRuleList?
   /// Sites shown as on a computer (Request desktop site), by host.
   private var desktopHosts = Set<String>()
+  /// What private tabs share while any is open, kept in memory only.
+  private var privateStore: WKWebsiteDataStore?
   /// TBV's own web view. The browser sits beside it, in the same view, so
   /// the two share their top-left corner.
   weak var tbv: WKWebView?
@@ -101,10 +105,15 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
 
   /// A tab's web view, made the first time it's asked for. A pop-up's view
   /// must be made from the configuration WebKit hands over.
-  private func made(_ tab: String, configuration: WKWebViewConfiguration? = nil) -> WKWebView? {
+  private func made(_ tab: String, configuration: WKWebViewConfiguration? = nil, incognito: Bool = false) -> WKWebView? {
     if let view = views[tab] { return view }
     guard let tbv = tbv, let host = tbv.superview else { return nil }
     let config = configuration ?? WKWebViewConfiguration()
+    if configuration == nil && incognito {
+      let store = privateStore ?? WKWebsiteDataStore.nonPersistent()
+      privateStore = store
+      config.websiteDataStore = store
+    }
     config.allowsInlineMediaPlayback = true
     if let rules = rules { config.userContentController.add(rules) }
     let made = WKWebView(frame: frame, configuration: config)
@@ -130,6 +139,10 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     view.stopLoading()
     view.removeFromSuperview()
     if front == tab { front = nil }
+    // The last private tab closed: what they kept goes with them.
+    if let store = privateStore, !views.values.contains(where: { $0.configuration.websiteDataStore === store }) {
+      privateStore = nil
+    }
   }
 
   /// Compiles the level's rules and puts them on every tab; Off takes them away.
@@ -246,7 +259,7 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         return
       }
       let show = {
-        guard let view = self.made(tab) else {
+        guard let view = self.made(tab, incognito: args.incognito ?? false) else {
           invoke.reject("TBV couldn't show the browser.")
           return
         }
@@ -267,6 +280,16 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
           view.stopLoading()
         case "zoom":
           if #available(iOS 14.0, *) { view.pageZoom = CGFloat(args.zoom ?? 1) }
+        case "history":
+          // The pages behind and ahead, nearest first, for the Back and Forward buttons' menus.
+          let entry = { (item: WKBackForwardListItem) -> [String: String] in
+            ["title": item.title ?? "", "url": item.url.absoluteString]
+          }
+          invoke.resolve([
+            "back": view.backForwardList.backList.reversed().map(entry),
+            "forward": view.backForwardList.forwardList.map(entry),
+          ])
+          return
         case "find":
           let text = (try? JSONEncoder().encode(args.text ?? "")).flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
           view.evaluateJavaScript("window.find(\(text), false, \(args.backwards ?? false), true)") { _, _ in }
@@ -357,6 +380,35 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     bringForward(tab)
     tell(["kind": "newTab", "tab": tab, "url": navigationAction.request.url?.absoluteString ?? "", "from": nameOf(webView) ?? ""])
     return view
+  }
+
+  /// Holding a link: TBV's own items (a new tab, and the library for a book
+  /// file) come first, then Apple's.
+  @available(iOS 13.0, *)
+  func webView(
+    _ webView: WKWebView, contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo,
+    completionHandler: @escaping (UIContextMenuConfiguration?) -> Void
+  ) {
+    let tab = nameOf(webView) ?? ""
+    let link = elementInfo.linkURL
+    let web = ["http", "https"].contains(link?.scheme?.lowercased() ?? "")
+    completionHandler(
+      UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { suggested in
+        guard web, let link = link else { return UIMenu(title: "", children: suggested) }
+        var ours: [UIMenuElement] = [
+          UIAction(title: "Open in New Tab", image: UIImage(systemName: "plus.square.on.square")) { _ in
+            self.tell(["kind": "menu", "tab": tab, "action": "newTab", "url": link.absoluteString])
+          }
+        ]
+        let books = ["epub", "kepub", "pdf", "mobi", "azw", "azw3", "fb2", "cbz", "cbr", "djvu", "m4b", "mp3"]
+        if books.contains(link.pathExtension.lowercased()) {
+          ours.append(
+            UIAction(title: "Add to TBV Library", image: UIImage(systemName: "books.vertical")) { _ in
+              self.tell(["kind": "menu", "tab": tab, "action": "addBook", "url": link.absoluteString])
+            })
+        }
+        return UIMenu(title: link.host ?? "", children: [UIMenu(title: "", options: .displayInline, children: ours)] + suggested)
+      })
   }
 
   /// A page that closes itself (a sign-in pop-up when it's done) closes its tab.

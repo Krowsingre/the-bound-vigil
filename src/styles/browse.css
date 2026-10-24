@@ -1559,3 +1559,26 @@
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }
+
+/* Private tabs. */
+.browser-tab.is-private,
+.browser-grid-tab.is-private {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+}
+
+.start-private {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.start-private > svg {
+  flex: none;
+  margin-top: 2px;
+}

@@ -49,6 +49,8 @@ pub enum Category {
     Collections,
     Metadata,
     Notes,
+    /// Discover's history, only when chosen (off unless turned on).
+    History,
 }
 
 /// One kind of record: some columns of one table.
@@ -227,6 +229,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "browser_history",
+        table: "browser_history",
+        keys: &["id"],
+        cols: &["kind", "url", "title", "at", "updated_at", "deleted_at"],
+        category: Category::History,
+        creates: true,
+    },
+    Kind {
         name: "quick_link",
         table: "quick_links",
         keys: &["id"],
@@ -339,6 +349,8 @@ pub struct SyncOptions {
     /// Supabase (the phone's place) gets only the books chosen for the
     /// phone, rather than every book on this computer.
     pub phone_chosen_only: bool,
+    /// Discover's history (pages visited and searches).
+    pub browser_history: bool,
 }
 
 impl Default for SyncOptions {
@@ -357,6 +369,7 @@ impl Default for SyncOptions {
             also_book_files: true,
             also_audio_files: false,
             phone_chosen_only: false,
+            browser_history: false,
         }
     }
 }
@@ -369,6 +382,7 @@ impl SyncOptions {
             Category::Collections => self.collections,
             Category::Metadata => self.metadata,
             Category::Notes => self.notes,
+            Category::History => self.browser_history,
         }
     }
 
@@ -1531,6 +1545,7 @@ impl Library {
             "profile" => "Your name and profile picture".into(),
             "bookmark" => format!("The bookmark {}", field("title").unwrap_or_default()),
             "quick_link" => format!("The Quick Link {}", field("title").unwrap_or_default()),
+            "browser_history" => format!("A page in Discover's history: {}", field("title").filter(|t| !t.is_empty()).or_else(|| field("url")).unwrap_or_default()),
             "series" => format!("The missing books of {}", field("name").unwrap_or_default()),
             "read_along" => format!("Read-along timing{}", book(key.first())?),
             _ => format!("The note {}", field("title").filter(|t| !t.is_empty()).unwrap_or_else(|| "without a title".into())),
@@ -2027,6 +2042,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "profile" => if text("avatar").is_empty() { "No picture".into() } else { "A picture".into() },
         "bookmark" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Bookmark removed".into() } else { short(text("url")) },
         "quick_link" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Quick Link removed".into() } else { short(text("url")) },
+        "browser_history" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Taken off Discover's history".into() } else { short(text("url")) },
         "series" => short(text("name")),
         "annotation" => short(if text("note").is_empty() { text("excerpt") } else { text("note") }),
         _ => short(text("body")),

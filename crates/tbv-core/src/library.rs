@@ -463,6 +463,20 @@ const MIGRATIONS: &[&str] = &[
         deleted_at TEXT
     );
     "#,
+    // v25: Discover's history (pages visited and searches), so it can sync
+    // when that's chosen. Before, it was kept by TBV's page alone.
+    r#"
+    CREATE TABLE browser_history (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        url TEXT NOT NULL,
+        title TEXT,
+        at INTEGER NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX browser_history_at ON browser_history (at);
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

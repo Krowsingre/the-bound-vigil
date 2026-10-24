@@ -41,6 +41,8 @@ export interface SyncSettings {
   alsoAudioFiles: boolean;
   /** Supabase (the phone's place) gets only the books chosen for the phone. */
   phoneChosenOnly: boolean;
+  /** Discover's history (pages visited and searches). */
+  browserHistory: boolean;
   /** Audiobooks that aren't on this device play straight from the cloud instead of downloading first. */
   streamAudio: boolean;
   frequency: SyncFrequency;
@@ -109,6 +111,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     alsoBookFiles: true,
     alsoAudioFiles: false,
     phoneChosenOnly: false,
+    browserHistory: false,
     streamAudio: true,
     frequency: "automatic",
     onStartup: true,
@@ -171,6 +174,7 @@ export function parseAppSettings(json: string | null): AppSettings {
       alsoBookFiles: flag(s.alsoBookFiles, d.sync.alsoBookFiles),
       alsoAudioFiles: flag(s.alsoAudioFiles, d.sync.alsoAudioFiles),
       phoneChosenOnly: flag(s.phoneChosenOnly, d.sync.phoneChosenOnly),
+      browserHistory: flag(s.browserHistory, d.sync.browserHistory),
       streamAudio: flag(s.streamAudio, d.sync.streamAudio),
       frequency: oneOf(s.frequency, ["automatic", "15min", "hourly", "manual"], d.sync.frequency),
       onStartup: flag(s.onStartup, d.sync.onStartup),

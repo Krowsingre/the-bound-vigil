@@ -5,6 +5,7 @@
 import { homeAudioUrl, homeCore, homeEvents } from "./homeCore";
 import type { Found } from "../lib/onlineDetails";
 import type {
+  HistoryEntry,
   BookFile,
   Bookmark,
   QuickLink,
@@ -431,7 +432,8 @@ export interface Api {
   /** A website's own small icon, as a data address. */
   siteIcon(url: string): Promise<string>;
   /** Shows tab `tab` over `frame` (made at `url` if it's new), with the others hidden. App only. */
-  browserShow(tab: string, url: string | null, frame: BrowserFrame, protection?: BrowserProtection): Promise<void>;
+  /** Shows a tab, making it at `url` first if it's new; a new `privately` tab keeps nothing. */
+  browserShow(tab: string, url: string | null, frame: BrowserFrame, protection?: BrowserProtection, privately?: boolean): Promise<void>;
   browserPlace(frame: BrowserFrame): Promise<void>;
   /** Hides every tab; they keep their pages. */
   browserHide(): Promise<void>;
@@ -458,6 +460,16 @@ export interface Api {
   browserShare(url: string, title: string, anchor: BrowserFrame | null): Promise<void>;
   /** Opens a link for another app (mail, a phone number). */
   browserOpenApp(url: string): Promise<void>;
+  /** The pages behind and ahead of a tab's page, nearest first. */
+  browserTravelled(tab: string): Promise<{ back: { title: string; url: string }[]; forward: { title: string; url: string }[] }>;
+  /** Discover's history as the library keeps it, newest first. */
+  browserHistory(): Promise<HistoryEntry[]>;
+  putBrowserHistory(entries: HistoryEntry[]): Promise<void>;
+  removeBrowserHistory(ids: string[]): Promise<void>;
+  /** Clears what's from `since` (milliseconds since 1970) on, or everything. */
+  clearBrowserHistory(since: number | null): Promise<void>;
+  /** Lets go of what's older than `before` on this device only. */
+  trimBrowserHistory(before: number): Promise<void>;
   /** Moves a download to the Downloads folder; resolves to where it went. */
   browserKeepDownload(path: string): Promise<string>;
   browserDiscardDownload(path: string): Promise<void>;
@@ -910,7 +922,7 @@ function appApi(): Api {
     removeQuickLink: async (id) => (await core).invoke("remove_quick_link", { id }),
     moveQuickLink: async (id, to) => (await core).invoke("move_quick_link", { id, to }),
     siteIcon: async (url) => (await core).invoke<string>("site_icon", { url }),
-    browserShow: async (tab, url, frame, protection) => (await core).invoke("browser_show", { tab, url, frame, protection: protection ?? null }),
+    browserShow: async (tab, url, frame, protection, privately) => (await core).invoke("browser_show", { tab, url, frame, protection: protection ?? null, private: privately ?? false }),
     browserPlace: async (frame) => (await core).invoke("browser_place", { frame }),
     browserHide: async () => (await core).invoke("browser_hide"),
     browserAct: async (tab, action, url) => (await core).invoke("browser_act", { tab, action, url: url ?? null }),
@@ -927,6 +939,12 @@ function appApi(): Api {
     browserClearSite: async (site) => (await core).invoke("browser_clear_site", { site }),
     browserShare: async (url, title, anchor) => (await core).invoke("browser_share", { url, title, anchor }),
     browserOpenApp: async (url) => (await core).invoke("browser_open_app", { url }),
+    browserTravelled: async (tab) => (await core).invoke("browser_travelled", { tab }),
+    browserHistory: async () => (await core).invoke<HistoryEntry[]>("browser_history"),
+    putBrowserHistory: async (entries) => (await core).invoke("put_browser_history", { entries }),
+    removeBrowserHistory: async (ids) => (await core).invoke("remove_browser_history", { ids }),
+    clearBrowserHistory: async (since) => (await core).invoke("clear_browser_history", { since }),
+    trimBrowserHistory: async (before) => (await core).invoke("trim_browser_history", { before: Math.round(before) }),
     browserKeepDownload: async (path) => (await core).invoke<string>("browser_keep_download", { path }),
     browserDiscardDownload: async (path) => (await core).invoke("browser_discard_download", { path }),
     writingProjects: async () => (await core).invoke<WritingProject[]>("writing_projects"),
