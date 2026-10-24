@@ -1791,6 +1791,7 @@ pub fn run() {
             writing::catalogs,
             writing::save_catalog,
             writing::remove_catalog,
+            writing::save_abs_server,
             writing::catalog_feed,
             writing::catalog_search,
             writing::download_from_catalog,

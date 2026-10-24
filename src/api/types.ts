@@ -1105,6 +1105,8 @@ export interface CatalogView {
   url: string;
   username: string | null;
   hasPassword: boolean;
+  /** An OPDS catalogue, or an Audiobookshelf server. */
+  kind: "opds" | "audiobookshelf";
 }
 
 /** What the Catalogs page saves. No id adds one; no password keeps the saved one. */

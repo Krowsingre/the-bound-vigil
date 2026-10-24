@@ -51,10 +51,17 @@ function CatalogDialog({
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [abs, setAbs] = useState(catalog?.kind === "audiobookshelf");
   const toast = useToast();
   const save = async () => {
     setBusy(true);
     try {
+      if (abs) {
+        onSaved(
+          await api.saveAbsServer({ id: form.id, name: form.name, url: form.url, username: form.username?.trim() ?? "", password: form.password || null }),
+        );
+        return;
+      }
       onSaved(await api.saveCatalog({ ...form, username: form.username?.trim() || null, password: form.password || null }));
     } catch (e) {
       setError(String(e));
@@ -134,13 +141,47 @@ function CatalogDialog({
           </section>
         )}
         {!catalog && <strong className="catalog-own">Or your own address</strong>}
-        <p className="muted dialog-lede">
-          Any OPDS catalogue works. For your own Calibre library, start Calibre's content server (Connect/share › Start Content server) and enter its address
-          with /opds at the end, like http://192.168.1.20:8080/opds.
-        </p>
+        {!catalog && (
+          <div className="scribe-chips catalog-kinds" role="radiogroup" aria-label="What it is">
+            {(
+              [
+                [false, "OPDS catalogue"],
+                [true, "Audiobookshelf server"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={label}
+                type="button"
+                role="radio"
+                aria-checked={abs === value}
+                className={`chip${abs === value ? " is-active" : ""}`}
+                onClick={() => (setAbs(value), setError(null))}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {abs ? (
+          <p className="muted dialog-lede">
+            Sign in with the username and password you use for Audiobookshelf. You can look through its libraries here and bring audiobooks and ebooks
+            into TBV, and where you are in an audiobook stays the same in both.
+          </p>
+        ) : (
+          <p className="muted dialog-lede">
+            Any OPDS catalogue works. For your own Calibre library, start Calibre's content server (Connect/share › Start Content server) and enter its
+            address with /opds at the end, like http://192.168.1.20:8080/opds.
+          </p>
+        )}
         <label className="field">
           <span>Address</span>
-          <input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" autoFocus={!!catalog} inputMode="url" />
+          <input
+            value={form.url}
+            onChange={(e) => setForm({ ...form, url: e.target.value })}
+            placeholder={abs ? "http://192.168.1.20:13378" : "https://…"}
+            autoFocus={!!catalog}
+            inputMode="url"
+          />
         </label>
         <label className="field">
           <span>Name</span>
@@ -149,7 +190,12 @@ function CatalogDialog({
         <div className="writing-details-row">
           <label className="field">
             <span>User name</span>
-            <input value={form.username ?? ""} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="Only if it asks" autoComplete="off" />
+            <input
+              value={form.username ?? ""}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+              placeholder={abs ? "" : "Only if it asks"}
+              autoComplete="off"
+            />
           </label>
           <label className="field">
             <span>Password</span>
@@ -157,12 +203,16 @@ function CatalogDialog({
               type="password"
               value={form.password ?? ""}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
-              placeholder={catalog?.hasPassword ? "Saved" : ""}
+              placeholder={catalog?.hasPassword ? (abs ? "Signed in" : "Saved") : ""}
               autoComplete="new-password"
             />
           </label>
         </div>
-        <p className="muted writing-hint">The password stays on this computer and is never put in a backup.</p>
+        <p className="muted writing-hint">
+          {abs
+            ? "TBV keeps only the server's sign-in, never the password, on this device."
+            : "The password stays on this computer and is never put in a backup."}
+        </p>
         {error && (
           <p className="form-error" role="alert">
             {error}
@@ -172,8 +222,12 @@ function CatalogDialog({
           <button type="button" className="btn btn-quiet" onClick={onCancel} disabled={busy}>
             Cancel
           </button>
-          <button type="submit" className="btn btn-primary" disabled={busy || !form.url.trim()}>
-            Save
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={busy || !form.url.trim() || (abs && (!form.username?.trim() || (!catalog?.hasPassword && !form.password)))}
+          >
+            {busy && abs ? "Signing in…" : abs && form.password ? "Sign in" : "Save"}
           </button>
         </div>
       </form>
@@ -333,7 +387,7 @@ export function Catalogs({ refreshKey = 0, onOpenBook }: { refreshKey?: number; 
           {(catalogs ?? []).map((c) => (
             <div key={c.id} className={`catalogs-item${c.id === current ? " is-current" : ""}`}>
               <button type="button" onClick={() => setCurrent(c.id)} aria-current={c.id === current ? "true" : undefined}>
-                <Icon name="globe" size={16} />
+                <Icon name={c.kind === "audiobookshelf" ? "headphones" : "globe"} size={16} />
                 <span>{c.name}</span>
               </button>
               <Menu

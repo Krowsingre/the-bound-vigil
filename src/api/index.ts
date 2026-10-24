@@ -388,6 +388,8 @@ export interface Api {
   /** OPDS catalogs saved on this device (desktop only). */
   catalogs(): Promise<CatalogView[]>;
   saveCatalog(catalog: CatalogInput): Promise<CatalogView>;
+  /** Signs in to an Audiobookshelf server and saves it as a catalogue. No password keeps an existing sign-in. */
+  saveAbsServer(server: { id: string | null; name: string; url: string; username: string; password: string | null }): Promise<CatalogView>;
   removeCatalog(id: string): Promise<void>;
   /** A page of a catalog; its start when `url` is null. Fails with "needs-login" when it wants a sign-in. */
   catalogFeed(id: string, url: string | null): Promise<OpdsFeed>;
@@ -849,6 +851,7 @@ function appApi(): Api {
     },
     catalogs: async () => (await core).invoke<CatalogView[]>("catalogs"),
     saveCatalog: async (catalog) => (await core).invoke<CatalogView>("save_catalog", { catalog }),
+    saveAbsServer: async (server) => (await core).invoke<CatalogView>("save_abs_server", server),
     removeCatalog: async (id) => (await core).invoke("remove_catalog", { id }),
     catalogFeed: async (id, url) => (await core).invoke<OpdsFeed>("catalog_feed", { id, url }),
     catalogSearch: async (id, search, words) => (await core).invoke<OpdsFeed>("catalog_search", { id, search, words }),

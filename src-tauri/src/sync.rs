@@ -171,6 +171,7 @@ fn emit_status(app: &AppHandle, library: &Mutex<Library>, busy: bool) {
 }
 
 fn run(app: &AppHandle, library: &Arc<Mutex<Library>>, busy: &AtomicBool) {
+    keep_listening_places(app, library);
     let ready = library.lock().ok().and_then(|l| l.sync_status().ok()).is_some_and(|s| s.state != SyncState::Disabled);
     if !ready {
         return;
@@ -251,6 +252,28 @@ fn run(app: &AppHandle, library: &Arc<Mutex<Library>>, busy: &AtomicBool) {
         if report.received > 0 || report.files_received > 0 {
             let _ = app.emit("library-changed", ());
         }
+    }
+}
+
+/// Keeps listening places the same in TBV and on any Audiobookshelf server
+/// signed in to. The library is only held to read and write the places.
+fn keep_listening_places(app: &AppHandle, library: &Arc<Mutex<Library>>) {
+    let Ok((servers, books)) = library.lock().map_err(|_| ()).and_then(|l| Ok((l.abs_servers().map_err(|_| ())?, l.listening_places().map_err(|_| ())?))) else { return };
+    let mut moved = Vec::new();
+    for mut server in servers {
+        // An unreachable server (away from home, say) just waits for next time.
+        if let Ok(here) = tbv_core::audiobookshelf::keep_places(&mut server, &books) {
+            moved.extend(here);
+        }
+    }
+    if let Ok(l) = library.lock() {
+        let _ = l.keep_abs_sign_ins();
+        for m in &moved {
+            let _ = l.take_listening_place(m);
+        }
+    }
+    if !moved.is_empty() {
+        let _ = app.emit("library-changed", ());
     }
 }
 

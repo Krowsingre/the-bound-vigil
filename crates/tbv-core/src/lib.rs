@@ -2,6 +2,7 @@
 //! No UI code lives here, so all of it is testable with `cargo test`.
 
 pub mod audio;
+pub mod audiobookshelf;
 pub mod bookmarks;
 pub mod browse;
 pub mod collections;

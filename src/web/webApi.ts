@@ -540,6 +540,9 @@ export async function webApi(): Promise<Api> {
     saveCatalog: async () => {
       throw new Error(DESKTOP_ONLY);
     },
+    saveAbsServer: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
     removeCatalog: async () => {
       throw new Error(DESKTOP_ONLY);
     },
