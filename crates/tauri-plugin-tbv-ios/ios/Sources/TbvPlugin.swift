@@ -2,6 +2,7 @@ import AVFoundation
 import AuthenticationServices
 import PhotosUI
 import Tauri
+import StoreKit
 import UIKit
 import UniformTypeIdentifiers
 import WebKit
@@ -18,6 +19,15 @@ class PickArgs: Decodable {
 
 class UrlArgs: Decodable {
   let url: String
+}
+
+class ProductArgs: Decodable {
+  let product: String
+}
+
+class AuthArgs: Decodable {
+  let url: String
+  let scheme: String
 }
 
 /// The iPhone app's own pieces: folders chosen in Files (iCloud Drive's
@@ -285,6 +295,88 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
         invoke.resolve(["ok": true])
       } else {
         invoke.reject("TBV couldn't open the sign-in page.")
+      }
+    }
+  }
+
+  /// Shows a sign-in page that answers to TBV's own address (Google's), and
+  /// gives back that answer.
+  @objc public func authenticate(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(AuthArgs.self)
+    guard let url = URL(string: args.url) else {
+      invoke.reject("That sign-in address isn't valid.")
+      return
+    }
+    DispatchQueue.main.async {
+      self.signIn?.cancel()
+      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: args.scheme) { answer, error in
+        if let answer = answer {
+          invoke.resolve(["url": answer.absoluteString])
+        } else if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
+          invoke.reject("The sign-in was cancelled.")
+        } else {
+          invoke.reject(error?.localizedDescription ?? "The sign-in didn't finish.")
+        }
+      }
+      session.presentationContextProvider = self
+      self.signIn = session
+      if !session.start() {
+        invoke.reject("TBV couldn't open the sign-in page.")
+      }
+    }
+  }
+
+  /// Whether the unlock was bought (a verified, unrevoked purchase), and its price.
+  @objc public func storeStatus(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(ProductArgs.self)
+    Task {
+      var owned = false
+      for await entitlement in Transaction.currentEntitlements {
+        if case .verified(let t) = entitlement, t.productID == args.product, t.revocationDate == nil {
+          owned = true
+        }
+      }
+      let price = (try? await Product.products(for: [args.product]))?.first?.displayPrice
+      invoke.resolve(["owned": owned, "price": price.map { $0 as Any } ?? NSNull()])
+    }
+  }
+
+  /// The App Store's sheet for buying the unlock.
+  @objc public func storeBuy(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(ProductArgs.self)
+    Task {
+      do {
+        guard let product = try await Product.products(for: [args.product]).first else {
+          invoke.reject("The App Store isn't offering the unlock yet.")
+          return
+        }
+        switch try await product.purchase() {
+        case .success(let result):
+          if case .verified(let t) = result {
+            await t.finish()
+            invoke.resolve(["ok": true])
+          } else {
+            invoke.reject("The App Store couldn't confirm the purchase.")
+          }
+        case .userCancelled, .pending:
+          invoke.resolve(["ok": false])
+        @unknown default:
+          invoke.resolve(["ok": false])
+        }
+      } catch {
+        invoke.reject(error.localizedDescription)
+      }
+    }
+  }
+
+  /// Asks the App Store for purchases made before (it may ask to sign in).
+  @objc public func storeRestore(_ invoke: Invoke) throws {
+    Task {
+      do {
+        try await AppStore.sync()
+        invoke.resolve(["ok": true])
+      } catch {
+        invoke.reject(error.localizedDescription)
       }
     }
   }

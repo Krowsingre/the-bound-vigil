@@ -7,7 +7,7 @@ import type { FileActivity, PlaceActivity, SyncActivity as Activity, SyncStatus 
 import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
 import { relativeTime } from "../lib/format";
-import { serviceName } from "../settings/SyncFolderPanel";
+import { placeWords } from "../settings/SyncFolderPanel";
 
 const NOTHING: Activity = { running: false, startedAt: null, finishedAt: null, places: [], recent: [] };
 
@@ -19,7 +19,7 @@ function size(bytes: number): string {
 
 function placeName(place: PlaceActivity): string {
   const p = place.provider;
-  return p.kind === "folder" ? serviceName(p.service) : p.kind === "webdav" ? "Your WebDAV server" : "Supabase";
+  return placeWords(p, true);
 }
 
 function plural(n: number, one: string, many = `${one}s`) {

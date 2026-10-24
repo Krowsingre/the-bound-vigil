@@ -2,6 +2,7 @@
 //! No UI code lives here, so all of it is testable with `cargo test`.
 
 pub mod audio;
+pub mod audiobookshelf;
 pub mod bookmarks;
 pub mod browse;
 pub mod collections;
@@ -16,6 +17,7 @@ pub mod home;
 pub mod http;
 pub mod ids;
 pub mod library;
+pub mod license;
 pub mod localsend;
 pub mod listen;
 pub mod lookup;
@@ -23,6 +25,7 @@ pub mod details;
 pub mod manage;
 pub mod model;
 pub mod notes;
+pub mod oauth;
 pub mod opds;
 pub mod profile;
 pub mod reader;

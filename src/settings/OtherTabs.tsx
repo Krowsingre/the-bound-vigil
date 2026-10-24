@@ -5,6 +5,8 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { DuplicatesDialog } from "./DuplicatesDialog";
+import { shopName, useLicense } from "../license/License";
+import { canSelfUpdate, useUpdater, type UpdateState } from "./updates";
 import { SORTS, type Layout } from "../library/libraryView";
 import { TextSettings } from "../reader/ReaderPopovers";
 import { PAGE_COLORS, resolveTheme, WIDTHS } from "../reader/settings";
@@ -742,8 +744,85 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
   },
 ];
 
+/** The trial, or the purchase. */
+function YourCopy() {
+  const { license, busy, buy, restore } = useLicense();
+  if (!license) return null;
+  const ends = new Date(license.trialEnds * 1000).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+  const words =
+    license.state === "owned"
+      ? `Bought in ${shopName(license.shop)}. Thank you.`
+      : `${license.daysLeft === 1 ? "1 day" : `${license.daysLeft} days`} left of your free trial (until ${ends}). Buy it once to keep using it after that.`;
+  return (
+    <Section id="licence" title="Your copy" lede={words}>
+      {license.state !== "owned" && license.shop !== "none" && (
+        <div className="settings-actions">
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void buy()}>
+            {`Buy The Bound Vigil${license.price ? ` · ${license.price}` : ""}`}
+          </button>
+          <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void restore()}>
+            I bought it already
+          </button>
+        </div>
+      )}
+      {license.state !== "owned" && license.shop === "none" && (
+        <p className="settings-row-hint">This copy didn't come from a store, so it can't be bought in. The Bound Vigil will be sold in the Microsoft Store and the App Store.</p>
+      )}
+    </Section>
+  );
+}
+
+function updateWords(state: UpdateState): string {
+  switch (state.step) {
+    case "idle":
+      return "TBV can look for a newer version and install it for you.";
+    case "checking":
+      return "Looking for a newer version…";
+    case "checked":
+      return state.info.version ? `Version ${state.info.version} is ready to install.` : "You have the newest version.";
+    case "installing": {
+      const p = state.progress;
+      if (!p) return `Getting version ${state.info.version}…`;
+      if (p.total && p.downloaded >= p.total) return "Installing. TBV will open again by itself.";
+      return p.total ? `Getting version ${state.info.version}… ${Math.round((p.downloaded / p.total) * 100)}%` : `Getting version ${state.info.version}… ${formatBytes(p.downloaded)}`;
+    }
+    case "failed":
+      return state.message;
+  }
+}
+
+function Updates() {
+  const { settings, change } = useAppSettings();
+  const { state, check, install } = useUpdater();
+  const ready = state.step === "checked" && state.info.version ? state.info : null;
+  return (
+    <Section id="updates" title="Updates" lede={updateWords(state)}>
+      {ready?.notes && <p className="settings-row-hint update-notes">{ready.notes}</p>}
+      <div className="settings-actions">
+        {ready ? (
+          <button type="button" className="btn btn-primary" onClick={() => install(ready)}>
+            Install and restart
+          </button>
+        ) : (
+          <button type="button" className="btn btn-quiet" disabled={state.step === "checking" || state.step === "installing"} onClick={check}>
+            Check for updates
+          </button>
+        )}
+      </div>
+      <div className="toggle-list">
+        <Toggle
+          label="Look for updates when TBV opens"
+          hint="TBV says when a newer version is ready. Nothing installs until you choose to."
+          checked={settings.checkUpdates}
+          onChange={(checkUpdates) => change({ checkUpdates })}
+        />
+      </div>
+    </Section>
+  );
+}
+
 export function AboutTab() {
-  const [version, setVersion] = useState("1.24.0");
+  const [version, setVersion] = useState("1.25.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));
@@ -758,6 +837,8 @@ export function AboutTab() {
           <span className="settings-value">{version}</span>
         </Row>
       </Section>
+      <YourCopy />
+      {canSelfUpdate && <Updates />}
       <Section id="licences" title="Built with" lede="TBV stands on the work of these projects. Thank you to their authors.">
         <ul className="credit-list">
           {CREDITS.map((c) => (

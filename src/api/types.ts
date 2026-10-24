@@ -144,12 +144,42 @@ export interface SyncConflict {
 
 /** Where the library is kept, as Settings shows it (never a password). */
 export interface ProviderView {
-  kind: "supabase" | "folder" | "webdav" | "off";
-  /** For a folder: which cloud app's ("icloud", "dropbox", "mega", "custom"…). */
+  kind: "supabase" | "folder" | "webdav" | "cloud" | "off";
+  /** For a folder: which cloud app's ("icloud", "dropbox", "mega", "custom"…). Signed in to directly: "dropbox", "google" or "onedrive". */
   service: string | null;
   /** The folder, or the WebDAV address. */
   location: string | null;
+  /** The WebDAV username, or the account signed in to. */
   username: string | null;
+}
+
+/** A service TBV can sign in to directly. */
+export type CloudService = "dropbox" | "google" | "onedrive";
+
+/** Whether there's a newer version of TBV (Preferences › About). */
+export interface UpdateInfo {
+  /** False where updates come from an app store. */
+  canUpdate: boolean;
+  current: string;
+  version: string | null;
+  notes: string | null;
+}
+
+export interface UpdateProgress {
+  downloaded: number;
+  total: number | null;
+}
+
+/** Paying for TBV: a 30-day trial, then a one-time unlock from a store. */
+export interface LicenseView {
+  state: "trial" | "expired" | "owned";
+  daysLeft: number;
+  /** Seconds since 1970. */
+  trialEnds: number;
+  /** Where it's bought: "none" for a copy from outside a store. */
+  shop: "microsoft" | "apple" | "none";
+  /** As the store shows it, like "$14.99". */
+  price: string | null;
 }
 
 /** A choice of where to keep the library, as sent to the core. */
@@ -157,7 +187,9 @@ export type ProviderChoice =
   | { kind: "supabase" }
   | { kind: "off" }
   | { kind: "folder"; service: string; path: string }
-  | { kind: "webdav"; url: string; username: string; password: string };
+  | { kind: "webdav"; url: string; username: string; password: string }
+  /** From `cloudSignIn`, passed on as it came. */
+  | { kind: "cloud"; service: CloudService; accountId: string; name: string; refreshToken: string };
 
 export interface SyncOverview {
   status: SyncStatus;
@@ -1099,6 +1131,8 @@ export interface CatalogView {
   url: string;
   username: string | null;
   hasPassword: boolean;
+  /** An OPDS catalogue, or an Audiobookshelf server. */
+  kind: "opds" | "audiobookshelf";
 }
 
 /** What the Catalogs page saves. No id adds one; no password keeps the saved one. */

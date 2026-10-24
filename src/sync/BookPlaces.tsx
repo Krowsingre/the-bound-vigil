@@ -7,7 +7,7 @@ import { api } from "../api";
 import type { BookPlaces as Book, PlaceCheck, PlacesView } from "../api/types";
 import { Icon } from "../components/Icon";
 import { showBookDetails } from "../details/openDetails";
-import { serviceName } from "../settings/SyncFolderPanel";
+import { placeWords } from "../settings/SyncFolderPanel";
 
 type Filter = "all" | "here" | "notHere" | "noMain" | "noAlso" | "nowhere";
 
@@ -15,7 +15,7 @@ const PAGE = 100;
 
 export function placeName(check: PlaceCheck): string {
   const p = check.provider;
-  return p.kind === "folder" ? serviceName(p.service) : p.kind === "webdav" ? "Your WebDAV server" : "Supabase";
+  return placeWords(p, true);
 }
 
 /** Not on this computer and in no place that could be checked. */

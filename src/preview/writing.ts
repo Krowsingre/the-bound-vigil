@@ -11,6 +11,7 @@ type Calls = Pick<
   Api,
   | "catalogs"
   | "saveCatalog"
+  | "saveAbsServer"
   | "removeCatalog"
   | "catalogFeed"
   | "catalogSearch"
@@ -80,7 +81,7 @@ export function previewWriting(): Calls {
   );
 
   let catalogs: CatalogView[] = [
-    { id: "gutenberg", name: "Project Gutenberg", url: "https://www.gutenberg.org/ebooks.opds/", username: null, hasPassword: false },
+    { id: "gutenberg", name: "Project Gutenberg", url: "https://www.gutenberg.org/ebooks.opds/", username: null, hasPassword: false, kind: "opds" },
   ];
   const book = ([title, author, summary]: [string, string, string], i: number): OpdsEntry => ({
     id: `book-${i}`,
@@ -131,6 +132,20 @@ export function previewWriting(): Calls {
         url: input.url,
         username: input.username || null,
         hasPassword: !!password || !!catalogs.find((c) => c.id === input.id)?.hasPassword,
+        kind: "opds",
+      };
+      catalogs = [...catalogs.filter((c) => c.id !== saved.id), saved];
+      return saved;
+    },
+    saveAbsServer: async ({ password, ...input }) => {
+      if (!input.id && !password) throw new Error("Enter the password to sign in to that server.");
+      const saved: CatalogView = {
+        id: input.id ?? crypto.randomUUID(),
+        name: input.name.trim() || "Audiobookshelf",
+        url: input.url,
+        username: input.username || null,
+        hasPassword: true,
+        kind: "audiobookshelf",
       };
       catalogs = [...catalogs.filter((c) => c.id !== saved.id), saved];
       return saved;

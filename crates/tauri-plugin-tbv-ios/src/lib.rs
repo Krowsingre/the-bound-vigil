@@ -157,6 +157,82 @@ pub fn open_sign_in(url: &str) -> Result<(), String> {
     }
 }
 
+#[derive(serde::Serialize)]
+struct AuthArgs<'a> {
+    url: &'a str,
+    scheme: &'a str,
+}
+
+#[derive(serde::Deserialize)]
+struct AuthAnswer {
+    url: String,
+}
+
+/// Shows a sign-in page over TBV that answers to TBV's own address
+/// (`scheme:`), as Google's does on iPhone, and gives that answer.
+pub fn authenticate(url: &str, scheme: &str) -> Result<String, String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get().ok_or("The sign-in page isn't ready.")?;
+        swift.run_mobile_plugin::<AuthAnswer>("authenticate", AuthArgs { url, scheme }).map(|a| a.url).map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = (url, scheme, AuthArgs { url, scheme }, |a: AuthAnswer| a.url);
+        Err("This sign-in page only opens on iPhone.".into())
+    }
+}
+
+#[derive(serde::Serialize)]
+struct ProductArgs<'a> {
+    product: &'a str,
+}
+
+#[derive(serde::Deserialize)]
+struct StoreAnswer {
+    owned: bool,
+    price: Option<String>,
+}
+
+/// Whether the App Store says the unlock was bought, and its price.
+pub fn store_status(product: &str) -> Result<(bool, Option<String>), String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get().ok_or("The App Store isn't ready.")?;
+        swift.run_mobile_plugin::<StoreAnswer>("storeStatus", ProductArgs { product }).map(|a| (a.owned, a.price)).map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = (ProductArgs { product }, |a: StoreAnswer| (a.owned, a.price));
+        Err("The App Store is only on iPhone and iPad.".into())
+    }
+}
+
+/// Shows the App Store's sheet for buying the unlock.
+pub fn store_buy(product: &str) -> Result<(), String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get().ok_or("The App Store isn't ready.")?;
+        swift.run_mobile_plugin::<serde_json::Value>("storeBuy", ProductArgs { product }).map(|_| ()).map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = product;
+        Err("The App Store is only on iPhone and iPad.".into())
+    }
+}
+
+/// Asks the App Store again for purchases made before.
+pub fn store_restore() -> Result<(), String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get().ok_or("The App Store isn't ready.")?;
+        swift.run_mobile_plugin::<serde_json::Value>("storeRestore", ()).map(|_| ()).map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "ios"))]
+    Err("The App Store is only on iPhone and iPad.".into())
+}
+
 /// Takes the sign-in page away once its answer is in (or it timed out).
 pub fn close_sign_in() {
     #[cfg(target_os = "ios")]

@@ -28,6 +28,34 @@ pub async fn save_catalog(state: State<'_, AppLibrary>, catalog: CatalogInput) -
     with_library(state, move |library| library.save_catalog(&catalog)).await
 }
 
+/// Signs in to an Audiobookshelf server and saves it as a catalogue. With
+/// no password, an existing one keeps its sign-in.
+#[tauri::command]
+pub async fn save_abs_server(
+    state: State<'_, AppLibrary>,
+    id: Option<String>,
+    name: String,
+    url: String,
+    username: String,
+    password: Option<String>,
+) -> CommandResult<CatalogView> {
+    let base = tbv_core::audiobookshelf::tidy_address(&url).map_err(|e| e.to_string())?;
+    let username = username.trim().to_string();
+    let token = match password.filter(|p| !p.is_empty()) {
+        Some(password) => {
+            let (base, username) = (base.clone(), username.clone());
+            Some(
+                tauri::async_runtime::spawn_blocking(move || tbv_core::audiobookshelf::sign_in(&base, &username, &password))
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .map_err(|e| e.to_string())?,
+            )
+        }
+        None => None,
+    };
+    with_library(state, move |library| library.save_abs_server(id.as_deref(), &name, &base, &username, token)).await
+}
+
 #[tauri::command]
 pub async fn remove_catalog(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
     with_library(state, move |library| library.remove_catalog(&id)).await
@@ -36,14 +64,27 @@ pub async fn remove_catalog(state: State<'_, AppLibrary>, id: String) -> Command
 /// A page of a catalog: where it starts, when `url` is none.
 #[tauri::command]
 pub async fn catalog_feed(state: State<'_, AppLibrary>, id: String, url: Option<String>) -> CommandResult<OpdsFeed> {
+    let library = state.0.clone();
     let access = with_library(state, move |library| library.catalog_access(&id)).await?;
-    tauri::async_runtime::spawn_blocking(move || access.feed(url.as_deref()).map_err(|e| e.to_string())).await.map_err(|e| e.to_string())?
+    let feed = tauri::async_runtime::spawn_blocking(move || access.feed(url.as_deref()).map_err(|e| e.to_string())).await.map_err(|e| e.to_string())?;
+    keep_sign_ins(&library);
+    feed
+}
+
+/// Saves a sign-in an Audiobookshelf server renewed while it was being used.
+fn keep_sign_ins(library: &std::sync::Mutex<tbv_core::Library>) {
+    if let Ok(l) = library.lock() {
+        let _ = l.keep_abs_sign_ins();
+    }
 }
 
 #[tauri::command]
 pub async fn catalog_search(state: State<'_, AppLibrary>, id: String, search: String, words: String) -> CommandResult<OpdsFeed> {
+    let library = state.0.clone();
     let access = with_library(state, move |library| library.catalog_access(&id)).await?;
-    tauri::async_runtime::spawn_blocking(move || access.search(&search, &words).map_err(|e| e.to_string())).await.map_err(|e| e.to_string())?
+    let feed = tauri::async_runtime::spawn_blocking(move || access.search(&search, &words).map_err(|e| e.to_string())).await.map_err(|e| e.to_string())?;
+    keep_sign_ins(&library);
+    feed
 }
 
 /// Brings a book down from a catalog and hands it to the import queue.
@@ -62,8 +103,9 @@ pub async fn download_from_catalog(
     let imports = imports.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let folder = Arc::new(TempFolder::new(&downloads).map_err(|e| e.to_string())?);
-        let path = access.download(&file, &title, folder.path()).map_err(|e| e.to_string())?;
-        imports.add_holding(&app, &library, vec![path], Some(folder));
+        let path = access.download(&file, &title, folder.path());
+        keep_sign_ins(&library);
+        imports.add_holding(&app, &library, vec![path.map_err(|e| e.to_string())?], Some(folder));
         Ok(())
     })
     .await

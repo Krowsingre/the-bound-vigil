@@ -1121,6 +1121,24 @@ kbd {
   font-weight: 600;
 }
 
+/* Signing in to Dropbox, Google Drive or OneDrive, above the app-folder way. */
+.cloud-sign-in {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.cloud-sign-in p {
+  margin: 0;
+}
+
+.cloud-sign-in h4 {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  justify-self: stretch;
+}
+
 .folder-pick {
   display: flex;
   flex-wrap: wrap;
@@ -1470,4 +1488,25 @@ kbd {
 
 .settings-page.is-landing .settings-results {
   max-width: 560px;
+}
+
+/* About › Your copy and Updates. */
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.update-notes {
+  white-space: pre-line;
+  margin: 0 0 12px;
+}
+
+.license-gate {
+  height: 100vh;
+}
+
+.license-gate .btn {
+  justify-content: center;
 }

@@ -540,6 +540,9 @@ export async function webApi(): Promise<Api> {
     saveCatalog: async () => {
       throw new Error(DESKTOP_ONLY);
     },
+    saveAbsServer: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
     removeCatalog: async () => {
       throw new Error(DESKTOP_ONLY);
     },
@@ -1080,6 +1083,24 @@ export async function webApi(): Promise<Api> {
     },
     chooseFolder: async () => null,
     suggestSyncFolder: async () => null,
+    cloudSignIn: async () => {
+      throw new Error("The web version syncs through Supabase only.");
+    },
+    cloudServices: async () => [],
+    checkForUpdate: async () => ({ canUpdate: false, current: "", version: null, notes: null }),
+    installUpdate: async () => {
+      throw new Error("The web version is always the newest.");
+    },
+    onUpdateProgress: () => () => undefined,
+    licenseStatus: async () => {
+      throw new Error("Buying TBV happens in the app.");
+    },
+    buyLicense: async () => {
+      throw new Error("Buying TBV happens in the app.");
+    },
+    restoreLicense: async () => {
+      throw new Error("Buying TBV happens in the app.");
+    },
     resolveSyncConflict: async () => undefined,
     downloadBook: async (bookId) => {
       await api.readBookFile(bookId);

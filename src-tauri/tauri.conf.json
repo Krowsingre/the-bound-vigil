@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "The Bound Vigil",
-  "version": "1.24.0",
+  "version": "1.25.0",
   "identifier": "com.krowsingre.theboundvigil",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -42,6 +42,15 @@
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
     "iOS": {
       "minimumSystemVersion": "15.0"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJFRTA5M0QwRTAwNEZCNUIKUldSYit3VGcwSlBnTG94UU1jaUR0cVorb0dRaWwvLytudDNpSXVYVVNhMzhMdDcrZWNIbm1VM0sK",
+      "endpoints": ["https://github.com/Krowsingre/the-bound-vigil/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

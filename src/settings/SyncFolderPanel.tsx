@@ -3,8 +3,8 @@
 // server. TBV makes a folder called "The Bound Vigil" inside the one chosen.
 
 import { useEffect, useState } from "react";
-import { api, isApp, isIOS } from "../api";
-import type { ProviderChoice, ProviderView } from "../api/types";
+import { api, isApp, isIOS, isWeb } from "../api";
+import type { CloudService, ProviderChoice, ProviderView } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 
@@ -69,8 +69,27 @@ function iphoneSteps(service: FolderService, name: string): string[] {
 }
 
 export function serviceName(service: string | null): string {
+  if (service === "google") return "Google Drive";
   return service && service in SERVICE ? SERVICE[service as FolderService].name : "a folder";
 }
+
+/** A place in words, as it fits in a sentence: "Dropbox", "your WebDAV server". */
+export function placeWords(view: ProviderView, capital = false): string {
+  if (view.kind === "folder" || view.kind === "cloud") return serviceName(view.service);
+  if (view.kind === "webdav") return capital ? "Your WebDAV server" : "your WebDAV server";
+  return "Supabase";
+}
+
+/** How Settings shows a choice before the core has it. */
+export function viewOfChoice(choice: ProviderChoice): ProviderView {
+  if (choice.kind === "folder") return { kind: "folder", service: choice.service, location: choice.path, username: null };
+  if (choice.kind === "webdav") return { kind: "webdav", service: null, location: choice.url, username: choice.username };
+  if (choice.kind === "cloud") return { kind: "cloud", service: choice.service, location: null, username: choice.name };
+  return { kind: choice.kind, service: null, location: null, username: null };
+}
+
+/** The folder card's service as TBV signs in to it, where it can. */
+export const SIGN_IN: Partial<Record<FolderService, CloudService>> = { dropbox: "dropbox", gdrive: "google", onedrive: "onedrive" };
 
 export function SyncFolderPanel({
   service,
@@ -120,9 +139,50 @@ export function SyncFolderPanel({
 
   const davReady = /^https?:\/\/\S+$/i.test(dav.url.trim()) && dav.username.trim() && dav.password;
 
+  // Signing in directly, for the services that allow it.
+  const cloud = SIGN_IN[service];
+  const [canSignIn, setCanSignIn] = useState(false);
+  useEffect(() => {
+    if (!cloud || isWeb) return setCanSignIn(false);
+    void api.cloudServices().then((all) => setCanSignIn(all.includes(cloud)), () => setCanSignIn(false));
+  }, [cloud]);
+  const signedInHere = current.kind === "cloud" && current.service === cloud;
+  const signIn = async () => {
+    if (!cloud) return;
+    setBusy(true);
+    try {
+      const choice = await api.cloudSignIn(cloud);
+      setBusy(false);
+      await use(choice, info.name);
+    } catch (e) {
+      toast(`That didn't work: ${String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="settings-subpanel sync-folder">
       <h3>{service === "custom" ? "Another service" : `Sync with ${info.name}`}</h3>
+      {cloud && canSignIn && (
+        <div className="cloud-sign-in">
+          {signedInHere && !onUse ? (
+            <p>
+              Signed in as <strong>{current.username}</strong>. TBV keeps your library in{" "}
+              {service === "gdrive" ? "a folder called The Bound Vigil in My Drive" : `Apps › The Bound Vigil in your ${info.name}`}.
+            </p>
+          ) : (
+            <p>
+              Sign in to {info.name} and TBV syncs with it directly, with no app needed. It only sees{" "}
+              {service === "gdrive" ? "the files TBV puts there" : "its own folder, Apps › The Bound Vigil"}, never the rest of your {info.name}.
+            </p>
+          )}
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void signIn()}>
+            <Icon name="cloud" size={16} /> {busy ? "Waiting for the sign-in…" : signedInHere && !onUse ? `Use a different ${info.name} account` : `Sign in to ${info.name}`}
+          </button>
+          <h4>Or use the {info.name} app's folder</h4>
+        </div>
+      )}
       <ol className="setup-steps">
         {(isIOS ? iphoneSteps(service, info.name) : info.steps).map((s) => (
           <li key={s}>{s}</li>

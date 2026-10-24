@@ -33,6 +33,7 @@ import { HomePair } from "./web/HomePair";
 import { WebGate } from "./web/WebConnect";
 import { runBeforeQuit } from "./lib/beforeQuit";
 import { PlayerProvider } from "./audio/player";
+import { LicenseProvider } from "./license/License";
 import { restorePrivacy } from "./settings/appSettings";
 
 // Covers stay hidden from the very first moment if privacy mode was on.
@@ -82,7 +83,9 @@ createRoot(document.getElementById("root")!).render(
               <App />
             </HomePair>
           ) : (
-            <App />
+            <LicenseProvider>
+              <App />
+            </LicenseProvider>
           )}
         </PlayerProvider>
       </AppSettingsProvider>

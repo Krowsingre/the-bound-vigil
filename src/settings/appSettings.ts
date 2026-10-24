@@ -72,6 +72,8 @@ export interface AppSettings {
   showSeries: boolean;
   /** Imports leave out books that were deleted before, instead of bringing them back. */
   skipDeletedImports: boolean;
+  /** Looks for a newer version of TBV each time it opens (on a computer). */
+  checkUpdates: boolean;
   privacy: PrivacySettings;
   sync: SyncSettings;
 }
@@ -95,6 +97,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showSmartCollections: true,
   showSeries: true,
   skipDeletedImports: false,
+  checkUpdates: true,
   privacy: { on: false, style: "titles", avatar: true },
   sync: {
     progress: true,
@@ -152,6 +155,7 @@ export function parseAppSettings(json: string | null): AppSettings {
     scrollLibrary: flag(raw.scrollLibrary, d.scrollLibrary),
     fullMenu: flag(raw.fullMenu, d.fullMenu),
     skipDeletedImports: flag(raw.skipDeletedImports, d.skipDeletedImports),
+    checkUpdates: flag(raw.checkUpdates, d.checkUpdates),
     privacy: {
       on: flag(p.on, d.privacy.on),
       style: oneOf(p.style, ["titles", "blank"], d.privacy.style),

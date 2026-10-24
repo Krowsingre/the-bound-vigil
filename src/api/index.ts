@@ -28,6 +28,10 @@ import type {
   TidyReport,
   Audiobook,
   ProviderChoice,
+  CloudService,
+  LicenseView,
+  UpdateInfo,
+  UpdateProgress,
   Annotation,
   AnnotationInput,
   CollectionDetail,
@@ -235,6 +239,21 @@ export interface Api {
   setAlsoSync(provider: ProviderChoice | null): Promise<boolean>;
   /** Asks for a folder. Null if cancelled. */
   chooseFolder(title: string, start?: string | null): Promise<string | null>;
+  /** Signs in to Dropbox, Google Drive or OneDrive in the browser, and gives the place to choose. */
+  cloudSignIn(service: CloudService): Promise<ProviderChoice>;
+  /** Which of those this copy of TBV can sign in to. */
+  cloudServices(): Promise<CloudService[]>;
+  /** Asks whether there's a newer version of TBV. */
+  checkForUpdate(): Promise<UpdateInfo>;
+  /** Downloads and installs the newer version, then starts TBV again. */
+  installUpdate(): Promise<void>;
+  onUpdateProgress(listener: (progress: UpdateProgress) => void): () => void;
+  /** Whether TBV is being tried, is bought, or its trial is over. */
+  licenseStatus(): Promise<LicenseView>;
+  /** Opens the store's sheet for buying TBV. */
+  buyLicense(): Promise<LicenseView>;
+  /** Looks for a purchase made before, on this or another device. */
+  restoreLicense(): Promise<LicenseView>;
   /** Where a cloud app usually keeps its folder on this computer, if it's there. */
   suggestSyncFolder(service: string): Promise<string | null>;
   resolveSyncConflict(kind: string, key: string, keepCloud: boolean): Promise<void>;
@@ -383,6 +402,8 @@ export interface Api {
   /** OPDS catalogs saved on this device (desktop only). */
   catalogs(): Promise<CatalogView[]>;
   saveCatalog(catalog: CatalogInput): Promise<CatalogView>;
+  /** Signs in to an Audiobookshelf server and saves it as a catalogue. No password keeps an existing sign-in. */
+  saveAbsServer(server: { id: string | null; name: string; url: string; username: string; password: string | null }): Promise<CatalogView>;
   removeCatalog(id: string): Promise<void>;
   /** A page of a catalog; its start when `url` is null. Fails with "needs-login" when it wants a sign-in. */
   catalogFeed(id: string, url: string | null): Promise<OpdsFeed>;
@@ -714,6 +735,14 @@ function appApi(): Api {
       return typeof picked === "string" ? picked : null;
     },
     suggestSyncFolder: async (service) => (await core).invoke<string | null>("suggest_sync_folder", { service }),
+    cloudSignIn: async (service) => (await core).invoke<ProviderChoice>("cloud_sign_in", { service }),
+    cloudServices: async () => (await core).invoke<CloudService[]>("cloud_services"),
+    checkForUpdate: async () => (await core).invoke<UpdateInfo>("update_check"),
+    installUpdate: async () => (await core).invoke("update_install"),
+    onUpdateProgress: (listener) => onEvent<UpdateProgress>("update-progress", listener),
+    licenseStatus: async () => (await core).invoke<LicenseView>("license_status"),
+    buyLicense: async () => (await core).invoke<LicenseView>("license_buy"),
+    restoreLicense: async () => (await core).invoke<LicenseView>("license_restore"),
     resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
     downloadBook: async (bookId) => (await core).invoke("download_book", { bookId }),
     moveStatus: async () => (await core).invoke<MoveStatus>("move_status"),
@@ -842,6 +871,7 @@ function appApi(): Api {
     },
     catalogs: async () => (await core).invoke<CatalogView[]>("catalogs"),
     saveCatalog: async (catalog) => (await core).invoke<CatalogView>("save_catalog", { catalog }),
+    saveAbsServer: async (server) => (await core).invoke<CatalogView>("save_abs_server", server),
     removeCatalog: async (id) => (await core).invoke("remove_catalog", { id }),
     catalogFeed: async (id, url) => (await core).invoke<OpdsFeed>("catalog_feed", { id, url }),
     catalogSearch: async (id, search, words) => (await core).invoke<OpdsFeed>("catalog_search", { id, search, words }),

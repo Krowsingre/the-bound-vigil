@@ -35,7 +35,7 @@ const STARTERS: [(&str, &str, &str); 1] = [("gutenberg", "Project Gutenberg", "h
 /// old built-in copy goes unless someone signed in to it.
 const RETIRED_STARTER: &str = "standard-ebooks";
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 struct Saved {
     id: String,
     name: String,
@@ -44,6 +44,14 @@ struct Saved {
     username: String,
     #[serde(default)]
     password: String,
+    /// Empty for OPDS; "audiobookshelf" for an Audiobookshelf server.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    kind: String,
+    /// An Audiobookshelf sign-in (never its password).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    token: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    refresh: String,
 }
 
 /// What the Catalogs page shows: everything but the password.
@@ -55,6 +63,8 @@ pub struct CatalogView {
     pub url: String,
     pub username: Option<String>,
     pub has_password: bool,
+    /// "opds", or "audiobookshelf".
+    pub kind: String,
 }
 
 /// What the page saves. No id adds a catalog; no password keeps the saved one.
@@ -75,7 +85,8 @@ impl From<&Saved> for CatalogView {
             name: s.name.clone(),
             url: s.url.clone(),
             username: Some(s.username.clone()).filter(|u| !u.is_empty()),
-            has_password: !s.password.is_empty(),
+            has_password: !s.password.is_empty() || !s.token.is_empty(),
+            kind: if s.kind.is_empty() { "opds".into() } else { s.kind.clone() },
         }
     }
 }
@@ -620,7 +631,7 @@ impl Library {
     fn saved_catalogs(&self) -> Result<Vec<Saved>> {
         match self.setting(SETTINGS_KEY)? {
             Some(s) => Ok(serde_json::from_str::<Vec<Saved>>(&s).unwrap_or_default().into_iter().filter(|c| !(c.id == RETIRED_STARTER && c.username.is_empty())).collect()),
-            None => Ok(STARTERS.iter().map(|(id, name, url)| Saved { id: id.to_string(), name: name.to_string(), url: url.to_string(), username: String::new(), password: String::new() }).collect()),
+            None => Ok(STARTERS.iter().map(|(id, name, url)| Saved { id: id.to_string(), name: name.to_string(), url: url.to_string(), ..Default::default() }).collect()),
         }
     }
 
@@ -661,7 +672,7 @@ impl Library {
                 c.clone()
             }
             None => {
-                let c = Saved { id: new_record_id(), name, url: parsed.to_string(), username, password: input.password.clone().unwrap_or_default() };
+                let c = Saved { id: new_record_id(), name, url: parsed.to_string(), username, password: input.password.clone().unwrap_or_default(), ..Default::default() };
                 catalogs.push(c.clone());
                 c
             }
@@ -680,6 +691,63 @@ impl Library {
     pub fn catalog_access(&self, id: &str) -> Result<CatalogAccess> {
         Ok(CatalogAccess(self.catalog(id)?))
     }
+
+    /// Saves an Audiobookshelf server, signed in to already (`token`). With
+    /// an `id`, changes that one; a new token replaces the old.
+    pub fn save_abs_server(&self, id: Option<&str>, name: &str, base: &str, username: &str, token: Option<(String, String)>) -> Result<CatalogView> {
+        let mut catalogs = self.saved_catalogs()?;
+        let name = Some(name.trim()).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| "Audiobookshelf".into());
+        let saved = match id.and_then(|id| catalogs.iter_mut().find(|c| c.id == id)) {
+            Some(c) => {
+                let same = c.url == base && c.username == username;
+                c.name = name;
+                c.url = base.to_string();
+                c.username = username.to_string();
+                c.kind = crate::audiobookshelf::KIND.into();
+                c.password.clear();
+                match token {
+                    Some((t, r)) => (c.token, c.refresh) = (t, r),
+                    // A different server or person needs signing in again.
+                    None if !same => return Err(Error::Unsuitable("Enter the password to sign in to that server.".into())),
+                    None => {}
+                }
+                c.clone()
+            }
+            None => {
+                let (token, refresh) = token.ok_or_else(|| Error::Unsuitable("Enter the password to sign in to that server.".into()))?;
+                let c = Saved { id: new_record_id(), name, url: base.to_string(), username: username.to_string(), kind: crate::audiobookshelf::KIND.into(), token, refresh, ..Default::default() };
+                catalogs.push(c.clone());
+                c
+            }
+        };
+        self.write_catalogs(&catalogs)?;
+        Ok(CatalogView::from(&saved))
+    }
+
+    /// The Audiobookshelf servers signed in to, for keeping listening places in step.
+    pub fn abs_servers(&self) -> Result<Vec<crate::audiobookshelf::Server>> {
+        Ok(self.saved_catalogs()?.iter().filter(|c| c.kind == crate::audiobookshelf::KIND && !c.token.is_empty()).map(abs_server).collect())
+    }
+
+    /// Keeps any sign-in an Audiobookshelf server renewed meanwhile.
+    pub fn keep_abs_sign_ins(&self) -> Result<()> {
+        let mut catalogs = self.saved_catalogs()?;
+        let mut changed = false;
+        for c in catalogs.iter_mut().filter(|c| c.kind == crate::audiobookshelf::KIND) {
+            if let Some((token, refresh)) = crate::audiobookshelf::take_renewed(&c.id) {
+                (c.token, c.refresh) = (token, refresh);
+                changed = true;
+            }
+        }
+        if changed {
+            self.write_catalogs(&catalogs)?;
+        }
+        Ok(())
+    }
+}
+
+fn abs_server(c: &Saved) -> crate::audiobookshelf::Server {
+    crate::audiobookshelf::Server { id: c.id.clone(), name: c.name.clone(), base: c.url.trim_end_matches('/').to_string(), token: c.token.clone(), refresh: c.refresh.clone() }
 }
 
 /// A catalog's address and sign-in, taken out of the library for network work.
@@ -688,6 +756,9 @@ pub struct CatalogAccess(Saved);
 impl CatalogAccess {
     /// A page of the catalog: its start, when `url` is none.
     pub fn feed(&self, url: Option<&str>) -> Result<OpdsFeed> {
+        if self.0.kind == crate::audiobookshelf::KIND {
+            return abs_server(&self.0).feed(url);
+        }
         let url = url.unwrap_or(&self.0.url).to_string();
         let fetched = get(&self.0, &url)?;
         let json = fetched.mime.contains("json");
@@ -713,6 +784,9 @@ impl CatalogAccess {
 
     /// Search results, from a feed's search address.
     pub fn search(&self, template: &str, words: &str) -> Result<OpdsFeed> {
+        if self.0.kind == crate::audiobookshelf::KIND {
+            return abs_server(&self.0).search(template, words);
+        }
         let encoded: String = url::form_urlencoded::byte_serialize(words.trim().as_bytes()).collect();
         let url = template.replace("{searchTerms}", &encoded).replace("{startPage?}", "1").replace("{startIndex?}", "");
         // Any other optional fields the template has are left empty.
@@ -723,6 +797,9 @@ impl CatalogAccess {
     /// Brings a book down into `folder` (one of its own, for the import
     /// queue), and gives the file.
     pub fn download(&self, file: &OpdsFile, title: &str, folder: &Path) -> Result<PathBuf> {
+        if self.0.kind == crate::audiobookshelf::KIND {
+            return abs_server(&self.0).download(file, title, folder);
+        }
         let fetched = get(&self.0, &file.url)?;
         if fetched.mime.starts_with("text/html") {
             return Err(Error::Unsuitable("The catalog sent a web page instead of the book. It may need you to sign in on its website.".into()));
@@ -754,7 +831,7 @@ impl CatalogAccess {
 /// Brings a book down from any web address (Browse's Bible and browser),
 /// with no sign-in. Its format comes from what the site says it is.
 pub fn download_book(url: &str, title: &str, folder: &Path) -> Result<PathBuf> {
-    let anyone = Saved { id: String::new(), name: String::new(), url: url.to_string(), username: String::new(), password: String::new() };
+    let anyone = Saved { url: url.to_string(), ..Default::default() };
     CatalogAccess(anyone).download(&OpdsFile { url: url.to_string(), mime: String::new(), format: None, label: None }, title, folder)
 }
 
