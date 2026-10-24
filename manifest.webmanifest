@@ -1,0 +1,30 @@
+{
+  "name": "The Bound Vigil",
+  "short_name": "Bound Vigil",
+  "description": "Read your Bound Vigil library on your phone.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1a1c1e",
+  "theme_color": "#1a1c1e",
+  "icons": [
+    {
+      "src": "bound-vigil-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "bound-vigil-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "bound-vigil-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
