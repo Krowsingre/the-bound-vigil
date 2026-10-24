@@ -58,6 +58,11 @@ export const Header = forwardRef<
         onSubmit={(e) => {
           e.preventDefault();
           onSearchSubmit();
+          // On Discover, going somewhere leaves the box, so the suggestions close and the page shows.
+          if (address !== undefined) {
+            setTyping(false);
+            (document.getElementById("global-search") as HTMLInputElement | null)?.blur();
+          }
         }}
       >
         {searchStart ?? <Icon name="search" size={18} />}
