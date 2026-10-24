@@ -317,8 +317,9 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
           />
           <Toggle
             label="Sync book files"
-            hint="Keep a copy of your books in the cloud."
-            checked={sync.bookFiles}
+            hint={isIOS ? "Always on here: books added on this device go to the cloud, so your other devices can open them." : "Keep a copy of your books in the cloud."}
+            checked={isIOS || sync.bookFiles}
+            disabled={isIOS}
             onChange={(bookFiles) => changeSync({ bookFiles })}
           />
           <Toggle

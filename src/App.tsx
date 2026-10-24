@@ -14,7 +14,7 @@ import { Writing } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
 import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserHomeButton, BrowserRowToggle, BrowserSiteButton } from "./browse/Browser";
 import { AddressSuggestions } from "./browse/AddressSuggestions";
-import { shortAddress } from "./browse/browserPrefs";
+import { readBrowserPrefs, shortAddress } from "./browse/browserPrefs";
 import { Audiobooks } from "./audio/Audiobooks";
 import { PlayerBar } from "./audio/PlayerBar";
 import { usePlayer } from "./audio/player";
@@ -188,6 +188,11 @@ export function App() {
   );
 
   useEffect(() => api.onHardcoverNotice((message) => toast(message)), [toast]);
+
+  // Chosen in Preferences › Discover: every site's cookies and data go each time TBV starts.
+  useEffect(() => {
+    if (api.kind === "app" && readBrowserPrefs().clearOnStart) void api.browserClear().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     const load = () => api.getProfile().then(setProfile, () => setProfile({ avatarPath: null }));

@@ -56,6 +56,15 @@ pub(crate) enum Event {
     #[serde(rename_all = "camelCase")]
     #[cfg_attr(not(windows), allow(dead_code))]
     Closed { tab: String },
+    /// The page couldn't open (no connection, no such site, a bad
+    /// certificate): TBV shows its own page saying why, with Try again.
+    #[serde(rename_all = "camelCase")]
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Failed { tab: String, url: String, reason: String },
+    /// A link for another app (mail, a phone number, an app's own link):
+    /// TBV's page asks first, if chosen, then opens it with `browser_open_app`.
+    #[serde(rename_all = "camelCase")]
+    External { tab: String, url: String },
 }
 
 #[cfg_attr(mobile, allow(dead_code))]
@@ -176,8 +185,8 @@ mod view {
         set_site(tab, &start);
         let window = app.get_window("main").ok_or("TBV's window isn't open.")?;
         let data = data_dir(app)?;
-        let (pages, titles, windows, downloads) = (app.clone(), app.clone(), app.clone(), app.clone());
-        let (page_tab, title_tab, window_tab, download_tab) = (tab.to_string(), tab.to_string(), tab.to_string(), tab.to_string());
+        let (pages, titles, windows, downloads, others) = (app.clone(), app.clone(), app.clone(), app.clone(), app.clone());
+        let (page_tab, title_tab, window_tab, download_tab, other_tab) = (tab.to_string(), tab.to_string(), tab.to_string(), tab.to_string(), tab.to_string());
         let saves = downloads_dir(app)?;
         let builder = WebviewBuilder::new(label(tab), WebviewUrl::External(start))
             // Its own cookies, saved logins and storage, so clearing them leaves TBV's alone.
@@ -196,11 +205,12 @@ mod view {
                 let url = view.url().map(|u| u.to_string()).unwrap_or_default();
                 tell(&titles, Event::Page { tab: title_tab.clone(), url, title: Some(title), loading: false });
             })
-            // Mail and other links that aren't web pages go to the computer's own apps.
-            .on_navigation(|url| {
+            // Mail and other links that aren't web pages go to the computer's own
+            // apps, once TBV's page has asked (if chosen).
+            .on_navigation(move |url| {
                 let web = matches!(url.scheme(), "http" | "https" | "about" | "blob" | "data");
-                if !web {
-                    let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
+                if !web && super::app_link(url.as_str()) {
+                    tell(&others, Event::External { tab: other_tab.clone(), url: url.to_string() });
                 }
                 web
             })
@@ -263,6 +273,12 @@ mod view {
                     }
                     Download::Finished { url, path, success } => {
                         let kept = SAVING.lock().ok().and_then(|mut s| s.as_mut().and_then(|s| s.remove(url.as_str())));
+                        // One that failed can be tried again straight away.
+                        if !success {
+                            if let Ok(mut recent) = RECENT.lock() {
+                                recent.get_or_insert_with(HashMap::new).remove(url.as_str());
+                            }
+                        }
                         if let Some((id, saved, tab)) = kept {
                             let path = path.unwrap_or(saved);
                             let cancelled = CANCELLED.lock().ok().is_some_and(|mut c| c.as_mut().is_some_and(|c| c.remove(&id)));
@@ -395,6 +411,43 @@ mod view {
         let _ = (app, url, tab);
         Ok(())
     }
+
+    /// How large the tab's page is drawn: 1 is the site's own size.
+    pub fn zoom(app: &tauri::AppHandle, tab: &str, zoom: f64) -> CommandResult<()> {
+        let view = app.get_webview(&label(tab)).ok_or("That tab isn't open.")?;
+        view.set_zoom(zoom).map_err(|e| e.to_string())
+    }
+
+    /// Computers are always given a site's desktop version.
+    pub fn desktop_sites(_app: &tauri::AppHandle, _hosts: Vec<String>) -> CommandResult<()> {
+        Ok(())
+    }
+
+    /// Clears one site's cookies and storage. Every tab shares the one store,
+    /// so any open tab can do it.
+    pub fn clear_site(app: &tauri::AppHandle, host: &str) -> CommandResult<()> {
+        let open = tabs(app);
+        let Some(view) = open.first() else { return Ok(()) };
+        #[cfg(windows)]
+        super::windows::clear_site(view, host.to_string());
+        #[cfg(not(windows))]
+        let _ = (view, host);
+        Ok(())
+    }
+
+    pub fn share(app: &tauri::AppHandle, url: &str, title: &str, _anchor: Option<Frame>) -> CommandResult<()> {
+        #[cfg(windows)]
+        return super::windows::share(app, url.to_string(), title.to_string());
+        #[cfg(not(windows))]
+        {
+            let _ = (app, url, title);
+            Err("Sharing isn't available on this computer. Copy the link instead.".into())
+        }
+    }
+
+    pub fn open_app(_app: &tauri::AppHandle, url: &str) -> CommandResult<()> {
+        tauri_plugin_opener::open_url(url, None::<&str>).map_err(|_| "No app on this computer opens that link.".to_string())
+    }
 }
 
 /// The parts that need Windows' own web view (WebView2): tracking prevention,
@@ -406,8 +459,11 @@ mod windows {
     use std::collections::HashMap;
 
     use webview2_com::Microsoft::Web::WebView2::Win32::*;
-    use webview2_com::{take_pwstr, DownloadStartingEventHandler, WebResourceRequestedEventHandler, WindowCloseRequestedEventHandler};
-    use windows_core::{Interface, HSTRING, PWSTR};
+    use webview2_com::{
+        take_pwstr, CallDevToolsProtocolMethodCompletedHandler, DownloadStartingEventHandler, NavigationCompletedEventHandler, WebResourceRequestedEventHandler,
+        WindowCloseRequestedEventHandler,
+    };
+    use windows_core::{Interface, BOOL, HSTRING, PWSTR};
 
     use super::{tell, view, Event};
     use crate::protection::Level;
@@ -456,6 +512,31 @@ mod windows {
         }
         let _ = set_tracking(&core, view::protection().level);
         let mut token = 0i64;
+        let (failed_app, failing) = (app.clone(), tab.clone());
+        // A page that couldn't open: TBV says why on a page of its own.
+        core.add_NavigationCompleted(
+            &NavigationCompletedEventHandler::create(Box::new(move |sender, args| {
+                let Some(args) = args else { return Ok(()) };
+                let mut ok = BOOL::default();
+                args.IsSuccess(&mut ok)?;
+                if ok.as_bool() {
+                    return Ok(());
+                }
+                let mut status = COREWEBVIEW2_WEB_ERROR_STATUS::default();
+                args.WebErrorStatus(&mut status)?;
+                let Some(reason) = failure(status) else { return Ok(()) };
+                let url = sender
+                    .and_then(|core| {
+                        let mut uri = PWSTR::null();
+                        core.Source(&mut uri).ok()?;
+                        Some(take_pwstr(uri))
+                    })
+                    .unwrap_or_default();
+                tell(&failed_app, Event::Failed { tab: failing.clone(), url, reason: reason.into() });
+                Ok(())
+            })),
+            &mut token,
+        )?;
         let closing = tab.clone();
         core.add_WindowCloseRequested(
             &WindowCloseRequestedEventHandler::create(Box::new(move |_, _| {
@@ -496,6 +577,89 @@ mod windows {
             )?;
         }
         Ok(())
+    }
+
+    /// Why a page couldn't open, for TBV's page; None for what isn't a real
+    /// failure (stopped, or a link that became a download).
+    fn failure(status: COREWEBVIEW2_WEB_ERROR_STATUS) -> Option<&'static str> {
+        Some(match status {
+            COREWEBVIEW2_WEB_ERROR_STATUS_DISCONNECTED => "You're not connected to the internet.",
+            COREWEBVIEW2_WEB_ERROR_STATUS_HOST_NAME_NOT_RESOLVED => "TBV couldn't find this site. Check the address, or your internet connection.",
+            COREWEBVIEW2_WEB_ERROR_STATUS_TIMEOUT => "The site took too long to answer.",
+            COREWEBVIEW2_WEB_ERROR_STATUS_CANNOT_CONNECT | COREWEBVIEW2_WEB_ERROR_STATUS_SERVER_UNREACHABLE | COREWEBVIEW2_WEB_ERROR_STATUS_CONNECTION_RESET => {
+                "TBV couldn't reach this site. It may be down, or your connection may have dropped."
+            }
+            COREWEBVIEW2_WEB_ERROR_STATUS_CERTIFICATE_EXPIRED | COREWEBVIEW2_WEB_ERROR_STATUS_CERTIFICATE_IS_INVALID | COREWEBVIEW2_WEB_ERROR_STATUS_CERTIFICATE_REVOKED => {
+                "This site's security certificate isn't valid, so TBV didn't open it. Someone could be pretending to be the site."
+            }
+            COREWEBVIEW2_WEB_ERROR_STATUS_REDIRECT_FAILED => "The site kept sending TBV somewhere else, so it stopped.",
+            _ => return None,
+        })
+    }
+
+    /// Clears one site's cookies and storage, at its secure and plain addresses.
+    pub fn clear_site(view: &tauri::Webview, host: String) {
+        let _ = view.with_webview(move |platform| unsafe {
+            let Ok(core) = platform.controller().CoreWebView2() else { return };
+            let bare = host.strip_prefix("www.").unwrap_or(&host).to_string();
+            let mut hosts = vec![host.clone()];
+            if bare != host {
+                hosts.push(bare.clone());
+            } else {
+                hosts.push(format!("www.{host}"));
+            }
+            for host in hosts {
+                for scheme in ["https", "http"] {
+                    let params = serde_json::json!({ "origin": format!("{scheme}://{host}"), "storageTypes": "all" }).to_string();
+                    let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
+                    let _ = core.CallDevToolsProtocolMethod(windows_core::w!("Storage.clearDataForOrigin"), &HSTRING::from(params), &done);
+                }
+            }
+        });
+    }
+
+    thread_local! {
+        /// What the last Share asked for, taken away before the next one.
+        static SHARING: std::cell::Cell<Option<i64>> = const { std::cell::Cell::new(None) };
+    }
+
+    /// Windows' own Share panel, for the page in front.
+    pub fn share(app: &tauri::AppHandle, url: String, title: String) -> crate::CommandResult<()> {
+        use tauri::Manager;
+        let window = app.get_window("main").ok_or("TBV's window isn't open.")?;
+        let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
+        let (send, receive) = std::sync::mpsc::channel();
+        app.run_on_main_thread(move || {
+            let _ = send.send(unsafe { show_share(hwnd, url, title) }.map_err(|e| e.message()));
+        })
+        .map_err(|e| e.to_string())?;
+        receive
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .map_err(|_| "Windows didn't open its Share panel.".to_string())?
+            .map_err(|_| "Windows couldn't open its Share panel. Copy the link instead.".to_string())
+    }
+
+    unsafe fn show_share(hwnd: isize, url: String, title: String) -> windows_core::Result<()> {
+        use windows::ApplicationModel::DataTransfer::{DataRequestedEventArgs, DataTransferManager};
+        use windows::Foundation::{TypedEventHandler, Uri};
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::Shell::IDataTransferManagerInterop;
+        let hwnd = HWND(hwnd as _);
+        let interop = windows_core::factory::<DataTransferManager, IDataTransferManagerInterop>()?;
+        let manager: DataTransferManager = interop.GetForWindow(hwnd)?;
+        if let Some(token) = SHARING.with(|s| s.take()) {
+            let _ = manager.RemoveDataRequested(token);
+        }
+        let token = manager.DataRequested(&TypedEventHandler::<DataTransferManager, DataRequestedEventArgs>::new(move |_, args| {
+            if let Some(args) = args.as_ref() {
+                let data = args.Request()?.Data()?;
+                data.Properties()?.SetTitle(&HSTRING::from(title.as_str()))?;
+                data.SetWebLink(&Uri::CreateUri(&HSTRING::from(url.as_str()))?)?;
+            }
+            Ok(())
+        }))?;
+        SHARING.with(|s| s.set(Some(token)));
+        interop.ShowShareUIForWindow(hwnd)
     }
 
     /// A sign-in pop-up: it closes itself when the site is done with it.
@@ -585,6 +749,33 @@ mod view {
     pub fn cancel(_app: &tauri::AppHandle, id: &str) -> CommandResult<()> {
         ask(serde_json::json!({ "action": "cancel", "id": id })).map(|_| ())
     }
+
+    pub fn zoom(_app: &tauri::AppHandle, tab: &str, zoom: f64) -> CommandResult<()> {
+        ask(serde_json::json!({ "action": "zoom", "tab": tab, "zoom": zoom })).map(|_| ())
+    }
+
+    /// The sites shown as on a computer, not their phone version.
+    pub fn desktop_sites(_app: &tauri::AppHandle, hosts: Vec<String>) -> CommandResult<()> {
+        ask(serde_json::json!({ "action": "desktopSites", "text": hosts.join("\n") })).map(|_| ())
+    }
+
+    pub fn clear_site(_app: &tauri::AppHandle, host: &str) -> CommandResult<()> {
+        ask(serde_json::json!({ "action": "clearSite", "text": host })).map(|_| ())
+    }
+
+    pub fn share(_app: &tauri::AppHandle, url: &str, title: &str, anchor: Option<Frame>) -> CommandResult<()> {
+        ask(serde_json::json!({ "action": "share", "url": url, "text": title, "frame": anchor.map(frame_of) })).map(|_| ())
+    }
+
+    pub fn open_app(_app: &tauri::AppHandle, url: &str) -> CommandResult<()> {
+        ask(serde_json::json!({ "action": "openApp", "url": url })).map(|_| ())
+    }
+}
+
+/// A link for another app that TBV may open: never the computer's own files or a page's script.
+fn app_link(url: &str) -> bool {
+    let scheme = url.split(':').next().unwrap_or_default().to_ascii_lowercase();
+    !scheme.is_empty() && !matches!(scheme.as_str(), "http" | "https" | "about" | "blob" | "data" | "file" | "javascript" | "vbscript" | "tauri" | "ipc" | "asset")
 }
 
 /// On iPhone and iPad: hears what Apple's web views did and passes it on to
@@ -664,6 +855,55 @@ pub async fn browser_cancel_download(app: tauri::AppHandle, id: String) -> Comma
     view::cancel(&app, &id)
 }
 
+/// How large the tab's page is drawn, from 0.3 to 3 (1 is the site's own size).
+#[tauri::command]
+pub async fn browser_zoom(app: tauri::AppHandle, tab: String, zoom: f64) -> CommandResult<()> {
+    let tab = tab_name(&tab)?;
+    if !zoom.is_finite() {
+        return Err("That isn't a size.".into());
+    }
+    view::zoom(&app, &tab, zoom.clamp(0.3, 3.0))
+}
+
+/// iPhone and iPad: the sites given their computer version (Request desktop site).
+#[tauri::command]
+pub async fn browser_desktop_sites(app: tauri::AppHandle, hosts: Vec<String>) -> CommandResult<()> {
+    view::desktop_sites(&app, hosts.into_iter().filter(|h| site_name(h).is_ok()).collect())
+}
+
+/// A site's name from TBV's page, such as "www.example.com".
+fn site_name(host: &str) -> CommandResult<String> {
+    let host = host.trim().to_ascii_lowercase();
+    if host.is_empty() || host.len() > 253 || !host.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']')) {
+        return Err("That isn't a site's name.".into());
+    }
+    Ok(host)
+}
+
+/// Clears one site's cookies and stored data (signing it out); other sites keep theirs.
+#[tauri::command]
+pub async fn browser_clear_site(app: tauri::AppHandle, site: String) -> CommandResult<()> {
+    let site = site_name(&site)?;
+    view::clear_site(&app, &site)
+}
+
+/// The system's Share panel for a page. `anchor` is the button it opens from (for iPad).
+#[tauri::command]
+pub async fn browser_share(app: tauri::AppHandle, url: String, title: String, anchor: Option<Frame>) -> CommandResult<()> {
+    let url = web_url(&url)?;
+    view::share(&app, url.as_str(), title.trim(), anchor)
+}
+
+/// Opens a link for another app (mail, a phone number), told by `External`.
+#[tauri::command]
+pub async fn browser_open_app(app: tauri::AppHandle, url: String) -> CommandResult<()> {
+    let url = url.trim();
+    if !app_link(url) || tauri::Url::parse(url).is_err() {
+        return Err("TBV doesn't open that kind of link.".into());
+    }
+    view::open_app(&app, url)
+}
+
 /// A picture from a web page, for an article saved from reader mode. At most 10 MB.
 #[tauri::command]
 pub async fn browser_fetch_picture(url: String) -> CommandResult<tauri::ipc::Response> {
@@ -688,23 +928,27 @@ fn in_downloads(app: &tauri::AppHandle, path: &str) -> CommandResult<PathBuf> {
     Ok(real)
 }
 
-/// Adds a file the browser brought down to the library, through the import queue.
+/// Adds a file the browser brought down to the library, through the import
+/// queue, and answers the id the book will have.
 #[tauri::command]
 pub async fn browser_add_download(
     app: tauri::AppHandle,
     state: State<'_, AppLibrary>,
     imports: State<'_, Arc<imports::Imports>>,
     path: String,
-) -> CommandResult<()> {
+) -> CommandResult<String> {
     let path = in_downloads(&app, &path)?;
     let folder = path.parent().map(Path::to_path_buf).ok_or("That download is gone.")?;
     let (library, imports) = (state.0.clone(), imports.inner().clone());
     tauri::async_runtime::spawn_blocking(move || {
+        // The id the book will have, so Read now can open it once it's in.
+        let id = tbv_core::ids::book_id_for_file(&path).map_err(|e| e.to_string())?;
         let holding = Arc::new(TempFolder::adopt(folder));
         imports.add_holding(&app, &library, vec![path], Some(holding));
+        Ok(id)
     })
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?
 }
 
 /// Moves a download to the computer's Downloads folder; answers where it went.

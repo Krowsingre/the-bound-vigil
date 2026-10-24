@@ -262,7 +262,19 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "browser",
     section: "sitedata",
     label: "Discover site data",
-    words: "discover browser cookies site data clear logins signed in privacy",
+    words: "discover browser cookies site data clear logins signed in privacy start starting each time",
+  },
+  {
+    tab: "browser",
+    section: "sites",
+    label: "Discover sites with their own settings",
+    words: "discover browser site sites settings zoom size text larger smaller desktop version mobile reset per-site",
+  },
+  {
+    tab: "browser",
+    section: "apps",
+    label: "Discover links for other apps",
+    words: "discover browser other apps mail email phone call links open ask before external",
   },
   {
     tab: "sync",

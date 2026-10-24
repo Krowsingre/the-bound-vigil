@@ -1,4 +1,4 @@
-import { closeTab, freshTabs, moveTab, openTab, readTabs, updateTab, writeTabs, type TabsState } from "./browserTabs";
+import { closeOtherTabs, closeTab, duplicateTab, freshTabs, moveTab, openTab, readClosedTabs, readTabs, rememberClosed, reopenTab, takeClosed, updateTab, writeTabs, type TabsState } from "./browserTabs";
 
 const HOME = "https://www.gutenberg.org/";
 
@@ -60,4 +60,32 @@ describe("moving tabs", () => {
     expect(moveTab(three, "a", "c").active).toBe("b");
     expect(moveTab(three, "a", "a")).toBe(three);
   });
+});
+
+test("a duplicate opens beside its tab, and close others keeps one", () => {
+  const state: TabsState = { tabs: [{ id: "a", url: "https://a.org/", title: "A" }, { id: "b", url: "https://b.org/", title: "B" }], active: "b" };
+  const copied = duplicateTab(state, "a");
+  expect(copied.tabs.map((t) => t.url)).toEqual(["https://a.org/", "https://a.org/", "https://b.org/"]);
+  expect(copied.active).toBe(copied.tabs[1].id);
+  expect(closeOtherTabs(copied, "b")).toEqual({ tabs: [state.tabs[1]], active: "b" });
+});
+
+test("closed tabs reopen where they were, newest first, start pages left out", () => {
+  const state: TabsState = {
+    tabs: [
+      { id: "a", url: "https://a.org/", title: "A" },
+      { id: "s", url: "tbv:start", title: null },
+      { id: "c", url: "https://c.org/", title: "C" },
+    ],
+    active: "a",
+  };
+  rememberClosed(state, ["a"], 1);
+  rememberClosed(state, ["s", "c"], 2);
+  expect(readClosedTabs().map((t) => t.url)).toEqual(["https://c.org/", "https://a.org/"]);
+  const back = takeClosed()!;
+  expect(back.url).toBe("https://c.org/");
+  const reopened = reopenTab({ tabs: [state.tabs[0]], active: "a" }, back);
+  expect(reopened.tabs.map((t) => t.url)).toEqual(["https://a.org/", "https://c.org/"]);
+  expect(reopened.active).toBe(reopened.tabs[1].id);
+  expect(readClosedTabs()).toHaveLength(1);
 });

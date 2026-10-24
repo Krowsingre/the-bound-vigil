@@ -11,6 +11,8 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon, type IconName } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { useToast } from "../components/Toast";
+import type { ClosedTab } from "./browserTabs";
+import { ClosedList } from "./ClosedList";
 import { clearHistory, onHistory, readHistory, removeFromHistory } from "./browserHistory";
 import { readBrowserPrefs, siteOf } from "./browserPrefs";
 import { QuickLinksEditor, freePainting } from "./QuickLinksEditor";
@@ -72,6 +74,8 @@ export function StartPage({
   onPanel,
   onSearch,
   onScrolled,
+  closed,
+  onReopen,
 }: {
   onGo: (url: string) => void;
   onNewTab: (url: string) => void;
@@ -80,12 +84,16 @@ export function StartPage({
   onSearch: () => void;
   /** How far down it's scrolled, for hiding Discover's bar. */
   onScrolled?: (y: number, room: number) => void;
+  /** Tabs closed lately, for the Recently closed fold-out. */
+  closed: ClosedTab[];
+  onReopen: (index: number) => void;
 }) {
   const toast = useToast();
   const [links, setLinks] = useState<QuickLink[]>([]);
   const [editing, setEditing] = useState(false);
   const [recent, setRecent] = useState(recentSites);
   const [clearing, setClearing] = useState(false);
+  const [showClosed, setShowClosed] = useState(false);
   const [prefs] = useState(readBrowserPrefs);
   const showRecent = prefs.showRecent && prefs.historyOn;
 
@@ -199,6 +207,21 @@ export function StartPage({
                   </li>
                 ))}
               </ul>
+            </section>
+          </>
+        )}
+
+        {closed.length > 0 && (
+          <>
+            <span className="start-rule start-rule-wide" aria-hidden />
+            <section className="start-section" aria-labelledby="start-closed">
+              <header>
+                <h2 id="start-closed">Recently closed tabs</h2>
+                <button type="button" className="start-more" aria-expanded={showClosed} onClick={() => setShowClosed(!showClosed)}>
+                  {showClosed ? "Hide" : `Show ${closed.length}`} <Icon name={showClosed ? "chevronUp" : "chevronDown"} size={16} />
+                </button>
+              </header>
+              {showClosed && <ClosedList closed={closed} onReopen={onReopen} />}
             </section>
           </>
         )}

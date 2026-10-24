@@ -60,7 +60,24 @@ export interface BrowserPrefs {
   hideBar: boolean;
   /** The address box suggests from History, bookmarks, Quick Links and open tabs. */
   suggest: boolean;
+  /** Each site's own choices from its Site information sheet, by site (as `siteOf` names it). */
+  sites: Record<string, SiteSettings>;
+  /** Links for other apps (mail, a phone number) ask before they open. */
+  askApps: boolean;
+  /** Every site's cookies and data are cleared each time TBV starts. */
+  clearOnStart: boolean;
 }
+
+/** A site's own choices. Left out, it's as everywhere else. */
+export interface SiteSettings {
+  /** How large its pages are drawn; 1 is the site's own size. */
+  zoom?: number;
+  /** iPhone and iPad: its computer version, not its phone one. */
+  desktop?: boolean;
+}
+
+/** The sizes Zoom steps through. */
+export const ZOOMS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5];
 
 /** What a tab showing TBV's start page has for its address. */
 export const START_PAGE = "tbv:start";
@@ -102,7 +119,24 @@ export function readBrowserPrefs(): BrowserPrefs {
     showRecent: saved.showRecent !== false,
     hideBar: saved.hideBar !== false,
     suggest: saved.suggest !== false,
+    sites: readSites(saved.sites),
+    askApps: saved.askApps !== false,
+    clearOnStart: saved.clearOnStart === true,
   };
+}
+
+function readSites(saved: unknown): Record<string, SiteSettings> {
+  if (!saved || typeof saved !== "object") return {};
+  const sites: Record<string, SiteSettings> = {};
+  for (const [site, value] of Object.entries(saved as Record<string, unknown>)) {
+    if (!value || typeof value !== "object") continue;
+    const v = value as SiteSettings;
+    const kept: SiteSettings = {};
+    if (typeof v.zoom === "number" && v.zoom >= 0.3 && v.zoom <= 3 && v.zoom !== 1) kept.zoom = v.zoom;
+    if (v.desktop === true) kept.desktop = true;
+    if (Object.keys(kept).length) sites[site] = kept;
+  }
+  return sites;
 }
 
 export function writeBrowserPrefs(change: Partial<BrowserPrefs>): BrowserPrefs {
@@ -167,3 +201,36 @@ export function lowerFor(site: string, lowered: boolean): BrowserPrefs {
   const list = readBrowserPrefs().lowered.filter((h) => h !== site);
   return writeBrowserPrefs({ lowered: lowered ? [...list, site] : list });
 }
+
+/** A site's own choices, or none. */
+export function siteSettings(site: string | null, prefs: BrowserPrefs = readBrowserPrefs()): SiteSettings {
+  return (site && prefs.sites[site]) || {};
+}
+
+/** Changes a site's own choices; one back to how it is everywhere else is forgotten. */
+export function setSiteSettings(site: string, change: Partial<SiteSettings>): BrowserPrefs {
+  const prefs = readBrowserPrefs();
+  const next = { ...prefs.sites, [site]: { ...prefs.sites[site], ...change } };
+  return writeBrowserPrefs({ sites: readSites(next) });
+}
+
+/** Every site with a choice of its own (protection, zoom or desktop version), A to Z. */
+export function sitesWithSettings(prefs: BrowserPrefs = readBrowserPrefs()): string[] {
+  return [...new Set([...prefs.lowered, ...Object.keys(prefs.sites)])].sort();
+}
+
+/** Puts a site back as everywhere else. */
+export function resetSite(site: string): BrowserPrefs {
+  const prefs = readBrowserPrefs();
+  const sites = { ...prefs.sites };
+  delete sites[site];
+  return writeBrowserPrefs({ sites, lowered: prefs.lowered.filter((h) => h !== site) });
+}
+
+/** The hosts given their desktop version, as Apple's web view names them (with and without "www."). */
+export function desktopHosts(prefs: BrowserPrefs = readBrowserPrefs()): string[] {
+  return Object.entries(prefs.sites).flatMap(([site, s]) => (s.desktop ? [site, `www.${site}`] : []));
+}
+
+/** A zoom as people read it: "125%". */
+export const zoomLabel = (zoom: number) => `${Math.round(zoom * 100)}%`;

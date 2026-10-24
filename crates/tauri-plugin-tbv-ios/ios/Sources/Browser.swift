@@ -27,6 +27,7 @@ class BrowserArgs: Decodable {
   let backwards: Bool?
   let script: String?
   let id: String?
+  let zoom: Double?
 }
 
 /// Discover's browser on iPhone and iPad: a tab is one of Apple's web views,
@@ -53,6 +54,8 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
   private var recent = [String: Date]()
   /// The protection level's rules, once compiled.
   private var rules: WKContentRuleList?
+  /// Sites shown as on a computer (Request desktop site), by host.
+  private var desktopHosts = Set<String>()
   /// TBV's own web view. The browser sits beside it, in the same view, so
   /// the two share their top-left corner.
   weak var tbv: WKWebView?
@@ -178,6 +181,50 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
           invoke.resolve(["ok": true])
         }
         return
+      case "desktopSites":
+        self.desktopHosts = Set((args.text ?? "").split(separator: "\n").map { String($0).lowercased() })
+        invoke.resolve(["ok": true])
+        return
+      case "clearSite":
+        // One site's cookies and storage: the records WebKit keeps under its name.
+        let host = (args.text ?? "").lowercased()
+        let store = WKWebsiteDataStore.default()
+        let types = WKWebsiteDataStore.allWebsiteDataTypes()
+        store.fetchDataRecords(ofTypes: types) { records in
+          let theirs = records.filter { record in
+            let name = record.displayName.lowercased()
+            return !host.isEmpty && (host == name || host.hasSuffix("." + name) || name.hasSuffix("." + host))
+          }
+          store.removeData(ofTypes: types, for: theirs) { invoke.resolve(["ok": true]) }
+        }
+        return
+      case "openApp":
+        if let address = args.url.flatMap({ URL(string: $0) }) {
+          UIApplication.shared.open(address) { opened in
+            if opened { invoke.resolve(["ok": true]) } else { invoke.reject("No app on this device opens that link.") }
+          }
+        } else {
+          invoke.reject("That isn't a link TBV can open.")
+        }
+        return
+      case "share":
+        guard let address = args.url.flatMap({ URL(string: $0) }), let shown = self.shownController else {
+          invoke.reject("TBV couldn't open the Share sheet.")
+          return
+        }
+        let sheet = UIActivityViewController(activityItems: [address], applicationActivities: nil)
+        // On iPad the sheet points at the button it came from.
+        if let popover = sheet.popoverPresentationController, let tbv = self.tbv {
+          popover.sourceView = tbv
+          if let f = args.frame {
+            popover.sourceRect = CGRect(x: f.x, y: f.y, width: max(f.width, 1), height: max(f.height, 1))
+          } else {
+            popover.sourceRect = CGRect(x: tbv.bounds.midX, y: tbv.bounds.minY + 60, width: 1, height: 1)
+          }
+        }
+        shown.present(sheet, animated: true)
+        invoke.resolve(["ok": true])
+        return
       case "cancel":
         if let id = args.id, let download = self.downloads.removeValue(forKey: id) {
           if #available(iOS 14.5, *), let download = download as? WKDownload {
@@ -218,6 +265,8 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
           view.reload()
         case "stop":
           view.stopLoading()
+        case "zoom":
+          if #available(iOS 14.0, *) { view.pageZoom = CGFloat(args.zoom ?? 1) }
         case "find":
           let text = (try? JSONEncoder().encode(args.text ?? "")).flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
           view.evaluateJavaScript("window.find(\(text), false, \(args.backwards ?? false), true)") { _, _ in }
@@ -262,6 +311,36 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
 
   func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
     tellPage(webView, loading: false)
+    // A page that couldn't open: TBV says why on a page of its own. Not for a
+    // load that was stopped, or one that became a download.
+    let failed = error as NSError
+    if failed.domain == NSURLErrorDomain && failed.code == NSURLErrorCancelled { return }
+    if failed.domain == "WebKitErrorDomain" && (failed.code == 102 || failed.code == 204) { return }
+    guard let tab = nameOf(webView) else { return }
+    let url = (failed.userInfo[NSURLErrorFailingURLStringErrorKey] as? String) ?? webView.url?.absoluteString ?? ""
+    tell(["kind": "failed", "tab": tab, "url": url, "reason": reason(failed)])
+  }
+
+  /// Why a page couldn't open, in plain words.
+  private func reason(_ error: NSError) -> String {
+    guard error.domain == NSURLErrorDomain else { return error.localizedDescription }
+    switch error.code {
+    case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost, NSURLErrorDataNotAllowed:
+      return "You're not connected to the internet."
+    case NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed:
+      return "TBV couldn't find this site. Check the address, or your internet connection."
+    case NSURLErrorTimedOut:
+      return "The site took too long to answer."
+    case NSURLErrorCannotConnectToHost:
+      return "TBV couldn't reach this site. It may be down, or your connection may have dropped."
+    case NSURLErrorServerCertificateUntrusted, NSURLErrorServerCertificateHasBadDate, NSURLErrorServerCertificateNotYetValid,
+      NSURLErrorServerCertificateHasUnknownRoot, NSURLErrorSecureConnectionFailed:
+      return "This site's security certificate isn't valid, so TBV didn't open it. Someone could be pretending to be the site."
+    case NSURLErrorHTTPTooManyRedirects:
+      return "The site kept sending TBV somewhere else, so it stopped."
+    default:
+      return error.localizedDescription
+    }
   }
 
   /// A link or pop-up that opens a new window opens as a new tab, still joined
@@ -341,22 +420,29 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     return false
   }
 
-  /// Mail and other links that aren't web pages go to the phone's own apps.
+  /// Mail and other links that aren't web pages go to the phone's own apps,
+  /// once TBV's page has asked (if chosen). Sites chosen for their desktop
+  /// version are asked for it.
   func webView(
-    _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
-    decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, preferences: WKWebpagePreferences,
+    decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void
   ) {
     let scheme = navigationAction.request.url?.scheme?.lowercased() ?? ""
     if !["http", "https", "about", "blob", "data"].contains(scheme), let url = navigationAction.request.url {
-      UIApplication.shared.open(url)
-      decisionHandler(.cancel)
+      if !["file", "javascript"].contains(scheme) {
+        tell(["kind": "external", "tab": nameOf(webView) ?? "", "url": url.absoluteString])
+      }
+      decisionHandler(.cancel, preferences)
       return
     }
     if #available(iOS 14.5, *), navigationAction.shouldPerformDownload {
-      decisionHandler(again(navigationAction.request.url) ? .cancel : .download)
+      decisionHandler(again(navigationAction.request.url) ? .cancel : .download, preferences)
       return
     }
-    decisionHandler(.allow)
+    if navigationAction.targetFrame?.isMainFrame ?? true, let host = navigationAction.request.url?.host?.lowercased() {
+      preferences.preferredContentMode = desktopHosts.contains(host) ? .desktop : .recommended
+    }
+    decisionHandler(.allow, preferences)
   }
 
   /// A file the web view can't show, or one sent as a download, is brought down.
