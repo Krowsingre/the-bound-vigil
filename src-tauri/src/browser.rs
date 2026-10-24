@@ -15,6 +15,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, EventTarget, Manager, State};
 use tbv_core::bookmarks::Bookmark;
+use tbv_core::quick_links::QuickLink;
 use tbv_core::servers::TempFolder;
 
 use crate::protection::Protection;
@@ -779,4 +780,38 @@ pub async fn rename_bookmark(state: State<'_, AppLibrary>, id: String, title: St
 #[tauri::command]
 pub async fn remove_bookmark(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
     with_library(state, move |library| library.remove_bookmark(&id)).await
+}
+
+#[tauri::command]
+pub async fn quick_links(state: State<'_, AppLibrary>) -> CommandResult<Vec<QuickLink>> {
+    with_library(state, |library| library.quick_links()).await
+}
+
+#[tauri::command]
+pub async fn add_quick_link(state: State<'_, AppLibrary>, title: String, url: String, picture: String) -> CommandResult<QuickLink> {
+    with_library(state, move |library| library.add_quick_link(&title, &url, &picture)).await
+}
+
+#[tauri::command]
+pub async fn update_quick_link(state: State<'_, AppLibrary>, id: String, title: String, url: String, picture: String) -> CommandResult<()> {
+    with_library(state, move |library| library.update_quick_link(&id, &title, &url, &picture)).await
+}
+
+#[tauri::command]
+pub async fn remove_quick_link(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.remove_quick_link(&id)).await
+}
+
+#[tauri::command]
+pub async fn move_quick_link(state: State<'_, AppLibrary>, id: String, to: usize) -> CommandResult<()> {
+    with_library(state, move |library| library.move_quick_link(&id, to)).await
+}
+
+/// A website's own small icon, as a data address, for the start page.
+#[tauri::command]
+pub async fn site_icon(url: String) -> CommandResult<String> {
+    let url = web_url(&url)?.to_string();
+    tauri::async_runtime::spawn_blocking(move || tbv_core::site_icon::site_icon(&url).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
 }

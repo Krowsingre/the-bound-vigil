@@ -102,6 +102,11 @@ const paths = {
   listNumber: "M10 6h10M10 12h10M10 18h10M4 4.5h1.5V8M3.5 14.5c.3-.8 2.5-1 2.5.3 0 .9-2.5 2-2.5 3.2H6",
   undo: "M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3",
   redo: "M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3",
+  lock: "M6.5 10.5h11a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-8.5a1 1 0 0 1 1-1zM8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3",
+  external: "M13.5 4.5H19.5V10.5M19.5 4.5 11 13M17.5 13.5v5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1h5",
+  moreVertical: "M12 5h.01M12 12h.01M12 19h.01",
+  arrowUp: "M12 19V5M6 11l6-6 6 6",
+  paste: "M9 4.5h6v2.5H9zM15 5.5h2.5a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V6.5a1 1 0 0 1 1-1H9",
 } as const;
 
 export type IconName = keyof typeof paths;
@@ -128,7 +133,7 @@ export function Icon({
       viewBox="0 0 24 24"
       fill={filled ? "currentColor" : "none"}
       stroke="currentColor"
-      strokeWidth={name === "more" ? 2.6 : 1.6}
+      strokeWidth={name === "more" || name === "moreVertical" ? 2.6 : 1.6}
       strokeLinecap="round"
       strokeLinejoin="round"
       role={label ? "img" : undefined}

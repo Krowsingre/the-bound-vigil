@@ -51,6 +51,12 @@ export function BrowserTab() {
   return (
     <>
       <Section id="search" title="Searching" lede="Words typed into Discover's address box that aren't a web address are searched for.">
+        <Toggle
+          label="Suggest from history and bookmarks while typing"
+          hint="Also your Quick Links and open tabs. Everything comes from this device, so nothing you type is sent anywhere."
+          checked={prefs.suggest}
+          onChange={(suggest) => writeBrowserPrefs({ suggest })}
+        />
         <Row label="Search engine">
           <Select<SearchEngine>
             label="Search engine"
@@ -63,29 +69,51 @@ export function BrowserTab() {
           />
         </Row>
       </Section>
-      <Section id="home" title="Home page" lede="Where Discover starts, and where its home button goes.">
-        <label className="field">
-          <span>Home page</span>
-          <input
-            type="url"
-            spellCheck={false}
-            value={home}
-            aria-label="Home page"
-            onChange={(e) => setHome(e.target.value)}
-            onBlur={saveHome}
-            onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+      <Section id="home" title="Home page" lede="Where new tabs start, and where Discover's home button goes.">
+        <Row label="Start with">
+          <Select<"start" | "site">
+            label="Start with"
+            value={prefs.startPage ? "start" : "site"}
+            options={[
+              { value: "start", label: "Discover start page" },
+              { value: "site", label: "A website" },
+            ]}
+            onChange={(v) => writeBrowserPrefs({ startPage: v === "start" })}
           />
-        </label>
-        <div className="connection-actions">
-          <button
-            type="button"
-            className="btn btn-quiet"
-            disabled={prefs.home === DEFAULT_HOME}
-            onClick={() => (writeBrowserPrefs({ home: DEFAULT_HOME }), toast("Your home page is Project Gutenberg again."))}
-          >
-            Use Project Gutenberg
-          </button>
-        </div>
+        </Row>
+        <Toggle
+          label="Show Recent Sites on the start page"
+          hint={prefs.historyOn ? "The sites you visited last, from History." : "History is off, so there are none to show."}
+          checked={prefs.showRecent}
+          disabled={!prefs.startPage}
+          onChange={(showRecent) => writeBrowserPrefs({ showRecent })}
+        />
+        {!prefs.startPage && (
+          <label className="field">
+            <span>Home page</span>
+            <input
+              type="url"
+              spellCheck={false}
+              value={home}
+              aria-label="Home page"
+              onChange={(e) => setHome(e.target.value)}
+              onBlur={saveHome}
+              onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+            />
+          </label>
+        )}
+        {!prefs.startPage && (
+          <div className="connection-actions">
+            <button
+              type="button"
+              className="btn btn-quiet"
+              disabled={prefs.home === DEFAULT_HOME}
+              onClick={() => (writeBrowserPrefs({ home: DEFAULT_HOME }), toast("Your home page is Project Gutenberg again."))}
+            >
+              Use Project Gutenberg
+            </button>
+          </div>
+        )}
         <Row label="Coming back to Discover" hint="Starting at the home page closes your other tabs.">
           <Select<ComeBack>
             label="Coming back to Discover"
@@ -94,6 +122,14 @@ export function BrowserTab() {
             onChange={(comeBack) => writeBrowserPrefs({ comeBack })}
           />
         </Row>
+      </Section>
+      <Section id="bar" title="Discover bar" lede="The row of buttons under the address: back, forward, reload, bookmark, tabs, reader view, downloads and •••.">
+        <Toggle
+          label="Hide the bar while scrolling"
+          hint="It hides as a page scrolls down and comes back as it scrolls up, and the arrow in the address box takes you back to the top. Off: the arrow folds the bar away."
+          checked={prefs.hideBar}
+          onChange={(hideBar) => writeBrowserPrefs({ hideBar })}
+        />
       </Section>
       <Section id="history" title="History" lede="Pages visited and words searched for in Discover, kept on this device only. Open it from Discover's ••• menu.">
         <Toggle label="Keep a history of pages visited" checked={prefs.historyOn} onChange={(historyOn) => writeBrowserPrefs({ historyOn })} />

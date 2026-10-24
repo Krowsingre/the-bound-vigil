@@ -2,7 +2,17 @@
 // browser that only works in the app.
 
 import type { Api } from "../api";
-import type { Bookmark } from "../api/types";
+import type { Bookmark, QuickLink } from "../api/types";
+
+/** The ones a library starts with (the same as crates/tbv-core/src/quick_links.rs). */
+export const STARTER_LINKS: QuickLink[] = [
+  { id: "ql:gutenberg", title: "Project Gutenberg", url: "https://www.gutenberg.org/", picture: "vintage-herbarium" },
+  { id: "ql:archive", title: "Internet Archive", url: "https://archive.org/", picture: "ancient-halls" },
+  { id: "ql:wikipedia", title: "Wikipedia", url: "https://www.wikipedia.org/", picture: "snowbound-peaks" },
+  { id: "ql:youtube", title: "YouTube", url: "https://www.youtube.com/", picture: "alien-desert" },
+  { id: "ql:google", title: "Google", url: "https://www.google.com/", picture: "stormbound-harbor" },
+  { id: "ql:reddit", title: "Reddit", url: "https://www.reddit.com/", picture: "colossal-planet" },
+];
 
 type Calls = Pick<
   Api,
@@ -11,6 +21,12 @@ type Calls = Pick<
   | "addBookmark"
   | "renameBookmark"
   | "removeBookmark"
+  | "quickLinks"
+  | "addQuickLink"
+  | "updateQuickLink"
+  | "removeQuickLink"
+  | "moveQuickLink"
+  | "siteIcon"
   | "browserShow"
   | "browserPlace"
   | "browserHide"
@@ -31,6 +47,7 @@ const APP_ONLY = "The browser works in the TBV app.";
 
 export function browseStub(): Calls {
   let marks: Bookmark[] = [];
+  let links: QuickLink[] = [...STARTER_LINKS];
   return {
     downloadWebBook: async () => {
       throw new Error("Books come down from the web in the TBV app.");
@@ -49,6 +66,25 @@ export function browseStub(): Calls {
     removeBookmark: async (id) => {
       marks = marks.filter((m) => m.id !== id);
     },
+    quickLinks: async () => links,
+    addQuickLink: async (title, url, picture) => {
+      const made = { id: crypto.randomUUID(), title: title || url, url, picture };
+      links = [...links, made];
+      return made;
+    },
+    updateQuickLink: async (id, title, url, picture) => {
+      links = links.map((l) => (l.id === id ? { id, title: title || url, url, picture } : l));
+    },
+    removeQuickLink: async (id) => {
+      links = links.filter((l) => l.id !== id);
+    },
+    moveQuickLink: async (id, to) => {
+      const moving = links.find((l) => l.id === id);
+      if (!moving) return;
+      const rest = links.filter((l) => l.id !== id);
+      rest.splice(Math.min(to, rest.length), 0, moving);
+      links = rest;
+    },
     browserShow: async () => {
       throw new Error(APP_ONLY);
     },
@@ -62,6 +98,9 @@ export function browseStub(): Calls {
       throw new Error(APP_ONLY);
     },
     browserCancelDownload: async () => undefined,
+    siteIcon: async () => {
+      throw new Error(APP_ONLY);
+    },
     browserFetchPicture: async () => {
       throw new Error(APP_ONLY);
     },

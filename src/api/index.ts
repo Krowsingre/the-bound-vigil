@@ -7,6 +7,7 @@ import type { Found } from "../lib/onlineDetails";
 import type {
   BookFile,
   Bookmark,
+  QuickLink,
   BrowserFrame,
   BrowserEvent,
   BrowserProtection,
@@ -420,6 +421,15 @@ export interface Api {
   addBookmark(title: string, url: string): Promise<Bookmark>;
   renameBookmark(id: string, title: string): Promise<void>;
   removeBookmark(id: string): Promise<void>;
+  /** Quick Links on Discover's start page, synced like bookmarks. */
+  quickLinks(): Promise<QuickLink[]>;
+  addQuickLink(title: string, url: string, picture: string): Promise<QuickLink>;
+  updateQuickLink(id: string, title: string, url: string, picture: string): Promise<void>;
+  removeQuickLink(id: string): Promise<void>;
+  /** Moves one to a new place (zero-based). */
+  moveQuickLink(id: string, to: number): Promise<void>;
+  /** A website's own small icon, as a data address. */
+  siteIcon(url: string): Promise<string>;
   /** Shows tab `tab` over `frame` (made at `url` if it's new), with the others hidden. App only. */
   browserShow(tab: string, url: string | null, frame: BrowserFrame, protection?: BrowserProtection): Promise<void>;
   browserPlace(frame: BrowserFrame): Promise<void>;
@@ -884,6 +894,12 @@ function appApi(): Api {
     addBookmark: async (title, url) => (await core).invoke<Bookmark>("add_bookmark", { title, url }),
     renameBookmark: async (id, title) => (await core).invoke("rename_bookmark", { id, title }),
     removeBookmark: async (id) => (await core).invoke("remove_bookmark", { id }),
+    quickLinks: async () => (await core).invoke<QuickLink[]>("quick_links"),
+    addQuickLink: async (title, url, picture) => (await core).invoke<QuickLink>("add_quick_link", { title, url, picture }),
+    updateQuickLink: async (id, title, url, picture) => (await core).invoke("update_quick_link", { id, title, url, picture }),
+    removeQuickLink: async (id) => (await core).invoke("remove_quick_link", { id }),
+    moveQuickLink: async (id, to) => (await core).invoke("move_quick_link", { id, to }),
+    siteIcon: async (url) => (await core).invoke<string>("site_icon", { url }),
     browserShow: async (tab, url, frame, protection) => (await core).invoke("browser_show", { tab, url, frame, protection: protection ?? null }),
     browserPlace: async (frame) => (await core).invoke("browser_place", { frame }),
     browserHide: async () => (await core).invoke("browser_hide"),

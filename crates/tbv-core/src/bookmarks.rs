@@ -16,7 +16,7 @@ pub struct Bookmark {
 }
 
 /// Only web pages are saved: an address someone typed is checked first.
-fn web_address(url: &str) -> Result<String> {
+pub(crate) fn web_address(url: &str) -> Result<String> {
     let url = url.trim();
     let lower = url.to_ascii_lowercase();
     if !(lower.starts_with("https://") || lower.starts_with("http://")) || url.len() < 10 {

@@ -12,7 +12,9 @@ import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Writing } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
-import { BROWSER_GO, BROWSER_PAGE, BrowserHomeButton, BrowserReloadButton, BrowserRowToggle } from "./browse/Browser";
+import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserHomeButton, BrowserRowToggle, BrowserSiteButton } from "./browse/Browser";
+import { AddressSuggestions } from "./browse/AddressSuggestions";
+import { shortAddress } from "./browse/browserPrefs";
 import { Audiobooks } from "./audio/Audiobooks";
 import { PlayerBar } from "./audio/PlayerBar";
 import { usePlayer } from "./audio/player";
@@ -491,7 +493,26 @@ export function App() {
           }}
           address={route === "catalogs" ? browserAddress : undefined}
           pageAction={route === "catalogs" ? <BrowserHomeButton /> : undefined}
-          searchStart={route === "catalogs" ? <BrowserReloadButton /> : undefined}
+          searchStart={route === "catalogs" ? <BrowserSiteButton url={browserAddress} /> : undefined}
+          addressLabel={route === "catalogs" ? shortAddress(browserAddress) : undefined}
+          typingPanel={
+            route === "catalogs"
+              ? (typed, done) => (
+                  <AddressSuggestions
+                    typed={typed}
+                    current={browserAddress}
+                    onGo={(text) => {
+                      window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: text }));
+                      done();
+                    }}
+                    onTab={(id) => {
+                      window.dispatchEvent(new CustomEvent(BROWSER_SWITCH, { detail: id }));
+                      done();
+                    }}
+                  />
+                )
+              : undefined
+          }
           searchEnd={route === "catalogs" ? <BrowserRowToggle /> : undefined}
           onChooseAvatar={chooseAvatar}
           onClearAvatar={clearAvatar}

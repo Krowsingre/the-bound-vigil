@@ -11,10 +11,13 @@ import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { formatLabel } from "../lib/queryBooks";
 import { useNarrow } from "../lib/useNarrow";
-import { addressFor, isAddress, lowerFor, onBrowserPrefs, protectionOf, readBrowserPrefs, siteOf, writeBrowserPrefs } from "./browserPrefs";
+import { addressFor, homeOf, isAddress, isStartPage, lowerFor, onBrowserPrefs, protectionOf, readBrowserPrefs, siteOf, START_PAGE, writeBrowserPrefs } from "./browserPrefs";
 import { closeTab, freshTabs, moveTab, newTabId, openTab, readTabs, updateTab, writeTabs, type TabsState } from "./browserTabs";
 import { addToHistory } from "./browserHistory";
 import { HistoryPanel } from "./HistoryPanel";
+import { addToReadingList, bookIdOf } from "./readingList";
+import { BookmarksPanel, ReadingListPanel } from "./StartPanels";
+import { StartPage, type StartPanel } from "./StartPage";
 import { useTabDrag } from "./useTabDrag";
 import { articleByline, articleEpub, articleFrom, cleanArticle, readerScript } from "./readerArticle";
 
@@ -23,8 +26,10 @@ export const BROWSER_GO = "tbv:browser-go";
 /** The page in front, told to the header so its search box can show the address. */
 export const BROWSER_PAGE = "tbv:browser-page";
 
-/** The top bar's Home and Reload buttons, on Discover, ask the browser here. */
+/** The top bar's buttons, on Discover, ask the browser here: "home", "reload", "stop", "top" (back to the top of the page). */
 const BROWSER_DO = "tbv:browser-do";
+/** The address suggestions' "Switch to tab", with the tab's id. */
+export const BROWSER_SWITCH = "tbv:browser-switch";
 /** Whether the page in front is loading, told to the top bar's Reload button. */
 const BROWSER_BUSY = "tbv:browser-busy";
 
@@ -80,6 +85,15 @@ export function useBrowserRow(): [boolean, () => void] {
 /** The arrow inside the right end of the address that folds the row. */
 export function BrowserRowToggle() {
   const [open, toggle] = useBrowserRow();
+  const [hideBar, setHideBar] = useState(() => readBrowserPrefs().hideBar);
+  useEffect(() => onBrowserPrefs(() => setHideBar(readBrowserPrefs().hideBar)), []);
+  // The row hides itself while the page scrolls down, so the arrow takes you back up instead.
+  if (hideBar)
+    return (
+      <button type="button" className="search-action browser-row-toggle" onPointerDown={(e) => e.preventDefault()} aria-label="Back to top" title="Back to top" onClick={() => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: "top" }))}>
+        <Icon name="arrowUp" size={18} />
+      </button>
+    );
   return (
     <button type="button" className="search-action browser-row-toggle" onPointerDown={(e) => e.preventDefault()} aria-expanded={open} aria-label={open ? "Hide the browser buttons" : "Show the browser buttons"} onClick={toggle}>
       <Icon name={open ? "chevronUp" : "chevronDown"} size={18} />
@@ -96,26 +110,49 @@ export function BrowserHomeButton() {
   );
 }
 
-/** Reload, inside the left of the address, where the magnifier sits on other pages; Stop while loading. */
-export function BrowserReloadButton() {
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    const heard = (e: Event) => setBusy((e as CustomEvent<boolean>).detail);
-    window.addEventListener(BROWSER_BUSY, heard);
-    return () => window.removeEventListener(BROWSER_BUSY, heard);
-  }, []);
+/**
+ * Inside the left of the address, where the magnifier sits on other pages: a
+ * lock for a secure page, a warning for one that isn't, opening a little menu
+ * about the site.
+ */
+export function BrowserSiteButton({ url }: { url: string }) {
+  const [prefs, setPrefs] = useState(readBrowserPrefs);
+  useEffect(() => onBrowserPrefs(() => setPrefs(readBrowserPrefs())), []);
+  const toast = useToast();
+  const web = /^https?:/i.test(url);
+  if (!web) return <Icon name={url ? "compass" : "search"} size={18} />;
+  const secure = /^https:/i.test(url);
+  const site = siteOf(url);
+  const lowered = !!site && prefs.lowered.includes(site);
   return (
-    <button
-      type="button"
-      className="search-action"
-      aria-label={busy ? "Stop" : "Reload"}
-      title={busy ? "Stop" : "Reload"}
-      // Kept from taking the box's focus, which would put the address up for typing.
-      onPointerDown={(e) => e.preventDefault()}
-      onClick={() => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: busy ? "stop" : "reload" }))}
-    >
-      <Icon name={busy ? "close" : "sync"} size={18} />
-    </button>
+    <Menu
+      label={secure ? "Secure connection: about this site" : "Not secure: about this site"}
+      className={`search-action browser-site${secure ? "" : " is-unsafe"}`}
+      align="start"
+      trigger={<Icon name={secure ? "lock" : "warning"} size={17} />}
+      items={[
+        {
+          heading: (
+            <span className="browser-site-head">
+              <strong>{site}</strong>
+              <span className="muted">{secure ? "The connection is secure. What you send and see here is private between you and the site." : "Not secure. Don't type passwords or card numbers on this page."}</span>
+            </span>
+          ),
+        },
+        {
+          label: lowered ? "Restore protection for this site" : "Lower protection for this site",
+          icon: "eyeOff",
+          disabled: !site || prefs.protection === "off",
+          onSelect: () => {
+            if (!site) return;
+            const next = lowerFor(site, !lowered);
+            void api.browserProtect(protectionOf(next)).then(() => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: "reload" })));
+            toast(lowered ? `Protection is back on for ${site}.` : `Protection is lowered for ${site}.`);
+          },
+        },
+        { label: "Copy link", icon: "copy", onSelect: () => void navigator.clipboard?.writeText(url).then(() => toast("Link copied.")) },
+      ]}
+    />
   );
 }
 
@@ -132,19 +169,24 @@ const fileTitle = (url: string) => {
 /** Whether Discover has opened since TBV started, for starting afresh after closing TBV. */
 let openedThisRun = false;
 
-/** The tabs Discover opens with, as chosen in Preferences › Browser. */
+/** The tabs Discover opens with, as chosen in Preferences › Discover. */
 function startingTabs(): TabsState {
-  const { home, comeBack } = readBrowserPrefs();
+  const prefs = readBrowserPrefs();
+  const home = homeOf(prefs);
   const first = !openedThisRun;
   openedThisRun = true;
-  if (!(comeBack === "leave" || (comeBack === "close" && first))) return readTabs(home);
+  if (!(prefs.comeBack === "leave" || (prefs.comeBack === "close" && first))) return readTabs(home);
   // Pages kept from before (when the choice was still to keep them) would
   // otherwise go on without a tab to close them by.
   if (!first) for (const t of readTabs(home).tabs) void api.browserAct(t.id, "close").catch(() => undefined);
   return freshTabs(home);
 }
 
-const titleOf = (title: string | null, url: string) => title?.trim() || siteOf(url) || url;
+const titleOf = (title: string | null, url: string) => (isStartPage(url) ? "Start page" : title?.trim() || siteOf(url) || url);
+
+/** How far down the page is, for hiding the row while scrolling. */
+const SCROLL_Y = `JSON.stringify(Math.round(window.scrollY || (document.scrollingElement && document.scrollingElement.scrollTop) || 0))`;
+const TO_TOP = `(function () { window.scrollTo({ top: 0, behavior: "smooth" }); return JSON.stringify(null); })()`;
 
 /** Pauses every video and sound on a page, for leaving Discover. */
 const PAUSE_ALL = `(function () {
@@ -153,7 +195,7 @@ const PAUSE_ALL = `(function () {
 })()`;
 
 /** Something on top (a menu, a dialog, the phone's menu of pages) would be hidden under the page, so the page steps aside. */
-const covered = () => !!document.querySelector(".dialog-backdrop, [role=menu], [role=alertdialog], .sidebar-backdrop");
+const covered = () => !!document.querySelector(".dialog-backdrop, [role=menu], [role=alertdialog], .sidebar-backdrop, .address-suggestions");
 
 /** A file the browser is bringing down, or brought down. */
 interface Fetched {
@@ -165,14 +207,16 @@ interface Fetched {
   asking?: boolean;
 }
 
-export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) {
+export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: () => void; onOpenBook: (bookId: string) => void }) {
   const narrow = useNarrow();
   const [rowOpen] = useBrowserRow();
   const [tabs, setTabs] = useState<TabsState>(startingTabs);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [marks, setMarks] = useState<Bookmark[]>([]);
   const [fetched, setFetched] = useState<Fetched[]>([]);
-  const [panel, setPanel] = useState<null | "downloads" | "tabs" | "history">(null);
+  const [panel, setPanel] = useState<null | "tabs" | StartPanel>(null);
+  /** Scrolled down the page: the row is out of the way until it scrolls back up. */
+  const [scrolledAway, setScrolledAway] = useState(false);
   const [finding, setFinding] = useState<string | null>(null);
   const [article, setArticle] = useState<ReaderArticle | null>(null);
   const [saving, setSaving] = useState(false);
@@ -189,14 +233,15 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   }, []);
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
-  /** Reader mode covers the page, so the page's view steps aside. */
-  const aside = useRef(false);
-  aside.current = !!article || panel === "tabs";
   const refit = useRef<() => void>(() => undefined);
   const toast = useToast();
 
   const active = tabs.tabs.find((t) => t.id === tabs.active) ?? tabs.tabs[0];
   const url = active?.url ?? "";
+  const onStart = isStartPage(url);
+  /** Reader mode, the tab grid and the start page cover the page, so the page's view steps aside. */
+  const aside = useRef(false);
+  aside.current = !!article || panel === "tabs" || onStart;
 
   useEffect(() => writeTabs(tabs), [tabs]);
   // A tab that's gone (the oldest, past the most kept) has its page closed too.
@@ -210,7 +255,7 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   useEffect(() => onBrowserPrefs(() => setPrefs(readBrowserPrefs())), []);
   // The top bar shows the address of the page in front.
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent(BROWSER_PAGE, { detail: url }));
+    window.dispatchEvent(new CustomEvent(BROWSER_PAGE, { detail: isStartPage(url) ? "" : url }));
   }, [url]);
   useEffect(() => () => void window.dispatchEvent(new CustomEvent(BROWSER_PAGE, { detail: "" })), []);
 
@@ -223,6 +268,8 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   const showActive = useCallback(async (at: BrowserFrame) => {
     const { tabs: list, active: id } = tabsRef.current;
     const tab = list.find((t) => t.id === id) ?? list[0];
+    // TBV's own start page: no web page to show.
+    if (isStartPage(tab.url)) return api.browserHide();
     const fresh = !made.current.has(tab.id);
     await api.browserShow(tab.id, fresh ? tab.url : null, at, protectionOf(readBrowserPrefs()));
     made.current.add(tab.id);
@@ -262,12 +309,14 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
       switch (ev.kind) {
         case "page": {
           setLoading((l) => ({ ...l, [ev.tab]: ev.loading }));
-          // Chosen in Preferences › Browser: each page visited goes in History.
+          // Chosen in Preferences › Discover: each page visited goes in History.
           const keep = readBrowserPrefs();
           if (!ev.loading && keep.historyOn && /^https?:/i.test(ev.url)) addToHistory({ kind: "page", url: ev.url, title: ev.title ?? null }, keep.historyKeep);
           if (/^https?:/i.test(ev.url)) {
             setTabs((s) => {
               const before = s.tabs.find((t) => t.id === ev.tab);
+              // Gone home to the start page while this page was still coming: it stays there.
+              if (before && isStartPage(before.url)) return s;
               const title = ev.title ?? (before?.url === ev.url ? before.title : null);
               return updateTab(s, ev.tab, { url: ev.url, title });
             });
@@ -278,20 +327,20 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
           const id = ev.tab ?? newTabId();
           // On iPhone a pop-up's view is made already, still joined to its page.
           if (ev.tab) made.current.add(id);
-          setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : readBrowserPrefs().home, title: null }));
+          setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null }));
           break;
         }
         case "closed":
           made.current.delete(ev.tab);
           void api.browserAct(ev.tab, "close");
-          setTabs((s) => closeTab(s, ev.tab, readBrowserPrefs().home));
+          setTabs((s) => closeTab(s, ev.tab, homeOf()));
           break;
         case "downloadStart":
           setFetched((list) => [{ id: ev.id, name: ev.name, state: "coming" as const }, ...list.filter((x) => x.id !== ev.id)].slice(0, 30));
           break;
         case "download": {
           const done: Fetched = { id: ev.id, name: ev.name, path: ev.path, state: ev.ok ? "done" : "failed", asking: ev.ok };
-          // Chosen in Preferences › Browser: ebooks go straight in.
+          // Chosen in Preferences › Discover: ebooks go straight in.
           const straightIn = ev.ok && BOOK_FILE.test(ev.name) && readBrowserPrefs().addWithoutAsking;
           setFetched((list) => [done, ...list.filter((x) => x.id !== ev.id)]);
           if (straightIn) void answer(done, "add");
@@ -355,14 +404,14 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
       watching.disconnect();
       window.removeEventListener("resize", fit);
       void api.browserHide();
-      // Chosen in Preferences › Browser: back to the home page next time, so
+      // Chosen in Preferences › Discover: back to the home page next time, so
       // every tab's page is closed now.
       if (readBrowserPrefs().comeBack === "leave") {
         for (const id of made.current) void api.browserAct(id, "close").catch(() => undefined);
         made.current.clear();
         return;
       }
-      // Chosen in Preferences › Browser: whatever was playing stops on leaving.
+      // Chosen in Preferences › Discover: whatever was playing stops on leaving.
       if (!readBrowserPrefs().keepPlaying) for (const id of made.current) void api.browserRead(id, PAUSE_ALL).catch(() => undefined);
     };
   }, [showActive]);
@@ -395,7 +444,26 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   const newTab = () => {
     setArticle(null);
     setPanel(null);
-    setTabs((s) => openTab(s, { id: newTabId(), url: readBrowserPrefs().home, title: null }));
+    setTabs((s) => openTab(s, { id: newTabId(), url: homeOf(), title: null }));
+  };
+  /** A page in a tab of its own, from the start page's ⋮ menus. */
+  const openInNewTab = (to: string) => {
+    setArticle(null);
+    setPanel(null);
+    setTabs((s) => openTab(s, { id: newTabId(), url: to, title: null }));
+  };
+  /** Home: the start page (with the page left as it was, quiet), or the home page website. */
+  const goHome = () => {
+    const prefsNow = readBrowserPrefs();
+    if (!prefsNow.startPage) return go(prefsNow.home);
+    setArticle(null);
+    setPanel(null);
+    const id = tabsRef.current.active;
+    if (made.current.has(id)) {
+      void api.browserAct(id, "stop").catch(() => undefined);
+      void api.browserRead(id, PAUSE_ALL).catch(() => undefined);
+    }
+    setTabs((s) => updateTab(s, s.active, { url: START_PAGE, title: null }));
   };
   const switchTo = (id: string) => {
     setArticle(null);
@@ -406,7 +474,7 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   const close = (id: string) => {
     made.current.delete(id);
     void api.browserAct(id, "close");
-    setTabs((s) => closeTab(s, id, readBrowserPrefs().home));
+    setTabs((s) => closeTab(s, id, homeOf()));
   };
 
   const marked = marks.find((m) => m.url === url) ?? null;
@@ -420,15 +488,68 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
     window.dispatchEvent(new CustomEvent(BROWSER_BUSY, { detail: busy }));
   }, [busy]);
   const fromTop = useRef<(what: string) => void>(() => undefined);
-  fromTop.current = (what) => (what === "home" ? go(readBrowserPrefs().home) : act(what === "stop" ? "stop" : "reload"));
+  fromTop.current = (what) => {
+    if (what === "home") goHome();
+    else if (what === "top") {
+      setScrolledAway(false);
+      if (onStart) document.querySelector(".start-page")?.scrollTo({ top: 0, behavior: "smooth" });
+      else void api.browserRead(active.id, TO_TOP).catch(() => undefined);
+    } else act(what === "stop" ? "stop" : "reload");
+  };
+  const switchRef = useRef<(id: string) => void>(() => undefined);
+  switchRef.current = (id) => void (tabsRef.current.tabs.some((t) => t.id === id) && switchTo(id));
   useEffect(() => {
     const heard = (e: Event) => fromTop.current((e as CustomEvent<string>).detail);
+    const toTab = (e: Event) => switchRef.current((e as CustomEvent<string>).detail);
     window.addEventListener(BROWSER_DO, heard);
+    window.addEventListener(BROWSER_SWITCH, toTab);
     return () => {
       window.removeEventListener(BROWSER_DO, heard);
+      window.removeEventListener(BROWSER_SWITCH, toTab);
       window.dispatchEvent(new CustomEvent(BROWSER_BUSY, { detail: false }));
     };
   }, []);
+
+  // Chosen in Preferences › Discover: the row hides while the page scrolls
+  // down and comes back as it scrolls up. Pages can't tell TBV themselves,
+  // so TBV looks at how far down the page in front is, a few times a second.
+  const watchScroll = prefs.hideBar && !onStart && !article && panel !== "tabs" && !problem;
+  /** The start page scrolls in TBV itself, so it says how far as it goes. */
+  const startY = useRef(0);
+  const startScrolled = (y: number, room: number) => {
+    // Too little to scroll: hiding the bar would make it all fit, and it would bounce back.
+    if (!prefs.hideBar || room < 140) return;
+    if (y < 48 || y < startY.current - 24) setScrolledAway(false);
+    else if (y > startY.current + 24) setScrolledAway(true);
+    if (Math.abs(y - startY.current) > 24 || y < 48) startY.current = y;
+  };
+  useEffect(() => {
+    setScrolledAway(false);
+    startY.current = 0;
+    if (!watchScroll) return;
+    let last = -1;
+    let asking = false;
+    const tab = active.id;
+    const look = () => {
+      if (asking || !shown.current || covered()) return;
+      asking = true;
+      api
+        .browserRead(tab, SCROLL_Y)
+        .then((y) => {
+          if (typeof y !== "number") return;
+          if (last >= 0) {
+            if (y < 48 || y < last - 24) setScrolledAway(false);
+            else if (y > last + 24) setScrolledAway(true);
+          }
+          // Small moves add up until they pass the line either way.
+          if (last < 0 || Math.abs(y - last) > 24 || y < 48) last = y;
+        })
+        .catch(() => undefined)
+        .finally(() => (asking = false));
+    };
+    const every = window.setInterval(look, 350);
+    return () => window.clearInterval(every);
+  }, [watchScroll, active.id, url]);
 
 
   const toggleMark = async () => {
@@ -451,6 +572,17 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
     }
   };
 
+  /** ••• › Save to Reading List: the page's article, saved without opening reader view. */
+  const saveToReadingList = async () => {
+    try {
+      const found = articleFrom(await api.browserRead(active.id, readerScript()));
+      if (found) await saveArticle(found);
+      else toast("This page doesn't have an article TBV can find.");
+    } catch (e) {
+      toast(String(e).replace(/^Error: /, ""));
+    }
+  };
+
   const openReader = async () => {
     try {
       const found = articleFrom(await api.browserRead(active.id, readerScript()));
@@ -461,13 +593,15 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
     }
   };
 
-  const saveArticle = async () => {
-    if (!article) return;
+  /** Saves the article as a small EPUB, into the library and the Reading List. */
+  const saveArticle = async (from: ReaderArticle | null = article) => {
+    if (!from) return;
     setSaving(true);
     try {
-      const { bytes, fileName } = await articleEpub(article, (src) => api.browserFetchPicture(src));
+      const { bytes, fileName } = await articleEpub(from, (src) => api.browserFetchPicture(src));
       await api.saveWritingEpub(bytes, fileName, null, true);
-      toast(`"${article.title}" is being added to your library.`);
+      addToReadingList({ bookId: await bookIdOf(bytes), title: from.title, url: from.url });
+      toast(`"${from.title}" is being added to your library and Reading List.`);
     } catch (e) {
       toast(String(e).replace(/^Error: /, ""));
     } finally {
@@ -490,6 +624,9 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
   const moreItems: MenuEntry[] = [
     { label: "Copy link", icon: "copy", disabled: !url.startsWith("http"), onSelect: () => void navigator.clipboard?.writeText(url).then(() => toast("Link copied.")) },
     { label: "Open in your normal browser", icon: "link", disabled: !url.startsWith("http"), onSelect: () => void openExternal(url) },
+    { label: "Save to Reading List", icon: "notes", disabled: !url.startsWith("http") || saving, onSelect: () => void saveToReadingList() },
+    { label: "Bookmarks", icon: "bookmark", onSelect: () => setPanel("bookmarks") },
+    { label: "Reading List", icon: "bookOpen", onSelect: () => setPanel("reading") },
     { label: "History", icon: "clock", onSelect: () => setPanel("history") },
     { label: "Find on page", icon: "search", onSelect: () => setFinding("") },
     { label: "Make this your home page", icon: "home", disabled: !url.startsWith("http"), onSelect: () => (writeBrowserPrefs({ home: url }), toast("This is your home page now.")) },
@@ -532,10 +669,12 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
           </button>
         </div>
       )}
-      {rowOpen && (
+      {busy && !onStart && <span className="browser-loading" role="progressbar" aria-label="Loading" />}
+      {(prefs.hideBar ? !scrolledAway : rowOpen) && (
         <div className="browser-bar">
           {button("Back", "arrowLeft", () => act("back"))}
           {button("Forward", "arrowRight", () => act("forward"))}
+          {button(busy ? "Stop" : "Reload", busy ? "close" : "sync", () => act(busy ? "stop" : "reload"))}
           <button type="button" className={`toolbar-button${marked ? " is-on" : ""}`} aria-pressed={!!marked} aria-label={marked ? "Remove bookmark" : "Bookmark this page"} title={marked ? "Remove bookmark" : "Bookmark this page"} onClick={() => void toggleMark()}>
             <Icon name="bookmark" size={17} />
           </button>
@@ -589,7 +728,7 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
           </button>
         </div>
       ))}
-      {isFile && !rowOpen && (
+      {isFile && !(prefs.hideBar ? !scrolledAway : rowOpen) && (
         <div className="browser-offer" role="status">
           <span>This page is a {formatLabel(url.match(BOOK_FILE)![1].toLowerCase())} file.</span>
           <button type="button" className="btn btn-primary btn-small" onClick={() => void addThisFile()}>
@@ -598,7 +737,8 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
         </div>
       )}
       <div className="browser-view" ref={area}>
-        {problem && (
+        {onStart && !article && <StartPage onGo={go} onNewTab={openInNewTab} onPanel={setPanel} onScrolled={startScrolled} onSearch={() => document.getElementById("global-search")?.focus()} />}
+        {problem && !onStart && (
           <div className="library-empty" role="alert">
             <h2>The browser couldn't open</h2>
             <p className="muted">{problem}</p>
@@ -611,7 +751,7 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
                 <Icon name="arrowLeft" size={14} /> Back to the page
               </button>
               <button type="button" className="btn btn-primary btn-small" disabled={saving} onClick={() => void saveArticle()}>
-                <Icon name="download" size={14} /> {saving ? "Saving…" : "Save to library"}
+                <Icon name="download" size={14} /> {saving ? "Saving…" : "Save to Reading List"}
               </button>
             </div>
             <header>
@@ -652,6 +792,8 @@ export function Browser({ onOpenCatalogues }: { onOpenCatalogues: () => void }) 
           </div>
         )}
       </div>
+      {panel === "bookmarks" && <BookmarksPanel onGo={(to) => (setPanel(null), go(to))} onClose={() => setPanel(null)} />}
+      {panel === "reading" && <ReadingListPanel onOpenBook={onOpenBook} onClose={() => setPanel(null)} />}
       {panel === "history" && <HistoryPanel onGo={(to) => (setPanel(null), go(to))} onClose={() => setPanel(null)} />}
       {panel === "downloads" && (
         <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && setPanel(null)}>
