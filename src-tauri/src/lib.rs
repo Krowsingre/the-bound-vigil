@@ -4,6 +4,7 @@
 mod activity;
 mod audio;
 mod browser;
+mod cloud;
 mod hardcover;
 mod home;
 mod imports;
@@ -185,6 +186,22 @@ async fn blocking<T: Send + 'static>(
 #[tauri::command]
 async fn hardcover_sign_in(state: State<'_, AppLibrary>) -> CommandResult<tbv_core::hardcover::HardcoverStatus> {
     blocking(state, hardcover::sign_in).await
+}
+
+/// Signs in to Dropbox, Google Drive or OneDrive, and gives the place to
+/// choose for sync (or for moving the library).
+#[tauri::command]
+async fn cloud_sign_in(service: tbv_core::sync::cloud::Service) -> CommandResult<tbv_core::sync::Provider> {
+    tauri::async_runtime::spawn_blocking(move || cloud::sign_in(service).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Which of Dropbox, Google Drive and OneDrive this copy of TBV can sign in to.
+#[tauri::command]
+fn cloud_services() -> Vec<tbv_core::sync::cloud::Service> {
+    use tbv_core::sync::cloud::{available, Service};
+    [Service::Dropbox, Service::GoogleDrive, Service::OneDrive].into_iter().filter(|s| available(*s)).collect()
 }
 
 #[tauri::command]
@@ -1838,6 +1855,8 @@ pub fn run() {
             hardcover_status,
             hardcover_set_sending,
             hardcover_sign_in,
+            cloud_sign_in,
+            cloud_services,
             hardcover_sign_out,
             hardcover_send_all,
             book_text,

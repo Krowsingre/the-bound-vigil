@@ -28,6 +28,7 @@ import type {
   TidyReport,
   Audiobook,
   ProviderChoice,
+  CloudService,
   Annotation,
   AnnotationInput,
   CollectionDetail,
@@ -235,6 +236,10 @@ export interface Api {
   setAlsoSync(provider: ProviderChoice | null): Promise<boolean>;
   /** Asks for a folder. Null if cancelled. */
   chooseFolder(title: string, start?: string | null): Promise<string | null>;
+  /** Signs in to Dropbox, Google Drive or OneDrive in the browser, and gives the place to choose. */
+  cloudSignIn(service: CloudService): Promise<ProviderChoice>;
+  /** Which of those this copy of TBV can sign in to. */
+  cloudServices(): Promise<CloudService[]>;
   /** Where a cloud app usually keeps its folder on this computer, if it's there. */
   suggestSyncFolder(service: string): Promise<string | null>;
   resolveSyncConflict(kind: string, key: string, keepCloud: boolean): Promise<void>;
@@ -714,6 +719,8 @@ function appApi(): Api {
       return typeof picked === "string" ? picked : null;
     },
     suggestSyncFolder: async (service) => (await core).invoke<string | null>("suggest_sync_folder", { service }),
+    cloudSignIn: async (service) => (await core).invoke<ProviderChoice>("cloud_sign_in", { service }),
+    cloudServices: async () => (await core).invoke<CloudService[]>("cloud_services"),
     resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
     downloadBook: async (bookId) => (await core).invoke("download_book", { bookId }),
     moveStatus: async () => (await core).invoke<MoveStatus>("move_status"),

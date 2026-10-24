@@ -14,7 +14,7 @@ import { useAppSettings } from "./appSettings";
 import { RadioList, Section } from "./controls";
 import { PROVIDERS, type Provider } from "./providers";
 import { SignInForm, SupabaseProjectForm } from "./SupabaseSetup";
-import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
+import { serviceName, SyncFolderPanel, viewOfChoice, type FolderService } from "./SyncFolderPanel";
 
 type Step = "mode" | "where" | "setup" | "scope";
 const STEPS: Step[] = ["mode", "where", "setup", "scope"];
@@ -26,6 +26,7 @@ export function placeName(view: ProviderView | null): string {
   if (!view || view.kind === "off") return "nowhere yet";
   if (view.kind === "supabase") return "Supabase";
   if (view.kind === "webdav") return "your WebDAV server";
+  if (view.kind === "cloud") return serviceName(view.service);
   return view.service && view.service !== "custom" ? serviceName(view.service) : "that folder";
 }
 
@@ -306,11 +307,7 @@ export function MoveSection({
   );
 }
 
-function viewOf(choice: ProviderChoice): ProviderView {
-  if (choice.kind === "folder") return { kind: "folder", service: choice.service, location: choice.path, username: null };
-  if (choice.kind === "webdav") return { kind: "webdav", service: null, location: choice.url, username: choice.username };
-  return { kind: choice.kind, service: null, location: null, username: null };
-}
+const viewOf = viewOfChoice;
 
 function MoveResult({ status, onDone, onAgain }: { status: MoveStatus; onDone: () => void; onAgain: () => void }) {
   const to = placeName(status.to);

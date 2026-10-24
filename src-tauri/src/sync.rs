@@ -106,6 +106,8 @@ fn has_changes(library: &Mutex<Library>) -> bool {
 /// Saves a renewed Supabase sign-in, or forgets one that was withdrawn.
 /// A connection only forgets the sign-in it was using, never a newer one.
 pub fn keep_session(library: &Library, cloud: &Cloud, outcome: &tbv_core::Result<impl Sized>) {
+    // A newer Dropbox, Google Drive or OneDrive sign-in, too.
+    let _ = library.keep_cloud_sign_ins();
     let Cloud::Supabase(client) = cloud else { return };
     let saved = library.sync_session().ok().flatten();
     let still_mine = saved.as_ref().is_some_and(|s| s.refresh_token == client.session().refresh_token);
@@ -341,7 +343,13 @@ pub fn choose(library: &Mutex<Library>, provider: Provider) -> tbv_core::Result<
         Provider::Supabase | Provider::Off => false,
         other => core_sync::open_files(other, device)?.1,
     };
-    library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?.set_sync_provider(&provider)?;
+    let mut l = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?;
+    let before = l.sync_provider()?;
+    l.set_sync_provider(&provider)?;
+    let still_used = before.same_place(&provider) || l.sync_also()?.is_some_and(|a| a.same_place(&before));
+    if !still_used {
+        crate::cloud::forget(before);
+    }
     Ok(existing)
 }
 
@@ -362,7 +370,15 @@ pub fn choose_also(library: &Mutex<Library>, provider: Option<Provider>) -> tbv_
         Some(Provider::Off) | None => false,
         Some(other) => core_sync::open_files(other, device)?.1,
     };
-    lock()?.set_sync_also(provider.as_ref())?;
+    let mut l = lock()?;
+    let before = l.sync_also()?;
+    l.set_sync_also(provider.as_ref())?;
+    if let Some(before) = before {
+        let still_used = provider.as_ref().is_some_and(|p| p.same_place(&before)) || l.sync_provider()?.same_place(&before);
+        if !still_used {
+            crate::cloud::forget(before);
+        }
+    }
     Ok(existing)
 }
 

@@ -35,6 +35,7 @@ const STATE_TEXT: Record<SyncOverview["status"]["state"], string> = {
 /** The card for the service in use. */
 function cardFor(view: ProviderView): Provider {
   if (view.kind === "webdav") return "custom";
+  if (view.kind === "cloud") return view.service === "google" ? "gdrive" : (view.service as Provider);
   if (view.kind === "folder") return PROVIDERS.some((p) => p.id === view.service) ? (view.service as Provider) : "custom";
   return "supabase";
 }
@@ -98,12 +99,18 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
   };
 
   const statusOf = (id: Provider) => {
-    if (id === inUse) return current.kind === "webdav" ? "Connected by WebDAV" : "Connected";
+    if (id === inUse) return current.kind === "webdav" ? "Connected by WebDAV" : current.kind === "cloud" ? "Signed in" : "Connected";
     if (id === "supabase") return signedIn ? "Signed in, not in use" : project ? "Sign in to start" : "Not connected";
-    return id === "custom" ? "A folder or WebDAV" : "Uses its app's folder";
+    return id === "custom" ? "A folder or WebDAV" : id === "dropbox" || id === "gdrive" || id === "onedrive" ? "Sign in, or its app's folder" : "Uses its app's folder";
   };
   const where =
-    current.kind === "folder" ? `Folder (${serviceName(current.service)})` : current.kind === "webdav" ? "WebDAV server" : "Supabase";
+    current.kind === "folder"
+      ? `Folder (${serviceName(current.service)})`
+      : current.kind === "webdav"
+        ? "WebDAV server"
+        : current.kind === "cloud"
+          ? serviceName(current.service)
+          : "Supabase";
   const chosen = PROVIDERS.find((p) => p.id === provider)!;
 
   return (
@@ -140,6 +147,12 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
                 <>
                   <dt>Account</dt>
                   <dd>{signedIn}</dd>
+                </>
+              )}
+              {showing && current.kind === "cloud" && current.username && (
+                <>
+                  <dt>Account</dt>
+                  <dd>{current.username}</dd>
                 </>
               )}
               <dt>Last synced</dt>
@@ -186,7 +199,14 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
                   className="btn btn-quiet btn-danger-text"
                   onClick={() =>
                     void api.setSyncProvider({ kind: "off" }).then(
-                      () => (toast("TBV no longer syncs through that folder. Nothing in it was deleted."), void reload()),
+                      () => (
+                        toast(
+                          current.kind === "cloud"
+                            ? `TBV no longer syncs with ${serviceName(current.service)} and has signed out. Nothing there was deleted.`
+                            : "TBV no longer syncs through that folder. Nothing in it was deleted.",
+                        ),
+                        void reload()
+                      ),
                       (e: unknown) => toast(String(e)),
                     )
                   }

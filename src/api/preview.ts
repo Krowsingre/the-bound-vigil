@@ -810,7 +810,9 @@ export function previewApi(): Api {
           ? { kind: "folder", service: choice.service, location: choice.path, username: null }
           : choice.kind === "webdav"
             ? { kind: "webdav", service: null, location: choice.url, username: choice.username }
-            : { kind: choice.kind, service: null, location: null, username: null };
+            : choice.kind === "cloud"
+              ? { kind: "cloud", service: choice.service, location: null, username: choice.name }
+              : { kind: choice.kind, service: null, location: null, username: null };
       sync = { ...sync, provider, status: choice.kind === "off" ? { state: "disabled", lastSuccessAt: null } : { state: "idle", lastSuccessAt: new Date().toISOString() } };
       return false;
     },
@@ -821,11 +823,15 @@ export function previewApi(): Api {
           ? { kind: "folder", service: choice.service, location: choice.path, username: null }
           : choice.kind === "webdav"
             ? { kind: "webdav", service: null, location: choice.url, username: choice.username }
-            : { kind: "supabase", service: null, location: null, username: null };
+            : choice.kind === "cloud"
+              ? { kind: "cloud", service: choice.service, location: null, username: choice.name }
+              : { kind: "supabase", service: null, location: null, username: null };
       sync = { ...sync, also: provider && { provider, lastSuccessAt: new Date().toISOString(), lastError: null, waitingToSend: 0 } };
       return false;
     },
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
+    cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
+    cloudServices: async () => ["dropbox", "google", "onedrive"],
     suggestSyncFolder: async (service) =>
       ({ icloud: "C:\\Users\\you\\iCloudDrive", dropbox: "C:\\Users\\you\\Dropbox", onedrive: "C:\\Users\\you\\OneDrive", gdrive: "G:\\My Drive" })[service] ?? null,
     resolveSyncConflict: async (_kind, key) => {

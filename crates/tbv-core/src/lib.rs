@@ -23,6 +23,7 @@ pub mod details;
 pub mod manage;
 pub mod model;
 pub mod notes;
+pub mod oauth;
 pub mod opds;
 pub mod profile;
 pub mod reader;

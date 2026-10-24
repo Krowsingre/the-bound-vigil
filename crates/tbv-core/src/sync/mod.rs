@@ -16,6 +16,10 @@ pub mod places;
 pub mod supabase;
 pub mod tidy;
 pub mod webdav;
+pub mod cloud;
+pub mod dropbox;
+pub mod gdrive;
+pub mod onedrive;
 
 use std::thread;
 use std::collections::{HashMap, HashSet};
@@ -469,6 +473,8 @@ pub enum Provider {
     Folder { service: String, path: String },
     #[serde(rename = "webdav")]
     WebDav(webdav::WebDavAccount),
+    /// Dropbox, Google Drive or OneDrive, signed in to directly.
+    Cloud(cloud::CloudAccount),
     /// Not syncing anywhere, after "Stop syncing here".
     Off,
 }
@@ -497,6 +503,12 @@ impl Provider {
                 location: Some(account.url.clone()),
                 username: Some(account.username.clone()),
             },
+            Provider::Cloud(account) => ProviderView {
+                kind: "cloud",
+                service: Some(account.service.key().to_string()),
+                location: None,
+                username: Some(account.name.clone()),
+            },
             Provider::Off => ProviderView { kind: "off", service: None, location: None, username: None },
         }
     }
@@ -507,6 +519,7 @@ impl Provider {
             (Provider::Supabase, Provider::Supabase) | (Provider::Off, Provider::Off) => true,
             (Provider::Folder { path: a, .. }, Provider::Folder { path: b, .. }) => a == b,
             (Provider::WebDav(a), Provider::WebDav(b)) => a.url == b.url && a.username == b.username,
+            (Provider::Cloud(a), Provider::Cloud(b)) => a.service == b.service && a.account_id == b.account_id,
             _ => false,
         }
     }
@@ -571,6 +584,11 @@ pub fn open_files(provider: &Provider, device: String) -> Result<(files::FileRem
     let store: Box<dyn files::Store + Send> = match provider {
         Provider::Folder { path, .. } => Box::new(files::FolderStore::open(Path::new(path))?),
         Provider::WebDav(account) => Box::new(webdav::WebDav::open(account)?),
+        Provider::Cloud(account) => match account.service {
+            cloud::Service::Dropbox => Box::new(dropbox::Dropbox::open(account)?),
+            cloud::Service::GoogleDrive => Box::new(gdrive::GoogleDrive::open(account)?),
+            cloud::Service::OneDrive => Box::new(onedrive::OneDrive::open(account)?),
+        },
         Provider::Supabase | Provider::Off => return Err(Error::Unsuitable("that isn't a folder".into())),
     };
     let mut remote = files::FileRemote::new(store, device);
@@ -899,6 +917,20 @@ impl Library {
         }
         self.put_setting(PROVIDER, Some(&serde_json::to_string(provider)?))?;
         self.drop_also_if_same(provider)
+    }
+
+    /// Saves any newer sign-in a cloud service handed back while syncing,
+    /// so it doesn't run out (OneDrive gives a new one each time).
+    pub fn keep_cloud_sign_ins(&self) -> Result<()> {
+        for key in [PROVIDER, ALSO] {
+            let Some(saved) = self.setting(key)? else { continue };
+            let Ok(Provider::Cloud(mut account)) = serde_json::from_str::<Provider>(&saved) else { continue };
+            if let Some(newer) = cloud::newer_refresh_token(&account) {
+                account.refresh_token = newer;
+                self.put_setting(key, Some(&serde_json::to_string(&Provider::Cloud(account))?))?;
+            }
+        }
+        Ok(())
     }
 
     /// The main sync moved to where the second one was: one place is enough.

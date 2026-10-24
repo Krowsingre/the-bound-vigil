@@ -9,7 +9,7 @@ import { relativeTime } from "../lib/format";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { useAppSettings } from "./appSettings";
-import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
+import { placeWords, serviceName, SyncFolderPanel, viewOfChoice, type FolderService } from "./SyncFolderPanel";
 import { PROVIDERS, ProviderPicker, type Provider } from "./providers";
 import { Section, Toggle } from "./controls";
 
@@ -44,13 +44,15 @@ export function AlsoSection({ overview, onChanged }: { overview: SyncOverview; o
     ? null
     : also.provider.kind === "supabase"
       ? "supabase"
-      : also.provider.kind === "folder" && PROVIDERS.some((p) => p.id === also.provider.service)
-        ? (also.provider.service as Provider)
-        : "custom";
+      : also.provider.kind === "cloud"
+        ? (also.provider.service === "google" ? "gdrive" : (also.provider.service as Provider))
+        : also.provider.kind === "folder" && PROVIDERS.some((p) => p.id === also.provider.service)
+          ? (also.provider.service as Provider)
+          : "custom";
   const pick = (p: Provider) => setPicked(p === alsoId ? null : p);
 
   const where = (kind: string, service: string | null) =>
-    kind === "folder" ? serviceName(service) : kind === "webdav" ? "your WebDAV server" : "Supabase";
+    kind === "folder" || kind === "cloud" ? serviceName(service) : kind === "webdav" ? "your WebDAV server" : "Supabase";
 
   return (
     <Section
@@ -137,7 +139,7 @@ export function AlsoSection({ overview, onChanged }: { overview: SyncOverview; o
               service={picked as FolderService}
               current={{ kind: "off", service: null, location: null, username: null }}
               onChanged={onChanged}
-              onUse={(choice) => void choose(choice, choice.kind === "webdav" ? "your WebDAV server" : serviceName(picked))}
+              onUse={(choice) => void choose(choice, placeWords(viewOfChoice(choice)))}
               useLabel="Also sync here"
             />
           )}

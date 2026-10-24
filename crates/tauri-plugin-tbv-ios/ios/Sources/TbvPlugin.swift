@@ -20,6 +20,11 @@ class UrlArgs: Decodable {
   let url: String
 }
 
+class AuthArgs: Decodable {
+  let url: String
+  let scheme: String
+}
+
 /// The iPhone app's own pieces: folders chosen in Files (iCloud Drive's
 /// library folder), iCloud files brought down when TBV reads them, and
 /// audiobooks that keep playing with the screen locked.
@@ -284,6 +289,33 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
       if session.start() {
         invoke.resolve(["ok": true])
       } else {
+        invoke.reject("TBV couldn't open the sign-in page.")
+      }
+    }
+  }
+
+  /// Shows a sign-in page that answers to TBV's own address (Google's), and
+  /// gives back that answer.
+  @objc public func authenticate(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(AuthArgs.self)
+    guard let url = URL(string: args.url) else {
+      invoke.reject("That sign-in address isn't valid.")
+      return
+    }
+    DispatchQueue.main.async {
+      self.signIn?.cancel()
+      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: args.scheme) { answer, error in
+        if let answer = answer {
+          invoke.resolve(["url": answer.absoluteString])
+        } else if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
+          invoke.reject("The sign-in was cancelled.")
+        } else {
+          invoke.reject(error?.localizedDescription ?? "The sign-in didn't finish.")
+        }
+      }
+      session.presentationContextProvider = self
+      self.signIn = session
+      if !session.start() {
         invoke.reject("TBV couldn't open the sign-in page.")
       }
     }

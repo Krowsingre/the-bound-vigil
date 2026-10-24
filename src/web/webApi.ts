@@ -1080,6 +1080,10 @@ export async function webApi(): Promise<Api> {
     },
     chooseFolder: async () => null,
     suggestSyncFolder: async () => null,
+    cloudSignIn: async () => {
+      throw new Error("The web version syncs through Supabase only.");
+    },
+    cloudServices: async () => [],
     resolveSyncConflict: async () => undefined,
     downloadBook: async (bookId) => {
       await api.readBookFile(bookId);

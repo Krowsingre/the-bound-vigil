@@ -51,6 +51,9 @@ jobs:
       - run: npm ci
       - name: Build the app and installers
         run: npx tauri build
+        env:
+          # Google's desktop sign-in "secret" (not a real one, but kept off GitHub's pages).
+          TBV_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
       # The setup program on its own, so it's the first thing in the download.
       - name: Upload the installer
         uses: actions/upload-artifact@v4

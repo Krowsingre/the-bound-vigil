@@ -144,20 +144,26 @@ export interface SyncConflict {
 
 /** Where the library is kept, as Settings shows it (never a password). */
 export interface ProviderView {
-  kind: "supabase" | "folder" | "webdav" | "off";
-  /** For a folder: which cloud app's ("icloud", "dropbox", "mega", "custom"…). */
+  kind: "supabase" | "folder" | "webdav" | "cloud" | "off";
+  /** For a folder: which cloud app's ("icloud", "dropbox", "mega", "custom"…). Signed in to directly: "dropbox", "google" or "onedrive". */
   service: string | null;
   /** The folder, or the WebDAV address. */
   location: string | null;
+  /** The WebDAV username, or the account signed in to. */
   username: string | null;
 }
+
+/** A service TBV can sign in to directly. */
+export type CloudService = "dropbox" | "google" | "onedrive";
 
 /** A choice of where to keep the library, as sent to the core. */
 export type ProviderChoice =
   | { kind: "supabase" }
   | { kind: "off" }
   | { kind: "folder"; service: string; path: string }
-  | { kind: "webdav"; url: string; username: string; password: string };
+  | { kind: "webdav"; url: string; username: string; password: string }
+  /** From `cloudSignIn`, passed on as it came. */
+  | { kind: "cloud"; service: CloudService; accountId: string; name: string; refreshToken: string };
 
 export interface SyncOverview {
   status: SyncStatus;

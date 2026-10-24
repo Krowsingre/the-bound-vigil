@@ -8,7 +8,7 @@ import type { ProviderView, SyncOverview, TidyPlan, TidyProgress } from "../api/
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ProgressBar } from "../components/ProgressBar";
 import { useToast } from "../components/Toast";
-import { serviceName } from "./SyncFolderPanel";
+import { placeWords } from "./SyncFolderPanel";
 import { useAppSettings } from "./appSettings";
 import { Section } from "./controls";
 
@@ -22,9 +22,7 @@ const files = (n: number) => `${n.toLocaleString()} ${n === 1 ? "file" : "files"
 const books = (n: number) => `${n.toLocaleString()} ${n === 1 ? "book" : "books"}`;
 
 function placeName(view: ProviderView): string {
-  if (view.kind === "folder") return serviceName(view.service);
-  if (view.kind === "webdav") return "your WebDAV server";
-  return "Supabase";
+  return placeWords(view);
 }
 
 /** What the confirmation says, in plain words. */

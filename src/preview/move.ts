@@ -13,6 +13,7 @@ const DROPBOX: ProviderView = { kind: "folder", service: "dropbox", location: "C
 function viewOf(choice: ProviderChoice): ProviderView {
   if (choice.kind === "folder") return { kind: "folder", service: choice.service, location: choice.path, username: null };
   if (choice.kind === "webdav") return { kind: "webdav", service: null, location: choice.url, username: choice.username };
+  if (choice.kind === "cloud") return { kind: "cloud", service: choice.service, location: null, username: choice.name };
   return SUPABASE;
 }
 
