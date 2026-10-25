@@ -213,6 +213,53 @@ pub fn read_epub_metadata(path: &Path) -> Result<BookMetadata> {
     Ok(metadata)
 }
 
+/// Whether `path` is an EPUB kept unpacked, as a folder (Apple Books shares
+/// the books it holds this way).
+pub fn is_epub_folder(path: &Path) -> bool {
+    path.is_dir() && path.join("META-INF").join("container.xml").is_file()
+}
+
+/// Packs an unpacked EPUB folder back into one EPUB file at `target`: the
+/// `mimetype` first and unpacked, as readers expect, then everything else in
+/// name order, so the same folder always makes the same file.
+pub fn pack_folder(folder: &Path, target: &Path) -> Result<()> {
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+    fn gather(root: &Path, at: &Path, files: &mut Vec<String>) -> Result<()> {
+        for entry in std::fs::read_dir(at)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                gather(root, &path, files)?;
+            } else if let Ok(inside) = path.strip_prefix(root) {
+                let name = inside.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
+                // Not part of the book: the folder's own notes from macOS and iOS.
+                if name != "mimetype" && !name.ends_with(".DS_Store") && !name.starts_with("iTunesMetadata") {
+                    files.push(name);
+                }
+            }
+        }
+        Ok(())
+    }
+    if !is_epub_folder(folder) {
+        return Err(Error::BadBook("this folder isn't an EPUB".into()));
+    }
+    let mut files = Vec::new();
+    gather(folder, folder, &mut files)?;
+    files.sort();
+    let mut zip = zip::ZipWriter::new(File::create(target)?);
+    let stored = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let packed = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let zipped = |e: zip::result::ZipError| Error::BadBook(e.to_string());
+    zip.start_file("mimetype", stored).map_err(zipped)?;
+    zip.write_all(b"application/epub+zip")?;
+    for name in files {
+        zip.start_file(name.as_str(), packed).map_err(zipped)?;
+        std::io::copy(&mut File::open(folder.join(&name))?, &mut zip)?;
+    }
+    zip.finish().map_err(zipped)?;
+    Ok(())
+}
+
 fn read_entry(archive: &mut ZipArchive<File>, name: &str) -> Result<Vec<u8>> {
     let mut entry = archive
         .by_name(name)
@@ -454,6 +501,25 @@ pub(crate) fn strip_html(value: &str) -> String {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    #[test]
+    fn an_unpacked_epub_folder_packs_into_a_readable_epub() {
+        let dir = tempfile::tempdir().unwrap();
+        let packed = dir.path().join("packed.epub");
+        write_test_epub(&packed, "Folded", "A. Writer", false);
+        // Unpack it the way Apple Books keeps a book.
+        let folder = dir.path().join("Folded.epub");
+        let mut archive = ZipArchive::new(File::open(&packed).unwrap()).unwrap();
+        archive.extract(&folder).unwrap();
+        std::fs::write(folder.join("iTunesMetadata.plist"), b"x").unwrap();
+        assert!(is_epub_folder(&folder));
+        let again = dir.path().join("again.epub");
+        pack_folder(&folder, &again).unwrap();
+        let mut archive = ZipArchive::new(File::open(&again).unwrap()).unwrap();
+        assert_eq!(archive.by_index(0).unwrap().name(), "mimetype");
+        assert!(archive.by_name("iTunesMetadata.plist").is_err());
+        assert_eq!(read_epub_metadata(&again).unwrap().title.as_deref(), Some("Folded"));
+    }
+
     use super::*;
     use std::io::Write;
     use zip::write::SimpleFileOptions;

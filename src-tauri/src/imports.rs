@@ -362,10 +362,29 @@ impl Imports {
 
 /// How much there is to read: a file's size, or a folder audiobook's audio.
 fn size_of(path: &Path) -> u64 {
+    if tbv_core::epub::is_epub_folder(path) {
+        return folder_size(path);
+    }
     if path.is_dir() || tbv_core::audio::parse_group(path).is_some() {
         return tbv_core::audio::source_parts(path).iter().filter_map(|p| std::fs::metadata(p).ok()).map(|m| m.len()).sum();
     }
     std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+}
+
+/// All the files in a folder (an unpacked EPUB), however deep.
+fn folder_size(dir: &Path) -> u64 {
+    std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| match e.file_type() {
+                    Ok(t) if t.is_dir() => folder_size(&e.path()),
+                    Ok(t) if t.is_file() => e.metadata().map(|m| m.len()).unwrap_or(0),
+                    _ => 0,
+                })
+                .sum()
+        })
+        .unwrap_or(0)
 }
 
 fn failed(path: &Path, reason: &str) -> ImportResult {

@@ -30,6 +30,7 @@
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>org.idpf.epub-container</string>
+				<string>org.idpf.epub-folder</string>
 				<string>com.adobe.pdf</string>
 				<string>public.plain-text</string>
 				<string>org.openxmlformats.wordprocessingml.document</string>

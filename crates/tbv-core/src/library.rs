@@ -961,6 +961,11 @@ fn collect_books(dir: &Path, books_dir: &Path, out: &mut Vec<PathBuf>) {
     if dir.starts_with(books_dir) {
         return;
     }
+    // An EPUB kept unpacked is one book, packed up when it's imported.
+    if crate::epub::is_epub_folder(dir) {
+        out.push(dir.to_path_buf());
+        return;
+    }
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
@@ -1030,6 +1035,15 @@ pub fn stage_source(paths: &LibraryPaths, source: &Path) -> Result<Staged> {
     let temp_dir = paths.books_dir.join(".incoming").join(crate::ids::new_record_id());
     fs::create_dir_all(&temp_dir)?;
     let name = crate::audio::display_name(source);
+    if crate::epub::is_epub_folder(source) {
+        let stem = name.strip_suffix(".epub").or_else(|| name.strip_suffix(".EPUB")).unwrap_or(&name);
+        let file = temp_dir.join(format!("{}.epub", safe_file_stem(stem)));
+        if let Err(e) = crate::epub::pack_folder(source, &file) {
+            let _ = fs::remove_dir_all(&temp_dir);
+            return Err(e);
+        }
+        return Ok(Staged { file, format: "epub".into(), temp_dir: Some(temp_dir) });
+    }
     let file = temp_dir.join(format!("{}.{}", safe_file_stem(&name), crate::audio::BUNDLE));
     let written = match &group {
         Some((dir, _)) => crate::audio::write_parts_bundle(&crate::audio::source_parts(source), dir, &file),
@@ -1256,6 +1270,24 @@ pub(crate) mod tests {
             .collect::<rusqlite::Result<_>>()
             .unwrap();
         assert_eq!(shelves, [("shelf:want_to_read".to_string(), "Up next".to_string())]);
+    }
+
+    #[test]
+    fn an_unpacked_epub_folder_imports_as_one_book() {
+        let (dir, mut library) = open_temp_library();
+        let packed = dir.path().join("packed.epub");
+        write_test_epub(&packed, "Carmilla", "Sheridan Le Fanu", true);
+        let shelf = dir.path().join("shelf");
+        let folder = shelf.join("Carmilla.epub");
+        zip::ZipArchive::new(fs::File::open(&packed).unwrap()).unwrap().extract(&folder).unwrap();
+
+        let results = library.import_files(std::slice::from_ref(&shelf));
+        assert_eq!(results.len(), 1, "one book, not each file inside: {results:?}");
+        let ImportResult::Imported { title, .. } = &results[0] else {
+            panic!("unexpected {results:?}");
+        };
+        assert_eq!(title, "Carmilla");
+        assert!(folder.join("META-INF/container.xml").exists(), "the folder is left as it was");
     }
 
     #[test]
