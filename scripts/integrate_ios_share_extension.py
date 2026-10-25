@@ -66,7 +66,14 @@ with host_entitlements.open("rb") as f:
 entitlements["com.apple.security.application-groups"] = ["group.com.krowsingre.theboundvigil"]
 with host_entitlements.open("wb") as f:
     plistlib.dump(entitlements, f)
+# XcodeGen regenerates target entitlements as well; restore the declared
+# App Group after project generation, just as for the host target.
 extension_entitlements = target_dir / "ShareExtension.entitlements"
+with extension_entitlements.open("rb") as f:
+    extension_data = plistlib.load(f)
+extension_data["com.apple.security.application-groups"] = ["group.com.krowsingre.theboundvigil"]
+with extension_entitlements.open("wb") as f:
+    plistlib.dump(extension_data, f)
 with extension_entitlements.open("rb") as f:
     extension_verified = plistlib.load(f)
 if extension_verified.get("com.apple.security.application-groups") != ["group.com.krowsingre.theboundvigil"]:
