@@ -13,7 +13,7 @@ mod localsend;
 mod moving;
 mod protection;
 mod servers;
-#[cfg_attr(not(any(target_os = "macos", target_os = "ios")), allow(dead_code))]
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
 mod shared;
 mod sync;
 mod updates;
@@ -2060,7 +2060,7 @@ pub fn run() {
         .expect("error while running The Bound Vigil")
         .run(|_app, _event| {
             // A book shared to TBV from another app, on iPhone and iPad.
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            #[cfg(target_os = "ios")]
             if let tauri::RunEvent::Opened { urls } = &_event {
                 shared::opened(_app, urls);
             }

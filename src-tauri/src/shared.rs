@@ -55,6 +55,8 @@ fn bring_in(app: &AppHandle, files: Vec<PathBuf>) {
     let (Some(library), Some(imports), Ok(data_dir)) = (app.try_state::<AppLibrary>(), app.try_state::<Arc<Imports>>(), app.path().app_data_dir()) else {
         return;
     };
+    // Only iOS's own copies in TBV's Inbox are moved; anything else is copied and left where it is.
+    let inbox = app.path().document_dir().ok().map(|d| d.join("Inbox"));
     let (library, imports, app) = (library.0.clone(), imports.inner().clone(), app.clone());
     // Off the main thread: moving a big audiobook can take a moment.
     std::thread::spawn(move || {
@@ -65,10 +67,17 @@ fn bring_in(app: &AppHandle, files: Vec<PathBuf>) {
             let Ok(hold) = TempFolder::new(&holding_dir(&data_dir)) else { continue };
             let Some(file_name) = file.file_name() else { continue };
             let target = hold.path().join(file_name);
-            if std::fs::rename(&file, &target).is_err() && std::fs::copy(&file, &target).is_err() {
+            let ours = inbox.as_ref().is_some_and(|inbox| file.starts_with(inbox));
+            if ours {
+                if std::fs::rename(&file, &target).is_err() {
+                    if std::fs::copy(&file, &target).is_err() {
+                        continue;
+                    }
+                    let _ = std::fs::remove_file(&file);
+                }
+            } else if std::fs::copy(&file, &target).is_err() {
                 continue;
             }
-            let _ = std::fs::remove_file(&file);
             name = Some(tbv_core::audio::display_name(&target));
             count += imports.add_holding(&app, &library, vec![target], Some(Arc::new(hold)));
         }
