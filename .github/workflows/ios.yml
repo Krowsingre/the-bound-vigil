@@ -101,6 +101,30 @@ jobs:
           name: ios-signing-audit
           path: ios-signing-audit
           if-no-files-found: warn
+      - name: Verify exported IPA signature and extension inventory
+        if: github.ref == 'refs/heads/experiment/ios-share-signing-audit'
+        run: |
+          set -euo pipefail
+          ipa=$(find src-tauri/gen/apple/build/arm64 -maxdepth 1 -name '*.ipa' -print -quit)
+          test -n "$ipa"
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          unzip -q "$ipa" -d "$work"
+          app=$(find "$work/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)
+          test -n "$app"
+          echo '=== Exported app signing ==='
+          codesign --verify --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | grep -E 'Identifier=|TeamIdentifier=|Authority=' || true
+          echo '=== Exported app entitlements ==='
+          codesign -d --entitlements :- "$app" 2>/dev/null || true
+          echo '=== Exported extension inventory ==='
+          find "$app/PlugIns" -maxdepth 1 -name '*.appex' -print 2>/dev/null || true
+          echo '=== Embedded provisioning profile ==='
+          if [ -f "$app/embedded.mobileprovision" ]; then
+            security cms -D -i "$app/embedded.mobileprovision" | plutil -extract Entitlements.application-identifier raw -o - - || true
+          else
+            echo 'No embedded provisioning profile found'
+          fi
       - name: Keep the app file
         uses: actions/upload-artifact@v4
         with:
