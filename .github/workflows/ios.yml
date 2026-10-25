@@ -89,8 +89,13 @@ jobs:
           security cms -D -i "$extension/embedded.mobileprovision" > "$work/extension-profile.plist"
           plutil -extract Entitlements xml1 -o "$work/extension-entitlements.plist" "$work/extension-profile.plist"
           /usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$work/extension-entitlements.plist" | grep -Fx 'group.com.krowsingre.theboundvigil'
-          signer=$(security find-identity -v -p codesigning | sed -n 's/.*"\\(Apple Distribution:[^"]*\\)".*/\\1/p' | head -1)
-          test -n "$signer"
+          echo '=== Available local code-signing identities ==='
+          security find-identity -v -p codesigning || true
+          signer=$(security find-identity -v -p codesigning | grep -oE 'Apple Distribution:[^"]+' | head -1 || true)
+          if [ -z "$signer" ]; then
+            echo '::error::No usable Apple Distribution identity in runner keychain. Tauri export signing is not equivalent to a locally installed signing certificate.'
+            exit 1
+          fi
           codesign --force --sign "$signer" --entitlements "$work/extension-entitlements.plist" "$extension"
           codesign --force --sign "$signer" --preserve-metadata=entitlements "$app"
           codesign --verify --strict --verbose=2 "$app"
