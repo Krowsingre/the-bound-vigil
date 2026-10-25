@@ -70,12 +70,12 @@ fn bring_in(app: &AppHandle, files: Vec<PathBuf>) {
             let ours = inbox.as_ref().is_some_and(|inbox| file.starts_with(inbox));
             if ours {
                 if std::fs::rename(&file, &target).is_err() {
-                    if std::fs::copy(&file, &target).is_err() {
+                    if copy_any(&file, &target).is_err() {
                         continue;
                     }
-                    let _ = std::fs::remove_file(&file);
+                    let _ = if file.is_dir() { std::fs::remove_dir_all(&file) } else { std::fs::remove_file(&file) };
                 }
-            } else if std::fs::copy(&file, &target).is_err() {
+            } else if copy_any(&file, &target).is_err() {
                 continue;
             }
             name = Some(tbv_core::audio::display_name(&target));
@@ -88,4 +88,21 @@ fn bring_in(app: &AppHandle, files: Vec<PathBuf>) {
         };
         let _ = app.emit("shared-books", Shared { message });
     });
+}
+
+/// Copies a file, or a folder (an EPUB kept unpacked) with everything in it.
+fn copy_any(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    if !from.is_dir() {
+        return std::fs::copy(from, to).map(|_| ());
+    }
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        // file_type() doesn't follow links, so a link loop can't trap the copy.
+        if entry.file_type()?.is_symlink() {
+            continue;
+        }
+        copy_any(&entry.path(), &to.join(entry.file_name()))?;
+    }
+    Ok(())
 }

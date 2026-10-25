@@ -441,6 +441,11 @@ export class Paginator extends HTMLElement {
     #anchor = 0 // anchor view to a fraction (0-1), Range, or Element
     #justAnchored = false
     #locked = false // while true, prevent any further navigation
+    // TBV: in scrolled mode, how far the reader has kept pushing past the
+    // start or end of a chapter, so a firm push carries on into the next one
+    #edgePush = 0
+    #edgeTimer
+    #edgeTouchY = null
     #styles
     #styleMap = new WeakMap()
     #mediaQuery = matchMedia('(prefers-color-scheme: dark)')
@@ -572,7 +577,9 @@ export class Paginator extends HTMLElement {
             doc.addEventListener('touchstart', this.#onTouchStart.bind(this), opts)
             doc.addEventListener('touchmove', this.#onTouchMove.bind(this), opts)
             doc.addEventListener('touchend', this.#onTouchEnd.bind(this))
+            this.#listenAtEdges(doc)
         })
+        this.#listenAtEdges(this)
 
         this.addEventListener('relocate', ({ detail }) => {
             if (detail.reason === 'selection') setSelectionTo(this.#anchor, 0)
@@ -781,6 +788,11 @@ export class Paginator extends HTMLElement {
     get start() {
         return Math.abs(this.#container[this.scrollProp])
     }
+    // TBV: in top-to-bottom scrolling, pulling past the top (iOS rubber
+    // band) makes the offset negative; that's the start, not content above it
+    get #scrolledStart() {
+        return this.#vertical ? this.start : Math.max(0, this.#container[this.scrollProp])
+    }
     get end() {
         return this.start + this.size
     }
@@ -827,6 +839,45 @@ export class Paginator extends HTMLElement {
             t: e.timeStamp,
             vx: 0, xy: 0,
         }
+    }
+    // TBV: scrolling on past a chapter's end (or back past its start) opens
+    // the next (or previous) chapter, as paged mode does with a page turn
+    #listenAtEdges(target) {
+        target.addEventListener('wheel', e => {
+            if (!this.scrolled || this.#vertical || e.ctrlKey) return
+            const lines = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.size : 1
+            this.#pushAtEdge(e.deltaY * lines)
+        }, { passive: true })
+        target.addEventListener('touchstart', e => {
+            this.#edgeTouchY = e.touches.length === 1 ? e.touches[0].screenY : null
+        }, { passive: true })
+        target.addEventListener('touchmove', e => {
+            if (!this.scrolled || this.#vertical || this.#edgeTouchY == null) return
+            const y = e.touches[0]?.screenY
+            if (y == null) return
+            this.#pushAtEdge(this.#edgeTouchY - y)
+            this.#edgeTouchY = y
+        }, { passive: true })
+        target.addEventListener('touchend', () => this.#edgeTouchY = null, { passive: true })
+    }
+    #pushAtEdge(delta) {
+        if (this.#locked || !this.#view || !delta) return
+        const atEnd = this.viewSize - this.end <= 2
+        const atStart = this.#scrolledStart <= 0
+        // Only a push further past the edge counts, not scrolling up to it.
+        if ((delta > 0 && !atEnd) || (delta < 0 && !atStart)
+            || (this.#edgePush && Math.sign(delta) !== Math.sign(this.#edgePush))) {
+            this.#edgePush = 0
+            return
+        }
+        this.#edgePush += delta
+        clearTimeout(this.#edgeTimer)
+        this.#edgeTimer = setTimeout(() => this.#edgePush = 0, 700)
+        if (Math.abs(this.#edgePush) < 160) return
+        const forward = this.#edgePush > 0
+        this.#edgePush = 0
+        if (forward ? this.#adjacentIndex(1) != null : this.#adjacentIndex(-1) != null)
+            forward ? this.next() : this.prev()
     }
     #onTouchMove(e) {
         const state = this.#touchState
@@ -1027,8 +1078,9 @@ export class Paginator extends HTMLElement {
     #scrollPrev(distance) {
         if (!this.#view) return true
         if (this.scrolled) {
-            if (this.start > 0) return this.#scrollTo(
-                Math.max(0, this.start - (distance ?? this.size)), null, true)
+            const start = this.#scrolledStart
+            if (start > 0) return this.#scrollTo(
+                Math.max(0, start - (distance ?? this.size)), null, true)
             return true
         }
         if (this.atStart) return
