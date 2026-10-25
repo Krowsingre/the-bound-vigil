@@ -140,6 +140,22 @@ jobs:
           codesign -d --entitlements :- "$app" 2>/dev/null || true
           echo '=== Exported extension inventory ==='
           find "$app/PlugIns" -maxdepth 1 -name '*.appex' -print 2>/dev/null || true
+          echo '=== Share Extension signing ==='
+          extension="$app/PlugIns/TBVShareExtension.appex"
+          test -d "$extension"
+          codesign --verify --strict --verbose=2 "$extension"
+          codesign -dv "$extension" 2>&1 | grep -E 'Identifier=|TeamIdentifier=|Authority=' || true
+          echo '=== Share Extension entitlements ==='
+          codesign -d --entitlements :- "$extension" 2>/dev/null | tee "$work/extension-entitlements.plist"
+          /usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$work/extension-entitlements.plist" | grep -Fx 'group.com.krowsingre.theboundvigil'
+          echo '=== Host App Group entitlement ==='
+          codesign -d --entitlements :- "$app" 2>/dev/null > "$work/host-entitlements.plist"
+          /usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$work/host-entitlements.plist" | grep -Fx 'group.com.krowsingre.theboundvigil'
+          echo '=== Share Extension provisioning profile ==='
+          test -f "$extension/embedded.mobileprovision"
+          security cms -D -i "$extension/embedded.mobileprovision" > "$work/extension-profile.plist"
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$work/extension-profile.plist" | grep -F '.com.krowsingre.theboundvigil.ShareExtension'
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups:0' "$work/extension-profile.plist" | grep -Fx 'group.com.krowsingre.theboundvigil'
           echo '=== Embedded provisioning profile ==='
           if [ -f "$app/embedded.mobileprovision" ]; then
             security cms -D -i "$app/embedded.mobileprovision" | plutil -extract Entitlements.application-identifier raw -o - - || true
