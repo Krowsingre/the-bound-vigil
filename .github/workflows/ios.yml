@@ -74,6 +74,30 @@ jobs:
           export APPLE_API_KEY_PATH=~/private_keys/AuthKey_$APPLE_API_KEY.p8
           npx tauri ios build --export-method app-store-connect \
             --config '{"bundle":{"iOS":{"bundleVersion":"${{ github.run_number }}"}}}'
+      - name: Re-sign exported Share Extension with authorized App Group
+        if: github.ref == 'refs/heads/experiment/ios-share-signing-audit'
+        run: |
+          set -euo pipefail
+          ipa=$(find src-tauri/gen/apple/build/arm64 -maxdepth 1 -name '*.ipa' -print -quit)
+          test -n "$ipa"
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          unzip -q "$ipa" -d "$work"
+          app=$(find "$work/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)
+          extension="$app/PlugIns/TBVShareExtension.appex"
+          test -f "$extension/embedded.mobileprovision"
+          security cms -D -i "$extension/embedded.mobileprovision" > "$work/extension-profile.plist"
+          plutil -extract Entitlements xml1 -o "$work/extension-entitlements.plist" "$work/extension-profile.plist"
+          /usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$work/extension-entitlements.plist" | grep -Fx 'group.com.krowsingre.theboundvigil'
+          signer=$(security find-identity -v -p codesigning | sed -n 's/.*"\\(Apple Distribution:[^"]*\\)".*/\\1/p' | head -1)
+          test -n "$signer"
+          codesign --force --sign "$signer" --entitlements "$work/extension-entitlements.plist" "$extension"
+          codesign --force --sign "$signer" --preserve-metadata=entitlements "$app"
+          codesign --verify --strict --verbose=2 "$app"
+          codesign --verify --strict --verbose=2 "$extension"
+          output=$(realpath "$ipa")
+          rm "$output"
+          (cd "$work" && zip -qry "$output" Payload)
       - name: Capture extension integration diagnostics
         if: always() && github.ref == 'refs/heads/experiment/ios-share-signing-audit'
         run: |
