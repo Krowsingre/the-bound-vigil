@@ -140,6 +140,19 @@ jobs:
           codesign -d --entitlements :- "$app" 2>/dev/null || true
           echo '=== Exported extension inventory ==='
           find "$app/PlugIns" -maxdepth 1 -name '*.appex' -print 2>/dev/null || true
+          echo '=== Extension embedded provisioning profile authorization ==='
+          extension="$app/PlugIns/TBVShareExtension.appex"
+          test -f "$extension/embedded.mobileprovision"
+          security cms -D -i "$extension/embedded.mobileprovision" > "$work/extension-profile.plist"
+          echo 'Extension profile application identifier:'
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$work/extension-profile.plist"
+          echo 'Extension profile App Groups:'
+          if /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$work/extension-profile.plist"; then
+            echo 'Extension profile includes an App Group entitlement'
+          else
+            echo '::error::Extension provisioning profile does not authorize an App Group'
+            exit 1
+          fi
           echo '=== Share Extension signing ==='
           extension="$app/PlugIns/TBVShareExtension.appex"
           test -d "$extension"
