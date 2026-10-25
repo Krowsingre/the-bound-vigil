@@ -788,6 +788,11 @@ export class Paginator extends HTMLElement {
     get start() {
         return Math.abs(this.#container[this.scrollProp])
     }
+    // TBV: in top-to-bottom scrolling, pulling past the top (iOS rubber
+    // band) makes the offset negative; that's the start, not content above it
+    get #scrolledStart() {
+        return this.#vertical ? this.start : Math.max(0, this.#container[this.scrollProp])
+    }
     get end() {
         return this.start + this.size
     }
@@ -858,7 +863,7 @@ export class Paginator extends HTMLElement {
     #pushAtEdge(delta) {
         if (this.#locked || !this.#view || !delta) return
         const atEnd = this.viewSize - this.end <= 2
-        const atStart = this.start <= 0
+        const atStart = this.#scrolledStart <= 0
         // Only a push further past the edge counts, not scrolling up to it.
         if ((delta > 0 && !atEnd) || (delta < 0 && !atStart)
             || (this.#edgePush && Math.sign(delta) !== Math.sign(this.#edgePush))) {
@@ -1073,8 +1078,9 @@ export class Paginator extends HTMLElement {
     #scrollPrev(distance) {
         if (!this.#view) return true
         if (this.scrolled) {
-            if (this.start > 0) return this.#scrollTo(
-                Math.max(0, this.start - (distance ?? this.size)), null, true)
+            const start = this.#scrolledStart
+            if (start > 0) return this.#scrollTo(
+                Math.max(0, start - (distance ?? this.size)), null, true)
             return true
         }
         if (this.atStart) return

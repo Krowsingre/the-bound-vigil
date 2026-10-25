@@ -227,8 +227,14 @@ pub fn pack_folder(folder: &Path, target: &Path) -> Result<()> {
     use zip::write::SimpleFileOptions;
     fn gather(root: &Path, at: &Path, files: &mut Vec<String>) -> Result<()> {
         for entry in std::fs::read_dir(at)? {
-            let path = entry?.path();
-            if path.is_dir() {
+            let entry = entry?;
+            let path = entry.path();
+            // file_type() doesn't follow links: a link could lead out of the book, or round in a loop.
+            let kind = entry.file_type()?;
+            if kind.is_symlink() {
+                continue;
+            }
+            if kind.is_dir() {
                 gather(root, &path, files)?;
             } else if let Ok(inside) = path.strip_prefix(root) {
                 let name = inside.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
