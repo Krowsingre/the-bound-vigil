@@ -51,6 +51,12 @@ jobs:
         run: npx tauri ios init --ci
       - name: Make the app icons
         run: npx tauri icon src-tauri/icons/ios-icon-1024.png
+      - name: Integrate experimental Share Extension target
+        if: github.ref == 'refs/heads/experiment/ios-share-signing-audit'
+        run: |
+          python3 scripts/integrate_ios_share_extension.py
+          grep -q 'TBVShareExtension:' src-tauri/gen/apple/project.yml
+          test -f src-tauri/gen/apple/TBVShareExtension/ShareExtension.entitlements
       - name: Put the App Store Connect key in place
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
@@ -68,6 +74,21 @@ jobs:
           export APPLE_API_KEY_PATH=~/private_keys/AuthKey_$APPLE_API_KEY.p8
           npx tauri ios build --export-method app-store-connect \
             --config '{"bundle":{"iOS":{"bundleVersion":"${{ github.run_number }}"}}}'
+      - name: Capture extension integration diagnostics
+        if: always() && github.ref == 'refs/heads/experiment/ios-share-signing-audit'
+        run: |
+          mkdir -p ios-extension-diagnostics
+          if [ -f src-tauri/gen/apple/project.yml ]; then
+            grep -A 22 '  TBVShareExtension:' src-tauri/gen/apple/project.yml > ios-extension-diagnostics/extension-target.txt || true
+          fi
+          find src-tauri/gen/apple/build -name '*.appex' -print > ios-extension-diagnostics/embedded-extensions.txt 2>/dev/null || true
+      - name: Upload extension integration diagnostics
+        if: always() && github.ref == 'refs/heads/experiment/ios-share-signing-audit'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-extension-diagnostics
+          path: ios-extension-diagnostics
+          if-no-files-found: warn
       - name: Audit generated iOS signing configuration
         if: github.ref == 'refs/heads/experiment/ios-share-signing-audit'
         run: |
