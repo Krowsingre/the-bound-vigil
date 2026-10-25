@@ -44,6 +44,8 @@ spec += f"""
       - path: TBVShareExtension/ShareViewController.swift
     info:
       path: TBVShareExtension/Info.plist
+    entitlements:
+      path: TBVShareExtension/ShareExtension.entitlements
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.krowsingre.theboundvigil.ShareExtension
