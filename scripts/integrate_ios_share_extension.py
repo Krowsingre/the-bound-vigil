@@ -44,14 +44,13 @@ spec += f"""
       - path: TBVShareExtension/ShareViewController.swift
     info:
       path: TBVShareExtension/Info.plist
-    entitlements:
-      path: TBVShareExtension/ShareExtension.entitlements
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.krowsingre.theboundvigil.ShareExtension
         PRODUCT_NAME: TBVShareExtension
         SWIFT_VERSION: "5.0"
         CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: TBVShareExtension/ShareExtension.entitlements
         DEVELOPMENT_TEAM: {team}
         SKIP_INSTALL: true
         APPLICATION_EXTENSION_API_ONLY: true
@@ -65,6 +64,12 @@ with host_entitlements.open("rb") as f:
 entitlements["com.apple.security.application-groups"] = ["group.com.krowsingre.theboundvigil"]
 with host_entitlements.open("wb") as f:
     plistlib.dump(entitlements, f)
+extension_entitlements = target_dir / "ShareExtension.entitlements"
+with extension_entitlements.open("rb") as f:
+    extension_verified = plistlib.load(f)
+if extension_verified.get("com.apple.security.application-groups") != ["group.com.krowsingre.theboundvigil"]:
+    raise SystemExit("Share Extension App Group entitlement file verification failed")
+
 with host_entitlements.open("rb") as f:
     verified = plistlib.load(f)
 if verified.get("com.apple.security.application-groups") != ["group.com.krowsingre.theboundvigil"]:
