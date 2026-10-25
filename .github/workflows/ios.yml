@@ -2,7 +2,7 @@ name: iPhone app
 
 on:
   push:
-    branches: [main]
+    branches: [main, experiment/ios-share-signing-audit]
   pull_request:
   workflow_dispatch:
 
@@ -68,6 +68,31 @@ jobs:
           export APPLE_API_KEY_PATH=~/private_keys/AuthKey_$APPLE_API_KEY.p8
           npx tauri ios build --export-method app-store-connect \
             --config '{"bundle":{"iOS":{"bundleVersion":"${{ github.run_number }}"}}}'
+      - name: Audit generated iOS signing configuration
+        if: github.ref == 'refs/heads/experiment/ios-share-signing-audit'
+        run: |
+          mkdir -p ios-signing-audit
+          cp src-tauri/gen/apple/project.yml ios-signing-audit/project.yml
+          find src-tauri/gen/apple -name '*.entitlements' -type f -exec sh -c 'for f do echo "FILE: $f"; plutil -p "$f"; done' sh {} + > ios-signing-audit/entitlements.txt
+          archive=$(find src-tauri/gen/apple/build -type d -name '*.xcarchive' -print -quit 2>/dev/null)
+          if [ -n "$archive" ]; then
+            app="$archive/Products/Applications/The Bound Vigil.app"
+            {
+              echo "Archive: $archive"
+              echo "Embedded extensions:"
+              find "$app/PlugIns" -maxdepth 1 -name '*.appex' -print 2>/dev/null || true
+              echo "Host signature:"
+              codesign -dv "$app" 2>&1 || true
+            } > ios-signing-audit/archive.txt
+          fi
+          find src-tauri/gen/apple/build/arm64 -name '*.ipa' -print > ios-signing-audit/ipa.txt 2>/dev/null || true
+      - name: Upload iOS signing audit
+        if: always() && github.ref == 'refs/heads/experiment/ios-share-signing-audit'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-signing-audit
+          path: ios-signing-audit
+          if-no-files-found: warn
       - name: Keep the app file
         uses: actions/upload-artifact@v4
         with:
@@ -75,6 +100,7 @@ jobs:
           path: src-tauri/gen/apple/build/arm64/*.ipa
           if-no-files-found: error
       - name: Send to TestFlight
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
