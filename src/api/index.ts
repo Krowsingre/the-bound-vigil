@@ -123,6 +123,8 @@ export interface Api {
   hardcoverSendAll(): Promise<HardcoverSendAll>;
   /** Problems sending a rating to Hardcover in the background. */
   onHardcoverNotice(listener: (message: string) => void): () => void;
+  /** Books shared to TBV from another app (iPhone and iPad): what's being added. */
+  onSharedBooks(listener: (message: string) => void): () => void;
   /** The plain text of an old Word (DOC) book. */
   bookText(bookId: string): Promise<string>;
   /** Gives a book a cover drawn here (a PDF's first page) if it has none. */
@@ -632,6 +634,19 @@ function appApi(): Api {
       let stopped = false;
       void tauriEvents().then(async ({ listen }) => {
         const unlisten = await listen<{ message: string }>("hardcover-notice", (e) => listener(e.payload.message));
+        if (stopped) unlisten();
+        else stop = unlisten;
+      });
+      return () => {
+        stopped = true;
+        stop?.();
+      };
+    },
+    onSharedBooks: (listener) => {
+      let stop: (() => void) | null = null;
+      let stopped = false;
+      void tauriEvents().then(async ({ listen }) => {
+        const unlisten = await listen<{ message: string }>("shared-books", (e) => listener(e.payload.message));
         if (stopped) unlisten();
         else stop = unlisten;
       });

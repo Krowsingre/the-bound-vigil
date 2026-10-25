@@ -189,6 +189,7 @@ export function App() {
   );
 
   useEffect(() => api.onHardcoverNotice((message) => toast(message)), [toast]);
+  useEffect(() => api.onSharedBooks((message) => toast(message)), [toast]);
 
   // Chosen in Preferences › Discover: every site's cookies and data go each time TBV starts.
   useEffect(() => {
