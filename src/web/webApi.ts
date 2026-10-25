@@ -653,6 +653,7 @@ export async function webApi(): Promise<Api> {
       throw new Error(DESKTOP_ONLY);
     },
     onHardcoverNotice: () => () => undefined,
+    onSharedBooks: () => () => undefined,
     bookText: async () => {
       throw new Error("Old Word (DOC) files open in the desktop app.");
     },

@@ -13,6 +13,8 @@ mod localsend;
 mod moving;
 mod protection;
 mod servers;
+#[cfg_attr(not(any(target_os = "macos", target_os = "ios")), allow(dead_code))]
+mod shared;
 mod sync;
 mod updates;
 mod writing;
@@ -1792,6 +1794,8 @@ pub fn run() {
             app.manage(home.clone());
             #[cfg(desktop)]
             home.resume(app.handle());
+            // Books shared from another app while TBV was starting.
+            shared::ready(app.handle(), &data_dir);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -2052,6 +2056,13 @@ pub fn run() {
                 });
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running The Bound Vigil");
+        .build(tauri::generate_context!())
+        .expect("error while running The Bound Vigil")
+        .run(|_app, _event| {
+            // A book shared to TBV from another app, on iPhone and iPad.
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            if let tauri::RunEvent::Opened { urls } = &_event {
+                shared::opened(_app, urls);
+            }
+        });
 }
