@@ -86,6 +86,14 @@ jobs:
             } > ios-signing-audit/archive.txt
           fi
           find src-tauri/gen/apple/build/arm64 -name '*.ipa' -print > ios-signing-audit/ipa.txt 2>/dev/null || true
+          echo '=== Generated signing settings (non-secret) ==='
+          grep -E '(^|[[:space:]])(CODE_SIGN_STYLE|DEVELOPMENT_TEAM|PRODUCT_BUNDLE_IDENTIFIER|CODE_SIGN_ENTITLEMENTS|PROVISIONING_PROFILE_SPECIFIER):' ios-signing-audit/project.yml || true
+          echo '=== Archive summary ==='
+          cat ios-signing-audit/archive.txt 2>/dev/null || true
+          echo '=== Entitlement summary ==='
+          cat ios-signing-audit/entitlements.txt 2>/dev/null || true
+          echo '=== IPA output ==='
+          cat ios-signing-audit/ipa.txt 2>/dev/null || true
       - name: Upload iOS signing audit
         if: always() && github.ref == 'refs/heads/experiment/ios-share-signing-audit'
         uses: actions/upload-artifact@v4
