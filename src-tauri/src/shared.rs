@@ -34,7 +34,7 @@ pub fn opened(app: &AppHandle, urls: &[tauri::Url]) {
         }
         return;
     }
-    bring_in(app, files);
+    bring_in(app, files, Vec::new());
 }
 
 /// Brings in what was shared while TBV was starting, and clears copies an
@@ -43,7 +43,47 @@ pub fn ready(app: &AppHandle, data_dir: &std::path::Path) {
     let _ = std::fs::remove_dir_all(holding_dir(data_dir));
     let files = WAITING.lock().map(|mut w| std::mem::take(&mut *w)).unwrap_or_default();
     if !files.is_empty() {
-        bring_in(app, files);
+        bring_in(app, files, Vec::new());
+    }
+}
+
+/// Poll while the app is running: iOS does not necessarily open the host
+/// when a Share Extension finishes, so new batches must also be discovered
+/// when TBV returns to the foreground or remains open.
+#[cfg(target_os = "ios")]
+pub fn watch(app: AppHandle) {
+    std::thread::spawn(move || {
+        let mut active = std::collections::HashSet::<PathBuf>::new();
+        loop {
+            if let Ok(batches) = tauri_plugin_tbv_ios::pending_shares() {
+                active.retain(|path| path.is_dir());
+                for batch in batches {
+                    if !active.insert(batch.clone()) { continue; }
+                    let mut files = Vec::new();
+                    collect_files(&batch, &mut files);
+                    if files.is_empty() {
+                        active.remove(&batch);
+                        continue;
+                    }
+                    bring_in(&app, files, vec![batch]);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_secs(3));
+        }
+    });
+}
+
+#[cfg(target_os = "ios")]
+fn collect_files(folder: &std::path::Path, out: &mut Vec<PathBuf>) {
+    if let Ok(entries) = std::fs::read_dir(folder) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_files(&path, out);
+            } else if path.is_file() {
+                out.push(path);
+            }
+        }
     }
 }
 
@@ -51,7 +91,7 @@ fn holding_dir(data_dir: &std::path::Path) -> PathBuf {
     data_dir.join("Shared books")
 }
 
-fn bring_in(app: &AppHandle, files: Vec<PathBuf>) {
+fn bring_in(app: &AppHandle, files: Vec<PathBuf>, completed_batches: Vec<PathBuf>) {
     let (Some(library), Some(imports), Ok(data_dir)) = (app.try_state::<AppLibrary>(), app.try_state::<Arc<Imports>>(), app.path().app_data_dir()) else {
         return;
     };
@@ -81,7 +121,7 @@ fn bring_in(app: &AppHandle, files: Vec<PathBuf>) {
             name = Some(tbv_core::audio::display_name(&target));
             count += imports.add_holding(&app, &library, vec![target], Some(Arc::new(hold)));
         }
-        let message = match (count, name) {
+        // Copies have been secured in queue-owned temporary folders. Only now\n        // remove completed Share Extension batches from shared storage.\n        for batch in completed_batches {\n            let _ = std::fs::remove_dir_all(batch);\n        }\n        let message = match (count, name) {
             (0, _) => "TBV can't read that file, so it wasn't added.".to_string(),
             (1, Some(name)) => format!("Adding {name} to your library."),
             (n, _) => format!("Adding {n} books to your library."),
