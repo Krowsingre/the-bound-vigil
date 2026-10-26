@@ -44,6 +44,14 @@ spec += f"""
       - path: TBVShareExtension/ShareViewController.swift
     info:
       path: TBVShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Bound Vigil
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsFileWithMaxCount: 20
     entitlements:
       path: TBVShareExtension/ShareExtension.entitlements
     settings:
