@@ -1796,6 +1796,8 @@ pub fn run() {
             home.resume(app.handle());
             // Books shared from another app while TBV was starting.
             shared::ready(app.handle(), &data_dir);
+            #[cfg(target_os = "ios")]
+            shared::watch(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
