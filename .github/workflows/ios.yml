@@ -87,6 +87,21 @@ jobs:
           cd src-tauri/gen/apple
           archive="$PWD/build/the-bound-vigil_iOS.xcarchive"
           rm -rf "$archive"
+          # The initial Tauri build has already produced libapp.a. Avoid
+          # re-running its Xcode build phase outside the Tauri CLI process,
+          # which otherwise requires .tauri/cli-options-server.json.
+          /usr/bin/python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("the-bound-vigil.xcodeproj/project.pbxproj")
+          text = p.read_text()
+          pattern = r'(shellScript = ")([^"]*tauri ios xcode-script[^"]*)(";)'
+          matches = list(re.finditer(pattern, text))
+          if len(matches) != 1:
+              raise SystemExit(f"Expected exactly one Tauri Rust build script, found {len(matches)}")
+          text = re.sub(pattern, lambda m: m.group(1) + "echo Reusing prebuilt Tauri Rust static library" + m.group(3), text, count=1)
+          p.write_text(text)
+          PY
           xcodebuild archive \
             -project the-bound-vigil.xcodeproj \
             -scheme the-bound-vigil_iOS \
