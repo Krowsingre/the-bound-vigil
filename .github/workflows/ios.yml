@@ -106,13 +106,48 @@ jobs:
               codesign -dv "$app" 2>&1 || true
             } > ios-signing-audit/archive.txt
           fi
-          echo '=== Archive extension entitlements ==='
+          echo '=== Archive extension signature and entitlements (unsuppressed) ==='
           archive=$(find src-tauri/gen/apple/build -type d -name '*.xcarchive' -print -quit 2>/dev/null)
-          if [ -n "$archive" ]; then
+          if [ -z "$archive" ]; then
+            echo 'Archive not found'
+          else
             extension="$archive/Products/Applications/The Bound Vigil.app/PlugIns/TBVShareExtension.appex"
-            if [ -d "$extension" ]; then
-              codesign -d --entitlements :- "$extension" 2>/dev/null || true
+            if [ ! -d "$extension" ]; then
+              echo "Archive extension missing: $extension"
+            else
+              echo "Archive extension: $extension"
+              codesign -dv --verbose=4 "$extension" 2>&1 || echo "Archive extension signature inspection failed: $?"
+              codesign --verify --strict --verbose=2 "$extension" 2>&1 || echo "Archive extension signature verification failed: $?"
+              codesign -d --entitlements :- "$extension" > ios-signing-audit/archive-extension-entitlements.plist 2> ios-signing-audit/archive-extension-entitlements.stderr
+              status=$?
+              echo "Archive extension entitlement extraction exit status: $status"
+              cat ios-signing-audit/archive-extension-entitlements.stderr
+              if [ -s ios-signing-audit/archive-extension-entitlements.plist ]; then
+                plutil -p ios-signing-audit/archive-extension-entitlements.plist || cat ios-signing-audit/archive-extension-entitlements.plist
+              else
+                echo 'Archive extension has no extractable signed entitlements'
+              fi
             fi
+          fi
+          echo '=== Exported extension signature versus archive ==='
+          ipa=$(find src-tauri/gen/apple/build/arm64 -maxdepth 1 -name '*.ipa' -print -quit)
+          if [ -n "$ipa" ]; then
+            audit_tmp=$(mktemp -d)
+            unzip -q "$ipa" -d "$audit_tmp"
+            exported="$audit_tmp/Payload/The Bound Vigil.app/PlugIns/TBVShareExtension.appex"
+            if [ -d "$exported" ]; then
+              codesign -dv --verbose=4 "$exported" 2>&1 || echo "Exported extension signature inspection failed: $?"
+              codesign -d --entitlements :- "$exported" > ios-signing-audit/exported-extension-entitlements.plist 2> ios-signing-audit/exported-extension-entitlements.stderr
+              status=$?
+              echo "Exported extension entitlement extraction exit status: $status"
+              cat ios-signing-audit/exported-extension-entitlements.stderr
+              if [ -s ios-signing-audit/exported-extension-entitlements.plist ]; then
+                plutil -p ios-signing-audit/exported-extension-entitlements.plist || cat ios-signing-audit/exported-extension-entitlements.plist
+              fi
+            else
+              echo 'Exported IPA has no extension'
+            fi
+            rm -rf "$audit_tmp"
           fi
           echo '=== Extension Xcode build signing settings ==='
           (cd src-tauri/gen/apple && xcodebuild -project the-bound-vigil.xcodeproj -target TBVShareExtension -configuration release -showBuildSettings 2>/dev/null | grep -E '^ *(CODE_SIGN_ENTITLEMENTS|CODE_SIGN_STYLE|PRODUCT_BUNDLE_IDENTIFIER|DEVELOPMENT_TEAM) =' || true)
