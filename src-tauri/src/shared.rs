@@ -124,7 +124,14 @@ fn bring_in(app: &AppHandle, files: Vec<PathBuf>, completed_batches: Vec<PathBuf
             name = Some(tbv_core::audio::display_name(&target));
             count += imports.add_holding(&app, &library, vec![target], Some(Arc::new(hold)));
         }
-        // Copies have been secured in queue-owned temporary folders. Only now\n        // remove completed Share Extension batches from shared storage.\n        for batch in completed_batches {\n            let _ = std::fs::remove_dir_all(batch);\n        }\n        let message = match (count, name) {
+        // Keep the original batch if any file could not be staged.
+        // The import queue owns successful copies from this point onward.
+        if all_staged {
+            for batch in completed_batches {
+                let _ = std::fs::remove_dir_all(batch);
+            }
+        }
+        let message = match (count, name) {
             (0, _) => "TBV can't read that file, so it wasn't added.".to_string(),
             (1, Some(name)) => format!("Adding {name} to your library."),
             (n, _) => format!("Adding {n} books to your library."),
