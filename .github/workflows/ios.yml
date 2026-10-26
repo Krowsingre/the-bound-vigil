@@ -342,7 +342,7 @@ jobs:
           path: src-tauri/gen/apple/build/arm64/*.ipa
           if-no-files-found: error
       - name: Send to TestFlight
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/experiment/ios-share-signing-audit') && github.event_name != 'pull_request'
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
