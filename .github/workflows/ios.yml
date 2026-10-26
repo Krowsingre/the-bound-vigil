@@ -74,6 +74,54 @@ jobs:
           export APPLE_API_KEY_PATH=~/private_keys/AuthKey_$APPLE_API_KEY.p8
           npx tauri ios build --export-method app-store-connect \
             --config '{"bundle":{"iOS":{"bundleVersion":"${{ github.run_number }}"}}}'
+      # Tauri compiles the archive with signing disabled. Re-archive with Xcode
+      # signing enabled so each target's CODE_SIGN_ENTITLEMENTS is applied
+      # before distribution export, including the Share Extension.
+      - name: Create signed iOS archive and export
+        if: github.ref == 'refs/heads/experiment/ios-share-signing-audit'
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          cd src-tauri/gen/apple
+          archive="$PWD/build/the-bound-vigil_iOS.xcarchive"
+          rm -rf "$archive"
+          xcodebuild archive \
+            -project the-bound-vigil.xcodeproj \
+            -scheme the-bound-vigil_iOS \
+            -configuration release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$archive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyID "$APPLE_API_KEY_ID" \
+            -authenticationKeyIssuerID "$APPLE_API_ISSUER" \
+            -authenticationKeyPath "$HOME/private_keys/AuthKey_$APPLE_API_KEY_ID.p8" \
+            DEVELOPMENT_TEAM="$APPLE_DEVELOPMENT_TEAM" \
+            CODE_SIGN_STYLE=Automatic
+          extension="$archive/Products/Applications/The Bound Vigil.app/PlugIns/TBVShareExtension.appex"
+          test -d "$extension"
+          codesign --verify --strict --verbose=2 "$extension"
+          codesign -d --entitlements :- "$extension" > /tmp/tbv-extension-signed-entitlements.plist
+          /usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' /tmp/tbv-extension-signed-entitlements.plist | grep -Fx 'group.com.krowsingre.theboundvigil'
+          cat > /tmp/tbv-export-options.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>method</key><string>app-store-connect</string>
+          <key>signingStyle</key><string>automatic</string>
+          <key>destination</key><string>export</string>
+          </dict></plist>
+          PLIST
+          mkdir -p build/arm64
+          xcodebuild -exportArchive \
+            -archivePath "$archive" \
+            -exportPath "$PWD/build/arm64" \
+            -exportOptionsPlist /tmp/tbv-export-options.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyID "$APPLE_API_KEY_ID" \
+            -authenticationKeyIssuerID "$APPLE_API_ISSUER" \
+            -authenticationKeyPath "$HOME/private_keys/AuthKey_$APPLE_API_KEY_ID.p8"
       - name: Capture extension integration diagnostics
         if: always() && github.ref == 'refs/heads/experiment/ios-share-signing-audit'
         run: |
