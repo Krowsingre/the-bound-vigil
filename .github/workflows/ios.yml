@@ -77,6 +77,32 @@ jobs:
       # Tauri compiles the archive with signing disabled. Re-archive with Xcode
       # signing enabled so each target's CODE_SIGN_ENTITLEMENTS is applied
       # before distribution export, including the Share Extension.
+      - name: Capture generated Xcode project structure
+        if: always() && github.ref == 'refs/heads/experiment/ios-share-signing-audit'
+        run: |
+          set -euo pipefail
+          mkdir -p ios-xcode-project
+          cp src-tauri/gen/apple/the-bound-vigil.xcodeproj/project.pbxproj ios-xcode-project/project.pbxproj
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("ios-xcode-project/project.pbxproj")
+          s = p.read_text()
+          lines = s.splitlines()
+          matches = [i for i, line in enumerate(lines) if "Build Rust Code" in line or "xcode-script" in line or "shellScript =" in line]
+          with Path("ios-xcode-project/build-phase-excerpts.txt").open("w") as out:
+              for i in matches:
+                  out.write(f"=== line {i+1} ===\\n")
+                  out.write("\\n".join(lines[max(0,i-5):min(len(lines),i+7)]) + "\\n")
+          print(f"Captured generated Xcode project; {len(matches)} build-phase references")
+          PY
+      - name: Upload generated Xcode project
+        if: always() && github.ref == 'refs/heads/experiment/ios-share-signing-audit'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-generated-xcode-project
+          path: ios-xcode-project
+          if-no-files-found: warn
       - name: Create signed iOS archive and export
         if: github.ref == 'refs/heads/experiment/ios-share-signing-audit'
         env:
