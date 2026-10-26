@@ -129,10 +129,10 @@ jobs:
           source = p.read_text()
           phase_id = "5C7CE252C36A67EB904A636E"
           phase_pattern = (
-              r"(?m)^(\\s*" + phase_id
-              + r" /\\* Build Rust Code \\*/ = \\{\\n)"
-              + r"([\\s\\S]*?)"
-              + r"^(\\s*\\};)$"
+              r"(?m)^(\s*" + phase_id
+              + r" /\* Build Rust Code \*/ = \{\n)"
+              + r"([\s\S]*?)"
+              + r"^(\s*\};)$"
           )
           matches = list(re.finditer(phase_pattern, source))
           if len(matches) != 1:
@@ -142,8 +142,8 @@ jobs:
           if body.count("shellScript = ") != 1 or "tauri ios xcode-script" not in body:
               raise SystemExit("Rust build phase does not match inspected structure")
           new_body, count = re.subn(
-              r'(?m)^(\\s*shellScript = )".*";$',
-              r'\\1"echo Reusing verified prebuilt arm64 release libapp.a";',
+              r'(?m)^(\s*shellScript = )".*";$',
+              r'\1"echo Reusing verified prebuilt arm64 release libapp.a";',
               body,
           )
           if count != 1:
