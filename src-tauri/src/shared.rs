@@ -102,20 +102,23 @@ fn bring_in(app: &AppHandle, files: Vec<PathBuf>, completed_batches: Vec<PathBuf
     std::thread::spawn(move || {
         let mut count = 0;
         let mut name = None;
+        let mut all_staged = true;
         for file in files {
             // Each in a folder of its own, cleared once its book is in.
-            let Ok(hold) = TempFolder::new(&holding_dir(&data_dir)) else { continue };
-            let Some(file_name) = file.file_name() else { continue };
+            let Ok(hold) = TempFolder::new(&holding_dir(&data_dir)) else { all_staged = false; continue };
+            let Some(file_name) = file.file_name() else { all_staged = false; continue };
             let target = hold.path().join(file_name);
             let ours = inbox.as_ref().is_some_and(|inbox| file.starts_with(inbox));
             if ours {
                 if std::fs::rename(&file, &target).is_err() {
                     if copy_any(&file, &target).is_err() {
+                        all_staged = false;
                         continue;
                     }
                     let _ = if file.is_dir() { std::fs::remove_dir_all(&file) } else { std::fs::remove_file(&file) };
                 }
             } else if copy_any(&file, &target).is_err() {
+                all_staged = false;
                 continue;
             }
             name = Some(tbv_core::audio::display_name(&target));
