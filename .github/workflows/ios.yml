@@ -118,8 +118,8 @@ jobs:
               echo "Archive extension: $extension"
               codesign -dv --verbose=4 "$extension" 2>&1 || echo "Archive extension signature inspection failed: $?"
               codesign --verify --strict --verbose=2 "$extension" 2>&1 || echo "Archive extension signature verification failed: $?"
-              codesign -d --entitlements :- "$extension" > ios-signing-audit/archive-extension-entitlements.plist 2> ios-signing-audit/archive-extension-entitlements.stderr
-              status=$?
+              status=0
+              codesign -d --entitlements :- "$extension" > ios-signing-audit/archive-extension-entitlements.plist 2> ios-signing-audit/archive-extension-entitlements.stderr || status=$?
               echo "Archive extension entitlement extraction exit status: $status"
               cat ios-signing-audit/archive-extension-entitlements.stderr
               if [ -s ios-signing-audit/archive-extension-entitlements.plist ]; then
@@ -137,8 +137,8 @@ jobs:
             exported="$audit_tmp/Payload/The Bound Vigil.app/PlugIns/TBVShareExtension.appex"
             if [ -d "$exported" ]; then
               codesign -dv --verbose=4 "$exported" 2>&1 || echo "Exported extension signature inspection failed: $?"
-              codesign -d --entitlements :- "$exported" > ios-signing-audit/exported-extension-entitlements.plist 2> ios-signing-audit/exported-extension-entitlements.stderr
-              status=$?
+              status=0
+              codesign -d --entitlements :- "$exported" > ios-signing-audit/exported-extension-entitlements.plist 2> ios-signing-audit/exported-extension-entitlements.stderr || status=$?
               echo "Exported extension entitlement extraction exit status: $status"
               cat ios-signing-audit/exported-extension-entitlements.stderr
               if [ -s ios-signing-audit/exported-extension-entitlements.plist ]; then
