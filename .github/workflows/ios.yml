@@ -341,6 +341,19 @@ jobs:
           name: the-bound-vigil-iphone
           path: src-tauri/gen/apple/build/arm64/*.ipa
           if-no-files-found: error
+      - name: Validate Share Extension metadata for App Store Connect
+        if: github.ref == 'refs/heads/experiment/ios-share-signing-audit'
+        run: |
+          set -euo pipefail
+          ipa=$(find src-tauri/gen/apple/build/arm64 -maxdepth 1 -name '*.ipa' -print -quit)
+          test -n "$ipa"
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          unzip -q "$ipa" -d "$work"
+          plist="$work/Payload/The Bound Vigil.app/PlugIns/TBVShareExtension.appex/Info.plist"
+          test -f "$plist"
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$plist" | grep -Fx 'com.apple.share-services'
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPrincipalClass' "$plist" | grep -F 'ShareViewController'
       - name: Send to TestFlight
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/experiment/ios-share-signing-audit') && github.event_name != 'pull_request'
         env:
