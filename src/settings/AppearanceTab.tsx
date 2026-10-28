@@ -17,6 +17,7 @@ import {
   type ThemeChoice,
 } from "./appSettings";
 import { Row, Section, Segmented, Select, Toggle } from "./controls";
+import { ProfileSection } from "./ProfileSection";
 
 /** The reader's own settings, shared with the Aa panel in the reader. */
 export function useReaderSettings(): [ReaderSettings | null, (change: Partial<ReaderSettings>) => void] {
@@ -169,6 +170,8 @@ export function AppearanceTab({
           </div>
         )}
       </Section>
+
+      <ProfileSection />
 
       <Section id="layout" title="Interface layout" lede="The size of things, and how the library shows your books.">
         <Row label="Interface scale" hint="Makes all text and controls smaller or larger.">

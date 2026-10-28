@@ -567,7 +567,7 @@ export function AccessibilityTab() {
 }
 
 const EVERYWHERE: [string, string][] = [
-  ["Ctrl + 1 to 7", "Go to Sanctum, Archive, Compendium, Resonance, Scribe, Discover or Preferences"],
+  ["Ctrl + 1 to 7", "Go to Sanctum, Archive, Resonance, Compendium, Scribe, Discover or Preferences"],
   ["Ctrl + F  or  Ctrl + K", "Search"],
   ["Ctrl + O", "Import books"],
   ["Ctrl + \\", "Show or hide the sidebar"],
@@ -823,7 +823,7 @@ function Updates() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.31.0");
+  const [version, setVersion] = useState("1.32.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

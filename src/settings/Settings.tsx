@@ -23,6 +23,8 @@ const TABS = isWeb ? SETTINGS_TABS.filter((t) => WEB_TABS.has(t.tab)) : isHome ?
 export function Settings({
   tab,
   onTab,
+  jump,
+  onJumped,
   libraryLayout,
   librarySort,
   onLibraryView,
@@ -33,6 +35,9 @@ export function Settings({
   /** null: the landing page, with a button for each tab. */
   tab: SettingsTab | null;
   onTab: (tab: SettingsTab | null) => void;
+  /** A section to show, asked for from elsewhere in the app (the Profile card from the sync circle). */
+  jump?: string | null;
+  onJumped?: () => void;
   libraryLayout: Layout;
   librarySort: SortOrder;
   onLibraryView: (change: { layout?: Layout; sort?: SortOrder }) => void;
@@ -43,6 +48,11 @@ export function Settings({
 }) {
   const [query, setQuery] = useState("");
   const [jumpTo, setJumpTo] = useState<string | null>(null);
+  useEffect(() => {
+    if (!jump) return;
+    setJumpTo(jump);
+    onJumped?.();
+  }, [jump, onJumped]);
   const body = useRef<HTMLDivElement>(null);
   const results = searchSettings(query).filter((r) => TABS.some((t) => t.tab === r.tab));
   const page = SETTINGS_TABS.find((t) => t.tab === tab);

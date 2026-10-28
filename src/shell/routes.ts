@@ -6,8 +6,8 @@ export type Route = "home" | "library" | "documents" | "collections" | "audioboo
 export const PAGE: Record<"home" | "library" | "collections" | "audiobooks" | "writing" | "catalogs" | "settings", { label: string; caption: string }> = {
   home: { label: "Sanctum", caption: "Your home" },
   library: { label: "Archive", caption: "Books & documents" },
-  collections: { label: "Compendium", caption: "Your collections" },
   audiobooks: { label: "Resonance", caption: "Audiobooks" },
+  collections: { label: "Compendium", caption: "Your collections" },
   writing: { label: "Scribe", caption: "Notes & manuscripts" },
   catalogs: { label: "Discover", caption: "Find new books" },
   settings: { label: "Preferences", caption: "Settings & sync" },
@@ -16,8 +16,8 @@ export const PAGE: Record<"home" | "library" | "collections" | "audiobooks" | "w
 export const NAV: { route: Route; label: string; caption: string; icon: IconName }[] = [
   { route: "home", ...PAGE.home, icon: "home" },
   { route: "library", ...PAGE.library, icon: "library" },
-  { route: "collections", ...PAGE.collections, icon: "layers" },
   { route: "audiobooks", ...PAGE.audiobooks, icon: "headphones" },
+  { route: "collections", ...PAGE.collections, icon: "layers" },
   { route: "writing", ...PAGE.writing, icon: "pen" },
   { route: "catalogs", ...PAGE.catalogs, icon: "compass" },
   { route: "settings", ...PAGE.settings, icon: "settings" },

@@ -277,10 +277,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     words: "discover browser other apps mail email phone call links open ask before external",
   },
   {
-    tab: "sync",
-    section: "names",
-    label: "Your name and this device's name",
-    words: "name account profile person user device computer phone ipad iphone called rename grimoire",
+    tab: "appearance",
+    section: "profile",
+    label: "Profile: picture, your name and this device's name",
+    words: "name account profile picture photo avatar image remove person user device computer phone ipad iphone called rename grimoire",
   },
   {
     tab: "sync",

@@ -27,7 +27,7 @@ import { NO_IMPORTS as NOTHING_IMPORTED } from "./imports/view";
 import { useServerQueue } from "./imports/serverQueue";
 import { useLocalSendRows } from "./imports/LocalSendRows";
 import { LocalSendOffers } from "./imports/LocalSendOffer";
-import { PROFILE_CHANGED } from "./settings/NamesSection";
+import { PROFILE_CHANGED } from "./settings/ProfileSection";
 import { SyncActivity } from "./sync/SyncActivity";
 import { BookPlacesPage } from "./sync/BookPlaces";
 import { importSummary } from "./lib/importSummary";
@@ -87,6 +87,8 @@ export function App() {
   const [reading, setReading] = useState<{ bookId: string; at?: string; fileId?: string } | null>(null);
   const [openCollection, setOpenCollection] = useState<CollectionRef | null>(null);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
+  /** A section of Preferences to show once it opens. */
+  const [settingsJump, setSettingsJump] = useState<string | null>(null);
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
   const { refreshAdaptive, togglePrivacy } = useAppSettings();
@@ -218,16 +220,14 @@ export function App() {
     return () => window.removeEventListener(PROFILE_CHANGED, changed);
   }, []);
 
-  const chooseAvatar = useCallback((from?: "photos" | "files") => {
-    if (!isApp && !isWeb) return toast("Choosing a picture works in the desktop app.");
-    api.chooseAvatar(from).then(
-      (p) => p && setProfile(p),
-      (e: unknown) => toast(`That picture couldn't be used: ${String(e)}`),
-    );
-  }, [toast]);
-  const clearAvatar = useCallback(() => {
-    api.clearAvatar().then(setProfile, (e: unknown) => toast(String(e)));
-  }, [toast]);
+  // Preferences › Appearance, at the Profile card.
+  const openProfile = useCallback(() => {
+    setReading(null);
+    setMenuOpen(false);
+    setSettingsTab("appearance");
+    setSettingsJump("profile");
+    setRoute("settings");
+  }, []);
 
   // Imports run in the background, book by book; the Imports page follows them.
   useEffect(() => {
@@ -385,8 +385,7 @@ export function App() {
   const shell = {
     sync,
     profile,
-    onChooseAvatar: chooseAvatar,
-    onClearAvatar: clearAvatar,
+    onOpenProfile: openProfile,
     onImportBooks: importBooks,
     onImportFolder: importFolder,
     onOpenSyncSettings: () => {
@@ -529,8 +528,7 @@ export function App() {
               : undefined
           }
           searchEnd={route === "catalogs" ? <BrowserRowToggle /> : undefined}
-          onChooseAvatar={chooseAvatar}
-          onClearAvatar={clearAvatar}
+          onOpenProfile={openProfile}
           onImportBooks={importBooks}
           onImportFolder={importFolder}
           onOpenSyncSettings={() => navigate("sync")}
@@ -642,6 +640,8 @@ export function App() {
             <Settings
               tab={settingsTab}
               onTab={setSettingsTab}
+              jump={settingsJump}
+              onJumped={() => setSettingsJump(null)}
               libraryLayout={libraryView.layout}
               librarySort={libraryView.sort}
               onLibraryView={changeLibraryView}
