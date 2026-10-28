@@ -5,6 +5,10 @@ mod activity;
 mod audio;
 mod browser;
 mod cloud;
+#[cfg(target_os = "ios")]
+mod cloud_events;
+#[cfg(desktop)]
+mod folder_watch;
 mod hardcover;
 mod home;
 mod imports;
@@ -15,6 +19,7 @@ mod protection;
 mod servers;
 #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
 mod shared;
+mod splash;
 mod sync;
 mod updates;
 mod writing;
@@ -1748,6 +1753,8 @@ pub fn run() {
     builder
         .register_asynchronous_uri_scheme_protocol("tbvaudio", audio::serve)
         .setup(|app| {
+            // The main window (on a computer hidden behind the splash card until its first screen is drawn).
+            splash::open(app)?;
             // iCloud on iPhone keeps only stand-ins for files until asked.
             #[cfg(target_os = "ios")]
             tbv_core::sync::files::set_fetcher(tauri_plugin_tbv_ios::fetch);
@@ -1770,7 +1777,10 @@ pub fn run() {
                     let _ = library.auto_link_audiobooks();
                 }
             });
-            app.manage(Arc::new(sync::SyncWorker::start(app.handle().clone(), library.clone())));
+            let worker = Arc::new(sync::SyncWorker::start(app.handle().clone(), library.clone()));
+            #[cfg(desktop)]
+            folder_watch::start(library.clone(), worker.clone());
+            app.manage(worker);
             app.manage(AppLibrary(library));
             app.manage(Arc::new(hardcover::Sends::default()));
             let imports = Arc::new(imports::Imports::default());
@@ -1796,9 +1806,15 @@ pub fn run() {
             home.resume(app.handle());
             // Books shared from another app while TBV was starting.
             shared::ready(app.handle(), &data_dir);
-            // And books from TBV's own share-sheet add-on, while TBV runs.
+            // And books from TBV's own share-sheet add-on, now and each time
+            // TBV comes back on screen, when iCloud's changes are read too.
             #[cfg(target_os = "ios")]
-            shared::watch(app.handle().clone());
+            {
+                let app = app.handle().clone();
+                std::thread::spawn(move || shared::check(&app));
+            }
+            #[cfg(target_os = "ios")]
+            cloud_events::listen(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1977,6 +1993,8 @@ pub fn run() {
             show_folder,
             sync_overview,
             sync_now,
+            splash::startup_progress,
+            splash::startup_done,
             sync_sign_in,
             sync_sign_out,
             set_supabase_project,

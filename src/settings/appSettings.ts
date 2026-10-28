@@ -76,6 +76,8 @@ export interface AppSettings {
   skipDeletedImports: boolean;
   /** Looks for a newer version of TBV each time it opens (on a computer). */
   checkUpdates: boolean;
+  /** Installs a newer version found when TBV opens, then starts again. */
+  autoInstallUpdates: boolean;
   privacy: PrivacySettings;
   sync: SyncSettings;
 }
@@ -100,6 +102,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showSeries: true,
   skipDeletedImports: false,
   checkUpdates: true,
+  autoInstallUpdates: false,
   privacy: { on: false, style: "titles", avatar: true },
   sync: {
     progress: true,
@@ -159,6 +162,7 @@ export function parseAppSettings(json: string | null): AppSettings {
     fullMenu: flag(raw.fullMenu, d.fullMenu),
     skipDeletedImports: flag(raw.skipDeletedImports, d.skipDeletedImports),
     checkUpdates: flag(raw.checkUpdates, d.checkUpdates),
+    autoInstallUpdates: flag(raw.autoInstallUpdates, d.autoInstallUpdates),
     privacy: {
       on: flag(p.on, d.privacy.on),
       style: oneOf(p.style, ["titles", "blank"], d.privacy.style),

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { startupStep } from "../splash/startup";
 import {
   adaptiveColors,
   APP_SETTINGS_KEY,
@@ -18,12 +19,39 @@ import {
 
 type AdaptiveBook = AppSettingsContext["adaptiveBook"];
 
+/** A copy of the settings kept on this device, so TBV opens looking right
+ * straight away instead of switching once the saved ones arrive. */
+const LOOK_KEY = "tbv.look";
+/** And the Adaptive theme's last colour. */
+const ACCENT_KEY = "tbv.look.accent";
+
+function remembered(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function remember(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    // Only a head start; the library has the real settings.
+  }
+}
+
 /** Loads the app's settings, keeps them applied to the window, and saves changes. */
 export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
   // Privacy mode starts as it was left, so covers never show while settings load.
-  const [settings, setSettings] = useState<AppSettings>(() => ({ ...DEFAULT_APP_SETTINGS, privacy: storedPrivacy() }));
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    const saved = remembered(LOOK_KEY);
+    return { ...(saved ? parseAppSettings(saved) : DEFAULT_APP_SETTINGS), privacy: storedPrivacy() };
+  });
   const [book, setBook] = useState<AdaptiveBook>(null);
-  const [coverHex, setCoverHex] = useState<string | null>(null);
+  const [coverHex, setCoverHex] = useState<string | null>(() => remembered(ACCENT_KEY));
+  const [loaded, setLoaded] = useState(false);
   const [adaptiveTick, setAdaptiveTick] = useState(0);
   const systemDark = useSystemDark();
 
@@ -33,14 +61,19 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
         const loaded = parseAppSettings(json);
         // Saved before privacy mode existed: keep what this window started with.
         const hasPrivacy = !!json && json.includes('"privacy"');
-        setSettings(hasPrivacy ? loaded : { ...loaded, privacy: storedPrivacy() });
+        const next = hasPrivacy ? loaded : { ...loaded, privacy: storedPrivacy() };
+        remember(LOOK_KEY, JSON.stringify(next));
+        setSettings(next);
+        setLoaded(true);
       },
-      () => undefined,
+      () => setLoaded(true),
     );
   }, []);
 
   const save = useCallback((next: AppSettings) => {
-    void api.setSetting(APP_SETTINGS_KEY, JSON.stringify(next)).catch(() => undefined);
+    const json = JSON.stringify(next);
+    remember(LOOK_KEY, json);
+    void api.setSetting(APP_SETTINGS_KEY, json).catch(() => undefined);
     return next;
   }, []);
   const change = useCallback((c: Partial<AppSettings>) => setSettings((s) => save({ ...s, ...c })), [save]);
@@ -84,6 +117,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
         },
       );
       setCoverHex(hex);
+      remember(ACCENT_KEY, hex);
     })().catch(() => current && setCoverHex(null));
     return () => {
       current = false;
@@ -97,6 +131,10 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   );
 
   useLayoutEffect(() => applyAppSettings(settings, dark, adaptive), [settings, dark, adaptive]);
+  // The saved look is on, so the splash may go once the rest is ready.
+  useEffect(() => {
+    if (loaded) startupStep("look");
+  }, [loaded]);
 
   const value = useMemo<AppSettingsContext>(
     () => ({

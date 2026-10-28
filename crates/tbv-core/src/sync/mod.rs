@@ -971,6 +971,21 @@ impl Library {
         Ok(())
     }
 
+    /// The library folders inside the synced folders a cloud app keeps
+    /// (main and second place), for watching. Ones missing just now are left out.
+    pub fn synced_folders(&self) -> Vec<PathBuf> {
+        let main = self.sync_provider().ok();
+        let also = self.sync_also().ok().flatten();
+        [main, also]
+            .into_iter()
+            .flatten()
+            .filter_map(|p| match p {
+                Provider::Folder { path, .. } => files::library_root(Path::new(&path)),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// The second place the library syncs with, if there is one.
     pub fn sync_also(&self) -> Result<Option<Provider>> {
         Ok(self.setting(ALSO)?.and_then(|s| serde_json::from_str(&s).ok()).filter(|p| *p != Provider::Off))

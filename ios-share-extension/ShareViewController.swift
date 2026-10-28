@@ -45,8 +45,14 @@ final class ShareViewController: UIViewController {
             // A packed EPUB when one is offered; Apple Books may offer only
             // the unpacked folder (a package), which TBV packs up itself.
             let types = provider.registeredTypeIdentifiers
+            // Apple Books shares only a book's title and author, as text or a
+            // link. That isn't a book, so text and links count only when they
+            // come as a named file (a .txt book from Files, say).
+            let named = URL(fileURLWithPath: provider.suggestedName ?? "").pathExtension.lowercased()
+            let isFile = types.contains(UTType.fileURL.identifier) || ["txt", "text", "md", "rtf", "html", "htm"].contains(named)
             guard let type = types.first(where: { $0 == "org.idpf.epub-container" }) ?? types.first(where: {
                 guard let ut = UTType($0) else { return false }
+                if !isFile && (ut.conforms(to: .text) || ut.conforms(to: .url)) { return false }
                 return ut.conforms(to: .data) || ut.conforms(to: .content) || ut.conforms(to: .audio) || ut.conforms(to: .package)
             }) else { continue }
             group.enter()
@@ -79,7 +85,7 @@ final class ShareViewController: UIViewController {
             // The last write to copied happens before group completion.
             if copied == 0 {
                 try? FileManager.default.removeItem(at: batch)
-                self.finish(error: "No supported files could be copied.")
+                self.finish(error: "There's no book file to add. Some apps, such as Apple Books, share only a book's title and author.")
             } else {
                 do {
                     try FileManager.default.moveItem(at: batch, to: publishedBatch)

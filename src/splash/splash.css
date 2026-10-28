@@ -1,0 +1,165 @@
+/* The splash shown while TBV opens: a gallery painting under a dark veil,
+   with the emblem, the name, and a bar that fills as each step finishes.
+   On the iPhone it covers the page; on a computer it's a card of its own. */
+
+html.is-starting,
+html.is-starting body {
+  background: #0b0c0e;
+}
+
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  overflow: hidden;
+  background: #0b0c0e;
+  color: #ecebe8;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+.splash-art {
+  position: absolute;
+  inset: 0;
+  background: center / cover no-repeat;
+  opacity: 0;
+  transform: scale(1.04);
+  transition:
+    opacity 0.5s ease,
+    transform 1.6s ease-out;
+}
+
+.splash-art.is-shown {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* The veil keeps the painting quiet behind the words. Its colours are also
+   drawn by disintegrate.ts, so the two must match. */
+.splash-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(7, 8, 10, 0.82) 0%, rgba(7, 8, 10, 0.62) 50%, rgba(7, 8, 10, 0.86) 100%);
+}
+
+.splash-body {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.splash-emblem {
+  width: 64px;
+  height: 64px;
+  color: #ecebe8;
+}
+
+.splash-title {
+  margin: 18px 0 0;
+  font: 400 34px/1.15 Gelasio, Georgia, serif;
+  letter-spacing: 0.01em;
+  color: #f1f0ed;
+}
+
+.splash-tagline {
+  margin: 12px 0 0;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: #9fa2a8;
+}
+
+.splash-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(72%, 300px);
+  margin-top: 22px;
+}
+
+.splash-divider span {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(236, 235, 232, 0.45));
+}
+
+.splash-divider span:last-child {
+  background: linear-gradient(to left, transparent, rgba(236, 235, 232, 0.45));
+}
+
+/* A diamond with softened corners. */
+.splash-divider i {
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid rgba(236, 235, 232, 0.7);
+  border-radius: 3px;
+  transform: rotate(45deg);
+}
+
+.splash-bar {
+  width: min(62%, 240px);
+  height: 4px;
+  margin-top: 40px;
+  border-radius: 999px;
+  background: rgba(236, 235, 232, 0.16);
+  overflow: hidden;
+}
+
+.splash-bar b {
+  display: block;
+  width: 4%;
+  height: 100%;
+  border-radius: 999px;
+  background: #e6e4df;
+  transition: width 0.35s ease;
+}
+
+.splash-label {
+  margin: 14px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #c9c8c4;
+}
+
+/* Fading out, when motion is turned down or on a computer. */
+.splash.is-leaving {
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.splash-dust {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  pointer-events: none;
+}
+
+/* The computer's card: its own small window, with room round it for a shadow. */
+html.splash-window,
+html.splash-window body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+.splash.is-card {
+  inset: 18px;
+  border-radius: 20px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.07),
+    0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.splash.is-card .splash-title {
+  font-size: 32px;
+}

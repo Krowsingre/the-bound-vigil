@@ -1,3 +1,5 @@
+// First, so the splash is up before anything else is drawn.
+import "./splash/startup";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";

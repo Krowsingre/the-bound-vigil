@@ -144,6 +144,36 @@ pub fn pending_shares() -> Result<Vec<std::path::PathBuf>, String> {
     }
 }
 
+/// What happened in the cloud or to the app, from `cloud_event`.
+#[derive(Debug, Default)]
+pub struct CloudEvent {
+    /// TBV came back on screen.
+    pub came_back: bool,
+    /// Files iCloud added or changed in a folder chosen in Files.
+    pub paths: Vec<std::path::PathBuf>,
+}
+
+/// Waits for the next cloud event. None when there's no way to hear them
+/// (not an iPhone or iPad). Must not be called on the main thread.
+pub fn cloud_event() -> Option<CloudEvent> {
+    #[cfg(target_os = "ios")]
+    {
+        let answer: serde_json::Value = SWIFT.get()?.run_mobile_plugin("cloudEvent", ()).ok()?;
+        Some(CloudEvent {
+            came_back: answer.get("cameBack").and_then(|v| v.as_bool()).unwrap_or(false),
+            paths: answer
+                .get("paths")
+                .and_then(|v| v.as_array())
+                .into_iter()
+                .flatten()
+                .filter_map(|v| v.as_str().map(std::path::PathBuf::from))
+                .collect(),
+        })
+    }
+    #[cfg(not(target_os = "ios"))]
+    None
+}
+
 /// "iPhone" or "iPad", from the device itself.
 pub fn device_kind() -> Option<String> {
     #[cfg(target_os = "ios")]

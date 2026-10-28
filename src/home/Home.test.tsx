@@ -5,6 +5,7 @@ import { ToastProvider } from "../components/Toast";
 import { Home } from "./Home";
 
 const getHome = vi.fn<() => Promise<HomeViewModel>>();
+vi.mock("../splash/startup", () => ({ startupStep: () => undefined }));
 vi.mock("../api", () => ({
   isApp: false,
   isWeb: false,
@@ -59,7 +60,7 @@ const dracula: BookPreview = {
 function renderHome(onNavigate: (route: Route) => void = () => {}) {
   return render(
     <ToastProvider>
-      <Home refreshKey={0} onNavigate={onNavigate} onOpenLibrary={() => {}} onImportBooks={() => {}} onImportFolder={() => {}} onOpenBook={() => {}} />
+      <Home refreshKey={0} onNavigate={onNavigate} onOpenLibrary={() => {}} onImportBooks={() => {}} onImportFolder={() => {}} onOpenBook={() => {}} onOpenCompendium={() => {}} />
     </ToastProvider>,
   );
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
-import type { HomeViewModel } from "../api/types";
+import type { HomeViewModel, SmartKind } from "../api/types";
+import { startupStep } from "../splash/startup";
 import { useToast } from "../components/Toast";
 import { Icon } from "../components/Icon";
 import { greeting } from "../lib/format";
@@ -22,6 +23,7 @@ export function Home({
   onImportFolder,
   onLoaded,
   onOpenBook,
+  onOpenCompendium,
 }: {
   refreshKey: number;
   onNavigate: (route: Route) => void;
@@ -30,6 +32,8 @@ export function Home({
   onImportFolder: () => void;
   onLoaded?: (home: HomeViewModel) => void;
   onOpenBook: (bookId: string) => void;
+  /** Opens one of the smart compendiums, for "View all". */
+  onOpenCompendium: (kind: SmartKind) => void;
 }) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [reload, setReload] = useState(0);
@@ -49,6 +53,13 @@ export function Home({
       current = false;
     };
   }, [refreshKey, reload, onLoaded]);
+
+  // The first screen is drawn: the splash can go once covers and fonts are in.
+  useEffect(() => {
+    if (load.state === "loading") return;
+    startupStep("library");
+    startupStep("sanctum");
+  }, [load.state]);
 
   const actions = makeBookActions(api, toast, () => setReload((n) => n + 1), onOpenBook);
   const openLibrary = useCallback(() => onOpenLibrary({ tab: "all" }), [onOpenLibrary]);
@@ -101,11 +112,11 @@ export function Home({
         <ReadingActivity finished={home.libraryCounts.read} finishedDates={home.finishedDates} refreshKey={refreshKey} />
       </div>
       <div className="home-middle">
-        <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenLibrary({ tab: "in_progress" })} />
+        <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenCompendium("in_progress")} />
         <RecentlyAdded
           books={home.recentlyAdded}
           actions={actions}
-          onViewAll={() => onOpenLibrary({ tab: "all", sort: "recently_added" })}
+          onViewAll={() => onOpenCompendium("recently_added")}
         />
       </div>
     </div>
