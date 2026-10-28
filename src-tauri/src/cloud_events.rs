@@ -32,7 +32,7 @@ pub fn listen(app: AppHandle) {
                 }
             }
             last_sync = Instant::now();
-            worker.sync_now();
+            worker.nudge();
         }
     });
 }

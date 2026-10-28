@@ -68,7 +68,7 @@ pub fn start(library: Arc<Mutex<Library>>, worker: Arc<SyncWorker>) {
             if pending.is_some_and(|at| at.elapsed() >= SETTLE) && last_sync.elapsed() >= AT_MOST_EVERY {
                 pending = None;
                 last_sync = Instant::now();
-                worker.sync_now();
+                worker.nudge();
             }
         }
     });

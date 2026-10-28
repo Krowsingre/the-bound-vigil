@@ -26,26 +26,24 @@ export function useStartupUpdateCheck() {
       const settings = parseAppSettings(json);
       if (!settings.checkUpdates) return;
       if (settings.autoInstallUpdates && stillOpening()) {
-        const looking = api.checkForUpdate();
-        void startupHold("Looking for updates…", () =>
-          Promise.race([looking, new Promise<null>((ok) => setTimeout(() => ok(null), LOOK_WAIT))]),
-        )
-          .then(async (info) => {
-            if (!info?.version) {
-              // Too slow to wait for: it's said once it comes.
-              if (info === null) void looking.then(say, () => undefined);
-              return;
-            }
-            const version = info.version;
-            await startupHold(`Updating to ${version}…`, async () => {
-              const stop = api.onUpdateProgress((p) => {
-                if (p.total) startupSay(`Updating to ${version}… ${Math.round((p.downloaded / p.total) * 100)}%`);
-              });
-              // TBV starts again by itself once it's installed.
-              await api.installUpdate().finally(stop);
-            });
-          })
-          .catch((e: unknown) => toast(`The update couldn't be installed: ${String(e)}`));
+        // Not reaching the update server just means no update this time.
+        const looking = api.checkForUpdate().catch(() => undefined);
+        // One hold for looking and installing, so the splash can't go in between.
+        void startupHold("Looking for updates…", async () => {
+          const info = await Promise.race([looking, new Promise<null>((ok) => setTimeout(() => ok(null), LOOK_WAIT))]);
+          if (!info?.version) {
+            // Too slow to wait for: it's said once it comes.
+            if (info === null) void looking.then((late) => late && say(late));
+            return;
+          }
+          const version = info.version;
+          startupSay(`Updating to ${version}…`);
+          const stop = api.onUpdateProgress((p) => {
+            if (p.total) startupSay(`Updating to ${version}… ${Math.round((p.downloaded / p.total) * 100)}%`);
+          });
+          // TBV starts again by itself once it's installed.
+          await api.installUpdate().finally(stop);
+        }).catch((e: unknown) => toast(`The update couldn't be installed: ${String(e)}`));
         return;
       }
       // A little after opening, so it never slows the first screen.

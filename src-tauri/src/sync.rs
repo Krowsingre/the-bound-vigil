@@ -19,6 +19,8 @@ use crate::activity;
 
 enum Wake {
     Now,
+    /// Something changed in the cloud: sync, if sync runs by itself.
+    Nudge,
     /// Sync one last time (if the user wants that), then say so.
     Closing(mpsc::Sender<()>),
 }
@@ -60,6 +62,8 @@ impl SyncWorker {
                 }
                 match rx.recv_timeout(AUTOMATIC_TICK) {
                     Ok(Wake::Now) => last_run = None,
+                    Ok(Wake::Nudge) if options.frequency == Frequency::Automatic => last_run = None,
+                    Ok(Wake::Nudge) => {}
                     Ok(Wake::Closing(done)) => {
                         if options.on_close {
                             run(&app, &library, &worker_busy);
@@ -79,6 +83,15 @@ impl SyncWorker {
     pub fn sync_now(&self) {
         if let Ok(tx) = self.wake.lock() {
             let _ = tx.send(Wake::Now);
+        }
+    }
+
+    /// Asks for a sync because the cloud changed, or TBV came back on
+    /// screen. Only when sync is set to run by itself: "Only when I ask" and
+    /// the 15-minute and hourly choices keep to their own times.
+    pub fn nudge(&self) {
+        if let Ok(tx) = self.wake.lock() {
+            let _ = tx.send(Wake::Nudge);
         }
     }
 
