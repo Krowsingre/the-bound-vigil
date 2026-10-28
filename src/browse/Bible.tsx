@@ -29,11 +29,31 @@ async function findInLibrary(t: Translation): Promise<string | null> {
   return null;
 }
 
+/** Whether Go to a chapter is folded away, remembered on this device. */
+const FOLDED_KEY = "tbv.bible.folded";
+function readFolded(): boolean {
+  try {
+    return localStorage.getItem(FOLDED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function Bible({ refreshKey, onOpenBook }: { refreshKey: number; onOpenBook: (bookId: string, at?: string) => void }) {
   const [owned, setOwned] = useState<Partial<Record<Translation["id"], string>>>({});
   const [adding, setAdding] = useState<Partial<Record<Translation["id"], boolean>>>({});
   const [chosen, setChosen] = useState<Translation["id"] | null>(readChosen);
   const [book, setBook] = useState<BibleBook | null>(null);
+  const [folded, setFolded] = useState(readFolded);
+  const fold = () =>
+    setFolded((was) => {
+      try {
+        localStorage.setItem(FOLDED_KEY, was ? "0" : "1");
+      } catch {
+        // Only remembered where the browser allows it.
+      }
+      return !was;
+    });
   const toast = useToast();
 
   const look = useCallback(async () => {
@@ -124,8 +144,12 @@ export function Bible({ refreshKey, onOpenBook }: { refreshKey: number; onOpenBo
       {reading ? (
         <div className="bible-picker">
           <div className="bible-picker-head">
-            <h2>Go to a chapter</h2>
-            {inLibrary.length > 1 && (
+            <h2>
+              <button type="button" className="bible-fold" aria-expanded={!folded} onClick={fold}>
+                <Icon name={folded ? "chevronRight" : "chevronDown"} size={18} /> Go to a chapter
+              </button>
+            </h2>
+            {!folded && inLibrary.length > 1 && (
               <div className="tabs" role="tablist" aria-label="Translation">
                 {inLibrary.map((t) => (
                   <button key={t.id} type="button" role="tab" aria-selected={t === reading} className={`tab${t === reading ? " is-active" : ""}`} onClick={() => choose(t.id)}>
@@ -135,7 +159,7 @@ export function Bible({ refreshKey, onOpenBook }: { refreshKey: number; onOpenBo
               </div>
             )}
           </div>
-          {book && (
+          {!folded && book && (
             <section className="bible-chapters" aria-label={`Chapters of ${book.name}`}>
               <h3>
                 {book.name} <span className="muted">in the {reading.short}</span>
@@ -151,8 +175,8 @@ export function Bible({ refreshKey, onOpenBook }: { refreshKey: number; onOpenBo
               </ul>
             </section>
           )}
-          {testament("Old Testament", OLD_TESTAMENT)}
-          {testament("New Testament", NEW_TESTAMENT)}
+          {!folded && testament("Old Testament", OLD_TESTAMENT)}
+          {!folded && testament("New Testament", NEW_TESTAMENT)}
         </div>
       ) : (
         <p className="muted bible-empty">Add a translation above, and you can open it here at any book and chapter.</p>

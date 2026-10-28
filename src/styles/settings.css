@@ -161,6 +161,60 @@
   font: 400 17px var(--font-serif);
 }
 
+/* Sections combined into one card: each a part under a thin line. */
+.settings-parts {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-part {
+  display: grid;
+  gap: 24px;
+  padding: 18px 0;
+  border-top: 1px solid var(--border);
+  scroll-margin-top: 16px;
+  transition: box-shadow 0.3s;
+}
+
+.settings-part:first-child {
+  padding-top: 4px;
+  border-top: 0;
+}
+
+.settings-part:last-child {
+  padding-bottom: 0;
+}
+
+.settings-part.is-found {
+  border-radius: var(--radius-m);
+  box-shadow: 0 0 0 2px var(--focus);
+}
+
+.settings-part.has-aside {
+  grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr);
+}
+
+.settings-part-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.settings-part-main > h3 {
+  font: 500 18px var(--font-serif);
+}
+
+.settings-part-main > .muted {
+  margin-top: -6px;
+  font-size: 13px;
+}
+
+/* A part with nothing to show (a Supabase part with another service) leaves no line. */
+.settings-part:empty {
+  display: none;
+}
+
 /* Rows */
 .settings-row {
   display: grid;
@@ -984,6 +1038,7 @@ kbd {
   }
 
   .settings-section.has-aside,
+  .settings-part.has-aside,
   .settings-columns {
     grid-template-columns: minmax(0, 1fr);
   }

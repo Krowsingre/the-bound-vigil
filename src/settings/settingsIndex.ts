@@ -136,13 +136,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "appearance",
     section: "layout",
     label: "Interface layout",
-    words: "scale size zoom sidebar menu full screen phone cover display grid list",
-  },
-  {
-    tab: "appearance",
-    section: "typography",
-    label: "Typography",
-    words: "font typeface interface reading lora echolume serif size",
+    words: "scale size zoom sidebar menu full screen phone interface font typeface typography echolume serif georgia segoe",
   },
   {
     tab: "appearance",
@@ -152,9 +146,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "appearance",
-    section: "colour",
-    label: "Colour & surface",
-    words: "surface paper matte clean progress bars contrast motion",
+    section: "theme",
+    label: "Surface style and progress bars",
+    words: "colour color surface paper matte clean progress bars",
   },
   {
     tab: "reading",
@@ -166,7 +160,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "library",
     section: "view",
     label: "Archive view",
-    words: "library default layout grid list compact sort order",
+    words: "library archive default layout grid list compact covers cover display sort order pages page numbers scroll continuous endless",
   },
   {
     tab: "library",
@@ -212,7 +206,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "notes",
-    section: "export",
+    section: "view",
     label: "Export notes",
     words: "markdown export highlights annotations",
   },
@@ -332,7 +326,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     words: "frequency automatic startup close conflict resolution recent",
   },
   {
-    tab: "sync",
+    tab: "library",
     section: "hardcover",
     label: "Hardcover",
     words: "hardcover goodreads ratings stars rate send account sign in reading tracker",
@@ -370,14 +364,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   {
     tab: "accessibility",
     section: "vision",
-    label: "Seeing clearly",
-    words: "contrast scale zoom larger text focus ring underline links",
-  },
-  {
-    tab: "accessibility",
-    section: "motion",
-    label: "Motion",
-    words: "reduce motion animation transitions",
+    label: "Seeing and motion",
+    words: "contrast focus ring underline links reduce motion animation transitions accessibility",
   },
   {
     tab: "shortcuts",

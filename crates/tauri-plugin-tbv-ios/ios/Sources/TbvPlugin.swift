@@ -166,6 +166,25 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
     invoke.resolve(["cancelled": true])
   }
 
+  /// Returns only fully published share batches. Hidden directories are still
+  /// being written by the Share Extension and must never be imported.
+  @objc public func pendingShares(_ invoke: Invoke) throws {
+    guard let root = FileManager.default.containerURL(
+      forSecurityApplicationGroupIdentifier: "group.com.krowsingre.theboundvigil"
+    ) else {
+      invoke.reject("TBV's shared storage is unavailable.")
+      return
+    }
+    let inbox = root.appendingPathComponent("IncomingShares", isDirectory: true)
+    let batches = (try? FileManager.default.contentsOfDirectory(
+      at: inbox, includingPropertiesForKeys: [.isDirectoryKey],
+      options: [.skipsHiddenFiles]
+    )) ?? []
+    let paths = batches.filter { $0.hasDirectoryPath && UUID(uuidString: $0.lastPathComponent) != nil }
+      .map(\.path)
+    invoke.resolve(["paths": paths])
+  }
+
   /// What kind of device this is: "iPhone" or "iPad".
   @objc public func deviceKind(_ invoke: Invoke) throws {
     invoke.resolve(["kind": UIDevice.current.model])

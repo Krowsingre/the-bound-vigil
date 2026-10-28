@@ -19,7 +19,7 @@ import {
   type ProtectionLevel,
   type SearchEngine,
 } from "../browse/browserPrefs";
-import { Row, Section, Select, Toggle } from "./controls";
+import { Row, Section, SectionGroup, Select, Toggle } from "./controls";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { clearHistory, HISTORY_KEEPS, trimHistory, type HistoryKeep } from "../browse/browserHistory";
 
@@ -53,87 +53,89 @@ export function BrowserTab() {
 
   return (
     <>
-      <Section id="search" title="Searching" lede="Words typed into Discover's address box that aren't a web address are searched for.">
-        <Toggle
-          label="Suggest from history and bookmarks while typing"
-          hint="Also your Quick Links and open tabs. Everything comes from this device, so nothing you type is sent anywhere."
-          checked={prefs.suggest}
-          onChange={(suggest) => writeBrowserPrefs({ suggest })}
-        />
-        <Row label="Search engine">
-          <Select<SearchEngine>
-            label="Search engine"
-            value={prefs.search}
-            options={SEARCH_ENGINES.map((e) => ({
-              value: e.value,
-              label: e.label,
-            }))}
-            onChange={(search) => writeBrowserPrefs({ search })}
+      <SectionGroup id="start" title="Start and search" lede="What Discover opens to, how it searches, and its row of buttons." holds={["search", "home", "bar"]}>
+        <Section id="search" title="Searching" lede="Words typed into Discover's address box that aren't a web address are searched for.">
+          <Toggle
+            label="Suggest from history and bookmarks while typing"
+            hint="Also your Quick Links and open tabs. Everything comes from this device, so nothing you type is sent anywhere."
+            checked={prefs.suggest}
+            onChange={(suggest) => writeBrowserPrefs({ suggest })}
           />
-        </Row>
-      </Section>
-      <Section id="home" title="Home page" lede="Where new tabs start, and where Discover's home button goes.">
-        <Row label="Start with">
-          <Select<"start" | "site">
-            label="Start with"
-            value={prefs.startPage ? "start" : "site"}
-            options={[
-              { value: "start", label: "Discover start page" },
-              { value: "site", label: "A website" },
-            ]}
-            onChange={(v) => writeBrowserPrefs({ startPage: v === "start" })}
-          />
-        </Row>
-        <Toggle
-          label="Show Recent Sites on the start page"
-          hint={prefs.historyOn ? "The sites you visited last, from History." : "History is off, so there are none to show."}
-          checked={prefs.showRecent}
-          disabled={!prefs.startPage}
-          onChange={(showRecent) => writeBrowserPrefs({ showRecent })}
-        />
-        {!prefs.startPage && (
-          <label className="field">
-            <span>Home page</span>
-            <input
-              type="url"
-              spellCheck={false}
-              value={home}
-              aria-label="Home page"
-              onChange={(e) => setHome(e.target.value)}
-              onBlur={saveHome}
-              onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+          <Row label="Search engine">
+            <Select<SearchEngine>
+              label="Search engine"
+              value={prefs.search}
+              options={SEARCH_ENGINES.map((e) => ({
+                value: e.value,
+                label: e.label,
+              }))}
+              onChange={(search) => writeBrowserPrefs({ search })}
             />
-          </label>
-        )}
-        {!prefs.startPage && (
-          <div className="connection-actions">
-            <button
-              type="button"
-              className="btn btn-quiet"
-              disabled={prefs.home === DEFAULT_HOME}
-              onClick={() => (writeBrowserPrefs({ home: DEFAULT_HOME }), toast("Your home page is Project Gutenberg again."))}
-            >
-              Use Project Gutenberg
-            </button>
-          </div>
-        )}
-        <Row label="Coming back to Discover" hint="Starting at the home page closes your other tabs.">
-          <Select<ComeBack>
-            label="Coming back to Discover"
-            value={prefs.comeBack}
-            options={COME_BACK}
-            onChange={(comeBack) => writeBrowserPrefs({ comeBack })}
+          </Row>
+        </Section>
+        <Section id="home" title="Home page" lede="Where new tabs start, and where Discover's home button goes.">
+          <Row label="Start with">
+            <Select<"start" | "site">
+              label="Start with"
+              value={prefs.startPage ? "start" : "site"}
+              options={[
+                { value: "start", label: "Discover start page" },
+                { value: "site", label: "A website" },
+              ]}
+              onChange={(v) => writeBrowserPrefs({ startPage: v === "start" })}
+            />
+          </Row>
+          <Toggle
+            label="Show Recent Sites on the start page"
+            hint={prefs.historyOn ? "The sites you visited last, from History." : "History is off, so there are none to show."}
+            checked={prefs.showRecent}
+            disabled={!prefs.startPage}
+            onChange={(showRecent) => writeBrowserPrefs({ showRecent })}
           />
-        </Row>
-      </Section>
-      <Section id="bar" title="Discover bar" lede="The row of buttons under the address: back, forward, reload, bookmark, tabs, reader view, downloads and •••.">
-        <Toggle
-          label="Hide the bar while scrolling"
-          hint="It hides as a page scrolls down and comes back as it scrolls up, and the arrow in the address box takes you back to the top. Off: the arrow folds the bar away."
-          checked={prefs.hideBar}
-          onChange={(hideBar) => writeBrowserPrefs({ hideBar })}
-        />
-      </Section>
+          {!prefs.startPage && (
+            <label className="field">
+              <span>Home page</span>
+              <input
+                type="url"
+                spellCheck={false}
+                value={home}
+                aria-label="Home page"
+                onChange={(e) => setHome(e.target.value)}
+                onBlur={saveHome}
+                onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+              />
+            </label>
+          )}
+          {!prefs.startPage && (
+            <div className="connection-actions">
+              <button
+                type="button"
+                className="btn btn-quiet"
+                disabled={prefs.home === DEFAULT_HOME}
+                onClick={() => (writeBrowserPrefs({ home: DEFAULT_HOME }), toast("Your home page is Project Gutenberg again."))}
+              >
+                Use Project Gutenberg
+              </button>
+            </div>
+          )}
+          <Row label="Coming back to Discover" hint="Starting at the home page closes your other tabs.">
+            <Select<ComeBack>
+              label="Coming back to Discover"
+              value={prefs.comeBack}
+              options={COME_BACK}
+              onChange={(comeBack) => writeBrowserPrefs({ comeBack })}
+            />
+          </Row>
+        </Section>
+        <Section id="bar" title="Discover bar" lede="The row of buttons under the address: back, forward, reload, bookmark, tabs, reader view, downloads and •••.">
+          <Toggle
+            label="Hide the bar while scrolling"
+            hint="It hides as a page scrolls down and comes back as it scrolls up, and the arrow in the address box takes you back to the top. Off: the arrow folds the bar away."
+            checked={prefs.hideBar}
+            onChange={(hideBar) => writeBrowserPrefs({ hideBar })}
+          />
+        </Section>
+      </SectionGroup>
       <Section id="history" title="History" lede="Pages visited and words searched for in Discover. Open it from Discover's ••• menu. To have the same history on every device, turn on Sync Discover history in Preferences › Sync & Backup.">
         <Toggle label="Keep a history of pages visited" checked={prefs.historyOn} onChange={(historyOn) => writeBrowserPrefs({ historyOn })} />
         <Toggle
@@ -174,72 +176,98 @@ export function BrowserTab() {
           />
         )}
       </Section>
-      <Section id="downloads" title="Downloads" lede="Ebooks you download in Discover.">
-        <Toggle
-          label="Add ebooks to the library without asking"
-          hint="Off: TBV asks whether to add each ebook or keep it in Downloads."
-          checked={prefs.addWithoutAsking}
-          onChange={(addWithoutAsking) => writeBrowserPrefs({ addWithoutAsking })}
-        />
-      </Section>
-      <Section id="playing" title="Videos and sound" lede="What happens to a video or music playing in Discover when you go to another page.">
-        <Toggle
-          label="Keep playing after leaving Discover"
-          hint="Off: videos and sound pause when you leave Discover."
-          checked={prefs.keepPlaying}
-          onChange={(keepPlaying) => writeBrowserPrefs({ keepPlaying })}
-        />
-      </Section>
-      <Section id="protection" title="Protection" lede="What Discover blocks on the websites you visit. A site that won't work properly can have its protection lowered from its Site information sheet (the lock in the address box).">
-        <Row label="Protection" hint={PROTECTION_LEVELS.find((p) => p.value === prefs.protection)?.hint}>
-          <Select<ProtectionLevel>
-            label="Protection"
-            value={prefs.protection}
-            options={PROTECTION_LEVELS.map((p) => ({ value: p.value, label: p.value === "strict" ? `${p.label} (recommended)` : p.label }))}
-            onChange={(protection) => protect(writeBrowserPrefs({ protection }))}
+      <SectionGroup id="media" title="Downloads and media" lede="Ebooks you download, and sound that keeps playing." holds={["downloads", "playing"]}>
+        <Section id="downloads" title="Downloads" lede="Ebooks you download in Discover.">
+          <Toggle
+            label="Add ebooks to the library without asking"
+            hint="Off: TBV asks whether to add each ebook or keep it in Downloads."
+            checked={prefs.addWithoutAsking}
+            onChange={(addWithoutAsking) => writeBrowserPrefs({ addWithoutAsking })}
           />
-        </Row>
-        {prefs.lowered.length > 0 && (
-          <>
-            <p className="muted">Sites with protection lowered:</p>
-            {prefs.lowered.map((site) => (
-              <Row key={site} label={site}>
-                <button type="button" className="btn btn-quiet" onClick={() => protect(lowerFor(site, false))}>
-                  Restore protection
-                </button>
-              </Row>
-            ))}
-          </>
-        )}
-      </Section>
-      <Section id="sites" title="Sites with their own settings" lede="Choices made for one site from its Site information sheet (the lock in the address box).">
-        {sitesWithSettings(prefs).length === 0 ? (
-          <p className="muted">None yet. Every site uses the choices above.</p>
-        ) : (
-          sitesWithSettings(prefs).map((site) => {
-            const own = prefs.sites[site] ?? {};
-            const what = [
-              prefs.lowered.includes(site) && "Protection lowered",
-              own.zoom && `Zoom ${zoomLabel(own.zoom)}`,
-              own.desktop && isIOS && "Desktop version",
-            ].filter(Boolean);
-            return (
-              <Row key={site} label={site} hint={what.join(" · ") || undefined}>
-                <button
-                  type="button"
-                  className="btn btn-quiet"
-                  onClick={() => {
-                    protect(resetSite(site));
-                    toast(`${site} is back to the usual settings.`);
-                  }}
-                >
-                  Reset
-                </button>
-              </Row>
-            );
-          })
-        )}
-      </Section>
+        </Section>
+        <Section id="playing" title="Videos and sound" lede="What happens to a video or music playing in Discover when you go to another page.">
+          <Toggle
+            label="Keep playing after leaving Discover"
+            hint="Off: videos and sound pause when you leave Discover."
+            checked={prefs.keepPlaying}
+            onChange={(keepPlaying) => writeBrowserPrefs({ keepPlaying })}
+          />
+        </Section>
+      </SectionGroup>
+      <SectionGroup id="privacy" title="Privacy and sites" lede="What Discover blocks, choices made for single sites, and what sites keep." holds={["protection", "sites", "sitedata"]}>
+        <Section id="protection" title="Protection" lede="What Discover blocks on the websites you visit. A site that won't work properly can have its protection lowered from its Site information sheet (the lock in the address box).">
+          <Row label="Protection" hint={PROTECTION_LEVELS.find((p) => p.value === prefs.protection)?.hint}>
+            <Select<ProtectionLevel>
+              label="Protection"
+              value={prefs.protection}
+              options={PROTECTION_LEVELS.map((p) => ({ value: p.value, label: p.value === "strict" ? `${p.label} (recommended)` : p.label }))}
+              onChange={(protection) => protect(writeBrowserPrefs({ protection }))}
+            />
+          </Row>
+          {prefs.lowered.length > 0 && (
+            <>
+              <p className="muted">Sites with protection lowered:</p>
+              {prefs.lowered.map((site) => (
+                <Row key={site} label={site}>
+                  <button type="button" className="btn btn-quiet" onClick={() => protect(lowerFor(site, false))}>
+                    Restore protection
+                  </button>
+                </Row>
+              ))}
+            </>
+          )}
+        </Section>
+        <Section id="sites" title="Sites with their own settings" lede="Choices made for one site from its Site information sheet (the lock in the address box).">
+          {sitesWithSettings(prefs).length === 0 ? (
+            <p className="muted">None yet. Every site uses the choices above.</p>
+          ) : (
+            sitesWithSettings(prefs).map((site) => {
+              const own = prefs.sites[site] ?? {};
+              const what = [
+                prefs.lowered.includes(site) && "Protection lowered",
+                own.zoom && `Zoom ${zoomLabel(own.zoom)}`,
+                own.desktop && isIOS && "Desktop version",
+              ].filter(Boolean);
+              return (
+                <Row key={site} label={site} hint={what.join(" · ") || undefined}>
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    onClick={() => {
+                      protect(resetSite(site));
+                      toast(`${site} is back to the usual settings.`);
+                    }}
+                  >
+                    Reset
+                  </button>
+                </Row>
+              );
+            })
+          )}
+        </Section>
+        <Section id="sitedata" title="Site data" lede="Cookies and saved logins from websites you've visited in Discover. TBV's own data isn't touched.">
+          <Toggle
+            label="Clear cookies and site data each time TBV starts"
+            hint="You'll be signed out of every website each time. Bookmarks, History and tabs stay."
+            checked={prefs.clearOnStart}
+            onChange={(clearOnStart) => writeBrowserPrefs({ clearOnStart })}
+          />
+          <Row label="Clear cookies and site data" hint="You'll be signed out of every website in Discover.">
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() =>
+                void api
+                  .browserClear()
+                  .then(() => toast("Every site's cookies and data are cleared."))
+                  .catch((e: unknown) => toast(String(e)))
+              }
+            >
+              Clear
+            </button>
+          </Row>
+        </Section>
+      </SectionGroup>
       <Section id="apps" title="Links for other apps" lede="Links that open another app, such as an email address or a phone number.">
         <Toggle
           label="Ask before opening other apps"
@@ -247,28 +275,6 @@ export function BrowserTab() {
           checked={prefs.askApps}
           onChange={(askApps) => writeBrowserPrefs({ askApps })}
         />
-      </Section>
-      <Section id="sitedata" title="Site data" lede="Cookies and saved logins from websites you've visited in Discover. TBV's own data isn't touched.">
-        <Toggle
-          label="Clear cookies and site data each time TBV starts"
-          hint="You'll be signed out of every website each time. Bookmarks, History and tabs stay."
-          checked={prefs.clearOnStart}
-          onChange={(clearOnStart) => writeBrowserPrefs({ clearOnStart })}
-        />
-        <Row label="Clear cookies and site data" hint="You'll be signed out of every website in Discover.">
-          <button
-            type="button"
-            className="btn btn-quiet"
-            onClick={() =>
-              void api
-                .browserClear()
-                .then(() => toast("Every site's cookies and data are cleared."))
-                .catch((e: unknown) => toast(String(e)))
-            }
-          >
-            Clear
-          </button>
-        </Row>
       </Section>
     </>
   );

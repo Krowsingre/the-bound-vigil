@@ -398,15 +398,17 @@ button.chapter-row:hover {
     grid-template-rows: minmax(0, 1fr);
   }
 
+  /* Down to the screen's edge, with the home bar's room inside it, so no
+     gap shows under it. */
   .player-bar {
     position: fixed;
-    inset: auto 0 var(--tabbar-h) 0;
-    height: var(--player-h);
+    inset: auto 0 0 0;
+    height: calc(var(--player-h) + var(--tabbar-h, 0px));
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-rows: auto auto auto;
     align-content: center;
     gap: 6px 10px;
-    padding: 8px 12px;
+    padding: 8px 12px calc(8px + var(--tabbar-h, 0px));
   }
 
   .player-progress {
@@ -467,12 +469,14 @@ button.chapter-row:hover {
 }
 
 @media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
+  /* The sheet fills the screen, so nothing behind it is dimmed: the strip
+     under the player bar (the home bar's) matches the sheet instead. */
   .audio-sheet-backdrop {
     position: fixed;
     inset: 0;
     z-index: 45;
     display: block;
-    background: rgb(0 0 0 / 0.35);
+    background: var(--surface);
   }
 
   /* Full screen above the player bar, clear of the clock, battery and home bar. */
@@ -491,7 +495,7 @@ button.chapter-row:hover {
   }
 
   .has-player .audio-panel.is-sheet {
-    bottom: var(--player-h);
+    bottom: calc(var(--player-h) + var(--tabbar-h, 0px));
     max-height: none;
     padding-bottom: 24px;
   }

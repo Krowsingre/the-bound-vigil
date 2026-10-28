@@ -12,7 +12,8 @@ import { TextSettings } from "../reader/ReaderPopovers";
 import { PAGE_COLORS, resolveTheme, WIDTHS } from "../reader/settings";
 import { readLocal, useAppDark, useAppSettings, writeLocal } from "./appSettings";
 import { useReaderSettings } from "./AppearanceTab";
-import { ActionTile, formatBytes, Row, Section, Segmented, Select, Toggle } from "./controls";
+import { ActionTile, formatBytes, Row, Section, SectionGroup, Segmented, Select, Toggle } from "./controls";
+import { HardcoverSection } from "./HardcoverSection";
 
 const READING_FONTS = {
   lora: '"Lora", Georgia, serif',
@@ -94,6 +95,7 @@ export function LibraryTab({
   onChange: (change: { layout?: Layout; sort?: SortOrder }) => void;
 }) {
   const info = useLibraryInfo();
+  const { settings, change } = useAppSettings();
   return (
     <>
       <Section id="view" title="Archive view" lede="How the Archive starts out. Changing it there is remembered too.">
@@ -108,29 +110,44 @@ export function LibraryTab({
             onChange={(s) => onChange({ sort: s })}
           />
         </Row>
+        <Row label="Pages" hint="On a phone the Archive always scrolls on without pages.">
+          <Toggle
+            label="Scroll on without page numbers"
+            hint="More books load as you reach the end."
+            checked={settings.scrollLibrary}
+            onChange={(scrollLibrary) => change({ scrollLibrary })}
+          />
+        </Row>
       </Section>
-      <Section
-        id="folder"
-        title="Archive folder"
-        lede="TBV keeps its own copy of every book you import here. The originals you imported from are left alone."
-      >
-        {info ? (
-          <>
-            <Row label="Folder" hint={`${info.bookCount} ${info.bookCount === 1 ? "book" : "books"}, ${formatBytes(info.booksBytes)}`} stack>
-              <div className="path-row">
-                <code className="path">{info.booksDir}</code>
-                <ShowButton path={info.booksDir} />
-              </div>
-            </Row>
-          </>
-        ) : (
-          <p className="settings-row-hint">The library folder couldn't be read.</p>
-        )}
-      </Section>
-      <TagsSection />
-      <DuplicatesSection />
-      <DeletedBooksSection />
-      <GoodreadsSection />
+      <SectionGroup id="where" title="Where your books live" lede="TBV's own copy of each book, and the books you've deleted." holds={["folder", "deleted"]}>
+        <Section
+          id="folder"
+          title="Archive folder"
+          lede="TBV keeps its own copy of every book you import here. The originals you imported from are left alone."
+        >
+          {info ? (
+            <>
+              <Row label="Folder" hint={`${info.bookCount} ${info.bookCount === 1 ? "book" : "books"}, ${formatBytes(info.booksBytes)}`} stack>
+                <div className="path-row">
+                  <code className="path">{info.booksDir}</code>
+                  <ShowButton path={info.booksDir} />
+                </div>
+              </Row>
+            </>
+          ) : (
+            <p className="settings-row-hint">The library folder couldn't be read.</p>
+          )}
+        </Section>
+        <DeletedBooksSection />
+      </SectionGroup>
+      <SectionGroup id="tidying" title="Tidying your Archive" lede="Your tags, and books you have more than once." holds={["tags", "duplicates"]}>
+        <TagsSection />
+        <DuplicatesSection />
+      </SectionGroup>
+      <SectionGroup id="ratings" title="Ratings sites" lede="Your ratings in and out of Goodreads and Hardcover." holds={["goodreads", "hardcover"]}>
+        <GoodreadsSection />
+        <HardcoverSection />
+      </SectionGroup>
     </>
   );
 }
@@ -410,7 +427,7 @@ export function NotesTab() {
   const [sort, setSort] = useState<NotesSortChoice>(saved.sort === "updated" || saved.sort === "book" ? saved.sort : "recent");
   return (
     <>
-      <Section id="view" title="Notes view" lede="How Scribe shows your notes.">
+      <Section id="view" title="Notes" lede="How Scribe shows your notes, and all of them in one file.">
         <Row label="Layout">
           <Segmented<NotesLayout>
             label="Notes layout"
@@ -441,17 +458,10 @@ export function NotesTab() {
             }}
           />
         </Row>
-      </Section>
-      <Section
-        id="export"
-        title="Export notes"
-        lede="Every highlight and note in one Markdown file, grouped by book. It opens in any text editor, Obsidian or Notion."
-      >
-        <div className="action-tiles">
-          <ActionTile
-            icon={<Icon name="download" size={22} />}
-            title="Export notes as Markdown"
-            hint="Highlights, annotations, book notes and personal notes."
+        <Row label="Export notes" hint="Every highlight and note in one Markdown file, grouped by book. It opens in any text editor, Obsidian or Notion.">
+          <button
+            type="button"
+            className="btn btn-quiet"
             onClick={() => {
               if (!isApp) return toast("Exporting works in the desktop app.");
               api.exportNotesMarkdown().then(
@@ -459,8 +469,10 @@ export function NotesTab() {
                 (e: unknown) => toast(`That didn't work: ${String(e)}`),
               );
             }}
-          />
-        </div>
+          >
+            <Icon name="download" size={16} /> Export as Markdown
+          </button>
+        </Row>
       </Section>
     </>
   );
@@ -518,19 +530,7 @@ export function AccessibilityTab() {
   const { settings, change } = useAppSettings();
   return (
     <>
-      <Section id="vision" title="Seeing clearly" lede="For reading text sizes in books, see Reading.">
-        <Row label="Interface scale" hint="Makes all text and controls larger or smaller.">
-          <Segmented
-            label="Interface scale"
-            value={settings.scale}
-            options={[
-              { value: "small", label: "Small" },
-              { value: "medium", label: "Medium" },
-              { value: "large", label: "Large" },
-            ]}
-            onChange={(scale) => change({ scale })}
-          />
-        </Row>
+      <Section id="vision" title="Seeing and motion" lede="Interface size is under Appearance, and reading text sizes under Reading.">
         <div className="toggle-list">
           <Toggle
             label="Use high contrast"
@@ -550,10 +550,6 @@ export function AccessibilityTab() {
             checked={settings.underlineLinks}
             onChange={(underlineLinks) => change({ underlineLinks })}
           />
-        </div>
-      </Section>
-      <Section id="motion" title="Motion">
-        <div className="toggle-list">
           <Toggle
             label="Reduce motion"
             hint="Turns off animations, fades and sliding panels."
@@ -822,24 +818,38 @@ function Updates() {
   );
 }
 
+function AboutVersion({ version }: { version: string }) {
+  return (
+    <>
+      <p className="about-lede">
+        A quiet reader for the books you keep. Your library stays yours: on your computer, and in the cloud services you choose.
+      </p>
+      <Row label="Version">
+        <span className="settings-value">{version}</span>
+      </Row>
+    </>
+  );
+}
+
 export function AboutTab() {
-  const [version, setVersion] = useState("1.32.0");
+  const [version, setVersion] = useState("1.33.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));
   }, []);
   return (
     <>
-      <Section id="about" title="The Bound Vigil">
-        <p className="about-lede">
-          A quiet reader for the books you keep. Your library stays yours: on your computer, and in the cloud services you choose.
-        </p>
-        <Row label="Version">
-          <span className="settings-value">{version}</span>
-        </Row>
-      </Section>
+      {canSelfUpdate ? (
+        <SectionGroup id="about" title="The Bound Vigil" holds={["updates"]}>
+          <AboutVersion version={version} />
+          <Updates />
+        </SectionGroup>
+      ) : (
+        <Section id="about" title="The Bound Vigil">
+          <AboutVersion version={version} />
+        </Section>
+      )}
       <YourCopy />
-      {canSelfUpdate && <Updates />}
       <Section id="licences" title="Built with" lede="TBV stands on the work of these projects. Thank you to their authors.">
         <ul className="credit-list">
           {CREDITS.map((c) => (

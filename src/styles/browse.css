@@ -71,6 +71,24 @@
   font: 600 20px var(--font-serif);
 }
 
+.bible-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: -4px;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.bible-fold:hover {
+  background: var(--surface-sunk);
+}
+
 .bible-testament h3,
 .bible-chapters h3 {
   margin: 20px 0 10px;
