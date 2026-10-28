@@ -34,7 +34,7 @@ pub fn opened(app: &AppHandle, urls: &[tauri::Url]) {
         }
         return;
     }
-    bring_in(app, files);
+    bring_in(app, files, Vec::new());
 }
 
 /// Brings in what was shared while TBV was starting, and clears copies an
@@ -43,7 +43,52 @@ pub fn ready(app: &AppHandle, data_dir: &std::path::Path) {
     let _ = std::fs::remove_dir_all(holding_dir(data_dir));
     let files = WAITING.lock().map(|mut w| std::mem::take(&mut *w)).unwrap_or_default();
     if !files.is_empty() {
-        bring_in(app, files);
+        bring_in(app, files, Vec::new());
+    }
+}
+
+/// Poll while the app is running: iOS does not necessarily open the host
+/// when a Share Extension finishes, so new batches must also be discovered
+/// when TBV returns to the foreground or remains open.
+#[cfg(target_os = "ios")]
+pub fn watch(app: AppHandle) {
+    std::thread::spawn(move || {
+        let mut active = std::collections::HashSet::<PathBuf>::new();
+        loop {
+            if let Ok(batches) = tauri_plugin_tbv_ios::pending_shares() {
+                active.retain(|path| path.is_dir());
+                for batch in batches {
+                    if !active.insert(batch.clone()) { continue; }
+                    let mut files = Vec::new();
+                    collect_files(&batch, &mut files);
+                    if files.is_empty() {
+                        let _ = std::fs::remove_dir_all(&batch);
+                        active.remove(&batch);
+                        continue;
+                    }
+                    bring_in(&app, files, vec![batch]);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_secs(3));
+        }
+    });
+}
+
+/// The books in a share batch: its files, and any unpacked EPUB folder as
+/// one book (Apple Books shares its books that way), never its pages.
+#[cfg(target_os = "ios")]
+fn collect_files(folder: &std::path::Path, out: &mut Vec<PathBuf>) {
+    if let Ok(entries) = std::fs::read_dir(folder) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if tbv_core::epub::is_epub_folder(&path) {
+                out.push(path);
+            } else if path.is_dir() {
+                collect_files(&path, out);
+            } else if path.is_file() {
+                out.push(path);
+            }
+        }
     }
 }
 
@@ -51,7 +96,7 @@ fn holding_dir(data_dir: &std::path::Path) -> PathBuf {
     data_dir.join("Shared books")
 }
 
-fn bring_in(app: &AppHandle, files: Vec<PathBuf>) {
+fn bring_in(app: &AppHandle, files: Vec<PathBuf>, completed_batches: Vec<PathBuf>) {
     let (Some(library), Some(imports), Ok(data_dir)) = (app.try_state::<AppLibrary>(), app.try_state::<Arc<Imports>>(), app.path().app_data_dir()) else {
         return;
     };
@@ -62,24 +107,34 @@ fn bring_in(app: &AppHandle, files: Vec<PathBuf>) {
     std::thread::spawn(move || {
         let mut count = 0;
         let mut name = None;
+        let mut all_staged = true;
         for file in files {
             // Each in a folder of its own, cleared once its book is in.
-            let Ok(hold) = TempFolder::new(&holding_dir(&data_dir)) else { continue };
-            let Some(file_name) = file.file_name() else { continue };
+            let Ok(hold) = TempFolder::new(&holding_dir(&data_dir)) else { all_staged = false; continue };
+            let Some(file_name) = file.file_name() else { all_staged = false; continue };
             let target = hold.path().join(file_name);
             let ours = inbox.as_ref().is_some_and(|inbox| file.starts_with(inbox));
             if ours {
                 if std::fs::rename(&file, &target).is_err() {
                     if copy_any(&file, &target).is_err() {
+                        all_staged = false;
                         continue;
                     }
                     let _ = if file.is_dir() { std::fs::remove_dir_all(&file) } else { std::fs::remove_file(&file) };
                 }
             } else if copy_any(&file, &target).is_err() {
+                all_staged = false;
                 continue;
             }
             name = Some(tbv_core::audio::display_name(&target));
             count += imports.add_holding(&app, &library, vec![target], Some(Arc::new(hold)));
+        }
+        // Keep the original batch if any file could not be staged.
+        // The import queue owns successful copies from this point onward.
+        if all_staged {
+            for batch in completed_batches {
+                let _ = std::fs::remove_dir_all(batch);
+            }
         }
         let message = match (count, name) {
             (0, _) => "TBV can't read that file, so it wasn't added.".to_string(),

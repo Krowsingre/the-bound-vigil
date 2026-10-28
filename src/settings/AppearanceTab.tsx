@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
-import type { Layout } from "../library/libraryView";
-import { FONTS, HIGHLIGHT_COLORS, parseSettings, SETTINGS_KEY, SIZE_RANGE, type ReaderSettings, type ReadingFont } from "../reader/settings";
+import { HIGHLIGHT_COLORS, parseSettings, SETTINGS_KEY, type ReaderSettings } from "../reader/settings";
 import {
   isDark,
   PRIVACY_SHORTCUT,
@@ -16,7 +15,7 @@ import {
   type SurfaceStyle,
   type ThemeChoice,
 } from "./appSettings";
-import { Row, Section, Segmented, Select, Toggle } from "./controls";
+import { Row, Section, Segmented, Toggle } from "./controls";
 import { ProfileSection } from "./ProfileSection";
 
 /** The reader's own settings, shared with the Aa panel in the reader. */
@@ -49,18 +48,13 @@ const THEMES: { value: ThemeCard; label: string; theme: ThemeChoice; base?: Adap
 ];
 
 export function AppearanceTab({
-  layout,
-  onLayout,
   sidebarShown,
   onSidebarShown,
 }: {
-  layout: Layout;
-  onLayout: (layout: Layout) => void;
   sidebarShown: boolean;
   onSidebarShown: (shown: boolean) => void;
 }) {
   const { settings, change, adaptive, adaptiveBook, refreshAdaptive, togglePrivacy } = useAppSettings();
-  const [reader, changeReader] = useReaderSettings();
   const adaptiveOn = settings.theme === "adaptive";
   const systemDark = useSystemDark();
   const card: ThemeCard = adaptiveOn ? (isDark(settings, systemDark) ? "adaptive-dark" : "adaptive-light") : (settings.theme as ThemeCard);
@@ -169,11 +163,31 @@ export function AppearanceTab({
             </button>
           </div>
         )}
+        <Row label="Surface style" hint="A subtle tint behind pages and cards.">
+          <Segmented<SurfaceStyle>
+            label="Surface style"
+            value={settings.surface}
+            options={[
+              { value: "clean", label: "Clean" },
+              { value: "matte", label: "Matte" },
+              { value: "paper", label: "Paper" },
+            ]}
+            onChange={(surface) => change({ surface })}
+          />
+        </Row>
+        <div className="toggle-list">
+          <Toggle
+            label="Show progress bars on books"
+            hint="In the Archive and Compendium. Sanctum always shows what you're reading."
+            checked={settings.showProgress}
+            onChange={(showProgress) => change({ showProgress })}
+          />
+        </div>
       </Section>
 
       <ProfileSection />
 
-      <Section id="layout" title="Interface layout" lede="The size of things, and how the library shows your books.">
+      <Section id="layout" title="Interface layout" lede="The size of things, the interface's font, and the sidebar.">
         <Row label="Interface scale" hint="Makes all text and controls smaller or larger.">
           <Segmented<InterfaceScale>
             label="Interface scale"
@@ -186,54 +200,7 @@ export function AppearanceTab({
             onChange={(scale) => change({ scale })}
           />
         </Row>
-        <Row label="Sidebar" hint="The ••• button at the top left does the same.">
-          <Toggle label="Show the full sidebar" checked={sidebarShown} onChange={onSidebarShown} />
-          <Toggle
-            label="Full-screen menu on a phone"
-            hint="When the phone is upright, the menu of pages fills the screen."
-            checked={settings.fullMenu}
-            onChange={(fullMenu) => change({ fullMenu })}
-          />
-        </Row>
-        <Row label="Archive pages" hint="On a phone the Archive always scrolls on without pages.">
-          <Toggle
-            label="Scroll on without page numbers"
-            hint="More books load as you reach the end."
-            checked={settings.scrollLibrary}
-            onChange={(scrollLibrary) => change({ scrollLibrary })}
-          />
-        </Row>
-        <Row label="Cover display" hint="How the Archive shows your books.">
-          <div className="cover-styles" role="radiogroup" aria-label="Cover display">
-            {(
-              [
-                ["grid", "Covers"],
-                ["list", "List"],
-                ["compact", "Compact"],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={layout === value}
-                className={`cover-style${layout === value ? " is-active" : ""}`}
-                onClick={() => onLayout(value)}
-              >
-                <span className={`cover-style-art cover-style-${value}`} aria-hidden>
-                  <i />
-                  <i />
-                  <i />
-                </span>
-                {label}
-              </button>
-            ))}
-          </div>
-        </Row>
-      </Section>
-
-      <Section id="typography" title="Typography" lede="Fonts for the interface and for reading.">
-        <Row label="Interface font" hint="Used for menus, buttons and labels.">
+        <Row label="Interface font" hint="Used for menus, buttons and labels. The reading font is under Reading.">
           <Segmented<InterfaceFont>
             label="Interface font"
             value={settings.interfaceFont}
@@ -245,30 +212,15 @@ export function AppearanceTab({
             onChange={(interfaceFont) => change({ interfaceFont })}
           />
         </Row>
-        {reader && (
-          <Row label="Reading font" hint="Used in the reader. More text options are under Reading.">
-            <div className="font-row">
-              <Select<ReadingFont>
-                label="Reading font"
-                value={reader.font}
-                options={FONTS.map((f) => ({
-                  value: f.value,
-                  label: f.value === "lora" ? "Lora (Default)" : f.label,
-                }))}
-                onChange={(font) => changeReader({ font })}
-              />
-              <Select<string>
-                label="Reading text size"
-                value={String(reader.size)}
-                options={Array.from({ length: SIZE_RANGE.max - SIZE_RANGE.min + 1 }, (_, i) => {
-                  const n = String(SIZE_RANGE.min + i);
-                  return { value: n, label: n };
-                })}
-                onChange={(size) => changeReader({ size: Number(size) })}
-              />
-            </div>
-          </Row>
-        )}
+        <Row label="Sidebar" hint="The ••• button at the top left does the same.">
+          <Toggle label="Show the full sidebar" checked={sidebarShown} onChange={onSidebarShown} />
+          <Toggle
+            label="Full-screen menu on a phone"
+            hint="When the phone is upright, the menu of pages fills the screen."
+            checked={settings.fullMenu}
+            onChange={(fullMenu) => change({ fullMenu })}
+          />
+        </Row>
       </Section>
 
       <Section
@@ -301,41 +253,6 @@ export function AppearanceTab({
             hint="Collection pictures made from covers or your own images are always hidden. TBV's gallery paintings stay."
             checked={settings.privacy.avatar}
             onChange={(avatar) => change({ privacy: { ...settings.privacy, avatar } })}
-          />
-        </div>
-      </Section>
-
-      <Section id="colour" title="Colour & surface" lede="Finishing touches for comfort and taste.">
-        <Row label="Surface style" hint="A subtle tint behind pages and cards.">
-          <Segmented<SurfaceStyle>
-            label="Surface style"
-            value={settings.surface}
-            options={[
-              { value: "clean", label: "Clean" },
-              { value: "matte", label: "Matte" },
-              { value: "paper", label: "Paper" },
-            ]}
-            onChange={(surface) => change({ surface })}
-          />
-        </Row>
-        <div className="toggle-list">
-          <Toggle
-            label="Show progress bars on books"
-            hint="In the Archive and Compendium. Sanctum always shows what you're reading."
-            checked={settings.showProgress}
-            onChange={(showProgress) => change({ showProgress })}
-          />
-          <Toggle
-            label="Use high contrast"
-            hint="Darker text and clearer edges."
-            checked={settings.highContrast}
-            onChange={(highContrast) => change({ highContrast })}
-          />
-          <Toggle
-            label="Reduce motion"
-            hint="Turns off animations and sliding."
-            checked={settings.reduceMotion}
-            onChange={(reduceMotion) => change({ reduceMotion })}
           />
         </div>
       </Section>

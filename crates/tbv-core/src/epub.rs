@@ -2,7 +2,7 @@
 
 use std::fs::File;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
@@ -214,9 +214,42 @@ pub fn read_epub_metadata(path: &Path) -> Result<BookMetadata> {
 }
 
 /// Whether `path` is an EPUB kept unpacked, as a folder (Apple Books shares
-/// the books it holds this way).
+/// the books it holds this way, and people unzip them). Its META-INF/container.xml
+/// says so; failing that, an EPUB `mimetype` file, or a name ending in .epub,
+/// with the book's .opf inside.
 pub fn is_epub_folder(path: &Path) -> bool {
-    path.is_dir() && path.join("META-INF").join("container.xml").is_file()
+    if !path.is_dir() {
+        return false;
+    }
+    if container_in(path).is_some() {
+        return true;
+    }
+    let says_epub = std::fs::read_to_string(path.join("mimetype")).is_ok_and(|m| m.trim() == "application/epub+zip");
+    let named_epub = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("epub"));
+    (says_epub || named_epub) && opf_in(path).is_some()
+}
+
+/// The folder's META-INF/container.xml, whatever the case of its name.
+fn container_in(folder: &Path) -> Option<PathBuf> {
+    let meta = std::fs::read_dir(folder).ok()?.flatten().find(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case("META-INF") && e.path().is_dir())?;
+    std::fs::read_dir(meta.path()).ok()?.flatten().map(|e| e.path()).find(|p| p.is_file() && p.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("container.xml")))
+}
+
+/// The book's .opf inside the folder (first by name, up to three folders down), as a path inside the book.
+fn opf_in(folder: &Path) -> Option<String> {
+    fn look(at: &Path, prefix: &str, depth: u8) -> Option<String> {
+        let mut entries: Vec<_> = std::fs::read_dir(at).ok()?.flatten().filter(|e| e.file_type().is_ok_and(|t| !t.is_symlink())).collect();
+        entries.sort_by_key(|e| e.file_name());
+        let name = |e: &std::fs::DirEntry| format!("{prefix}{}", e.file_name().to_string_lossy());
+        if let Some(opf) = entries.iter().find(|e| e.path().is_file() && e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("opf"))) {
+            return Some(name(opf));
+        }
+        if depth == 0 {
+            return None;
+        }
+        entries.iter().filter(|e| e.path().is_dir()).find_map(|e| look(&e.path(), &format!("{}/", name(e)), depth - 1))
+    }
+    look(folder, "", 3)
 }
 
 /// Packs an unpacked EPUB folder back into one EPUB file at `target`: the
@@ -225,7 +258,7 @@ pub fn is_epub_folder(path: &Path) -> bool {
 pub fn pack_folder(folder: &Path, target: &Path) -> Result<()> {
     use std::io::Write;
     use zip::write::SimpleFileOptions;
-    fn gather(root: &Path, at: &Path, files: &mut Vec<String>) -> Result<()> {
+    fn gather(root: &Path, at: &Path, files: &mut Vec<(String, PathBuf)>) -> Result<()> {
         for entry in std::fs::read_dir(at)? {
             let entry = entry?;
             let path = entry.path();
@@ -240,7 +273,9 @@ pub fn pack_folder(folder: &Path, target: &Path) -> Result<()> {
                 let name = inside.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
                 // Not part of the book: the folder's own notes from macOS and iOS.
                 if name != "mimetype" && !name.ends_with(".DS_Store") && !name.starts_with("iTunesMetadata") {
-                    files.push(name);
+                    // Readers look for this name exactly.
+                    let name = if name.eq_ignore_ascii_case("META-INF/container.xml") { "META-INF/container.xml".to_string() } else { name };
+                    files.push((name, path));
                 }
             }
         }
@@ -252,15 +287,30 @@ pub fn pack_folder(folder: &Path, target: &Path) -> Result<()> {
     let mut files = Vec::new();
     gather(folder, folder, &mut files)?;
     files.sort();
+    // An unzipped book that lost its container gets one, pointing at its .opf.
+    let made_container = match container_in(folder) {
+        Some(_) => None,
+        None => {
+            let opf = opf_in(folder).ok_or_else(|| Error::BadBook("this folder has no .opf, so it isn't an EPUB".into()))?;
+            let opf = opf.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;");
+            Some(format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="{opf}" media-type="application/oebps-package+xml"/></rootfiles></container>"#
+            ))
+        }
+    };
     let mut zip = zip::ZipWriter::new(File::create(target)?);
     let stored = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     let packed = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     let zipped = |e: zip::result::ZipError| Error::BadBook(e.to_string());
     zip.start_file("mimetype", stored).map_err(zipped)?;
     zip.write_all(b"application/epub+zip")?;
-    for name in files {
+    if let Some(container) = made_container {
+        zip.start_file("META-INF/container.xml", packed).map_err(zipped)?;
+        zip.write_all(container.as_bytes())?;
+    }
+    for (name, path) in files {
         zip.start_file(name.as_str(), packed).map_err(zipped)?;
-        std::io::copy(&mut File::open(folder.join(&name))?, &mut zip)?;
+        std::io::copy(&mut File::open(path)?, &mut zip)?;
     }
     zip.finish().map_err(zipped)?;
     Ok(())
@@ -524,6 +574,31 @@ pub(crate) mod tests {
         assert_eq!(archive.by_index(0).unwrap().name(), "mimetype");
         assert!(archive.by_name("iTunesMetadata.plist").is_err());
         assert_eq!(read_epub_metadata(&again).unwrap().title.as_deref(), Some("Folded"));
+    }
+
+    #[test]
+    fn an_unzipped_epub_without_its_container_still_packs_into_one_book() {
+        let dir = tempfile::tempdir().unwrap();
+        let packed = dir.path().join("packed.epub");
+        write_test_epub(&packed, "Loose", "A. Writer", false);
+        let folder = dir.path().join("Loose");
+        ZipArchive::new(File::open(&packed).unwrap()).unwrap().extract(&folder).unwrap();
+        std::fs::remove_dir_all(folder.join("META-INF")).unwrap();
+        assert!(is_epub_folder(&folder), "its mimetype and .opf say it's an EPUB");
+        let again = dir.path().join("again.epub");
+        pack_folder(&folder, &again).unwrap();
+        assert_eq!(read_epub_metadata(&again).unwrap().title.as_deref(), Some("Loose"));
+
+        // No mimetype either: a name ending in .epub will do.
+        let named = dir.path().join("Named.epub");
+        std::fs::rename(&folder, &named).unwrap();
+        std::fs::remove_file(named.join("mimetype")).unwrap();
+        assert!(is_epub_folder(&named));
+        // A plain folder of pages isn't one.
+        let plain = dir.path().join("Pages");
+        std::fs::create_dir(&plain).unwrap();
+        std::fs::write(plain.join("a.html"), b"<p>x</p>").unwrap();
+        assert!(!is_epub_folder(&plain));
     }
 
     use super::*;

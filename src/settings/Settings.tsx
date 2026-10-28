@@ -54,21 +54,35 @@ export function Settings({
     onJumped?.();
   }, [jump, onJumped]);
   const body = useRef<HTMLDivElement>(null);
+  const jumped = useRef(false);
   const results = searchSettings(query).filter((r) => TABS.some((t) => t.tab === r.tab));
   const page = SETTINGS_TABS.find((t) => t.tab === tab);
 
-  // A new page starts at its top, or at the section picked from search.
+  // A new page starts at its top, or at the section picked from search
+  // (opened first, and found once it's drawn: it may sit inside another).
   useEffect(() => {
-    if (jumpTo) unfoldSection(jumpTo);
-    const target = jumpTo ? document.getElementById(`settings-${jumpTo}`) : null;
-    if (target) {
-      target.scrollIntoView({ block: "start" });
-      target.classList.add("is-found");
-      const t = setTimeout(() => target.classList.remove("is-found"), 1600);
-      setJumpTo(null);
-      return () => clearTimeout(t);
+    if (!jumpTo) {
+      // Not when the jump just made has been cleared.
+      if (jumped.current) jumped.current = false;
+      else body.current?.closest(".content")?.scrollTo({ top: 0 });
+      return;
     }
-    body.current?.closest(".content")?.scrollTo({ top: 0 });
+    unfoldSection(jumpTo);
+    let fade: ReturnType<typeof setTimeout> | undefined;
+    const frame = requestAnimationFrame(() => {
+      const target = document.getElementById(`settings-${jumpTo}`);
+      if (target) {
+        target.scrollIntoView({ block: "start" });
+        target.classList.add("is-found");
+        fade = setTimeout(() => target.classList.remove("is-found"), 1600);
+      }
+      jumped.current = true;
+      setJumpTo(null);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (fade) clearTimeout(fade);
+    };
   }, [tab, jumpTo]);
 
   const content = (() => {
@@ -76,8 +90,6 @@ export function Settings({
       case "appearance":
         return (
           <AppearanceTab
-            layout={libraryLayout}
-            onLayout={(layout) => onLibraryView({ layout })}
             sidebarShown={sidebarShown}
             onSidebarShown={onSidebarShown}
           />

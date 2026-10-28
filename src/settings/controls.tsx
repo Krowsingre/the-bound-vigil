@@ -1,7 +1,7 @@
 // The building blocks of every Settings page: sections, labelled rows,
 // switches and choices.
 
-import { useEffect, useId, useState } from "react";
+import { createContext, useContext, useEffect, useId, useState } from "react";
 import { Icon } from "../components/Icon";
 
 const OPENED_KEY = "tbv.settings.opened";
@@ -26,10 +26,34 @@ function saveOpened(id: string, opened: boolean) {
   }
 }
 
-/** Opens a folded section, e.g. one found by searching settings. */
+/** Which group holds each section that's part of one. */
+const GROUP_OF = new Map<string, string>();
+
+/** Opens a folded section, e.g. one found by searching settings, and the group holding it. */
 export function unfoldSection(id: string) {
+  const group = GROUP_OF.get(id);
+  if (group) unfoldSection(group);
   saveOpened(id, true);
   window.dispatchEvent(new CustomEvent("tbv:unfold-section", { detail: id }));
+}
+
+/** Set inside a group: its sections are parts of one card, not cards. */
+const InGroup = createContext(false);
+
+/**
+ * Several sections as one: a single card that folds, with each section
+ * inside it as a part under its own small heading. `holds` names them, so
+ * searching for one of them opens the card.
+ */
+export function SectionGroup({ id, title, lede, holds, children }: { id: string; title: string; lede?: string; holds: string[]; children: React.ReactNode }) {
+  for (const part of holds) GROUP_OF.set(part, id);
+  return (
+    <Section id={id} title={title} lede={lede}>
+      <InGroup.Provider value={true}>
+        <div className="settings-parts">{children}</div>
+      </InGroup.Provider>
+    </Section>
+  );
 }
 
 /** A settings section, folded until its heading is tapped. */
@@ -47,6 +71,32 @@ export function Section({
   aside?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  return useContext(InGroup) ? (
+    <SectionPart id={id} title={title} lede={lede} aside={aside}>
+      {children}
+    </SectionPart>
+  ) : (
+    <FoldingSection id={id} title={title} lede={lede} aside={aside}>
+      {children}
+    </FoldingSection>
+  );
+}
+
+/** A section inside a group: a heading and its settings, always open. */
+function SectionPart({ id, title, lede, aside, children }: { id: string; title: string; lede?: string; aside?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className={`settings-part${aside ? " has-aside" : ""}`} id={`settings-${id}`} aria-labelledby={`settings-${id}-title`}>
+      <div className="settings-part-main">
+        <h3 id={`settings-${id}-title`}>{title}</h3>
+        {lede && <p className="muted">{lede}</p>}
+        {children}
+      </div>
+      {aside && <div className="settings-section-aside">{aside}</div>}
+    </section>
+  );
+}
+
+function FoldingSection({ id, title, lede, aside, children }: { id: string; title: string; lede?: string; aside?: React.ReactNode; children: React.ReactNode }) {
   const [folded, setFolded] = useState(() => !readOpened().has(id));
   useEffect(() => {
     const open = (e: Event) => (e as CustomEvent<string>).detail === id && setFolded(false);

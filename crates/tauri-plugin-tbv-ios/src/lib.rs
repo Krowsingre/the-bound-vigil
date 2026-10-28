@@ -125,6 +125,25 @@ pub fn browser_downloads_dir() -> Option<std::path::PathBuf> {
     None
 }
 
+/// Published, complete batches in the Share Extension's App Group inbox.
+pub fn pending_shares() -> Result<Vec<std::path::PathBuf>, String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get().ok_or("The iOS share bridge isn't ready.")?;
+        let answer: serde_json::Value = swift
+            .run_mobile_plugin("pendingShares", ())
+            .map_err(|e| e.to_string())?;
+        Ok(answer.get("paths").and_then(|v| v.as_array())
+            .into_iter().flatten()
+            .filter_map(|v| v.as_str().map(std::path::PathBuf::from))
+            .collect())
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        Ok(Vec::new())
+    }
+}
+
 /// "iPhone" or "iPad", from the device itself.
 pub fn device_kind() -> Option<String> {
     #[cfg(target_os = "ios")]
