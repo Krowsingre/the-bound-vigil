@@ -809,9 +809,16 @@ function Updates() {
       <div className="toggle-list">
         <Toggle
           label="Look for updates when TBV opens"
-          hint="TBV says when a newer version is ready. Nothing installs until you choose to."
+          hint="TBV says when a newer version is ready."
           checked={settings.checkUpdates}
           onChange={(checkUpdates) => change({ checkUpdates })}
+        />
+        <Toggle
+          label="Install updates by themselves"
+          hint="When TBV opens and finds a newer version, it installs it straight away and starts again."
+          checked={settings.checkUpdates && settings.autoInstallUpdates}
+          disabled={!settings.checkUpdates}
+          onChange={(autoInstallUpdates) => change({ autoInstallUpdates })}
         />
       </div>
     </Section>
@@ -832,7 +839,7 @@ function AboutVersion({ version }: { version: string }) {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.33.0");
+  const [version, setVersion] = useState("1.34.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

@@ -42,6 +42,12 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
   private var pickingFiles = false
   private var keepingPicked = false
   private var signIn: ASWebAuthenticationSession?
+  /// Waiting for the next cloud event (see cloudEvent), and what has happened
+  /// since the last one was taken. Only touched on the main thread.
+  private var cloudWaiting: Invoke?
+  private var cameBack = false
+  private var cloudPaths = Set<String>()
+  private var cloudQuery: NSMetadataQuery?
 
   override init() {
     super.init()
@@ -49,6 +55,56 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
     // Playback, not ambient: audio goes on with the screen locked or
     // another app open, and the silent switch doesn't mute an audiobook.
     try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(appCameBack), name: UIApplication.didBecomeActiveNotification, object: nil)
+    DispatchQueue.main.async { self.watchCloud() }
+  }
+
+  /// Asks iCloud to say when change files (TBV's are all .json) arrive in a
+  /// folder chosen in Files, so another device's changes are read at once.
+  private func watchCloud() {
+    let query = NSMetadataQuery()
+    query.searchScopes = [NSMetadataQueryAccessibleUbiquitousExternalDocumentsScope]
+    query.predicate = NSPredicate(format: "%K LIKE %@", NSMetadataItemFSNameKey, "*.json")
+    query.notificationBatchingInterval = 2
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(cloudUpdated(_:)), name: .NSMetadataQueryDidUpdate, object: query)
+    query.start()
+    cloudQuery = query
+  }
+
+  @objc private func cloudUpdated(_ note: Notification) {
+    for key in [NSMetadataQueryUpdateAddedItemsKey, NSMetadataQueryUpdateChangedItemsKey] {
+      for item in (note.userInfo?[key] as? [NSMetadataItem]) ?? [] {
+        if let path = item.value(forAttribute: NSMetadataItemPathKey) as? String {
+          cloudPaths.insert(path)
+        }
+      }
+    }
+    handOver()
+  }
+
+  @objc private func appCameBack() {
+    cameBack = true
+    handOver()
+  }
+
+  private func handOver() {
+    guard let invoke = cloudWaiting, cameBack || !cloudPaths.isEmpty else { return }
+    cloudWaiting = nil
+    invoke.resolve(["cameBack": cameBack, "paths": Array(cloudPaths)])
+    cameBack = false
+    cloudPaths.removeAll()
+  }
+
+  /// The next cloud event, once there is one: TBV came back on screen, or
+  /// iCloud changed files in a chosen folder (their paths).
+  @objc public func cloudEvent(_ invoke: Invoke) throws {
+    DispatchQueue.main.async {
+      self.cloudWaiting?.resolve(["cameBack": false, "paths": [String]()])
+      self.cloudWaiting = invoke
+      self.handOver()
+    }
   }
 
   private func reopenFolders() {

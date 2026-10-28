@@ -8,6 +8,7 @@ import { api, isApp, openExternal } from "../api";
 import type { LicenseView } from "../api/types";
 import emblem from "../assets/emblem.svg?raw";
 import { useToast } from "../components/Toast";
+import { startupStep } from "../splash/startup";
 
 const STORE_PAGE = "https://apps.microsoft.com/search?query=The%20Bound%20Vigil";
 /** The trial's last days get a reminder when TBV opens. */
@@ -97,6 +98,11 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
 function LicenseGate() {
   const toast = useToast();
   const { license, busy, buy, restore } = useLicense();
+  // This is the first screen instead of Sanctum.
+  useEffect(() => {
+    startupStep("library");
+    startupStep("sanctum");
+  }, []);
   if (!license) return null;
   const canBuy = license.shop !== "none";
   return (

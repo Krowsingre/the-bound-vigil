@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isApp, isHome, isWeb } from "./api";
-import type { CollectionRef, HomeViewModel, ImportsView, Profile, SyncStatus } from "./api/types";
+import type { CollectionRef, HomeViewModel, ImportsView, Profile, SmartKind, SyncStatus } from "./api/types";
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { ContextMenuHost } from "./components/ContextMenu";
 import { BookDialogsHost } from "./library/BookDialogs";
@@ -364,6 +364,10 @@ export function App() {
     setOpenCollection({ kind: "collection", id });
     setRoute("collections");
   }, []);
+  const openCompendium = useCallback((smart: SmartKind) => {
+    setOpenCollection({ kind: "smart", smart });
+    setRoute("collections");
+  }, []);
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   // Sync runs in the background; show its state, and what it brings in.
@@ -545,6 +549,7 @@ export function App() {
               onImportFolder={importFolder}
               onLoaded={onHomeLoaded}
               onOpenBook={openBook}
+              onOpenCompendium={openCompendium}
             />
           ) : route === "library" ? (
             <Library

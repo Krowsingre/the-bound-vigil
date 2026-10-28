@@ -224,6 +224,22 @@ fn is_device(name: &str) -> bool {
     !name.is_empty() && !name.starts_with('.') && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
+/// Whether a file that changed in a synced library folder is news from
+/// another device: a change batch or device note of a device other than
+/// `mine`. TBV's own writes, half-written files and cloud apps' clash
+/// copies aren't, so watching the folder never sets off sync by itself.
+pub fn is_news_from_elsewhere(path: &Path, mine: &str) -> bool {
+    let parts: Vec<String> = path.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
+    let Some(at) = parts.iter().rposition(|p| p == "changes" || p == "devices") else { return false };
+    let rest = &parts[at + 1..];
+    let (device, file) = match (parts[at].as_str(), rest) {
+        ("changes", [device, file]) => (device.as_str(), file.as_str()),
+        ("devices", [file]) => (file.strip_suffix(".json").unwrap_or(""), file.as_str()),
+        _ => return false,
+    };
+    is_device(device) && device != mine && file.ends_with(".json") && !file.starts_with('.')
+}
+
 /// The `Remote` the sync engine talks to, over any `Store`.
 pub struct FileRemote<S: Store> {
     store: S,
@@ -364,6 +380,19 @@ pub struct FolderStore {
     root: PathBuf,
 }
 
+/// TBV's library folder for a chosen folder: the one inside it, or the
+/// chosen folder itself when that is a library folder.
+fn root_in(chosen: &Path) -> PathBuf {
+    let inside = chosen.join(LIBRARY_FOLDER);
+    let is_library = chosen.file_name().is_some_and(|n| n == LIBRARY_FOLDER) && !inside.exists();
+    if is_library { chosen.to_path_buf() } else { inside }
+}
+
+/// The library folder in `chosen`, if it's there now.
+pub fn library_root(chosen: &Path) -> Option<PathBuf> {
+    Some(root_in(chosen)).filter(|root| root.is_dir())
+}
+
 impl FolderStore {
     /// TBV's library folder inside `chosen`. The chosen folder must exist,
     /// since a missing one usually means its cloud app isn't running.
@@ -376,9 +405,7 @@ impl FolderStore {
                 chosen.display()
             )));
         }
-        let inside = chosen.join(LIBRARY_FOLDER);
-        let is_library = chosen.file_name().is_some_and(|n| n == LIBRARY_FOLDER) && !inside.exists();
-        let root = if is_library { chosen.to_path_buf() } else { inside };
+        let root = root_in(chosen);
         fs::create_dir_all(&root)?;
         Ok(Self { root })
     }
@@ -545,6 +572,19 @@ pub(crate) mod tests {
         assert!(page.records.is_empty());
         let behind = b.behind(&page.cursor).unwrap();
         assert_eq!((behind.len(), behind[0].read, behind[0].written, behind[0].books), (1, 2, 3, 3049));
+    }
+
+    #[test]
+    fn only_other_devices_files_count_as_news() {
+        let root = Path::new("/cloud/The Bound Vigil");
+        assert!(is_news_from_elsewhere(&root.join("changes/device-b/0000000004.json"), "device-a"));
+        assert!(is_news_from_elsewhere(&root.join("devices/device-b.json"), "device-a"));
+        assert!(!is_news_from_elsewhere(&root.join("changes/device-a/0000000004.json"), "device-a"));
+        assert!(!is_news_from_elsewhere(&root.join("devices/device-a.json"), "device-a"));
+        assert!(!is_news_from_elsewhere(&root.join("changes/device-b/.0000000004.json.tbv-partial"), "device-a"));
+        assert!(!is_news_from_elsewhere(&root.join("devices/device-b (1).json"), "device-a"));
+        assert!(!is_news_from_elsewhere(&root.join("covers/abc.jpg"), "device-a"));
+        assert!(!is_news_from_elsewhere(&root.join("changes/device-b"), "device-a"));
     }
 
     #[test]

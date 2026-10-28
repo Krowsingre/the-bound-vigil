@@ -62,6 +62,12 @@ export default defineConfig(({ mode }) => ({
   server: mode === "web" ? { port: 1421 } : { port: 1420, strictPort: true },
   envPrefix: ["VITE_", "TAURI_ENV_"],
   // PDF.js (about 500 kB) loads only when a PDF is opened.
-  build: { target: "es2022", outDir: mode === "web" ? "dist-web" : "dist", chunkSizeWarningLimit: 600 },
+  build: {
+    target: "es2022",
+    outDir: mode === "web" ? "dist-web" : "dist",
+    chunkSizeWarningLimit: 600,
+    // The splash card a computer shows while TBV opens is a page of its own.
+    rollupOptions: { input: { main: "index.html", splash: "splash.html" } },
+  },
   test: { environment: "jsdom", globals: true, setupFiles: ["src/test/setup.ts"] },
 }));

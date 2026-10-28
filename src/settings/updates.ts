@@ -4,24 +4,53 @@ import { useCallback, useEffect, useState } from "react";
 import { api, isApp, isIOS } from "../api";
 import type { UpdateInfo, UpdateProgress } from "../api/types";
 import { useToast } from "../components/Toast";
+import { startupHold, startupSay, stillOpening } from "../splash/startup";
 import { APP_SETTINGS_KEY, parseAppSettings } from "./appSettings";
 
 /** Updating happens in the app on a computer only. */
 export const canSelfUpdate = (isApp && !isIOS) || api.kind === "preview";
 
-/** Says once, when TBV opens, that a newer version is ready (if the setting allows). */
+/** How long opening waits to hear whether there's an update to install. */
+const LOOK_WAIT = 3000;
+
+/** When TBV opens (if the settings allow): installs a newer version straight
+ * away with the splash still up, or says that one is ready. */
 export function useStartupUpdateCheck() {
   const toast = useToast();
   useEffect(() => {
     if (!canSelfUpdate) return;
-    // A little after opening, so it never slows the first screen.
-    const timer = setTimeout(() => {
-      void api
-        .getSetting(APP_SETTINGS_KEY)
-        .then((json) => (parseAppSettings(json).checkUpdates ? api.checkForUpdate() : null))
-        .then((info) => info?.version && toast(`The Bound Vigil ${info.version} is ready. Install it in Preferences › About.`))
-        .catch(() => undefined);
-    }, 8000);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const say = (info: UpdateInfo | null) =>
+      info?.version && toast(`The Bound Vigil ${info.version} is ready. Install it in Preferences › About.`);
+    void api.getSetting(APP_SETTINGS_KEY).then((json) => {
+      const settings = parseAppSettings(json);
+      if (!settings.checkUpdates) return;
+      if (settings.autoInstallUpdates && stillOpening()) {
+        const looking = api.checkForUpdate();
+        void startupHold("Looking for updates…", () =>
+          Promise.race([looking, new Promise<null>((ok) => setTimeout(() => ok(null), LOOK_WAIT))]),
+        )
+          .then(async (info) => {
+            if (!info?.version) {
+              // Too slow to wait for: it's said once it comes.
+              if (info === null) void looking.then(say, () => undefined);
+              return;
+            }
+            const version = info.version;
+            await startupHold(`Updating to ${version}…`, async () => {
+              const stop = api.onUpdateProgress((p) => {
+                if (p.total) startupSay(`Updating to ${version}… ${Math.round((p.downloaded / p.total) * 100)}%`);
+              });
+              // TBV starts again by itself once it's installed.
+              await api.installUpdate().finally(stop);
+            });
+          })
+          .catch((e: unknown) => toast(`The update couldn't be installed: ${String(e)}`));
+        return;
+      }
+      // A little after opening, so it never slows the first screen.
+      timer = setTimeout(() => void api.checkForUpdate().then(say, () => undefined), 8000);
+    });
     return () => clearTimeout(timer);
   }, [toast]);
 }
