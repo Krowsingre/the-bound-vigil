@@ -53,7 +53,11 @@ final class ShareViewController: UIViewController {
             provider.loadFileRepresentation(forTypeIdentifier: type) { url, _ in
                 defer { group.leave() }
                 guard let url = url else { return }
-                let rawName = provider.suggestedName ?? url.lastPathComponent
+                // The suggested name can lack the extension TBV tells formats by.
+                var rawName = provider.suggestedName ?? url.lastPathComponent
+                if URL(fileURLWithPath: rawName).pathExtension.isEmpty && !url.pathExtension.isEmpty {
+                    rawName += "." + url.pathExtension
+                }
                 let safeName = URL(fileURLWithPath: rawName).lastPathComponent
                 guard !safeName.isEmpty && safeName != "." && safeName != ".." else { return }
                 // Each attachment has its own directory, so original filenames

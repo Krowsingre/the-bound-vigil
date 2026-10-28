@@ -100,6 +100,20 @@ jobs:
               raise SystemExit("The Build Rust Code step has an unexpected shape")
           p.write_text(source[:found[0].start(2)] + body + source[found[0].end(2):])
           PY
+          # Apple wants the add-on's version and build number to match the app's.
+          host=the-bound-vigil_iOS/Info.plist
+          ext=TBVShareExtension/Info.plist
+          settings=$(xcodebuild -project the-bound-vigil.xcodeproj -target the-bound-vigil_iOS -configuration release -showBuildSettings 2>/dev/null)
+          for key in CFBundleShortVersionString CFBundleVersion; do
+            value=$(/usr/libexec/PlistBuddy -c "Print :$key" "$host")
+            if [[ "$value" == *'$('* ]]; then
+              name=$(echo "$value" | sed -E 's/.*\$\(([A-Z_]+)\).*/\1/')
+              value=$(echo "$settings" | awk -v n="$name" '$1 == n && $2 == "=" { print $3; exit }')
+            fi
+            test -n "$value"
+            /usr/libexec/PlistBuddy -c "Set :$key $value" "$ext" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :$key string $value" "$ext"
+            echo "$key: $value"
+          done
           auth=(-allowProvisioningUpdates -authenticationKeyID "$APPLE_API_KEY_ID" -authenticationKeyIssuerID "$APPLE_API_ISSUER" -authenticationKeyPath "$HOME/private_keys/AuthKey_$APPLE_API_KEY_ID.p8")
           xcodebuild archive -project the-bound-vigil.xcodeproj -scheme the-bound-vigil_iOS -configuration release \
             -destination 'generic/platform=iOS' -archivePath "$archive" "${auth[@]}" \
@@ -130,6 +144,10 @@ jobs:
             /usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$work/ent.plist" | grep -Fx 'group.com.krowsingre.theboundvigil'
           done
           /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$ext/Info.plist" | grep -Fx 'com.apple.share-services'
+          for key in CFBundleShortVersionString CFBundleVersion; do
+            a=$(/usr/libexec/PlistBuddy -c "Print :$key" "$app/Info.plist"); b=$(/usr/libexec/PlistBuddy -c "Print :$key" "$ext/Info.plist")
+            [ "$a" = "$b" ] || { echo "::error::$key is $a in the app but $b in the add-on."; exit 1; }
+          done
       - name: Keep the app file
         uses: actions/upload-artifact@v4
         with:
