@@ -1469,6 +1469,39 @@ kbd {
   gap: 16px;
 }
 
+/* Appearance › Profile: the picture as the sync circle shows it, then its buttons. */
+.profile-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.profile-picture {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-sunk);
+  color: var(--text-muted);
+}
+
+.profile-picture img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-picture-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* The landing page has no menu beside it: its cards are the menu, with the search up top. */
 .settings-page.is-landing {
   grid-template-columns: minmax(0, 1fr);

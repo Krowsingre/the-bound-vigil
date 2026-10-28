@@ -475,30 +475,31 @@ button.chapter-row:hover {
     background: rgb(0 0 0 / 0.35);
   }
 
+  /* Full screen above the player bar, clear of the clock, battery and home bar. */
   .audio-panel.is-sheet {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0;
     z-index: 46;
     min-height: 0;
-    max-height: 82vh;
+    max-height: none;
     margin: 0;
-    padding: 28px 18px calc(24px + env(safe-area-inset-bottom));
+    padding: calc(52px + env(safe-area-inset-top, 0px)) calc(18px + env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px))
+      calc(18px + env(safe-area-inset-left, 0px));
     border: 0;
-    border-radius: var(--radius-l) var(--radius-l) 0 0;
-    box-shadow: var(--shadow);
+    border-radius: 0;
+    box-shadow: none;
   }
 
   .has-player .audio-panel.is-sheet {
     bottom: var(--player-h);
-    max-height: calc(82vh - var(--player-h));
+    max-height: none;
+    padding-bottom: 24px;
   }
 
   .audio-sheet-close {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: calc(8px + env(safe-area-inset-top, 0px));
+    right: calc(10px + env(safe-area-inset-right, 0px));
     display: grid;
   }
 }

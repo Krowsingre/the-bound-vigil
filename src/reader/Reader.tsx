@@ -31,8 +31,7 @@ export interface ReaderShellProps {
   onImportBooks: () => void;
   onImportFolder: () => void;
   onOpenSyncSettings: () => void;
-  onChooseAvatar: (from?: "photos" | "files") => void;
-  onClearAvatar: () => void;
+  onOpenProfile: () => void;
 }
 
 const PANELS_KEY = "tbv.reader.panels";

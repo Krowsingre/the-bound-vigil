@@ -662,12 +662,14 @@
 }
 
 @media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
+  /* Full screen, so it keeps clear of the clock, battery and home bar. */
   .dialog.catalogues-panel {
     width: 100vw;
     height: 100%;
     max-height: none;
     border-radius: 0;
-    padding: 16px;
+    padding: calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px))
+      calc(16px + env(safe-area-inset-left, 0px));
   }
 }
 

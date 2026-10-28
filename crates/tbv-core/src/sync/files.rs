@@ -216,6 +216,14 @@ fn batch_number(name: &str) -> Option<u64> {
     name.strip_suffix(".json")?.parse().ok()
 }
 
+/// Whether a name in changes/ or devices/ is a device TBV made (its ids are
+/// letters, digits and dashes). A cloud app's copy of a file it thinks
+/// clashed ("<id> (1).json", "<id> 2.json") isn't one, and that copy would
+/// never catch up.
+fn is_device(name: &str) -> bool {
+    !name.is_empty() && !name.starts_with('.') && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
 /// The `Remote` the sync engine talks to, over any `Store`.
 pub struct FileRemote<S: Store> {
     store: S,
@@ -271,7 +279,7 @@ impl<S: Store + Send> Remote for FileRemote<S> {
         let mut read: BTreeMap<String, u64> = if after.is_empty() { BTreeMap::new() } else { serde_json::from_str(after).unwrap_or_default() };
         let mut records = Vec::new();
         let mut devices: Vec<String> = self.store.list(CHANGES)?.into_iter().map(|d| d.trim_end_matches('/').to_string()).collect();
-        devices.retain(|d| *d != self.device && !d.is_empty() && !d.starts_with('.'));
+        devices.retain(|d| *d != self.device && is_device(d));
         devices.sort();
         'devices: for device in devices {
             let done = read.get(&device).copied().unwrap_or(0);
@@ -336,7 +344,7 @@ impl<S: Store + Send> Remote for FileRemote<S> {
         let mut behind = Vec::new();
         for name in self.store.list(DEVICES)? {
             let Some(device) = name.strip_suffix(".json") else { continue };
-            if device == self.device {
+            if device == self.device || !is_device(device) {
                 continue;
             }
             let Some(note) = self.store.read(&format!("{DEVICES}{name}"))?.and_then(|b| serde_json::from_slice::<DeviceNote>(&b).ok()) else {
@@ -537,6 +545,26 @@ pub(crate) mod tests {
         assert!(page.records.is_empty());
         let behind = b.behind(&page.cursor).unwrap();
         assert_eq!((behind.len(), behind[0].read, behind[0].written, behind[0].books), (1, 2, 3, 3049));
+    }
+
+    #[test]
+    fn a_cloud_apps_copy_of_a_device_note_is_not_another_device() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut a = FileRemote::new(FolderStore::open(dir.path()).unwrap(), "device-a".into());
+        let mut b = FileRemote::new(FolderStore::open(dir.path()).unwrap(), "device-b".into());
+        a.prepare().unwrap();
+        a.push(&[record(1)]).unwrap();
+        a.note_this_device(10, "Windows PC").unwrap();
+        let root = dir.path().join(LIBRARY_FOLDER);
+        fs::copy(root.join("devices/device-a.json"), root.join("devices/device-a (1).json")).unwrap();
+        fs::copy(root.join("devices/device-a.json"), root.join("devices/device-b 2.json")).unwrap();
+        fs::create_dir_all(root.join("changes/device-a (1)")).unwrap();
+        fs::copy(root.join("changes/device-a/0000000001.json"), root.join("changes/device-a (1)/0000000001.json")).unwrap();
+
+        let page = b.pull("", 500).unwrap();
+        assert_eq!(page.records.len(), 1, "the copy's changes aren't read twice");
+        assert!(b.behind(&page.cursor).unwrap().is_empty(), "nor counted as a device that's ahead");
+        assert!(a.behind("").unwrap().is_empty(), "a's own copy doesn't make a look behind itself");
     }
 
     #[test]

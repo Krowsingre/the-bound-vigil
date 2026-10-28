@@ -1173,7 +1173,7 @@ impl Library {
             "UPDATE sync_clock SET pushed = 0;
              DELETE FROM sync_waiting WHERE lane = 'main'; DELETE FROM sync_conflicts WHERE lane = 'main'; DELETE FROM sync_files;",
         )?;
-        for key in [CURSOR, LAST_SUCCESS, LAST_ERROR] {
+        for key in [CURSOR, LAST_SUCCESS, LAST_ERROR, Lane::Main.behind_key()] {
             self.put_setting(key, None)?;
         }
         Ok(())
@@ -1186,7 +1186,7 @@ impl Library {
             "DELETE FROM sync_clock_also; DELETE FROM sync_files_also;
              DELETE FROM sync_waiting WHERE lane = 'also'; DELETE FROM sync_conflicts WHERE lane = 'also';",
         )?;
-        for key in [ALSO_CURSOR, ALSO_ERASE, ALSO_LAST_SUCCESS, ALSO_LAST_ERROR] {
+        for key in [ALSO_CURSOR, ALSO_ERASE, ALSO_LAST_SUCCESS, ALSO_LAST_ERROR, Lane::Also.behind_key()] {
             self.put_setting(key, None)?;
         }
         Ok(())
@@ -2188,6 +2188,12 @@ fn run_lanes(library: &Mutex<Library>, main: Option<&mut dyn Remote>, also: Opti
             }
             if let Some(outcome) = &also_outcome {
                 library.record_result(outcome, Lane::Also)?;
+            }
+            // A place no longer synced with can't still be ahead.
+            for (lane, outcome) in [(Lane::Main, &main_outcome), (Lane::Also, &also_outcome)] {
+                if outcome.is_none() {
+                    library.set_behind(lane, &[])?;
+                }
             }
             // Books from elsewhere may be the other half of an audiobook here.
             let received = |o: &Option<Result<SyncReport>>| o.as_ref().is_some_and(|o| o.as_ref().is_ok_and(|r| r.received > 0));
