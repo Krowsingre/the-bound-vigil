@@ -2189,11 +2189,10 @@ fn run_lanes(library: &Mutex<Library>, main: Option<&mut dyn Remote>, also: Opti
             if let Some(outcome) = &also_outcome {
                 library.record_result(outcome, Lane::Also)?;
             }
-            // A place no longer synced with can't still be ahead.
-            for (lane, outcome) in [(Lane::Main, &main_outcome), (Lane::Also, &also_outcome)] {
-                if outcome.is_none() {
-                    library.set_behind(lane, &[])?;
-                }
+            // A second place no longer synced with can't still be ahead (one
+            // that couldn't be reached this time keeps its note).
+            if library.sync_also()?.is_none() {
+                library.set_behind(Lane::Also, &[])?;
             }
             // Books from elsewhere may be the other half of an audiobook here.
             let received = |o: &Option<Result<SyncReport>>| o.as_ref().is_some_and(|o| o.as_ref().is_ok_and(|r| r.received > 0));
