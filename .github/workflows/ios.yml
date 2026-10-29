@@ -62,6 +62,31 @@ jobs:
         run: |
           mkdir -p ~/private_keys
           printf '%s\n' "$APPLE_API_KEY_P8" > ~/private_keys/AuthKey_$APPLE_API_KEY_ID.p8
+      # One signing certificate for this build, revoked at the end, so builds
+      # don't pile up certificates until Apple's limit stops signing.
+      - name: Make this build's signing certificate
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # Set to true once to revoke the Development certificates earlier builds left behind.
+          CLEAR_OLD: "true"
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/signing"
+          if [ "$CLEAR_OLD" = "true" ]; then python3 scripts/ios_ci_certificate.py clear-old; fi
+          id=$(python3 scripts/ios_ci_certificate.py create "$work")
+          echo "SIGNING_CERTIFICATE_ID=$id" >> "$GITHUB_ENV"
+          password=$(openssl rand -hex 16)
+          openssl x509 -inform DER -in "$work/certificate.cer" -out "$work/certificate.pem"
+          /usr/bin/openssl pkcs12 -export -inkey "$work/key.pem" -in "$work/certificate.pem" -out "$work/signing.p12" -passout pass:"$password"
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$work/signing.p12" -k "$keychain" -P "$password" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm -f "$work/key.pem" "$work/signing.p12"
       # Xcode signs the app itself, using the key to fetch the certificate
       # and profile. Each build gets the next number, as TestFlight requires.
       - name: Build the app
@@ -161,3 +186,9 @@ jobs:
         run: |
           ipa=$(ls src-tauri/gen/apple/build/arm64/*.ipa | head -1)
           xcrun altool --upload-app --type ios --file "$ipa" --apiKey "$APPLE_API_KEY_ID" --apiIssuer "$APPLE_API_ISSUER"
+      - name: Revoke this build's signing certificate
+        if: always() && env.SIGNING_CERTIFICATE_ID != ''
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: python3 scripts/ios_ci_certificate.py revoke "$SIGNING_CERTIFICATE_ID"
