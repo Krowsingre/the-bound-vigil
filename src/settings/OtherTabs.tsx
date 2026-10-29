@@ -12,7 +12,7 @@ import { TextSettings } from "../reader/ReaderPopovers";
 import { PAGE_COLORS, resolveTheme, WIDTHS } from "../reader/settings";
 import { readLocal, useAppDark, useAppSettings, writeLocal } from "./appSettings";
 import { useReaderSettings } from "./AppearanceTab";
-import { ActionTile, formatBytes, RadioList, Row, Section, SectionGroup, Segmented, Select, Toggle } from "./controls";
+import { ActionTile, Columns, formatBytes, RadioList, Row, Section, SectionGroup, Segmented, Select, Toggle } from "./controls";
 import { HardcoverSection } from "./HardcoverSection";
 import { ReadingHistorySection } from "./ReadingHistory";
 
@@ -30,7 +30,7 @@ export function ReadingTab() {
   if (!reader) return null;
   const colors = PAGE_COLORS[resolveTheme(reader.theme, dark)];
   return (
-    <>
+    <Columns side={isApp ? <ReadAlongSection /> : undefined}>
       <Section
         id="text"
         title="Text and page"
@@ -57,8 +57,7 @@ export function ReadingTab() {
       >
         <TextSettings settings={reader} onChange={change} />
       </Section>
-      {isApp && <ReadAlongSection />}
-    </>
+    </Columns>
   );
 }
 
@@ -202,29 +201,8 @@ export function LibraryTab({
 }) {
   const info = useLibraryInfo();
   const { settings, change } = useAppSettings();
-  return (
+  const side = (
     <>
-      <Section id="view" title="Archive view" lede="How the Archive starts out. Changing it there is remembered too.">
-        <Row label="Layout">
-          <Segmented<Layout> label="Archive layout" value={layout} options={LIBRARY_LAYOUTS} onChange={(l) => onChange({ layout: l })} />
-        </Row>
-        <Row label="Sort books by">
-          <Select<SortOrder>
-            label="Sort books by"
-            value={sort}
-            options={SORTS.map((s) => ({ value: s.sort, label: s.label }))}
-            onChange={(s) => onChange({ sort: s })}
-          />
-        </Row>
-        <Row label="Pages" hint="On a phone the Archive always scrolls on without pages.">
-          <Toggle
-            label="Scroll on without page numbers"
-            hint="More books load as you reach the end."
-            checked={settings.scrollLibrary}
-            onChange={(scrollLibrary) => change({ scrollLibrary })}
-          />
-        </Row>
-      </Section>
       <SectionGroup id="where" title="Where your books live" lede="TBV's own copy of each book, and the books you've deleted." holds={["folder", "deleted"]}>
         <Section
           id="folder"
@@ -246,16 +224,41 @@ export function LibraryTab({
         </Section>
         <DeletedBooksSection />
       </SectionGroup>
-      <SectionGroup id="tidying" title="Tidying your Archive" lede="Your tags, and books you have more than once." holds={["tags", "duplicates"]}>
-        <TagsSection />
-        <DuplicatesSection />
-      </SectionGroup>
       <SectionGroup id="ratings" title="Ratings sites" lede="Your ratings in and out of Goodreads and Hardcover." holds={["goodreads", "hardcover"]}>
         <GoodreadsSection />
         <HardcoverSection />
       </SectionGroup>
-      <ReadingHistorySection />
     </>
+  );
+  return (
+    <Columns side={side}>
+      <Section id="view" title="Archive view" lede="How the Archive starts out. Changing it there is remembered too.">
+        <Row label="Layout">
+          <Segmented<Layout> label="Archive layout" value={layout} options={LIBRARY_LAYOUTS} onChange={(l) => onChange({ layout: l })} />
+        </Row>
+        <Row label="Sort books by">
+          <Select<SortOrder>
+            label="Sort books by"
+            value={sort}
+            options={SORTS.map((s) => ({ value: s.sort, label: s.label }))}
+            onChange={(s) => onChange({ sort: s })}
+          />
+        </Row>
+        <Row label="Pages" hint="On a phone the Archive always scrolls on without pages.">
+          <Toggle
+            label="Scroll on without page numbers"
+            hint="More books load as you reach the end."
+            checked={settings.scrollLibrary}
+            onChange={(scrollLibrary) => change({ scrollLibrary })}
+          />
+        </Row>
+      </Section>
+      <SectionGroup id="tidying" title="Tidying your Archive" lede="Your tags, and books you have more than once." holds={["tags", "duplicates"]}>
+        <TagsSection />
+        <DuplicatesSection />
+      </SectionGroup>
+      <ReadingHistorySection />
+    </Columns>
   );
 }
 
@@ -598,8 +601,7 @@ const FORMATS: { ext: string; name: string }[] = [
 ];
 
 export function FilesTab() {
-  return (
-    <>
+  const formats = (
       <Section id="formats" title="Book formats" lede="TBV imports and reads all of these.">
         <ul className="format-list">
           {FORMATS.map((f) => (
@@ -612,6 +614,9 @@ export function FilesTab() {
         </ul>
         <p className="settings-row-hint">Books with DRM (copy protection) can't be opened by any reader but the shop's own.</p>
       </Section>
+  );
+  return (
+    <Columns side={formats}>
       <Section id="files" title="Your book files" lede="What TBV does, and never does, with your books.">
         <ul className="promise-list">
           <li>
@@ -629,7 +634,7 @@ export function FilesTab() {
           </li>
         </ul>
       </Section>
-    </>
+    </Columns>
   );
 }
 
@@ -712,14 +717,17 @@ function KeyTable({ rows }: { rows: [string, string][] }) {
 
 export function ShortcutsTab() {
   return (
-    <>
+    <Columns
+      side={
+        <Section id="reader" title="While reading" lede="Page keys turn pages when Turn pages is chosen; with Scroll they scroll.">
+          <KeyTable rows={READER} />
+        </Section>
+      }
+    >
       <Section id="everywhere" title="Everywhere">
         <KeyTable rows={EVERYWHERE} />
       </Section>
-      <Section id="reader" title="While reading" lede="Page keys turn pages when Turn pages is chosen; with Scroll they scroll.">
-        <KeyTable rows={READER} />
-      </Section>
-    </>
+    </Columns>
   );
 }
 
@@ -729,7 +737,19 @@ export function AdvancedTab() {
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
   return (
-    <>
+    <Columns
+      side={
+        <Section
+          id="reset"
+          title="Reset settings"
+          lede="Puts Appearance, Compendium, Accessibility and Sync choices back as they came. Your books, notes and collections are not touched."
+        >
+          <button type="button" className="btn btn-quiet" onClick={() => setConfirming(true)}>
+            Reset settings…
+          </button>
+        </Section>
+      }
+    >
       <Section id="data" title="Data on this device" lede="Your library's details, progress, notes and collections live in one database file.">
         {info ? (
           <>
@@ -747,15 +767,6 @@ export function AdvancedTab() {
           <p className="settings-row-hint">The data folder couldn't be read.</p>
         )}
       </Section>
-      <Section
-        id="reset"
-        title="Reset settings"
-        lede="Puts Appearance, Compendium, Accessibility and Sync choices back as they came. Your books, notes and collections are not touched."
-      >
-        <button type="button" className="btn btn-quiet" onClick={() => setConfirming(true)}>
-          Reset settings…
-        </button>
-      </Section>
       {confirming && (
         <ConfirmDialog
           title="Reset settings?"
@@ -769,7 +780,7 @@ export function AdvancedTab() {
           }}
         />
       )}
-    </>
+    </Columns>
   );
 }
 
@@ -953,6 +964,7 @@ export function AboutTab() {
   }, []);
   return (
     <>
+      <Columns side={<YourCopy />}>
       {canSelfUpdate ? (
         <SectionGroup id="about" title="The Bound Vigil" holds={["updates"]}>
           <AboutVersion version={version} />
@@ -963,7 +975,7 @@ export function AboutTab() {
           <AboutVersion version={version} />
         </Section>
       )}
-      <YourCopy />
+      </Columns>
       <Section id="licences" title="Built with" lede="TBV stands on the work of these projects. Thank you to their authors.">
         <ul className="credit-list">
           {CREDITS.map((c) => (

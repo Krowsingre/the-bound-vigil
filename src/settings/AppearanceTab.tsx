@@ -1,21 +1,23 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { BookCover } from "../components/BookCover";
-import { Icon } from "../components/Icon";
+import { Icon, type IconName } from "../components/Icon";
 import { HIGHLIGHT_COLORS, parseSettings, SETTINGS_KEY, type ReaderSettings } from "../reader/settings";
 import {
   isDark,
   PRIVACY_SHORTCUT,
   useAppSettings,
   useSystemDark,
+  SCALES,
   type AdaptiveBase,
+  type InterfaceDensity,
   type InterfaceFont,
   type InterfaceScale,
   type PrivacyStyle,
   type SurfaceStyle,
   type ThemeChoice,
 } from "./appSettings";
-import { Row, Section, Segmented, Toggle } from "./controls";
+import { Columns, Row, Section, Segmented, Toggle } from "./controls";
 import { ProfileSection } from "./ProfileSection";
 
 /** The reader's own settings, shared with the Aa panel in the reader. */
@@ -38,12 +40,57 @@ export function useReaderSettings(): [ReaderSettings | null, (change: Partial<Re
 }
 
 /** The theme cards. Adaptive is one card; its light or dark is chosen under it. */
-const THEMES: { value: ThemeChoice; label: string }[] = [
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-  { value: "system", label: "System" },
-  { value: "adaptive", label: "Adaptive" },
+const THEMES: { value: ThemeChoice; label: string; icon: IconName }[] = [
+  { value: "light", label: "Light", icon: "sun" },
+  { value: "dark", label: "Dark", icon: "moon" },
+  { value: "system", label: "System", icon: "computer" },
+  { value: "adaptive", label: "Adaptive", icon: "adaptive" },
 ];
+
+const DENSITIES: { value: InterfaceDensity; label: string }[] = [
+  { value: "compact", label: "Compact" },
+  { value: "default", label: "Default" },
+  { value: "spacious", label: "Spacious" },
+];
+
+const SCALE_STEPS: InterfaceScale[] = ["small", "medium", "large"];
+
+/** A slider with a few set stops, named under it. */
+function Stops<T extends string>({
+  label,
+  value,
+  stops,
+  names,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  stops: T[];
+  /** Under the slider: left, middle (the value now), right. */
+  names: [string, string, string];
+  onChange: (value: T) => void;
+}) {
+  const at = Math.max(0, stops.indexOf(value));
+  return (
+    <div className="stops">
+      <input
+        type="range"
+        min={0}
+        max={stops.length - 1}
+        step={1}
+        value={at}
+        aria-label={label}
+        aria-valuetext={names[1]}
+        onChange={(e) => onChange(stops[Number(e.target.value)])}
+      />
+      <div className="stops-names settings-row-hint">
+        <span>{names[0]}</span>
+        <strong>{names[1]}</strong>
+        <span>{names[2]}</span>
+      </div>
+    </div>
+  );
+}
 
 export function AppearanceTab({
   sidebarShown,
@@ -57,120 +104,83 @@ export function AppearanceTab({
   const systemDark = useSystemDark();
   const card = settings.theme;
 
-  return (
-    <>
-      <Section
-        id="theme"
-        title="Application theme"
-        lede="Choose the base theme for the whole app."
-        aside={
-          <div className="theme-preview">
-            <h3>Theme preview</h3>
-            <div className="theme-preview-art">
-              {adaptiveOn && adaptiveBook ? (
-                <BookCover book={adaptiveBook} />
-              ) : (
-                <div className="theme-preview-sample" aria-hidden>
-                  <span className="tp-sidebar" />
-                  <span className="tp-main">
-                    <span className="tp-title" />
-                    <span className="tp-line" />
-                    <span className="tp-line short" />
-                    <span className="tp-button" />
-                  </span>
-                </div>
-              )}
-            </div>
-            <ul className="swatches">
-              <li>
-                <span className="swatch-chip" style={{ background: "var(--bg)" }} />
-                Page
-              </li>
-              <li>
-                <span className="swatch-chip" style={{ background: "var(--surface)" }} />
-                Surface
-              </li>
-              <li>
-                <span className="swatch-chip" style={{ background: "var(--accent)" }} />
-                Accent
-              </li>
-              <li>
-                <span
-                  className="swatch-chip"
-                  style={{
-                    background: adaptive?.highlight ?? HIGHLIGHT_COLORS[3].hex,
-                  }}
-                />
-                Highlight
-              </li>
-            </ul>
-          </div>
-        }
-      >
-        <div className="theme-cards" role="radiogroup" aria-label="Theme">
-          {THEMES.map((t) => (
-            <label key={t.value} className={`theme-card${card === t.value ? " is-active" : ""}`}>
-              <span
-                className={`theme-swatch theme-swatch-${t.value === "adaptive" ? (isDark({ theme: "adaptive", adaptiveBase: settings.adaptiveBase }, systemDark) ? "adaptive-dark" : "adaptive-light") : t.value}`}
-                aria-hidden
-              />
-              <span className="theme-card-label">
-                <input
-                  type="radio"
-                  name="tbv-theme"
-                  checked={card === t.value}
-                  onChange={() => change({ theme: t.value })}
-                />
-                {t.label}
+  const preview = (
+    <Section id="preview" title="Theme preview" lede="How the interface's colours look together.">
+      <div className="theme-preview">
+        <div className="theme-preview-art">
+          {adaptiveOn && adaptiveBook ? (
+            <BookCover book={adaptiveBook} />
+          ) : (
+            <div className="theme-preview-sample" aria-hidden>
+              <span className="tp-sidebar" />
+              <span className="tp-main">
+                <span className="tp-title" />
+                <span className="tp-line" />
+                <span className="tp-line short" />
+                <span className="tp-button" />
               </span>
-            </label>
-          ))}
+            </div>
+          )}
         </div>
-        {adaptiveOn && (
-          <div className="settings-subpanel">
-            <h3>Adaptive theme</h3>
-            <p className="settings-row-hint">
-              The accent colour comes from the cover of the book you read most recently
-              {adaptiveBook ? (
-                <>
-                  , now <em>{adaptiveBook.title}</em>
-                </>
-              ) : null}
-              .{!adaptive && " That book has no cover with a colour to use yet, so the usual accent stays."}
-            </p>
-            <Row label="Light or dark" hint="Auto follows your device's light or dark mode.">
-              <Segmented<AdaptiveBase>
-                label="Adaptive light or dark"
-                value={settings.adaptiveBase}
-                options={[
-                  { value: "light", label: "Light" },
-                  { value: "system", label: "Auto" },
-                  { value: "dark", label: "Dark" },
-                ]}
-                onChange={(adaptiveBase) => change({ adaptiveBase })}
-              />
-            </Row>
-            <Row label="Accent strength" hint="How strongly the cover's colour is used.">
-              <div className="range-row">
-                <span className="settings-row-hint">Subtle</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={settings.adaptiveStrength}
-                  aria-label="Accent strength"
-                  onChange={(e) => change({ adaptiveStrength: Number(e.target.value) })}
-                />
-                <span className="settings-row-hint">Strong</span>
-              </div>
-            </Row>
-            <button type="button" className="btn btn-quiet" onClick={refreshAdaptive}>
-              <Icon name="sync" size={16} /> Take the colour again
-            </button>
-          </div>
-        )}
-        <Row label="Surface style" hint="A subtle tint or texture behind pages and cards." stack>
+        <ul className="swatches">
+          <li>
+            <span className="swatch-chip" style={{ background: "var(--bg)" }} />
+            Page
+          </li>
+          <li>
+            <span className="swatch-chip" style={{ background: "var(--surface)" }} />
+            Surface
+          </li>
+          <li>
+            <span className="swatch-chip" style={{ background: "var(--accent)" }} />
+            Accent
+          </li>
+          <li>
+            <span className="swatch-chip" style={{ background: adaptive?.highlight ?? HIGHLIGHT_COLORS[3].hex }} />
+            Highlight
+          </li>
+        </ul>
+      </div>
+    </Section>
+  );
+
+  const side = (
+    <>
+      {preview}
+      <Section id="density" title="Interface density" lede="More room between things, or less, everywhere in TBV.">
+        <Stops<InterfaceDensity>
+          label="Interface density"
+          value={settings.density}
+          stops={DENSITIES.map((d) => d.value)}
+          names={["Compact", DENSITIES.find((d) => d.value === settings.density)?.label ?? "Default", "Spacious"]}
+          onChange={(density) => change({ density })}
+        />
+      </Section>
+      <Section id="text" title="Interface text" lede="The font of menus, buttons and labels, and how big everything is. The reading font is under Reading.">
+        <Row label="Font" stack>
+          <Segmented<InterfaceFont>
+            label="Interface font"
+            value={settings.interfaceFont}
+            options={[
+              { value: "system", label: "Segoe UI" },
+              { value: "serif", label: "Georgia" },
+              { value: "echolume", label: "Echolume" },
+            ]}
+            onChange={(interfaceFont) => change({ interfaceFont })}
+          />
+        </Row>
+        <Row label="Font scaling" hint="Makes all text and controls smaller or larger." stack>
+          <Stops<InterfaceScale>
+            label="Font scaling"
+            value={settings.scale}
+            stops={SCALE_STEPS}
+            names={["Smaller", `${Math.round(SCALES[settings.scale] * 100)}%`, "Larger"]}
+            onChange={(scale) => change({ scale })}
+          />
+        </Row>
+      </Section>
+      <Section id="touches" title="Finishing touches" lede="The texture behind pages and cards, and progress on covers.">
+        <Row label="Surface style" stack>
           <Segmented<SurfaceStyle>
             label="Surface style"
             value={settings.surface}
@@ -193,44 +203,89 @@ export function AppearanceTab({
           />
         </div>
       </Section>
+    </>
+  );
+
+  return (
+    <Columns side={side}>
+      <Section id="theme" title="Application theme" lede="Choose the base theme for the interface.">
+        <div className="theme-cards" role="radiogroup" aria-label="Theme">
+          {THEMES.map((t) => (
+            <label key={t.value} className={`theme-card${card === t.value ? " is-active" : ""}`}>
+              <span
+                className={`theme-tile theme-swatch-${t.value === "adaptive" ? (isDark({ theme: "adaptive", adaptiveBase: settings.adaptiveBase }, systemDark) ? "adaptive-dark" : "adaptive-light") : t.value}`}
+                aria-hidden
+              >
+                <Icon name={t.icon} size={30} />
+                <span className="theme-tile-name">{t.label}</span>
+              </span>
+              <input type="radio" name="tbv-theme" aria-label={t.label} checked={card === t.value} onChange={() => change({ theme: t.value })} />
+            </label>
+          ))}
+        </div>
+      </Section>
+
+      {adaptiveOn && (
+        <Section
+          id="adaptive"
+          title="Adaptive theme"
+          lede="The interface's colours come from the cover of the book you're reading, on a light or dark base."
+        >
+          <p className="settings-row-hint">
+            {adaptiveBook ? (
+              <>
+                Now from <em>{adaptiveBook.title}</em>.
+              </>
+            ) : (
+              "No book has been opened yet."
+            )}
+            {!adaptive && adaptiveBook && " That book has no cover with a colour to use, so the usual accent stays."}
+          </p>
+          <Row label="Light or dark" hint="Auto follows your device's light or dark mode.">
+            <Segmented<AdaptiveBase>
+              label="Adaptive light or dark"
+              value={settings.adaptiveBase}
+              options={[
+                { value: "light", label: "Light" },
+                { value: "system", label: "Auto" },
+                { value: "dark", label: "Dark" },
+              ]}
+              onChange={(adaptiveBase) => change({ adaptiveBase })}
+            />
+          </Row>
+          <Row label="Accent strength" hint="How strongly the cover's colours are used.">
+            <div className="range-row">
+              <span className="settings-row-hint">Subtle</span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={settings.adaptiveStrength}
+                aria-label="Accent strength"
+                onChange={(e) => change({ adaptiveStrength: Number(e.target.value) })}
+              />
+              <span className="settings-row-hint">Strong</span>
+            </div>
+          </Row>
+          <div className="toggle-list">
+            <Toggle
+              label="Auto-apply"
+              hint="Takes the colours again each time you open a different book. Off, they stay on this book until you reset them."
+              checked={settings.adaptiveAuto}
+              onChange={(adaptiveAuto) => change({ adaptiveAuto, adaptivePinned: adaptiveAuto ? null : (adaptiveBook?.id ?? null) })}
+            />
+          </div>
+          <div className="settings-actions">
+            <button type="button" className="btn btn-quiet" onClick={refreshAdaptive}>
+              <Icon name="sync" size={16} /> Reset current adaptive theme
+            </button>
+            <span className="settings-row-hint">Takes the colours again from the book you read most recently.</span>
+          </div>
+        </Section>
+      )}
 
       <ProfileSection />
-
-      <Section id="layout" title="Interface layout" lede="The size of things, the interface's font, and the sidebar.">
-        <Row label="Interface scale" hint="Makes all text and controls smaller or larger.">
-          <Segmented<InterfaceScale>
-            label="Interface scale"
-            value={settings.scale}
-            options={[
-              { value: "small", label: "Small" },
-              { value: "medium", label: "Medium" },
-              { value: "large", label: "Large" },
-            ]}
-            onChange={(scale) => change({ scale })}
-          />
-        </Row>
-        <Row label="Interface font" hint="Used for menus, buttons and labels. The reading font is under Reading.">
-          <Segmented<InterfaceFont>
-            label="Interface font"
-            value={settings.interfaceFont}
-            options={[
-              { value: "system", label: "Segoe UI (Default)" },
-              { value: "serif", label: "Georgia" },
-              { value: "echolume", label: "Echolume" },
-            ]}
-            onChange={(interfaceFont) => change({ interfaceFont })}
-          />
-        </Row>
-        <Row label="Sidebar" hint="The ••• button at the top left does the same.">
-          <Toggle label="Show the full sidebar" checked={sidebarShown} onChange={onSidebarShown} />
-          <Toggle
-            label="Full-screen menu on a phone"
-            hint="When the phone is upright, the menu of pages fills the screen."
-            checked={settings.fullMenu}
-            onChange={(fullMenu) => change({ fullMenu })}
-          />
-        </Row>
-      </Section>
 
       <Section
         id="privacy"
@@ -265,6 +320,18 @@ export function AppearanceTab({
           />
         </div>
       </Section>
-    </>
+
+      <Section id="sidebar" title="Sidebar" lede="The menu of pages down the left. Clicking the emblem or the title at its top folds it too.">
+        <div className="toggle-list">
+          <Toggle label="Show the full sidebar" checked={sidebarShown} onChange={onSidebarShown} />
+          <Toggle
+            label="Full-screen menu on a phone"
+            hint="When the phone is upright, the menu of pages fills the screen."
+            checked={settings.fullMenu}
+            onChange={(fullMenu) => change({ fullMenu })}
+          />
+        </div>
+      </Section>
+    </Columns>
   );
 }

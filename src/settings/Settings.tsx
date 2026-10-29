@@ -13,6 +13,7 @@ import { isHome, isWeb } from "../api";
 import { WebSyncTab } from "../web/WebConnect";
 import { unfoldSection } from "./controls";
 import { ActivityTab, type ActivitySide } from "./ActivityTab";
+import { useNarrow } from "../lib/useNarrow";
 
 /** The pages the web version has: the rest are about files and features on a computer. */
 const WEB_TABS = new Set<SettingsTab>(["appearance", "reading", "collections", "sync", "activity", "accessibility", "about"]);
@@ -20,7 +21,16 @@ const WEB_TABS = new Set<SettingsTab>(["appearance", "reading", "collections", "
 const HOME_TABS = new Set<SettingsTab>(["appearance", "reading", "accessibility", "about"]);
 const TABS = isWeb ? SETTINGS_TABS.filter((t) => WEB_TABS.has(t.tab)) : isHome ? SETTINGS_TABS.filter((t) => HOME_TABS.has(t.tab)) : SETTINGS_TABS;
 
-/** Settings: its own menu of pages on the left, the chosen page on the right. */
+/** The computer's list of pages, in groups split by a thin line. */
+const GROUPS: SettingsTab[][] = [
+  ["appearance", "reading", "library", "collections", "notes", "browser", "files", "ereaders"],
+  ["sync", "activity", "servers"],
+  ["accessibility", "shortcuts", "advanced", "about"],
+];
+const GROUPED = GROUPS.map((group) => group.flatMap((tab) => TABS.filter((t) => t.tab === tab))).filter((g) => g.length > 0);
+
+/** Settings: its own menu of pages on the left, the chosen page on the right.
+ * A phone opens on a landing page of cards instead; a computer opens on Appearance. */
 export function Settings({
   tab,
   onTab,
@@ -50,6 +60,9 @@ export function Settings({
   /** Preferences › Activity: which side shows, and the app's Imports and Sync activity panes. */
   activity: { side: ActivitySide; onSide: (side: ActivitySide) => void; imports: React.ReactNode; sync: React.ReactNode };
 }) {
+  const narrow = useNarrow();
+  // A computer has no landing page.
+  tab = tab ?? (narrow ? null : "appearance");
   const [query, setQuery] = useState("");
   const [jumpTo, setJumpTo] = useState<string | null>(null);
   useEffect(() => {
@@ -204,29 +217,34 @@ export function Settings({
         {query.trim() ? (
           found
         ) : (
-          <ul className="settings-menu">
-            {TABS.map((t) => (
-              <li key={t.tab}>
-                <button
-                  type="button"
-                  className={`settings-menu-item${tab === t.tab ? " is-active" : ""}`}
-                  aria-current={tab === t.tab ? "page" : undefined}
-                  onClick={() => onTab(t.tab)}
-                >
-                  <Icon name={t.icon} size={20} />
-                  {t.label}
-                </button>
-              </li>
-            ))}
-          </ul>
+          (narrow ? [TABS] : GROUPED).map((group, i) => (
+            <ul key={i} className="settings-menu">
+              {group.map((t) => (
+                <li key={t.tab}>
+                  <button
+                    type="button"
+                    className={`settings-menu-item${tab === t.tab ? " is-active" : ""}`}
+                    aria-current={tab === t.tab ? "page" : undefined}
+                    onClick={() => onTab(t.tab)}
+                  >
+                    <Icon name={t.icon} size={20} />
+                    {t.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ))
         )}
       </nav>
       <div className="settings-body" ref={body}>
         <header className="settings-head">
-          <button type="button" className="link-btn settings-back" onClick={() => onTab(null)}>
-            <Icon name="chevronLeft" size={16} /> All preferences
-          </button>
+          {narrow && (
+            <button type="button" className="link-btn settings-back" onClick={() => onTab(null)}>
+              <Icon name="chevronLeft" size={16} /> All preferences
+            </button>
+          )}
           <h1>{page.label}</h1>
+          {!narrow && <span className="settings-ornament" aria-hidden />}
           <p className="muted">{page.lede}</p>
           {isHome && (
             <p className="settings-row-hint">

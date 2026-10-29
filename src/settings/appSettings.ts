@@ -8,6 +8,8 @@ import type { BookPreview } from "../api/types";
 export type ThemeChoice = "light" | "dark" | "system" | "adaptive";
 export type AdaptiveBase = "system" | "light" | "dark";
 export type InterfaceScale = "small" | "medium" | "large";
+/** How much room there is between things everywhere. */
+export type InterfaceDensity = "compact" | "default" | "spacious";
 export type InterfaceFont = "system" | "serif" | "echolume";
 export type SurfaceStyle = "clean" | "matte" | "paper" | "linen" | "vellum";
 export type SyncFrequency = "automatic" | "15min" | "hourly" | "manual";
@@ -57,7 +59,12 @@ export interface AppSettings {
   adaptiveBase: AdaptiveBase;
   /** How strongly the cover's colour tints the accent, 0 to 1. */
   adaptiveStrength: number;
+  /** Adaptive takes the colour again whenever a different book is opened; off, it stays until reset. */
+  adaptiveAuto: boolean;
+  /** The book the Adaptive colour stays on while adaptiveAuto is off. */
+  adaptivePinned: string | null;
   scale: InterfaceScale;
+  density: InterfaceDensity;
   interfaceFont: InterfaceFont;
   surface: SurfaceStyle;
   highContrast: boolean;
@@ -84,11 +91,17 @@ export interface AppSettings {
 
 export const APP_SETTINGS_KEY = "app.settings";
 
+/** Sent when a book is opened in the reader, for Adaptive's Auto-apply. */
+export const BOOK_OPENED = "tbv:book-opened";
+
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   theme: "system",
   adaptiveBase: "system",
   adaptiveStrength: 0.7,
+  adaptiveAuto: true,
+  adaptivePinned: null,
   scale: "medium",
+  density: "default",
   interfaceFont: "system",
   surface: "clean",
   highContrast: false,
@@ -148,7 +161,10 @@ export function parseAppSettings(json: string | null): AppSettings {
     theme: oneOf(raw.theme, ["light", "dark", "system", "adaptive"], d.theme),
     adaptiveBase: oneOf(raw.adaptiveBase, ["system", "light", "dark"], d.adaptiveBase),
     adaptiveStrength: typeof raw.adaptiveStrength === "number" ? Math.min(1, Math.max(0, raw.adaptiveStrength)) : d.adaptiveStrength,
+    adaptiveAuto: flag(raw.adaptiveAuto, d.adaptiveAuto),
+    adaptivePinned: typeof raw.adaptivePinned === "string" ? raw.adaptivePinned : d.adaptivePinned,
     scale: oneOf(raw.scale, ["small", "medium", "large"], d.scale),
+    density: oneOf(raw.density, ["compact", "default", "spacious"], d.density),
     interfaceFont: oneOf(raw.interfaceFont, ["system", "serif", "echolume"], d.interfaceFont),
     surface: oneOf(raw.surface, ["clean", "matte", "paper", "linen", "vellum"], d.surface),
     highContrast: flag(raw.highContrast, d.highContrast),
@@ -256,6 +272,7 @@ export function applyAppSettings(settings: AppSettings, dark: boolean, adaptive:
   root.dataset.theme = dark ? "dark" : "light";
   root.dataset.surface = settings.surface;
   root.dataset.uiFont = settings.interfaceFont;
+  root.dataset.density = settings.density;
   root.toggleAttribute("data-high-contrast", settings.highContrast);
   root.toggleAttribute("data-reduce-motion", settings.reduceMotion);
   root.toggleAttribute("data-strong-focus", settings.strongFocus);

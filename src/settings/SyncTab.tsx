@@ -18,7 +18,7 @@ import { UsageSection } from "./UsageSection";
 import { ContentsSection } from "./ContentsSection";
 import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
 import { PROVIDERS, ProviderPicker, type Provider } from "./providers";
-import { ActionTile, RadioList, Row, Section, SectionGroup, Select, Toggle } from "./controls";
+import { Columns, ActionTile, RadioList, Row, Section, SectionGroup, Select, Toggle } from "./controls";
 
 /** Sync's state in a few words, for the connection details. */
 const STATE_TEXT: Record<SyncOverview["status"]["state"], string> = {
@@ -113,8 +113,29 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
   // Supabase's own parts (its space, tidying, contents) show only when it's in use.
   const supabaseOn = !!overview && ((overview.provider.kind === "supabase" && !!overview.signedInAs) || overview.also?.provider.kind === "supabase");
 
-  return (
+  const side = (
     <>
+      {overview && supabaseOn && !isWeb && (
+        <SectionGroup id="storage" title="Supabase storage" lede="The room TBV uses in your Supabase project, tidying it up, and what it holds." holds={["usage", "tidy", "contents"]}>
+          <UsageSection overview={overview} />
+          <TidySection overview={overview} />
+          <ContentsSection overview={overview} />
+        </SectionGroup>
+      )}
+
+      {!isWeb && !isIOS && (
+        <SectionGroup id="yourphone" title="Your phone" lede="The books your phone keeps, and using it at home." holds={["phone", "home"]}>
+          {overview && <PhoneSection overview={overview} />}
+          <HomeSection />
+        </SectionGroup>
+      )}
+    </>
+  );
+  // Nothing for the side: Supabase isn't in use, and there's no phone part here.
+  const sideEmpty = !(overview && supabaseOn && !isWeb) && (isWeb || isIOS);
+
+  return (
+    <Columns side={sideEmpty ? undefined : side}>
       {overview && overview.conflicts.length > 0 && (
         <Section id="conflicts" title="Changes to choose between" lede="This device and another changed the same things. Pick which version to keep.">
           <ul className="conflict-list">
@@ -389,21 +410,6 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
         </Section>
       </SectionGroup>
 
-      {overview && supabaseOn && !isWeb && (
-        <SectionGroup id="storage" title="Supabase storage" lede="The room TBV uses in your Supabase project, tidying it up, and what it holds." holds={["usage", "tidy", "contents"]}>
-          <UsageSection overview={overview} />
-          <TidySection overview={overview} />
-          <ContentsSection overview={overview} />
-        </SectionGroup>
-      )}
-
-      {!isWeb && !isIOS && (
-        <SectionGroup id="yourphone" title="Your phone" lede="The books your phone keeps, and using it at home." holds={["phone", "home"]}>
-          {overview && <PhoneSection overview={overview} />}
-          <HomeSection />
-        </SectionGroup>
-      )}
-
       <SectionGroup id="moveback" title="Move and back up" lede="Move your library to another place, or keep a copy of it." holds={["move", "backup"]}>
         <MoveSection overview={overview} inUse={inUse} onChanged={reload} />
         <Section id="backup" title="Backup & restore" lede="Keep a copy of everything on this computer, or bring one back.">
@@ -451,6 +457,6 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
           }}
         />
       )}
-    </>
+    </Columns>
   );
 }

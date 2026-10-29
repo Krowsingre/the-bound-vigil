@@ -784,3 +784,59 @@
 .nav-lining .nav-label {
   flex: 1;
 }
+
+/* Interface density (Preferences › Appearance): the room between things,
+   scaled from what Default has. */
+:root[data-density="compact"] {
+  --density: 0.72;
+}
+
+:root[data-density="spacious"] {
+  --density: 1.3;
+}
+
+:root[data-density="compact"] .library,
+:root[data-density="spacious"] .library,
+:root[data-density="compact"] .collections-page,
+:root[data-density="spacious"] .collections-page {
+  padding-inline: calc(32px * var(--density));
+}
+
+:root[data-density="compact"] .book-grid,
+:root[data-density="spacious"] .book-grid {
+  gap: calc(28px * var(--density)) calc(32px * var(--density));
+}
+
+:root[data-density="compact"] .settings-body,
+:root[data-density="spacious"] .settings-body {
+  gap: calc(20px * var(--density));
+  padding: calc(28px * var(--density)) calc(32px * var(--density)) 48px;
+}
+
+:root[data-density="compact"] .settings-section,
+:root[data-density="spacious"] .settings-section {
+  gap: calc(28px * var(--density));
+  padding: calc(22px * var(--density)) calc(24px * var(--density));
+}
+
+:root[data-density="compact"] .settings-row,
+:root[data-density="spacious"] .settings-row {
+  padding-block: calc(12px * var(--density));
+}
+
+:root[data-density="compact"] .prefs-columns,
+:root[data-density="spacious"] .prefs-columns,
+:root[data-density="compact"] .prefs-col,
+:root[data-density="spacious"] .prefs-col {
+  gap: calc(20px * var(--density));
+}
+
+:root[data-density="compact"] .settings-menu-item,
+:root[data-density="spacious"] .settings-menu-item {
+  height: calc(44px * var(--density));
+}
+
+:root[data-density="compact"] .nav,
+:root[data-density="spacious"] .nav {
+  gap: calc(4px * var(--density));
+}

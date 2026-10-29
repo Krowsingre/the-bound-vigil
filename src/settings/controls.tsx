@@ -1,8 +1,10 @@
 // The building blocks of every Settings page: sections, labelled rows,
-// switches and choices.
+// switches and choices. On a computer the sections are cards, always open,
+// in two columns (see Columns); on a phone they fold, one under another.
 
 import { createContext, useContext, useEffect, useId, useState } from "react";
 import { Icon } from "../components/Icon";
+import { useNarrow } from "../lib/useNarrow";
 
 const OPENED_KEY = "tbv.settings.opened";
 
@@ -41,6 +43,20 @@ export function unfoldSection(id: string) {
 const InGroup = createContext(false);
 
 /**
+ * A page's cards in two columns on a computer: the main one, wider, for the
+ * bigger settings, and `side` for small cards (previews, single switches).
+ * On a phone, or a narrow window, the side cards follow the main ones.
+ */
+export function Columns({ side, children }: { side?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className={`prefs-columns${side ? "" : " is-single"}`}>
+      <div className="prefs-col prefs-col-main">{children}</div>
+      {side && <div className="prefs-col prefs-col-side">{side}</div>}
+    </div>
+  );
+}
+
+/**
  * Several sections as one: a single card that folds, with each section
  * inside it as a part under its own small heading. `holds` names them, so
  * searching for one of them opens the card.
@@ -56,7 +72,7 @@ export function SectionGroup({ id, title, lede, holds, children }: { id: string;
   );
 }
 
-/** A settings section, folded until its heading is tapped. */
+/** A settings section: a card, folded on a phone until its heading is tapped. */
 export function Section({
   id,
   title,
@@ -97,7 +113,10 @@ function SectionPart({ id, title, lede, aside, children }: { id: string; title: 
 }
 
 function FoldingSection({ id, title, lede, aside, children }: { id: string; title: string; lede?: string; aside?: React.ReactNode; children: React.ReactNode }) {
-  const [folded, setFolded] = useState(() => !readOpened().has(id));
+  const narrow = useNarrow();
+  const [shut, setFolded] = useState(() => !readOpened().has(id));
+  // A computer's cards are always open.
+  const folded = narrow && shut;
   useEffect(() => {
     const open = (e: Event) => (e as CustomEvent<string>).detail === id && setFolded(false);
     window.addEventListener("tbv:unfold-section", open);
@@ -107,6 +126,14 @@ function FoldingSection({ id, title, lede, aside, children }: { id: string; titl
     saveOpened(id, folded);
     setFolded(!folded);
   };
+  const heading = narrow ? (
+    <button type="button" className="settings-section-toggle" aria-expanded={!folded} onClick={toggle}>
+      {title}
+      <Icon name="chevronDown" size={18} />
+    </button>
+  ) : (
+    title
+  );
   return (
     <section
       className={`settings-section${aside && !folded ? " has-aside" : ""}${folded ? " is-folded" : ""}`}
@@ -115,12 +142,7 @@ function FoldingSection({ id, title, lede, aside, children }: { id: string; titl
     >
       <div className="settings-section-main">
         <header className="settings-section-head">
-          <h2 id={`settings-${id}-title`}>
-            <button type="button" className="settings-section-toggle" aria-expanded={!folded} onClick={toggle}>
-              {title}
-              <Icon name="chevronDown" size={18} />
-            </button>
-          </h2>
+          <h2 id={`settings-${id}-title`}>{heading}</h2>
           {lede && <p className="muted">{lede}</p>}
         </header>
         {!folded && children}

@@ -1672,3 +1672,175 @@ kbd {
 .history-meta {
   font-size: 12px;
 }
+
+/* A computer's Preferences: the list of pages in groups, the page's name
+   over a small ornament, and its cards in two columns. */
+.settings-menu + .settings-menu {
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-page:not(.is-landing) .settings-menu-item.is-active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.settings-page:not(.is-landing) .settings-menu-item.is-active::before {
+  display: none;
+}
+
+.settings-ornament {
+  position: relative;
+  display: block;
+  width: min(260px, 60%);
+  height: 9px;
+  margin-top: 6px;
+  background: linear-gradient(var(--border), var(--border)) left center / 100% 1px no-repeat;
+}
+
+.settings-ornament::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--text-muted);
+  background: var(--bg);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.settings-ornament + .muted {
+  margin-top: 12px;
+}
+
+.prefs-columns,
+.prefs-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .settings-page:not(.is-landing) .settings-body {
+    max-width: 1360px;
+  }
+
+  .prefs-columns:not(.is-single) {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr);
+    align-items: start;
+  }
+
+  /* In the side column a card's own second column sits under it. */
+  .prefs-col-side .settings-section.has-aside,
+  .prefs-col-side .settings-part.has-aside {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .prefs-col-side .settings-section-aside {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .prefs-col-side .settings-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Theme tiles: the choice's own colours with its icon and name, and a round choice under it. */
+@media (min-width: 761px) {
+  .theme-cards {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.theme-card {
+  align-items: center;
+  padding: 0 0 10px;
+  border: 0;
+  background: none;
+}
+
+.theme-card.is-active {
+  box-shadow: none;
+}
+
+.theme-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 104px;
+  border-radius: var(--radius-m);
+  box-shadow: inset 0 0 0 1px var(--border);
+  font: 400 15px var(--font-serif);
+}
+
+.theme-card.is-active .theme-tile {
+  box-shadow:
+    inset 0 0 0 2px var(--accent),
+    0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.theme-tile.theme-swatch-light {
+  background: #faf9f6;
+  color: #1a1c1e;
+}
+
+.theme-tile.theme-swatch-dark {
+  background: #1d2125;
+  color: #e6e3de;
+}
+
+.theme-tile.theme-swatch-system {
+  background: #dcd9d3;
+  color: #1a1c1e;
+}
+
+.theme-tile.theme-swatch-adaptive-light {
+  background: linear-gradient(160deg, #efe6da, #e2d2bf);
+  color: #3b2a1e;
+}
+
+.theme-tile.theme-swatch-adaptive-dark {
+  background: linear-gradient(160deg, #4a2f3e, #2c2030);
+  color: #f1e8ee;
+}
+
+.theme-card input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+/* A slider with a few stops, named under it. */
+.stops {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.stops input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.stops-names {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+}
+
+.stops-names strong {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.stops-names span:last-child {
+  text-align: right;
+}
