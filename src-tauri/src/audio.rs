@@ -85,6 +85,12 @@ pub(crate) fn answer(library: &Arc<Mutex<tbv_core::Library>>, request: &Request<
     let (book_id, part) = path.rsplit_once('/').ok_or((StatusCode::NOT_FOUND, "no such audio".into()))?;
     let book_id = percent_decode(book_id);
     let part: usize = part.parse().map_err(|_| (StatusCode::NOT_FOUND, "no such part".to_string()))?;
+    // Straight from an Audiobookshelf server.
+    if book_id.starts_with(tbv_core::audiobookshelf::STREAM_PREFIX) {
+        let playing = crate::abs_stream::find(library, &book_id).map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
+        let mut source = Source::Server(playing, part);
+        return respond(&mut source, request);
+    }
     // The library is needed only to find the file.
     let here = library
         .lock()
@@ -99,6 +105,11 @@ pub(crate) fn answer(library: &Arc<Mutex<tbv_core::Library>>, request: &Request<
         // Not on this computer: from the cloud.
         Err(_) => Source::Cloud(stream(library, &book_id).map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?, part),
     };
+    respond(&mut source, request)
+}
+
+/// Answers a request for part of a sound file, in ranges.
+fn respond(source: &mut Source, request: &Request<Vec<u8>>) -> Result<Response<Vec<u8>>, Failure> {
     let (len, ext) = source.info().ok_or((StatusCode::NOT_FOUND, "no such part".to_string()))?;
     let mime = tbv_core::audio::mime_of(&ext);
 
@@ -113,16 +124,17 @@ pub(crate) fn answer(library: &Arc<Mutex<tbv_core::Library>>, request: &Request<
         }
         // No range asked for: say the size and send the start; the player asks for more.
         let end = len.min(CHUNK).saturating_sub(1);
-        return send(&mut source, 0, end, len, mime, StatusCode::PARTIAL_CONTENT);
+        return send(source, 0, end, len, mime, StatusCode::PARTIAL_CONTENT);
     };
     let end = end.min(start + CHUNK - 1);
-    send(&mut source, start, end, len, mime, StatusCode::PARTIAL_CONTENT)
+    send(source, start, end, len, mime, StatusCode::PARTIAL_CONTENT)
 }
 
 /// Where a part's bytes come from.
 enum Source {
     Here(tbv_core::audio::Slice, String),
     Cloud(Arc<Mutex<tbv_core::audio::Stream>>, usize),
+    Server(Arc<Mutex<crate::abs_stream::Playing>>, usize),
 }
 
 impl Source {
@@ -131,6 +143,7 @@ impl Source {
         match self {
             Source::Here(slice, ext) => Some((slice.len(), ext.clone())),
             Source::Cloud(stream, part) => stream.lock().ok()?.part(*part).map(|(len, ext)| (len, ext.to_string())),
+            Source::Server(playing, part) => playing.lock().ok()?.book.parts.get(*part).map(|p| (p.size, p.ext.clone())),
         }
     }
 
@@ -147,6 +160,18 @@ impl Source {
                 let bytes = stream.read(*part, start, end).map_err(|e| std::io::Error::other(e.to_string()))?;
                 if bytes.len() as u64 != end + 1 - start {
                     return Err(std::io::Error::other("the cloud sent less than asked for"));
+                }
+                Ok(bytes)
+            }
+            Source::Server(playing, part) => {
+                let mut playing = playing.lock().map_err(|_| std::io::Error::other("the server is unavailable"))?;
+                let (item, ino) = {
+                    let p = playing.book.parts.get(*part).ok_or_else(|| std::io::Error::other("no such part"))?;
+                    (playing.book.item.clone(), p.ino.clone())
+                };
+                let bytes = playing.server.read_range(&item, &ino, start, end).map_err(|e| std::io::Error::other(e.to_string()))?;
+                if bytes.len() as u64 != end + 1 - start {
+                    return Err(std::io::Error::other("the server sent less than asked for"));
                 }
                 Ok(bytes)
             }

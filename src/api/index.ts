@@ -544,6 +544,12 @@ export interface Api {
 }
 
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/** Starts the id of an audiobook played straight from an Audiobookshelf server (it isn't in the library). */
+export const SERVER_BOOK = "abs~";
+export const isServerBook = (bookId: string) => bookId.startsWith(SERVER_BOOK);
+/** The player's id for an audiobook on a saved Audiobookshelf catalogue. */
+export const serverBookId = (catalogId: string, itemId: string) => `${SERVER_BOOK}${catalogId}~${itemId}`;
 /** The pages TBV on the computer serves to a phone at home (Preferences › Sync › Use on your phone at home). */
 export const isHome = !isApp && typeof document !== "undefined" && !!document.querySelector('meta[name="tbv-home"]');
 /** The iPhone app: the full app, laid out for a phone. iPads say they're Macs. */
@@ -658,7 +664,9 @@ function appApi(): Api {
         stop?.();
       };
     },
-    setBookStatus: async (bookId, status) => (await core).invoke("set_book_status", { bookId, status }),
+    setBookStatus: async (bookId, status) => {
+      if (!isServerBook(bookId)) await (await core).invoke("set_book_status", { bookId, status });
+    },
     getLibrary: async (query) => (await core).invoke<LibraryPage>("get_library", { query }),
     getCollections: async () => (await core).invoke<CollectionPreview[]>("get_collections"),
     setFavorite: async (bookId, favorite) => (await core).invoke("set_favorite", { bookId, favorite }),
@@ -715,9 +723,12 @@ function appApi(): Api {
     bookText: async (bookId) => (await core).invoke<string>("book_text", { bookId }),
     fillCover: async (bookId, picture) => (await core).invoke<boolean>("fill_cover", picture, { headers: { "book-id": bookId } }),
     fetchCover: async (bookId, url) => (await core).invoke<boolean>("fetch_cover", { bookId, url }),
-    audiobook: async (bookId) => (await core).invoke<Audiobook>("audiobook", { bookId }),
+    // A book played straight from an Audiobookshelf server isn't in the library: the server keeps its place.
+    audiobook: async (bookId) => (await core).invoke<Audiobook>(isServerBook(bookId) ? "server_audiobook" : "audiobook", { bookId }),
     saveListening: async (bookId, positionMs, chapter) =>
-      (await core).invoke("save_listening", { bookId, positionMs: Math.max(0, Math.round(positionMs)), chapter }),
+      isServerBook(bookId)
+        ? (await core).invoke("server_listening", { bookId, positionMs: Math.max(0, Math.round(positionMs)) })
+        : (await core).invoke("save_listening", { bookId, positionMs: Math.max(0, Math.round(positionMs)), chapter }),
     addTime: async (day, kind, seconds) => (await core).invoke("add_time", { day, kind, seconds: Math.round(seconds) }),
     timeSpent: async () => (await core).invoke<TimeSpent[]>("time_spent"),
     linkEbook: async (audiobookId, ebookId) => (await core).invoke("link_ebook", { audiobookId, ebookId }),

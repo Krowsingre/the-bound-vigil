@@ -1,6 +1,7 @@
 //! Tauri shell: wires the UI to `tbv-core`. Commands stay thin; all logic and
 //! file work lives in the core, and blocking work runs off the UI thread.
 
+mod abs_stream;
 mod activity;
 mod audio;
 #[cfg(target_os = "ios")]
@@ -1904,6 +1905,8 @@ pub fn run() {
             find_duplicates,
             find_series_books,
             prepare_stream,
+            abs_stream::server_audiobook,
+            abs_stream::server_listening,
             lining::lining_up_status,
             lining::lining_up_pause,
             lining::lining_up_paused,

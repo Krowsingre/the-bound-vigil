@@ -3,7 +3,7 @@
 // its chapters, details, files and collections.
 
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../api";
+import { api, isServerBook } from "../api";
 import type { Audiobook, BookDetails, BookPreview } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
 import { BookCover } from "../components/BookCover";
@@ -115,8 +115,10 @@ export function Audiobooks({
     };
   }, [refreshKey, reload, player.playing, pairing]);
 
-  // The panel shows the book chosen, else the one playing, else the last listened to.
-  const shown = chosen ?? player.book?.book.id ?? listening?.[0]?.id ?? null;
+  // The panel shows the book chosen, else the one playing (if it's in the
+  // library, not played from a server), else the last listened to.
+  const playingHere = player.book && !isServerBook(player.book.book.id) ? player.book.book.id : null;
+  const shown = chosen ?? playingHere ?? listening?.[0]?.id ?? null;
   const showContinue = view.tab === "all" && !search.trim() && listening !== null && listening.length > 0;
 
   // Tapping a cover shows the audiobook in the panel (and the player bar);

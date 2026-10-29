@@ -4,7 +4,8 @@
 // import queue like any other.
 
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../api";
+import { api, isApp, serverBookId } from "../api";
+import { playAudiobook } from "../audio/player";
 import type { CatalogInput, CatalogView, OpdsEntry, OpdsFeed, OpdsFile } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
@@ -240,11 +241,14 @@ function EntryCard({
   state,
   onOpen,
   onDownload,
+  onListen,
 }: {
   entry: OpdsEntry;
   state: "idle" | "busy" | "done";
   onOpen: () => void;
   onDownload: (file: OpdsFile) => void;
+  /** Plays it straight from the server (an Audiobookshelf audiobook). */
+  onListen?: () => void;
 }) {
   const [best, ...others] = entry.files.filter((f) => f.format);
   const [imageFailed, setImageFailed] = useState(false);
@@ -263,9 +267,14 @@ function EntryCard({
         {entry.authors.length > 0 && <span className="muted">{entry.authors.join(", ")}</span>}
         {entry.summary && <p className="catalog-summary muted">{entry.summary}</p>}
         <div className="catalog-actions">
+          {onListen && (
+            <button type="button" className="btn btn-primary btn-small" onClick={onListen} title="Play it from the server, without downloading it">
+              <Icon name="play" size={14} /> Listen
+            </button>
+          )}
           {best ? (
             <>
-              <button type="button" className="btn btn-primary btn-small" disabled={state !== "idle"} onClick={() => onDownload(best)}>
+              <button type="button" className={`btn ${onListen ? "btn-quiet" : "btn-primary"} btn-small`} disabled={state !== "idle"} onClick={() => onDownload(best)}>
                 {state === "busy" ? "Bringing it in…" : state === "done" ? (
                   <>
                     <Icon name="check" size={14} /> Added
@@ -480,6 +489,11 @@ export function Catalogs({ refreshKey = 0, onOpenBook }: { refreshKey?: number; 
                           state={downloads[b.id] ?? "idle"}
                           onOpen={() => b.navigation && go(b.title, b.navigation)}
                           onDownload={(f) => void download(b, f)}
+                          onListen={
+                            isApp && catalog?.kind === "audiobookshelf" && b.files.some((f) => f.url.endsWith("/audio"))
+                              ? () => playAudiobook(serverBookId(catalog.id, b.id))
+                              : undefined
+                          }
                         />
                       ))}
                     </ul>
