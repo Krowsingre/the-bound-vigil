@@ -235,6 +235,7 @@ export function Reader({
     bookId,
     dark: theme === "dark",
     manual: !!info && isDocument(info.book.format),
+    format: info?.book.format,
     onStart: readAloud.stop,
   });
 

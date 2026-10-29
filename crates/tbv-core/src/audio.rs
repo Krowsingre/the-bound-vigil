@@ -684,6 +684,21 @@ fn read_part(reader: &mut Slice, ext: &str) -> PartInfo {
 }
 
 
+/// An ebook and its audiobook, paired for reading along.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadAlongPair {
+    pub ebook_id: String,
+    pub audiobook_id: String,
+    pub ebook_format: String,
+    /// Both files are on this device, so it can line them up.
+    pub here: bool,
+    /// The timing kept for the pair (JSON), if any.
+    pub timing: Option<String>,
+    /// How many pieces are lined up so far.
+    pub pieces: i64,
+}
+
 /// An audiobook as its page and the player show it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -880,6 +895,65 @@ impl crate::library::Library {
             rusqlite::params![ebook_id, audiobook_id, timing, crate::time::now_utc()],
         )?;
         Ok(())
+    }
+
+    /// The pieces of read-along timing lined up so far, by any device, as
+    /// (piece, anchors JSON) in order.
+    pub fn read_along_pieces(&self, ebook_id: &str, audiobook_id: &str) -> Result<Vec<(i64, String)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT piece, anchors FROM read_along_pieces WHERE ebook_id = ?1 AND audiobook_id = ?2 ORDER BY piece")?;
+        let rows = stmt.query_map(rusqlite::params![ebook_id, audiobook_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Keeps one lined-up piece, which syncs on its own. A piece is the same
+    /// whichever device lined it up, so one that's already here is left alone.
+    pub fn save_read_along_piece(&self, ebook_id: &str, audiobook_id: &str, piece: i64, anchors: &str) -> Result<()> {
+        if !serde_json::from_str::<serde_json::Value>(anchors).is_ok_and(|v| v.is_array()) {
+            return Err(Error::Unsuitable("That piece of read-along timing isn't readable.".into()));
+        }
+        self.conn.execute(
+            "INSERT OR IGNORE INTO read_along_pieces (ebook_id, audiobook_id, piece, anchors, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![ebook_id, audiobook_id, piece, anchors, crate::time::now_utc()],
+        )?;
+        Ok(())
+    }
+
+    /// Starts lining up a pair again from nothing (the ebook changed, say).
+    pub fn clear_read_along_pieces(&self, ebook_id: &str, audiobook_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM read_along_pieces WHERE ebook_id = ?1 AND audiobook_id = ?2",
+            rusqlite::params![ebook_id, audiobook_id],
+        )?;
+        Ok(())
+    }
+
+    /// Every ebook and audiobook paired for reading along, with whether both
+    /// files are on this device (so this device can line them up) and the
+    /// timing so far, for lining up in the background.
+    pub fn read_along_pairs(&self) -> Result<Vec<ReadAlongPair>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT ab.ebook_id, ab.book_id, e.format, ra.timing FROM audiobooks ab
+             JOIN books a ON a.id = ab.book_id AND a.deleted_at IS NULL
+             JOIN books e ON e.id = ab.ebook_id AND e.deleted_at IS NULL
+             LEFT JOIN read_along ra ON ra.ebook_id = ab.ebook_id AND ra.audiobook_id = ab.book_id
+             ORDER BY ab.updated_at DESC",
+        )?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, Option<String>>(3)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut pairs = Vec::new();
+        for (ebook_id, audiobook_id, ebook_format, timing) in rows {
+            let here = self.has_local_file(&ebook_id)? && self.has_local_file(&audiobook_id)?;
+            let pieces: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM read_along_pieces WHERE ebook_id = ?1 AND audiobook_id = ?2",
+                rusqlite::params![ebook_id, audiobook_id],
+                |r| r.get(0),
+            )?;
+            pairs.push(ReadAlongPair { ebook_id, audiobook_id, ebook_format, here, timing, pieces });
+        }
+        Ok(pairs)
     }
 
     /// The audiobook linked to an ebook, if any, for the reader.
@@ -1154,6 +1228,12 @@ pub(crate) mod tests {
         library.link_ebook(&audio_id, Some(&ebook_id)).unwrap();
         assert_eq!(library.audiobook_for_ebook(&ebook_id).unwrap(), Some(audio_id.clone()));
         assert_eq!(library.audiobook(&audio_id).unwrap().ebook.map(|e| e.name), Some("Persuasion".into()));
+        // Paired with both files here, so this device can line them up.
+        library.save_read_along_piece(&ebook_id, &audio_id, 0, "[]").unwrap();
+        let pairs = library.read_along_pairs().unwrap();
+        assert_eq!(pairs.len(), 1);
+        assert_eq!((pairs[0].ebook_id.as_str(), pairs[0].audiobook_id.as_str(), pairs[0].here, pairs[0].pieces), (ebook_id.as_str(), audio_id.as_str(), true, 1));
+        assert_eq!(pairs[0].timing, None);
 
         // The same folder again is the same book.
         let again = library.import_files(&[folder]);

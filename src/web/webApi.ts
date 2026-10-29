@@ -610,6 +610,7 @@ export async function webApi(): Promise<Api> {
     clearFinishedImports: async () => phoneImports.clearFinished(),
     onImports: (listener) => phoneImports.subscribe(listener),
     syncActivity: async () => ({ running: false, startedAt: null, finishedAt: null, places: [], recent: [], changes: [] }),
+    clearSyncChanges: async () => undefined,
     onSyncActivity: (listener) => {
       let stopped = false;
       void Promise.resolve().then(() => !stopped && listener({ running: false, startedAt: null, finishedAt: null, places: [], recent: [], changes: [] }));
@@ -774,6 +775,20 @@ export async function webApi(): Promise<Api> {
     saveReadAlongTiming: async () => {
       throw new Error(DESKTOP_ONLY);
     },
+    readAlongPieces: async (ebookId, audiobookId) =>
+      library
+        .rows("read_along_pieces")
+        .filter((r) => r.ebook_id === ebookId && r.audiobook_id === audiobookId && typeof r.anchors === "string")
+        .map((r): [number, string] => [Number(r.piece), r.anchors as string])
+        .sort((a, b) => a[0] - b[0]),
+    saveReadAlongPiece: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    clearReadAlongPieces: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    // Lining up needs the audiobook's file, which the web version never keeps.
+    readAlongPairs: async () => [],
     // Audiobooks stream from Supabase here; nothing is kept on the phone.
     audioUrl: () => null,
     prepareStream: async (bookId) => {

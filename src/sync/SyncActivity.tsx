@@ -88,7 +88,16 @@ function Place({ place }: { place: PlaceActivity }) {
   );
 }
 
-export function SyncActivity({ sync, onOpenSyncSettings }: { sync: SyncStatus | null; onOpenSyncSettings: () => void }) {
+export function SyncActivity({
+  sync,
+  onOpenSyncSettings,
+  switcher,
+}: {
+  sync: SyncStatus | null;
+  onOpenSyncSettings: () => void;
+  /** The Imports / Sync activity switch. */
+  switcher?: React.ReactNode;
+}) {
   const [activity, setActivity] = useState<Activity>(NOTHING);
   useEffect(() => api.onSyncActivity(setActivity), []);
 
@@ -112,6 +121,7 @@ export function SyncActivity({ sync, onOpenSyncSettings }: { sync: SyncStatus | 
           </p>
         </div>
         <div className="imports-actions">
+          {switcher}
           <button type="button" className="btn btn-quiet" onClick={onOpenSyncSettings}>
             <Icon name="settings" size={16} /> Sync settings
           </button>
@@ -141,7 +151,12 @@ export function SyncActivity({ sync, onOpenSyncSettings }: { sync: SyncStatus | 
 
           {(activity.changes?.length ?? 0) > 0 && (
             <section className="imports-group">
-              <h3 className="section-label">Recent changes · {activity.changes.length}</h3>
+              <div className="section-head">
+                <h3 className="section-label">Recent changes · {activity.changes.length}</h3>
+                <button type="button" className="btn btn-quiet btn-small" onClick={() => void api.clearSyncChanges()}>
+                  Clear
+                </button>
+              </div>
               <ul className="imports-list">
                 {activity.changes.map((c, i) => (
                   <li key={`${c.at}-${i}`} className="import-row">

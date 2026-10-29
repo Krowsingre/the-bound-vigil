@@ -21,7 +21,7 @@ import {
 } from "./settings";
 import type { ReadAloud } from "./useReadAloud";
 import type { ReadAlong } from "./useReadAlong";
-import { onPreparing, preparing, prepareTiming, stopPreparing, type Preparing } from "../readAlong/prepare";
+import { liningUp, liningUpPaused, onLiningUp, pauseLiningUp, resumeLiningUp, type LiningUp } from "../readAlong/lineUp";
 
 function Choice<T extends string | number>({
   label,
@@ -482,14 +482,16 @@ export function NoteDialog({
   );
 }
 
-/** Listening along with the linked audiobook, and working out its word timing. */
+/** Listening along with the linked audiobook, and how far the pair is lined up. */
 export function ListenAlongPanel({ readAlong, ebookId }: { readAlong: ReadAlong; ebookId: string }) {
-  const [work, setWork] = useState<Preparing | null>(preparing());
-  useEffect(() => onPreparing(setWork), []);
+  const [work, setWork] = useState<LiningUp | null>(liningUp());
+  const [paused, setPaused] = useState(liningUpPaused());
+  useEffect(() => onLiningUp(setWork), []);
   const audiobookId = readAlong.audiobookId;
   const ours = work && work.ebookId === ebookId && work.audiobookId === audiobookId ? work : null;
-  const busy = !!ours && ["reading", "model", "listening"].includes(ours.stage);
-  const elsewhere = !!work && !ours && ["reading", "model", "listening"].includes(work.stage);
+  const lineUp = readAlong.lineUp;
+  const waiting = readAlong.linesUp && !lineUp?.done && !lineUp?.failed;
+  const percent = Math.floor((ours && ours.stage === "listening" ? ours.fraction : (lineUp?.fraction ?? 0)) * 100);
   const mb = (n: number) => `${Math.round(n / 1024 / 1024)} MB`;
   if (readAlong.manual)
     return (
@@ -504,45 +506,49 @@ export function ListenAlongPanel({ readAlong, ebookId }: { readAlong: ReadAlong;
     );
   return (
     <div className="read-aloud listen-along">
-      <button type="button" className="btn btn-primary" onClick={readAlong.toggle}>
+      <button type="button" className="btn btn-primary" disabled={waiting} onClick={readAlong.toggle}>
         <Icon name={readAlong.following ? "pause" : "headphones"} size={16} /> {readAlong.following ? "Stop following" : "Play and follow"}
       </button>
-      <p className="read-aloud-note" role="status">
-        {readAlong.timed === "all"
-          ? "Follows the narrator word by word."
-          : readAlong.timed === "some"
-            ? "Word timing is partly worked out. Past that, it follows by chapter."
-            : "Follows by chapter, so the highlight can be a sentence or two out."}
-      </p>
-      {isApp && readAlong.timed !== "all" && audiobookId && (
-        <div className="listen-along-timing">
-          {busy && ours ? (
-            <>
-              <p className="read-aloud-note">
-                {ours.stage === "reading"
-                  ? "Reading the book's words…"
-                  : ours.stage === "model" && ours.modelTotal
-                    ? `Getting the speech model: ${mb(ours.modelLoaded)} of ${mb(ours.modelTotal)}…`
-                    : ours.stage === "model"
-                      ? "Starting speech recognition…"
-                      : `Listening through the audiobook: ${Math.round(ours.fraction * 100)}%`}
-              </p>
-              <button type="button" className="btn btn-quiet" onClick={stopPreparing}>
-                Pause
-              </button>
-            </>
-          ) : (
-            <>
-              <p className="read-aloud-note">
-                {ours?.stage === "failed"
-                  ? `Word timing stopped: ${ours.problem}`
-                  : "TBV can listen through the audiobook on this computer and match the narrator's words to the book. It hears a few seconds every minute and a half, in the background while TBV is open. The first time, it downloads a speech model (about 40 MB)."}
-              </p>
-              <button type="button" className="btn" disabled={elsewhere} onClick={() => void prepareTiming(ebookId, audiobookId)}>
-                {readAlong.timed === "some" || ours?.stage === "stopped" ? "Carry on working out word timing" : "Work out word timing"}
-              </button>
-              {elsewhere && <p className="read-aloud-note">Another book's timing is being worked out. This one can start when it's done.</p>}
-            </>
+      {!waiting ? (
+        <p className="read-aloud-note" role="status">
+          {lineUp?.failed
+            ? `TBV couldn't line this book up with the audiobook word by word (${lineUp.failed}), so it follows by chapter. The highlight can be a sentence or two out.`
+            : lineUp?.done
+              ? "Follows the narrator word by word."
+              : "Follows by chapter, so the highlight can be a sentence or two out."}
+        </p>
+      ) : (
+        <div className="listen-along-timing" role="status">
+          <p className="read-aloud-note">
+            <strong>Lining up… {percent}%</strong>
+            {ours?.stage === "reading"
+              ? " Reading the book's words."
+              : ours?.stage === "model" && ours.modelTotal
+                ? ` Getting the speech model: ${mb(ours.modelLoaded)} of ${mb(ours.modelTotal)}.`
+                : ""}
+          </p>
+          <p className="read-aloud-note">
+            {paused
+              ? "Lining up is paused on this device."
+              : ours
+                ? "TBV is listening through the audiobook and matching every word to the book, in the background while it's open."
+                : isApp
+                  ? "TBV lines up every word in the background while it's open, one pair at a time. If you have TBV on a computer, the computer does it."
+                  : "TBV lines up every word in the app on your computer or phone, while it's open."}{" "}
+            Until it's done you can read the book or listen to the audiobook, but not both together.
+          </p>
+          {isApp && (
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() => {
+                if (paused) resumeLiningUp();
+                else pauseLiningUp();
+                setPaused(!paused);
+              }}
+            >
+              {paused ? "Carry on lining up" : "Pause lining up"}
+            </button>
           )}
         </div>
       )}

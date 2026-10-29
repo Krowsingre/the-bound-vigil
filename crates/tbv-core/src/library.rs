@@ -477,6 +477,21 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX browser_history_at ON browser_history (at);
     "#,
+    // v26: read-along lining up, a piece at a time. Each piece is about a
+    // minute of the audiobook and when the narrator reaches each word of it
+    // (see src/readAlong/lineUp.ts). A piece is written once and never
+    // changed, so a long book syncs bit by bit instead of all over again,
+    // and any device can carry on from the last piece another one finished.
+    r#"
+    CREATE TABLE read_along_pieces (
+        ebook_id TEXT NOT NULL,
+        audiobook_id TEXT NOT NULL,
+        piece INTEGER NOT NULL,
+        anchors TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (ebook_id, audiobook_id, piece)
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

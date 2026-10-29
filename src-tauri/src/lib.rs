@@ -317,6 +317,26 @@ async fn read_along_timing(state: State<'_, AppLibrary>, ebook_id: String, audio
 }
 
 #[tauri::command]
+async fn read_along_pieces(state: State<'_, AppLibrary>, ebook_id: String, audiobook_id: String) -> CommandResult<Vec<(i64, String)>> {
+    with_library(state, move |library| library.read_along_pieces(&ebook_id, &audiobook_id)).await
+}
+
+#[tauri::command]
+async fn save_read_along_piece(state: State<'_, AppLibrary>, ebook_id: String, audiobook_id: String, piece: i64, anchors: String) -> CommandResult<()> {
+    with_library(state, move |library| library.save_read_along_piece(&ebook_id, &audiobook_id, piece, &anchors)).await
+}
+
+#[tauri::command]
+async fn clear_read_along_pieces(state: State<'_, AppLibrary>, ebook_id: String, audiobook_id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.clear_read_along_pieces(&ebook_id, &audiobook_id)).await
+}
+
+#[tauri::command]
+async fn read_along_pairs(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::audio::ReadAlongPair>> {
+    with_library(state, move |library| library.read_along_pairs()).await
+}
+
+#[tauri::command]
 async fn save_read_along_timing(state: State<'_, AppLibrary>, ebook_id: String, audiobook_id: String, timing: String) -> CommandResult<()> {
     with_library(state, move |library| library.save_read_along_timing(&ebook_id, &audiobook_id, &timing)).await
 }
@@ -790,6 +810,12 @@ async fn sync_overview(
 #[tauri::command(async)]
 fn sync_activity() -> activity::SyncActivity {
     activity::current()
+}
+
+/// Empties Sync activity's list of recent changes.
+#[tauri::command(async)]
+fn clear_sync_changes() {
+    activity::clear_changes()
 }
 
 #[tauri::command(async)]
@@ -1900,6 +1926,10 @@ pub fn run() {
             audio_clips_done,
             read_along_timing,
             save_read_along_timing,
+            read_along_pieces,
+            save_read_along_piece,
+            clear_read_along_pieces,
+            read_along_pairs,
             home_status,
             set_home,
             new_home_code,
@@ -2003,6 +2033,7 @@ pub fn run() {
             set_sync_provider,
             set_also_sync,
             sync_activity,
+            clear_sync_changes,
             suggest_sync_folder,
             resolve_sync_conflict,
             download_book,

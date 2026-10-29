@@ -1,6 +1,8 @@
 /* Imports: the page that follows books being added. */
 .imports-actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -366,4 +368,28 @@
 .localsend-waiting,
 .localsend-progress p {
   margin: 12px 0;
+}
+
+/* On a phone the summary's buttons go under its words, and the page switch
+   gets a row of its own above the buttons. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
+  .imports-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .imports-summary .progress {
+    grid-row: auto;
+  }
+
+  .imports-summary-actions {
+    flex-wrap: wrap;
+  }
+
+  .imports-actions .page-switch {
+    flex: 1 0 100%;
+  }
+
+  .imports-actions .page-switch button {
+    flex: 1;
+  }
 }

@@ -44,6 +44,7 @@ export function Imports({
   onOpenBook,
   servers,
   sent = [],
+  switcher,
 }: {
   view: ImportsView;
   /** Files coming down from servers, desktop only. */
@@ -55,6 +56,8 @@ export function Imports({
   onImportBooks: () => void;
   onImportFolder: () => void;
   onOpenBook: (bookId: string) => void;
+  /** The Imports / Sync activity switch, where there's a Sync activity page. */
+  switcher?: React.ReactNode;
 }) {
   const { done, total, running } = importCounts(view);
   const { current, waiting, finished } = view;
@@ -72,6 +75,7 @@ export function Imports({
           <p className="eyebrow">Books being added to your library</p>
         </div>
         <div className="imports-actions">
+          {switcher}
           <button type="button" className="btn btn-quiet" onClick={onImportFolder}>
             <Icon name="folder" size={16} /> Import folder
           </button>

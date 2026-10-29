@@ -147,6 +147,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "read_along_piece",
+        table: "read_along_pieces",
+        keys: &["ebook_id", "audiobook_id", "piece"],
+        cols: &["anchors", "updated_at"],
+        category: Category::Progress,
+        creates: true,
+    },
+    Kind {
         name: "series",
         table: "series_lists",
         keys: &["id"],
@@ -1368,6 +1376,7 @@ impl Library {
             "override" => format!("Details edited: {}", book(0)),
             "fetched" => format!("Details found online: {}", book(0)),
             "read_along" => format!("Read-along: {}", book(0)),
+            "read_along_piece" => format!("Read-along lined up a little further: {}", book(0)),
             "series" => named("Series", text("name")),
             "collection" => named(if gone { "Compendium removed" } else { "Compendium" }, text("name")),
             "collection_book" => format!("Compendium book: {}", book(1)),
@@ -1632,6 +1641,7 @@ impl Library {
             "browser_history" => format!("A page in Discover's history: {}", field("title").filter(|t| !t.is_empty()).or_else(|| field("url")).unwrap_or_default()),
             "series" => format!("The missing books of {}", field("name").unwrap_or_default()),
             "read_along" => format!("Read-along timing{}", book(key.first())?),
+            "read_along_piece" => format!("A piece of read-along timing{}", book(key.first())?),
             _ => format!("The note {}", field("title").filter(|t| !t.is_empty()).unwrap_or_else(|| "without a title".into())),
         })
     }
