@@ -44,7 +44,7 @@ export function Imports({
   onOpenBook,
   servers,
   sent = [],
-  switcher,
+  embedded = false,
 }: {
   view: ImportsView;
   /** Files coming down from servers, desktop only. */
@@ -56,8 +56,8 @@ export function Imports({
   onImportBooks: () => void;
   onImportFolder: () => void;
   onOpenBook: (bookId: string) => void;
-  /** The Imports / Sync activity switch, where there's a Sync activity page. */
-  switcher?: React.ReactNode;
+  /** Shown inside Preferences › Activity, which gives the page its name. */
+  embedded?: boolean;
 }) {
   const { done, total, running } = importCounts(view);
   const { current, waiting, finished } = view;
@@ -68,14 +68,13 @@ export function Imports({
   const problems = view.failed + view.unsupported;
 
   return (
-    <div className="library imports-page">
-      <header className="library-head">
+    <div className={`imports-page${embedded ? " activity-pane" : " library"}`}>
+      <header className={embedded ? "activity-head" : "library-head"}>
         <div>
-          <h1 className="library-title">Imports</h1>
-          <p className="eyebrow">Books being added to your library</p>
+          {!embedded && <h1 className="library-title">Imports</h1>}
+          <p className={embedded ? "settings-row-hint" : "eyebrow"}>Books being added to your library</p>
         </div>
         <div className="imports-actions">
-          {switcher}
           <button type="button" className="btn btn-quiet" onClick={onImportFolder}>
             <Icon name="folder" size={16} /> Import folder
           </button>
