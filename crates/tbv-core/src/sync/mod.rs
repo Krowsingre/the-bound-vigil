@@ -603,7 +603,15 @@ impl Remote for Cloud {
 /// Opens a folder or WebDAV library and makes sure it's one TBV can use.
 /// Returns the connection and whether a library was already there.
 pub fn open_files(provider: &Provider, device: String) -> Result<(files::FileRemote<Box<dyn files::Store + Send>>, bool)> {
-    let store: Box<dyn files::Store + Send> = match provider {
+    let mut remote = files::FileRemote::new(open_store(provider)?, device);
+    let existing = remote.prepare()?;
+    Ok((remote, existing))
+}
+
+/// The place itself, as it is: nothing is written to it. For looking out for
+/// other devices' changes (`Store::news`) between syncs.
+pub fn open_store(provider: &Provider) -> Result<Box<dyn files::Store + Send>> {
+    Ok(match provider {
         Provider::Folder { path, .. } => Box::new(files::FolderStore::open(Path::new(path))?),
         Provider::WebDav(account) => Box::new(webdav::WebDav::open(account)?),
         Provider::Cloud(account) => match account.service {
@@ -612,10 +620,7 @@ pub fn open_files(provider: &Provider, device: String) -> Result<(files::FileRem
             cloud::Service::OneDrive => Box::new(onedrive::OneDrive::open(account)?),
         },
         Provider::Supabase | Provider::Off => return Err(Error::Unsuitable("that isn't a folder".into())),
-    };
-    let mut remote = files::FileRemote::new(store, device);
-    let existing = remote.prepare()?;
-    Ok((remote, existing))
+    })
 }
 
 /// Who is signed in on this device. Kept in this device's settings only.
@@ -1308,13 +1313,22 @@ impl Library {
 
     /// As `sync_apply`, for records from either place.
     pub fn lane_apply(&self, records: &[Record], options: &SyncOptions, lane: Lane) -> Result<(u32, u32)> {
+        self.lane_apply_noting(records, options, lane, &mut Vec::new())
+    }
+
+    /// As `lane_apply`, noting which records (by place in `records`) changed
+    /// something here, for Sync activity to name.
+    pub fn lane_apply_noting(&self, records: &[Record], options: &SyncOptions, lane: Lane, taken: &mut Vec<usize>) -> Result<(u32, u32)> {
         let _quiet = Quiet::new(self);
         let tx = self.conn.unchecked_transaction()?;
         let mut applied = 0;
         let mut conflicts = 0;
-        for record in records {
+        for (i, record) in records.iter().enumerate() {
             match self.merge(record, options, lane)? {
-                Merge::Applied => applied += 1,
+                Merge::Applied => {
+                    applied += 1;
+                    taken.push(i);
+                }
                 Merge::Conflict => conflicts += 1,
                 Merge::Kept => {}
             }
@@ -1322,6 +1336,61 @@ impl Library {
         applied += self.retry_waiting(options)?;
         tx.commit()?;
         Ok((applied, conflicts))
+    }
+
+    /// A change in words, for Sync activity: "Reading place: Dracula".
+    pub fn describe_change(&self, record: &Record) -> String {
+        let data = record.data.as_ref();
+        let text = |field: &str| data.and_then(|d| d.get(field)).and_then(Value::as_str).filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_string());
+        let gone = data.is_none() || data.and_then(|d| d.get("deleted_at")).is_some_and(|v| !v.is_null());
+        let keys: Vec<Value> = serde_json::from_str(&record.key).unwrap_or_default();
+        let key = |i: usize| keys.get(i).and_then(Value::as_str).unwrap_or("").to_string();
+        let title_of = |id: &str| -> String {
+            self.conn
+                .query_row("SELECT title FROM books WHERE id = ?1", params![id], |r| r.get::<_, String>(0))
+                .ok()
+                .filter(|t| !t.trim().is_empty())
+                .unwrap_or_else(|| "a book".into())
+        };
+        let book = |i: usize| if record.kind == "book" { text("title").unwrap_or_else(|| title_of(&key(i))) } else { title_of(&key(i)) };
+        let named = |label: &str, name: Option<String>| match name {
+            Some(name) => format!("{label}: {name}"),
+            None => label.to_string(),
+        };
+        match record.kind.as_str() {
+            "book" if gone => format!("Book removed: {}", book(0)),
+            "book" => format!("Book: {}", book(0)),
+            "audiobook" => format!("Audiobook details: {}", book(0)),
+            "book_progress" => format!("Reading place: {}", book(0)),
+            "book_phone" => format!("On the phone: {}", book(0)),
+            "book_same" => format!("Kept together: {}", book(0)),
+            "book_shelves" => format!("Up next, favourite or rating: {}", book(0)),
+            "override" => format!("Details edited: {}", book(0)),
+            "fetched" => format!("Details found online: {}", book(0)),
+            "read_along" => format!("Read-along: {}", book(0)),
+            "series" => named("Series", text("name")),
+            "collection" => named(if gone { "Compendium removed" } else { "Compendium" }, text("name")),
+            "collection_book" => format!("Compendium book: {}", book(1)),
+            "book_tag" => format!("Tag \u{201c}{}\u{201d}: {}", key(1), book(0)),
+            "annotation" => {
+                let what = match text("kind").as_deref() {
+                    Some("note") => "Note",
+                    Some("bookmark") => "Bookmark",
+                    _ => "Highlight",
+                };
+                let book = text("book_id").map(|id| title_of(&id)).unwrap_or_else(|| "a book".into());
+                format!("{what}{}: {book}", if gone { " removed" } else { "" })
+            }
+            "profile" => "Profile".into(),
+            "personal_note" => named("Note", text("title")),
+            "writing_project" => named("Writing", text("title")),
+            "writing_chapter" => named("Chapter", text("title")),
+            "bookmark" => named("Discover bookmark", text("title")),
+            "browser_history" => "Discover history".into(),
+            "quick_link" => named("Quick link", text("title")),
+            "time_log" => "Time read and listened".into(),
+            other => other.replace('_', " "),
+        }
     }
 
     fn merge(&self, record: &Record, options: &SyncOptions, lane: Lane) -> Result<Merge> {
@@ -2137,9 +2206,15 @@ pub enum SyncEvent {
         done: bool,
         problem: Option<String>,
     },
+    /// One change received or sent, in words ("Reading place: Dracula").
+    /// Only the first few of a page are named, so a first sync stays quick.
+    Change { lane: Lane, direction: Direction, what: String },
     /// A place has finished, well or not.
     Finished { lane: Lane, problem: Option<String> },
 }
+
+/// How many changes of each page Sync activity names.
+const NAMED: usize = 40;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -2440,12 +2515,17 @@ fn pull(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, 
             break;
         }
         let library = lock()?;
-        let (applied, conflicts) = library.lane_apply(&records, options, lane)?;
+        let mut taken = Vec::new();
+        let (applied, conflicts) = library.lane_apply_noting(&records, options, lane, &mut taken)?;
         report.received += applied;
         report.new_conflicts += conflicts;
         cursor = next;
         library.save_cursor(options, &cursor, lane)?;
+        let named: Vec<String> = taken.iter().take(NAMED).map(|&i| library.describe_change(&records[i])).collect();
         drop(library);
+        for what in named {
+            tell(SyncEvent::Change { lane, direction: Direction::Down, what });
+        }
         tell(SyncEvent::Records { lane, received: report.received, sent: report.sent });
         if records.len() < PAGE {
             break;
@@ -2469,7 +2549,14 @@ fn push(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, 
             break;
         }
         remote.push(&fresh)?;
-        lock()?.lane_mark_sent(&fresh, lane)?;
+        let named: Vec<String> = {
+            let library = lock()?;
+            library.lane_mark_sent(&fresh, lane)?;
+            fresh.iter().take(NAMED).map(|r| library.describe_change(r)).collect()
+        };
+        for what in named {
+            tell(SyncEvent::Change { lane, direction: Direction::Up, what });
+        }
         report.sent += fresh.len() as u32;
         tell(SyncEvent::Records { lane, received: report.received, sent: report.sent });
     }

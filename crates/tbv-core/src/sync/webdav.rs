@@ -2,6 +2,7 @@
 //! and many more speak it. Only plain requests are used (GET, PUT, MKCOL,
 //! and PROPFIND to list a folder), which every server supports.
 
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io;
 use std::path::Path;
@@ -32,6 +33,8 @@ pub struct WebDav {
     /// The library folder's address, ending in `/`.
     base: String,
     auth: String,
+    /// How other devices' folders and notes looked at the last look.
+    seen: Option<BTreeMap<String, String>>,
 }
 
 fn agent() -> Agent {
@@ -135,6 +138,65 @@ pub(crate) fn listed_names(xml: &str, folder_path: &str) -> Vec<String> {
     names
 }
 
+/// The name of a PROPFIND answer's `href`, or None for the folder asked about.
+fn href_name(href: &str, asked: &str) -> Option<String> {
+    // Some servers answer with whole addresses, some with paths.
+    let path = match href.find("://") {
+        Some(at) => href[at + 3..].find('/').map(|p| href[at + 3 + p..].to_string()).unwrap_or_default(),
+        None => href.to_string(),
+    };
+    let path = decode(&path);
+    let trimmed = path.trim_end_matches('/');
+    if trimmed == asked || trimmed.is_empty() {
+        return None;
+    }
+    trimmed.rsplit('/').next().filter(|n| !n.is_empty()).map(str::to_string)
+}
+
+/// Each name a PROPFIND answer lists, with what changes when the file (or
+/// something in the folder) does: its tag, date and size, as the server gives them.
+pub(crate) fn listed_stamps(xml: &str, folder_path: &str) -> Vec<(String, String)> {
+    let mut reader = Reader::from_str(xml);
+    let asked = decode(folder_path).trim_end_matches('/').to_string();
+    let mut inside: Option<Vec<u8>> = None;
+    let (mut href, mut stamp) = (String::new(), String::new());
+    let mut out = Vec::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = e.local_name().as_ref().to_ascii_lowercase();
+                if name == b"response" {
+                    href.clear();
+                    stamp.clear();
+                }
+                inside = Some(name);
+            }
+            Ok(Event::End(e)) => {
+                if e.local_name().as_ref().eq_ignore_ascii_case(b"response") {
+                    if let Some(name) = href_name(&href, &asked) {
+                        out.push((name, stamp.clone()));
+                    }
+                }
+                inside = None;
+            }
+            Ok(Event::Text(t)) => {
+                let text = t.unescape().map(|s| s.into_owned()).unwrap_or_default();
+                match inside.as_deref() {
+                    Some(b"href") => href.push_str(&text),
+                    Some(b"getetag" | b"getlastmodified" | b"getcontentlength") => {
+                        stamp.push_str(text.trim());
+                        stamp.push(' ');
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    out
+}
+
 impl WebDav {
     /// Connects, checks the sign-in, and makes the library folder if needed.
     pub fn open(account: &WebDavAccount) -> Result<Self> {
@@ -144,7 +206,7 @@ impl WebDav {
         }
         let base = format!("{}/{}/", url.trim_end_matches('/'), encode(LIBRARY_FOLDER));
         let auth = format!("Basic {}", base64(format!("{}:{}", account.username, account.password).as_bytes()));
-        let dav = Self { agent: agent(), base, auth };
+        let dav = Self { agent: agent(), base, auth, seen: None };
         // The folder the person gave must be there; TBV's own folder is made inside it.
         let parent = format!("{}/", url.trim_end_matches('/'));
         let status = dav.propfind_status(&parent)?;
@@ -239,7 +301,39 @@ impl WebDav {
     }
 }
 
+impl WebDav {
+    fn stamps(&self, folder: &str, mine: &str, into: &mut BTreeMap<String, String>) -> Result<()> {
+        let url = self.url(&format!("{folder}/"));
+        let body = br#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getetag/><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>"#;
+        let mut answer = self.send("PROPFIND", &url, Some("1"), body.to_vec())?;
+        match answer.status().as_u16() {
+            200..=299 => {
+                let xml = answer.body_mut().with_config().limit(32 * 1024 * 1024).read_to_string().map_err(transport)?;
+                let asked = url.find("://").and_then(|at| url[at + 3..].find('/').map(|p| url[at + 3 + p..].to_string())).unwrap_or_default();
+                for (name, stamp) in listed_stamps(&xml, &asked) {
+                    if super::files::watched(folder, &name, mine) {
+                        into.insert(format!("{folder}/{name}"), stamp);
+                    }
+                }
+                Ok(())
+            }
+            404 => Ok(()),
+            status => Err(Error::Cloud(format!("the server wouldn't list a folder (status {status})"))),
+        }
+    }
+}
+
 impl Store for WebDav {
+    /// A folder's tag or date changes when something is put in it, on the
+    /// servers that keep them (Nextcloud, ownCloud and most others).
+    fn news(&mut self, mine: &str) -> Result<Option<bool>> {
+        let mut now = BTreeMap::new();
+        self.stamps("changes", mine, &mut now)?;
+        self.stamps("devices", mine, &mut now)?;
+        Ok(Some(super::files::stamps_changed(&mut self.seen, now)))
+    }
+
+
     fn remove(&mut self, path: &str) -> Result<()> {
         let answer = self.send("DELETE", &self.url(path), None, Vec::new())?;
         match answer.status().as_u16() {
@@ -357,5 +451,23 @@ mod tests {
               <d:response><D:href xmlns:D="DAV:">/dav/The%20Bound%20Vigil/covers/sub/</D:href></d:response>
             </d:multistatus>"#;
         assert_eq!(listed_names(xml, "/dav/The%20Bound%20Vigil/covers/"), ["abc.jpg", "déf.png", "sub"]);
+    }
+
+    #[test]
+    fn folder_stamps_are_read_with_their_names() {
+        let xml = r#"<?xml version="1.0"?>
+            <d:multistatus xmlns:d="DAV:">
+              <d:response><d:href>/dav/The%20Bound%20Vigil/changes/</d:href><d:propstat><d:prop><d:getetag>"root"</d:getetag></d:prop></d:propstat></d:response>
+              <d:response><d:href>/dav/The%20Bound%20Vigil/changes/device-b/</d:href><d:propstat><d:prop>
+                <d:getetag>"5f1"</d:getetag><d:getlastmodified>Thu, 29 Oct 2026 10:00:00 GMT</d:getlastmodified></d:prop></d:propstat></d:response>
+              <d:response><d:href>/dav/The%20Bound%20Vigil/changes/device-c/</d:href><d:propstat><d:prop><d:getcontentlength>12</d:getcontentlength></d:prop></d:propstat></d:response>
+            </d:multistatus>"#;
+        assert_eq!(
+            listed_stamps(xml, "/dav/The%20Bound%20Vigil/changes/"),
+            [
+                ("device-b".to_string(), "\"5f1\" Thu, 29 Oct 2026 10:00:00 GMT ".to_string()),
+                ("device-c".to_string(), "12 ".to_string()),
+            ]
+        );
     }
 }

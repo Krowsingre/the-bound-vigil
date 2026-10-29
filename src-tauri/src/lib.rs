@@ -7,6 +7,7 @@ mod browser;
 mod cloud;
 #[cfg(target_os = "ios")]
 mod cloud_events;
+mod cloud_watch;
 #[cfg(desktop)]
 mod folder_watch;
 mod hardcover;
@@ -1780,6 +1781,7 @@ pub fn run() {
             let worker = Arc::new(sync::SyncWorker::start(app.handle().clone(), library.clone()));
             #[cfg(desktop)]
             folder_watch::start(library.clone(), worker.clone());
+            cloud_watch::start(library.clone(), worker.clone());
             app.manage(worker);
             app.manage(AppLibrary(library));
             app.manage(Arc::new(hardcover::Sends::default()));

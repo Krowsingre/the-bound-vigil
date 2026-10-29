@@ -1122,6 +1122,16 @@ export interface SyncActivity {
   places: PlaceActivity[];
   /** Newest first. */
   recent: FileActivity[];
+  /** Changes received and sent, in words ("Reading place: Dracula"), newest first. */
+  changes: ChangeActivity[];
+}
+
+export interface ChangeActivity {
+  lane: "main" | "also";
+  /** "down": from another device; "up": from this one. */
+  direction: "up" | "down";
+  what: string;
+  at: IsoUtc;
 }
 
 /** An OPDS catalog saved on this device (Catalogs page). */

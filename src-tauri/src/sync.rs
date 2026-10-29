@@ -32,8 +32,10 @@ pub struct SyncWorker {
 }
 
 /// How long automatic sync waits after the last pull before checking the
-/// cloud again when nothing changed here.
-const QUIET_PULL: Duration = Duration::from_secs(5 * 60);
+/// cloud again when nothing changed here. Other devices' changes are heard
+/// of as they happen (cloud_watch.rs, folder_watch.rs, iCloud on iPhone),
+/// so this is only a backstop.
+const QUIET_PULL: Duration = Duration::from_secs(30 * 60);
 const AUTOMATIC_TICK: Duration = Duration::from_secs(60);
 
 impl SyncWorker {

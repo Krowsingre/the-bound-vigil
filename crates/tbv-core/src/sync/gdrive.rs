@@ -30,7 +30,11 @@ pub struct GoogleDrive {
     account: CloudAccount,
     /// Ids by path inside the library folder; "" is the library folder.
     ids: HashMap<String, String>,
+    /// Where the last look at Drive's list of changes left off.
+    changes_from: Option<String>,
 }
+
+const CHANGES: &str = "https://www.googleapis.com/drive/v3/changes";
 
 /// A name as Drive's search wants it, inside single quotes.
 fn quoted(name: &str) -> String {
@@ -59,7 +63,7 @@ fn split(path: &str) -> (&str, &str) {
 impl GoogleDrive {
     /// Checks the sign-in, and finds (or makes) TBV's folder.
     pub fn open(account: &CloudAccount) -> Result<Self> {
-        let mut drive = Self { agent: agent(), account: account.clone(), ids: HashMap::new() };
+        let mut drive = Self { agent: agent(), account: account.clone(), ids: HashMap::new(), changes_from: None };
         let root = match drive.find("root", LIBRARY_FOLDER)? {
             Some((id, _)) => id,
             None => drive.make_folder("root", LIBRARY_FOLDER)?,
@@ -248,7 +252,81 @@ impl GoogleDrive {
     }
 }
 
+impl GoogleDrive {
+    /// The path inside the library of the folder with this id, looked up a
+    /// parent at a time. None if it's not inside the library.
+    fn path_of(&mut self, id: &str, depth: u32) -> Result<Option<String>> {
+        if let Some((path, _)) = self.ids.iter().find(|(_, v)| v.as_str() == id) {
+            return Ok(Some(path.clone()));
+        }
+        if depth > 4 {
+            return Ok(None);
+        }
+        let (status, body) = self.json(Method::GET, &format!("{FILES}/{id}?fields=name,parents"), None)?;
+        if !(200..300).contains(&status) {
+            return Ok(None);
+        }
+        let (Some(name), Some(parent)) = (body.get("name").and_then(Value::as_str), body.pointer("/parents/0").and_then(Value::as_str)) else { return Ok(None) };
+        let (name, parent) = (name.to_string(), parent.to_string());
+        let Some(above) = self.path_of(&parent, depth + 1)? else { return Ok(None) };
+        let path = if above.is_empty() { name } else { format!("{above}/{name}") };
+        self.ids.insert(path.clone(), id.to_string());
+        Ok(Some(path))
+    }
+}
+
 impl Store for GoogleDrive {
+    fn news(&mut self, mine: &str) -> Result<Option<bool>> {
+        let Some(mut from) = self.changes_from.clone() else {
+            let (status, body) = self.json(Method::GET, &format!("{CHANGES}/startPageToken"), None)?;
+            if !(200..300).contains(&status) {
+                return Err(problem(status, &body, "say whether anything changed"));
+            }
+            self.changes_from = body.get("startPageToken").and_then(Value::as_str).map(str::to_string);
+            return Ok(Some(false));
+        };
+        // Drive lists every change to the files TBV made, which is all TBV can see.
+        let mut news = false;
+        loop {
+            let url = format!(
+                "{CHANGES}?pageToken={}&pageSize=1000&spaces=drive&fields=nextPageToken,newStartPageToken,changes(removed,file(name,parents,mimeType))",
+                percent_encode(&from)
+            );
+            let (status, body) = self.json(Method::GET, &url, None)?;
+            if !(200..300).contains(&status) {
+                if status == 404 {
+                    self.changes_from = None;
+                }
+                return Err(problem(status, &body, "say what changed"));
+            }
+            for change in body.get("changes").and_then(Value::as_array).into_iter().flatten() {
+                if news || change.get("removed").and_then(Value::as_bool) == Some(true) {
+                    continue;
+                }
+                let Some(file) = change.get("file") else { continue };
+                let name = file.get("name").and_then(Value::as_str).unwrap_or("");
+                if !name.ends_with(".json") || file.get("mimeType").and_then(Value::as_str) == Some(FOLDER) {
+                    continue;
+                }
+                let Some(parent) = file.pointer("/parents/0").and_then(Value::as_str) else { continue };
+                if let Some(folder) = self.path_of(parent, 0)? {
+                    news |= super::files::is_news_from_elsewhere(Path::new(&format!("{folder}/{name}")), mine);
+                }
+            }
+            match (body.get("nextPageToken").and_then(Value::as_str), body.get("newStartPageToken").and_then(Value::as_str)) {
+                (Some(next), _) => from = next.to_string(),
+                (None, Some(start)) => {
+                    from = start.to_string();
+                    break;
+                }
+                (None, None) => break,
+            }
+        }
+        self.changes_from = Some(from);
+        Ok(Some(news))
+    }
+
+
     fn read(&mut self, path: &str) -> Result<Option<Vec<u8>>> {
         let Some(mut answer) = self.media(path, None)? else { return Ok(None) };
         Ok(Some(answer.body_mut().with_config().limit(64 * 1024 * 1024).read_to_vec().map_err(transport)?))

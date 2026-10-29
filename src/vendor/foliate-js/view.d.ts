@@ -38,8 +38,9 @@ export interface FoliateBook {
   destroy?(): void | Promise<void>;
 }
 
+/** The paginator (paged), the scroller (one long page) or fixed-layout pages. */
 export interface Paginator extends HTMLElement {
-  /** Only the flowing (paginator) renderer has this; fixed-layout books do not. */
+  /** Only the flowing renderers have this; fixed-layout books do not. */
   setStyles?(css: string | [string, string]): void;
   getContents(): { doc: Document; index: number; overlayer?: import("./overlayer.js").Overlayer }[];
   next(): Promise<void>;
@@ -75,6 +76,8 @@ export interface View extends HTMLElement {
   /** A file, or a book object built by TBV (see src/reader/formats). */
   open(book: Blob | File | object): Promise<void>;
   init(options: { lastLocation?: string | null; showTextStart?: boolean }): Promise<void>;
+  /** "scrolled" shows a flowing book as one long page of chapters; "paginated" turns pages. */
+  setFlow(flow: "paginated" | "scrolled"): Promise<void>;
   close(): void;
   goTo(target: string | number): Promise<unknown>;
   goToFraction(fraction: number): Promise<void>;

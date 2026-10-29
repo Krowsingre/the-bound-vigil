@@ -23,6 +23,18 @@ pub struct SyncActivity {
     pub places: Vec<PlaceActivity>,
     /// Finished files, newest first.
     pub recent: VecDeque<FileActivity>,
+    /// Changes received and sent, in words, newest first.
+    pub changes: VecDeque<ChangeActivity>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeActivity {
+    pub lane: Lane,
+    /// Down: received from another device. Up: sent from this one.
+    pub direction: Direction,
+    pub what: String,
+    pub at: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -154,6 +166,7 @@ pub fn hear(event: SyncEvent) {
             | SyncEvent::Records { lane, .. }
             | SyncEvent::FilesPlanned { lane, .. }
             | SyncEvent::File { lane, .. }
+            | SyncEvent::Change { lane, .. }
             | SyncEvent::Finished { lane, .. } => *lane,
         };
         let mut finished_file = None;
@@ -186,6 +199,10 @@ pub fn hear(event: SyncEvent) {
                     } else {
                         place.current = Some(item);
                     }
+                }
+                SyncEvent::Change { direction, what, .. } => {
+                    a.changes.push_front(ChangeActivity { lane, direction, what, at: now() });
+                    a.changes.truncate(KEEP);
                 }
                 SyncEvent::Finished { problem, .. } => {
                     place.finished = true;

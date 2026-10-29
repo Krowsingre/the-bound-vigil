@@ -134,5 +134,20 @@ $$;
 revoke all on function public.tbv_usage() from anon, public;
 grant execute on function public.tbv_usage() to authenticated;
 
+-- Live updates: a change saved on one device is heard by the others the
+-- moment it's saved, rather than at their next check. Each person still
+-- only hears of their own records.
+do $$
+begin
+  if exists (select 1 from pg_catalog.pg_publication where pubname = 'supabase_realtime')
+     and not exists (
+       select 1 from pg_catalog.pg_publication_tables
+       where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'tbv_records'
+     ) then
+    alter publication supabase_realtime add table public.tbv_records;
+  end if;
+end
+$$;
+
 -- Ask the Data API to notice the new table and function straight away.
 notify pgrst, 'reload schema';

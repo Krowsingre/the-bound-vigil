@@ -465,9 +465,10 @@ export function Reader({
     }
     else if (e.key === "ArrowLeft") turn(false);
     else if (e.key === "ArrowRight") turn(true);
-    else if (engine.fixed && (e.key === "ArrowUp" || e.key === "ArrowDown")) engine.scrollStep(e.key === "ArrowUp" ? -1 : 1);
-    else if ((engine.fixed || settings.flow === "paginated") && (e.key === "PageUp" || (e.key === " " && e.shiftKey))) turn(false);
-    else if ((engine.fixed || settings.flow === "paginated") && (e.key === "PageDown" || e.key === " ")) turn(true);
+    else if ((engine.fixed || settings.flow === "scrolled") && (e.key === "ArrowUp" || e.key === "ArrowDown")) engine.scrollStep(e.key === "ArrowUp" ? -1 : 1);
+    // In scroll mode these move the long page on by a screen.
+    else if (e.key === "PageUp" || (e.key === " " && e.shiftKey)) turn(false);
+    else if (e.key === "PageDown" || e.key === " ") turn(true);
     else return;
     e.preventDefault();
   };

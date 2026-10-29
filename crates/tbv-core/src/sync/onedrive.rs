@@ -1,6 +1,7 @@
 //! OneDrive as a `Store`, through Microsoft Graph. TBV's library is the app
 //! folder OneDrive gives it (`Apps/The Bound Vigil`).
 
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
@@ -23,6 +24,8 @@ const PIECE: usize = 320 * 1024 * 32;
 pub struct OneDrive {
     agent: Agent,
     account: CloudAccount,
+    /// How other devices' folders and notes looked at the last look.
+    seen: Option<BTreeMap<String, String>>,
 }
 
 /// The Graph address of an item by its path in the app folder.
@@ -53,7 +56,7 @@ impl OneDrive {
     /// Checks the sign-in still works.
     pub fn open(account: &CloudAccount) -> Result<Self> {
         cloud::access_token(&Http, account)?;
-        Ok(Self { agent: agent(), account: account.clone() })
+        Ok(Self { agent: agent(), account: account.clone(), seen: None })
     }
 
     /// Sends a request with a fresh sign-in, trying again once if the access
@@ -189,7 +192,44 @@ impl OneDrive {
     }
 }
 
+impl OneDrive {
+    /// Each of another device's folders (or notes) in `folder`, with what
+    /// changes when something is added to it: its size and when it changed.
+    fn stamps(&self, folder: &str, mine: &str, into: &mut BTreeMap<String, String>) -> Result<()> {
+        let mut url = format!("{}/children?$select=name,size,lastModifiedDateTime,eTag&$top=999", item(folder));
+        loop {
+            let (status, body) = read_json(self.send(Method::GET, &url, &[], Vec::new())?)?;
+            if status == 404 {
+                return Ok(());
+            }
+            if !(200..300).contains(&status) {
+                return Err(problem(status, &body, "say whether anything changed"));
+            }
+            for entry in body.get("value").and_then(Value::as_array).into_iter().flatten() {
+                let Some(name) = entry.get("name").and_then(Value::as_str) else { continue };
+                if !super::files::watched(folder, name, mine) {
+                    continue;
+                }
+                let field = |k: &str| entry.get(k).map(Value::to_string).unwrap_or_default();
+                into.insert(format!("{folder}/{name}"), format!("{} {} {}", field("size"), field("lastModifiedDateTime"), field("eTag")));
+            }
+            match body.get("@odata.nextLink").and_then(Value::as_str) {
+                Some(next) => url = next.to_string(),
+                None => return Ok(()),
+            }
+        }
+    }
+}
+
 impl Store for OneDrive {
+    fn news(&mut self, mine: &str) -> Result<Option<bool>> {
+        let mut now = BTreeMap::new();
+        self.stamps("changes", mine, &mut now)?;
+        self.stamps("devices", mine, &mut now)?;
+        Ok(Some(super::files::stamps_changed(&mut self.seen, now)))
+    }
+
+
     fn read(&mut self, path: &str) -> Result<Option<Vec<u8>>> {
         let Some(mut answer) = self.content(path)? else { return Ok(None) };
         Ok(Some(answer.body_mut().with_config().limit(64 * 1024 * 1024).read_to_vec().map_err(transport)?))

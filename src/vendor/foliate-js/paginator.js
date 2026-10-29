@@ -1,6 +1,7 @@
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 
-const debounce = (f, wait, immediate) => {
+// TBV: also used by scroller.js
+export const debounce = (f, wait, immediate) => {
     let timeout
     return (...args) => {
         const later = () => {
@@ -38,7 +39,8 @@ const animate = (a, b, duration, ease, render) => new Promise(resolve => {
 
 // collapsed range doesn't return client rects sometimes (or always?)
 // try make get a non-collapsed range or element
-const uncollapse = range => {
+// TBV: also used by scroller.js
+export const uncollapse = range => {
     if (!range?.collapsed) return range
     const { endOffset, endContainer } = range
     if (endContainer.nodeType === 1) {
@@ -91,7 +93,8 @@ const getBoundingClientRect = target => {
     return new DOMRect(left, top, right - left, bottom - top)
 }
 
-const getVisibleRange = (doc, start, end, mapRect) => {
+// TBV: also used by scroller.js
+export const getVisibleRange = (doc, start, end, mapRect) => {
     // first get all visible nodes
     const acceptNode = node => {
         const name = node.localName?.toLowerCase()
@@ -157,7 +160,8 @@ const selectionIsBackward = sel => {
     return range.collapsed
 }
 
-const setSelectionTo = (target, collapse) => {
+// TBV: also used by scroller.js
+export const setSelectionTo = (target, collapse) => {
     let range
     if (target.startContainer) range = target.cloneRange()
     else if (target.nodeType) {
@@ -186,7 +190,8 @@ const getDirection = doc => {
     return { vertical, rtl }
 }
 
-const getBackground = doc => {
+// TBV: also used by scroller.js
+export const getBackground = doc => {
     const bodyStyle = doc.defaultView.getComputedStyle(doc.body)
     return bodyStyle.backgroundColor === 'rgba(0, 0, 0, 0)'
         && bodyStyle.backgroundImage === 'none'
@@ -207,7 +212,8 @@ const setStylesImportant = (el, styles) => {
     for (const [k, v] of Object.entries(styles)) style.setProperty(k, v, 'important')
 }
 
-class View {
+// TBV: also used by scroller.js
+export class View {
     #observer = new ResizeObserver(() => this.expand())
     #element = document.createElement('div')
     #iframe = document.createElement('iframe')
@@ -1148,6 +1154,10 @@ export class Paginator extends HTMLElement {
             doc: this.#view.document,
         }]
         return []
+    }
+    // TBV: handed on when scroll mode swaps this for the scroller
+    get styles() {
+        return this.#styles
     }
     setStyles(styles) {
         this.#styles = styles

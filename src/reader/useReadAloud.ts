@@ -147,7 +147,7 @@ export function useReadAloud({
 
   const clearMark = () => {
     try {
-      opts.current.getView()?.renderer.getContents()[0]?.overlayer?.remove(MARK_KEY);
+      for (const c of opts.current.getView()?.renderer.getContents() ?? []) c.overlayer?.remove(MARK_KEY);
     } catch {
       /* the book has closed */
     }
@@ -173,7 +173,10 @@ export function useReadAloud({
     const v = opts.current.getView();
     if (!v || !s.draw) return;
     try {
-      v.renderer.getContents()[0]?.overlayer?.add(MARK_KEY, range, s.draw, { color: opts.current.dark ? MARK_DARK : MARK_LIGHT });
+      // In scroll mode several chapters can be laid out at once: the one being read.
+      const doc = range.startContainer.ownerDocument;
+      const contents = v.renderer.getContents();
+      (contents.find((c) => c.doc === doc) ?? contents[0])?.overlayer?.add(MARK_KEY, range, s.draw, { color: opts.current.dark ? MARK_DARK : MARK_LIGHT });
     } catch {
       /* drawn again with the next sentence */
     }
