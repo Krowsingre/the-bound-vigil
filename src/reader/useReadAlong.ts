@@ -8,8 +8,8 @@ import { chapterLength, usePlayer } from "../audio/player";
 import type { Draw } from "../vendor/foliate-js/overlayer.js";
 import type { TocItem, View } from "../vendor/foliate-js/view.js";
 import { chaptersUsable, matchChapters, sentenceAt, type TocEntry } from "./readAlong";
-import { onPreparing, STEP_MS } from "../readAlong/prepare";
-import { placeOf, readTiming, wordAt, wordsIn, type Timing } from "../readAlong/timing";
+import { linesUp, loadLineUp, onLinedUp, onLiningUp, type LineUpState } from "../readAlong/lineUp";
+import { placeOf, wordAt, wordsIn, type Timing } from "../readAlong/timing";
 
 const MARK_KEY = "tbv-read-along";
 const MARK_LIGHT = "#5f84ad";
@@ -23,8 +23,14 @@ export interface ReadAlong {
   following: boolean;
   /** Starts the audiobook and follows it, or stops following (and pauses it). */
   toggle: () => void;
-  /** Word timing worked out for this pair: all of it, some of it, or none yet. */
-  timed: "all" | "some" | null;
+  /**
+   * How far this pair is lined up, word by word. Until it's done the book
+   * and the audiobook can each be used, but not followed together; if it
+   * couldn't be done (different editions, say), it follows by chapter.
+   */
+  lineUp: LineUpState | null;
+  /** The book has flowing text, so it can be lined up (not a PDF or comic). */
+  linesUp: boolean;
   /** A document: the audiobook plays, but the pages are turned by hand. */
   manual: boolean;
   /** The linked audiobook is playing. */
@@ -95,6 +101,7 @@ export function useReadAlong({
   bookId,
   dark,
   manual = false,
+  format = "",
   onStart,
 }: {
   getView: () => View | null;
@@ -103,6 +110,8 @@ export function useReadAlong({
   dark: boolean;
   /** A document: TBV can't follow it, so the audiobook only plays alongside. */
   manual?: boolean;
+  /** The book's format, to tell whether it can be lined up word by word. */
+  format?: string;
   /** Called as following starts, to stop reading aloud. */
   onStart: () => void;
 }): ReadAlong {
@@ -117,27 +126,38 @@ export function useReadAlong({
     text: null as { index: number; doc: Document; t: ReturnType<typeof textOf> } | null,
   }).current;
 
-  // Word timing, once worked out; reloaded now and then while it's being worked out.
+  // How far lining up has got, and the timing once it's done. Looked at
+  // again as this device lines it up, and now and then for another device's work.
   const [timing, setTiming] = useState<Timing | null>(null);
+  const [lineUp, setLineUp] = useState<LineUpState | null>(null);
   useEffect(() => {
-    if (!audiobookId) return setTiming(null);
+    if (!audiobookId) {
+      setTiming(null);
+      setLineUp(null);
+      return;
+    }
     let current = true;
-    let loadedAt = 0;
-    const load = () => {
-      loadedAt = Date.now();
-      api.readAlongTiming(bookId, audiobookId).then(
-        (json) => current && setTiming(readTiming(json)),
+    const load = () =>
+      loadLineUp(bookId, audiobookId).then(
+        (l) => {
+          if (!current) return;
+          setLineUp(l.state);
+          setTiming(l.timing);
+        },
         () => undefined,
       );
-    };
-    load();
-    const stop = onPreparing((p) => {
-      if (p?.ebookId !== bookId || p.audiobookId !== audiobookId) return;
-      if (p.stage !== "listening" || Date.now() - loadedAt > 30_000) load();
+    void load();
+    const ours = (e: string, a: string) => e === bookId && a === audiobookId;
+    const stopHere = onLiningUp((l) => {
+      if (l && ours(l.ebookId, l.audiobookId) && l.stage === "listening") setLineUp((was) => ({ done: false, failed: null, ...was, fraction: Math.min(0.99, l.fraction) }));
     });
+    const stopDone = onLinedUp((e, a) => ours(e, a) && void load());
+    const every = setInterval(() => void load(), 60_000);
     return () => {
       current = false;
-      stop();
+      stopHere();
+      stopDone();
+      clearInterval(every);
     };
   }, [bookId, audiobookId]);
 
@@ -200,7 +220,7 @@ export function useReadAlong({
     let word: number | null = null;
     const ci = player.chapterIndex;
     const section = chapters?.[ci];
-    const said = timing ? wordAt(timing, position, STEP_MS * 2) : null;
+    const said = timing ? wordAt(timing, position, 10_000) : null;
     const place = timing && said !== null ? placeOf(timing, said) : null;
     if (timing && place) {
       index = place.section;
@@ -276,17 +296,20 @@ export function useReadAlong({
       if (player.playing) player.toggle();
       return;
     }
+    // Not lined up yet: the narrator can't be followed.
+    if (linesUp(format) && !lineUp?.done && !lineUp?.failed) return;
     onStart();
     s.heldUntil = 0;
     setFollowing(true);
     void player.load(audiobookId, true);
-  }, [audiobookId, following, player, onStart, s, manual]);
+  }, [audiobookId, following, player, onStart, s, manual, format, lineUp]);
 
   return {
     audiobookId,
     following,
     toggle,
-    timed: timing?.anchors.length ? (timing.done ? "all" : "some") : null,
+    lineUp,
+    linesUp: linesUp(format),
     manual,
     playing: playingOurs && player.playing,
   };

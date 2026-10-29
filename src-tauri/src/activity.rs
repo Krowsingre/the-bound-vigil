@@ -217,6 +217,11 @@ pub fn hear(event: SyncEvent) {
     });
 }
 
+/// Empties the list of recent changes, when asked to on the Sync activity page.
+pub fn clear_changes() {
+    change(|a| a.changes.clear());
+}
+
 /// A book fetched because it was opened (or sent somewhere) and only the cloud had it.
 pub fn book_fetched(what: String, bytes: u64, problem: Option<String>) {
     change(|a| remember(a, FileActivity { lane: None, direction: Direction::Down, what, bytes, at: now(), problem }));

@@ -24,6 +24,7 @@ export type Table =
   | "annotations"
   | "profile"
   | "read_along"
+  | "read_along_pieces"
   | "personal_notes"
   | "writing_projects"
   | "writing_chapters"
@@ -40,6 +41,7 @@ export const KINDS: Kind[] = [
   },
   { name: "audiobook", table: "audiobooks", keys: ["book_id"], cols: ["narrators", "duration_ms", "chapters", "parts", "ebook_id", "updated_at"] },
   { name: "read_along", table: "read_along", keys: ["ebook_id", "audiobook_id"], cols: ["timing", "updated_at"] },
+  { name: "read_along_piece", table: "read_along_pieces", keys: ["ebook_id", "audiobook_id", "piece"], cols: ["anchors", "updated_at"] },
   { name: "book_phone", table: "books", keys: ["id"], cols: ["phone_wanted", "phone_has", "from_phone"] },
   { name: "book_same", table: "books", keys: ["id"], cols: ["same_as"] },
   { name: "book_progress", table: "books", keys: ["id"], cols: ["status", "total_progression", "resume_locator", "last_opened_at", "finished_at"] },

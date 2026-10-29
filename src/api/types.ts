@@ -921,6 +921,19 @@ export interface AudioPart {
 }
 
 /** An audiobook as its page and the player show it. */
+/** An ebook and its audiobook, paired for reading along. */
+export interface ReadAlongPair {
+  ebookId: string;
+  audiobookId: string;
+  ebookFormat: string;
+  /** Both files are on this device, so it can line them up. */
+  here: boolean;
+  /** The timing kept for the pair (JSON), if any. */
+  timing: string | null;
+  /** How many pieces are lined up so far. */
+  pieces: number;
+}
+
 export interface Audiobook {
   book: BookPreview;
   narrators: string[];

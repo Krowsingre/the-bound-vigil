@@ -1317,6 +1317,37 @@ fn read_along_timing_worked_out_on_one_computer_reaches_the_others() {
 }
 
 #[test]
+fn read_along_pieces_lined_up_on_one_device_let_another_carry_on() {
+    let cloud = FakeRemote::default();
+    let pc = Device::new();
+    let ebook = pc.import("Dracula");
+    pc.lib().save_read_along_piece(&ebook, "sha256:audio", 0, "[[1200,0],[1800,1]]").unwrap();
+    pc.lib().save_read_along_piece(&ebook, "sha256:audio", 1, "[[57000,150]]").unwrap();
+    pc.sync(&cloud);
+    let phone = Device::new();
+    phone.sync(&cloud);
+    let pieces = phone.lib().read_along_pieces(&ebook, "sha256:audio").unwrap();
+    assert_eq!(pieces.iter().map(|p| p.0).collect::<Vec<_>>(), [0, 1]);
+    assert_eq!(pieces[1].1, "[[57000,150]]");
+
+    // The phone carries on; a piece already lined up stays as it was.
+    phone.lib().save_read_along_piece(&ebook, "sha256:audio", 2, "[[113000,300]]").unwrap();
+    phone.lib().save_read_along_piece(&ebook, "sha256:audio", 1, "[[57001,151]]").unwrap();
+    phone.sync(&cloud);
+    pc.sync(&cloud);
+    let pieces = pc.lib().read_along_pieces(&ebook, "sha256:audio").unwrap();
+    assert_eq!(pieces.len(), 3);
+    assert_eq!(pieces[1].1, "[[57000,150]]");
+    assert!(pc.lib().save_read_along_piece(&ebook, "sha256:audio", 3, "{}").is_err());
+
+    // Starting over clears them everywhere.
+    pc.lib().clear_read_along_pieces(&ebook, "sha256:audio").unwrap();
+    pc.sync(&cloud);
+    phone.sync(&cloud);
+    assert!(phone.lib().read_along_pieces(&ebook, "sha256:audio").unwrap().is_empty());
+}
+
+#[test]
 fn covers_go_to_short_places_phone_sized() {
     let temp = tempfile::tempdir().unwrap();
     let cover = temp.path().join("abc.png");

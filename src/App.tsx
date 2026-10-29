@@ -29,6 +29,7 @@ import { useLocalSendRows } from "./imports/LocalSendRows";
 import { LocalSendOffers } from "./imports/LocalSendOffer";
 import { PROFILE_CHANGED } from "./settings/ProfileSection";
 import { SyncActivity } from "./sync/SyncActivity";
+import { startLiningUp } from "./readAlong/lineUp";
 import { BookPlacesPage } from "./sync/BookPlaces";
 import { importSummary } from "./lib/importSummary";
 import { Library, PageSwitch } from "./library/Library";
@@ -280,6 +281,11 @@ export function App() {
     void api.pickFolder().then(runImport);
   }, [runImport, toast]);
 
+  // Lining up paired books and audiobooks word by word, in the background.
+  useEffect(() => {
+    if (isApp) startLiningUp();
+  }, []);
+
   // Dropping files or folders anywhere on the window imports them.
   useEffect(() => {
     if (!isApp) return;
@@ -440,6 +446,19 @@ export function App() {
       onChange={(next) => next !== route && navigate(next)}
     />
   );
+  // Imports and Sync activity are one page, one switch apart (the web version has no Sync activity).
+  const activitySwitch =
+    api.kind === "web" ? undefined : (
+      <PageSwitch<"imports" | "activity">
+        label="Imports or sync activity"
+        value={route === "activity" ? "activity" : "imports"}
+        options={[
+          { value: "imports", label: "Imports" },
+          { value: "activity", label: "Sync activity" },
+        ]}
+        onChange={(next) => next !== route && navigate(next)}
+      />
+    );
   const toHome = useCallback(() => navigate("home"), [navigate]);
   useSwipes(appRoot, pullHome, narrow && !menuOpen && !reading, {
     // Left goes to the library from any other page; right opens the menu of pages.
@@ -626,9 +645,10 @@ export function App() {
               onImportBooks={importBooks}
               onImportFolder={importFolder}
               onOpenBook={openBook}
+              switcher={activitySwitch}
             />
           ) : route === "activity" ? (
-            <SyncActivity sync={sync} onOpenSyncSettings={() => navigate("sync")} />
+            <SyncActivity sync={sync} onOpenSyncSettings={() => navigate("sync")} switcher={activitySwitch} />
           ) : route === "places" ? (
             <BookPlacesPage onOpenSyncSettings={() => navigate("sync")} />
           ) : route === "notes" || route === "writing" ? (

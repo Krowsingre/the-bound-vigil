@@ -45,9 +45,10 @@ const ago = (days: number) => new Date(Date.now() - days * day).toISOString();
 
 let next = 1;
 
+const activityListeners = new Set<(activity: SyncActivity) => void>();
 // `?activity` shows a sync underway in both places, for reviewing the Sync activity page.
 const secondsAgo = (s: number) => new Date(Date.now() - s * 1000).toISOString();
-const previewActivity: SyncActivity = new URLSearchParams(location.search).has("activity")
+let previewActivity: SyncActivity = new URLSearchParams(location.search).has("activity")
   ? {
       running: true,
       startedAt: secondsAgo(40),
@@ -472,6 +473,7 @@ export function previewApi(): Api {
   const linked = new Map<string, string>();
   const timeLog = new Map<string, TimeSpent>(sampleTime().map((t) => [t.day, t]));
   const timings = new Map<string, string>();
+  const pieces = new Map<string, Map<number, string>>();
   const sounds = new Map<string, string>();
   const find = (bookId: string) => {
     const b = books.find((x) => x.id === bookId);
@@ -634,11 +636,17 @@ export function previewApi(): Api {
     },
     onImports: () => () => undefined,
     syncActivity: async () => previewActivity,
+    clearSyncChanges: async () => {
+      previewActivity = { ...previewActivity, changes: [] };
+      activityListeners.forEach((l) => l(previewActivity));
+    },
     onSyncActivity: (listener) => {
       let stopped = false;
       void Promise.resolve().then(() => !stopped && listener(previewActivity));
+      activityListeners.add(listener);
       return () => {
         stopped = true;
+        activityListeners.delete(listener);
       };
     },
     setBookStatus: async (bookId, status) =>
@@ -712,6 +720,24 @@ export function previewApi(): Api {
     saveReadAlongTiming: async (ebookId, audiobookId, timing) => {
       timings.set(`${ebookId}|${audiobookId}`, timing);
     },
+    readAlongPieces: async (ebookId, audiobookId) =>
+      [...(pieces.get(`${ebookId}|${audiobookId}`) ?? new Map<number, string>())].sort((a, b) => a[0] - b[0]),
+    saveReadAlongPiece: async (ebookId, audiobookId, piece, anchors) => {
+      const key = `${ebookId}|${audiobookId}`;
+      const kept = pieces.get(key) ?? new Map<number, string>();
+      if (!kept.has(piece)) kept.set(piece, anchors);
+      pieces.set(key, kept);
+    },
+    clearReadAlongPieces: async (ebookId, audiobookId) => {
+      pieces.delete(`${ebookId}|${audiobookId}`);
+    },
+    readAlongPairs: async () =>
+      [...linked].flatMap(([audiobookId, ebookId]) => {
+        const ebook = books.find((b) => b.id === ebookId);
+        if (!ebook) return [];
+        const key = `${ebookId}|${audiobookId}`;
+        return [{ ebookId, audiobookId, ebookFormat: ebook.format, here: true, timing: timings.get(key) ?? null, pieces: pieces.get(key)?.size ?? 0 }];
+      }),
     prepareStream: async () => null,
     homeStatus: async () => homeState,
     setHome: async (on) => (homeState = on ? { ...HOME_ON, phones: homeState.phones } : { ...HOME_OFF, phones: homeState.phones }),
@@ -850,7 +876,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "1.36.0", version: "1.37.0", notes: "The Bound Vigil 1.37.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "1.37.0", version: "1.38.0", notes: "The Bound Vigil 1.38.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

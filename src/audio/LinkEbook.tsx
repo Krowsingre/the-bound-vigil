@@ -7,6 +7,7 @@ import type { BookPreview } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { useToast } from "../components/Toast";
 import { isAudio, isDocument } from "../lib/queryBooks";
+import { lookForPairs } from "../readAlong/lineUp";
 
 const fold = (text: string) =>
   text
@@ -74,6 +75,7 @@ export function PairDialog({ book, onClose }: { book: BookPreview; onClose: (oth
     const [audio, text] = listening ? [book, other] : [other, book];
     return api.linkEbook(audio.id, text.id).then(
       () => {
+        lookForPairs();
         toast(
           `“${audio.title}” is paired with “${text.title}”.` + (isDocument(text.format) ? ` ${DOCUMENT_PAIR_NOTE}` : ""),
         );

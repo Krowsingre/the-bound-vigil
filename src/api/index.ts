@@ -29,6 +29,7 @@ import type {
   SupabaseUsage,
   TidyReport,
   Audiobook,
+  ReadAlongPair,
   ProviderChoice,
   CloudService,
   LicenseView,
@@ -145,11 +146,19 @@ export interface Api {
   audiobookForEbook(ebookId: string): Promise<string | null>;
   /** A stretch of an audiobook on this computer as 16 kHz mono samples; empty past its end. Desktop only. */
   audioClip(audiobookId: string, startMs: number, lengthMs: number): Promise<Float32Array>;
-  /** Read-along timing for an ebook and its audiobook (JSON, see readAlong/timing.ts), or null. */
   /** Lets go of the audiobook `audioClip` was reading. */
   audioClipsDone(): Promise<void>;
+  /** Read-along timing for an ebook and its audiobook (JSON, see readAlong/lineUp.ts), or null. */
   readAlongTiming(ebookId: string, audiobookId: string): Promise<string | null>;
   saveReadAlongTiming(ebookId: string, audiobookId: string, timing: string): Promise<void>;
+  /** The pieces of a pair lined up so far, by any device: [piece, anchors JSON], in order. */
+  readAlongPieces(ebookId: string, audiobookId: string): Promise<[number, string][]>;
+  /** Keeps one lined-up piece; it syncs on its own. */
+  saveReadAlongPiece(ebookId: string, audiobookId: string, piece: number, anchors: string): Promise<void>;
+  /** Throws away a pair's pieces, to line it up again from the start. */
+  clearReadAlongPieces(ebookId: string, audiobookId: string): Promise<void>;
+  /** Every ebook paired with an audiobook, for lining up in the background. */
+  readAlongPairs(): Promise<ReadAlongPair[]>;
   /** Where the player streams one part of an audiobook from, or null where it can't play here. */
   audioUrl(bookId: string, part: number): string | null;
   /**
@@ -401,6 +410,8 @@ export interface Api {
   pickKeyFile(): Promise<string | null>;
   /** What sync is doing now, file by file, and what it did lately. */
   syncActivity(): Promise<SyncActivity>;
+  /** Empties Sync activity's list of recent changes. */
+  clearSyncChanges(): Promise<void>;
   /** Hears the activity now, then each change to it. Returns a way to stop. */
   onSyncActivity(listener: (activity: SyncActivity) => void): () => void;
   /** Hears sync starting and finishing, and library changes it brings. Returns a way to stop. */
@@ -567,6 +578,7 @@ function appApi(): Api {
     cancelImports: async () => (await core).invoke<void>("cancel_imports"),
     clearFinishedImports: async () => (await core).invoke<void>("clear_finished_imports"),
     syncActivity: async () => (await core).invoke<SyncActivity>("sync_activity"),
+    clearSyncChanges: async () => (await core).invoke("clear_sync_changes"),
     onSyncActivity: (listener) => {
       let stop: (() => void) | null = null;
       let stopped = false;
@@ -672,6 +684,10 @@ function appApi(): Api {
     audioClipsDone: async () => (await core).invoke("audio_clips_done"),
     readAlongTiming: async (ebookId, audiobookId) => (await core).invoke<string | null>("read_along_timing", { ebookId, audiobookId }),
     saveReadAlongTiming: async (ebookId, audiobookId, timing) => (await core).invoke("save_read_along_timing", { ebookId, audiobookId, timing }),
+    readAlongPieces: async (ebookId, audiobookId) => (await core).invoke<[number, string][]>("read_along_pieces", { ebookId, audiobookId }),
+    saveReadAlongPiece: async (ebookId, audiobookId, piece, anchors) => (await core).invoke("save_read_along_piece", { ebookId, audiobookId, piece, anchors }),
+    clearReadAlongPieces: async (ebookId, audiobookId) => (await core).invoke("clear_read_along_pieces", { ebookId, audiobookId }),
+    readAlongPairs: async () => (await core).invoke<ReadAlongPair[]>("read_along_pairs"),
     // Windows and Android reach custom schemes through http://<scheme>.localhost.
     prepareStream: async (bookId) => {
       await (await core).invoke("prepare_stream", { bookId });
