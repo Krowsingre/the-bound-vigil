@@ -172,7 +172,7 @@ export function useReadAlong({
 
   const clear = useCallback(() => {
     try {
-      getView()?.renderer.getContents()[0]?.overlayer?.remove(MARK_KEY);
+      for (const c of getView()?.renderer.getContents() ?? []) c.overlayer?.remove(MARK_KEY);
     } catch {
       /* the book has closed */
     }
@@ -219,8 +219,9 @@ export function useReadAlong({
     fraction = Math.min(1, Math.max(0, fraction));
 
     const run = async () => {
-      const contents = view.renderer.getContents()[0];
-      if (!contents || contents.index !== index) {
+      // In scroll mode several chapters can be laid out at once.
+      const contents = view.renderer.getContents().find((c) => c.index === index);
+      if (!contents) {
         s.moving++;
         try {
           await view.renderer.goTo({ index: index!, anchor: fraction });
@@ -239,7 +240,7 @@ export function useReadAlong({
       s.shown = { index: index!, node: range.startContainer, start: range.startOffset };
       if (!s.draw) s.draw = (await import("../vendor/foliate-js/overlayer.js")).Overlayer.highlight;
       try {
-        contents.overlayer?.remove(MARK_KEY);
+        for (const c of view.renderer.getContents()) c.overlayer?.remove(MARK_KEY);
         contents.overlayer?.add(MARK_KEY, range, s.draw, { color: dark ? MARK_DARK : MARK_LIGHT });
       } catch {
         /* drawn with the next sentence */

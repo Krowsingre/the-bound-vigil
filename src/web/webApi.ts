@@ -609,10 +609,10 @@ export async function webApi(): Promise<Api> {
     cancelImports: async () => phoneImports.cancel(),
     clearFinishedImports: async () => phoneImports.clearFinished(),
     onImports: (listener) => phoneImports.subscribe(listener),
-    syncActivity: async () => ({ running: false, startedAt: null, finishedAt: null, places: [], recent: [] }),
+    syncActivity: async () => ({ running: false, startedAt: null, finishedAt: null, places: [], recent: [], changes: [] }),
     onSyncActivity: (listener) => {
       let stopped = false;
-      void Promise.resolve().then(() => !stopped && listener({ running: false, startedAt: null, finishedAt: null, places: [], recent: [] }));
+      void Promise.resolve().then(() => !stopped && listener({ running: false, startedAt: null, finishedAt: null, places: [], recent: [], changes: [] }));
       return () => {
         stopped = true;
       };

@@ -251,20 +251,7 @@ export class View extends HTMLElement {
         }
 
         this.isFixedLayout = this.book.rendition?.layout === 'pre-paginated'
-        if (this.isFixedLayout) {
-            await import('./fixed-layout.js')
-            this.renderer = document.createElement('foliate-fxl')
-        } else {
-            await import('./paginator.js')
-            this.renderer = document.createElement('foliate-paginator')
-        }
-        this.renderer.setAttribute('exportparts', 'head,foot,filter')
-        this.renderer.addEventListener('load', e => this.#onLoad(e.detail))
-        this.renderer.addEventListener('relocate', e => this.#onRelocate(e.detail))
-        this.renderer.addEventListener('create-overlayer', e =>
-            e.detail.attach(this.#createOverlayer(e.detail)))
-        this.renderer.open(book)
-        this.#root.append(this.renderer)
+        await this.#makeRenderer(this.isFixedLayout ? 'foliate-fxl' : 'foliate-paginator')
 
         if (book.sections.some(section => section.mediaOverlay)) {
             const activeClass = book.media.activeClass
@@ -293,6 +280,53 @@ export class View extends HTMLElement {
                 }
             })
         }
+    }
+    async #makeRenderer(name) {
+        if (name === 'foliate-fxl') await import('./fixed-layout.js')
+        else if (name === 'foliate-scroller') await import('./scroller.js')
+        else await import('./paginator.js')
+        this.renderer = document.createElement(name)
+        this.renderer.setAttribute('exportparts', 'head,foot,filter')
+        this.renderer.addEventListener('load', e => this.#onLoad(e.detail))
+        this.renderer.addEventListener('relocate', e => this.#onRelocate(e.detail))
+        this.renderer.addEventListener('create-overlayer', e =>
+            e.detail.attach(this.#createOverlayer(e.detail)))
+        this.renderer.open(this.book)
+        this.#root.append(this.renderer)
+    }
+    // TBV: flowing books scroll as one long page (scroller.js) and turn
+    // pages with the paginator, so changing between them swaps the renderer
+    // and carries on from the same place. Fixed pages handle both themselves.
+    #flowChange = Promise.resolve()
+    setFlow(flow) {
+        this.#flowChange = this.#flowChange.then(() => this.#setFlow(flow)).catch(e => console.error(e))
+        return this.#flowChange
+    }
+    async #setFlow(flow) {
+        const old = this.renderer
+        if (!old) return
+        if (this.isFixedLayout) {
+            if (old.getAttribute('flow') !== flow) old.setAttribute('flow', flow)
+            return
+        }
+        const name = flow === 'scrolled' ? 'foliate-scroller' : 'foliate-paginator'
+        if (old.localName === name) {
+            if (old.getAttribute('flow') !== flow) old.setAttribute('flow', flow)
+            return
+        }
+        const at = this.lastLocation?.cfi
+        const styles = old.styles
+        const attributes = ['gap', 'margin', 'max-inline-size', 'max-block-size', 'max-column-count', 'animated']
+            .filter(name => old.hasAttribute(name))
+            .map(name => [name, old.getAttribute(name)])
+        old.destroy()
+        old.remove()
+        await this.#makeRenderer(name)
+        for (const [name, value] of attributes) this.renderer.setAttribute(name, value)
+        this.renderer.setAttribute('flow', flow)
+        if (styles != null) this.renderer.setStyles?.(styles)
+        const resolved = at ? this.resolveNavigation(at) : null
+        if (resolved) await this.renderer.goTo(resolved)
     }
     close() {
         this.renderer?.destroy()

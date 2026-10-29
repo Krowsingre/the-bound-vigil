@@ -157,6 +157,33 @@ pub trait Store {
     fn read_range(&mut self, _path: &str, _start: u64, _end: u64) -> Result<Option<(Vec<u8>, u64)>> {
         Err(Error::Unsuitable("This place can't play a file without downloading it.".into()))
     }
+    /// Whether another device has written here since the last time this was
+    /// asked, found out cheaply from the service. The first ask only notes
+    /// how things stand. None when this place can't tell: a folder on this
+    /// computer, which is watched on disk instead.
+    fn news(&mut self, _mine: &str) -> Result<Option<bool>> {
+        Ok(None)
+    }
+}
+
+/// For `Store::news` by looking: what each of another device's folders and
+/// notes looks like now (its size, date or tag), against how it looked
+/// last time. Something new or changed is news; something gone isn't.
+pub(crate) fn stamps_changed(seen: &mut Option<BTreeMap<String, String>>, now: BTreeMap<String, String>) -> bool {
+    match seen.replace(now) {
+        None => false,
+        Some(was) => seen.as_ref().is_some_and(|now| now.iter().any(|(k, v)| was.get(k) != Some(v))),
+    }
+}
+
+/// Whether a device folder under `changes/` (or a note under `devices/`)
+/// named `name` is another device's, so its stamp is worth watching.
+pub(crate) fn watched(folder: &str, name: &str, mine: &str) -> bool {
+    match folder {
+        "changes" => is_news_from_elsewhere(Path::new(&format!("changes/{name}/0.json")), mine),
+        "devices" => is_news_from_elsewhere(Path::new(&format!("devices/{name}")), mine),
+        _ => false,
+    }
 }
 
 impl<T: Store + ?Sized> Store for Box<T> {
@@ -183,6 +210,9 @@ impl<T: Store + ?Sized> Store for Box<T> {
     }
     fn read_range(&mut self, path: &str, start: u64, end: u64) -> Result<Option<(Vec<u8>, u64)>> {
         (**self).read_range(path, start, end)
+    }
+    fn news(&mut self, mine: &str) -> Result<Option<bool>> {
+        (**self).news(mine)
     }
 }
 
@@ -585,6 +615,22 @@ pub(crate) mod tests {
         assert!(!is_news_from_elsewhere(&root.join("devices/device-b (1).json"), "device-a"));
         assert!(!is_news_from_elsewhere(&root.join("covers/abc.jpg"), "device-a"));
         assert!(!is_news_from_elsewhere(&root.join("changes/device-b"), "device-a"));
+    }
+
+    #[test]
+    fn a_change_in_another_devices_stamp_is_news() {
+        let stamp = |pairs: &[(&str, &str)]| pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<BTreeMap<_, _>>();
+        let mut seen = None;
+        assert!(!stamps_changed(&mut seen, stamp(&[("changes/device-b", "10")])), "the first look only notes things");
+        assert!(!stamps_changed(&mut seen, stamp(&[("changes/device-b", "10")])));
+        assert!(stamps_changed(&mut seen, stamp(&[("changes/device-b", "12")])));
+        assert!(stamps_changed(&mut seen, stamp(&[("changes/device-b", "12"), ("devices/device-c.json", "1")])));
+        assert!(!stamps_changed(&mut seen, stamp(&[("changes/device-b", "12")])), "something gone isn't news");
+        assert!(watched("changes", "device-b", "device-a"));
+        assert!(!watched("changes", "device-a", "device-a"));
+        assert!(!watched("changes", "device-b (1)", "device-a"));
+        assert!(watched("devices", "device-b.json", "device-a"));
+        assert!(!watched("devices", "device-a.json", "device-a"));
     }
 
     #[test]

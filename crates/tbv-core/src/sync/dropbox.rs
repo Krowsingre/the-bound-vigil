@@ -22,7 +22,13 @@ const PIECE: usize = 64 * 1024 * 1024;
 pub struct Dropbox {
     agent: Agent,
     account: CloudAccount,
+    /// Where the last look for other devices' changes left off.
+    cursor: Option<String>,
 }
+
+/// How long one wait for changes lasts. Dropbox adds up to 90 seconds of its
+/// own, so the wait's connection allows for more than both.
+const WAIT_SECS: u64 = 60;
 
 /// `"covers/a.jpg"` as Dropbox writes it: `"/covers/a.jpg"`, and the app
 /// folder itself as `""`.
@@ -72,7 +78,7 @@ impl Dropbox {
     /// Checks the sign-in still works.
     pub fn open(account: &CloudAccount) -> Result<Self> {
         cloud::access_token(&Http, account)?;
-        Ok(Self { agent: agent(), account: account.clone() })
+        Ok(Self { agent: agent(), account: account.clone(), cursor: None })
     }
 
     /// Sends a request with a fresh sign-in, trying again once if the access
@@ -226,7 +232,73 @@ impl Dropbox {
     }
 }
 
+impl Dropbox {
+    /// Waits (up to a minute or so) for anything in TBV's folder to change.
+    /// Dropbox answers the moment something does. The wait itself needs no
+    /// sign-in: the cursor says which folder.
+    fn wait_for_change(&self, cursor: &str) -> Result<bool> {
+        let waiting: Agent = Agent::config_builder()
+            .http_status_as_error(false)
+            .timeout_connect(Some(std::time::Duration::from_secs(15)))
+            .timeout_recv_response(Some(std::time::Duration::from_secs(WAIT_SECS + 120)))
+            .build()
+            .into();
+        let answer = waiting
+            .post("https://notify.dropboxapi.com/2/files/list_folder/longpoll")
+            .header("Content-Type", "application/json")
+            .send(json!({ "cursor": cursor, "timeout": WAIT_SECS }).to_string())
+            .map_err(transport)?;
+        let (status, body) = read_json(answer)?;
+        if !(200..300).contains(&status) {
+            return Err(problem(status, &body, "say whether anything changed"));
+        }
+        // Dropbox can ask for a pause before the next wait.
+        if let Some(backoff) = body.get("backoff").and_then(Value::as_u64) {
+            std::thread::sleep(std::time::Duration::from_secs(backoff.min(300)));
+        }
+        Ok(body.get("changes").and_then(Value::as_bool) == Some(true))
+    }
+}
+
 impl Store for Dropbox {
+    fn news(&mut self, mine: &str) -> Result<Option<bool>> {
+        let Some(mut cursor) = self.cursor.clone() else {
+            let (status, body) = self.rpc("/files/list_folder/get_latest_cursor", &json!({ "path": "", "recursive": true }))?;
+            if !(200..300).contains(&status) {
+                return Err(problem(status, &body, "say whether anything changed"));
+            }
+            self.cursor = body.get("cursor").and_then(Value::as_str).map(str::to_string);
+            return Ok(Some(false));
+        };
+        if !self.wait_for_change(&cursor)? {
+            return Ok(Some(false));
+        }
+        // Something changed: what, and was it another device's?
+        let mut news = false;
+        loop {
+            let (status, body) = self.rpc("/files/list_folder/continue", &json!({ "cursor": cursor }))?;
+            if status == 409 {
+                // The cursor is too old; start again from now, and sync to be sure.
+                self.cursor = None;
+                return Ok(Some(true));
+            }
+            if !(200..300).contains(&status) {
+                return Err(problem(status, &body, "say what changed"));
+            }
+            for entry in body.get("entries").and_then(Value::as_array).into_iter().flatten() {
+                let Some(path) = entry.get("path_display").and_then(Value::as_str) else { continue };
+                news |= super::files::is_news_from_elsewhere(Path::new(path.trim_start_matches('/')), mine);
+            }
+            cursor = body.get("cursor").and_then(Value::as_str).unwrap_or(&cursor).to_string();
+            if body.get("has_more").and_then(Value::as_bool) != Some(true) {
+                break;
+            }
+        }
+        self.cursor = Some(cursor);
+        Ok(Some(news))
+    }
+
+
     fn read(&mut self, path: &str) -> Result<Option<Vec<u8>>> {
         let Some(mut answer) = self.download(path, None)? else { return Ok(None) };
         Ok(Some(answer.body_mut().with_config().limit(64 * 1024 * 1024).read_to_vec().map_err(transport)?))

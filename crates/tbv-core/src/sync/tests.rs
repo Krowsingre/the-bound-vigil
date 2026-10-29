@@ -201,6 +201,32 @@ fn changes_go_both_ways_and_nothing_echoes() {
     assert_eq!(cloud.0.lock().unwrap().pushes, pushes, "a quiet sync sends nothing");
 }
 
+#[test]
+fn sync_activity_names_each_change() {
+    let cloud = FakeRemote::default();
+    let a = Device::new();
+    let b = Device::new();
+    let book = a.import("Warlock");
+    a.sync(&cloud);
+    b.sync(&cloud);
+
+    tick();
+    b.lib().save_position(&book, &locator(0.4)).unwrap();
+    let heard = Mutex::new(Vec::new());
+    let tell = |event: SyncEvent| {
+        if let SyncEvent::Change { direction, what, .. } = event {
+            heard.lock().unwrap().push((direction, what));
+        }
+    };
+    let epoch = b.lib().sync_epoch();
+    sync_watched(&b.library, Some(&mut cloud.clone()), None, epoch, &tell).unwrap();
+    let epoch = a.lib().sync_epoch();
+    sync_watched(&a.library, Some(&mut cloud.clone()), None, epoch, &tell).unwrap();
+    let heard = heard.into_inner().unwrap();
+    assert!(heard.contains(&(Direction::Up, "Reading place: Warlock".to_string())), "{heard:?}");
+    assert!(heard.contains(&(Direction::Down, "Reading place: Warlock".to_string())), "{heard:?}");
+}
+
 fn conflicting(rule: &str) -> (Device, Device, String) {
     let cloud = FakeRemote::default();
     let a = Device::new();

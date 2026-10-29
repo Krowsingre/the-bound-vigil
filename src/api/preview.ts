@@ -90,8 +90,15 @@ const previewActivity: SyncActivity = new URLSearchParams(location.search).has("
         { lane: "main", direction: "down", what: "The Name of the Wind", bytes: 0, at: secondsAgo(25), problem: "It isn't in the cloud yet." },
         { lane: null, direction: "down", what: "Dune", bytes: 1_200_000, at: secondsAgo(3600), problem: null },
       ],
+      changes: [
+        { lane: "main", direction: "down", what: "Reading place: Warlock", at: secondsAgo(4) },
+        { lane: "main", direction: "down", what: "Highlight: Warlock", at: secondsAgo(4) },
+        { lane: "main", direction: "down", what: "Up next, favourite or rating: Piranesi", at: secondsAgo(5) },
+        { lane: "main", direction: "up", what: "Reading place: The Left Hand of Darkness", at: secondsAgo(11) },
+        { lane: "also", direction: "up", what: "Compendium: Winter reading", at: secondsAgo(16) },
+      ],
     }
-  : { running: false, startedAt: null, finishedAt: null, places: [], recent: [] };
+  : { running: false, startedAt: null, finishedAt: null, places: [], recent: [], changes: [] };
 
 // `?imports` shows an import underway, for reviewing the Imports page.
 const MB = 1024 * 1024;
@@ -843,7 +850,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "1.34.0", version: "1.35.0", notes: "The Bound Vigil 1.35.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "1.35.0", version: "1.36.0", notes: "The Bound Vigil 1.36.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

@@ -295,6 +295,41 @@ impl Supabase {
         self.renewed
     }
 
+    /// Whether another device has saved a change since `seen`, the newest
+    /// change number looked at so far: one small question, for between
+    /// syncs. The first ask only notes the newest number.
+    pub fn news(&mut self, seen: &mut Option<i64>) -> Result<bool> {
+        let key = self.project.anon_key.clone();
+        let filter = match *seen {
+            None => String::new(),
+            Some(n) => format!("&seq=gt.{n}&device_id=neq.{}", crate::oauth::percent_encode(&self.device_id)),
+        };
+        let mut answer = self.call(&|agent, url, bearer| {
+            agent
+                .get(&format!("{url}/rest/v1/tbv_records?select=seq{filter}&order=seq.desc&limit=1"))
+                .header("apikey", &key)
+                .header("Authorization", bearer)
+                .call()
+        })?;
+        if !answer.status().is_success() {
+            return Err(rest_problem(&mut answer));
+        }
+        let rows: Vec<Value> = answer.body_mut().read_json().map_err(|e| Error::Cloud(e.to_string()))?;
+        let newest = rows.first().and_then(|r| r.get("seq")).and_then(Value::as_i64);
+        let first = seen.is_none();
+        if first {
+            *seen = Some(newest.unwrap_or(0));
+        } else if let Some(n) = newest {
+            *seen = Some(n);
+        }
+        Ok(!first && newest.is_some())
+    }
+
+    /// The access token in use now, for a live connection to send along.
+    pub fn access_token(&self) -> &str {
+        &self.session.access_token
+    }
+
     fn renew(&mut self) -> Result<()> {
         let _one = RENEWING.lock().unwrap_or_else(|e| e.into_inner());
         // Another connection may have renewed already; its sign-in is the one
@@ -778,6 +813,124 @@ impl Remote for Supabase {
 
 }
 
+/// How a live connection ended.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Hung {
+    /// Told to stop.
+    Stopped,
+    /// The connection dropped; worth trying again.
+    Dropped,
+    /// The project hasn't turned on live updates for TBV's table (the setup
+    /// script from 1.35 does). Checking now and then carries on instead.
+    NotSetUp,
+}
+
+/// The live-updates address of a project, like
+/// `wss://abc.supabase.co/realtime/v1/websocket?apikey=…&vsn=1.0.0`.
+pub(crate) fn realtime_url(project: &SupabaseProject) -> String {
+    let base = project.url.trim().trim_end_matches('/');
+    let base = base.strip_prefix("https://").map(|b| format!("wss://{b}")).or_else(|| base.strip_prefix("http://").map(|b| format!("ws://{b}"))).unwrap_or_else(|| base.to_string());
+    format!("{base}/realtime/v1/websocket?apikey={}&vsn=1.0.0", crate::oauth::percent_encode(&project.anon_key))
+}
+
+/// What a live message means for TBV.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Heard {
+    /// Another device saved a change.
+    News,
+    /// TBV's own change, or nothing to do with records.
+    Nothing,
+    /// The project said it can't send changes for TBV's table.
+    NotSetUp,
+    /// The project turned the connection down (a sign-in it won't take).
+    TurnedDown,
+}
+
+pub(crate) fn heard(message: &Value, mine: &str) -> Heard {
+    let event = message.get("event").and_then(Value::as_str).unwrap_or("");
+    let payload = message.get("payload").cloned().unwrap_or(Value::Null);
+    let status = payload.get("status").and_then(Value::as_str);
+    match event {
+        "postgres_changes" => {
+            let device = payload.pointer("/data/record/device_id").and_then(Value::as_str);
+            if device == Some(mine) {
+                Heard::Nothing
+            } else {
+                Heard::News
+            }
+        }
+        "system" if status == Some("error") => Heard::NotSetUp,
+        "phx_reply" if status == Some("error") && message.get("topic").and_then(Value::as_str) != Some("phoenix") => Heard::TurnedDown,
+        "phx_error" | "phx_close" => Heard::TurnedDown,
+        _ => Heard::Nothing,
+    }
+}
+
+/// Listens for other devices' changes the moment Supabase saves them, and
+/// calls `news` for each. `token` gives the latest sign-in (it's renewed
+/// elsewhere, by the regular checks) and `stop` ends the listening.
+pub fn listen(project: &SupabaseProject, mine: &str, token: &dyn Fn() -> Option<String>, news: &mut dyn FnMut(), stop: &dyn Fn() -> bool) -> Result<Hung> {
+    use tungstenite::stream::MaybeTlsStream;
+    use tungstenite::Message;
+
+    let Some(mut sent_token) = token() else { return Ok(Hung::Dropped) };
+    let (mut socket, _) = tungstenite::connect(realtime_url(project)).map_err(|e| Error::Offline(e.to_string()))?;
+    // Short waits for each message, so a heartbeat (or a stop) goes out on time.
+    let wait = Some(Duration::from_secs(5));
+    match socket.get_ref() {
+        MaybeTlsStream::Plain(s) => s.set_read_timeout(wait)?,
+        MaybeTlsStream::Rustls(s) => s.sock.set_read_timeout(wait)?,
+        _ => {}
+    }
+    const TOPIC: &str = "realtime:tbv-records";
+    let mut number = 1u64;
+    let mut send = |socket: &mut tungstenite::WebSocket<_>, topic: &str, event: &str, payload: Value| -> Result<()> {
+        number += 1;
+        let text = json!({ "topic": topic, "event": event, "payload": payload, "ref": number.to_string(), "join_ref": "1" }).to_string();
+        socket.send(Message::text(text)).map_err(|e| Error::Offline(e.to_string()))
+    };
+    let join = json!({
+        "config": {
+            "broadcast": { "self": false },
+            "presence": { "key": "" },
+            "postgres_changes": [{ "event": "*", "schema": "public", "table": "tbv_records" }],
+        },
+        "access_token": sent_token,
+    });
+    send(&mut socket, TOPIC, "phx_join", join)?;
+    let mut beat = std::time::Instant::now();
+    loop {
+        if stop() {
+            let _ = socket.close(None);
+            return Ok(Hung::Stopped);
+        }
+        if beat.elapsed() >= Duration::from_secs(25) {
+            beat = std::time::Instant::now();
+            send(&mut socket, "phoenix", "heartbeat", json!({}))?;
+            // A renewed sign-in is passed on before the old one runs out.
+            if let Some(latest) = token().filter(|t| *t != sent_token) {
+                send(&mut socket, TOPIC, "access_token", json!({ "access_token": latest }))?;
+                sent_token = latest;
+            }
+        }
+        match socket.read() {
+            Ok(Message::Text(text)) => {
+                let message: Value = serde_json::from_str(text.as_str()).unwrap_or(Value::Null);
+                match heard(&message, mine) {
+                    Heard::News => news(),
+                    Heard::Nothing => {}
+                    Heard::NotSetUp => return Ok(Hung::NotSetUp),
+                    Heard::TurnedDown => return Ok(Hung::Dropped),
+                }
+            }
+            Ok(Message::Close(_)) => return Ok(Hung::Dropped),
+            Ok(_) => {}
+            Err(tungstenite::Error::Io(e)) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => {}
+            Err(_) => return Ok(Hung::Dropped),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -787,6 +940,18 @@ mod tests {
         let mut response = Response::new(body);
         *response.status_mut() = ureq::http::StatusCode::from_u16(status).unwrap();
         response
+    }
+
+    #[test]
+    fn live_messages_are_told_apart() {
+        let project = SupabaseProject { url: "https://abc.supabase.co/".into(), anon_key: "sb_publishable_x".into() };
+        assert_eq!(realtime_url(&project), "wss://abc.supabase.co/realtime/v1/websocket?apikey=sb_publishable_x&vsn=1.0.0");
+        let change = |device: &str| json!({ "event": "postgres_changes", "payload": { "data": { "type": "UPDATE", "record": { "device_id": device } } } });
+        assert_eq!(heard(&change("phone"), "desk"), Heard::News);
+        assert_eq!(heard(&change("desk"), "desk"), Heard::Nothing);
+        assert_eq!(heard(&json!({ "event": "phx_reply", "topic": "phoenix", "payload": { "status": "ok" } }), "desk"), Heard::Nothing);
+        assert_eq!(heard(&json!({ "event": "phx_reply", "topic": "realtime:tbv-records", "payload": { "status": "error" } }), "desk"), Heard::TurnedDown);
+        assert_eq!(heard(&json!({ "event": "system", "payload": { "status": "error", "message": "Unable to subscribe" } }), "desk"), Heard::NotSetUp);
     }
 
     #[test]

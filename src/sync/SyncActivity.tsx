@@ -9,7 +9,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { relativeTime } from "../lib/format";
 import { placeWords } from "../settings/SyncFolderPanel";
 
-const NOTHING: Activity = { running: false, startedAt: null, finishedAt: null, places: [], recent: [] };
+const NOTHING: Activity = { running: false, startedAt: null, finishedAt: null, places: [], recent: [], changes: [] };
 
 function size(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
@@ -138,6 +138,27 @@ export function SyncActivity({ sync, onOpenSyncSettings }: { sync: SyncStatus | 
               <Place key={p.lane} place={p} />
             ))}
           </div>
+
+          {(activity.changes?.length ?? 0) > 0 && (
+            <section className="imports-group">
+              <h3 className="section-label">Recent changes · {activity.changes.length}</h3>
+              <ul className="imports-list">
+                {activity.changes.map((c, i) => (
+                  <li key={`${c.at}-${i}`} className="import-row">
+                    <Icon name={c.direction === "up" ? "upload" : "download"} size={18} />
+                    <div className="import-text">
+                      <span className="import-name">{c.what}</span>
+                      <span className="import-detail">
+                        {c.direction === "up" ? "Sent from this device" : "From another device"}
+                        {activity.places.length > 1 ? ` · ${c.lane === "main" ? "main sync" : "second sync"}` : ""}
+                      </span>
+                    </div>
+                    <span className="import-detail sync-when">{relativeTime(c.at)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {activity.recent.length > 0 && (
             <section className="imports-group">
