@@ -143,7 +143,8 @@ html.is-starting body {
   pointer-events: none;
 }
 
-/* The computer's card: its own small window, with room round it for a shadow. */
+/* The computer's card: its own window, with clear room round it for its
+   shadow and for the specks to drift into as it breaks up. */
 html.splash-window,
 html.splash-window body {
   margin: 0;
@@ -153,7 +154,12 @@ html.splash-window body {
 }
 
 .splash.is-card {
-  inset: 18px;
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  width: min(420px, 100vw - 36px);
+  height: min(630px, 100vh - 36px);
+  transform: translate(-50%, -50%);
   border-radius: 20px;
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.07),

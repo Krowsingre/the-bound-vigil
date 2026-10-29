@@ -1,7 +1,9 @@
-// The iPhone splash breaking up: a line sweeps across it on a slant, and
-// behind the line the picture turns to specks that drift off and fade,
-// showing TBV underneath. The splash is drawn onto a canvas first (from
-// where its parts sit on the page), then the canvas is broken up.
+// The splash breaking up: a line sweeps across it on a slant, and behind
+// the line the picture turns to specks that drift off and fade, showing TBV
+// underneath. The splash is drawn onto a canvas first (from where its parts
+// sit on the page), then the canvas is broken up. On the iPhone it fills the
+// screen; on a computer it's the card, whose window has room round it for
+// the specks to drift into.
 
 import emblem from "../assets/emblem.svg?raw";
 import { paintings } from "./splashView";
@@ -23,16 +25,20 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
   pen.scale(dpr, dpr);
   await draw(pen, splash, box);
 
+  // The specks fly over the whole window, from where the splash sits in it.
+  const room = { w: window.innerWidth, h: window.innerHeight };
+  const ox = box.left * dpr;
+  const oy = box.top * dpr;
   const dust = document.createElement("canvas");
   dust.className = "splash-dust";
-  dust.width = picture.width;
-  dust.height = picture.height;
-  dust.style.width = `${box.width}px`;
-  dust.style.height = `${box.height}px`;
+  dust.width = Math.round(room.w * dpr);
+  dust.height = Math.round(room.h * dpr);
+  dust.style.width = `${room.w}px`;
+  dust.style.height = `${room.h}px`;
   const out = dust.getContext("2d");
   if (!out) return;
   document.body.appendChild(dust);
-  out.drawImage(picture, 0, 0);
+  out.drawImage(picture, ox, oy);
   splash.remove();
 
   const cols = Math.ceil(box.width / SPECK);
@@ -67,12 +73,12 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
         if (age <= 0) {
           out.globalAlpha = 1;
           out.setTransform(1, 0, 0, 1, 0, 0);
-          out.drawImage(picture, p.x * dpr, p.y * dpr, s, s, p.x * dpr, p.y * dpr, s, s);
+          out.drawImage(picture, p.x * dpr, p.y * dpr, s, s, ox + p.x * dpr, oy + p.y * dpr, s, s);
           continue;
         }
         const ease = age * age;
-        const x = (p.x + p.vx * ease) * dpr;
-        const y = (p.y + p.vy * ease) * dpr;
+        const x = ox + (p.x + p.vx * ease) * dpr;
+        const y = oy + (p.y + p.vy * ease) * dpr;
         const size = 1 - age * 0.55;
         out.globalAlpha = 1 - age;
         out.setTransform(size, 0, 0, size, x + s / 2, y + s / 2);
@@ -89,6 +95,13 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
 
 /** Draws the splash as it looks now: painting, veil, emblem, words, divider and bar. */
 async function draw(pen: CanvasRenderingContext2D, splash: HTMLElement, box: DOMRect) {
+  // The card's rounded corners.
+  const round = parseFloat(getComputedStyle(splash).borderTopLeftRadius) || 0;
+  if (round > 0) {
+    pen.beginPath();
+    pen.roundRect(0, 0, box.width, box.height, round);
+    pen.clip();
+  }
   pen.fillStyle = "#0b0c0e";
   pen.fillRect(0, 0, box.width, box.height);
   const art = paintings.get(splash);
