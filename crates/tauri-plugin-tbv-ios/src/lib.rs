@@ -235,24 +235,35 @@ pub fn authenticate(url: &str, scheme: &str) -> Result<String, String> {
 #[derive(serde::Serialize)]
 struct ProductArgs<'a> {
     product: &'a str,
+    /// The yearly plan (a subscription), asked about alongside the lifetime unlock.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    yearly: Option<&'a str>,
 }
 
-#[derive(serde::Deserialize)]
-struct StoreAnswer {
-    owned: bool,
-    price: Option<String>,
+/// What the App Store says about TBV's two plans.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoreStatus {
+    /// The lifetime unlock was bought.
+    pub lifetime: bool,
+    /// The yearly plan is running (its free month included).
+    pub yearly: bool,
+    pub price: Option<String>,
+    pub yearly_price: Option<String>,
+    /// This person would get the yearly plan's free first month.
+    pub free_month: bool,
 }
 
-/// Whether the App Store says the unlock was bought, and its price.
-pub fn store_status(product: &str) -> Result<(bool, Option<String>), String> {
+/// Asks the App Store about the lifetime unlock and the yearly plan.
+pub fn store_status(lifetime: &str, yearly: &str) -> Result<StoreStatus, String> {
     #[cfg(target_os = "ios")]
     {
         let swift = SWIFT.get().ok_or("The App Store isn't ready.")?;
-        swift.run_mobile_plugin::<StoreAnswer>("storeStatus", ProductArgs { product }).map(|a| (a.owned, a.price)).map_err(|e| e.to_string())
+        swift.run_mobile_plugin::<StoreStatus>("storeStatus", ProductArgs { product: lifetime, yearly: Some(yearly) }).map_err(|e| e.to_string())
     }
     #[cfg(not(target_os = "ios"))]
     {
-        let _ = (ProductArgs { product }, |a: StoreAnswer| (a.owned, a.price));
+        let _ = ProductArgs { product: lifetime, yearly: Some(yearly) };
         Err("The App Store is only on iPhone and iPad.".into())
     }
 }
@@ -262,7 +273,7 @@ pub fn store_buy(product: &str) -> Result<(), String> {
     #[cfg(target_os = "ios")]
     {
         let swift = SWIFT.get().ok_or("The App Store isn't ready.")?;
-        swift.run_mobile_plugin::<serde_json::Value>("storeBuy", ProductArgs { product }).map(|_| ()).map_err(|e| e.to_string())
+        swift.run_mobile_plugin::<serde_json::Value>("storeBuy", ProductArgs { product, yearly: None }).map(|_| ()).map_err(|e| e.to_string())
     }
     #[cfg(not(target_os = "ios"))]
     {

@@ -272,7 +272,7 @@ pub(crate) const KINDS: &[Kind] = &[
         name: "sanctum_link",
         table: "sanctum_links",
         keys: &["id"],
-        cols: &["title", "target", "icon", "position", "created_at", "updated_at", "deleted_at"],
+        cols: &["title", "target", "icon", "picture", "position", "created_at", "updated_at", "deleted_at"],
         category: Category::Library,
         creates: true,
     },
@@ -1721,6 +1721,8 @@ impl Library {
         if options.collections {
             sources.push("SELECT picture FROM collections WHERE deleted_at IS NULL");
         }
+        // Sanctum's Quick links sync with the library, their pictures too.
+        sources.push("SELECT picture FROM sanctum_links WHERE deleted_at IS NULL");
         // Covers of books being written travel with notes.
         if options.notes {
             sources.push("SELECT cover AS picture FROM writing_projects WHERE deleted_at IS NULL");

@@ -82,13 +82,19 @@ async fn sanctum_links(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_co
 }
 
 #[tauri::command]
-async fn add_sanctum_link(state: State<'_, AppLibrary>, title: String, target: String, icon: String) -> CommandResult<tbv_core::sanctum_links::SanctumLink> {
-    with_library(state, move |library| library.add_sanctum_link(&title, &target, &icon)).await
+async fn add_sanctum_link(state: State<'_, AppLibrary>, title: String, target: String, icon: String, picture: Option<String>) -> CommandResult<tbv_core::sanctum_links::SanctumLink> {
+    with_library(state, move |library| library.add_sanctum_link(&title, &target, &icon, picture.as_deref().unwrap_or(""))).await
 }
 
 #[tauri::command]
-async fn update_sanctum_link(state: State<'_, AppLibrary>, id: String, title: String, target: String, icon: String) -> CommandResult<()> {
-    with_library(state, move |library| library.update_sanctum_link(&id, &title, &target, &icon)).await
+async fn update_sanctum_link(state: State<'_, AppLibrary>, id: String, title: String, target: String, icon: String, picture: Option<String>) -> CommandResult<()> {
+    with_library(state, move |library| library.update_sanctum_link(&id, &title, &target, &icon, picture.as_deref().unwrap_or(""))).await
+}
+
+/// Puts a copy of a picture on the computer on a Sanctum link.
+#[tauri::command]
+async fn set_sanctum_link_picture_file(state: State<'_, AppLibrary>, id: String, path: String) -> CommandResult<()> {
+    with_library(state, move |library| library.set_sanctum_link_picture_file(&id, &PathBuf::from(path))).await
 }
 
 #[tauri::command]
@@ -250,8 +256,8 @@ async fn license_status(app: tauri::AppHandle, state: State<'_, AppLibrary>) -> 
 
 /// Opens the store's sheet for buying the unlock.
 #[tauri::command]
-async fn license_buy(app: tauri::AppHandle, state: State<'_, AppLibrary>) -> CommandResult<tbv_core::license::LicenseView> {
-    blocking(state, move |library| license::buy(&app, library)).await
+async fn license_buy(app: tauri::AppHandle, state: State<'_, AppLibrary>, plan: Option<license::Plan>) -> CommandResult<tbv_core::license::LicenseView> {
+    blocking(state, move |library| license::buy(&app, library, plan.unwrap_or(license::Plan::Lifetime))).await
 }
 
 /// Looks for a purchase made before.
@@ -1926,6 +1932,7 @@ pub fn run() {
             sanctum_links,
             add_sanctum_link,
             update_sanctum_link,
+            set_sanctum_link_picture_file,
             remove_sanctum_link,
             move_sanctum_link,
             all_tags,

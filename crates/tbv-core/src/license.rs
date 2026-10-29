@@ -1,7 +1,7 @@
-//! Paying for TBV: 30 days to try it in full on a computer, then a one-time
-//! unlock bought in the Microsoft Store. On iPhone and iPad the same unlock
-//! is bought in the App Store, with no trial for now (IOS_TRIAL_DAYS can
-//! give one, for a holiday say).
+//! Paying for TBV (embre, 29 October): $14.99 a year or $44.99 for life,
+//! in the Microsoft Store on a computer (after a 30-day trial) and in the App
+//! Store on iPhone and iPad, where the yearly plan's first month is free
+//! (Apple's own trial for a subscription, set in App Store Connect).
 //! The stores say whether it was bought; this keeps the trial's dates and
 //! remembers the last time a store said yes, so TBV stays open offline.
 
@@ -12,7 +12,8 @@ use crate::error::Result;
 use crate::library::Library;
 
 pub const TRIAL_DAYS: i64 = 30;
-/// The iPhone and iPad trial: none for now.
+/// The iPhone and iPad trial kept by TBV: none, as the App Store gives the
+/// yearly plan a free first month itself.
 pub const IOS_TRIAL_DAYS: i64 = 0;
 const DAY: i64 = 86_400;
 
@@ -21,6 +22,8 @@ pub const STARTED: &str = "license.trial_started";
 pub const SEEN: &str = "license.seen";
 /// When a store last said it was bought.
 pub const OWNED: &str = "license.owned";
+/// Which plan it was bought on, "yearly" or "lifetime".
+pub const PLAN: &str = "license.plan";
 /// Set when the owner's code was entered, for copies that can't be bought in.
 pub const CODE: &str = "license.code";
 /// The owner's code, kept only as a fingerprint so the code itself isn't public.
@@ -67,8 +70,14 @@ pub struct LicenseView {
     /// How long the trial is here (0: none, bought before use).
     pub trial_days: i64,
     pub shop: Shop,
-    /// The price as the store shows it, like "$14.99".
+    /// The lifetime unlock's price as the store shows it, like "$44.99".
     pub price: Option<String>,
+    /// The yearly plan's price, like "$14.99".
+    pub yearly_price: Option<String>,
+    /// The App Store gives this person the yearly plan's first month free.
+    pub free_month: bool,
+    /// Bought on "yearly" or "lifetime" (none when not bought, or unlocked by code).
+    pub plan: Option<String>,
 }
 
 /// How long the trial runs where the copy is bought.
@@ -85,6 +94,17 @@ pub fn trial_days(shop: Shop) -> i64 {
 pub struct StoreAnswer {
     pub owned: bool,
     pub price: Option<String>,
+    pub yearly_price: Option<String>,
+    pub free_month: bool,
+    /// What's owned: "yearly" (a subscription that's running) or "lifetime".
+    pub plan: Option<String>,
+}
+
+impl StoreAnswer {
+    /// Nothing owned, nothing known about prices.
+    pub fn nothing() -> Self {
+        StoreAnswer { owned: false, price: None, yearly_price: None, free_month: false, plan: None }
+    }
 }
 
 impl Library {
@@ -122,11 +142,12 @@ impl Library {
         let bought = match answer {
             Some(a) if a.owned => {
                 self.set_setting(OWNED, &now.to_string())?;
+                self.set_setting(PLAN, a.plan.as_deref().unwrap_or("lifetime"))?;
                 true
             }
-            // The store says it isn't (refunded, say).
+            // The store says it isn't (refunded, or a yearly plan that ended).
             Some(_) => {
-                self.conn.execute("DELETE FROM device_settings WHERE key = ?1", [OWNED])?;
+                self.conn.execute("DELETE FROM device_settings WHERE key IN (?1, ?2)", [OWNED, PLAN])?;
                 false
             }
             None => self.seconds(OWNED)?.is_some(),
@@ -148,6 +169,9 @@ impl Library {
             trial_days: trial_days(shop),
             shop,
             price: answer.and_then(|a| a.price.clone()),
+            yearly_price: answer.and_then(|a| a.yearly_price.clone()),
+            free_month: answer.is_some_and(|a| a.free_month),
+            plan: if bought { self.setting(PLAN)? } else { None },
         })
     }
 }
@@ -169,10 +193,10 @@ mod tests {
         let over = library.license(start + 31 * DAY, None, Shop::Microsoft, None).unwrap();
         assert_eq!((over.state, over.days_left), (LicenseState::Expired, 0));
         // Bought: kept while the store can't be asked; gone if it says no.
-        let yes = StoreAnswer { owned: true, price: Some("$14.99".into()) };
+        let yes = StoreAnswer { owned: true, price: Some("$44.99".into()), plan: Some("lifetime".into()), ..StoreAnswer::nothing() };
         assert_eq!(library.license(start + 32 * DAY, None, Shop::Microsoft, Some(&yes)).unwrap().state, LicenseState::Owned);
         assert_eq!(library.license(start + 40 * DAY, None, Shop::Microsoft, None).unwrap().state, LicenseState::Owned);
-        let no = StoreAnswer { owned: false, price: None };
+        let no = StoreAnswer::nothing();
         assert_eq!(library.license(start + 41 * DAY, None, Shop::Microsoft, Some(&no)).unwrap().state, LicenseState::Expired);
     }
 
@@ -182,8 +206,13 @@ mod tests {
         let start = 1_800_000_000;
         let view = library.license(start, None, Shop::Apple, None).unwrap();
         assert_eq!((view.state, view.days_left, view.trial_ends), (LicenseState::Expired, 0, start + IOS_TRIAL_DAYS * DAY));
-        let yes = StoreAnswer { owned: true, price: None };
-        assert_eq!(library.license(start + DAY, None, Shop::Apple, Some(&yes)).unwrap().state, LicenseState::Owned);
+        let yearly = StoreAnswer { owned: true, yearly_price: Some("$14.99".into()), plan: Some("yearly".into()), ..StoreAnswer::nothing() };
+        let view = library.license(start + DAY, None, Shop::Apple, Some(&yearly)).unwrap();
+        assert_eq!((view.state, view.plan.as_deref()), (LicenseState::Owned, Some("yearly")));
+        // Offline, it stays open on the plan last seen; once the year ends unrenewed, the store says so.
+        assert_eq!(library.license(start + 2 * DAY, None, Shop::Apple, None).unwrap().plan.as_deref(), Some("yearly"));
+        let ended = library.license(start + 400 * DAY, None, Shop::Apple, Some(&StoreAnswer { free_month: true, ..StoreAnswer::nothing() })).unwrap();
+        assert_eq!((ended.state, ended.plan, ended.free_month), (LicenseState::Expired, None, true));
     }
 
     #[test]

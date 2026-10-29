@@ -1,16 +1,19 @@
-// Paying for TBV: 30 days to try it in full, then a one-time unlock from the
-// Microsoft Store or the App Store (on iPhone and iPad there's no trial for
-// now: it's bought before use). While the trial runs everything works;
+// Paying for TBV: $14.99 a year or $44.99 for life (embre, 29 October), from
+// the Microsoft Store after 30 days to try it in full, or from the App Store,
+// where the yearly plan's first month is free (Apple's own trial). While the trial runs everything works;
 // once it's over, this screen stands in front of the library until TBV is
 // bought, with a way to take a backup so nothing is ever held hostage.
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, isApp, openExternal } from "../api";
-import type { LicenseView } from "../api/types";
+import type { LicensePlan, LicenseView } from "../api/types";
 import emblem from "../assets/emblem.svg?raw";
 import { useToast } from "../components/Toast";
 import { startupStep } from "../splash/startup";
 
+/** Apple's standard licence for apps, which TBV uses as its terms. */
+const APPLE_TERMS = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
+const PRIVACY_POLICY = "https://krowsingre.github.io/the-bound-vigil/privacy/";
 const STORE_PAGE = "https://apps.microsoft.com/search?query=The%20Bound%20Vigil";
 /** The trial's last days get a reminder when TBV opens. */
 const REMIND_DAYS = 3;
@@ -18,7 +21,7 @@ const REMIND_DAYS = 3;
 interface LicenseContext {
   license: LicenseView | null;
   busy: boolean;
-  buy(): Promise<void>;
+  buy(plan: LicensePlan): Promise<void>;
   restore(): Promise<void>;
   /** False when the code is wrong. */
   unlock(code: string): Promise<boolean>;
@@ -67,7 +70,10 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     [toast],
   );
 
-  const buy = useCallback(() => run(api.buyLicense, (v) => v.state === "owned" && toast("Thank you. The Bound Vigil is yours.")), [run, toast]);
+  const buy = useCallback(
+    (plan: LicensePlan) => run(() => api.buyLicense(plan), (v) => v.state === "owned" && toast("Thank you. The Bound Vigil is yours.")),
+    [run, toast],
+  );
   const restore = useCallback(
     () => run(api.restoreLicense, (v) => toast(v.state === "owned" ? "Your purchase was found." : `No purchase was found in ${shopName(v.shop)}.`)),
     [run, toast],
@@ -98,7 +104,7 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
 
 function LicenseGate() {
   const toast = useToast();
-  const { license, busy, buy, restore } = useLicense();
+  const { license, busy, restore } = useLicense();
   // This is the first screen instead of Sanctum.
   useEffect(() => {
     startupStep("library");
@@ -114,23 +120,20 @@ function LicenseGate() {
           <>
             <h1>Your {license.trialDays} days are up</h1>
             <p className="muted">
-              Thank you for trying The Bound Vigil. Buy it once{license.price ? ` for ${license.price}` : ""} to keep reading. Your books, notes and places are all
-              still here.
+              Thank you for trying The Bound Vigil. Choose a plan to keep reading. Your books, notes and places are all still here.
             </p>
           </>
         ) : (
           <>
             <h1>Welcome to The Bound Vigil</h1>
             <p className="muted">
-              Buy it once{license.price ? ` for ${license.price}` : ""} to start reading. Your books stay on your own devices and in your own cloud.
+              {license.freeMonth ? "Try it free for a month on the yearly plan, or buy it for life." : "Choose a plan to start reading."} Your books stay on your own devices and in your own cloud.
             </p>
           </>
         )}
         {canBuy ? (
           <>
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void buy()}>
-              {busy ? "Opening the store…" : `Buy The Bound Vigil${license.price ? ` · ${license.price}` : ""}`}
-            </button>
+            <PlanButtons />
             <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void restore()}>
               I bought it already
             </button>
@@ -185,5 +188,38 @@ export function OwnerCode() {
         Unlock
       </button>
     </form>
+  );
+}
+
+/** The yearly plan and the lifetime unlock, side by side. */
+export function PlanButtons() {
+  const { license, busy, buy } = useLicense();
+  if (!license) return null;
+  const yearly = license.yearlyPrice ? `${license.yearlyPrice} a year` : "Yearly";
+  return (
+    <div className="license-plans">
+      <button type="button" className="btn btn-primary license-plan" disabled={busy} onClick={() => void buy("yearly")}>
+        <b>{license.freeMonth ? "Start your free month" : yearly}</b>
+        <span>{license.freeMonth ? `Then ${yearly}. Cancel any time.` : "Renews each year. Cancel any time."}</span>
+      </button>
+      <button type="button" className="btn btn-quiet license-plan" disabled={busy} onClick={() => void buy("lifetime")}>
+        <b>{license.price ? `${license.price} for life` : "For life"}</b>
+        <span>Pay once, keep it for good.</span>
+      </button>
+      {/* Apple asks a subscription's screen to link its terms and the privacy policy. */}
+      <p className="license-terms muted">
+        {license.shop === "apple" && (
+          <>
+            <button type="button" className="link-btn" onClick={() => void openExternal(APPLE_TERMS)}>
+              Terms of use
+            </button>
+            {" · "}
+          </>
+        )}
+        <button type="button" className="link-btn" onClick={() => void openExternal(PRIVACY_POLICY)}>
+          Privacy policy
+        </button>
+      </p>
+    </div>
   );
 }

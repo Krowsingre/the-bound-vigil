@@ -3,6 +3,7 @@ import { api, isIOS } from "../api";
 import { useToast } from "../components/Toast";
 import {
   COME_BACK,
+  LINKS_OPEN,
   DEFAULT_HOME,
   lowerFor,
   onBrowserPrefs,
@@ -16,6 +17,7 @@ import {
   writeBrowserPrefs,
   type BrowserPrefs,
   type ComeBack,
+  type LinksOpen,
   type ProtectionLevel,
   type SearchEngine,
 } from "../browse/browserPrefs";
@@ -154,6 +156,14 @@ export function BrowserTab() {
               value={prefs.comeBack}
               options={COME_BACK}
               onChange={(comeBack) => writeBrowserPrefs({ comeBack })}
+            />
+          </Row>
+          <Row label="Websites from Sanctum's Quick links" hint="Opened in Discover.">
+            <Select<LinksOpen>
+              label="Websites from Sanctum's Quick links"
+              value={prefs.linksOpen}
+              options={LINKS_OPEN}
+              onChange={(linksOpen) => writeBrowserPrefs({ linksOpen })}
             />
           </Row>
         </Section>

@@ -37,6 +37,7 @@ import type {
   BookWords,
   ProviderChoice,
   CloudService,
+  LicensePlan,
   LicenseView,
   UpdateInfo,
   UpdateProgress,
@@ -283,7 +284,7 @@ export interface Api {
   /** Whether TBV is being tried, is bought, or its trial is over. */
   licenseStatus(): Promise<LicenseView>;
   /** Opens the store's sheet for buying TBV. */
-  buyLicense(): Promise<LicenseView>;
+  buyLicense(plan: LicensePlan): Promise<LicenseView>;
   /** Looks for a purchase made before, on this or another device. */
   restoreLicense(): Promise<LicenseView>;
   /** Unlocks this device with the owner's code. Null if the code is wrong. */
@@ -465,8 +466,10 @@ export interface Api {
   moveQuickLink(id: string, to: number): Promise<void>;
   /** Sanctum's own Quick Links, apart from Discover's. */
   sanctumLinks(): Promise<SanctumLink[]>;
-  addSanctumLink(title: string, target: string, icon: string): Promise<SanctumLink>;
-  updateSanctumLink(id: string, title: string, target: string, icon: string): Promise<void>;
+  addSanctumLink(title: string, target: string, icon: string, picture: string): Promise<SanctumLink>;
+  updateSanctumLink(id: string, title: string, target: string, icon: string, picture: string): Promise<void>;
+  /** Puts a copy of a picture on the computer on a Sanctum link. */
+  setSanctumLinkPictureFile(id: string, path: string): Promise<void>;
   removeSanctumLink(id: string): Promise<void>;
   moveSanctumLink(id: string, to: number): Promise<void>;
   /** For each title, whether a book of that name is in the library. */
@@ -897,7 +900,7 @@ function appApi(): Api {
     installUpdate: async () => (await core).invoke("update_install"),
     onUpdateProgress: (listener) => onEvent<UpdateProgress>("update-progress", listener),
     licenseStatus: async () => (await core).invoke<LicenseView>("license_status"),
-    buyLicense: async () => (await core).invoke<LicenseView>("license_buy"),
+    buyLicense: async (plan) => (await core).invoke<LicenseView>("license_buy", { plan }),
     restoreLicense: async () => (await core).invoke<LicenseView>("license_restore"),
     unlockLicense: async (code) => (await core).invoke<LicenseView | null>("license_unlock", { code }),
     resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
@@ -1045,8 +1048,9 @@ function appApi(): Api {
     removeQuickLink: async (id) => (await core).invoke("remove_quick_link", { id }),
     moveQuickLink: async (id, to) => (await core).invoke("move_quick_link", { id, to }),
     sanctumLinks: async () => (await core).invoke<SanctumLink[]>("sanctum_links"),
-    addSanctumLink: async (title, target, icon) => (await core).invoke<SanctumLink>("add_sanctum_link", { title, target, icon }),
-    updateSanctumLink: async (id, title, target, icon) => (await core).invoke("update_sanctum_link", { id, title, target, icon }),
+    addSanctumLink: async (title, target, icon, picture) => (await core).invoke<SanctumLink>("add_sanctum_link", { title, target, icon, picture }),
+    updateSanctumLink: async (id, title, target, icon, picture) => (await core).invoke("update_sanctum_link", { id, title, target, icon, picture }),
+    setSanctumLinkPictureFile: async (id, path) => (await core).invoke("set_sanctum_link_picture_file", { id, path }),
     removeSanctumLink: async (id) => (await core).invoke("remove_sanctum_link", { id }),
     moveSanctumLink: async (id, to) => (await core).invoke("move_sanctum_link", { id, to }),
     ownedTitles: async (titles) => (await core).invoke<boolean[]>("owned_titles", { titles }),

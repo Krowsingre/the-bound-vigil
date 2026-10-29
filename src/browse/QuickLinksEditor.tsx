@@ -113,6 +113,9 @@ export function QuickLinksEditor({ links, onChanged, onClose }: { links: QuickLi
                     </span>
                     {galleryUrl(l.picture, "square") && <img className="quick-links-thumb" src={galleryUrl(l.picture, "square")!} alt="" />}
                   </button>
+                  <button type="button" className="icon-btn" aria-label={`Edit ${l.title}`} title="Edit" disabled={busy} onClick={() => setDraft({ id: l.id, title: l.title, url: l.url, picture: l.picture })}>
+                    <Icon name="edit" size={16} />
+                  </button>
                   <button type="button" className="icon-btn" aria-label={`Move ${l.title} up`} disabled={busy || i === 0} onClick={() => void run(() => api.moveQuickLink(l.id, i - 1))}>
                     <Icon name="chevronUp" size={16} />
                   </button>
