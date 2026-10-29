@@ -9,7 +9,7 @@ import { DOCUMENT_PAIR_NOTE, PairDialog } from "../audio/LinkEbook";
 import { useToast } from "../components/Toast";
 import { isAudio, isDocument } from "../lib/queryBooks";
 import { showBookDetails } from "./openDetails";
-import { linesUp, loadLineUp, onLinedUp, onLiningUp, type LineUpState } from "../readAlong/lineUp";
+import { liningUp, linesUp, loadLineUp, onLinedUp, onLiningUp, type LineUpState } from "../readAlong/lineUp";
 
 type Partner = { id: string; name: string; format?: string } | null;
 
@@ -23,7 +23,9 @@ export function PairRow({ book, refreshKey }: { book: BookPreview; refreshKey: n
   useEffect(() => {
     let current = true;
     const found: Promise<Partner> = listening
-      ? api.audiobook(book.id).then((a) => a.ebook)
+      ? api
+          .audiobook(book.id)
+          .then((a) => (a.ebook ? api.bookDetails(a.ebook.id).then((d) => ({ ...a.ebook!, format: d.book.format })) : null))
       : api
           .audiobookForEbook(book.id)
           .then((id) => (id ? api.bookDetails(id).then((d) => ({ id, name: d.book.title, format: d.book.format })) : null));
@@ -43,8 +45,9 @@ export function PairRow({ book, refreshKey }: { book: BookPreview; refreshKey: n
   const [live, setLive] = useState<number | null>(null);
   useEffect(() => {
     setLineUp(null);
-    setLive(null);
-    if (!ebookId || !audiobookId) return;
+    if (!ebookId || !audiobookId) return setLive(null);
+    const now = liningUp();
+    setLive(now && now.ebookId === ebookId && now.audiobookId === audiobookId ? now.fraction : null);
     let current = true;
     const load = () => void loadLineUp(ebookId, audiobookId).then((l) => current && setLineUp(l.state), () => undefined);
     load();
