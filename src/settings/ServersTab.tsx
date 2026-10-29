@@ -7,7 +7,8 @@ import { NO_SERVER_QUEUE, SERVERS_DESKTOP_ONLY } from "../api/serverStub";
 import type { RemoteEntry, ServerInput, ServerQueueView, ServerListing, ServerProtocol, ServerView } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
-import { formatBytes, Section, Segmented } from "./controls";
+import { Columns, formatBytes, Section, Segmented } from "./controls";
+import { AudiobookshelfSection } from "./AudiobookshelfSection";
 import { LocalSendSection } from "./LocalSendSection";
 
 const PROTOCOLS: { value: ServerProtocol; label: string }[] = [
@@ -79,7 +80,7 @@ export function ServersTab() {
   );
 
   return (
-    <>
+    <Columns side={<LocalSendSection />}>
       <Section
         id="servers"
         title="Servers"
@@ -145,7 +146,7 @@ export function ServersTab() {
         <DownloadStatus />
       </Section>
 
-      <LocalSendSection />
+      <AudiobookshelfSection />
 
       {browsing && (
         <BrowseDialog
@@ -237,7 +238,7 @@ export function ServersTab() {
           </div>
         </div>
       )}
-    </>
+    </Columns>
   );
 }
 

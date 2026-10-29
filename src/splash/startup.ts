@@ -1,8 +1,8 @@
 // Opening TBV in one go: the splash stays up while the first screen gets
 // ready, its bar filling as each step finishes, then gives way to a
 // finished page. On a computer the splash is a card in its own window and
-// the main window stays hidden until now; on the iPhone it covers the page
-// and breaks up to show it.
+// the main window stays hidden until now, and the card breaks up over it;
+// on the iPhone the splash covers the page and breaks up to show it.
 
 import { api, isApp, isIOS } from "../api";
 import { disintegrate } from "./disintegrate";
@@ -122,17 +122,17 @@ async function finish() {
     new Promise((ok) => setTimeout(ok, 120)),
   ]);
   document.documentElement.classList.remove("is-starting");
+  const still =
+    document.documentElement.hasAttribute("data-reduce-motion") || !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   if (onComputer) {
     const { invoke } = await import("@tauri-apps/api/core");
     // The window shows behind the card; the card goes once it has drawn on screen.
     await invoke("startup_done").catch(() => undefined);
     await drawnOnScreen();
-    await invoke("startup_painted").catch(() => undefined);
+    await invoke("startup_painted", { still }).catch(() => undefined);
     return;
   }
   if (!overlay) return;
-  const still =
-    document.documentElement.hasAttribute("data-reduce-motion") || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   if (still) {
     overlay.classList.add("is-leaving");
     setTimeout(() => overlay.remove(), 400);

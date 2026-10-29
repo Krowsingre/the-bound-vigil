@@ -681,6 +681,17 @@ impl Library {
         Ok(CatalogView::from(&saved))
     }
 
+    /// Forgets an Audiobookshelf server's sign-in but keeps the server, so
+    /// signing in again needs only the password.
+    pub fn sign_out_abs_server(&self, id: &str) -> Result<()> {
+        let mut catalogs = self.saved_catalogs()?;
+        if let Some(c) = catalogs.iter_mut().find(|c| c.id == id) {
+            c.token.clear();
+            c.refresh.clear();
+        }
+        self.write_catalogs(&catalogs)
+    }
+
     pub fn remove_catalog(&self, id: &str) -> Result<()> {
         let mut catalogs = self.saved_catalogs()?;
         catalogs.retain(|c| c.id != id);

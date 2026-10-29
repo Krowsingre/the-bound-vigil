@@ -270,9 +270,11 @@ pub trait Connection: Send {
     fn home(&mut self) -> Result<String>;
     /// Everything in a folder, unfiltered.
     fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>>;
-    /// Writes a file's bytes to `out`, calling `progress` with each piece's
-    /// size. `progress` returning false stops the download.
-    fn fetch(&mut self, path: &str, out: &mut dyn Write, progress: &mut dyn FnMut(u64) -> bool) -> Result<u64>;
+    /// Writes a file's bytes to `out`, starting `from` bytes in (0 for the
+    /// whole file; more to carry on a download cut off part-way), calling
+    /// `progress` with each piece's size. `progress` returning false stops
+    /// the download. Gives how many bytes were written.
+    fn fetch(&mut self, path: &str, from: u64, out: &mut dyn Write, progress: &mut dyn FnMut(u64) -> bool) -> Result<u64>;
 }
 
 /// Connects and signs in. A server TBV hasn't met before (SFTP, or FTPS
@@ -588,7 +590,7 @@ pub fn download(
         let partial = target.with_file_name(format!("{}.part", target.file_name().unwrap_or_default().to_string_lossy()));
         let mut out = fs::File::create(&partial)?;
         let start = state.bytes_done;
-        let fetched = connection.fetch(&file.remote, &mut out, &mut |n| {
+        let fetched = connection.fetch(&file.remote, 0, &mut out, &mut |n| {
             state.bytes_done += n;
             // A file bigger than the server said stretches the total with it.
             state.bytes_total = state.bytes_total.max(state.bytes_done);
@@ -621,7 +623,10 @@ pub fn download(
 }
 
 /// Brings down one file to `target`, written beside it and renamed once
-/// whole. `progress` hears the bytes so far and returns false to stop, which
+/// whole. What's already beside it from a download cut off part-way (TBV
+/// closing, a crash, the connection dropping) is kept, and the download
+/// carries on from there; a server that can't start part-way sends it all
+/// again. `progress` hears the bytes so far and returns false to stop, which
 /// gives `Ok(None)` and leaves nothing behind.
 pub fn fetch_file(
     connection: &mut dyn Connection,
@@ -633,33 +638,42 @@ pub fn fetch_file(
         fs::create_dir_all(parent)?;
     }
     let partial = queue::partial(target);
-    let mut out = fs::File::create(&partial)?;
-    let mut done = 0u64;
+    let kept = fs::metadata(&partial).map(|m| m.len()).unwrap_or(0);
     let mut stopped = false;
-    let fetched = connection.fetch(remote, &mut out, &mut |n| {
-        done += n;
-        let go = progress(done);
-        stopped |= !go;
-        go
-    });
-    drop(out);
+    let mut fetched = Err(Error::Unsuitable("not started".into()));
+    let mut total = 0;
+    for from in if kept > 0 { vec![kept, 0] } else { vec![0] } {
+        let mut out = if from > 0 { fs::OpenOptions::new().append(true).open(&partial)? } else { fs::File::create(&partial)? };
+        let mut done = from;
+        fetched = connection.fetch(remote, from, &mut out, &mut |n| {
+            done += n;
+            let go = progress(done);
+            stopped |= !go;
+            go
+        });
+        drop(out);
+        total = done;
+        // Carrying on was refused before anything came: start from the beginning.
+        if from > 0 && !stopped && matches!(&fetched, Err(Error::CantResume)) {
+            continue;
+        }
+        break;
+    }
     match fetched {
         Ok(_) if stopped => {
             let _ = fs::remove_file(&partial);
             Ok(None)
         }
-        Ok(n) => {
+        Ok(_) => {
             fs::rename(&partial, target)?;
-            Ok(Some(n))
+            Ok(Some(total))
         }
-        Err(e) => {
+        // Kept for next time, unless it was stopped on purpose.
+        Err(_) if stopped => {
             let _ = fs::remove_file(&partial);
-            if stopped {
-                Ok(None)
-            } else {
-                Err(e)
-            }
+            Ok(None)
         }
+        Err(e) => Err(e),
     }
 }
 

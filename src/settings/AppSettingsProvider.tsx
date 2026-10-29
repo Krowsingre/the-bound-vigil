@@ -6,6 +6,7 @@ import {
   APP_SETTINGS_KEY,
   applyPrivacy,
   AppSettingsCtx,
+  BOOK_OPENED,
   applyAppSettings,
   DEFAULT_APP_SETTINGS,
   isDark,
@@ -90,22 +91,36 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     [save],
   );
 
-  // Adaptive takes its colour from the book read most recently.
+  // Adaptive takes its colour from the book read most recently: again each
+  // time a book is opened, or (with Auto-apply off) from the book it was
+  // last set on, until it's reset.
   const adaptiveOn = settings.theme === "adaptive";
+  const pinned = settings.adaptiveAuto ? null : settings.adaptivePinned;
+  useEffect(() => {
+    if (!adaptiveOn || !settings.adaptiveAuto) return;
+    const again = () => setAdaptiveTick((n) => n + 1);
+    window.addEventListener(BOOK_OPENED, again);
+    return () => window.removeEventListener(BOOK_OPENED, again);
+  }, [adaptiveOn, settings.adaptiveAuto]);
   useEffect(() => {
     if (!adaptiveOn) return;
     let current = true;
     (async () => {
-      const page = await api.getLibrary({
-        shelf: "all",
-        sort: "recently_opened",
-        search: null,
-        formats: [],
-        location: null,
-        page: 0,
-        pageSize: 1,
-      });
-      const recent = page.books.find((b) => b.lastOpenedAt) ?? page.books[0] ?? null;
+      const kept = pinned ? await api.bookDetails(pinned).then((d) => d.book).catch(() => null) : null;
+      const page = kept
+        ? null
+        : await api.getLibrary({
+            shelf: "all",
+            sort: "recently_opened",
+            search: null,
+            formats: [],
+            location: null,
+            page: 0,
+            pageSize: 1,
+          });
+      const recent = kept ?? page?.books.find((b) => b.lastOpenedAt) ?? page?.books[0] ?? null;
+      // Auto-apply off: this is the book it stays on.
+      if (current && !settings.adaptiveAuto && !pinned && recent) change({ adaptivePinned: recent.id });
       const hex = recent ? await api.coverAccent(recent.id) : null;
       if (!current) return;
       setBook(
@@ -122,7 +137,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     return () => {
       current = false;
     };
-  }, [adaptiveOn, adaptiveTick]);
+  }, [adaptiveOn, adaptiveTick, pinned, settings.adaptiveAuto, change]);
 
   const dark = isDark(settings, systemDark);
   const adaptive = useMemo(
@@ -144,7 +159,8 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
       reset,
       adaptive,
       adaptiveBook: adaptiveOn ? book : null,
-      refreshAdaptive: () => setAdaptiveTick((n) => n + 1),
+      // Reset: the colour comes from the book read most recently, and (with Auto-apply off) stays on it.
+      refreshAdaptive: () => (settings.adaptiveAuto || !settings.adaptivePinned ? setAdaptiveTick((n) => n + 1) : change({ adaptivePinned: null })),
       togglePrivacy,
     }),
     [settings, change, changeSync, reset, adaptive, adaptiveOn, book, togglePrivacy],

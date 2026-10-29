@@ -13,6 +13,7 @@ type Calls = Pick<
   | "saveCatalog"
   | "saveAbsServer"
   | "removeCatalog"
+  | "signOutAbsServer"
   | "catalogFeed"
   | "catalogSearch"
   | "downloadFromCatalog"
@@ -183,6 +184,9 @@ export function previewWriting(): Calls {
     },
     removeCatalog: async (id) => {
       catalogs = catalogs.filter((c) => c.id !== id);
+    },
+    signOutAbsServer: async (id) => {
+      catalogs = catalogs.map((c) => (c.id === id ? { ...c, hasPassword: false } : c));
     },
     catalogFeed: async (_id, url) => {
       await new Promise((r) => setTimeout(r, 300));

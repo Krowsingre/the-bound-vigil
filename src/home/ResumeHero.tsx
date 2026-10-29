@@ -1,3 +1,4 @@
+import { api } from "../api";
 import type { BookPreview } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
@@ -36,10 +37,18 @@ export function ResumeHero({
   }
 
   // Where the other devices are, for anyone who points at the progress bar.
+  // The book's own cover, enlarged and softened, behind the card (embre's choice).
+  const backdrop = book.coverPath ? api.coverUrl(book.coverPath) : "";
+  const chapter = book.resumeLocator?.chapter?.trim();
   const elsewhere = book.remotePositions.map((r) => `On ${r.deviceName} you're at ${percent(r.totalProgression)} (${relativeTime(r.at)})`).join("\n");
 
   return (
-    <section className="hero" aria-labelledby="hero-title" {...bookContextMenu(book, actions)}>
+    <section className={`hero${backdrop ? " has-backdrop" : ""}`} aria-labelledby="hero-title" {...bookContextMenu(book, actions)}>
+      {backdrop && (
+        <div className="hero-backdrop" aria-hidden>
+          <img className="private-picture" src={backdrop} alt="" draggable={false} />
+        </div>
+      )}
       <div className="hero-inner">
         <button type="button" className="hero-cover" onClick={() => actions.open(book)} aria-label={`Open ${book.title}`}>
           <BookCover book={book} size="l" />
@@ -50,6 +59,15 @@ export function ResumeHero({
             {book.title}
           </h1>
           <p className="hero-author">{authorLine(book.authors)}</p>
+          <p className="hero-where">
+            <span className="hero-percent">{percent(book.totalProgression)}</span>
+            {chapter && (
+              <>
+                <span aria-hidden> · </span>
+                <span className="hero-chapter">{chapter}</span>
+              </>
+            )}
+          </p>
           <div className="hero-progress" title={elsewhere || undefined}>
             <ProgressBar value={book.totalProgression} />
             <span className="hero-percent">{percent(book.totalProgression)}</span>

@@ -3,7 +3,8 @@
 //! libraries can be looked through and searched there, and an audiobook or
 //! ebook brought down into TBV. Where TBV has an audiobook the server has
 //! too, the listening place is kept the same in both: whichever moved last
-//! wins.
+//! wins. An audiobook can also be played straight from the server without
+//! bringing it down, a range at a time, with its place kept on the server.
 //!
 //! Only the server's sign-in token is kept, never the password.
 
@@ -26,6 +27,38 @@ pub const KIND: &str = "audiobookshelf";
 /// Addresses inside an Audiobookshelf catalogue start with this, not http.
 const ADDRESS: &str = "abs:";
 const PAGE: usize = 48;
+/// The id of an audiobook played straight from a server: this, its saved
+/// catalogue's id, `~`, and the server's id for the book. It isn't in the
+/// library, so nothing else in TBV knows it.
+pub const STREAM_PREFIX: &str = "abs~";
+
+pub fn stream_id(catalog: &str, item: &str) -> String {
+    format!("{STREAM_PREFIX}{catalog}~{item}")
+}
+
+/// The catalogue and the server's id for a book, from a stream id.
+pub fn parse_stream_id(id: &str) -> Option<(String, String)> {
+    let (catalog, item) = id.strip_prefix(STREAM_PREFIX)?.split_once('~')?;
+    (!catalog.is_empty() && !item.is_empty()).then(|| (catalog.to_string(), item.to_string()))
+}
+
+/// An audiobook on the server, ready to play from it.
+#[derive(Debug, Clone)]
+pub struct RemoteBook {
+    pub item: String,
+    pub parts: Vec<RemotePart>,
+    /// The book as the player sees it.
+    pub audiobook: crate::audio::Audiobook,
+}
+
+/// One of its sound files on the server.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RemotePart {
+    pub ino: String,
+    pub size: u64,
+    /// Without the dot: "m4b", "mp3".
+    pub ext: String,
+}
 
 /// The server's address and sign-in, out of the library for network work.
 #[derive(Debug, Clone)]
@@ -429,6 +462,66 @@ impl Server {
         }
     }
 
+    /// An audiobook to play straight from the server, with where you are in it there.
+    pub fn remote_book(&mut self, catalog: &str, item: &str) -> Result<RemoteBook> {
+        let body = self.call("GET", &format!("/api/items/{item}?expanded=1"), None)?;
+        // No place kept on the server yet is a 404.
+        let seconds = self.call("GET", &format!("/api/me/progress/{item}"), None).ok().and_then(|p| p.get("currentTime").and_then(Value::as_f64)).unwrap_or(0.0);
+        remote_book_from(&stream_id(catalog, item), item, &body, seconds)
+    }
+
+    /// Bytes `start..=end` of one of a book's sound files.
+    pub fn read_range(&mut self, item: &str, ino: &str, start: u64, end: u64) -> Result<Vec<u8>> {
+        let path = format!("/api/items/{item}/file/{ino}");
+        for attempt in 0..2 {
+            let answer = agent()
+                .get(format!("{}{path}", self.base))
+                .header("Authorization", &format!("Bearer {}", self.token))
+                .header("Range", &format!("bytes={start}-{end}"))
+                .call()
+                .map_err(offline)?;
+            let status = answer.status().as_u16();
+            match status {
+                206 | 200 => {
+                    let want = end + 1 - start;
+                    use std::io::Read;
+                    let mut body = answer.into_body();
+                    let mut reader = body.with_config().limit(u64::MAX).reader();
+                    // A server that ignores ranges sends it all: skip to the start.
+                    if status == 200 && start > 0 {
+                        std::io::copy(&mut (&mut reader).take(start), &mut std::io::sink())?;
+                    }
+                    let mut bytes = Vec::with_capacity(want as usize);
+                    reader.take(want).read_to_end(&mut bytes)?;
+                    return Ok(bytes);
+                }
+                401 if attempt == 0 && self.renew()? => continue,
+                403 => return Err(Error::Unsuitable("Your Audiobookshelf account isn't allowed to play that.".into())),
+                _ => return Err(Error::Cloud(format!("Audiobookshelf wouldn't send the audio (status {status})"))),
+            }
+        }
+        unreachable!()
+    }
+
+    /// Keeps where you are in a book played from the server, on the server.
+    pub fn keep_place(&mut self, item: &str, position_ms: u64, duration_ms: u64) -> Result<()> {
+        let seconds = position_ms as f64 / 1000.0;
+        let duration = duration_ms as f64 / 1000.0;
+        let progress = if duration > 0.0 { (seconds / duration).clamp(0.0, 1.0) } else { 0.0 };
+        self.call(
+            "PATCH",
+            &format!("/api/me/progress/{item}"),
+            Some(&json!({ "currentTime": seconds, "duration": duration, "progress": progress, "isFinished": duration > 0.0 && seconds >= duration - 1.0 })),
+        )?;
+        Ok(())
+    }
+
+    /// The book's cover, as the server has it.
+    pub fn cover(&mut self, item: &str) -> Result<Vec<u8>> {
+        let mut answer = self.get_raw(&format!("/api/items/{item}/cover?width=600&format=jpeg"))?;
+        answer.body_mut().with_config().limit(8 * 1024 * 1024).read_to_vec().map_err(offline)
+    }
+
     /// Every book on the server, for matching TBV's audiobooks to: the id,
     /// title and authors. Kept for a while, since a big server has thousands.
     fn index(&mut self) -> Result<Vec<Book>> {
@@ -480,6 +573,92 @@ impl Server {
             })
             .collect())
     }
+}
+
+/// What the server says about a book, as an audiobook to play from it.
+fn remote_book_from(id: &str, item: &str, body: &Value, seconds: f64) -> Result<RemoteBook> {
+    let media = body.get("media").ok_or_else(|| Error::Unsuitable("That isn't a book on the server.".into()))?;
+    let mut files: Vec<&Value> = media
+        .get("audioFiles")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|f| f.get("exclude").and_then(Value::as_bool) != Some(true))
+        .collect();
+    files.sort_by_key(|f| f.get("index").and_then(Value::as_u64).unwrap_or(0));
+    if files.is_empty() {
+        return Err(Error::Unsuitable("That book has no audio on the server.".into()));
+    }
+    let mut parts = Vec::new();
+    let mut player_parts = Vec::new();
+    let mut at = 0u64;
+    for f in files {
+        let ino = f.get("ino").and_then(Value::as_str).unwrap_or_default().to_string();
+        let name = f.pointer("/metadata/filename").and_then(Value::as_str).unwrap_or("part").to_string();
+        let ext = f.pointer("/metadata/ext").and_then(Value::as_str).map(|e| e.trim_start_matches('.').to_ascii_lowercase()).unwrap_or_else(|| "mp3".into());
+        let duration_ms = (f.get("duration").and_then(Value::as_f64).unwrap_or(0.0) * 1000.0).round() as u64;
+        parts.push(RemotePart { ino, size: f.pointer("/metadata/size").and_then(Value::as_u64).unwrap_or(0), ext });
+        player_parts.push(crate::audio::Part { name, start_ms: at, duration_ms });
+        at += duration_ms;
+    }
+    let duration_ms = at;
+    let mut chapters: Vec<crate::audio::Chapter> = media
+        .get("chapters")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|c| Some(crate::audio::Chapter { title: c.get("title")?.as_str()?.to_string(), start_ms: (c.get("start")?.as_f64()? * 1000.0).round() as u64 }))
+        .collect();
+    if chapters.is_empty() {
+        chapters = player_parts.iter().map(|p| crate::audio::Chapter { title: p.name.clone(), start_ms: p.start_ms }).collect();
+    }
+    let field = |name: &str| media.pointer(&format!("/metadata/{name}"));
+    let names = |name: &str| -> Vec<String> {
+        match field(name) {
+            Some(Value::Array(list)) => list.iter().filter_map(|v| v.get("name").and_then(Value::as_str).or_else(|| v.as_str()).map(str::to_string)).collect(),
+            Some(Value::String(s)) => s.split(", ").map(str::to_string).collect(),
+            _ => Vec::new(),
+        }
+    };
+    let authors = Some(names("authors")).filter(|a| !a.is_empty()).unwrap_or_else(|| names("authorName"));
+    let narrators = Some(names("narrators")).filter(|a| !a.is_empty()).unwrap_or_else(|| names("narratorName"));
+    let series = field("series").and_then(Value::as_array).and_then(|s| s.first()).and_then(|s| s.get("name")?.as_str().map(str::to_string));
+    let position_ms = ((seconds.max(0.0)) * 1000.0).round() as u64;
+    let book = crate::model::BookPreview {
+        id: id.to_string(),
+        title: field("title").and_then(Value::as_str).unwrap_or("Untitled").to_string(),
+        authors,
+        cover_path: None,
+        format: parts[0].ext.clone(),
+        synopsis: field("description").and_then(Value::as_str).map(str::to_string),
+        series,
+        series_index: None,
+        added_at: crate::time::now_utc(),
+        last_opened_at: None,
+        status: if position_ms > 0 { crate::model::ReadStatus::InProgress } else { crate::model::ReadStatus::Unread },
+        total_progression: (duration_ms > 0).then(|| (position_ms as f64 / duration_ms as f64).min(1.0)),
+        resume_locator: None,
+        availability: crate::model::Availability::Cloud,
+        remote_positions: Vec::new(),
+        favorite: false,
+        want_to_read: false,
+        rating: None,
+        finished_at: None,
+        tags: Vec::new(),
+        in_cloud: true,
+        genres: field("genres").and_then(Value::as_array).map(|g| g.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default(),
+        duration_ms: Some(duration_ms),
+        narrators: narrators.clone(),
+        language: field("language").and_then(Value::as_str).map(str::to_string),
+        paired: false,
+        phone_wanted: false,
+        phone_has: false,
+    };
+    Ok(RemoteBook {
+        item: item.to_string(),
+        parts,
+        audiobook: crate::audio::Audiobook { book, narrators, duration_ms, chapters, parts: player_parts, position_ms, ebook: None },
+    })
 }
 
 fn safe_file(name: &str) -> String {
@@ -629,6 +808,65 @@ mod tests {
 
     fn book(id: &str, title: &str, author: &str, position_ms: u64, at_ms: i64) -> Listening {
         Listening { book_id: id.into(), title: title.into(), authors: vec![author.into()], position_ms, duration_ms: 3_600_000, at_ms }
+    }
+
+    #[test]
+    fn a_server_book_plays_from_its_files_in_order() {
+        assert_eq!(parse_stream_id(&stream_id("cat1", "li_9")), Some(("cat1".into(), "li_9".into())));
+        assert_eq!(parse_stream_id("abs~nothing"), None);
+        let body = json!({
+            "media": {
+                "metadata": { "title": "Dracula", "authors": [{ "name": "Bram Stoker" }], "narrators": ["Greg Wagland"], "genres": ["Horror"] },
+                "chapters": [],
+                "audioFiles": [
+                    { "index": 2, "ino": "b", "duration": 60.5, "metadata": { "filename": "02.mp3", "ext": ".mp3", "size": 900 } },
+                    { "index": 1, "ino": "a", "duration": 30.0, "metadata": { "filename": "01.mp3", "ext": ".mp3", "size": 450 } },
+                    { "index": 3, "ino": "x", "duration": 5.0, "exclude": true, "metadata": { "filename": "extra.mp3" } }
+                ]
+            }
+        });
+        let book = remote_book_from("abs~c~i", "i", &body, 45.0).unwrap();
+        assert_eq!(book.parts.iter().map(|p| p.ino.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+        assert_eq!(book.audiobook.duration_ms, 90_500);
+        assert_eq!(book.audiobook.parts[1].start_ms, 30_000);
+        assert_eq!(book.audiobook.chapters.len(), 2, "one chapter per file when the server has none");
+        assert_eq!(book.audiobook.position_ms, 45_000);
+        assert_eq!(book.audiobook.book.authors, ["Bram Stoker"]);
+        assert_eq!(book.audiobook.book.narrators, ["Greg Wagland"]);
+        assert_eq!(book.audiobook.book.format, "mp3");
+    }
+
+    #[test]
+    fn ranges_come_from_the_server_even_when_it_sends_the_whole_file() {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let file = b"0123456789";
+        std::thread::spawn(move || {
+            for (n, stream) in listener.incoming().take(2).enumerate() {
+                let mut stream = stream.unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut range = String::new();
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    if line.to_ascii_lowercase().starts_with("range:") {
+                        range = line.trim().to_string();
+                    }
+                    if line == "\r\n" || line.is_empty() {
+                        break;
+                    }
+                }
+                assert_eq!(range.to_ascii_lowercase(), "range: bytes=3-5");
+                // The first answers with the range; the second ignores it.
+                let (status, body): (&str, &[u8]) = if n == 0 { ("206 Partial Content", &file[3..6]) } else { ("200 OK", file) };
+                write!(stream, "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+                stream.write_all(body).unwrap();
+            }
+        });
+        let mut server = Server { id: "c".into(), name: "Home".into(), base: format!("http://127.0.0.1:{port}"), token: "t".into(), refresh: String::new() };
+        assert_eq!(server.read_range("li", "1", 3, 5).unwrap(), b"345");
+        assert_eq!(server.read_range("li", "1", 3, 5).unwrap(), b"345");
     }
 
     #[test]

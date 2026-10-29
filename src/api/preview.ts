@@ -133,13 +133,15 @@ let imports: ImportItem[] = new URLSearchParams(location.search).has("imports")
       };
     })
   : [];
-// `?license=expired` (or `=ending`, `=owned`) shows that state of the trial.
+// `?license=expired` (or `=ending`, `=owned`) shows that state of the trial;
+// `=welcome` is an iPhone copy not yet bought (no trial there).
 const licenseParam = new URLSearchParams(location.search).get("license");
 let previewLicense: LicenseView = {
-  state: licenseParam === "expired" ? "expired" : licenseParam === "owned" ? "owned" : "trial",
-  daysLeft: licenseParam === "expired" || licenseParam === "owned" ? 0 : licenseParam === "ending" ? 2 : 21,
+  state: licenseParam === "expired" || licenseParam === "welcome" ? "expired" : licenseParam === "owned" ? "owned" : "trial",
+  daysLeft: licenseParam === "expired" || licenseParam === "welcome" || licenseParam === "owned" ? 0 : licenseParam === "ending" ? 2 : 21,
   trialEnds: Math.floor(Date.now() / 1000) + (licenseParam === "ending" ? 2 : 21) * 86_400,
-  shop: "microsoft",
+  trialDays: licenseParam === "welcome" ? 0 : 30,
+  shop: licenseParam === "welcome" ? "apple" : "microsoft",
   price: "$14.99",
 };
 // `?hardcover` shows Hardcover signed in, for reviewing Settings.
@@ -386,6 +388,8 @@ function home(): HomeViewModel {
     },
     activity: null,
     finishedDates: [ago(1), ago(4), ago(12), ago(40)],
+    suggested: reading.filter((b) => b.status === "unread" && !b.lastOpenedAt).sort((a, b) => Number(b.wantToRead) - Number(a.wantToRead)).slice(0, 6),
+    readAuthors: [...new Set(reading.filter((b) => b.status !== "unread").map((b) => b.authors[0]).filter(Boolean))].slice(0, 4),
     sync: previewSync().status,
   };
 }
@@ -625,6 +629,7 @@ export function previewApi(): Api {
       databaseBytes: params.has("oldsetup") ? null : 61_000_000,
     }),
     getHome: async () => home(),
+    ownedTitles: async (titles) => titles.map((t) => library().some((b) => b.title.toLowerCase() === t.trim().toLowerCase())),
     queueImports: async () => 0,
     importQueue: async () => importsViewOf(imports),
     takePdfCovers: async () => [],
@@ -884,7 +889,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "1.41.0", version: "1.42.0", notes: "The Bound Vigil 1.42.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "1.42.0", version: "1.43.0", notes: "The Bound Vigil 1.43.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

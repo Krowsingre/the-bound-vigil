@@ -14,6 +14,9 @@ vi.mock("../api", () => ({
     kind: "app",
     getHome: () => getHome(),
     timeSpent: async () => [],
+    sanctumLinks: async () => [],
+    getSetting: async () => null,
+    getCollectionsOverview: async () => ({ pinned: [], smart: [], collections: [], series: [] }),
     coverUrl: () => "",
     setBookStatus: vi.fn(),
     setFavorite: vi.fn(),
@@ -60,7 +63,7 @@ const dracula: BookPreview = {
 function renderHome(onNavigate: (route: Route) => void = () => {}) {
   return render(
     <ToastProvider>
-      <Home refreshKey={0} onNavigate={onNavigate} onOpenLibrary={() => {}} onImportBooks={() => {}} onImportFolder={() => {}} onOpenBook={() => {}} onOpenCompendium={() => {}} />
+      <Home refreshKey={0} onNavigate={onNavigate} onOpenLibrary={() => {}} onImportBooks={() => {}} onImportFolder={() => {}} onOpenBook={() => {}} onOpenCompendium={() => {}} onOpenCollection={() => {}} />
     </ToastProvider>,
   );
 }

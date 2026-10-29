@@ -563,6 +563,7 @@ export function App() {
               onLoaded={onHomeLoaded}
               onOpenBook={openBook}
               onOpenCompendium={openCompendium}
+              onOpenCollection={showCollection}
             />
           ) : route === "library" ? (
             <Library

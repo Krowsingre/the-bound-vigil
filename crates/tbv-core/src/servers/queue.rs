@@ -1,7 +1,8 @@
 //! The list of files being brought down from servers, kept on disk so a
 //! crash loses nothing: after one, files already down are added to the
-//! library, and the rest are fetched again. A downloaded file is only deleted
-//! once its book is in the library.
+//! library, a file cut off part-way carries on from where it got to, and the
+//! rest come down as planned. A downloaded file is only deleted once its book
+//! is in the library.
 //!
 //! This is the bookkeeping only; the app runs the downloads (a few at once)
 //! and hands what's ready to the import queue.
@@ -93,8 +94,9 @@ struct Saved {
 
 impl Queue {
     /// The list as it was left in `dir` (TBV's "Server downloads" folder).
-    /// Downloads cut off part-way start again, files waiting to be added are
-    /// added again, and folders nothing refers to are removed.
+    /// Downloads cut off part-way wait to carry on (what came down is kept),
+    /// files waiting to be added are added again, and folders nothing refers
+    /// to are removed.
     pub fn open(dir: &Path) -> Self {
         let saved: Option<Saved> = fs::read(dir.join(FILE)).ok().and_then(|b| serde_json::from_slice(&b).ok());
         let mut queue = Self { dir: dir.to_path_buf(), ..Default::default() };
@@ -106,9 +108,8 @@ impl Queue {
             let path = dir.join(&file.batch).join(&file.local);
             match file.state {
                 FileState::Downloading => {
-                    let _ = fs::remove_file(partial(&path));
                     file.state = FileState::Waiting;
-                    file.bytes_done = 0;
+                    file.bytes_done = kept(&path);
                     file.started_at = None;
                 }
                 FileState::Downloaded | FileState::Importing if !path.exists() => {
@@ -185,7 +186,7 @@ impl Queue {
     pub fn claim(&mut self) -> Option<QueuedFile> {
         let file = self.files.iter_mut().find(|f| f.state == FileState::Waiting)?;
         file.state = FileState::Downloading;
-        file.bytes_done = 0;
+        file.bytes_done = kept(&self.dir.join(&file.batch).join(&file.local));
         file.error = None;
         file.started_at = Some(crate::time::now_utc());
         file.finished_at = None;
@@ -194,7 +195,7 @@ impl Queue {
         Some(claimed)
     }
 
-    /// How much of a file has come down. Not saved: a cut-off download starts over anyway.
+    /// How much of a file has come down. Not saved: the part on disk says how much, after a crash.
     /// False if the file is no longer wanted, so the download should stop.
     pub fn progress(&mut self, id: u64, bytes: u64) -> bool {
         match self.files.iter_mut().find(|f| f.id == id) {
@@ -419,6 +420,11 @@ fn own_folder(dir: &Path, name: &str, parts: &[PathBuf]) -> Option<(PathBuf, Vec
 }
 
 /// Where a download is written until it's whole.
+/// How much of a cut-off download is kept beside `path`.
+fn kept(path: &Path) -> u64 {
+    fs::metadata(partial(path)).map(|m| m.len()).unwrap_or(0)
+}
+
 pub fn partial(path: &Path) -> PathBuf {
     path.with_file_name(format!("{}.part", path.file_name().unwrap_or_default().to_string_lossy()))
 }

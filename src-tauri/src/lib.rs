@@ -1,8 +1,11 @@
 //! Tauri shell: wires the UI to `tbv-core`. Commands stay thin; all logic and
 //! file work lives in the core, and blocking work runs off the UI thread.
 
+mod abs_stream;
 mod activity;
 mod audio;
+#[cfg(target_os = "ios")]
+mod background_sync;
 mod browser;
 mod cloud;
 #[cfg(target_os = "ios")]
@@ -65,6 +68,37 @@ where
 #[tauri::command]
 async fn get_home(state: State<'_, AppLibrary>) -> CommandResult<HomeViewModel> {
     with_library(state, |library| library.home()).await
+}
+
+/// Which of these titles are already in the library, for Suggested reading.
+#[tauri::command]
+async fn owned_titles(state: State<'_, AppLibrary>, titles: Vec<String>) -> CommandResult<Vec<bool>> {
+    with_library(state, move |library| library.owned_titles(&titles)).await
+}
+
+#[tauri::command]
+async fn sanctum_links(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::sanctum_links::SanctumLink>> {
+    with_library(state, |library| library.sanctum_links()).await
+}
+
+#[tauri::command]
+async fn add_sanctum_link(state: State<'_, AppLibrary>, title: String, target: String, icon: String) -> CommandResult<tbv_core::sanctum_links::SanctumLink> {
+    with_library(state, move |library| library.add_sanctum_link(&title, &target, &icon)).await
+}
+
+#[tauri::command]
+async fn update_sanctum_link(state: State<'_, AppLibrary>, id: String, title: String, target: String, icon: String) -> CommandResult<()> {
+    with_library(state, move |library| library.update_sanctum_link(&id, &title, &target, &icon)).await
+}
+
+#[tauri::command]
+async fn remove_sanctum_link(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.remove_sanctum_link(&id)).await
+}
+
+#[tauri::command]
+async fn move_sanctum_link(state: State<'_, AppLibrary>, id: String, to: usize) -> CommandResult<()> {
+    with_library(state, move |library| library.move_sanctum_link(&id, to)).await
 }
 
 /// Queues book files (and folders of them) on the Imports page. Returns how
@@ -1777,6 +1811,8 @@ pub fn run() {
             #[cfg(desktop)]
             folder_watch::start(library.clone(), worker.clone());
             cloud_watch::start(library.clone(), worker.clone());
+            #[cfg(target_os = "ios")]
+            background_sync::ready(worker.clone());
             app.manage(worker);
             // Paired books and audiobooks lined up word by word, in the background.
             lining::start(app.handle(), library.clone(), data_dir.clone());
@@ -1859,6 +1895,7 @@ pub fn run() {
             writing::save_catalog,
             writing::remove_catalog,
             writing::save_abs_server,
+            writing::sign_out_abs_server,
             writing::catalog_feed,
             writing::catalog_search,
             writing::download_from_catalog,
@@ -1885,6 +1922,12 @@ pub fn run() {
             writing::reading_history,
             writing::forget_reading,
             get_home,
+            owned_titles,
+            sanctum_links,
+            add_sanctum_link,
+            update_sanctum_link,
+            remove_sanctum_link,
+            move_sanctum_link,
             all_tags,
             add_tag,
             remove_tag,
@@ -1900,6 +1943,8 @@ pub fn run() {
             find_duplicates,
             find_series_books,
             prepare_stream,
+            abs_stream::server_audiobook,
+            abs_stream::server_listening,
             lining::lining_up_status,
             lining::lining_up_pause,
             lining::lining_up_paused,

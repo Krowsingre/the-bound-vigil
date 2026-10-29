@@ -142,6 +142,8 @@ struct Fake {
     listed: BTreeMap<String, u64>,
     fail_on: Option<String>,
     fetched: Vec<String>,
+    /// Can't start a download part-way.
+    no_resume: bool,
 }
 
 impl Fake {
@@ -173,12 +175,16 @@ impl Connection for Fake {
         Ok(seen.into_values().collect())
     }
 
-    fn fetch(&mut self, path: &str, out: &mut dyn Write, progress: &mut dyn FnMut(u64) -> bool) -> Result<u64> {
+    fn fetch(&mut self, path: &str, from: u64, out: &mut dyn Write, progress: &mut dyn FnMut(u64) -> bool) -> Result<u64> {
         if self.fail_on.as_deref() == Some(path) {
             return Err(Error::Unsuitable("The connection was lost part-way.".into()));
         }
+        if from > 0 && self.no_resume {
+            return Err(Error::CantResume);
+        }
         self.fetched.push(path.to_string());
         let bytes = self.files.get(path).cloned().unwrap_or_default();
+        let bytes = bytes.get(from as usize..).map(<[u8]>::to_vec).unwrap_or_default();
         let mut sent = 0;
         for piece in bytes.chunks(3) {
             out.write_all(piece)?;
@@ -531,13 +537,38 @@ mod queueing {
         drop(queue);
 
         let mut again = Queue::open(dir.path());
-        let states: Vec<_> = again.files().iter().map(|f| (f.name.as_str(), f.state)).collect();
-        assert_eq!(states, [("Carmilla.epub", FileState::Downloaded), ("Lamps.pdf", FileState::Waiting)]);
+        let states: Vec<_> = again.files().iter().map(|f| (f.name.as_str(), f.state, f.bytes_done)).collect();
+        assert_eq!(states, [("Carmilla.epub", FileState::Downloaded, 8), ("Lamps.pdf", FileState::Waiting, 2)]);
         assert!(path.exists(), "the downloaded book is kept until it's in the library");
-        assert!(!crate::servers::queue::partial(&lamps_path).exists());
+        assert!(crate::servers::queue::partial(&lamps_path).exists(), "and so is what came of the cut-off one");
         assert_eq!(again.ready().len(), 1, "and is added again");
         download_all(&mut again, &mut fake);
         assert_eq!(again.ready().len(), 1);
+        assert_eq!(fs::read(&lamps_path).unwrap(), b"pdf", "carried on from where it got to");
+    }
+
+    #[test]
+    fn a_server_that_cant_carry_on_sends_the_file_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("Lamps.pdf");
+        fs::write(crate::servers::queue::partial(&target), "xx").unwrap();
+        let mut fake = library_tree();
+        fake.no_resume = true;
+        let got = fetch_file(&mut fake, "/home/wren/Shelf/Lamps.pdf", &target, &mut |_| true).unwrap();
+        assert_eq!(got, Some(3));
+        assert_eq!(fs::read(&target).unwrap(), b"pdf");
+        assert!(!crate::servers::queue::partial(&target).exists());
+    }
+
+    #[test]
+    fn a_dropped_connection_keeps_what_came_down() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("Lamps.pdf");
+        let mut fake = library_tree();
+        fake.fail_on = Some("/home/wren/Shelf/Lamps.pdf".into());
+        fs::write(crate::servers::queue::partial(&target), "pd").unwrap();
+        assert!(fetch_file(&mut fake, "/home/wren/Shelf/Lamps.pdf", &target, &mut |_| true).is_err());
+        assert_eq!(fs::read(crate::servers::queue::partial(&target)).unwrap(), b"pd");
     }
 
     #[test]

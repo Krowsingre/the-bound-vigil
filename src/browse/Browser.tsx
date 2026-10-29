@@ -53,6 +53,7 @@ import {
 import { downloadState, readDownloads, writeDownloads, type Fetched } from "./browserDownloads";
 import { addToHistory } from "./browserHistory";
 import { HistoryPanel } from "./HistoryPanel";
+import { onBrowserAsk } from "./browserAsk";
 import { addToReadingList, bookIdOf } from "./readingList";
 import { ClosedList } from "./ClosedList";
 import { SiteInfo } from "./SiteInfo";
@@ -731,6 +732,8 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
       else void api.browserRead(active.id, TO_TOP).catch(() => undefined);
     } else act(what === "stop" ? "stop" : "reload");
   };
+  // Sanctum's Quick Links: a website, or one of the panels.
+  useEffect(() => onBrowserAsk((ask) => ("panel" in ask ? setPanel(ask.panel) : "url" in ask ? goRef.current(ask.url) : fromTop.current("home"))), []);
   const switchRef = useRef<(id: string) => void>(() => undefined);
   switchRef.current = (id) => void (tabsRef.current.tabs.some((t) => t.id === id) && switchTo(id));
   useEffect(() => {

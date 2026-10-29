@@ -19,7 +19,7 @@ import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars
 import { LeftPanel, RightPanel, type AnnotationHandlers, type RightTab } from "./ReaderPanels";
 import { ListenAlongPanel, NoteDialog, PageSettings, ReadAloudPlayer, SelectionToolbar, TextSettings, ZoomControls } from "./ReaderPopovers";
 import { ReaderSearch } from "./ReaderSearch";
-import { useAppDark } from "../settings/appSettings";
+import { BOOK_OPENED, useAppDark } from "../settings/appSettings";
 import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, resolveTheme, SETTINGS_KEY, zoomStep, type ReaderSettings } from "./settings";
 import { useReadAloud } from "./useReadAloud";
 import { useReadAlong } from "./useReadAlong";
@@ -111,6 +111,7 @@ export function Reader({
           api.getSetting(SETTINGS_KEY).catch(() => null),
         ]);
         if (cancelled) return;
+        window.dispatchEvent(new Event(BOOK_OPENED));
         setInfo(opened);
         setAnnotations(list);
         setSettings(parseSettings(saved));

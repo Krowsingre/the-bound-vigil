@@ -23,6 +23,9 @@ enum Wake {
     Nudge,
     /// Sync one last time (if the user wants that), then say so.
     Closing(mpsc::Sender<()>),
+    /// iOS woke TBV in the background to sync: sync once, then say so.
+    #[cfg(target_os = "ios")]
+    Background(mpsc::Sender<()>),
 }
 
 /// The sync worker: its thread runs every sync, one at a time.
@@ -66,6 +69,15 @@ impl SyncWorker {
                     Ok(Wake::Now) => last_run = None,
                     Ok(Wake::Nudge) if options.frequency == Frequency::Automatic => last_run = None,
                     Ok(Wake::Nudge) => {}
+                    #[cfg(target_os = "ios")]
+                    Ok(Wake::Background(done)) => {
+                        // "Only when I ask" means only when asked, even in the background.
+                        if options.frequency != Frequency::Manual {
+                            run(&app, &library, &worker_busy);
+                            last_run = Some(Instant::now());
+                        }
+                        let _ = done.send(());
+                    }
                     Ok(Wake::Closing(done)) => {
                         if options.on_close {
                             run(&app, &library, &worker_busy);
@@ -95,6 +107,15 @@ impl SyncWorker {
         if let Ok(tx) = self.wake.lock() {
             let _ = tx.send(Wake::Nudge);
         }
+    }
+
+    /// One sync for iOS's background refresh, waited for up to `limit`.
+    /// True if it finished in time.
+    #[cfg(target_os = "ios")]
+    pub fn sync_in_background(&self, limit: Duration) -> bool {
+        let (done_tx, done_rx) = mpsc::channel();
+        let sent = self.wake.lock().map(|tx| tx.send(Wake::Background(done_tx)).is_ok()).unwrap_or(false);
+        sent && done_rx.recv_timeout(limit).is_ok()
     }
 
     pub fn is_busy(&self) -> bool {

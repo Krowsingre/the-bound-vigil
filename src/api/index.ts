@@ -9,6 +9,7 @@ import type {
   BookFile,
   Bookmark,
   QuickLink,
+  SanctumLink,
   BrowserFrame,
   BrowserEvent,
   BrowserProtection,
@@ -439,6 +440,8 @@ export interface Api {
   saveCatalog(catalog: CatalogInput): Promise<CatalogView>;
   /** Signs in to an Audiobookshelf server and saves it as a catalogue. No password keeps an existing sign-in. */
   saveAbsServer(server: { id: string | null; name: string; url: string; username: string; password: string | null }): Promise<CatalogView>;
+  /** Forgets an Audiobookshelf sign-in but keeps the server. */
+  signOutAbsServer(id: string): Promise<void>;
   removeCatalog(id: string): Promise<void>;
   /** A page of a catalog; its start when `url` is null. Fails with "needs-login" when it wants a sign-in. */
   catalogFeed(id: string, url: string | null): Promise<OpdsFeed>;
@@ -460,6 +463,14 @@ export interface Api {
   removeQuickLink(id: string): Promise<void>;
   /** Moves one to a new place (zero-based). */
   moveQuickLink(id: string, to: number): Promise<void>;
+  /** Sanctum's own Quick Links, apart from Discover's. */
+  sanctumLinks(): Promise<SanctumLink[]>;
+  addSanctumLink(title: string, target: string, icon: string): Promise<SanctumLink>;
+  updateSanctumLink(id: string, title: string, target: string, icon: string): Promise<void>;
+  removeSanctumLink(id: string): Promise<void>;
+  moveSanctumLink(id: string, to: number): Promise<void>;
+  /** For each title, whether a book of that name is in the library. */
+  ownedTitles(titles: string[]): Promise<boolean[]>;
   /** A website's own small icon, as a data address. */
   siteIcon(url: string): Promise<string>;
   /** Shows tab `tab` over `frame` (made at `url` if it's new), with the others hidden. App only. */
@@ -544,6 +555,12 @@ export interface Api {
 }
 
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/** Starts the id of an audiobook played straight from an Audiobookshelf server (it isn't in the library). */
+export const SERVER_BOOK = "abs~";
+export const isServerBook = (bookId: string) => bookId.startsWith(SERVER_BOOK);
+/** The player's id for an audiobook on a saved Audiobookshelf catalogue. */
+export const serverBookId = (catalogId: string, itemId: string) => `${SERVER_BOOK}${catalogId}~${itemId}`;
 /** The pages TBV on the computer serves to a phone at home (Preferences › Sync › Use on your phone at home). */
 export const isHome = !isApp && typeof document !== "undefined" && !!document.querySelector('meta[name="tbv-home"]');
 /** The iPhone app: the full app, laid out for a phone. iPads say they're Macs. */
@@ -658,7 +675,9 @@ function appApi(): Api {
         stop?.();
       };
     },
-    setBookStatus: async (bookId, status) => (await core).invoke("set_book_status", { bookId, status }),
+    setBookStatus: async (bookId, status) => {
+      if (!isServerBook(bookId)) await (await core).invoke("set_book_status", { bookId, status });
+    },
     getLibrary: async (query) => (await core).invoke<LibraryPage>("get_library", { query }),
     getCollections: async () => (await core).invoke<CollectionPreview[]>("get_collections"),
     setFavorite: async (bookId, favorite) => (await core).invoke("set_favorite", { bookId, favorite }),
@@ -715,9 +734,12 @@ function appApi(): Api {
     bookText: async (bookId) => (await core).invoke<string>("book_text", { bookId }),
     fillCover: async (bookId, picture) => (await core).invoke<boolean>("fill_cover", picture, { headers: { "book-id": bookId } }),
     fetchCover: async (bookId, url) => (await core).invoke<boolean>("fetch_cover", { bookId, url }),
-    audiobook: async (bookId) => (await core).invoke<Audiobook>("audiobook", { bookId }),
+    // A book played straight from an Audiobookshelf server isn't in the library: the server keeps its place.
+    audiobook: async (bookId) => (await core).invoke<Audiobook>(isServerBook(bookId) ? "server_audiobook" : "audiobook", { bookId }),
     saveListening: async (bookId, positionMs, chapter) =>
-      (await core).invoke("save_listening", { bookId, positionMs: Math.max(0, Math.round(positionMs)), chapter }),
+      isServerBook(bookId)
+        ? (await core).invoke("server_listening", { bookId, positionMs: Math.max(0, Math.round(positionMs)) })
+        : (await core).invoke("save_listening", { bookId, positionMs: Math.max(0, Math.round(positionMs)), chapter }),
     addTime: async (day, kind, seconds) => (await core).invoke("add_time", { day, kind, seconds: Math.round(seconds) }),
     timeSpent: async () => (await core).invoke<TimeSpent[]>("time_spent"),
     linkEbook: async (audiobookId, ebookId) => (await core).invoke("link_ebook", { audiobookId, ebookId }),
@@ -1007,6 +1029,7 @@ function appApi(): Api {
     catalogs: async () => (await core).invoke<CatalogView[]>("catalogs"),
     saveCatalog: async (catalog) => (await core).invoke<CatalogView>("save_catalog", { catalog }),
     saveAbsServer: async (server) => (await core).invoke<CatalogView>("save_abs_server", server),
+    signOutAbsServer: async (id) => (await core).invoke("sign_out_abs_server", { id }),
     removeCatalog: async (id) => (await core).invoke("remove_catalog", { id }),
     catalogFeed: async (id, url) => (await core).invoke<OpdsFeed>("catalog_feed", { id, url }),
     catalogSearch: async (id, search, words) => (await core).invoke<OpdsFeed>("catalog_search", { id, search, words }),
@@ -1021,6 +1044,12 @@ function appApi(): Api {
     updateQuickLink: async (id, title, url, picture) => (await core).invoke("update_quick_link", { id, title, url, picture }),
     removeQuickLink: async (id) => (await core).invoke("remove_quick_link", { id }),
     moveQuickLink: async (id, to) => (await core).invoke("move_quick_link", { id, to }),
+    sanctumLinks: async () => (await core).invoke<SanctumLink[]>("sanctum_links"),
+    addSanctumLink: async (title, target, icon) => (await core).invoke<SanctumLink>("add_sanctum_link", { title, target, icon }),
+    updateSanctumLink: async (id, title, target, icon) => (await core).invoke("update_sanctum_link", { id, title, target, icon }),
+    removeSanctumLink: async (id) => (await core).invoke("remove_sanctum_link", { id }),
+    moveSanctumLink: async (id, to) => (await core).invoke("move_sanctum_link", { id, to }),
+    ownedTitles: async (titles) => (await core).invoke<boolean[]>("owned_titles", { titles }),
     siteIcon: async (url) => (await core).invoke<string>("site_icon", { url }),
     browserShow: async (tab, url, frame, protection, privately) => (await core).invoke("browser_show", { tab, url, frame, protection: protection ?? null, private: privately ?? false }),
     browserPlace: async (frame) => (await core).invoke("browser_place", { frame }),

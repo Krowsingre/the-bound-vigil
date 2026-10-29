@@ -284,3 +284,17 @@ fn a_password_only_goes_to_the_same_scheme_host_and_port() {
     library.catalog_access(&view.id).unwrap().feed(Some(&format!("{other}/opds"))).unwrap();
     assert_eq!(asked.try_iter().collect::<Vec<_>>(), [false]);
 }
+
+#[test]
+fn signing_out_of_audiobookshelf_keeps_the_server() {
+    let (_dir, library) = open_temp_library();
+    let saved = library.save_abs_server(None, "Home", "http://nas:13378", "embre", Some(("t".into(), "r".into()))).unwrap();
+    assert!(saved.has_password);
+    library.sign_out_abs_server(&saved.id).unwrap();
+    let after = library.catalogs().unwrap().into_iter().find(|c| c.id == saved.id).unwrap();
+    assert!(!after.has_password);
+    assert_eq!(after.username.as_deref(), Some("embre"));
+    // Signing in again keeps the same server.
+    let again = library.save_abs_server(Some(&saved.id), "Home", "http://nas:13378", "embre", Some(("t2".into(), "r2".into()))).unwrap();
+    assert_eq!((again.id, again.has_password), (saved.id, true));
+}

@@ -7,11 +7,15 @@ import { Icon } from "../components/Icon";
 import { greeting } from "../lib/format";
 import type { LibraryView } from "../library/libraryView";
 import type { Route } from "../shell/routes";
+import { useNarrow } from "../lib/useNarrow";
 import { makeBookActions } from "./bookActions";
+import { CompendiumRow } from "./CompendiumRow";
 import { InProgress } from "./InProgress";
 import { ReadingActivity } from "./ReadingActivity";
 import { RecentlyAdded } from "./RecentlyAdded";
+import { QuickLinks } from "./QuickLinks";
 import { ResumeHero } from "./ResumeHero";
+import { SuggestedReading } from "./SuggestedReading";
 
 type Load = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; home: HomeViewModel };
 
@@ -24,6 +28,7 @@ export function Home({
   onLoaded,
   onOpenBook,
   onOpenCompendium,
+  onOpenCollection,
 }: {
   refreshKey: number;
   onNavigate: (route: Route) => void;
@@ -34,7 +39,10 @@ export function Home({
   onOpenBook: (bookId: string) => void;
   /** Opens one of the smart compendiums, for "View all". */
   onOpenCompendium: (kind: SmartKind) => void;
+  /** Opens one of your collections. */
+  onOpenCollection: (id: string) => void;
 }) {
+  const narrow = useNarrow();
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [reload, setReload] = useState(0);
   const toast = useToast();
@@ -104,6 +112,20 @@ export function Home({
       </div>
     );
   }
+
+  // On a computer: cards in three rows, as in embre's picture. A phone keeps its own layout.
+  if (!narrow)
+    return (
+      <div className="home home-desk">
+        <ResumeHero book={home.resumeBook} actions={actions} onOpenLibrary={openLibrary} />
+        <ReadingActivity finished={home.libraryCounts.read} finishedDates={home.finishedDates} refreshKey={refreshKey} wide />
+        <RecentlyAdded books={home.recentlyAdded} actions={actions} onViewAll={() => onOpenCompendium("recently_added")} menus />
+        <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenCompendium("in_progress")} list />
+        <QuickLinks refreshKey={refreshKey} onNavigate={onNavigate} onOpenBook={onOpenBook} onOpenCollection={onOpenCollection} />
+        <SuggestedReading shelves={home.suggested ?? []} readAuthors={home.readAuthors ?? []} actions={actions} onNavigate={onNavigate} />
+        <CompendiumRow refreshKey={refreshKey} onOpenCollection={onOpenCollection} onOpenCompendium={onOpenCompendium} onViewAll={() => onNavigate("collections")} />
+      </div>
+    );
 
   return (
     <div className="home">

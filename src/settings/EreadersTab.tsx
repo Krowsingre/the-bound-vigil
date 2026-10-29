@@ -6,14 +6,13 @@ import type { Ereader, KindleEmailInput, KindleEmailView } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { DESKTOP_ONLY, EMAIL_SERVICES, missingField, serviceOf, usualPort } from "../ereaders/ereaders";
-import { Section, Segmented, Select } from "./controls";
+import { Columns, Section, Segmented, Select } from "./controls";
 
 export function EreadersTab() {
   return (
-    <>
+    <Columns side={<KindleEmailSection />}>
       <ConnectedSection />
-      <KindleEmailSection />
-    </>
+    </Columns>
   );
 }
 

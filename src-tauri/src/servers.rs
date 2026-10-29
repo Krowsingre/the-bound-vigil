@@ -30,6 +30,10 @@ pub const MAX_CONNECTIONS: usize = 5;
 /// A browsing connection unused for this long is closed and opened afresh.
 const BROWSE_IDLE: Duration = Duration::from_secs(4 * 60);
 const TELL_EVERY: Duration = Duration::from_millis(250);
+/// How long a download waits before each go at the server: straight away,
+/// then longer each time the connection drops.
+const RECONNECT_WAITS: [Duration; 5] =
+    [Duration::ZERO, Duration::ZERO, Duration::from_secs(3), Duration::from_secs(10), Duration::from_secs(30)];
 
 /// How the server list stands, for the Imports page and Preferences › Servers.
 /// The rows themselves come a page at a time (`page`): a big folder can be
@@ -288,8 +292,9 @@ impl ServerImports {
         self.tell(app, true);
     }
 
-    /// Brings one file down over this worker's connection to its server,
-    /// connecting again once if the old connection was dropped.
+    /// Brings one file down over this worker's connection to its server. A
+    /// dropped connection is opened again, waiting a little longer each time,
+    /// and the download carries on from where it got to.
     fn fetch(
         &self,
         app: &AppHandle,
@@ -299,10 +304,22 @@ impl ServerImports {
         target: &Path,
     ) -> Result<u64, String> {
         let server = saved(library, &file.server_id).map_err(|_| "That server is no longer saved in Preferences › Servers.".to_string())?;
-        for attempt in 0..2 {
+        for (attempt, wait) in RECONNECT_WAITS.iter().enumerate() {
+            let last = attempt + 1 == RECONNECT_WAITS.len();
+            if !wait.is_zero() {
+                thread::sleep(*wait);
+                // Taken off the list while waiting.
+                if !self.queue.lock().is_ok_and(|q| q.file(file.id).is_some_and(|f| f.state == tbv_core::servers::queue::FileState::Downloading)) {
+                    return Err("Stopped.".into());
+                }
+            }
             let connection = match open.remove(&server.id) {
                 Some(c) => c,
-                None => servers::connect(&server).map_err(problem)?,
+                None => match servers::connect(&server) {
+                    Ok(c) => c,
+                    Err(e) if !last && !matches!(e, Error::NewHostKey(_)) => continue,
+                    Err(e) => return Err(problem(e)),
+                },
             };
             let mut connection = connection;
             let got = servers::fetch_file(connection.as_mut(), &file.remote, target, &mut |bytes| {
@@ -320,7 +337,7 @@ impl ServerImports {
                     open.insert(server.id.clone(), connection);
                     return Err("Stopped.".into());
                 }
-                Err(e) if attempt == 0 && !is_missing(&e) => continue,
+                Err(e) if !last && !is_missing(&e) => continue,
                 Err(e) => return Err(problem(e)),
             }
         }

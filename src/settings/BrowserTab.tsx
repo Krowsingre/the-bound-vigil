@@ -19,7 +19,7 @@ import {
   type ProtectionLevel,
   type SearchEngine,
 } from "../browse/browserPrefs";
-import { Row, Section, SectionGroup, Select, Toggle } from "./controls";
+import { Columns, Row, Section, SectionGroup, Select, Toggle } from "./controls";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { clearHistory, HISTORY_KEEPS, trimHistory, type HistoryKeep } from "../browse/browserHistory";
 
@@ -51,8 +51,38 @@ export function BrowserTab() {
     }
   };
 
-  return (
+  const side = (
     <>
+      <SectionGroup id="media" title="Downloads and media" lede="Ebooks you download, and sound that keeps playing." holds={["downloads", "playing"]}>
+        <Section id="downloads" title="Downloads" lede="Ebooks you download in Discover.">
+          <Toggle
+            label="Add ebooks to the library without asking"
+            hint="Off: TBV asks whether to add each ebook or keep it in Downloads."
+            checked={prefs.addWithoutAsking}
+            onChange={(addWithoutAsking) => writeBrowserPrefs({ addWithoutAsking })}
+          />
+        </Section>
+        <Section id="playing" title="Videos and sound" lede="What happens to a video or music playing in Discover when you go to another page.">
+          <Toggle
+            label="Keep playing after leaving Discover"
+            hint="Off: videos and sound pause when you leave Discover."
+            checked={prefs.keepPlaying}
+            onChange={(keepPlaying) => writeBrowserPrefs({ keepPlaying })}
+          />
+        </Section>
+      </SectionGroup>
+      <Section id="apps" title="Links for other apps" lede="Links that open another app, such as an email address or a phone number.">
+        <Toggle
+          label="Ask before opening other apps"
+          hint="Off: they open straight away."
+          checked={prefs.askApps}
+          onChange={(askApps) => writeBrowserPrefs({ askApps })}
+        />
+      </Section>
+    </>
+  );
+  return (
+    <Columns side={side}>
       <SectionGroup id="start" title="Start and search" lede="What Discover opens to, how it searches, and its row of buttons." holds={["search", "home", "bar"]}>
         <Section id="search" title="Searching" lede="Words typed into Discover's address box that aren't a web address are searched for.">
           <Toggle
@@ -176,24 +206,6 @@ export function BrowserTab() {
           />
         )}
       </Section>
-      <SectionGroup id="media" title="Downloads and media" lede="Ebooks you download, and sound that keeps playing." holds={["downloads", "playing"]}>
-        <Section id="downloads" title="Downloads" lede="Ebooks you download in Discover.">
-          <Toggle
-            label="Add ebooks to the library without asking"
-            hint="Off: TBV asks whether to add each ebook or keep it in Downloads."
-            checked={prefs.addWithoutAsking}
-            onChange={(addWithoutAsking) => writeBrowserPrefs({ addWithoutAsking })}
-          />
-        </Section>
-        <Section id="playing" title="Videos and sound" lede="What happens to a video or music playing in Discover when you go to another page.">
-          <Toggle
-            label="Keep playing after leaving Discover"
-            hint="Off: videos and sound pause when you leave Discover."
-            checked={prefs.keepPlaying}
-            onChange={(keepPlaying) => writeBrowserPrefs({ keepPlaying })}
-          />
-        </Section>
-      </SectionGroup>
       <SectionGroup id="privacy" title="Privacy and sites" lede="What Discover blocks, choices made for single sites, and what sites keep." holds={["protection", "sites", "sitedata"]}>
         <Section id="protection" title="Protection" lede="What Discover blocks on the websites you visit. A site that won't work properly can have its protection lowered from its Site information sheet (the lock in the address box).">
           <Row label="Protection" hint={PROTECTION_LEVELS.find((p) => p.value === prefs.protection)?.hint}>
@@ -268,14 +280,6 @@ export function BrowserTab() {
           </Row>
         </Section>
       </SectionGroup>
-      <Section id="apps" title="Links for other apps" lede="Links that open another app, such as an email address or a phone number.">
-        <Toggle
-          label="Ask before opening other apps"
-          hint="Off: they open straight away."
-          checked={prefs.askApps}
-          onChange={(askApps) => writeBrowserPrefs({ askApps })}
-        />
-      </Section>
-    </>
+    </Columns>
   );
 }
