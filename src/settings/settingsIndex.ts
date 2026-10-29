@@ -52,7 +52,7 @@ export const SETTINGS_TABS: {
   {
     tab: "notes",
     label: "Scribe",
-    icon: "notes",
+    icon: "pen",
     lede: "How your notes are shown, and taking them with you.",
   },
   {

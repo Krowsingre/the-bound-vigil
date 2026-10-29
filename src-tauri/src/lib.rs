@@ -1896,6 +1896,7 @@ pub fn run() {
             lining::lining_up_status,
             lining::lining_up_pause,
             lining::lining_up_paused,
+            lining::lining_up_pause_after,
             lining::lining_up_wake,
             lining::save_book_words,
             lining::speech_models,

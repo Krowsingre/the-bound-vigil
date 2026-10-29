@@ -793,6 +793,8 @@ export async function webApi(): Promise<Api> {
     },
     pauseLiningUp: async () => undefined,
     liningUpPaused: async () => false,
+    pauseLiningUpAfter: async () => undefined,
+    onLiningUpPaused: () => () => undefined,
     wakeLiningUp: async () => undefined,
     speechModels: async () => [],
     removeSpeechModels: async () => undefined,

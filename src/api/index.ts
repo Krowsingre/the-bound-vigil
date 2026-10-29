@@ -166,6 +166,10 @@ export interface Api {
   saveBookWords(ebookId: string, words: BookWords): Promise<void>;
   pauseLiningUp(paused: boolean): Promise<void>;
   liningUpPaused(): Promise<boolean>;
+  /** Pause once the pair being lined up now is finished, or with `false` carry on after all. */
+  pauseLiningUpAfter(on: boolean): Promise<void>;
+  /** Told when lining up pauses by itself (after the pair it was asked to finish). */
+  onLiningUpPaused(listener: (paused: boolean) => void): () => void;
   /** Looks for pairs to line up at once (one was just made, or the settings changed). */
   wakeLiningUp(): Promise<void>;
   /** The speech models downloaded for lining up, by setting name, with their sizes in bytes. */
@@ -734,6 +738,8 @@ function appApi(): Api {
     saveBookWords: async (ebookId, words) => (await core).invoke("save_book_words", { ebookId, words }),
     pauseLiningUp: async (paused) => (await core).invoke("lining_up_pause", { paused }),
     liningUpPaused: async () => (await core).invoke<boolean>("lining_up_paused"),
+    pauseLiningUpAfter: async (on) => (await core).invoke("lining_up_pause_after", { on }),
+    onLiningUpPaused: (listener) => listenFor<boolean>("lining-up-paused", listener),
     wakeLiningUp: async () => (await core).invoke("lining_up_wake"),
     speechModels: async () => (await core).invoke<[string, number][]>("speech_models"),
     removeSpeechModels: async () => (await core).invoke("remove_speech_models"),

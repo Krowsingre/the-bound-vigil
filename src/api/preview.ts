@@ -741,6 +741,8 @@ export function previewApi(): Api {
     saveBookWords: async () => undefined,
     pauseLiningUp: async () => undefined,
     liningUpPaused: async () => false,
+    pauseLiningUpAfter: async () => undefined,
+    onLiningUpPaused: () => () => undefined,
     wakeLiningUp: async () => undefined,
     speechModels: async () => [["standard", 190_000_000]],
     removeSpeechModels: async () => undefined,
@@ -882,7 +884,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "1.40.0", version: "1.41.0", notes: "The Bound Vigil 1.41.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "1.41.0", version: "1.42.0", notes: "The Bound Vigil 1.42.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

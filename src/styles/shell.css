@@ -108,6 +108,14 @@
   white-space: nowrap;
 }
 
+.brand-name-toggle {
+  cursor: pointer;
+}
+
+.brand-name-toggle:hover {
+  color: var(--sidebar-text);
+}
+
 .brand-tagline {
   font: 500 10px/1 var(--font-sans);
   letter-spacing: 0.24em;

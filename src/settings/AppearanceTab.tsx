@@ -37,14 +37,12 @@ export function useReaderSettings(): [ReaderSettings | null, (change: Partial<Re
   return [settings, change];
 }
 
-/** The theme cards. Adaptive has one for each of light and dark. */
-type ThemeCard = "light" | "dark" | "system" | "adaptive-light" | "adaptive-dark";
-const THEMES: { value: ThemeCard; label: string; theme: ThemeChoice; base?: AdaptiveBase }[] = [
-  { value: "light", label: "Light", theme: "light" },
-  { value: "dark", label: "Dark", theme: "dark" },
-  { value: "system", label: "System", theme: "system" },
-  { value: "adaptive-light", label: "Adaptive light", theme: "adaptive", base: "light" },
-  { value: "adaptive-dark", label: "Adaptive dark", theme: "adaptive", base: "dark" },
+/** The theme cards. Adaptive is one card; its light or dark is chosen under it. */
+const THEMES: { value: ThemeChoice; label: string }[] = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+  { value: "system", label: "System" },
+  { value: "adaptive", label: "Adaptive" },
 ];
 
 export function AppearanceTab({
@@ -57,7 +55,7 @@ export function AppearanceTab({
   const { settings, change, adaptive, adaptiveBook, refreshAdaptive, togglePrivacy } = useAppSettings();
   const adaptiveOn = settings.theme === "adaptive";
   const systemDark = useSystemDark();
-  const card: ThemeCard = adaptiveOn ? (isDark(settings, systemDark) ? "adaptive-dark" : "adaptive-light") : (settings.theme as ThemeCard);
+  const card = settings.theme;
 
   return (
     <>
@@ -112,13 +110,16 @@ export function AppearanceTab({
         <div className="theme-cards" role="radiogroup" aria-label="Theme">
           {THEMES.map((t) => (
             <label key={t.value} className={`theme-card${card === t.value ? " is-active" : ""}`}>
-              <span className={`theme-swatch theme-swatch-${t.value}`} aria-hidden />
+              <span
+                className={`theme-swatch theme-swatch-${t.value === "adaptive" ? (isDark({ theme: "adaptive", adaptiveBase: settings.adaptiveBase }, systemDark) ? "adaptive-dark" : "adaptive-light") : t.value}`}
+                aria-hidden
+              />
               <span className="theme-card-label">
                 <input
                   type="radio"
                   name="tbv-theme"
                   checked={card === t.value}
-                  onChange={() => change(t.base ? { theme: t.theme, adaptiveBase: t.base } : { theme: t.theme })}
+                  onChange={() => change({ theme: t.value })}
                 />
                 {t.label}
               </span>
@@ -137,12 +138,18 @@ export function AppearanceTab({
               ) : null}
               .{!adaptive && " That book has no cover with a colour to use yet, so the usual accent stays."}
             </p>
-            <Toggle
-              label="Switch with the system"
-              hint="Use Adaptive light or Adaptive dark to match Windows' light or dark mode."
-              checked={settings.adaptiveBase === "system"}
-              onChange={(on) => change({ adaptiveBase: on ? "system" : systemDark ? "dark" : "light" })}
-            />
+            <Row label="Light or dark" hint="Auto follows your device's light or dark mode.">
+              <Segmented<AdaptiveBase>
+                label="Adaptive light or dark"
+                value={settings.adaptiveBase}
+                options={[
+                  { value: "light", label: "Light" },
+                  { value: "system", label: "Auto" },
+                  { value: "dark", label: "Dark" },
+                ]}
+                onChange={(adaptiveBase) => change({ adaptiveBase })}
+              />
+            </Row>
             <Row label="Accent strength" hint="How strongly the cover's colour is used.">
               <div className="range-row">
                 <span className="settings-row-hint">Subtle</span>
