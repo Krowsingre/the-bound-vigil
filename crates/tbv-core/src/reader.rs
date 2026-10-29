@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use rusqlite::{params, OptionalExtension, Row};
 
 use crate::error::{Error, Result};
-use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM, LANGUAGE, PUBLISHER};
+use crate::home::{book_from_row, book_from_with_drafts, BOOK_COLUMNS, LANGUAGE, PUBLISHER};
 use crate::ids::new_record_id;
 use crate::library::Library;
 use crate::model::*;
@@ -56,7 +56,7 @@ fn annotation_from_row(r: &Row) -> rusqlite::Result<Annotation> {
 impl Library {
     /// One book with its effective metadata, or `None` if it isn't in the library.
     pub fn book(&self, book_id: &str) -> Result<Option<BookPreview>> {
-        let sql = format!("{BOOK_COLUMNS} {BOOK_FROM} AND b.id = ?1");
+        let sql = format!("{BOOK_COLUMNS} {} AND b.id = ?1", book_from_with_drafts());
         Ok(self
             .conn
             .query_row(&sql, params![book_id], book_from_row)
@@ -90,7 +90,7 @@ impl Library {
             .book(book_id)?
             .ok_or_else(|| Error::Unsuitable("This book is no longer in your library.".into()))?;
         let (publisher, language, file_size) = self.conn.query_row(
-            &format!("SELECT {PUBLISHER}, {LANGUAGE}, b.file_size {BOOK_FROM} AND b.id = ?1"),
+            &format!("SELECT {PUBLISHER}, {LANGUAGE}, b.file_size {} AND b.id = ?1", book_from_with_drafts()),
             params![book_id],
             |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)?)),
         )?;

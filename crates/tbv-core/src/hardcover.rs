@@ -238,7 +238,8 @@ pub struct BookFacts {
     pub title: String,
     pub authors: Vec<String>,
     pub isbn: Option<String>,
-    pub rating: Option<u8>,
+    /// Quarter stars; Hardcover takes half stars, so it's rounded on the way.
+    pub rating: Option<f64>,
     pub status: String,
 }
 
@@ -295,6 +296,7 @@ fn status_id(status: &str) -> i64 {
     match status {
         "read" => 3,
         "in_progress" => 2,
+        "dropped" => 5,
         _ => 1,
     }
 }
@@ -316,7 +318,7 @@ pub fn send_rating(net: &dyn Transport, token: &str, book: &BookFacts, known: Op
         json!({ "id": hardcover_id }),
     )?;
     let existing = first_of(&mine["me"])["user_books"].as_array().and_then(|b| b.first()).and_then(|b| b["id"].as_i64());
-    let rating = book.rating.map(|r| json!(r)).unwrap_or(Value::Null);
+    let rating = book.rating.map(|r| json!(((r * 2.0).round() / 2.0).max(0.5))).unwrap_or(Value::Null);
     let data = match existing {
         Some(user_book) => graphql(
             net,
@@ -396,7 +398,7 @@ impl Library {
         let row = self
             .conn
             .query_row(
-                &format!("SELECT b.id, COALESCE(o_title.value, f_title.value, b.title), COALESCE(o_authors.value, f_authors.value, b.authors), {}, b.rating, b.status
+                &format!("SELECT b.id, COALESCE(o_title.value, f_title.value, b.title), COALESCE(o_authors.value, f_authors.value, b.authors), {}, COALESCE(b.stars, b.rating), b.status
                  FROM books b
                  LEFT JOIN metadata_overrides o_title ON o_title.book_id = b.id AND o_title.field = 'title'
                  LEFT JOIN metadata_overrides o_authors ON o_authors.book_id = b.id AND o_authors.field = 'authors'
@@ -422,7 +424,7 @@ impl Library {
 
     /// Every rated book, for sending all ratings at once.
     pub fn rated_book_ids(&self) -> Result<Vec<String>> {
-        let mut statement = self.conn.prepare("SELECT id FROM books WHERE rating IS NOT NULL AND deleted_at IS NULL ORDER BY added_at")?;
+        let mut statement = self.conn.prepare("SELECT id FROM books WHERE COALESCE(stars, rating) IS NOT NULL AND deleted_at IS NULL ORDER BY added_at")?;
         let ids = statement.query_map([], |r| r.get(0))?.collect::<std::result::Result<_, _>>()?;
         Ok(ids)
     }
@@ -491,7 +493,7 @@ mod tests {
         }
     }
 
-    fn dune(rating: Option<u8>) -> BookFacts {
+    fn dune(rating: Option<f64>) -> BookFacts {
         BookFacts {
             id: "b1".into(),
             title: "Dune".into(),
@@ -509,7 +511,7 @@ mod tests {
             json!({ "data": { "me": [{ "user_books": [] }] } }),
             json!({ "data": { "insert_user_book": { "id": 9, "error": null } } }),
         ]);
-        assert_eq!(send_rating(&net, "t", &dune(Some(5)), None).unwrap(), (Sent::Sent, Some(312)));
+        assert_eq!(send_rating(&net, "t", &dune(Some(5.0)), None).unwrap(), (Sent::Sent, Some(312)));
         let asked = net.asked.borrow();
         assert!(asked[2].contains("insert_user_book"), "{asked:?}");
         assert!(asked[2].contains("\"book_id\":312") && asked[2].contains("\"edition_id\":77") && asked[2].contains("\"rating\":5"));
@@ -528,7 +530,7 @@ mod tests {
 
     #[test]
     fn books_found_by_search_must_match_title_and_author() {
-        let mut book = dune(Some(4));
+        let mut book = dune(Some(4.25));
         book.isbn = None;
         let hits = |title: &str, author: &str| {
             json!({ "data": { "search": { "results": { "hits": [{ "document": { "id": 5, "title": title, "author_names": [author] } }] } } } })
@@ -541,17 +543,19 @@ mod tests {
             json!({ "data": { "update_user_book": { "id": 3 } } }),
         ]);
         assert_eq!(send_rating(&net, "t", &book, None).unwrap(), (Sent::Sent, Some(5)));
+        // Hardcover takes half stars, so 4.25 goes as 4.5.
+        assert!(net.asked.borrow()[2].contains("\"rating\":4.5"));
     }
 
     #[test]
     fn hardcover_errors_are_reported() {
         let net = Script::new(vec![json!({ "errors": [{ "message": "Could not verify JWT" }] })]);
-        assert!(matches!(send_rating(&net, "t", &dune(Some(5)), Some(1)), Err(Error::SignedOut)));
+        assert!(matches!(send_rating(&net, "t", &dune(Some(5.0)), Some(1)), Err(Error::SignedOut)));
         let net = Script::new(vec![
             json!({ "data": { "me": [{ "user_books": [{ "id": 3 }] }] } }),
             json!({ "data": { "update_user_book": { "id": null, "error": "Rating out of range" } } }),
         ]);
-        assert!(matches!(send_rating(&net, "t", &dune(Some(5)), Some(1)), Err(Error::Cloud(m)) if m.contains("out of range")));
+        assert!(matches!(send_rating(&net, "t", &dune(Some(5.0)), Some(1)), Err(Error::Cloud(m)) if m.contains("out of range")));
     }
 
     #[test]

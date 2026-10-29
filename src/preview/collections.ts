@@ -143,7 +143,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
   const smartBooks: Record<SmartKind, (b: BookPreview) => boolean> = {
     recently_added: (b) => Date.now() - Date.parse(b.addedAt) < 7 * day,
     unread: (b) => b.status === "unread",
-    read: (b) => b.status === "read",
+    read: (b) => b.status === "read" || b.status === "dropped",
     in_progress: (b) => b.status === "in_progress",
     favorites: (b) => b.favorite,
     up_next: (b) => b.wantToRead,

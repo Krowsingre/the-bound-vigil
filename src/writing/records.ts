@@ -29,6 +29,8 @@ type WritingCalls = Pick<
   | "orderWritingChapters"
   | "deleteWritingChapter"
   | "setWritingChapterRole"
+  | "setWritingChapterPart"
+  | "setWritingCoverPage"
   | "writingCover"
 >;
 
@@ -66,7 +68,8 @@ export function writingCalls(store: WritingStore): WritingCalls {
     position: Number(r.position),
     words: countWords(String(r.body ?? "")),
     updatedAt: String(r.updated_at),
-    role: r.role === "front" || r.role === "back" ? r.role : "chapter",
+    role: r.role === "front" || r.role === "back" || r.role === "part" ? r.role : "chapter",
+    part: typeof r.part === "string" ? r.part : null,
   });
   const project = (r: Row): WritingProject => {
     const chapters = chapterRows(String(r.id));
@@ -81,9 +84,10 @@ export function writingCalls(store: WritingStore): WritingCalls {
       description: (r.description as string | null) ?? null,
       cover,
       coverPath: cover ? store.pictureUrl(cover) : null,
+      coverPage: r.cover_page === "cover" || r.cover_page === "title" || r.cover_page === "none" ? r.cover_page : null,
       export: String(r.export ?? "{}"),
-      chapters: chapters.length,
-      words: chapters.reduce((sum, c) => sum + countWords(String(c.body ?? "")), 0),
+      chapters: chapters.filter((c) => c.role !== "part").length,
+      words: chapters.filter((c) => c.role !== "part").reduce((sum, c) => sum + countWords(String(c.body ?? "")), 0),
       createdAt: String(r.created_at),
       updatedAt: String(r.updated_at),
     };
@@ -191,16 +195,38 @@ export function writingCalls(store: WritingStore): WritingCalls {
     deleteWritingChapter: async (id) => {
       const row = chapterRow(id);
       const at = now();
+      if (row.role === "part") for (const c of chapterRows(String(row.project_id))) if (c.part === id) await store.write("writing_chapter", { ...c, part: null, updated_at: at });
       await store.write("writing_chapter", { ...row, deleted_at: at, updated_at: at });
       await touch(String(row.project_id));
     },
     setWritingChapterRole: async (id, role) => {
       const row = chapterRow(id);
       if ((row.role ?? "chapter") !== role) {
-        await store.write("writing_chapter", { ...row, role, updated_at: now() });
+        const at = now();
+        // A part sits in no other part; one that stops being a part lets its sections go.
+        if ((row.role ?? "chapter") === "part")
+          for (const c of chapterRows(String(row.project_id))) if (c.part === id) await store.write("writing_chapter", { ...c, part: null, updated_at: at });
+        await store.write("writing_chapter", { ...row, role, part: role === "part" ? null : (row.part ?? null), updated_at: at });
         await touch(String(row.project_id));
       }
       return chapter(chapterRow(id));
+    },
+    setWritingChapterPart: async (id, part) => {
+      const row = chapterRow(id);
+      if (part) {
+        const host = chapterRow(part);
+        if (host.role !== "part" || host.project_id !== row.project_id || row.role === "part") throw new Error("That section can't go in that part.");
+      }
+      if ((row.part ?? null) !== part) {
+        await store.write("writing_chapter", { ...row, part, updated_at: now() });
+        await touch(String(row.project_id));
+      }
+      return chapter(chapterRow(id));
+    },
+    setWritingCoverPage: async (id, page) => {
+      const row = projectRow(id);
+      if ((row.cover_page ?? null) !== page) await store.write("writing_project", { ...row, cover_page: page, updated_at: now() });
+      return project(projectRow(id));
     },
     writingCover: async (id) => {
       const cover = project(projectRow(id)).coverPath;

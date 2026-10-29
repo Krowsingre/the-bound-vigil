@@ -6,10 +6,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use tbv_core::opds::{CatalogInput, CatalogView, OpdsFeed, OpdsFile};
 use tbv_core::servers::TempFolder;
-use tbv_core::writing::{WritingChapter, WritingDetails, WritingProject, WritingProjectView};
+use tbv_core::writing::{WritingChapter, WritingDetails, WritingDraft, WritingProject, WritingProjectView};
 
 use crate::{imports, with_library, AppLibrary, CommandResult};
 
@@ -227,6 +227,54 @@ pub async fn save_writing_epub(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Keeps the book as it stands as its next draft. The page sends the EPUB it
+/// made as raw bytes, with the book's id in the `project-id` header.
+#[tauri::command]
+pub async fn save_writing_draft(app: tauri::AppHandle, state: State<'_, AppLibrary>, request: tauri::ipc::Request<'_>) -> CommandResult<WritingDraft> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("expected the draft's bytes".into());
+    };
+    let id = request.headers().get("project-id").and_then(|v| v.to_str().ok()).ok_or("which book?")?.to_string();
+    let downloads = downloads_dir(&app.path().app_data_dir().map_err(|e| e.to_string())?);
+    let folder = TempFolder::new(&downloads).map_err(|e| e.to_string())?;
+    let file = folder.path().join("Draft.epub");
+    std::fs::write(&file, bytes).map_err(|e| e.to_string())?;
+    let draft = with_library(state, move |library| library.save_writing_draft(&id, &file)).await;
+    drop(folder);
+    let _ = app.emit("library-changed", ());
+    draft
+}
+
+#[tauri::command]
+pub async fn writing_drafts(state: State<'_, AppLibrary>, project_id: String) -> CommandResult<Vec<WritingDraft>> {
+    with_library(state, move |library| library.writing_drafts(&project_id)).await
+}
+
+#[tauri::command]
+pub async fn delete_writing_draft(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.delete_writing_draft(&id)).await
+}
+
+#[tauri::command]
+pub async fn set_writing_cover_page(state: State<'_, AppLibrary>, id: String, page: Option<String>) -> CommandResult<WritingProject> {
+    with_library(state, move |library| library.set_writing_cover_page(&id, page.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn set_writing_chapter_part(state: State<'_, AppLibrary>, id: String, part: Option<String>) -> CommandResult<WritingChapter> {
+    with_library(state, move |library| library.set_writing_chapter_part(&id, part.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn reading_history(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::history::HistoryEntry>> {
+    with_library(state, |library| library.reading_history()).await
+}
+
+#[tauri::command]
+pub async fn forget_reading(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.forget_reading(&book_id)).await
 }
 
 /// Headers carry only ASCII, so the page percent-encodes names and paths.

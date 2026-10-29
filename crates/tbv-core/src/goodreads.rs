@@ -189,7 +189,7 @@ impl Library {
             let id = &known[index].id;
 
             if let Ok(stars @ 1..=5) = row.rating.trim().parse::<u8>() {
-                if self.conn.execute("UPDATE books SET rating = ?2 WHERE id = ?1 AND rating IS NULL", params![id, stars])? > 0 {
+                if self.conn.execute("UPDATE books SET rating = ?2, stars = ?2 WHERE id = ?1 AND rating IS NULL AND stars IS NULL", params![id, stars])? > 0 {
                     report.ratings += 1;
                 }
             }
@@ -214,6 +214,7 @@ impl Library {
                 }
                 _ => false,
             };
+            self.remember_reading(id)?;
             if changed {
                 report.statuses += 1;
             }
@@ -462,7 +463,7 @@ mod tests {
         let dune = add(&mut library, dir.path(), "Dune", "Frank Herbert");
         let lathe = add(&mut library, dir.path(), "The Lathe of Heaven", "Ursula K. Le Guin");
         let emma = add(&mut library, dir.path(), "Emma", "Jane Austen");
-        library.set_rating(&emma, Some(2)).unwrap();
+        library.set_rating(&emma, Some(2.0)).unwrap();
         let export = dir.path().join("goodreads_library_export.csv");
         fs::write(
             &export,
@@ -488,12 +489,12 @@ mod tests {
         assert_eq!(report.collection_books, 2);
 
         let book = |id: &str| library.book(id).unwrap().unwrap();
-        assert_eq!(book(&dune).rating, Some(5));
+        assert_eq!(book(&dune).rating, Some(5.0));
         assert_eq!(book(&dune).status, ReadStatus::Read);
         assert_eq!(book(&dune).finished_at.as_deref(), Some("2023-05-14T12:00:00.000Z"));
         assert!(book(&dune).favorite);
         assert!(book(&lathe).want_to_read);
-        assert_eq!(book(&emma).rating, Some(2));
+        assert_eq!(book(&emma).rating, Some(2.0));
         assert_eq!(book(&emma).status, ReadStatus::InProgress);
 
         // Importing again changes nothing and makes no second collection.
@@ -514,7 +515,7 @@ mod tests {
         let dune = add(&mut library, dir.path(), "Dune", "Frank Herbert");
         let lathe = add(&mut library, dir.path(), "The Lathe of Heaven", "Ursula K. Le Guin");
         let _untouched = add(&mut library, dir.path(), "Emma", "Jane Austen");
-        library.set_rating(&dune, Some(5)).unwrap();
+        library.set_rating(&dune, Some(5.0)).unwrap();
         library.set_status(&dune, ReadStatus::Read).unwrap();
         library.set_favorite(&dune, true).unwrap();
         library.set_want_to_read(&lathe, true).unwrap();
@@ -541,7 +542,7 @@ mod tests {
         let report = other.import_goodreads(&file).unwrap();
         assert_eq!(report.matched, 1);
         let back = other.book(&dune2).unwrap().unwrap();
-        assert_eq!(back.rating, Some(5));
+        assert_eq!(back.rating, Some(5.0));
         assert!(back.favorite);
     }
 
@@ -572,11 +573,11 @@ mod tests {
         .unwrap();
         let report = library.import_goodreads(&export).unwrap();
         let book = |id: &str| library.book(id).unwrap().unwrap();
-        assert_eq!(book(&two).rating, Some(4));
+        assert_eq!(book(&two).rating, Some(4.0));
         assert_eq!(book(&one).rating, None, "a shortened title that fits two books matches neither");
         assert_eq!(report.not_found, ["Collected Essays by Mary Hale"]);
         assert_eq!(book(&emma).status, ReadStatus::InProgress, "a reread in progress stays in progress");
-        assert_eq!(book(lathe).rating, Some(5), "found by the ISBN read from the file");
+        assert_eq!(book(lathe).rating, Some(5.0), "found by the ISBN read from the file");
     }
 
     #[test]

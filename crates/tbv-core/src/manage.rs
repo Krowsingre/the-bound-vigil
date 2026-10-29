@@ -779,7 +779,7 @@ mod tests {
             .unwrap();
         library.open_book(&from).unwrap();
         library.save_position(&from, &place).unwrap();
-        library.set_rating(&from, Some(4)).unwrap();
+        library.set_rating(&from, Some(4.0)).unwrap();
         library.add_tag(std::slice::from_ref(&from), "Gothic").unwrap();
 
         library.merge_reading_into(&keep, &from).unwrap();

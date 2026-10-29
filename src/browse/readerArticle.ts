@@ -129,6 +129,7 @@ export async function articleEpub(
     description: `Saved from ${site ?? "the web"} (${article.url}) on ${saved}.`,
     cover: null,
     coverPath: null,
+    coverPage: null,
     export: "",
     chapters: 1,
     words: 0,
@@ -139,8 +140,8 @@ export async function articleEpub(
   const bytes = buildEpub({
     project,
     chapters: [
-      { id: "article", projectId: project.id, title: article.title, body: doc.body.innerHTML, position: 0, words: 0, updatedAt: project.updatedAt, role: "chapter" },
-      { id: "source", projectId: project.id, title: "Source", body: source, position: 1, words: 0, updatedAt: project.updatedAt, role: "back" },
+      { id: "article", projectId: project.id, title: article.title, body: doc.body.innerHTML, position: 0, words: 0, updatedAt: project.updatedAt, role: "chapter", part: null },
+      { id: "source", projectId: project.id, title: "Source", body: source, position: 1, words: 0, updatedAt: project.updatedAt, role: "back", part: null },
     ],
     settings: { ...DEFAULT_EXPORT, paragraphs: "space", newPage: true, tocDepth: 2 },
     now,

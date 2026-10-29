@@ -101,6 +101,8 @@ struct Engine {
     library: Arc<Mutex<Library>>,
     data_dir: PathBuf,
     paused: AtomicBool,
+    /// Pause once the pair being lined up now is finished.
+    pause_after: AtomicBool,
     status: Mutex<Option<Status>>,
     /// Woken to look for pairs again at once (a pair was made, words arrived, settings changed).
     wake: (Mutex<bool>, Condvar),
@@ -145,6 +147,7 @@ pub fn start(app: &AppHandle, library: Arc<Mutex<Library>>, data_dir: PathBuf) {
         library,
         data_dir,
         paused: AtomicBool::new(false),
+        pause_after: AtomicBool::new(false),
         status: Mutex::new(None),
         wake: (Mutex::new(false), Condvar::new()),
     });
@@ -220,6 +223,10 @@ fn run(engine: &Engine) {
             }
         }
         engine.tell(None);
+        if engine.pause_after.swap(false, Ordering::Relaxed) {
+            engine.paused.store(true, Ordering::Relaxed);
+            let _ = engine.app.emit("lining-up-paused", true);
+        }
     }
 }
 
@@ -342,7 +349,16 @@ pub fn lining_up_status() -> Option<Status> {
 pub fn lining_up_pause(paused: bool) {
     if let Some(e) = ENGINE.get() {
         e.paused.store(paused, Ordering::Relaxed);
+        e.pause_after.store(false, Ordering::Relaxed);
         e.wake();
+    }
+}
+
+/// Pauses once the pair being lined up now is finished (or, with `false`, carries on after all).
+#[tauri::command]
+pub fn lining_up_pause_after(on: bool) {
+    if let Some(e) = ENGINE.get() {
+        e.pause_after.store(on, Ordering::Relaxed);
     }
 }
 

@@ -35,7 +35,7 @@ pub(crate) const BOOK_COLUMNS: &str = r#"
            COALESCE(o_series.value, f_series.value, b.series),
            COALESCE(CAST(NULLIF(o_series_index.value, '') AS REAL), CAST(NULLIF(f_series_index.value, '') AS REAL), b.series_index),
            b.favorite, b.want_to_read,
-           b.rating, b.finished_at,
+           COALESCE(b.stars, b.rating), b.finished_at,
            (SELECT json_group_array(tag) FROM (SELECT t.tag FROM book_tags t
              WHERE t.book_id = b.id AND t.removed_at IS NULL ORDER BY t.tag COLLATE NOCASE)),
            (EXISTS (SELECT 1 FROM sync_files sf WHERE sf.uploaded_at IS NOT NULL
@@ -107,6 +107,11 @@ pub(crate) const BOOK_FROM: &str = r#"
     WHERE b.deleted_at IS NULL AND b.same_as IS NULL
 "#;
 
+/// `BOOK_FROM` that also finds Scribe's drafts, which only the reader opens.
+pub(crate) fn book_from_with_drafts() -> String {
+    BOOK_FROM.replace("b.same_as IS NULL", "(b.same_as IS NULL OR b.same_as LIKE 'draft:%')")
+}
+
 /// Effective publisher and language, for rules and the reader.
 pub(crate) const PUBLISHER: &str = "COALESCE(o_publisher.value, f_publisher.value, b.publisher)";
 pub(crate) const LANGUAGE: &str = "COALESCE(o_language.value, f_language.value, b.language)";
@@ -162,10 +167,17 @@ impl Library {
             )?,
             // Marking a book read again keeps the day it was first finished.
             ReadStatus::Read => self.conn.execute(
-                "UPDATE books SET status = 'read', finished_at = COALESCE(finished_at, ?2) WHERE id = ?1",
+                "UPDATE books SET status = 'read',
+                     finished_at = CASE status WHEN 'read' THEN COALESCE(finished_at, ?2) ELSE ?2 END WHERE id = ?1",
+                params![book_id, now],
+            )?,
+            // `finished_at` is when it was dropped.
+            ReadStatus::Dropped => self.conn.execute(
+                "UPDATE books SET status = 'dropped', finished_at = CASE status WHEN 'dropped' THEN COALESCE(finished_at, ?2) ELSE ?2 END WHERE id = ?1",
                 params![book_id, now],
             )?,
         };
+        self.remember_reading(book_id)?;
         Ok(())
     }
 

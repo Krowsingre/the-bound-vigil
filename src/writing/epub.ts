@@ -133,6 +133,29 @@ export function pictureFrom(src: string): { mime: string; bytes: Uint8Array } | 
   }
 }
 
+/**
+ * The order sections go in the book: the book's own front matter, its
+ * chapters outside any part, then each part (one work of an anthology) with
+ * its own front matter, chapters and back matter, then the book's back matter.
+ * Each group keeps its own order.
+ */
+export function bookOrder(chapters: WritingChapter[]): WritingChapter[] {
+  const parts = chapters.filter((c) => c.role === "part");
+  const partIds = new Set(parts.map((p) => p.id));
+  const own = (c: WritingChapter) => c.role !== "part" && !(c.part && partIds.has(c.part));
+  const of = (list: WritingChapter[], role: WritingChapter["role"]) => list.filter((c) => (c.role ?? "chapter") === role);
+  const ownSections = chapters.filter(own);
+  return [
+    ...of(ownSections, "front"),
+    ...of(ownSections, "chapter"),
+    ...parts.flatMap((p) => {
+      const inside = chapters.filter((c) => c.role !== "part" && c.part === p.id);
+      return [p, ...of(inside, "front"), ...of(inside, "chapter"), ...of(inside, "back")];
+    }),
+    ...of(ownSections, "back"),
+  ];
+}
+
 const INLINE: Record<string, string> = { strong: "strong", b: "strong", em: "em", i: "em", u: "u", s: "s", strike: "s", del: "s", code: "code", sub: "sub", sup: "sup" };
 const BLOCK: Record<string, string> = { p: "p", blockquote: "blockquote", ul: "ul", ol: "ol", li: "li", pre: "pre" };
 
@@ -186,6 +209,8 @@ export function chapterXhtml(
       out.push(sceneBreak === "line" ? `<hr class="scene"/>` : `<p class="scene">${SCENE_MARK[sceneBreak]}</p>`);
     } else if (tag === "br") {
       out.push("<br/>");
+    } else if (tag === "div" && el.hasAttribute("data-page-break")) {
+      out.push(`<div class="pagebreak"></div>`);
     } else if (/^h[1-6]$/.test(tag)) {
       const level = tag === "h1" || tag === "h2" ? 2 : 3;
       const id = `${idPrefix}-h${headings.length + 1}`;
@@ -272,11 +297,15 @@ blockquote p { text-indent: 0; }
 hr.scene { border: none; border-top: 1px solid currentColor; width: 25%; margin: 1.5em auto; }
 ul, ol { margin: 1em 0 1em 1.5em; }
 pre { white-space: pre-wrap; font-family: monospace; }
-section.chapter, section.frontmatter, section.backmatter { ${settings.newPage ? "page-break-before: always; break-before: page;" : "margin-top: 3em;"} }
+section.chapter, section.frontmatter, section.backmatter, section.part { ${settings.newPage ? "page-break-before: always; break-before: page;" : "margin-top: 3em;"} }
 .titlepage { text-align: center; }
 .titlepage .title { font-size: 2em; margin: 30% 0 0.5em; text-indent: 0; text-align: center; }
 .titlepage .author { font-size: 1.2em; text-indent: 0; text-align: center; }
 .titlepage .series { font-style: italic; margin-top: 1em; text-indent: 0; text-align: center; }
+.pagebreak { height: 0; margin: 0; page-break-after: always; break-after: page; -webkit-column-break-after: always; }
+section.part { text-align: center; }
+section.part > h1 { margin-top: 30%; font-size: 1.8em; }
+section.part p { text-align: center; text-indent: 0; }
 .cover { margin: 0; padding: 0; text-align: center; }
 .cover img { max-width: 100%; max-height: 100%; }
 `;
@@ -303,20 +332,33 @@ export function epubFiles({ project, chapters, settings, cover, font, now = new 
   const id = `urn:uuid:${/^[0-9a-f-]{36}$/i.test(project.id) ? project.id : crypto.randomUUID()}`;
   const coverExt = cover ? IMAGE_EXT[cover.mime] : undefined;
   const useCover = !!cover && !!coverExt && cover.bytes.length > 0;
+  // What opens the book: by default the cover picture, then a title page.
+  // Without a cover picture, the title page stays unless asked for neither.
+  const showCover = useCover && project.coverPage !== "title" && project.coverPage !== "none";
+  const showTitle = project.coverPage !== "none" && (project.coverPage !== "cover" || !useCover);
 
-  // Front matter first, then the chapters, then back matter, each in its own order.
-  const ordered = [...chapters.filter((c) => c.role === "front"), ...chapters.filter((c) => (c.role ?? "chapter") === "chapter"), ...chapters.filter((c) => c.role === "back")];
+  const ordered = bookOrder(chapters);
+  // Chapters are numbered from 1 again in each part of an anthology.
   let chapterCount = 0;
+  let partCount = 0;
+  let inPart: string | null = null;
   const parts = ordered.map((c, i) => {
     const n = i + 1;
     const role = c.role ?? "chapter";
+    if (role === "part") {
+      inPart = c.id;
+      chapterCount = 0;
+      partCount++;
+    } else if (!c.part && inPart) inPart = null;
     const { body, headings, pictures, notes } = chapterXhtml(c.body, settings.sceneBreak, `c${n}`);
-    // Only chapters are numbered; untitled front or back matter is named by what it is.
-    const heading = c.title.trim() || (role === "chapter" ? `Chapter ${++chapterCount}` : role === "front" ? "Front matter" : "Back matter");
+    // Only chapters and parts are numbered; untitled front or back matter is named by what it is.
+    const heading =
+      c.title.trim() ||
+      (role === "chapter" ? `Chapter ${++chapterCount}` : role === "part" ? `Part ${partCount}` : role === "front" ? "Front matter" : "Back matter");
     if (role === "chapter" && c.title.trim()) chapterCount++;
-    const type = role === "chapter" ? "chapter" : role === "front" ? "frontmatter" : "backmatter";
+    const type = { chapter: "chapter", front: "frontmatter", back: "backmatter", part: "part" }[role];
     const section = `<section class="${type}" epub:type="${type}" id="c${n}">\n<h1>${escapeXml(heading)}</h1>\n${body}\n${notes}</section>`;
-    return { n, heading, section, headings, pictures, role };
+    return { n, heading, section, headings, pictures, role, part: role === "part" ? null : c.part && ordered.some((p) => p.id === c.part) ? c.part : null, id: c.id };
   });
   const chapterFile = (n: number) => (settings.newPage ? `chapter-${n}.xhtml` : "text.xhtml");
   const content: [string, string][] = settings.newPage
@@ -325,7 +367,7 @@ export function epubFiles({ project, chapters, settings, cover, font, now = new 
 
   // The table of contents: chapters, and their headings as deep as asked.
   type Point = { label: string; href: string; children: Point[] };
-  const points: Point[] = parts.map((p) => {
+  const flat: (Point & { part: string | null; id: string; role: string })[] = parts.map((p) => {
     const href = settings.newPage ? chapterFile(p.n) : `text.xhtml#c${p.n}`;
     const children: Point[] = [];
     if (settings.tocDepth >= 2) {
@@ -339,17 +381,24 @@ export function epubFiles({ project, chapters, settings, cover, font, now = new 
         else children.push(point);
       }
     }
-    return { label: p.heading, href, children };
+    return { label: p.heading, href, children, part: p.part, id: p.id, role: p.role };
   });
+  // A part's sections are listed under it, so the contents nest by work.
+  const points: Point[] = [];
+  for (const p of flat) {
+    const host = p.part ? flat.find((h) => h.id === p.part) : undefined;
+    if (host) host.children.push(p);
+    else points.push(p);
+  }
   const navList = (list: Point[]): string =>
     `<ol>\n${list.map((p) => `<li><a href="${p.href}">${escapeXml(p.label)}</a>${p.children.length ? navList(p.children) : ""}</li>`).join("\n")}\n</ol>`;
-  const firstChapter = parts.find((p) => p.role === "chapter") ?? parts[0];
+  const firstChapter = parts.find((p) => p.role === "chapter" || p.role === "part") ?? parts[0];
   const firstText = settings.newPage ? chapterFile(firstChapter?.n ?? 1) : `text.xhtml${firstChapter ? `#c${firstChapter.n}` : ""}`;
   const nav = page(
     "Contents",
     lang,
     `<nav epub:type="toc" id="toc">\n<h1>Contents</h1>\n${navList(points)}\n</nav>\n<nav epub:type="landmarks" hidden="hidden">\n<ol>\n${
-      useCover ? `<li><a epub:type="cover" href="cover.xhtml">Cover</a></li>\n` : ""
+      showCover ? `<li><a epub:type="cover" href="cover.xhtml">Cover</a></li>\n` : ""
     }<li><a epub:type="bodymatter" href="${firstText}">Start</a></li>\n</ol>\n</nav>`,
   );
   let order = 0;
@@ -360,7 +409,8 @@ export function epubFiles({ project, chapters, settings, cover, font, now = new 
         return `<navPoint id="np${order}" playOrder="${order}"><navLabel><text>${escapeXml(p.label)}</text></navLabel><content src="${p.href}"/>${navPoints(p.children)}</navPoint>`;
       })
       .join("\n");
-  const depth = Math.max(1, ...points.map((p) => (p.children.length ? (p.children.some((c) => c.children.length) ? 3 : 2) : 1)));
+  const deepest = (list: Point[]): number => (list.length ? 1 + Math.max(...list.map((p) => deepest(p.children))) : 0);
+  const depth = Math.max(1, deepest(points));
   const ncx = `<?xml version="1.0" encoding="UTF-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" xml:lang="${escapeXml(lang)}">
 <head>
@@ -386,7 +436,7 @@ ${navPoints(points)}
     }</section>`,
     "titlepage",
   );
-  const coverPage = useCover
+  const coverPage = showCover
     ? page("Cover", lang, `<section class="cover" epub:type="cover"><img src="images/cover.${coverExt}" alt="${escapeXml(title)}"/></section>`, "cover")
     : null;
 
@@ -399,15 +449,19 @@ ${navPoints(points)}
     ...(useCover
       ? [
           `<item id="cover-image" href="images/cover.${coverExt}" media-type="${cover!.mime}" properties="cover-image"/>`,
-          `<item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>`,
+          ...(showCover ? [`<item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>`] : []),
         ]
       : []),
-    `<item id="titlepage" href="titlepage.xhtml" media-type="application/xhtml+xml"/>`,
+    ...(showTitle ? [`<item id="titlepage" href="titlepage.xhtml" media-type="application/xhtml+xml"/>`] : []),
     ...content.map(([name], i) => `<item id="text${i + 1}" href="${name}" media-type="application/xhtml+xml"/>`),
     ...pictures.map((p, i) => `<item id="picture${i + 1}" href="${p.path}" media-type="${p.mime}"/>`),
     ...fontItems,
   ];
-  const spine = [...(useCover ? [`<itemref idref="cover"/>`] : []), `<itemref idref="titlepage"/>`, ...content.map((_, i) => `<itemref idref="text${i + 1}"/>`)];
+  const spine = [
+    ...(showCover ? [`<itemref idref="cover"/>`] : []),
+    ...(showTitle ? [`<itemref idref="titlepage"/>`] : []),
+    ...content.map((_, i) => `<itemref idref="text${i + 1}"/>`),
+  ];
   const description = project.description?.trim();
   const opf = `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="${escapeXml(lang)}">
@@ -449,7 +503,7 @@ ${spine.join("\n")}
     ["OEBPS/styles.css", stylesheet(settings, font)],
     ...(coverPage ? ([["OEBPS/cover.xhtml", coverPage]] as [string, string][]) : []),
     ...(useCover ? ([[`OEBPS/images/cover.${coverExt}`, cover!.bytes]] as [string, Uint8Array][]) : []),
-    ["OEBPS/titlepage.xhtml", titlePage],
+    ...(showTitle ? ([["OEBPS/titlepage.xhtml", titlePage]] as [string, string][]) : []),
     ...content.map(([name, text]) => [`OEBPS/${name}`, text] as [string, string]),
     ...pictures.map((p) => [`OEBPS/${p.path}`, p.bytes] as [string, Uint8Array]),
     ...(font?.files ?? []).map((f) => [`OEBPS/fonts/${f.name}`, f.bytes] as [string, Uint8Array]),
@@ -460,8 +514,9 @@ ${spine.join("\n")}
 /** Problems that stop an export, in words for the person. */
 export function exportProblems(chapters: WritingChapter[]): string[] {
   const problems: string[] = [];
-  if (!chapters.length) problems.push("Add a chapter first.");
-  else if (chapters.every((c) => !c.body.replace(/<[^>]*>/g, "").trim() && !/<img\b/i.test(c.body))) problems.push("Write something in a chapter first.");
+  const sections = chapters.filter((c) => c.role !== "part");
+  if (!sections.length) problems.push("Add a chapter first.");
+  else if (sections.every((c) => !c.body.replace(/<[^>]*>/g, "").trim() && !/<img\b/i.test(c.body))) problems.push("Write something in a chapter first.");
   return problems;
 }
 

@@ -9,7 +9,20 @@ import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
 import { showBookDetails } from "../details/openDetails";
 import { PageSwitch } from "../library/Library";
-import { liningUp, liningUpPaused, linesUp, onLinedUp, onLiningUp, pauseLiningUp, readLineUp, resumeLiningUp, type LiningUp } from "../readAlong/lineUp";
+import {
+  liningUp,
+  liningUpPaused,
+  linesUp,
+  onLinedUp,
+  onLiningUp,
+  onPauseChange,
+  pauseAfterThis,
+  pauseLiningUp,
+  pausingAfterThis,
+  readLineUp,
+  resumeLiningUp,
+  type LiningUp,
+} from "../readAlong/lineUp";
 
 export type ActivitySide = "imports" | "sync" | "lining";
 
@@ -53,6 +66,15 @@ function LiningUpPane() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [now, setNow] = useState<LiningUp | null>(liningUp());
   const [paused, setPaused] = useState(liningUpPaused());
+  const [after, setAfter] = useState(pausingAfterThis());
+  useEffect(
+    () =>
+      onPauseChange(() => {
+        setPaused(liningUpPaused());
+        setAfter(pausingAfterThis());
+      }),
+    [],
+  );
   const [reload, setReload] = useState(0);
   useEffect(() => onLiningUp(setNow), []);
   useEffect(() => onLinedUp(() => setReload((n) => n + 1)), []);
@@ -96,16 +118,19 @@ function LiningUpPane() {
           </p>
         </div>
         <div className="imports-actions">
-          <button
-            type="button"
-            className="btn btn-quiet"
-            onClick={() => {
-              if (paused) resumeLiningUp();
-              else pauseLiningUp();
-              setPaused(!paused);
-            }}
-          >
-            <Icon name={paused ? "play" : "pause"} size={16} /> {paused ? "Carry on lining up" : "Pause lining up"}
+          {now && !paused && (
+            <button
+              type="button"
+              className={`btn btn-quiet${after ? " is-active" : ""}`}
+              aria-pressed={after}
+              title={after ? "Carry on with the next pair after all" : "Finish this pair, then pause"}
+              onClick={() => pauseAfterThis(!after)}
+            >
+              <Icon name="pause" size={16} /> {after ? "Pausing after this" : "Pause after this"}
+            </button>
+          )}
+          <button type="button" className="btn btn-quiet" onClick={() => (paused ? resumeLiningUp() : pauseLiningUp())}>
+            <Icon name={paused ? "play" : "pause"} size={16} /> {paused ? "Carry on" : "Pause now"}
           </button>
         </div>
       </header>

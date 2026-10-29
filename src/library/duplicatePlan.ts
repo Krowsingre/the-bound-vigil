@@ -19,6 +19,7 @@ export function hasYourReading(book: DuplicateBook): boolean {
     book.notes > 0 ||
     book.status === "in_progress" ||
     book.status === "read" ||
+    book.status === "dropped" ||
     (book.totalProgression ?? 0) > 0 ||
     book.rating != null ||
     book.favorite ||

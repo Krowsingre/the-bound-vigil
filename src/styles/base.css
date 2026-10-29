@@ -13,6 +13,9 @@ body,
 
 body {
   background: var(--bg);
+  /* Linen and Vellum add a faint texture or glow over the page colour. */
+  background-image: var(--bg-texture, none);
+  background-attachment: fixed;
   color: var(--text);
   font: 14px/1.45 var(--font-sans);
   -webkit-font-smoothing: antialiased;

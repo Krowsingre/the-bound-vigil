@@ -158,16 +158,38 @@ export const linesUp = (format: string) => !["pdf", "cbz", "cbr"].includes(forma
 
 /** Pauses lining up on this device until TBV next opens, or `resumeLiningUp`. */
 export function pauseLiningUp() {
-  paused = true;
+  setPause(true, false);
   void api.pauseLiningUp(true).catch(() => undefined);
 }
 
 export function resumeLiningUp() {
-  paused = false;
+  setPause(false, false);
   void api.pauseLiningUp(false).catch(() => undefined);
 }
 
+/** Pauses once the pair being lined up now is finished; `false` carries on after all. */
+export function pauseAfterThis(on: boolean) {
+  setPause(paused, on);
+  void api.pauseLiningUpAfter(on).catch(() => undefined);
+}
+
 export const liningUpPaused = () => paused;
+export const pausingAfterThis = () => pauseAfter;
+
+let pauseAfter = false;
+const pauseListeners = new Set<() => void>();
+
+function setPause(now: boolean, after: boolean) {
+  paused = now;
+  pauseAfter = after;
+  pauseListeners.forEach((f) => f());
+}
+
+/** Told when lining up is paused or carries on, or will pause after this pair. */
+export function onPauseChange(listener: () => void): () => void {
+  pauseListeners.add(listener);
+  return () => pauseListeners.delete(listener);
+}
 
 /** Looks for pairs to line up again now (a pair was just made, say). */
 export function lookForPairs() {
@@ -183,7 +205,8 @@ let started = false;
 export function startLiningUp() {
   if (started || !isApp) return;
   started = true;
-  void api.liningUpPaused().then((p) => (paused = p), () => undefined);
+  void api.liningUpPaused().then((p) => setPause(p, pauseAfter), () => undefined);
+  api.onLiningUpPaused((p) => setPause(p, false));
   api.onLiningUp((l) => {
     current = l;
     listeners.forEach((f) => f(current));

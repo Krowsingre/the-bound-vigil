@@ -116,7 +116,7 @@ impl Library {
                     }
                     SmartKind::Unread => ("b.status = 'unread'", "b.added_at DESC", vec![]),
                     SmartKind::Read => (
-                        "b.status = 'read'",
+                        "b.status IN ('read', 'dropped')",
                         "b.last_opened_at IS NULL, b.last_opened_at DESC",
                         vec![],
                     ),
@@ -179,7 +179,7 @@ impl Library {
     /// How many books belong, and the average of your ratings of them.
     fn member_stats(&self, members: &Members) -> Result<(u32, Option<f64>)> {
         Ok(self.conn.query_row(
-            &format!("SELECT COUNT(*), AVG(b.rating) {BOOK_FROM} AND {}", members.condition),
+            &format!("SELECT COUNT(*), AVG(COALESCE(b.stars, b.rating)) {BOOK_FROM} AND {}", members.condition),
             params_from_iter(members.values.iter()),
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?)
@@ -779,8 +779,8 @@ mod tests {
         assert_eq!(gothic.kind, CollectionKind::Collection, "a collection with rules has no order of its own");
         assert_eq!(gothic.count, 0);
 
-        library.set_rating(&carmilla, Some(5)).unwrap();
-        library.set_rating(&silas, Some(3)).unwrap();
+        library.set_rating(&carmilla, Some(5.0)).unwrap();
+        library.set_rating(&silas, Some(3.0)).unwrap();
         let detail = library.collection_detail(&CollectionRef::Collection { id: gothic.id.clone() }).unwrap();
         assert_eq!(detail.books.iter().map(|b| b.title.as_str()).collect::<Vec<_>>(), ["Carmilla"]);
         assert!(library.add_to_collection(&gothic.id, std::slice::from_ref(&silas)).is_err());

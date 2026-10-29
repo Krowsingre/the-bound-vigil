@@ -58,7 +58,7 @@ fn order_by(sort: SortOrder) -> String {
             format!("{first} IS NULL, {first} COLLATE NOCASE, {title}")
         }
         SortOrder::Progress => format!("COALESCE(b.total_progression, 0) DESC, {title}"),
-        SortOrder::Rating => format!("b.rating IS NULL, b.rating DESC, {title}"),
+        SortOrder::Rating => format!("COALESCE(b.stars, b.rating) IS NULL, COALESCE(b.stars, b.rating) DESC, {title}"),
     }
 }
 
@@ -173,7 +173,7 @@ impl Library {
             Shelf::WantToRead => conditions.push("b.want_to_read = 1".into()),
             Shelf::SendToDevice => conditions.push("b.phone_wanted = 1".into()),
             Shelf::InProgress => conditions.push("b.status = 'in_progress'".into()),
-            Shelf::Read => conditions.push("b.status = 'read'".into()),
+            Shelf::Read => conditions.push("b.status IN ('read', 'dropped')".into()),
             Shelf::Unread => conditions.push("b.status = 'unread'".into()),
         }
 
@@ -218,7 +218,7 @@ impl Library {
             }
         }
         if query.hide_read {
-            conditions.push("b.status != 'read'".into());
+            conditions.push("b.status NOT IN ('read', 'dropped')".into());
         }
 
         if let Some(kind) = query.kind {
@@ -364,12 +364,15 @@ impl Library {
         Ok(())
     }
 
-    /// Sets your star rating, 1 to 5, or clears it with `None`.
-    pub fn set_rating(&self, book_id: &str, rating: Option<u8>) -> Result<()> {
-        if rating.is_some_and(|r| !(1..=5).contains(&r)) {
-            return Err(Error::Unsuitable("a rating is 1 to 5 stars".into()));
+    /// Sets your rating in quarter stars, 0.25 to 5, or clears it with
+    /// `None`. Whole stars (`rating`) are kept too, for older devices.
+    pub fn set_rating(&self, book_id: &str, stars: Option<f64>) -> Result<()> {
+        if stars.is_some_and(|s| !(0.25..=5.0).contains(&s) || (s * 4.0).fract() != 0.0) {
+            return Err(Error::Unsuitable("a rating is a quarter star to 5 stars".into()));
         }
-        self.conn.execute("UPDATE books SET rating = ?2 WHERE id = ?1", params![book_id, rating])?;
+        let whole = stars.map(|s| s.round().clamp(1.0, 5.0) as u8);
+        self.conn.execute("UPDATE books SET stars = ?2, rating = ?3 WHERE id = ?1", params![book_id, stars, whole])?;
+        self.remember_reading(book_id)?;
         Ok(())
     }
 

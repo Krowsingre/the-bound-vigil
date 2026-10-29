@@ -52,7 +52,7 @@ export const SETTINGS_TABS: {
   {
     tab: "notes",
     label: "Scribe",
-    icon: "notes",
+    icon: "pen",
     lede: "How your notes are shown, and taking them with you.",
   },
   {
@@ -204,6 +204,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     section: "deleted",
     label: "Deleted books",
     words: "deleted removed books come back again import previously skip",
+  },
+  {
+    tab: "library",
+    section: "history",
+    label: "Reading history",
+    words: "reading history finished dropped rated ratings stars books read past deleted record forget remove privacy",
   },
   {
     tab: "library",

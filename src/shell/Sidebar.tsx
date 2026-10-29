@@ -36,6 +36,10 @@ export function Sidebar({
   useEffect(() => onLiningUp(setLining), []);
   const liningPercent = lining ? Math.floor(lining.fraction * 100) : 0;
   const [spin, setSpin] = useState<"inner" | "outer" | null>(null);
+  const fold = () => {
+    setSpin(collapsed ? "outer" : "inner");
+    onToggle();
+  };
   return (
     <>
       {drawerOpen && <div className="sidebar-backdrop" aria-hidden onClick={onCloseDrawer} />}
@@ -55,10 +59,7 @@ export function Sidebar({
             <button
               type="button"
               className={`brand-emblem brand-toggle${spin ? ` is-spinning-${spin}` : ""}`}
-              onClick={() => {
-                setSpin(collapsed ? "outer" : "inner");
-                onToggle();
-              }}
+              onClick={fold}
               onAnimationEnd={() => setSpin(null)}
               aria-label={collapsed ? "Expand menu" : "Collapse menu"}
               aria-expanded={!collapsed}
@@ -74,7 +75,14 @@ export function Sidebar({
           )}
           {!collapsed && (
             <>
-              <span className="brand-name">The Bound Vigil</span>
+              {drawerOpen ? (
+                <span className="brand-name">The Bound Vigil</span>
+              ) : (
+                // The name folds the sidebar too; the emblem is the button for the keyboard.
+                <button type="button" className="brand-name brand-name-toggle" tabIndex={-1} aria-hidden onClick={fold}>
+                  The Bound Vigil
+                </button>
+              )}
               <span className="brand-tagline">Books endure</span>
               <span className="brand-divider" aria-hidden />
             </>

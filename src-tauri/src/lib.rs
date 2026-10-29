@@ -152,7 +152,7 @@ async fn set_rating(
     sends: State<'_, Arc<hardcover::Sends>>,
     state: State<'_, AppLibrary>,
     book_id: String,
-    rating: Option<u8>,
+    rating: Option<f64>,
 ) -> CommandResult<()> {
     let library = state.0.clone();
     let id = book_id.clone();
@@ -1877,6 +1877,13 @@ pub fn run() {
             writing::delete_writing_chapter,
             writing::writing_cover,
             writing::save_writing_epub,
+            writing::save_writing_draft,
+            writing::writing_drafts,
+            writing::delete_writing_draft,
+            writing::set_writing_cover_page,
+            writing::set_writing_chapter_part,
+            writing::reading_history,
+            writing::forget_reading,
             get_home,
             all_tags,
             add_tag,
@@ -1896,6 +1903,7 @@ pub fn run() {
             lining::lining_up_status,
             lining::lining_up_pause,
             lining::lining_up_paused,
+            lining::lining_up_pause_after,
             lining::lining_up_wake,
             lining::save_book_words,
             lining::speech_models,
@@ -2003,6 +2011,7 @@ pub fn run() {
             sync_now,
             splash::startup_progress,
             splash::startup_done,
+            splash::startup_painted,
             sync_sign_in,
             sync_sign_out,
             set_supabase_project,

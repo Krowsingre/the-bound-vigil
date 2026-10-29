@@ -1,10 +1,27 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, isWeb } from "../api";
-import type { WritingChapter, WritingDetails, WritingProject } from "../api/types";
+import type { WritingChapter, WritingDetails, WritingDraft, WritingProject } from "../api/types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { Icon } from "../components/Icon";
+import { Menu } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { buildEpub, epubFileName, exportProblems, readExport, type ExportSettings } from "./epub";
 import { imageMime, loadFont } from "./fonts";
 import { CoverMaker } from "./CoverMaker";
+
+/** The book made into an EPUB, with its cover and the font chosen. */
+async function makeEpub(project: WritingProject, chapters: WritingChapter[], settings: ExportSettings): Promise<Uint8Array> {
+  const coverBytes = project.cover ? await api.writingCover(project.id) : new Uint8Array();
+  const mime = coverBytes.length ? imageMime(coverBytes) : null;
+  return buildEpub({ project, chapters, settings, cover: mime ? { bytes: coverBytes, mime } : null, font: await loadFont(settings.font) });
+}
+
+const OPENS_WITH: { value: WritingProject["coverPage"]; label: string }[] = [
+  { value: null, label: "The cover, then a title page" },
+  { value: "cover", label: "The cover only" },
+  { value: "title", label: "A title page only" },
+  { value: "none", label: "Straight into the book" },
+];
 
 /** Starting a new book. */
 export function NewBookDialog({ onCreated, onCancel }: { onCreated: (id: string) => void; onCancel: () => void }) {
@@ -81,6 +98,7 @@ export function DetailsDialog({
     description: project.description,
   });
   const [cover, setCover] = useState(project);
+  const [opensWith, setOpensWith] = useState(project.coverPage);
   const [making, setMaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -89,7 +107,8 @@ export function DetailsDialog({
     if (!details.title.trim()) return setError("The book needs a title.");
     setBusy(true);
     try {
-      onSaved(await api.updateWritingDetails(project.id, details));
+      const saved = await api.updateWritingDetails(project.id, details);
+      onSaved(opensWith !== project.coverPage ? await api.setWritingCoverPage(project.id, opensWith) : saved);
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -178,6 +197,16 @@ export function DetailsDialog({
               <span>Description</span>
               <textarea rows={4} value={details.description ?? ""} onChange={(e) => set({ description: e.target.value })} placeholder="The words on the back of the book" />
             </label>
+            <label className="field">
+              <span>The book opens with</span>
+              <select value={opensWith ?? ""} onChange={(e) => setOpensWith((e.target.value || null) as WritingProject["coverPage"])}>
+                {OPENS_WITH.map((o) => (
+                  <option key={o.value ?? ""} value={o.value ?? ""}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </div>
         {error && (
@@ -259,15 +288,7 @@ export function ExportDialog({
         setBusy(false);
         return;
       }
-      const coverBytes = project.cover ? await api.writingCover(project.id) : new Uint8Array();
-      const mime = coverBytes.length ? imageMime(coverBytes) : null;
-      const bytes = buildEpub({
-        project,
-        chapters: latest,
-        settings,
-        cover: mime ? { bytes: coverBytes, mime } : null,
-        font: await loadFont(settings.font),
-      });
+      const bytes = await makeEpub(project, latest, settings);
       await api.setWritingExport(project.id, JSON.stringify(settings));
       await api.saveWritingEpub(bytes, fileName, path, addToLibrary);
       toast(
@@ -388,6 +409,137 @@ export function ExportDialog({
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+const dateOf = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+
+/**
+ * A book's drafts. A new draft keeps the book as it stands, locked, and you
+ * carry on writing; earlier drafts open in the reader for highlights and
+ * notes, and stay in Scribe (never the Archive).
+ */
+export function DraftsDialog({
+  project,
+  onFlush,
+  onOpen,
+  onClose,
+}: {
+  project: WritingProject;
+  /** Saves the chapter being written and gives the latest chapters. */
+  onFlush: () => Promise<WritingChapter[]>;
+  onOpen: (bookId: string) => void;
+  onClose: () => void;
+}) {
+  const [drafts, setDrafts] = useState<WritingDraft[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<WritingDraft | null>(null);
+  const toast = useToast();
+  useEffect(() => {
+    let current = true;
+    api.writingDrafts(project.id).then(
+      (list) => current && setDrafts(list),
+      (e: unknown) => current && setError(String(e)),
+    );
+    return () => {
+      current = false;
+    };
+  }, [project.id]);
+  const next = (drafts ?? []).reduce((n, d) => Math.max(n, d.number), 0) + 1;
+
+  const keep = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const latest = await onFlush();
+      const problems = exportProblems(latest);
+      if (problems.length) throw new Error(problems[0]);
+      const draft = await api.saveWritingDraft(project.id, await makeEpub({ ...project, title: `${project.title} (Draft ${next})` }, latest, readExport(project.export)));
+      setDrafts((list) => [...(list ?? []), draft]);
+      toast(`Kept as Draft ${draft.number}. You're writing Draft ${draft.number + 1} now.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
+      <div className="dialog writing-dialog writing-drafts" role="dialog" aria-label="Drafts" onKeyDown={(e) => e.key === "Escape" && !busy && onClose()}>
+        <h2>Drafts</h2>
+        <p className="muted dialog-lede">
+          A new draft keeps the book as it is now, locked, and you carry on writing. Open an earlier draft to read it, highlight it and make notes,
+          just like a book in your Archive.
+        </p>
+        <div className="writing-draft-now">
+          <div>
+            <strong>Draft {next}</strong>
+            <span className="muted"> · the one you're writing</span>
+          </div>
+          <button type="button" className="btn btn-primary" disabled={busy || drafts === null} onClick={() => void keep()}>
+            <Icon name="plus" size={15} /> {busy ? "Keeping…" : "New draft"}
+          </button>
+        </div>
+        {drafts === null && !error ? (
+          <div className="library-loading" aria-busy="true" aria-label="Loading drafts" />
+        ) : drafts && drafts.length > 0 ? (
+          <ul className="writing-draft-list">
+            {[...drafts].reverse().map((d) => (
+              <li key={d.id}>
+                <button type="button" className="writing-draft" onClick={() => onOpen(d.bookId)}>
+                  <Icon name="lock" size={15} />
+                  <span className="writing-draft-name">Draft {d.number}</span>
+                  <span className="muted">
+                    {dateOf(d.createdAt)} · {d.words.toLocaleString()} {d.words === 1 ? "word" : "words"}
+                  </span>
+                </button>
+                <Menu
+                  label={`More for Draft ${d.number}`}
+                  className="icon-btn icon-btn-s"
+                  align="end"
+                  trigger={<Icon name="more" size={16} />}
+                  items={[
+                    { label: "Open", icon: "bookOpen", onSelect: () => onOpen(d.bookId) },
+                    "divider",
+                    { label: "Delete draft…", icon: "trash", danger: true, onSelect: () => setDeleting(d) },
+                  ]}
+                />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted writing-drafts-empty">No earlier drafts yet.</p>
+        )}
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-quiet" onClick={onClose} disabled={busy}>
+            Done
+          </button>
+        </div>
+      </div>
+      {deleting && (
+        <ConfirmDialog
+          title={`Delete Draft ${deleting.number}?`}
+          body="Its highlights and notes go too, on all your devices. The book you're writing isn't changed."
+          confirm="Delete draft"
+          danger
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => {
+            const gone = deleting;
+            setDeleting(null);
+            void api.deleteWritingDraft(gone.id).then(
+              () => setDrafts((list) => (list ?? []).filter((d) => d.id !== gone.id)),
+              (e) => toast(String(e)),
+            );
+          }}
+        />
+      )}
     </div>
   );
 }

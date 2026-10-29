@@ -2,7 +2,7 @@
 // written, and a pretend catalog, kept in memory.
 
 import type { Api } from "../api";
-import type { CatalogView, OpdsEntry, OpdsFeed } from "../api/types";
+import type { CatalogView, OpdsEntry, OpdsFeed, ReadingHistoryEntry, WritingDraft } from "../api/types";
 import { writingCalls } from "../writing/records";
 
 type Row = { [column: string]: unknown };
@@ -33,6 +33,13 @@ type Calls = Pick<
   | "pickWritingCover"
   | "pickEpubSavePath"
   | "saveWritingEpub"
+  | "saveWritingDraft"
+  | "writingDrafts"
+  | "deleteWritingDraft"
+  | "setWritingChapterPart"
+  | "setWritingCoverPage"
+  | "readingHistory"
+  | "forgetReading"
 >;
 
 const CLASSICS: [string, string, string][] = [
@@ -122,8 +129,32 @@ export function previewWriting(): Calls {
         }
       : { url, title: url === "popular" ? "Popular" : "Latest", entries: CLASSICS.map(book), next: "page-2", previous: null, search: "search?q={searchTerms}" };
 
+  let drafts: WritingDraft[] = [
+    { id: "draft-1", projectId: "sample-book", number: 1, bookId: "b1", words: 1840, createdAt: "2026-10-12T18:20:00.000Z", here: true },
+  ];
+  let history: ReadingHistoryEntry[] = [
+    { bookId: "b2", title: "Wuthering Heights", authors: ["Emily Brontë"], status: "read", stars: 4.75, finishedAt: "2026-10-26T21:00:00.000Z", inLibrary: true },
+    { bookId: "gone-1", title: "The Monk", authors: ["Matthew Lewis"], status: "dropped", stars: 1.5, finishedAt: "2026-10-18T20:00:00.000Z", inLibrary: false },
+    { bookId: "gone-2", title: "Vathek", authors: ["William Beckford"], status: null, stars: 3.25, finishedAt: null, inLibrary: false },
+  ];
+
   return {
     ...calls,
+    saveWritingDraft: async (projectId) => {
+      const project = await calls.writingProject(projectId);
+      const number = drafts.filter((d) => d.projectId === projectId).reduce((n, d) => Math.max(n, d.number), 0) + 1;
+      const draft = { id: crypto.randomUUID(), projectId, number, bookId: "b1", words: project.project.words, createdAt: new Date().toISOString(), here: true };
+      drafts = [...drafts, draft];
+      return draft;
+    },
+    writingDrafts: async (projectId) => drafts.filter((d) => d.projectId === projectId),
+    deleteWritingDraft: async (id) => {
+      drafts = drafts.filter((d) => d.id !== id);
+    },
+    readingHistory: async () => history,
+    forgetReading: async (bookId) => {
+      history = history.filter((h) => h.bookId !== bookId);
+    },
     catalogs: async () => catalogs,
     saveCatalog: async ({ password, ...input }) => {
       const saved: CatalogView = {

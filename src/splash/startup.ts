@@ -95,6 +95,16 @@ function coversShown(): Promise<void> {
   return Promise.race([loaded.then(() => undefined), new Promise<void>((ok) => setTimeout(ok, COVERS_WAIT))]);
 }
 
+/** Two frames after the window shows, so what's on screen is the finished page. */
+function drawnOnScreen(): Promise<void> {
+  return new Promise((ok) => {
+    const frames = () => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(ok, 40)));
+    if (document.visibilityState === "visible") frames();
+    else document.addEventListener("visibilitychange", frames, { once: true });
+    setTimeout(ok, 1200);
+  });
+}
+
 async function finish() {
   if (finished) return;
   finished = true;
@@ -114,7 +124,10 @@ async function finish() {
   document.documentElement.classList.remove("is-starting");
   if (onComputer) {
     const { invoke } = await import("@tauri-apps/api/core");
+    // The window shows behind the card; the card goes once it has drawn on screen.
     await invoke("startup_done").catch(() => undefined);
+    await drawnOnScreen();
+    await invoke("startup_painted").catch(() => undefined);
     return;
   }
   if (!overlay) return;
