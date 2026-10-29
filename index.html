@@ -11,8 +11,10 @@
     <meta name="apple-mobile-web-app-title" content="Bound Vigil" />
     <link rel="icon" type="image/svg+xml" href="/src/assets/emblem.svg" />
     <title>The Bound Vigil</title>
-    <!-- Dark from the first moment, under the splash. -->
-    <style>html.is-starting, html.is-starting body { background: #0b0c0e; }</style>
+    <!-- Dark from the first moment, under the splash. A file, not a <style>
+         here: the app adds a hash for any inline style to its security rules,
+         which then block every other <style>, the reader's page layout included. -->
+    <link rel="stylesheet" href="/starting.css" />
   </head>
   <body>
     <div id="root"></div>
