@@ -102,6 +102,7 @@ fn show_main(app: &AppHandle) {
         return;
     }
     // The card stays in front while the window behind it draws.
+    #[cfg(desktop)]
     if let Some(card) = app.get_webview_window(LABEL) {
         let _ = card.set_always_on_top(true);
     }
