@@ -6190,7 +6190,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-tbv-ios"
-version = "1.35.0"
+version = "1.36.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -6334,7 +6334,7 @@ dependencies = [
 
 [[package]]
 name = "tbv-core"
-version = "1.35.0"
+version = "1.36.0"
 dependencies = [
  "cfb",
  "chrono",
@@ -6396,7 +6396,7 @@ dependencies = [
 
 [[package]]
 name = "the-bound-vigil"
-version = "1.35.0"
+version = "1.36.0"
 dependencies = [
  "notify",
  "qrcode",

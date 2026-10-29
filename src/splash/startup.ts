@@ -104,8 +104,13 @@ async function finish() {
   progress();
   const shownFor = performance.now() - openedAt;
   if (shownFor < AT_LEAST) await new Promise((ok) => setTimeout(ok, AT_LEAST - shownFor));
-  // One more frame, so the page underneath is fully drawn.
-  await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+  // One more frame, so the page underneath is fully drawn. A hidden window
+  // (the computer's, behind its card) may draw no frames at all, so this
+  // never waits long.
+  await Promise.race([
+    new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))),
+    new Promise((ok) => setTimeout(ok, 120)),
+  ]);
   document.documentElement.classList.remove("is-starting");
   if (onComputer) {
     const { invoke } = await import("@tauri-apps/api/core");
