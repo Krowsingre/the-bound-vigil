@@ -22,6 +22,7 @@ pub mod ids;
 pub mod library;
 pub mod license;
 pub mod localsend;
+pub mod lineup;
 pub mod listen;
 pub mod lookup;
 pub mod details;

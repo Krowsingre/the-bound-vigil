@@ -30,6 +30,8 @@ import type {
   TidyReport,
   Audiobook,
   ReadAlongPair,
+  LiningUp,
+  BookWords,
   ProviderChoice,
   CloudService,
   LicenseView,
@@ -144,10 +146,6 @@ export interface Api {
   linkEbook(audiobookId: string, ebookId: string | null): Promise<void>;
   /** The audiobook linked to an ebook, for reading along. */
   audiobookForEbook(ebookId: string): Promise<string | null>;
-  /** A stretch of an audiobook on this computer as 16 kHz mono samples; empty past its end. Desktop only. */
-  audioClip(audiobookId: string, startMs: number, lengthMs: number): Promise<Float32Array>;
-  /** Lets go of the audiobook `audioClip` was reading. */
-  audioClipsDone(): Promise<void>;
   /** Read-along timing for an ebook and its audiobook (JSON, see readAlong/lineUp.ts), or null. */
   readAlongTiming(ebookId: string, audiobookId: string): Promise<string | null>;
   saveReadAlongTiming(ebookId: string, audiobookId: string, timing: string): Promise<void>;
@@ -159,6 +157,20 @@ export interface Api {
   clearReadAlongPieces(ebookId: string, audiobookId: string): Promise<void>;
   /** Every ebook paired with an audiobook, for lining up in the background. */
   readAlongPairs(): Promise<ReadAlongPair[]>;
+  /** The pair being lined up now, as it changes (null when nothing is). App only. */
+  onLiningUp(listener: (l: LiningUp | null) => void): () => void;
+  /** A pair finished lining up (or couldn't be), so what shows it looks again. */
+  onLinedUp(listener: (ebookId: string, audiobookId: string) => void): () => void;
+  /** Lining up needs an ebook's words, which only the reader in the page can count. */
+  onBookWordsWanted(listener: (ebookId: string) => void): () => void;
+  saveBookWords(ebookId: string, words: BookWords): Promise<void>;
+  pauseLiningUp(paused: boolean): Promise<void>;
+  liningUpPaused(): Promise<boolean>;
+  /** Looks for pairs to line up at once (one was just made, or the settings changed). */
+  wakeLiningUp(): Promise<void>;
+  /** The speech models downloaded for lining up, by setting name, with their sizes in bytes. */
+  speechModels(): Promise<[string, number][]>;
+  removeSpeechModels(): Promise<void>;
   /** Where the player streams one part of an audiobook from, or null where it can't play here. */
   audioUrl(bookId: string, part: number): string | null;
   /**
@@ -529,6 +541,21 @@ const BOOK_EXTENSIONS = ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cb
 // At home on the phone there's no app window to hear events from.
 const tauriEvents = () => (isHome ? Promise.resolve(homeEvents) : import("@tauri-apps/api/event")) as Promise<typeof import("@tauri-apps/api/event")>;
 
+/** Listens for an event from the app, until the returned function is called. */
+function listenFor<T>(name: string, listener: (payload: T) => void): () => void {
+  let stop: (() => void) | null = null;
+  let stopped = false;
+  void tauriEvents().then(async ({ listen }) => {
+    const unlisten = await listen<T>(name, (e) => listener(e.payload));
+    if (stopped) unlisten();
+    else stop = unlisten;
+  });
+  return () => {
+    stopped = true;
+    stop?.();
+  };
+}
+
 /** Listens for one of the app's events until the returned function is called. */
 function onEvent<T>(name: string, listener: (payload: T) => void): () => void {
   let stop: (() => void) | null = null;
@@ -677,17 +704,39 @@ function appApi(): Api {
     timeSpent: async () => (await core).invoke<TimeSpent[]>("time_spent"),
     linkEbook: async (audiobookId, ebookId) => (await core).invoke("link_ebook", { audiobookId, ebookId }),
     audiobookForEbook: async (ebookId) => (await core).invoke<string | null>("audiobook_for_ebook", { ebookId }),
-    audioClip: async (bookId, startMs, lenMs) => {
-      const bytes = await (await core).invoke<ArrayBuffer | number[]>("audio_clip", { bookId, startMs: Math.round(startMs), lenMs: Math.round(lenMs) });
-      return new Float32Array(Array.isArray(bytes) ? new Uint8Array(bytes).buffer : bytes);
-    },
-    audioClipsDone: async () => (await core).invoke("audio_clips_done"),
     readAlongTiming: async (ebookId, audiobookId) => (await core).invoke<string | null>("read_along_timing", { ebookId, audiobookId }),
     saveReadAlongTiming: async (ebookId, audiobookId, timing) => (await core).invoke("save_read_along_timing", { ebookId, audiobookId, timing }),
     readAlongPieces: async (ebookId, audiobookId) => (await core).invoke<[number, string][]>("read_along_pieces", { ebookId, audiobookId }),
     saveReadAlongPiece: async (ebookId, audiobookId, piece, anchors) => (await core).invoke("save_read_along_piece", { ebookId, audiobookId, piece, anchors }),
     clearReadAlongPieces: async (ebookId, audiobookId) => (await core).invoke("clear_read_along_pieces", { ebookId, audiobookId }),
     readAlongPairs: async () => (await core).invoke<ReadAlongPair[]>("read_along_pairs"),
+    onLiningUp: (listener) => {
+      let stop: (() => void) | null = null;
+      let stopped = false;
+      void tauriEvents().then(async ({ listen }) => {
+        let heard = false;
+        const unlisten = await listen<LiningUp | null>("lining-up", (e) => {
+          heard = true;
+          listener(e.payload);
+        });
+        if (stopped) return unlisten();
+        stop = unlisten;
+        const now = await (await core).invoke<LiningUp | null>("lining_up_status").catch(() => null);
+        if (!heard && !stopped) listener(now);
+      });
+      return () => {
+        stopped = true;
+        stop?.();
+      };
+    },
+    onLinedUp: (listener) => listenFor<[string, string]>("lined-up", ([e, a]) => listener(e, a)),
+    onBookWordsWanted: (listener) => listenFor<string>("lining-up-needs-words", listener),
+    saveBookWords: async (ebookId, words) => (await core).invoke("save_book_words", { ebookId, words }),
+    pauseLiningUp: async (paused) => (await core).invoke("lining_up_pause", { paused }),
+    liningUpPaused: async () => (await core).invoke<boolean>("lining_up_paused"),
+    wakeLiningUp: async () => (await core).invoke("lining_up_wake"),
+    speechModels: async () => (await core).invoke<[string, number][]>("speech_models"),
+    removeSpeechModels: async () => (await core).invoke("remove_speech_models"),
     // Windows and Android reach custom schemes through http://<scheme>.localhost.
     prepareStream: async (bookId) => {
       await (await core).invoke("prepare_stream", { bookId });

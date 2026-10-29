@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, isApp, openExternal } from "../api";
+import { api, isApp, isIOS, openExternal } from "../api";
 import type { DuplicateGroup, GoodreadsImport, LibraryInfo, SortOrder, TagCount } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
@@ -12,7 +12,7 @@ import { TextSettings } from "../reader/ReaderPopovers";
 import { PAGE_COLORS, resolveTheme, WIDTHS } from "../reader/settings";
 import { readLocal, useAppDark, useAppSettings, writeLocal } from "./appSettings";
 import { useReaderSettings } from "./AppearanceTab";
-import { ActionTile, formatBytes, Row, Section, SectionGroup, Segmented, Select, Toggle } from "./controls";
+import { ActionTile, formatBytes, RadioList, Row, Section, SectionGroup, Segmented, Select, Toggle } from "./controls";
 import { HardcoverSection } from "./HardcoverSection";
 
 const READING_FONTS = {
@@ -29,31 +29,136 @@ export function ReadingTab() {
   if (!reader) return null;
   const colors = PAGE_COLORS[resolveTheme(reader.theme, dark)];
   return (
+    <>
+      <Section
+        id="text"
+        title="Text and page"
+        lede="These are the same choices as the Aa button in the reader, and apply to every book."
+        aside={
+          <div className="reading-sample" style={{ background: colors.background, color: colors.text }}>
+            <p
+              style={{
+                fontFamily: READING_FONTS[reader.font],
+                fontSize: reader.size,
+                lineHeight: reader.lineHeight,
+                textAlign: reader.justify ? "justify" : "start",
+                maxWidth: WIDTHS[reader.width] / 1.6,
+              }}
+            >
+              It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief,
+              it was the epoch of incredulity, it was the season of Light, it was the season of Darkness.
+            </p>
+            <span className="reading-sample-note" style={{ color: colors.muted }}>
+              Charles Dickens, A Tale of Two Cities
+            </span>
+          </div>
+        }
+      >
+        <TextSettings settings={reader} onChange={change} />
+      </Section>
+      {isApp && <ReadAlongSection />}
+    </>
+  );
+}
+
+interface LineUpSettings {
+  auto: boolean;
+  model: "standard" | "faster";
+  effort: "gentle" | "full";
+  background: boolean;
+}
+
+const LINE_UP_DEFAULTS: LineUpSettings = { auto: true, model: "standard", effort: "gentle", background: true };
+const LINE_UP_KEY = "readAlong.lineUp";
+
+/** How this device lines up books with their audiobooks, word by word. */
+function ReadAlongSection() {
+  const [set, setSet] = useState<LineUpSettings | null>(null);
+  const [models, setModels] = useState<[string, number][]>([]);
+  const toast = useToast();
+  useEffect(() => {
+    api.getSetting(LINE_UP_KEY).then(
+      (raw) => {
+        let saved: Partial<LineUpSettings> = {};
+        try {
+          saved = raw ? JSON.parse(raw) : {};
+        } catch {
+          // A broken value falls back to the defaults.
+        }
+        setSet({ ...LINE_UP_DEFAULTS, ...saved });
+      },
+      () => setSet(LINE_UP_DEFAULTS),
+    );
+    api.speechModels().then(setModels, () => setModels([]));
+  }, []);
+  if (!set) return null;
+  const change = (patch: Partial<LineUpSettings>) => {
+    const next = { ...set, ...patch };
+    setSet(next);
+    void api.setSetting(LINE_UP_KEY, JSON.stringify(next)).then(() => api.wakeLiningUp());
+  };
+  const size = models.reduce((sum, [, bytes]) => sum + bytes, 0);
+  return (
     <Section
-      id="text"
-      title="Text and page"
-      lede="These are the same choices as the Aa button in the reader, and apply to every book."
-      aside={
-        <div className="reading-sample" style={{ background: colors.background, color: colors.text }}>
-          <p
-            style={{
-              fontFamily: READING_FONTS[reader.font],
-              fontSize: reader.size,
-              lineHeight: reader.lineHeight,
-              textAlign: reader.justify ? "justify" : "start",
-              maxWidth: WIDTHS[reader.width] / 1.6,
-            }}
-          >
-            It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief,
-            it was the epoch of incredulity, it was the season of Light, it was the season of Darkness.
-          </p>
-          <span className="reading-sample-note" style={{ color: colors.muted }}>
-            Charles Dickens, A Tale of Two Cities
-          </span>
-        </div>
-      }
+      id="read-along"
+      title="Read-along"
+      lede="A book paired with its audiobook is lined up word by word, so the words light up as they're read. Activity shows how far each pair has got."
     >
-      <TextSettings settings={reader} onChange={change} />
+      <Toggle
+        label="Line up pairs by itself"
+        hint="When it's off, nothing is lined up on this device. Pairs still follow along by chapter."
+        checked={set.auto}
+        onChange={(auto) => change({ auto })}
+      />
+      <Row label="Accuracy" hint="Applies to what is lined up from now on." stack>
+        <RadioList<LineUpSettings["model"]>
+          label="Accuracy"
+          value={set.model}
+          options={[
+            { value: "standard", label: "Standard", hint: "Hears words more reliably. A one-time download of about 190 MB." },
+            { value: "faster", label: "Faster", hint: "About twice as quick, with a few more missed words. About 60 MB." },
+          ]}
+          onChange={(model) => change({ model })}
+        />
+      </Row>
+      <Row label="Speed" hint="Gently uses half the processor, so everything else stays quick.">
+        <Segmented<LineUpSettings["effort"]>
+          label="Speed"
+          value={set.effort}
+          options={[
+            { value: "gentle", label: "Gently" },
+            { value: "full", label: "As fast as possible" },
+          ]}
+          onChange={(effort) => change({ effort })}
+        />
+      </Row>
+      {isIOS && (
+        <Toggle
+          label="Carry on in the background while charging"
+          hint="iPhone lets this run only when the phone is plugged in and not in use."
+          checked={set.background}
+          onChange={(background) => change({ background })}
+        />
+      )}
+      <Row label="Speech model" hint={size ? `${formatBytes(size)} on this device.` : "Not downloaded yet. It's fetched the first time a pair is lined up."}>
+        {size > 0 && (
+          <button
+            type="button"
+            className="btn btn-quiet"
+            onClick={() =>
+              void api.removeSpeechModels().then(
+                () => {
+                  setModels([]);
+                  toast("Speech model removed. It's downloaded again when it's needed.");
+                },
+                () => toast("The speech model couldn't be removed."),
+              )
+            }
+          >
+            Remove
+          </button>
+        )}
+      </Row>
     </Section>
   );
 }
@@ -839,7 +944,7 @@ function AboutVersion({ version }: { version: string }) {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.38.0");
+  const [version, setVersion] = useState("1.39.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

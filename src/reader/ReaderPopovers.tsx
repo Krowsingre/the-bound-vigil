@@ -521,20 +521,16 @@ export function ListenAlongPanel({ readAlong, ebookId }: { readAlong: ReadAlong;
         <div className="listen-along-timing" role="status">
           <p className="read-aloud-note">
             <strong>Lining up… {percent}%</strong>
-            {ours?.stage === "reading"
-              ? " Reading the book's words."
-              : ours?.stage === "model" && ours.modelTotal
-                ? ` Getting the speech model: ${mb(ours.modelLoaded)} of ${mb(ours.modelTotal)}.`
-                : ""}
+            {ours?.stage === "model" && ours.modelTotal ? ` Getting the speech model: ${mb(ours.modelLoaded)} of ${mb(ours.modelTotal)}.` : ""}
           </p>
           <p className="read-aloud-note">
             {paused
               ? "Lining up is paused on this device."
               : ours
-                ? "TBV is listening through the audiobook and matching every word to the book, in the background while it's open."
+                ? "TBV is listening through the audiobook and matching every word to the book, in the background."
                 : isApp
-                  ? "TBV lines up every word in the background while it's open, one pair at a time. If you have TBV on a computer, the computer does it."
-                  : "TBV lines up every word in the app on your computer or phone, while it's open."}{" "}
+                  ? "TBV lines up every word in the background, one pair at a time, on each device that has both the book and the audiobook downloaded."
+                  : "TBV lines up every word in the app on your computer or phone."}{" "}
             Until it's done you can read the book or listen to the audiobook, but not both together.
           </p>
           {isApp && (

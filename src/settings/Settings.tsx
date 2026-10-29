@@ -12,9 +12,10 @@ import { ServersTab } from "./ServersTab";
 import { isHome, isWeb } from "../api";
 import { WebSyncTab } from "../web/WebConnect";
 import { unfoldSection } from "./controls";
+import { ActivityTab, type ActivitySide } from "./ActivityTab";
 
 /** The pages the web version has: the rest are about files and features on a computer. */
-const WEB_TABS = new Set<SettingsTab>(["appearance", "reading", "collections", "sync", "accessibility", "about"]);
+const WEB_TABS = new Set<SettingsTab>(["appearance", "reading", "collections", "sync", "activity", "accessibility", "about"]);
 // On the phone at home, the computer keeps the settings; these change only how this phone shows things.
 const HOME_TABS = new Set<SettingsTab>(["appearance", "reading", "accessibility", "about"]);
 const TABS = isWeb ? SETTINGS_TABS.filter((t) => WEB_TABS.has(t.tab)) : isHome ? SETTINGS_TABS.filter((t) => HOME_TABS.has(t.tab)) : SETTINGS_TABS;
@@ -31,6 +32,7 @@ export function Settings({
   sidebarShown,
   onSidebarShown,
   onRestored,
+  activity,
 }: {
   /** null: the landing page, with a button for each tab. */
   tab: SettingsTab | null;
@@ -45,6 +47,8 @@ export function Settings({
   onSidebarShown: (shown: boolean) => void;
   /** The library was replaced from a backup, so every page should reload. */
   onRestored: () => void;
+  /** Preferences › Activity: which side shows, and the app's Imports and Sync activity panes. */
+  activity: { side: ActivitySide; onSide: (side: ActivitySide) => void; imports: React.ReactNode; sync: React.ReactNode };
 }) {
   const [query, setQuery] = useState("");
   const [jumpTo, setJumpTo] = useState<string | null>(null);
@@ -106,6 +110,8 @@ export function Settings({
         return <BrowserTab />;
       case "sync":
         return isWeb ? <WebSyncTab /> : <SyncTab onRestored={onRestored} />;
+      case "activity":
+        return <ActivityTab {...activity} />;
       case "files":
         return <FilesTab />;
       case "ereaders":

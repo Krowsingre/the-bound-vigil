@@ -712,10 +712,6 @@ export function previewApi(): Api {
       else linked.delete(audiobookId);
     },
     audiobookForEbook: async (ebookId) => [...linked].find(([, e]) => e === ebookId)?.[0] ?? null,
-    audioClip: async () => {
-      throw new Error("Working out read-along timing needs the desktop app.");
-    },
-    audioClipsDone: async () => undefined,
     readAlongTiming: async (ebookId, audiobookId) => timings.get(`${ebookId}|${audiobookId}`) ?? null,
     saveReadAlongTiming: async (ebookId, audiobookId, timing) => {
       timings.set(`${ebookId}|${audiobookId}`, timing);
@@ -738,6 +734,16 @@ export function previewApi(): Api {
         const key = `${ebookId}|${audiobookId}`;
         return [{ ebookId, audiobookId, ebookFormat: ebook.format, here: true, timing: timings.get(key) ?? null, pieces: pieces.get(key)?.size ?? 0 }];
       }),
+    // Nothing is lined up in the preview: it has no speech engine.
+    onLiningUp: () => () => undefined,
+    onLinedUp: () => () => undefined,
+    onBookWordsWanted: () => () => undefined,
+    saveBookWords: async () => undefined,
+    pauseLiningUp: async () => undefined,
+    liningUpPaused: async () => false,
+    wakeLiningUp: async () => undefined,
+    speechModels: async () => [["standard", 190_000_000]],
+    removeSpeechModels: async () => undefined,
     prepareStream: async () => null,
     homeStatus: async () => homeState,
     setHome: async (on) => (homeState = on ? { ...HOME_ON, phones: homeState.phones } : { ...HOME_OFF, phones: homeState.phones }),
@@ -876,7 +882,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "1.38.0", version: "1.39.0", notes: "The Bound Vigil 1.39.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "1.39.0", version: "1.40.0", notes: "The Bound Vigil 1.40.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

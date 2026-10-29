@@ -30,6 +30,7 @@ import { LocalSendOffers } from "./imports/LocalSendOffer";
 import { PROFILE_CHANGED } from "./settings/ProfileSection";
 import { SyncActivity } from "./sync/SyncActivity";
 import { startLiningUp } from "./readAlong/lineUp";
+import type { ActivitySide } from "./settings/ActivityTab";
 import { BookPlacesPage } from "./sync/BookPlaces";
 import { importSummary } from "./lib/importSummary";
 import { Library, PageSwitch } from "./library/Library";
@@ -90,6 +91,7 @@ export function App() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   /** A section of Preferences to show once it opens. */
   const [settingsJump, setSettingsJump] = useState<string | null>(null);
+  const [activitySide, setActivitySide] = useState<ActivitySide>("imports");
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
   const { refreshAdaptive, togglePrivacy } = useAppSettings();
@@ -102,6 +104,11 @@ export function App() {
     // Sync & Accounts is a page inside Settings.
     if (r === "sync") {
       setSettingsTab("sync");
+      r = "settings";
+    } else if (r === "imports" || r === "activity" || r === "lining") {
+      // Imports, Sync activity and lining up are sides of Preferences › Activity.
+      setSettingsTab("activity");
+      setActivitySide(r === "imports" ? "imports" : r === "activity" ? "sync" : "lining");
       r = "settings";
     } else if (r === "settings") {
       // Settings opens at its landing page of tabs.
@@ -446,19 +453,6 @@ export function App() {
       onChange={(next) => next !== route && navigate(next)}
     />
   );
-  // Imports and Sync activity are one page, one switch apart (the web version has no Sync activity).
-  const activitySwitch =
-    api.kind === "web" ? undefined : (
-      <PageSwitch<"imports" | "activity">
-        label="Imports or sync activity"
-        value={route === "activity" ? "activity" : "imports"}
-        options={[
-          { value: "imports", label: "Imports" },
-          { value: "activity", label: "Sync activity" },
-        ]}
-        onChange={(next) => next !== route && navigate(next)}
-      />
-    );
   const toHome = useCallback(() => navigate("home"), [navigate]);
   useSwipes(appRoot, pullHome, narrow && !menuOpen && !reading, {
     // Left goes to the library from any other page; right opens the menu of pages.
@@ -633,22 +627,6 @@ export function App() {
               onOpenCollection={showCollection}
               onReadAlong={(ebookId) => openBook(ebookId)}
             />
-          ) : route === "imports" ? (
-            <Imports
-              view={imports}
-              servers={isWeb ? undefined : servers}
-              sent={sent}
-              onCancel={() => void api.cancelImports().then(reloadImports)}
-              onClear={() => {
-                void api.clearFinishedImports().then(reloadImports);
-              }}
-              onImportBooks={importBooks}
-              onImportFolder={importFolder}
-              onOpenBook={openBook}
-              switcher={activitySwitch}
-            />
-          ) : route === "activity" ? (
-            <SyncActivity sync={sync} onOpenSyncSettings={() => navigate("sync")} switcher={activitySwitch} />
           ) : route === "places" ? (
             <BookPlacesPage onOpenSyncSettings={() => navigate("sync")} />
           ) : route === "notes" || route === "writing" ? (
@@ -675,6 +653,26 @@ export function App() {
               // Settings, profile and reader preferences are held all over the app,
               // so a restore starts the window afresh to read them back.
               onRestored={() => window.location.reload()}
+              activity={{
+                side: activitySide,
+                onSide: setActivitySide,
+                imports: (
+                  <Imports
+                    embedded
+                    view={imports}
+                    servers={isWeb ? undefined : servers}
+                    sent={sent}
+                    onCancel={() => void api.cancelImports().then(reloadImports)}
+                    onClear={() => {
+                      void api.clearFinishedImports().then(reloadImports);
+                    }}
+                    onImportBooks={importBooks}
+                    onImportFolder={importFolder}
+                    onOpenBook={openBook}
+                  />
+                ),
+                sync: <SyncActivity embedded sync={sync} onOpenSyncSettings={() => navigate("sync")} />,
+              }}
             />
           )}
         </main>
@@ -684,7 +682,7 @@ export function App() {
           <p>Drop to add to your library</p>
         </div>
       )}
-      {route !== "imports" && importCounts(imports).running && (
+      {!(route === "settings" && settingsTab === "activity" && activitySide === "imports") && importCounts(imports).running && (
         <button type="button" className="import-progress" onClick={() => navigate("imports")}>
           Imported {importCounts(imports).done} of {importCounts(imports).total} books <span className="import-progress-link">View</span>
         </button>

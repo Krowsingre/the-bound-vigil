@@ -1,6 +1,6 @@
 import type { IconName } from "../components/Icon";
 
-export type Route = "home" | "library" | "documents" | "collections" | "audiobooks" | "notes" | "settings" | "sync" | "imports" | "activity" | "places" | "book" | "writing" | "catalogs";
+export type Route = "home" | "library" | "documents" | "collections" | "audiobooks" | "notes" | "settings" | "sync" | "imports" | "activity" | "lining" | "places" | "book" | "writing" | "catalogs";
 
 /** Each page's name, and the few words under it in the sidebar. */
 export const PAGE: Record<"home" | "library" | "collections" | "audiobooks" | "writing" | "catalogs" | "settings", { label: string; caption: string }> = {

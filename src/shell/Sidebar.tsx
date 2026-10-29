@@ -3,7 +3,6 @@ import { Icon } from "../components/Icon";
 import { navFor, navRouteOf, type Route } from "./routes";
 import { isHome, isWeb } from "../api";
 import { useEffect, useState } from "react";
-import { showBookDetails } from "../details/openDetails";
 import { liningUp as liningUpNow, onLiningUp, type LiningUp } from "../readAlong/lineUp";
 
 export function Sidebar({
@@ -109,7 +108,7 @@ export function Sidebar({
                 <button
                   type="button"
                   className="nav-item nav-imports nav-lining"
-                  onClick={() => showBookDetails(lining.ebookId)}
+                  onClick={() => onNavigate("lining")}
                   title={`Lining up ${lining.title || "a book"} with its audiobook: ${liningPercent}%`}
                 >
                   <Icon name="headphones" size={20} />

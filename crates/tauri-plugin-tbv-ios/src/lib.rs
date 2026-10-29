@@ -282,6 +282,38 @@ pub fn store_restore() -> Result<(), String> {
     Err("The App Store is only on iPhone and iPad.".into())
 }
 
+/// Books iOS background time for lining up read-along. Called before the
+/// app opens, as iOS asks; elsewhere it does nothing.
+pub fn register_background_tasks() {
+    #[cfg(target_os = "ios")]
+    {
+        extern "C" {
+            fn tbv_register_background_tasks();
+        }
+        // Safety: a Swift function taking and giving nothing, in this plugin.
+        unsafe { tbv_register_background_tasks() };
+    }
+}
+
+#[cfg(target_os = "ios")]
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BackgroundWorkArgs {
+    busy: bool,
+    needs_power: bool,
+}
+
+/// Tells the iPhone app whether lining up read-along has work to carry on
+/// with in the background, and whether to wait for a charger for it.
+pub fn background_work(busy: bool, needs_power: bool) {
+    #[cfg(target_os = "ios")]
+    if let Some(swift) = SWIFT.get() {
+        let _ = swift.run_mobile_plugin::<serde_json::Value>("backgroundWork", BackgroundWorkArgs { busy, needs_power });
+    }
+    #[cfg(not(target_os = "ios"))]
+    let _ = (busy, needs_power);
+}
+
 /// Takes the sign-in page away once its answer is in (or it timed out).
 pub fn close_sign_in() {
     #[cfg(target_os = "ios")]

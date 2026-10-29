@@ -33,6 +33,11 @@ class AuthArgs: Decodable {
 /// The iPhone app's own pieces: folders chosen in Files (iCloud Drive's
 /// library folder), iCloud files brought down when TBV reads them, and
 /// audiobooks that keep playing with the screen locked.
+struct BackgroundWorkArgs: Decodable {
+  let busy: Bool
+  let needsPower: Bool
+}
+
 class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegate, ASWebAuthenticationPresentationContextProviding {
   /// Folders chosen in Files, by path, kept as bookmarks so TBV can open
   /// them again after a restart.
@@ -303,6 +308,13 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
   /// The browser's next event (a page, or a download), once there is one.
   @objc public func browserEvent(_ invoke: Invoke) throws {
     TbvBrowser.shared.next(invoke)
+  }
+
+  /// Whether lining up read-along has work to carry on with in the background.
+  @objc public func backgroundWork(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(BackgroundWorkArgs.self)
+    TbvBackgroundWork.shared.set(busy: args.busy, needsPower: args.needsPower)
+    invoke.resolve()
   }
 
   /// Where the browser's downloads wait.

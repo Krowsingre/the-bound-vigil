@@ -10,6 +10,7 @@ export type SettingsTab =
   | "notes"
   | "browser"
   | "sync"
+  | "activity"
   | "files"
   | "ereaders"
   | "servers"
@@ -67,6 +68,12 @@ export const SETTINGS_TABS: {
     lede: "Keep your library, reading progress and notes in step and safe.",
   },
   {
+    tab: "activity",
+    label: "Activity",
+    icon: "list",
+    lede: "What TBV is doing in the background: imports, sync, and lining up read-along.",
+  },
+  {
     tab: "files",
     label: "File Handling",
     icon: "file",
@@ -120,6 +127,18 @@ export interface SettingsEntry {
 }
 
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
+  {
+    tab: "activity",
+    section: "activity",
+    label: "Imports, sync activity and lining up",
+    words: "imports importing adding progress sync activity files uploads downloads recent changes clear lining up read along aligning alignment audiobook pairs",
+  },
+  {
+    tab: "reading",
+    section: "read-along",
+    label: "Read-along",
+    words: "read along listen along lining up align alignment audiobook narrator speech model whisper accuracy background charging processor",
+  },
   {
     tab: "servers",
     section: "servers",

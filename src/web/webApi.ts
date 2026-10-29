@@ -764,10 +764,6 @@ export async function webApi(): Promise<Api> {
     },
     audiobookForEbook: async (ebookId) =>
       (library.rows("audiobooks").find((a) => a.ebook_id === ebookId && library.book(String(a.book_id)))?.book_id as string) ?? null,
-    audioClip: async () => {
-      throw new Error(DESKTOP_ONLY);
-    },
-    audioClipsDone: async () => undefined,
     readAlongTiming: async (ebookId, audiobookId) => {
       const timing = library.row("read_along", [ebookId, audiobookId])?.timing;
       return typeof timing === "string" ? timing : null;
@@ -789,6 +785,17 @@ export async function webApi(): Promise<Api> {
     },
     // Lining up needs the audiobook's file, which the web version never keeps.
     readAlongPairs: async () => [],
+    onLiningUp: () => () => undefined,
+    onLinedUp: () => () => undefined,
+    onBookWordsWanted: () => () => undefined,
+    saveBookWords: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    pauseLiningUp: async () => undefined,
+    liningUpPaused: async () => false,
+    wakeLiningUp: async () => undefined,
+    speechModels: async () => [],
+    removeSpeechModels: async () => undefined,
     // Audiobooks stream from Supabase here; nothing is kept on the phone.
     audioUrl: () => null,
     prepareStream: async (bookId) => {

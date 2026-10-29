@@ -91,12 +91,12 @@ function Place({ place }: { place: PlaceActivity }) {
 export function SyncActivity({
   sync,
   onOpenSyncSettings,
-  switcher,
+  embedded = false,
 }: {
   sync: SyncStatus | null;
   onOpenSyncSettings: () => void;
-  /** The Imports / Sync activity switch. */
-  switcher?: React.ReactNode;
+  /** Shown inside Preferences › Activity, which gives the page its name. */
+  embedded?: boolean;
 }) {
   const [activity, setActivity] = useState<Activity>(NOTHING);
   useEffect(() => api.onSyncActivity(setActivity), []);
@@ -106,11 +106,11 @@ export function SyncActivity({
   const problems = activity.recent.filter((f) => f.problem).length;
 
   return (
-    <div className="library imports-page sync-activity-page">
-      <header className="library-head">
+    <div className={`imports-page sync-activity-page${embedded ? " activity-pane" : " library"}`}>
+      <header className={embedded ? "activity-head" : "library-head"}>
         <div>
-          <h1 className="library-title">Sync activity</h1>
-          <p className="eyebrow">
+          {!embedded && <h1 className="library-title">Sync activity</h1>}
+          <p className={embedded ? "settings-row-hint" : "eyebrow"}>
             {running
               ? "Syncing now"
               : activity.finishedAt
@@ -121,7 +121,6 @@ export function SyncActivity({
           </p>
         </div>
         <div className="imports-actions">
-          {switcher}
           <button type="button" className="btn btn-quiet" onClick={onOpenSyncSettings}>
             <Icon name="settings" size={16} /> Sync settings
           </button>

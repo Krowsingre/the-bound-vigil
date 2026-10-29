@@ -393,3 +393,40 @@
     flex: 1;
   }
 }
+
+/* Preferences › Activity: the Imports, Sync and Lining up panes, one switch apart. */
+.activity-tab > .page-switch {
+  margin-bottom: 18px;
+}
+
+.activity-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+
+.activity-head > div:first-child {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.activity-head .settings-row-hint {
+  margin: 0;
+}
+
+/* A pair's row opens the book: a button that reads as the row's text. */
+.import-row .link-like {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.import-row .link-like:hover .import-name {
+  text-decoration: underline;
+}

@@ -14,6 +14,7 @@ mod hardcover;
 mod home;
 mod imports;
 mod license;
+mod lining;
 mod localsend;
 mod moving;
 mod protection;
@@ -274,41 +275,6 @@ async fn fill_cover(state: State<'_, AppLibrary>, request: tauri::ipc::Request<'
 #[tauri::command]
 async fn audiobook(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<tbv_core::audio::Audiobook> {
     with_library(state, move |library| library.audiobook(&book_id)).await
-}
-
-/// The audiobook being listened to for read-along timing, kept open so
-/// stretch after stretch through it stays quick.
-static LISTENING: std::sync::Mutex<Option<(String, tbv_core::listen::Listener)>> = std::sync::Mutex::new(None);
-
-/// A stretch of an audiobook on this computer as 16 kHz mono samples
-/// (little-endian 32-bit floats), for read-along timing. An empty answer
-/// means the book has ended.
-#[tauri::command]
-async fn audio_clip(state: State<'_, AppLibrary>, book_id: String, start_ms: u64, len_ms: u64) -> CommandResult<tauri::ipc::Response> {
-    let library = state.0.clone();
-    let samples = tauri::async_runtime::spawn_blocking(move || -> tbv_core::Result<Vec<f32>> {
-        let mut listening = LISTENING.lock().unwrap_or_else(|e| e.into_inner());
-        if listening.as_ref().is_none_or(|(id, _)| *id != book_id) {
-            let (path, format, parts) = {
-                let l = library.lock().map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?;
-                let (path, format) = l.audio_file(&book_id)?;
-                (path, format, l.audiobook(&book_id)?.parts)
-            };
-            *listening = Some((book_id.clone(), tbv_core::listen::Listener::open(&path, &format, &parts)?));
-        }
-        let (_, listener) = listening.as_mut().expect("opened above");
-        listener.clip(start_ms, len_ms)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
-    Ok(tauri::ipc::Response::new(samples.iter().flat_map(|s| s.to_le_bytes()).collect::<Vec<u8>>()))
-}
-
-/// Lets go of the audiobook read for timing, so its file can be moved or deleted.
-#[tauri::command]
-fn audio_clips_done() {
-    *LISTENING.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 #[tauri::command]
@@ -1770,6 +1736,9 @@ async fn ios_pick_photo() -> CommandResult<Option<String>> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // iOS wants background tasks booked before the app has opened.
+    #[cfg(target_os = "ios")]
+    tauri_plugin_tbv_ios::register_background_tasks();
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init());
@@ -1809,6 +1778,8 @@ pub fn run() {
             folder_watch::start(library.clone(), worker.clone());
             cloud_watch::start(library.clone(), worker.clone());
             app.manage(worker);
+            // Paired books and audiobooks lined up word by word, in the background.
+            lining::start(app.handle(), library.clone(), data_dir.clone());
             app.manage(AppLibrary(library));
             app.manage(Arc::new(hardcover::Sends::default()));
             let imports = Arc::new(imports::Imports::default());
@@ -1922,8 +1893,13 @@ pub fn run() {
             find_duplicates,
             find_series_books,
             prepare_stream,
-            audio_clip,
-            audio_clips_done,
+            lining::lining_up_status,
+            lining::lining_up_pause,
+            lining::lining_up_paused,
+            lining::lining_up_wake,
+            lining::save_book_words,
+            lining::speech_models,
+            lining::remove_speech_models,
             read_along_timing,
             save_read_along_timing,
             read_along_pieces,
