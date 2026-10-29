@@ -269,6 +269,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "sanctum_link",
+        table: "sanctum_links",
+        keys: &["id"],
+        cols: &["title", "target", "icon", "position", "created_at", "updated_at", "deleted_at"],
+        category: Category::Library,
+        creates: true,
+    },
+    Kind {
         name: "time_log",
         table: "time_log",
         keys: &["device_id", "day", "kind"],
@@ -1415,6 +1423,7 @@ impl Library {
             "bookmark" => named("Discover bookmark", text("title")),
             "browser_history" => "Discover history".into(),
             "quick_link" => named("Quick link", text("title")),
+            "sanctum_link" => named("Sanctum link", text("title")),
             "time_log" => "Time read and listened".into(),
             other => other.replace('_', " "),
         }
@@ -1656,6 +1665,7 @@ impl Library {
             "profile" => "Your name and profile picture".into(),
             "bookmark" => format!("The bookmark {}", field("title").unwrap_or_default()),
             "quick_link" => format!("The Quick Link {}", field("title").unwrap_or_default()),
+            "sanctum_link" => format!("The Sanctum link {}", field("title").unwrap_or_default()),
             "browser_history" => format!("A page in Discover's history: {}", field("title").filter(|t| !t.is_empty()).or_else(|| field("url")).unwrap_or_default()),
             "series" => format!("The missing books of {}", field("name").unwrap_or_default()),
             "read_along" => format!("Read-along timing{}", book(key.first())?),
@@ -2156,6 +2166,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "profile" => if text("avatar").is_empty() { "No picture".into() } else { "A picture".into() },
         "bookmark" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Bookmark removed".into() } else { short(text("url")) },
         "quick_link" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Quick Link removed".into() } else { short(text("url")) },
+        "sanctum_link" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Sanctum link removed".into() } else { short(text("target")) },
         "browser_history" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Taken off Discover's history".into() } else { short(text("url")) },
         "series" => short(text("name")),
         "writing_draft" => format!("Draft {}", data.get("number").and_then(Value::as_i64).unwrap_or(1)),

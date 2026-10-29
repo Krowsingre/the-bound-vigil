@@ -321,6 +321,17 @@ export function AppearanceTab({
         </div>
       </Section>
 
+      <Section id="sanctum" title="Sanctum" lede="Your home page. Suggested reading always includes books you own and haven't started.">
+        <div className="toggle-list">
+          <Toggle
+            label="Suggest books from online"
+            hint="Adds free and new books from Krowsingre Publishing, and other books by authors you read, found on Open Library. Only author names are sent."
+            checked={settings.suggestOnline}
+            onChange={(suggestOnline) => change({ suggestOnline })}
+          />
+        </div>
+      </Section>
+
       <Section id="sidebar" title="Sidebar" lede="The menu of pages down the left. Clicking the emblem or the title at its top folds it too.">
         <div className="toggle-list">
           <Toggle label="Show the full sidebar" checked={sidebarShown} onChange={onSidebarShown} />

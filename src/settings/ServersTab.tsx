@@ -8,6 +8,7 @@ import type { RemoteEntry, ServerInput, ServerQueueView, ServerListing, ServerPr
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { Columns, formatBytes, Section, Segmented } from "./controls";
+import { AudiobookshelfSection } from "./AudiobookshelfSection";
 import { LocalSendSection } from "./LocalSendSection";
 
 const PROTOCOLS: { value: ServerProtocol; label: string }[] = [
@@ -144,6 +145,8 @@ export function ServersTab() {
         )}
         <DownloadStatus />
       </Section>
+
+      <AudiobookshelfSection />
 
       {browsing && (
         <BrowseDialog

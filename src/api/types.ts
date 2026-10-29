@@ -369,6 +369,10 @@ export interface HomeViewModel {
   activity: ReadingActivity | null;
   /** When each book was finished, over the last year or so, newest first. */
   finishedDates?: IsoUtc[];
+  /** Books you own and haven't started, for Suggested reading. */
+  suggested?: BookPreview[];
+  /** The authors you read most, for suggestions of their other books. */
+  readAuthors?: string[];
   sync: SyncStatus;
 }
 
@@ -1314,6 +1318,17 @@ export interface QuickLink {
   url: string;
   /** The gallery painting's name. */
   picture: string;
+}
+
+/** One of Sanctum's Quick Links. `target` is `tbv:<panel>` (Discover, or
+ * its bookmarks, downloads, reading list or history), `page:<route>`,
+ * `book:<id>`, `collection:<id>` or a website's address. */
+export interface SanctumLink {
+  id: string;
+  title: string;
+  target: string;
+  /** One of TBV's icons, by name; empty for the kind's own. */
+  icon: string;
 }
 
 /** The space the Browser tab keeps for web pages, in the window's points. */

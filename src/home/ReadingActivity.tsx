@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Icon, type IconName } from "../components/Icon";
-import { finishedSince, periodStart, PERIODS, spentParts, spentSince, type Period } from "../lib/timeSpent";
+import { finishedSince, periodStart, PERIODS, spentParts, spentSince, spentText, type Period } from "../lib/timeSpent";
 import { Section } from "./Section";
 import { useTimeSpent } from "./useTimeSpent";
 
@@ -16,7 +16,18 @@ function readPeriod(): Period {
 }
 
 /** Books finished, and time spent reading and listening in TBV on every device, over a chosen period. */
-export function ReadingActivity({ finished, finishedDates, refreshKey }: { finished: number; finishedDates?: string[]; refreshKey?: number }) {
+export function ReadingActivity({
+  finished,
+  finishedDates,
+  refreshKey,
+  wide = false,
+}: {
+  finished: number;
+  finishedDates?: string[];
+  refreshKey?: number;
+  /** On a computer: icons beside the counts, and this week's days as bars. */
+  wide?: boolean;
+}) {
   const spent = useTimeSpent(refreshKey);
   const [period, setPeriod] = useState(readPeriod);
   const start = periodStart(period);
@@ -46,12 +57,39 @@ export function ReadingActivity({ finished, finishedDates, refreshKey }: { finis
       }
     >
       <div className="stats stats-3">
-        <Stat value={finishedInPeriod} label="Read" />
-        <Stat value={inPeriod ? <Spent seconds={inPeriod.read} /> : "—"} label="Time read" />
-        <Stat value={inPeriod ? <Spent seconds={inPeriod.listen} /> : "—"} label="Time listened" />
+        <Stat value={finishedInPeriod} label="Read" icon={wide ? "bookOpen" : undefined} />
+        <Stat value={inPeriod ? <Spent seconds={inPeriod.read} /> : "—"} label="Time read" icon={wide ? "clock" : undefined} />
+        <Stat value={inPeriod ? <Spent seconds={inPeriod.listen} /> : "—"} label="Time listened" icon={wide ? "headphones" : undefined} />
       </div>
+      {wide && spent && period === "week" && <WeekBars week={spent.week} />}
       {spent && !any && <p className="empty-note">Time spent reading and listening adds up here as you use TBV.</p>}
     </Section>
+  );
+}
+
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** Each day of this week as a bar: time read, with time listened on top in a lighter tone. */
+function WeekBars({ week }: { week: { read: number; listen: number }[] }) {
+  const most = Math.max(1, ...week.map((d) => d.read + d.listen));
+  const today = (new Date().getDay() + 6) % 7;
+  return (
+    <ol className="week-bars" aria-label="This week, day by day">
+      {week.map((d, i) => {
+        const said = `${DAYS[i]}: ${d.read ? `${spentText(d.read)} read` : "nothing read"}${d.listen ? `, ${spentText(d.listen)} listened` : ""}`;
+        return (
+          <li key={DAYS[i]} className={[i === today && "is-today", d.read + d.listen === 0 && "is-empty"].filter(Boolean).join(" ") || undefined} title={said} aria-label={said}>
+            <span className="week-bar" aria-hidden>
+              <span className="week-listen" style={{ height: `${(d.listen / most) * 100}%` }} />
+              <span className="week-read" style={{ height: `${(d.read / most) * 100}%` }} />
+            </span>
+            <span className="week-day" aria-hidden>
+              {DAYS[i]}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 

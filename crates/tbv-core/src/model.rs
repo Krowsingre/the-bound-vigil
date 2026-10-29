@@ -244,6 +244,12 @@ pub struct HomeViewModel {
     /// When each book was finished, over the last year or so, for "this week" and "this month".
     #[serde(default)]
     pub finished_dates: Vec<IsoUtc>,
+    /// Books you own and haven't started, for Suggested reading.
+    #[serde(default)]
+    pub suggested: Vec<BookPreview>,
+    /// The authors you read most, for suggestions of their other books.
+    #[serde(default)]
+    pub read_authors: Vec<String>,
     pub sync: SyncStatus,
 }
 

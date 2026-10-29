@@ -21,6 +21,7 @@ fn recent_since() -> String {
 const IN_PROGRESS_LIMIT: u32 = 3;
 const COLLECTIONS_LIMIT: u32 = 4;
 const ANNOTATIONS_LIMIT: u32 = 2;
+const SUGGESTED_LIMIT: usize = 6;
 
 /// Effective metadata: your edit if there is one, else details fetched online
 /// (or read from the file beyond the basics), else the book's own.
@@ -137,8 +138,56 @@ impl Library {
             library_counts: self.counts()?,
             activity: None,
             finished_dates: self.finished_dates()?,
+            suggested: self.suggested_from_shelves()?,
+            read_authors: self.read_authors()?,
             sync: self.sync_status()?,
         })
+    }
+
+    /// Books you own and haven't started, for Suggested reading when nothing
+    /// comes from online: Up next first, then the rest, a new few each day.
+    fn suggested_from_shelves(&self) -> Result<Vec<BookPreview>> {
+        let audio = crate::audio::AUDIO_FORMATS.iter().map(|f| format!("'{f}'")).collect::<Vec<_>>().join(", ");
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT id, want_to_read FROM books WHERE deleted_at IS NULL AND same_as IS NULL
+               AND status = 'unread' AND last_opened_at IS NULL AND format NOT IN ({audio})"
+        ))?;
+        let mut picks: Vec<(String, bool)> = statement.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<std::result::Result<_, _>>()?;
+        // The same few all day, so the row doesn't change each time Sanctum opens.
+        let day = chrono::Utc::now().date_naive().to_string();
+        let mix = |id: &str| id.bytes().chain(day.bytes()).fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
+        picks.sort_by_key(|(id, up_next)| (!*up_next, mix(id)));
+        let ids: Vec<String> = picks.into_iter().take(SUGGESTED_LIMIT).map(|(id, _)| id).collect();
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let list = ids.iter().map(|id| format!("'{}'", id.replace('\'', "''"))).collect::<Vec<_>>().join(", ");
+        let mut books = self.books(&format!("AND b.id IN ({list})"), SUGGESTED_LIMIT as u32)?;
+        books.sort_by_key(|b| ids.iter().position(|id| *id == b.id));
+        Ok(books)
+    }
+
+    /// The authors you read most, for suggestions of their other books.
+    fn read_authors(&self) -> Result<Vec<String>> {
+        let mut statement = self.conn.prepare(
+            "SELECT json_extract(authors, '$[0]') AS author, COUNT(*) AS n FROM books
+             WHERE deleted_at IS NULL AND same_as IS NULL AND status IN ('read', 'in_progress')
+               AND author IS NOT NULL AND trim(author) != '' AND lower(author) NOT IN ('unknown', 'unknown author', 'various')
+             GROUP BY lower(author) ORDER BY n DESC, MAX(COALESCE(last_opened_at, finished_at, added_at)) DESC LIMIT 4",
+        )?;
+        let rows = statement.query_map([], |r| r.get(0))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// For each title, whether a book of that name is in the library, so
+    /// suggestions from online leave out books you already have.
+    pub fn owned_titles(&self, titles: &[String]) -> Result<Vec<bool>> {
+        let mut statement = self.conn.prepare(
+            "SELECT EXISTS (SELECT 1 FROM books b
+               LEFT JOIN metadata_overrides o ON o.book_id = b.id AND o.field = 'title'
+               WHERE b.deleted_at IS NULL AND tbv_fold(COALESCE(o.value, b.title)) = tbv_fold(?1))",
+        )?;
+        titles.iter().map(|t| Ok(statement.query_row([t.trim()], |r| r.get(0))?)).collect()
     }
 
     /// When books were finished in the last 400 days, newest first.

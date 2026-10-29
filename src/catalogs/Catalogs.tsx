@@ -52,7 +52,7 @@ function CatalogDialog({
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [abs, setAbs] = useState(catalog?.kind === "audiobookshelf");
+  const abs = catalog?.kind === "audiobookshelf";
   const toast = useToast();
   const save = async () => {
     setBusy(true);
@@ -142,27 +142,7 @@ function CatalogDialog({
           </section>
         )}
         {!catalog && <strong className="catalog-own">Or your own address</strong>}
-        {!catalog && (
-          <div className="scribe-chips catalog-kinds" role="radiogroup" aria-label="What it is">
-            {(
-              [
-                [false, "OPDS catalogue"],
-                [true, "Audiobookshelf"],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={label}
-                type="button"
-                role="radio"
-                aria-checked={abs === value}
-                className={`chip${abs === value ? " is-active" : ""}`}
-                onClick={() => (setAbs(value), setError(null))}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
+        {!catalog && <p className="muted dialog-lede">An Audiobookshelf server is signed in to in Preferences › Servers, and then shows here.</p>}
         {abs ? (
           <p className="muted dialog-lede">
             Sign in with the username and password you use for Audiobookshelf. You can look through its libraries here and bring audiobooks and ebooks

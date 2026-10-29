@@ -557,6 +557,9 @@ export async function webApi(): Promise<Api> {
     removeCatalog: async () => {
       throw new Error(DESKTOP_ONLY);
     },
+    signOutAbsServer: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
     catalogFeed: async () => {
       throw new Error(DESKTOP_ONLY);
     },
@@ -582,6 +585,8 @@ export async function webApi(): Promise<Api> {
       if (addToLibrary) throw new Error("Adding it to your library works in the desktop app. It has been downloaded instead.");
       downloadFile(bytes, fileName);
     },
+    // Online suggestions need the app, so nothing here asks.
+    ownedTitles: async (titles) => titles.map(() => false),
     getHome: async (): Promise<HomeViewModel> => {
       const all = books();
       // Home is for reading; audiobooks have their own page.

@@ -529,6 +529,21 @@ const MIGRATIONS: &[&str] = &[
                strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
         FROM books WHERE deleted_at IS NULL AND same_as IS NULL AND (status = 'read' OR stars IS NOT NULL);
     "#,
+    // v28: Sanctum's own Quick Links, apart from Discover's websites. A link
+    // goes to a website, a TBV page or panel, a book or a collection
+    // (`target`, see sanctum_links.rs), with one of TBV's icons.
+    r#"
+    CREATE TABLE sanctum_links (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL DEFAULT '',
+        target TEXT NOT NULL,
+        icon TEXT NOT NULL DEFAULT '',
+        position REAL NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

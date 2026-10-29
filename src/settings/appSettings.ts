@@ -79,6 +79,8 @@ export interface AppSettings {
   fullMenu: boolean;
   showSmartCollections: boolean;
   showSeries: boolean;
+  /** Sanctum's Suggested reading also looks online: Krowsingre Publishing's list, and Open Library for authors you read. */
+  suggestOnline: boolean;
   /** Imports leave out books that were deleted before, instead of bringing them back. */
   skipDeletedImports: boolean;
   /** Looks for a newer version of TBV each time it opens (on a computer). */
@@ -100,6 +102,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   adaptiveStrength: 0.7,
   adaptiveAuto: true,
   adaptivePinned: null,
+  suggestOnline: true,
   scale: "medium",
   density: "default",
   interfaceFont: "system",
@@ -163,6 +166,7 @@ export function parseAppSettings(json: string | null): AppSettings {
     adaptiveStrength: typeof raw.adaptiveStrength === "number" ? Math.min(1, Math.max(0, raw.adaptiveStrength)) : d.adaptiveStrength,
     adaptiveAuto: flag(raw.adaptiveAuto, d.adaptiveAuto),
     adaptivePinned: typeof raw.adaptivePinned === "string" ? raw.adaptivePinned : d.adaptivePinned,
+    suggestOnline: flag(raw.suggestOnline, d.suggestOnline),
     scale: oneOf(raw.scale, ["small", "medium", "large"], d.scale),
     density: oneOf(raw.density, ["compact", "default", "spacious"], d.density),
     interfaceFont: oneOf(raw.interfaceFont, ["system", "serif", "echolume"], d.interfaceFont),

@@ -146,6 +146,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     words: "ftp ftps sftp ssh seedbox nas server remote computer import download audiobooks books key fingerprint",
   },
   {
+    tab: "servers",
+    section: "audiobookshelf",
+    label: "Audiobookshelf",
+    words: "audiobookshelf abs sign in sign out log in password server audiobooks podcasts stream listen",
+  },
+  {
     tab: "appearance",
     section: "theme",
     label: "Application theme",
@@ -174,6 +180,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     section: "text",
     label: "Interface text",
     words: "scale scaling size zoom bigger smaller interface font typeface typography echolume serif georgia segoe",
+  },
+  {
+    tab: "appearance",
+    section: "sanctum",
+    label: "Sanctum",
+    words: "sanctum home suggested reading suggestions online open library krowsingre publishing",
   },
   {
     tab: "appearance",

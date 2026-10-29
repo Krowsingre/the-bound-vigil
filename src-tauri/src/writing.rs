@@ -56,6 +56,12 @@ pub async fn save_abs_server(
     with_library(state, move |library| library.save_abs_server(id.as_deref(), &name, &base, &username, token)).await
 }
 
+/// Forgets an Audiobookshelf sign-in, keeping the server (Preferences › Servers).
+#[tauri::command]
+pub async fn sign_out_abs_server(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.sign_out_abs_server(&id)).await
+}
+
 #[tauri::command]
 pub async fn remove_catalog(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
     with_library(state, move |library| library.remove_catalog(&id)).await
