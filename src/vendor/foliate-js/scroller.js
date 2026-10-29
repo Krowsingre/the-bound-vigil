@@ -283,8 +283,14 @@ export class Scroller extends HTMLElement {
         }
     }
     // let go of chapters well away from the screen, from either end
+    #trimLater
     #trim() {
-        if (this.#userActive()) return
+        clearTimeout(this.#trimLater)
+        // not mid-scroll, which the page moving would interrupt; tried again after
+        if (this.#userActive()) {
+            this.#trimLater = setTimeout(() => this.#trim(), ACTIVE_MS)
+            return
+        }
         const c = this.#container
         const h = c.clientHeight
         const near = e => Math.abs(this.#entries.indexOf(e) - this.#entries.indexOf(this.#cur)) <= 1
@@ -447,6 +453,7 @@ export class Scroller extends HTMLElement {
         this.#cur?.view.document?.defaultView?.focus()
     }
     destroy() {
+        clearTimeout(this.#trimLater)
         this.#observer.unobserve(this.#container)
         this.#reset()
     }
