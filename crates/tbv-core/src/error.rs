@@ -33,6 +33,9 @@ pub enum Error {
     /// Sync started over while a run was going; that run stops quietly.
     #[error("sync started over")]
     Superseded,
+    /// A server that can't start a download part-way; it's fetched whole.
+    #[error("the server can't carry on a download part-way")]
+    CantResume,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

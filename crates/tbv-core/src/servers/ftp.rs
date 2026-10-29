@@ -220,8 +220,12 @@ impl Connection for FtpConnection {
         }
     }
 
-    fn fetch(&mut self, path: &str, out: &mut dyn Write, progress: &mut dyn FnMut(u64) -> bool) -> Result<u64> {
+    fn fetch(&mut self, path: &str, from: u64, out: &mut dyn Write, progress: &mut dyn FnMut(u64) -> bool) -> Result<u64> {
         let server = self.server.clone();
+        // REST: the next download starts this many bytes in.
+        if from > 0 && self.stream.resume_transfer(from as usize).is_err() {
+            return Err(Error::CantResume);
+        }
         let mut transfer = self.stream.retr_as_stream(path).map_err(|e| explain(e, &server, path))?;
         let copied = copy_with_progress(&mut transfer, out, progress);
         match copied {
@@ -421,7 +425,7 @@ mod tests {
         let names: Vec<String> = connection.list("").unwrap().into_iter().map(|e| e.name).collect();
         assert_eq!(names, ["Carmilla.epub"]);
         let mut bytes = Vec::new();
-        connection.fetch("Carmilla.epub", &mut bytes, &mut |_| true).unwrap();
+        connection.fetch("Carmilla.epub", 0, &mut bytes, &mut |_| true).unwrap();
         assert_eq!(bytes, b"PK carmilla");
 
         // A different certificate later is refused.

@@ -274,10 +274,16 @@ impl Connection for SftpConnection {
         })
     }
 
-    fn fetch(&mut self, path: &str, out: &mut dyn Write, progress: &mut dyn FnMut(u64) -> bool) -> Result<u64> {
+    fn fetch(&mut self, path: &str, from: u64, out: &mut dyn Write, progress: &mut dyn FnMut(u64) -> bool) -> Result<u64> {
         let (sftp, server) = (self.sftp(), &self.server);
         self.runtime.block_on(async {
             let mut file = sftp.open(path).await.map_err(|e| sftp_problem(e, server, path))?;
+            if from > 0 {
+                use tokio::io::AsyncSeekExt;
+                if file.seek(std::io::SeekFrom::Start(from)).await.is_err() {
+                    return Err(Error::CantResume);
+                }
+            }
             let mut buffer = vec![0u8; 256 * 1024];
             let mut total = 0u64;
             loop {
