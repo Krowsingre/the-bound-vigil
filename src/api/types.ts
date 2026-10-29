@@ -922,6 +922,26 @@ export interface AudioPart {
 
 /** An audiobook as its page and the player show it. */
 /** An ebook and its audiobook, paired for reading along. */
+/** A pair being lined up word by word in the background, and how far it has got. */
+export interface LiningUp {
+  ebookId: string;
+  audiobookId: string;
+  /** The ebook's title, for the sidebar. */
+  title: string;
+  /** Getting the speech model ready (downloading it the first time), or listening through the audiobook. */
+  stage: "model" | "listening";
+  fraction: number;
+  modelLoaded: number;
+  modelTotal: number;
+}
+
+/** An ebook's words as the reader counts them, for lining it up. */
+export interface BookWords {
+  sections: number[];
+  words: string[];
+  language: string | null;
+}
+
 export interface ReadAlongPair {
   ebookId: string;
   audiobookId: string;

@@ -37,6 +37,33 @@ jobs:
       - name: Build the web version
         run: npm run build:web
 
+  speech:
+    name: Read-along with real speech
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Speech synthesiser
+        run: sudo apt-get update && sudo apt-get install -y espeak-ng ffmpeg
+      - uses: actions/cache@v4
+        with:
+          path: speech-model
+          key: ggml-small.en-q5_1
+      - name: Speech model
+        run: |
+          mkdir -p speech-model
+          [ -s speech-model/ggml-small.en-q5_1.bin ] || curl -L --fail -o speech-model/ggml-small.en-q5_1.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin
+      - name: Read a story aloud
+        run: |
+          espeak-ng -v en-us -s 165 -f crates/tbv-speech/tests/fixtures/lantern.txt -w lantern.wav
+          ffmpeg -loglevel error -i lantern.wav -ar 16000 -ac 1 -f s16le lantern.raw
+      - name: Line the story up with its text
+        run: cargo test -p tbv-speech --release -- --ignored --nocapture
+        env:
+          TBV_SPEECH_MODEL: ${{ github.workspace }}/speech-model/ggml-small.en-q5_1.bin
+          TBV_SPEECH_RAW: ${{ github.workspace }}/lantern.raw
+
   windows:
     name: Windows installer
     runs-on: windows-latest

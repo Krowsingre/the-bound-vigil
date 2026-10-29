@@ -712,10 +712,6 @@ export function previewApi(): Api {
       else linked.delete(audiobookId);
     },
     audiobookForEbook: async (ebookId) => [...linked].find(([, e]) => e === ebookId)?.[0] ?? null,
-    audioClip: async () => {
-      throw new Error("Working out read-along timing needs the desktop app.");
-    },
-    audioClipsDone: async () => undefined,
     readAlongTiming: async (ebookId, audiobookId) => timings.get(`${ebookId}|${audiobookId}`) ?? null,
     saveReadAlongTiming: async (ebookId, audiobookId, timing) => {
       timings.set(`${ebookId}|${audiobookId}`, timing);
@@ -738,6 +734,16 @@ export function previewApi(): Api {
         const key = `${ebookId}|${audiobookId}`;
         return [{ ebookId, audiobookId, ebookFormat: ebook.format, here: true, timing: timings.get(key) ?? null, pieces: pieces.get(key)?.size ?? 0 }];
       }),
+    // Nothing is lined up in the preview: it has no speech engine.
+    onLiningUp: () => () => undefined,
+    onLinedUp: () => () => undefined,
+    onBookWordsWanted: () => () => undefined,
+    saveBookWords: async () => undefined,
+    pauseLiningUp: async () => undefined,
+    liningUpPaused: async () => false,
+    wakeLiningUp: async () => undefined,
+    speechModels: async () => [["standard", 190_000_000]],
+    removeSpeechModels: async () => undefined,
     prepareStream: async () => null,
     homeStatus: async () => homeState,
     setHome: async (on) => (homeState = on ? { ...HOME_ON, phones: homeState.phones } : { ...HOME_OFF, phones: homeState.phones }),

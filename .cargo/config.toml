@@ -1,0 +1,5 @@
+# whisper.cpp (speech recognition for lining up read-along) is built for any
+# computer of its kind, not only the one building it: the installer runs on
+# PCs that may lack the build machine's newest processor features.
+[env]
+GGML_NATIVE = "OFF"
