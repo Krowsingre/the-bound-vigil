@@ -15,6 +15,10 @@
   flex-direction: column;
   min-height: 0;
   overflow: hidden auto;
+  /* A short window scrolls the sidebar; its scrollbar stays thin so it
+     doesn't eat into the pages' captions. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--sidebar-hover) transparent;
   background: var(--sidebar-bg);
   color: var(--sidebar-text);
 }
@@ -707,4 +711,13 @@
 /* Imports has no caption, so it keeps the old height. */
 .nav-imports {
   height: 44px;
+}
+
+/* Lining up shows the book's title under it. */
+.nav-imports.nav-lining {
+  height: 58px;
+}
+
+.nav-lining .nav-label {
+  flex: 1;
 }

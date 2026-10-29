@@ -9,6 +9,7 @@ import { DOCUMENT_PAIR_NOTE, PairDialog } from "../audio/LinkEbook";
 import { useToast } from "../components/Toast";
 import { isAudio, isDocument } from "../lib/queryBooks";
 import { showBookDetails } from "./openDetails";
+import { linesUp, loadLineUp, onLinedUp, onLiningUp, type LineUpState } from "../readAlong/lineUp";
 
 type Partner = { id: string; name: string; format?: string } | null;
 
@@ -34,6 +35,27 @@ export function PairRow({ book, refreshKey }: { book: BookPreview; refreshKey: n
       current = false;
     };
   }, [book.id, listening, refreshKey, reload]);
+
+  // How far the pair is lined up word by word, kept up to date while it happens.
+  const ebookId = partner ? (listening ? partner.id : book.id) : null;
+  const audiobookId = partner ? (listening ? book.id : partner.id) : null;
+  const [lineUp, setLineUp] = useState<LineUpState | null>(null);
+  const [live, setLive] = useState<number | null>(null);
+  useEffect(() => {
+    setLineUp(null);
+    setLive(null);
+    if (!ebookId || !audiobookId) return;
+    let current = true;
+    const load = () => void loadLineUp(ebookId, audiobookId).then((l) => current && setLineUp(l.state), () => undefined);
+    load();
+    const offProgress = onLiningUp((l) => current && setLive(l && l.ebookId === ebookId && l.audiobookId === audiobookId ? l.fraction : null));
+    const offDone = onLinedUp((e, a) => e === ebookId && a === audiobookId && load());
+    return () => {
+      current = false;
+      offProgress();
+      offDone();
+    };
+  }, [ebookId, audiobookId]);
 
   if (partner === undefined) return null;
   const unpair = () => {
@@ -66,6 +88,17 @@ export function PairRow({ book, refreshKey }: { book: BookPreview; refreshKey: n
           </button>
         )}
         {partner && byHand && <span className="details-origin">{DOCUMENT_PAIR_NOTE}</span>}
+        {partner && !byHand && lineUp && linesUp(listening ? (partner.format ?? "") : book.format) && (
+          <span className="details-origin">
+            {lineUp.failed
+              ? `Couldn't be lined up word by word (${lineUp.failed}), so read-along follows by chapter.`
+              : lineUp.done
+                ? "Lined up word by word."
+                : live !== null
+                  ? `Lining up word by word… ${Math.floor(live * 100)}%`
+                  : `Waiting to be lined up word by word (${Math.floor(lineUp.fraction * 100)}% so far). This happens while TBV is open on a device that has both the book and the audiobook downloaded.`}
+          </span>
+        )}
         {choosing && (
           <PairDialog
             book={book}
