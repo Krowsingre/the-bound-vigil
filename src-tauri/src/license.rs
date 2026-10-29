@@ -67,7 +67,7 @@ pub fn status(app: &AppHandle, library: &Mutex<Library>) -> tbv_core::Result<Lic
         .lock()
         .map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?
         .license(now(), outside_start(app), shop(), answer.as_ref())?;
-    keep_outside(app, view.trial_ends - tbv_core::license::TRIAL_DAYS * 86_400);
+    keep_outside(app, view.trial_ends - tbv_core::license::trial_days(shop()) * 86_400);
     Ok(view)
 }
 

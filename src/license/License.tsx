@@ -1,5 +1,6 @@
 // Paying for TBV: 30 days to try it in full, then a one-time unlock from the
-// Microsoft Store or the App Store. While the trial runs everything works;
+// Microsoft Store or the App Store (on iPhone and iPad there's no trial for
+// now: it's bought before use). While the trial runs everything works;
 // once it's over, this screen stands in front of the library until TBV is
 // bought, with a way to take a backup so nothing is ever held hostage.
 
@@ -109,10 +110,22 @@ function LicenseGate() {
     <div className="web-connect license-gate">
       <div className="web-connect-card">
         <span className="web-connect-emblem" aria-hidden dangerouslySetInnerHTML={{ __html: emblem }} />
-        <h1>Your 30 days are up</h1>
-        <p className="muted">
-          Thank you for trying The Bound Vigil. Buy it once{license.price ? ` for ${license.price}` : ""} to keep reading. Your books, notes and places are all still here.
-        </p>
+        {license.trialDays > 0 ? (
+          <>
+            <h1>Your {license.trialDays} days are up</h1>
+            <p className="muted">
+              Thank you for trying The Bound Vigil. Buy it once{license.price ? ` for ${license.price}` : ""} to keep reading. Your books, notes and places are all
+              still here.
+            </p>
+          </>
+        ) : (
+          <>
+            <h1>Welcome to The Bound Vigil</h1>
+            <p className="muted">
+              Buy it once{license.price ? ` for ${license.price}` : ""} to start reading. Your books stay on your own devices and in your own cloud.
+            </p>
+          </>
+        )}
         {canBuy ? (
           <>
             <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void buy()}>

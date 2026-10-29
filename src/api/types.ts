@@ -176,6 +176,8 @@ export interface LicenseView {
   daysLeft: number;
   /** Seconds since 1970. */
   trialEnds: number;
+  /** How long the trial is here (0: none, bought before use). */
+  trialDays: number;
   /** Where it's bought: "none" for a copy from outside a store. */
   shop: "microsoft" | "apple" | "none";
   /** As the store shows it, like "$14.99". */

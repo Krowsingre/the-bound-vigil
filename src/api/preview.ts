@@ -133,13 +133,15 @@ let imports: ImportItem[] = new URLSearchParams(location.search).has("imports")
       };
     })
   : [];
-// `?license=expired` (or `=ending`, `=owned`) shows that state of the trial.
+// `?license=expired` (or `=ending`, `=owned`) shows that state of the trial;
+// `=welcome` is an iPhone copy not yet bought (no trial there).
 const licenseParam = new URLSearchParams(location.search).get("license");
 let previewLicense: LicenseView = {
-  state: licenseParam === "expired" ? "expired" : licenseParam === "owned" ? "owned" : "trial",
-  daysLeft: licenseParam === "expired" || licenseParam === "owned" ? 0 : licenseParam === "ending" ? 2 : 21,
+  state: licenseParam === "expired" || licenseParam === "welcome" ? "expired" : licenseParam === "owned" ? "owned" : "trial",
+  daysLeft: licenseParam === "expired" || licenseParam === "welcome" || licenseParam === "owned" ? 0 : licenseParam === "ending" ? 2 : 21,
   trialEnds: Math.floor(Date.now() / 1000) + (licenseParam === "ending" ? 2 : 21) * 86_400,
-  shop: "microsoft",
+  trialDays: licenseParam === "welcome" ? 0 : 30,
+  shop: licenseParam === "welcome" ? "apple" : "microsoft",
   price: "$14.99",
 };
 // `?hardcover` shows Hardcover signed in, for reviewing Settings.

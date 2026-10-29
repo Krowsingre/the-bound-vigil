@@ -1,5 +1,7 @@
-//! Paying for TBV: 30 days to try it in full, then a one-time unlock bought
-//! in the Microsoft Store on a computer or the App Store on iPhone and iPad.
+//! Paying for TBV: 30 days to try it in full on a computer, then a one-time
+//! unlock bought in the Microsoft Store. On iPhone and iPad the same unlock
+//! is bought in the App Store, with no trial for now (IOS_TRIAL_DAYS can
+//! give one, for a holiday say).
 //! The stores say whether it was bought; this keeps the trial's dates and
 //! remembers the last time a store said yes, so TBV stays open offline.
 
@@ -10,6 +12,8 @@ use crate::error::Result;
 use crate::library::Library;
 
 pub const TRIAL_DAYS: i64 = 30;
+/// The iPhone and iPad trial: none for now.
+pub const IOS_TRIAL_DAYS: i64 = 0;
 const DAY: i64 = 86_400;
 
 pub const STARTED: &str = "license.trial_started";
@@ -60,9 +64,20 @@ pub struct LicenseView {
     pub days_left: i64,
     /// When the trial ends, as seconds since 1970.
     pub trial_ends: i64,
+    /// How long the trial is here (0: none, bought before use).
+    pub trial_days: i64,
     pub shop: Shop,
     /// The price as the store shows it, like "$14.99".
     pub price: Option<String>,
+}
+
+/// How long the trial runs where the copy is bought.
+pub fn trial_days(shop: Shop) -> i64 {
+    if shop == Shop::Apple {
+        IOS_TRIAL_DAYS
+    } else {
+        TRIAL_DAYS
+    }
 }
 
 /// What a store says, when it could be asked.
@@ -117,7 +132,7 @@ impl Library {
             None => self.seconds(OWNED)?.is_some(),
         };
         let owned = bought || coded;
-        let ends = start + TRIAL_DAYS * DAY;
+        let ends = start + trial_days(shop) * DAY;
         let left = ((ends - seen) as f64 / DAY as f64).ceil().max(0.0) as i64;
         let state = if owned {
             LicenseState::Owned
@@ -126,7 +141,14 @@ impl Library {
         } else {
             LicenseState::Expired
         };
-        Ok(LicenseView { state, days_left: if owned { 0 } else { left }, trial_ends: ends, shop, price: answer.and_then(|a| a.price.clone()) })
+        Ok(LicenseView {
+            state,
+            days_left: if owned { 0 } else { left },
+            trial_ends: ends,
+            trial_days: trial_days(shop),
+            shop,
+            price: answer.and_then(|a| a.price.clone()),
+        })
     }
 }
 
@@ -152,6 +174,16 @@ mod tests {
         assert_eq!(library.license(start + 40 * DAY, None, Shop::Microsoft, None).unwrap().state, LicenseState::Owned);
         let no = StoreAnswer { owned: false, price: None };
         assert_eq!(library.license(start + 41 * DAY, None, Shop::Microsoft, Some(&no)).unwrap().state, LicenseState::Expired);
+    }
+
+    #[test]
+    fn an_app_store_copy_has_no_trial_until_one_is_given() {
+        let (_dir, library) = crate::library::tests::open_temp_library();
+        let start = 1_800_000_000;
+        let view = library.license(start, None, Shop::Apple, None).unwrap();
+        assert_eq!((view.state, view.days_left, view.trial_ends), (LicenseState::Expired, 0, start + IOS_TRIAL_DAYS * DAY));
+        let yes = StoreAnswer { owned: true, price: None };
+        assert_eq!(library.license(start + DAY, None, Shop::Apple, Some(&yes)).unwrap().state, LicenseState::Owned);
     }
 
     #[test]
