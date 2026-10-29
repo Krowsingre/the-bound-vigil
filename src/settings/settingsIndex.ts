@@ -207,6 +207,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "library",
+    section: "history",
+    label: "Reading history",
+    words: "reading history finished dropped rated ratings stars books read past deleted record forget remove privacy",
+  },
+  {
+    tab: "library",
     section: "goodreads",
     label: "Goodreads",
     words: "goodreads import export csv file upload ratings stars shelves read dates",

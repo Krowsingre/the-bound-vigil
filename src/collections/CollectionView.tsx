@@ -6,8 +6,9 @@ import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { ProgressBar } from "../components/ProgressBar";
 import { useToast } from "../components/Toast";
-import { bookContextMenu, makeBookActions } from "../home/bookActions";
+import { bookContextMenu, clickBook, makeBookActions } from "../home/bookActions";
 import { BookGrid, BookList } from "../library/BookViews";
+import { PageSwitch } from "../library/Library";
 import { authorLine, percent } from "../lib/format";
 import { Badge } from "./badges";
 import { CollectionSeries } from "./CollectionSeries";
@@ -40,6 +41,8 @@ export function CollectionView({
   const [reload, setReload] = useState(0);
   const [layout, setLayout] = useState<"grid" | "list">("grid");
   const [adding, setAdding] = useState(false);
+  /** The Read compendium's switch: every book, only those finished, or only those dropped. */
+  const [ended, setEnded] = useState<"all" | "read" | "dropped">("all");
   const toast = useToast();
   const key = JSON.stringify(collection);
 
@@ -112,6 +115,8 @@ export function CollectionView({
         : c?.rules
           ? "Filled by rules"
           : c && KIND_LABEL[c.kind];
+  const readSwitch = collection.kind === "smart" && collection.smart === "read";
+  const books = readSwitch && ended !== "all" ? detail.books.filter((b) => b.status === ended) : detail.books;
   const covers = detail.books.slice(0, 3).map(({ id, title, authors, coverPath }) => ({ id, title, authors, coverPath }));
   const menu = menuFor(detail);
   const move = (book: BookPreview, to: number) =>
@@ -158,6 +163,18 @@ export function CollectionView({
                   ? `Books where ${lowerFirst(describeRules(c.rules))}. It keeps up as your books change.`
                   : null}
         </p>
+        {readSwitch && (
+          <PageSwitch
+            label="Which books"
+            value={ended}
+            options={[
+              { value: "all", label: "All" },
+              { value: "read", label: "Finished" },
+              { value: "dropped", label: "Dropped" },
+            ]}
+            onChange={setEnded}
+          />
+        )}
         {own?.kind !== "reading_list" && detail.books.length > 0 && (
           <div className="layout-switch" role="radiogroup" aria-label="Layout">
             {(
@@ -185,7 +202,11 @@ export function CollectionView({
 
       <CollectionSeries collection={collection} books={detail.books} refreshKey={refreshKey + reload} onChanged={changed} />
 
-      {detail.books.length === 0 ? (
+      {books.length === 0 && detail.books.length > 0 ? (
+        <div className="library-empty">
+          <h2>{ended === "dropped" ? "No dropped books" : "No finished books yet"}</h2>
+        </div>
+      ) : detail.books.length === 0 ? (
         <div className="library-empty">
           <h2>No books here yet</h2>
           <p className="muted">
@@ -201,7 +222,7 @@ export function CollectionView({
           {detail.books.map((b, i) => (
             <li key={b.id} className="reading-row" {...bookContextMenu(b, actions)}>
               <span className="reading-number">{i + 1}</span>
-              <button type="button" className="reading-open" onClick={() => actions.open(b)}>
+              <button type="button" className="reading-open" onClick={() => clickBook(b, actions)}>
                 <BookCover book={b} size="s" />
                 <span className="reading-text">
                   <span className="reading-title">{b.title}</span>
@@ -209,8 +230,8 @@ export function CollectionView({
                 </span>
               </button>
               <span className="reading-status">
-                {b.status === "read" ? (
-                  <span className="muted">Read</span>
+                {b.status === "read" || b.status === "dropped" ? (
+                  <span className="muted">{b.status === "read" ? "Read" : "Dropped"}</span>
                 ) : b.status === "in_progress" ? (
                   <span className="progress-line">
                     <ProgressBar value={b.totalProgression} />
@@ -247,9 +268,9 @@ export function CollectionView({
           ))}
         </ol>
       ) : layout === "grid" ? (
-        <BookGrid books={detail.books} actions={actions} />
+        <BookGrid books={books} actions={actions} />
       ) : (
-        <BookList books={detail.books} actions={actions} />
+        <BookList books={books} actions={actions} />
       )}
 
       {adding && own && (

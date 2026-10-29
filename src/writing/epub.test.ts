@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import type { WritingChapter, WritingProject } from "../api/types";
-import { buildEpub, chapterXhtml, epubFileName, epubFiles, exportProblems, readExport, type ExportSettings } from "./epub";
+import { bookOrder, buildEpub, chapterXhtml, epubFileName, epubFiles, exportProblems, readExport, type ExportSettings } from "./epub";
 import { countWords } from "./records";
 
 const project: WritingProject = {
@@ -18,6 +18,7 @@ const project: WritingProject = {
   description: "A courier & a letter.",
   cover: null,
   coverPath: null,
+  coverPage: null,
   export: "{}",
   chapters: 2,
   words: 0,
@@ -34,6 +35,7 @@ const chapter = (n: number, title: string, body: string): WritingChapter => ({
   words: 0,
   updatedAt: project.updatedAt,
   role: "chapter",
+  part: null,
 });
 
 const chapters = [
@@ -165,6 +167,70 @@ describe("pictures, footnotes, front and back matter", () => {
     expect(css({ titles: "left" })).toContain("h1 { font-size: 1.6em; text-align: left;");
     expect(css({ dropCap: true })).toContain("::first-letter");
     expect(css({})).not.toContain("::first-letter");
+  });
+});
+
+describe("anthologies, page breaks and what opens the book", () => {
+  const story = (n: number, title: string): WritingChapter => ({ ...chapter(n, title, "<p>A story of its own.</p>"), role: "part" });
+  const inPart = (c: WritingChapter, part: string, role: WritingChapter["role"] = "chapter"): WritingChapter => ({ ...c, part, role });
+  const anthology = [
+    { ...chapter(1, "Foreword", "<p>Some stories.</p>"), role: "front" as const },
+    story(2, "The Ash Road"),
+    inPart(chapter(3, "", "<p>Rain.</p>"), "c2"),
+    inPart(chapter(4, "", "<p>Wind.</p>"), "c2"),
+    inPart(chapter(5, "Afterword", "<p>That was the road.</p>"), "c2", "back"),
+    story(6, "The Salt Sea"),
+    inPart(chapter(7, "", "<p>Waves.</p>"), "c6"),
+    inPart(chapter(8, "For Mara", "<p>Who sailed.</p>"), "c6", "front"),
+    { ...chapter(9, "About the author", "<p>Embre writes.</p>"), role: "back" as const },
+  ];
+
+  it("orders each work with its own front matter, chapters and back matter", () => {
+    const titles = bookOrder(anthology).map((c) => c.title || c.id);
+    expect(titles).toEqual(["Foreword", "The Ash Road", "c3", "c4", "Afterword", "The Salt Sea", "For Mara", "c7", "About the author"]);
+  });
+
+  it("nests the contents by work and numbers chapters again in each", () => {
+    const nav = text(epubFiles({ project, chapters: anthology, settings: settings() }).files, "OEBPS/nav.xhtml");
+    const toc = nav.slice(0, nav.indexOf("landmarks"));
+    expect(toc).toMatch(/The Ash Road<\/a><ol>\n<li><a href="chapter-3.xhtml">Chapter 1<\/a><\/li>\n<li><a href="chapter-4.xhtml">Chapter 2<\/a><\/li>\n<li><a href="chapter-5.xhtml">Afterword/);
+    expect(toc).toMatch(/The Salt Sea<\/a><ol>\n<li><a href="chapter-7.xhtml">For Mara<\/a><\/li>\n<li><a href="chapter-8.xhtml">Chapter 1/);
+    expect(toc.indexOf("About the author")).toBeGreaterThan(toc.indexOf("The Salt Sea"));
+    const files = epubFiles({ project, chapters: anthology, settings: settings() }).files;
+    expect(text(files, "OEBPS/chapter-2.xhtml")).toContain(`<section class="part" epub:type="part"`);
+    expect(text(files, "OEBPS/toc.ncx")).toContain(`<meta name="dtb:depth" content="2"/>`);
+    expect(exportProblems([story(1, "Only a part")])).toEqual(["Add a chapter first."]);
+  });
+
+  it.runIf(!!process.env.EPUBCHECK_JAR)("passes the official EPUB checker as an anthology", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tbv-epub-"));
+    const cover = { bytes: new Uint8Array(Buffer.from(PIXEL.slice(PIXEL.indexOf(",") + 1), "base64")), mime: "image/png" };
+    const withBreak = anthology.map((c) => (c.id === "c3" ? { ...c, body: `<p>Rain.</p><div data-page-break=""></div><p>More rain.</p>` } : c));
+    for (const [i, coverPage] of (["cover", "none"] as const).entries()) {
+      const file = join(dir, `anthology-${i}.epub`);
+      writeFileSync(file, buildEpub({ project: { ...project, coverPage }, chapters: withBreak, settings: settings({ tocDepth: 2 }), cover }));
+      execFileSync("java", ["-jar", process.env.EPUBCHECK_JAR!, file], { stdio: "pipe" });
+    }
+  }, 120_000);
+
+  it("starts a new page at a page break", () => {
+    const { body } = chapterXhtml(`<p>One page.</p><div data-page-break=""></div><p>The next.</p>`, "asterisks", "c1");
+    expect(body).toBe(`<p>One page.</p><div class="pagebreak"></div><p>The next.</p>`);
+    expect(text(epubFiles({ project, chapters, settings: settings() }).files, "OEBPS/styles.css")).toContain(".pagebreak {");
+  });
+
+  it("opens with the cover, a title page, both or neither", () => {
+    const cover = { bytes: new Uint8Array([0xff, 0xd8, 0xff]), mime: "image/jpeg" };
+    const spine = (coverPage: WritingProject["coverPage"], withCover = true) => {
+      const opf = text(epubFiles({ project: { ...project, coverPage }, chapters, settings: settings(), cover: withCover ? cover : null }).files, "OEBPS/content.opf");
+      return [opf.includes(`<itemref idref="cover"/>`), opf.includes(`<itemref idref="titlepage"/>`), opf.includes(`properties="cover-image"`)];
+    };
+    expect(spine(null)).toEqual([true, true, true]);
+    expect(spine("cover")).toEqual([true, false, true]);
+    expect(spine("title")).toEqual([false, true, true]);
+    expect(spine("none")).toEqual([false, false, true]);
+    // Without a picture, "the cover only" still gives the book a title page.
+    expect(spine("cover", false)).toEqual([false, true, false]);
   });
 });
 

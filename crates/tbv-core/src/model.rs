@@ -16,6 +16,8 @@ pub enum ReadStatus {
     Unread,
     InProgress,
     Read,
+    /// Stopped and not going back to it.
+    Dropped,
 }
 
 impl ReadStatus {
@@ -24,6 +26,7 @@ impl ReadStatus {
             ReadStatus::Unread => "unread",
             ReadStatus::InProgress => "in_progress",
             ReadStatus::Read => "read",
+            ReadStatus::Dropped => "dropped",
         }
     }
 
@@ -31,6 +34,7 @@ impl ReadStatus {
         match value {
             "in_progress" => ReadStatus::InProgress,
             "read" => ReadStatus::Read,
+            "dropped" => ReadStatus::Dropped,
             _ => ReadStatus::Unread,
         }
     }
@@ -122,8 +126,8 @@ pub struct BookPreview {
     pub remote_positions: Vec<RemotePosition>,
     pub favorite: bool,
     pub want_to_read: bool,
-    /// Your own rating, 1 to 5 stars.
-    pub rating: Option<u8>,
+    /// Your own rating, in quarter stars from 0.25 to 5.
+    pub rating: Option<f64>,
     /// When you finished it.
     pub finished_at: Option<IsoUtc>,
     /// Your own tags, A to Z.

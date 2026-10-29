@@ -522,6 +522,9 @@ export function Reader({
     info?.book.status === "read"
       ? { label: "Mark as not finished", onSelect: () => void markStatus("in_progress", "Marked as in progress.") }
       : { label: "Mark as read", icon: "check", onSelect: () => void markStatus("read", "Marked as read.") },
+    info?.book.status === "dropped"
+      ? { label: "Not dropped after all", onSelect: () => void markStatus("in_progress", "Marked as in progress.") }
+      : { label: "Mark as dropped", icon: "close", onSelect: () => void markStatus("dropped", "Marked as dropped.") },
     "divider",
     { label: "Close book", icon: "close", onSelect: leave },
   ];

@@ -18,6 +18,8 @@ import type {
   OpdsFile,
   WritingChapter,
   WritingDetails,
+  WritingDraft,
+  ReadingHistoryEntry,
   WritingProject,
   WritingProjectView,
   TidyPlan,
@@ -527,6 +529,18 @@ export interface Api {
   pickEpubSavePath(fileName: string): Promise<string | null>;
   /** Saves a finished EPUB at `path` (desktop), downloads it (phone), and/or adds it to the library. */
   saveWritingEpub(bytes: Uint8Array, fileName: string, path: string | null, addToLibrary: boolean): Promise<void>;
+  /** Keeps the book as it stands (made into an EPUB) as its next draft. */
+  saveWritingDraft(projectId: string, bytes: Uint8Array): Promise<WritingDraft>;
+  /** A book's drafts, oldest first. */
+  writingDrafts(projectId: string): Promise<WritingDraft[]>;
+  deleteWritingDraft(id: string): Promise<void>;
+  setWritingCoverPage(id: string, page: WritingProject["coverPage"]): Promise<WritingProject>;
+  /** Puts a section into a part of an anthology, or back into the book's own (null). */
+  setWritingChapterPart(id: string, part: string | null): Promise<WritingChapter>;
+  /** Books finished, dropped or rated, most recently finished first. */
+  readingHistory(): Promise<ReadingHistoryEntry[]>;
+  /** Takes a book off Reading history for good. */
+  forgetReading(bookId: string): Promise<void>;
 }
 
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -1065,6 +1079,13 @@ function appApi(): Api {
       (await core).invoke("save_writing_epub", bytes, {
         headers: { path: encodeURIComponent(path ?? ""), add: addToLibrary ? "1" : "0", "file-name": encodeURIComponent(fileName) },
       }),
+    saveWritingDraft: async (projectId, bytes) => (await core).invoke<WritingDraft>("save_writing_draft", bytes, { headers: { "project-id": projectId } }),
+    writingDrafts: async (projectId) => (await core).invoke<WritingDraft[]>("writing_drafts", { projectId }),
+    deleteWritingDraft: async (id) => (await core).invoke("delete_writing_draft", { id }),
+    setWritingCoverPage: async (id, page) => (await core).invoke<WritingProject>("set_writing_cover_page", { id, page }),
+    setWritingChapterPart: async (id, part) => (await core).invoke<WritingChapter>("set_writing_chapter_part", { id, part }),
+    readingHistory: async () => (await core).invoke<ReadingHistoryEntry[]>("reading_history"),
+    forgetReading: async (bookId) => (await core).invoke("forget_reading", { bookId }),
     pickKeyFile: async () => {
       const [picked] = await openFiles({ multiple: false, title: "Choose your private key file", keep: true });
       return picked ?? null;

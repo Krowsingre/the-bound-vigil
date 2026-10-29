@@ -208,7 +208,7 @@ export function BookDetailsPage({
           <div className="details-rating">
             <StarRating value={book.rating} size={22} onChange={(r) => actions.setRating(book, r)} />
             <span className="muted">
-              {book.status === "read" ? "Read" : book.status === "in_progress" ? "Reading" : "Not started"}
+              {book.status === "read" ? "Read" : book.status === "dropped" ? "Dropped" : book.status === "in_progress" ? "Reading" : "Not started"}
               {book.favorite && " · Favourite"}
               {book.wantToRead && " · Up next"}
             </span>

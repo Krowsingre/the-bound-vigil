@@ -170,7 +170,7 @@ export function AppearanceTab({
             </button>
           </div>
         )}
-        <Row label="Surface style" hint="A subtle tint behind pages and cards.">
+        <Row label="Surface style" hint="A subtle tint or texture behind pages and cards." stack>
           <Segmented<SurfaceStyle>
             label="Surface style"
             value={settings.surface}
@@ -178,6 +178,8 @@ export function AppearanceTab({
               { value: "clean", label: "Clean" },
               { value: "matte", label: "Matte" },
               { value: "paper", label: "Paper" },
+              { value: "linen", label: "Linen" },
+              { value: "vellum", label: "Vellum" },
             ]}
             onChange={(surface) => change({ surface })}
           />

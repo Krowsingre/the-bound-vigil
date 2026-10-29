@@ -32,7 +32,7 @@ tempfile = "3"
 webview2-com = "0.39"
 windows-core = "0.62"
 # The Microsoft Store, for buying the unlock.
-windows = { version = "0.62", features = ["std", "ApplicationModel", "Services_Store", "Foundation", "Foundation_Collections", "ApplicationModel_DataTransfer", "Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell"] }
+windows = { version = "0.62", features = ["std", "ApplicationModel", "Services_Store", "Foundation", "Foundation_Collections", "ApplicationModel_DataTransfer", "Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_Graphics_Dwm"] }
 windows-collections = "0.3"
 
 # Updating itself, on computers (phones update from their app store).

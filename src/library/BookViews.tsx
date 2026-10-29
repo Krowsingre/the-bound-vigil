@@ -6,7 +6,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { Stars } from "../components/StarRating";
 import { authorLine, percent } from "../lib/format";
 import { formatLabel } from "../lib/queryBooks";
-import { bookContextMenu, bookMenu, type BookActions } from "../home/bookActions";
+import { bookContextMenu, bookMenu, clickBook, type BookActions } from "../home/bookActions";
 
 /** While choosing books for a change to many at once, a click picks a book instead of opening it. */
 export interface Selection {
@@ -19,7 +19,7 @@ export interface Selection {
 type Props = { books: BookPreview[]; actions: BookActions; selection?: Selection | null };
 
 const press = (book: BookPreview, actions: BookActions, selection: Selection | null | undefined, books: BookPreview[], shift: boolean) =>
-  selection ? selection.toggle(book, shift ? books : undefined) : actions.open(book);
+  selection ? selection.toggle(book, shift ? books : undefined) : clickBook(book, actions);
 
 /** The tick on a chosen book, and the props that say it's chosen. */
 function picked(book: BookPreview, selection?: Selection | null) {
@@ -35,7 +35,7 @@ function picked(book: BookPreview, selection?: Selection | null) {
   };
 }
 
-const STATUS = { unread: "Unread", in_progress: "In progress", read: "Read" } as const;
+const STATUS = { unread: "Unread", in_progress: "In progress", read: "Read", dropped: "Dropped" } as const;
 
 function seriesLine(book: BookPreview) {
   if (!book.series) return null;

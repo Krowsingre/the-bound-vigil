@@ -3,7 +3,7 @@
 export type BookId = `sha256:${string}`;
 export type IsoUtc = string;
 
-export type ReadStatus = "unread" | "in_progress" | "read";
+export type ReadStatus = "unread" | "in_progress" | "read" | "dropped";
 export type Availability = "local" | "cloud" | "missing";
 
 /** One file of a book: its own, or a copy kept with it. */
@@ -55,7 +55,7 @@ export interface BookPreview {
   remotePositions: RemotePosition[];
   favorite: boolean;
   wantToRead: boolean;
-  /** Your own rating, 1 to 5 stars. */
+  /** Your own rating, in quarter stars from 0.25 to 5. */
   rating: number | null;
   /** When you finished it. */
   finishedAt: IsoUtc | null;
@@ -1235,6 +1235,8 @@ export interface WritingProject {
   cover: string | null;
   /** The cover's file here (or a picture address on the phone). */
   coverPath: string | null;
+  /** What opens the book: null for the cover picture then a title page, or only one of them, or neither. */
+  coverPage: "cover" | "title" | "none" | null;
   /** EPUB settings as JSON (see writing/epub.ts). */
   export: string;
   chapters: number;
@@ -1252,8 +1254,34 @@ export interface WritingChapter {
   position: number;
   words: number;
   updatedAt: IsoUtc;
-  /** A chapter, or front matter (dedication, foreword) or back matter (acknowledgements, about the author). */
-  role: "chapter" | "front" | "back";
+  /** A chapter, front matter (dedication, foreword), back matter (acknowledgements, about the author),
+   * or a part: one work in an anthology, holding its own sections. */
+  role: "chapter" | "front" | "back" | "part";
+  /** The part this section belongs to, or null for the book's own. */
+  part: string | null;
+}
+
+/** An earlier state of a book being written: a locked EPUB that opens in the reader. */
+export interface WritingDraft {
+  id: string;
+  projectId: string;
+  number: number;
+  bookId: string;
+  words: number;
+  createdAt: IsoUtc;
+  /** Whether its file is on this device. */
+  here: boolean;
+}
+
+/** A book finished, dropped or rated, kept in Reading history after it leaves the library. */
+export interface ReadingHistoryEntry {
+  bookId: string;
+  title: string;
+  authors: string[];
+  status: "read" | "dropped" | null;
+  stars: number | null;
+  finishedAt: IsoUtc | null;
+  inLibrary: boolean;
 }
 
 export interface WritingProjectView {

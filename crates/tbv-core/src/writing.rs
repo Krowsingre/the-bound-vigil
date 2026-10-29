@@ -30,6 +30,9 @@ pub struct WritingProject {
     pub cover: Option<String>,
     /// The cover's file on this device, when it's here.
     pub cover_path: Option<String>,
+    /// What opens the book: none for the cover picture then a title page,
+    /// or only `cover`, only `title`, or `none` of them.
+    pub cover_page: Option<String>,
     /// EPUB settings, as the UI keeps them (JSON).
     pub export: String,
     pub chapters: u32,
@@ -49,12 +52,33 @@ pub struct WritingChapter {
     pub position: f64,
     pub words: u32,
     pub updated_at: IsoUtc,
-    /// `chapter`, `front` (dedication, foreword…) or `back` (acknowledgements…).
+    /// `chapter`, `front` (dedication, foreword…), `back` (acknowledgements…)
+    /// or `part` (one work in an anthology, holding its own sections).
     pub role: String,
+    /// The part this section belongs to, or none for the book's own.
+    pub part: Option<String>,
 }
 
 /// Where a section of a written book goes.
-pub const CHAPTER_ROLES: &[&str] = &["chapter", "front", "back"];
+pub const CHAPTER_ROLES: &[&str] = &["chapter", "front", "back", "part"];
+
+/// What can open a written book, besides the default of both.
+pub const COVER_PAGES: &[&str] = &["cover", "title", "none"];
+
+/// An earlier state of a book, kept as a locked EPUB that opens in the
+/// reader (for highlights and notes) but is never edited again.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WritingDraft {
+    pub id: String,
+    pub project_id: String,
+    pub number: u32,
+    pub book_id: String,
+    pub words: u32,
+    pub created_at: IsoUtc,
+    /// Whether its file is on this device, so it can open.
+    pub here: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -140,10 +164,11 @@ fn chapter_from(r: &Row) -> rusqlite::Result<WritingChapter> {
         position: r.get(4)?,
         updated_at: r.get(5)?,
         role: r.get(6)?,
+        part: r.get(7)?,
     })
 }
 
-const CHAPTER_COLUMNS: &str = "id, project_id, title, body, position, updated_at, role";
+const CHAPTER_COLUMNS: &str = "id, project_id, title, body, position, updated_at, role, part";
 
 impl Library {
     /// Every book being written, most recently changed first.
@@ -160,7 +185,7 @@ impl Library {
         let project = self
             .conn
             .query_row(
-                "SELECT id, title, author, series, series_index, language, description, cover, export, created_at, updated_at
+                "SELECT id, title, author, series, series_index, language, description, cover, export, created_at, updated_at, cover_page
                  FROM writing_projects WHERE id = ?1 AND deleted_at IS NULL",
                 params![id],
                 |r| {
@@ -174,6 +199,7 @@ impl Library {
                         description: r.get(6)?,
                         cover: r.get(7)?,
                         cover_path: None,
+                        cover_page: r.get(11)?,
                         export: r.get(8)?,
                         chapters: 0,
                         words: 0,
@@ -186,7 +212,7 @@ impl Library {
             .ok_or_else(|| Error::Unsuitable("that book no longer exists".into()))?;
         let bodies = self
             .conn
-            .prepare("SELECT body FROM writing_chapters WHERE project_id = ?1 AND deleted_at IS NULL")?
+            .prepare("SELECT body FROM writing_chapters WHERE project_id = ?1 AND deleted_at IS NULL AND role != 'part'")?
             .query_map(params![id], |r| r.get::<_, String>(0))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let cover_path = project
@@ -300,8 +326,114 @@ impl Library {
             "UPDATE writing_projects SET deleted_at = ?2, updated_at = ?2 WHERE id = ?1 AND deleted_at IS NULL",
             params![id, now],
         )?;
+        for draft in self.writing_drafts(id)? {
+            self.delete_writing_draft(&draft.id)?;
+        }
         self.forget_unused_pictures()?;
         Ok(())
+    }
+
+    /// What opens the book: the cover picture then a title page (none), only one of them, or neither.
+    pub fn set_writing_cover_page(&self, id: &str, page: Option<&str>) -> Result<WritingProject> {
+        if page.is_some_and(|p| !COVER_PAGES.contains(&p)) {
+            return Err(Error::Unsuitable("the book opens with its cover, a title page, both or neither".into()));
+        }
+        self.writing_project_row(id)?;
+        self.conn.execute(
+            "UPDATE writing_projects SET cover_page = ?2, updated_at = ?3 WHERE id = ?1 AND cover_page IS NOT ?2",
+            params![id, page, now_utc()],
+        )?;
+        self.writing_project_row(id)
+    }
+
+    /// Puts a section into a part of an anthology, or back into the book's own.
+    pub fn set_writing_chapter_part(&self, id: &str, part: Option<&str>) -> Result<WritingChapter> {
+        let chapter = self.writing_chapter(id)?;
+        if let Some(part) = part {
+            let host = self.writing_chapter(part)?;
+            if host.role != "part" || host.project_id != chapter.project_id || chapter.role == "part" {
+                return Err(Error::Unsuitable("that section can't go in that part".into()));
+            }
+        }
+        if chapter.part.as_deref() != part {
+            self.conn.execute(
+                "UPDATE writing_chapters SET part = ?2, updated_at = ?3 WHERE id = ?1",
+                params![id, part, now_utc()],
+            )?;
+            self.touch_writing_project(&chapter.project_id)?;
+        }
+        self.writing_chapter(id)
+    }
+
+    /// A book's drafts, oldest first.
+    pub fn writing_drafts(&self, project_id: &str) -> Result<Vec<WritingDraft>> {
+        Ok(self
+            .conn
+            .prepare(
+                "SELECT d.id, d.project_id, d.number, d.book_id, d.words, d.created_at,
+                        EXISTS (SELECT 1 FROM local_files lf WHERE lf.book_id = d.book_id AND lf.path IS NOT NULL)
+                 FROM writing_drafts d WHERE d.project_id = ?1 AND d.deleted_at IS NULL ORDER BY d.number",
+            )?
+            .query_map(params![project_id], |r| {
+                Ok(WritingDraft {
+                    id: r.get(0)?,
+                    project_id: r.get(1)?,
+                    number: r.get(2)?,
+                    book_id: r.get(3)?,
+                    words: r.get(4)?,
+                    created_at: r.get(5)?,
+                    here: r.get(6)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Keeps the book as it stands as its next draft: `epub` is the book made
+    /// into an EPUB, taken into the library but kept out of the Archive.
+    pub fn save_writing_draft(&mut self, project_id: &str, epub: &Path) -> Result<WritingDraft> {
+        let project = self.writing_project_row(project_id)?;
+        let book_id = match self.import_files(&[epub.to_path_buf()]).into_iter().next() {
+            Some(crate::model::ImportResult::Imported { book_id, .. }) => book_id,
+            // The same file again: fine when it's already one of this book's drafts.
+            Some(crate::model::ImportResult::AlreadyInLibrary { book_id, .. })
+                if self.conn.query_row("SELECT same_as LIKE 'draft:%' FROM books WHERE id = ?1", params![book_id], |r| r.get::<_, bool>(0))? =>
+            {
+                book_id
+            }
+            Some(crate::model::ImportResult::Failed { reason, .. }) => return Err(Error::Unsuitable(reason)),
+            _ => return Err(Error::Unsuitable("the draft couldn't be kept".into())),
+        };
+        self.conn.execute("UPDATE books SET same_as = ?2 WHERE id = ?1", params![book_id, format!("draft:{project_id}")])?;
+        let number: u32 = self.conn.query_row(
+            "SELECT COALESCE(MAX(number), 0) + 1 FROM writing_drafts WHERE project_id = ?1",
+            params![project_id],
+            |r| r.get(0),
+        )?;
+        let id = new_record_id();
+        let now = now_utc();
+        self.conn.execute(
+            "INSERT INTO writing_drafts (id, project_id, number, book_id, words, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+            params![id, project_id, number, book_id, project.words, now],
+        )?;
+        self.touch_writing_project(project_id)?;
+        self.writing_drafts(project_id)?
+            .into_iter()
+            .find(|d| d.id == id)
+            .ok_or_else(|| Error::Unsuitable("the draft couldn't be kept".into()))
+    }
+
+    /// Deletes a draft, its file and its highlights, on every device.
+    pub fn delete_writing_draft(&self, id: &str) -> Result<()> {
+        let book_id: Option<String> = self
+            .conn
+            .query_row("SELECT book_id FROM writing_drafts WHERE id = ?1 AND deleted_at IS NULL", params![id], |r| r.get(0))
+            .optional()?;
+        let Some(book_id) = book_id else {
+            return Ok(());
+        };
+        let now = now_utc();
+        self.conn.execute("UPDATE writing_drafts SET deleted_at = ?2, updated_at = ?2 WHERE id = ?1", params![id, now])?;
+        self.delete_book(&book_id)
     }
 
     /// Adds a chapter after `after`, or at the end.
@@ -363,13 +495,20 @@ impl Library {
     /// Makes a chapter front matter, back matter, or a chapter again.
     pub fn set_writing_chapter_role(&self, id: &str, role: &str) -> Result<WritingChapter> {
         if !CHAPTER_ROLES.contains(&role) {
-            return Err(Error::Unsuitable("a section is a chapter, front matter or back matter".into()));
+            return Err(Error::Unsuitable("a section is a part, a chapter, front matter or back matter".into()));
         }
         let chapter = self.writing_chapter(id)?;
         if chapter.role != role {
+            let now = now_utc();
+            // A part holds sections but sits in no other part; one that stops being a part lets its sections go.
+            if role == "part" {
+                self.conn.execute("UPDATE writing_chapters SET part = NULL WHERE id = ?1", params![id])?;
+            } else if chapter.role == "part" {
+                self.release_part(id, &now)?;
+            }
             self.conn.execute(
                 "UPDATE writing_chapters SET role = ?2, updated_at = ?3 WHERE id = ?1",
-                params![id, role, now_utc()],
+                params![id, role, now],
             )?;
             self.touch_writing_project(&chapter.project_id)?;
         }
@@ -394,9 +533,21 @@ impl Library {
         Ok(self.writing_project(project_id)?.chapters)
     }
 
+    /// Sections in a part that's going become the book's own again.
+    fn release_part(&self, part: &str, now: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE writing_chapters SET part = NULL, updated_at = ?2 WHERE part = ?1 AND deleted_at IS NULL",
+            params![part, now],
+        )?;
+        Ok(())
+    }
+
     pub fn delete_writing_chapter(&self, id: &str) -> Result<()> {
         let chapter = self.writing_chapter(id)?;
         let now = now_utc();
+        if chapter.role == "part" {
+            self.release_part(id, &now)?;
+        }
         self.conn.execute(
             "UPDATE writing_chapters SET deleted_at = ?2, updated_at = ?2 WHERE id = ?1",
             params![id, now],
@@ -455,6 +606,51 @@ mod tests {
 
         library.delete_writing_project(&view.project.id).unwrap();
         assert!(library.writing_projects().unwrap().is_empty());
+    }
+
+    #[test]
+    fn drafts_are_kept_out_of_the_archive_but_open_in_the_reader() {
+        let (dir, mut library) = open_temp_library();
+        let view = library.create_writing_project("Draft test", None).unwrap();
+        let epub = dir.path().join("draft.epub");
+        crate::epub::tests::write_test_epub_with(&epub, "Draft test", "Embre", false, "");
+        let draft = library.save_writing_draft(&view.project.id, &epub).unwrap();
+        assert_eq!(draft.number, 1);
+        assert!(library.book(&draft.book_id).unwrap().is_some());
+        assert!(library.open_book(&draft.book_id).is_ok());
+        let archive = library.library_page(&crate::model::LibraryQuery::default()).unwrap();
+        assert!(archive.books.iter().all(|b| b.id != draft.book_id));
+
+        let again = dir.path().join("draft2.epub");
+        crate::epub::tests::write_test_epub_with(&again, "Draft test", "Embre", false, "<p>more</p>");
+        assert_eq!(library.save_writing_draft(&view.project.id, &again).unwrap().number, 2);
+        assert_eq!(library.writing_drafts(&view.project.id).unwrap().len(), 2);
+
+        library.delete_writing_draft(&draft.id).unwrap();
+        assert_eq!(library.writing_drafts(&view.project.id).unwrap().len(), 1);
+        assert!(library.book(&draft.book_id).unwrap().is_none());
+        library.delete_writing_project(&view.project.id).unwrap();
+        assert!(library.writing_drafts(&view.project.id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_anthology_holds_its_sections_in_parts() {
+        let (_dir, library) = open_temp_library();
+        let view = library.create_writing_project("Anthology", None).unwrap();
+        let story = library.add_writing_chapter(&view.project.id, "The First Tale", None).unwrap();
+        library.set_writing_chapter_role(&story.id, "part").unwrap();
+        let chapter = &view.chapters[0];
+        library.set_writing_chapter_part(&chapter.id, Some(&story.id)).unwrap();
+        assert_eq!(library.writing_chapter(&chapter.id).unwrap().part.as_deref(), Some(story.id.as_str()));
+        assert!(library.set_writing_chapter_part(&story.id, Some(&story.id)).is_err());
+        assert_eq!(library.writing_project(&view.project.id).unwrap().project.chapters, 1);
+
+        library.delete_writing_chapter(&story.id).unwrap();
+        assert_eq!(library.writing_chapter(&chapter.id).unwrap().part, None);
+
+        let project = library.set_writing_cover_page(&view.project.id, Some("title")).unwrap();
+        assert_eq!(project.cover_page.as_deref(), Some("title"));
+        assert!(library.set_writing_cover_page(&view.project.id, Some("poster")).is_err());
     }
 
     #[test]

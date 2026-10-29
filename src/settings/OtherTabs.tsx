@@ -14,6 +14,7 @@ import { readLocal, useAppDark, useAppSettings, writeLocal } from "./appSettings
 import { useReaderSettings } from "./AppearanceTab";
 import { ActionTile, formatBytes, RadioList, Row, Section, SectionGroup, Segmented, Select, Toggle } from "./controls";
 import { HardcoverSection } from "./HardcoverSection";
+import { ReadingHistorySection } from "./ReadingHistory";
 
 const READING_FONTS = {
   lora: '"Lora", Georgia, serif',
@@ -253,6 +254,7 @@ export function LibraryTab({
         <GoodreadsSection />
         <HardcoverSection />
       </SectionGroup>
+      <ReadingHistorySection />
     </>
   );
 }

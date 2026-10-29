@@ -388,7 +388,7 @@ export async function webApi(): Promise<Api> {
   const smartBooks: Record<SmartKind, (b: BookPreview) => boolean> = {
     recently_added: (b) => Date.now() - Date.parse(b.addedAt) < 7 * DAY,
     unread: (b) => b.status === "unread",
-    read: (b) => b.status === "read",
+    read: (b) => b.status === "read" || b.status === "dropped",
     in_progress: (b) => b.status === "in_progress",
     favorites: (b) => b.favorite,
     up_next: (b) => b.wantToRead,
@@ -537,6 +537,17 @@ export async function webApi(): Promise<Api> {
       newId: () => crypto.randomUUID(),
     }),
     catalogs: async () => [],
+    saveWritingDraft: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    writingDrafts: async () => [],
+    deleteWritingDraft: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    readingHistory: async () => [],
+    forgetReading: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
     saveCatalog: async () => {
       throw new Error(DESKTOP_ONLY);
     },

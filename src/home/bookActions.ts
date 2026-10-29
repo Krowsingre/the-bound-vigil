@@ -38,7 +38,9 @@ export interface BookActions {
 /** The "…" menu for a book, and its right-click menu. */
 export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
   return [
-    ...(isAudio(book.format) ? [{ label: "Listen", icon: "play" as const, onSelect: () => playAudiobook(book.id) }] : []),
+    isAudio(book.format)
+      ? { label: "Listen", icon: "play" as const, onSelect: () => playAudiobook(book.id) }
+      : { label: "Open", icon: "bookOpen" as const, onSelect: () => actions.open(book) },
     { label: "Book details", icon: "info", onSelect: () => showBookDetails(book.id) },
     { label: "Edit details…", icon: "edit", onSelect: () => askEditDetails([book]) },
     {
@@ -88,6 +90,9 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     book.status === "read"
       ? { label: "Mark as unread", onSelect: () => actions.setStatus(book, "unread") }
       : { label: "Mark as read", onSelect: () => actions.setStatus(book, "read") },
+    book.status === "dropped"
+      ? { label: "Not dropped after all", hint: "Marks it unread", onSelect: () => actions.setStatus(book, "unread") }
+      : { label: "Mark as dropped", hint: "Stopped, not going back", onSelect: () => actions.setStatus(book, "dropped") },
     ...(book.status === "in_progress"
       ? [{ label: "Stop reading (mark unread)", onSelect: () => actions.setStatus(book, "unread") }]
       : []),
@@ -101,6 +106,34 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     { label: "Remove from library…", icon: "close", onSelect: () => askRemoveBook(book) },
     { label: "Delete for good…", icon: "trash", danger: true, onSelect: () => askDeleteBook(book) },
   ];
+}
+
+/** A book clicked a moment ago, waiting to see whether a second click opens it. */
+let clicked: { id: string; timer: number } | null = null;
+const DOUBLE_CLICK_MS = 260;
+const touchFirst = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+
+/**
+ * Clicking a book's cover or row. With a mouse, one click shows its details
+ * and a double click opens it; on a touch screen a tap shows its details,
+ * which have an Open button. Audiobooks keep their own taps (see `open`).
+ */
+export function clickBook(book: BookPreview, actions: BookActions) {
+  if (isAudio(book.format)) return actions.open(book);
+  if (touchFirst()) return showBookDetails(book.id);
+  if (clicked) window.clearTimeout(clicked.timer);
+  if (clicked?.id === book.id) {
+    clicked = null;
+    return actions.open(book);
+  }
+  const id = book.id;
+  clicked = {
+    id,
+    timer: window.setTimeout(() => {
+      clicked = null;
+      showBookDetails(id);
+    }, DOUBLE_CLICK_MS),
+  };
 }
 
 /** The audiobook tapped last, to tell a double tap (iPhone has no double-click). */

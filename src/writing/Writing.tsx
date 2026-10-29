@@ -12,11 +12,19 @@ import { Notes, type NewNoteKind } from "../notes/Notes";
 import { ChapterEditor, type SaveState } from "./ChapterEditor";
 import { quoteHtml } from "./fromNotes";
 import { QuoteDrawer } from "./QuoteDrawer";
-import { DetailsDialog, ExportDialog, NewBookDialog } from "./WritingDialogs";
+import { bookOrder } from "./epub";
+import { DetailsDialog, DraftsDialog, ExportDialog, NewBookDialog } from "./WritingDialogs";
 
-/** Front matter first, then chapters, then back matter: the order the EPUB uses. */
-const ROLE_ORDER = { front: 0, chapter: 1, back: 2 } as const;
-const inBookOrder = (list: WritingChapter[]) => [...list].sort((a, b) => ROLE_ORDER[a.role ?? "chapter"] - ROLE_ORDER[b.role ?? "chapter"]);
+/** Parts are numbered I, II, III… */
+function romanOf(n: number): string {
+  const marks: [number, string][] = [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
+  let out = "";
+  for (const [value, mark] of marks) while (n >= value) {
+    out += mark;
+    n -= value;
+  }
+  return out;
+}
 
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
 
@@ -84,6 +92,7 @@ export function Writing({
       <ProjectView
         id={openId}
         refreshKey={refreshKey}
+        onOpenBook={onOpenBook}
         onBack={() => setOpenId(null)}
         onDeleted={() => {
           setOpenId(null);
@@ -253,12 +262,24 @@ function BookShelf({ projects, onOpen, onCreate, onRetry }: { projects: Projects
   );
 }
 
-function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refreshKey: number; onBack: () => void; onDeleted: () => void }) {
+function ProjectView({
+  id,
+  refreshKey,
+  onOpenBook,
+  onBack,
+  onDeleted,
+}: {
+  id: string;
+  refreshKey: number;
+  onOpenBook: (bookId: string) => void;
+  onBack: () => void;
+  onDeleted: () => void;
+}) {
   const [view, setView] = useState<WritingProjectView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [save, setSave] = useState<{ state: SaveState; words: number }>({ state: "saved", words: 0 });
-  const [dialog, setDialog] = useState<"details" | "export" | "delete" | null>(null);
+  const [dialog, setDialog] = useState<"details" | "export" | "drafts" | "delete" | null>(null);
   const [deletingChapter, setDeletingChapter] = useState<WritingChapter | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(true);
@@ -286,7 +307,12 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
     void load();
   }, [load, refreshKey]);
 
-  const chapters = inBookOrder(view?.chapters ?? []);
+  const chapters = bookOrder(view?.chapters ?? []);
+  const partIds = new Set(chapters.filter((c) => c.role === "part").map((c) => c.id));
+  /** The part a section is in, or null for the book's own. */
+  const partOf = (c: WritingChapter) => (c.role !== "part" && c.part && partIds.has(c.part) ? c.part : null);
+  /** Sections move only among others of their kind in the same part (or among parts). */
+  const groupOf = (c: WritingChapter) => (c.role === "part" ? "part" : `${partOf(c) ?? ""}:${c.role ?? "chapter"}`);
   const chapter = chapters.find((c) => c.id === chapterId) ?? chapters[0] ?? null;
 
   const saveChapter = (cid: string) => async (title: string, body: string) => {
@@ -304,10 +330,15 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
     return done;
   };
 
-  const addChapter = async () => {
+  /** A new chapter after the one being written (in its part), or at the end of a part. */
+  const addChapter = async (inPart?: string) => {
     await saving.current;
     try {
-      const added = await api.addWritingChapter(id, `Chapter ${chapters.length + 1}`, chapter?.id ?? null);
+      const part = inPart ?? (chapter ? (chapter.role === "part" ? chapter.id : partOf(chapter)) : null);
+      const siblings = chapters.filter((c) => c.role === "chapter" && partOf(c) === part);
+      const after = inPart || chapter?.role === "part" ? (siblings[siblings.length - 1]?.id ?? null) : (chapter?.id ?? null);
+      const added = await api.addWritingChapter(id, `Chapter ${siblings.length + 1}`, after);
+      if (part) await api.setWritingChapterPart(added.id, part);
       await load();
       setChapterId(added.id);
     } catch (e) {
@@ -315,11 +346,38 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
     }
   };
 
-  // Front matter, chapters and back matter each keep their own order: a move
-  // stays within its group, and "Where it goes in the book" moves between them.
-  const roleOf = (cid: string) => chapters.find((c) => c.id === cid)?.role;
+  /** A new part, for one work of an anthology, after the others. */
+  const addPart = async () => {
+    await saving.current;
+    try {
+      const count = chapters.filter((c) => c.role === "part").length;
+      const added = await api.addWritingChapter(id, `Part ${count + 1}`, null);
+      await api.setWritingChapterRole(added.id, "part");
+      await load();
+      setChapterId(added.id);
+    } catch (e) {
+      toast(String(e));
+    }
+  };
+
+  const setPart = async (c: WritingChapter, part: string | null) => {
+    try {
+      const saved = await api.setWritingChapterPart(c.id, part);
+      setView((v) => v && { ...v, chapters: v.chapters.map((x) => (x.id === c.id ? { ...x, part: saved.part } : x)) });
+    } catch (e) {
+      toast(String(e));
+    }
+  };
+
+  // Front matter, chapters and back matter each keep their own order (in the
+  // book and in each part): a move stays within its group, and the ••• menu
+  // moves a section between them.
+  const groupById = (cid: string) => {
+    const c = chapters.find((x) => x.id === cid);
+    return c ? groupOf(c) : undefined;
+  };
   const move = async (from: string, to: string) => {
-    if (from === to || roleOf(from) !== roleOf(to)) return;
+    if (from === to || groupById(from) !== groupById(to)) return;
     const order = chapters.map((c) => c.id).filter((c) => c !== from);
     order.splice(order.indexOf(to) + (chapters.findIndex((c) => c.id === from) < chapters.findIndex((c) => c.id === to) ? 1 : 0), 0, from);
     setView((v) => v && { ...v, chapters: order.map((o) => v.chapters.find((c) => c.id === o)!) });
@@ -331,32 +389,56 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
     }
   };
 
+  /** The next section of the same kind, up or down (parts skip over each other's sections). */
+  const neighbour = (c: WritingChapter, by: -1 | 1) => {
+    const same = chapters.filter((x) => groupOf(x) === groupOf(c));
+    return same[same.findIndex((x) => x.id === c.id) + by];
+  };
   const nudge = (c: WritingChapter, by: -1 | 1) => {
-    const i = chapters.findIndex((x) => x.id === c.id);
-    const other = chapters[i + by];
-    if (other?.role === c.role) void move(c.id, other.id);
+    const other = neighbour(c, by);
+    if (other) void move(c.id, other.id);
   };
 
   const setRole = async (c: WritingChapter, role: WritingChapter["role"]) => {
     try {
       const saved = await api.setWritingChapterRole(c.id, role);
-      setView((v) => v && { ...v, chapters: v.chapters.map((x) => (x.id === c.id ? { ...x, role: saved.role } : x)) });
+      setView((v) => v && { ...v, chapters: v.chapters.map((x) => (x.id === c.id ? { ...x, role: saved.role, part: saved.part } : x)) });
     } catch (e) {
       toast(String(e));
     }
   };
 
-  const chapterMenu = (c: WritingChapter, i: number): MenuEntry[] => [
-    { label: "Move up", icon: "chevronUp", disabled: chapters[i - 1]?.role !== c.role, onSelect: () => nudge(c, -1) },
-    { label: "Move down", icon: "chevronDown", disabled: chapters[i + 1]?.role !== c.role, onSelect: () => nudge(c, 1) },
-    "divider",
-    { heading: <span className="menu-tip">Where it goes in the book</span> },
-    { label: "Front matter", hint: "Dedication, foreword", checked: c.role === "front", onSelect: () => void setRole(c, "front") },
-    { label: "Chapter", checked: (c.role ?? "chapter") === "chapter", onSelect: () => void setRole(c, "chapter") },
-    { label: "Back matter", hint: "Acknowledgements, about the author", checked: c.role === "back", onSelect: () => void setRole(c, "back") },
-    "divider",
-    { label: "Delete chapter…", icon: "trash", danger: true, disabled: chapters.length === 1, onSelect: () => setDeletingChapter(c) },
-  ];
+  const parts = chapters.filter((c) => c.role === "part");
+  const sections = chapters.filter((c) => c.role !== "part");
+  const chapterMenu = (c: WritingChapter): MenuEntry[] =>
+    c.role === "part"
+      ? [
+          { label: "Move up", icon: "chevronUp", disabled: !neighbour(c, -1), onSelect: () => nudge(c, -1) },
+          { label: "Move down", icon: "chevronDown", disabled: !neighbour(c, 1), onSelect: () => nudge(c, 1) },
+          "divider",
+          { label: "Add a chapter to this part", icon: "plus", onSelect: () => void addChapter(c.id) },
+          "divider",
+          { label: "Delete part…", icon: "trash", danger: true, onSelect: () => setDeletingChapter(c) },
+        ]
+      : [
+          { label: "Move up", icon: "chevronUp", disabled: !neighbour(c, -1), onSelect: () => nudge(c, -1) },
+          { label: "Move down", icon: "chevronDown", disabled: !neighbour(c, 1), onSelect: () => nudge(c, 1) },
+          "divider",
+          { heading: <span className="menu-tip">What it is</span> },
+          { label: "Front matter", hint: "Dedication, foreword", checked: c.role === "front", onSelect: () => void setRole(c, "front") },
+          { label: "Chapter", checked: (c.role ?? "chapter") === "chapter", onSelect: () => void setRole(c, "chapter") },
+          { label: "Back matter", hint: "Acknowledgements, about the author", checked: c.role === "back", onSelect: () => void setRole(c, "back") },
+          ...(parts.length
+            ? ([
+                "divider",
+                { heading: <span className="menu-tip">Where it goes</span> },
+                { label: "The book itself", checked: !partOf(c), onSelect: () => void setPart(c, null) },
+                ...parts.map((p, n) => ({ label: p.title || `Part ${n + 1}`, checked: partOf(c) === p.id, onSelect: () => void setPart(c, p.id) })),
+              ] as MenuEntry[])
+            : []),
+          "divider",
+          { label: "Delete chapter…", icon: "trash", danger: true, disabled: sections.length === 1, onSelect: () => setDeletingChapter(c) },
+        ];
 
   if (error && !view)
     return (
@@ -392,6 +474,11 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
           <button type="button" className="btn btn-quiet" onClick={() => setDialog("details")}>
             <Icon name="info" size={16} /> Book details
           </button>
+          {!isWeb && (
+            <button type="button" className="btn btn-quiet" onClick={() => setDialog("drafts")}>
+              <Icon name="drafts" size={16} /> Drafts
+            </button>
+          )}
           <button type="button" className="btn btn-primary" onClick={() => setDialog("export")}>
             <Icon name="upload" size={16} /> Export EPUB
           </button>
@@ -408,31 +495,56 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
         <aside className="writing-chapters" aria-label="Chapters">
           <div className="writing-chapters-head">
             <strong>Chapters</strong>
-            <button type="button" className="btn btn-quiet btn-small" onClick={() => void addChapter()}>
-              <Icon name="plus" size={15} /> Add
-            </button>
+            <Menu
+              label="Add"
+              className="btn btn-quiet btn-small"
+              trigger={
+                <>
+                  <Icon name="plus" size={15} /> Add
+                </>
+              }
+              items={[
+                { label: "Chapter", icon: "file", description: "After the one you're writing", onSelect: () => void addChapter() },
+                { label: "Part", icon: "layers", description: "One work of an anthology, with its own chapters", onSelect: () => void addPart() },
+              ]}
+            />
             <button type="button" className="writing-list-toggle" aria-label="Hide chapters" title="Hide chapters" onClick={() => setListOpen(false)}>
               <Icon name="panelLeft" size={17} />
             </button>
           </div>
           <ol className="writing-chapter-list">
-            {chapters.map((c, i) => (
+            {chapters.map((c, i) => {
+              const part = partOf(c);
+              const before = chapters[i - 1];
+              const group = groupOf(c);
+              // A label where a new kind of section starts: the book's own, or inside a part.
+              const label =
+                c.role === "part" || (before && groupOf(before) === group) || (c.role === "chapter" && (part ? before?.id === part : i === 0))
+                  ? null
+                  : { front: "Front matter", chapter: "Chapters", back: "Back matter", part: "" }[c.role ?? "chapter"];
+              const number =
+                c.role === "chapter"
+                  ? chapters.slice(0, i + 1).filter((x) => x.role === "chapter" && partOf(x) === part).length
+                  : c.role === "part"
+                    ? romanOf(parts.findIndex((p) => p.id === c.id) + 1)
+                    : "·";
+              return (
               <Fragment key={c.id}>
-                {c.role !== chapters[i - 1]?.role && (c.role !== "chapter" || i > 0) && (
-                  <li className="writing-chapter-group" aria-hidden>
-                    {{ front: "Front matter", chapter: "Chapters", back: "Back matter" }[c.role ?? "chapter"]}
+                {label && (
+                  <li className={`writing-chapter-group${part ? " is-in-part" : ""}`} aria-hidden>
+                    {label}
                   </li>
                 )}
               <li
                 draggable
-                className={`${c.id === chapter?.id ? "is-current" : ""}${dragging === c.id ? " is-dragging" : ""}`}
+                className={`${c.id === chapter?.id ? "is-current" : ""}${dragging === c.id ? " is-dragging" : ""}${part ? " is-in-part" : ""}${c.role === "part" ? " is-part" : ""}`}
                 onDragStart={(e) => {
                   setDragging(c.id);
                   e.dataTransfer.effectAllowed = "move";
                   e.dataTransfer.setData("text/plain", c.id);
                 }}
                 onDragEnd={() => setDragging(null)}
-                onDragOver={(e) => dragging && roleOf(dragging) === c.role && e.preventDefault()}
+                onDragOver={(e) => dragging && groupById(dragging) === group && e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
                   if (dragging) void move(dragging, c.id);
@@ -440,16 +552,21 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
                 }}
               >
                 <button type="button" className="writing-chapter" onClick={() => void saving.current.then(() => setChapterId(c.id))}>
-                  <span className="writing-chapter-number num">{c.role === "chapter" ? chapters.slice(0, i + 1).filter((x) => x.role === "chapter").length : "·"}</span>
-                  <span className="writing-chapter-name">{c.title || "Untitled chapter"}</span>
-                  <span className="muted num writing-chapter-words">{c.words.toLocaleString()}</span>
+                  <span className="writing-chapter-number num">{number}</span>
+                  <span className="writing-chapter-name">{c.title || (c.role === "part" ? "Untitled part" : "Untitled chapter")}</span>
+                  <span className="muted num writing-chapter-words">
+                    {(c.role === "part" ? chapters.filter((x) => partOf(x) === c.id).reduce((n, x) => n + x.words, 0) : c.words).toLocaleString()}
+                  </span>
                 </button>
-                <Menu label={`More for ${c.title || "this chapter"}`} className="writing-chapter-more" trigger={<Icon name="more" size={16} />} items={chapterMenu(c, i)} />
+                <Menu label={`More for ${c.title || "this chapter"}`} className="writing-chapter-more" trigger={<Icon name="more" size={16} />} items={chapterMenu(c)} />
               </li>
               </Fragment>
-            ))}
+              );
+            })}
           </ol>
-          <p className="muted writing-hint">Drag chapters to put them in order. Use a chapter's ••• menu to make it front or back matter.</p>
+          <p className="muted writing-hint">
+            Drag chapters to put them in order. Use a chapter's ••• menu to make it front or back matter{parts.length ? " or move it into a part" : ""}.
+          </p>
         </aside>
         <section className="writing-main">
           {!listOpen && (
@@ -501,6 +618,18 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
           onClose={() => setDialog(null)}
         />
       )}
+      {dialog === "drafts" && (
+        <DraftsDialog
+          project={project}
+          onFlush={async () => {
+            await flushEditor.current?.();
+            await saving.current;
+            return (await load())?.chapters ?? chapters;
+          }}
+          onOpen={(bookId) => void saving.current.then(() => onOpenBook(bookId))}
+          onClose={() => setDialog(null)}
+        />
+      )}
       {dialog === "delete" && (
         <ConfirmDialog
           title={`Delete ${project.title}?`}
@@ -515,9 +644,13 @@ function ProjectView({ id, refreshKey, onBack, onDeleted }: { id: string; refres
       )}
       {deletingChapter && (
         <ConfirmDialog
-          title={`Delete ${deletingChapter.title || "this chapter"}?`}
-          body={`Its ${words(deletingChapter.words)} go too, on all your devices.`}
-          confirm="Delete chapter"
+          title={`Delete ${deletingChapter.title || (deletingChapter.role === "part" ? "this part" : "this chapter")}?`}
+          body={
+            deletingChapter.role === "part"
+              ? "Its own page goes, on all your devices. The chapters in it stay, as the book's own."
+              : `Its ${words(deletingChapter.words)} go too, on all your devices.`
+          }
+          confirm={deletingChapter.role === "part" ? "Delete part" : "Delete chapter"}
           danger
           onCancel={() => setDeletingChapter(null)}
           onConfirm={() => {

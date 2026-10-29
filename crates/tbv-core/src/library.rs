@@ -492,6 +492,43 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (ebook_id, audiobook_id, piece)
     );
     "#,
+    // v27: ratings in quarter stars (`stars`, 0.25 to 5; `rating` keeps the
+    // whole stars older devices read). Scribe: a book's cover page, story
+    // parts (`part` is the part's own row, `role` = 'part'), and drafts, each
+    // a locked EPUB in the library kept out of the Archive (`same_as` =
+    // 'draft:<project>'). Reading history: books finished, dropped or rated,
+    // kept after they leave the library until taken off by hand.
+    r#"
+    ALTER TABLE books ADD COLUMN stars REAL CHECK (stars > 0 AND stars <= 5);
+    UPDATE books SET stars = rating WHERE rating IS NOT NULL;
+    ALTER TABLE writing_projects ADD COLUMN cover_page TEXT;
+    ALTER TABLE writing_chapters ADD COLUMN part TEXT;
+    CREATE TABLE writing_drafts (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        number INTEGER NOT NULL,
+        book_id TEXT NOT NULL,
+        words INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX idx_writing_drafts_project ON writing_drafts(project_id, number);
+    CREATE TABLE reading_history (
+        book_id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        authors TEXT NOT NULL DEFAULT '[]',
+        status TEXT,
+        stars REAL,
+        finished_at TEXT,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    INSERT OR IGNORE INTO reading_history (book_id, title, authors, status, stars, finished_at, updated_at)
+        SELECT id, title, authors, CASE WHEN status = 'read' THEN 'read' END, stars, finished_at,
+               strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        FROM books WHERE deleted_at IS NULL AND same_as IS NULL AND (status = 'read' OR stars IS NOT NULL);
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

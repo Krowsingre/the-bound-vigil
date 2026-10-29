@@ -123,6 +123,7 @@ impl Rule {
             })
         };
         let number = || value.parse::<i64>().ok().filter(|n| *n >= 0);
+        let stars = || value.parse::<f64>().ok().filter(|n| n.is_finite() && *n >= 0.0);
         let yes = match value {
             "yes" => Some(1),
             "no" => Some(0),
@@ -155,14 +156,14 @@ impl Rule {
                 _ => return None,
             },
             F::Rating => match self.op {
-                O::IsEmpty => "b.rating IS NULL".into(),
-                O::Is => format!("b.rating = {}", bind(Value::Integer(number()?))),
-                O::AtLeast => format!("b.rating >= {}", bind(Value::Integer(number()?))),
-                O::AtMost => format!("b.rating <= {}", bind(Value::Integer(number()?))),
+                O::IsEmpty => "COALESCE(b.stars, b.rating) IS NULL".into(),
+                O::Is => format!("COALESCE(b.stars, b.rating) = {}", bind(Value::Real(stars()?))),
+                O::AtLeast => format!("COALESCE(b.stars, b.rating) >= {}", bind(Value::Real(stars()?))),
+                O::AtMost => format!("COALESCE(b.stars, b.rating) <= {}", bind(Value::Real(stars()?))),
                 _ => return None,
             },
             F::Status => match (self.op, value) {
-                (O::Is | O::IsNot, "unread" | "in_progress" | "read") => {
+                (O::Is | O::IsNot, "unread" | "in_progress" | "read" | "dropped") => {
                     let test = if self.op == O::Is { "=" } else { "!=" };
                     format!("b.status {test} {}", bind(Value::Text(value.into())))
                 }

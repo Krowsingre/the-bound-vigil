@@ -48,6 +48,8 @@ const paths = {
   bookmark: "M7 4h10v16l-5-3.5L7 20z",
   check: "M5.5 12.5l4 4 9-9",
   image: "M4.5 5.5h15v13h-15zM4.5 15.5l4.5-4.5 4 4 2.5-2.5 4 4M15 9.5h.01",
+  pageBreak: "M6.5 3.5v5h11v-5M6.5 20.5v-5h11v5M3.5 12h2.5M8.75 12h2.5M14 12h2.5M19.25 12h1.25",
+  drafts: "M8 3.5h8.5l3 3v11h-11.5zM16.5 3.5v3h3M4.5 7v13.5h11M11 11h5.5M11 14h5.5",
   arrowLeft: "M19 12H5M11 6l-6 6 6 6",
   arrowRight: "M5 12h14M13 6l6 6-6 6",
   fullscreen: "M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5",

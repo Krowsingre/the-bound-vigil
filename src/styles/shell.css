@@ -661,9 +661,29 @@
   vertical-align: -2px;
 }
 
+.star-rating-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .star-rating {
   display: inline-flex;
-  gap: 2px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.star-rating:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* The rating in numbers beside the stars, so quarter stars are easy to read. */
+.star-rating-value {
+  min-width: 2.4em;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .star-btn {
@@ -678,9 +698,6 @@
   color: var(--star);
 }
 
-.star-btn:focus-visible {
-  outline: 2px solid var(--focus);
-}
 
 .menu-rating {
   display: flex;

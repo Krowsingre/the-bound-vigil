@@ -1,5 +1,5 @@
 // The editor's own pieces beyond the usual formatting: pictures kept inside
-// the chapter, and footnotes. Both are saved in the chapter's HTML, so they
+// the chapter, footnotes, and page breaks. Both are saved in the chapter's HTML, so they
 // sync with it and the EPUB export finds them there (see epub.ts).
 
 import { mergeAttributes, Node } from "@tiptap/react";
@@ -13,6 +13,10 @@ declare module "@tiptap/react" {
     footnote: {
       /** Adds a footnote at the cursor, or changes the one selected. */
       setFootnote: (text: string) => ReturnType;
+    };
+    pageBreak: {
+      /** Starts a new page at the cursor, within the same chapter. */
+      setPageBreak: () => ReturnType;
     };
   }
 }
@@ -74,6 +78,28 @@ export const Footnote = Node.create({
           if (selected?.type.name === this.name) return commands.updateAttributes(this.name, { text });
           return commands.insertContent({ type: this.name, attrs: { text } });
         },
+    };
+  },
+});
+
+/** A new page within a chapter: what follows starts on the next page of the EPUB. */
+export const PageBreak = Node.create({
+  name: "pageBreak",
+  group: "block",
+  atom: true,
+  selectable: true,
+  parseHTML() {
+    return [{ tag: "div[data-page-break]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["div", mergeAttributes(HTMLAttributes, { "data-page-break": "", class: "writing-page-break" })];
+  },
+  addCommands() {
+    return {
+      setPageBreak:
+        () =>
+        ({ commands }) =>
+          commands.insertContent([{ type: this.name }, { type: "paragraph" }]),
     };
   },
 });

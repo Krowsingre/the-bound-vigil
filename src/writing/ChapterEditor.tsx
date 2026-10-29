@@ -10,7 +10,7 @@ import type { WritingChapter } from "../api/types";
 import { Icon, type IconName } from "../components/Icon";
 import { onBeforeQuit } from "../lib/beforeQuit";
 import { countWords } from "./records";
-import { Footnote, Picture, pictureAddress } from "./extensions";
+import { Footnote, PageBreak, Picture, pictureAddress } from "./extensions";
 import { useToast } from "../components/Toast";
 
 const SAVE_AFTER_MS = 800;
@@ -112,6 +112,7 @@ function Toolbar({ editor }: { editor: Editor }) {
       <Tool label="List" icon="listBullet" active={state.bullets} onClick={() => run().toggleBulletList().run()} />
       <Tool label="Numbered list" icon="listNumber" active={state.numbers} onClick={() => run().toggleOrderedList().run()} />
       <Tool label="Scene break" text="⁂" onClick={() => run().setHorizontalRule().run()} />
+      <Tool label="Page break" icon="pageBreak" onClick={() => run().setPageBreak().run()} />
       <Tool label="Picture" icon="image" onClick={() => picking.current?.click()} />
       <Tool
         label={state.footnote !== null ? "Change footnote" : "Footnote"}
@@ -252,6 +253,7 @@ export function ChapterEditor({
       }),
       Picture,
       Footnote,
+      PageBreak,
     ],
     content: chapter.body || "<p></p>",
     editorProps: { attributes: { class: "writing-page", spellcheck: "true", "aria-label": "Chapter text" } },
