@@ -22,6 +22,13 @@ let package = Package(
             dependencies: [
                 .byName(name: "Tauri"),
             ],
-            path: "Sources"),
+            path: "Sources",
+            // whisper.cpp (crates/tbv-speech) uses these for lining up read-along.
+            linkerSettings: [
+                .linkedFramework("Accelerate"),
+                .linkedFramework("Metal"),
+                .linkedFramework("MetalKit"),
+                .linkedFramework("Foundation"),
+            ]),
     ]
 )

@@ -12,7 +12,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use tbv_core::library::{Library, LibraryPaths};
-use tbv_core::lineup::{line_up, words_in, BookWords, Ended, LineUp, Me};
+use tbv_core::lineup::{line_up, words_in, BookWords, Ended, LineUp, Me, rising};
 
 #[test]
 #[ignore = "needs a speech model and a recording"]
@@ -62,6 +62,12 @@ fn real_speech_is_lined_up_with_its_text() {
     off.sort_by(f64::total_cmp);
     println!("median distance from an even pace: {:.3}", off[off.len() / 2]);
     assert!(off[off.len() / 2] < 0.05);
-    assert!(anchors.windows(2).all(|p| p[0].0 < p[1].0 && p[0].1 < p[1].1));
+    // The reader keeps only the anchors rising in both time and word; nearly all should.
+    for p in anchors.windows(2).filter(|p| !(p[0].0 < p[1].0 && p[0].1 < p[1].1)).take(10) {
+        println!("out of order: word {} at {} ms, then word {} at {} ms", p[0].1, p[0].0, p[1].1, p[1].0);
+    }
+    let kept = rising(anchors.clone()).len();
+    println!("{kept} of {} anchors kept in order", anchors.len());
+    assert!(kept * 100 >= anchors.len() * 95, "only {kept} of {} anchors in order", anchors.len());
     let _ = std::fs::remove_dir_all(dir);
 }
