@@ -53,7 +53,7 @@ import {
 import { downloadState, readDownloads, writeDownloads, type Fetched } from "./browserDownloads";
 import { addToHistory } from "./browserHistory";
 import { HistoryPanel } from "./HistoryPanel";
-import { onBrowserAsk } from "./browserAsk";
+import { onBrowserAsk, type BrowserAsk } from "./browserAsk";
 import { addToReadingList, bookIdOf } from "./readingList";
 import { ClosedList } from "./ClosedList";
 import { SiteInfo } from "./SiteInfo";
@@ -209,6 +209,11 @@ const fileTitle = (url: string) => {
 /** Whether Discover has opened since TBV started, for starting afresh after closing TBV. */
 let openedThisRun = false;
 
+/** Tabs whose page view has been made. The views stay open while Discover
+ * is left (unless Preferences says to start afresh), so this outlives the
+ * page: coming back shows them as they were instead of loading them again. */
+const madeViews = new Set<string>();
+
 /** The tabs Discover opens with, as chosen in Preferences › Discover. */
 function startingTabs(): TabsState {
   const prefs = readBrowserPrefs();
@@ -218,7 +223,11 @@ function startingTabs(): TabsState {
   if (!(prefs.comeBack === "leave" || (prefs.comeBack === "close" && first))) return readTabs(home);
   // Pages kept from before (when the choice was still to keep them) would
   // otherwise go on without a tab to close them by.
-  if (!first) for (const t of readTabs(home).tabs) void api.browserAct(t.id, "close").catch(() => undefined);
+  if (!first)
+    for (const t of readTabs(home).tabs) {
+      madeViews.delete(t.id);
+      void api.browserAct(t.id, "close").catch(() => undefined);
+    }
   return freshTabs(home);
 }
 
@@ -263,8 +272,7 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
   const [prefs, setPrefs] = useState(readBrowserPrefs);
   const [problem, setProblem] = useState<string | null>(null);
   const area = useRef<HTMLDivElement>(null);
-  /** Tabs whose page view has been made. */
-  const made = useRef(new Set<string>());
+  const made = useRef(madeViews);
   const shown = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -276,6 +284,7 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
   const fetchedRef = useRef(fetched);
   fetchedRef.current = fetched;
   const refit = useRef<() => void>(() => undefined);
+  const heardAsk = useRef<(ask: BrowserAsk) => void>(() => undefined);
   const toast = useToast();
 
   const active = tabs.tabs.find((t) => t.id === tabs.active) ?? tabs.tabs[0];
@@ -458,6 +467,7 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     let live = true;
     let hidden = false;
     let placed = "";
+    let stopAsks = () => undefined as void;
     const fit = () => {
       if (!shown.current) return;
       const now = frame();
@@ -486,7 +496,10 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
         () => {
           shown.current = true;
           if (!live) void api.browserHide();
-          else fit();
+          else {
+            fit();
+            stopAsks = onBrowserAsk((ask) => heardAsk.current(ask));
+          }
         },
         (e: unknown) => live && setProblem(String(e).replace(/^Error: /, "")),
       );
@@ -498,6 +511,7 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     window.addEventListener("resize", fit);
     return () => {
       live = false;
+      stopAsks();
       shown.current = false;
       refit.current = () => undefined;
       cancelAnimationFrame(starting);
@@ -610,6 +624,8 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     setPanel(null);
     setTabs((s) => openTab(s, { id: newTabId(), url: to, title: null }));
   };
+  const openInNewTabRef = useRef(openInNewTab);
+  openInNewTabRef.current = openInNewTab;
   /** Home: the start page (with the page left as it was, quiet), or the home page website. */
   const goHome = () => {
     const prefsNow = readBrowserPrefs();
@@ -733,7 +749,15 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
     } else act(what === "stop" ? "stop" : "reload");
   };
   // Sanctum's Quick Links: a website, or one of the panels.
-  useEffect(() => onBrowserAsk((ask) => ("panel" in ask ? setPanel(ask.panel) : "url" in ask ? goRef.current(ask.url) : fromTop.current("home"))), []);
+  // Sanctum's Quick links, heard once the page in front is showing (see the
+  // effect that shows it): a website goes in a new tab or the one in front,
+  // as chosen in Preferences › Discover.
+  heardAsk.current = (ask) => {
+    if ("panel" in ask) setPanel(ask.panel);
+    else if (!("url" in ask)) fromTop.current("home");
+    else if (readBrowserPrefs().linksOpen === "newTab" && !isStartPage(tabsRef.current.tabs.find((t) => t.id === tabsRef.current.active)?.url ?? "")) openInNewTabRef.current(ask.url);
+    else goRef.current(ask.url);
+  };
   const switchRef = useRef<(id: string) => void>(() => undefined);
   switchRef.current = (id) => void (tabsRef.current.tabs.some((t) => t.id === id) && switchTo(id));
   useEffect(() => {

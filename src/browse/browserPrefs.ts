@@ -33,6 +33,13 @@ export const COME_BACK: { value: ComeBack; label: string }[] = [
   { value: "close", label: "At the home page, after closing TBV" },
 ];
 
+export type LinksOpen = "newTab" | "current";
+
+export const LINKS_OPEN: { value: LinksOpen; label: string }[] = [
+  { value: "newTab", label: "In a new tab" },
+  { value: "current", label: "In the tab you're on" },
+];
+
 export interface BrowserPrefs {
   search: SearchEngine;
   home: string;
@@ -44,6 +51,8 @@ export interface BrowserPrefs {
   /** Where Discover is when you come back: as you left it, or at the home
    * page with the other tabs closed after leaving Discover or after closing TBV. */
   comeBack: ComeBack;
+  /** Where a website opened from Sanctum's Quick links goes. */
+  linksOpen: LinksOpen;
   /** Pages visited are kept in History (••• › History). */
   historyOn: boolean;
   /** Words searched for from the address box are kept too. */
@@ -113,6 +122,7 @@ export function readBrowserPrefs(): BrowserPrefs {
     historySearches: saved.historySearches !== false,
     historyKeep: HISTORY_KEEPS.some((k) => k.value === saved.historyKeep) ? (saved.historyKeep as HistoryKeep) : "quarter",
     comeBack: COME_BACK.some((c) => c.value === saved.comeBack) ? (saved.comeBack as ComeBack) : "keep",
+    linksOpen: saved.linksOpen === "current" ? "current" : "newTab",
     protection: PROTECTION_LEVELS.some((p) => p.value === saved.protection) ? (saved.protection as ProtectionLevel) : "strict",
     lowered: Array.isArray(saved.lowered) ? saved.lowered.filter((h): h is string => typeof h === "string") : [],
     startPage: saved.startPage !== false,

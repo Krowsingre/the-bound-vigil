@@ -1844,3 +1844,37 @@ kbd {
 .stops-names span:last-child {
   text-align: right;
 }
+
+/* The yearly plan and the lifetime unlock, side by side (one under the other on a phone). */
+.license-plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.btn.license-plan {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  height: auto;
+  padding: 10px 14px;
+  white-space: normal;
+  text-align: center;
+}
+
+.license-plan b {
+  font-size: 15px;
+}
+
+.license-plan span {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.license-terms {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  text-align: center;
+}

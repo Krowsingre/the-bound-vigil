@@ -180,9 +180,18 @@ export interface LicenseView {
   trialDays: number;
   /** Where it's bought: "none" for a copy from outside a store. */
   shop: "microsoft" | "apple" | "none";
-  /** As the store shows it, like "$14.99". */
+  /** The lifetime unlock's price as the store shows it, like "$44.99". */
   price: string | null;
+  /** The yearly plan's price, like "$14.99". */
+  yearlyPrice?: string | null;
+  /** The App Store gives this person the yearly plan's first month free. */
+  freeMonth?: boolean;
+  /** Bought on this plan; none when not bought or unlocked by code. */
+  plan?: "yearly" | "lifetime" | null;
 }
+
+/** The two ways to buy TBV. */
+export type LicensePlan = "yearly" | "lifetime";
 
 /** A choice of where to keep the library, as sent to the core. */
 export type ProviderChoice =
@@ -1329,6 +1338,10 @@ export interface SanctumLink {
   target: string;
   /** One of TBV's icons, by name; empty for the kind's own. */
   icon: string;
+  /** `gallery:<name>`, `picture:<file>`, `cover:<book id>`, or empty for a plain tile. */
+  picture?: string;
+  /** The picture's file on this device, for `picture:` and `cover:`. */
+  picturePath?: string | null;
 }
 
 /** The space the Browser tab keeps for web pages, in the window's points. */

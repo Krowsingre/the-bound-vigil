@@ -40,6 +40,7 @@ type Calls = Pick<
   | "updateSanctumLink"
   | "removeSanctumLink"
   | "moveSanctumLink"
+  | "setSanctumLinkPictureFile"
   | "siteIcon"
   | "browserShow"
   | "browserPlace"
@@ -112,13 +113,16 @@ export function browseStub(): Calls {
       links = rest;
     },
     sanctumLinks: async () => sanctum,
-    addSanctumLink: async (title, target, icon) => {
-      const made = { id: crypto.randomUUID(), title: title || target, target, icon };
+    addSanctumLink: async (title, target, icon, picture) => {
+      const made = { id: crypto.randomUUID(), title: title || target, target, icon, picture };
       sanctum = [...sanctum, made];
       return made;
     },
-    updateSanctumLink: async (id, title, target, icon) => {
-      sanctum = sanctum.map((l) => (l.id === id ? { id, title: title || target, target, icon } : l));
+    updateSanctumLink: async (id, title, target, icon, picture) => {
+      sanctum = sanctum.map((l) => (l.id === id ? { id, title: title || target, target, icon, picture } : l));
+    },
+    setSanctumLinkPictureFile: async () => {
+      throw new Error("Pictures from the computer work in the TBV app.");
     },
     removeSanctumLink: async (id) => {
       sanctum = sanctum.filter((l) => l.id !== id);

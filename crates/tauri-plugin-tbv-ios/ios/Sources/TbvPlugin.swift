@@ -23,6 +23,8 @@ class UrlArgs: Decodable {
 
 class ProductArgs: Decodable {
   let product: String
+  /// The yearly plan, a subscription, asked about alongside the lifetime unlock.
+  let yearly: String?
 }
 
 class AuthArgs: Decodable {
@@ -413,18 +415,34 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
     }
   }
 
-  /// Whether the unlock was bought (a verified, unrevoked purchase), and its price.
+  /// Whether the lifetime unlock was bought and whether the yearly plan is
+  /// running (verified, unrevoked), their prices, and whether this person
+  /// would get the yearly plan's free first month.
   @objc public func storeStatus(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(ProductArgs.self)
     Task {
-      var owned = false
+      var lifetime = false
+      var yearly = false
       for await entitlement in Transaction.currentEntitlements {
-        if case .verified(let t) = entitlement, t.productID == args.product, t.revocationDate == nil {
-          owned = true
-        }
+        guard case .verified(let t) = entitlement, t.revocationDate == nil else { continue }
+        if t.productID == args.product { lifetime = true }
+        if let y = args.yearly, t.productID == y, (t.expirationDate ?? .distantFuture) > Date() { yearly = true }
       }
-      let price = (try? await Product.products(for: [args.product]))?.first?.displayPrice
-      invoke.resolve(["owned": owned, "price": price.map { $0 as Any } ?? NSNull()])
+      let ids = [args.product] + (args.yearly.map { [$0] } ?? [])
+      let products = (try? await Product.products(for: ids)) ?? []
+      let price = products.first { $0.id == args.product }?.displayPrice
+      let plan = products.first { $0.id == args.yearly }
+      var freeMonth = false
+      if let sub = plan?.subscription, sub.introductoryOffer?.paymentMode == .freeTrial {
+        freeMonth = await sub.isEligibleForIntroOffer
+      }
+      invoke.resolve([
+        "lifetime": lifetime,
+        "yearly": yearly,
+        "price": price.map { $0 as Any } ?? NSNull(),
+        "yearlyPrice": (plan?.displayPrice).map { $0 as Any } ?? NSNull(),
+        "freeMonth": freeMonth,
+      ])
     }
   }
 

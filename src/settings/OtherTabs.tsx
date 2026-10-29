@@ -5,7 +5,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { DuplicatesDialog } from "./DuplicatesDialog";
-import { OwnerCode, shopName, useLicense } from "../license/License";
+import { OwnerCode, PlanButtons, shopName, useLicense } from "../license/License";
 import { canSelfUpdate, useUpdater, type UpdateState } from "./updates";
 import { SORTS, type Layout } from "../library/libraryView";
 import { TextSettings } from "../reader/ReaderPopovers";
@@ -860,20 +860,22 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
 
 /** The trial, or the purchase. */
 function YourCopy() {
-  const { license, busy, buy, restore } = useLicense();
+  const { license, busy, restore } = useLicense();
   if (!license) return null;
   const ends = new Date(license.trialEnds * 1000).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
   const words =
     license.state === "owned"
-      ? `Bought in ${shopName(license.shop)}. Thank you.`
-      : `${license.daysLeft === 1 ? "1 day" : `${license.daysLeft} days`} left of your free trial (until ${ends}). Buy it once to keep using it after that.`;
+      ? license.plan === "yearly"
+        ? `On the yearly plan from ${shopName(license.shop)}. Thank you. It renews each year; ${license.shop === "apple" ? "manage it in your Apple ID's Subscriptions" : "manage it in the Microsoft Store's Subscriptions"}.`
+        : `Bought in ${shopName(license.shop)}. Thank you.`
+      : license.trialDays > 0
+        ? `${license.daysLeft === 1 ? "1 day" : `${license.daysLeft} days`} left of your free trial (until ${ends}). Choose a plan to keep using it after that.`
+        : "Choose a plan to use The Bound Vigil.";
   return (
     <Section id="licence" title="Your copy" lede={words}>
       {license.state !== "owned" && license.shop !== "none" && (
         <div className="settings-actions">
-          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void buy()}>
-            {`Buy The Bound Vigil${license.price ? ` · ${license.price}` : ""}`}
-          </button>
+          <PlanButtons />
           <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void restore()}>
             I bought it already
           </button>
@@ -957,7 +959,7 @@ function AboutVersion({ version }: { version: string }) {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.42.0");
+  const [version, setVersion] = useState("1.43.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

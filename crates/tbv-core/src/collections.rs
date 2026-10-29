@@ -203,7 +203,7 @@ impl Library {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
-    fn picture_path(&self, picture: Option<&str>) -> Result<Option<String>> {
+    pub(crate) fn picture_path(&self, picture: Option<&str>) -> Result<Option<String>> {
         let Some(picture) = picture else {
             return Ok(None);
         };
@@ -551,7 +551,8 @@ impl Library {
         };
         let mut used = self.conn.prepare(
             "SELECT 1 FROM collections WHERE picture = ?1 AND deleted_at IS NULL
-             UNION ALL SELECT 1 FROM writing_projects WHERE cover = ?1 AND deleted_at IS NULL LIMIT 1",
+             UNION ALL SELECT 1 FROM writing_projects WHERE cover = ?1 AND deleted_at IS NULL
+             UNION ALL SELECT 1 FROM sanctum_links WHERE picture = ?1 AND deleted_at IS NULL LIMIT 1",
         )?;
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();

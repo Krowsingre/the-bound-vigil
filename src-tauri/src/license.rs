@@ -1,6 +1,6 @@
 //! Buying TBV: the Microsoft Store on a computer, the App Store on iPhone
-//! and iPad. A copy from outside a store (a test build) can be tried for the
-//! 30 days, but not bought in.
+//! and iPad, each with two plans, yearly or lifetime. A copy from outside a
+//! store (a test build) can be tried for the 30 days, but not bought in.
 
 use std::sync::Mutex;
 
@@ -8,9 +8,28 @@ use tauri::{AppHandle, Manager};
 use tbv_core::license::{LicenseView, Shop, StoreAnswer};
 use tbv_core::Library;
 
-/// The unlock's name in both stores (its product ID).
+/// The lifetime unlock's name in both stores (its product ID).
 #[cfg(any(windows, target_os = "ios"))]
 const PRODUCT: &str = if cfg!(target_os = "ios") { "com.krowsingre.theboundvigil.unlock" } else { "full_unlock" };
+/// The yearly plan's name in both stores (a subscription).
+#[cfg(any(windows, target_os = "ios"))]
+const YEARLY: &str = if cfg!(target_os = "ios") { "com.krowsingre.theboundvigil.yearly" } else { "yearly" };
+
+/// Which plan to buy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Plan {
+    Yearly,
+    Lifetime,
+}
+
+#[cfg(any(windows, target_os = "ios"))]
+fn product_of(plan: Plan) -> &'static str {
+    match plan {
+        Plan::Yearly => YEARLY,
+        Plan::Lifetime => PRODUCT,
+    }
+}
 
 fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
@@ -50,7 +69,13 @@ fn ask_store(app: &AppHandle) -> Option<StoreAnswer> {
     #[cfg(target_os = "ios")]
     {
         let _ = app;
-        return tauri_plugin_tbv_ios::store_status(PRODUCT).ok().map(|(owned, price)| StoreAnswer { owned, price });
+        return tauri_plugin_tbv_ios::store_status(PRODUCT, YEARLY).ok().map(|s| StoreAnswer {
+            owned: s.lifetime || s.yearly,
+            price: s.price,
+            yearly_price: s.yearly_price,
+            free_month: s.free_month,
+            plan: if s.lifetime { Some("lifetime".into()) } else if s.yearly { Some("yearly".into()) } else { None },
+        });
     }
     #[cfg(windows)]
     return store::status(app).ok();
@@ -71,15 +96,15 @@ pub fn status(app: &AppHandle, library: &Mutex<Library>) -> tbv_core::Result<Lic
     Ok(view)
 }
 
-/// Opens the store's purchase sheet. The status afterwards says whether it went through.
-pub fn buy(app: &AppHandle, library: &Mutex<Library>) -> tbv_core::Result<LicenseView> {
+/// Opens the store's purchase sheet for a plan. The status afterwards says whether it went through.
+pub fn buy(app: &AppHandle, library: &Mutex<Library>, plan: Plan) -> tbv_core::Result<LicenseView> {
     #[cfg(target_os = "ios")]
-    tauri_plugin_tbv_ios::store_buy(PRODUCT).map_err(tbv_core::Error::Unsuitable)?;
+    tauri_plugin_tbv_ios::store_buy(product_of(plan)).map_err(tbv_core::Error::Unsuitable)?;
     #[cfg(windows)]
-    store::buy(app).map_err(tbv_core::Error::Unsuitable)?;
+    store::buy(app, product_of(plan)).map_err(tbv_core::Error::Unsuitable)?;
     #[cfg(not(any(windows, target_os = "ios")))]
     {
-        let _ = (app, library);
+        let _ = (app, library, plan);
         Err(tbv_core::Error::Unsuitable("This copy of TBV can't be bought in. Get The Bound Vigil from the Microsoft Store or the App Store.".into()))
     }
     #[cfg(any(windows, target_os = "ios"))]
@@ -139,34 +164,45 @@ mod store {
         }
         let context = context(app).map_err(|e| e.to_string())?;
         let license = context.GetAppLicenseAsync().map_err(|e| e.to_string())?.join().map_err(|e| e.to_string())?;
-        let mut owned = false;
+        let (mut lifetime, mut yearly) = (false, false);
         for pair in license.AddOnLicenses().map_err(|e| e.to_string())? {
             let l = pair.Value().map_err(|e| e.to_string())?;
-            if l.InAppOfferToken().map(|t| t == super::PRODUCT).unwrap_or(false) && l.IsActive().unwrap_or(false) {
-                owned = true;
+            if !l.IsActive().unwrap_or(false) {
+                continue;
+            }
+            match l.InAppOfferToken().map(|t| t.to_string()).unwrap_or_default().as_str() {
+                t if t == super::PRODUCT => lifetime = true,
+                t if t == super::YEARLY => yearly = true,
+                _ => {}
             }
         }
-        let price = product(&context).ok().flatten().and_then(|p| p.Price().ok()?.FormattedPrice().ok()).map(|p| p.to_string());
-        Ok(StoreAnswer { owned, price })
+        let price_of = |token: &str| product(&context, token).ok().flatten().and_then(|p| p.Price().ok()?.FormattedPrice().ok()).map(|p| p.to_string());
+        Ok(StoreAnswer {
+            owned: lifetime || yearly,
+            price: price_of(super::PRODUCT),
+            yearly_price: price_of(super::YEARLY),
+            free_month: false,
+            plan: if lifetime { Some("lifetime".into()) } else if yearly { Some("yearly".into()) } else { None },
+        })
     }
 
-    fn product(context: &StoreContext) -> windows::core::Result<Option<windows::Services::Store::StoreProduct>> {
+    fn product(context: &StoreContext, token: &str) -> windows::core::Result<Option<windows::Services::Store::StoreProduct>> {
         let found = context.GetAssociatedStoreProductsAsync(&kinds()?)?.join()?;
         for pair in found.Products()? {
             let p = pair.Value()?;
-            if p.InAppOfferToken()? == super::PRODUCT {
+            if p.InAppOfferToken()? == token {
                 return Ok(Some(p));
             }
         }
         Ok(None)
     }
 
-    pub fn buy(app: &AppHandle) -> Result<(), String> {
+    pub fn buy(app: &AppHandle, token: &str) -> Result<(), String> {
         if !packaged() {
             return Err("This copy of TBV wasn't installed from the Microsoft Store, so it can't be bought in. Get The Bound Vigil from the Store.".into());
         }
         let context = context(app).map_err(|e| e.to_string())?;
-        let product = product(&context).map_err(|e| e.to_string())?.ok_or("The Store isn't offering the unlock yet.")?;
+        let product = product(&context, token).map_err(|e| e.to_string())?.ok_or("The Store isn't offering that plan yet.")?;
         let result = product.RequestPurchaseAsync().map_err(|e| e.to_string())?.join().map_err(|e| e.to_string())?;
         match result.Status().map_err(|e| e.to_string())? {
             StorePurchaseStatus::Succeeded | StorePurchaseStatus::AlreadyPurchased => Ok(()),

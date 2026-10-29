@@ -544,6 +544,11 @@ const MIGRATIONS: &[&str] = &[
         deleted_at TEXT
     );
     "#,
+    // v29: a picture on each Sanctum link: `gallery:<name>`, a copied
+    // `picture:<file>` (synced like collection pictures) or `cover:<book id>`.
+    r#"
+    ALTER TABLE sanctum_links ADD COLUMN picture TEXT NOT NULL DEFAULT '';
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
