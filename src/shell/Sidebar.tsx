@@ -2,6 +2,9 @@ import emblem from "../assets/emblem.svg?raw";
 import { Icon } from "../components/Icon";
 import { navFor, navRouteOf, type Route } from "./routes";
 import { isHome, isWeb } from "../api";
+import { useEffect, useState } from "react";
+import { showBookDetails } from "../details/openDetails";
+import { liningUp as liningUpNow, onLiningUp, type LiningUp } from "../readAlong/lineUp";
 
 export function Sidebar({
   route,
@@ -25,6 +28,10 @@ export function Sidebar({
   preview: boolean;
 }) {
   const active = navRouteOf(route);
+  // A book and its audiobook being lined up word by word, in the background.
+  const [lining, setLining] = useState<LiningUp | null>(liningUpNow());
+  useEffect(() => onLiningUp(setLining), []);
+  const liningPercent = lining ? Math.floor(lining.fraction * 100) : 0;
   return (
     <>
       {drawerOpen && <div className="sidebar-backdrop" aria-hidden onClick={onCloseDrawer} />}
@@ -94,6 +101,26 @@ export function Sidebar({
                       <span style={{ width: `${(imports.done / Math.max(1, imports.total)) * 100}%` }} />
                     </span>
                   )}
+                </button>
+              </li>
+            )}
+            {lining && (
+              <li>
+                <button
+                  type="button"
+                  className="nav-item nav-imports nav-lining"
+                  onClick={() => showBookDetails(lining.ebookId)}
+                  title={`Lining up ${lining.title || "a book"} with its audiobook: ${liningPercent}%`}
+                >
+                  <Icon name="headphones" size={20} />
+                  <span className="nav-label">
+                    Lining up
+                    {lining.title && <span className="nav-caption">{lining.title}</span>}
+                  </span>
+                  <span className="nav-count">{liningPercent}%</span>
+                  <span className="nav-progress" aria-hidden>
+                    <span style={{ width: `${liningPercent}%` }} />
+                  </span>
                 </button>
               </li>
             )}

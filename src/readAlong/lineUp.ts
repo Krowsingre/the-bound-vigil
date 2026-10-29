@@ -120,6 +120,8 @@ export async function loadLineUp(ebookId: string, audiobookId: string): Promise<
 export interface LiningUp {
   ebookId: string;
   audiobookId: string;
+  /** The ebook's title, for the sidebar. */
+  title: string;
   stage: "reading" | "model" | "listening";
   fraction: number;
   /** Downloading the speech model, the first time. */
@@ -227,7 +229,11 @@ type Hearing = import("./recogniser").Recogniser;
 /** Lines up one pair, carrying on from whatever pieces are already done. */
 async function lineUpPair(pair: ReadAlongPair, hearing: () => Promise<Hearing>, stopped: () => boolean): Promise<void> {
   const { ebookId, audiobookId } = pair;
-  tell({ ebookId, audiobookId, stage: "reading", fraction: 0, modelLoaded: 0, modelTotal: 0 });
+  const title = await api.bookDetails(ebookId).then(
+    (d) => d.book.title,
+    () => "",
+  );
+  tell({ ebookId, audiobookId, title, stage: "reading", fraction: 0, modelLoaded: 0, modelTotal: 0 });
   const audiobook = await api.audiobook(audiobookId);
   const duration = audiobook.durationMs;
   const { words, sections, language } = await bookWords(ebookId);
@@ -268,7 +274,7 @@ async function lineUpPair(pair: ReadAlongPair, hearing: () => Promise<Hearing>, 
   };
 
   const recogniser = await (async () => {
-    tell({ ebookId, audiobookId, stage: "model", fraction: done.size / pieces, modelLoaded: 0, modelTotal: 0 });
+    tell({ ebookId, audiobookId, title, stage: "model", fraction: done.size / pieces, modelLoaded: 0, modelTotal: 0 });
     return hearing();
   })();
   for (let i = 0; i < pieces; i++) {
@@ -292,7 +298,7 @@ async function lineUpPair(pair: ReadAlongPair, hearing: () => Promise<Hearing>, 
     const json = JSON.stringify(anchors);
     await api.saveReadAlongPiece(ebookId, audiobookId, i, json);
     done.set(i, json);
-    tell({ ebookId, audiobookId, stage: "listening", fraction: done.size / pieces, modelLoaded: 0, modelTotal: 0 });
+    tell({ ebookId, audiobookId, title, stage: "listening", fraction: done.size / pieces, modelLoaded: 0, modelTotal: 0 });
     if (Date.now() - claimedAt > CLAIM_EVERY_MS) {
       lineUp = sign(lineUp);
       await save(lineUp);
