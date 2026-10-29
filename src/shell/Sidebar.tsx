@@ -5,6 +5,10 @@ import { isHome, isWeb } from "../api";
 import { useEffect, useState } from "react";
 import { liningUp as liningUpNow, onLiningUp, type LiningUp } from "../readAlong/lineUp";
 
+// The emblem's two arches (assets/emblem.svg), drawn apart so each can turn on its own.
+const OUTER_ARCH = "M10 42V22a14 14 0 0 1 28 0v20";
+const INNER_ARCH = "M16 42V22.5a8 8 0 0 1 16 0V42";
+
 export function Sidebar({
   route,
   collapsed,
@@ -31,6 +35,7 @@ export function Sidebar({
   const [lining, setLining] = useState<LiningUp | null>(liningUpNow());
   useEffect(() => onLiningUp(setLining), []);
   const liningPercent = lining ? Math.floor(lining.fraction * 100) : 0;
+  const [spin, setSpin] = useState<"inner" | "outer" | null>(null);
   return (
     <>
       {drawerOpen && <div className="sidebar-backdrop" aria-hidden onClick={onCloseDrawer} />}
@@ -40,21 +45,33 @@ export function Sidebar({
             <Icon name="menu" size={22} />
           </button>
         )}
-        <div className="sidebar-top" data-tauri-drag-region>
-          <button
-            type="button"
-            className="sidebar-toggle"
-            onClick={onToggle}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-expanded={!collapsed}
-            title={`${collapsed ? "Expand" : "Collapse"} sidebar (Ctrl+\\)`}
-          >
-            <Icon name="more" size={20} />
-          </button>
-        </div>
+        <div className="sidebar-top" data-tauri-drag-region />
 
         <div className="brand" data-tauri-drag-region>
-          <span className="brand-emblem" aria-hidden dangerouslySetInnerHTML={{ __html: emblem }} />
+          {drawerOpen ? (
+            <span className="brand-emblem" aria-hidden dangerouslySetInnerHTML={{ __html: emblem }} />
+          ) : (
+            // The emblem folds the sidebar away and back: closing turns the inner arch left, opening turns the outer arch right.
+            <button
+              type="button"
+              className={`brand-emblem brand-toggle${spin ? ` is-spinning-${spin}` : ""}`}
+              onClick={() => {
+                setSpin(collapsed ? "outer" : "inner");
+                onToggle();
+              }}
+              onAnimationEnd={() => setSpin(null)}
+              aria-label={collapsed ? "Expand menu" : "Collapse menu"}
+              aria-expanded={!collapsed}
+              title={`${collapsed ? "Expand" : "Collapse"} menu (Ctrl+\\)`}
+            >
+              <svg className="arch arch-outer" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <path d={OUTER_ARCH} />
+              </svg>
+              <svg className="arch arch-inner" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <path d={INNER_ARCH} />
+              </svg>
+            </button>
+          )}
           {!collapsed && (
             <>
               <span className="brand-name">The Bound Vigil</span>
