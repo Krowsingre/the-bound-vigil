@@ -3,6 +3,8 @@
 
 mod activity;
 mod audio;
+#[cfg(target_os = "ios")]
+mod background_sync;
 mod browser;
 mod cloud;
 #[cfg(target_os = "ios")]
@@ -1777,6 +1779,8 @@ pub fn run() {
             #[cfg(desktop)]
             folder_watch::start(library.clone(), worker.clone());
             cloud_watch::start(library.clone(), worker.clone());
+            #[cfg(target_os = "ios")]
+            background_sync::ready(worker.clone());
             app.manage(worker);
             // Paired books and audiobooks lined up word by word, in the background.
             lining::start(app.handle(), library.clone(), data_dir.clone());

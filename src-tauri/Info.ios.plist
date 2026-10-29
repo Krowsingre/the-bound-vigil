@@ -9,12 +9,14 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>fetch</string>
 		<string>processing</string>
 	</array>
-	<!-- Lining up read-along carries on while TBV is away (see BackgroundWork.swift). -->
+	<!-- Syncing while TBV is closed, and lining up read-along carrying on while it's away (see BackgroundWork.swift). -->
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.krowsingre.theboundvigil.lineup</string>
+		<string>com.krowsingre.theboundvigil.sync</string>
 	</array>
 	<!-- Sending books to LocalSend on devices on the same Wi-Fi. -->
 	<key>NSLocalNetworkUsageDescription</key>
