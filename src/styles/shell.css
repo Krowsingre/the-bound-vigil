@@ -115,6 +115,8 @@
   margin: 0;
   padding: 0 12px;
   display: grid;
+  /* One column the sidebar's width, so a long title is cut short rather than widening it. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
 }
 
