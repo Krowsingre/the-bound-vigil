@@ -571,6 +571,8 @@ export const isIOS =
   isApp &&
   typeof navigator !== "undefined" &&
   (/iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
+/** The Mac app: the computer's layout, with the Mac's own window buttons. */
+export const isMac = isApp && !isIOS && typeof navigator !== "undefined" && /Macintosh/.test(navigator.userAgent);
 /** The web version, for phones: built with `npm run build:web`, syncing through Supabase. */
 export const isWeb = !isApp && import.meta.env.VITE_TBV_WEB === "1";
 
@@ -613,6 +615,12 @@ function appApi(): Api {
   // Loaded lazily so the browser preview never touches Tauri internals.
   const core = (isHome ? Promise.resolve(homeCore) : import("@tauri-apps/api/core")) as Promise<typeof import("@tauri-apps/api/core")>;
   const dialog = import("@tauri-apps/plugin-dialog");
+  // The Mac App Store's sandbox lets TBV into a folder the person chose only
+  // until it quits, unless TBV keeps a bookmark to it.
+  const keepAccess = async (paths: string[]) => {
+    if (isMac) await Promise.all(paths.map((path) => core.then((c) => c.invoke("keep_folder_access", { path })).catch(() => undefined)));
+    return paths;
+  };
   let convert: ((path: string) => string) | null = null;
   void core.then((c) => (convert = c.convertFileSrc));
 
@@ -821,7 +829,7 @@ function appApi(): Api {
     pickFolder: async () =>
       isIOS
         ? asList(await (await core).invoke<string | null>("ios_pick_folder"))
-        : asList(await (await dialog).open({ directory: true, multiple: false, title: "Import a folder of books" })),
+        : keepAccess(asList(await (await dialog).open({ directory: true, multiple: false, title: "Import a folder of books" }))),
     coverUrl: (path) => (convert ? convert(path) : ""),
     openBook: async (bookId) => (await core).invoke<ReaderBook>("open_book", { bookId }),
     readBookFile: async (bookId) => {
@@ -891,7 +899,9 @@ function appApi(): Api {
       // On iPhone a folder is chosen in Files, and TBV keeps permission to open it.
       if (isIOS) return (await core).invoke<string | null>("ios_pick_folder");
       const picked = await (await dialog).open({ directory: true, multiple: false, title, defaultPath: start ?? undefined });
-      return typeof picked === "string" ? picked : null;
+      if (typeof picked !== "string") return null;
+      await keepAccess([picked]);
+      return picked;
     },
     suggestSyncFolder: async (service) => (await core).invoke<string | null>("suggest_sync_folder", { service }),
     cloudSignIn: async (service) => (await core).invoke<ProviderChoice>("cloud_sign_in", { service }),

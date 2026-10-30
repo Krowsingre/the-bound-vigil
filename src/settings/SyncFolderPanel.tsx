@@ -3,7 +3,7 @@
 // server. TBV makes a folder called "The Bound Vigil" inside the one chosen.
 
 import { useEffect, useState } from "react";
-import { api, isApp, isIOS, isWeb } from "../api";
+import { api, isApp, isIOS, isMac, isWeb } from "../api";
 import type { CloudService, ProviderChoice, ProviderView } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
@@ -109,12 +109,15 @@ export function SyncFolderPanel({
   const info = SERVICE[service];
   const usingThis = current.kind === "folder" && current.service === service;
   const [path, setPath] = useState<string | null>(usingThis ? current.location : null);
+  // On the Mac, TBV may only use a folder the person chose themselves, so the likely one is only where choosing starts.
+  const [likely, setLikely] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dav, setDav] = useState({ url: current.kind === "webdav" ? (current.location ?? "") : "", username: current.username ?? "", password: "" });
 
   useEffect(() => {
     if (usingThis) setPath(current.location);
-    else if (service !== "custom") void api.suggestSyncFolder(service).then((p) => setPath((now) => now ?? p), () => undefined);
+    else if (service !== "custom")
+      void api.suggestSyncFolder(service).then((p) => (isMac ? setLikely(p) : setPath((now) => now ?? p)), () => undefined);
   }, [service, usingThis, current.location]);
 
   const use = async (choice: ProviderChoice, where: string) => {
@@ -133,7 +136,7 @@ export function SyncFolderPanel({
   };
 
   const choose = async () => {
-    const picked = await api.chooseFolder(`Choose your ${info.name} folder`, path);
+    const picked = await api.chooseFolder(`Choose your ${info.name} folder`, path ?? likely);
     if (picked) setPath(picked);
   };
 

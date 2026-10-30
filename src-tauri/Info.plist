@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The Mac app's extra Info.plist lines (the iPhone's are in Info.ios.plist). -->
+	<!-- Where the Mac App Store lists it. -->
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.books</string>
+	<!-- Only standard encryption (HTTPS), so App Store Connect doesn't ask each time. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<!-- Sending books to LocalSend on devices on the same Wi-Fi. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>The Bound Vigil sends books to devices on your Wi-Fi that have LocalSend open.</string>
+</dict>
+</plist>

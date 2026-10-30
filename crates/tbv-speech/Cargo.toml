@@ -1,6 +1,6 @@
 [package]
 name = "tbv-speech"
-version = "1.45.0"
+version = "1.46.0"
 edition.workspace = true
 license.workspace = true
 description = "Speech recognition on the device (whisper.cpp), for lining up read-along"
@@ -8,11 +8,11 @@ description = "Speech recognition on the device (whisper.cpp), for lining up rea
 [dependencies]
 tbv-core = { path = "../tbv-core" }
 
-[target.'cfg(target_os = "ios")'.dependencies]
-# On the phone's graphics chip.
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+# On the phone's or the Mac's graphics chip.
 whisper-rs = { version = "0.16", features = ["metal"] }
 
-[target.'cfg(not(target_os = "ios"))'.dependencies]
+[target.'cfg(not(any(target_os = "ios", target_os = "macos")))'.dependencies]
 whisper-rs = "0.16"
 
 [dev-dependencies]

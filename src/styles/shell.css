@@ -841,3 +841,9 @@
 :root[data-density="spacious"] .nav {
   gap: calc(4px * var(--density));
 }
+
+/* The Mac's red, yellow and green window buttons sit in the sidebar's top
+   strip, so the folded sidebar is wide enough to hold them. */
+:root.is-mac-app {
+  --sidebar-rail: 72px;
+}

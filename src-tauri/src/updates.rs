@@ -24,7 +24,8 @@ struct Progress {
 }
 
 /// A copy from the Microsoft Store is updated by the Store.
-const STORE_BUILD: bool = option_env!("TBV_STORE_BUILD").is_some();
+/// The Mac app comes from the Mac App Store, which updates it.
+const STORE_BUILD: bool = cfg!(target_os = "macos") || option_env!("TBV_STORE_BUILD").is_some();
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 mod desktop {

@@ -1,5 +1,5 @@
-//! Buying TBV: the Microsoft Store on a computer, the App Store on iPhone
-//! and iPad, each with two plans, yearly or lifetime. A copy from outside a
+//! Buying TBV: the Microsoft Store on a PC, the App Store on iPhone, iPad
+//! and Mac (one purchase covers all three), each with two plans, yearly or lifetime. A copy from outside a
 //! store (a test build) can be tried for the 30 days, but not bought in.
 
 use std::sync::Mutex;
@@ -9,11 +9,11 @@ use tbv_core::license::{LicenseView, Shop, StoreAnswer};
 use tbv_core::Library;
 
 /// The lifetime unlock's name in both stores (its product ID).
-#[cfg(any(windows, target_os = "ios"))]
-const PRODUCT: &str = if cfg!(target_os = "ios") { "com.krowsingre.theboundvigil.unlock" } else { "full_unlock" };
+#[cfg(any(windows, target_os = "ios", target_os = "macos"))]
+const PRODUCT: &str = if cfg!(windows) { "full_unlock" } else { "com.krowsingre.theboundvigil.unlock" };
 /// The yearly plan's name in both stores (a subscription).
-#[cfg(any(windows, target_os = "ios"))]
-const YEARLY: &str = if cfg!(target_os = "ios") { "com.krowsingre.theboundvigil.yearly" } else { "yearly" };
+#[cfg(any(windows, target_os = "ios", target_os = "macos"))]
+const YEARLY: &str = if cfg!(windows) { "yearly" } else { "com.krowsingre.theboundvigil.yearly" };
 
 /// Which plan to buy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
@@ -23,7 +23,7 @@ pub enum Plan {
     Lifetime,
 }
 
-#[cfg(any(windows, target_os = "ios"))]
+#[cfg(any(windows, target_os = "ios", target_os = "macos"))]
 fn product_of(plan: Plan) -> &'static str {
     match plan {
         Plan::Yearly => YEARLY,
@@ -56,11 +56,11 @@ fn keep_outside(app: &AppHandle, start: i64) {
 
 /// Which store this copy came from.
 fn shop() -> Shop {
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
     return Shop::Apple;
     #[cfg(windows)]
     return if store::packaged() { Shop::Microsoft } else { Shop::None };
-    #[cfg(not(any(windows, target_os = "ios")))]
+    #[cfg(not(any(windows, target_os = "ios", target_os = "macos")))]
     Shop::None
 }
 
@@ -77,9 +77,20 @@ fn ask_store(app: &AppHandle) -> Option<StoreAnswer> {
             plan: if s.lifetime { Some("lifetime".into()) } else if s.yearly { Some("yearly".into()) } else { None },
         });
     }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        return mac_store::status(PRODUCT, YEARLY).ok().map(|s| StoreAnswer {
+            owned: s.lifetime || s.yearly,
+            price: s.price,
+            yearly_price: s.yearly_price,
+            free_month: s.free_month,
+            plan: if s.lifetime { Some("lifetime".into()) } else if s.yearly { Some("yearly".into()) } else { None },
+        });
+    }
     #[cfg(windows)]
     return store::status(app).ok();
-    #[cfg(not(any(windows, target_os = "ios")))]
+    #[cfg(not(any(windows, target_os = "ios", target_os = "macos")))]
     {
         let _ = app;
         None
@@ -100,14 +111,16 @@ pub fn status(app: &AppHandle, library: &Mutex<Library>) -> tbv_core::Result<Lic
 pub fn buy(app: &AppHandle, library: &Mutex<Library>, plan: Plan) -> tbv_core::Result<LicenseView> {
     #[cfg(target_os = "ios")]
     tauri_plugin_tbv_ios::store_buy(product_of(plan)).map_err(tbv_core::Error::Unsuitable)?;
+    #[cfg(target_os = "macos")]
+    mac_store::buy(product_of(plan)).map_err(tbv_core::Error::Unsuitable)?;
     #[cfg(windows)]
     store::buy(app, product_of(plan)).map_err(tbv_core::Error::Unsuitable)?;
-    #[cfg(not(any(windows, target_os = "ios")))]
+    #[cfg(not(any(windows, target_os = "ios", target_os = "macos")))]
     {
         let _ = (app, library, plan);
         Err(tbv_core::Error::Unsuitable("This copy of TBV can't be bought in. Get The Bound Vigil from the Microsoft Store or the App Store.".into()))
     }
-    #[cfg(any(windows, target_os = "ios"))]
+    #[cfg(any(windows, target_os = "ios", target_os = "macos"))]
     status(app, library)
 }
 
@@ -124,6 +137,8 @@ pub fn unlock(app: &AppHandle, library: &Mutex<Library>, code: &str) -> tbv_core
 pub fn restore(app: &AppHandle, library: &Mutex<Library>) -> tbv_core::Result<LicenseView> {
     #[cfg(target_os = "ios")]
     tauri_plugin_tbv_ios::store_restore().map_err(tbv_core::Error::Unsuitable)?;
+    #[cfg(target_os = "macos")]
+    mac_store::restore().map_err(tbv_core::Error::Unsuitable)?;
     status(app, library)
 }
 
@@ -210,5 +225,68 @@ mod store {
             StorePurchaseStatus::NetworkError => Err("The Store couldn't be reached. Check the internet connection and try again.".into()),
             _ => Err("The Store couldn't finish the purchase.".into()),
         }
+    }
+}
+
+/// The Mac App Store, through the Mac app's own Swift (src-tauri/mac).
+#[cfg(target_os = "macos")]
+mod mac_store {
+    use std::ffi::{c_char, c_void, CStr, CString};
+
+    extern "C" {
+        fn tbv_mac_store_status(lifetime: *const c_char, yearly: *const c_char) -> *mut c_char;
+        fn tbv_mac_store_buy(product: *const c_char) -> *mut c_char;
+        fn tbv_mac_store_restore() -> *mut c_char;
+        fn free(pointer: *mut c_void);
+    }
+
+    #[derive(serde::Deserialize, Default)]
+    #[serde(rename_all = "camelCase", default)]
+    pub struct Status {
+        pub lifetime: bool,
+        pub yearly: bool,
+        pub price: Option<String>,
+        pub yearly_price: Option<String>,
+        pub free_month: bool,
+    }
+
+    #[derive(serde::Deserialize, Default)]
+    #[serde(default)]
+    struct Done {
+        error: Option<String>,
+    }
+
+    /// Takes the Swift side's JSON answer, and frees it.
+    fn read(answer: *mut c_char) -> Result<serde_json::Value, String> {
+        if answer.is_null() {
+            return Err("The App Store didn't answer.".into());
+        }
+        // SAFETY: a NUL-terminated string from strdup, freed here once read.
+        let text = unsafe { CStr::from_ptr(answer) }.to_string_lossy().into_owned();
+        unsafe { free(answer.cast()) };
+        serde_json::from_str(&text).map_err(|e| e.to_string())
+    }
+
+    fn done(answer: *mut c_char) -> Result<(), String> {
+        let done: Done = serde_json::from_value(read(answer)?).unwrap_or_default();
+        done.error.map_or(Ok(()), Err)
+    }
+
+    pub fn status(lifetime: &str, yearly: &str) -> Result<Status, String> {
+        let (lifetime, yearly) = (CString::new(lifetime).map_err(|e| e.to_string())?, CString::new(yearly).map_err(|e| e.to_string())?);
+        // SAFETY: both strings live for the call.
+        let answer = unsafe { tbv_mac_store_status(lifetime.as_ptr(), yearly.as_ptr()) };
+        serde_json::from_value(read(answer)?).map_err(|e| e.to_string())
+    }
+
+    pub fn buy(product: &str) -> Result<(), String> {
+        let product = CString::new(product).map_err(|e| e.to_string())?;
+        // SAFETY: the string lives for the call.
+        done(unsafe { tbv_mac_store_buy(product.as_ptr()) })
+    }
+
+    pub fn restore() -> Result<(), String> {
+        // SAFETY: takes nothing.
+        done(unsafe { tbv_mac_store_restore() })
     }
 }
