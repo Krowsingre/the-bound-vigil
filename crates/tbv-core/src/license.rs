@@ -25,7 +25,7 @@ pub const STARTED: &str = "license.trial_started";
 pub const SEEN: &str = "license.seen";
 /// When a store last said it was bought.
 pub const OWNED: &str = "license.owned";
-/// Which plan it was bought on, "yearly" or "lifetime".
+/// Which plan it was bought on, "monthly", "yearly" or "lifetime".
 pub const PLAN: &str = "license.plan";
 /// Set while the Publisher level is owned.
 pub const PUBLISHER: &str = "license.publisher";
@@ -79,9 +79,11 @@ pub struct LicenseView {
     pub price: Option<String>,
     /// The yearly plan's price, like "$19.99".
     pub yearly_price: Option<String>,
+    /// The monthly plan's price, like "$2.99".
+    pub monthly_price: Option<String>,
     /// The App Store gives this person the yearly plan's first month free.
     pub free_month: bool,
-    /// Bought on "yearly" or "lifetime" (none when not bought, or unlocked by code).
+    /// Bought on "monthly", "yearly" or "lifetime" (none when not bought, or unlocked by code).
     pub plan: Option<String>,
     /// The Publisher level is owned (or unlocked by the owner's code).
     pub publisher: bool,
@@ -89,6 +91,8 @@ pub struct LicenseView {
     pub publisher_price: Option<String>,
     /// Publisher yearly, like "$39.99".
     pub publisher_yearly_price: Option<String>,
+    /// Publisher monthly, like "$9.99".
+    pub publisher_monthly_price: Option<String>,
     /// Publisher for someone who already owns TBV for life: the difference.
     pub upgrade_price: Option<String>,
 }
@@ -108,13 +112,15 @@ pub struct StoreAnswer {
     pub owned: bool,
     pub price: Option<String>,
     pub yearly_price: Option<String>,
+    pub monthly_price: Option<String>,
     pub free_month: bool,
-    /// What's owned: "yearly" (a subscription that's running) or "lifetime".
+    /// What's owned: "monthly" or "yearly" (a subscription that's running) or "lifetime".
     pub plan: Option<String>,
     /// The Publisher level is owned, on either plan or as an upgrade.
     pub publisher: bool,
     pub publisher_price: Option<String>,
     pub publisher_yearly_price: Option<String>,
+    pub publisher_monthly_price: Option<String>,
     pub upgrade_price: Option<String>,
 }
 
@@ -125,11 +131,13 @@ impl StoreAnswer {
             owned: false,
             price: None,
             yearly_price: None,
+            monthly_price: None,
             free_month: false,
             plan: None,
             publisher: false,
             publisher_price: None,
             publisher_yearly_price: None,
+            publisher_monthly_price: None,
             upgrade_price: None,
         }
     }
@@ -203,11 +211,13 @@ impl Library {
             shop,
             price: answer.and_then(|a| a.price.clone()),
             yearly_price: answer.and_then(|a| a.yearly_price.clone()),
+            monthly_price: answer.and_then(|a| a.monthly_price.clone()),
             free_month: answer.is_some_and(|a| a.free_month),
             plan: if bought { self.setting(PLAN)? } else { None },
             publisher: coded || (bought && self.setting(PUBLISHER)?.is_some()),
             publisher_price: answer.and_then(|a| a.publisher_price.clone()),
             publisher_yearly_price: answer.and_then(|a| a.publisher_yearly_price.clone()),
+            publisher_monthly_price: answer.and_then(|a| a.publisher_monthly_price.clone()),
             upgrade_price: answer.and_then(|a| a.upgrade_price.clone()),
         })
     }
@@ -248,6 +258,9 @@ mod tests {
         assert_eq!((view.state, view.plan.as_deref()), (LicenseState::Owned, Some("yearly")));
         // Offline, it stays open on the plan last seen; once the year ends unrenewed, the store says so.
         assert_eq!(library.license(start + 2 * DAY, None, Shop::Apple, None).unwrap().plan.as_deref(), Some("yearly"));
+        let monthly = StoreAnswer { owned: true, monthly_price: Some("$2.99".into()), plan: Some("monthly".into()), ..StoreAnswer::nothing() };
+        let view = library.license(start + 3 * DAY, None, Shop::Apple, Some(&monthly)).unwrap();
+        assert_eq!((view.plan.as_deref(), view.monthly_price.as_deref()), (Some("monthly"), Some("$2.99")));
         let ended = library.license(start + 400 * DAY, None, Shop::Apple, Some(&StoreAnswer { free_month: true, ..StoreAnswer::nothing() })).unwrap();
         assert_eq!((ended.state, ended.plan, ended.free_month), (LicenseState::Expired, None, true));
     }

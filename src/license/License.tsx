@@ -1,4 +1,4 @@
-// Paying for TBV: $19.99 a year or $59.99 for life (embre, 30 October), from
+// Paying for TBV: $2.99 a month, $19.99 a year or $59.99 for life (embre, 30 October), from
 // the Microsoft Store after 30 days to try it in full, or from the App Store,
 // where the yearly plan's first month is free (Apple's own trial). While the trial runs everything works;
 // once it's over, this screen stands in front of the library until TBV is
@@ -191,7 +191,7 @@ export function OwnerCode() {
   );
 }
 
-/** The yearly plan and the lifetime unlock, side by side. */
+/** The yearly plan, the monthly one and the lifetime unlock, side by side. */
 export function PlanButtons() {
   const { license, busy, buy } = useLicense();
   if (!license) return null;
@@ -201,6 +201,10 @@ export function PlanButtons() {
       <button type="button" className="btn btn-primary license-plan" disabled={busy} onClick={() => void buy("yearly")}>
         <b>{license.freeMonth ? "Start your free month" : yearly}</b>
         <span>{license.freeMonth ? `Then ${yearly}. Cancel any time.` : "Renews each year. Cancel any time."}</span>
+      </button>
+      <button type="button" className="btn btn-quiet license-plan" disabled={busy} onClick={() => void buy("monthly")}>
+        <b>{license.monthlyPrice ? `${license.monthlyPrice} a month` : "Monthly"}</b>
+        <span>Renews each month. Cancel any time.</span>
       </button>
       <button type="button" className="btn btn-quiet license-plan" disabled={busy} onClick={() => void buy("lifetime")}>
         <b>{license.price ? `${license.price} for life` : "For life"}</b>

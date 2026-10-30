@@ -1,7 +1,8 @@
 // TBV Publisher: the publishing tools (print PDF, book styles, the paperback
 // cover maker, the pre-upload check, store editions, box sets, captions and
-// full-page pictures, side-by-side previews) on top of TBV, $39.99 a year or
-// $119.99 for life, or the difference for someone who owns TBV for life.
+// full-page pictures, side-by-side previews) on top of TBV, $9.99 a month,
+// $39.99 a year or $119.99 for life, or the difference for someone who owns
+// TBV for life.
 // Everything works while the trial runs; after that, using one of these
 // tools without Publisher offers it instead.
 
@@ -23,15 +24,17 @@ export function usePublisher() {
   return useContext(Context);
 }
 
-/** In the preview, a way to see TBV as someone who owns it without Publisher. */
+/** In the preview, a way to see TBV as someone who owns it without Publisher: "1" for life, "yearly" on the yearly plan. */
 function previewLicense(): LicenseView | null {
   if (api.kind !== "preview") return null;
+  let owned: string | null = null;
   try {
-    if (localStorage.getItem("tbv.preview.notPublisher") !== "1") return null;
+    owned = localStorage.getItem("tbv.preview.notPublisher");
   } catch {
     return null;
   }
-  return { state: "owned", daysLeft: 0, trialEnds: 0, trialDays: 30, shop: "microsoft", price: "$59.99", yearlyPrice: "$19.99", plan: "lifetime", publisher: false, publisherPrice: "$119.99", publisherYearlyPrice: "$39.99", upgradePrice: "$60.00" };
+  if (owned !== "1" && owned !== "yearly") return null;
+  return { state: "owned", daysLeft: 0, trialEnds: 0, trialDays: 30, shop: "microsoft", price: "$59.99", yearlyPrice: "$19.99", monthlyPrice: "$2.99", plan: owned === "yearly" ? "yearly" : "lifetime", publisher: false, publisherPrice: "$119.99", publisherYearlyPrice: "$39.99", publisherMonthlyPrice: "$9.99", upgradePrice: "$60.00" };
 }
 
 /** Publisher is there when it's owned, while trying TBV, and wherever there's nothing to buy it from (the web version, a copy from outside a store unlocked by code). */
@@ -70,6 +73,7 @@ function PublisherOffer({ tool, license, onClose }: { tool: string; license: Lic
   const upgrade = license.state === "owned" && license.plan === "lifetime";
   const canBuy = license.shop !== "none";
   const yearly = license.publisherYearlyPrice ?? "$39.99";
+  const monthly = license.publisherMonthlyPrice ?? "$9.99";
   const life = license.publisherPrice ?? "$119.99";
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
@@ -94,6 +98,10 @@ function PublisherOffer({ tool, license, onClose }: { tool: string; license: Lic
                 <button type="button" className="btn btn-primary license-plan" disabled={busy} onClick={() => void buy("publisherYearly").then(onClose)}>
                   <b>{yearly} a year</b>
                   <span>All of TBV and Publisher. Renews each year. Cancel any time.</span>
+                </button>
+                <button type="button" className="btn btn-quiet license-plan" disabled={busy} onClick={() => void buy("publisherMonthly").then(onClose)}>
+                  <b>{monthly} a month</b>
+                  <span>All of TBV and Publisher. Renews each month. Cancel any time.</span>
                 </button>
                 <button type="button" className="btn btn-quiet license-plan" disabled={busy} onClick={() => void buy("publisherLifetime").then(onClose)}>
                   <b>{life} for life</b>

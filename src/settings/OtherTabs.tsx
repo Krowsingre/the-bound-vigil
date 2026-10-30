@@ -900,8 +900,8 @@ function YourCopy() {
   const ends = new Date(license.trialEnds * 1000).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
   const words =
     license.state === "owned"
-      ? license.plan === "yearly"
-        ? `On the ${license.publisher ? "Publisher " : ""}yearly plan from ${shopName(license.shop)}. Thank you. It renews each year; ${license.shop === "apple" ? "manage it in your Apple ID's Subscriptions" : "manage it in the Microsoft Store's Subscriptions"}.`
+      ? license.plan === "yearly" || license.plan === "monthly"
+        ? `On the ${license.publisher ? "Publisher " : ""}${license.plan} plan from ${shopName(license.shop)}. Thank you. It renews each ${license.plan === "yearly" ? "year" : "month"}; ${license.shop === "apple" ? "manage it in your Apple ID's Subscriptions" : "manage it in the Microsoft Store's Subscriptions"}.`
         : `${license.publisher ? "TBV Publisher, bought" : "Bought"} in ${shopName(license.shop)}. Thank you.`
       : license.trialDays > 0
         ? `${license.daysLeft === 1 ? "1 day" : `${license.daysLeft} days`} left of your free trial (until ${ends}). Choose a plan to keep using it after that.`
@@ -994,7 +994,7 @@ function AboutVersion({ version }: { version: string }) {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.55.0");
+  const [version, setVersion] = useState("1.56.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

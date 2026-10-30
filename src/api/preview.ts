@@ -144,10 +144,12 @@ let previewLicense: LicenseView = {
   shop: licenseParam === "welcome" ? "apple" : "microsoft",
   price: "$59.99",
   yearlyPrice: "$19.99",
+  monthlyPrice: "$2.99",
   freeMonth: licenseParam === "welcome",
   publisher: false,
   publisherPrice: "$119.99",
   publisherYearlyPrice: "$39.99",
+  publisherMonthlyPrice: "$9.99",
   upgradePrice: "$60.00",
 };
 // `?hardcover` shows Hardcover signed in, for reviewing Settings.
@@ -928,7 +930,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "1.55.0", version: "1.56.0", notes: "The Bound Vigil 1.56.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "1.56.0", version: "1.57.0", notes: "The Bound Vigil 1.57.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
@@ -939,7 +941,7 @@ export function previewApi(): Api {
         ...previewLicense,
         state: "owned",
         daysLeft: 0,
-        plan: plan === "yearly" || plan === "publisherYearly" ? "yearly" : "lifetime",
+        plan: plan === "monthly" || plan === "publisherMonthly" ? "monthly" : plan === "yearly" || plan === "publisherYearly" ? "yearly" : "lifetime",
         publisher: previewLicense.publisher || plan.startsWith("publisher"),
       }),
     restoreLicense: async () => previewLicense,
