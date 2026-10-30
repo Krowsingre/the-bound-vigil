@@ -11,8 +11,8 @@ mod cloud;
 #[cfg(target_os = "ios")]
 mod cloud_events;
 mod cloud_watch;
-#[cfg(desktop)]
 mod folder_access;
+#[cfg(desktop)]
 mod folder_watch;
 mod hardcover;
 mod home;
