@@ -1602,3 +1602,9 @@
   flex: none;
   margin-top: 2px;
 }
+
+.bible-note .link-btn {
+  height: auto;
+  color: var(--accent);
+  text-decoration: underline;
+}
