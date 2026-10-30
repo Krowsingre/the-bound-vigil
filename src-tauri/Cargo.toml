@@ -10,6 +10,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+
+# Building the Mac app's own Swift (build.rs). Mac and iPhone apps are only built on a Mac.
+[target.'cfg(target_os = "macos")'.build-dependencies]
 swift-rs = { version = "1", features = ["build"] }
 
 [dependencies]
