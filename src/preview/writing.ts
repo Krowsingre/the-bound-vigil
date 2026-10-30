@@ -1,6 +1,7 @@
 // The browser preview's Writing page and Catalogs: a sample book being
 // written, and a pretend catalog, kept in memory.
 
+import { printInBrowser } from "../print/inBrowser";
 import type { Api } from "../api";
 import type { CatalogView, OpdsEntry, OpdsFeed, ReadingHistoryEntry, WritingDraft } from "../api/types";
 import { writingCalls } from "../writing/records";
@@ -34,6 +35,9 @@ type Calls = Pick<
   | "pickWritingCover"
   | "pickEpubSavePath"
   | "saveWritingEpub"
+  | "pickExportPath"
+  | "saveExportFile"
+  | "printBook"
   | "saveWritingDraft"
   | "writingDrafts"
   | "deleteWritingDraft"
@@ -222,5 +226,8 @@ export function previewWriting(): Calls {
     pickWritingCover: async () => null,
     pickEpubSavePath: async (fileName) => fileName,
     saveWritingEpub: async () => {},
+    pickExportPath: async (fileName) => fileName,
+    saveExportFile: async () => {},
+    printBook: (html) => printInBrowser(html),
   };
 }

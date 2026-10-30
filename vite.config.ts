@@ -65,7 +65,7 @@ export default defineConfig(({ mode }) => ({
     outDir: mode === "web" ? "dist-web" : "dist",
     chunkSizeWarningLimit: 600,
     // The splash card a computer shows while TBV opens is a page of its own.
-    rollupOptions: { input: { main: "index.html", splash: "splash.html" } },
+    rollupOptions: { input: { main: "index.html", splash: "splash.html", print: "print.html" } },
   },
   test: { environment: "jsdom", globals: true, setupFiles: ["src/test/setup.ts"] },
 }));

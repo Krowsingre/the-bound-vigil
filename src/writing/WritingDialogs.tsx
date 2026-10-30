@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, isWeb } from "../api";
+import { api, isApp, isWeb, isWindows } from "../api";
 import type { WritingChapter, WritingDetails, WritingDraft, WritingProject } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
@@ -9,6 +9,10 @@ import { bookOrder, buildEpub, epubFileName, exportProblems, readExport, type Ex
 import { imageMime, loadBookFonts } from "./fonts";
 import { makeCiter } from "./sources";
 import { CoverMaker } from "./CoverMaker";
+import { BOOK_STYLES, chooseStyle } from "./bookStyles";
+import { buildDocx } from "./docx";
+import { printHtml, TRIMS } from "./printBook";
+import { bookFileName, buildTxt } from "./txt";
 import { startingTitle, TEMPLATES, templateSections, type Template } from "./pages";
 
 /** The book made into an EPUB, with its cover and the font chosen. */
@@ -281,7 +285,20 @@ const DEPTHS: { value: ExportSettings["tocDepth"]; label: string }[] = [
   { value: 3, label: "Chapters, headings and smaller headings" },
 ];
 
-/** Making the EPUB: how it looks, and where it goes. */
+export type ExportFormat = "epub" | "pdf" | "docx" | "txt" | "manuscript";
+
+const FORMATS: { value: ExportFormat; label: string; lede: string }[] = [
+  { value: "epub", label: "EPUB", lede: "A standard EPUB 3 that e-readers and stores accept. Changes show in the preview straight away." },
+  { value: "pdf", label: "Print PDF", lede: "Pages ready for a paperback: a trim size KDP and IngramSpark accept, mirrored margins, running heads and page numbers." },
+  { value: "docx", label: "Word", lede: "A Word file with Word's own heading styles, real footnotes, pictures and page breaks, for editors and beta readers." },
+  { value: "txt", label: "Text", lede: "Plain text: the words alone, with titles in capitals and each chapter's notes after it." },
+  { value: "manuscript", label: "Manuscript", lede: "A standard manuscript for agents, publishers and magazines, as a Word file." },
+];
+
+/** The book's look for print: Lora when the e-reader would have chosen, since a printed page has to carry its own font. */
+const forPrint = (settings: ExportSettings): ExportSettings => (settings.font === "none" ? { ...settings, font: "lora" } : settings);
+
+/** Making the book into a file: how it looks, and where it goes. */
 export function ExportDialog({
   project,
   chapters,
@@ -291,180 +308,287 @@ export function ExportDialog({
 }: {
   project: WritingProject;
   chapters: WritingChapter[];
-  /** Saves the chapter being written, so the EPUB has its latest words. */
+  /** Saves the chapter being written, so the export has its latest words. */
   onFlush: () => Promise<WritingChapter[]>;
   /** Keeps the settings as they're changed, so the preview shows them. */
   onSettings: (settings: ExportSettings) => void;
   onClose: () => void;
 }) {
   const [settings, setSettings] = useState(() => readExport(project.export));
+  const [format, setFormat] = useState<ExportFormat>(() => {
+    try {
+      const saved = localStorage.getItem("tbv.writing.exportFormat");
+      return FORMATS.some((f) => f.value === saved) ? (saved as ExportFormat) : "epub";
+    } catch {
+      return "epub";
+    }
+  });
   const [addToLibrary, setAddToLibrary] = useState(!isWeb);
   const [saveCopy, setSaveCopy] = useState(isWeb);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
   const set = (change: Partial<ExportSettings>) => {
+    // Changing a setting a style chose keeps the style's looks, with that one setting changed.
     const next = { ...settings, ...change };
     setSettings(next);
     onSettings(next);
   };
-  const problems = exportProblems(chapters);
-  const hasParts = chapters.some((c) => c.role === "part");
-
-  const make = async () => {
-    if (!addToLibrary && !saveCopy) return setError("Choose where the EPUB goes.");
-    setBusy(true);
+  const setPrint = (change: Partial<ExportSettings["print"]>) => set({ print: { ...settings.print, ...change } });
+  const setManuscript = (change: Partial<ExportSettings["manuscript"]>) => set({ manuscript: { ...settings.manuscript, ...change } });
+  const pick = (f: ExportFormat) => {
+    setFormat(f);
     setError(null);
     try {
-      const latest = await onFlush();
-      const fileName = epubFileName(project.title);
-      const path = saveCopy && !isWeb ? await api.pickEpubSavePath(fileName) : null;
-      if (saveCopy && !isWeb && !path && !addToLibrary) {
-        setBusy(false);
-        return;
-      }
-      const bytes = await makeEpub(project, latest, settings);
-      await api.setWritingExport(project.id, JSON.stringify(settings));
-      await api.saveWritingEpub(bytes, fileName, path, addToLibrary);
-      toast(
-        addToLibrary
-          ? path
-            ? "Saved, and being added to your library."
-            : "Being added to your library."
-          : isWeb
-            ? "The EPUB has been downloaded."
-            : "The EPUB has been saved.",
-      );
-      onClose();
-    } catch (e) {
-      setError(String(e));
-      setBusy(false);
+      localStorage.setItem("tbv.writing.exportFormat", f);
+    } catch {
+      // Remembered for this time only.
     }
   };
+  const problems = exportProblems(chapters);
+  const hasParts = chapters.some((c) => c.role === "part");
+  const lede = FORMATS.find((f) => f.value === format)!.lede;
+
+  const input = async (latest: WritingChapter[], s: ExportSettings) => {
+    const coverBytes = project.cover ? await api.writingCover(project.id) : new Uint8Array();
+    const mime = coverBytes.length ? imageMime(coverBytes) : null;
+    const citer = await makeCiter(s.citationStyle, s.sources, bookOrder(latest));
+    return { project, chapters: latest, settings: s, cover: mime ? { bytes: coverBytes, mime } : null, citer, ...(await loadBookFonts(s, latest)) };
+  };
+
+  const make = async () => {
+    if (format === "epub" && !addToLibrary && !saveCopy) return setError("Choose where the EPUB goes.");
+    setError(null);
+    try {
+      if (format === "epub") {
+        setBusy("Making the EPUB…");
+        const latest = await onFlush();
+        const fileName = epubFileName(project.title);
+        const path = saveCopy && !isWeb ? await api.pickEpubSavePath(fileName) : null;
+        if (saveCopy && !isWeb && !path && !addToLibrary) return setBusy(null);
+        const bytes = await makeEpub(project, latest, settings);
+        await api.setWritingExport(project.id, JSON.stringify(settings));
+        await api.saveWritingEpub(bytes, fileName, path, addToLibrary);
+        toast(addToLibrary ? (path ? "Saved, and being added to your library." : "Being added to your library.") : isWeb ? "The EPUB has been downloaded." : "The EPUB has been saved.");
+        return onClose();
+      }
+      if (format === "pdf") {
+        // Windows saves the PDF itself; elsewhere the print dialog has "Save as PDF".
+        const path = isWindows ? await api.pickExportPath(bookFileName(project.title, "pdf"), "pdf") : null;
+        if (isWindows && !path) return;
+        setBusy("Laying out the pages…");
+        const latest = await onFlush();
+        await api.setWritingExport(project.id, JSON.stringify(settings));
+        const pages = await api.printBook(printHtml(await input(latest, forPrint(settings)), settings.print), path);
+        toast(path ? `The PDF has been saved: ${pages} pages.` : `${pages} pages, ready to print or save as a PDF.`);
+        return onClose();
+      }
+      const extension = format === "txt" ? "txt" : "docx";
+      const fileName = bookFileName(format === "manuscript" ? `${project.title} (manuscript)` : project.title, extension);
+      const path = isWeb ? null : await api.pickExportPath(fileName, extension);
+      if (!isWeb && !path) return;
+      setBusy(format === "txt" ? "Making the text file…" : "Making the Word file…");
+      const latest = await onFlush();
+      await api.setWritingExport(project.id, JSON.stringify(settings));
+      const book = await input(latest, settings);
+      const bytes = format === "txt" ? new TextEncoder().encode(buildTxt(book)) : await buildDocx(book, format === "manuscript" ? settings.manuscript : null);
+      await api.saveExportFile(bytes, fileName, path);
+      toast(isWeb ? `${fileName} has been downloaded.` : `${fileName} has been saved.`);
+      onClose();
+    } catch (e) {
+      setError(String(e).replace(/^Error: /, ""));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const select = <T extends string | number>(label: string, value: T, options: { value: T; label: string }[], onChange: (v: T) => void, autoFocus = false) => (
+    <label className="field">
+      <span>{label}</span>
+      <select
+        autoFocus={autoFocus}
+        value={String(value)}
+        onChange={(e) => onChange(options.find((o) => String(o.value) === e.target.value)!.value)}
+      >
+        {options.map((o) => (
+          <option key={String(o.value)} value={String(o.value)}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+  const check = (label: string, checked: boolean, onChange: (v: boolean) => void) => (
+    <label className="check-row">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>{label}</span>
+    </label>
+  );
+  const styled = format === "epub" || format === "pdf" || format === "docx";
 
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <form
-        className="dialog writing-dialog"
+        className="dialog writing-dialog writing-export"
         role="dialog"
-        aria-label="Export as EPUB"
+        aria-label="Export"
         onSubmit={(e) => {
           e.preventDefault();
           void make();
         }}
         onKeyDown={(e) => e.key === "Escape" && !busy && onClose()}
       >
-        <h2>Export as EPUB</h2>
-        <p className="muted dialog-lede">A standard EPUB 3 that e-readers and stores accept. Changes show in the preview straight away.</p>
-        <label className="field">
-          <span>Font</span>
-          <select autoFocus value={settings.font} onChange={(e) => set({ font: e.target.value as ExportSettings["font"] })}>
-            {FONTS.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Scene breaks</span>
-          <select value={settings.sceneBreak} onChange={(e) => set({ sceneBreak: e.target.value as ExportSettings["sceneBreak"] })}>
-            {BREAKS.map((b) => (
-              <option key={b.value} value={b.value}>
-                {b.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Table of contents</span>
-          <select value={settings.tocDepth} onChange={(e) => set({ tocDepth: Number(e.target.value) as ExportSettings["tocDepth"] })}>
-            {DEPTHS.map((d) => (
-              <option key={d.value} value={d.value}>
-                {d.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="writing-export-styles">
-          <label className="field">
-            <span>Paragraphs</span>
-            <select value={settings.paragraphs} onChange={(e) => set({ paragraphs: e.target.value as ExportSettings["paragraphs"] })}>
-              <option value="indent">Indented</option>
-              <option value="space">Spaced</option>
-            </select>
-          </label>
-          <label className="field">
-            <span>Lines</span>
-            <select value={settings.align} onChange={(e) => set({ align: e.target.value as ExportSettings["align"] })}>
-              <option value="justify">Justified</option>
-              <option value="left">Ragged right</option>
-            </select>
-          </label>
-          <label className="field">
-            <span>Chapter titles</span>
-            <select value={settings.titles} onChange={(e) => set({ titles: e.target.value as ExportSettings["titles"] })}>
-              <option value="center">Centred</option>
-              <option value="left">On the left</option>
-            </select>
-          </label>
+        <h2>Export</h2>
+        <div className="segmented writing-export-formats" role="radiogroup" aria-label="Format">
+          {FORMATS.map((f) => (
+            <button key={f.value} type="button" role="radio" aria-checked={format === f.value} onClick={() => pick(f.value)}>
+              {f.label}
+            </button>
+          ))}
         </div>
-        <label className="check-row">
-          <input type="checkbox" checked={settings.newPage} onChange={(e) => set({ newPage: e.target.checked })} />
-          <span>Start each chapter on a new page</span>
-        </label>
-        <div className="writing-export-styles">
-          <label className="field">
-            <span>Chapter headings</span>
-            <select value={settings.chapterHeading} onChange={(e) => set({ chapterHeading: e.target.value as ExportSettings["chapterHeading"] })}>
-              <option value="title">The title only</option>
-              <option value="number">Chapter 1, then the title</option>
-              <option value="words">Chapter One, then the title</option>
-              <option value="numeral">1, then the title</option>
-            </select>
-          </label>
-          {hasParts && (
+        <p className="muted dialog-lede">{lede}</p>
+
+        {styled && (
+          <fieldset className="writing-export-group">
+            <legend>Book style</legend>
+            <div className="book-styles" role="radiogroup" aria-label="Book style">
+              <button type="button" role="radio" aria-checked={!settings.bookStyle} className="book-style" onClick={() => set(chooseStyle(settings, null))}>
+                <b>Your own</b>
+                <span>The settings below</span>
+              </button>
+              {BOOK_STYLES.map((s) => (
+                <button key={s.id} type="button" role="radio" aria-checked={settings.bookStyle === s.id} className={`book-style book-style-${s.id}`} onClick={() => set(chooseStyle(settings, s.id))}>
+                  <b>{s.label}</b>
+                  <span>{s.about}</span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        )}
+
+        {styled && (
+          <details className="writing-export-more" open={!settings.bookStyle}>
+            <summary>Fonts, headings and paragraphs</summary>
+            {select("Font", settings.font, FONTS, (font) => set({ font }), true)}
+            {select("Scene breaks", settings.sceneBreak, BREAKS, (sceneBreak) => set({ sceneBreak }))}
+            {format === "epub" && select("Table of contents", settings.tocDepth, DEPTHS, (tocDepth) => set({ tocDepth }))}
+            <div className="writing-export-styles">
+              {select("Paragraphs", settings.paragraphs, [{ value: "indent", label: "Indented" }, { value: "space", label: "Spaced" }], (paragraphs) => set({ paragraphs }))}
+              {select("Lines", settings.align, [{ value: "justify", label: "Justified" }, { value: "left", label: "Ragged right" }], (align) => set({ align }))}
+              {select("Chapter titles", settings.titles, [{ value: "center", label: "Centred" }, { value: "left", label: "On the left" }], (titles) => set({ titles }))}
+            </div>
+            {check("Start each chapter on a new page", settings.newPage, (newPage) => set({ newPage }))}
+            <div className="writing-export-styles">
+              {select(
+                "Chapter headings",
+                settings.chapterHeading,
+                [
+                  { value: "title", label: "The title only" },
+                  { value: "number", label: "Chapter 1, then the title" },
+                  { value: "words", label: "Chapter One, then the title" },
+                  { value: "numeral", label: "1, then the title" },
+                ],
+                (chapterHeading) => set({ chapterHeading }),
+              )}
+              {hasParts &&
+                select(
+                  "Chapter numbers",
+                  settings.numbering,
+                  [
+                    { value: "restart", label: "Start again in each section" },
+                    { value: "continuous", label: "Run on through the book" },
+                  ],
+                  (numbering) => set({ numbering }),
+                )}
+            </div>
+            {check("A large first letter at the start of each chapter", settings.dropCap, (dropCap) => set({ dropCap }))}
+            {check("The first line of each chapter in small capitals", settings.smallCaps, (smallCaps) => set({ smallCaps }))}
+          </details>
+        )}
+
+        {format === "pdf" && (
+          <fieldset className="writing-export-group">
+            <legend>Pages</legend>
+            {select("Trim size", settings.print.trim, TRIMS.map((t) => ({ value: t.value, label: t.label })), (trim) => setPrint({ trim }))}
+            {check("Mirrored margins, wider on the inside (grows with the page count)", settings.print.mirrored, (mirrored) => setPrint({ mirrored }))}
+            {check("Start chapters on a right-hand page", settings.print.chaptersRight, (chaptersRight) => setPrint({ chaptersRight }))}
+            {check("Running heads: the book's title on the left, the chapter's on the right", settings.print.runningHeads, (runningHeads) => setPrint({ runningHeads }))}
+            {check("Page numbers", settings.print.pageNumbers, (pageNumbers) => setPrint({ pageNumbers }))}
+            {check("Bleed: an extra eighth of an inch for pictures that run to the edge", settings.print.bleed, (bleed) => setPrint({ bleed }))}
+            <p className="muted writing-export-note">
+              {isWindows
+                ? "The PDF is saved where you choose, at the trim size, with its fonts inside it."
+                : isApp
+                  ? "The pages open in a window with the print dialog. Choose Save as PDF there."
+                  : "The pages open in a new tab with the print dialog. Choose Save as PDF there, with margins set to None."}
+            </p>
+          </fieldset>
+        )}
+
+        {format === "manuscript" && (
+          <fieldset className="writing-export-group">
+            <legend>Manuscript</legend>
+            <div className="writing-export-styles">
+              {select(
+                "Layout",
+                settings.manuscript.layout,
+                [
+                  { value: "shunn", label: "Prose (Shunn standard)" },
+                  { value: "poetry", label: "Poetry (standard poetry)" },
+                ],
+                (layout) => setManuscript({ layout }),
+                true,
+              )}
+              {select(
+                "Font",
+                settings.manuscript.font,
+                [
+                  { value: "times", label: "Times New Roman, 12 pt" },
+                  { value: "courier", label: "Courier New, 12 pt" },
+                ],
+                (font) => setManuscript({ font }),
+              )}
+            </div>
+            <p className="muted writing-export-note">Your details go at the top of the first page. Your surname, the title and the page number head every page after it.</p>
             <label className="field">
-              <span>Chapter numbers</span>
-              <select value={settings.numbering} onChange={(e) => set({ numbering: e.target.value as ExportSettings["numbering"] })}>
-                <option value="restart">Start again in each section</option>
-                <option value="continuous">Run on through the book</option>
-              </select>
+              <span>Your name (legal name, if you write under a pen name)</span>
+              <input value={settings.manuscript.name} placeholder={project.author ?? ""} onChange={(e) => setManuscript({ name: e.target.value })} />
             </label>
-          )}
-        </div>
-        <label className="check-row">
-          <input type="checkbox" checked={settings.dropCap} onChange={(e) => set({ dropCap: e.target.checked })} />
-          <span>A large first letter at the start of each chapter</span>
-        </label>
-        <label className="check-row">
-          <input type="checkbox" checked={settings.smallCaps} onChange={(e) => set({ smallCaps: e.target.checked })} />
-          <span>The first line of each chapter in small capitals</span>
-        </label>
-        <div className="writing-export-where">
-          <strong>Where it goes</strong>
-          {!isWeb && (
-            <label className="check-row">
-              <input type="checkbox" checked={addToLibrary} onChange={(e) => setAddToLibrary(e.target.checked)} />
-              <span>Add it to my library, where it can be read or sent to a Kindle</span>
+            <label className="field">
+              <span>Address</span>
+              <textarea rows={2} value={settings.manuscript.address} onChange={(e) => setManuscript({ address: e.target.value })} />
             </label>
-          )}
-          <label className="check-row">
-            <input type="checkbox" checked={saveCopy} onChange={(e) => setSaveCopy(e.target.checked)} />
-            <span>{isWeb ? "Download the EPUB" : "Save a copy on this computer"}</span>
-          </label>
-        </div>
+            <div className="writing-export-styles">
+              <label className="field">
+                <span>Phone</span>
+                <input value={settings.manuscript.phone} onChange={(e) => setManuscript({ phone: e.target.value })} />
+              </label>
+              <label className="field">
+                <span>Email</span>
+                <input type="email" value={settings.manuscript.email} onChange={(e) => setManuscript({ email: e.target.value })} />
+              </label>
+            </div>
+          </fieldset>
+        )}
+
+        {format === "epub" && (
+          <div className="writing-export-where">
+            <strong>Where it goes</strong>
+            {!isWeb && check("Add it to my library, where it can be read or sent to a Kindle", addToLibrary, setAddToLibrary)}
+            {check(isWeb ? "Download the EPUB" : "Save a copy on this computer", saveCopy, setSaveCopy)}
+          </div>
+        )}
         {(error || problems.length > 0) && (
           <p className="form-error" role="alert">
             {error ?? problems[0]}
           </p>
         )}
         <div className="dialog-actions">
-          <button type="button" className="btn btn-quiet" onClick={onClose} disabled={busy}>
+          <button type="button" className="btn btn-quiet" onClick={onClose} disabled={!!busy}>
             Cancel
           </button>
-          <button type="submit" className="btn btn-primary" disabled={busy || problems.length > 0}>
-            {busy ? "Making the EPUB…" : "Export"}
+          <button type="submit" className="btn btn-primary" disabled={!!busy || problems.length > 0}>
+            {busy ?? (format === "pdf" && !isWindows ? "Lay out and print" : "Export")}
           </button>
         </div>
       </form>

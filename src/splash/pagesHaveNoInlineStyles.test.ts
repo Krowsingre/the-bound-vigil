@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("TBV's own pages", () => {
-  for (const page of ["index.html", "splash.html"]) {
+  for (const page of ["index.html", "splash.html", "print.html"]) {
     it(`${page} keeps its styles and scripts in files`, () => {
       const html = readFileSync(page, "utf8").replace(/<!--[\s\S]*?-->/g, "");
       expect(html).not.toMatch(/<style[\s>]/i);

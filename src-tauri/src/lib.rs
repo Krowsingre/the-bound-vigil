@@ -21,6 +21,7 @@ mod license;
 mod lining;
 mod localsend;
 mod moving;
+mod print;
 mod protection;
 mod push;
 mod servers;
@@ -1983,6 +1984,9 @@ pub fn run() {
             prepare_stream,
             abs_stream::server_audiobook,
             abs_stream::server_listening,
+            print::print_book,
+            print::print_job,
+            print::print_laid_out,
             lining::lining_up_status,
             lining::lining_up_pause,
             lining::lining_up_paused,
