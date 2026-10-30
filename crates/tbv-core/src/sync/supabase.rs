@@ -646,6 +646,13 @@ impl Supabase {
 }
 
 impl Remote for Supabase {
+    /// Made from the project and the person signed in, which every one of
+    /// their devices shares.
+    fn wake_key(&mut self) -> Result<Option<String>> {
+        use sha2::Digest;
+        let hash = sha2::Sha256::digest(format!("tbv-wake\n{}\n{}", self.project.url.trim_end_matches('/'), self.session.user_id));
+        Ok(Some(hex::encode(&hash[..16])))
+    }
     fn upload(&mut self, path: &str, file: &Path) -> Result<()> {
         let size = std::fs::metadata(file)?.len();
         self.pieces.remove(path);

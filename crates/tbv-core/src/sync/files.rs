@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! The Bound Vigil/
-//!   library.json              marks the folder as a TBV library
+//!   library.json              marks the folder as a TBV library, with its wake-up name
 //!   changes/<device>/0000000001.json   a batch of records, never changed
 //!   devices/<device>.json     how many batches the device has written, and its book count
 //!   books/<hash>.epub         book files (when Sync book files is on)
@@ -219,6 +219,14 @@ impl<T: Store + ?Sized> Store for Box<T> {
 #[derive(Serialize, Deserialize)]
 struct Marker {
     tbv: u32,
+    /// The library's wake-up name for the push server (see `Remote::wake_key`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    wake: Option<String>,
+}
+
+/// A fresh wake-up name: 32 random letters and digits.
+fn new_wake_key() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
 }
 
 #[derive(Serialize, Deserialize)]
@@ -276,22 +284,27 @@ pub struct FileRemote<S: Store> {
     device: String,
     /// The number the next batch from this device gets, once known.
     next: Option<u64>,
+    /// The library's wake-up name, once read.
+    wake: Option<String>,
 }
 
 impl<S: Store> FileRemote<S> {
     pub fn new(store: S, device: String) -> Self {
-        Self { store, device, next: None }
+        Self { store, device, next: None, wake: None }
     }
 
     /// Makes sure the place is a TBV library, marking it as one if it's new.
     /// Returns whether it already held a library (from another device).
     pub fn prepare(&mut self) -> Result<bool> {
         if let Some(bytes) = self.store.read(MARKER)? {
-            serde_json::from_slice::<Marker>(&bytes)
+            let marker = serde_json::from_slice::<Marker>(&bytes)
                 .map_err(|_| Error::Unsuitable("that folder has a library.json TBV didn't write. Choose another folder.".into()))?;
+            self.wake = marker.wake;
             return Ok(true);
         }
-        self.store.write(MARKER, &serde_json::to_vec(&Marker { tbv: 1 })?)?;
+        let marker = Marker { tbv: 1, wake: Some(new_wake_key()) };
+        self.store.write(MARKER, &serde_json::to_vec(&marker)?)?;
+        self.wake = marker.wake;
         Ok(false)
     }
 
@@ -307,6 +320,17 @@ impl<S: Store> FileRemote<S> {
 }
 
 impl<S: Store + Send> Remote for FileRemote<S> {
+    fn wake_key(&mut self) -> Result<Option<String>> {
+        if self.wake.is_none() {
+            // A library made before wake-up names: it gets one now. Should
+            // two devices do this at once, the one written last stands, and
+            // both read it next time.
+            let marker = Marker { tbv: 1, wake: Some(new_wake_key()) };
+            self.store.write(MARKER, &serde_json::to_vec(&marker)?)?;
+            self.wake = marker.wake;
+        }
+        Ok(self.wake.clone())
+    }
     fn push(&mut self, records: &[Record]) -> Result<()> {
         if records.is_empty() {
             return Ok(());
@@ -692,6 +716,28 @@ pub(crate) mod tests {
         let mut again = FileRemote::new(FolderStore::open(dir.path()).unwrap(), "device-b".into());
         again.push(&[record(5)]).unwrap();
         assert!(dir.path().join(LIBRARY_FOLDER).join("changes/device-b/0000000002.json").is_file());
+    }
+
+    #[test]
+    fn every_device_shares_one_wake_up_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut first = FileRemote::new(FolderStore::open(dir.path()).unwrap(), "device-a".into());
+        assert!(!first.prepare().unwrap());
+        let key = first.wake_key().unwrap().unwrap();
+        assert_eq!(key.len(), 32);
+        let mut second = FileRemote::new(FolderStore::open(dir.path()).unwrap(), "device-b".into());
+        assert!(second.prepare().unwrap());
+        assert_eq!(second.wake_key().unwrap(), Some(key));
+
+        // A library from before wake-up names gets one, kept from then on.
+        let old = tempfile::tempdir().unwrap();
+        FolderStore::open(old.path()).unwrap().write(MARKER, br#"{"tbv":1}"#).unwrap();
+        let mut device = FileRemote::new(FolderStore::open(old.path()).unwrap(), "device-a".into());
+        assert!(device.prepare().unwrap());
+        let made = device.wake_key().unwrap().unwrap();
+        let mut later = FileRemote::new(FolderStore::open(old.path()).unwrap(), "device-b".into());
+        later.prepare().unwrap();
+        assert_eq!(later.wake_key().unwrap(), Some(made));
     }
 
     #[test]

@@ -73,6 +73,9 @@ subprocess.run(["xcodegen", "generate"], cwd=apple, check=True)
 with host_entitlements.open("rb") as f:
     entitlements = plistlib.load(f)
 entitlements["com.apple.security.application-groups"] = ["group.com.krowsingre.theboundvigil"]
+# Silent pushes from TBV's push server (Push.swift). TestFlight and the App
+# Store use Apple's real push service.
+entitlements["aps-environment"] = "production"
 with host_entitlements.open("wb") as f:
     plistlib.dump(entitlements, f)
 # XcodeGen regenerates target entitlements as well; restore the declared
@@ -92,4 +95,6 @@ with host_entitlements.open("rb") as f:
     verified = plistlib.load(f)
 if verified.get("com.apple.security.application-groups") != ["group.com.krowsingre.theboundvigil"]:
     raise SystemExit("Host App Group entitlement verification failed")
+if verified.get("aps-environment") != "production":
+    raise SystemExit("Host push entitlement verification failed")
 print("Share Extension target generated and host App Group entitlement verified")

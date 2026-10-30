@@ -1,0 +1,14 @@
+# TBV's push server: wakes a library's iPhones and iPads when another of
+# its devices has sent changes. Deployed by .github/workflows/push.yml,
+# which fills in the KV namespace id and the Apple secrets.
+name = "tbv-push"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[vars]
+TOPIC = "com.krowsingre.theboundvigil"
+
+[[kv_namespaces]]
+binding = "DEVICES"
+id = "KV_ID"

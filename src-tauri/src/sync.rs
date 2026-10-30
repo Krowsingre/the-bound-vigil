@@ -282,6 +282,8 @@ fn run(app: &AppHandle, library: &Arc<Mutex<Library>>, busy: &AtomicBool) {
             keep_session(&library, cloud, &outcome);
         }
     }
+    let keys = client.iter_mut().chain(second.iter_mut()).filter_map(|cloud| core_sync::Remote::wake_key(cloud).ok().flatten()).collect();
+    crate::push::after_sync(keys, outcome.as_ref().is_ok_and(|r| r.sent > 0 || r.files_sent > 0));
     busy.store(false, Ordering::Relaxed);
     emit_status(app, library, false);
     if let Ok(report) = &outcome {

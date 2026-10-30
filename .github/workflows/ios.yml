@@ -169,6 +169,9 @@ jobs:
             /usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$work/ent.plist" | grep -Fx 'group.com.krowsingre.theboundvigil'
           done
           /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$ext/Info.plist" | grep -Fx 'com.apple.share-services'
+          # Silent pushes need the push entitlement in the signed app.
+          codesign -d --entitlements :- "$app" 2>/dev/null > "$work/app-ent.plist"
+          /usr/libexec/PlistBuddy -c 'Print :aps-environment' "$work/app-ent.plist" | grep -Fx 'production'
           for key in CFBundleShortVersionString CFBundleVersion; do
             a=$(/usr/libexec/PlistBuddy -c "Print :$key" "$app/Info.plist"); b=$(/usr/libexec/PlistBuddy -c "Print :$key" "$ext/Info.plist")
             [ "$a" = "$b" ] || { echo "::error::$key is $a in the app but $b in the add-on."; exit 1; }

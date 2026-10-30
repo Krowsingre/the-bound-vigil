@@ -630,6 +630,9 @@ impl Remote for Cloud {
     fn behind(&mut self, cursor: &str) -> Result<Vec<Behind>> {
         self.remote().behind(cursor)
     }
+    fn wake_key(&mut self) -> Result<Option<String>> {
+        self.remote().wake_key()
+    }
 }
 
 /// Opens a folder or WebDAV library and makes sure it's one TBV can use.
@@ -780,6 +783,12 @@ pub trait Remote: Send {
     /// Other devices with changes past `cursor` that couldn't be read yet.
     fn behind(&mut self, _cursor: &str) -> Result<Vec<Behind>> {
         Ok(Vec::new())
+    }
+    /// The library's wake-up name: the same on every device that shares
+    /// this library, and hard to guess, so the push server can wake the
+    /// other devices when this one has sent something. None where there isn't one.
+    fn wake_key(&mut self) -> Result<Option<String>> {
+        Ok(None)
     }
 }
 
