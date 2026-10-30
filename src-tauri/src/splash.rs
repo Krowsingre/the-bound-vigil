@@ -69,6 +69,13 @@ pub fn open(app: &tauri::App) -> tauri::Result<()> {
         let card = card.transparent(true);
         let card = card.build()?;
         let main = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?.visible(false);
+        // The Mac keeps its own window buttons, over the top of the sidebar.
+        #[cfg(target_os = "macos")]
+        let main = main
+            .decorations(true)
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(14.0, 20.0));
         // The screen's working area (without the taskbar), where the window will fill.
         let area = card.current_monitor().ok().flatten().or_else(|| app.primary_monitor().ok().flatten()).map(|m| {
             let scale = m.scale_factor();

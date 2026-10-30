@@ -571,6 +571,8 @@ export const isIOS =
   isApp &&
   typeof navigator !== "undefined" &&
   (/iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
+/** The Mac app: the computer's layout, with the Mac's own window buttons. */
+export const isMac = isApp && !isIOS && typeof navigator !== "undefined" && /Macintosh/.test(navigator.userAgent);
 /** The web version, for phones: built with `npm run build:web`, syncing through Supabase. */
 export const isWeb = !isApp && import.meta.env.VITE_TBV_WEB === "1";
 

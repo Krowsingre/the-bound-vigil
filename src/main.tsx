@@ -30,7 +30,7 @@ import "./styles/privacy.css";
 import "./styles/writing.css";
 import "./styles/catalogs.css";
 import "./styles/browse.css";
-import { isApp, isHome, isIOS, isWeb } from "./api";
+import { isApp, isHome, isIOS, isMac, isWeb } from "./api";
 import { HomePair } from "./web/HomePair";
 import { WebGate } from "./web/WebConnect";
 import { runBeforeQuit } from "./lib/beforeQuit";
@@ -52,6 +52,9 @@ if (isApp) {
     }),
   );
 }
+
+// On the Mac, the window's own red, yellow and green buttons sit at the top of the sidebar.
+if (isMac) document.documentElement.classList.add("is-mac-app");
 
 // The iPhone app keeps clear of the notch, and doesn't zoom in when a box is tapped.
 if (isIOS) {

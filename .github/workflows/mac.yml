@@ -1,0 +1,45 @@
+name: Mac app
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: mac-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    name: Mac app
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: mac
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Apple-chip Macs only (every Mac sold since 2023).
+      - name: Build the app
+        run: npx tauri build --target aarch64-apple-darwin --bundles app
+        env:
+          TBV_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      - name: Pack the app
+        run: |
+          set -euo pipefail
+          cd "target/aarch64-apple-darwin/release/bundle/macos"
+          ditto -c -k --keepParent "The Bound Vigil.app" "$GITHUB_WORKSPACE/the-bound-vigil-mac.zip"
+      - name: Keep the app
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-bound-vigil-mac
+          path: the-bound-vigil-mac.zip
+          if-no-files-found: error
