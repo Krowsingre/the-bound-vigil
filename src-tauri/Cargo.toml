@@ -41,5 +41,10 @@ tauri-plugin-updater = "2"
 # Noticing at once when a cloud app changes the synced folder.
 notify = { version = "8", default-features = false }
 
+# Keeping the way into folders chosen on the Mac (folder_access.rs).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSData", "NSError", "NSString", "NSURL"] }
+
 [target.'cfg(target_os = "ios")'.dependencies]
 tauri-plugin-tbv-ios = { path = "../crates/tauri-plugin-tbv-ios" }

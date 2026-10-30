@@ -6505,6 +6505,8 @@ name = "the-bound-vigil"
 version = "1.45.0"
 dependencies = [
  "notify",
+ "objc2",
+ "objc2-foundation",
  "qrcode",
  "serde",
  "serde_json",

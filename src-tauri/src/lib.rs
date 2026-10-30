@@ -12,6 +12,7 @@ mod cloud;
 mod cloud_events;
 mod cloud_watch;
 #[cfg(desktop)]
+mod folder_access;
 mod folder_watch;
 mod hardcover;
 mod home;
@@ -1792,6 +1793,8 @@ pub fn run() {
         .setup(|app| {
             // The main window (on a computer hidden behind the splash card until its first screen is drawn).
             splash::open(app)?;
+            // Back into the folders chosen on the Mac (the sandbox), before anything reads them.
+            folder_access::reopen(app.handle());
             // iCloud on iPhone keeps only stand-ins for files until asked.
             #[cfg(target_os = "ios")]
             tbv_core::sync::files::set_fetcher(tauri_plugin_tbv_ios::fetch);
@@ -1861,6 +1864,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             ios_pick_folder,
+            folder_access::keep_folder_access,
             ios_pick_files,
             ios_pick_photo,
             browser::browser_show,
