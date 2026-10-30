@@ -567,6 +567,10 @@ const MIGRATIONS: &[&str] = &[
         deleted_at TEXT
     );
     "#,
+    // v31: books pinned to the top of the Archive, synced (book_pin).
+    r#"
+    ALTER TABLE books ADD COLUMN pinned_at TEXT;
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

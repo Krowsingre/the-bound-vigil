@@ -1051,22 +1051,240 @@
 }
 
 .writing-templates {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   margin: 0;
   padding: 0;
   border: 0;
+  min-width: 0;
 }
 
 .writing-templates legend {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  padding: 0;
   font-size: 13px;
   font-weight: 600;
+}
+
+/* The kinds of book to start from, as cards: the whole card picks it. */
+.writing-template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.writing-template {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.writing-template:hover {
+  border-color: var(--text-muted);
+}
+
+.writing-template.is-on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.writing-template:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.writing-template input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.writing-template strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.writing-template span {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+@media (max-width: 520px) {
+  .writing-template-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
   .book-preview-stage {
     min-height: 70vh;
+  }
+}
+
+/* A poem as it's written: stanzas apart, lines as typed. */
+.writing-sheet.is-poem .writing-page p {
+  margin: 0 0 1.2em;
+  text-indent: 0;
+}
+
+.writing-sheet.is-centred .writing-page p {
+  text-align: center;
+}
+
+.writing-poem-help {
+  margin-top: 24px;
+  font-size: 12px;
+}
+
+.writing-poem-help p {
+  margin: 0 0 6px;
+}
+
+.writing-poem-warning {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  color: var(--text);
+}
+
+.writing-poem-warning svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--warning, #b7791f);
+}
+
+/* A citation in the editor: the short label, marked as one piece. */
+.writing-page cite.writing-citation {
+  font-style: normal;
+  padding: 0 2px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.writing-page cite.writing-citation.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}
+
+.sources-dialog {
+  width: min(640px, calc(100vw - 32px));
+}
+
+.sources-note {
+  margin: -4px 0 12px;
+  font-size: 12px;
+}
+
+.sources-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.sources-search {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface-sunk);
+  color: var(--text);
+}
+
+.sources-list {
+  display: grid;
+  gap: 2px;
+  max-height: 300px;
+  margin: 0 0 12px;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.sources-list li {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+}
+
+.sources-list li.is-on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.sources-item {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sources-item strong,
+.sources-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sources-item span {
+  font-size: 12px;
+}
+
+.sources-empty {
+  margin: 12px 0 16px;
+}
+
+.sources-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.sources-confirm span {
+  flex: 1 1 260px;
+}
+
+.sources-dialog .dialog-actions {
+  align-items: flex-end;
+}
+
+.sources-locator {
+  margin: 0 auto 0 0;
+  width: 160px;
+}
+
+.sources-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+}
+
+.sources-fields .is-wide {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 520px) {
+  .sources-fields {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

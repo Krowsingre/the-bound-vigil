@@ -115,6 +115,8 @@ export interface Api {
   getLibrary(query: LibraryQuery): Promise<LibraryPage>;
   getCollections(): Promise<CollectionPreview[]>;
   setFavorite(bookId: string, favorite: boolean): Promise<void>;
+  /** Pins a book to the top of the Archive, or unpins it. */
+  setPinned(bookId: string, pinned: boolean): Promise<void>;
   setWantToRead(bookId: string, want: boolean): Promise<void>;
   /** Chooses books to go to the phone (when only chosen ones do), or stops. On the phone: asks a computer to send them. */
   setPhoneWanted(bookIds: string[], wanted: boolean): Promise<void>;
@@ -566,6 +568,8 @@ export interface Api {
   readingHistory(): Promise<ReadingHistoryEntry[]>;
   /** Takes a book off Reading history for good. */
   forgetReading(bookId: string): Promise<void>;
+  /** Marks a book from Suggested reading read or dropped, and rates it, in Reading history. Neither takes it off. */
+  markSuggestion(key: string, title: string, authors: string[], status: "read" | "dropped" | null, stars: number | null): Promise<void>;
 }
 
 export const isApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -703,6 +707,7 @@ function appApi(): Api {
     getLibrary: async (query) => (await core).invoke<LibraryPage>("get_library", { query }),
     getCollections: async () => (await core).invoke<CollectionPreview[]>("get_collections"),
     setFavorite: async (bookId, favorite) => (await core).invoke("set_favorite", { bookId, favorite }),
+    setPinned: async (bookId, pinned) => (await core).invoke("set_pinned", { bookId, pinned }),
     setWantToRead: async (bookId, want) => (await core).invoke("set_want_to_read", { bookId, want }),
     setPhoneWanted: async (bookIds, wanted) => (await core).invoke("set_phone_wanted", { bookIds, wanted }),
     setRating: async (bookId, rating) => (await core).invoke("set_rating", { bookId, rating }),
@@ -1149,6 +1154,7 @@ function appApi(): Api {
     setWritingChapterPage: async (id, page) => (await core).invoke<WritingChapter>("set_writing_chapter_page", { id, page }),
     readingHistory: async () => (await core).invoke<ReadingHistoryEntry[]>("reading_history"),
     forgetReading: async (bookId) => (await core).invoke("forget_reading", { bookId }),
+    markSuggestion: async (key, title, authors, status, stars) => (await core).invoke("mark_suggestion", { key, title, authors, status, stars }),
     pickKeyFile: async () => {
       const [picked] = await openFiles({ multiple: false, title: "Choose your private key file", keep: true });
       return picked ?? null;

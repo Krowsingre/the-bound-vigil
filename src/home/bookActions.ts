@@ -23,6 +23,8 @@ export interface BookActions {
   setFavorite: (book: BookPreview, favorite: boolean) => void;
   setWantToRead: (book: BookPreview, want: boolean) => void;
   setRating: (book: BookPreview, rating: number | null) => void;
+  /** Pins it to the top of the Archive, or unpins it. */
+  setPinned?: (book: BookPreview, pinned: boolean) => void;
   /** Fetches a cloud-only book onto this device. */
   download?: (book: BookPreview) => void;
   /** Removes the copy here, keeping the one in the cloud. */
@@ -81,6 +83,13 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     book.wantToRead
       ? { label: "Remove from Up next", icon: "bookmark", onSelect: () => actions.setWantToRead(book, false) }
       : { label: "Add to Up next", icon: "bookmark", onSelect: () => actions.setWantToRead(book, true) },
+    ...(actions.setPinned
+      ? [
+          book.pinnedAt
+            ? { label: "Unpin from the Archive", icon: "pin" as const, onSelect: () => actions.setPinned?.(book, false) }
+            : { label: "Pin to the top of the Archive", icon: "pin" as const, onSelect: () => actions.setPinned?.(book, true) },
+        ]
+      : []),
     { label: "Add to collection…", icon: "collections", onSelect: () => askAddToCollection(book) },
     { label: book.tags.length ? "Edit tags…" : "Add tags…", icon: "tag", onSelect: () => askEditTags(book) },
     ...(actions.removeFromCollection
@@ -182,7 +191,7 @@ export function cannotOpen(book: BookPreview): string | null {
 /** The shared actions, refreshing the current view after each change. */
 export function makeBookActions(
   api: Pick<import("../api").Api, "setBookStatus" | "setFavorite" | "setWantToRead" | "setRating"> &
-    Partial<Pick<import("../api").Api, "downloadBook" | "removeDownload" | "saveCopies" | "setPhoneWanted">>,
+    Partial<Pick<import("../api").Api, "downloadBook" | "removeDownload" | "saveCopies" | "setPhoneWanted" | "setPinned">>,
   toast: (text: string) => void,
   refresh: () => void,
   openBook: (bookId: string) => void,
@@ -214,6 +223,7 @@ export function makeBookActions(
     setFavorite: (book, favorite) => void run(book, api.setFavorite(book.id, favorite)),
     setWantToRead: (book, want) => void run(book, api.setWantToRead(book.id, want)),
     setRating: (book, rating) => void run(book, api.setRating(book.id, rating)),
+    setPinned: api.setPinned && ((book, pinned) => void run(book, api.setPinned!(book.id, pinned))),
     download: api.downloadBook && ((book) => {
       toast(`Downloading “${book.title}”…`);
       void run(book, api.downloadBook!(book.id).then(() => toast(`“${book.title}” is on this device.`)));

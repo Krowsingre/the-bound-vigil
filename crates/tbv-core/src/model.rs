@@ -157,6 +157,9 @@ pub struct BookPreview {
     /// Downloaded on a phone.
     #[serde(default)]
     pub phone_has: bool,
+    /// Pinned to the top of the Archive: when, so the latest pin comes first.
+    #[serde(default)]
+    pub pinned_at: Option<IsoUtc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -348,6 +351,9 @@ pub struct LibraryQuery {
     /// search or filter still shows. None means any book.
     #[serde(default)]
     pub ids: Option<Vec<String>>,
+    /// Pinned books first (the Archive's own list).
+    #[serde(default)]
+    pub pinned_first: bool,
     /// Zero-based.
     pub page: u32,
     pub page_size: u32,

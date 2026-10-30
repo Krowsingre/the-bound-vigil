@@ -879,6 +879,18 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
     licence: "Public domain",
     url: "https://sqlite.org",
   },
+  {
+    name: "citeproc-js",
+    what: "Writes citations in Scribe",
+    licence: "CPAL 1.0",
+    url: "https://github.com/Juris-M/citeproc-js",
+  },
+  {
+    name: "Citation Style Language styles",
+    what: "APA, MLA, Chicago and the other citation styles",
+    licence: "CC BY-SA 3.0",
+    url: "https://citationstyles.org",
+  },
 ];
 
 /** The trial, or the purchase. */
@@ -982,7 +994,7 @@ function AboutVersion({ version }: { version: string }) {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.48.0");
+  const [version, setVersion] = useState("1.49.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

@@ -21,6 +21,7 @@ vi.mock("../api", () => ({
     setBookStatus: vi.fn(),
     setFavorite: vi.fn(),
     setWantToRead: vi.fn(),
+    readingHistory: async () => [],
   },
 }));
 

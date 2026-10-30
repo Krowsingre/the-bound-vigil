@@ -14,8 +14,9 @@ import { quoteHtml } from "./fromNotes";
 import { QuoteDrawer } from "./QuoteDrawer";
 import { BookPreview, MadePage } from "./BookPreview";
 import { bookOrder, escapeXml, readExport, type ExportSettings } from "./epub";
-import { ADD_MENUS, isMade, isNumbered, KINDS, numberInWords, readPage, romanOf, startingTitle, writePage, type PageKind, type PageSettings } from "./pages";
+import { ADD_MENUS, firstLine, isMade, isNumbered, isPoem, KINDS, numberInWords, readPage, romanOf, startingTitle, writePage, type PageKind, type PageSettings } from "./pages";
 import { DetailsDialog, DraftsDialog, ExportDialog, NewBookDialog } from "./WritingDialogs";
+import { SourcesDialog } from "./SourcesDialog";
 
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
 
@@ -277,7 +278,7 @@ function ProjectView({
   const [error, setError] = useState<string | null>(null);
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [save, setSave] = useState<{ state: SaveState; words: number }>({ state: "saved", words: 0 });
-  const [dialog, setDialog] = useState<"details" | "export" | "drafts" | "delete" | null>(null);
+  const [dialog, setDialog] = useState<"details" | "export" | "drafts" | "delete" | "sources" | null>(null);
   const [deletingChapter, setDeletingChapter] = useState<WritingChapter | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(true);
@@ -487,10 +488,11 @@ function ProjectView({
       { label: "Show its title", checked: page.showTitle, onSelect: () => void setPage(c, { showTitle: !page.showTitle }) },
       {
         label: "Start on a new page",
-        hint: page.newPage === null ? "As the book's export settings say" : undefined,
-        checked: page.newPage ?? settings.newPage,
-        onSelect: () => void setPage(c, { newPage: !(page.newPage ?? settings.newPage) }),
+        hint: page.newPage === null ? (isPoem(page) ? "Poems always do, unless you say" : "As the book's export settings say") : undefined,
+        checked: page.newPage ?? (isPoem(page) || settings.newPage),
+        onSelect: () => void setPage(c, { newPage: !(page.newPage ?? (isPoem(page) || settings.newPage)) }),
       },
+      ...(isPoem(page) ? ([{ label: "Centre the lines", checked: page.centred, onSelect: () => void setPage(c, { centred: !page.centred }) }] as MenuEntry[]) : []),
       ...(made && page.byHand ? ([{ label: "Let Scribe make it again", icon: "sync", onSelect: () => void setPage(c, { byHand: false }) }] as MenuEntry[]) : []),
       "divider",
       { heading: <span className="menu-tip">Where it goes</span> },
@@ -548,7 +550,7 @@ function ProjectView({
         <button type="button" className="writing-chapter" onClick={() => void saving.current.then(() => (setChapterId(c.id), setPicked((n) => n + 1)))}>
           <span className="writing-chapter-number num">{number}</span>
           <span className={`writing-chapter-name${c.title ? "" : " muted"}`}>
-            {c.title || (c.role === "part" ? "Untitled section" : numbers.has(c.id) ? `Chapter ${numbers.get(c.id)}` : KINDS[page.kind].label)}
+            {c.title || (c.role === "part" ? "Untitled section" : numbers.has(c.id) ? `Chapter ${numbers.get(c.id)}` : (isPoem(page) && firstLine(c.body)) || KINDS[page.kind].label)}
           </span>
           <span className="muted num writing-chapter-words">{words.toLocaleString()}</span>
         </button>
@@ -622,7 +624,11 @@ function ProjectView({
             label="More"
             className="btn btn-quiet btn-icon"
             trigger={<Icon name="more" size={18} />}
-            items={[{ label: "Delete this book…", icon: "trash", danger: true, onSelect: () => setDialog("delete") }]}
+            items={[
+              { label: "Sources and citation style…", icon: "bookClosed", onSelect: () => setDialog("sources") },
+              "divider",
+              { label: "Delete this book…", icon: "trash", danger: true, onSelect: () => setDialog("delete") },
+            ]}
           />
         </div>
       </header>
@@ -673,6 +679,7 @@ function ProjectView({
                 onCopyright={(copyright) => saveSettings({ ...settings, copyright })}
                 onWriteMyself={(html) => void writeMyself(chapter, html)}
                 onOpenDetails={() => setDialog("details")}
+              onOpenSources={() => setDialog("sources")}
               />
             ) : (
               chapter && (
@@ -683,6 +690,10 @@ function ProjectView({
                   onSaveState={(state, w) => setSave({ state, words: w })}
                   flushRef={flushEditor}
                   insertRef={insertInEditor}
+                  poem={current && isPoem(current) ? (current.centred ? "centred" : "left") : null}
+                  sources={settings.sources}
+                  citationStyle={settings.citationStyle}
+                  onSources={(sources, citationStyle) => saveSettings({ ...settings, sources, citationStyle })}
                 />
               )
             )}
@@ -695,6 +706,14 @@ function ProjectView({
         {side === "quotes" && <QuoteDrawer refreshKey={refreshKey} onInsert={(n) => insertInEditor.current?.(quoteHtml(n))} onClose={() => setSide(null)} />}
       </div>
 
+      {dialog === "sources" && (
+        <SourcesDialog
+          sources={settings.sources}
+          style={settings.citationStyle}
+          onChange={(sources, citationStyle) => saveSettings({ ...settings, sources, citationStyle })}
+          onClose={() => setDialog(null)}
+        />
+      )}
       {dialog === "details" && (
         <DetailsDialog
           project={project}

@@ -2,7 +2,7 @@
   "name": "the-bound-vigil",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
-  "version": "1.48.0",
+  "version": "1.49.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -23,6 +23,7 @@
     "@tiptap/pm": "3.32.0",
     "@tiptap/react": "3.32.0",
     "@tiptap/starter-kit": "3.32.0",
+    "citeproc": "2.4.63",
     "fflate": "0.8.3",
     "mammoth": "^1.13.0",
     "pdfjs-dist": "^6.3.289",

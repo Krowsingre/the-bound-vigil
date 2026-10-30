@@ -73,7 +73,7 @@ export function ReadingHistorySection() {
                       authorLine(e.authors),
                       e.status === "read" ? "Finished" : e.status === "dropped" ? "Dropped" : null,
                       e.finishedAt ? new Date(e.finishedAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : null,
-                      e.inLibrary ? null : "No longer in your library",
+                      e.bookId.startsWith("suggested:") ? "From Suggested reading" : e.inLibrary ? null : "No longer in your library",
                     ]
                       .filter(Boolean)
                       .join(" · ")}

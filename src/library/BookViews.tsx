@@ -45,6 +45,11 @@ function seriesLine(book: BookPreview) {
 function Marks({ book }: { book: BookPreview }) {
   return (
     <>
+      {book.pinnedAt && (
+        <span className="mark" title="Pinned to the top of the Archive">
+          <Icon name="pin" size={13} label="Pinned" />
+        </span>
+      )}
       {book.favorite && (
         <span className="mark" title="Favourite">
           <Icon name="heart" size={13} label="Favourite" />
