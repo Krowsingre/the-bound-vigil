@@ -697,6 +697,8 @@ pub struct ReadAlongPair {
     pub timing: Option<String>,
     /// How many pieces are lined up so far.
     pub pieces: i64,
+    /// Waiting its turn to line up (the person can leave a pair out).
+    pub queued: bool,
 }
 
 /// An audiobook as its page and the player show it.
@@ -934,26 +936,73 @@ impl crate::library::Library {
     /// timing so far, for lining up in the background.
     pub fn read_along_pairs(&self) -> Result<Vec<ReadAlongPair>> {
         let mut stmt = self.conn.prepare(
-            "SELECT ab.ebook_id, ab.book_id, e.format, ra.timing FROM audiobooks ab
+            "SELECT ab.ebook_id, ab.book_id, e.format, ra.timing, COALESCE(q.queued, 1) FROM audiobooks ab
              JOIN books a ON a.id = ab.book_id AND a.deleted_at IS NULL
              JOIN books e ON e.id = ab.ebook_id AND e.deleted_at IS NULL
              LEFT JOIN read_along ra ON ra.ebook_id = ab.ebook_id AND ra.audiobook_id = ab.book_id
-             ORDER BY ab.updated_at DESC",
+             LEFT JOIN read_along_queue q ON q.ebook_id = ab.ebook_id AND q.audiobook_id = ab.book_id
+             ORDER BY COALESCE(q.queued, 1) DESC, q.position IS NULL, q.position, ab.updated_at DESC",
         )?;
         let rows = stmt
-            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, Option<String>>(3)?)))?
+            .query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, bool>(4)?))
+            })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let mut pairs = Vec::new();
-        for (ebook_id, audiobook_id, ebook_format, timing) in rows {
+        for (ebook_id, audiobook_id, ebook_format, timing, queued) in rows {
             let here = self.has_local_file(&ebook_id)? && self.has_local_file(&audiobook_id)?;
             let pieces: i64 = self.conn.query_row(
                 "SELECT COUNT(*) FROM read_along_pieces WHERE ebook_id = ?1 AND audiobook_id = ?2",
                 rusqlite::params![ebook_id, audiobook_id],
                 |r| r.get(0),
             )?;
-            pairs.push(ReadAlongPair { ebook_id, audiobook_id, ebook_format, here, timing, pieces });
+            pairs.push(ReadAlongPair { ebook_id, audiobook_id, ebook_format, here, timing, pieces, queued });
         }
         Ok(pairs)
+    }
+
+    /// Puts a pair in the queue to line up (at the back) or leaves it out.
+    pub fn set_read_along_queued(&self, ebook_id: &str, audiobook_id: &str, queued: bool) -> Result<()> {
+        use rusqlite::OptionalExtension;
+        let now: Option<(Option<f64>, bool)> = self
+            .conn
+            .query_row(
+                "SELECT position, queued FROM read_along_queue WHERE ebook_id = ?1 AND audiobook_id = ?2",
+                rusqlite::params![ebook_id, audiobook_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        if now.map_or(true, |(_, q)| q) == queued && (now.is_some() || queued) {
+            return Ok(());
+        }
+        // Back of the queue: after every pair given a place, if any are.
+        let position: Option<f64> = if queued {
+            self.conn.query_row("SELECT MAX(position) + 1 FROM read_along_queue WHERE queued = 1", [], |r| r.get(0))?
+        } else {
+            now.and_then(|(p, _)| p)
+        };
+        self.conn.execute(
+            "INSERT INTO read_along_queue (ebook_id, audiobook_id, position, queued, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT (ebook_id, audiobook_id) DO UPDATE SET position = excluded.position, queued = excluded.queued, updated_at = excluded.updated_at",
+            rusqlite::params![ebook_id, audiobook_id, position, queued, crate::time::now_utc()],
+        )?;
+        Ok(())
+    }
+
+    /// The queue in the person's order, as (ebook, audiobook) pairs. Every
+    /// pair given is queued; only places that moved are written, so syncing
+    /// sends just those.
+    pub fn order_read_along_queue(&self, order: &[(String, String)]) -> Result<()> {
+        let now = crate::time::now_utc();
+        for (index, (ebook_id, audiobook_id)) in order.iter().enumerate() {
+            self.conn.execute(
+                "INSERT INTO read_along_queue (ebook_id, audiobook_id, position, queued, updated_at) VALUES (?1, ?2, ?3, 1, ?4)
+                 ON CONFLICT (ebook_id, audiobook_id) DO UPDATE SET position = excluded.position, queued = 1, updated_at = excluded.updated_at
+                 WHERE position IS NOT excluded.position OR queued <> 1",
+                rusqlite::params![ebook_id, audiobook_id, index as f64, now],
+            )?;
+        }
+        Ok(())
     }
 
     /// The audiobook linked to an ebook, if any, for the reader.
@@ -1234,6 +1283,11 @@ pub(crate) mod tests {
         assert_eq!(pairs.len(), 1);
         assert_eq!((pairs[0].ebook_id.as_str(), pairs[0].audiobook_id.as_str(), pairs[0].here, pairs[0].pieces), (ebook_id.as_str(), audio_id.as_str(), true, 1));
         assert_eq!(pairs[0].timing, None);
+        assert!(pairs[0].queued, "a new pair lines up without asking");
+        library.set_read_along_queued(&ebook_id, &audio_id, false).unwrap();
+        assert!(!library.read_along_pairs().unwrap()[0].queued);
+        library.order_read_along_queue(&[(ebook_id.clone(), audio_id.clone())]).unwrap();
+        assert!(library.read_along_pairs().unwrap()[0].queued, "ordering a pair queues it");
 
         // The same folder again is the same book.
         let again = library.import_files(&[folder]);

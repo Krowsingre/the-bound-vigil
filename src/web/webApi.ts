@@ -809,6 +809,8 @@ export async function webApi(): Promise<Api> {
     },
     // Lining up needs the audiobook's file, which the web version never keeps.
     readAlongPairs: async () => [],
+    setReadAlongQueued: async () => undefined,
+    orderReadAlongQueue: async () => undefined,
     onLiningUp: () => () => undefined,
     onLinedUp: () => () => undefined,
     onBookWordsWanted: () => () => undefined,
