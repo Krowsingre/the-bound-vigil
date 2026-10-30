@@ -4,8 +4,17 @@ import { useCallback, useEffect, useState } from "react";
 import { api, isApp, isIOS } from "../api";
 import type { UpdateInfo, UpdateProgress } from "../api/types";
 import { useToast } from "../components/Toast";
-import { startupHold, startupSay, stillOpening } from "../splash/startup";
+import { startupHold, startupSay, stillOpening, UPDATED_KEY } from "../splash/startup";
 import { APP_SETTINGS_KEY, parseAppSettings } from "./appSettings";
+
+/** Notes the version being installed, so the splash can say "Updated to …" when TBV opens again. */
+function remember(version: string) {
+  try {
+    localStorage.setItem(UPDATED_KEY, version);
+  } catch {
+    // It just says Loading… instead.
+  }
+}
 
 /** Updating happens in the app on a computer only. */
 export const canSelfUpdate = (isApp && !isIOS) || api.kind === "preview";
@@ -37,6 +46,7 @@ export function useStartupUpdateCheck() {
             return;
           }
           const version = info.version;
+          remember(version);
           startupSay(`Updating to ${version}…`);
           const stop = api.onUpdateProgress((p) => {
             if (p.total) startupSay(`Updating to ${version}… ${Math.round((p.downloaded / p.total) * 100)}%`);
@@ -72,6 +82,7 @@ export function useUpdater() {
   }, []);
   const install = useCallback((info: UpdateInfo) => {
     setState({ step: "installing", info, progress: null });
+    if (info.version) remember(info.version);
     const stop = api.onUpdateProgress((progress) => setState({ step: "installing", info, progress }));
     // TBV starts again by itself once it's installed.
     api.installUpdate().then(stop, (e: unknown) => {

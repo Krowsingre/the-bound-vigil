@@ -21,6 +21,10 @@ import { PreflightDialog } from "./Preflight";
 import { CopyCheckDialog } from "./CopyCheck";
 import { ImportBookDialog } from "./ImportBook";
 import { SourcesDialog } from "./SourcesDialog";
+import { StoreEditionsDialog } from "./StoreEditions";
+import { BoxSetDialog } from "./BoxSet";
+import { PreviewsDialog } from "./Previews";
+import { usePublisher } from "../license/Publisher";
 
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
 
@@ -79,6 +83,8 @@ export function Writing({
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [boxing, setBoxing] = useState(false);
+  const publisher = usePublisher();
   const [ask, setAsk] = useState<{ kind: NewNoteKind; n: number } | null>(null);
   const [reload, setReload] = useState(0);
   const [chip, setChip] = useState<Chip>("all");
@@ -121,6 +127,16 @@ export function Writing({
               setChip("books");
               setImporting(true);
             },
+          },
+          {
+            label: "Box set",
+            icon: "layers" as const,
+            description: "Several of your books joined into one",
+            onSelect: () =>
+              publisher.check("Box sets", () => {
+                setChip("books");
+                setBoxing(true);
+              }),
           },
         ]
       : []),
@@ -204,6 +220,16 @@ export function Writing({
           onCancel={() => setImporting(false)}
           onCreated={(id) => {
             setImporting(false);
+            setReload((n) => n + 1);
+            setOpenId(id);
+          }}
+        />
+      )}
+      {boxing && (
+        <BoxSetDialog
+          onCancel={() => setBoxing(false)}
+          onCreated={(id) => {
+            setBoxing(false);
             setReload((n) => n + 1);
             setOpenId(id);
           }}
@@ -306,7 +332,8 @@ function ProjectView({
   const [error, setError] = useState<string | null>(null);
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [save, setSave] = useState<{ state: SaveState; words: number }>({ state: "saved", words: 0 });
-  const [dialog, setDialog] = useState<"details" | "export" | "drafts" | "delete" | "sources" | "cover" | "preflight" | "copies" | null>(null);
+  const [dialog, setDialog] = useState<"details" | "export" | "drafts" | "delete" | "sources" | "cover" | "preflight" | "copies" | "editions" | "previews" | null>(null);
+  const publisher = usePublisher();
   const [deletingChapter, setDeletingChapter] = useState<WritingChapter | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(true);
@@ -655,8 +682,10 @@ function ProjectView({
             items={[
               { label: "Sources and citation style…", icon: "bookClosed", onSelect: () => setDialog("sources") },
               "divider",
-              { label: "Paperback cover…", icon: "image", onSelect: () => setDialog("cover") },
-              { label: "Check before uploading…", icon: "checkCircle", onSelect: () => setDialog("preflight") },
+              { label: "Previews on each device…", icon: "phone", onSelect: () => publisher.check("Side-by-side previews", () => void Promise.resolve(flushEditor.current?.()).finally(() => setDialog("previews"))) },
+              { label: "Store editions…", icon: "layers", onSelect: () => publisher.check("Store editions", () => setDialog("editions")) },
+              { label: "Paperback cover…", icon: "image", onSelect: () => publisher.check("The paperback cover maker", () => setDialog("cover")) },
+              { label: "Check before uploading…", icon: "checkCircle", onSelect: () => publisher.check("Checking before uploading", () => setDialog("preflight")) },
               { label: "Check for copied passages…", icon: "search", onSelect: () => setDialog("copies") },
               "divider",
               { label: "Delete this book…", icon: "trash", danger: true, onSelect: () => setDialog("delete") },
@@ -770,6 +799,22 @@ function ProjectView({
             return (await load())?.chapters ?? chapters;
           }}
           onSettings={saveSettings}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === "previews" && <PreviewsDialog project={project} chapters={chapters} settings={settings} showing={chapter?.id ?? null} onClose={() => setDialog(null)} />}
+      {dialog === "editions" && (
+        <StoreEditionsDialog
+          project={project}
+          chapters={chapters}
+          settings={settings}
+          onSettings={saveSettings}
+          onFlush={async () => {
+            await flushEditor.current?.();
+            await saving.current;
+            return (await load())?.chapters ?? chapters;
+          }}
+          onChanged={() => void load()}
           onClose={() => setDialog(null)}
         />
       )}

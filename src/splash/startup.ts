@@ -28,6 +28,28 @@ let finished = false;
 /** The wait is over; only something holding the splash up keeps it. */
 let overdue = false;
 
+/** Set just before an update installs, to the version it brings. */
+export const UPDATED_KEY = "tbv.update.to";
+/** What the splash says when nothing else is going on: "Updated to 1.54.0" the first time after an update. */
+let resting = "Loading…";
+if (onComputer) {
+  try {
+    const to = localStorage.getItem(UPDATED_KEY);
+    if (to) {
+      localStorage.removeItem(UPDATED_KEY);
+      void import("@tauri-apps/api/app")
+        .then(({ getVersion }) => getVersion())
+        .then((now) => {
+          if (now !== to) return;
+          resting = `Updated to ${now}`;
+          progress();
+        });
+    }
+  } catch {
+    // Opens as usual.
+  }
+}
+
 /** Over the page on the iPhone (and in the preview), nowhere on the web. */
 const overlay = !onComputer && (isIOS || api.kind === "preview") ? showSplash() : null;
 if (!onComputer && !overlay) document.documentElement.classList.remove("is-starting");
@@ -38,8 +60,8 @@ const giveUp = setTimeout(() => {
 
 function progress() {
   const share = done.size / STEPS.length;
-  if (overlay) setSplash(overlay, share, label ?? "Loading…");
-  if (onComputer) void import("@tauri-apps/api/core").then(({ invoke }) => invoke("startup_progress", { progress: share, label: label ?? null }));
+  if (overlay) setSplash(overlay, share, label ?? resting);
+  if (onComputer) void import("@tauri-apps/api/core").then(({ invoke }) => invoke("startup_progress", { progress: share, label: label ?? resting }));
 }
 
 /** Marks a step as finished. */

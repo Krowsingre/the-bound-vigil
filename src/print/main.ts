@@ -49,5 +49,19 @@ function inBrowser() {
   }
 }
 
-if ("__TAURI_INTERNALS__" in window) void inApp();
+/** Inside Scribe's previews: laid out as two-page spreads, never printed. The previews hand over the book. */
+function asSpreads() {
+  document.documentElement.classList.add("is-spread");
+  window.addEventListener("message", (e: MessageEvent<{ kind?: string; html?: string }>) => {
+    if (e.origin !== location.origin || e.source !== window.parent || e.data?.kind !== "tbv-print-job" || !e.data.html) return;
+    void layOut(e.data.html, counting).then((pages) => {
+      status.remove();
+      window.parent.postMessage({ kind: "tbv-print-done", pages }, location.origin);
+    });
+  });
+  window.parent.postMessage({ kind: "tbv-print-ready" }, location.origin);
+}
+
+if (new URLSearchParams(location.search).has("spread") && window.parent !== window) asSpreads();
+else if ("__TAURI_INTERNALS__" in window) void inApp();
 else inBrowser();

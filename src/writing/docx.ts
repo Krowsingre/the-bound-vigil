@@ -282,6 +282,16 @@ function blocks(root: Element, c: Context) {
     } else if (tag === "div" && cls.includes("picture")) {
       w.paragraph("Picture", inner);
       c.first = true;
+    } else if (tag === "figure") {
+      // A captioned picture, or one on a page of its own.
+      const full = cls.includes("full-page");
+      if (full) w.breakNext = true;
+      const img = el.querySelector("img");
+      w.paragraph("Picture", img ? w.picture(img.getAttribute("src") ?? "") : "");
+      const caption = el.querySelector("figcaption");
+      if (caption) w.paragraph("Caption", runs(caption, {}, w, c.notes));
+      if (full) w.breakNext = true;
+      c.first = true;
     } else if (tag === "div" && cls.includes("pagebreak")) {
       w.breakNext = true;
       c.first = true;
@@ -388,6 +398,7 @@ ${style("PoemLine", "Poem Line", `<w:spacing w:after="0" w:line="240" w:lineRule
 ${style("StanzaGap", "Stanza Gap", `<w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:firstLine="0"/>`)}
 ${style("ListParagraph", "List Paragraph", `<w:spacing w:after="60"/><w:ind w:left="720" w:hanging="360" w:firstLine="0"/><w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs><w:jc w:val="left"/>`)}
 ${style("Picture", "Picture", `<w:spacing w:before="240" w:after="240"/><w:ind w:firstLine="0"/><w:jc w:val="center"/><w:keepNext/>`)}
+${style("Caption", "Caption", `<w:spacing w:before="0" w:after="240"/><w:ind w:firstLine="0"/><w:jc w:val="center"/>`, "<w:i/><w:sz w:val=\"20\"/>")}
 ${style("Copyright", "Copyright", `<w:spacing w:after="160" w:line="240" w:lineRule="auto"/><w:ind w:firstLine="0"/><w:jc w:val="left"/>`, "<w:sz w:val=\"18\"/>")}
 ${style("Source", "Source", `<w:spacing w:after="140" w:line="240" w:lineRule="auto"/><w:ind w:left="720" w:hanging="720" w:firstLine="0"/><w:jc w:val="left"/>`)}
 ${style("TOC1", "toc 1", `<w:spacing w:after="100"/><w:ind w:firstLine="0"/><w:jc w:val="left"/>`)}

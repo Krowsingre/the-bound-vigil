@@ -463,7 +463,7 @@
 .writing-sheet .tiptap .writing-page-break {
   position: relative;
   margin: 1.8em 0;
-  border-top: 1px dashed var(--border-strong, var(--border));
+  border-top: 1px dashed var(--border);
   height: 0;
 }
 
@@ -624,9 +624,43 @@
   border-radius: 2px;
 }
 
-.writing-sheet .tiptap .writing-picture.ProseMirror-selectednode {
+.writing-sheet .tiptap .writing-figure {
+  margin: 1.2em 0;
+}
+
+.writing-sheet .tiptap .writing-figure .writing-picture {
+  margin: 0 auto;
+}
+
+.writing-sheet .tiptap .writing-figure figcaption {
+  margin-top: 0.5em;
+  font-size: 0.85em;
+  font-style: italic;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* A picture given a page of its own is marked off, as a page break is. */
+.writing-sheet .tiptap .writing-figure.is-full {
+  padding: 1.2em 0;
+  border-top: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--border);
+}
+
+.writing-sheet .tiptap .writing-picture.ProseMirror-selectednode,
+.writing-sheet .tiptap .writing-figure.ProseMirror-selectednode .writing-picture {
   outline: 2px solid var(--focus);
   outline-offset: 3px;
+}
+
+.writing-picture-look {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.writing-picture-look .check-row {
+  white-space: nowrap;
+  font-size: 13px;
 }
 
 /* Footnotes are numbered in order through the chapter. */
@@ -1598,4 +1632,335 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Store editions */
+.store-editions {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.store-books {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.store-books-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.store-books-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.store-books-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.store-books-empty {
+  margin: 0;
+  font-size: 13px;
+}
+
+.store-book {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+}
+
+.store-book-title {
+  display: flex;
+  gap: 6px;
+}
+
+.store-book-title input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text);
+  font: 600 14px/1.4 var(--font-sans);
+}
+
+.store-book-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.store-book-links .field span {
+  font-size: 12px;
+}
+
+.store-book-links .field input {
+  font-size: 12.5px;
+}
+
+.store-also-by {
+  align-self: flex-start;
+}
+
+.store-editions-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.store-edition {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.store-edition > span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Box sets */
+.box-set {
+  width: min(640px, calc(100vw - 32px));
+}
+
+.box-set-books {
+  max-height: 320px;
+  margin: 0;
+  padding: 4px 8px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  list-style: none;
+}
+
+.box-set-books li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.box-set-books li:last-child {
+  border-bottom: none;
+}
+
+.box-set-books .check-row {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.box-set-book {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.box-set-book > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.box-set-title {
+  font-weight: 600;
+}
+
+.box-set-number {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 12px;
+}
+
+.box-set-move {
+  display: flex;
+  gap: 2px;
+}
+
+/* Previews on each device */
+.previews {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.previews-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.previews-head h2 {
+  margin: 0 6px 0 0;
+  font-size: 18px;
+}
+
+.previews-devices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.previews-section select {
+  max-width: 220px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text);
+  font: 400 13px/1.4 var(--font-sans);
+}
+
+.previews-turn {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.previews-stage {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  justify-content: center;
+  gap: 28px;
+  padding: 24px;
+  overflow: auto;
+}
+
+.previews-device {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+
+.previews-device figcaption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 12.5px;
+}
+
+.previews-screen {
+  position: relative;
+  box-sizing: content-box;
+  overflow: hidden;
+}
+
+.previews-screen iframe,
+.previews-paper iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* The bezels: e-ink readers in dark plastic, a tablet and a phone in black glass. */
+.previews-device.is-eink .previews-screen {
+  border: 18px solid #2a2b2e;
+  border-bottom-width: 34px;
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.22);
+}
+
+.previews-device.is-tablet .previews-screen {
+  border: 16px solid #111214;
+  border-radius: 22px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.22);
+}
+
+.previews-device.is-phone .previews-screen {
+  border: 9px solid #111214;
+  border-radius: 34px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.22);
+}
+
+.previews-device.device-kobo .previews-screen {
+  border-color: #3a3b3d;
+}
+
+/* Tapping the side of a screen turns its page, as on the device. */
+.previews-tap {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28%;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.previews-tap.is-back {
+  left: 0;
+}
+
+.previews-tap.is-next {
+  right: 0;
+}
+
+.previews-tap:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.previews-device.is-paperback {
+  flex: 1 1 100%;
+}
+
+.previews-paper {
+  width: 100%;
+  height: calc(100vh - 170px);
+  min-height: 420px;
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  background: #d9d6d0;
+}
+
+@media (max-width: 720px) {
+  .previews-stage {
+    flex-direction: column;
+    align-items: center;
+  }
+
+
+  .previews-turn {
+    margin-left: 0;
+  }
 }

@@ -16,6 +16,7 @@ import { SourcesDialog } from "./SourcesDialog";
 import { BlockLookExtension, Citation, Footnote, Highlight, PageBreak, Picture, pictureAddress, PoemLines, Subscript, Superscript, TextLookMark, type BlockLook, type TextLook } from "./extensions";
 import { useToast } from "../components/Toast";
 import { Menu, type MenuEntry } from "../components/Menu";
+import { usePublisher } from "../license/Publisher";
 
 const SAVE_AFTER_MS = 800;
 
@@ -144,6 +145,7 @@ function Toolbar({ editor, poem, cites }: { editor: Editor; poem: boolean; cites
       canOutdent: e.can().liftListItem("listItem"),
       footnote: e.isActive("footnote") ? ((e.getAttributes("footnote").text as string) ?? "") : null,
       citation: e.isActive("citation") ? (e.getAttributes("citation") as { source: string; locator: string }) : null,
+      picture: e.isActive("picture") ? (e.getAttributes("picture") as { caption: string; alt: string; size: string }) : null,
       canUndo: e.can().undo(),
       canRedo: e.can().redo(),
     }),
@@ -316,6 +318,7 @@ function Toolbar({ editor, poem, cites }: { editor: Editor; poem: boolean; cites
           </button>
         </form>
       )}
+      {state.picture && noting === null && linking === null && <PictureLook editor={editor} look={state.picture} />}
       {linking !== null && (
         <form
           className="writing-link"
@@ -337,6 +340,40 @@ function Toolbar({ editor, poem, cites }: { editor: Editor; poem: boolean; cites
           </button>
         </form>
       )}
+    </div>
+  );
+}
+
+/** The picture selected: its caption, its description for readers who can't see it, and whether it has a page of its own. */
+function PictureLook({ editor, look }: { editor: Editor; look: { caption: string; alt: string; size: string } }) {
+  const publisher = usePublisher();
+  const set = (change: Partial<{ caption: string; alt: string; size: "inline" | "full" }>) => editor.commands.setPictureLook(change);
+  return (
+    <div className="writing-link writing-picture-look">
+      <input
+        value={look.caption ?? ""}
+        placeholder="Caption under the picture"
+        aria-label="Caption"
+        maxLength={400}
+        onChange={(e) => {
+          const caption = e.target.value;
+          if (!look.caption && caption && !publisher.allowed) return publisher.check("Captions", () => undefined);
+          set({ caption });
+        }}
+      />
+      <input value={look.alt ?? ""} placeholder="What it shows, for readers who can't see it" aria-label="Description" maxLength={400} onChange={(e) => set({ alt: e.target.value })} />
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={look.size === "full"}
+          onChange={(e) => {
+            const full = e.target.checked;
+            if (full) publisher.check("Full-page pictures", () => set({ size: "full" }));
+            else set({ size: "inline" });
+          }}
+        />
+        <span>A page of its own</span>
+      </label>
     </div>
   );
 }

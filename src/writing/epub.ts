@@ -11,6 +11,7 @@ import { DEFAULT_COPYRIGHT, DEFAULT_RIGHTS, firstLine, isMade, isPoem, KINDS, nu
 import { readSources, readStyle, type CitationStyle, type Cited, type Citer, type Source } from "./sources";
 import { styleById, styleCss } from "./bookStyles";
 import { DEFAULT_PRINT, readPrint, type PrintSettings } from "./printSettings";
+import { readStoreBooks, retarget, type Store, type StoreBook } from "./editions";
 
 export type SceneBreak = "asterisks" | "ornament" | "space" | "line";
 export type BookFont = "lora" | "echolume" | "none";
@@ -58,6 +59,8 @@ export interface ExportSettings {
   bookStyle: string | null;
   /** How the printed PDF is laid out. */
   print: PrintSettings;
+  /** Your books' pages in each store, for store editions (editions.ts). */
+  storeBooks: StoreBook[];
 }
 
 export const DEFAULT_EXPORT: ExportSettings = {
@@ -78,6 +81,7 @@ export const DEFAULT_EXPORT: ExportSettings = {
   manuscript: DEFAULT_MANUSCRIPT,
   bookStyle: null,
   print: DEFAULT_PRINT,
+  storeBooks: [],
 };
 
 const text = (value: unknown, fallback: string, max = 2000) => (typeof value === "string" ? value.slice(0, max) : fallback);
@@ -128,6 +132,7 @@ export function readExport(json: string | null | undefined): ExportSettings {
       })(),
       bookStyle: typeof saved.bookStyle === "string" && styleById(saved.bookStyle) ? saved.bookStyle : null,
       print: readPrint(saved.print),
+      storeBooks: readStoreBooks(saved.storeBooks),
     };
   } catch {
     return DEFAULT_EXPORT;
@@ -166,6 +171,8 @@ export interface EpubInput {
   passageFonts?: EmbeddedFont[];
   /** When it was made, for the required "modified" date. */
   now?: Date;
+  /** One store's edition: links to your books go to this store, and links to the others lose their link. */
+  edition?: Store | null;
 }
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -411,14 +418,26 @@ export function chapterXhtml(
     const el = node as Element;
     const tag = el.tagName.toLowerCase();
     const children = (block: boolean) => el.childNodes.forEach((c) => walk(c, block));
-    if (tag === "img") {
-      // Only pictures kept inside the book travel; links to the web are left out.
-      const picture = pictureFrom(el.getAttribute("src") ?? "");
-      if (!picture) return;
+    // Only pictures kept inside the book travel; links to the web are left out.
+    const placed = (img: Element | null): string | null => {
+      const picture = pictureFrom(img?.getAttribute("src") ?? "");
+      if (!picture) return null;
       const path = `images/${idPrefix}-${pictures.length + 1}.${PICTURE_TYPES[picture.mime]}`;
       pictures.push({ path, ...picture });
-      const img = `<img src="${path}" alt="${escapeXml(el.getAttribute("alt") ?? "")}"/>`;
-      out.push(inBlock ? img : `<div class="picture">${img}</div>`);
+      return `<img src="${path}" alt="${escapeXml(img?.getAttribute("alt") ?? "")}"/>`;
+    };
+    if (tag === "img") {
+      const img = placed(el);
+      if (img) out.push(inBlock ? img : `<div class="picture">${img}</div>`);
+    } else if (tag === "figure" && el.hasAttribute("data-picture")) {
+      // A picture with a caption, or one given a page of its own.
+      const img = placed(el.querySelector("img"));
+      if (!img) return;
+      const caption = (el.querySelector("figcaption")?.textContent ?? "").trim().replace(/\s+/g, " ");
+      const full = el.getAttribute("data-size") === "full";
+      if (inBlock) out.push(img);
+      else if (!caption && !full) out.push(`<div class="picture">${img}</div>`);
+      else out.push(`<figure class="picture${full ? " full-page" : ""}">${img}${caption ? `<figcaption>${escapeXml(caption)}</figcaption>` : ""}</figure>`);
     } else if (tag === "cite" && el.hasAttribute("data-source")) {
       // A citation, written in the book's style: words in the text, or a note at the chapter's end.
       const cited = cite?.(el.getAttribute("data-source") ?? "", el.getAttribute("data-locator") ?? "") ?? { text: escapeXml(el.textContent ?? "") };
@@ -556,6 +575,10 @@ ${settings.dropCap ? "section.chapter > h1 + p::first-letter { float: left; font
 }.chapter-label { text-align: ${settings.titles}; text-indent: 0; margin: 2em 0 -1.2em; font-size: 0.85em; letter-spacing: 0.12em; text-transform: uppercase; }
 .picture { text-align: center; text-indent: 0; margin: 1em 0; }
 .picture img, p img { max-width: 100%; }
+figure.picture { margin: 1.2em 0; }
+figure.picture figcaption { font-size: 0.85em; font-style: italic; text-align: center; text-indent: 0; margin-top: 0.5em; }
+figure.full-page { page-break-before: always; break-before: page; page-break-after: always; break-after: page; margin: 0; height: 95vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+figure.full-page img { max-height: 88vh; max-width: 100%; object-fit: contain; }
 sup a { text-decoration: none; }
 .footnotes { margin-top: 2em; border-top: 1px solid currentColor; padding-top: 0.5em; font-size: 0.85em; }
 .footnote p { text-indent: 0; text-align: left; margin: 0 0 0.4em; }
@@ -611,7 +634,7 @@ export interface Built {
 }
 
 /** Every file of the EPUB, before zipping (tests read these). */
-export function epubFiles({ project, chapters: own, settings, cover, font, passageFonts: passage = [], citer, now = new Date() }: EpubInput): Built {
+export function epubFiles({ project, chapters: own, settings, cover, font, passageFonts: passage = [], citer, now = new Date(), edition }: EpubInput): Built {
   citer?.restart();
   // A book that cites sources gets a Sources page at the back, unless it has one already.
   const chapters =
@@ -630,7 +653,10 @@ export function epubFiles({ project, chapters: own, settings, cover, font, passa
   const showCover = useCover && project.coverPage !== "title" && project.coverPage !== "none";
   // A title page among the book's own pages takes the place of the one made here.
   const showTitle =
-    project.coverPage !== "none" && (project.coverPage !== "cover" || !useCover) && !chapters.some((c) => readPage(c.page, c.role).kind === "title_page");
+    project.coverPage !== "none" &&
+    (project.coverPage !== "cover" || !useCover) &&
+    // A title page inside a part is that work's own (a box set's books keep theirs).
+    !chapters.some((c) => !c.part && c.role !== "part" && readPage(c.page, c.role).kind === "title_page");
 
   const ordered = bookOrder(chapters);
   const pageOf = ordered.map((c) => readPage(c.page, c.role ?? "chapter"));
@@ -751,7 +777,8 @@ export function epubFiles({ project, chapters: own, settings, cover, font, passa
   const fileNames = [...new Set(parts.map((p) => p.file))];
   const content: [string, string][] = fileNames.map((name) => {
     const inFile = parts.filter((p) => p.file === name);
-    return [name, page(inFile.length === 1 || settings.newPage ? inFile[0].heading : title, lang, inFile.map(sectionHtml).join("\n"))];
+    const xhtml = page(inFile.length === 1 || settings.newPage ? inFile[0].heading : title, lang, inFile.map(sectionHtml).join("\n"));
+    return [name, edition ? retarget(xhtml, edition, settings.storeBooks).html : xhtml];
   });
   const firstChapter = parts.find((p) => p.role === "chapter" || p.role === "part") ?? parts[0];
   const firstText = firstChapter ? (settings.newPage && firstChapter.first ? firstChapter.file : `${firstChapter.file}#c${firstChapter.n}`) : "text.xhtml";

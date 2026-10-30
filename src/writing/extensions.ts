@@ -9,6 +9,8 @@ declare module "@tiptap/react" {
     picture: {
       /** Places a picture (a `data:` address) where the cursor is. */
       insertPicture: (src: string, alt: string) => ReturnType;
+      /** Changes the selected picture's caption, description or size. */
+      setPictureLook: (look: Partial<{ caption: string; alt: string; size: "inline" | "full" }>) => ReturnType;
     };
     footnote: {
       /** Adds a footnote at the cursor, or changes the one selected. */
@@ -35,20 +37,42 @@ declare module "@tiptap/react" {
   }
 }
 
-/** A picture on a line of its own. */
+/** A picture on a line of its own, with a caption under it if it has one, or on a page of its own. */
 export const Picture = Node.create({
   name: "picture",
   group: "block",
   atom: true,
   draggable: true,
   addAttributes() {
-    return { src: { default: null }, alt: { default: "" } };
+    return { src: { default: null }, alt: { default: "" }, caption: { default: "" }, size: { default: "inline" } };
   },
   parseHTML() {
-    return [{ tag: "img[src]" }];
+    return [
+      {
+        tag: "figure[data-picture]",
+        getAttrs: (el) => {
+          const img = (el as HTMLElement).querySelector("img");
+          if (!img?.getAttribute("src")) return false;
+          return {
+            src: img.getAttribute("src"),
+            alt: img.getAttribute("alt") ?? "",
+            caption: ((el as HTMLElement).querySelector("figcaption")?.textContent ?? "").trim(),
+            size: (el as HTMLElement).getAttribute("data-size") === "full" ? "full" : "inline",
+          };
+        },
+      },
+      { tag: "img[src]" },
+    ];
   },
-  renderHTML({ HTMLAttributes }) {
-    return ["img", mergeAttributes(HTMLAttributes, { class: "writing-picture" })];
+  renderHTML({ node }) {
+    const { src, alt, caption, size } = node.attrs as { src: string; alt: string; caption: string; size: string };
+    const img = ["img", { src, alt, class: "writing-picture" }];
+    return [
+      "figure",
+      { "data-picture": "", class: `writing-figure${size === "full" ? " is-full" : ""}`, ...(size === "full" ? { "data-size": "full" } : {}) },
+      img,
+      ...(caption ? [["figcaption", {}, caption]] : []),
+    ] as unknown as readonly [string, ...unknown[]];
   },
   addCommands() {
     return {
@@ -56,6 +80,10 @@ export const Picture = Node.create({
         (src, alt) =>
         ({ commands }) =>
           commands.insertContent({ type: this.name, attrs: { src, alt } }),
+      setPictureLook:
+        (look) =>
+        ({ commands }) =>
+          commands.updateAttributes(this.name, look),
     };
   },
 });
