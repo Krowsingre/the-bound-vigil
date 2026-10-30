@@ -186,22 +186,26 @@ export interface LicenseView {
   price: string | null;
   /** The yearly plan's price, like "$19.99". */
   yearlyPrice?: string | null;
+  /** The monthly plan's price, like "$2.99". */
+  monthlyPrice?: string | null;
   /** The App Store gives this person the yearly plan's first month free. */
   freeMonth?: boolean;
   /** Bought on this plan; none when not bought or unlocked by code. */
-  plan?: "yearly" | "lifetime" | null;
+  plan?: "monthly" | "yearly" | "lifetime" | null;
   /** The Publisher level is owned (or unlocked by the owner's code). */
   publisher?: boolean;
   /** Publisher for life, like "$119.99". */
   publisherPrice?: string | null;
   /** Publisher yearly, like "$39.99". */
   publisherYearlyPrice?: string | null;
+  /** Publisher monthly, like "$9.99". */
+  publisherMonthlyPrice?: string | null;
   /** Publisher for someone who owns TBV for life: the difference. */
   upgradePrice?: string | null;
 }
 
-/** The ways to buy TBV: two levels, TBV and Publisher, each yearly or for life, and the upgrade to Publisher for lifetime owners. */
-export type LicensePlan = "yearly" | "lifetime" | "publisherYearly" | "publisherLifetime" | "publisherUpgrade";
+/** The ways to buy TBV: two levels, TBV and Publisher, each monthly, yearly or for life, and the upgrade to Publisher for lifetime owners. */
+export type LicensePlan = "monthly" | "yearly" | "lifetime" | "publisherMonthly" | "publisherYearly" | "publisherLifetime" | "publisherUpgrade";
 
 /** A choice of where to keep the library, as sent to the core. */
 export type ProviderChoice =
