@@ -589,6 +589,11 @@ export async function webApi(): Promise<Api> {
     pickExportPath: async () => null,
     saveExportFile: async (bytes, fileName) => downloadFile(bytes, fileName),
     printBook: (html) => printInBrowser(html),
+    copyCheck: async () => {
+      throw new Error("The copy check reads the books on your device, so it works in the app.");
+    },
+    copyCheckStop: async () => undefined,
+    onCopyCheckProgress: () => () => undefined,
     saveWritingEpub: async (bytes, fileName, _path, addToLibrary) => {
       if (addToLibrary) throw new Error("Adding it to your library works in the desktop app. It has been downloaded instead.");
       downloadFile(bytes, fileName);
@@ -822,7 +827,7 @@ export async function webApi(): Promise<Api> {
       throw new Error(DESKTOP_ONLY);
     },
     pauseLiningUp: async () => undefined,
-    liningUpPaused: async () => false,
+    liningUpPaused: async () => ({ paused: false, until: null }),
     pauseLiningUpAfter: async () => undefined,
     onLiningUpPaused: () => () => undefined,
     wakeLiningUp: async () => undefined,

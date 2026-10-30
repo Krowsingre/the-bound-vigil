@@ -156,15 +156,17 @@ async function bookWords(ebookId: string): Promise<BookWords> {
 /** Page pictures and PDFs have no flowing text to follow word by word. */
 export const linesUp = (format: string) => !["pdf", "cbz", "cbr"].includes(format.toLowerCase());
 
-/** Pauses lining up on this device until TBV next opens, or `resumeLiningUp`. */
-export function pauseLiningUp() {
+/** Pauses lining up on this device for `hours`, or until `resumeLiningUp` when none are given. The pause outlasts closing TBV. */
+export function pauseLiningUp(hours: number | null = null) {
+  pausedUntil = hours ? Date.now() + hours * 3_600_000 : null;
   setPause(true, false);
-  void api.pauseLiningUp(true).catch(() => undefined);
+  void api.pauseLiningUp(true, hours).catch(() => undefined);
 }
 
 export function resumeLiningUp() {
+  pausedUntil = null;
   setPause(false, false);
-  void api.pauseLiningUp(false).catch(() => undefined);
+  void api.pauseLiningUp(false, null).catch(() => undefined);
 }
 
 /** Pauses once the pair being lined up now is finished; `false` carries on after all. */
@@ -174,9 +176,12 @@ export function pauseAfterThis(on: boolean) {
 }
 
 export const liningUpPaused = () => paused;
+/** When a timed pause ends (milliseconds), or null when it lasts until carried on. */
+export const liningUpPausedUntil = () => (paused ? pausedUntil : null);
 export const pausingAfterThis = () => pauseAfter;
 
 let pauseAfter = false;
+let pausedUntil: number | null = null;
 const pauseListeners = new Set<() => void>();
 
 function setPause(now: boolean, after: boolean) {
@@ -205,8 +210,19 @@ let started = false;
 export function startLiningUp() {
   if (started || !isApp) return;
   started = true;
-  void api.liningUpPaused().then((p) => setPause(p, pauseAfter), () => undefined);
-  api.onLiningUpPaused((p) => setPause(p, false));
+  const look = () =>
+    void api.liningUpPaused().then(
+      (p) => {
+        pausedUntil = p.until;
+        setPause(p.paused, pauseAfter);
+      },
+      () => undefined,
+    );
+  look();
+  api.onLiningUpPaused(() => {
+    pauseAfter = false;
+    look();
+  });
   api.onLiningUp((l) => {
     current = l;
     listeners.forEach((f) => f(current));

@@ -71,7 +71,7 @@ export const SETTINGS_TABS: {
     tab: "activity",
     label: "Activity",
     icon: "list",
-    lede: "What TBV is doing in the background: imports, sync, and lining up read-along.",
+    lede: "What TBV is doing in the background: imports, sync, and Confluence for read-along.",
   },
   {
     tab: "files",
@@ -130,14 +130,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   {
     tab: "activity",
     section: "activity",
-    label: "Imports, sync activity and lining up",
-    words: "imports importing adding progress sync activity files uploads downloads recent changes clear lining up read along aligning alignment audiobook pairs",
+    label: "Imports, sync activity and Confluence",
+    words: "imports importing adding progress sync activity files uploads downloads recent changes clear confluence converging lining up read along aligning alignment audiobook pairs",
   },
   {
     tab: "reading",
     section: "read-along",
     label: "Read-along",
-    words: "read along listen along lining up align alignment audiobook narrator speech model whisper accuracy background charging processor",
+    words: "read along listen along confluence converging lining up align alignment audiobook narrator speech model whisper accuracy background charging processor",
   },
   {
     tab: "servers",

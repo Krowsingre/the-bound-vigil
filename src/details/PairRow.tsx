@@ -94,12 +94,12 @@ export function PairRow({ book, refreshKey }: { book: BookPreview; refreshKey: n
         {partner && !byHand && lineUp && linesUp(listening ? (partner.format ?? "") : book.format) && (
           <span className="details-origin">
             {lineUp.failed
-              ? `Couldn't be lined up word by word (${lineUp.failed}), so read-along follows by chapter.`
+              ? `Couldn't converge word by word (${lineUp.failed}), so read-along follows by chapter.`
               : lineUp.done
-                ? "Lined up word by word."
+                ? "Converged word by word."
                 : live !== null
-                  ? `Lining up word by word… ${Math.floor(live * 100)}%`
-                  : `Waiting to be lined up word by word (${Math.floor(lineUp.fraction * 100)}% so far). This happens while TBV is open on a device that has both the book and the audiobook downloaded.`}
+                  ? `Converging word by word… ${Math.floor(live * 100)}%`
+                  : `Waiting to converge word by word (${Math.floor(lineUp.fraction * 100)}% so far). This happens while TBV is open on a device that has both the book and the audiobook downloaded.`}
           </span>
         )}
         {choosing && (

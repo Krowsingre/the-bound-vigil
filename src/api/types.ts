@@ -1440,3 +1440,13 @@ export interface HistoryEntry {
   /** When, as milliseconds since 1970. */
   at: number;
 }
+
+/** A library book that shares passages, word for word, with a book being written (see the copy check). */
+export interface CopyMatch {
+  bookId: string;
+  title: string;
+  author: string | null;
+  /** Words of the writing found in this book, all passages together. */
+  words: number;
+  passages: { section: number; words: number; text: string }[];
+}

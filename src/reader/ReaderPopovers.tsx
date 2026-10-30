@@ -21,7 +21,8 @@ import {
 } from "./settings";
 import type { ReadAloud } from "./useReadAloud";
 import type { ReadAlong } from "./useReadAlong";
-import { liningUp, liningUpPaused, onLiningUp, pauseLiningUp, resumeLiningUp, type LiningUp } from "../readAlong/lineUp";
+import { liningUp, onLiningUp, type LiningUp } from "../readAlong/lineUp";
+import { PauseLiningUpButton, pausedUntilText, usePause } from "../readAlong/PauseLiningUp";
 
 function Choice<T extends string | number>({
   label,
@@ -485,7 +486,7 @@ export function NoteDialog({
 /** Listening along with the linked audiobook, and how far the pair is lined up. */
 export function ListenAlongPanel({ readAlong, ebookId }: { readAlong: ReadAlong; ebookId: string }) {
   const [work, setWork] = useState<LiningUp | null>(liningUp());
-  const [paused, setPaused] = useState(liningUpPaused());
+  const { paused, until } = usePause();
   useEffect(() => onLiningUp(setWork), []);
   const audiobookId = readAlong.audiobookId;
   const ours = work && work.ebookId === ebookId && work.audiobookId === audiobookId ? work : null;
@@ -520,14 +521,14 @@ export function ListenAlongPanel({ readAlong, ebookId }: { readAlong: ReadAlong;
       ) : (
         <div className="listen-along-timing" role="status">
           <p className="read-aloud-note">
-            <strong>Lining up… {percent}%</strong>
+            <strong>Converging… {percent}%</strong>
             {ours?.stage === "model" && ours.modelTotal ? ` Getting the speech model: ${mb(ours.modelLoaded)} of ${mb(ours.modelTotal)}.` : ""}
           </p>
           <p className="read-aloud-note">
             {paused
-              ? "Lining up is paused on this device."
+              ? `Confluence is paused on this device ${pausedUntilText(until)}.`
               : ours?.stage === "cooling"
-                ? "Lining up is paused while the phone cools down. It carries on by itself."
+                ? "Confluence is paused while the phone cools down. It carries on by itself."
                 : ours
                 ? "TBV is listening through the audiobook and matching every word to the book, in the background."
                 : isApp
@@ -537,19 +538,7 @@ export function ListenAlongPanel({ readAlong, ebookId }: { readAlong: ReadAlong;
                   : "TBV lines up every word in the app on your computer or phone."}{" "}
             Until it's done you can read the book or listen to the audiobook, but not both together.
           </p>
-          {isApp && (
-            <button
-              type="button"
-              className="btn btn-quiet"
-              onClick={() => {
-                if (paused) resumeLiningUp();
-                else pauseLiningUp();
-                setPaused(!paused);
-              }}
-            >
-              {paused ? "Carry on lining up" : "Pause lining up"}
-            </button>
-          )}
+          {isApp && <PauseLiningUpButton pauseLabel="Pause Confluence" resumeLabel="Carry on with Confluence" />}
         </div>
       )}
     </div>

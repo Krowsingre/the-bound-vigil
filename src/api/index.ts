@@ -22,6 +22,7 @@ import type {
   WritingChapter,
   WritingDetails,
   WritingDraft,
+  CopyMatch,
   ReadingHistoryEntry,
   WritingProject,
   WritingProjectView,
@@ -176,8 +177,10 @@ export interface Api {
   /** Lining up needs an ebook's words, which only the reader in the page can count. */
   onBookWordsWanted(listener: (ebookId: string) => void): () => void;
   saveBookWords(ebookId: string, words: BookWords): Promise<void>;
-  pauseLiningUp(paused: boolean): Promise<void>;
-  liningUpPaused(): Promise<boolean>;
+  /** Pauses for `hours`, or until carried on when null; the pause outlasts closing TBV. */
+  pauseLiningUp(paused: boolean, hours: number | null): Promise<void>;
+  /** Whether lining up is paused, and until when (null: until carried on). */
+  liningUpPaused(): Promise<{ paused: boolean; until: number | null }>;
   /** Pause once the pair being lined up now is finished, or with `false` carry on after all. */
   pauseLiningUpAfter(on: boolean): Promise<void>;
   /** Told when lining up pauses by itself (after the pair it was asked to finish). */
@@ -566,6 +569,15 @@ export interface Api {
    * Answers with the number of pages.
    */
   printBook(html: string, path: string | null): Promise<number>;
+  /**
+   * Looks for the book's passages, word for word, in the library's books on
+   * this device (twelve words or more). Answers with the books sharing any.
+   */
+  copyCheck(sections: { title: string; text: string }[], leaveOutTitle: string): Promise<CopyMatch[]>;
+  /** Stops a copy check part-way; what was found so far comes back. */
+  copyCheckStop(): Promise<void>;
+  /** How far a copy check has got. */
+  onCopyCheckProgress(listener: (progress: { done: number; total: number }) => void): () => void;
   /** Keeps the book as it stands (made into an EPUB) as its next draft. */
   saveWritingDraft(projectId: string, bytes: Uint8Array): Promise<WritingDraft>;
   /** A book's drafts, oldest first. */
@@ -817,8 +829,8 @@ function appApi(): Api {
     onLinedUp: (listener) => listenFor<[string, string]>("lined-up", ([e, a]) => listener(e, a)),
     onBookWordsWanted: (listener) => listenFor<string>("lining-up-needs-words", listener),
     saveBookWords: async (ebookId, words) => (await core).invoke("save_book_words", { ebookId, words }),
-    pauseLiningUp: async (paused) => (await core).invoke("lining_up_pause", { paused }),
-    liningUpPaused: async () => (await core).invoke<boolean>("lining_up_paused"),
+    pauseLiningUp: async (paused, hours) => (await core).invoke("lining_up_pause", { paused, hours }),
+    liningUpPaused: async () => (await core).invoke<{ paused: boolean; until: number | null }>("lining_up_paused"),
     pauseLiningUpAfter: async (on) => (await core).invoke("lining_up_pause_after", { on }),
     onLiningUpPaused: (listener) => listenFor<boolean>("lining-up-paused", listener),
     wakeLiningUp: async () => (await core).invoke("lining_up_wake"),
@@ -1168,6 +1180,9 @@ function appApi(): Api {
     saveExportFile: async (bytes, fileName, path) =>
       (await core).invoke("save_writing_epub", bytes, { headers: { path: encodeURIComponent(path ?? ""), add: "0", "file-name": encodeURIComponent(fileName) } }),
     printBook: async (html, path) => (await core).invoke<number>("print_book", { html, path }),
+    copyCheck: async (sections, leaveOutTitle) => (await core).invoke<CopyMatch[]>("copy_check", { sections, leaveOutTitle }),
+    copyCheckStop: async () => (await core).invoke("copy_check_stop"),
+    onCopyCheckProgress: (listener) => listenFor("copy-check-progress", listener),
     saveWritingDraft: async (projectId, bytes) => (await core).invoke<WritingDraft>("save_writing_draft", bytes, { headers: { "project-id": projectId } }),
     writingDrafts: async (projectId) => (await core).invoke<WritingDraft[]>("writing_drafts", { projectId }),
     deleteWritingDraft: async (id) => (await core).invoke("delete_writing_draft", { id }),

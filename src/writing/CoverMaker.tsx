@@ -9,7 +9,7 @@ import type { WritingProject } from "../api/types";
 export const COVER_WIDTH = 1600;
 export const COVER_HEIGHT = 2560;
 
-const BACKGROUNDS = [
+export const BACKGROUNDS = [
   { name: "Ink", top: "#1f2731", bottom: "#33414f", light: true },
   { name: "Ash", top: "#e9e4dc", bottom: "#cfc6b8", light: false },
   { name: "Ember", top: "#5a1f1b", bottom: "#a2412c", light: true },
@@ -20,7 +20,7 @@ const BACKGROUNDS = [
   { name: "Night", top: "#08090c", bottom: "#1a1d24", light: true },
 ] as const;
 
-const FONTS = [
+export const COVER_FONTS = [
   { value: "Lora", label: "Lora" },
   { value: "Echolume", label: "Echolume" },
   { value: "Georgia", label: "Georgia" },
@@ -35,7 +35,7 @@ export interface CoverDesign {
   background: number;
   /** A picture of your own behind the words, as an object URL. */
   picture: string | null;
-  font: (typeof FONTS)[number]["value"];
+  font: (typeof COVER_FONTS)[number]["value"];
   layout: Layout;
 }
 
@@ -54,17 +54,24 @@ function lines(ctx: CanvasRenderingContext2D, text: string, width: number): stri
   return out;
 }
 
-/** Draws the cover onto `canvas`. */
-export async function drawCover(canvas: HTMLCanvasElement, design: CoverDesign): Promise<void> {
+/**
+ * Draws the cover onto `canvas`, 1600 × 2560 unless another size is given
+ * (a paperback's front, at print resolution): it's laid out 1600 wide and
+ * as tall as the size's shape, then scaled.
+ */
+export async function drawCover(canvas: HTMLCanvasElement, design: CoverDesign, pixels?: { width: number; height: number }): Promise<void> {
   const ctx = canvas.getContext("2d")!;
-  canvas.width = COVER_WIDTH;
-  canvas.height = COVER_HEIGHT;
+  canvas.width = pixels?.width ?? COVER_WIDTH;
+  canvas.height = pixels?.height ?? COVER_HEIGHT;
+  const scale = canvas.width / COVER_WIDTH;
+  ctx.scale(scale, scale);
+  const height = canvas.height / scale;
   const bg = BACKGROUNDS[design.background] ?? BACKGROUNDS[0];
-  const gradient = ctx.createLinearGradient(0, 0, 0, COVER_HEIGHT);
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
   gradient.addColorStop(0, bg.top);
   gradient.addColorStop(1, bg.bottom);
   ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, COVER_WIDTH, COVER_HEIGHT);
+  ctx.fillRect(0, 0, COVER_WIDTH, height);
 
   let light: boolean = bg.light;
   if (design.picture) {
@@ -73,12 +80,12 @@ export async function drawCover(canvas: HTMLCanvasElement, design: CoverDesign):
     await img.decode().catch(() => undefined);
     if (img.naturalWidth) {
       // Fills the cover, cropping what doesn't fit.
-      const scale = Math.max(COVER_WIDTH / img.naturalWidth, COVER_HEIGHT / img.naturalHeight);
-      const w = img.naturalWidth * scale;
-      const h = img.naturalHeight * scale;
-      ctx.drawImage(img, (COVER_WIDTH - w) / 2, (COVER_HEIGHT - h) / 2, w, h);
+      const fit = Math.max(COVER_WIDTH / img.naturalWidth, height / img.naturalHeight);
+      const w = img.naturalWidth * fit;
+      const h = img.naturalHeight * fit;
+      ctx.drawImage(img, (COVER_WIDTH - w) / 2, (height - h) / 2, w, h);
       // A shade behind the words so they read over any picture.
-      const shade = ctx.createLinearGradient(0, 0, 0, COVER_HEIGHT);
+      const shade = ctx.createLinearGradient(0, 0, 0, height);
       const dark = "rgba(0,0,0,0.55)";
       const clear = "rgba(0,0,0,0)";
       const [a, b, c] = design.layout === "top" ? [dark, clear, clear] : design.layout === "bottom" ? [clear, clear, dark] : [clear, dark, clear];
@@ -86,7 +93,7 @@ export async function drawCover(canvas: HTMLCanvasElement, design: CoverDesign):
       shade.addColorStop(0.5, b);
       shade.addColorStop(1, c);
       ctx.fillStyle = shade;
-      ctx.fillRect(0, 0, COVER_WIDTH, COVER_HEIGHT);
+      ctx.fillRect(0, 0, COVER_WIDTH, height);
       light = true;
     }
   }
@@ -110,7 +117,7 @@ export async function drawCover(canvas: HTMLCanvasElement, design: CoverDesign):
   const lineHeight = size * 1.15;
   const titleHeight = titleLines.length * lineHeight;
   const authorSize = Math.round(size * 0.42);
-  const top = design.layout === "top" ? 380 : design.layout === "bottom" ? COVER_HEIGHT - 520 - titleHeight : (COVER_HEIGHT - titleHeight) / 2;
+  const top = design.layout === "top" ? 380 : design.layout === "bottom" ? height - 520 - titleHeight : (height - titleHeight) / 2;
   ctx.font = `600 ${size}px ${family}`;
   titleLines.forEach((l, i) => ctx.fillText(l, COVER_WIDTH / 2, top + size + i * lineHeight));
 
@@ -228,7 +235,7 @@ export function CoverMaker({ project, onMade, onCancel }: { project: WritingProj
             <label className="field">
               <span>Lettering</span>
               <select value={design.font} onChange={(e) => set({ font: e.target.value as CoverDesign["font"] })}>
-                {FONTS.map((f) => (
+                {COVER_FONTS.map((f) => (
                   <option key={f.value} value={f.value}>
                     {f.label}
                   </option>

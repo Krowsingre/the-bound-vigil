@@ -10,6 +10,7 @@ pub mod sanctum_links;
 pub mod site_icon;
 pub mod browse;
 pub mod collections;
+pub mod copycheck;
 pub mod custom_themes;
 pub mod data;
 pub mod epub;

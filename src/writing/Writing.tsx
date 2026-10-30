@@ -16,6 +16,10 @@ import { BookPreview, MadePage } from "./BookPreview";
 import { bookOrder, escapeXml, readExport, type ExportSettings } from "./epub";
 import { ADD_MENUS, firstLine, isMade, isNumbered, isPoem, KINDS, numberInWords, readPage, romanOf, startingTitle, writePage, type PageKind, type PageSettings } from "./pages";
 import { DetailsDialog, DraftsDialog, ExportDialog, NewBookDialog } from "./WritingDialogs";
+import { PaperbackCover } from "./PaperbackCover";
+import { PreflightDialog } from "./Preflight";
+import { CopyCheckDialog } from "./CopyCheck";
+import { ImportBookDialog } from "./ImportBook";
 import { SourcesDialog } from "./SourcesDialog";
 
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
@@ -74,6 +78,7 @@ export function Writing({
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [ask, setAsk] = useState<{ kind: NewNoteKind; n: number } | null>(null);
   const [reload, setReload] = useState(0);
   const [chip, setChip] = useState<Chip>("all");
@@ -105,7 +110,20 @@ export function Writing({
   const newItems: MenuEntry[] = [
     { label: "Note", icon: "noteLines", description: "Write freely", onSelect: () => newNote("personal") },
     { label: "Book note", icon: "notePen", description: "Write about a book in your library", onSelect: () => newNote("book_note") },
-    ...(booksShown ? [{ label: "Book", icon: "bookOpen" as const, description: "Create a manuscript for EPUB export", onSelect: newBook }] : []),
+    ...(booksShown
+      ? [
+          { label: "Book", icon: "bookOpen" as const, description: "Create a manuscript for EPUB export", onSelect: newBook },
+          {
+            label: "Import a book",
+            icon: "importFile" as const,
+            description: "From Word, OpenDocument, RTF, text, Markdown or EPUB",
+            onSelect: () => {
+              setChip("books");
+              setImporting(true);
+            },
+          },
+        ]
+      : []),
   ];
   const books = projects.state === "ready" ? projects.list : [];
 
@@ -179,6 +197,16 @@ export function Writing({
               </div>
             ) : undefined
           }
+        />
+      )}
+      {importing && (
+        <ImportBookDialog
+          onCancel={() => setImporting(false)}
+          onCreated={(id) => {
+            setImporting(false);
+            setReload((n) => n + 1);
+            setOpenId(id);
+          }}
         />
       )}
       {creating && (
@@ -278,7 +306,7 @@ function ProjectView({
   const [error, setError] = useState<string | null>(null);
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [save, setSave] = useState<{ state: SaveState; words: number }>({ state: "saved", words: 0 });
-  const [dialog, setDialog] = useState<"details" | "export" | "drafts" | "delete" | "sources" | null>(null);
+  const [dialog, setDialog] = useState<"details" | "export" | "drafts" | "delete" | "sources" | "cover" | "preflight" | "copies" | null>(null);
   const [deletingChapter, setDeletingChapter] = useState<WritingChapter | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(true);
@@ -627,6 +655,10 @@ function ProjectView({
             items={[
               { label: "Sources and citation style…", icon: "bookClosed", onSelect: () => setDialog("sources") },
               "divider",
+              { label: "Paperback cover…", icon: "image", onSelect: () => setDialog("cover") },
+              { label: "Check before uploading…", icon: "checkCircle", onSelect: () => setDialog("preflight") },
+              { label: "Check for copied passages…", icon: "search", onSelect: () => setDialog("copies") },
+              "divider",
               { label: "Delete this book…", icon: "trash", danger: true, onSelect: () => setDialog("delete") },
             ]}
           />
@@ -741,6 +773,16 @@ function ProjectView({
           onClose={() => setDialog(null)}
         />
       )}
+      {dialog === "cover" && <PaperbackCover project={project} trim={settings.print.trim} onClose={() => setDialog(null)} />}
+      {(dialog === "preflight" || dialog === "copies") &&
+        (() => {
+          const flush = async () => {
+            await flushEditor.current?.();
+            await saving.current;
+            return (await load())?.chapters ?? chapters;
+          };
+          return dialog === "preflight" ? <PreflightDialog project={project} onFlush={flush} onClose={() => setDialog(null)} /> : <CopyCheckDialog project={project} onFlush={flush} onClose={() => setDialog(null)} />;
+        })()}
       {dialog === "drafts" && (
         <DraftsDialog
           project={project}

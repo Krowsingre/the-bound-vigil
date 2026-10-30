@@ -1968,3 +1968,30 @@ kbd {
   margin: 0 0 6px;
   color: var(--danger);
 }
+
+/* Pausing lining up for a time of your own. */
+.pause-for {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(360px, calc(100vw - 32px));
+}
+
+.pause-for h2,
+.pause-for p {
+  margin: 0;
+}
+
+.pause-for-row {
+  display: flex;
+  gap: 8px;
+}
+
+.pause-for-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.activity-paused {
+  margin: 0 0 12px;
+}

@@ -38,6 +38,9 @@ type Calls = Pick<
   | "pickExportPath"
   | "saveExportFile"
   | "printBook"
+  | "copyCheck"
+  | "copyCheckStop"
+  | "onCopyCheckProgress"
   | "saveWritingDraft"
   | "writingDrafts"
   | "deleteWritingDraft"
@@ -58,6 +61,9 @@ const CLASSICS: [string, string, string][] = [
   ["Dracula", "Bram Stoker", "Letters and diaries tell of a count from Transylvania."],
   ["The Count of Monte Cristo", "Alexandre Dumas", "A man wrongly imprisoned plans his return."],
 ];
+
+/** Who hears the sample copy check's progress. */
+const progress = new Set<(p: { done: number; total: number }) => void>();
 
 export function previewWriting(): Calls {
   const pictures = new Map<string, string>();
@@ -229,5 +235,19 @@ export function previewWriting(): Calls {
     pickExportPath: async (fileName) => fileName,
     saveExportFile: async () => {},
     printBook: (html) => printInBrowser(html),
+    copyCheck: async (sections) => {
+      // The sample: the first chapter's opening seems to be in a library book.
+      const words = (sections[0]?.text ?? "").split(/\s+/).filter(Boolean).slice(0, 16);
+      for (let done = 0; done <= 40; done += 10) {
+        progress.forEach((l) => l({ done, total: 40 }));
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      return words.length >= 12 ? [{ bookId: "sample", title: "The Harbour Lamps", author: "M. Calloway", words: words.length, passages: [{ section: 0, words: words.length, text: words.join(" ") }] }] : [];
+    },
+    copyCheckStop: async () => undefined,
+    onCopyCheckProgress: (listener) => {
+      progress.add(listener);
+      return () => void progress.delete(listener);
+    },
   };
 }

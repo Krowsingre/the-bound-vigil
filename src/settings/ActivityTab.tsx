@@ -10,18 +10,18 @@ import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
 import { showBookDetails } from "../details/openDetails";
 import { PageSwitch } from "../library/Library";
+import { PauseLiningUpButton, pausedUntilText } from "../readAlong/PauseLiningUp";
 import {
   liningUp,
   liningUpPaused,
+  liningUpPausedUntil,
   linesUp,
   onLinedUp,
   onLiningUp,
   onPauseChange,
   pauseAfterThis,
-  pauseLiningUp,
   pausingAfterThis,
   readLineUp,
-  resumeLiningUp,
   type LiningUp,
 } from "../readAlong/lineUp";
 
@@ -47,7 +47,7 @@ export function ActivityTab({
         options={[
           { value: "imports", label: "Imports" },
           ...(api.kind === "web" ? [] : [{ value: "sync" as const, label: "Sync" }]),
-          ...(isApp || api.kind === "preview" ? [{ value: "lining" as const, label: "Lining up" }] : []),
+          ...(isApp || api.kind === "preview" ? [{ value: "lining" as const, label: "Confluence" }] : []),
         ]}
         onChange={onSide}
       />
@@ -132,7 +132,7 @@ function LiningUpPane() {
       <header className="activity-head">
         <div>
           <p className="settings-row-hint">
-            Each book paired with its audiobook is lined up word by word, one pair at a time, on every device that has both downloaded. A computer works from
+            In Confluence, each book paired with its audiobook converges with it word by word, one pair at a time, on every device that has both downloaded. A computer works from
             the start and a phone from the end, so together they meet in the middle.{isIOS && " On this phone it's off until you turn it on in Preferences › Reading › Read-along."}
           </p>
         </div>
@@ -148,15 +148,14 @@ function LiningUpPane() {
               <Icon name="pause" size={16} /> {after ? "Pausing after this" : "Pause after this"}
             </button>
           )}
-          <button type="button" className="btn btn-quiet" onClick={() => (paused ? resumeLiningUp() : pauseLiningUp())}>
-            <Icon name={paused ? "play" : "pause"} size={16} /> {paused ? "Carry on" : "Pause now"}
-          </button>
+          <PauseLiningUpButton pauseLabel="Pause now" />
         </div>
       </header>
+      {paused && <p className="settings-row-hint activity-paused">Paused on this device {pausedUntilText(liningUpPausedUntil())}.</p>}
       {now && (
         <section className="imports-summary" aria-live="polite">
           <div className="imports-summary-text">
-            <h2>Lining up {now.title || "a book"}</h2>
+            <h2>{now.title || "A book"} is converging</h2>
             <p className="settings-row-hint">
               {now.stage === "cooling"
                 ? `Paused while the phone cools down, ${Math.floor(now.fraction * 100)}% done`
@@ -169,14 +168,14 @@ function LiningUpPane() {
           </div>
           <ProgressBar
             value={now.stage === "model" && now.modelTotal ? now.modelLoaded / now.modelTotal : now.fraction}
-            label={`${Math.floor(now.fraction * 100)}% lined up`}
+            label={`${Math.floor(now.fraction * 100)}% converged`}
           />
         </section>
       )}
       {rows === null ? null : rows.length === 0 ? (
         <div className="imports-empty">
           <Icon name="headphones" size={28} />
-          <p>No books are paired with audiobooks yet. Pair one from a book's details, and it's lined up here.</p>
+          <p>No books are paired with audiobooks yet. Pair one from a book's details, and it converges here.</p>
         </div>
       ) : (
         <>
@@ -194,10 +193,10 @@ function LiningUpPane() {
           {view === "queued" ? (
             <section className="imports-group">
               {queued.length === 0 ? (
-                <p className="settings-row-hint">Nothing is queued. Add pairs from Not queued, and they're lined up in the order you choose.</p>
+                <p className="settings-row-hint">Nothing is queued. Add pairs from Not queued, and they converge in the order you choose.</p>
               ) : (
                 <>
-                  <p className="settings-row-hint">The first pair is lined up next. Drag to change the order, or use the arrows.</p>
+                  <p className="settings-row-hint">The first pair converges next. Drag to change the order, or use the arrows.</p>
                   <ul className="imports-list">
                     {queued.map((r, index) => {
                       const k = keyOf(r.pair);
@@ -232,10 +231,10 @@ function LiningUpPane() {
           ) : (
             <section className="imports-group">
               {out.length === 0 ? (
-                <p className="settings-row-hint">Every pair still to line up is in the queue.</p>
+                <p className="settings-row-hint">Every pair still to converge is in the queue.</p>
               ) : (
                 <>
-                  <p className="settings-row-hint">These pairs aren't lined up until you add them to the queue.</p>
+                  <p className="settings-row-hint">These pairs don't converge until you add them to the queue.</p>
                   <ul className="imports-list">
                     {out.map((r) => (
                       <PairRow key={keyOf(r.pair)} row={r} now={now} paused={paused}>
@@ -316,16 +315,16 @@ function state(pair: ReadAlongPair, live: LiningUp | null, paused: boolean): { t
       tone: "same",
     };
   const l = readLineUp(pair.timing);
-  if (l?.done) return { text: "Lined up word by word", tone: "ok" };
+  if (l?.done) return { text: "Converged word by word", tone: "ok" };
   if (l?.failed)
     return {
-      text: `Couldn't be lined up: ${l.failed} It follows by chapter.`,
+      text: `Couldn't converge: ${l.failed} It follows by chapter.`,
       tone: "bad",
     };
   const sofar = l ? Math.floor(Math.min(0.99, pair.pieces / l.pieces) * 100) : 0;
   if (live)
     return {
-      text: `Lining up now: ${Math.floor(live.fraction * 100)}%`,
+      text: `Converging now: ${Math.floor(live.fraction * 100)}%`,
       tone: "same",
     };
   if (!pair.here)

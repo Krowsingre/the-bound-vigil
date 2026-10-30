@@ -1435,3 +1435,167 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* The paperback cover: the whole wrap above its choices. */
+.paperback-cover {
+  width: min(860px, calc(100vw - 32px));
+}
+
+.paperback-cover-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.paperback-cover-preview {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-s);
+  box-shadow: 0 2px 10px rgb(18 20 22 / 0.18);
+  background: var(--surface-sunk);
+}
+
+.paperback-cover-sizes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 12px;
+}
+
+.paperback-cover .segmented {
+  margin: 0;
+}
+
+/* The check before uploading, and the copy check. */
+.preflight,
+.copy-check {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.preflight-stores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preflight-summary {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  font-weight: 600;
+  background: var(--surface-sunk);
+}
+
+.preflight-summary.is-problem {
+  color: var(--danger);
+}
+
+.preflight-group h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.preflight-group ul,
+.copy-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.preflight-group li,
+.copy-check-list > li {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius-s);
+  font-size: 13px;
+}
+
+.preflight-group.is-problem li {
+  border-left-color: var(--danger);
+}
+
+.preflight-group.is-warning li {
+  border-left-color: var(--accent);
+}
+
+.preflight-group li p {
+  margin: 4px 0 0;
+}
+
+.preflight-for {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.preflight-where {
+  font-size: 12px;
+}
+
+.copy-check-list blockquote {
+  margin: 8px 0 0;
+  padding: 6px 10px;
+  border-left: 2px solid var(--border);
+  font-family: var(--font-serif);
+  font-size: 14px;
+}
+
+.copy-check-where {
+  display: block;
+  margin-bottom: 2px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+}
+
+.copy-check-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.copy-check-progress progress {
+  width: 100%;
+}
+
+/* Importing a book. */
+.import-book {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.import-book-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.import-book-chapters {
+  max-height: 300px;
+  margin: 0;
+  padding: 4px 8px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  list-style: none;
+}
+
+.import-book-chapters .check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.import-book-chapter-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
