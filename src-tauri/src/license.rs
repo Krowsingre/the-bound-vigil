@@ -1,5 +1,9 @@
 //! Buying TBV: the Microsoft Store on a PC, the App Store on iPhone, iPad
-//! and Mac (one purchase covers all three), each with two plans, yearly or lifetime. A copy from outside a
+//! and Mac (one purchase covers all three). There are two levels, TBV and
+//! TBV Publisher, each yearly or for life, and an upgrade to Publisher for
+//! lifetime owners. In the App Store both yearly plans belong to one
+//! subscription group, so moving up from TBV yearly to Publisher yearly is
+//! Apple's own upgrade, charged for the difference. A copy from outside a
 //! store (a test build) can be tried for the 30 days, but not bought in.
 
 use std::sync::Mutex;
@@ -14,6 +18,15 @@ const PRODUCT: &str = if cfg!(windows) { "full_unlock" } else { "com.krowsingre.
 /// The yearly plan's name in both stores (a subscription).
 #[cfg(any(windows, target_os = "ios", target_os = "macos"))]
 const YEARLY: &str = if cfg!(windows) { "yearly" } else { "com.krowsingre.theboundvigil.yearly" };
+/// TBV Publisher for life.
+#[cfg(any(windows, target_os = "ios", target_os = "macos"))]
+const PUBLISHER: &str = if cfg!(windows) { "publisher" } else { "com.krowsingre.theboundvigil.publisher" };
+/// TBV Publisher yearly (in the App Store, the same subscription group as `YEARLY`).
+#[cfg(any(windows, target_os = "ios", target_os = "macos"))]
+const PUBLISHER_YEARLY: &str = if cfg!(windows) { "publisher_yearly" } else { "com.krowsingre.theboundvigil.publisher.yearly" };
+/// Publisher for someone who owns TBV for life, priced at the difference.
+#[cfg(any(windows, target_os = "ios", target_os = "macos"))]
+const UPGRADE: &str = if cfg!(windows) { "publisher_upgrade" } else { "com.krowsingre.theboundvigil.publisher.upgrade" };
 
 /// Which plan to buy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
@@ -21,6 +34,10 @@ const YEARLY: &str = if cfg!(windows) { "yearly" } else { "com.krowsingre.thebou
 pub enum Plan {
     Yearly,
     Lifetime,
+    PublisherYearly,
+    PublisherLifetime,
+    /// Publisher for a lifetime owner of TBV.
+    PublisherUpgrade,
 }
 
 #[cfg(any(windows, target_os = "ios", target_os = "macos"))]
@@ -28,7 +45,45 @@ fn product_of(plan: Plan) -> &'static str {
     match plan {
         Plan::Yearly => YEARLY,
         Plan::Lifetime => PRODUCT,
+        Plan::PublisherYearly => PUBLISHER_YEARLY,
+        Plan::PublisherLifetime => PUBLISHER,
+        Plan::PublisherUpgrade => UPGRADE,
     }
+}
+
+/// What the App Store says about one pair of products (a lifetime one and a
+/// yearly one), as both Apple sides answer it.
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+struct ApplePair {
+    lifetime: bool,
+    yearly: bool,
+    price: Option<String>,
+    yearly_price: Option<String>,
+    free_month: bool,
+}
+
+/// Puts the three App Store questions (TBV, Publisher, the upgrade) together.
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+fn apple_answer(ask: impl Fn(&str, &str) -> Result<ApplePair, String>) -> Option<StoreAnswer> {
+    let base = ask(PRODUCT, YEARLY).ok()?;
+    let publisher = ask(PUBLISHER, PUBLISHER_YEARLY).ok();
+    let upgrade = ask(UPGRADE, PUBLISHER_YEARLY).ok();
+    let publisher_owned = publisher.as_ref().is_some_and(|p| p.lifetime || p.yearly);
+    // The upgrade only counts on top of TBV for life.
+    let upgraded = base.lifetime && upgrade.as_ref().is_some_and(|u| u.lifetime);
+    let lifetime = base.lifetime || publisher.as_ref().is_some_and(|p| p.lifetime);
+    let owned = base.lifetime || base.yearly || publisher_owned;
+    Some(StoreAnswer {
+        owned,
+        price: base.price,
+        yearly_price: base.yearly_price,
+        free_month: base.free_month,
+        plan: if lifetime { Some("lifetime".into()) } else if owned { Some("yearly".into()) } else { None },
+        publisher: publisher_owned || upgraded,
+        publisher_price: publisher.as_ref().and_then(|p| p.price.clone()),
+        publisher_yearly_price: publisher.as_ref().and_then(|p| p.yearly_price.clone()),
+        upgrade_price: upgrade.and_then(|u| u.price),
+    })
 }
 
 fn now() -> i64 {
@@ -69,23 +124,27 @@ fn ask_store(app: &AppHandle) -> Option<StoreAnswer> {
     #[cfg(target_os = "ios")]
     {
         let _ = app;
-        return tauri_plugin_tbv_ios::store_status(PRODUCT, YEARLY).ok().map(|s| StoreAnswer {
-            owned: s.lifetime || s.yearly,
-            price: s.price,
-            yearly_price: s.yearly_price,
-            free_month: s.free_month,
-            plan: if s.lifetime { Some("lifetime".into()) } else if s.yearly { Some("yearly".into()) } else { None },
+        return apple_answer(|lifetime, yearly| {
+            tauri_plugin_tbv_ios::store_status(lifetime, yearly).map(|s| ApplePair {
+                lifetime: s.lifetime,
+                yearly: s.yearly,
+                price: s.price,
+                yearly_price: s.yearly_price,
+                free_month: s.free_month,
+            })
         });
     }
     #[cfg(target_os = "macos")]
     {
         let _ = app;
-        return mac_store::status(PRODUCT, YEARLY).ok().map(|s| StoreAnswer {
-            owned: s.lifetime || s.yearly,
-            price: s.price,
-            yearly_price: s.yearly_price,
-            free_month: s.free_month,
-            plan: if s.lifetime { Some("lifetime".into()) } else if s.yearly { Some("yearly".into()) } else { None },
+        return apple_answer(|lifetime, yearly| {
+            mac_store::status(lifetime, yearly).map(|s| ApplePair {
+                lifetime: s.lifetime,
+                yearly: s.yearly,
+                price: s.price,
+                yearly_price: s.yearly_price,
+                free_month: s.free_month,
+            })
         });
     }
     #[cfg(windows)]
@@ -180,6 +239,7 @@ mod store {
         let context = context(app).map_err(|e| e.to_string())?;
         let license = context.GetAppLicenseAsync().map_err(|e| e.to_string())?.join().map_err(|e| e.to_string())?;
         let (mut lifetime, mut yearly) = (false, false);
+        let (mut publisher, mut publisher_yearly, mut upgrade) = (false, false, false);
         for pair in license.AddOnLicenses().map_err(|e| e.to_string())? {
             let l = pair.Value().map_err(|e| e.to_string())?;
             if !l.IsActive().unwrap_or(false) {
@@ -188,16 +248,36 @@ mod store {
             match l.InAppOfferToken().map(|t| t.to_string()).unwrap_or_default().as_str() {
                 t if t == super::PRODUCT => lifetime = true,
                 t if t == super::YEARLY => yearly = true,
+                t if t == super::PUBLISHER => publisher = true,
+                t if t == super::PUBLISHER_YEARLY => publisher_yearly = true,
+                t if t == super::UPGRADE => upgrade = true,
                 _ => {}
             }
         }
-        let price_of = |token: &str| product(&context, token).ok().flatten().and_then(|p| p.Price().ok()?.FormattedPrice().ok()).map(|p| p.to_string());
+        // One look at the Store's add-ons gives every price.
+        let mut prices = std::collections::HashMap::new();
+        if let Ok(found) = kinds().and_then(|k| context.GetAssociatedStoreProductsAsync(&k)?.join()).and_then(|f| f.Products()) {
+            for pair in found {
+                let Ok(p) = pair.Value() else { continue };
+                if let (Ok(token), Some(price)) = (p.InAppOfferToken(), p.Price().ok().and_then(|p| p.FormattedPrice().ok())) {
+                    prices.insert(token.to_string(), price.to_string());
+                }
+            }
+        }
+        let price_of = |token: &str| prices.get(token).cloned();
+        let owned = lifetime || yearly || publisher || publisher_yearly;
+        let for_life = lifetime || publisher;
         Ok(StoreAnswer {
-            owned: lifetime || yearly,
+            owned,
             price: price_of(super::PRODUCT),
             yearly_price: price_of(super::YEARLY),
             free_month: false,
-            plan: if lifetime { Some("lifetime".into()) } else if yearly { Some("yearly".into()) } else { None },
+            plan: if for_life { Some("lifetime".into()) } else if owned { Some("yearly".into()) } else { None },
+            // The upgrade only counts on top of TBV for life.
+            publisher: publisher || publisher_yearly || (upgrade && lifetime),
+            publisher_price: price_of(super::PUBLISHER),
+            publisher_yearly_price: price_of(super::PUBLISHER_YEARLY),
+            upgrade_price: price_of(super::UPGRADE),
         })
     }
 

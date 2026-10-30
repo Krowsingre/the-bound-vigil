@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import type { WritingChapter, WritingProject } from "../api/types";
-import { bookOrder, buildEpub, chapterXhtml, epubFileName, epubFiles, exportProblems, readExport, type ExportSettings } from "./epub";
+import { bookOrder, buildEpub, chapterXhtml, epubFileName, epubFiles, exportProblems, passageFonts, readExport, type ExportSettings } from "./epub";
+import { toTitleCase } from "./extensions";
 import { countWords } from "./records";
 
 const project: WritingProject = {
@@ -69,6 +70,36 @@ describe("chapter XHTML", () => {
     expect(second).toContain("She left.<br/>Quietly.");
     expect(second).not.toMatch(/script|onerror|<img/);
     expect(chapterXhtml("<hr>", "line", "c").body).toBe(`<hr class="scene"/>`);
+  });
+});
+
+describe("formatting from the toolbar", () => {
+  it("carries highlights, raised letters, looks and alignment, and nothing else in a style", () => {
+    const html =
+      '<p style="text-align: center; line-height: 2; color: red">A <mark>bright</mark> x<sup>2</sup> H<sub>2</sub>O ' +
+      '<span style="font-family: Lora, serif; font-size: 1.5em; text-transform: uppercase; background: url(x)">loud</span> ' +
+      '<span style="font-variant: small-caps; letter-spacing: 0.12em; word-spacing: 0.2em">quiet</span> ' +
+      '<span style="font-family: Comic Sans MS">plain</span></p>';
+    const { body } = chapterXhtml(html, "asterisks", "c1");
+    expect(body).toBe(
+      '<p style="text-align: center; line-height: 2">A <mark>bright</mark> x<sup>2</sup> H<sub>2</sub>O ' +
+        '<span style="font-family: Lora, serif; font-size: 1.5em; text-transform: uppercase">loud</span> ' +
+        '<span style="font-variant: small-caps; letter-spacing: 0.12em; word-spacing: 0.2em">quiet</span> plain</p>',
+    );
+    expect(chapterXhtml('<h2 style="text-align: right">Heading</h2>', "asterisks", "c1").body).toBe('<h2 id="c1-h1" style="text-align: right">Heading</h2>');
+  });
+
+  it("finds the fonts passages need inside the book", () => {
+    const with_ = (body: string) => ({ ...chapters[0], body });
+    expect(passageFonts([with_('<p><span style="font-family: Echolume, serif">x</span></p>'), with_('<p><span style="font-family: serif">y</span></p>')])).toEqual(["echolume"]);
+    expect(passageFonts([with_("<p>none</p>")])).toEqual([]);
+  });
+
+  it("writes Title Case, keeping small words small", () => {
+    expect(toTitleCase("the lord of the rings")).toBe("The Lord of the Rings");
+    expect(toTitleCase("a tale OF two cities")).toBe("A Tale of Two Cities");
+    expect(toTitleCase("what it ran into")).toBe("What It Ran Into");
+    expect(toTitleCase("my iPhone story")).toBe("My iPhone Story");
   });
 });
 

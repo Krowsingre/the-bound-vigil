@@ -115,6 +115,8 @@ export interface EpubInput {
   settings: ExportSettings;
   cover?: Cover | null;
   font?: EmbeddedFont | null;
+  /** Fonts passages are set in (beyond the book's own), carried so they show as written. */
+  passageFonts?: EmbeddedFont[];
   /** When it was made, for the required "modified" date. */
   now?: Date;
 }
@@ -226,7 +228,54 @@ export function bookOrder(chapters: WritingChapter[]): WritingChapter[] {
   ];
 }
 
-const INLINE: Record<string, string> = { strong: "strong", b: "strong", em: "em", i: "em", u: "u", s: "s", strike: "s", del: "s", code: "code", sub: "sub", sup: "sup" };
+const INLINE: Record<string, string> = { strong: "strong", b: "strong", em: "em", i: "em", u: "u", s: "s", strike: "s", del: "s", code: "code", sub: "sub", sup: "sup", mark: "mark" };
+
+/** The fonts a passage can be set in (see the editor's Font menu), and the ones TBV puts inside the book for them. */
+const PASSAGE_FONTS: Record<string, Exclude<BookFont, "none"> | null> = {
+  "lora, serif": "lora",
+  "echolume, serif": "echolume",
+  serif: null,
+  "sans-serif": null,
+  monospace: null,
+};
+const LENGTH = /^-?\d*\.?\d+(em|%)$/;
+const NUMBER = /^\d*\.?\d+$/;
+
+/** The parts of a passage's look that travel into the EPUB, each checked so nothing else slips into the book. */
+const SPAN_STYLE: Record<string, (v: string) => boolean> = {
+  "font-family": (v) => v.replace(/["']/g, "").toLowerCase() in PASSAGE_FONTS,
+  "font-size": (v) => LENGTH.test(v),
+  "text-transform": (v) => v === "uppercase",
+  "font-variant": (v) => v === "small-caps",
+  "letter-spacing": (v) => LENGTH.test(v),
+  "word-spacing": (v) => LENGTH.test(v),
+};
+const BLOCK_STYLE: Record<string, (v: string) => boolean> = {
+  "text-align": (v) => ["left", "center", "right", "justify"].includes(v),
+  "line-height": (v) => NUMBER.test(v),
+};
+
+/** An element's style, kept to what's allowed, as an attribute ready to write (or ""). */
+function keptStyle(el: Element, allowed: Record<string, (v: string) => boolean>): string {
+  const style = (el as HTMLElement).style;
+  if (!style) return "";
+  const kept = Object.entries(allowed)
+    .map(([prop, ok]) => [prop, style.getPropertyValue(prop).trim(), ok] as const)
+    .filter(([, v, ok]) => v && ok(v))
+    .map(([prop, v]) => `${prop}: ${prop === "font-family" ? v.replace(/["']/g, "") : v}`);
+  return kept.length ? ` style="${escapeXml(kept.join("; "))}"` : "";
+}
+
+/** The fonts the book's passages are set in that TBV has to put inside it. */
+export function passageFonts(chapters: WritingChapter[]): Exclude<BookFont, "none">[] {
+  const found = new Set<Exclude<BookFont, "none">>();
+  for (const c of chapters)
+    for (const m of c.body.matchAll(/font-family:\s*([^;"]+?)\s*(?:;|")/gi)) {
+      const font = PASSAGE_FONTS[m[1].replace(/&quot;|["']/g, "").toLowerCase()];
+      if (font) found.add(font);
+    }
+  return [...found];
+}
 const BLOCK: Record<string, string> = { p: "p", blockquote: "blockquote", ul: "ul", ol: "ol", li: "li", pre: "pre" };
 
 /**
@@ -285,7 +334,7 @@ export function chapterXhtml(
       const level = tag === "h1" || tag === "h2" ? 2 : 3;
       const id = `${idPrefix}-h${headings.length + 1}`;
       headings.push({ level, text: (el.textContent ?? "").trim().replace(/\s+/g, " "), id });
-      out.push(`<h${level} id="${id}">`);
+      out.push(`<h${level} id="${id}"${keptStyle(el, BLOCK_STYLE)}>`);
       children(true);
       out.push(`</h${level}>`);
     } else if (tag === "a") {
@@ -295,6 +344,12 @@ export function chapterXhtml(
         children(true);
         out.push("</a>");
       } else children(inBlock);
+    } else if (tag === "span" && keptStyle(el, SPAN_STYLE)) {
+      if (!inBlock) out.push("<p>");
+      out.push(`<span${keptStyle(el, SPAN_STYLE)}>`);
+      children(true);
+      out.push("</span>");
+      if (!inBlock) out.push("</p>");
     } else if (INLINE[tag]) {
       const t = INLINE[tag];
       if (!inBlock) out.push("<p>");
@@ -309,7 +364,7 @@ export function chapterXhtml(
         out.push(`<p class="blank"> </p>`);
         return;
       }
-      out.push(`<${t}>`);
+      out.push(`<${t}${t === "p" ? keptStyle(el, BLOCK_STYLE) : ""}>`);
       // Lists and quotes hold blocks; the rest hold text.
       children(t === "p" || t === "li" || t === "pre");
       out.push(`</${t}>`);
@@ -337,9 +392,17 @@ ${body}
 `;
 }
 
-function stylesheet(settings: ExportSettings, font: EmbeddedFont | null | undefined): string {
-  const faces = (font?.files ?? [])
-    .map((f) => `@font-face {\n  font-family: "${font!.family}";\n  src: url("fonts/${f.name}");\n  font-weight: ${f.weight};\n  font-style: ${f.style};\n}\n`)
+/** Every font the book carries, the book's own first, each once. */
+function carried(font: EmbeddedFont | null | undefined, passage: EmbeddedFont[] = []): EmbeddedFont[] {
+  const all = [...(font ? [font] : []), ...passage];
+  return all.filter((f, i) => all.findIndex((g) => g.family === f.family) === i);
+}
+
+function stylesheet(settings: ExportSettings, font: EmbeddedFont | null | undefined, passage: EmbeddedFont[] = []): string {
+  const faces = carried(font, passage)
+    .flatMap((each) =>
+      each.files.map((f) => `@font-face {\n  font-family: "${each.family}";\n  src: url("fonts/${f.name}");\n  font-weight: ${f.weight};\n  font-style: ${f.style};\n}\n`),
+    )
     .join("");
   const family = font ? `  font-family: "${font.family}", serif;\n` : "";
   return `${faces}body {
@@ -354,6 +417,7 @@ ${
     ? `p { margin: 0; text-indent: 1.5em; text-align: ${settings.align}; }`
     : `p { margin: 0 0 0.9em; text-indent: 0; text-align: ${settings.align}; }`
 }
+p[style*="text-align: center"], p[style*="text-align: right"] { text-indent: 0; }
 h1 + p, h2 + p, h3 + p, .scene + p, hr + p, blockquote + p, .blank + p, .picture + p, p:first-child { text-indent: 0; }
 ${settings.dropCap ? "section.chapter > h1 + p::first-letter { float: left; font-size: 3.2em; line-height: 0.85; margin: 0.05em 0.08em 0 0; }\n" : ""}${
   settings.smallCaps ? "section.chapter > h1 + p::first-line { font-variant: small-caps; letter-spacing: 0.03em; }\n" : ""
@@ -410,7 +474,8 @@ export interface Built {
 }
 
 /** Every file of the EPUB, before zipping (tests read these). */
-export function epubFiles({ project, chapters, settings, cover, font, now = new Date() }: EpubInput): Built {
+export function epubFiles({ project, chapters, settings, cover, font, passageFonts: passage = [], now = new Date() }: EpubInput): Built {
+  const fontFiles = carried(font, passage).flatMap((f) => f.files);
   const lang = project.language?.trim() || "en";
   const title = project.title.trim() || "Untitled";
   const modified = now.toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -574,7 +639,7 @@ ${navPoints(points)}
     : null;
 
   const pictures = parts.flatMap((p) => p.pictures);
-  const fontItems = (font?.files ?? []).map((f, i) => `<item id="font${i + 1}" href="fonts/${f.name}" media-type="font/woff2"/>`);
+  const fontItems = fontFiles.map((f, i) => `<item id="font${i + 1}" href="fonts/${f.name}" media-type="font/woff2"/>`);
   const manifest = [
     `<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>`,
     `<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>`,
@@ -633,13 +698,13 @@ ${spine.join("\n")}
     ["OEBPS/content.opf", opf],
     ["OEBPS/nav.xhtml", nav],
     ["OEBPS/toc.ncx", ncx],
-    ["OEBPS/styles.css", stylesheet(settings, font)],
+    ["OEBPS/styles.css", stylesheet(settings, font, passage)],
     ...(coverPage ? ([["OEBPS/cover.xhtml", coverPage]] as [string, string][]) : []),
     ...(useCover ? ([[`OEBPS/images/cover.${coverExt}`, cover!.bytes]] as [string, Uint8Array][]) : []),
     ...(showTitle ? ([["OEBPS/titlepage.xhtml", titlePage]] as [string, string][]) : []),
     ...content.map(([name, text]) => [`OEBPS/${name}`, text] as [string, string]),
     ...pictures.map((p) => [`OEBPS/${p.path}`, p.bytes] as [string, Uint8Array]),
-    ...(font?.files ?? []).map((f) => [`OEBPS/fonts/${f.name}`, f.bytes] as [string, Uint8Array]),
+    ...fontFiles.map((f) => [`OEBPS/fonts/${f.name}`, f.bytes] as [string, Uint8Array]),
   ];
   return { files };
 }

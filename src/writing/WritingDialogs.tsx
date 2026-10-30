@@ -6,7 +6,7 @@ import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { buildEpub, epubFileName, exportProblems, readExport, type ExportSettings } from "./epub";
-import { imageMime, loadFont } from "./fonts";
+import { imageMime, loadBookFonts } from "./fonts";
 import { CoverMaker } from "./CoverMaker";
 import { startingTitle, TEMPLATES, templateSections, type Template } from "./pages";
 
@@ -14,7 +14,7 @@ import { startingTitle, TEMPLATES, templateSections, type Template } from "./pag
 export async function makeEpub(project: WritingProject, chapters: WritingChapter[], settings: ExportSettings): Promise<Uint8Array> {
   const coverBytes = project.cover ? await api.writingCover(project.id) : new Uint8Array();
   const mime = coverBytes.length ? imageMime(coverBytes) : null;
-  return buildEpub({ project, chapters, settings, cover: mime ? { bytes: coverBytes, mime } : null, font: await loadFont(settings.font) });
+  return buildEpub({ project, chapters, settings, cover: mime ? { bytes: coverBytes, mime } : null, ...(await loadBookFonts(settings, chapters)) });
 }
 
 const OPENS_WITH: { value: WritingProject["coverPage"]; label: string }[] = [

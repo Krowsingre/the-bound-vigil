@@ -889,8 +889,8 @@ function YourCopy() {
   const words =
     license.state === "owned"
       ? license.plan === "yearly"
-        ? `On the yearly plan from ${shopName(license.shop)}. Thank you. It renews each year; ${license.shop === "apple" ? "manage it in your Apple ID's Subscriptions" : "manage it in the Microsoft Store's Subscriptions"}.`
-        : `Bought in ${shopName(license.shop)}. Thank you.`
+        ? `On the ${license.publisher ? "Publisher " : ""}yearly plan from ${shopName(license.shop)}. Thank you. It renews each year; ${license.shop === "apple" ? "manage it in your Apple ID's Subscriptions" : "manage it in the Microsoft Store's Subscriptions"}.`
+        : `${license.publisher ? "TBV Publisher, bought" : "Bought"} in ${shopName(license.shop)}. Thank you.`
       : license.trialDays > 0
         ? `${license.daysLeft === 1 ? "1 day" : `${license.daysLeft} days`} left of your free trial (until ${ends}). Choose a plan to keep using it after that.`
         : "Choose a plan to use The Bound Vigil.";
@@ -982,7 +982,7 @@ function AboutVersion({ version }: { version: string }) {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.47.0");
+  const [version, setVersion] = useState("1.48.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

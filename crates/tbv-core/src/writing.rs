@@ -14,6 +14,11 @@ use crate::library::Library;
 use crate::model::IsoUtc;
 use crate::time::now_utc;
 
+/// The folder inside the pictures that holds the shelf's smaller covers.
+pub(crate) const SMALL_COVERS: &str = "small";
+/// How tall a shelf cover is kept: sharp at the shelf's size on any screen.
+const SMALL_COVER_HEIGHT: u32 = 600;
+
 const MAX_TITLE_CHARS: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -30,6 +35,9 @@ pub struct WritingProject {
     pub cover: Option<String>,
     /// The cover's file on this device, when it's here.
     pub cover_path: Option<String>,
+    /// A smaller copy of the cover for showing on the shelf: a full-size
+    /// cover shrunk in one step by the web view looks jagged.
+    pub cover_small_path: Option<String>,
     /// What opens the book: none for the cover picture then a title page,
     /// or only `cover`, only `title`, or `none` of them.
     pub cover_page: Option<String>,
@@ -234,6 +242,7 @@ impl Library {
                         description: r.get(6)?,
                         cover: r.get(7)?,
                         cover_path: None,
+                        cover_small_path: None,
                         cover_page: r.get(11)?,
                         export: r.get(8)?,
                         chapters: 0,
@@ -257,10 +266,12 @@ impl Library {
             .map(|file| self.paths.pictures_dir.join(file))
             .filter(|p| p.exists())
             .map(|p| p.display().to_string());
+        let cover_small_path = cover_path.as_deref().and_then(|p| self.small_cover(Path::new(p)));
         Ok(WritingProject {
             chapters: bodies.len() as u32,
             words: bodies.iter().map(|b| count_words(b)).sum(),
             cover_path,
+            cover_small_path,
             ..project
         })
     }
@@ -627,6 +638,26 @@ impl Library {
         Ok(())
     }
 
+    /// The shelf's copy of a cover, made the first time it's needed and kept
+    /// (beside the pictures, in `small`). None when it can't be made, and the
+    /// full-size cover is shown instead.
+    fn small_cover(&self, cover: &Path) -> Option<String> {
+        let stem = cover.file_stem()?.to_string_lossy().into_owned();
+        let small = self.paths.pictures_dir.join(SMALL_COVERS).join(format!("{stem}.jpg"));
+        if !small.exists() {
+            let image = image::open(cover).ok()?;
+            if image.height() <= SMALL_COVER_HEIGHT {
+                return None;
+            }
+            let image = image.resize(SMALL_COVER_HEIGHT, SMALL_COVER_HEIGHT, image::imageops::FilterType::Lanczos3);
+            std::fs::create_dir_all(small.parent()?).ok()?;
+            let part = small.with_extension("part");
+            image.to_rgb8().save_with_format(&part, image::ImageFormat::Jpeg).ok()?;
+            std::fs::rename(&part, &small).ok()?;
+        }
+        Some(small.display().to_string())
+    }
+
     /// The cover picture's bytes, for putting into the EPUB.
     pub fn writing_cover_bytes(&self, id: &str) -> Result<Option<(Vec<u8>, String)>> {
         let project = self.writing_project_row(id)?;
@@ -736,6 +767,21 @@ mod tests {
         assert_eq!(library.writing_cover_bytes(&view.project.id).unwrap().unwrap().1, "png");
         library.delete_writing_project(&view.project.id).unwrap();
         assert!(!Path::new(&path).exists());
+    }
+
+    #[test]
+    fn a_large_cover_gets_a_small_copy_for_the_shelf() {
+        let (dir, library) = open_temp_library();
+        let view = library.create_writing_project("Big cover", None).unwrap();
+        let picture = dir.path().join("big.png");
+        image::RgbImage::new(400, 1200).save(&picture).unwrap();
+        let project = library.set_writing_cover(&view.project.id, Some(&picture)).unwrap();
+        let small = project.cover_small_path.expect("a small copy");
+        assert_eq!(image::image_dimensions(&small).unwrap(), (200, 600));
+        // The full-size one is still what the book gets.
+        assert_ne!(project.cover_path.as_deref(), Some(small.as_str()));
+        library.delete_writing_project(&view.project.id).unwrap();
+        assert!(!Path::new(&small).exists());
     }
 
     #[test]
