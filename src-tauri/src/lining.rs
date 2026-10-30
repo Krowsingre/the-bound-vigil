@@ -12,9 +12,9 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
@@ -117,6 +117,8 @@ struct Engine {
     library: Arc<Mutex<Library>>,
     data_dir: PathBuf,
     paused: AtomicBool,
+    /// When a timed pause ends, in milliseconds since 1970; 0 while paused means until it's carried on by hand.
+    paused_until: AtomicU64,
     /// Pause once the pair being lined up now is finished.
     pause_after: AtomicBool,
     status: Mutex<Option<Status>>,
@@ -166,11 +168,21 @@ pub fn start(app: &AppHandle, library: Arc<Mutex<Library>>, data_dir: PathBuf) {
         library,
         data_dir,
         paused: AtomicBool::new(false),
+        paused_until: AtomicU64::new(0),
         pause_after: AtomicBool::new(false),
         switch: AtomicBool::new(false),
         status: Mutex::new(None),
         wake: (Mutex::new(false), Condvar::new()),
     });
+    // A pause lasts until it's carried on (or its time is up), even across closing TBV and updates.
+    if let Some(until) = read_pause(&engine.data_dir) {
+        if until == 0 || until > now_ms() {
+            engine.paused.store(true, Ordering::Relaxed);
+            engine.paused_until.store(until, Ordering::Relaxed);
+        } else {
+            let _ = std::fs::remove_file(pause_path(&engine.data_dir));
+        }
+    }
     if ENGINE.set(engine.clone()).is_err() {
         return;
     }
@@ -192,6 +204,10 @@ fn run(engine: &Engine) {
     loop {
         engine.switch.store(false, Ordering::Relaxed);
         let set = settings(&engine.library);
+        let until = engine.paused_until.load(Ordering::Relaxed);
+        if engine.paused.load(Ordering::Relaxed) && until != 0 && now_ms() >= until {
+            set_pause(engine, false, 0);
+        }
         let paused = engine.paused.load(Ordering::Relaxed);
         if !set.on() || paused {
             ear = None;
@@ -259,8 +275,7 @@ fn run(engine: &Engine) {
         }
         // A pair stopped for another isn't finished, so "pause after this" waits on.
         if !stopped && engine.pause_after.swap(false, Ordering::Relaxed) {
-            engine.paused.store(true, Ordering::Relaxed);
-            let _ = engine.app.emit("lining-up-paused", true);
+            set_pause(engine, true, 0);
         }
     }
 }
@@ -386,6 +401,48 @@ fn background_work(busy: bool, background: bool) {
     let _ = (busy, background);
 }
 
+// ---- Pausing ----
+
+fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+}
+
+fn pause_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("lining-up-paused.json")
+}
+
+/// The pause kept from last time: when it ends (0: when it's carried on by hand), or None for no pause.
+fn read_pause(data_dir: &Path) -> Option<u64> {
+    #[derive(Deserialize)]
+    struct Kept {
+        until: Option<u64>,
+    }
+    let kept: Kept = serde_json::from_slice(&std::fs::read(pause_path(data_dir)).ok()?).ok()?;
+    Some(kept.until.unwrap_or(0))
+}
+
+/// Pauses or carries on, keeping the choice for next time TBV opens, and tells the page.
+fn set_pause(engine: &Engine, paused: bool, until: u64) {
+    engine.paused.store(paused, Ordering::Relaxed);
+    engine.paused_until.store(if paused { until } else { 0 }, Ordering::Relaxed);
+    let path = pause_path(&engine.data_dir);
+    if paused {
+        let kept = serde_json::json!({ "until": (until != 0).then_some(until) });
+        let _ = std::fs::write(&path, kept.to_string());
+    } else {
+        let _ = std::fs::remove_file(&path);
+    }
+    let _ = engine.app.emit("lining-up-paused", paused);
+}
+
+/// Whether lining up is paused, and until when (null: until it's carried on).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Pause {
+    pub paused: bool,
+    pub until: Option<u64>,
+}
+
 // ---- Commands ----
 
 #[tauri::command]
@@ -393,10 +450,12 @@ pub fn lining_up_status() -> Option<Status> {
     ENGINE.get().and_then(|e| e.status.lock().ok()?.clone())
 }
 
+/// Pauses (for `hours`, or until carried on when there are none) or carries on.
 #[tauri::command]
-pub fn lining_up_pause(paused: bool) {
+pub fn lining_up_pause(paused: bool, hours: Option<f64>) {
     if let Some(e) = ENGINE.get() {
-        e.paused.store(paused, Ordering::Relaxed);
+        let until = hours.filter(|h| *h > 0.0).map_or(0, |h| now_ms() + (h * 3_600_000.0) as u64);
+        set_pause(e, paused, until);
         e.pause_after.store(false, Ordering::Relaxed);
         e.wake();
     }
@@ -411,8 +470,11 @@ pub fn lining_up_pause_after(on: bool) {
 }
 
 #[tauri::command]
-pub fn lining_up_paused() -> bool {
-    ENGINE.get().is_some_and(|e| e.paused.load(Ordering::Relaxed))
+pub fn lining_up_paused() -> Pause {
+    let Some(e) = ENGINE.get() else { return Pause { paused: false, until: None } };
+    let paused = e.paused.load(Ordering::Relaxed);
+    let until = e.paused_until.load(Ordering::Relaxed);
+    Pause { paused, until: (paused && until != 0).then_some(until) }
 }
 
 /// The read-along queue changed: whatever is first now is lined up next,
@@ -435,7 +497,7 @@ pub fn lining_up_wake() {
 /// The ebook's words, worked out by the reader in the page.
 #[tauri::command]
 pub fn save_book_words(ebook_id: String, words: BookWords) -> Result<(), String> {
-    let e = ENGINE.get().ok_or("Lining up hasn't started.")?;
+    let e = ENGINE.get().ok_or("Confluence hasn't started.")?;
     let dir = words_dir(&e.data_dir);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = words_path(&e.data_dir, &ebook_id);
@@ -459,11 +521,12 @@ pub fn speech_models() -> Vec<(String, u64)> {
 /// Removes the downloaded speech models (they come down again when needed).
 #[tauri::command]
 pub fn remove_speech_models() -> Result<(), String> {
-    let e = ENGINE.get().ok_or("Lining up hasn't started.")?;
-    e.paused.store(true, Ordering::Relaxed);
+    let e = ENGINE.get().ok_or("Confluence hasn't started.")?;
+    // Held still while the files go, then back as it was (a pause the person chose stays).
+    let was = e.paused.swap(true, Ordering::Relaxed);
     let dir = speech_dir(&e.data_dir);
     let result = if dir.exists() { std::fs::remove_dir_all(&dir).map_err(|e| e.to_string()) } else { Ok(()) };
-    e.paused.store(false, Ordering::Relaxed);
+    e.paused.store(was, Ordering::Relaxed);
     e.wake();
     result
 }

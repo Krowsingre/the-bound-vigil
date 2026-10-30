@@ -21,6 +21,7 @@ mod license;
 mod lining;
 mod localsend;
 mod moving;
+mod copycheck;
 mod print;
 mod protection;
 mod push;
@@ -1985,6 +1986,8 @@ pub fn run() {
             abs_stream::server_audiobook,
             abs_stream::server_listening,
             print::print_book,
+            copycheck::copy_check,
+            copycheck::copy_check_stop,
             print::print_job,
             print::print_laid_out,
             lining::lining_up_status,

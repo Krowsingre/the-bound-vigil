@@ -5,22 +5,28 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { useToast } from "../components/Toast";
-import { bookOrder, buildEpub, epubFileName, exportProblems, readExport, type ExportSettings } from "./epub";
+import { bookOrder, buildEpub, epubFileName, exportProblems, readExport, type EpubInput, type ExportSettings } from "./epub";
 import { imageMime, loadBookFonts } from "./fonts";
 import { makeCiter } from "./sources";
 import { CoverMaker } from "./CoverMaker";
+import { pagesKey } from "./PaperbackCover";
 import { BOOK_STYLES, chooseStyle } from "./bookStyles";
 import { buildDocx } from "./docx";
 import { printHtml, TRIMS } from "./printBook";
 import { bookFileName, buildTxt } from "./txt";
 import { startingTitle, TEMPLATES, templateSections, type Template } from "./pages";
 
-/** The book made into an EPUB, with its cover and the font chosen. */
-export async function makeEpub(project: WritingProject, chapters: WritingChapter[], settings: ExportSettings): Promise<Uint8Array> {
+/** Everything an export is made from: the book, its cover, its sources and the fonts chosen. */
+export async function bookInput(project: WritingProject, chapters: WritingChapter[], settings: ExportSettings): Promise<EpubInput> {
   const coverBytes = project.cover ? await api.writingCover(project.id) : new Uint8Array();
   const mime = coverBytes.length ? imageMime(coverBytes) : null;
   const citer = await makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters));
-  return buildEpub({ project, chapters, settings, cover: mime ? { bytes: coverBytes, mime } : null, citer, ...(await loadBookFonts(settings, chapters)) });
+  return { project, chapters, settings, cover: mime ? { bytes: coverBytes, mime } : null, citer, ...(await loadBookFonts(settings, chapters)) };
+}
+
+/** The book made into an EPUB, with its cover and the font chosen. */
+export async function makeEpub(project: WritingProject, chapters: WritingChapter[], settings: ExportSettings): Promise<Uint8Array> {
+  return buildEpub(await bookInput(project, chapters, settings));
 }
 
 const OPENS_WITH: { value: WritingProject["coverPage"]; label: string }[] = [
@@ -349,12 +355,7 @@ export function ExportDialog({
   const hasParts = chapters.some((c) => c.role === "part");
   const lede = FORMATS.find((f) => f.value === format)!.lede;
 
-  const input = async (latest: WritingChapter[], s: ExportSettings) => {
-    const coverBytes = project.cover ? await api.writingCover(project.id) : new Uint8Array();
-    const mime = coverBytes.length ? imageMime(coverBytes) : null;
-    const citer = await makeCiter(s.citationStyle, s.sources, bookOrder(latest));
-    return { project, chapters: latest, settings: s, cover: mime ? { bytes: coverBytes, mime } : null, citer, ...(await loadBookFonts(s, latest)) };
-  };
+  const input = (latest: WritingChapter[], s: ExportSettings) => bookInput(project, latest, s);
 
   const make = async () => {
     if (format === "epub" && !addToLibrary && !saveCopy) return setError("Choose where the EPUB goes.");
@@ -380,6 +381,11 @@ export function ExportDialog({
         const latest = await onFlush();
         await api.setWritingExport(project.id, JSON.stringify(settings));
         const pages = await api.printBook(printHtml(await input(latest, forPrint(settings)), settings.print), path);
+        try {
+          localStorage.setItem(pagesKey(project.id), String(pages));
+        } catch {
+          // The cover maker guesses from the words instead.
+        }
         toast(path ? `The PDF has been saved: ${pages} pages.` : `${pages} pages, ready to print or save as a PDF.`);
         return onClose();
       }

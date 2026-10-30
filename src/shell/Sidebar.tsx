@@ -134,11 +134,11 @@ export function Sidebar({
                   type="button"
                   className="nav-item nav-imports nav-lining"
                   onClick={() => onNavigate("lining")}
-                  title={`Lining up ${lining.title || "a book"} with its audiobook: ${liningPercent}%`}
+                  title={`${lining.title || "A book"} is converging with its audiobook: ${liningPercent}%`}
                 >
                   <Icon name="headphones" size={20} />
                   <span className="nav-label">
-                    Lining up
+                    Converging
                     {lining.title && <span className="nav-caption">{lining.title}</span>}
                   </span>
                   <span className="nav-count">{liningPercent}%</span>

@@ -74,7 +74,7 @@ interface LineUpSettings {
 const LINE_UP_DEFAULTS: LineUpSettings = { auto: !isIOS, model: "standard", effort: "gentle", background: true, agreed: false };
 /** Said before lining up is turned on on a phone, and under the switch. */
 export const PHONE_LINE_UP_WARNING =
-  "Lining up works the phone's processor hard for a long time. It can drain the battery, even when the phone is plugged in, and it may make the phone overheat. TBV pauses when the phone gets too warm and carries on once it has cooled down. A computer with TBV open lines pairs up for your phone as well.";
+  "Confluence works the phone's processor hard for a long time. It can drain the battery, even when the phone is plugged in, and it may make the phone overheat. TBV pauses when the phone gets too warm and carries on once it has cooled down. A computer with TBV open converges pairs for your phone as well.";
 const LINE_UP_KEY = "readAlong.lineUp";
 
 /** How this device lines up books with their audiobooks, word by word. */
@@ -109,21 +109,21 @@ function ReadAlongSection() {
     <Section
       id="read-along"
       title="Read-along"
-      lede="A book paired with its audiobook is lined up word by word, so the words light up as they're read. Activity shows how far each pair has got."
+      lede="A book paired with its audiobook converges with it word by word in Confluence, so the words light up as they're read. Activity shows how far each pair has got."
     >
       <Toggle
-        label="Line up pairs by itself"
+        label="Run Confluence by itself"
         hint={
           isIOS
             ? `Off unless you turn it on. ${PHONE_LINE_UP_WARNING}`
-            : "When it's off, nothing is lined up on this device. Pairs still follow along by chapter."
+            : "When it's off, nothing converges on this device. Pairs still follow along by chapter."
         }
         checked={set.auto && (!isIOS || set.agreed)}
         onChange={(auto) => (auto && isIOS ? setAsking(true) : change({ auto }))}
       />
       {asking && (
         <ConfirmDialog
-          title="Line up on this phone?"
+          title="Run Confluence on this phone?"
           body={PHONE_LINE_UP_WARNING}
           confirm="Turn on"
           onConfirm={() => {
@@ -133,7 +133,7 @@ function ReadAlongSection() {
           onCancel={() => setAsking(false)}
         />
       )}
-      <Row label="Accuracy" hint="Applies to what is lined up from now on." stack>
+      <Row label="Accuracy" hint="Applies to what converges from now on." stack>
         <RadioList<LineUpSettings["model"]>
           label="Accuracy"
           value={set.model}
@@ -163,7 +163,7 @@ function ReadAlongSection() {
           onChange={(background) => change({ background })}
         />
       )}
-      <Row label="Speech model" hint={size ? `${formatBytes(size)} on this device.` : "Not downloaded yet. It's fetched the first time a pair is lined up."}>
+      <Row label="Speech model" hint={size ? `${formatBytes(size)} on this device.` : "Not downloaded yet. It's fetched the first time a pair converges."}>
         {size > 0 && (
           <button
             type="button"
@@ -994,7 +994,7 @@ function AboutVersion({ version }: { version: string }) {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.52.0");
+  const [version, setVersion] = useState("1.53.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));
