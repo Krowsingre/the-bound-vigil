@@ -171,6 +171,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "read_along_holder",
+        table: "read_along_holders",
+        keys: &["device_id", "ebook_id", "audiobook_id"],
+        cols: &["held", "updated_at"],
+        category: Category::Progress,
+        creates: true,
+    },
+    Kind {
         name: "series",
         table: "series_lists",
         keys: &["id"],
@@ -1436,6 +1444,7 @@ impl Library {
             "read_along" => format!("Read-along: {}", book(0)),
             "read_along_piece" => format!("Read-along lined up a little further: {}", book(0)),
             "read_along_queue" => format!("Read-along queue: {}", book(0)),
+            "read_along_holder" => format!("Downloaded for Confluence: {}", book(1)),
             "series" => named("Series", text("name")),
             "collection" => named(if gone { "Compendium removed" } else { "Compendium" }, text("name")),
             "collection_book" => format!("Compendium book: {}", book(1)),
@@ -1709,6 +1718,7 @@ impl Library {
             "read_along" => format!("Read-along timing{}", book(key.first())?),
             "read_along_piece" => format!("A piece of read-along timing{}", book(key.first())?),
             "read_along_queue" => format!("Its place in the read-along queue{}", book(key.first())?),
+            "read_along_holder" => format!("Which devices can converge{}", book(key.get(1))?),
             "writing_draft" => "A draft of a book in Scribe".into(),
             "reading_history" => format!("A book in your reading history: {}", field("title").unwrap_or_default()),
             _ => format!("The note {}", field("title").filter(|t| !t.is_empty()).unwrap_or_else(|| "without a title".into())),
@@ -2197,6 +2207,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
             }
         }
         "book_same" => if text("same_as").is_empty() { "A book of its own".into() } else { "Kept with another copy".into() },
+        "read_along_holder" => if data.get("held").and_then(Value::as_i64) == Some(1) { "Both halves downloaded".into() } else { "Not both downloaded".into() },
         "read_along_queue" => if data.get("queued").and_then(Value::as_i64) == Some(0) { "Left out of lining up".into() } else { "Queued to line up".into() },
         "book_pin" => if text("pinned_at").is_empty() { "Unpinned".into() } else { "Pinned to the top of the Archive".into() },
         "book" => short(text("title")),
@@ -2627,6 +2638,8 @@ fn pull(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, 
 
 fn push(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, lane: Lane, report: &mut SyncReport) -> Result<()> {
     tell(SyncEvent::Step { lane, step: SyncStep::Sending });
+    // Other devices learn which read-along pairs this one can converge.
+    let _ = lock()?.note_read_along_holdings();
     let mut seen = HashSet::new();
     loop {
         let batch = lock()?.lane_outbox(options, BATCH, lane)?;

@@ -1959,8 +1959,40 @@
     align-items: center;
   }
 
-
   .previews-turn {
     margin-left: 0;
   }
+}
+
+/* What to know about ISBNs, on the Copyright page and in the check before uploading. */
+.isbn-guide {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.isbn-guide summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.isbn-guide h4 {
+  margin: 12px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.isbn-guide p,
+.isbn-guide ul {
+  margin: 6px 0 0;
+}
+
+.isbn-guide ul {
+  padding-left: 18px;
+}
+
+.isbn-guide li + li {
+  margin-top: 4px;
 }

@@ -8,6 +8,7 @@ import type { WritingChapter, WritingProject } from "../api/types";
 import { Icon } from "../components/Icon";
 import { bookOrder, copyrightHtml, madeSectionHtml, previewHtml, type ExportSettings } from "./epub";
 import { imageMime, loadBookFonts } from "./fonts";
+import { IsbnGuide } from "./IsbnGuide";
 import { makeCiter, type Citer } from "./sources";
 import { DEFAULT_RIGHTS, KINDS, readPage, type CopyrightDetails } from "./pages";
 
@@ -217,6 +218,7 @@ export function MadePage({
           {field("Publisher", copyright.publisher, (publisher) => change({ publisher }), "None")}
           {field("Rights", copyright.rights, (rights) => change({ rights }), DEFAULT_RIGHTS, true)}
           {field("Notice", copyright.notice, (notice) => change({ notice }), "e.g. This is a work of fiction. Names and places are the author's invention.", true)}
+          <IsbnGuide />
         </div>
       )}
       <div className={`made-page-preview made-${page.kind}`} aria-label="What the page will say" dangerouslySetInnerHTML={{ __html: shown }} />

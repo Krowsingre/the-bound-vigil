@@ -747,17 +747,20 @@ export function previewApi(): Api {
       pieces.delete(`${ebookId}|${audiobookId}`);
     },
     readAlongPairs: async () => {
-      const pairs = [...linked].flatMap(([audiobookId, ebookId]) => {
+      // The second pair isn't downloaded on any device, so Confluence shows why it waits.
+      const pairs = [...linked].flatMap(([audiobookId, ebookId], index) => {
         const ebook = books.find((b) => b.id === ebookId);
         if (!ebook) return [];
         const key = `${ebookId}|${audiobookId}`;
         const q = queue.get(key);
+        const here = index !== 1;
         return [
           {
             ebookId,
             audiobookId,
             ebookFormat: ebook.format,
-            here: true,
+            here,
+            somewhere: here,
             timing: timings.get(key) ?? null,
             pieces: pieces.get(key)?.size ?? 0,
             queued: q?.queued ?? true,
@@ -925,7 +928,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "1.54.0", version: "1.55.0", notes: "The Bound Vigil 1.55.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "1.55.0", version: "1.56.0", notes: "The Bound Vigil 1.56.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

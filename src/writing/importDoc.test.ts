@@ -91,7 +91,7 @@ describe("Pre-upload check", () => {
     const titles = found.filter((f) => f.level === "problem").map((f) => f.title);
     expect(titles).toContain("There's no author's name");
     expect(titles).toContain("There's no cover");
-    expect(titles).toContain("IngramSpark needs your own ISBN");
+    expect(titles).toContain("IngramSpark needs an ISBN");
     expect(titles).toContain("Links to Amazon");
     expect(titles).toContain("Unfinished words");
     expect(titles).toContain("Too few pages for IngramSpark");
