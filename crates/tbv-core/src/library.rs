@@ -584,6 +584,19 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (ebook_id, audiobook_id)
     );
     "#,
+    // v33: which devices have both halves of a read-along pair downloaded,
+    // one row per device, synced (read_along_holder). A pair no device holds
+    // can't converge anywhere, so it waits outside the queue.
+    r#"
+    CREATE TABLE read_along_holders (
+        device_id TEXT NOT NULL,
+        ebook_id TEXT NOT NULL,
+        audiobook_id TEXT NOT NULL,
+        held INTEGER NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (device_id, ebook_id, audiobook_id)
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

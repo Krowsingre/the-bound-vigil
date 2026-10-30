@@ -975,6 +975,8 @@ export interface ReadAlongPair {
   ebookFormat: string;
   /** Both files are on this device, so it can line them up. */
   here: boolean;
+  /** Both files are on this device or another one, so it can converge somewhere. Pairs that can't wait outside the queue. */
+  somewhere: boolean;
   /** The timing kept for the pair (JSON), if any. */
   timing: string | null;
   /** How many pieces are lined up so far. */

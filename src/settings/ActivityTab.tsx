@@ -78,8 +78,9 @@ function LiningUpPane() {
   );
   const [reload, setReload] = useState(0);
   const [view, setView] = useState<"queued" | "out">("queued");
-  const queued = (rows ?? []).filter((r) => r.pair.queued && stillToDo(r.pair));
-  const out = (rows ?? []).filter((r) => !r.pair.queued && stillToDo(r.pair));
+  // A pair no device has both halves of can't converge anywhere, so it waits outside the queue, saying why.
+  const queued = (rows ?? []).filter((r) => r.pair.queued && r.pair.somewhere && stillToDo(r.pair));
+  const out = (rows ?? []).filter((r) => (!r.pair.queued || !r.pair.somewhere) && stillToDo(r.pair));
   const finished = (rows ?? []).filter((r) => !stillToDo(r.pair));
   const order = queued.map((r) => keyOf(r.pair));
   // Shown at once; the next look at the list confirms it.
@@ -234,13 +235,18 @@ function LiningUpPane() {
                 <p className="settings-row-hint">Every pair still to converge is in the queue.</p>
               ) : (
                 <>
-                  <p className="settings-row-hint">These pairs don't converge until you add them to the queue.</p>
+                  <p className="settings-row-hint">
+                    These pairs don't converge until you add them to the queue. A pair needs the book and its audiobook both downloaded on at least one device, and joins the
+                    queue by itself once they are.
+                  </p>
                   <ul className="imports-list">
                     {out.map((r) => (
                       <PairRow key={keyOf(r.pair)} row={r} now={now} paused={paused}>
-                        <button type="button" className="btn btn-quiet" onClick={() => setQueued(r, true)}>
-                          <Icon name="plus" size={16} /> Add to queue
-                        </button>
+                        {r.pair.somewhere && !r.pair.queued && (
+                          <button type="button" className="btn btn-quiet" onClick={() => setQueued(r, true)}>
+                            <Icon name="plus" size={16} /> Add to queue
+                          </button>
+                        )}
                       </PairRow>
                     ))}
                   </ul>
@@ -327,9 +333,15 @@ function state(pair: ReadAlongPair, live: LiningUp | null, paused: boolean): { t
       text: `Converging now: ${Math.floor(live.fraction * 100)}%`,
       tone: "same",
     };
+  if (!pair.somewhere)
+    return {
+      text: `${sofar ? `${sofar}% so far. ` : ""}Not queued: no device has both the book and the audiobook downloaded`,
+      tone: "same",
+    };
+  if (!pair.queued) return { text: sofar ? `${sofar}% so far. Left out of the queue` : "Left out of the queue", tone: "same" };
   if (!pair.here)
     return {
-      text: `${sofar}% so far. Waits for a device with both the book and the audiobook downloaded`,
+      text: `${sofar}% so far. Converges on another device that has both downloaded`,
       tone: "same",
     };
   if (paused) return { text: `${sofar}% so far. Paused on this device`, tone: "same" };

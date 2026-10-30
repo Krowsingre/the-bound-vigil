@@ -92,10 +92,27 @@ export function preflight({ book, stores, print }: PreflightInput): Finding[] {
   if (isbn && !isbnValid(isbn)) add({ level: "problem", title: "The ISBN isn't valid", detail: `${isbn} doesn't add up (its last digit is a check on the others). Copy it again from where you bought it.` });
   else if (!isbn) {
     const needs = has(stores, "ingram");
-    if (needs.length) add({ level: "problem", title: "IngramSpark needs your own ISBN", detail: "Buy one (Bowker in the US, Nielsen in the UK) and add it on the Copyright page.", stores: needs });
-    if (has(stores, "kdpPrint").length) add({ level: "ok", title: "No ISBN for the paperback", detail: "KDP gives you a free one when you upload; add it to the Copyright page afterwards.", stores: ["kdpPrint"] });
-    if (e.length) add({ level: "ok", title: "No ISBN for the e-book", detail: "Kindle, Apple, Kobo, Barnes & Noble and Google don't need one for e-books.", stores: e });
-  } else add({ level: "ok", title: "ISBN", detail: `${isbn} is valid.` });
+    if (needs.length)
+      add({
+        level: "problem",
+        title: "IngramSpark needs an ISBN",
+        detail: "The Bound Vigil doesn't provide ISBNs. Take IngramSpark's free one (US only, and only for IngramSpark) or buy your own (Bowker in the US, Nielsen in the UK), then add it on the Copyright page.",
+        stores: needs,
+      });
+    if (has(stores, "kdpPrint").length) add({ level: "ok", title: "No ISBN for the paperback", detail: "KDP gives you a free one when you upload, for KDP only; add it to the Copyright page afterwards.", stores: ["kdpPrint"] });
+    const optional = has(e, "kdp", "apple", "kobo", "google");
+    if (optional.length) add({ level: "ok", title: "No ISBN for the e-book", detail: "Kindle, Apple, Kobo and Google don't need one for e-books.", stores: optional });
+    if (has(e, "bn").length)
+      add({ level: "warning", title: "Barnes & Noble may ask for an ISBN", detail: "B&N Press's free ISBNs are for print books only, so an e-book uses your own if it needs one.", stores: ["bn"] });
+  } else {
+    add({ level: "ok", title: "ISBN", detail: `${isbn} is valid.` });
+    if (e.length && has(stores, "kdpPrint", "ingram").length)
+      add({
+        level: "warning",
+        title: "The e-book and the print book each need their own ISBN",
+        detail: "The Copyright page holds one. Put the print book's ISBN there before making the print PDF, and the e-book's (if it has one) before making the EPUB.",
+      });
+  }
 
   // Cover.
   if (e.length) {

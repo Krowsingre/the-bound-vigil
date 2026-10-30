@@ -693,6 +693,8 @@ pub struct ReadAlongPair {
     pub ebook_format: String,
     /// Both files are on this device, so it can line them up.
     pub here: bool,
+    /// Both files are on this device or another one, so it can converge somewhere.
+    pub somewhere: bool,
     /// The timing kept for the pair (JSON), if any.
     pub timing: Option<String>,
     /// How many pieces are lined up so far.
@@ -948,17 +950,50 @@ impl crate::library::Library {
                 Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, bool>(4)?))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
+        let me = self.device_id()?;
         let mut pairs = Vec::new();
         for (ebook_id, audiobook_id, ebook_format, timing, queued) in rows {
             let here = self.has_local_file(&ebook_id)? && self.has_local_file(&audiobook_id)?;
+            let somewhere = here
+                || self.conn.query_row(
+                    "SELECT EXISTS (SELECT 1 FROM read_along_holders WHERE ebook_id = ?1 AND audiobook_id = ?2 AND held = 1 AND device_id != ?3)",
+                    rusqlite::params![ebook_id, audiobook_id, me],
+                    |r| r.get(0),
+                )?;
             let pieces: i64 = self.conn.query_row(
                 "SELECT COUNT(*) FROM read_along_pieces WHERE ebook_id = ?1 AND audiobook_id = ?2",
                 rusqlite::params![ebook_id, audiobook_id],
                 |r| r.get(0),
             )?;
-            pairs.push(ReadAlongPair { ebook_id, audiobook_id, ebook_format, here, timing, pieces, queued });
+            pairs.push(ReadAlongPair { ebook_id, audiobook_id, ebook_format, here, somewhere, timing, pieces, queued });
         }
         Ok(pairs)
+    }
+
+    /// Notes which read-along pairs this device has both halves of, for the
+    /// other devices. Only rows that changed are written, so syncing sends
+    /// just those.
+    pub fn note_read_along_holdings(&self) -> Result<()> {
+        let me = self.device_id()?;
+        let pairs: Vec<(String, String)> = self
+            .conn
+            .prepare(
+                "SELECT ab.ebook_id, ab.book_id FROM audiobooks ab
+                 JOIN books a ON a.id = ab.book_id AND a.deleted_at IS NULL
+                 JOIN books e ON e.id = ab.ebook_id AND e.deleted_at IS NULL",
+            )?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        for (ebook_id, audiobook_id) in pairs {
+            let held = self.has_local_file(&ebook_id)? && self.has_local_file(&audiobook_id)?;
+            self.conn.execute(
+                "INSERT INTO read_along_holders (device_id, ebook_id, audiobook_id, held, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT (device_id, ebook_id, audiobook_id) DO UPDATE SET held = excluded.held, updated_at = excluded.updated_at
+                 WHERE held != excluded.held",
+                rusqlite::params![me, ebook_id, audiobook_id, held, crate::time::now_utc()],
+            )?;
+        }
+        Ok(())
     }
 
     /// Puts a pair in the queue to line up (at the back) or leaves it out.
@@ -1288,6 +1323,20 @@ pub(crate) mod tests {
         assert!(!library.read_along_pairs().unwrap()[0].queued);
         library.order_read_along_queue(&[(ebook_id.clone(), audio_id.clone())]).unwrap();
         assert!(library.read_along_pairs().unwrap()[0].queued, "ordering a pair queues it");
+        // Other devices learn this one holds both halves, once, and only a change writes again.
+        assert!(library.read_along_pairs().unwrap()[0].somewhere);
+        library.note_read_along_holdings().unwrap();
+        library.note_read_along_holdings().unwrap();
+        let held: Vec<(String, bool, String)> = library
+            .conn
+            .prepare("SELECT device_id, held, updated_at FROM read_along_holders")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(held.len(), 1);
+        assert_eq!((held[0].0.as_str(), held[0].1), (library.device_id().unwrap().as_str(), true));
 
         // The same folder again is the same book.
         let again = library.import_files(&[folder]);

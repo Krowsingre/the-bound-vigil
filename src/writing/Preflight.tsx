@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import type { WritingChapter, WritingProject } from "../api/types";
 import { readExport } from "./epub";
+import { IsbnGuide } from "./IsbnGuide";
 import { pagesKey } from "./PaperbackCover";
 import { preflight, STORES, type Finding, type Store } from "./preflightChecks";
 import { bookInput } from "./WritingDialogs";
@@ -111,6 +112,7 @@ export function PreflightDialog({ project, onFlush, onClose }: { project: Writin
             })}
           </>
         )}
+        <IsbnGuide />
         <div className="dialog-actions">
           <button type="button" className="btn btn-primary" onClick={onClose}>
             Done
