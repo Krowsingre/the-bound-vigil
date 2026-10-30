@@ -141,4 +141,5 @@ final class TbvBackgroundWork: NSObject {
 @_cdecl("tbv_register_background_tasks")
 public func registerBackgroundTasks() {
   TbvBackgroundWork.shared.register()
+  TbvPush.shared.start()
 }

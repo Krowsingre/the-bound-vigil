@@ -1,0 +1,79 @@
+name: Push server
+
+on:
+  push:
+    branches: [main]
+    paths: ["push/**", ".github/workflows/push.yml"]
+  pull_request:
+    paths: ["push/**", ".github/workflows/push.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: push-${{ github.ref }}
+
+jobs:
+  push-server:
+    name: Push server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Try it with a pretend Apple
+        run: node push/test.mjs
+      # Only main is put online.
+      - name: Check the secrets are there
+        if: github.event_name != 'pull_request'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          APNS_KEY_P8: ${{ secrets.APNS_KEY_P8 }}
+          APNS_KEY_ID: ${{ secrets.APNS_KEY_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=0
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID APNS_KEY_P8 APNS_KEY_ID APPLE_TEAM_ID; do
+            if [ -n "${!name}" ]; then echo "$name: set"; else echo "::error::The secret $name is missing or empty."; missing=1; fi
+          done
+          exit $missing
+      # The phones' push addresses are kept in a KV store, made the first time.
+      - name: Find or make the store for push addresses
+        if: github.event_name != 'pull_request'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces"
+          auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json")
+          id=$(curl -fsS "${auth[@]}" "$api?per_page=100" | jq -r '.result[] | select(.title == "tbv-push-devices") | .id' | head -1)
+          if [ -z "$id" ]; then
+            id=$(curl -fsS "${auth[@]}" -X POST "$api" -d '{"title":"tbv-push-devices"}' | jq -r '.result.id')
+            echo "Made the store $id"
+          fi
+          test -n "$id"
+          sed -i "s/\"KV_ID\"/\"$id\"/" push/wrangler.toml
+      - name: Put the push server online
+        if: github.event_name != 'pull_request'
+        working-directory: push
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          APNS_KEY_P8: ${{ secrets.APNS_KEY_P8 }}
+          APNS_KEY_ID: ${{ secrets.APNS_KEY_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          jq -n '{APNS_KEY_P8: env.APNS_KEY_P8, APNS_KEY_ID: env.APNS_KEY_ID, APPLE_TEAM_ID: env.APPLE_TEAM_ID}' > /tmp/push-secrets.json
+          npx --yes wrangler@4.140.0 deploy --secrets-file /tmp/push-secrets.json
+          rm -f /tmp/push-secrets.json
+      - name: Check it answers
+        if: github.event_name != 'pull_request'
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS https://tbv-push.krowsingre.workers.dev/ | grep -Fx 'TBV push server'; then exit 0; fi
+            sleep 10
+          done
+          echo "::error::The push server didn't answer at tbv-push.krowsingre.workers.dev."
+          exit 1

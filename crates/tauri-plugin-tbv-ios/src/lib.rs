@@ -293,8 +293,9 @@ pub fn store_restore() -> Result<(), String> {
     Err("The App Store is only on iPhone and iPad.".into())
 }
 
-/// Books iOS background time for lining up read-along. Called before the
-/// app opens, as iOS asks; elsewhere it does nothing.
+/// Books iOS background time for lining up read-along and syncing, and
+/// signs up for silent pushes. Called before the app opens, as iOS asks;
+/// elsewhere it does nothing.
 pub fn register_background_tasks() {
     #[cfg(target_os = "ios")]
     {
