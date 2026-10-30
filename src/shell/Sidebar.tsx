@@ -136,7 +136,7 @@ export function Sidebar({
                   onClick={() => onNavigate("lining")}
                   title={`${lining.title || "A book"} is converging with its audiobook: ${liningPercent}%`}
                 >
-                  <Icon name="headphones" size={20} />
+                  <Icon name="confluence" size={20} />
                   <span className="nav-label">
                     Converging
                     {lining.title && <span className="nav-caption">{lining.title}</span>}

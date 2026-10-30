@@ -57,17 +57,7 @@ pub fn open(app: &tauri::App) -> tauri::Result<()> {
             .map(|m| m.work_area().size.to_logical::<f64>(m.scale_factor()))
             .map(|area| ((CARD.0 + 2.0 * ROOM).min(area.width), (CARD.1 + 2.0 * ROOM).min(area.height)))
             .unwrap_or((CARD.0 + 36.0, CARD.1 + 36.0));
-        let card = tauri::WebviewWindowBuilder::new(app, LABEL, tauri::WebviewUrl::App("splash.html".into()))
-            .title("The Bound Vigil")
-            .inner_size(width, height)
-            .center()
-            .resizable(false)
-            .maximizable(false)
-            .decorations(false)
-            .shadow(false);
-        #[cfg(not(target_os = "macos"))]
-        let card = card.transparent(true);
-        let card = card.build()?;
+        let card = build_card(app.handle(), width, height)?;
         let main = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?.visible(false);
         // The Mac keeps its own window buttons, over the top of the sidebar.
         #[cfg(target_os = "macos")]
@@ -100,6 +90,58 @@ pub fn open(app: &tauri::App) -> tauri::Result<()> {
     #[cfg(mobile)]
     tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?.build()?;
     Ok(())
+}
+
+/// The splash card's window, the size given (with room round it for its specks).
+#[cfg(desktop)]
+fn build_card(app: &AppHandle, width: f64, height: f64) -> tauri::Result<tauri::WebviewWindow> {
+    let card = tauri::WebviewWindowBuilder::new(app, LABEL, tauri::WebviewUrl::App("splash.html".into()))
+        .title("The Bound Vigil")
+        .inner_size(width, height)
+        .center()
+        .resizable(false)
+        .maximizable(false)
+        .decorations(false)
+        .shadow(false);
+    #[cfg(not(target_os = "macos"))]
+    let card = card.transparent(true);
+    card.build()
+}
+
+/// Updating: the splash card comes back in place of the window, and says how
+/// the download is going, so updating happens inside it (Windows' installer
+/// runs out of sight). True when the card was made for this, rather than
+/// still up from opening.
+#[cfg(desktop)]
+pub fn show_for_update(app: &AppHandle) -> bool {
+    if app.get_webview_window(LABEL).is_some() {
+        return false;
+    }
+    let made = build_card(app, CARD.0 + 36.0, CARD.1 + 36.0).is_ok();
+    if made {
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.hide();
+        }
+    }
+    made
+}
+
+/// The update's progress on the card.
+#[cfg(desktop)]
+pub fn say(app: &AppHandle, progress: f64, label: &str) {
+    let _ = app.emit_to(EventTarget::webview_window(LABEL), "tbv://splash", Splash { progress, label: Some(label.into()), done: false, still: false });
+}
+
+/// The update didn't go ahead: the window comes back and the card goes.
+#[cfg(desktop)]
+pub fn end_update(app: &AppHandle) {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.set_focus();
+    }
+    if let Some(card) = app.get_webview_window(LABEL) {
+        let _ = card.destroy();
+    }
 }
 
 /// How far opening has got, for the card's bar.

@@ -174,7 +174,7 @@ function LiningUpPane() {
       )}
       {rows === null ? null : rows.length === 0 ? (
         <div className="imports-empty">
-          <Icon name="headphones" size={28} />
+          <Icon name="confluence" size={28} />
           <p>No books are paired with audiobooks yet. Pair one from a book's details, and it converges here.</p>
         </div>
       ) : (
@@ -293,7 +293,7 @@ function PairRow({
   const { text, tone } = state(row.pair, live, paused);
   return (
     <li {...reorder} tabIndex={reorder?.draggable ? 0 : undefined} className={`import-row${tone === "bad" ? " is-bad" : ""}${live ? " is-current" : ""}`}>
-      {place ? <span className="lining-place">{place}</span> : <Icon name={tone === "ok" ? "checkCircle" : tone === "bad" ? "warning" : "headphones"} size={18} />}
+      {place ? <span className="lining-place">{place}</span> : <Icon name={tone === "ok" ? "checkCircle" : tone === "bad" ? "warning" : "confluence"} size={18} />}
       <button type="button" className="import-text link-like" onClick={() => showBookDetails(row.pair.ebookId)}>
         <span className="import-name">{row.ebook || "A book"}</span>
         <span className="import-detail">

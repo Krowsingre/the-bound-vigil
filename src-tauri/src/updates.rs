@@ -70,18 +70,38 @@ mod desktop {
                 app.try_state::<Found>().and_then(|s| s.0.lock().ok()?.take()).ok_or("TBV is already up to date.")?
             }
         };
+        // Updating happens inside the splash card: it comes back in place of
+        // the window (unless it's still up from opening) and shows the
+        // download. Windows' installer runs quietly behind it, then opens TBV
+        // again.
+        let card = crate::splash::show_for_update(&app);
+        let version = update.version.clone();
         let mut downloaded = 0u64;
         let progress = app.clone();
-        update
+        let installing = app.clone();
+        let result = update
             .download_and_install(
                 move |chunk, total| {
                     downloaded += chunk as u64;
                     let _ = progress.emit("update-progress", Progress { downloaded, total });
+                    if card {
+                        let share = total.map(|t| downloaded as f64 / t.max(1) as f64).unwrap_or(0.0);
+                        crate::splash::say(&progress, share * 0.9, &format!("Updating to {version}… {}%", (share * 100.0).round()));
+                    }
                 },
-                || {},
+                move || {
+                    if card {
+                        crate::splash::say(&installing, 0.95, "Installing…");
+                    }
+                },
             )
-            .await
-            .map_err(|e| format!("The update couldn't be installed ({e})."))?;
+            .await;
+        if let Err(e) = result {
+            if card {
+                crate::splash::end_update(&app);
+            }
+            return Err(format!("The update couldn't be installed ({e})."));
+        }
         app.restart();
     }
 }

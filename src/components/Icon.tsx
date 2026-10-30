@@ -22,6 +22,8 @@ const paths = {
   skipBack: "M17 6.5v11L9 12zM6.5 6v12",
   skipForward: "M7 6.5v11l8-5.5zM17.5 6v12",
   headphones: "M4 15v-3a8 8 0 0 1 16 0v3M4 15h3v5H5a1 1 0 0 1-1-1zM20 15h-3v5h2a1 1 0 0 0 1-1z",
+  /** Confluence: a book's page meeting the sound of its audiobook at the spine. */
+  confluence: "M12 6.5C10 5 7 4.5 3.5 5v13c3.5-.5 6.5 0 8.5 1.5zM12 6.5v13M15.5 10v5M18.5 7.5v10M21 10.5v4",
   shuffle: "M4 7h3.5c2 0 3 1 4 2.5l2 3c1 1.5 2 2.5 4 2.5H20M4 17h3.5c1.4 0 2.3-.5 3-1.3M13.5 8.3c.7-.8 1.6-1.3 3-1.3H20M17.5 4.5 20 7l-2.5 2.5M17.5 14.5 20 17l-2.5 2.5",
   volume: "M4 9.5h3.5L12 6v12l-4.5-3.5H4zM15.5 9.5a3.5 3.5 0 0 1 0 5",
   volumeOff: "M4 9.5h3.5L12 6v12l-4.5-3.5H4zM16 10l4 4M20 10l-4 4",

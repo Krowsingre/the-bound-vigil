@@ -4,6 +4,7 @@ import type { WritingChapter, WritingDetails, WritingDraft, WritingProject } fro
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
+import { usePublisher } from "../license/Publisher";
 import { useToast } from "../components/Toast";
 import { bookOrder, buildEpub, epubFileName, exportProblems, readExport, type EpubInput, type ExportSettings } from "./epub";
 import { imageMime, loadBookFonts } from "./fonts";
@@ -334,6 +335,7 @@ export function ExportDialog({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
+  const publisher = usePublisher();
   const set = (change: Partial<ExportSettings>) => {
     // Changing a setting a style chose keeps the style's looks, with that one setting changed.
     const next = { ...settings, ...change };
@@ -359,6 +361,9 @@ export function ExportDialog({
 
   const make = async () => {
     if (format === "epub" && !addToLibrary && !saveCopy) return setError("Choose where the EPUB goes.");
+    // A style or a print PDF chosen while trying TBV needs Publisher to export once the trial is over.
+    if (!publisher.allowed && (format === "pdf" || (format !== "txt" && format !== "manuscript" && settings.bookStyle)))
+      return publisher.check(format === "pdf" ? "Print-ready PDF" : "Book styles", () => undefined);
     setError(null);
     try {
       if (format === "epub") {
@@ -447,7 +452,7 @@ export function ExportDialog({
         <h2>Export</h2>
         <div className="segmented writing-export-formats" role="radiogroup" aria-label="Format">
           {FORMATS.map((f) => (
-            <button key={f.value} type="button" role="radio" aria-checked={format === f.value} onClick={() => pick(f.value)}>
+            <button key={f.value} type="button" role="radio" aria-checked={format === f.value} onClick={() => (f.value === "pdf" ? publisher.check("Print-ready PDF", () => pick(f.value)) : pick(f.value))}>
               {f.label}
             </button>
           ))}
@@ -463,7 +468,7 @@ export function ExportDialog({
                 <span>The settings below</span>
               </button>
               {BOOK_STYLES.map((s) => (
-                <button key={s.id} type="button" role="radio" aria-checked={settings.bookStyle === s.id} className={`book-style book-style-${s.id}`} onClick={() => set(chooseStyle(settings, s.id))}>
+                <button key={s.id} type="button" role="radio" aria-checked={settings.bookStyle === s.id} className={`book-style book-style-${s.id}`} onClick={() => publisher.check("Book styles", () => set(chooseStyle(settings, s.id)))}>
                   <b>{s.label}</b>
                   <span>{s.about}</span>
                 </button>

@@ -36,6 +36,7 @@ import { WebGate } from "./web/WebConnect";
 import { runBeforeQuit } from "./lib/beforeQuit";
 import { PlayerProvider } from "./audio/player";
 import { LicenseProvider } from "./license/License";
+import { PublisherProvider } from "./license/Publisher";
 import { restorePrivacy } from "./settings/appSettings";
 
 // Covers stay hidden from the very first moment if privacy mode was on.
@@ -89,7 +90,9 @@ createRoot(document.getElementById("root")!).render(
             </HomePair>
           ) : (
             <LicenseProvider>
-              <App />
+              <PublisherProvider>
+                <App />
+              </PublisherProvider>
             </LicenseProvider>
           )}
         </PlayerProvider>

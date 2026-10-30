@@ -70,6 +70,10 @@ p { widows: 2; orphans: 2; }
 h1, h2, h3, .chapter-label { break-after: avoid; }
 .picture, .stanza { break-inside: avoid; }
 img { max-width: 100%; max-height: 7in; }
+figure.picture { break-inside: avoid; }
+/* A picture with a page of its own fills the space inside the margins. */
+figure.full-page { break-before: page; break-after: page; height: calc(${trim.height}in - 1.6in); margin: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+figure.full-page img { max-height: calc(${trim.height}in - 2.2in); object-fit: contain; }
 a { color: inherit; text-decoration: none; }
 section.page-half-title .title, .titlepage .title { margin-top: 2.2in; }
 section.page-copyright { padding-top: 3in; }

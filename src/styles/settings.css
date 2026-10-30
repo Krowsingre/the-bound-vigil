@@ -1995,3 +1995,58 @@ kbd {
 .activity-paused {
   margin: 0 0 12px;
 }
+
+/* Offering TBV Publisher when one of its tools is chosen. */
+.publisher-offer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+
+.publisher-offer h2 {
+  margin: 0;
+}
+
+.publisher-offer .dialog-lede,
+.publisher-offer .dialog-actions {
+  margin: 0;
+}
+
+.publisher-offer-kicker {
+  margin: 0;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.publisher-offer-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.publisher-offer-list li {
+  position: relative;
+  padding-left: 18px;
+}
+
+.publisher-offer-list li::before {
+  content: "";
+  position: absolute;
+  top: 0.45em;
+  left: 2px;
+  width: 8px;
+  height: 4px;
+  border-left: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  transform: rotate(-45deg);
+}
