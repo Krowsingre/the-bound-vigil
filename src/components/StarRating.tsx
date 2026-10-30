@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type React from "react";
 
 const STAR = "M12 2.8l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 16.8l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z";
@@ -53,14 +53,22 @@ export function StarRating({
   size?: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
-  const shown = hover ?? value ?? 0;
+  // The choice shows at once, even where the menu holding the stars was
+  // made before it (a book's ••• menu), and follows the book after that.
+  const [picked, setPicked] = useState(value);
+  useEffect(() => setPicked(value), [value]);
+  const shown = hover ?? picked ?? 0;
   const at = (n: number, e: React.PointerEvent<HTMLElement>) => {
     const box = e.currentTarget.getBoundingClientRect();
     const across = Math.min(1, Math.max(0, (e.clientX - box.left) / Math.max(1, box.width)));
     return n - 1 + Math.max(STEP, Math.ceil(across / STEP) * STEP);
   };
-  const choose = (rating: number) => onChange(value === rating ? null : rating);
-  const step = (by: number) => onChange(Math.min(5, Math.max(STEP, (value ?? 0) + by)));
+  const pick = (rating: number | null) => {
+    setPicked(rating);
+    onChange(rating);
+  };
+  const choose = (rating: number) => pick(picked === rating ? null : rating);
+  const step = (by: number) => pick(Math.min(5, Math.max(STEP, (picked ?? 0) + by)));
   return (
     <span className="star-rating-wrap">
       <span
@@ -70,8 +78,8 @@ export function StarRating({
         aria-label="Your rating"
         aria-valuemin={0}
         aria-valuemax={5}
-        aria-valuenow={value ?? 0}
-        aria-valuetext={value === null ? "Not rated" : `${starsText(value)} of 5 stars`}
+        aria-valuenow={picked ?? 0}
+        aria-valuetext={picked === null ? "Not rated" : `${starsText(picked)} of 5 stars`}
         onPointerLeave={() => setHover(null)}
         onKeyDown={(e) => {
           const moves: Record<string, () => void> = {
@@ -79,10 +87,10 @@ export function StarRating({
             ArrowUp: () => step(STEP),
             ArrowLeft: () => step(-STEP),
             ArrowDown: () => step(-STEP),
-            Home: () => onChange(STEP),
-            End: () => onChange(5),
-            Delete: () => onChange(null),
-            Backspace: () => onChange(null),
+            Home: () => pick(STEP),
+            End: () => pick(5),
+            Delete: () => pick(null),
+            Backspace: () => pick(null),
           };
           if (!moves[e.key]) return;
           e.preventDefault();
@@ -93,7 +101,7 @@ export function StarRating({
           <span
             key={n}
             className={`star-btn${n - 1 < shown ? " is-on" : ""}`}
-            title={hover !== null ? `${starsText(hover)} stars` : value !== null ? "Choose the same again to clear" : undefined}
+            title={hover !== null ? `${starsText(hover)} stars` : picked !== null ? "Choose the same again to clear" : undefined}
             onPointerMove={(e) => setHover(at(n, e))}
             onClick={(e) => choose(at(n, e as unknown as React.PointerEvent<HTMLElement>))}
           >
@@ -101,7 +109,8 @@ export function StarRating({
           </span>
         ))}
       </span>
-      {(hover ?? value) !== null && <span className="star-rating-value num">{starsText((hover ?? value)!)}</span>}
+      {/* Always there, even empty, so the stars never shift under the pointer. */}
+      <span className="star-rating-value num">{(hover ?? picked) !== null ? starsText((hover ?? picked)!) : ""}</span>
     </span>
   );
 }
