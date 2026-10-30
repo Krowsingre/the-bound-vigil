@@ -15,6 +15,12 @@ import { startupStep } from "../splash/startup";
 const APPLE_TERMS = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
 const PRIVACY_POLICY = "https://krowsingre.github.io/the-bound-vigil/privacy/";
 const STORE_PAGE = "https://apps.microsoft.com/search?query=The%20Bound%20Vigil";
+/** Where each store lets people cancel a subscription. */
+const SUBSCRIPTIONS: Record<LicenseView["shop"], string> = {
+  apple: "https://apps.apple.com/account/subscriptions",
+  microsoft: "https://account.microsoft.com/services",
+  none: "https://account.microsoft.com/services",
+};
 /** The trial's last days get a reminder when TBV opens. */
 const REMIND_DAYS = 3;
 
@@ -37,11 +43,111 @@ export function shopName(shop: LicenseView["shop"]): string {
   return shop === "apple" ? "the App Store" : "the Microsoft Store";
 }
 
+const LIFETIME_PLANS: LicensePlan[] = ["lifetime", "publisherLifetime", "publisherUpgrade"];
+
+/**
+ * Whether buying `plan` leaves a subscription charging. Neither store turns
+ * a subscription into a lifetime purchase, so buying for life while
+ * subscribed means two purchases until the person cancels. The App Store
+ * moves between its own subscriptions by itself; the Microsoft Store
+ * doesn't, so there any new purchase leaves the old one running.
+ */
+export function leavesSubscriptionRunning(license: LicenseView | null, plan: LicensePlan): boolean {
+  if (!license || license.state !== "owned" || (license.plan !== "monthly" && license.plan !== "yearly")) return false;
+  return LIFETIME_PLANS.includes(plan) || license.shop !== "apple";
+}
+
+/** The subscription someone is on, as words and what it charges. */
+function currentSubscription(license: LicenseView) {
+  const monthly = license.plan === "monthly";
+  const price = license.publisher ? (monthly ? license.publisherMonthlyPrice : license.publisherYearlyPrice) : monthly ? license.monthlyPrice : license.yearlyPrice;
+  return { name: `${license.publisher ? "TBV Publisher " : ""}${monthly ? "monthly" : "yearly"} plan`, charge: price ? `${price} every ${monthly ? "month" : "year"}` : `every ${monthly ? "month" : "year"}` };
+}
+
+const PLAN_NAMES: Record<LicensePlan, string> = {
+  monthly: "the monthly plan",
+  yearly: "the yearly plan",
+  lifetime: "The Bound Vigil for life",
+  publisherMonthly: "TBV Publisher monthly",
+  publisherYearly: "TBV Publisher yearly",
+  publisherLifetime: "TBV Publisher for life",
+  publisherUpgrade: "the Publisher upgrade",
+};
+
+const whereToCancel = (shop: LicenseView["shop"]) =>
+  shop === "apple" ? "Settings › your name › Subscriptions on your iPhone (or the App Store on a Mac)" : "your Microsoft account, under Services & subscriptions";
+
+/** Before paying: says outright that the subscription keeps charging, and asks them to agree before the store's payment sheet opens. */
+function KeepsChargingWarning({ license, plan, onGo, onCancel }: { license: LicenseView; plan: LicensePlan; onGo: () => void; onCancel: () => void }) {
+  const [understood, setUnderstood] = useState(false);
+  const sub = currentSubscription(license);
+  const store = license.shop === "apple" ? "Apple" : "Microsoft";
+  return (
+    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onCancel()}>
+      <div className="dialog subscription-warning" role="alertdialog" aria-label="Your subscription keeps charging" onKeyDown={(e) => e.key === "Escape" && onCancel()}>
+        <h2>Your subscription will keep charging you</h2>
+        <p>
+          You're on the <b>{sub.name}</b>. Buying {PLAN_NAMES[plan]} <b>does not cancel it</b>. {store} will keep charging you <b>{sub.charge}</b> until you cancel it yourself.
+        </p>
+        <ul className="subscription-warning-list">
+          <li>Neither The Bound Vigil nor {shopName(license.shop)} cancels it for you.</li>
+          <li>What you've already paid for the subscription isn't refunded or taken off this price.</li>
+          <li>To stop it, cancel it in {whereToCancel(license.shop)}. You can do that now, before buying, and keep using TBV until the time you've paid for runs out.</li>
+        </ul>
+        <label className="check-row">
+          <input type="checkbox" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} />
+          <span>I understand my subscription keeps charging me until I cancel it myself.</span>
+        </label>
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-quiet" onClick={() => void openExternal(SUBSCRIPTIONS[license.shop])}>
+            Open my subscriptions
+          </button>
+          <button type="button" className="btn btn-quiet" onClick={onCancel}>
+            Don't buy
+          </button>
+          <button type="button" className="btn btn-primary" disabled={!understood} onClick={onGo}>
+            Continue to payment
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** After paying: the subscription is still running, so cancelling it comes next. */
+function CancelReminder({ license, before, onClose }: { license: LicenseView; before: LicenseView; onClose: () => void }) {
+  const sub = currentSubscription(before);
+  const store = license.shop === "apple" ? "Apple" : "Microsoft";
+  return (
+    <div className="dialog-backdrop">
+      <div className="dialog subscription-warning" role="alertdialog" aria-label="Now cancel your subscription" onKeyDown={(e) => e.key === "Escape" && onClose()}>
+        <h2>Now cancel your subscription</h2>
+        <p>
+          Thank you, {license.plan === "lifetime" ? "it's yours for life" : "it's bought"}. Your <b>{sub.name}</b> is <b>still active</b>, and {store} will charge you <b>{sub.charge}</b> again unless you cancel it.
+        </p>
+        <p>Cancel it in {whereToCancel(license.shop)}. Nothing you've bought is lost when you do.</p>
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-quiet" onClick={onClose}>
+            I'll do it later
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => (void openExternal(SUBSCRIPTIONS[license.shop]), onClose())}>
+            Cancel my subscription now
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function LicenseProvider({ children }: { children: ReactNode }) {
   const toast = useToast();
   const [license, setLicense] = useState<LicenseView | null>(null);
   const [busy, setBusy] = useState(false);
   const reminded = useRef(false);
+  /** A purchase waiting on the warning, and how to finish it. */
+  const [asking, setAsking] = useState<{ plan: LicensePlan; done: () => void } | null>(null);
+  /** After a purchase that left a subscription running: the state from before it. */
+  const [stillBilled, setStillBilled] = useState<LicenseView | null>(null);
 
   useEffect(() => {
     if (!isApp && api.kind !== "preview") return;
@@ -70,9 +176,27 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     [toast],
   );
 
-  const buy = useCallback(
-    (plan: LicensePlan) => run(() => api.buyLicense(plan), (v) => v.state === "owned" && toast("Thank you. The Bound Vigil is yours.")),
+  const purchase = useCallback(
+    (plan: LicensePlan, before: LicenseView | null, warned: boolean) =>
+      run(
+        () => api.buyLicense(plan),
+        (v) => {
+          if (v.state !== "owned") return;
+          // Bought (not just closed the sheet): the old subscription is still there to cancel.
+          const changed = v.plan !== before?.plan || !!v.publisher !== !!before?.publisher;
+          if (warned && before && changed) setStillBilled(before);
+          else toast("Thank you. The Bound Vigil is yours.");
+        },
+      ),
     [run, toast],
+  );
+  const buy = useCallback(
+    (plan: LicensePlan) => {
+      if (!leavesSubscriptionRunning(license, plan)) return purchase(plan, license, false);
+      // Asked first, before the store's payment sheet; settled once they choose.
+      return new Promise<void>((done) => setAsking({ plan, done }));
+    },
+    [license, purchase],
   );
   const restore = useCallback(
     () => run(api.restoreLicense, (v) => toast(v.state === "owned" ? "Your purchase was found." : `No purchase was found in ${shopName(v.shop)}.`)),
@@ -98,6 +222,18 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
   return (
     <Context.Provider value={{ license, busy, buy, restore, unlock }}>
       {license?.state === "expired" ? <LicenseGate /> : children}
+      {asking && license && (
+        <KeepsChargingWarning
+          license={license}
+          plan={asking.plan}
+          onCancel={() => (asking.done(), setAsking(null))}
+          onGo={() => {
+            setAsking(null);
+            void purchase(asking.plan, license, true).then(asking.done);
+          }}
+        />
+      )}
+      {stillBilled && license && <CancelReminder license={license} before={stillBilled} onClose={() => setStillBilled(null)} />}
     </Context.Provider>
   );
 }
