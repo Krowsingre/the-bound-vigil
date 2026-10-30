@@ -618,7 +618,7 @@ function ProjectView({
             </button>
           )}
           <button type="button" className="btn btn-primary" onClick={() => setDialog("export")}>
-            <Icon name="upload" size={16} /> Export EPUB
+            <Icon name="upload" size={16} /> Export
           </button>
           <Menu
             label="More"

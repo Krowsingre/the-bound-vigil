@@ -1,0 +1,35 @@
+/* The laid-out pages on screen (the Mac shows them before printing). Print
+   itself uses only the book's own page styles. */
+@media screen {
+  html {
+    background: #d9d6d0;
+  }
+
+  .pagedjs_pages {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 0 48px;
+  }
+
+  .pagedjs_page {
+    background: #fff;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+  }
+}
+
+.print-status {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 15px/1.4 system-ui, sans-serif;
+  color: #333;
+}
+
+@media print {
+  .print-status {
+    display: none;
+  }
+}

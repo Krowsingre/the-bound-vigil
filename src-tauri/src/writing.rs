@@ -221,7 +221,7 @@ pub async fn save_writing_epub(
     let imports = imports.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         if let Some(path) = &path {
-            std::fs::write(path, &bytes).map_err(|e| format!("The EPUB couldn't be saved there ({e})."))?;
+            std::fs::write(path, &bytes).map_err(|e| format!("The file couldn't be saved there ({e})."))?;
         }
         if add {
             let folder = Arc::new(TempFolder::new(&downloads).map_err(|e| e.to_string())?);

@@ -556,6 +556,16 @@ export interface Api {
   pickEpubSavePath(fileName: string): Promise<string | null>;
   /** Saves a finished EPUB at `path` (desktop), downloads it (phone), and/or adds it to the library. */
   saveWritingEpub(bytes: Uint8Array, fileName: string, path: string | null, addToLibrary: boolean): Promise<void>;
+  /** Where to save a PDF, Word file or text file made from a book; null when cancelled. */
+  pickExportPath(fileName: string, format: "pdf" | "docx" | "txt"): Promise<string | null>;
+  /** Saves a file made from a book at `path` (desktop), or downloads it (web). */
+  saveExportFile(bytes: Uint8Array, fileName: string, path: string | null): Promise<void>;
+  /**
+   * Lays a book's print HTML (src/writing/printBook.ts) out as pages and makes
+   * a PDF: saved at `path` on Windows, through the print dialog elsewhere.
+   * Answers with the number of pages.
+   */
+  printBook(html: string, path: string | null): Promise<number>;
   /** Keeps the book as it stands (made into an EPUB) as its next draft. */
   saveWritingDraft(projectId: string, bytes: Uint8Array): Promise<WritingDraft>;
   /** A book's drafts, oldest first. */
@@ -593,6 +603,8 @@ export const isIOS =
 /** The Mac app: the computer's layout, with the Mac's own window buttons. */
 export const isMac = isApp && !isIOS && typeof navigator !== "undefined" && /Macintosh/.test(navigator.userAgent);
 /** The web version, for phones: built with `npm run build:web`, syncing through Supabase. */
+/** The Windows app, where a PDF can be saved straight to a file. */
+export const isWindows = isApp && !isIOS && typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
 export const isWeb = !isApp && import.meta.env.VITE_TBV_WEB === "1";
 
 const BOOK_EXTENSIONS = ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "cbr", "txt", "docx", "doc"];
@@ -1147,6 +1159,15 @@ function appApi(): Api {
       (await core).invoke("save_writing_epub", bytes, {
         headers: { path: encodeURIComponent(path ?? ""), add: addToLibrary ? "1" : "0", "file-name": encodeURIComponent(fileName) },
       }),
+    pickExportPath: async (fileName, format) =>
+      (await (await dialog).save({
+        title: format === "pdf" ? "Save the PDF" : format === "docx" ? "Save the Word file" : "Save the text file",
+        defaultPath: fileName,
+        filters: [{ name: format === "pdf" ? "PDF" : format === "docx" ? "Word document" : "Text", extensions: [format] }],
+      })) ?? null,
+    saveExportFile: async (bytes, fileName, path) =>
+      (await core).invoke("save_writing_epub", bytes, { headers: { path: encodeURIComponent(path ?? ""), add: "0", "file-name": encodeURIComponent(fileName) } }),
+    printBook: async (html, path) => (await core).invoke<number>("print_book", { html, path }),
     saveWritingDraft: async (projectId, bytes) => (await core).invoke<WritingDraft>("save_writing_draft", bytes, { headers: { "project-id": projectId } }),
     writingDrafts: async (projectId) => (await core).invoke<WritingDraft[]>("writing_drafts", { projectId }),
     deleteWritingDraft: async (id) => (await core).invoke("delete_writing_draft", { id }),

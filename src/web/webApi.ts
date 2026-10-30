@@ -3,6 +3,7 @@
 // It is lighter than the desktop app: no importing, backups, folder sync or
 // Hardcover, and books open from the cloud.
 
+import { printInBrowser } from "../print/inBrowser";
 import { browseStub } from "../preview/browse";
 import type { Api } from "../api";
 import type {
@@ -585,6 +586,9 @@ export async function webApi(): Promise<Api> {
     },
     pickWritingCover: async () => null,
     pickEpubSavePath: async () => null,
+    pickExportPath: async () => null,
+    saveExportFile: async (bytes, fileName) => downloadFile(bytes, fileName),
+    printBook: (html) => printInBrowser(html),
     saveWritingEpub: async (bytes, fileName, _path, addToLibrary) => {
       if (addToLibrary) throw new Error("Adding it to your library works in the desktop app. It has been downloaded instead.");
       downloadFile(bytes, fileName);

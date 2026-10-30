@@ -9,9 +9,24 @@ import { zipSync, strToU8 } from "fflate";
 import type { WritingChapter, WritingProject } from "../api/types";
 import { DEFAULT_COPYRIGHT, DEFAULT_RIGHTS, firstLine, isMade, isPoem, KINDS, numberInWords, readPage, writePage, type CopyrightDetails, type PageKind, type PageSettings } from "./pages";
 import { readSources, readStyle, type CitationStyle, type Cited, type Citer, type Source } from "./sources";
+import { styleById, styleCss } from "./bookStyles";
+import { DEFAULT_PRINT, readPrint, type PrintSettings } from "./printSettings";
 
 export type SceneBreak = "asterisks" | "ornament" | "space" | "line";
 export type BookFont = "lora" | "echolume" | "none";
+
+/** A standard manuscript's layout and the details on its first page. */
+export interface ManuscriptSettings {
+  /** Shunn's standard manuscript format for prose, or the standard poetry manuscript. */
+  layout: "shunn" | "poetry";
+  font: "times" | "courier";
+  name: string;
+  address: string;
+  phone: string;
+  email: string;
+}
+
+export const DEFAULT_MANUSCRIPT: ManuscriptSettings = { layout: "shunn", font: "times", name: "", address: "", phone: "", email: "" };
 
 export interface ExportSettings {
   font: BookFont;
@@ -38,6 +53,11 @@ export interface ExportSettings {
   /** Research sources, cited in the text. */
   sources: Source[];
   citationStyle: CitationStyle;
+  manuscript: ManuscriptSettings;
+  /** A matched set of headings, ornaments and fonts (bookStyles.ts), or null for the settings alone. */
+  bookStyle: string | null;
+  /** How the printed PDF is laid out. */
+  print: PrintSettings;
 }
 
 export const DEFAULT_EXPORT: ExportSettings = {
@@ -55,6 +75,9 @@ export const DEFAULT_EXPORT: ExportSettings = {
   copyright: DEFAULT_COPYRIGHT,
   sources: [],
   citationStyle: "chicago-notes",
+  manuscript: DEFAULT_MANUSCRIPT,
+  bookStyle: null,
+  print: DEFAULT_PRINT,
 };
 
 const text = (value: unknown, fallback: string, max = 2000) => (typeof value === "string" ? value.slice(0, max) : fallback);
@@ -91,6 +114,20 @@ export function readExport(json: string | null | undefined): ExportSettings {
       })(),
       sources: readSources(saved.sources),
       citationStyle: readStyle(saved.citationStyle),
+      manuscript: (() => {
+        const m = (saved.manuscript && typeof saved.manuscript === "object" ? saved.manuscript : {}) as Partial<ManuscriptSettings>;
+        const d = DEFAULT_MANUSCRIPT;
+        return {
+          layout: oneOf(m.layout, ["shunn", "poetry"] as const, d.layout),
+          font: oneOf(m.font, ["times", "courier"] as const, d.font),
+          name: text(m.name, d.name, 200),
+          address: text(m.address, d.address, 600),
+          phone: text(m.phone, d.phone, 60),
+          email: text(m.email, d.email, 200),
+        };
+      })(),
+      bookStyle: typeof saved.bookStyle === "string" && styleById(saved.bookStyle) ? saved.bookStyle : null,
+      print: readPrint(saved.print),
     };
   } catch {
     return DEFAULT_EXPORT;
@@ -557,7 +594,7 @@ section.page-sources p.source { text-indent: -2em; padding-left: 2em; text-align
 section.page-haiku { padding-top: 20%; }
 .cover { margin: 0; padding: 0; text-align: center; }
 .cover img { max-width: 100%; max-height: 100%; }
-`;
+${styleCss(settings)}`;
 }
 
 /** A file name for the book: its title, safe on every computer. */
@@ -851,35 +888,67 @@ const base64 = (bytes: Uint8Array) => {
   return btoa(raw);
 };
 
+/** One of the EPUB's pages in reading order: its body's class and its inner XHTML (pictures still at images/…). */
+export interface Sheet {
+  cls: string;
+  html: string;
+}
+
+/**
+ * The book's pages in reading order, as the EPUB has them, with every file
+ * by its path inside OEBPS (pictures, fonts, the stylesheet). The preview,
+ * TXT, DOCX and PDF are all made from these, so each comes out the same.
+ */
+export function bookSheets(input: EpubInput): { sheets: Sheet[]; files: Map<string, string | Uint8Array> } {
+  const all = new Map(epubFiles(input).files);
+  const opf = String(all.get("OEBPS/content.opf") ?? "");
+  const hrefs = new Map([...opf.matchAll(/<item id="([^"]+)" href="([^"]+)"/g)].map((m) => [m[1], m[2]]));
+  const spine = [...opf.matchAll(/<itemref idref="([^"]+)"\/>/g)].map((m) => hrefs.get(m[1])).filter((h): h is string => !!h);
+  const files = new Map([...all].filter(([k]) => k.startsWith("OEBPS/")).map(([k, v]) => [k.slice(6), v]));
+  const sheets = spine.map((href) => {
+    const page = String(files.get(href) ?? "");
+    const body = /<body([^>]*)>([\s\S]*)<\/body>/.exec(page);
+    return { cls: /class="([^"]*)"/.exec(body?.[1] ?? "")?.[1] ?? "", html: body?.[2] ?? "" };
+  });
+  return { sheets, files };
+}
+
+/** A picture inside the book as a data: address, for pages shown outside it. */
+export function pictureUrl(files: Map<string, string | Uint8Array>, path: string): string {
+  const bytes = files.get(path);
+  if (!(bytes instanceof Uint8Array)) return path;
+  const mime = Object.entries(PICTURE_TYPES).find(([, ext]) => path.endsWith(`.${ext}`))?.[0] ?? (path.endsWith(".jpg") ? "image/jpeg" : "image/png");
+  return `data:${mime};base64,${base64(bytes)}`;
+}
+
+/** The book's stylesheet with its fonts inside it, for pages shown outside the EPUB. */
+export function inlineStyles(files: Map<string, string | Uint8Array>): string {
+  let css = String(files.get("styles.css") ?? "");
+  for (const [path, bytes] of files) {
+    if (path.startsWith("fonts/") && bytes instanceof Uint8Array) css = css.replace(`url("${path}")`, `url("data:font/woff2;base64,${base64(bytes)}")`);
+  }
+  return css;
+}
+
+/** A sheet's XHTML with its pictures inside it and links between pages kept within one page. */
+export function sheetHtml(files: Map<string, string | Uint8Array>, sheet: Sheet): string {
+  return (
+    sheet.html
+      .replace(/src="(images\/[^"]+)"/g, (_, path: string) => `src="${pictureUrl(files, path)}"`)
+      // Links between the book's own pages jump within the one page.
+      .replace(/href="[^"#:]+\.xhtml#([^"]+)"/g, 'href="#$1"')
+  );
+}
+
 /**
  * The whole book as one page, exactly as the EPUB has it (cover, title page,
  * every section in order, with its pictures), for the preview beside the
  * editor. Each of the EPUB's pages is shown as a sheet of its own.
  */
 export function previewHtml(input: EpubInput): string {
-  const files = new Map(epubFiles(input).files);
-  const opf = String(files.get("OEBPS/content.opf") ?? "");
-  const hrefs = new Map([...opf.matchAll(/<item id="([^"]+)" href="([^"]+)"/g)].map((m) => [m[1], m[2]]));
-  const spine = [...opf.matchAll(/<itemref idref="([^"]+)"\/>/g)].map((m) => hrefs.get(m[1])).filter((h): h is string => !!h);
-  const dataUrl = (path: string) => {
-    const bytes = files.get(`OEBPS/${path}`);
-    if (!(bytes instanceof Uint8Array)) return path;
-    const mime = Object.entries(PICTURE_TYPES).find(([, ext]) => path.endsWith(`.${ext}`))?.[0] ?? (path.endsWith(".jpg") ? "image/jpeg" : "image/png");
-    return `data:${mime};base64,${base64(bytes)}`;
-  };
-  const sheets = spine.map((href) => {
-    const page = String(files.get(`OEBPS/${href}`) ?? "");
-    const body = /<body([^>]*)>([\s\S]*)<\/body>/.exec(page);
-    const cls = /class="([^"]*)"/.exec(body?.[1] ?? "")?.[1] ?? "";
-    const inner = (body?.[2] ?? "")
-      .replace(/src="(images\/[^"]+)"/g, (_, path: string) => `src="${dataUrl(path)}"`)
-      // Links between the book's own pages jump within the preview.
-      .replace(/href="[^"#:]+\.xhtml#([^"]+)"/g, 'href="#$1"');
-    return `<article class="sheet ${cls}">${inner}</article>`;
-  });
-  const fonts = [...files.keys()].filter((k) => k.startsWith("OEBPS/fonts/"));
-  let css = String(files.get("OEBPS/styles.css") ?? "");
-  for (const f of fonts) css = css.replace(`url("${f.slice(6)}")`, `url("data:font/woff2;base64,${base64(files.get(f) as Uint8Array)}")`);
+  const { sheets: pages, files } = bookSheets(input);
+  const sheets = pages.map((sheet) => `<article class="sheet ${sheet.cls}">${sheetHtml(files, sheet)}</article>`);
+  const css = inlineStyles(files);
   return `<!DOCTYPE html>
 <html lang="${escapeXml(input.project.language?.trim() || "en")}">
 <head>

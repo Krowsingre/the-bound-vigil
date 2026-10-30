@@ -745,6 +745,153 @@
   }
 }
 
+/* The export window: a format, a book style, then the details. */
+.writing-export {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.writing-export .segmented.writing-export-formats {
+  margin: 0;
+}
+
+.writing-export-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.writing-export-group > legend {
+  margin-bottom: 8px;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.book-styles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.book-style {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text);
+  text-align: left;
+}
+
+.book-style b {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.book-style span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.book-style:hover {
+  border-color: var(--accent);
+}
+
+.book-style[aria-checked="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Each style's name is shown in its own heading look. */
+.book-style-classic b,
+.book-style-romance b,
+.book-style-mystery b,
+.book-style-poetry b {
+  font-family: "Lora", Georgia, serif;
+  font-style: italic;
+}
+
+.book-style-vigil b,
+.book-style-literary b {
+  font-family: "Lora", Georgia, serif;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 12px;
+}
+
+.book-style-fantasy b,
+.book-style-storybook b {
+  font-family: "Lora", Georgia, serif;
+  font-size: 15px;
+}
+
+.book-style-thriller b {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.book-style-modern b,
+.book-style-minimal b {
+  font-weight: 400;
+}
+
+.writing-export-more {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+}
+
+.writing-export-more[open] {
+  padding-bottom: 14px;
+}
+
+.writing-export-more > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.writing-export-more[open] > summary {
+  margin-bottom: 10px;
+}
+
+.writing-export-more > * + * {
+  margin-top: 10px;
+}
+
+.writing-export-group .writing-export-styles {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.writing-export-note {
+  margin: 0;
+  font-size: 12px;
+}
+
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
+  .book-styles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .writing-export .segmented.writing-export-formats {
+    overflow-x: auto;
+  }
+
+  .writing-export-group .writing-export-styles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* The cover maker: the cover beside its choices. */
 .cover-maker {
   width: min(760px, calc(100vw - 32px));
