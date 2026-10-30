@@ -10,7 +10,7 @@ import { imageMime } from "./fonts";
 import { estimatePages } from "./printBook";
 import { TRIMS, type TrimSize } from "./printSettings";
 import { bookFileName } from "./txt";
-import { dpiFor, drawWrap, jpegPdf, PAPERS, SPINE_TEXT_PAGES, wrapFor, type Paper, type PaperbackDesign, type Printer } from "./paperbackCover";
+import { dpiFor, drawWrap, jpegPdf, PAPERS, SPINE_TEXT_PAGES, wrapFor, type Paper, type PaperbackDesign, type Printer } from "./paperbackWrap";
 
 /** How many pages the book's PDF came to when it was last made, kept for the cover. */
 export const pagesKey = (projectId: string) => `tbv.print.pages.${projectId}`;

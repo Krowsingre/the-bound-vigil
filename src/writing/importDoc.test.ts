@@ -3,8 +3,8 @@ import type { WritingChapter, WritingProject } from "../api/types";
 import { buildDocx } from "./docx";
 import { readExport } from "./epub";
 import { bestSplit, markdownToHtml, readDocumentBytes, rtfToHtml, splitChapters, textToHtml } from "./importDoc";
-import { isbnValid, preflight } from "./preflight";
-import { jpegPdf, spineWidth, wrapFor } from "./paperbackCover";
+import { isbnValid, preflight } from "./preflightChecks";
+import { jpegPdf, spineWidth, wrapFor } from "./paperbackWrap";
 
 describe("Importing", () => {
   it("reads RTF: paragraphs, italics, accents, footnotes", () => {

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import type { WritingChapter, WritingProject } from "../api/types";
 import { readExport } from "./epub";
 import { pagesKey } from "./PaperbackCover";
-import { preflight, STORES, type Finding, type Store } from "./preflight";
+import { preflight, STORES, type Finding, type Store } from "./preflightChecks";
 import { bookInput } from "./WritingDialogs";
 
 const STORES_KEY = "tbv.preflight.stores";
