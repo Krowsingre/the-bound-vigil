@@ -54,6 +54,8 @@ const LIFETIME_PLANS: LicensePlan[] = ["lifetime", "publisherLifetime", "publish
  */
 export function leavesSubscriptionRunning(license: LicenseView | null, plan: LicensePlan): boolean {
   if (!license || license.state !== "owned" || (license.plan !== "monthly" && license.plan !== "yearly")) return false;
+  // Shared by family: it's the organiser's to keep or cancel, and buying doesn't charge this person twice.
+  if (license.subscriptionShared) return false;
   return LIFETIME_PLANS.includes(plan) || license.shop !== "apple";
 }
 

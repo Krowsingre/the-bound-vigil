@@ -423,10 +423,14 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
     Task {
       var lifetime = false
       var yearly = false
+      var shared = false
       for await entitlement in Transaction.currentEntitlements {
         guard case .verified(let t) = entitlement, t.revocationDate == nil else { continue }
         if t.productID == args.product { lifetime = true }
-        if let y = args.yearly, t.productID == y, (t.expirationDate ?? .distantFuture) > Date() { yearly = true }
+        if let y = args.yearly, t.productID == y, (t.expirationDate ?? .distantFuture) > Date() {
+          yearly = true
+          shared = t.ownershipType == .familyShared
+        }
       }
       let ids = [args.product] + (args.yearly.map { [$0] } ?? [])
       let products = (try? await Product.products(for: ids)) ?? []
@@ -436,7 +440,10 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
       // billing grace period (16 days) while Apple tries again.
       if !yearly, let statuses = try? await plan?.subscription?.status {
         for s in statuses {
-          if case .verified(let t) = s.transaction, t.productID == args.yearly, t.revocationDate == nil, s.state == .inGracePeriod { yearly = true }
+          if case .verified(let t) = s.transaction, t.productID == args.yearly, t.revocationDate == nil, s.state == .inGracePeriod {
+          yearly = true
+          shared = t.ownershipType == .familyShared
+        }
         }
       }
       var freeMonth = false
@@ -449,6 +456,7 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
         "price": price.map { $0 as Any } ?? NSNull(),
         "yearlyPrice": (plan?.displayPrice).map { $0 as Any } ?? NSNull(),
         "freeMonth": freeMonth,
+        "shared": shared,
       ])
     }
   }

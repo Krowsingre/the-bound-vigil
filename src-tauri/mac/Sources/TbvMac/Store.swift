@@ -30,10 +30,14 @@ public func storeStatus(_ lifetimeId: UnsafePointer<CChar>, _ yearlyId: UnsafePo
   return wait {
     var lifetime = false
     var yearly = false
+    var shared = false
     for await entitlement in Transaction.currentEntitlements {
       guard case .verified(let t) = entitlement, t.revocationDate == nil else { continue }
       if t.productID == lifetimeProduct { lifetime = true }
-      if t.productID == yearlyProduct, (t.expirationDate ?? .distantFuture) > Date() { yearly = true }
+      if t.productID == yearlyProduct, (t.expirationDate ?? .distantFuture) > Date() {
+        yearly = true
+        shared = t.ownershipType == .familyShared
+      }
     }
     let products = (try? await Product.products(for: [lifetimeProduct, yearlyProduct])) ?? []
     let plan = products.first { $0.id == yearlyProduct }
@@ -41,7 +45,10 @@ public func storeStatus(_ lifetimeId: UnsafePointer<CChar>, _ yearlyId: UnsafePo
     // billing grace period (16 days) while Apple tries again.
     if !yearly, let statuses = try? await plan?.subscription?.status {
       for s in statuses {
-        if case .verified(let t) = s.transaction, t.productID == yearlyProduct, t.revocationDate == nil, s.state == .inGracePeriod { yearly = true }
+        if case .verified(let t) = s.transaction, t.productID == yearlyProduct, t.revocationDate == nil, s.state == .inGracePeriod {
+          yearly = true
+          shared = t.ownershipType == .familyShared
+        }
       }
     }
     var freeMonth = false
@@ -54,6 +61,7 @@ public func storeStatus(_ lifetimeId: UnsafePointer<CChar>, _ yearlyId: UnsafePo
       "price": (products.first { $0.id == lifetimeProduct }?.displayPrice).map { $0 as Any } ?? NSNull(),
       "yearlyPrice": (plan?.displayPrice).map { $0 as Any } ?? NSNull(),
       "freeMonth": freeMonth,
+      "shared": shared,
     ]
   }
 }

@@ -20,5 +20,6 @@ describe("buying while subscribed", () => {
     expect(leavesSubscriptionRunning(owned("lifetime"), "publisherUpgrade")).toBe(false);
     expect(leavesSubscriptionRunning({ ...owned(null), state: "trial" }, "lifetime")).toBe(false);
     expect(leavesSubscriptionRunning(null, "lifetime")).toBe(false);
+    expect(leavesSubscriptionRunning({ ...owned("yearly"), subscriptionShared: true }, "lifetime")).toBe(false);
   });
 });

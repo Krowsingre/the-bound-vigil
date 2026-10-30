@@ -71,6 +71,8 @@ struct ApplePair {
     price: Option<String>,
     yearly_price: Option<String>,
     free_month: bool,
+    /// The running plan is shared with them by family (someone else pays).
+    shared: bool,
 }
 
 /// Puts the App Store questions (TBV, Publisher, each monthly too, and the upgrade) together.
@@ -89,12 +91,15 @@ fn apple_answer(ask: impl Fn(&str, &str) -> Result<ApplePair, String>) -> Option
     let lifetime = base.lifetime || publisher.as_ref().is_some_and(|p| p.lifetime);
     let yearly = base.yearly || publisher.as_ref().is_some_and(|p| p.yearly);
     let owned = base.lifetime || base.yearly || by_month || publisher_owned;
+    // Whichever subscription is running, whether family pays for it.
+    let shared = [Some(&base), monthly.as_ref(), publisher.as_ref(), publisher_monthly.as_ref()].into_iter().flatten().any(|p| p.yearly && p.shared);
     Some(StoreAnswer {
         owned,
         price: base.price,
         yearly_price: base.yearly_price,
         monthly_price: monthly.and_then(|m| m.yearly_price),
         free_month: base.free_month,
+        subscription_shared: shared,
         plan: plan_name(owned, lifetime, yearly),
         publisher: publisher_owned || upgraded,
         publisher_price: publisher.as_ref().and_then(|p| p.price.clone()),
@@ -163,6 +168,7 @@ fn ask_store(app: &AppHandle) -> Option<StoreAnswer> {
                 price: s.price,
                 yearly_price: s.yearly_price,
                 free_month: s.free_month,
+                shared: s.shared,
             })
         });
     }
@@ -176,6 +182,7 @@ fn ask_store(app: &AppHandle) -> Option<StoreAnswer> {
                 price: s.price,
                 yearly_price: s.yearly_price,
                 free_month: s.free_month,
+                shared: s.shared,
             })
         });
     }
@@ -306,6 +313,7 @@ mod store {
             yearly_price: price_of(super::YEARLY),
             monthly_price: price_of(super::MONTHLY),
             free_month: false,
+            subscription_shared: false,
             plan: super::plan_name(owned, lifetime || publisher, yearly || publisher_yearly),
             // The upgrade only counts on top of TBV for life.
             publisher: publisher || publisher_yearly || publisher_monthly || (upgrade && lifetime),
@@ -363,6 +371,7 @@ mod mac_store {
         pub price: Option<String>,
         pub yearly_price: Option<String>,
         pub free_month: bool,
+        pub shared: bool,
     }
 
     #[derive(serde::Deserialize, Default)]

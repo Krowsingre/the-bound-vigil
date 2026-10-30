@@ -252,6 +252,9 @@ pub struct StoreStatus {
     pub yearly_price: Option<String>,
     /// This person would get the yearly plan's free first month.
     pub free_month: bool,
+    /// The running plan is shared by someone in their family, who pays for it.
+    #[serde(default)]
+    pub shared: bool,
 }
 
 /// Asks the App Store about the lifetime unlock and the yearly plan.

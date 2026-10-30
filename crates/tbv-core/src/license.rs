@@ -83,6 +83,8 @@ pub struct LicenseView {
     pub monthly_price: Option<String>,
     /// The App Store gives this person the yearly plan's first month free.
     pub free_month: bool,
+    /// Their subscription is shared with them through Family Sharing, so someone else pays for it.
+    pub subscription_shared: bool,
     /// Bought on "monthly", "yearly" or "lifetime" (none when not bought, or unlocked by code).
     pub plan: Option<String>,
     /// The Publisher level is owned (or unlocked by the owner's code).
@@ -114,6 +116,7 @@ pub struct StoreAnswer {
     pub yearly_price: Option<String>,
     pub monthly_price: Option<String>,
     pub free_month: bool,
+    pub subscription_shared: bool,
     /// What's owned: "monthly" or "yearly" (a subscription that's running) or "lifetime".
     pub plan: Option<String>,
     /// The Publisher level is owned, on either plan or as an upgrade.
@@ -133,6 +136,7 @@ impl StoreAnswer {
             yearly_price: None,
             monthly_price: None,
             free_month: false,
+            subscription_shared: false,
             plan: None,
             publisher: false,
             publisher_price: None,
@@ -213,6 +217,7 @@ impl Library {
             yearly_price: answer.and_then(|a| a.yearly_price.clone()),
             monthly_price: answer.and_then(|a| a.monthly_price.clone()),
             free_month: answer.is_some_and(|a| a.free_month),
+            subscription_shared: answer.is_some_and(|a| a.subscription_shared),
             plan: if bought { self.setting(PLAN)? } else { None },
             publisher: coded || (bought && self.setting(PUBLISHER)?.is_some()),
             publisher_price: answer.and_then(|a| a.publisher_price.clone()),
