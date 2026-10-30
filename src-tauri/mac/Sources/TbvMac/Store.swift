@@ -37,6 +37,13 @@ public func storeStatus(_ lifetimeId: UnsafePointer<CChar>, _ yearlyId: UnsafePo
     }
     let products = (try? await Product.products(for: [lifetimeProduct, yearlyProduct])) ?? []
     let plan = products.first { $0.id == yearlyProduct }
+    // A renewal that couldn't be charged keeps the plan through Apple's
+    // billing grace period (16 days) while Apple tries again.
+    if !yearly, let statuses = try? await plan?.subscription?.status {
+      for s in statuses {
+        if case .verified(let t) = s.transaction, t.productID == yearlyProduct, t.revocationDate == nil, s.state == .inGracePeriod { yearly = true }
+      }
+    }
     var freeMonth = false
     if let sub = plan?.subscription, sub.introductoryOffer?.paymentMode == .freeTrial {
       freeMonth = await sub.isEligibleForIntroOffer

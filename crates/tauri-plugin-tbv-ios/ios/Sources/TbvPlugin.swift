@@ -432,6 +432,13 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
       let products = (try? await Product.products(for: ids)) ?? []
       let price = products.first { $0.id == args.product }?.displayPrice
       let plan = products.first { $0.id == args.yearly }
+      // A renewal that couldn't be charged keeps the plan through Apple's
+      // billing grace period (16 days) while Apple tries again.
+      if !yearly, let statuses = try? await plan?.subscription?.status {
+        for s in statuses {
+          if case .verified(let t) = s.transaction, t.productID == args.yearly, t.revocationDate == nil, s.state == .inGracePeriod { yearly = true }
+        }
+      }
       var freeMonth = false
       if let sub = plan?.subscription, sub.introductoryOffer?.paymentMode == .freeTrial {
         freeMonth = await sub.isEligibleForIntroOffer
