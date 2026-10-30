@@ -30,6 +30,8 @@ type WritingCalls = Pick<
   | "deleteWritingChapter"
   | "setWritingChapterRole"
   | "setWritingChapterPart"
+  | "addWritingSection"
+  | "setWritingChapterPage"
   | "setWritingCoverPage"
   | "writingCover"
 >;
@@ -70,6 +72,7 @@ export function writingCalls(store: WritingStore): WritingCalls {
     updatedAt: String(r.updated_at),
     role: r.role === "front" || r.role === "back" || r.role === "part" ? r.role : "chapter",
     part: typeof r.part === "string" ? r.part : null,
+    page: typeof r.page === "string" && r.page ? r.page : "{}",
   });
   const project = (r: Row): WritingProject => {
     const chapters = chapterRows(String(r.id));
@@ -219,6 +222,26 @@ export function writingCalls(store: WritingStore): WritingCalls {
       }
       if ((row.part ?? null) !== part) {
         await store.write("writing_chapter", { ...row, part, updated_at: now() });
+        await touch(String(row.project_id));
+      }
+      return chapter(chapterRow(id));
+    },
+    addWritingSection: async (projectId, section) => {
+      projectRow(projectId);
+      const role = section.role ?? "chapter";
+      if (section.part) {
+        const host = chapterRow(section.part);
+        if (host.role !== "part" || host.project_id !== projectId || role === "part") throw new Error("That section can't go in that part.");
+      }
+      const added = await addChapter(projectId, section.title, section.after ?? null);
+      await store.write("writing_chapter", { ...chapterRow(added.id), body: section.body ?? "", role, part: section.part ?? null, page: section.page || "{}" });
+      return chapter(chapterRow(added.id));
+    },
+    setWritingChapterPage: async (id, page) => {
+      const row = chapterRow(id);
+      const next = page.trim() || "{}";
+      if ((row.page ?? "{}") !== next) {
+        await store.write("writing_chapter", { ...row, page: next, updated_at: now() });
         await touch(String(row.project_id));
       }
       return chapter(chapterRow(id));

@@ -27,6 +27,10 @@ const IDLE: Duration = Duration::from_secs(120);
 const AFTER_TROUBLE: Duration = Duration::from_secs(30 * 60);
 /// Out of the way while TBV opens.
 const AT_START: Duration = Duration::from_secs(20);
+/// While the phone is too warm, how often to look whether it has cooled down.
+const COOLING: Duration = Duration::from_secs(60);
+/// Phones and tablets, where lining up is off until it's turned on (and agreed to).
+const PHONE: bool = cfg!(any(target_os = "ios", target_os = "android"));
 
 /// What Preferences › Reading › Read-along sets (device setting `readAlong.lineUp`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,11 +44,22 @@ pub struct Settings {
     pub effort: String,
     /// iPhone: carry on in the background while charging.
     pub background: bool,
+    /// Phones: the warning about battery and heat was agreed to when it was turned on.
+    pub agreed: bool,
+}
+
+impl Settings {
+    /// Whether this device lines up pairs by itself. On a phone it also takes
+    /// the warning having been agreed to, so phones that had it on before
+    /// the warning came in are off until it's turned on again.
+    pub fn on(&self) -> bool {
+        self.auto && (!PHONE || self.agreed)
+    }
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { auto: true, model: "standard".into(), effort: "gentle".into(), background: true }
+        Settings { auto: !PHONE, model: "standard".into(), effort: "gentle".into(), background: true, agreed: false }
     }
 }
 
@@ -89,7 +104,8 @@ pub struct Status {
     pub ebook_id: String,
     pub audiobook_id: String,
     pub title: String,
-    /// "model" (getting the speech model ready) or "listening".
+    /// "model" (getting the speech model ready), "listening", or "cooling"
+    /// (paused while the phone is too warm).
     pub stage: &'static str,
     pub fraction: f64,
     pub model_loaded: u64,
@@ -172,10 +188,17 @@ fn run(engine: &Engine) {
     loop {
         let set = settings(&engine.library);
         let paused = engine.paused.load(Ordering::Relaxed);
-        if !set.auto || paused {
+        if !set.on() || paused {
             ear = None;
             background_work(false, set.background);
             engine.rest(IDLE);
+            continue;
+        }
+        if too_warm() {
+            // The speech model is let go too, so the phone cools quicker.
+            ear = None;
+            engine.change(|s| s.stage = "cooling");
+            engine.rest(COOLING);
             continue;
         }
         let pairs = engine.library.lock().ok().and_then(|l| l.read_along_pairs().ok()).unwrap_or_default();
@@ -222,7 +245,11 @@ fn run(engine: &Engine) {
                 ear = None;
             }
         }
-        engine.tell(None);
+        if too_warm() {
+            engine.change(|s| s.stage = "cooling");
+        } else {
+            engine.tell(None);
+        }
         if engine.pause_after.swap(false, Ordering::Relaxed) {
             engine.paused.store(true, Ordering::Relaxed);
             let _ = engine.app.emit("lining-up-paused", true);
@@ -265,7 +292,7 @@ fn line_up_pair(
     let mut listener = tbv_core::listen::Listener::open(&path, &format, &audiobook.parts).map_err(|e| e.to_string())?;
     let mut clip = |start: u64, len: u64| listener.clip(start, len);
     engine.change(|s| s.stage = "listening");
-    let stop = || engine.paused.load(Ordering::Relaxed) || !settings(&engine.library).auto;
+    let stop = || engine.paused.load(Ordering::Relaxed) || !settings(&engine.library).on() || too_warm();
     let mut progress = |done: usize, of: u64| engine.change(|s| s.fraction = done as f64 / of.max(1) as f64);
     tbv_core::lineup::line_up(
         &engine.library,
@@ -328,6 +355,19 @@ fn ensure_model(engine: &Engine, file: &str) -> Result<PathBuf, String> {
     }
     std::fs::rename(&part, &path).map_err(|e| e.to_string())?;
     Ok(path)
+}
+
+/// Whether the phone has got too warm to keep lining up (iOS says "serious"
+/// or "critical"). It carries on, from the last piece saved, once it has
+/// cooled down. Computers look after their own fans.
+#[cfg(target_os = "ios")]
+fn too_warm() -> bool {
+    tauri_plugin_tbv_ios::thermal_state() >= 2
+}
+
+#[cfg(not(target_os = "ios"))]
+fn too_warm() -> bool {
+    false
 }
 
 /// Tells the iPhone app whether there's lining up to carry on with in the background.

@@ -165,6 +165,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "appearance",
+    section: "custom-theme",
+    label: "Custom theme",
+    words: "custom theme colours colors page surface accent highlight save name edit own palette",
+  },
+  {
+    tab: "appearance",
     section: "preview",
     label: "Theme preview",
     words: "preview swatches colours colors page surface accent highlight",

@@ -2,7 +2,7 @@
 // browser that only works in the app.
 
 import type { Api } from "../api";
-import type { Bookmark, QuickLink, SanctumLink } from "../api/types";
+import type { Bookmark, CustomTheme, QuickLink, SanctumLink } from "../api/types";
 
 /** The ones a library starts with (the same as crates/tbv-core/src/quick_links.rs). */
 export const STARTER_LINKS: QuickLink[] = [
@@ -36,6 +36,9 @@ type Calls = Pick<
   | "removeQuickLink"
   | "moveQuickLink"
   | "sanctumLinks"
+  | "customThemes"
+  | "saveCustomTheme"
+  | "removeCustomTheme"
   | "addSanctumLink"
   | "updateSanctumLink"
   | "removeSanctumLink"
@@ -75,7 +78,19 @@ export function browseStub(): Calls {
   let marks: Bookmark[] = [];
   let links: QuickLink[] = [...STARTER_LINKS];
   let sanctum: SanctumLink[] = [...STARTER_SANCTUM_LINKS];
+  let themes: CustomTheme[] = [];
   return {
+    customThemes: async () => themes,
+    saveCustomTheme: async (theme) => {
+      const name = theme.name.trim().slice(0, 40);
+      if (!name) throw new Error("Give the theme a name.");
+      const saved = { ...theme, name, id: theme.id || crypto.randomUUID() };
+      themes = themes.some((t) => t.id === saved.id) ? themes.map((t) => (t.id === saved.id ? saved : t)) : [...themes, saved];
+      return saved;
+    },
+    removeCustomTheme: async (id) => {
+      themes = themes.filter((t) => t.id !== id);
+    },
     downloadWebBook: async () => {
       throw new Error("Books come down from the web in the TBV app.");
     },

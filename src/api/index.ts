@@ -10,6 +10,8 @@ import type {
   Bookmark,
   QuickLink,
   SanctumLink,
+  CustomTheme,
+  NewWritingSection,
   BrowserFrame,
   BrowserEvent,
   BrowserProtection,
@@ -464,6 +466,11 @@ export interface Api {
   removeQuickLink(id: string): Promise<void>;
   /** Moves one to a new place (zero-based). */
   moveQuickLink(id: string, to: number): Promise<void>;
+  /** Custom themes, in the order they were made. */
+  customThemes(): Promise<CustomTheme[]>;
+  /** Saves a theme: a new one when it has no id. */
+  saveCustomTheme(theme: CustomTheme): Promise<CustomTheme>;
+  removeCustomTheme(id: string): Promise<void>;
   /** Sanctum's own Quick Links, apart from Discover's. */
   sanctumLinks(): Promise<SanctumLink[]>;
   addSanctumLink(title: string, target: string, icon: string, picture: string): Promise<SanctumLink>;
@@ -551,6 +558,10 @@ export interface Api {
   setWritingCoverPage(id: string, page: WritingProject["coverPage"]): Promise<WritingProject>;
   /** Puts a section into a part of an anthology, or back into the book's own (null). */
   setWritingChapterPart(id: string, part: string | null): Promise<WritingChapter>;
+  /** Adds a section with its kind, place and words in one go. */
+  addWritingSection(projectId: string, section: NewWritingSection): Promise<WritingChapter>;
+  /** Changes what kind of page a section is, or how it's set out (JSON). */
+  setWritingChapterPage(id: string, page: string): Promise<WritingChapter>;
   /** Books finished, dropped or rated, most recently finished first. */
   readingHistory(): Promise<ReadingHistoryEntry[]>;
   /** Takes a book off Reading history for good. */
@@ -1057,6 +1068,9 @@ function appApi(): Api {
     updateQuickLink: async (id, title, url, picture) => (await core).invoke("update_quick_link", { id, title, url, picture }),
     removeQuickLink: async (id) => (await core).invoke("remove_quick_link", { id }),
     moveQuickLink: async (id, to) => (await core).invoke("move_quick_link", { id, to }),
+    customThemes: async () => (await core).invoke<CustomTheme[]>("custom_themes"),
+    saveCustomTheme: async (theme) => (await core).invoke<CustomTheme>("save_custom_theme", { theme }),
+    removeCustomTheme: async (id) => (await core).invoke("remove_custom_theme", { id }),
     sanctumLinks: async () => (await core).invoke<SanctumLink[]>("sanctum_links"),
     addSanctumLink: async (title, target, icon, picture) => (await core).invoke<SanctumLink>("add_sanctum_link", { title, target, icon, picture }),
     updateSanctumLink: async (id, title, target, icon, picture) => (await core).invoke("update_sanctum_link", { id, title, target, icon, picture }),
@@ -1127,6 +1141,12 @@ function appApi(): Api {
     deleteWritingDraft: async (id) => (await core).invoke("delete_writing_draft", { id }),
     setWritingCoverPage: async (id, page) => (await core).invoke<WritingProject>("set_writing_cover_page", { id, page }),
     setWritingChapterPart: async (id, part) => (await core).invoke<WritingChapter>("set_writing_chapter_part", { id, part }),
+    addWritingSection: async (projectId, section) =>
+      (await core).invoke<WritingChapter>("add_writing_section", {
+        projectId,
+        section: { title: section.title, body: section.body ?? "", role: section.role, part: section.part ?? null, page: section.page ?? "{}", after: section.after ?? null },
+      }),
+    setWritingChapterPage: async (id, page) => (await core).invoke<WritingChapter>("set_writing_chapter_page", { id, page }),
     readingHistory: async () => (await core).invoke<ReadingHistoryEntry[]>("reading_history"),
     forgetReading: async (bookId) => (await core).invoke("forget_reading", { bookId }),
     pickKeyFile: async () => {

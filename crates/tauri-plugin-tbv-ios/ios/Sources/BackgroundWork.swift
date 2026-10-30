@@ -143,3 +143,15 @@ public func registerBackgroundTasks() {
   TbvBackgroundWork.shared.register()
   TbvPush.shared.start()
 }
+
+/// How warm the phone is: 0 normal, 1 fair, 2 serious, 3 critical.
+@_cdecl("tbv_thermal_state")
+public func thermalState() -> Int32 {
+  switch ProcessInfo.processInfo.thermalState {
+  case .nominal: return 0
+  case .fair: return 1
+  case .serious: return 2
+  case .critical: return 3
+  @unknown default: return 0
+  }
+}

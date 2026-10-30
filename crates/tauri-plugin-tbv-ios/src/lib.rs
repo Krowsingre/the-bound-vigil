@@ -326,6 +326,21 @@ pub fn background_work(busy: bool, needs_power: bool) {
     let _ = (busy, needs_power);
 }
 
+/// How warm the device is, as iOS says: 0 normal, 1 fair, 2 serious,
+/// 3 critical. Elsewhere it's always 0.
+pub fn thermal_state() -> u8 {
+    #[cfg(target_os = "ios")]
+    {
+        extern "C" {
+            fn tbv_thermal_state() -> i32;
+        }
+        // Safety: a Swift function taking nothing and giving a number, in this plugin.
+        unsafe { tbv_thermal_state().clamp(0, 3) as u8 }
+    }
+    #[cfg(not(target_os = "ios"))]
+    0
+}
+
 /// Takes the sign-in page away once its answer is in (or it timed out).
 pub fn close_sign_in() {
     #[cfg(target_os = "ios")]

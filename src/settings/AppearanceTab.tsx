@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { api } from "../api";
 import { BookCover } from "../components/BookCover";
 import { Icon, type IconName } from "../components/Icon";
 import { HIGHLIGHT_COLORS, parseSettings, SETTINGS_KEY, type ReaderSettings } from "../reader/settings";
 import {
+  customColors,
   isDark,
   PRIVACY_SHORTCUT,
   useAppSettings,
@@ -18,7 +18,10 @@ import {
   type ThemeChoice,
 } from "./appSettings";
 import { Columns, Row, Section, Segmented, Toggle } from "./controls";
+import { CustomThemeSection, themeFromWindow } from "./CustomThemeSection";
 import { ProfileSection } from "./ProfileSection";
+import { api } from "../api";
+import { useToast } from "../components/Toast";
 
 /** The reader's own settings, shared with the Aa panel in the reader. */
 export function useReaderSettings(): [ReaderSettings | null, (change: Partial<ReaderSettings>) => void] {
@@ -45,6 +48,7 @@ const THEMES: { value: ThemeChoice; label: string; icon: IconName }[] = [
   { value: "dark", label: "Dark", icon: "moon" },
   { value: "system", label: "System", icon: "computer" },
   { value: "adaptive", label: "Adaptive", icon: "adaptive" },
+  { value: "custom", label: "Custom", icon: "palette" },
 ];
 
 const DENSITIES: { value: InterfaceDensity; label: string }[] = [
@@ -103,6 +107,20 @@ export function AppearanceTab({
   const adaptiveOn = settings.theme === "adaptive";
   const systemDark = useSystemDark();
   const card = settings.theme;
+  const toast = useToast();
+  const [naming, setNaming] = useState<string | null>(null);
+  /** Keeps the Adaptive colours showing now as a custom theme of their own. */
+  const keepAdaptive = async (name: string) => {
+    try {
+      const made = await api.saveCustomTheme(themeFromWindow(name, adaptive?.highlight));
+      change({ theme: "custom", customTheme: made });
+      setNaming(null);
+      toast(`${made.name} saved as a custom theme.`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const custom = settings.customTheme;
 
   const preview = (
     <Section id="preview" title="Theme preview" lede="How the interface's colours look together.">
@@ -136,7 +154,7 @@ export function AppearanceTab({
             Accent
           </li>
           <li>
-            <span className="swatch-chip" style={{ background: adaptive?.highlight ?? HIGHLIGHT_COLORS[3].hex }} />
+            <span className="swatch-chip" style={{ background: (card === "custom" ? custom?.highlight : adaptive?.highlight) ?? HIGHLIGHT_COLORS[3].hex }} />
             Highlight
           </li>
         </ul>
@@ -214,6 +232,15 @@ export function AppearanceTab({
             <label key={t.value} className={`theme-card${card === t.value ? " is-active" : ""}`}>
               <span
                 className={`theme-tile theme-swatch-${t.value === "adaptive" ? (isDark({ theme: "adaptive", adaptiveBase: settings.adaptiveBase }, systemDark) ? "adaptive-dark" : "adaptive-light") : t.value}`}
+                style={
+                  t.value === "custom" && custom
+                    ? {
+                        background: `linear-gradient(180deg, ${custom.surface} 0 76%, ${custom.accent} 76% 88%, ${custom.highlight} 88%)`,
+                        color: customColors(custom)["--text"],
+                        textShadow: "none",
+                      }
+                    : undefined
+                }
                 aria-hidden
               >
                 <Icon name={t.icon} size={30} />
@@ -282,8 +309,34 @@ export function AppearanceTab({
             </button>
             <span className="settings-row-hint">Takes the colours again from the book you read most recently.</span>
           </div>
+          {naming === null ? (
+            <div className="settings-actions">
+              <button type="button" className="btn btn-quiet" disabled={!adaptive} onClick={() => setNaming(adaptiveBook ? `${adaptiveBook.title}`.slice(0, 40) : "My theme")}>
+                <Icon name="palette" size={16} /> Save as custom theme
+              </button>
+              <span className="settings-row-hint">Keeps these colours as a theme of your own, to name and edit.</span>
+            </div>
+          ) : (
+            <form
+              className="settings-actions"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void keepAdaptive(naming);
+              }}
+            >
+              <input aria-label="Theme name" value={naming} maxLength={40} autoFocus onChange={(e) => setNaming(e.target.value)} />
+              <button type="submit" className="btn btn-primary" disabled={!naming.trim()}>
+                Save
+              </button>
+              <button type="button" className="btn btn-quiet" onClick={() => setNaming(null)}>
+                Cancel
+              </button>
+            </form>
+          )}
         </Section>
       )}
+
+      {card === "custom" && <CustomThemeSection />}
 
       <ProfileSection />
 

@@ -8,9 +8,10 @@ import { useToast } from "../components/Toast";
 import { buildEpub, epubFileName, exportProblems, readExport, type ExportSettings } from "./epub";
 import { imageMime, loadFont } from "./fonts";
 import { CoverMaker } from "./CoverMaker";
+import { startingTitle, TEMPLATES, templateSections, type Template } from "./pages";
 
 /** The book made into an EPUB, with its cover and the font chosen. */
-async function makeEpub(project: WritingProject, chapters: WritingChapter[], settings: ExportSettings): Promise<Uint8Array> {
+export async function makeEpub(project: WritingProject, chapters: WritingChapter[], settings: ExportSettings): Promise<Uint8Array> {
   const coverBytes = project.cover ? await api.writingCover(project.id) : new Uint8Array();
   const mime = coverBytes.length ? imageMime(coverBytes) : null;
   return buildEpub({ project, chapters, settings, cover: mime ? { bytes: coverBytes, mime } : null, font: await loadFont(settings.font) });
@@ -27,13 +28,25 @@ const OPENS_WITH: { value: WritingProject["coverPage"]; label: string }[] = [
 export function NewBookDialog({ onCreated, onCancel }: { onCreated: (id: string) => void; onCancel: () => void }) {
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
+  const [template, setTemplate] = useState<Template>("blank");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const create = async () => {
     if (!title.trim()) return setError("Give the book a title. You can change it later.");
     setBusy(true);
     try {
-      onCreated((await api.createWritingProject(title, author.trim() || null)).project.id);
+      const made = await api.createWritingProject(title, author.trim() || null);
+      // Every book starts with a first chapter; a template adds the pages around it.
+      const first = made.chapters[0];
+      for (const s of templateSections(template)) {
+        const added = await api.addWritingSection(made.project.id, {
+          title: s.title ?? startingTitle(s.kind, made.project),
+          role: s.role,
+          page: s.role === "part" ? "{}" : JSON.stringify({ kind: s.kind }),
+        });
+        if (s.role === "part" && first) await api.setWritingChapterPart(first.id, added.id);
+      }
+      onCreated(made.project.id);
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -60,6 +73,18 @@ export function NewBookDialog({ onCreated, onCancel }: { onCreated: (id: string)
           <span>Author</span>
           <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="Your name, or a pen name" />
         </label>
+        <fieldset className="field writing-templates">
+          <legend>Start with</legend>
+          {TEMPLATES.map((t) => (
+            <label key={t.value} className="check-row">
+              <input type="radio" name="writing-template" checked={template === t.value} onChange={() => setTemplate(t.value)} />
+              <span>
+                <strong>{t.label}</strong>
+                <span className="muted"> · {t.hint}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
         {error && (
           <p className="form-error" role="alert">
             {error}
@@ -259,12 +284,15 @@ export function ExportDialog({
   project,
   chapters,
   onFlush,
+  onSettings,
   onClose,
 }: {
   project: WritingProject;
   chapters: WritingChapter[];
   /** Saves the chapter being written, so the EPUB has its latest words. */
   onFlush: () => Promise<WritingChapter[]>;
+  /** Keeps the settings as they're changed, so the preview shows them. */
+  onSettings: (settings: ExportSettings) => void;
   onClose: () => void;
 }) {
   const [settings, setSettings] = useState(() => readExport(project.export));
@@ -273,8 +301,13 @@ export function ExportDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
-  const set = (change: Partial<ExportSettings>) => setSettings((s) => ({ ...s, ...change }));
+  const set = (change: Partial<ExportSettings>) => {
+    const next = { ...settings, ...change };
+    setSettings(next);
+    onSettings(next);
+  };
   const problems = exportProblems(chapters);
+  const hasParts = chapters.some((c) => c.role === "part");
 
   const make = async () => {
     if (!addToLibrary && !saveCopy) return setError("Choose where the EPUB goes.");
@@ -320,7 +353,7 @@ export function ExportDialog({
         onKeyDown={(e) => e.key === "Escape" && !busy && onClose()}
       >
         <h2>Export as EPUB</h2>
-        <p className="muted dialog-lede">A standard EPUB 3 that e-readers and stores accept. The table of contents is made from your chapter titles and headings.</p>
+        <p className="muted dialog-lede">A standard EPUB 3 that e-readers and stores accept. Changes show in the preview straight away.</p>
         <label className="field">
           <span>Font</span>
           <select autoFocus value={settings.font} onChange={(e) => set({ font: e.target.value as ExportSettings["font"] })}>
@@ -378,9 +411,33 @@ export function ExportDialog({
           <input type="checkbox" checked={settings.newPage} onChange={(e) => set({ newPage: e.target.checked })} />
           <span>Start each chapter on a new page</span>
         </label>
+        <div className="writing-export-styles">
+          <label className="field">
+            <span>Chapter headings</span>
+            <select value={settings.chapterHeading} onChange={(e) => set({ chapterHeading: e.target.value as ExportSettings["chapterHeading"] })}>
+              <option value="title">The title only</option>
+              <option value="number">Chapter 1, then the title</option>
+              <option value="words">Chapter One, then the title</option>
+              <option value="numeral">1, then the title</option>
+            </select>
+          </label>
+          {hasParts && (
+            <label className="field">
+              <span>Chapter numbers</span>
+              <select value={settings.numbering} onChange={(e) => set({ numbering: e.target.value as ExportSettings["numbering"] })}>
+                <option value="restart">Start again in each section</option>
+                <option value="continuous">Run on through the book</option>
+              </select>
+            </label>
+          )}
+        </div>
         <label className="check-row">
           <input type="checkbox" checked={settings.dropCap} onChange={(e) => set({ dropCap: e.target.checked })} />
           <span>A large first letter at the start of each chapter</span>
+        </label>
+        <label className="check-row">
+          <input type="checkbox" checked={settings.smallCaps} onChange={(e) => set({ smallCaps: e.target.checked })} />
+          <span>The first line of each chapter in small capitals</span>
         </label>
         <div className="writing-export-where">
           <strong>Where it goes</strong>

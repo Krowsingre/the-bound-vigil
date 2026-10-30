@@ -139,6 +139,23 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     };
   }, [adaptiveOn, adaptiveTick, pinned, settings.adaptiveAuto, change]);
 
+  // A custom theme changed on another device comes in with sync; this device's copy follows it.
+  const customId = settings.theme === "custom" ? (settings.customTheme?.id ?? "") : "";
+  useEffect(() => {
+    if (!loaded || !customId) return;
+    let current = true;
+    api.customThemes().then(
+      (themes) => {
+        const found = themes.find((t) => t.id === customId);
+        if (current && found) setSettings((s) => (JSON.stringify(s.customTheme) === JSON.stringify(found) ? s : save({ ...s, customTheme: found })));
+      },
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, [loaded, customId, save]);
+
   const dark = isDark(settings, systemDark);
   const adaptive = useMemo(
     () => (adaptiveOn && coverHex ? adaptiveColors(coverHex, dark, settings.adaptiveStrength) : null),

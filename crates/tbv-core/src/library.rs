@@ -549,6 +549,24 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE sanctum_links ADD COLUMN picture TEXT NOT NULL DEFAULT '';
     "#,
+    // v30: Scribe's ready-made pages. `page` says what kind of page a
+    // section is (copyright, dedication, contents…) and how it's set out,
+    // as JSON the UI reads (src/writing/pages.ts). Custom themes: four
+    // colours of the person's own, named and synced.
+    r#"
+    ALTER TABLE writing_chapters ADD COLUMN page TEXT NOT NULL DEFAULT '{}';
+    CREATE TABLE custom_themes (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        page TEXT NOT NULL,
+        surface TEXT NOT NULL,
+        accent TEXT NOT NULL,
+        highlight TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
