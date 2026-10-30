@@ -7,6 +7,7 @@
 
 import { zipSync, strToU8 } from "fflate";
 import type { WritingChapter, WritingProject } from "../api/types";
+import { DEFAULT_COPYRIGHT, DEFAULT_RIGHTS, isMade, KINDS, numberInWords, readPage, type CopyrightDetails, type PageKind, type PageSettings } from "./pages";
 
 export type SceneBreak = "asterisks" | "ornament" | "space" | "line";
 export type BookFont = "lora" | "echolume" | "none";
@@ -26,6 +27,13 @@ export interface ExportSettings {
   titles: "center" | "left";
   /** A large first letter at the start of each chapter. */
   dropCap: boolean;
+  /** The first line of each chapter in small capitals. */
+  smallCaps: boolean;
+  /** How a chapter's heading reads: its title alone, or a number above it. */
+  chapterHeading: "title" | "number" | "words" | "numeral";
+  /** With chapters in several body sections: numbered from 1 again in each, or on through the book. */
+  numbering: "restart" | "continuous";
+  copyright: CopyrightDetails;
 }
 
 export const DEFAULT_EXPORT: ExportSettings = {
@@ -37,7 +45,13 @@ export const DEFAULT_EXPORT: ExportSettings = {
   align: "justify",
   titles: "center",
   dropCap: false,
+  smallCaps: false,
+  chapterHeading: "title",
+  numbering: "restart",
+  copyright: DEFAULT_COPYRIGHT,
 };
+
+const text = (value: unknown, fallback: string, max = 2000) => (typeof value === "string" ? value.slice(0, max) : fallback);
 
 const oneOf = <T,>(value: unknown, allowed: readonly T[], fallback: T): T => (allowed.includes(value as T) ? (value as T) : fallback);
 
@@ -53,6 +67,22 @@ export function readExport(json: string | null | undefined): ExportSettings {
       align: oneOf(saved.align, ["justify", "left"] as const, DEFAULT_EXPORT.align),
       titles: oneOf(saved.titles, ["center", "left"] as const, DEFAULT_EXPORT.titles),
       dropCap: typeof saved.dropCap === "boolean" ? saved.dropCap : DEFAULT_EXPORT.dropCap,
+      smallCaps: typeof saved.smallCaps === "boolean" ? saved.smallCaps : DEFAULT_EXPORT.smallCaps,
+      chapterHeading: oneOf(saved.chapterHeading, ["title", "number", "words", "numeral"] as const, DEFAULT_EXPORT.chapterHeading),
+      numbering: oneOf(saved.numbering, ["restart", "continuous"] as const, DEFAULT_EXPORT.numbering),
+      copyright: (() => {
+        const c = (saved.copyright && typeof saved.copyright === "object" ? saved.copyright : {}) as Partial<CopyrightDetails>;
+        const d = DEFAULT_COPYRIGHT;
+        return {
+          year: text(c.year, d.year, 20),
+          holder: text(c.holder, d.holder, 200),
+          rights: text(c.rights, d.rights),
+          notice: text(c.notice, d.notice),
+          isbn: text(c.isbn, d.isbn, 40),
+          edition: text(c.edition, d.edition, 200),
+          publisher: text(c.publisher, d.publisher, 200),
+        };
+      })(),
     };
   } catch {
     return DEFAULT_EXPORT;
@@ -98,6 +128,46 @@ export function escapeXml(text: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, "");
+}
+
+const KIND_LABEL = Object.fromEntries(Object.entries(KINDS).map(([kind, info]) => [kind, info.label.replace(/ \(.*\)$/, "")])) as Record<PageKind, string>;
+
+/** What each kind of page is, in the words EPUB readers understand (EPUB 3 structural semantics). */
+const SEMANTIC: Partial<Record<PageKind, string>> = {
+  half_title: "halftitlepage",
+  title_page: "titlepage",
+  copyright: "copyright-page",
+  dedication: "dedication",
+  epigraph: "epigraph",
+  contents: "toc",
+  contents_manual: "toc",
+  foreword: "foreword",
+  preface: "preface",
+  introduction: "introduction",
+  prologue: "prologue",
+  epilogue: "epilogue",
+  afterword: "afterword",
+  acknowledgments: "acknowledgments",
+  endnotes: "endnotes",
+  glossary: "glossary",
+  appendix: "appendix",
+  bibliography: "bibliography",
+};
+
+/** The copyright page Scribe makes from the book's details. */
+export function copyrightHtml(project: WritingProject, details: CopyrightDetails, now = new Date()): string {
+  const year = details.year.trim() || String(now.getFullYear());
+  const holder = details.holder.trim() || project.author?.trim() || "";
+  const line = (text: string, cls = "") => (text.trim() ? `<p${cls ? ` class="${cls}"` : ""}>${escapeXml(text.trim())}</p>\n` : "");
+  return [
+    line(project.title, "copyright-title"),
+    line(`Copyright © ${year}${holder ? ` ${holder}` : ""}`),
+    line(details.rights.trim() ? details.rights : DEFAULT_RIGHTS),
+    line(details.notice),
+    line(details.isbn ? `ISBN ${details.isbn.replace(/^isbn[:\s]*/i, "")}` : ""),
+    line(details.edition),
+    line(details.publisher ? `Published by ${details.publisher}` : ""),
+  ].join("");
 }
 
 const SCENE_MARK: Record<SceneBreak, string> = { asterisks: "* * *", ornament: "❦", space: " ", line: "" };
@@ -285,7 +355,10 @@ ${
     : `p { margin: 0 0 0.9em; text-indent: 0; text-align: ${settings.align}; }`
 }
 h1 + p, h2 + p, h3 + p, .scene + p, hr + p, blockquote + p, .blank + p, .picture + p, p:first-child { text-indent: 0; }
-${settings.dropCap ? "section.chapter > h1 + p::first-letter { float: left; font-size: 3.2em; line-height: 0.85; margin: 0.05em 0.08em 0 0; }\n" : ""}.picture { text-align: center; text-indent: 0; margin: 1em 0; }
+${settings.dropCap ? "section.chapter > h1 + p::first-letter { float: left; font-size: 3.2em; line-height: 0.85; margin: 0.05em 0.08em 0 0; }\n" : ""}${
+  settings.smallCaps ? "section.chapter > h1 + p::first-line { font-variant: small-caps; letter-spacing: 0.03em; }\n" : ""
+}.chapter-label { text-align: ${settings.titles}; text-indent: 0; margin: 2em 0 -1.2em; font-size: 0.85em; letter-spacing: 0.12em; text-transform: uppercase; }
+.picture { text-align: center; text-indent: 0; margin: 1em 0; }
 .picture img, p img { max-width: 100%; }
 sup a { text-decoration: none; }
 .footnotes { margin-top: 2em; border-top: 1px solid currentColor; padding-top: 0.5em; font-size: 0.85em; }
@@ -297,7 +370,19 @@ blockquote p { text-indent: 0; }
 hr.scene { border: none; border-top: 1px solid currentColor; width: 25%; margin: 1.5em auto; }
 ul, ol { margin: 1em 0 1em 1.5em; }
 pre { white-space: pre-wrap; font-family: monospace; }
-section.chapter, section.frontmatter, section.backmatter, section.part { ${settings.newPage ? "page-break-before: always; break-before: page;" : "margin-top: 3em;"} }
+section.chapter, section.frontmatter, section.backmatter, section.part { page-break-before: always; break-before: page; }
+section.follows { page-break-before: auto; break-before: auto; margin-top: 3em; }
+section.page-half-title .title { font-size: 1.6em; margin: 35% 0 0; text-align: center; text-indent: 0; }
+section.page-copyright { padding-top: 30%; }
+section.page-copyright p { text-indent: 0; text-align: left; font-size: 0.85em; margin: 0 0 0.8em; }
+section.page-copyright .copyright-title { font-style: italic; }
+section.page-dedication, section.page-epigraph { text-align: center; padding-top: 25%; }
+section.page-dedication p, section.page-epigraph p { text-align: center; text-indent: 0; }
+section.page-dedication p { font-style: italic; }
+ol.contents, ol.contents ol { list-style: none; padding: 0; margin: 0.5em 0; }
+ol.contents ol { padding-left: 1.5em; }
+ol.contents li { margin: 0.4em 0; }
+ol.contents a { text-decoration: none; }
 .titlepage { text-align: center; }
 .titlepage .title { font-size: 2em; margin: 30% 0 0.5em; text-indent: 0; text-align: center; }
 .titlepage .author { font-size: 1.2em; text-indent: 0; text-align: center; }
@@ -335,54 +420,87 @@ export function epubFiles({ project, chapters, settings, cover, font, now = new 
   // What opens the book: by default the cover picture, then a title page.
   // Without a cover picture, the title page stays unless asked for neither.
   const showCover = useCover && project.coverPage !== "title" && project.coverPage !== "none";
-  const showTitle = project.coverPage !== "none" && (project.coverPage !== "cover" || !useCover);
+  // A title page among the book's own pages takes the place of the one made here.
+  const showTitle =
+    project.coverPage !== "none" && (project.coverPage !== "cover" || !useCover) && !chapters.some((c) => readPage(c.page, c.role).kind === "title_page");
 
   const ordered = bookOrder(chapters);
-  // Chapters are numbered from 1 again in each part of an anthology.
+  const pageOf = ordered.map((c) => readPage(c.page, c.role ?? "chapter"));
+  const author = project.author?.trim();
+  const series = project.series?.trim();
+  const titleBlock = `<p class="title">${escapeXml(title)}</p>\n${author ? `<p class="author">${escapeXml(author)}</p>\n` : ""}${
+    series ? `<p class="series">${escapeXml(series)}${project.seriesIndex != null ? `, book ${project.seriesIndex}` : ""}</p>\n` : ""
+  }`;
+
+  // Chapters are numbered from 1 again in each body section (part), unless they run on through the book.
   let chapterCount = 0;
   let partCount = 0;
   let inPart: string | null = null;
+  let file = "";
   const parts = ordered.map((c, i) => {
     const n = i + 1;
     const role = c.role ?? "chapter";
+    const settingsOf: PageSettings = pageOf[i];
     if (role === "part") {
       inPart = c.id;
-      chapterCount = 0;
+      if (settings.numbering === "restart") chapterCount = 0;
       partCount++;
     } else if (!c.part && inPart) inPart = null;
-    const { body, headings, pictures, notes } = chapterXhtml(c.body, settings.sceneBreak, `c${n}`);
-    // Only chapters and parts are numbered; untitled front or back matter is named by what it is.
+    const made = isMade(settingsOf);
+    const { body, headings, pictures, notes } = made ? { body: "", headings: [] as Heading[], pictures: [] as Picture[], notes: "" } : chapterXhtml(c.body, settings.sceneBreak, `c${n}`);
+    const numbered = role === "chapter" && settingsOf.kind === "chapter";
+    const number = numbered ? ++chapterCount : 0;
+    const named = c.title.trim();
+    const style = settings.chapterHeading;
+    const numberLabel = !numbered ? "" : style === "words" ? `Chapter ${numberInWords(number)}` : style === "numeral" ? String(number) : `Chapter ${number}`;
+    // Untitled pages are named by what they are.
     const heading =
-      c.title.trim() ||
-      (role === "chapter" ? `Chapter ${++chapterCount}` : role === "part" ? `Part ${partCount}` : role === "front" ? "Front matter" : "Back matter");
-    if (role === "chapter" && c.title.trim()) chapterCount++;
-    const type = { chapter: "chapter", front: "frontmatter", back: "backmatter", part: "part" }[role];
-    const section = `<section class="${type}" epub:type="${type}" id="c${n}">\n<h1>${escapeXml(heading)}</h1>\n${body}\n${notes}</section>`;
-    return { n, heading, section, headings, pictures, role, part: role === "part" ? null : c.part && ordered.some((p) => p.id === c.part) ? c.part : null, id: c.id };
+      named ||
+      (numbered ? numberLabel : role === "part" ? `Part ${partCount}` : settingsOf.kind === "custom" ? (role === "front" ? "Front matter" : role === "back" ? "Back matter" : "Untitled") : KIND_LABEL[settingsOf.kind]);
+    const label = numbered && named && style !== "title" ? numberLabel : "";
+    // A section starts a file of its own when it starts on a new page.
+    const newPage = i === 0 || (settingsOf.newPage ?? settings.newPage);
+    if (newPage) file = settings.newPage ? `chapter-${n}.xhtml` : i === 0 ? "text.xhtml" : `text-${n}.xhtml`;
+    return {
+      n,
+      heading,
+      label,
+      body,
+      notes,
+      headings,
+      pictures,
+      role,
+      kind: settingsOf.kind,
+      made,
+      showTitle: role === "part" || settingsOf.showTitle,
+      inContents: settingsOf.inContents,
+      first: newPage,
+      file,
+      part: role === "part" ? null : c.part && ordered.some((p) => p.id === c.part) ? c.part : null,
+      id: c.id,
+    };
   });
-  const chapterFile = (n: number) => (settings.newPage ? `chapter-${n}.xhtml` : "text.xhtml");
-  const content: [string, string][] = settings.newPage
-    ? parts.map((p) => [chapterFile(p.n), page(p.heading, lang, p.section)])
-    : [["text.xhtml", page(title, lang, parts.map((p) => p.section).join("\n"))]];
 
   // The table of contents: chapters, and their headings as deep as asked.
   type Point = { label: string; href: string; children: Point[] };
-  const flat: (Point & { part: string | null; id: string; role: string })[] = parts.map((p) => {
-    const href = settings.newPage ? chapterFile(p.n) : `text.xhtml#c${p.n}`;
-    const children: Point[] = [];
-    if (settings.tocDepth >= 2) {
-      for (const h of p.headings) {
-        if (!h.text) continue;
-        const point = { label: h.text, href: `${chapterFile(p.n)}#${h.id}`, children: [] as Point[] };
-        if (h.level === 2) children.push(point);
-        else if (settings.tocDepth < 3) continue;
-        // A sub-heading goes under the heading before it, if there is one.
-        else if (children.length) children[children.length - 1].children.push(point);
-        else children.push(point);
+  const flat: (Point & { part: string | null; id: string; role: string })[] = parts
+    .filter((p) => p.inContents)
+    .map((p) => {
+      const href = settings.newPage && p.first ? p.file : `${p.file}#c${p.n}`;
+      const children: Point[] = [];
+      if (settings.tocDepth >= 2) {
+        for (const h of p.headings) {
+          if (!h.text) continue;
+          const point = { label: h.text, href: `${p.file}#${h.id}`, children: [] as Point[] };
+          if (h.level === 2) children.push(point);
+          else if (settings.tocDepth < 3) continue;
+          // A sub-heading goes under the heading before it, if there is one.
+          else if (children.length) children[children.length - 1].children.push(point);
+          else children.push(point);
+        }
       }
-    }
-    return { label: p.heading, href, children, part: p.part, id: p.id, role: p.role };
-  });
+      return { label: p.label ? `${p.label}: ${p.heading}` : p.heading, href, children, part: p.part, id: p.id, role: p.role };
+    });
   // A part's sections are listed under it, so the contents nest by work.
   const points: Point[] = [];
   for (const p of flat) {
@@ -390,10 +508,34 @@ export function epubFiles({ project, chapters, settings, cover, font, now = new 
     if (host) host.children.push(p);
     else points.push(p);
   }
-  const navList = (list: Point[]): string =>
-    `<ol>\n${list.map((p) => `<li><a href="${p.href}">${escapeXml(p.label)}</a>${p.children.length ? navList(p.children) : ""}</li>`).join("\n")}\n</ol>`;
+  const navList = (list: Point[], cls = ""): string =>
+    `<ol${cls ? ` class="${cls}"` : ""}>\n${list.map((p) => `<li><a href="${p.href}">${escapeXml(p.label)}</a>${p.children.length ? navList(p.children) : ""}</li>`).join("\n")}\n</ol>`;
+
+  // Each section's page, with the pages Scribe makes filled in.
+  const madeBody = (kind: string): string =>
+    kind === "half_title"
+      ? `<p class="title">${escapeXml(title)}</p>`
+      : kind === "title_page"
+        ? titleBlock
+        : kind === "copyright"
+          ? copyrightHtml(project, settings.copyright, now)
+          : kind === "contents"
+            ? navList(points, "contents")
+            : "";
+  const sectionHtml = (p: (typeof parts)[number]) => {
+    const type = { chapter: "chapter", front: "frontmatter", back: "backmatter", part: "part" }[p.role];
+    const semantic = SEMANTIC[p.kind] ?? type;
+    const classes = [type, p.kind === "chapter" || p.kind === "custom" ? "" : `page-${p.kind.replace(/_/g, "-")}`, p.first ? "" : "follows", p.kind === "title_page" ? "titlepage" : ""].filter(Boolean).join(" ");
+    const top = `${p.label ? `<p class="chapter-label">${escapeXml(p.label)}</p>\n` : ""}${p.showTitle ? `<h1>${escapeXml(p.heading)}</h1>\n` : ""}`;
+    return `<section class="${classes}" epub:type="${semantic}" id="c${p.n}">\n${top}${p.made ? madeBody(p.kind) : p.body}\n${p.notes}</section>`;
+  };
+  const fileNames = [...new Set(parts.map((p) => p.file))];
+  const content: [string, string][] = fileNames.map((name) => {
+    const inFile = parts.filter((p) => p.file === name);
+    return [name, page(inFile.length === 1 || settings.newPage ? inFile[0].heading : title, lang, inFile.map(sectionHtml).join("\n"))];
+  });
   const firstChapter = parts.find((p) => p.role === "chapter" || p.role === "part") ?? parts[0];
-  const firstText = settings.newPage ? chapterFile(firstChapter?.n ?? 1) : `text.xhtml${firstChapter ? `#c${firstChapter.n}` : ""}`;
+  const firstText = firstChapter ? (settings.newPage && firstChapter.first ? firstChapter.file : `${firstChapter.file}#c${firstChapter.n}`) : "text.xhtml";
   const nav = page(
     "Contents",
     lang,
@@ -426,16 +568,7 @@ ${navPoints(points)}
 </ncx>
 `;
 
-  const author = project.author?.trim();
-  const series = project.series?.trim();
-  const titlePage = page(
-    title,
-    lang,
-    `<section class="titlepage" epub:type="titlepage">\n<p class="title">${escapeXml(title)}</p>\n${author ? `<p class="author">${escapeXml(author)}</p>\n` : ""}${
-      series ? `<p class="series">${escapeXml(series)}${project.seriesIndex != null ? `, book ${project.seriesIndex}` : ""}</p>\n` : ""
-    }</section>`,
-    "titlepage",
-  );
+  const titlePage = page(title, lang, `<section class="titlepage" epub:type="titlepage">\n${titleBlock}</section>`, "titlepage");
   const coverPage = showCover
     ? page("Cover", lang, `<section class="cover" epub:type="cover"><img src="images/cover.${coverExt}" alt="${escapeXml(title)}"/></section>`, "cover")
     : null;
@@ -528,4 +661,72 @@ export function buildEpub(input: EpubInput): Uint8Array {
     entries[name] = [bytes, { level: name === "mimetype" || /\.(jpg|png|gif|webp|woff2)$/.test(name) ? 0 : 6 }];
   }
   return zipSync(entries);
+}
+
+const base64 = (bytes: Uint8Array) => {
+  let raw = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) raw += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(raw);
+};
+
+/**
+ * The whole book as one page, exactly as the EPUB has it (cover, title page,
+ * every section in order, with its pictures), for the preview beside the
+ * editor. Each of the EPUB's pages is shown as a sheet of its own.
+ */
+export function previewHtml(input: EpubInput): string {
+  const files = new Map(epubFiles(input).files);
+  const opf = String(files.get("OEBPS/content.opf") ?? "");
+  const hrefs = new Map([...opf.matchAll(/<item id="([^"]+)" href="([^"]+)"/g)].map((m) => [m[1], m[2]]));
+  const spine = [...opf.matchAll(/<itemref idref="([^"]+)"\/>/g)].map((m) => hrefs.get(m[1])).filter((h): h is string => !!h);
+  const dataUrl = (path: string) => {
+    const bytes = files.get(`OEBPS/${path}`);
+    if (!(bytes instanceof Uint8Array)) return path;
+    const mime = Object.entries(PICTURE_TYPES).find(([, ext]) => path.endsWith(`.${ext}`))?.[0] ?? (path.endsWith(".jpg") ? "image/jpeg" : "image/png");
+    return `data:${mime};base64,${base64(bytes)}`;
+  };
+  const sheets = spine.map((href) => {
+    const page = String(files.get(`OEBPS/${href}`) ?? "");
+    const body = /<body([^>]*)>([\s\S]*)<\/body>/.exec(page);
+    const cls = /class="([^"]*)"/.exec(body?.[1] ?? "")?.[1] ?? "";
+    const inner = (body?.[2] ?? "")
+      .replace(/src="(images\/[^"]+)"/g, (_, path: string) => `src="${dataUrl(path)}"`)
+      // Links between the book's own pages jump within the preview.
+      .replace(/href="[^"#:]+\.xhtml#([^"]+)"/g, 'href="#$1"');
+    return `<article class="sheet ${cls}">${inner}</article>`;
+  });
+  const fonts = [...files.keys()].filter((k) => k.startsWith("OEBPS/fonts/"));
+  let css = String(files.get("OEBPS/styles.css") ?? "");
+  for (const f of fonts) css = css.replace(`url("${f.slice(6)}")`, `url("data:font/woff2;base64,${base64(files.get(f) as Uint8Array)}")`);
+  return `<!DOCTYPE html>
+<html lang="${escapeXml(input.project.language?.trim() || "en")}">
+<head>
+<meta charset="UTF-8"/>
+<style>
+${css}
+html { background: #d9d6d0; }
+body { margin: 0; padding: 16px 0 48px; }
+.sheet { background: #fffdf9; color: #1a1c1e; max-width: 34em; min-height: 46em; margin: 0 auto 16px; padding: 3em 2.5em; box-shadow: 0 1px 3px rgb(0 0 0 / 0.18); box-sizing: border-box; }
+.sheet section.chapter, .sheet section.frontmatter, .sheet section.backmatter, .sheet section.part { break-before: auto; page-break-before: auto; }
+.sheet.cover { padding: 0; min-height: 0; }
+.pagebreak { border-top: 1px dashed #bbb; margin: 1.5em 0; }
+a { color: inherit; }
+</style>
+</head>
+<body>
+${sheets.join("\n")}
+</body>
+</html>`;
+}
+
+/** One section's page as the EPUB has it, without its heading: what Scribe makes for a ready-made page. */
+export function madeSectionHtml(input: EpubInput, chapterId: string): string {
+  const n = bookOrder(input.chapters).findIndex((c) => c.id === chapterId) + 1;
+  if (!n) return "";
+  for (const [, data] of epubFiles(input).files) {
+    if (typeof data !== "string") continue;
+    const found = new RegExp(`<section [^>]*id="c${n}">\\n([\\s\\S]*?)\\n</section>`).exec(data);
+    if (found) return found[1].replace(/^(<p class="chapter-label">.*<\/p>\n)?(<h1>.*<\/h1>\n)?/, "").trim();
+  }
+  return "";
 }

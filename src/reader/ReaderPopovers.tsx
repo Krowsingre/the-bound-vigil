@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { HighlightColor } from "../api/types";
 import { Icon } from "../components/Icon";
-import { isApp } from "../api";
+import { isApp, isIOS } from "../api";
 import { formatRate, groupVoices, primaryLang, RATE_RANGE } from "./readAloud";
 import {
   FONTS,
@@ -526,10 +526,14 @@ export function ListenAlongPanel({ readAlong, ebookId }: { readAlong: ReadAlong;
           <p className="read-aloud-note">
             {paused
               ? "Lining up is paused on this device."
-              : ours
+              : ours?.stage === "cooling"
+                ? "Lining up is paused while the phone cools down. It carries on by itself."
+                : ours
                 ? "TBV is listening through the audiobook and matching every word to the book, in the background."
                 : isApp
-                  ? "TBV lines up every word in the background, one pair at a time, on each device that has both the book and the audiobook downloaded."
+                  ? isIOS
+                  ? "TBV lines up every word in the background on a computer with TBV open, or on this phone if you turn it on in Preferences › Reading › Read-along."
+                  : "TBV lines up every word in the background, one pair at a time, on each device that has both the book and the audiobook downloaded."
                   : "TBV lines up every word in the app on your computer or phone."}{" "}
             Until it's done you can read the book or listen to the audiobook, but not both together.
           </p>

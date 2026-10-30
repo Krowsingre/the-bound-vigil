@@ -36,6 +36,7 @@ const chapter = (n: number, title: string, body: string): WritingChapter => ({
   updatedAt: project.updatedAt,
   role: "chapter",
   part: null,
+  page: "{}",
 });
 
 const chapters = [
@@ -261,5 +262,72 @@ describe("helpers", () => {
     });
     expect(readExport('{"font":"comic sans","tocDepth":9}')).toEqual(readExport("{}"));
     expect(readExport("not json")).toEqual(readExport(null));
+  });
+});
+
+describe("ready-made pages, numbering and headings", () => {
+  const page = (c: WritingChapter, role: WritingChapter["role"], json: object): WritingChapter => ({ ...c, role, page: JSON.stringify(json) });
+  const book = [
+    page(chapter(1, "Copyright", ""), "front", { kind: "copyright" }),
+    page(chapter(2, "Contents", ""), "front", { kind: "contents" }),
+    page(chapter(3, "", "<p>For Wren.</p>"), "front", { kind: "dedication" }),
+    page(chapter(4, "Part One", "<p>Beginnings.</p>"), "part", {}),
+    { ...chapter(5, "Arrival", "<p>Rain.</p>"), part: "c4" },
+    page({ ...chapter(6, "Between", "<p>A pause.</p>"), part: "c4" }, "chapter", { kind: "interlude" }),
+    page(chapter(7, "Part Two", ""), "part", {}),
+    { ...chapter(8, "Leaving", "<p>Wind.</p>"), part: "c7" },
+    page(chapter(9, "Title page", ""), "front", { kind: "title_page" }),
+  ];
+  const files = (s: Partial<ExportSettings> = {}) => epubFiles({ project, chapters: book, settings: settings(s), now: new Date("2026-10-30T00:00:00Z") }).files;
+
+  it("fills in the copyright and contents pages, and leaves them out of the contents", () => {
+    const f = files({ copyright: { ...readExport("{}").copyright, isbn: "978-1-23456-789-7", publisher: "Krowsingre Publishing LLC" } });
+    const copyright = text(f, "OEBPS/chapter-1.xhtml");
+    expect(copyright).toContain("Copyright © 2026 Embre");
+    expect(copyright).toContain("ISBN 978-1-23456-789-7");
+    expect(copyright).toContain("Published by Krowsingre Publishing LLC");
+    expect(copyright).not.toContain("<h1>");
+    const contents = text(f, "OEBPS/chapter-2.xhtml");
+    expect(contents).toContain(`<ol class="contents">`);
+    expect(contents).toContain(`>Arrival</a>`);
+    const nav = text(f, "OEBPS/nav.xhtml");
+    expect(nav).not.toContain(">Copyright<");
+    expect(nav).not.toContain(">Contents</a>");
+  });
+
+  it("uses a title page of the book's own instead of making one", () => {
+    const f = files();
+    expect(f.map(([n]) => n)).not.toContain("OEBPS/titlepage.xhtml");
+    expect(text(f, "OEBPS/chapter-4.xhtml")).toContain(`class="frontmatter page-title-page titlepage"`);
+  });
+
+  it("numbers only chapters, again in each section or on through the book", () => {
+    const labels = (s: Partial<ExportSettings>) => [...text(files(s), "OEBPS/nav.xhtml").matchAll(/>(Chapter [^<]*)</g)].map((m) => m[1]);
+    expect(labels({ chapterHeading: "number" })).toEqual(["Chapter 1: Arrival", "Chapter 1: Leaving"]);
+    expect(labels({ chapterHeading: "words", numbering: "continuous" })).toEqual(["Chapter One: Arrival", "Chapter Two: Leaving"]);
+    expect(text(files({ chapterHeading: "words" }), "OEBPS/chapter-6.xhtml")).toContain(`<p class="chapter-label">Chapter One</p>\n<h1>Arrival</h1>`);
+  });
+
+  it("keeps a page that doesn't start a new page in the file before it", () => {
+    const joined = [...book.slice(0, 5), page({ ...chapter(6, "Between", "<p>A pause.</p>"), part: "c4" }, "chapter", { kind: "interlude", newPage: false })];
+    const f = epubFiles({ project, chapters: joined, settings: settings() }).files;
+    expect(f.map(([n]) => n)).not.toContain("OEBPS/chapter-6.xhtml");
+    expect(text(f, "OEBPS/chapter-5.xhtml")).toContain(`<section class="chapter page-interlude follows"`);
+  });
+});
+
+describe("numbers in words", async () => {
+  const { numberInWords } = await import("./pages");
+  it("writes chapter numbers as headings do", () => {
+    expect([1, 12, 20, 21, 99, 100, 105, 342].map(numberInWords)).toEqual([
+      "One",
+      "Twelve",
+      "Twenty",
+      "Twenty-One",
+      "Ninety-Nine",
+      "One Hundred",
+      "One Hundred Five",
+      "Three Hundred Forty-Two",
+    ]);
   });
 });

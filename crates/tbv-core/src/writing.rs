@@ -57,6 +57,23 @@ pub struct WritingChapter {
     pub role: String,
     /// The part this section belongs to, or none for the book's own.
     pub part: Option<String>,
+    /// What kind of page it is (copyright, dedication, contents…) and how
+    /// it's set out, as JSON the UI reads (src/writing/pages.ts).
+    pub page: String,
+}
+
+/// A section added with everything about it at once (Scribe's Add menus,
+/// and the sections a template starts a book with).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NewWritingSection {
+    pub title: String,
+    pub body: String,
+    pub role: String,
+    pub part: Option<String>,
+    pub page: String,
+    /// Goes after this section, or at the end.
+    pub after: Option<String>,
 }
 
 /// Where a section of a written book goes.
@@ -165,10 +182,28 @@ fn chapter_from(r: &Row) -> rusqlite::Result<WritingChapter> {
         updated_at: r.get(5)?,
         role: r.get(6)?,
         part: r.get(7)?,
+        page: r.get(8)?,
     })
 }
 
-const CHAPTER_COLUMNS: &str = "id, project_id, title, body, position, updated_at, role, part";
+const CHAPTER_COLUMNS: &str = "id, project_id, title, body, position, updated_at, role, part, page";
+
+/// The longest a section's page settings can be.
+const MAX_PAGE_CHARS: usize = 4000;
+
+/// A section's page settings as kept: a JSON object, or `{}`.
+fn page_of(page: &str) -> Result<String> {
+    let page = page.trim();
+    if page.is_empty() {
+        return Ok("{}".into());
+    }
+    let ok = page.len() <= MAX_PAGE_CHARS && serde_json::from_str::<serde_json::Value>(page).is_ok_and(|v| v.is_object());
+    if ok {
+        Ok(page.to_string())
+    } else {
+        Err(Error::Unsuitable("that isn't a kind of page Scribe knows".into()))
+    }
+}
 
 impl Library {
     /// Every book being written, most recently changed first.
@@ -461,6 +496,42 @@ impl Library {
         self.writing_chapter(&id)
     }
 
+    /// Adds a section with its kind, place and words in one go.
+    pub fn add_writing_section(&self, project_id: &str, section: &NewWritingSection) -> Result<WritingChapter> {
+        let role = if section.role.is_empty() { "chapter" } else { section.role.as_str() };
+        if !CHAPTER_ROLES.contains(&role) {
+            return Err(Error::Unsuitable("a section is a part, a chapter, front matter or back matter".into()));
+        }
+        let page = page_of(&section.page)?;
+        self.writing_project_row(project_id)?;
+        if let Some(part) = section.part.as_deref() {
+            let host = self.writing_chapter(part)?;
+            if host.role != "part" || host.project_id != project_id || role == "part" {
+                return Err(Error::Unsuitable("that section can't go in that part".into()));
+            }
+        }
+        let added = self.add_writing_chapter(project_id, &section.title, section.after.as_deref())?;
+        self.conn.execute(
+            "UPDATE writing_chapters SET body = ?2, role = ?3, part = ?4, page = ?5 WHERE id = ?1",
+            params![added.id, section.body, role, section.part, page],
+        )?;
+        self.writing_chapter(&added.id)
+    }
+
+    /// Changes what kind of page a section is, or how it's set out.
+    pub fn set_writing_chapter_page(&self, id: &str, page: &str) -> Result<WritingChapter> {
+        let page = page_of(page)?;
+        let chapter = self.writing_chapter(id)?;
+        if chapter.page != page {
+            self.conn.execute(
+                "UPDATE writing_chapters SET page = ?2, updated_at = ?3 WHERE id = ?1",
+                params![id, page, now_utc()],
+            )?;
+            self.touch_writing_project(&chapter.project_id)?;
+        }
+        self.writing_chapter(id)
+    }
+
     fn writing_chapter(&self, id: &str) -> Result<WritingChapter> {
         self.conn
             .query_row(
@@ -688,5 +759,26 @@ mod tests {
         assert_eq!(first.role, "chapter");
         assert_eq!(library.set_writing_chapter_role(&first.id, "front").unwrap().role, "front");
         assert!(library.set_writing_chapter_role(&first.id, "appendix").is_err());
+    }
+
+    #[test]
+    fn ready_made_pages_are_added_with_their_kind_and_place() {
+        let (_dir, library) = open_temp_library();
+        let view = library.create_writing_project("Pages", None).unwrap();
+        let id = &view.project.id;
+        let part = library.add_writing_section(id, &NewWritingSection { title: "Part One".into(), role: "part".into(), ..Default::default() }).unwrap();
+        let copyright = library
+            .add_writing_section(id, &NewWritingSection { title: "Copyright".into(), role: "front".into(), page: r#"{"kind":"copyright"}"#.into(), ..Default::default() })
+            .unwrap();
+        assert_eq!((copyright.role.as_str(), copyright.page.as_str()), ("front", r#"{"kind":"copyright"}"#));
+        let inside = library
+            .add_writing_section(id, &NewWritingSection { title: "Chapter 1".into(), body: "<p>Hi</p>".into(), part: Some(part.id.clone()), ..Default::default() })
+            .unwrap();
+        assert_eq!((inside.role.as_str(), inside.part.as_deref(), inside.words), ("chapter", Some(part.id.as_str()), 1));
+        assert!(library.add_writing_section(id, &NewWritingSection { title: "Odd".into(), page: "[1]".into(), ..Default::default() }).is_err());
+        assert!(library.add_writing_section(id, &NewWritingSection { title: "Nested".into(), role: "part".into(), part: Some(part.id.clone()), ..Default::default() }).is_err());
+        let changed = library.set_writing_chapter_page(&copyright.id, r#"{"kind":"copyright","byHand":true}"#).unwrap();
+        assert!(changed.page.contains("byHand"));
+        assert_eq!(library.set_writing_chapter_page(&copyright.id, "").unwrap().page, "{}");
     }
 }

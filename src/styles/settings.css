@@ -1753,7 +1753,7 @@ kbd {
 /* Theme tiles: the choice's own colours with its icon and name, and a round choice under it. */
 @media (min-width: 761px) {
   .theme-cards {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 
@@ -1877,4 +1877,94 @@ kbd {
   margin: 0;
   font-size: 12px;
   text-align: center;
+}
+
+.theme-tile.theme-swatch-custom {
+  background: conic-gradient(from 45deg, #c9a46a, #7a9cb8, #9a7bb0, #b07d6a, #c9a46a);
+  color: #fff;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+}
+
+/* Custom themes: the saved ones to pick from, and the four colours of the one being edited. */
+.custom-themes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.custom-theme-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.custom-theme-chip.is-active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.custom-theme-dots {
+  display: flex;
+}
+
+.custom-theme-dots span {
+  width: 16px;
+  height: 16px;
+  margin-right: -4px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--surface), inset 0 0 0 1px rgb(0 0 0 / 0.12);
+}
+
+.custom-theme-colours {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.custom-theme-colours label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.custom-theme-colours input[type="color"] {
+  width: 56px;
+  height: 40px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.custom-theme-colours code {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .custom-theme-colours {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.settings-row-hint.is-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  color: var(--danger);
 }

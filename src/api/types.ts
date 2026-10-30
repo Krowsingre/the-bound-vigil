@@ -943,8 +943,8 @@ export interface LiningUp {
   audiobookId: string;
   /** The ebook's title, for the sidebar. */
   title: string;
-  /** Getting the speech model ready (downloading it the first time), or listening through the audiobook. */
-  stage: "model" | "listening";
+  /** Getting the speech model ready (downloading it the first time), listening through the audiobook, or paused while the phone cools down. */
+  stage: "model" | "listening" | "cooling";
   fraction: number;
   modelLoaded: number;
   modelTotal: number;
@@ -1274,6 +1274,30 @@ export interface WritingChapter {
   role: "chapter" | "front" | "back" | "part";
   /** The part this section belongs to, or null for the book's own. */
   part: string | null;
+  /** What kind of page it is and how it's set out, as JSON (see src/writing/pages.ts). */
+  page: string;
+}
+
+/** A section added with everything about it at once. */
+export interface NewWritingSection {
+  title: string;
+  body?: string;
+  role: WritingChapter["role"];
+  part?: string | null;
+  page?: string;
+  /** Goes after this section, or at the end. */
+  after?: string | null;
+}
+
+/** A theme of the person's own: four colours, named and synced. */
+export interface CustomTheme {
+  /** Empty when saving a new one. */
+  id: string;
+  name: string;
+  page: string;
+  surface: string;
+  accent: string;
+  highlight: string;
 }
 
 /** An earlier state of a book being written: a locked EPUB that opens in the reader. */

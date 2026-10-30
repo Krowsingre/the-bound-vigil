@@ -38,6 +38,8 @@ type Calls = Pick<
   | "writingDrafts"
   | "deleteWritingDraft"
   | "setWritingChapterPart"
+  | "addWritingSection"
+  | "setWritingChapterPage"
   | "setWritingCoverPage"
   | "readingHistory"
   | "forgetReading"

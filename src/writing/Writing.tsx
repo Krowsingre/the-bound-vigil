@@ -1,7 +1,7 @@
 // Scribe (the Writing page): books you write in TBV (open one to write its
 // chapters, change its details and export an EPUB), and your notes from reading.
 
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, isWeb } from "../api";
 import type { WritingChapter, WritingProject, WritingProjectView } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -12,19 +12,10 @@ import { Notes, type NewNoteKind } from "../notes/Notes";
 import { ChapterEditor, type SaveState } from "./ChapterEditor";
 import { quoteHtml } from "./fromNotes";
 import { QuoteDrawer } from "./QuoteDrawer";
-import { bookOrder } from "./epub";
+import { BookPreview, MadePage } from "./BookPreview";
+import { bookOrder, escapeXml, readExport, type ExportSettings } from "./epub";
+import { ADD_MENUS, isMade, isNumbered, KINDS, numberInWords, readPage, romanOf, startingTitle, writePage, type PageKind, type PageSettings } from "./pages";
 import { DetailsDialog, DraftsDialog, ExportDialog, NewBookDialog } from "./WritingDialogs";
-
-/** Parts are numbered I, II, III… */
-function romanOf(n: number): string {
-  const marks: [number, string][] = [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
-  let out = "";
-  for (const [value, mark] of marks) while (n >= value) {
-    out += mark;
-    n -= value;
-  }
-  return out;
-}
 
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
 
@@ -262,6 +253,12 @@ function BookShelf({ projects, onOpen, onCreate, onRetry }: { projects: Projects
   );
 }
 
+type Area = "front" | "chapter" | "back";
+const AREA_NAMES: Record<Area, string> = { front: "Front matter", chapter: "Body", back: "Back matter" };
+
+/** Where a dragged section is dropped: on another section, or on an area's heading (its end). */
+type DropTarget = { section: WritingChapter } | { area: Area };
+
 function ProjectView({
   id,
   refreshKey,
@@ -288,7 +285,8 @@ function ProjectView({
   const saving = useRef<Promise<void>>(Promise.resolve());
   const flushEditor = useRef<(() => Promise<void>) | null>(null);
   const insertInEditor = useRef<((html: string) => void) | null>(null);
-  const [quotes, setQuotes] = useState(false);
+  // Beside the chapter: quotes from your notes, or the whole book as it will be exported.
+  const [side, setSide] = useState<"quotes" | "preview" | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -307,13 +305,21 @@ function ProjectView({
     void load();
   }, [load, refreshKey]);
 
-  const chapters = bookOrder(view?.chapters ?? []);
+  const chapters = useMemo(() => bookOrder(view?.chapters ?? []), [view?.chapters]);
+  const settings = useMemo(() => readExport(view?.project.export), [view?.project.export]);
   const partIds = new Set(chapters.filter((c) => c.role === "part").map((c) => c.id));
-  /** The part a section is in, or null for the book's own. */
+  /** The part (body section) a section is in, or null for the book's own. */
   const partOf = (c: WritingChapter) => (c.role !== "part" && c.part && partIds.has(c.part) ? c.part : null);
-  /** Sections move only among others of their kind in the same part (or among parts). */
-  const groupOf = (c: WritingChapter) => (c.role === "part" ? "part" : `${partOf(c) ?? ""}:${c.role ?? "chapter"}`);
   const chapter = chapters.find((c) => c.id === chapterId) ?? chapters[0] ?? null;
+  const parts = chapters.filter((c) => c.role === "part");
+  const sections = chapters.filter((c) => c.role !== "part");
+
+  /** Book-wide settings (numbering, the copyright page's details…), kept with the export settings. */
+  const saveSettings = (next: ExportSettings) => {
+    const json = JSON.stringify(next);
+    setView((v) => v && { ...v, project: { ...v.project, export: json } });
+    void api.setWritingExport(id, json).catch((e) => toast(String(e)));
+  };
 
   const saveChapter = (cid: string) => async (title: string, body: string) => {
     const done = saving.current.then(async () => {
@@ -330,15 +336,29 @@ function ProjectView({
     return done;
   };
 
-  /** A new chapter after the one being written (in its part), or at the end of a part. */
-  const addChapter = async (inPart?: string) => {
+  /** Adds a page of this kind at the end of its area (or of a body section), and opens it. */
+  const addPage = async (kind: PageKind, role: WritingChapter["role"], part: string | null = null) => {
     await saving.current;
     try {
-      const part = inPart ?? (chapter ? (chapter.role === "part" ? chapter.id : partOf(chapter)) : null);
-      const siblings = chapters.filter((c) => c.role === "chapter" && partOf(c) === part);
-      const after = inPart || chapter?.role === "part" ? (siblings[siblings.length - 1]?.id ?? null) : (chapter?.id ?? null);
-      const added = await api.addWritingChapter(id, `Chapter ${siblings.length + 1}`, after);
-      if (part) await api.setWritingChapterPart(added.id, part);
+      const siblings = chapters.filter((c) => c.role === role && partOf(c) === part);
+      // A new chapter has no title of its own yet, so it takes its number wherever it goes.
+      const title = role === "part" ? `Part ${numberInWords(parts.length + 1)}` : kind === "chapter" ? "" : startingTitle(kind, view!.project);
+      // A contents page written by hand starts as a list of what's in the book.
+      const body =
+        kind === "contents_manual"
+          ? sections
+              .filter((c) => readPage(c.page, c.role).inContents)
+              .map((c) => `<p>${escapeXml(c.title || "Untitled")}</p>`)
+              .join("")
+          : "";
+      const added = await api.addWritingSection(id, {
+        title,
+        body,
+        role,
+        part,
+        page: role === "part" ? "{}" : JSON.stringify({ kind }),
+        after: siblings[siblings.length - 1]?.id ?? (part && role !== "part" ? part : null),
+      });
       await load();
       setChapterId(added.id);
     } catch (e) {
@@ -346,99 +366,141 @@ function ProjectView({
     }
   };
 
-  /** A new part, for one work of an anthology, after the others. */
-  const addPart = async () => {
+  const setPage = async (c: WritingChapter, change: Partial<PageSettings>) => {
+    try {
+      const saved = await api.setWritingChapterPage(c.id, writePage({ ...readPage(c.page, c.role), ...change }));
+      setView((v) => v && { ...v, chapters: v.chapters.map((x) => (x.id === c.id ? { ...x, page: saved.page } : x)) });
+    } catch (e) {
+      toast(String(e));
+    }
+  };
+
+  /** A ready-made page becomes one you write, starting from what Scribe made. */
+  const writeMyself = async (c: WritingChapter, html: string) => {
     await saving.current;
     try {
-      const count = chapters.filter((c) => c.role === "part").length;
-      const added = await api.addWritingChapter(id, `Part ${count + 1}`, null);
-      await api.setWritingChapterRole(added.id, "part");
+      await api.saveWritingChapter(c.id, c.title, html);
+      await api.setWritingChapterPage(c.id, writePage({ ...readPage(c.page, c.role), byHand: true }));
       await load();
-      setChapterId(added.id);
     } catch (e) {
       toast(String(e));
     }
   };
 
-  const setPart = async (c: WritingChapter, part: string | null) => {
-    try {
-      const saved = await api.setWritingChapterPart(c.id, part);
-      setView((v) => v && { ...v, chapters: v.chapters.map((x) => (x.id === c.id ? { ...x, part: saved.part } : x)) });
-    } catch (e) {
-      toast(String(e));
+  /**
+   * Moves a section by dragging (or the ••• menu): onto another section it
+   * takes that one's place, area and body section; onto a body section's
+   * own row it goes first inside it; onto an area's heading, to that area's end.
+   * Body sections move only among each other.
+   */
+  const moveTo = async (fromId: string, target: DropTarget) => {
+    const from = chapters.find((c) => c.id === fromId);
+    if (!from) return;
+    const onto = "section" in target ? target.section : null;
+    if (onto?.id === from.id) return;
+    if (from.role === "part" && (!onto || onto.role !== "part")) return;
+    let role: WritingChapter["role"] = from.role;
+    let part: string | null = partOf(from);
+    if (from.role !== "part") {
+      if (!onto) [role, part] = [(target as { area: Area }).area, null];
+      else if (onto.role === "part") [role, part] = ["chapter", onto.id];
+      else [role, part] = [onto.role, partOf(onto)];
     }
-  };
-
-  // Front matter, chapters and back matter each keep their own order (in the
-  // book and in each part): a move stays within its group, and the ••• menu
-  // moves a section between them.
-  const groupById = (cid: string) => {
-    const c = chapters.find((x) => x.id === cid);
-    return c ? groupOf(c) : undefined;
-  };
-  const move = async (from: string, to: string) => {
-    if (from === to || groupById(from) !== groupById(to)) return;
-    const order = chapters.map((c) => c.id).filter((c) => c !== from);
-    order.splice(order.indexOf(to) + (chapters.findIndex((c) => c.id === from) < chapters.findIndex((c) => c.id === to) ? 1 : 0), 0, from);
-    setView((v) => v && { ...v, chapters: order.map((o) => v.chapters.find((c) => c.id === o)!) });
+    const order = chapters.map((c) => c.id).filter((c) => c !== from.id);
+    if (!onto) order.push(from.id);
+    else if (onto.role === "part" && from.role !== "part") order.splice(order.indexOf(onto.id) + 1, 0, from.id);
+    else {
+      const down = chapters.findIndex((c) => c.id === from.id) < chapters.findIndex((c) => c.id === onto.id);
+      order.splice(order.indexOf(onto.id) + (down ? 1 : 0), 0, from.id);
+    }
+    setView((v) => v && { ...v, chapters: order.map((o) => ({ ...v.chapters.find((c) => c.id === o)!, ...(o === from.id ? { role, part } : {}) })) });
     try {
+      await saving.current;
+      if (role !== from.role) await api.setWritingChapterRole(from.id, role);
+      if (part !== partOf(from)) await api.setWritingChapterPart(from.id, part);
       await api.orderWritingChapters(id, order);
     } catch (e) {
       toast(String(e));
-      void load();
     }
+    void load();
   };
 
-  /** The next section of the same kind, up or down (parts skip over each other's sections). */
+  /** Sections of the same kind and place, for Move up and Move down. */
+  const groupOf = (c: WritingChapter) => (c.role === "part" ? "part" : `${partOf(c) ?? ""}:${c.role}`);
   const neighbour = (c: WritingChapter, by: -1 | 1) => {
     const same = chapters.filter((x) => groupOf(x) === groupOf(c));
     return same[same.findIndex((x) => x.id === c.id) + by];
   };
   const nudge = (c: WritingChapter, by: -1 | 1) => {
     const other = neighbour(c, by);
-    if (other) void move(c.id, other.id);
+    if (other) void moveTo(c.id, { section: other });
   };
 
-  const setRole = async (c: WritingChapter, role: WritingChapter["role"]) => {
-    try {
-      const saved = await api.setWritingChapterRole(c.id, role);
-      setView((v) => v && { ...v, chapters: v.chapters.map((x) => (x.id === c.id ? { ...x, role: saved.role, part: saved.part } : x)) });
-    } catch (e) {
-      toast(String(e));
+  // Chapter numbers as the book will have them.
+  const numbers = new Map<string, number>();
+  {
+    let n = 0;
+    for (const c of chapters) {
+      if (c.role === "part" && settings.numbering === "restart") n = 0;
+      if (isNumbered(c)) numbers.set(c.id, ++n);
     }
+  }
+
+  const kindItems = (area: Area, part: string | null = null): MenuEntry[] =>
+    ADD_MENUS[area].map((kind) => ({
+      label: KINDS[kind].label,
+      description: KINDS[kind].hint,
+      onSelect: () => void addPage(kind, area, part),
+    }));
+  const addMenus: Record<Area, MenuEntry[]> = {
+    front: kindItems("front"),
+    chapter: [
+      ...kindItems("chapter"),
+      "divider",
+      { label: "Section", icon: "layers", description: "A group of chapters, such as Part One", onSelect: () => void addPage("custom", "part") },
+    ],
+    back: kindItems("back"),
   };
 
-  const parts = chapters.filter((c) => c.role === "part");
-  const sections = chapters.filter((c) => c.role !== "part");
-  const chapterMenu = (c: WritingChapter): MenuEntry[] =>
-    c.role === "part"
-      ? [
-          { label: "Move up", icon: "chevronUp", disabled: !neighbour(c, -1), onSelect: () => nudge(c, -1) },
-          { label: "Move down", icon: "chevronDown", disabled: !neighbour(c, 1), onSelect: () => nudge(c, 1) },
-          "divider",
-          { label: "Add a chapter to this part", icon: "plus", onSelect: () => void addChapter(c.id) },
-          "divider",
-          { label: "Delete part…", icon: "trash", danger: true, onSelect: () => setDeletingChapter(c) },
-        ]
-      : [
-          { label: "Move up", icon: "chevronUp", disabled: !neighbour(c, -1), onSelect: () => nudge(c, -1) },
-          { label: "Move down", icon: "chevronDown", disabled: !neighbour(c, 1), onSelect: () => nudge(c, 1) },
-          "divider",
-          { heading: <span className="menu-tip">What it is</span> },
-          { label: "Front matter", hint: "Dedication, foreword", checked: c.role === "front", onSelect: () => void setRole(c, "front") },
-          { label: "Chapter", checked: (c.role ?? "chapter") === "chapter", onSelect: () => void setRole(c, "chapter") },
-          { label: "Back matter", hint: "Acknowledgements, about the author", checked: c.role === "back", onSelect: () => void setRole(c, "back") },
-          ...(parts.length
-            ? ([
-                "divider",
-                { heading: <span className="menu-tip">Where it goes</span> },
-                { label: "The book itself", checked: !partOf(c), onSelect: () => void setPart(c, null) },
-                ...parts.map((p, n) => ({ label: p.title || `Part ${n + 1}`, checked: partOf(c) === p.id, onSelect: () => void setPart(c, p.id) })),
-              ] as MenuEntry[])
-            : []),
-          "divider",
-          { label: "Delete chapter…", icon: "trash", danger: true, disabled: sections.length === 1, onSelect: () => setDeletingChapter(c) },
-        ];
+  const chapterMenu = (c: WritingChapter): MenuEntry[] => {
+    if (c.role === "part")
+      return [
+        { label: "Move up", icon: "chevronUp", disabled: !neighbour(c, -1), onSelect: () => nudge(c, -1) },
+        { label: "Move down", icon: "chevronDown", disabled: !neighbour(c, 1), onSelect: () => nudge(c, 1) },
+        "divider",
+        { heading: <span className="menu-tip">Add to this section</span> },
+        ...kindItems("chapter", c.id),
+        "divider",
+        { label: "Delete section…", icon: "trash", danger: true, onSelect: () => setDeletingChapter(c) },
+      ];
+    const page = readPage(c.page, c.role);
+    const made = KINDS[page.kind].made;
+    return [
+      { label: "Move up", icon: "chevronUp", disabled: !neighbour(c, -1), onSelect: () => nudge(c, -1) },
+      { label: "Move down", icon: "chevronDown", disabled: !neighbour(c, 1), onSelect: () => nudge(c, 1) },
+      "divider",
+      { heading: <span className="menu-tip">This page</span> },
+      { label: "Show in the contents", checked: page.inContents, onSelect: () => void setPage(c, { inContents: !page.inContents }) },
+      { label: "Show its title", checked: page.showTitle, onSelect: () => void setPage(c, { showTitle: !page.showTitle }) },
+      {
+        label: "Start on a new page",
+        hint: page.newPage === null ? "As the book's export settings say" : undefined,
+        checked: page.newPage ?? settings.newPage,
+        onSelect: () => void setPage(c, { newPage: !(page.newPage ?? settings.newPage) }),
+      },
+      ...(made && page.byHand ? ([{ label: "Let Scribe make it again", icon: "sync", onSelect: () => void setPage(c, { byHand: false }) }] as MenuEntry[]) : []),
+      "divider",
+      { heading: <span className="menu-tip">Where it goes</span> },
+      ...(["front", "chapter", "back"] as Area[]).map((area) => ({
+        label: AREA_NAMES[area],
+        checked: c.role === area && !partOf(c),
+        onSelect: () => void moveTo(c.id, { area }),
+      })),
+      ...parts.map((p, n) => ({ label: p.title || `Section ${n + 1}`, checked: partOf(c) === p.id, onSelect: () => void moveTo(c.id, { section: p }) })),
+      "divider",
+      { label: "Delete page…", icon: "trash", danger: true, disabled: sections.length === 1, onSelect: () => setDeletingChapter(c) },
+    ];
+  };
 
   if (error && !view)
     return (
@@ -453,9 +515,77 @@ function ProjectView({
   if (!view) return <div className="library-loading" aria-busy="true" aria-label="Opening the book" />;
   const project = view.project;
   const saveLabel = { saved: "Saved", saving: "Saving…", unsaved: "Saving soon", failed: "Not saved yet. Trying again with your next change." }[save.state];
+  const current = chapter ? readPage(chapter.page, chapter.role) : null;
+
+  const row = (c: WritingChapter) => {
+    const page = readPage(c.page, c.role);
+    const inPart = !!partOf(c);
+    const number =
+      c.role === "part" ? romanOf(parts.findIndex((p) => p.id === c.id) + 1) : numbers.has(c.id) ? numbers.get(c.id) : KINDS[page.kind].made && !page.byHand ? "◇" : "·";
+    const words = c.role === "part" ? chapters.filter((x) => partOf(x) === c.id).reduce((n, x) => n + x.words, 0) : c.words;
+    const canDrop = dragging && dragging !== c.id && (chapters.find((x) => x.id === dragging)?.role !== "part" || c.role === "part");
+    return (
+      <li
+        key={c.id}
+        draggable
+        className={`${c.id === chapter?.id ? "is-current" : ""}${dragging === c.id ? " is-dragging" : ""}${inPart ? " is-in-part" : ""}${c.role === "part" ? " is-part" : ""}`}
+        onDragStart={(e) => {
+          setDragging(c.id);
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", c.id);
+        }}
+        onDragEnd={() => setDragging(null)}
+        onDragOver={(e) => canDrop && e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          if (dragging) void moveTo(dragging, { section: c });
+          setDragging(null);
+        }}
+      >
+        <button type="button" className="writing-chapter" onClick={() => void saving.current.then(() => setChapterId(c.id))}>
+          <span className="writing-chapter-number num">{number}</span>
+          <span className={`writing-chapter-name${c.title ? "" : " muted"}`}>
+            {c.title || (c.role === "part" ? "Untitled section" : numbers.has(c.id) ? `Chapter ${numbers.get(c.id)}` : KINDS[page.kind].label)}
+          </span>
+          <span className="muted num writing-chapter-words">{words.toLocaleString()}</span>
+        </button>
+        <Menu label={`More for ${c.title || "this page"}`} className="writing-chapter-more" trigger={<Icon name="more" size={16} />} items={chapterMenu(c)} />
+      </li>
+    );
+  };
+  const areaHead = (area: Area) => (
+    <li
+      className="writing-area"
+      onDragOver={(e) => dragging && chapters.find((x) => x.id === dragging)?.role !== "part" && e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        if (dragging) void moveTo(dragging, { area });
+        setDragging(null);
+      }}
+    >
+      <span>{AREA_NAMES[area]}</span>
+      {area === "chapter" && parts.length > 0 && (
+        <Menu
+          label="Chapter numbers"
+          className="writing-area-add"
+          align="end"
+          trigger={<Icon name="listNumber" size={14} />}
+          items={[
+            { heading: <span className="menu-tip">Chapter numbers</span> },
+            { label: "Start again in each section", checked: settings.numbering === "restart", onSelect: () => saveSettings({ ...settings, numbering: "restart" }) },
+            { label: "Run on through the book", checked: settings.numbering === "continuous", onSelect: () => saveSettings({ ...settings, numbering: "continuous" }) },
+          ]}
+        />
+      )}
+      <Menu label={`Add to ${AREA_NAMES[area].toLowerCase()}`} className="writing-area-add" align="end" trigger={<Icon name="plus" size={15} />} items={addMenus[area]} />
+    </li>
+  );
+  const front = chapters.filter((c) => c.role === "front" && !partOf(c));
+  const back = chapters.filter((c) => c.role === "back" && !partOf(c));
+  const body = chapters.filter((c) => !front.includes(c) && !back.includes(c));
 
   return (
-    <div className={`writing-project${listOpen ? "" : " is-list-closed"}${quotes ? " has-quotes" : ""}`}>
+    <div className={`writing-project${listOpen ? "" : " is-list-closed"}${side ? ` has-${side}` : ""}`}>
       <header className="writing-head">
         <button type="button" className="btn btn-quiet btn-small" onClick={() => void saving.current.then(onBack)}>
           <Icon name="arrowLeft" size={16} /> Your books
@@ -468,7 +598,10 @@ function ProjectView({
           </span>
         </div>
         <div className="writing-head-actions">
-          <button type="button" className={`btn btn-quiet${quotes ? " is-on" : ""}`} aria-pressed={quotes} onClick={() => setQuotes((q) => !q)}>
+          <button type="button" className={`btn btn-quiet${side === "preview" ? " is-on" : ""}`} aria-pressed={side === "preview"} onClick={() => void flushEditor.current?.().finally(() => setSide((s) => (s === "preview" ? null : "preview")))}>
+            <Icon name="bookOpen" size={16} /> Preview
+          </button>
+          <button type="button" className={`btn btn-quiet${side === "quotes" ? " is-on" : ""}`} aria-pressed={side === "quotes"} onClick={() => setSide((s) => (s === "quotes" ? null : "quotes"))}>
             <Icon name="notes" size={16} /> Notes
           </button>
           <button type="button" className="btn btn-quiet" onClick={() => setDialog("details")}>
@@ -492,104 +625,60 @@ function ProjectView({
       </header>
 
       <div className="writing-body">
-        <aside className="writing-chapters" aria-label="Chapters">
+        <aside className="writing-chapters" aria-label="The book's pages">
           <div className="writing-chapters-head">
-            <strong>Chapters</strong>
-            <Menu
-              label="Add"
-              className="btn btn-quiet btn-small"
-              trigger={
-                <>
-                  <Icon name="plus" size={15} /> Add
-                </>
-              }
-              items={[
-                { label: "Chapter", icon: "file", description: "After the one you're writing", onSelect: () => void addChapter() },
-                { label: "Part", icon: "layers", description: "One work of an anthology, with its own chapters", onSelect: () => void addPart() },
-              ]}
-            />
-            <button type="button" className="writing-list-toggle" aria-label="Hide chapters" title="Hide chapters" onClick={() => setListOpen(false)}>
+            <strong>Contents</strong>
+            <button type="button" className="writing-list-toggle" aria-label="Hide the list" title="Hide the list" onClick={() => setListOpen(false)}>
               <Icon name="panelLeft" size={17} />
             </button>
           </div>
           <ol className="writing-chapter-list">
-            {chapters.map((c, i) => {
-              const part = partOf(c);
-              const before = chapters[i - 1];
-              const group = groupOf(c);
-              // A label where a new kind of section starts: the book's own, or inside a part.
-              const label =
-                c.role === "part" || (before && groupOf(before) === group) || (c.role === "chapter" && (part ? before?.id === part : i === 0))
-                  ? null
-                  : { front: "Front matter", chapter: "Chapters", back: "Back matter", part: "" }[c.role ?? "chapter"];
-              const number =
-                c.role === "chapter"
-                  ? chapters.slice(0, i + 1).filter((x) => x.role === "chapter" && partOf(x) === part).length
-                  : c.role === "part"
-                    ? romanOf(parts.findIndex((p) => p.id === c.id) + 1)
-                    : "·";
-              return (
-              <Fragment key={c.id}>
-                {label && (
-                  <li className={`writing-chapter-group${part ? " is-in-part" : ""}`} aria-hidden>
-                    {label}
-                  </li>
-                )}
-              <li
-                draggable
-                className={`${c.id === chapter?.id ? "is-current" : ""}${dragging === c.id ? " is-dragging" : ""}${part ? " is-in-part" : ""}${c.role === "part" ? " is-part" : ""}`}
-                onDragStart={(e) => {
-                  setDragging(c.id);
-                  e.dataTransfer.effectAllowed = "move";
-                  e.dataTransfer.setData("text/plain", c.id);
-                }}
-                onDragEnd={() => setDragging(null)}
-                onDragOver={(e) => dragging && groupById(dragging) === group && e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (dragging) void move(dragging, c.id);
-                  setDragging(null);
-                }}
-              >
-                <button type="button" className="writing-chapter" onClick={() => void saving.current.then(() => setChapterId(c.id))}>
-                  <span className="writing-chapter-number num">{number}</span>
-                  <span className="writing-chapter-name">{c.title || (c.role === "part" ? "Untitled part" : "Untitled chapter")}</span>
-                  <span className="muted num writing-chapter-words">
-                    {(c.role === "part" ? chapters.filter((x) => partOf(x) === c.id).reduce((n, x) => n + x.words, 0) : c.words).toLocaleString()}
-                  </span>
-                </button>
-                <Menu label={`More for ${c.title || "this chapter"}`} className="writing-chapter-more" trigger={<Icon name="more" size={16} />} items={chapterMenu(c)} />
-              </li>
-              </Fragment>
-              );
-            })}
+            {areaHead("front")}
+            {front.map(row)}
+            {areaHead("chapter")}
+            {body.map(row)}
+            {areaHead("back")}
+            {back.map(row)}
           </ol>
-          <p className="muted writing-hint">
-            Drag chapters to put them in order. Use a chapter's ••• menu to make it front or back matter{parts.length ? " or move it into a part" : ""}.
-          </p>
+          <p className="muted writing-hint">Drag pages to put them in order, or into another area or section. Each area's + adds a page.</p>
         </aside>
         <section className="writing-main">
           {!listOpen && (
-            <button type="button" className="writing-list-toggle is-floating" aria-label="Show chapters" title="Show chapters" onClick={() => setListOpen(true)}>
+            <button type="button" className="writing-list-toggle is-floating" aria-label="Show the list" title="Show the list" onClick={() => setListOpen(true)}>
               <Icon name="panelLeft" size={17} />
             </button>
           )}
-          {chapter && (
-            <ChapterEditor
+          {chapter && current && isMade(current) ? (
+            <MadePage
               key={chapter.id}
               chapter={chapter}
-              onSave={saveChapter(chapter.id)}
-              onSaveState={(state, w) => setSave({ state, words: w })}
-              flushRef={flushEditor}
-              insertRef={insertInEditor}
+              project={project}
+              chapters={chapters}
+              settings={settings}
+              onTitle={(title) => void saveChapter(chapter.id)(title, chapter.body).catch((e) => toast(String(e)))}
+              onCopyright={(copyright) => saveSettings({ ...settings, copyright })}
+              onWriteMyself={(html) => void writeMyself(chapter, html)}
+              onOpenDetails={() => setDialog("details")}
             />
+          ) : (
+            chapter && (
+              <ChapterEditor
+                key={chapter.id}
+                chapter={chapter}
+                onSave={saveChapter(chapter.id)}
+                onSaveState={(state, w) => setSave({ state, words: w })}
+                flushRef={flushEditor}
+                insertRef={insertInEditor}
+              />
+            )
           )}
           <footer className="writing-status muted" aria-live="polite">
-            <span>{words(save.words)} in this chapter</span>
+            <span>{words(save.words)} on this page</span>
             <span className={save.state === "failed" ? "is-problem" : undefined}>{saveLabel}</span>
           </footer>
         </section>
-        {quotes && <QuoteDrawer refreshKey={refreshKey} onInsert={(n) => insertInEditor.current?.(quoteHtml(n))} onClose={() => setQuotes(false)} />}
+        {side === "quotes" && <QuoteDrawer refreshKey={refreshKey} onInsert={(n) => insertInEditor.current?.(quoteHtml(n))} onClose={() => setSide(null)} />}
+        {side === "preview" && <BookPreview project={project} chapters={chapters} settings={settings} showing={chapter?.id ?? null} onClose={() => setSide(null)} />}
       </div>
 
       {dialog === "details" && (
@@ -615,6 +704,7 @@ function ProjectView({
             await saving.current;
             return (await load())?.chapters ?? chapters;
           }}
+          onSettings={saveSettings}
           onClose={() => setDialog(null)}
         />
       )}
@@ -644,13 +734,13 @@ function ProjectView({
       )}
       {deletingChapter && (
         <ConfirmDialog
-          title={`Delete ${deletingChapter.title || (deletingChapter.role === "part" ? "this part" : "this chapter")}?`}
+          title={`Delete ${deletingChapter.title || (deletingChapter.role === "part" ? "this section" : "this page")}?`}
           body={
             deletingChapter.role === "part"
-              ? "Its own page goes, on all your devices. The chapters in it stay, as the book's own."
+              ? "Its own page goes, on all your devices. The chapters in it stay, in the body."
               : `Its ${words(deletingChapter.words)} go too, on all your devices.`
           }
-          confirm={deletingChapter.role === "part" ? "Delete part" : "Delete chapter"}
+          confirm={deletingChapter.role === "part" ? "Delete section" : "Delete page"}
           danger
           onCancel={() => setDeletingChapter(null)}
           onConfirm={() => {

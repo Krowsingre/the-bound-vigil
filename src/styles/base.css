@@ -128,3 +128,9 @@ input {
   -webkit-user-select: none;
   user-select: none;
 }
+
+/* A custom or Adaptive theme's highlight colour, on selected words. */
+:root[data-highlight] ::selection {
+  background: var(--highlight);
+  color: var(--text);
+}

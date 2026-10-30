@@ -3,9 +3,9 @@
 // attributes and colour variables on the root element.
 
 import { createContext, useContext, useEffect, useState } from "react";
-import type { BookPreview } from "../api/types";
+import type { BookPreview, CustomTheme } from "../api/types";
 
-export type ThemeChoice = "light" | "dark" | "system" | "adaptive";
+export type ThemeChoice = "light" | "dark" | "system" | "adaptive" | "custom";
 export type AdaptiveBase = "system" | "light" | "dark";
 export type InterfaceScale = "small" | "medium" | "large";
 /** How much room there is between things everywhere. */
@@ -63,6 +63,8 @@ export interface AppSettings {
   adaptiveAuto: boolean;
   /** The book the Adaptive colour stays on while adaptiveAuto is off. */
   adaptivePinned: string | null;
+  /** The custom theme shown when `theme` is "custom": a copy of the synced one, so it shows before the library opens. */
+  customTheme: CustomTheme | null;
   scale: InterfaceScale;
   density: InterfaceDensity;
   interfaceFont: InterfaceFont;
@@ -102,6 +104,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   adaptiveStrength: 0.7,
   adaptiveAuto: true,
   adaptivePinned: null,
+  customTheme: null,
   suggestOnline: true,
   scale: "medium",
   density: "default",
@@ -161,11 +164,12 @@ export function parseAppSettings(json: string | null): AppSettings {
   const s = (raw.sync && typeof raw.sync === "object" ? raw.sync : {}) as Record<string, unknown>;
   const p = (raw.privacy && typeof raw.privacy === "object" ? raw.privacy : {}) as Record<string, unknown>;
   return {
-    theme: oneOf(raw.theme, ["light", "dark", "system", "adaptive"], d.theme),
+    theme: oneOf(raw.theme, ["light", "dark", "system", "adaptive", "custom"], d.theme),
     adaptiveBase: oneOf(raw.adaptiveBase, ["system", "light", "dark"], d.adaptiveBase),
     adaptiveStrength: typeof raw.adaptiveStrength === "number" ? Math.min(1, Math.max(0, raw.adaptiveStrength)) : d.adaptiveStrength,
     adaptiveAuto: flag(raw.adaptiveAuto, d.adaptiveAuto),
     adaptivePinned: typeof raw.adaptivePinned === "string" ? raw.adaptivePinned : d.adaptivePinned,
+    customTheme: readCustomTheme(raw.customTheme),
     suggestOnline: flag(raw.suggestOnline, d.suggestOnline),
     scale: oneOf(raw.scale, ["small", "medium", "large"], d.scale),
     density: oneOf(raw.density, ["compact", "default", "spacious"], d.density),
@@ -208,8 +212,71 @@ export function parseAppSettings(json: string | null): AppSettings {
   };
 }
 
+const HEX = /^#[0-9a-f]{6}$/i;
+
+function readCustomTheme(raw: unknown): CustomTheme | null {
+  if (!raw || typeof raw !== "object") return null;
+  const t = raw as Record<string, unknown>;
+  const colours = [t.page, t.surface, t.accent, t.highlight];
+  if (!colours.every((c) => typeof c === "string" && HEX.test(c))) return null;
+  return {
+    id: typeof t.id === "string" ? t.id : "",
+    name: typeof t.name === "string" ? t.name : "Custom",
+    page: t.page as string,
+    surface: t.surface as string,
+    accent: t.accent as string,
+    highlight: t.highlight as string,
+  };
+}
+
+/** How bright a colour looks, 0 (black) to 1 (white), as WCAG measures it. */
+export function luminance(hex: string): number {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
+  if (!m) return 0;
+  const [r, g, b] = [m[1], m[2], m[3]].map((h) => {
+    const c = parseInt(h, 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** How far apart two colours are for reading, 1 to 21. Text wants 4.5 or more. */
+export function contrast(a: string, b: string): number {
+  const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+
+/** Mixes two colours, `amount` of the second. */
+export function mix(a: string, b: string, amount: number): string {
+  const parts = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const [p, q] = [parts(a), parts(b)];
+  return `#${p.map((v, i) => Math.round(v + (q[i] - v) * amount).toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** Everything else a custom theme needs, worked out from its four colours so text always reads. */
+export function customColors(theme: CustomTheme): Record<string, string> {
+  const dark = luminance(theme.page) < 0.25;
+  const text = dark ? "#ece9e4" : "#1a1c1e";
+  return {
+    "--bg": theme.page,
+    "--surface": theme.surface,
+    "--surface-sunk": mix(theme.page, "#000000", dark ? 0.25 : 0.06),
+    "--text": text,
+    "--text-muted": mix(text, theme.surface, 0.38),
+    "--border": mix(theme.surface, text, 0.16),
+    "--accent": theme.accent,
+    "--accent-text": contrast(theme.accent, "#ffffff") >= contrast(theme.accent, "#121416") ? "#ffffff" : "#121416",
+    "--accent-soft": theme.highlight,
+    "--highlight": theme.highlight,
+  };
+}
+
+/** The colour variables a custom theme sets, so they can be taken off again. */
+const CUSTOM_VARS = ["--bg", "--surface", "--surface-sunk", "--text", "--text-muted", "--border", "--accent-soft", "--highlight"];
+
 /** Whether the window should be dark, given the choice and the system's own setting. */
-export function isDark(settings: Pick<AppSettings, "theme" | "adaptiveBase">, systemDark: boolean): boolean {
+export function isDark(settings: Pick<AppSettings, "theme" | "adaptiveBase"> & { customTheme?: CustomTheme | null }, systemDark: boolean): boolean {
+  if (settings.theme === "custom" && settings.customTheme) return luminance(settings.customTheme.page) < 0.25;
   if (settings.theme === "light" || settings.theme === "dark") return settings.theme === "dark";
   if (settings.theme === "adaptive" && settings.adaptiveBase !== "system") return settings.adaptiveBase === "dark";
   return systemDark;
@@ -293,6 +360,11 @@ export function applyAppSettings(settings: AppSettings, dark: boolean, adaptive:
     if (settings.theme === "adaptive" && !settings.privacy.on && value) root.style.setProperty(name, value);
     else root.style.removeProperty(name);
   }
+  for (const name of CUSTOM_VARS) root.style.removeProperty(name);
+  if (settings.theme === "adaptive" && adaptive && !settings.privacy.on) root.style.setProperty("--highlight", adaptive.highlight);
+  if (settings.theme === "custom" && settings.customTheme) for (const [name, value] of Object.entries(customColors(settings.customTheme))) root.style.setProperty(name, value);
+  // Selected words take the theme's highlight colour.
+  root.toggleAttribute("data-highlight", !!root.style.getPropertyValue("--highlight"));
 }
 
 /** Shows or hides covers on the whole window, at once. */

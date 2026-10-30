@@ -66,15 +66,22 @@ interface LineUpSettings {
   model: "standard" | "faster";
   effort: "gentle" | "full";
   background: boolean;
+  /** Phones: the battery and heat warning was agreed to when it was turned on. */
+  agreed: boolean;
 }
 
-const LINE_UP_DEFAULTS: LineUpSettings = { auto: true, model: "standard", effort: "gentle", background: true };
+/** On a phone, lining up is off until it's turned on and the warning agreed to. */
+const LINE_UP_DEFAULTS: LineUpSettings = { auto: !isIOS, model: "standard", effort: "gentle", background: true, agreed: false };
+/** Said before lining up is turned on on a phone, and under the switch. */
+export const PHONE_LINE_UP_WARNING =
+  "Lining up works the phone's processor hard for a long time. It can drain the battery, even when the phone is plugged in, and it may make the phone overheat. TBV pauses when the phone gets too warm and carries on once it has cooled down. A computer with TBV open lines pairs up for your phone as well.";
 const LINE_UP_KEY = "readAlong.lineUp";
 
 /** How this device lines up books with their audiobooks, word by word. */
 function ReadAlongSection() {
   const [set, setSet] = useState<LineUpSettings | null>(null);
   const [models, setModels] = useState<[string, number][]>([]);
+  const [asking, setAsking] = useState(false);
   const toast = useToast();
   useEffect(() => {
     api.getSetting(LINE_UP_KEY).then(
@@ -106,10 +113,26 @@ function ReadAlongSection() {
     >
       <Toggle
         label="Line up pairs by itself"
-        hint="When it's off, nothing is lined up on this device. Pairs still follow along by chapter."
-        checked={set.auto}
-        onChange={(auto) => change({ auto })}
+        hint={
+          isIOS
+            ? `Off unless you turn it on. ${PHONE_LINE_UP_WARNING}`
+            : "When it's off, nothing is lined up on this device. Pairs still follow along by chapter."
+        }
+        checked={set.auto && (!isIOS || set.agreed)}
+        onChange={(auto) => (auto && isIOS ? setAsking(true) : change({ auto }))}
       />
+      {asking && (
+        <ConfirmDialog
+          title="Line up on this phone?"
+          body={PHONE_LINE_UP_WARNING}
+          confirm="Turn on"
+          onConfirm={() => {
+            setAsking(false);
+            change({ auto: true, agreed: true });
+          }}
+          onCancel={() => setAsking(false)}
+        />
+      )}
       <Row label="Accuracy" hint="Applies to what is lined up from now on." stack>
         <RadioList<LineUpSettings["model"]>
           label="Accuracy"
@@ -959,7 +982,7 @@ function AboutVersion({ version }: { version: string }) {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.46.0");
+  const [version, setVersion] = useState("1.47.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

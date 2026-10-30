@@ -3,7 +3,7 @@
 // of books and audiobooks being lined up for read-along.
 
 import { useEffect, useState } from "react";
-import { api, isApp } from "../api";
+import { api, isApp, isIOS } from "../api";
 import type { ReadAlongPair } from "../api/types";
 import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
@@ -114,7 +114,7 @@ function LiningUpPane() {
         <div>
           <p className="settings-row-hint">
             Each book paired with its audiobook is lined up word by word, one pair at a time, on every device that has both downloaded. A computer works from
-            the start and a phone from the end, so together they meet in the middle.
+            the start and a phone from the end, so together they meet in the middle.{isIOS && " On this phone it's off until you turn it on in Preferences › Reading › Read-along."}
           </p>
         </div>
         <div className="imports-actions">
@@ -139,7 +139,9 @@ function LiningUpPane() {
           <div className="imports-summary-text">
             <h2>Lining up {now.title || "a book"}</h2>
             <p className="settings-row-hint">
-              {now.stage === "model"
+              {now.stage === "cooling"
+                ? `Paused while the phone cools down, ${Math.floor(now.fraction * 100)}% done`
+                : now.stage === "model"
                 ? now.modelTotal
                   ? `Getting the speech model: ${mb(now.modelLoaded)} of ${mb(now.modelTotal)}`
                   : "Getting the speech model ready…"

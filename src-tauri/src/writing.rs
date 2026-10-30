@@ -274,6 +274,31 @@ pub async fn set_writing_chapter_part(state: State<'_, AppLibrary>, id: String, 
 }
 
 #[tauri::command]
+pub async fn add_writing_section(state: State<'_, AppLibrary>, project_id: String, section: tbv_core::writing::NewWritingSection) -> CommandResult<WritingChapter> {
+    with_library(state, move |library| library.add_writing_section(&project_id, &section)).await
+}
+
+#[tauri::command]
+pub async fn set_writing_chapter_page(state: State<'_, AppLibrary>, id: String, page: String) -> CommandResult<WritingChapter> {
+    with_library(state, move |library| library.set_writing_chapter_page(&id, &page)).await
+}
+
+#[tauri::command]
+pub async fn custom_themes(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::custom_themes::CustomTheme>> {
+    with_library(state, |library| library.custom_themes()).await
+}
+
+#[tauri::command]
+pub async fn save_custom_theme(state: State<'_, AppLibrary>, theme: tbv_core::custom_themes::CustomTheme) -> CommandResult<tbv_core::custom_themes::CustomTheme> {
+    with_library(state, move |library| library.save_custom_theme(&theme)).await
+}
+
+#[tauri::command]
+pub async fn remove_custom_theme(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.remove_custom_theme(&id)).await
+}
+
+#[tauri::command]
 pub async fn reading_history(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::history::HistoryEntry>> {
     with_library(state, |library| library.reading_history()).await
 }
