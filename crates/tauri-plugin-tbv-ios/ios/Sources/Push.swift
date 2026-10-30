@@ -41,15 +41,31 @@ final class TbvPush: NSObject {
       imp_implementationWithBlock(unsafeBitCast(gotAddress, to: AnyObject.self)), "v@:@@")
 
     let woken: @convention(block) (AnyObject, UIApplication, NSDictionary, @escaping @convention(block) (UIBackgroundFetchResult) -> Void) -> Void = { _, _, _, done in
-      tbvBackgroundSync { finished in
-        DispatchQueue.main.async { done(finished ? .newData : .failed) }
-      }
+      TbvPush.shared.sync(then: done)
     }
     Self.answer(
       target, "application:didReceiveRemoteNotification:fetchCompletionHandler:",
       imp_implementationWithBlock(unsafeBitCast(woken, to: AnyObject.self)), "v@:@@@?")
 
     UIApplication.shared.registerForRemoteNotifications()
+  }
+
+  /// iOS's "done" for each push that arrived while this sync runs.
+  private var waiting: [(UIBackgroundFetchResult) -> Void] = []
+
+  /// One sync for any number of pushes; each is told when it's over.
+  private func sync(then done: @escaping (UIBackgroundFetchResult) -> Void) {
+    waiting.append(done)
+    guard waiting.count == 1 else { return }
+    tbvBackgroundSync { finished in
+      DispatchQueue.main.async { TbvPush.shared.synced(finished) }
+    }
+  }
+
+  private func synced(_ finished: Bool) {
+    let all = waiting
+    waiting = []
+    for done in all { done(finished ? .newData : .failed) }
   }
 
   /// Gives the delegate's class an answer to `selector`. Tauri's delegate
