@@ -681,7 +681,8 @@
 
 /* The rating in numbers beside the stars, so quarter stars are easy to read. */
 .star-rating-value {
-  min-width: 2.4em;
+  min-width: 2.6em;
+  text-align: left;
   color: var(--text-muted);
   font-size: 12px;
 }
