@@ -972,7 +972,7 @@ impl crate::library::Library {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
-        if now.map_or(true, |(_, q)| q) == queued && (now.is_some() || queued) {
+        if now.is_none_or(|(_, q)| q) == queued {
             return Ok(());
         }
         // Back of the queue: after every pair given a place, if any are.

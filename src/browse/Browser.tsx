@@ -249,7 +249,18 @@ const covered = () => !!document.querySelector(".dialog-backdrop, [role=menu], [
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
 const clean = (e: unknown) => String(e).replace(/^Error: /, "");
 
-export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: () => void; onOpenBook: (bookId: string) => void }) {
+export function Browser({
+  onOpenCatalogues,
+  onOpenBook,
+  search,
+  onSearchChange,
+}: {
+  onOpenCatalogues: () => void;
+  onOpenBook: (bookId: string) => void;
+  /** The top search box's typing, which the start page's box shares. */
+  search: string;
+  onSearchChange: (text: string) => void;
+}) {
   const narrow = useNarrow();
   const [rowOpen] = useBrowserRow();
   const [tabs, setTabs] = useState<TabsState>(startingTabs);
@@ -1082,7 +1093,12 @@ export function Browser({ onOpenCatalogues, onOpenBook }: { onOpenCatalogues: ()
             onNewTab={openInNewTab}
             onPanel={setPanel}
             onScrolled={startScrolled}
-            onSearch={() => document.getElementById("global-search")?.focus()}
+            search={search}
+            onSearchChange={onSearchChange}
+            onSearch={(text) => {
+              go(text);
+              onSearchChange("");
+            }}
             closed={closedTabs}
             onReopen={(index) => reopen(1, index)}
             privately={!!active.private}

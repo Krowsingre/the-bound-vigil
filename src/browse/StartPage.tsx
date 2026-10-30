@@ -3,7 +3,7 @@
 // History, Downloads and the Reading List, Quick Links on gallery paintings,
 // and the sites visited lately.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { QuickLink } from "../api/types";
 import { galleryUrl } from "../collections/gallery";
@@ -14,7 +14,8 @@ import { useToast } from "../components/Toast";
 import type { ClosedTab } from "./browserTabs";
 import { ClosedList } from "./ClosedList";
 import { clearHistory, onHistory, readHistory, removeFromHistory } from "./browserHistory";
-import { readBrowserPrefs, siteOf } from "./browserPrefs";
+import { onBrowserPrefs, readBrowserPrefs, siteOf } from "./browserPrefs";
+import { backgroundUrl, DiscoverBackgroundPicker } from "./DiscoverBackground";
 import { QuickLinksEditor, freePainting } from "./QuickLinksEditor";
 import { SiteBadge } from "./SiteBadge";
 
@@ -72,6 +73,8 @@ export function StartPage({
   onGo,
   onNewTab,
   onPanel,
+  search,
+  onSearchChange,
   onSearch,
   onScrolled,
   closed,
@@ -81,8 +84,11 @@ export function StartPage({
   onGo: (url: string) => void;
   onNewTab: (url: string) => void;
   onPanel: (panel: StartPanel) => void;
-  /** The search box: the header's address box takes the typing. */
-  onSearch: () => void;
+  /** What's typed, shared with the address box at the top, so each shows the other's typing. */
+  search: string;
+  onSearchChange: (text: string) => void;
+  /** Searches for (or goes to) what's typed. */
+  onSearch: (text: string) => void;
   /** How far down it's scrolled, for hiding Discover's bar. */
   onScrolled?: (y: number, room: number) => void;
   /** Tabs closed lately, for the Recently closed fold-out. */
@@ -97,8 +103,24 @@ export function StartPage({
   const [recent, setRecent] = useState(recentSites);
   const [clearing, setClearing] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
-  const [prefs] = useState(readBrowserPrefs);
+  const [prefs, setPrefs] = useState(readBrowserPrefs);
+  useEffect(() => onBrowserPrefs(() => setPrefs(readBrowserPrefs())), []);
   const showRecent = prefs.showRecent && prefs.historyOn;
+  const backdrop = backgroundUrl(prefs.background);
+  const [choosing, setChoosing] = useState(false);
+  // The picture stops at the scroll bar, so it never runs under it.
+  const scroller = useRef<HTMLDivElement>(null);
+  const [bar, setBar] = useState(0);
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const measure = () => setBar(el.offsetWidth - el.clientWidth);
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    if (el.firstElementChild) watch.observe(el.firstElementChild);
+    return () => watch.disconnect();
+  }, []);
 
   const reload = useCallback(() => api.quickLinks().then(setLinks, () => undefined), []);
   useEffect(() => void reload(), [reload]);
@@ -117,7 +139,16 @@ export function StartPage({
   };
 
   return (
-    <div className="start-page" onScroll={(e) => onScrolled?.(e.currentTarget.scrollTop, e.currentTarget.scrollHeight - e.currentTarget.clientHeight)}>
+    <>
+    {backdrop && <div className="start-backdrop" style={{ backgroundImage: `url(${backdrop})`, right: bar }} aria-hidden />}
+    <div
+      ref={scroller}
+      className={`start-page${backdrop ? " has-backdrop" : ""}`}
+      onScroll={(e) => onScrolled?.(e.currentTarget.scrollTop, e.currentTarget.scrollHeight - e.currentTarget.clientHeight)}
+    >
+      <button type="button" className="start-background-button" title="Change the background" aria-label="Change the background" onClick={() => setChoosing(true)}>
+        <Icon name="image" size={17} />
+      </button>
       <div className="start-inner">
         <h1 className="start-title">Discover</h1>
         <span className="start-rule" aria-hidden />
@@ -129,11 +160,29 @@ export function StartPage({
             </span>
           </p>
         )}
-        <button type="button" className="start-search" onClick={onSearch}>
+        <form
+          className="start-search"
+          role="search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (search.trim()) onSearch(search);
+          }}
+        >
           <Icon name="search" size={20} />
-          <span>Search the web…</span>
-          <Icon name="chevronRight" size={18} />
-        </button>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search the web or enter a website…"
+            aria-label="Search the web or enter a website"
+            spellCheck={false}
+            autoCapitalize="off"
+            enterKeyHint="go"
+          />
+          <button type="submit" className="start-search-go" aria-label="Go" disabled={!search.trim()}>
+            <Icon name="chevronRight" size={18} />
+          </button>
+        </form>
         <div className="start-tiles">
           {TILES.map((t) => (
             <button key={t.panel} type="button" className={`start-tile start-tile-${t.panel}`} onClick={() => onPanel(t.panel)}>
@@ -237,6 +286,20 @@ export function StartPage({
           </>
         )}
       </div>
+      {choosing && (
+        <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && setChoosing(false)}>
+          <div className="dialog start-background-dialog" role="dialog" aria-label="Start page background" onKeyDown={(e) => e.key === "Escape" && setChoosing(false)}>
+            <header className="catalogues-head">
+              <h2>Background</h2>
+              <button type="button" className="icon-btn" aria-label="Close" onClick={() => setChoosing(false)}>
+                <Icon name="close" size={18} />
+              </button>
+            </header>
+            <p className="muted">A picture behind the start page, on this device. It's also in Preferences › Discover.</p>
+            <DiscoverBackgroundPicker value={prefs.background} onError={toast} />
+          </div>
+        </div>
+      )}
       {editing && <QuickLinksEditor links={links} onChanged={reload} onClose={() => setEditing(false)} />}
       {clearing && (
         <ConfirmDialog
@@ -252,5 +315,6 @@ export function StartPage({
         />
       )}
     </div>
+    </>
   );
 }
