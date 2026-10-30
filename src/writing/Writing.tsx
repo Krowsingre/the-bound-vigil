@@ -20,7 +20,8 @@ import { DetailsDialog, DraftsDialog, ExportDialog, NewBookDialog } from "./Writ
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
 
 function Cover({ project }: { project: WritingProject }) {
-  const src = project.coverPath ? (isWeb ? project.coverPath : api.coverUrl(project.coverPath)) : null;
+  const path = project.coverSmallPath ?? project.coverPath;
+  const src = path ? (isWeb ? path : api.coverUrl(path)) : null;
   return src ? (
     <img className="writing-cover" src={src} alt="" />
   ) : (
@@ -285,8 +286,10 @@ function ProjectView({
   const saving = useRef<Promise<void>>(Promise.resolve());
   const flushEditor = useRef<(() => Promise<void>) | null>(null);
   const insertInEditor = useRef<((html: string) => void) | null>(null);
-  // Beside the chapter: quotes from your notes, or the whole book as it will be exported.
+  // Beside the chapter, quotes from your notes; or, in its place, the whole book as it will be exported.
   const [side, setSide] = useState<"quotes" | "preview" | null>(null);
+  // Counts picks in the list, so picking the page already open still takes the preview to it.
+  const [picked, setPicked] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -542,7 +545,7 @@ function ProjectView({
           setDragging(null);
         }}
       >
-        <button type="button" className="writing-chapter" onClick={() => void saving.current.then(() => setChapterId(c.id))}>
+        <button type="button" className="writing-chapter" onClick={() => void saving.current.then(() => (setChapterId(c.id), setPicked((n) => n + 1)))}>
           <span className="writing-chapter-number num">{number}</span>
           <span className={`writing-chapter-name${c.title ? "" : " muted"}`}>
             {c.title || (c.role === "part" ? "Untitled section" : numbers.has(c.id) ? `Chapter ${numbers.get(c.id)}` : KINDS[page.kind].label)}
@@ -642,43 +645,54 @@ function ProjectView({
           </ol>
           <p className="muted writing-hint">Drag pages to put them in order, or into another area or section. Each area's + adds a page.</p>
         </aside>
-        <section className="writing-main">
-          {!listOpen && (
-            <button type="button" className="writing-list-toggle is-floating" aria-label="Show the list" title="Show the list" onClick={() => setListOpen(true)}>
-              <Icon name="panelLeft" size={17} />
-            </button>
-          )}
-          {chapter && current && isMade(current) ? (
-            <MadePage
-              key={chapter.id}
-              chapter={chapter}
-              project={project}
-              chapters={chapters}
-              settings={settings}
-              onTitle={(title) => void saveChapter(chapter.id)(title, chapter.body).catch((e) => toast(String(e)))}
-              onCopyright={(copyright) => saveSettings({ ...settings, copyright })}
-              onWriteMyself={(html) => void writeMyself(chapter, html)}
-              onOpenDetails={() => setDialog("details")}
-            />
-          ) : (
-            chapter && (
-              <ChapterEditor
+        {side === "preview" ? (
+          <BookPreview
+            project={project}
+            chapters={chapters}
+            settings={settings}
+            showing={chapter?.id ?? null}
+            picked={picked}
+            onShowList={listOpen ? undefined : () => setListOpen(true)}
+            onClose={() => setSide(null)}
+          />
+        ) : (
+          <section className="writing-main">
+            {!listOpen && (
+              <button type="button" className="writing-list-toggle is-floating" aria-label="Show the list" title="Show the list" onClick={() => setListOpen(true)}>
+                <Icon name="panelLeft" size={17} />
+              </button>
+            )}
+            {chapter && current && isMade(current) ? (
+              <MadePage
                 key={chapter.id}
                 chapter={chapter}
-                onSave={saveChapter(chapter.id)}
-                onSaveState={(state, w) => setSave({ state, words: w })}
-                flushRef={flushEditor}
-                insertRef={insertInEditor}
+                project={project}
+                chapters={chapters}
+                settings={settings}
+                onTitle={(title) => void saveChapter(chapter.id)(title, chapter.body).catch((e) => toast(String(e)))}
+                onCopyright={(copyright) => saveSettings({ ...settings, copyright })}
+                onWriteMyself={(html) => void writeMyself(chapter, html)}
+                onOpenDetails={() => setDialog("details")}
               />
-            )
-          )}
-          <footer className="writing-status muted" aria-live="polite">
-            <span>{words(save.words)} on this page</span>
-            <span className={save.state === "failed" ? "is-problem" : undefined}>{saveLabel}</span>
-          </footer>
-        </section>
+            ) : (
+              chapter && (
+                <ChapterEditor
+                  key={chapter.id}
+                  chapter={chapter}
+                  onSave={saveChapter(chapter.id)}
+                  onSaveState={(state, w) => setSave({ state, words: w })}
+                  flushRef={flushEditor}
+                  insertRef={insertInEditor}
+                />
+              )
+            )}
+            <footer className="writing-status muted" aria-live="polite">
+              <span>{words(save.words)} on this page</span>
+              <span className={save.state === "failed" ? "is-problem" : undefined}>{saveLabel}</span>
+            </footer>
+          </section>
+        )}
         {side === "quotes" && <QuoteDrawer refreshKey={refreshKey} onInsert={(n) => insertInEditor.current?.(quoteHtml(n))} onClose={() => setSide(null)} />}
-        {side === "preview" && <BookPreview project={project} chapters={chapters} settings={settings} showing={chapter?.id ?? null} onClose={() => setSide(null)} />}
       </div>
 
       {dialog === "details" && (

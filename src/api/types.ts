@@ -180,18 +180,26 @@ export interface LicenseView {
   trialDays: number;
   /** Where it's bought: "none" for a copy from outside a store. */
   shop: "microsoft" | "apple" | "none";
-  /** The lifetime unlock's price as the store shows it, like "$44.99". */
+  /** The lifetime unlock's price as the store shows it, like "$59.99". */
   price: string | null;
-  /** The yearly plan's price, like "$14.99". */
+  /** The yearly plan's price, like "$19.99". */
   yearlyPrice?: string | null;
   /** The App Store gives this person the yearly plan's first month free. */
   freeMonth?: boolean;
   /** Bought on this plan; none when not bought or unlocked by code. */
   plan?: "yearly" | "lifetime" | null;
+  /** The Publisher level is owned (or unlocked by the owner's code). */
+  publisher?: boolean;
+  /** Publisher for life, like "$119.99". */
+  publisherPrice?: string | null;
+  /** Publisher yearly, like "$39.99". */
+  publisherYearlyPrice?: string | null;
+  /** Publisher for someone who owns TBV for life: the difference. */
+  upgradePrice?: string | null;
 }
 
-/** The two ways to buy TBV. */
-export type LicensePlan = "yearly" | "lifetime";
+/** The ways to buy TBV: two levels, TBV and Publisher, each yearly or for life, and the upgrade to Publisher for lifetime owners. */
+export type LicensePlan = "yearly" | "lifetime" | "publisherYearly" | "publisherLifetime" | "publisherUpgrade";
 
 /** A choice of where to keep the library, as sent to the core. */
 export type ProviderChoice =
@@ -1250,6 +1258,8 @@ export interface WritingProject {
   cover: string | null;
   /** The cover's file here (or a picture address on the phone). */
   coverPath: string | null;
+  /** A smaller copy of the cover for the shelf, where a full-size one looks jagged. */
+  coverSmallPath?: string | null;
   /** What opens the book: null for the cover picture then a title page, or only one of them, or neither. */
   coverPage: "cover" | "title" | "none" | null;
   /** EPUB settings as JSON (see writing/epub.ts). */

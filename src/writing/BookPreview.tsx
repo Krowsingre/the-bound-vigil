@@ -1,4 +1,4 @@
-// Everything that goes into the exported book, beside the editor: the cover,
+// Everything that goes into the exported book, in place of the editor: the cover,
 // the title page, every section in order and the pages Scribe makes, as the
 // EPUB has them. It follows your writing as it's saved.
 
@@ -7,7 +7,7 @@ import { api } from "../api";
 import type { WritingChapter, WritingProject } from "../api/types";
 import { Icon } from "../components/Icon";
 import { bookOrder, copyrightHtml, madeSectionHtml, previewHtml, type ExportSettings } from "./epub";
-import { imageMime, loadFont } from "./fonts";
+import { imageMime, loadBookFonts } from "./fonts";
 import { DEFAULT_RIGHTS, KINDS, readPage, type CopyrightDetails } from "./pages";
 
 const WIDTHS = [
@@ -21,6 +21,8 @@ export function BookPreview({
   chapters,
   settings,
   showing,
+  picked,
+  onShowList,
   onClose,
 }: {
   project: WritingProject;
@@ -28,6 +30,10 @@ export function BookPreview({
   settings: ExportSettings;
   /** The section to show, when one is picked in the list. */
   showing: string | null;
+  /** Goes up each time a page is picked in the list. */
+  picked?: number;
+  /** Brings back the list of pages, when it's hidden. */
+  onShowList?: () => void;
   onClose: () => void;
 }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -56,9 +62,9 @@ export function BookPreview({
     let made: string | null = null;
     let current = true;
     const timer = window.setTimeout(async () => {
-      const font = await loadFont(settings.font).catch(() => null);
+      const fonts = await loadBookFonts(settings, chapters).catch(() => ({ font: null, passageFonts: [] }));
       if (!current) return;
-      made = URL.createObjectURL(new Blob([previewHtml({ project, chapters, settings, cover, font })], { type: "text/html" }));
+      made = URL.createObjectURL(new Blob([previewHtml({ project, chapters, settings, cover, ...fonts })], { type: "text/html" }));
       scroll.current = frame.current?.contentWindow?.scrollY ?? scroll.current;
       setUrl(made);
     }, 350);
@@ -78,12 +84,17 @@ export function BookPreview({
     const target = n ? frame.current?.contentDocument?.getElementById(`c${n}`) : null;
     target?.closest("article")?.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
   };
-  useEffect(() => goTo(showing, true), [showing]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => goTo(showing, true), [showing, picked]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const px = WIDTHS.find((w) => w.value === width)?.px ?? 0;
   return (
     <aside className="book-preview" aria-label="Preview of the book">
       <div className="book-preview-head">
+        {onShowList && (
+          <button type="button" className="writing-list-toggle" aria-label="Show the list" title="Show the list" onClick={onShowList}>
+            <Icon name="panelLeft" size={17} />
+          </button>
+        )}
         <strong>Preview</strong>
         <div className="segmented book-preview-widths" role="radiogroup" aria-label="Preview width">
           {WIDTHS.map((w) => (
@@ -92,8 +103,8 @@ export function BookPreview({
             </button>
           ))}
         </div>
-        <button type="button" className="writing-list-toggle" aria-label="Close the preview" title="Close the preview" onClick={onClose}>
-          <Icon name="close" size={16} />
+        <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
+          <Icon name="edit" size={16} /> Back to writing
         </button>
       </div>
       <div className="book-preview-stage">

@@ -554,10 +554,18 @@ impl Library {
              UNION ALL SELECT 1 FROM writing_projects WHERE cover = ?1 AND deleted_at IS NULL
              UNION ALL SELECT 1 FROM sanctum_links WHERE picture = ?1 AND deleted_at IS NULL LIMIT 1",
         )?;
+        let small = self.paths.pictures_dir.join(crate::writing::SMALL_COVERS);
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
+            if entry.path().is_dir() {
+                continue;
+            }
             if !used.exists(params![format!("picture:{name}")])? {
                 let _ = fs::remove_file(entry.path());
+                // And the shelf's smaller copy of it, if it was a cover.
+                if let Some(stem) = entry.path().file_stem() {
+                    let _ = fs::remove_file(small.join(format!("{}.jpg", stem.to_string_lossy())));
+                }
             }
         }
         Ok(())

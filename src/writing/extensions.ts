@@ -2,7 +2,7 @@
 // the chapter, footnotes, and page breaks. Both are saved in the chapter's HTML, so they
 // sync with it and the EPUB export finds them there (see epub.ts).
 
-import { mergeAttributes, Node } from "@tiptap/react";
+import { Extension, Mark, mergeAttributes, Node } from "@tiptap/react";
 
 declare module "@tiptap/react" {
   interface Commands<ReturnType> {
@@ -17,6 +17,16 @@ declare module "@tiptap/react" {
     pageBreak: {
       /** Starts a new page at the cursor, within the same chapter. */
       setPageBreak: () => ReturnType;
+    };
+    textLook: {
+      /** Sets parts of the selected words' look (font, size, capitals, spacing); null takes one off. */
+      setTextLook: (look: Partial<TextLook>) => ReturnType;
+      /** Changes the selected words' letters to Title Case. */
+      titleCase: () => ReturnType;
+    };
+    blockLook: {
+      /** Sets the selected paragraphs' alignment or line spacing; null goes back to the book's own. */
+      setBlockLook: (look: Partial<BlockLook>) => ReturnType;
     };
   }
 }
@@ -137,3 +147,173 @@ export async function pictureAddress(file: File): Promise<string> {
   const png = file.type === "image/png" ? canvas.toDataURL("image/png") : null;
   return png && png.length < 4 * SMALL_ENOUGH ? png : canvas.toDataURL("image/jpeg", QUALITY);
 }
+
+/** Highlighted words, kept as <mark>. */
+export const Highlight = Mark.create({
+  name: "highlight",
+  parseHTML() {
+    return [{ tag: "mark" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["mark", HTMLAttributes, 0];
+  },
+});
+
+/** Raised small letters (1st, x²), kept apart from footnote numbers. */
+export const Superscript = Mark.create({
+  name: "superscript",
+  excludes: "subscript",
+  parseHTML() {
+    return [{ tag: "sup", getAttrs: (el) => (el.hasAttribute("data-footnote") ? false : null) }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["sup", HTMLAttributes, 0];
+  },
+});
+
+/** Lowered small letters (H₂O). */
+export const Subscript = Mark.create({
+  name: "subscript",
+  excludes: "superscript",
+  parseHTML() {
+    return [{ tag: "sub" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["sub", HTMLAttributes, 0];
+  },
+});
+
+/**
+ * How some words look, kept as a <span style> so it travels into the EPUB as
+ * it is. Capitals are a style, not retyped letters, so taking them off gives
+ * the words back as they were written.
+ */
+export interface TextLook {
+  fontFamily: string | null;
+  fontSize: string | null;
+  /** "uppercase" for ALL CAPS. */
+  textTransform: string | null;
+  /** "small-caps". */
+  fontVariant: string | null;
+  letterSpacing: string | null;
+  wordSpacing: string | null;
+}
+
+const TEXT_LOOK: { key: keyof TextLook; css: string }[] = [
+  { key: "fontFamily", css: "font-family" },
+  { key: "fontSize", css: "font-size" },
+  { key: "textTransform", css: "text-transform" },
+  { key: "fontVariant", css: "font-variant" },
+  { key: "letterSpacing", css: "letter-spacing" },
+  { key: "wordSpacing", css: "word-spacing" },
+];
+
+/** Words kept small in Title Case, unless first or last. */
+const SMALL_WORDS = new Set(["a", "an", "the", "and", "but", "or", "nor", "for", "so", "yet", "as", "at", "by", "in", "of", "off", "on", "per", "to", "up", "via", "with", "from", "into", "than"]);
+
+/** Title Case for a run of words: each word capitalized but the small joining ones. */
+export function toTitleCase(text: string, startsTitle = true, endsTitle = true): string {
+  const words = [...text.matchAll(/[\p{L}\p{N}'’]+/gu)];
+  let out = text;
+  words.forEach((m, i) => {
+    const word = m[0];
+    const lower = word.toLowerCase();
+    const edge = (i === 0 && startsTitle) || (i === words.length - 1 && endsTitle);
+    // Words written with capitals inside (iPhone, McKay, NASA) are left as they are, unless they're small joining words.
+    const small = !edge && SMALL_WORDS.has(lower);
+    const next = small ? lower : /\p{Lu}/u.test(word.slice(1)) ? word : lower.charAt(0).toUpperCase() + lower.slice(1);
+    out = out.slice(0, m.index) + next + out.slice(m.index! + word.length);
+  });
+  return out;
+}
+
+export const TextLookMark = Mark.create({
+  name: "textLook",
+  addAttributes() {
+    return Object.fromEntries(
+      TEXT_LOOK.map(({ key, css }) => [
+        key,
+        {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.style.getPropertyValue(css) || null,
+          renderHTML: (attrs: Record<string, string | null>) => (attrs[key] ? { style: `${css}: ${attrs[key]}` } : {}),
+        },
+      ]),
+    );
+  },
+  parseHTML() {
+    return [{ tag: "span[style]", getAttrs: (el) => (TEXT_LOOK.some(({ css }) => el.style.getPropertyValue(css)) ? null : false) }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["span", HTMLAttributes, 0];
+  },
+  addCommands() {
+    return {
+      setTextLook:
+        (look) =>
+        ({ editor, chain }) => {
+          const next: Record<string, string | null> = { ...(editor.getAttributes(this.name) as Record<string, string | null>), ...look };
+          const any = TEXT_LOOK.some(({ key }) => next[key]);
+          return any ? chain().setMark(this.name, next).run() : chain().unsetMark(this.name).run();
+        },
+      titleCase:
+        () =>
+        ({ state, tr, dispatch }) => {
+          const { from, to, empty } = state.selection;
+          if (empty) return false;
+          if (dispatch) {
+            // Each run of text is changed where it stands; the letters only change case, so nothing moves.
+            state.doc.nodesBetween(from, to, (node, pos) => {
+              if (!node.isText || !node.text) return;
+              const start = Math.max(from, pos);
+              const end = Math.min(to, pos + node.text.length);
+              const part = node.text.slice(start - pos, end - pos);
+              const titled = toTitleCase(part, start === from, end === to);
+              if (titled !== part) tr.replaceWith(start, end, state.schema.text(titled, node.marks));
+            });
+            dispatch(tr);
+          }
+          return true;
+        },
+    };
+  },
+});
+
+/** How a paragraph or heading is set: its alignment and line spacing. */
+export interface BlockLook {
+  textAlign: "left" | "center" | "right" | "justify" | null;
+  lineHeight: string | null;
+}
+
+const BLOCK_TYPES = ["paragraph", "heading"];
+
+export const BlockLookExtension = Extension.create({
+  name: "blockLook",
+  addGlobalAttributes() {
+    return [
+      {
+        types: BLOCK_TYPES,
+        attributes: {
+          textAlign: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.style.textAlign || null,
+            renderHTML: (attrs: Record<string, string | null>) => (attrs.textAlign ? { style: `text-align: ${attrs.textAlign}` } : {}),
+          },
+          lineHeight: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.style.lineHeight || null,
+            renderHTML: (attrs: Record<string, string | null>) => (attrs.lineHeight ? { style: `line-height: ${attrs.lineHeight}` } : {}),
+          },
+        },
+      },
+    ];
+  },
+  addCommands() {
+    return {
+      setBlockLook:
+        (look) =>
+        ({ commands }) =>
+          BLOCK_TYPES.map((type) => commands.updateAttributes(type, look)).some(Boolean),
+    };
+  },
+});

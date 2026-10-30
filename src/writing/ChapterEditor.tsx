@@ -10,8 +10,9 @@ import type { WritingChapter } from "../api/types";
 import { Icon, type IconName } from "../components/Icon";
 import { onBeforeQuit } from "../lib/beforeQuit";
 import { countWords } from "./records";
-import { Footnote, PageBreak, Picture, pictureAddress } from "./extensions";
+import { BlockLookExtension, Footnote, Highlight, PageBreak, Picture, pictureAddress, Subscript, Superscript, TextLookMark, type BlockLook, type TextLook } from "./extensions";
 import { useToast } from "../components/Toast";
+import { Menu, type MenuEntry } from "../components/Menu";
 
 const SAVE_AFTER_MS = 800;
 
@@ -51,6 +52,66 @@ function Tool({
   );
 }
 
+/** Fonts a passage can be set in: ones TBV can put inside the book, and the reader's own kinds. */
+const FONTS: { label: string; value: string | null }[] = [
+  { label: "The book's font", value: null },
+  { label: "Lora", value: "Lora, serif" },
+  { label: "Echolume", value: "Echolume, serif" },
+  { label: "Serif", value: "serif" },
+  { label: "Sans serif", value: "sans-serif" },
+  { label: "Typewriter", value: "monospace" },
+];
+const SIZES: { label: string; value: string | null }[] = [
+  { label: "Small", value: "0.85em" },
+  { label: "Normal", value: null },
+  { label: "Large", value: "1.2em" },
+  { label: "Larger", value: "1.5em" },
+  { label: "Largest", value: "2em" },
+];
+const LETTERS: { label: string; value: string | null }[] = [
+  { label: "Tight", value: "-0.02em" },
+  { label: "Normal", value: null },
+  { label: "Wide", value: "0.05em" },
+  { label: "Wider", value: "0.12em" },
+  { label: "Widest", value: "0.25em" },
+];
+const WORDS: { label: string; value: string | null }[] = [
+  { label: "Normal", value: null },
+  { label: "Wide", value: "0.2em" },
+  { label: "Wider", value: "0.5em" },
+];
+const LINES: { label: string; value: string | null }[] = [
+  { label: "The book's own", value: null },
+  { label: "Single", value: "1.2" },
+  { label: "1.5 lines", value: "1.5" },
+  { label: "Double", value: "2" },
+];
+const ALIGNS: { label: string; value: BlockLook["textAlign"] }[] = [
+  { label: "The book's own", value: null },
+  { label: "Left", value: "left" },
+  { label: "Centre", value: "center" },
+  { label: "Right", value: "right" },
+  { label: "Justified", value: "justify" },
+];
+
+/** A toolbar button that opens a short list of choices. */
+function ToolMenu({ label, text, icon, active, items }: { label: string; text?: string; icon?: IconName; active?: boolean; items: MenuEntry[] }) {
+  return (
+    <Menu
+      label={label}
+      align="start"
+      className={`writing-tool writing-tool-menu${active ? " is-on" : ""}`}
+      trigger={
+        <>
+          {icon ? <Icon name={icon} size={17} /> : <span className="writing-tool-text">{text}</span>}
+          <Icon name="chevronDown" size={11} />
+        </>
+      }
+      items={items}
+    />
+  );
+}
+
 function Toolbar({ editor }: { editor: Editor }) {
   const state = useEditorState({
     editor,
@@ -65,6 +126,13 @@ function Toolbar({ editor }: { editor: Editor }) {
       bullets: e.isActive("bulletList"),
       numbers: e.isActive("orderedList"),
       link: e.isActive("link"),
+      highlight: e.isActive("highlight"),
+      sup: e.isActive("superscript"),
+      sub: e.isActive("subscript"),
+      look: e.getAttributes("textLook") as Partial<TextLook>,
+      block: (e.isActive("heading") ? e.getAttributes("heading") : e.getAttributes("paragraph")) as Partial<BlockLook>,
+      canIndent: e.can().sinkListItem("listItem"),
+      canOutdent: e.can().liftListItem("listItem"),
       footnote: e.isActive("footnote") ? ((e.getAttributes("footnote").text as string) ?? "") : null,
       canUndo: e.can().undo(),
       canRedo: e.can().redo(),
@@ -93,6 +161,10 @@ function Toolbar({ editor }: { editor: Editor }) {
   useEffect(() => {
     if (state.footnote !== null) setNoting(state.footnote);
   }, [state.footnote]);
+  const look = (change: Partial<TextLook>) => run().setTextLook(change).run();
+  const choose = <T,>(list: { label: string; value: T }[], current: T | undefined, pick: (value: T) => void): MenuEntry[] =>
+    list.map((o) => ({ label: o.label, checked: (current ?? null) === o.value, onSelect: () => pick(o.value) }));
+  const caps = state.look.textTransform === "uppercase" ? "all" : state.look.fontVariant === "small-caps" ? "small" : null;
   const saveLink = () => {
     const url = (linking ?? "").trim();
     if (!url) run().extendMarkRange("link").unsetLink().run();
@@ -105,12 +177,64 @@ function Toolbar({ editor }: { editor: Editor }) {
       <Tool label="Italic" shortcut="Ctrl+I" text="I" active={state.italic} onClick={() => run().toggleItalic().run()} />
       <Tool label="Underline" shortcut="Ctrl+U" text="U" active={state.underline} onClick={() => run().toggleUnderline().run()} />
       <Tool label="Strikethrough" text="S" active={state.strike} onClick={() => run().toggleStrike().run()} />
+      <Tool label="Highlight" icon="highlight" active={state.highlight} onClick={() => run().toggleMark("highlight").run()} />
+      <Tool label="Superscript" text="x²" active={state.sup} onClick={() => run().toggleMark("superscript").run()} />
+      <Tool label="Subscript" text="x₂" active={state.sub} onClick={() => run().toggleMark("subscript").run()} />
+      <ToolMenu
+        label="Capitals"
+        text="Aa"
+        active={caps !== null}
+        items={[
+          { label: "As written", checked: caps === null, onSelect: () => look({ textTransform: null, fontVariant: null }) },
+          { label: "ALL CAPS", checked: caps === "all", onSelect: () => look({ textTransform: "uppercase", fontVariant: null }) },
+          { label: "Small Caps", checked: caps === "small", onSelect: () => look({ textTransform: null, fontVariant: "small-caps" }) },
+          "divider",
+          { label: "Change to Title Case", hint: "Retypes the letters", onSelect: () => run().titleCase().run() },
+        ]}
+      />
+      <span className="writing-tool-gap" />
+      <ToolMenu
+        label="Font"
+        icon="readingA"
+        active={!!state.look.fontFamily}
+        items={[
+          ...choose(FONTS, state.look.fontFamily, (fontFamily) => look({ fontFamily })),
+          "divider",
+          { heading: <span className="writing-tool-note">Many e-readers let readers choose their own font, which can replace this.</span> },
+        ]}
+      />
+      <ToolMenu label="Text size" icon="textSize" active={!!state.look.fontSize} items={choose(SIZES, state.look.fontSize, (fontSize) => look({ fontSize }))} />
+      <ToolMenu
+        label="Spacing"
+        icon="sliders"
+        active={!!(state.look.letterSpacing || state.look.wordSpacing || state.block.lineHeight)}
+        items={[
+          { heading: "Between letters" },
+          ...choose(LETTERS, state.look.letterSpacing, (letterSpacing) => look({ letterSpacing })),
+          { heading: "Between words" },
+          ...choose(WORDS, state.look.wordSpacing, (wordSpacing) => look({ wordSpacing })),
+          { heading: "Between lines" },
+          ...choose(LINES, state.block.lineHeight, (lineHeight) => run().setBlockLook({ lineHeight }).run()),
+        ]}
+      />
+      <ToolMenu
+        label="Alignment"
+        text={{ left: "⇤", center: "↔", right: "⇥", justify: "☰" }[state.block.textAlign ?? "left"] ?? "⇤"}
+        active={!!state.block.textAlign}
+        items={choose(ALIGNS, state.block.textAlign, (textAlign) => run().setBlockLook({ textAlign }).run())}
+      />
       <span className="writing-tool-gap" />
       <Tool label="Heading" text="H" active={state.h2} onClick={() => run().toggleHeading({ level: 2 }).run()} />
       <Tool label="Smaller heading" text="h" active={state.h3} onClick={() => run().toggleHeading({ level: 3 }).run()} />
       <Tool label="Quote" icon="quote" active={state.quote} onClick={() => run().toggleBlockquote().run()} />
       <Tool label="List" icon="listBullet" active={state.bullets} onClick={() => run().toggleBulletList().run()} />
       <Tool label="Numbered list" icon="listNumber" active={state.numbers} onClick={() => run().toggleOrderedList().run()} />
+      {(state.bullets || state.numbers) && (
+        <>
+          <Tool label="Move out" shortcut="Shift+Tab" text="⇠" disabled={!state.canOutdent} onClick={() => run().liftListItem("listItem").run()} />
+          <Tool label="Move in" shortcut="Tab" text="⇢" disabled={!state.canIndent} onClick={() => run().sinkListItem("listItem").run()} />
+        </>
+      )}
       <Tool label="Scene break" text="⁂" onClick={() => run().setHorizontalRule().run()} />
       <Tool label="Page break" icon="pageBreak" onClick={() => run().setPageBreak().run()} />
       <Tool label="Picture" icon="image" onClick={() => picking.current?.click()} />
@@ -254,6 +378,11 @@ export function ChapterEditor({
       Picture,
       Footnote,
       PageBreak,
+      Highlight,
+      Superscript,
+      Subscript,
+      TextLookMark,
+      BlockLookExtension,
     ],
     content: chapter.body || "<p></p>",
     editorProps: { attributes: { class: "writing-page", spellcheck: "true", "aria-label": "Chapter text" } },

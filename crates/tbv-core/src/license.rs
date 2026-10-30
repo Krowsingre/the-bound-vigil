@@ -1,5 +1,8 @@
-//! Paying for TBV (embre, 29 October): $14.99 a year or $44.99 for life,
-//! in the Microsoft Store on a computer (after a 30-day trial) and in the App
+//! Paying for TBV (embre, 30 October): two levels, each complete on its own.
+//! TBV is $19.99 a year or $59.99 for life; TBV Publisher (everything in TBV
+//! plus the publishing tools) is $39.99 a year or $119.99 for life, and a
+//! lifetime owner can upgrade for the difference. The prices themselves are
+//! set in the stores. Both are sold in the Microsoft Store on a computer (after a 30-day trial) and in the App
 //! Store on iPhone and iPad, where the yearly plan's first month is free
 //! (Apple's own trial for a subscription, set in App Store Connect).
 //! The stores say whether it was bought; this keeps the trial's dates and
@@ -24,6 +27,8 @@ pub const SEEN: &str = "license.seen";
 pub const OWNED: &str = "license.owned";
 /// Which plan it was bought on, "yearly" or "lifetime".
 pub const PLAN: &str = "license.plan";
+/// Set while the Publisher level is owned.
+pub const PUBLISHER: &str = "license.publisher";
 /// Set when the owner's code was entered, for copies that can't be bought in.
 pub const CODE: &str = "license.code";
 /// The owner's code, kept only as a fingerprint so the code itself isn't public.
@@ -70,14 +75,22 @@ pub struct LicenseView {
     /// How long the trial is here (0: none, bought before use).
     pub trial_days: i64,
     pub shop: Shop,
-    /// The lifetime unlock's price as the store shows it, like "$44.99".
+    /// The lifetime unlock's price as the store shows it, like "$59.99".
     pub price: Option<String>,
-    /// The yearly plan's price, like "$14.99".
+    /// The yearly plan's price, like "$19.99".
     pub yearly_price: Option<String>,
     /// The App Store gives this person the yearly plan's first month free.
     pub free_month: bool,
     /// Bought on "yearly" or "lifetime" (none when not bought, or unlocked by code).
     pub plan: Option<String>,
+    /// The Publisher level is owned (or unlocked by the owner's code).
+    pub publisher: bool,
+    /// Publisher for life, like "$119.99".
+    pub publisher_price: Option<String>,
+    /// Publisher yearly, like "$39.99".
+    pub publisher_yearly_price: Option<String>,
+    /// Publisher for someone who already owns TBV for life: the difference.
+    pub upgrade_price: Option<String>,
 }
 
 /// How long the trial runs where the copy is bought.
@@ -98,12 +111,27 @@ pub struct StoreAnswer {
     pub free_month: bool,
     /// What's owned: "yearly" (a subscription that's running) or "lifetime".
     pub plan: Option<String>,
+    /// The Publisher level is owned, on either plan or as an upgrade.
+    pub publisher: bool,
+    pub publisher_price: Option<String>,
+    pub publisher_yearly_price: Option<String>,
+    pub upgrade_price: Option<String>,
 }
 
 impl StoreAnswer {
     /// Nothing owned, nothing known about prices.
     pub fn nothing() -> Self {
-        StoreAnswer { owned: false, price: None, yearly_price: None, free_month: false, plan: None }
+        StoreAnswer {
+            owned: false,
+            price: None,
+            yearly_price: None,
+            free_month: false,
+            plan: None,
+            publisher: false,
+            publisher_price: None,
+            publisher_yearly_price: None,
+            upgrade_price: None,
+        }
     }
 }
 
@@ -143,11 +171,16 @@ impl Library {
             Some(a) if a.owned => {
                 self.set_setting(OWNED, &now.to_string())?;
                 self.set_setting(PLAN, a.plan.as_deref().unwrap_or("lifetime"))?;
+                if a.publisher {
+                    self.set_setting(PUBLISHER, "1")?;
+                } else {
+                    self.conn.execute("DELETE FROM device_settings WHERE key = ?1", [PUBLISHER])?;
+                }
                 true
             }
             // The store says it isn't (refunded, or a yearly plan that ended).
             Some(_) => {
-                self.conn.execute("DELETE FROM device_settings WHERE key IN (?1, ?2)", [OWNED, PLAN])?;
+                self.conn.execute("DELETE FROM device_settings WHERE key IN (?1, ?2, ?3)", [OWNED, PLAN, PUBLISHER])?;
                 false
             }
             None => self.seconds(OWNED)?.is_some(),
@@ -172,6 +205,10 @@ impl Library {
             yearly_price: answer.and_then(|a| a.yearly_price.clone()),
             free_month: answer.is_some_and(|a| a.free_month),
             plan: if bought { self.setting(PLAN)? } else { None },
+            publisher: coded || (bought && self.setting(PUBLISHER)?.is_some()),
+            publisher_price: answer.and_then(|a| a.publisher_price.clone()),
+            publisher_yearly_price: answer.and_then(|a| a.publisher_yearly_price.clone()),
+            upgrade_price: answer.and_then(|a| a.upgrade_price.clone()),
         })
     }
 }
@@ -193,7 +230,7 @@ mod tests {
         let over = library.license(start + 31 * DAY, None, Shop::Microsoft, None).unwrap();
         assert_eq!((over.state, over.days_left), (LicenseState::Expired, 0));
         // Bought: kept while the store can't be asked; gone if it says no.
-        let yes = StoreAnswer { owned: true, price: Some("$44.99".into()), plan: Some("lifetime".into()), ..StoreAnswer::nothing() };
+        let yes = StoreAnswer { owned: true, price: Some("$59.99".into()), plan: Some("lifetime".into()), ..StoreAnswer::nothing() };
         assert_eq!(library.license(start + 32 * DAY, None, Shop::Microsoft, Some(&yes)).unwrap().state, LicenseState::Owned);
         assert_eq!(library.license(start + 40 * DAY, None, Shop::Microsoft, None).unwrap().state, LicenseState::Owned);
         let no = StoreAnswer::nothing();
@@ -206,13 +243,26 @@ mod tests {
         let start = 1_800_000_000;
         let view = library.license(start, None, Shop::Apple, None).unwrap();
         assert_eq!((view.state, view.days_left, view.trial_ends), (LicenseState::Expired, 0, start + IOS_TRIAL_DAYS * DAY));
-        let yearly = StoreAnswer { owned: true, yearly_price: Some("$14.99".into()), plan: Some("yearly".into()), ..StoreAnswer::nothing() };
+        let yearly = StoreAnswer { owned: true, yearly_price: Some("$19.99".into()), plan: Some("yearly".into()), ..StoreAnswer::nothing() };
         let view = library.license(start + DAY, None, Shop::Apple, Some(&yearly)).unwrap();
         assert_eq!((view.state, view.plan.as_deref()), (LicenseState::Owned, Some("yearly")));
         // Offline, it stays open on the plan last seen; once the year ends unrenewed, the store says so.
         assert_eq!(library.license(start + 2 * DAY, None, Shop::Apple, None).unwrap().plan.as_deref(), Some("yearly"));
         let ended = library.license(start + 400 * DAY, None, Shop::Apple, Some(&StoreAnswer { free_month: true, ..StoreAnswer::nothing() })).unwrap();
         assert_eq!((ended.state, ended.plan, ended.free_month), (LicenseState::Expired, None, true));
+    }
+
+    #[test]
+    fn publisher_is_owned_only_while_the_store_says_so() {
+        let (_dir, library) = crate::library::tests::open_temp_library();
+        let now = 1_800_000_000;
+        let base = StoreAnswer { owned: true, plan: Some("lifetime".into()), ..StoreAnswer::nothing() };
+        assert!(!library.license(now, None, Shop::Microsoft, Some(&base)).unwrap().publisher);
+        let upgraded = StoreAnswer { publisher: true, ..base.clone() };
+        assert!(library.license(now + DAY, None, Shop::Microsoft, Some(&upgraded)).unwrap().publisher);
+        // Remembered offline; dropped when the store stops saying so.
+        assert!(library.license(now + 2 * DAY, None, Shop::Microsoft, None).unwrap().publisher);
+        assert!(!library.license(now + 3 * DAY, None, Shop::Microsoft, Some(&base)).unwrap().publisher);
     }
 
     #[test]

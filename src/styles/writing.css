@@ -318,6 +318,30 @@
   font: 600 15px/1 var(--font-serif);
 }
 
+/* A tool that opens a list of choices: its mark and a small arrow. */
+.writing-tool-menu {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 4px 0 6px;
+}
+
+.writing-tool-menu > svg:last-child {
+  opacity: 0.6;
+}
+
+.writing-tool-note {
+  display: block;
+  max-width: 220px;
+  white-space: normal;
+}
+
+.writing-page mark {
+  background: color-mix(in srgb, var(--highlight, #f5d76e) 55%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+
 .writing-tool[aria-label="Italic"] .writing-tool-text {
   font-style: italic;
 }
@@ -930,14 +954,6 @@
 }
 
 /* The preview beside the chapter: the book as it will be exported. */
-.has-preview .writing-body {
-  grid-template-columns: 250px minmax(0, 1fr) minmax(340px, 42%);
-}
-
-.has-preview.is-list-closed .writing-body {
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 45%);
-}
-
 .book-preview {
   display: flex;
   flex-direction: column;
@@ -1050,11 +1066,6 @@
 }
 
 @media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
-  .has-preview .writing-body,
-  .has-preview.is-list-closed .writing-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .book-preview-stage {
     min-height: 70vh;
   }

@@ -142,9 +142,13 @@ let previewLicense: LicenseView = {
   trialEnds: Math.floor(Date.now() / 1000) + (licenseParam === "ending" ? 2 : 21) * 86_400,
   trialDays: licenseParam === "welcome" ? 0 : 30,
   shop: licenseParam === "welcome" ? "apple" : "microsoft",
-  price: "$44.99",
-  yearlyPrice: "$14.99",
+  price: "$59.99",
+  yearlyPrice: "$19.99",
   freeMonth: licenseParam === "welcome",
+  publisher: false,
+  publisherPrice: "$119.99",
+  publisherYearlyPrice: "$39.99",
+  upgradePrice: "$60.00",
 };
 // `?hardcover` shows Hardcover signed in, for reviewing Settings.
 let hardcover: HardcoverStatus = new URLSearchParams(location.search).has("hardcover")
@@ -891,13 +895,20 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "1.47.0", version: "1.48.0", notes: "The Bound Vigil 1.48.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "1.48.0", version: "1.49.0", notes: "The Bound Vigil 1.49.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
     onUpdateProgress: () => () => undefined,
     licenseStatus: async () => previewLicense,
-    buyLicense: async (plan) => (previewLicense = { ...previewLicense, state: "owned", daysLeft: 0, plan }),
+    buyLicense: async (plan) =>
+      (previewLicense = {
+        ...previewLicense,
+        state: "owned",
+        daysLeft: 0,
+        plan: plan === "yearly" || plan === "publisherYearly" ? "yearly" : "lifetime",
+        publisher: previewLicense.publisher || plan.startsWith("publisher"),
+      }),
     restoreLicense: async () => previewLicense,
     unlockLicense: async (code) => (code.trim() ? (previewLicense = { ...previewLicense, state: "owned", daysLeft: 0 }) : null),
     suggestSyncFolder: async (service) =>

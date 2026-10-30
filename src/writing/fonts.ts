@@ -6,7 +6,8 @@ import lora700 from "@fontsource/lora/files/lora-latin-700-normal.woff2?url";
 import lora700i from "@fontsource/lora/files/lora-latin-700-italic.woff2?url";
 import echolume from "../assets/fonts/echolume-variable.woff2?url";
 import echolumeItalic from "../assets/fonts/echolume-italic-variable.woff2?url";
-import type { BookFont, EmbeddedFont, FontFile } from "./epub";
+import type { WritingChapter } from "../api/types";
+import { passageFonts, type BookFont, type EmbeddedFont, type ExportSettings, type FontFile } from "./epub";
 
 const FILES: Record<Exclude<BookFont, "none">, { family: string; files: (Omit<FontFile, "bytes"> & { url: string })[] }> = {
   lora: {
@@ -40,6 +41,13 @@ export async function loadFont(font: BookFont): Promise<EmbeddedFont | null> {
       }),
     ),
   };
+}
+
+/** The book's own font and the ones its passages are set in, ready to put inside it. */
+export async function loadBookFonts(settings: ExportSettings, chapters: WritingChapter[]): Promise<{ font: EmbeddedFont | null; passageFonts: EmbeddedFont[] }> {
+  const wanted = passageFonts(chapters).filter((f) => f !== settings.font);
+  const [font, ...passage] = await Promise.all([loadFont(settings.font), ...wanted.map(loadFont)]);
+  return { font, passageFonts: passage.filter((f): f is EmbeddedFont => !!f) };
 }
 
 /** A cover's type from its first bytes. */
