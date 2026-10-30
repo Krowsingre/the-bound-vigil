@@ -27,8 +27,8 @@ pub(crate) const SETTINGS_KEY: &str = "opds.catalogs";
 const MAX_FEED_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_BOOK_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
-/// Offered the first time, and kept unless the person removes them.
-const STARTERS: [(&str, &str, &str); 1] = [("gutenberg", "Project Gutenberg", "https://www.gutenberg.org/ebooks.opds/")];
+// Nothing comes built in since 1.50: the free catalogues are offered under
+// "Add a catalogue", and a library whose list was never changed starts empty.
 
 /// Standard Ebooks came built in until 1.18. Its catalog is for paying
 /// supporters only, so now it's offered under "Add a catalog" instead, and the
@@ -631,7 +631,7 @@ impl Library {
     fn saved_catalogs(&self) -> Result<Vec<Saved>> {
         match self.setting(SETTINGS_KEY)? {
             Some(s) => Ok(serde_json::from_str::<Vec<Saved>>(&s).unwrap_or_default().into_iter().filter(|c| !(c.id == RETIRED_STARTER && c.username.is_empty())).collect()),
-            None => Ok(STARTERS.iter().map(|(id, name, url)| Saved { id: id.to_string(), name: name.to_string(), url: url.to_string(), ..Default::default() }).collect()),
+            None => Ok(Vec::new()),
         }
     }
 

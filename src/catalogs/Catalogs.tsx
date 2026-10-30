@@ -1,7 +1,7 @@
-// Discover's catalogues: the Bible in three translations, then OPDS
-// bookshelves online (Project Gutenberg, Standard Ebooks, your own Calibre
-// library…). Browse their shelves, search, and bring a book in; it joins the
-// import queue like any other.
+// Discover's catalogues: the Bible picker, then the OPDS bookshelves you've
+// added (your own Calibre library, Project Gutenberg…). None comes built in;
+// free ones are suggested when adding. Browse their shelves, search, and
+// bring a book in; it joins the import queue like any other.
 
 import { useCallback, useEffect, useState } from "react";
 import { api, isApp, serverBookId } from "../api";
@@ -13,8 +13,7 @@ import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { formatLabel } from "../lib/queryBooks";
 import { Bible } from "../browse/Bible";
-import { TRANSLATIONS } from "../browse/bibleBooks";
-import { sameAddress, SUGGESTED_CATALOGS } from "./suggested";
+import { sameAddress, SUGGESTED_GROUPS } from "./suggested";
 
 /** The Bibles' place in the list, ahead of the catalogues. */
 const BIBLES = "bibles";
@@ -31,13 +30,13 @@ function fileLabel(file: OpdsFile): string {
 function CatalogDialog({
   catalog,
   existing,
-  bibles,
   onSaved,
   onCancel,
+  onOpenSite,
 }: {
   catalog: CatalogView | null;
-  /** The Bibles are offered first, where they can be opened afterwards. */
-  bibles: boolean;
+  /** Opens a suggested website in Discover's browser. */
+  onOpenSite?: (url: string) => void;
   /** Addresses already added, so suggestions leave them out. */
   existing: string[];
   onSaved: (c: CatalogView) => void;
@@ -69,16 +68,12 @@ function CatalogDialog({
       setBusy(false);
     }
   };
-  const suggestions = catalog ? [] : SUGGESTED_CATALOGS.filter((s) => !existing.some((u) => sameAddress(u, s.url)));
-  const addBible = async (t: (typeof TRANSLATIONS)[number]) => {
-    setBusy(true);
+  const bookmark = async (name: string, url: string) => {
     try {
-      await api.downloadWebBook(t.url, t.name);
-      toast(`The ${t.name} is being added to your library.`);
-      onCancel();
+      await api.addBookmark(name, url);
+      toast(`${name} is in your Discover bookmarks.`);
     } catch (e) {
-      setError(`The ${t.name} couldn't be brought in: ${String(e)}`);
-      setBusy(false);
+      setError(String(e));
     }
   };
   const addSuggested = async (name: string, url: string) => {
@@ -93,7 +88,7 @@ function CatalogDialog({
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && !busy && onCancel()}>
       <form
-        className="dialog writing-dialog"
+        className="dialog writing-dialog catalog-dialog"
         role="dialog"
         aria-label={catalog ? "Edit catalogue" : "Add a catalogue"}
         onSubmit={(e) => {
@@ -103,45 +98,6 @@ function CatalogDialog({
         onKeyDown={(e) => e.key === "Escape" && !busy && onCancel()}
       >
         <h2>{catalog ? "Edit catalogue" : "Add a catalogue"}</h2>
-        {!catalog && bibles && (
-          <section className="catalog-suggested" aria-label="Bibles">
-            <strong>Bibles</strong>
-            <ul>
-              {TRANSLATIONS.map((t) => (
-                <li key={t.id}>
-                  <span>
-                    <b>
-                      {t.name} ({t.short})
-                    </b>
-                    <span className="muted">{t.about}</span>
-                  </span>
-                  <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => void addBible(t)}>
-                    <Icon name="plus" size={14} /> Add
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-        {suggestions.length > 0 && (
-          <section className="catalog-suggested" aria-label="Free catalogues">
-            <strong>Free catalogues</strong>
-            <ul>
-              {suggestions.map((s) => (
-                <li key={s.url}>
-                  <span>
-                    <b>{s.name}</b>
-                    <span className="muted">{s.about}</span>
-                  </span>
-                  <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => void addSuggested(s.name, s.url)}>
-                    <Icon name="plus" size={14} /> Add
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-        {!catalog && <strong className="catalog-own">Or your own address</strong>}
         {!catalog && <p className="muted dialog-lede">An Audiobookshelf server is signed in to in Preferences › Servers, and then shows here.</p>}
         {abs ? (
           <p className="muted dialog-lede">
@@ -211,6 +167,55 @@ function CatalogDialog({
             {busy && abs ? "Signing in…" : abs && form.password ? "Sign in" : "Save"}
           </button>
         </div>
+        {!catalog && (
+          <>
+            <strong className="catalog-own">Or start with a free source</strong>
+            <p className="muted dialog-lede">Suggestions only: all free and legal, and nothing is added until you choose it.</p>
+            {SUGGESTED_GROUPS.map((group) => {
+              const items = group.items.filter((s) => s.kind === "site" || !existing.some((u) => sameAddress(u, s.url)));
+              if (!items.length) return null;
+              return (
+                <section key={group.title} className="catalog-suggested" aria-label={group.title}>
+                  <strong>{group.title}</strong>
+                  <span className="muted">{group.about}</span>
+                  <ul>
+                    {items.map((s) => (
+                      <li key={s.url}>
+                        <span>
+                          <b>{s.name}</b>
+                          <span className="muted">{s.about}</span>
+                        </span>
+                        {s.kind === "opds" ? (
+                          <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => void addSuggested(s.name, s.url)}>
+                            <Icon name="plus" size={14} /> Add
+                          </button>
+                        ) : (
+                          <span className="catalog-site-actions">
+                            <button
+                              type="button"
+                              className="icon-btn icon-btn-s"
+                              aria-label={`Bookmark ${s.name}`}
+                              title="Save to your Discover bookmarks"
+                              disabled={busy}
+                              onClick={() => void bookmark(s.name, s.url)}
+                            >
+                              <Icon name="bookmark" size={15} />
+                            </button>
+                            {onOpenSite && (
+                              <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => onOpenSite(s.url)}>
+                                <Icon name="globe" size={14} /> Open
+                              </button>
+                            )}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              );
+            })}
+          </>
+        )}
       </form>
     </div>
   );
@@ -282,7 +287,16 @@ function EntryCard({
   );
 }
 
-export function Catalogs({ refreshKey = 0, onOpenBook }: { refreshKey?: number; onOpenBook?: (bookId: string, at?: string) => void }) {
+export function Catalogs({
+  refreshKey = 0,
+  onOpenBook,
+  onOpenSite,
+}: {
+  refreshKey?: number;
+  onOpenBook?: (bookId: string, at?: string) => void;
+  /** Opens a website in Discover's browser. */
+  onOpenSite?: (url: string) => void;
+}) {
   const [catalogs, setCatalogs] = useState<CatalogView[] | null>(null);
   const [current, setCurrent] = useState<string | null>(null);
   const [trail, setTrail] = useState<Step[]>([]);
@@ -393,7 +407,7 @@ export function Catalogs({ refreshKey = 0, onOpenBook }: { refreshKey?: number; 
           {catalogs?.length === 0 && <p className="muted writing-hint">No catalogues yet. Add one to start.</p>}
         </nav>
         <section className="catalogs-main" aria-busy={loading}>
-          {current === BIBLES && onOpenBook && <Bible refreshKey={refreshKey} onOpenBook={onOpenBook} />}
+          {current === BIBLES && onOpenBook && <Bible refreshKey={refreshKey} onOpenBook={onOpenBook} onOpenSite={onOpenSite} />}
           {catalog && (
             <>
               <div className="catalogs-bar">
@@ -503,7 +517,7 @@ export function Catalogs({ refreshKey = 0, onOpenBook }: { refreshKey?: number; 
         <CatalogDialog
           catalog={editing === "new" ? null : editing}
           existing={catalogs?.map((c) => c.url) ?? []}
-          bibles={bibles}
+          onOpenSite={onOpenSite}
           onCancel={() => setEditing(null)}
           onSaved={(c) => {
             setEditing(null);

@@ -39,7 +39,16 @@ function readFolded(): boolean {
   }
 }
 
-export function Bible({ refreshKey, onOpenBook }: { refreshKey: number; onOpenBook: (bookId: string, at?: string) => void }) {
+export function Bible({
+  refreshKey,
+  onOpenBook,
+  onOpenSite,
+}: {
+  refreshKey: number;
+  onOpenBook: (bookId: string, at?: string) => void;
+  /** Opens a website in Discover's browser. */
+  onOpenSite?: (url: string) => void;
+}) {
   const [owned, setOwned] = useState<Partial<Record<Translation["id"], string>>>({});
   const [adding, setAdding] = useState<Partial<Record<Translation["id"], boolean>>>({});
   const [chosen, setChosen] = useState<Translation["id"] | null>(readChosen);
@@ -139,7 +148,17 @@ export function Bible({ refreshKey, onOpenBook }: { refreshKey: number; onOpenBo
           </li>
         ))}
       </ul>
-      <p className="muted bible-note">All three are public domain, from eBible.org. Each one is a normal book in your library, so it syncs and keeps your highlights and notes.</p>
+      <p className="muted bible-note">
+        All three are public domain, from eBible.org. Each one is a normal book in your library, so it syncs and keeps your highlights and notes.
+        {onOpenSite && (
+          <>
+            {" "}
+            <button type="button" className="link-btn" onClick={() => onOpenSite("https://ebible.org/download.php")}>
+              More translations on eBible.org
+            </button>
+          </>
+        )}
+      </p>
 
       {reading ? (
         <div className="bible-picker">

@@ -1,10 +1,11 @@
 // Discover: a web browser, with ebooks you download offered to your library.
-// The row's globe-plus button opens the catalogues: the Bible in three
-// public-domain translations, Project Gutenberg and any you add.
+// The row's globe-plus button opens the catalogues: the Bible picker and any
+// you add (free ones are suggested, none built in).
 // Whatever comes in joins the import queue like any other book.
 
 import { Catalogs } from "../catalogs/Catalogs";
 import { Icon } from "../components/Icon";
+import { askBrowser } from "./browserAsk";
 import { Browser } from "./Browser";
 
 export function Browse({
@@ -38,6 +39,10 @@ export function Browse({
               onOpenBook={(id, at) => {
                 onCloseCatalogues();
                 onOpenBook(id, at);
+              }}
+              onOpenSite={(url) => {
+                onCloseCatalogues();
+                askBrowser({ url });
               }}
             />
           </div>
