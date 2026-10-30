@@ -979,6 +979,8 @@ export interface ReadAlongPair {
   timing: string | null;
   /** How many pieces are lined up so far. */
   pieces: number;
+  /** Waiting its turn to line up; the person can leave a pair out. Pairs come queued first, in queue order. */
+  queued: boolean;
 }
 
 export interface Audiobook {

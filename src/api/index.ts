@@ -165,6 +165,10 @@ export interface Api {
   clearReadAlongPieces(ebookId: string, audiobookId: string): Promise<void>;
   /** Every ebook paired with an audiobook, for lining up in the background. */
   readAlongPairs(): Promise<ReadAlongPair[]>;
+  /** Puts a pair in the read-along queue (at the back) or leaves it out. */
+  setReadAlongQueued(ebookId: string, audiobookId: string, queued: boolean): Promise<void>;
+  /** The read-along queue in the person's order, as [ebook, audiobook] pairs. The first lines up next. */
+  orderReadAlongQueue(order: [string, string][]): Promise<void>;
   /** The pair being lined up now, as it changes (null when nothing is). App only. */
   onLiningUp(listener: (l: LiningUp | null) => void): () => void;
   /** A pair finished lining up (or couldn't be), so what shows it looks again. */
@@ -777,6 +781,8 @@ function appApi(): Api {
     saveReadAlongPiece: async (ebookId, audiobookId, piece, anchors) => (await core).invoke("save_read_along_piece", { ebookId, audiobookId, piece, anchors }),
     clearReadAlongPieces: async (ebookId, audiobookId) => (await core).invoke("clear_read_along_pieces", { ebookId, audiobookId }),
     readAlongPairs: async () => (await core).invoke<ReadAlongPair[]>("read_along_pairs"),
+    setReadAlongQueued: async (ebookId, audiobookId, queued) => (await core).invoke("set_read_along_queued", { ebookId, audiobookId, queued }),
+    orderReadAlongQueue: async (order) => (await core).invoke("order_read_along_queue", { order }),
     onLiningUp: (listener) => {
       let stop: (() => void) | null = null;
       let stopped = false;

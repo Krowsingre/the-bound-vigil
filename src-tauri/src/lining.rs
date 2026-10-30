@@ -120,6 +120,9 @@ struct Engine {
     /// Pause once the pair being lined up now is finished.
     pause_after: AtomicBool,
     status: Mutex<Option<Status>>,
+    /// The queue changed: the pair being lined up stops (its pieces are kept)
+    /// so the one now first can take over.
+    switch: AtomicBool,
     /// Woken to look for pairs again at once (a pair was made, words arrived, settings changed).
     wake: (Mutex<bool>, Condvar),
 }
@@ -164,6 +167,7 @@ pub fn start(app: &AppHandle, library: Arc<Mutex<Library>>, data_dir: PathBuf) {
         data_dir,
         paused: AtomicBool::new(false),
         pause_after: AtomicBool::new(false),
+        switch: AtomicBool::new(false),
         status: Mutex::new(None),
         wake: (Mutex::new(false), Condvar::new()),
     });
@@ -186,6 +190,7 @@ fn run(engine: &Engine) {
     let mut asked: HashSet<String> = HashSet::new();
     let mut ear: Option<(String, tbv_speech::Whisper)> = None;
     loop {
+        engine.switch.store(false, Ordering::Relaxed);
         let set = settings(&engine.library);
         let paused = engine.paused.load(Ordering::Relaxed);
         if !set.on() || paused {
@@ -204,7 +209,7 @@ fn run(engine: &Engine) {
         let pairs = engine.library.lock().ok().and_then(|l| l.read_along_pairs().ok()).unwrap_or_default();
         let waiting: Vec<_> = pairs
             .into_iter()
-            .filter(|p| p.here && !["pdf", "cbz", "cbr"].contains(&p.ebook_format.to_ascii_lowercase().as_str()))
+            .filter(|p| p.queued && p.here && !["pdf", "cbz", "cbr"].contains(&p.ebook_format.to_ascii_lowercase().as_str()))
             .filter(|p| tbv_core::lineup::LineUp::read(p.timing.as_deref()).is_none_or(|l| !l.done && l.failed.is_none()))
             .filter(|p| troubled.get(&(p.ebook_id.clone(), p.audiobook_id.clone())).is_none_or(|until| *until <= Instant::now()))
             .collect();
@@ -233,7 +238,9 @@ fn run(engine: &Engine) {
         };
         background_work(true, set.background);
         let key = (pair.ebook_id.clone(), pair.audiobook_id.clone());
-        match line_up_pair(engine, &pair, &words, &set, &me, &mut ear) {
+        let ended = line_up_pair(engine, &pair, &words, &set, &me, &mut ear);
+        let stopped = matches!(ended, Ok(Ended::Stopped));
+        match ended {
             Ok(Ended::Stopped) => {}
             Ok(_) => {
                 let _ = engine.app.emit("lined-up", (&pair.ebook_id, &pair.audiobook_id));
@@ -250,7 +257,8 @@ fn run(engine: &Engine) {
         } else {
             engine.tell(None);
         }
-        if engine.pause_after.swap(false, Ordering::Relaxed) {
+        // A pair stopped for another isn't finished, so "pause after this" waits on.
+        if !stopped && engine.pause_after.swap(false, Ordering::Relaxed) {
             engine.paused.store(true, Ordering::Relaxed);
             let _ = engine.app.emit("lining-up-paused", true);
         }
@@ -292,7 +300,7 @@ fn line_up_pair(
     let mut listener = tbv_core::listen::Listener::open(&path, &format, &audiobook.parts).map_err(|e| e.to_string())?;
     let mut clip = |start: u64, len: u64| listener.clip(start, len);
     engine.change(|s| s.stage = "listening");
-    let stop = || engine.paused.load(Ordering::Relaxed) || !settings(&engine.library).on() || too_warm();
+    let stop = || engine.paused.load(Ordering::Relaxed) || engine.switch.load(Ordering::Relaxed) || !settings(&engine.library).on() || too_warm();
     let mut progress = |done: usize, of: u64| engine.change(|s| s.fraction = done as f64 / of.max(1) as f64);
     tbv_core::lineup::line_up(
         &engine.library,
@@ -405,6 +413,15 @@ pub fn lining_up_pause_after(on: bool) {
 #[tauri::command]
 pub fn lining_up_paused() -> bool {
     ENGINE.get().is_some_and(|e| e.paused.load(Ordering::Relaxed))
+}
+
+/// The read-along queue changed: whatever is first now is lined up next,
+/// taking over from the pair being lined up if that one moved down or out.
+pub fn queue_changed() {
+    if let Some(e) = ENGINE.get() {
+        e.switch.store(true, Ordering::Relaxed);
+        e.wake();
+    }
 }
 
 /// Looks for pairs again now (one was just made, or the settings changed).

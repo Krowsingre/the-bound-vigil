@@ -350,6 +350,21 @@ async fn read_along_pairs(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv
 }
 
 #[tauri::command]
+async fn set_read_along_queued(state: State<'_, AppLibrary>, ebook_id: String, audiobook_id: String, queued: bool) -> CommandResult<()> {
+    with_library(state, move |library| library.set_read_along_queued(&ebook_id, &audiobook_id, queued)).await?;
+    lining::queue_changed();
+    Ok(())
+}
+
+/// The read-along queue in the person's order, as [ebook, audiobook] pairs.
+#[tauri::command]
+async fn order_read_along_queue(state: State<'_, AppLibrary>, order: Vec<(String, String)>) -> CommandResult<()> {
+    with_library(state, move |library| library.order_read_along_queue(&order)).await?;
+    lining::queue_changed();
+    Ok(())
+}
+
+#[tauri::command]
 async fn save_read_along_timing(state: State<'_, AppLibrary>, ebook_id: String, audiobook_id: String, timing: String) -> CommandResult<()> {
     with_library(state, move |library| library.save_read_along_timing(&ebook_id, &audiobook_id, &timing)).await
 }
@@ -1982,6 +1997,8 @@ pub fn run() {
             save_read_along_piece,
             clear_read_along_pieces,
             read_along_pairs,
+            set_read_along_queued,
+            order_read_along_queue,
             home_status,
             set_home,
             new_home_code,

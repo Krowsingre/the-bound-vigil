@@ -481,9 +481,16 @@ export function previewApi(): Api {
     }));
   const relayer = (id: string) => update(id, previewFields(detailFields(id)));
   const linked = new Map<string, string>();
+  // Audiobooks with an ebook of the same title come paired, so Lining up has something to show.
+  for (const audio of books.filter((b) => ["m4b", "mp3", "tbvaudio"].includes(b.format))) {
+    const ebook = books.find((b) => b.title === audio.title && b.format === "epub");
+    if (ebook) linked.set(audio.id, ebook.id);
+  }
   const timeLog = new Map<string, TimeSpent>(sampleTime().map((t) => [t.day, t]));
   const timings = new Map<string, string>();
   const pieces = new Map<string, Map<number, string>>();
+  /** The read-along queue: left out, or a place in line (Infinity = no place given yet). */
+  const queue = new Map<string, { queued: boolean; place: number }>();
   const sounds = new Map<string, string>();
   const find = (bookId: string) => {
     const b = books.find((x) => x.id === bookId);
@@ -739,13 +746,35 @@ export function previewApi(): Api {
     clearReadAlongPieces: async (ebookId, audiobookId) => {
       pieces.delete(`${ebookId}|${audiobookId}`);
     },
-    readAlongPairs: async () =>
-      [...linked].flatMap(([audiobookId, ebookId]) => {
+    readAlongPairs: async () => {
+      const pairs = [...linked].flatMap(([audiobookId, ebookId]) => {
         const ebook = books.find((b) => b.id === ebookId);
         if (!ebook) return [];
         const key = `${ebookId}|${audiobookId}`;
-        return [{ ebookId, audiobookId, ebookFormat: ebook.format, here: true, timing: timings.get(key) ?? null, pieces: pieces.get(key)?.size ?? 0 }];
-      }),
+        const q = queue.get(key);
+        return [
+          {
+            ebookId,
+            audiobookId,
+            ebookFormat: ebook.format,
+            here: true,
+            timing: timings.get(key) ?? null,
+            pieces: pieces.get(key)?.size ?? 0,
+            queued: q?.queued ?? true,
+            place: q?.place ?? Infinity,
+          },
+        ];
+      });
+      pairs.sort((a, b) => Number(b.queued) - Number(a.queued) || a.place - b.place);
+      return pairs.map(({ place: _, ...p }) => p);
+    },
+    setReadAlongQueued: async (ebookId, audiobookId, queued) => {
+      const places = [...queue.values()].filter((q) => q.queued && Number.isFinite(q.place)).map((q) => q.place);
+      queue.set(`${ebookId}|${audiobookId}`, { queued, place: queued ? (places.length ? Math.max(...places) + 1 : Infinity) : Infinity });
+    },
+    orderReadAlongQueue: async (order) => {
+      order.forEach(([e, a], place) => queue.set(`${e}|${a}`, { queued: true, place }));
+    },
     // Nothing is lined up in the preview: it has no speech engine.
     onLiningUp: () => () => undefined,
     onLinedUp: () => () => undefined,
@@ -896,7 +925,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "1.50.0", version: "1.51.0", notes: "The Bound Vigil 1.51.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "1.51.0", version: "1.52.0", notes: "The Bound Vigil 1.52.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

@@ -65,6 +65,8 @@ export interface BrowserPrefs {
   startPage: boolean;
   /** The start page lists sites from History. */
   showRecent: boolean;
+  /** The picture behind the start page: "" for none, "gallery:<name>", or "own" (kept on this device). */
+  background: string;
   /** The button row hides while a page scrolls down, and comes back scrolling up. */
   hideBar: boolean;
   /** The address box suggests from History, bookmarks, Quick Links and open tabs. */
@@ -127,6 +129,7 @@ export function readBrowserPrefs(): BrowserPrefs {
     lowered: Array.isArray(saved.lowered) ? saved.lowered.filter((h): h is string => typeof h === "string") : [],
     startPage: saved.startPage !== false,
     showRecent: saved.showRecent !== false,
+    background: typeof saved.background === "string" && /^(own|gallery:[a-z-]+)$/.test(saved.background) ? saved.background : "",
     hideBar: saved.hideBar !== false,
     suggest: saved.suggest !== false,
     sites: readSites(saved.sites),

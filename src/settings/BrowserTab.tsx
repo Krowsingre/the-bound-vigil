@@ -23,6 +23,7 @@ import {
 } from "../browse/browserPrefs";
 import { Columns, Row, Section, SectionGroup, Select, Toggle } from "./controls";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { DiscoverBackgroundPicker } from "../browse/DiscoverBackground";
 import { clearHistory, HISTORY_KEEPS, trimHistory, type HistoryKeep } from "../browse/browserHistory";
 
 /** Tells an open browser about a change to protection; it's read afresh when the browser next opens anyway. */
@@ -124,6 +125,9 @@ export function BrowserTab() {
             disabled={!prefs.startPage}
             onChange={(showRecent) => writeBrowserPrefs({ showRecent })}
           />
+          <Row label="Start page background" hint="A picture behind the start page, on this device. It stops at the scroll bar." stack>
+            <DiscoverBackgroundPicker value={prefs.background} onError={toast} />
+          </Row>
           {!prefs.startPage && (
             <label className="field">
               <span>Home page</span>

@@ -639,7 +639,7 @@ export function App() {
               onOpenBook={openBook}
             />
           ) : route === "catalogs" ? (
-            <Browse refreshKey={refreshKey} onOpenBook={openBook} catalogues={catalogues} onOpenCatalogues={() => setCatalogues(true)} onCloseCatalogues={() => setCatalogues(false)} />
+            <Browse refreshKey={refreshKey} onOpenBook={openBook} catalogues={catalogues} onOpenCatalogues={() => setCatalogues(true)} onCloseCatalogues={() => setCatalogues(false)} search={searchText} onSearchChange={changeSearch} />
           ) : (
             <Settings
               tab={settingsTab}

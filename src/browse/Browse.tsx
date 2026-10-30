@@ -14,6 +14,8 @@ export function Browse({
   catalogues,
   onOpenCatalogues,
   onCloseCatalogues,
+  search,
+  onSearchChange,
 }: {
   refreshKey: number;
   onOpenBook: (bookId: string, at?: string) => void;
@@ -21,10 +23,13 @@ export function Browse({
   catalogues: boolean;
   onOpenCatalogues: () => void;
   onCloseCatalogues: () => void;
+  /** The top search box, which the start page's own box mirrors. */
+  search: string;
+  onSearchChange: (text: string) => void;
 }) {
   return (
     <div className="library browse-page browse-browser">
-      <Browser onOpenCatalogues={onOpenCatalogues} onOpenBook={onOpenBook} />
+      <Browser onOpenCatalogues={onOpenCatalogues} onOpenBook={onOpenBook} search={search} onSearchChange={onSearchChange} />
       {catalogues && (
         <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onCloseCatalogues()}>
           <div className="dialog catalogues-panel" role="dialog" aria-label="Catalogues" onKeyDown={(e) => e.key === "Escape" && onCloseCatalogues()}>

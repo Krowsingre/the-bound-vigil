@@ -571,6 +571,19 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE books ADD COLUMN pinned_at TEXT;
     "#,
+    // v32: the order read-along pairs line up in, and which are left out,
+    // synced (read_along_queue). A pair with no row is queued, after the
+    // ones given a place.
+    r#"
+    CREATE TABLE read_along_queue (
+        ebook_id TEXT NOT NULL,
+        audiobook_id TEXT NOT NULL,
+        position REAL,
+        queued INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (ebook_id, audiobook_id)
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
