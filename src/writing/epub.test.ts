@@ -5,8 +5,10 @@ import { join } from "node:path";
 import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import type { WritingChapter, WritingProject } from "../api/types";
-import { bookOrder, buildEpub, chapterXhtml, epubFileName, epubFiles, exportProblems, passageFonts, readExport, type ExportSettings } from "./epub";
+import { bookOrder, buildEpub, chapterXhtml, epubFileName, epubFiles, exportProblems, passageFonts, poemHtml, readExport, type ExportSettings } from "./epub";
 import { toTitleCase } from "./extensions";
+import { firstLine, poemWarnings } from "./pages";
+import { emptySource, makeCiter } from "./sources";
 import { countWords } from "./records";
 
 const project: WritingProject = {
@@ -100,6 +102,56 @@ describe("formatting from the toolbar", () => {
     expect(toTitleCase("a tale OF two cities")).toBe("A Tale of Two Cities");
     expect(toTitleCase("what it ran into")).toBe("What It Ran Into");
     expect(toTitleCase("my iPhone story")).toBe("My iPhone Story");
+  });
+});
+
+describe("poems", () => {
+  it("keeps each line, its indent and its inner spaces, with stanzas that ask not to be split", () => {
+    const html = "<p>The first line<br>&nbsp;&nbsp;&nbsp;&nbsp;indented under it<br>a  gap  inside</p><p></p><p>Second stanza</p>";
+    const { body } = chapterXhtml(poemHtml(html), "asterisks", "c1");
+    expect(body).toBe(
+      '<div class="stanza"><p class="line">The first line</p><p class="line" style="margin-left: 2em">indented under it</p><p class="line">a\u00a0\u00a0gap\u00a0\u00a0inside</p></div>' +
+        '<div class="stanza"><p class="line">Second stanza</p></div>',
+    );
+  });
+
+  it("is named by its first line, starts a new page, and is set centred when asked", () => {
+    const base = chapters[0];
+    const poem = { ...base, id: "p1", title: "", body: "<p><em>Ash</em> on the road<br>and nothing else</p>", page: JSON.stringify({ kind: "poem", centred: true }), position: 5 };
+    const { files } = epubFiles({ project, chapters: [base, poem], settings: { ...readExport(""), newPage: false } });
+    const [file, xhtml] = files.find(([, body]) => String(body).includes("Ash</em> on the road"))!;
+    expect(String(xhtml)).toContain('class="chapter page-poem poem-centred"');
+    // Listed by its first line, but not headed by it on the page.
+    expect(String(xhtml)).not.toContain("<h1>Ash on the road</h1>");
+    expect(String(files.find(([name]) => name.endsWith("nav.xhtml"))?.[1])).toContain(">Ash on the road</a>");
+    expect(file).not.toBe("OEBPS/text.xhtml");
+    expect(firstLine(poem.body)).toBe("Ash on the road");
+  });
+
+  it("warns about long stanzas and shaped lines", () => {
+    expect(poemWarnings(`<p>${Array(20).fill("line").join("<br>")}</p>`)).toHaveLength(1);
+    expect(poemWarnings("<p>words&nbsp;&nbsp;&nbsp;&nbsp;placed</p>")).toHaveLength(1);
+    expect(poemWarnings("<p>&nbsp;&nbsp;&nbsp;&nbsp;just indented<br>fine</p>")).toEqual([]);
+  });
+});
+
+describe("citations", () => {
+  it("writes notes at the chapter's end and adds a Sources page at the back", async () => {
+    const source = { ...emptySource("s1"), title: "Beloved", authors: "Morrison, Toni", publisher: "Knopf", place: "New York", date: "1987" };
+    const cited = { ...chapters[0], body: '<p>As she wrote <cite data-source="s1" data-locator="12">(Morrison 1987, p. 12)</cite>, it holds.</p>' };
+    const settings = { ...readExport(""), sources: [source], citationStyle: "chicago-notes" as const };
+    const citer = await makeCiter(settings.citationStyle, settings.sources, [cited]);
+    const { files } = epubFiles({ project, chapters: [cited], settings, citer });
+    const all = files.map(([, body]) => String(body)).join("\n");
+    expect(all).toContain('As she wrote <sup><a epub:type="noteref"');
+    expect(all).toContain("Morrison, <em>Beloved</em>, 12.");
+    expect(all).toContain('<p class="source">Morrison, Toni. <em>Beloved</em>. New York: Knopf, 1987.</p>');
+    expect(all).toContain("<h1>Bibliography</h1>");
+    // In APA, the citation sits in the text.
+    const apa = await makeCiter("apa", settings.sources, [cited]);
+    const apaBook = epubFiles({ project, chapters: [cited], settings: { ...settings, citationStyle: "apa" }, citer: apa }).files.map(([, b]) => String(b)).join("\n");
+    expect(apaBook).toContain("As she wrote (Morrison, 1987, p. 12), it holds.");
+    expect(apaBook).toContain("<h1>References</h1>");
   });
 });
 

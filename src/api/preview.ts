@@ -665,6 +665,7 @@ export function previewApi(): Api {
     getLibrary: async (query) => queryBooks(library(), query, collections.previews().length),
     getCollections: async () => collections.previews(),
     setFavorite: async (bookId, favorite) => update(bookId, { favorite }),
+    setPinned: async (bookId, pinned) => update(bookId, { pinnedAt: pinned ? new Date().toISOString() : null }),
     setWantToRead: async (bookId, wantToRead) => update(bookId, { wantToRead }),
     setPhoneWanted: async (bookIds, phoneWanted) => bookIds.forEach((id) => update(id, { phoneWanted })),
     setRating: async (bookId, rating) => update(bookId, { rating }),
@@ -895,7 +896,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "1.48.0", version: "1.49.0", notes: "The Bound Vigil 1.49.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "1.49.0", version: "1.50.0", notes: "The Bound Vigil 1.50.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

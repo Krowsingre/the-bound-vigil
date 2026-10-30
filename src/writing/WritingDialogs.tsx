@@ -5,8 +5,9 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { useToast } from "../components/Toast";
-import { buildEpub, epubFileName, exportProblems, readExport, type ExportSettings } from "./epub";
+import { bookOrder, buildEpub, epubFileName, exportProblems, readExport, type ExportSettings } from "./epub";
 import { imageMime, loadBookFonts } from "./fonts";
+import { makeCiter } from "./sources";
 import { CoverMaker } from "./CoverMaker";
 import { startingTitle, TEMPLATES, templateSections, type Template } from "./pages";
 
@@ -14,7 +15,8 @@ import { startingTitle, TEMPLATES, templateSections, type Template } from "./pag
 export async function makeEpub(project: WritingProject, chapters: WritingChapter[], settings: ExportSettings): Promise<Uint8Array> {
   const coverBytes = project.cover ? await api.writingCover(project.id) : new Uint8Array();
   const mime = coverBytes.length ? imageMime(coverBytes) : null;
-  return buildEpub({ project, chapters, settings, cover: mime ? { bytes: coverBytes, mime } : null, ...(await loadBookFonts(settings, chapters)) });
+  const citer = await makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters));
+  return buildEpub({ project, chapters, settings, cover: mime ? { bytes: coverBytes, mime } : null, citer, ...(await loadBookFonts(settings, chapters)) });
 }
 
 const OPENS_WITH: { value: WritingProject["coverPage"]; label: string }[] = [
@@ -73,17 +75,17 @@ export function NewBookDialog({ onCreated, onCancel }: { onCreated: (id: string)
           <span>Author</span>
           <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="Your name, or a pen name" />
         </label>
-        <fieldset className="field writing-templates">
+        <fieldset className="writing-templates">
           <legend>Start with</legend>
-          {TEMPLATES.map((t) => (
-            <label key={t.value} className="check-row">
-              <input type="radio" name="writing-template" checked={template === t.value} onChange={() => setTemplate(t.value)} />
-              <span>
+          <div className="writing-template-grid">
+            {TEMPLATES.map((t) => (
+              <label key={t.value} className={`writing-template${template === t.value ? " is-on" : ""}`}>
+                <input type="radio" name="writing-template" checked={template === t.value} onChange={() => setTemplate(t.value)} />
                 <strong>{t.label}</strong>
-                <span className="muted"> · {t.hint}</span>
-              </span>
-            </label>
-          ))}
+                <span>{t.hint}</span>
+              </label>
+            ))}
+          </div>
         </fieldset>
         {error && (
           <p className="form-error" role="alert">

@@ -76,7 +76,8 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     genre: (a, b) =>
       nullsLast(a.genres?.[0] ?? null, b.genres?.[0] ?? null, (x, y) => x.localeCompare(y, undefined, { sensitivity: "base" })) || byTitle(a, b),
   };
-  list = [...list].sort(sorters[q.sort]);
+  const pins = (a: BookPreview, b: BookPreview) => (q.pinnedFirst ? (b.pinnedAt ?? "").localeCompare(a.pinnedAt ?? "") : 0);
+  list = [...list].sort((a, b) => pins(a, b) || sorters[q.sort](a, b));
   const pageSize = q.pageSize || 24;
   const page = Math.min(q.page, Math.max(0, Math.ceil(list.length / pageSize) - 1));
   return {

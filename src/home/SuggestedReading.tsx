@@ -6,14 +6,17 @@
 //    author names are sent; off in Preferences › Appearance › Sanctum);
 // 3. books you own and haven't started, Up next first.
 // The online ones are looked up once a day and kept here till the next.
+// One you've read or dropped elsewhere can be marked so, and rated: it goes
+// into Reading history (synced) and leaves the row; View all lists them.
 
-import { useEffect, useMemo, useState } from "react";
+import { createElement, useCallback, useEffect, useMemo, useState } from "react";
 import { api, isApp, openExternal } from "../api";
-import type { BookPreview } from "../api/types";
+import type { BookPreview, ReadingHistoryEntry } from "../api/types";
 import { askBrowser } from "../browse/browserAsk";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
+import { StarRating, Stars } from "../components/StarRating";
 import { useToast } from "../components/Toast";
 import { authorLine } from "../lib/format";
 import { useAppSettings } from "../settings/appSettings";
@@ -53,6 +56,11 @@ export interface Suggestion {
   /** A book you own. */
   book?: BookPreview;
 }
+
+/** Starts the Reading history id of a suggestion you've marked. */
+const MARKED = "suggested:";
+
+type Mark = { status: "read" | "dropped" | null; stars: number | null };
 
 const keyOf = (title: string, authors: string[]) => `${title.trim().toLowerCase()}|${(authors[0] ?? "").trim().toLowerCase()}`;
 /** "Dune: Deluxe Edition" is Dune, for finding it in the library. */
@@ -190,18 +198,90 @@ export function SuggestedReading({
     setHidden(next);
     void api.setSetting(HIDDEN_KEY, JSON.stringify(next)).catch(() => undefined);
   };
+  const toast = useToast();
+  // Books in Reading history: ones you've marked here, and any you've read or
+  // rated before (even gone from the library), so they aren't suggested.
+  const [history, setHistory] = useState<ReadingHistoryEntry[]>([]);
+  const loadHistory = useCallback(() => {
+    api.readingHistory().then(setHistory, () => undefined);
+  }, []);
+  useEffect(loadHistory, [loadHistory]);
+  const marks = useMemo(() => {
+    const map = new Map<string, ReadingHistoryEntry>();
+    for (const e of history) map.set(e.bookId.startsWith(MARKED) ? e.bookId.slice(MARKED.length) : keyOf(e.title, e.authors), e);
+    return map;
+  }, [history]);
+  const markOf = (s: Suggestion): Mark => {
+    const e = marks.get(s.key);
+    return e ? { status: e.status, stars: e.stars } : { status: null, stars: null };
+  };
+  const mark = (s: Suggestion, change: Partial<Mark>) => {
+    if (s.book) {
+      if (change.status) actions.setStatus(s.book, change.status);
+      if (change.stars !== undefined) actions.setRating(s.book, change.stars);
+      return;
+    }
+    const was = markOf(s);
+    const next = { ...was, ...change };
+    api.markSuggestion(s.key, s.title, s.authors, next.status, next.stars).then(
+      () => {
+        loadHistory();
+        if (next.status && next.status !== was.status) toast(`“${s.title}” is marked ${next.status}, in your reading history.`);
+        else if (next.stars != null && next.stars !== was.stars) toast(`“${s.title}” is rated, in your reading history.`);
+      },
+      (e: unknown) => toast(`Couldn't mark “${s.title}”: ${String(e)}`),
+    );
+  };
+  const unmark = (s: Suggestion) => {
+    api.markSuggestion(s.key, s.title, s.authors, null, null).then(loadHistory, (e: unknown) => toast(`That didn't work: ${String(e)}`));
+  };
 
   const list = useMemo(() => {
     const own = shelves.map((book): Suggestion => ({ key: keyOf(book.title, book.authors), source: "shelves", title: book.title, authors: book.authors, coverUrl: null, book }));
     const seen = new Set<string>();
-    return [...online, ...own].filter((s) => !hidden.includes(s.key) && !seen.has(s.key) && (seen.add(s.key), true));
-  }, [online, shelves, hidden]);
+    return [...online, ...own].filter((s) => !hidden.includes(s.key) && (!!s.book || !marks.has(s.key)) && !seen.has(s.key) && (seen.add(s.key), true));
+  }, [online, shelves, hidden, marks]);
+  /** The ones you've marked from here, newest first, with a cover when the row still has it. */
+  const marked = useMemo(
+    () =>
+      history
+        .filter((e) => e.bookId.startsWith(MARKED))
+        .map((e): Suggestion => {
+          const key = e.bookId.slice(MARKED.length);
+          const seen = online.find((s) => s.key === key);
+          return seen ?? { key, source: "authors", title: e.title, authors: e.authors, coverUrl: null };
+        }),
+    [history, online],
+  );
 
   const open = (s: Suggestion) => (s.book ? clickBook(s.book, actions) : setChosen(s));
-  const menu = (s: Suggestion) => [
-    s.book ? { label: "Open", icon: "bookOpen" as const, onSelect: () => actions.open(s.book!) } : { label: "More about it", icon: "info" as const, onSelect: () => setChosen(s) },
-    { label: "Not interested", icon: "eyeOff" as const, onSelect: () => hide(s) },
-  ];
+  const menu = (s: Suggestion): MenuEntry[] => {
+    const now = markOf(s);
+    const status = s.book ? (s.book.status === "read" || s.book.status === "dropped" ? s.book.status : null) : now.status;
+    const stars = s.book ? s.book.rating : now.stars;
+    const isMarked = !s.book && marks.has(s.key);
+    return [
+      s.book ? { label: "Open", icon: "bookOpen" as const, onSelect: () => actions.open(s.book!) } : { label: "More about it", icon: "info" as const, onSelect: () => setChosen(s) },
+      {
+        heading: createElement(
+          "span",
+          { className: "menu-rating" },
+          "Your rating",
+          createElement(StarRating, { value: stars, size: 18, onChange: (r) => mark(s, { stars: r }) }),
+        ),
+      },
+      "divider",
+      status === "read"
+        ? { label: "Read", icon: "check" as const, disabled: true, onSelect: () => undefined }
+        : { label: "Mark as read", icon: "check" as const, hint: "Read it somewhere else", onSelect: () => mark(s, { status: "read" }) },
+      status === "dropped"
+        ? { label: "Dropped", disabled: true, onSelect: () => undefined }
+        : { label: "Mark as dropped", hint: "Started, not going back", onSelect: () => mark(s, { status: "dropped" }) },
+      ...(isMarked
+        ? [{ label: "Unmark", hint: "Takes it off your reading history", onSelect: () => unmark(s) }]
+        : [{ label: "Not interested", icon: "eyeOff" as const, onSelect: () => hide(s) }]),
+    ];
+  };
 
   return (
     <Section title="Suggested reading" className="suggested" onViewAll={list.length > SHOWN ? () => setAll(true) : undefined}>
@@ -214,7 +294,16 @@ export function SuggestedReading({
           ))}
         </ul>
       )}
-      {chosen && <SuggestionDialog s={chosen} onClose={() => setChosen(null)} onHide={() => (hide(chosen), setChosen(null))} onNavigate={onNavigate} />}
+      {chosen && (
+        <SuggestionDialog
+          s={chosen}
+          mark={markOf(chosen)}
+          onMark={(change) => mark(chosen, change)}
+          onClose={() => setChosen(null)}
+          onHide={() => (hide(chosen), setChosen(null))}
+          onNavigate={onNavigate}
+        />
+      )}
       {all && (
         <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && setAll(false)}>
           <div className="dialog suggested-all" role="dialog" aria-label="Suggested reading" onKeyDown={(e) => e.key === "Escape" && setAll(false)}>
@@ -238,6 +327,16 @@ export function SuggestedReading({
                 </section>
               );
             })}
+            {marked.length > 0 && (
+              <section className="suggested-group">
+                <h3 className="section-title">You've marked</h3>
+                <ul className="shelf">
+                  {marked.map((s) => (
+                    <SuggestionCard key={s.key} s={s} onOpen={() => setChosen(s)} menu={menu(s)} mark={markOf(s)} />
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
         </div>
       )}
@@ -245,13 +344,19 @@ export function SuggestedReading({
   );
 }
 
-function SuggestionCard({ s, onOpen, menu }: { s: Suggestion; onOpen: () => void; menu: MenuEntry[] }) {
+function SuggestionCard({ s, onOpen, menu, mark }: { s: Suggestion; onOpen: () => void; menu: MenuEntry[]; mark?: Mark }) {
   return (
     <li className="has-menu">
       <button type="button" className="shelf-book" onClick={onOpen} title={`${s.title}, ${authorLine(s.authors)}`}>
         <OnlineCover s={s} />
         <span className="book-title">{s.title}</span>
         <span className="book-author">{authorLine(s.authors)}</span>
+        {mark && (
+          <span className="suggested-mark muted">
+            {mark.status === "read" ? "Read" : mark.status === "dropped" ? "Dropped" : null}
+            <Stars value={mark.stars} size={11} />
+          </span>
+        )}
       </button>
       <Menu label={`More for ${s.title}`} className="icon-btn book-more" trigger={<Icon name="more" size={14} />} items={menu} />
     </li>
@@ -274,7 +379,28 @@ function OnlineCover({ s }: { s: Suggestion }) {
 }
 
 /** A book from online: what it is, and one way to get it. */
-function SuggestionDialog({ s, onClose, onHide, onNavigate }: { s: Suggestion; onClose: () => void; onHide: () => void; onNavigate: (route: Route) => void }) {
+function SuggestionDialog({
+  s,
+  mark,
+  onMark,
+  onClose,
+  onHide,
+  onNavigate,
+}: {
+  s: Suggestion;
+  mark: Mark;
+  onMark: (change: Partial<Mark>) => void;
+  onClose: () => void;
+  onHide: () => void;
+  onNavigate: (route: Route) => void;
+}) {
+  // Kept here too, so a rating and a mark made one after the other both stay.
+  const [now, setNow] = useState(mark);
+  const change = (next: Partial<Mark>) => {
+    const both = { ...now, ...next };
+    setNow(both);
+    onMark(both);
+  };
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const add = async () => {
@@ -303,6 +429,16 @@ function SuggestionDialog({ s, onClose, onHide, onNavigate }: { s: Suggestion; o
           <h2>{s.title}</h2>
           <p className="muted">{authorLine(s.authors)}</p>
           {s.about && <p className="suggestion-about">{s.about}</p>}
+          <div className="suggestion-mark">
+            <span className="muted">Read it already?</span>
+            <StarRating value={now.stars} size={20} onChange={(r) => change({ stars: r })} />
+            <button type="button" className={`btn btn-small${now.status === "read" ? " btn-primary" : " btn-quiet"}`} onClick={() => change({ status: "read" })}>
+              <Icon name="check" size={14} /> Read
+            </button>
+            <button type="button" className={`btn btn-small${now.status === "dropped" ? " btn-primary" : " btn-quiet"}`} onClick={() => change({ status: "dropped" })}>
+              Dropped
+            </button>
+          </div>
           <div className="dialog-actions">
             <button type="button" className="btn btn-quiet" onClick={onHide}>
               Not interested

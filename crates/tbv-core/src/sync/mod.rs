@@ -107,6 +107,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: false,
     },
     Kind {
+        name: "book_pin",
+        table: "books",
+        keys: &["id"],
+        cols: &["pinned_at"],
+        category: Category::Collections,
+        creates: false,
+    },
+    Kind {
         name: "book_same",
         table: "books",
         keys: &["id"],
@@ -1413,6 +1421,7 @@ impl Library {
             "book_progress" => format!("Reading place: {}", book(0)),
             "book_phone" => format!("On the phone: {}", book(0)),
             "book_same" => format!("Kept together: {}", book(0)),
+            "book_pin" => format!("Pinned in the Archive: {}", book(0)),
             "book_shelves" => format!("Up next, favourite or rating: {}", book(0)),
             "override" => format!("Details edited: {}", book(0)),
             "fetched" => format!("Details found online: {}", book(0)),
@@ -1673,6 +1682,7 @@ impl Library {
             "book_shelves" => format!("Favourite and To be read{}", book(key.first())?),
             "book_phone" => format!("Whether the phone has it{}", book(key.first())?),
             "book_same" => format!("Copies kept together{}", book(key.first())?),
+            "book_pin" => format!("Pinned to the top of the Archive{}", book(key.first())?),
             "override" => format!("A corrected detail{}", book(key.first())?),
             "fetched" => format!("A detail found online{}", book(key.first())?),
             "audiobook" => format!("Chapters and narrators{}", book(key.first())?),
@@ -2177,6 +2187,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
             }
         }
         "book_same" => if text("same_as").is_empty() { "A book of its own".into() } else { "Kept with another copy".into() },
+        "book_pin" => if text("pinned_at").is_empty() { "Unpinned".into() } else { "Pinned to the top of the Archive".into() },
         "book" => short(text("title")),
         "override" | "fetched" => short(text("value")),
         "audiobook" => if data.get("ebook_id").and_then(|v| v.as_str()).is_some_and(|v| !v.is_empty()) { "Linked to its ebook".into() } else { "Chapters and narrators".into() },

@@ -308,6 +308,18 @@ pub async fn forget_reading(state: State<'_, AppLibrary>, book_id: String) -> Co
     with_library(state, move |library| library.forget_reading(&book_id)).await
 }
 
+#[tauri::command]
+pub async fn mark_suggestion(
+    state: State<'_, AppLibrary>,
+    key: String,
+    title: String,
+    authors: Vec<String>,
+    status: Option<String>,
+    stars: Option<f64>,
+) -> CommandResult<()> {
+    with_library(state, move |library| library.mark_suggestion(&key, &title, &authors, status.as_deref(), stars)).await
+}
+
 /// Headers carry only ASCII, so the page percent-encodes names and paths.
 fn percent_decode(text: &str) -> String {
     let bytes = text.as_bytes();

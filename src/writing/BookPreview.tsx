@@ -8,6 +8,7 @@ import type { WritingChapter, WritingProject } from "../api/types";
 import { Icon } from "../components/Icon";
 import { bookOrder, copyrightHtml, madeSectionHtml, previewHtml, type ExportSettings } from "./epub";
 import { imageMime, loadBookFonts } from "./fonts";
+import { makeCiter, type Citer } from "./sources";
 import { DEFAULT_RIGHTS, KINDS, readPage, type CopyrightDetails } from "./pages";
 
 const WIDTHS = [
@@ -62,9 +63,12 @@ export function BookPreview({
     let made: string | null = null;
     let current = true;
     const timer = window.setTimeout(async () => {
-      const fonts = await loadBookFonts(settings, chapters).catch(() => ({ font: null, passageFonts: [] }));
+      const [fonts, citer] = await Promise.all([
+        loadBookFonts(settings, chapters).catch(() => ({ font: null, passageFonts: [] })),
+        makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters)).catch(() => null),
+      ]);
       if (!current) return;
-      made = URL.createObjectURL(new Blob([previewHtml({ project, chapters, settings, cover, ...fonts })], { type: "text/html" }));
+      made = URL.createObjectURL(new Blob([previewHtml({ project, chapters, settings, cover, citer, ...fonts })], { type: "text/html" }));
       scroll.current = frame.current?.contentWindow?.scrollY ?? scroll.current;
       setUrl(made);
     }, 350);
@@ -145,6 +149,7 @@ export function MadePage({
   onCopyright,
   onWriteMyself,
   onOpenDetails,
+  onOpenSources,
 }: {
   chapter: WritingChapter;
   project: WritingProject;
@@ -154,14 +159,24 @@ export function MadePage({
   onCopyright: (details: CopyrightDetails) => void;
   onWriteMyself: (html: string) => void;
   onOpenDetails: () => void;
+  onOpenSources: () => void;
 }) {
   const page = readPage(chapter.page, chapter.role);
   const [title, setTitle] = useState(chapter.title);
   const [copyright, setCopyright] = useState(settings.copyright);
+  const [citer, setCiter] = useState<Citer | null>(null);
+  useEffect(() => {
+    if (page.kind !== "sources") return;
+    let current = true;
+    void makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters)).then((c) => current && setCiter(c), () => current && setCiter(null));
+    return () => {
+      current = false;
+    };
+  }, [page.kind, settings.citationStyle, settings.sources, chapters]);
   useEffect(() => setTitle(chapter.title), [chapter.id, chapter.title]);
   useEffect(() => setCopyright(settings.copyright), [settings.copyright]);
   const html =
-    page.kind === "copyright" ? copyrightHtml(project, copyright) : madeSectionHtml({ project, chapters, settings }, chapter.id);
+    page.kind === "copyright" ? copyrightHtml(project, copyright) : madeSectionHtml({ project, chapters, settings, citer }, chapter.id);
   // Links between pages only work in the book itself.
   const shown = html.replace(/ href="[^"]*"/g, "");
   const change = (c: Partial<CopyrightDetails>) => {
@@ -174,7 +189,8 @@ export function MadePage({
     title_page: "Made from the book's title, author and series. Change them in Book details.",
     copyright: "Made from the details below and the book's author. Leave a box empty to leave it out.",
     contents: "Lists the sections shown in the contents, and stays up to date as you add, rename and move them.",
-  }[page.kind as "half_title" | "title_page" | "copyright" | "contents"];
+    sources: "Lists every source you cite, in the book's citation style, and stays up to date as you cite more. Choose the style in Sources.",
+  }[page.kind as "half_title" | "title_page" | "copyright" | "contents" | "sources"];
   return (
     <div className="writing-sheet made-page">
       <p className="made-page-kind">{KINDS[page.kind].label}</p>
@@ -210,6 +226,11 @@ export function MadePage({
             <Icon name="info" size={16} /> Book details
           </button>
         ) : null}
+        {page.kind === "sources" && (
+          <button type="button" className="btn btn-quiet" onClick={onOpenSources}>
+            <Icon name="bookClosed" size={16} /> Sources and citation style
+          </button>
+        )}
         <button type="button" className="btn btn-quiet" onClick={() => onWriteMyself(html)}>
           <Icon name="edit" size={16} /> Write it myself
         </button>

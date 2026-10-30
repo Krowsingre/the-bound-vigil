@@ -7,7 +7,8 @@
 
 import { zipSync, strToU8 } from "fflate";
 import type { WritingChapter, WritingProject } from "../api/types";
-import { DEFAULT_COPYRIGHT, DEFAULT_RIGHTS, isMade, KINDS, numberInWords, readPage, type CopyrightDetails, type PageKind, type PageSettings } from "./pages";
+import { DEFAULT_COPYRIGHT, DEFAULT_RIGHTS, firstLine, isMade, isPoem, KINDS, numberInWords, readPage, writePage, type CopyrightDetails, type PageKind, type PageSettings } from "./pages";
+import { readSources, readStyle, type CitationStyle, type Cited, type Citer, type Source } from "./sources";
 
 export type SceneBreak = "asterisks" | "ornament" | "space" | "line";
 export type BookFont = "lora" | "echolume" | "none";
@@ -34,6 +35,9 @@ export interface ExportSettings {
   /** With chapters in several body sections: numbered from 1 again in each, or on through the book. */
   numbering: "restart" | "continuous";
   copyright: CopyrightDetails;
+  /** Research sources, cited in the text. */
+  sources: Source[];
+  citationStyle: CitationStyle;
 }
 
 export const DEFAULT_EXPORT: ExportSettings = {
@@ -49,6 +53,8 @@ export const DEFAULT_EXPORT: ExportSettings = {
   chapterHeading: "title",
   numbering: "restart",
   copyright: DEFAULT_COPYRIGHT,
+  sources: [],
+  citationStyle: "chicago-notes",
 };
 
 const text = (value: unknown, fallback: string, max = 2000) => (typeof value === "string" ? value.slice(0, max) : fallback);
@@ -83,6 +89,8 @@ export function readExport(json: string | null | undefined): ExportSettings {
           publisher: text(c.publisher, d.publisher, 200),
         };
       })(),
+      sources: readSources(saved.sources),
+      citationStyle: readStyle(saved.citationStyle),
     };
   } catch {
     return DEFAULT_EXPORT;
@@ -115,6 +123,8 @@ export interface EpubInput {
   settings: ExportSettings;
   cover?: Cover | null;
   font?: EmbeddedFont | null;
+  /** Writes the book's citations and its Sources page (see sources.ts), when it cites anything. */
+  citer?: Citer | null;
   /** Fonts passages are set in (beyond the book's own), carried so they show as written. */
   passageFonts?: EmbeddedFont[];
   /** When it was made, for the required "modified" date. */
@@ -154,6 +164,7 @@ const SEMANTIC: Partial<Record<PageKind, string>> = {
   glossary: "glossary",
   appendix: "appendix",
   bibliography: "bibliography",
+  sources: "bibliography",
 };
 
 /** The copyright page Scribe makes from the book's details. */
@@ -278,6 +289,61 @@ export function passageFonts(chapters: WritingChapter[]): Exclude<BookFont, "non
 }
 const BLOCK: Record<string, string> = { p: "p", blockquote: "blockquote", ul: "ul", ol: "ol", li: "li", pre: "pre" };
 
+/** How wide one leading space of a poem's line is, in em. */
+const SPACE_EM = 0.5;
+
+/**
+ * A poem's HTML set out line by line: each paragraph becomes a stanza, each
+ * line (between line breaks) a line of its own, its leading spaces an exact
+ * indent and runs of spaces inside it kept as non-breaking spaces, so no
+ * e-reader can squash them. chapterXhtml then writes stanzas and lines.
+ */
+export function poemHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+  const out = doc.createElement("div");
+  for (const block of [...doc.body.childNodes]) {
+    if (!(block instanceof HTMLElement) || block.tagName !== "P") {
+      out.append(block);
+      continue;
+    }
+    const groups: Node[][] = [[]];
+    for (const node of [...block.childNodes]) {
+      if (node instanceof HTMLElement && node.tagName === "BR") groups.push([]);
+      else groups[groups.length - 1].push(node);
+    }
+    const stanza = doc.createElement("div");
+    stanza.setAttribute("data-stanza", "");
+    for (const group of groups) {
+      const line = doc.createElement("p");
+      line.setAttribute("data-line", "");
+      line.append(...group);
+      // The spaces a line starts with become its indent.
+      const walker = doc.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+      let indent = 0;
+      for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+        const value = text.textContent ?? "";
+        const lead = /^[ \u00a0\t]*/.exec(value)![0];
+        indent += [...lead].reduce((n, c) => n + (c === "\t" ? 4 : 1), 0);
+        text.textContent = value.slice(lead.length);
+        if (text.textContent) break;
+      }
+      if (indent) line.setAttribute("data-indent", String(indent * SPACE_EM));
+      for (const text of textNodes(line)) text.textContent = (text.textContent ?? "").replace(/ {2,}|\u00a0+/g, (run) => "\u00a0".repeat(run.length));
+      stanza.append(line);
+    }
+    // A blank line on its own only separates stanzas.
+    if ((stanza.textContent ?? "").trim() || stanza.querySelector("img")) out.append(stanza);
+  }
+  return out.innerHTML;
+}
+
+function textNodes(root: Node): Text[] {
+  const found: Text[] = [];
+  const walker = root.ownerDocument!.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) found.push(n as Text);
+  return found;
+}
+
 /**
  * The editor's HTML as XHTML for the EPUB, with only what readers handle:
  * paragraphs, headings (moved below the chapter title), emphasis, quotes,
@@ -288,6 +354,7 @@ export function chapterXhtml(
   html: string,
   sceneBreak: SceneBreak,
   idPrefix: string,
+  cite?: (id: string, locator: string) => Cited,
 ): { body: string; headings: Heading[]; pictures: Picture[]; notes: string } {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
   const headings: Heading[] = [];
@@ -315,6 +382,20 @@ export function chapterXhtml(
       pictures.push({ path, ...picture });
       const img = `<img src="${path}" alt="${escapeXml(el.getAttribute("alt") ?? "")}"/>`;
       out.push(inBlock ? img : `<div class="picture">${img}</div>`);
+    } else if (tag === "cite" && el.hasAttribute("data-source")) {
+      // A citation, written in the book's style: words in the text, or a note at the chapter's end.
+      const cited = cite?.(el.getAttribute("data-source") ?? "", el.getAttribute("data-locator") ?? "") ?? { text: escapeXml(el.textContent ?? "") };
+      if (cited.note) {
+        const n = notes.length + 1;
+        const note = `${idPrefix}-fn${n}`;
+        const ref = `${idPrefix}-ref${n}`;
+        notes.push(`<aside epub:type="footnote" id="${note}" class="footnote"><p><a href="#${ref}">${n}.</a> ${inlineXhtml(cited.note)}</p></aside>`);
+        const mark = `<sup><a epub:type="noteref" href="#${note}" id="${ref}">${n}</a></sup>`;
+        out.push(inBlock ? mark : `<p>${mark}</p>`);
+      } else if (cited.text) {
+        const words = inlineXhtml(cited.text);
+        out.push(inBlock ? words : `<p>${words}</p>`);
+      }
     } else if (tag === "sup" && el.hasAttribute("data-footnote")) {
       // A footnote: a number here, the note at the end of the chapter, each linking to the other.
       const n = notes.length + 1;
@@ -328,6 +409,15 @@ export function chapterXhtml(
       out.push(sceneBreak === "line" ? `<hr class="scene"/>` : `<p class="scene">${SCENE_MARK[sceneBreak]}</p>`);
     } else if (tag === "br") {
       out.push("<br/>");
+    } else if (tag === "div" && el.hasAttribute("data-stanza")) {
+      out.push(`<div class="stanza">`);
+      children(false);
+      out.push("</div>");
+    } else if (tag === "p" && el.hasAttribute("data-line")) {
+      const indent = Number(el.getAttribute("data-indent") ?? 0);
+      out.push(`<p class="line"${indent > 0 && indent < 40 ? ` style="margin-left: ${indent}em"` : ""}>`);
+      children(true);
+      out.push(el.textContent ? "</p>" : "\u00a0</p>");
     } else if (tag === "div" && el.hasAttribute("data-page-break")) {
       out.push(`<div class="pagebreak"></div>`);
     } else if (/^h[1-6]$/.test(tag)) {
@@ -374,6 +464,11 @@ export function chapterXhtml(
   };
   doc.body.childNodes.forEach((c) => walk(c, false));
   return { body: out.join(""), headings, pictures, notes: notes.length ? `<section class="footnotes" epub:type="footnotes">${notes.join("")}</section>` : "" };
+}
+
+/** A line of HTML (a citation, an entry in the Sources list) as XHTML, keeping only what readers handle. */
+export function inlineXhtml(html: string): string {
+  return chapterXhtml(`<p>${html}</p>`, "asterisks", "x").body.replace(/^<p>|<\/p>$/g, "");
 }
 
 function page(title: string, lang: string, body: string, bodyClass = ""): string {
@@ -455,6 +550,11 @@ ol.contents a { text-decoration: none; }
 section.part { text-align: center; }
 section.part > h1 { margin-top: 30%; font-size: 1.8em; }
 section.part p { text-align: center; text-indent: 0; }
+section.page-sources p.source { text-indent: -2em; padding-left: 2em; text-align: left; margin: 0 0 0.7em; }
+.stanza { margin: 0 0 1.2em; page-break-inside: avoid; break-inside: avoid; }
+.stanza p.line { margin: 0; padding-left: 2em; text-indent: -2em; text-align: left; }
+.poem-centred .stanza p.line { padding-left: 0; text-indent: 0; text-align: center; }
+section.page-haiku { padding-top: 20%; }
 .cover { margin: 0; padding: 0; text-align: center; }
 .cover img { max-width: 100%; max-height: 100%; }
 `;
@@ -474,7 +574,13 @@ export interface Built {
 }
 
 /** Every file of the EPUB, before zipping (tests read these). */
-export function epubFiles({ project, chapters, settings, cover, font, passageFonts: passage = [], now = new Date() }: EpubInput): Built {
+export function epubFiles({ project, chapters: own, settings, cover, font, passageFonts: passage = [], citer, now = new Date() }: EpubInput): Built {
+  citer?.restart();
+  // A book that cites sources gets a Sources page at the back, unless it has one already.
+  const chapters =
+    citer && !own.some((c) => readPage(c.page, c.role).kind === "sources")
+      ? [...own, { ...own[0], id: "sources", title: "", body: "", role: "back" as const, part: null, page: writePage({ ...readPage("{}"), kind: "sources", inContents: true, showTitle: true }), words: 0 }]
+      : own;
   const fontFiles = carried(font, passage).flatMap((f) => f.files);
   const lang = project.language?.trim() || "en";
   const title = project.title.trim() || "Untitled";
@@ -512,7 +618,10 @@ export function epubFiles({ project, chapters, settings, cover, font, passageFon
       partCount++;
     } else if (!c.part && inPart) inPart = null;
     const made = isMade(settingsOf);
-    const { body, headings, pictures, notes } = made ? { body: "", headings: [] as Heading[], pictures: [] as Picture[], notes: "" } : chapterXhtml(c.body, settings.sceneBreak, `c${n}`);
+    const poem = isPoem(settingsOf);
+    const { body, headings, pictures, notes } = made
+      ? { body: "", headings: [] as Heading[], pictures: [] as Picture[], notes: "" }
+      : chapterXhtml(poem ? poemHtml(c.body) : c.body, settings.sceneBreak, `c${n}`, citer ? (id, locator) => citer.cite(id, locator) : undefined);
     const numbered = role === "chapter" && settingsOf.kind === "chapter";
     const number = numbered ? ++chapterCount : 0;
     const named = c.title.trim();
@@ -521,10 +630,13 @@ export function epubFiles({ project, chapters, settings, cover, font, passageFon
     // Untitled pages are named by what they are.
     const heading =
       named ||
+      (poem ? firstLine(c.body) : "") ||
+      (settingsOf.kind === "sources" ? (citer?.heading ?? "Sources") : "") ||
       (numbered ? numberLabel : role === "part" ? `Part ${partCount}` : settingsOf.kind === "custom" ? (role === "front" ? "Front matter" : role === "back" ? "Back matter" : "Untitled") : KIND_LABEL[settingsOf.kind]);
     const label = numbered && named && style !== "title" ? numberLabel : "";
     // A section starts a file of its own when it starts on a new page.
-    const newPage = i === 0 || (settingsOf.newPage ?? settings.newPage);
+    // Every poem starts on a fresh page unless asked otherwise, so none begins mid-screen.
+    const newPage = i === 0 || (settingsOf.newPage ?? (poem || settings.newPage));
     if (newPage) file = settings.newPage ? `chapter-${n}.xhtml` : i === 0 ? "text.xhtml" : `text-${n}.xhtml`;
     return {
       n,
@@ -536,8 +648,10 @@ export function epubFiles({ project, chapters, settings, cover, font, passageFon
       pictures,
       role,
       kind: settingsOf.kind,
+      centred: poem && settingsOf.centred,
       made,
-      showTitle: role === "part" || settingsOf.showTitle,
+      // An untitled poem is listed by its first line but not headed by it, so the line isn't printed twice.
+      showTitle: role === "part" || (settingsOf.showTitle && !(poem && !named)),
       inContents: settingsOf.inContents,
       first: newPage,
       file,
@@ -586,11 +700,14 @@ export function epubFiles({ project, chapters, settings, cover, font, passageFon
           ? copyrightHtml(project, settings.copyright, now)
           : kind === "contents"
             ? navList(points, "contents")
-            : "";
+            : kind === "sources"
+              ? (citer?.bibliography() ?? []).map((entry) => `<p class="source">${inlineXhtml(entry.replace(/^<div[^>]*>|<\/div>$/g, ""))}</p>`).join("\n") ||
+                `<p class="source">Sources you cite will be listed here.</p>`
+              : "";
   const sectionHtml = (p: (typeof parts)[number]) => {
     const type = { chapter: "chapter", front: "frontmatter", back: "backmatter", part: "part" }[p.role];
     const semantic = SEMANTIC[p.kind] ?? type;
-    const classes = [type, p.kind === "chapter" || p.kind === "custom" ? "" : `page-${p.kind.replace(/_/g, "-")}`, p.first ? "" : "follows", p.kind === "title_page" ? "titlepage" : ""].filter(Boolean).join(" ");
+    const classes = [type, p.kind === "chapter" || p.kind === "custom" ? "" : `page-${p.kind.replace(/_/g, "-")}`, p.first ? "" : "follows", p.kind === "title_page" ? "titlepage" : "", p.centred ? "poem-centred" : ""].filter(Boolean).join(" ");
     const top = `${p.label ? `<p class="chapter-label">${escapeXml(p.label)}</p>\n` : ""}${p.showTitle ? `<h1>${escapeXml(p.heading)}</h1>\n` : ""}`;
     return `<section class="${classes}" epub:type="${semantic}" id="c${p.n}">\n${top}${p.made ? madeBody(p.kind) : p.body}\n${p.notes}</section>`;
   };

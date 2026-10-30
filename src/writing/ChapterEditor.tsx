@@ -10,7 +10,10 @@ import type { WritingChapter } from "../api/types";
 import { Icon, type IconName } from "../components/Icon";
 import { onBeforeQuit } from "../lib/beforeQuit";
 import { countWords } from "./records";
-import { BlockLookExtension, Footnote, Highlight, PageBreak, Picture, pictureAddress, Subscript, Superscript, TextLookMark, type BlockLook, type TextLook } from "./extensions";
+import { poemWarnings } from "./pages";
+import { citationLabel, type CitationStyle, type Source } from "./sources";
+import { SourcesDialog } from "./SourcesDialog";
+import { BlockLookExtension, Citation, Footnote, Highlight, PageBreak, Picture, pictureAddress, PoemLines, Subscript, Superscript, TextLookMark, type BlockLook, type TextLook } from "./extensions";
 import { useToast } from "../components/Toast";
 import { Menu, type MenuEntry } from "../components/Menu";
 
@@ -112,7 +115,13 @@ function ToolMenu({ label, text, icon, active, items }: { label: string; text?: 
   );
 }
 
-function Toolbar({ editor }: { editor: Editor }) {
+interface SourcesProps {
+  sources: Source[];
+  citationStyle: CitationStyle;
+  onSources: (sources: Source[], style: CitationStyle) => void;
+}
+
+function Toolbar({ editor, poem, cites }: { editor: Editor; poem: boolean; cites?: SourcesProps }) {
   const state = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -134,12 +143,14 @@ function Toolbar({ editor }: { editor: Editor }) {
       canIndent: e.can().sinkListItem("listItem"),
       canOutdent: e.can().liftListItem("listItem"),
       footnote: e.isActive("footnote") ? ((e.getAttributes("footnote").text as string) ?? "") : null,
+      citation: e.isActive("citation") ? (e.getAttributes("citation") as { source: string; locator: string }) : null,
       canUndo: e.can().undo(),
       canRedo: e.can().redo(),
     }),
   });
   const [linking, setLinking] = useState<string | null>(null);
   const [noting, setNoting] = useState<string | null>(null);
+  const [citing, setCiting] = useState(false);
   const picking = useRef<HTMLInputElement>(null);
   const toast = useToast();
   const run = () => editor.chain().focus();
@@ -224,11 +235,15 @@ function Toolbar({ editor }: { editor: Editor }) {
         items={choose(ALIGNS, state.block.textAlign, (textAlign) => run().setBlockLook({ textAlign }).run())}
       />
       <span className="writing-tool-gap" />
-      <Tool label="Heading" text="H" active={state.h2} onClick={() => run().toggleHeading({ level: 2 }).run()} />
-      <Tool label="Smaller heading" text="h" active={state.h3} onClick={() => run().toggleHeading({ level: 3 }).run()} />
-      <Tool label="Quote" icon="quote" active={state.quote} onClick={() => run().toggleBlockquote().run()} />
-      <Tool label="List" icon="listBullet" active={state.bullets} onClick={() => run().toggleBulletList().run()} />
-      <Tool label="Numbered list" icon="listNumber" active={state.numbers} onClick={() => run().toggleOrderedList().run()} />
+      {!poem && (
+        <>
+          <Tool label="Heading" text="H" active={state.h2} onClick={() => run().toggleHeading({ level: 2 }).run()} />
+          <Tool label="Smaller heading" text="h" active={state.h3} onClick={() => run().toggleHeading({ level: 3 }).run()} />
+          <Tool label="Quote" icon="quote" active={state.quote} onClick={() => run().toggleBlockquote().run()} />
+          <Tool label="List" icon="listBullet" active={state.bullets} onClick={() => run().toggleBulletList().run()} />
+          <Tool label="Numbered list" icon="listNumber" active={state.numbers} onClick={() => run().toggleOrderedList().run()} />
+        </>
+      )}
       {(state.bullets || state.numbers) && (
         <>
           <Tool label="Move out" shortcut="Shift+Tab" text="⇠" disabled={!state.canOutdent} onClick={() => run().liftListItem("listItem").run()} />
@@ -244,6 +259,22 @@ function Toolbar({ editor }: { editor: Editor }) {
         active={state.footnote !== null || noting !== null}
         onClick={() => setNoting(noting === null ? (state.footnote ?? "") : null)}
       />
+      {cites && (
+        <Tool label={state.citation ? "Change citation" : "Cite a source"} icon="bookClosed" active={!!state.citation || citing} onClick={() => setCiting(true)} />
+      )}
+      {cites && citing && (
+        <SourcesDialog
+          sources={cites.sources}
+          style={cites.citationStyle}
+          onChange={cites.onSources}
+          current={state.citation}
+          onCite={(source, locator) => {
+            run().setCitation(source.id, locator, citationLabel(source, locator)).run();
+            setCiting(false);
+          }}
+          onClose={() => setCiting(false)}
+        />
+      )}
       <input
         ref={picking}
         type="file"
@@ -316,8 +347,18 @@ export function ChapterEditor({
   onSaveState,
   flushRef,
   insertRef,
+  poem = null,
+  sources,
+  citationStyle = "chicago-notes",
+  onSources,
 }: {
   chapter: WritingChapter;
+  /** A poem or haiku: lines kept as written, set from the left or centred. */
+  poem?: "left" | "centred" | null;
+  /** The book's research sources, for citing; without them there's no Cite tool. */
+  sources?: Source[];
+  citationStyle?: CitationStyle;
+  onSources?: (sources: Source[], style: CitationStyle) => void;
   onSave: (title: string, body: string) => Promise<void>;
   onSaveState: (state: SaveState, words: number) => void;
   /** Set to a function that saves what's waiting now, and resolves once it's saved. */
@@ -326,6 +367,7 @@ export function ChapterEditor({
   insertRef?: MutableRefObject<((html: string) => void) | null>;
 }) {
   const [title, setTitle] = useState(chapter.title);
+  const [warnings, setWarnings] = useState<string[]>(() => (poem ? poemWarnings(chapter.body) : []));
   const pending = useRef<{ title: string; body: string } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef({ title: chapter.title, body: chapter.body });
@@ -383,10 +425,16 @@ export function ChapterEditor({
       Subscript,
       TextLookMark,
       BlockLookExtension,
+      Citation,
+      ...(poem ? [PoemLines] : []),
     ],
     content: chapter.body || "<p></p>",
     editorProps: { attributes: { class: "writing-page", spellcheck: "true", "aria-label": "Chapter text" } },
-    onUpdate: ({ editor: e }) => change({ body: e.getHTML() }),
+    onUpdate: ({ editor: e }) => {
+      const body = e.getHTML();
+      change({ body });
+      if (poem) setWarnings(poemWarnings(body));
+    },
   });
   if (insertRef) insertRef.current = editor ? (html) => void editor.chain().focus().insertContent(html).run() : null;
 
@@ -411,12 +459,12 @@ export function ChapterEditor({
 
   return (
     <div className="writing-editor">
-      {editor && <Toolbar editor={editor} />}
-      <div className="writing-sheet" onClick={(e) => e.target === e.currentTarget && editor?.commands.focus("end")}>
+      {editor && <Toolbar editor={editor} poem={!!poem} cites={sources && onSources ? { sources, citationStyle, onSources } : undefined} />}
+      <div className={`writing-sheet${poem ? ` is-poem${poem === "centred" ? " is-centred" : ""}` : ""}`} onClick={(e) => e.target === e.currentTarget && editor?.commands.focus("end")}>
         <input
           className="writing-chapter-title"
           value={title}
-          placeholder="Chapter title"
+          placeholder={poem ? "Title (if left empty, the first line names it)" : "Chapter title"}
           aria-label="Chapter title"
           maxLength={200}
           onChange={(e) => {
@@ -431,6 +479,16 @@ export function ChapterEditor({
           }}
         />
         <EditorContent editor={editor} />
+        {poem && (
+          <div className="writing-poem-help muted">
+            <p>Enter starts a new line. Press Enter on an empty line to start a new stanza. Tab indents a line.</p>
+            {warnings.map((w) => (
+              <p key={w} className="writing-poem-warning">
+                <Icon name="warning" size={14} /> {w}
+              </p>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

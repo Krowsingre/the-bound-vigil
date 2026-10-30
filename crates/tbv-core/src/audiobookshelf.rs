@@ -653,6 +653,7 @@ fn remote_book_from(id: &str, item: &str, body: &Value, seconds: f64) -> Result<
         paired: false,
         phone_wanted: false,
         phone_has: false,
+        pinned_at: None,
     };
     Ok(RemoteBook {
         item: item.to_string(),

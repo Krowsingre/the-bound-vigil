@@ -79,6 +79,8 @@ export interface BookPreview {
   phoneWanted?: boolean;
   /** Downloaded on a phone, so tidying Supabase keeps it. */
   phoneHas?: boolean;
+  /** When it was pinned to the top of the Archive; null when it isn't. */
+  pinnedAt?: IsoUtc | null;
 }
 
 export interface CollectionPreview {
@@ -480,6 +482,8 @@ export interface LibraryQuery {
   paired?: boolean | null;
   /** Only these books (of those that match). */
   ids?: string[];
+  /** Pinned books first: the Archive's own list. */
+  pinnedFirst?: boolean;
   /** Zero-based. */
   page: number;
   pageSize: number;

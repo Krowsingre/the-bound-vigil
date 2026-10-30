@@ -457,6 +457,7 @@ async fn dispatch(app: &AppHandle, command: &str, a: Value) -> Result<Answer, St
         "link_ebook" => answer(link_ebook(s(), arg(&a, "audiobookId")?, arg(&a, "ebookId")?).await),
         "audiobook_for_ebook" => answer(audiobook_for_ebook(s(), arg(&a, "ebookId")?).await),
         "set_book_status" => answer(set_book_status(s(), arg(&a, "bookId")?, arg(&a, "status")?).await),
+        "set_pinned" => answer(set_pinned(s(), arg(&a, "bookId")?, arg(&a, "pinned")?).await),
         "set_favorite" => answer(set_favorite(s(), arg(&a, "bookId")?, arg(&a, "favorite")?).await),
         "set_want_to_read" => answer(set_want_to_read(s(), arg(&a, "bookId")?, arg(&a, "want")?).await),
         "set_rating" => answer(set_rating(app.clone(), app.state(), s(), arg(&a, "bookId")?, arg(&a, "rating")?).await),

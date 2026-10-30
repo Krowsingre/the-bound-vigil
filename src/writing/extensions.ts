@@ -24,6 +24,10 @@ declare module "@tiptap/react" {
       /** Changes the selected words' letters to Title Case. */
       titleCase: () => ReturnType;
     };
+    citation: {
+      /** Cites a source at the cursor, with a page or other place in it; or changes the citation selected. */
+      setCitation: (source: string, locator: string, label: string) => ReturnType;
+    };
     blockLook: {
       /** Sets the selected paragraphs' alignment or line spacing; null goes back to the book's own. */
       setBlockLook: (look: Partial<BlockLook>) => ReturnType;
@@ -314,6 +318,71 @@ export const BlockLookExtension = Extension.create({
         (look) =>
         ({ commands }) =>
           BLOCK_TYPES.map((type) => commands.updateAttributes(type, look)).some(Boolean),
+    };
+  },
+});
+
+/**
+ * Writing a poem: Enter ends a line, not the stanza, and a second Enter on
+ * the empty line starts the next stanza. Tab indents the line by exact
+ * spaces, which the EPUB keeps as an indent (see poemHtml in epub.ts).
+ */
+export const PoemLines = Extension.create({
+  name: "poemLines",
+  priority: 1000,
+  addKeyboardShortcuts() {
+    return {
+      Enter: ({ editor }) => {
+        const { $from, empty } = editor.state.selection;
+        if (!empty || $from.parent.type.name !== "paragraph" || $from.parentOffset === 0) return false;
+        const before = $from.nodeBefore;
+        if (before?.type.name === "hardBreak")
+          return editor
+            .chain()
+            .deleteRange({ from: $from.pos - before.nodeSize, to: $from.pos })
+            .splitBlock()
+            .run();
+        return editor.commands.setHardBreak();
+      },
+      Tab: ({ editor }) => editor.commands.insertContent("\u00a0\u00a0\u00a0\u00a0"),
+    };
+  },
+});
+
+/**
+ * A citation of one of the book's sources, kept as <cite data-source>. The
+ * editor shows a short label; the EPUB writes it in the book's citation
+ * style (see sources.ts).
+ */
+export const Citation = Node.create({
+  name: "citation",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      source: { default: "", parseHTML: (el) => el.getAttribute("data-source") ?? "", renderHTML: (a) => ({ "data-source": a.source as string }) },
+      locator: { default: "", parseHTML: (el) => el.getAttribute("data-locator") ?? "", renderHTML: (a) => ({ "data-locator": a.locator as string }) },
+      label: { default: "", parseHTML: (el) => el.textContent ?? "", renderHTML: () => ({}) },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "cite[data-source]" }];
+  },
+  renderHTML({ node, HTMLAttributes }) {
+    return ["cite", mergeAttributes(HTMLAttributes, { class: "writing-citation" }), (node.attrs.label as string) || "(source)"];
+  },
+  addCommands() {
+    return {
+      setCitation:
+        (source, locator, label) =>
+        ({ state, commands }) => {
+          const selected = (state.selection as { node?: { type: { name: string } } }).node;
+          const attrs = { source, locator, label };
+          if (selected?.type.name === this.name) return commands.updateAttributes(this.name, attrs);
+          return commands.insertContent({ type: this.name, attrs });
+        },
     };
   },
 });

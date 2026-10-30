@@ -44,6 +44,7 @@ export const KINDS: Kind[] = [
   { name: "read_along_piece", table: "read_along_pieces", keys: ["ebook_id", "audiobook_id", "piece"], cols: ["anchors", "updated_at"] },
   { name: "book_phone", table: "books", keys: ["id"], cols: ["phone_wanted", "phone_has", "from_phone"] },
   { name: "book_same", table: "books", keys: ["id"], cols: ["same_as"] },
+  { name: "book_pin", table: "books", keys: ["id"], cols: ["pinned_at"] },
   { name: "book_progress", table: "books", keys: ["id"], cols: ["status", "total_progression", "resume_locator", "last_opened_at", "finished_at"] },
   { name: "book_shelves", table: "books", keys: ["id"], cols: ["favorite", "want_to_read", "rating"] },
   { name: "override", table: "metadata_overrides", keys: ["book_id", "field"], cols: ["value", "updated_at"] },
@@ -107,6 +108,8 @@ export interface BookRow {
   from_phone: number;
   /** Set when this file is another copy of that book, kept with it and not listed. */
   same_as?: string | null;
+  /** When it was pinned to the top of the Archive. */
+  pinned_at?: string | null;
 }
 
 /** The built-in Up next shelf, as every device starts with it. */

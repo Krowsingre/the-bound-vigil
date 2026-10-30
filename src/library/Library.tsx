@@ -133,6 +133,7 @@ export function Library({
     exclude: view.exclude,
     kind,
     paired,
+    pinnedFirst: true,
   };
   useEffect(() => {
     let current = true;
@@ -154,6 +155,7 @@ export function Library({
         exclude: view.exclude,
         kind,
         paired,
+        pinnedFirst: true,
         page: endless ? 0 : view.page,
         pageSize: PAGE_SIZE,
       })

@@ -22,6 +22,8 @@ export type PageKind =
   | "introduction"
   | "prologue"
   | "interlude"
+  | "poem"
+  | "haiku"
   | "epilogue"
   | "afterword"
   | "acknowledgments"
@@ -30,6 +32,7 @@ export type PageKind =
   | "glossary"
   | "appendix"
   | "bibliography"
+  | "sources"
   | "discussion"
   | "excerpt";
 
@@ -45,6 +48,8 @@ export interface PageSettings {
   showTitle: boolean;
   /** A page Scribe makes (title page, copyright, contents) that you've chosen to write yourself instead. */
   byHand: boolean;
+  /** A poem's lines set centred rather than from the left. */
+  centred: boolean;
 }
 
 interface KindInfo {
@@ -78,6 +83,8 @@ export const KINDS: Record<PageKind, KindInfo> = {
   introduction: { label: "Introduction", areas: ["front"] },
   prologue: { label: "Prologue", areas: ["front"] },
   interlude: { label: "Interlude", hint: "Between chapters, not numbered", areas: ["chapter"] },
+  poem: { label: "Poem", hint: "Each line kept as written; a blank line starts a stanza", areas: ["front", "chapter", "back"], title: () => "" },
+  haiku: { label: "Haiku", hint: "Three short lines, no title", areas: ["chapter"], untitled: true, title: () => "" },
   epilogue: { label: "Epilogue", areas: ["back"] },
   afterword: { label: "Afterword", areas: ["back"] },
   acknowledgments: { label: "Acknowledgments", areas: ["back"] },
@@ -85,16 +92,17 @@ export const KINDS: Record<PageKind, KindInfo> = {
   endnotes: { label: "Notes", hint: "Endnotes", areas: ["back"] },
   glossary: { label: "Glossary", areas: ["back"] },
   appendix: { label: "Appendix", areas: ["back"] },
-  bibliography: { label: "Bibliography", areas: ["back"] },
+  bibliography: { label: "Bibliography", hint: "Written by hand", areas: ["back"] },
+  sources: { label: "Sources (automatic)", hint: "Every source you cite, in the citation style", areas: ["back"], made: true, title: () => "" },
   discussion: { label: "Discussion questions", hint: "For reading groups", areas: ["back"] },
   excerpt: { label: "Excerpt from your next book", areas: ["back"], title: () => "A sneak peek" },
 };
 
 /** The Add menu of each area, in the order a book usually has them. */
 export const ADD_MENUS: Record<Area, PageKind[]> = {
-  front: ["half_title", "title_page", "copyright", "dedication", "epigraph", "contents", "contents_manual", "also_by", "foreword", "preface", "introduction", "prologue", "custom"],
-  chapter: ["chapter", "interlude", "custom"],
-  back: ["epilogue", "afterword", "acknowledgments", "about_author", "also_by", "endnotes", "glossary", "appendix", "bibliography", "discussion", "excerpt", "custom"],
+  front: ["half_title", "title_page", "copyright", "dedication", "epigraph", "contents", "contents_manual", "also_by", "foreword", "preface", "introduction", "prologue", "poem", "custom"],
+  chapter: ["chapter", "poem", "haiku", "interlude", "custom"],
+  back: ["epilogue", "afterword", "acknowledgments", "about_author", "also_by", "endnotes", "glossary", "appendix", "sources", "bibliography", "discussion", "excerpt", "custom"],
 };
 
 const KIND_NAMES = Object.keys(KINDS) as PageKind[];
@@ -117,6 +125,7 @@ export function readPage(json: string | null | undefined, role: WritingChapter["
     newPage: typeof saved.newPage === "boolean" ? saved.newPage : null,
     showTitle: typeof saved.showTitle === "boolean" ? saved.showTitle : !info.untitled,
     byHand: saved.byHand === true,
+    centred: saved.centred === true,
   };
 }
 
@@ -128,11 +137,15 @@ export function writePage(page: PageSettings): string {
   if (page.newPage !== null) out.newPage = page.newPage;
   if (page.showTitle === !!info.untitled) out.showTitle = page.showTitle;
   if (page.byHand) out.byHand = true;
+  if (page.centred) out.centred = true;
   return JSON.stringify(out);
 }
 
 /** Whether Scribe makes this page itself from the book's details. */
 export const isMade = (page: PageSettings) => !!KINDS[page.kind].made && !page.byHand;
+
+/** A page set line by line, as poems are. */
+export const isPoem = (page: Pick<PageSettings, "kind">) => page.kind === "poem" || page.kind === "haiku";
 
 /** Whether the section counts as a numbered chapter. */
 export const isNumbered = (c: Pick<WritingChapter, "role" | "page">) => c.role === "chapter" && readPage(c.page, c.role).kind === "chapter";
@@ -141,6 +154,29 @@ export const isNumbered = (c: Pick<WritingChapter, "role" | "page">) => c.role =
 export function startingTitle(kind: PageKind, project: WritingProject): string {
   const info = KINDS[kind];
   return info.title ? info.title(project) : kind === "custom" ? "Untitled page" : info.label;
+}
+
+/** A poem's first line, as plain words: what names an untitled poem. */
+export function firstLine(html: string): string {
+  const first = html.split(/<br\s*\/?>|<\/p>|<\/h\d>/i).find((l) => l.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim()) ?? "";
+  const doc = new DOMParser().parseFromString(first, "text/html");
+  return (doc.body.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+/** How long a stanza can be before e-readers are likely to break it across screens. */
+export const LONG_STANZA = 16;
+
+/** What a poem may lose on some e-readers, found in its HTML: stanzas too long to keep on one screen, and lines that rely on exact spacing. */
+export function poemWarnings(html: string): string[] {
+  const warnings: string[] = [];
+  const stanzas = html.split(/<\/p>/i).map((p) => p.split(/<br\s*\/?>/i).length);
+  if (stanzas.some((lines) => lines > LONG_STANZA))
+    warnings.push(`A stanza here is over ${LONG_STANZA} lines. On small screens it may have to carry on to the next page.`);
+  // Wide gaps inside a line (not at its start) are how shape poems are placed.
+  const lines = html.replace(/<p[^>]*>/gi, "<br>").split(/<br\s*\/?>|<\/p>/i);
+  if (lines.some((l) => /[^\s\u00a0][\s\u00a0]{3,}[^\s\u00a0]/.test(l.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, "\u00a0"))))
+    warnings.push("Some lines rely on exact spacing inside them. E-readers keep the spaces, but can't promise where wrapped lines fall, so a shaped poem may not hold its shape on every screen.");
+  return warnings;
 }
 
 const ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];

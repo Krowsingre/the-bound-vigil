@@ -43,6 +43,7 @@ type Calls = Pick<
   | "setWritingCoverPage"
   | "readingHistory"
   | "forgetReading"
+  | "markSuggestion"
 >;
 
 const CLASSICS: [string, string, string][] = [
@@ -157,6 +158,14 @@ export function previewWriting(): Calls {
     readingHistory: async () => history,
     forgetReading: async (bookId) => {
       history = history.filter((h) => h.bookId !== bookId);
+    },
+    markSuggestion: async (key, title, authors, status, stars) => {
+      const bookId = `suggested:${key}`;
+      const was = history.find((h) => h.bookId === bookId);
+      history = history.filter((h) => h.bookId !== bookId);
+      if (!status && stars == null) return;
+      const finishedAt = status ? (was?.status === status ? was.finishedAt : new Date().toISOString()) : null;
+      history = [{ bookId, title, authors, status, stars, finishedAt, inLibrary: false }, ...history];
     },
     catalogs: async () => catalogs,
     saveCatalog: async ({ password, ...input }) => {

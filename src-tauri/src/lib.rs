@@ -177,6 +177,11 @@ async fn get_collections(state: State<'_, AppLibrary>) -> CommandResult<Vec<Coll
 }
 
 #[tauri::command]
+async fn set_pinned(state: State<'_, AppLibrary>, book_id: String, pinned: bool) -> CommandResult<()> {
+    with_library(state, move |library| library.set_pinned(&book_id, pinned)).await
+}
+
+#[tauri::command]
 async fn set_favorite(
     state: State<'_, AppLibrary>,
     book_id: String,
@@ -1937,6 +1942,7 @@ pub fn run() {
             writing::remove_custom_theme,
             writing::reading_history,
             writing::forget_reading,
+            writing::mark_suggestion,
             get_home,
             owned_titles,
             sanctum_links,
@@ -2025,6 +2031,7 @@ pub fn run() {
             get_library,
             get_collections,
             set_favorite,
+            set_pinned,
             set_want_to_read,
             set_phone_wanted,
             set_rating,

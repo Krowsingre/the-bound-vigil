@@ -230,6 +230,7 @@ export async function webApi(): Promise<Api> {
       paired: isPaired(b.id),
       phoneWanted: !!b.phone_wanted,
       phoneHas: !!b.phone_has,
+      pinnedAt: b.pinned_at ?? null,
     };
   };
 
@@ -548,6 +549,9 @@ export async function webApi(): Promise<Api> {
     forgetReading: async () => {
       throw new Error(DESKTOP_ONLY);
     },
+    markSuggestion: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
     saveCatalog: async () => {
       throw new Error(DESKTOP_ONLY);
     },
@@ -644,6 +648,10 @@ export async function webApi(): Promise<Api> {
     getLibrary: async (query) => queryBooks(books(), query, previews().length),
     getCollections: async () => previews(),
     setFavorite: async (bookId, favorite) => writeShelves(bookId, { favorite: favorite ? 1 : 0 }),
+    setPinned: async (bookId, pinned) => {
+      const b = find(bookId);
+      if (!!b.pinned_at !== pinned) await library.write("book_pin", { ...b, pinned_at: pinned ? new Date().toISOString().replace(/\.\d+Z$/, "Z") : null });
+    },
     setWantToRead: async (bookId, want) => writeShelves(bookId, { want_to_read: want ? 1 : 0 }),
     setPhoneWanted: async (bookIds, wanted) => {
       const changes: [string, Row][] = [];

@@ -260,8 +260,10 @@ impl Library {
         let last_page = total.saturating_sub(1) / page_size;
         let page = query.page.min(last_page);
 
+        // In the Archive, pinned books come first, the latest pinned at the top.
+        let pins = if query.pinned_first { "b.pinned_at IS NULL, b.pinned_at DESC, " } else { "" };
         let sql = format!(
-            "{BOOK_COLUMNS} {BOOK_FROM} {filter} ORDER BY {}, b.id LIMIT {page_size} OFFSET {}",
+            "{BOOK_COLUMNS} {BOOK_FROM} {filter} ORDER BY {pins}{}, b.id LIMIT {page_size} OFFSET {}",
             order_by(query.sort),
             page * page_size
         );
@@ -354,6 +356,17 @@ impl Library {
         ))?;
         let rows = statement.query_map([], |r| r.get(0))?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Pins a book to the top of the Archive, or takes the pin off.
+    pub fn set_pinned(&self, book_id: &str, pinned: bool) -> Result<()> {
+        // Only a real change is written, so syncing doesn't send pins that didn't move.
+        if pinned {
+            self.conn.execute("UPDATE books SET pinned_at = ?2 WHERE id = ?1 AND pinned_at IS NULL", params![book_id, crate::time::now_utc()])?;
+        } else {
+            self.conn.execute("UPDATE books SET pinned_at = NULL WHERE id = ?1 AND pinned_at IS NOT NULL", params![book_id])?;
+        }
+        Ok(())
     }
 
     pub fn set_favorite(&self, book_id: &str, favorite: bool) -> Result<()> {
@@ -593,6 +606,32 @@ mod tests {
             .library_page(&query(|q| q.shelf = Shelf::Read))
             .unwrap();
         assert!(!page.books[0].favorite);
+    }
+
+    #[test]
+    fn pinned_books_lead_the_archive_only() {
+        let (dir, mut library) = open_temp_library();
+        add(&mut library, dir.path(), "A", "X");
+        let b = add(&mut library, dir.path(), "B", "X");
+        let c = add(&mut library, dir.path(), "C", "X");
+        library.set_pinned(&b, true).unwrap();
+        library.set_pinned(&c, true).unwrap();
+        // Pinning again keeps its place.
+        library.set_pinned(&b, true).unwrap();
+        let list = |pins| {
+            titles(&library.library_page(&query(|q| {
+                q.sort = SortOrder::Title;
+                q.pinned_first = pins;
+            })).unwrap())
+            .join(",")
+        };
+        let first = library.library_page(&query(|q| q.pinned_first = true)).unwrap();
+        assert!(first.books[0].pinned_at.is_some());
+        assert_eq!(list(false), "A,B,C");
+        assert_eq!(&list(true)[4..], "A");
+        library.set_pinned(&b, false).unwrap();
+        library.set_pinned(&c, false).unwrap();
+        assert_eq!(list(true), "A,B,C");
     }
 
     #[test]
