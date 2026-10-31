@@ -84,19 +84,14 @@ export function SyncMenu({
         </>
       }
       items={[
-        ...(profile?.name || profile?.deviceName
-          ? [
-              {
-                heading: (
-                  <>
-                    <strong>{profile.name ?? "No name yet"}</strong>
-                    <span>{profile.deviceName ? `On ${profile.deviceName}` : ""}</span>
-                  </>
-                ),
-              },
-              "divider" as const,
-            ]
-          : []),
+        // Who and where, opening the Profile card.
+        {
+          label: profile?.name ?? "Your profile",
+          icon: "edit",
+          hint: profile?.deviceName ? `On ${profile.deviceName}` : "Picture and names",
+          onSelect: onOpenProfile,
+        },
+        "divider",
         {
           heading: (
             <>
@@ -115,21 +110,17 @@ export function SyncMenu({
             </>
           ),
         },
-        { label: state === "syncing" ? "Syncing…" : "Sync now", icon: "sync", disabled: off || state === "syncing", onSelect: () => void api.syncNow() },
-        ...(onOpenActivity ? [{ label: "Sync activity", icon: "list" as const, hint: "File by file", onSelect: onOpenActivity }] : []),
+        ...(off
+          ? [{ label: "Connect a cloud service", icon: "cloud" as const, hint: "Or join a library", onSelect: onOpenSyncSettings }]
+          : [
+              { label: state === "syncing" ? "Syncing…" : "Sync now", icon: "sync" as const, disabled: state === "syncing", onSelect: () => void api.syncNow() },
+              ...(onOpenActivity ? [{ label: "Sync activity", icon: "list" as const, hint: "File by file", onSelect: onOpenActivity }] : []),
+              { label: "Sync & Accounts", icon: "settings" as const, onSelect: onOpenSyncSettings },
+            ]),
         ...(onOpenPlaces ? [{ label: "Where your books are", icon: "cloud" as const, hint: "Computer and cloud", onSelect: onOpenPlaces }] : []),
         "divider",
         { label: "Import books…", icon: "importFile", hint: "Ctrl+O", onSelect: onImportBooks },
         { label: "Import a folder…", icon: "folder", onSelect: onImportFolder },
-        "divider",
-        ...(off
-          ? [
-              { label: "Connect a cloud service", icon: "cloud" as const, onSelect: onOpenSyncSettings },
-              { label: "Join an existing library", icon: "link" as const, hint: "Sign in on this device", onSelect: onOpenSyncSettings },
-              "divider" as const,
-            ]
-          : []),
-        { label: "Sync & Accounts", icon: "settings", onSelect: onOpenSyncSettings },
         "divider",
         {
           label: hidden ? "Show covers" : "Hide covers",
@@ -137,9 +128,7 @@ export function SyncMenu({
           hint: PRIVACY_SHORTCUT,
           onSelect: togglePrivacy,
         },
-        "divider",
-        { label: "Profile…", icon: "edit", hint: "Picture and names", onSelect: onOpenProfile },
-        ...(onOpenPlan ? [{ label: "Your plan…", icon: "tag" as const, hint: "Plans, purchases, Publisher", onSelect: onOpenPlan }] : []),
+        ...(onOpenPlan ? [{ label: "Your plan…", icon: "tag" as const, hint: "Plans and purchases", onSelect: onOpenPlan }] : []),
       ]}
     />
   );

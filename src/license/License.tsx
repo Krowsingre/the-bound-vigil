@@ -416,3 +416,34 @@ export function ManageSubscription() {
     </button>
   );
 }
+
+const PERIOD = { monthly: ["Monthly", "month"], yearly: ["Annual", "year"] } as const;
+
+function manageWords(shop: LicenseView["shop"]) {
+  return shop === "apple" ? "manage it in your Apple ID's Subscriptions" : "manage it in the Microsoft Store's Subscriptions";
+}
+
+/** Exactly which TBV Standard plan someone owns, for Your plan. */
+export function standardWords(license: LicenseView): string {
+  const shop = shopName(license.shop);
+  if (license.publisherForLife && license.plan === "lifetime") return `Included with TBV Publisher Lifetime, yours for good. Thank you.`;
+  if (license.plan === "lifetime") return `TBV Standard Lifetime, bought in ${shop}. It's yours for good. Thank you.`;
+  if (license.plan === "monthly" || license.plan === "yearly") {
+    const [name, unit] = PERIOD[license.plan];
+    if (license.publisher) return `Included with your TBV Publisher ${name} subscription.`;
+    const price = license.plan === "monthly" ? license.monthlyPrice : license.yearlyPrice;
+    return `TBV Standard ${name}${price ? `, ${price} a ${unit}` : ""}, from ${shop}. Thank you. It renews each ${unit} until you cancel; ${manageWords(license.shop)}.`;
+  }
+  return "Unlocked on this device.";
+}
+
+/** Exactly which TBV Publisher plan someone owns, for Your plan. */
+export function publisherWords(license: LicenseView): string {
+  if (license.publisherForLife) return "TBV Publisher Lifetime. It's yours for good. Thank you.";
+  if (license.publisherPlan) {
+    const [name, unit] = PERIOD[license.publisherPlan];
+    const price = license.publisherPlan === "monthly" ? license.publisherMonthlyPrice : license.publisherYearlyPrice;
+    return `TBV Publisher ${name}${price ? `, ${price} a ${unit}` : ""}. Thank you. It renews each ${unit} until you cancel; ${manageWords(license.shop)}.`;
+  }
+  return "TBV Publisher comes with your subscription. Thank you.";
+}

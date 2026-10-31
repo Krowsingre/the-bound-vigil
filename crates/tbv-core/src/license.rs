@@ -29,7 +29,8 @@ pub const OWNED: &str = "license.owned";
 pub const PLAN: &str = "license.plan";
 /// Set while the Publisher level is owned.
 pub const PUBLISHER: &str = "license.publisher";
-/// PUBLISHER's value when Publisher is owned for good ("1" while a subscription gives it).
+/// PUBLISHER's value when Publisher is owned for good; otherwise it holds the
+/// subscription's period ("monthly" or "yearly"), or "1" when not known.
 const FOR_LIFE: &str = "life";
 /// Apple keeps a subscription going this long while it retries a failed payment.
 const GRACE_DAYS: i64 = 16;
@@ -97,6 +98,8 @@ pub struct LicenseView {
     pub publisher: bool,
     /// Publisher is theirs for good (Publisher for life, or TBV for life plus the upgrade), not only while a subscription runs.
     pub publisher_for_life: bool,
+    /// The Publisher subscription's period, "monthly" or "yearly", when Publisher comes from one.
+    pub publisher_plan: Option<String>,
     /// Publisher for life, like "$119.99".
     pub publisher_price: Option<String>,
     /// Publisher yearly, like "$39.99".
@@ -132,6 +135,8 @@ pub struct StoreAnswer {
     pub publisher: bool,
     /// Publisher for life, or the upgrade on top of TBV for life.
     pub publisher_for_life: bool,
+    /// The running Publisher subscription's period: "monthly" or "yearly".
+    pub publisher_plan: Option<String>,
     pub publisher_price: Option<String>,
     pub publisher_yearly_price: Option<String>,
     pub publisher_monthly_price: Option<String>,
@@ -152,6 +157,7 @@ impl StoreAnswer {
             plan: None,
             publisher: false,
             publisher_for_life: false,
+            publisher_plan: None,
             publisher_price: None,
             publisher_yearly_price: None,
             publisher_monthly_price: None,
@@ -197,7 +203,7 @@ impl Library {
                 self.set_setting(OWNED, &now.to_string())?;
                 self.set_setting(PLAN, a.plan.as_deref().unwrap_or("lifetime"))?;
                 if a.publisher {
-                    self.set_setting(PUBLISHER, if a.publisher_for_life { FOR_LIFE } else { "1" })?;
+                    self.set_setting(PUBLISHER, if a.publisher_for_life { FOR_LIFE } else { a.publisher_plan.as_deref().unwrap_or("1") })?;
                 } else {
                     self.conn.execute("DELETE FROM device_settings WHERE key = ?1", [PUBLISHER])?;
                 }
@@ -245,6 +251,7 @@ impl Library {
             plan: if bought { self.setting(PLAN)? } else { None },
             publisher: coded || (bought && self.setting(PUBLISHER)?.is_some()),
             publisher_for_life: coded || (bought && self.setting(PUBLISHER)?.as_deref() == Some(FOR_LIFE)),
+            publisher_plan: if bought { self.setting(PUBLISHER)?.filter(|p| p == "monthly" || p == "yearly") } else { None },
             publisher_price: answer.and_then(|a| a.publisher_price.clone()),
             publisher_yearly_price: answer.and_then(|a| a.publisher_yearly_price.clone()),
             publisher_monthly_price: answer.and_then(|a| a.publisher_monthly_price.clone()),
@@ -309,6 +316,9 @@ mod tests {
         let for_life = StoreAnswer { publisher: true, publisher_for_life: true, ..base.clone() };
         assert!(library.license(now + 4 * DAY, None, Shop::Microsoft, Some(&for_life)).unwrap().publisher_for_life);
         assert!(library.license(now + 5 * DAY, None, Shop::Microsoft, None).unwrap().publisher_for_life);
+        let by_month = StoreAnswer { publisher: true, publisher_plan: Some("monthly".into()), ..base.clone() };
+        let view = library.license(now + 6 * DAY, None, Shop::Microsoft, Some(&by_month)).unwrap();
+        assert_eq!((view.publisher_for_life, view.publisher_plan.as_deref()), (false, Some("monthly")));
     }
 
     #[test]
