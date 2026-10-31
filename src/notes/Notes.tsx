@@ -68,11 +68,13 @@ function sinceOf(when: When): string | null {
 /** Pinned notes shown before "Show all". */
 const PINNED_SHOWN = 3;
 
-const PREFS_KEY = "tbv.notes.view";
+/** 0.62 starts everyone on cards, as in embre's concept; the sort chosen before is kept. */
+const PREFS_KEY = "tbv.notes.view.062";
+const OLD_PREFS_KEY = "tbv.notes.view";
 
 function readPrefs(): { sort: NotesSort; layout: NotesLayout } {
   try {
-    const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}");
+    const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "null") ?? { sort: JSON.parse(localStorage.getItem(OLD_PREFS_KEY) ?? "{}").sort };
     return {
       sort: SORTS.some((s) => s.sort === p.sort) ? p.sort : "recent",
       layout: LAYOUTS.some((l) => l.layout === p.layout) ? p.layout : "cards",
@@ -110,7 +112,6 @@ export function Notes({
   ask = null,
   onGoToBooks,
   kindTab,
-  emptyAll,
 }: {
   /** The header's search box, which searches notes on this page. */
   search: string;
@@ -123,8 +124,6 @@ export function Notes({
   onGoToBooks?: () => void;
   /** Which of Scribe's tabs is showing. */
   kindTab: NotesKindTab;
-  /** In place of "No notes yet" when there's nothing at all. */
-  emptyAll?: React.ReactNode;
 }) {
   const [prefs, setPrefs] = useState(readPrefs);
   const [type, setType] = useState<NoteKind | null>(null);
@@ -350,7 +349,6 @@ export function Notes({
   };
 
   const Layout = { cards: NoteCards, list: NoteList, compact: NoteTable }[prefs.layout];
-  const anyNotes = (page?.counts.all ?? 0) > 0;
   const shownPinned = allPinned ? pinned : pinned.slice(0, PINNED_SHOWN);
   const views = { selectedId: selected?.id ?? null, menuFor, onSelect: onCard, onOpen: openInReader, chosen };
 
@@ -366,23 +364,37 @@ export function Notes({
       </div>
     );
   else if (!page) body = <div className="library-loading" aria-busy="true" aria-label="Loading your notes" />;
-  else if (!anyNotes && emptyAll) body = emptyAll;
-  else if (!anyNotes)
+  else if (notes.length === 0 && !search.trim() && filterCount === 0)
+    // Nothing of this kind yet: the page keeps its shape, with a way to start in the tab's own words.
     body = (
-      <div className="library-empty">
-        <h2>No notes yet</h2>
-        <p className="muted">
-          Highlight words while you read and they gather here. You can also write about a whole book, or keep notes of your own.
-        </p>
-        <div className="hero-actions">
-          <button type="button" className="btn btn-primary" onClick={() => setWriting({ kind: "personal" })}>
-            Write a note
-          </button>
-          <button type="button" className="btn btn-quiet" onClick={() => setWriting({ kind: "book_note" })}>
-            Write about a book
-          </button>
+      <section className="notes-section notes-start" aria-labelledby="notes-all">
+        <div className="notes-section-head">
+          <h2 id="notes-all">{NOTES_HEADING[kindTab]}</h2>
         </div>
-      </div>
+        <div className="notes-empty-card">
+          <Icon name={kindTab === "personal" ? "notes" : kindTab === "book_notes" ? "bookOpen" : "edit"} size={28} />
+          <h3>{kindTab === "personal" ? "No notes yet" : kindTab === "book_notes" ? "No reading notes yet" : "Nothing written yet"}</h3>
+          <p className="muted">
+            {kindTab === "personal"
+              ? "Notes of your own, about anything, live here."
+              : kindTab === "book_notes"
+                ? "Highlights you make while reading gather here, with anything you write about a book."
+                : "Your notes, highlights and thoughts about books gather here."}
+          </p>
+          <div className="hero-actions">
+            {kindTab !== "book_notes" && (
+              <button type="button" className="btn btn-primary" onClick={() => setWriting({ kind: "personal" })}>
+                Write a note
+              </button>
+            )}
+            {kindTab !== "personal" && (
+              <button type="button" className={`btn ${kindTab === "book_notes" ? "btn-primary" : "btn-quiet"}`} onClick={() => setWriting({ kind: "book_note" })}>
+                Write about a book
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
     );
   else if (notes.length === 0)
     body = (
@@ -489,7 +501,7 @@ export function Notes({
 
   return (
     <div className="notes-page">
-      {anyNotes && (
+      {page && !error && (
         <div className="notes-toolbar" role="toolbar" aria-label="Filter notes">
           <div className="notes-filters">
             {types.length > 0 && (

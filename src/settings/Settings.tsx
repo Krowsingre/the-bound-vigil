@@ -23,10 +23,11 @@ const TABS = isWeb ? SETTINGS_TABS.filter((t) => WEB_TABS.has(t.tab)) : isHome ?
 
 /** The computer's list of pages, in groups split by a thin line. */
 const GROUPS: SettingsTab[][] = [
-  ["plan"],
+  // About is its own page, straight under Your plan (embre, 31 October).
+  ["plan", "about"],
   ["appearance", "reading", "library", "collections", "notes", "browser", "files", "ereaders"],
   ["sync", "activity", "servers"],
-  ["accessibility", "shortcuts", "advanced", "about"],
+  ["accessibility", "shortcuts", "advanced"],
 ];
 const GROUPED = GROUPS.map((group) => group.flatMap((tab) => TABS.filter((t) => t.tab === tab))).filter((g) => g.length > 0);
 
@@ -44,6 +45,8 @@ export function Settings({
   onSidebarShown,
   onRestored,
   activity,
+  query,
+  onQuery,
 }: {
   /** null: the landing page, with a button for each tab. */
   tab: SettingsTab | null;
@@ -60,11 +63,14 @@ export function Settings({
   onRestored: () => void;
   /** Preferences › Activity: which side shows, and the app's Imports and Sync activity panes. */
   activity: { side: ActivitySide; onSide: (side: ActivitySide) => void; imports: React.ReactNode; sync: React.ReactNode };
+  /** What's typed in the top bar's search box, which searches Preferences here (there's no second box). */
+  query: string;
+  onQuery: (text: string) => void;
 }) {
   const narrow = useNarrow();
   // A computer has no landing page.
   tab = tab ?? (narrow ? null : "appearance");
-  const [query, setQuery] = useState("");
+  const setQuery = onQuery;
   const [jumpTo, setJumpTo] = useState<string | null>(null);
   useEffect(() => {
     if (!jump) return;
@@ -145,12 +151,6 @@ export function Settings({
     }
   })();
 
-  const search = (
-    <label className="search settings-search">
-      <Icon name="search" size={16} />
-      <input type="search" placeholder="Search preferences…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search preferences" />
-    </label>
-  );
   const found = (
     <ul className="settings-menu settings-results">
       {results.length === 0 ? (
@@ -188,7 +188,6 @@ export function Settings({
               <h1>Preferences</h1>
               <p className="muted">Choose what to change.</p>
             </div>
-            {search}
           </header>
           {query.trim() ? (
             found
@@ -216,7 +215,6 @@ export function Settings({
     <div className="settings-page">
       <nav className="settings-nav" aria-label="Preferences">
         <p className="settings-eyebrow">Preferences</p>
-        {search}
         {query.trim() ? (
           found
         ) : (

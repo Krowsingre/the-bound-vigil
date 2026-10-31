@@ -33,6 +33,12 @@ export const SETTINGS_TABS: {
     lede: "Your plan, TBV Publisher, and buying, switching or restoring.",
   },
   {
+    tab: "about",
+    label: "About",
+    icon: "info",
+    lede: "The Bound Vigil, and the work it is built on.",
+  },
+  {
     tab: "appearance",
     label: "Appearance",
     icon: "palette",
@@ -115,12 +121,6 @@ export const SETTINGS_TABS: {
     label: "Advanced",
     icon: "sliders",
     lede: "Where TBV keeps its data, and starting settings afresh.",
-  },
-  {
-    tab: "about",
-    label: "About",
-    icon: "info",
-    lede: "The Bound Vigil, and the work it is built on.",
   },
 ];
 

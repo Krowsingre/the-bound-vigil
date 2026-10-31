@@ -29,19 +29,6 @@ import { usePublisher } from "../license/Publisher";
 
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
 
-/** Two sheets of paper, one tilted behind the other: Scribe with nothing in it. */
-function PaperArt() {
-  return (
-    <svg className="scribe-empty-art" viewBox="0 0 104 104" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-      <g opacity="0.45">
-        <rect x="16" y="24" width="50" height="66" rx="4" transform="rotate(-10 41 57)" fill="var(--surface)" />
-      </g>
-      <rect x="36" y="12" width="52" height="70" rx="4" fill="var(--surface)" opacity="0.9" />
-      <path d="M46 28h32M46 38h32M46 48h32M46 58h18" opacity="0.6" />
-    </svg>
-  );
-}
-
 /** Scribe's tabs: everything you've noted, your own notes, what you noted from books, or the books you write. */
 type Chip = "all" | "notes" | "book_notes" | "books";
 /** What the tab of notes from books is called. */
@@ -141,9 +128,13 @@ export function Writing({
       <header className="scribe-top">
         <div className="library-head scribe-head">
           <h1 className="library-title">Scribe</h1>
-          {/* New starts a note to write freely; the arrow has the other kinds. */}
+          {/* New starts what the tab holds (a note, a reading note, a book); the arrow has the other kinds. */}
           <div className="split-button">
-            <button type="button" className="btn btn-primary split-main" onClick={() => newNote("personal")}>
+            <button
+              type="button"
+              className="btn btn-primary split-main"
+              onClick={() => (showing === "books" ? newBook() : newNote(showing === "book_notes" ? "book_note" : "personal"))}
+            >
               <Icon name="plus" size={15} /> New
             </button>
             <Menu
@@ -188,17 +179,6 @@ export function Writing({
           onClearSearch={onClearSearch}
           onOpenBook={onOpenBook}
           onGoToBooks={booksShown ? () => setChip("books") : undefined}
-          emptyAll={
-            showing === "all" ? (
-              <div className="library-empty scribe-empty">
-                <PaperArt />
-                <h2>No writing yet</h2>
-                <p className="muted">
-                  {booksShown ? "Create a note, a book note, or start a new book to begin writing." : "Create a note or a book note to begin writing."}
-                </p>
-              </div>
-            ) : undefined
-          }
         />
       )}
       {importing && (

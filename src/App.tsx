@@ -526,6 +526,8 @@ export function App() {
                   ? "Search or enter a website…"
                   : route === "collections"
                     ? "Search the Compendium…"
+                    : route === "settings"
+                      ? "Search preferences…"
                   : undefined
           }
           onSearchSubmit={() => {
@@ -533,7 +535,7 @@ export function App() {
             if (route === "catalogs") {
               window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: searchText }));
               changeSearch("");
-            } else if (route !== "notes" && route !== "writing" && route !== "documents" && route !== "audiobooks" && route !== "collections") setRoute("library");
+            } else if (route !== "notes" && route !== "writing" && route !== "documents" && route !== "audiobooks" && route !== "collections" && route !== "settings") setRoute("library");
           }}
           address={route === "catalogs" ? browserAddress : undefined}
           pageAction={route === "catalogs" ? <BrowserNav /> : undefined}
@@ -667,6 +669,8 @@ export function App() {
               // Settings, profile and reader preferences are held all over the app,
               // so a restore starts the window afresh to read them back.
               onRestored={() => window.location.reload()}
+              query={searchText}
+              onQuery={changeSearch}
               activity={{
                 side: activitySide,
                 onSide: setActivitySide,
