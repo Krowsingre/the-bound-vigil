@@ -20,7 +20,8 @@ use crate::error::{Error, Result};
 const BUCKET: &str = "tbv-files";
 
 /// Supabase's free plan takes files of up to 50 MB, so a bigger one (most
-/// audiobooks) goes up in pieces: `<path>.pieces/0000`, `0001`… and last an
+/// audiobooks) can go up in pieces, when that's turned on
+/// (`SyncOptions::split_big_files`): `<path>.pieces/0000`, `0001`… and last an
 /// index, `<path>.pieces/pieces.json`. Everything above this file reads it
 /// as the one file at `<path>`. The phone version joins pieces the same way.
 pub const PIECE_BYTES: u64 = 45 * 1024 * 1024;
@@ -274,11 +275,20 @@ pub struct Supabase {
     keeper: Option<Arc<dyn SessionKeeper>>,
     /// What each big file's piece index says, once read.
     pieces: HashMap<String, Pieces>,
+    /// Whether a big file goes up in pieces, or whole.
+    split: bool,
 }
 
 impl Supabase {
     pub fn new(project: SupabaseProject, session: Session, device_id: String) -> Self {
-        Self { project, session, device_id, agent: agent(), renewed: false, keeper: None, pieces: HashMap::new() }
+        Self { project, session, device_id, agent: agent(), renewed: false, keeper: None, pieces: HashMap::new(), split: true }
+    }
+
+    /// Whether files too big for the free plan go up in pieces. Files already
+    /// kept in pieces are read either way.
+    pub fn split_big_files(mut self, split: bool) -> Self {
+        self.split = split;
+        self
     }
 
     pub fn keep_session_with(&mut self, keeper: Arc<dyn SessionKeeper>) {
@@ -656,7 +666,7 @@ impl Remote for Supabase {
     fn upload(&mut self, path: &str, file: &Path) -> Result<()> {
         let size = std::fs::metadata(file)?.len();
         self.pieces.remove(path);
-        if size <= PIECE_BYTES {
+        if size <= PIECE_BYTES || !self.split {
             return self.upload_whole(path, file);
         }
         // Pieces first and the index last, so a half-sent file is never read as whole.

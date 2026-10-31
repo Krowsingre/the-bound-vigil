@@ -36,6 +36,7 @@ export function notesPageOf(list: NoteItem[], q: NotesQuery): NotesPage {
       (!q.colors.length || (n.color && q.colors.includes(n.color))) &&
       (!tag || (n.tags ?? []).some((t) => t.toLowerCase() === tag)) &&
       (!q.since || n.updatedAt >= q.since) &&
+      (!q.projectId || n.project?.id === q.projectId) &&
       (!s ||
         [n.excerpt, n.note, n.title, n.book?.title, n.locator?.chapter, ...(n.book?.authors ?? []), ...(n.tags ?? [])].some((t) =>
           t?.toLowerCase().includes(s),

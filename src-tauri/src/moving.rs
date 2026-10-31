@@ -202,7 +202,10 @@ impl Mover {
         destination: Destination,
         from_provider: Provider,
     ) -> tbv_core::Result<(MoveReport, bool)> {
-        let device = library.lock().map_err(|_| unavailable())?.device_id()?;
+        let (device, split) = {
+            let l = library.lock().map_err(|_| unavailable())?;
+            (l.device_id()?, l.sync_options()?.split_big_files)
+        };
         // The old place, opened outside the lock (a folder or server can be slow).
         let mut from: Option<Cloud> = match &from_provider {
             Provider::Supabase | Provider::Off => {
@@ -214,7 +217,7 @@ impl Mover {
         // The new place. A folder is read back as a device that never wrote
         // there would read it, so this device's own changes count too.
         let (mut to, mut check): (Box<dyn Remote>, Option<Box<dyn Remote>>) = match &destination {
-            Destination::Supabase { project, session } => (Box::new(Supabase::new(project.clone(), session.clone(), device.clone())), None),
+            Destination::Supabase { project, session } => (Box::new(Supabase::new(project.clone(), session.clone(), device.clone()).split_big_files(split)), None),
             Destination::Files(provider) => (
                 Box::new(core_sync::open_files(provider, device.clone())?.0),
                 Some(Box::new(core_sync::open_files(provider, format!("{device}-check"))?.0)),

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import type { BookPreview } from "../api/types";
+import { useCoverOnView } from "../lib/coverOnView";
 import { authorLine, hashOf } from "../lib/format";
 import { isAudio, isDocument } from "../lib/queryBooks";
 import { Icon } from "./Icon";
@@ -12,9 +13,13 @@ type CoverBook = Pick<BookPreview, "id" | "title" | "authors" | "coverPath"> & P
 
 export function BookCover({ book, size = "m" }: { book: CoverBook; size?: "s" | "m" | "l" }) {
   const [failed, setFailed] = useState(false);
-  const src = book.coverPath && !failed ? api.coverUrl(book.coverPath) : "";
+  const [element, setElement] = useState<HTMLDivElement | null>(null);
+  // On iPhone a cover comes down from the cloud when it's shown.
+  const fetched = useCoverOnView(book.id, !!book.coverPath, element);
+  const cover = book.coverPath ?? fetched;
+  const src = cover && !failed ? api.coverUrl(cover) : "";
   return (
-    <div className={`cover cover-${size}${book.format && isAudio(book.format) ? " cover-audio" : ""}`}>
+    <div ref={setElement} className={`cover cover-${size}${book.format && isAudio(book.format) ? " cover-audio" : ""}`}>
       {/* Privacy mode shows this instead of the cover; the cover stays loaded underneath. */}
       <div className="cover-private" aria-hidden>
         <span className="cover-title">{book.title}</span>

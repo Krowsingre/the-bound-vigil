@@ -127,12 +127,15 @@ impl Library {
                     }),
                     pinned_at: r.get(12)?,
                     tags: tags_of(r.get(13)?),
+                    project: None,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
         let mut personal = self.conn.prepare(
-            "SELECT id, title, body, created_at, updated_at, pinned_at, tags FROM personal_notes WHERE deleted_at IS NULL",
+            "SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.pinned_at, n.tags, w.id, w.title
+             FROM personal_notes n LEFT JOIN writing_projects w ON w.id = n.project_id AND w.deleted_at IS NULL
+             WHERE n.deleted_at IS NULL",
         )?;
         notes.extend(
             personal
@@ -150,6 +153,10 @@ impl Library {
                         updated_at: r.get(4)?,
                         pinned_at: r.get(5)?,
                         tags: tags_of(r.get(6)?),
+                        project: match (r.get::<_, Option<String>>(7)?, r.get::<_, Option<String>>(8)?) {
+                            (Some(id), Some(title)) => Some(ProjectRef { id, title }),
+                            _ => None,
+                        },
                     })
                 })?
                 .collect::<std::result::Result<Vec<_>, _>>()?,
@@ -199,6 +206,7 @@ impl Library {
                     .is_none_or(|id| n.book.as_ref().is_some_and(|b| &b.id == id))
             })
             .filter(|n| query.tag.as_ref().is_none_or(|t| n.tags.iter().any(|x| x.eq_ignore_ascii_case(t))))
+            .filter(|n| query.project_id.as_ref().is_none_or(|p| n.project.as_ref().is_some_and(|x| &x.id == p)))
             .filter(|n| query.since.as_ref().is_none_or(|since| &n.updated_at >= since))
             .filter(|n| {
                 query.colors.is_empty()
@@ -340,6 +348,29 @@ impl Library {
             }
         };
         self.note(&id)
+    }
+
+    /// Makes a personal note part of a book you're writing (its research and
+    /// plans, kept out of the finished book), or a note of its own again.
+    pub fn set_note_project(&self, id: &str, project_id: Option<&str>) -> Result<NoteItem> {
+        if let Some(project) = project_id {
+            let exists: bool = self.conn.query_row(
+                "SELECT EXISTS (SELECT 1 FROM writing_projects WHERE id = ?1 AND deleted_at IS NULL)",
+                params![project],
+                |r| r.get(0),
+            )?;
+            if !exists {
+                return Err(Error::Unsuitable("that book isn't in Scribe any more".into()));
+            }
+        }
+        let changed = self.conn.execute(
+            "UPDATE personal_notes SET project_id = ?2 WHERE id = ?1 AND deleted_at IS NULL AND project_id IS NOT ?2",
+            params![id, project_id],
+        )?;
+        if changed == 0 && !self.conn.query_row("SELECT EXISTS (SELECT 1 FROM personal_notes WHERE id = ?1 AND deleted_at IS NULL)", params![id], |r| r.get::<_, bool>(0))? {
+            return Err(Error::Unsuitable("that note no longer exists".into()));
+        }
+        self.note(id)
     }
 
     /// Changes the words attached to a highlight. Empty words make it a plain highlight.
@@ -587,6 +618,31 @@ mod tests {
                 .all,
             0
         );
+    }
+
+    #[test]
+    fn a_note_belongs_to_a_book_being_written() {
+        let (_dir, library) = open_temp_library();
+        let novel = library.create_writing_project("The Lamplighter", None).unwrap().project.id;
+        let research = library.save_personal_note(None, Some("Lighthouses"), "Fresnel lenses").unwrap().id;
+        let loose = library.save_personal_note(None, Some("Groceries"), "Bread").unwrap().id;
+
+        let tied = library.set_note_project(&research, Some(&novel)).unwrap();
+        assert_eq!(tied.project.map(|p| p.title).as_deref(), Some("The Lamplighter"));
+        let only = |project: &str| {
+            library
+                .notes_page(&NotesQuery { project_id: Some(project.into()), ..Default::default() })
+                .unwrap()
+                .notes
+                .into_iter()
+                .map(|n| n.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(only(&novel), std::slice::from_ref(&research));
+        assert!(library.set_note_project(&loose, Some("no such book")).is_err());
+
+        library.set_note_project(&research, None).unwrap();
+        assert!(only(&novel).is_empty());
     }
 
     #[test]

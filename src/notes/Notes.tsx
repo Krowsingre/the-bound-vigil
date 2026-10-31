@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-import type { HighlightColor, NoteItem, NoteKind, NotesPage, NotesQuery, NotesSort } from "../api/types";
+import type { HighlightColor, NoteItem, NoteKind, NotesPage, NotesQuery, NotesSort, WritingProject } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
@@ -251,6 +251,30 @@ export function Notes({
     }
   };
 
+  // The books being written in Scribe, which a note can belong to.
+  const [projects, setProjects] = useState<WritingProject[]>([]);
+  useEffect(() => {
+    if (!onGoToBooks) return;
+    let current = true;
+    api.writingProjects().then(
+      (list) => current && setProjects(list),
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, [onGoToBooks, refreshKey]);
+
+  const belongTo = async (n: NoteItem, projectId: string | null) => {
+    try {
+      const done = await api.setNoteProject(n.id, projectId);
+      toast(projectId ? `It's with ${done.project?.title ?? "that book"} now, in its Notes beside the pages.` : "It's a note of its own again.");
+      changed();
+    } catch (e) {
+      toast(String(e));
+    }
+  };
+
   const saveTags = async (n: NoteItem, tags: string[]) => {
     try {
       await api.setNoteTags(n.id, tags);
@@ -280,6 +304,14 @@ export function Notes({
     { label: "Tags…", icon: "tag", onSelect: () => setTagging(n) },
     { label: "Copy", icon: "copy", onSelect: () => copy([n]) },
     ...(onGoToBooks ? [{ label: "Add to a book I'm writing…", icon: "pen" as const, onSelect: () => setToBook(n) }] : []),
+    ...(n.kind === "personal" && projects.length
+      ? ([
+          "divider",
+          { heading: <strong>Belongs to</strong> },
+          { label: "No book: a note of its own", checked: !n.project, onSelect: () => void belongTo(n, null) },
+          ...projects.map((p) => ({ label: p.title || "Untitled book", checked: n.project?.id === p.id, onSelect: () => void belongTo(n, p.id) })),
+        ] as MenuEntry[])
+      : []),
     ...(n.kind === "highlight" || n.kind === "annotation"
       ? ([
           "divider",

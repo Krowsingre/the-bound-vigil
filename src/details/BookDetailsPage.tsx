@@ -19,6 +19,7 @@ import { formatLength, formatLabel, isAudio, isDocument } from "../lib/queryBook
 import { formatBytes } from "../settings/controls";
 import { askEditDetails, askFetchDetails } from "./openDetails";
 import { FormatsRow } from "./FormatsRow";
+import { LocationsRow } from "./LocationsRow";
 import { PairRow } from "./PairRow";
 import { SeriesRow } from "./SeriesRow";
 
@@ -128,20 +129,17 @@ export function BookDetailsPage({
     ["File size", fileSize && files.length <= 1 ? formatBytes(fileSize) : null, null],
     ["Added", new Date(book.addedAt).toLocaleDateString(), null],
     ["Finished", book.finishedAt ? new Date(book.finishedAt).toLocaleDateString() : null, null],
-    [
-      "Where",
-      book.fileUnavailable
-        ? "Its file isn't in the cloud yet"
-        : book.availability === "cloud"
-          ? "In the cloud only"
-          : book.availability === "missing"
-            ? "File missing"
-            : book.inCloud
-              ? "On this device and in the cloud"
-              : "On this device",
-      null,
-    ],
   ];
+  // Said this way when no device or place has noted the book yet.
+  const where = book.fileUnavailable
+    ? "Its file isn't in the cloud yet"
+    : book.availability === "cloud"
+      ? "In the cloud only"
+      : book.availability === "missing"
+        ? "File missing"
+        : book.inCloud
+          ? "On this device and in the cloud"
+          : "On this device";
 
   return (
     <div className="book-details">
@@ -266,6 +264,7 @@ export function BookDetailsPage({
                     </dd>
                   </div>
                 ))}
+              <LocationsRow bookId={book.id} refreshKey={refreshKey + reload} fallback={where} />
               {files.length > 1 && <FormatsRow bookId={book.id} files={files} onOpen={(fileId) => onOpenBook(book.id, undefined, fileId)} onChanged={refresh} />}
               <PairRow book={book} refreshKey={refreshKey + reload} />
             </dl>

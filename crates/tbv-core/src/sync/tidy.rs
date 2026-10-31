@@ -1,6 +1,7 @@
 //! Tidying a place up: removing the cloud copies of books that aren't on
 //! this computer, so a phone reading through it sees only those books as
-//! ready to download. Books a phone has downloaded, or that were chosen for
+//! ready to download. Books a phone has downloaded (as it notes in
+//! `book_holders`), or that were chosen for
 //! the phone, always keep their copy; when only chosen books go to the
 //! phone, the rest go even if they're on this computer.
 //!
@@ -83,12 +84,14 @@ impl Library {
 
     /// The hashes of books whose copy in the phone's place stays.
     fn books_kept(&self) -> Result<HashSet<String>> {
-        let for_phone: HashSet<String> = self
+        let mut for_phone: HashSet<String> = self
             .conn
             .prepare("SELECT id FROM books WHERE deleted_at IS NULL AND (phone_wanted OR phone_has OR from_phone)")?
             .query_map([], |r| r.get::<_, String>(0))?
             .map(|id| id.map(|id| book_id_hex(&id).to_string()))
             .collect::<rusqlite::Result<_>>()?;
+        // What a phone has downloaded stays, whatever was chosen.
+        for_phone.extend(self.books_on_phones()?);
         if self.sync_options()?.phone_chosen_only {
             return Ok(for_phone);
         }
@@ -221,6 +224,7 @@ pub fn tidy(
     // which copies are gone.
     let library = lock(library)?;
     library.files_gone(&removed, lane)?;
+    library.place_dropped(&removed, lane)?;
     if let Some(other_lane) = other_lane {
         for path in &sent {
             library.lane_file_sent(path, None, other_lane)?;

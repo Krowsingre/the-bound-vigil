@@ -234,7 +234,7 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
         // Otherwise a cloud-only audiobook comes down first, where this device can play it.
         if (play && !stream && book.book.availability === "cloud" && api.audioUrl(bookId, 0)) {
           toast(`Downloading “${book.book.title}” to play it…`);
-          await api.downloadBook(bookId);
+          await api.downloadBook(bookId, true);
           book = await api.audiobook(bookId);
           changed.current?.();
         }

@@ -537,10 +537,12 @@ async fn book_bytes(state: State<'_, AppLibrary>, book_id: String) -> CommandRes
         // Only in the cloud (or gone from here): fetch it, then open it.
         Err(_) => tauri::async_runtime::spawn_blocking(move || {
             sync::download(&library, &book_id)?;
-            library
-                .lock()
-                .map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?
-                .book_file(&book_id)
+            let library = library.lock().map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?;
+            // Fetched on a phone just to read it: removed again after a while unless kept.
+            if cfg!(mobile) {
+                library.note_visit(&book_id)?;
+            }
+            library.book_file(&book_id)
         })
         .await
         .map_err(|e| e.to_string())?
@@ -786,6 +788,12 @@ async fn set_note_pinned(state: State<'_, AppLibrary>, id: String, pinned: bool)
 #[tauri::command]
 async fn set_note_tags(state: State<'_, AppLibrary>, id: String, tags: Vec<String>) -> CommandResult<Vec<String>> {
     with_library(state, move |library| library.set_note_tags(&id, &tags)).await
+}
+
+/// Makes a personal note part of a book being written in Scribe, or a note of its own again.
+#[tauri::command]
+async fn set_note_project(state: State<'_, AppLibrary>, id: String, project_id: Option<String>) -> CommandResult<tbv_core::model::NoteItem> {
+    with_library(state, move |library| library.set_note_project(&id, project_id.as_deref())).await
 }
 
 #[tauri::command]
@@ -1140,9 +1148,37 @@ async fn supabase_usage(state: State<'_, AppLibrary>) -> CommandResult<tbv_core:
 
 /// Fetches a book that's only in the cloud onto this device.
 #[tauri::command]
-async fn download_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
+async fn download_book(state: State<'_, AppLibrary>, book_id: String, temporary: Option<bool>) -> CommandResult<()> {
     let library = state.0.clone();
-    tauri::async_runtime::spawn_blocking(move || sync::download(&library, &book_id))
+    tauri::async_runtime::spawn_blocking(move || {
+        sync::download(&library, &book_id)?;
+        // Played on a phone, it's removed again after a while unless kept;
+        // downloaded on purpose, it stays.
+        let library = library.lock().map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?;
+        library.keep_download(&book_id, !(temporary.unwrap_or(false) && cfg!(mobile)))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+/// Everywhere a book's file is: this device, other devices and sync places.
+#[tauri::command]
+async fn book_locations(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<Vec<tbv_core::sync::holdings::BookLocation>> {
+    with_library(state, move |library| library.book_locations(&book_id)).await
+}
+
+/// Keeps a book on this phone for good, or lets it go again after a while.
+#[tauri::command]
+async fn keep_download(state: State<'_, AppLibrary>, book_id: String, keep: bool) -> CommandResult<()> {
+    with_library(state, move |library| library.keep_download(&book_id, keep)).await
+}
+
+/// A phone: a book's cover, fetched from the cloud because it's being shown.
+#[tauri::command]
+async fn cover_on_view(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<Option<String>> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || sync::cover_on_view(&library, &book_id))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
@@ -1866,6 +1902,21 @@ pub fn run() {
                     let _ = library.auto_link_audiobooks();
                 }
             });
+            // A phone keeps room: books fetched just to open go after a
+            // while unopened, and covers share a set amount of room.
+            #[cfg(mobile)]
+            {
+                let tidying = library.clone();
+                std::thread::spawn(move || {
+                    if let Ok(library) = tidying.lock() {
+                        let _ = library.adopt_cover_cache();
+                        let days = library.sync_options().map(|o| o.phone_keep_days).unwrap_or(0);
+                        if days > 0 {
+                            let _ = library.drop_old_visits(days);
+                        }
+                    }
+                });
+            }
             let worker = Arc::new(sync::SyncWorker::start(app.handle().clone(), library.clone()));
             #[cfg(desktop)]
             folder_watch::start(library.clone(), worker.clone());
@@ -2120,6 +2171,7 @@ pub fn run() {
             save_personal_note,
             set_note_pinned,
             set_note_tags,
+            set_note_project,
             set_annotation_note,
             delete_note,
             library_info,
@@ -2145,6 +2197,9 @@ pub fn run() {
             welcomed_back,
             resolve_sync_conflict,
             download_book,
+            book_locations,
+            keep_download,
+            cover_on_view,
             plan_tidy_cloud,
             tidy_cloud,
             supabase_usage,

@@ -1039,6 +1039,9 @@ export async function webApi(): Promise<Api> {
       if (p && !p.deleted_at) await library.write("personal_note_mark", { ...p, pinned_at: pinnedAt });
       else await library.write("annotation_mark", { ...annotationRow(id), pinned_at: pinnedAt });
     },
+    setNoteProject: async () => {
+      throw new Error("Tie notes to your books in TBV on your computer or iPhone.");
+    },
     setNoteTags: async (id, tags) => {
       const kept = cleanTags(tags);
       const p = library.row("personal_notes", [id]);
@@ -1162,6 +1165,9 @@ export async function webApi(): Promise<Api> {
     downloadBook: async (bookId) => {
       await api.readBookFile(bookId);
     },
+    bookLocations: async () => [],
+    keepDownload: async () => undefined,
+    coverOnView: async () => null,
     allTags: async (): Promise<TagCount[]> => tagCounts(books()),
     addTag: async (bookIds, tag) => {
       const typed = cleanTag(tag);

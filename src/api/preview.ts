@@ -17,6 +17,7 @@ import { importsViewOf } from "../imports/view";
 import { previewWriting } from "../preview/writing";
 import { browseStub } from "../preview/browse";
 import type {
+  BookLocation,
   StoredFile,
   Audiobook,
   AudioChapter,
@@ -930,7 +931,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.63.0", version: "0.64.0", notes: "The Bound Vigil 0.64.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.64.0", version: "0.65.0", notes: "The Bound Vigil 0.65.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
@@ -959,6 +960,17 @@ export function previewApi(): Api {
     downloadBook: async () => {
       throw new Error("Downloading works in the desktop app.");
     },
+    bookLocations: async (bookId) => {
+      const b = find(bookId);
+      const here: BookLocation[] = b.availability === "local" ? [{ name: "Embre's PC", kind: "computer", here: true, temporary: false }] : [];
+      return [
+        ...here,
+        { name: "Embre's iPhone", kind: "phone", here: false, temporary: false },
+        ...(b.inCloud || b.availability === "cloud" ? ([{ name: "iCloud Drive", kind: "place", here: false, temporary: false }] as BookLocation[]) : []),
+      ];
+    },
+    keepDownload: async () => undefined,
+    coverOnView: async () => null,
     allTags: async () => tagCounts(library()),
     addTag: async (bookIds, tag) => {
       const clean = cleanTag(tag);

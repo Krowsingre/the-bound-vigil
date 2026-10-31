@@ -7,6 +7,7 @@ import type { Found } from "../lib/onlineDetails";
 import type {
   HistoryEntry,
   BookFile,
+  BookLocation,
   Bookmark,
   QuickLink,
   SanctumLink,
@@ -261,6 +262,8 @@ export interface Api {
   setNotePinned(id: string, pinned: boolean): Promise<void>;
   /** Gives a note these tags in place of its old ones; answers them as kept. */
   setNoteTags(id: string, tags: string[]): Promise<string[]>;
+  /** Makes a personal note part of a book you're writing in Scribe, or (null) a note of its own. */
+  setNoteProject(id: string, projectId: string | null): Promise<NoteItem>;
   /** Where this device keeps the library, and how big it is. */
   libraryInfo(): Promise<LibraryInfo>;
   /** Asks where to save, then writes the file. False if cancelled. */
@@ -309,8 +312,14 @@ export interface Api {
   /** True once, when TBV was installed again and picked up where it was. */
   welcomedBack(): Promise<boolean>;
   resolveSyncConflict(kind: string, key: string, keepCloud: boolean): Promise<void>;
-  /** Fetches a book that's only in the cloud onto this device. */
-  downloadBook(bookId: string): Promise<void>;
+  /** Fetches a book that's only in the cloud onto this device. `temporary` (a phone playing it): removed again after a while unless kept. */
+  downloadBook(bookId: string, temporary?: boolean): Promise<void>;
+  /** Everywhere a book's file is: this device, other devices and sync places. */
+  bookLocations(bookId: string): Promise<BookLocation[]>;
+  /** A phone: keeps a downloaded book for good, or lets it go again after a while. */
+  keepDownload(bookId: string, keep: boolean): Promise<void>;
+  /** A phone: a book's cover, fetched from the cloud because it's being shown. Null if the cloud has none. */
+  coverOnView(bookId: string): Promise<string | null>;
   /** What tidying up Supabase would remove: cloud copies of books that aren't on this computer. */
   planTidyCloud(): Promise<TidyPlan>;
   /** Tidies Supabase up, sending copies the other place lacks there first. */
@@ -926,6 +935,7 @@ function appApi(): Api {
     deleteNote: async (id, kind) => (await core).invoke("delete_note", { id, kind }),
     setNotePinned: async (id, pinned) => (await core).invoke("set_note_pinned", { id, pinned }),
     setNoteTags: async (id, tags) => (await core).invoke<string[]>("set_note_tags", { id, tags }),
+    setNoteProject: async (id, projectId) => (await core).invoke<NoteItem>("set_note_project", { id, projectId }),
     libraryInfo: async () => (await core).invoke<LibraryInfo>("library_info"),
     exportLibrary: () => saveTo("export_library", "Export library data", `TBV library ${today()}.json`, "JSON", ["json"]),
     exportNotesMarkdown: () => saveTo("export_notes_markdown", "Export notes", `TBV notes ${today()}.md`, "Markdown", ["md"]),
@@ -969,7 +979,10 @@ function appApi(): Api {
     restoreLicense: async () => (await core).invoke<LicenseView>("license_restore"),
     unlockLicense: async (code) => (await core).invoke<LicenseView | null>("license_unlock", { code }),
     resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
-    downloadBook: async (bookId) => (await core).invoke("download_book", { bookId }),
+    downloadBook: async (bookId, temporary) => (await core).invoke("download_book", { bookId, temporary: temporary ?? false }),
+    bookLocations: async (bookId) => (await core).invoke<BookLocation[]>("book_locations", { bookId }),
+    keepDownload: async (bookId, keep) => (await core).invoke("keep_download", { bookId, keep }),
+    coverOnView: async (bookId) => (await core).invoke<string | null>("cover_on_view", { bookId }),
     moveStatus: async () => (await core).invoke<MoveStatus>("move_status"),
     moveSignIn: async (project, email, password, create) =>
       (await core).invoke<boolean>("move_sign_in", { project, email, password, create }),

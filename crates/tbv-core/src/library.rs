@@ -605,6 +605,41 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE personal_notes ADD COLUMN pinned_at TEXT;
     ALTER TABLE personal_notes ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';
     "#,
+    // v35: where each book is downloaded. `devices`: every device and sync
+    // place by name, synced (device). `book_holders`: which of them has each
+    // book's file, synced (book_holder), for Book details and so tidying
+    // keeps what a phone has. `phone_visits`: books this phone fetched just
+    // to open, removed again after a while unless kept. `cover_cache`: covers
+    // this phone fetched when shown, the oldest let go past a size. Those two
+    // stay on the device. Personal notes can also belong to a Scribe book.
+    r#"
+    CREATE TABLE devices (
+        device_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE book_holders (
+        device_id TEXT NOT NULL,
+        book_id TEXT NOT NULL,
+        held INTEGER NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (device_id, book_id)
+    );
+    CREATE INDEX book_holders_book ON book_holders (book_id);
+    CREATE TABLE phone_visits (
+        book_id TEXT PRIMARY KEY,
+        fetched_at TEXT NOT NULL
+    );
+    CREATE TABLE cover_cache (
+        book_id TEXT PRIMARY KEY,
+        bytes INTEGER NOT NULL,
+        fetched_at TEXT NOT NULL
+    );
+    -- A personal note can belong to a book you're writing in Scribe, as its
+    -- research and plans, synced (personal_note_project).
+    ALTER TABLE personal_notes ADD COLUMN project_id TEXT;
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

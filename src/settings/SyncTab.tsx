@@ -6,7 +6,7 @@ import { behindText } from "../shell/SyncMenu";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
-import { useAppSettings, type ConflictRule, type SyncFrequency } from "./appSettings";
+import { useAppSettings, type ConflictRule, type PhoneKeepDays, type SyncFrequency } from "./appSettings";
 import { AccountPanel } from "./AccountPanel";
 import { SupabaseProjectForm } from "./SupabaseSetup";
 import { MoveSection } from "./MoveSection";
@@ -304,7 +304,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
                 <Icon name="info" size={18} /> About book file syncing
               </h3>
               <p>Book files are not synced unless you turn it on. Without it, other devices list your books and their covers, and a book opens where its file is.</p>
-              <p>With it on, any of your devices can open any book, and downloads it the first time. TBV never changes the files themselves. Supabase's free plan holds 1 GB and takes files up to 50 MB, so bigger ones go up in pieces.</p>
+              <p>With it on, any of your devices can open any book, and downloads it the first time. TBV never changes the files themselves. Supabase's free plan holds 1 GB and takes files up to 50 MB. Turn on Split big files to send bigger ones in pieces.</p>
             </div>
           }
         >
@@ -352,6 +352,14 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
               checked={sync.audioFiles}
               onChange={(audioFiles) => changeSync({ audioFiles })}
             />
+            {supabaseOn && (
+              <Toggle
+                label="Split big files for Supabase's free plan"
+                hint="Files over 50 MB, like most audiobooks, go up in pieces, which the free plan needs. Leave it off on a paid plan: it takes big files whole."
+                checked={sync.splitBigFiles}
+                onChange={(splitBigFiles) => changeSync({ splitBigFiles })}
+              />
+            )}
             <Toggle
               label="Stream audiobooks that aren't on this computer"
               hint="Play them straight from the cloud without downloading. Turn off to download each one before it plays."
@@ -359,6 +367,24 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
               onChange={(streamAudio) => changeSync({ streamAudio })}
             />
           </div>
+          {isIOS && (
+            <Row
+              label="Books opened on this phone"
+              hint="A book that came down just so you could open it is removed again after this long unopened. Its file stays in the cloud. Books you download on purpose, or keep from their details page, stay."
+            >
+              <Select<string>
+                label="Books opened on this phone"
+                value={String(sync.phoneKeepDays)}
+                options={[
+                  { value: "7", label: "Remove after a week" },
+                  { value: "14", label: "Remove after 2 weeks" },
+                  { value: "30", label: "Remove after a month" },
+                  { value: "0", label: "Keep them all" },
+                ]}
+                onChange={(v) => changeSync({ phoneKeepDays: Number(v) as PhoneKeepDays })}
+              />
+            </Row>
+          )}
         </Section>
         <Section id="behaviour" title="Sync behaviour" lede="When TBV syncs, and what happens when two devices disagree.">
           <div className="settings-columns">

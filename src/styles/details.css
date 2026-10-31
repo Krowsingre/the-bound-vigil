@@ -126,6 +126,33 @@
   margin: 2px 0 0;
 }
 
+/* Where a book's file is: devices and sync places, one per line. */
+.details-locations {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.details-locations li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.details-locations li > svg {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.details-facts .details-locations .details-origin {
+  display: inline;
+  margin: 0;
+}
+
 /* A book's files, one per line, when copies are kept together. */
 .details-format {
   display: flex;

@@ -42,10 +42,16 @@ export function cardTitle(n: NoteItem): string {
   return n.book ? n.book.title : personalTitle(n);
 }
 
-export function Tags({ tags, most = 2 }: { tags: string[] | undefined; most?: number }) {
-  if (!tags?.length) return null;
+export function Tags({ tags, most = 2, project }: { tags: string[] | undefined; most?: number; /** The Scribe book the note belongs to. */ project?: string }) {
+  if (!tags?.length && !project) return null;
+  tags = tags ?? [];
   return (
     <span className="note-tags">
+      {project && (
+        <span className="note-tag note-tag-book" title={`Belongs to ${project}`}>
+          <Icon name="pen" size={11} /> {project}
+        </span>
+      )}
       {tags.slice(0, most).map((t) => (
         <span key={t} className="note-tag">
           {t}
@@ -121,7 +127,7 @@ export function NoteList({ notes, selectedId, menuFor, onSelect, onOpen, chosen 
               </span>
               <KindChip note={n} />
               <Words note={n} lines={2} />
-              <Tags tags={n.tags} most={4} />
+              <Tags tags={n.tags} most={4} project={n.project?.title} />
             </span>
           </button>
           {n.pinnedAt && <Icon name="pin" size={15} className="note-row-pin" />}
@@ -156,7 +162,7 @@ export function NoteCards({ notes, selectedId, menuFor, onSelect, onOpen, chosen
               <span className="note-card-main">
                 <span className="note-card-title">{cardTitle(n)}</span>
                 <Words note={n} lines={3} />
-                <Tags tags={n.tags} />
+                <Tags tags={n.tags} project={n.project?.title} />
                 <span className="note-card-date">{noteDate(n.updatedAt)}</span>
               </span>
               {n.book && (
