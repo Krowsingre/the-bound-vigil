@@ -11,9 +11,9 @@ import emblem from "../assets/emblem.svg?raw";
 import { useToast } from "../components/Toast";
 import { startupStep } from "../splash/startup";
 
-/** Apple's standard licence for apps, which TBV uses as its terms. */
-const APPLE_TERMS = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
-const PRIVACY_POLICY = "https://krowsingre.github.io/the-bound-vigil/privacy/";
+/** TBV's own Terms of Use and License Agreement, in place of each store's standard one. */
+export const TERMS = "https://krowsingre.github.io/the-bound-vigil/terms/";
+export const PRIVACY_POLICY = "https://krowsingre.github.io/the-bound-vigil/privacy/";
 const STORE_PAGE = "https://apps.microsoft.com/search?query=The%20Bound%20Vigil";
 /** Where each store lets people cancel a subscription. */
 const SUBSCRIPTIONS: Record<LicenseView["shop"], string> = {
@@ -391,14 +391,10 @@ export function PurchaseLinks() {
           {" · "}
         </>
       )}
-      {license.shop === "apple" && (
-        <>
-          <button type="button" className="link-btn" onClick={() => void openExternal(APPLE_TERMS)}>
-            Terms of use
-          </button>
-          {" · "}
-        </>
-      )}
+      <button type="button" className="link-btn" onClick={() => void openExternal(TERMS)}>
+        Terms of use
+      </button>
+      {" · "}
       <button type="button" className="link-btn" onClick={() => void openExternal(PRIVACY_POLICY)}>
         Privacy policy
       </button>

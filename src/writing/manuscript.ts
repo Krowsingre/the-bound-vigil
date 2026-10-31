@@ -40,8 +40,7 @@ const extensionOf = (name: string) => /\.([^.]+)$/.exec(name)?.[1]?.toLowerCase(
 export function inspect(name: string, bytes: Uint8Array): Inspection {
   const ext = extensionOf(name);
   if (LABELS[ext]) return { format: ext === "markdown" ? "md" : ext === "htm" ? "html" : ext, label: LABELS[ext], supported: true };
-  if (ext === "pdf")
-    return { format: "pdf", label: "PDF", supported: false, reason: "Rebuilding a book from a PDF comes in a later update. If you have the Word or EPUB file the PDF was made from, import that instead." };
+  if (ext === "pdf") return { format: "pdf", label: "PDF", supported: true };
   if (ext === "kcb")
     return {
       format: "kindle_create",
@@ -63,19 +62,18 @@ export function inspect(name: string, bytes: Uint8Array): Inspection {
     }
     const kindle = names.some((n) => /(^|\/)book\.kcb$/i.test(n) || /(^|\/)book\.kdf$/i.test(n) || /(^|\/)resources\/ManifestFile$/i.test(n));
     if (ext === "kpf" || kindle) {
-      const fixed = kindle && fixedLayout(bytes, names);
+      // Made from a PDF, its words are in that PDF, which Scribe reads.
+      if (kindle && fixedLayout(bytes, names)) return { format: "kindle_create", label: "Kindle Create project (made from a PDF)", supported: true };
       return {
         format: kindle ? "kindle_create" : "kpf",
         label: kindle ? "Kindle Create project" : "Kindle package",
         supported: false,
-        reason: fixed
-          ? "This Kindle Create project was made from a PDF, so its words are inside that PDF. Importing it comes with PDF import, in a later update."
-          : "Rebuilding a book from Kindle Create comes in a later update. Until then, import the Word file the project was made from.",
+        reason: "Rebuilding a book from a Kindle Create project made from a Word file comes in a later update. Until then, import the Word file the project was made from.",
       };
     }
-    return { format: "zip", label: "Zip file", supported: false, reason: "Choose the manuscript itself: Word, OpenDocument, RTF, text, Markdown, HTML or EPUB." };
+    return { format: "zip", label: "Zip file", supported: false, reason: "Choose the manuscript itself: Word, OpenDocument, RTF, text, Markdown, HTML, EPUB or PDF." };
   }
-  return { format: ext || "unknown", label: ext ? `.${ext} file` : "File", supported: false, reason: "Scribe can rebuild a book from Word, OpenDocument, RTF, plain text, Markdown, HTML and EPUB files." };
+  return { format: ext || "unknown", label: ext ? `.${ext} file` : "File", supported: false, reason: "Scribe can rebuild a book from Word, OpenDocument, RTF, plain text, Markdown, HTML, EPUB and PDF files, and Kindle Create projects made from a PDF." };
 }
 
 /** A Kindle Create project made from a PDF keeps it in resources/res. */
@@ -131,7 +129,7 @@ export interface Manuscript {
 
 /** Section titles, and what each kind of page is called. Checked in order. */
 const TITLES: [RegExp, PageKind][] = [
-  [/^(table of )?contents$/i, "contents"],
+  [/^(table of )?contents$|^(poetry|poem|story|stories|poems) (listing|list|index)$|^list of (poems|stories)$/i, "contents_manual"],
   [/^copyright( page)?$/i, "copyright"],
   [/^dedication$/i, "dedication"],
   [/^epigraph$/i, "epigraph"],
@@ -146,7 +144,7 @@ const TITLES: [RegExp, PageKind][] = [
   [/^afterword\b/i, "afterword"],
   [/^acknowledg(e)?ments?$/i, "acknowledgments"],
   [/^about the author$/i, "about_author"],
-  [/^(also by\b|other books by\b|books by\b)/i, "also_by"],
+  [/^(also by\b|other books by\b|books by\b)|^other\b.*\b(books|novels|anthologies|titles|works)$/i, "also_by"],
   [/^(end ?notes|notes)$/i, "endnotes"],
   [/^glossary$/i, "glossary"],
   [/^appendi(x|ces)\b/i, "appendix"],
@@ -157,7 +155,7 @@ const TITLES: [RegExp, PageKind][] = [
 
 /** epub:type words, and the kind each means. */
 const EPUB_TYPES: [RegExp, PageKind | "front" | "body" | "back"][] = [
-  [/\btoc\b/, "contents"],
+  [/\btoc\b/, "contents_manual"],
   [/\bcopyright-page\b/, "copyright"],
   [/\bdedication\b/, "dedication"],
   [/\bepigraph\b/, "epigraph"],
@@ -198,7 +196,8 @@ export function looksLikePoem(body: string): boolean {
   const paragraphs = [...doc.body.querySelectorAll("p:not([data-blank])")];
   if (paragraphs.length < 3 && !paragraphs.some((p) => p.querySelector("br"))) return false;
   const lines = paragraphs.flatMap((p) => p.innerHTML.split(/<br\s*\/?>/i).map((l) => l.replace(/<[^>]+>/g, "").trim()));
-  if (lines.length < 4) return false;
+  // Three short lines set apart in one verse: a haiku, or a poem as short.
+  if (lines.length < 4 && !(lines.length === 3 && paragraphs.length === 1 && paragraphs[0].querySelector("br"))) return false;
   const short = lines.filter((l) => l.length > 0 && l.length <= 60).length;
   const ends = lines.filter((l) => /[.!?]["'”’]?$/.test(l)).length;
   return short / lines.length >= 0.8 && ends / lines.length < 0.6;
@@ -257,7 +256,13 @@ const textWords = (html: string) =>
 /** The kind a section's title, the file's own label, and its words point to. */
 function sortSection(title: string, body: string, hint: string | undefined, index: number, bookTitle: string): { kind: PageKind; area: Area | null; sure: boolean; why?: string; byHand?: boolean; include?: boolean } {
   const t = title.replace(/[.:]+$/, "").trim();
-  for (const [re, kind] of TITLES) if (re.test(t)) return { kind, area: areaOf(kind), sure: true };
+  for (const [re, kind] of TITLES)
+    if (re.test(t))
+      return kind === "title_page"
+        ? { kind, area: "front", sure: true, include: false, why: "Scribe makes the title page from the book's details, so this one is left out unless you tick it." }
+        : kind === "contents_manual"
+          ? { kind, area: "front", sure: true, include: false, why: "Scribe makes the contents from the book's sections, so this list is left out unless you tick it." }
+          : { kind, area: areaOf(kind), sure: true };
   if (hint) {
     for (const [re, said] of EPUB_TYPES) {
       if (!re.test(hint)) continue;
@@ -278,7 +283,13 @@ function sortSection(title: string, body: string, hint: string | undefined, inde
   }
   if (/©|\ball rights reserved\b/i.test(text) && words < 400) return { kind: "copyright", area: "front", sure: false, byHand: true, why: "Its words look like a copyright page." };
   if (/^for\b/i.test(text.trim()) && words < 40) return { kind: "dedication", area: "front", sure: false, why: "Short and starting with “For”, like a dedication." };
-  if (looksLikePoem(body)) return { kind: "poem", area: null, sure: false, why: "Set out like a poem, so its lines are kept as written." };
+  if (looksLikePoem(body)) {
+    const lines = body.split(/<br\s*\/?>/i).length;
+    if (lines === 3 && !/<\/p>\s*<p/i.test(body)) return { kind: "haiku", area: null, sure: true, why: "Three short lines, set out like a haiku, so they're kept as written." };
+    // Lines the file itself breaks one by one (a PDF's or Markdown's verse) are surely a poem.
+    const marked = [...body.matchAll(/<p>([\s\S]*?)<\/p>/g)].every((m) => /<br/i.test(m[1]) || !/\S/.test(m[1].replace(/<[^>]+>/g, "")) || m[1].replace(/<[^>]+>/g, "").trim().split(/\s+/).length <= 3);
+    return { kind: "poem", area: null, sure: marked, why: "Set out like a poem, so its lines are kept as written." };
+  }
   return { kind: "chapter", area: "chapter", sure: true };
 }
 
@@ -300,7 +311,7 @@ export function buildManuscript(doc: ImportedDocument, at: SplitAt): Manuscript 
   const sections: ManuscriptSection[] = chapters.map((c, i) => {
     const sorted = sortSection(c.title, c.body, c.hint, i, doc.title);
     // A kind that fits more than one area takes the one the book is in by now.
-    let area: Area = sorted.area ?? (ORDER[reached] > 0 ? reached : sorted.kind === "poem" ? "chapter" : "front");
+    let area: Area = sorted.area ?? (ORDER[reached] > 0 ? reached : sorted.kind === "poem" || sorted.kind === "haiku" ? "chapter" : "front");
     let why = sorted.why;
     let sure = sorted.sure;
     let kind = sorted.kind;
@@ -314,21 +325,23 @@ export function buildManuscript(doc: ImportedDocument, at: SplitAt): Manuscript 
     if (!BODY_KINDS.includes(kind) && area === "chapter" && kind !== "custom") kind = "custom";
     reached = area;
     let body = c.body;
-    if (kind === "poem") body = asPoem(body);
+    if (kind === "poem" || kind === "haiku") body = asPoem(body);
     else {
       const settled = settleBlanks(body, spacing);
       body = settled.body;
       breaks += settled.breaks;
     }
-    return { title: kind === "poem" && c.title === "Untitled" ? "" : c.title, body, words: c.words, area, kind, sure, ...(why ? { why } : {}), include: sorted.include ?? true, ...(sorted.byHand ? { byHand: true } : {}) };
+    return { title: (kind === "poem" || kind === "haiku") && c.title === "Untitled" ? "" : c.title, body, words: c.words, area, kind, sure, ...(why ? { why } : {}), include: sorted.include ?? true, ...(sorted.byHand ? { byHand: true } : {}) };
   });
 
+  const poems = sections.filter((s) => s.kind === "poem" || s.kind === "haiku").length;
   sections.forEach((s, i) => {
     if (!s.sure) issues.push({ kind: "classification", section: i, message: s.why ?? `Check that “${s.title || "this section"}” is in the right place.` });
-    if ((s.title === "Untitled" || !s.title) && s.kind !== "poem") issues.push({ kind: "boundary", section: i, message: "No heading was found here. Check where this section starts and what it's called." });
+    if ((s.title === "Untitled" || !s.title) && s.kind !== "poem" && s.kind !== "haiku") issues.push({ kind: "boundary", section: i, message: "No heading was found here. Check where this section starts and what it's called." });
     if (!s.words && !/<img/i.test(s.body)) issues.push({ kind: "empty", section: i, message: "This section has no words." });
-    if (s.kind === "poem") issues.push({ kind: "poetry", section: i, message: "Check the poem's line breaks, stanzas and indents against the original." });
+    if ((s.kind === "poem" || s.kind === "haiku") && poems <= 5) issues.push({ kind: "poetry", section: i, message: "Check the poem's line breaks, stanzas and indents against the original." });
   });
+  if (poems > 5) issues.push({ kind: "poetry", section: null, message: `${poems} poems were kept line by line. Check their line breaks, stanzas and indents against the original.` });
   const kept = sections.reduce((n, s) => n + (s.body.match(/<img/gi)?.length ?? 0), 0);
   if (kept < sourcePictures) issues.push({ kind: "images", section: null, message: `${sourcePictures - kept} of the file's ${sourcePictures} pictures couldn't be brought in.` });
   if (sourceDoc.body.querySelector("table")) issues.push({ kind: "formatting", section: null, message: "The file has tables. Scribe doesn't hold tables, so their words became plain paragraphs." });
@@ -336,6 +349,7 @@ export function buildManuscript(doc: ImportedDocument, at: SplitAt): Manuscript 
   const after = sections.reduce((n, s) => n + textWords(s.body.replace(/<sup[^>]*data-footnote="([^"]*)"[^>]*>.*?<\/sup>/g, " $1 ")), 0) + sections.reduce((n, s) => n + textWords(s.title), 0);
   if (before > 0 && after < before * 0.98)
     issues.push({ kind: "text", section: null, message: `About ${(before - after).toLocaleString()} words in the file weren't recognised. Compare the book with the original before publishing.` });
+  for (const w of doc.warnings ?? []) issues.push({ kind: w.kind, section: null, message: w.message });
   if (breaks) issues.push({ kind: "breaks", section: null, message: `${breaks} blank ${breaks === 1 ? "line was" : "lines were"} kept as ${breaks === 1 ? "a scene break" : "scene breaks"}.` });
 
   return { title: doc.title, author: doc.author, description: doc.description, language: doc.language ?? null, isbn: doc.isbn ?? null, sections, issues };

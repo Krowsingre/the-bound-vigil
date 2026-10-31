@@ -994,6 +994,13 @@
   font: 400 16px/1.55 var(--font-serif);
 }
 
+.about-made,
+.about-links {
+  max-width: 560px;
+  margin: 12px 0 0;
+  font-size: 13.5px;
+}
+
 /* Shortcuts */
 .key-table {
   width: 100%;

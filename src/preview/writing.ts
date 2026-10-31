@@ -172,6 +172,7 @@ export function previewWriting(): Calls {
       signature: "valid",
       keyId: "0f3a9c51d2e87b44",
       appleStamp: stamp,
+      appleCheck: stamp ? "valid" : null,
       device: "This computer",
     };
     records = [...records, made];

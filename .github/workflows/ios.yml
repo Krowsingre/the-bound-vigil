@@ -17,6 +17,7 @@ jobs:
     runs-on: macos-26
     env:
       APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+      TBV_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v4
       # Says which of the four Apple secrets GitHub has (never their values).

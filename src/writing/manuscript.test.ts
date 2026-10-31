@@ -77,7 +77,7 @@ describe("Looking at a file first", () => {
   it("knows the files it can rebuild from", () => {
     expect(inspect("My Book.docx", new Uint8Array())).toMatchObject({ format: "docx", supported: true });
     expect(inspect("My Book.epub", new Uint8Array())).toMatchObject({ format: "epub", supported: true });
-    expect(inspect("My Book.pdf", new Uint8Array())).toMatchObject({ format: "pdf", supported: false });
+    expect(inspect("My Book.pdf", new Uint8Array())).toMatchObject({ format: "pdf", supported: true });
   });
 
   it("recognises a Kindle Create project, and one made from a PDF", () => {
@@ -86,9 +86,7 @@ describe("Looking at a file first", () => {
       "resources/book.kdf": strToU8("SQLite format 3"),
       "resources/res/rsrc8": strToU8("%PDF-1.3 …"),
     });
-    const made = inspect("Through the Night.zip", fromPdf);
-    expect(made).toMatchObject({ format: "kindle_create", supported: false });
-    expect(made.reason).toContain("made from a PDF");
+    expect(inspect("Through the Night.zip", fromPdf)).toMatchObject({ format: "kindle_create", supported: true });
     const reflowable = zipSync({ "book.kcb": strToU8('{"book_state":{"book_input_type":0}}'), "resources/book.kdf": strToU8("SQLite format 3") });
     expect(inspect("Novel.zip", reflowable).reason).toContain("Word file");
     expect(inspect("project.kcb", new Uint8Array()).reason).toContain("Zip the whole project folder");

@@ -13,6 +13,13 @@ import { formatBytes } from "../settings/controls";
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "long", timeStyle: "short" });
 
+const APPLE_CHECK: Record<string, string> = {
+  valid: "Apple vouched for it: made by genuine TBV on a real Apple device, and checked against Apple's certificate",
+  development: "Apple vouched for it from a test build of TBV, checked against Apple's certificate",
+  invalid: "Apple's stamp is attached, but it doesn't match this record",
+  unreadable: "Apple's stamp is attached, but it can't be read",
+};
+
 const source = (r: ProvenanceRecord) => (r.record.source ?? {}) as { name?: string; sha256?: string; bytes?: number; format?: string };
 
 function RecordRow({ record, own }: { record: ProvenanceRecord; own: boolean }) {
@@ -35,8 +42,13 @@ function RecordRow({ record, own }: { record: ProvenanceRecord; own: boolean }) 
       <p className={`provenance-check is-${record.signature}`}>
         <Icon name={record.signature === "valid" ? "checkCircle" : "info"} size={14} />
         {record.signature === "valid" ? "Signed, and the signature checks" : record.signature === "invalid" ? "This record doesn't match its signature: it was changed after it was made" : "This record can't be read"}
-        {record.appleStamp ? " · Apple's App Attest stamp attached" : ""}
       </p>
+      {record.appleStamp && (
+        <p className={`provenance-check is-${record.appleCheck === "valid" || record.appleCheck === "development" ? "valid" : "invalid"}`}>
+          <Icon name={record.appleCheck === "valid" || record.appleCheck === "development" ? "checkCircle" : "info"} size={14} />
+          {APPLE_CHECK[record.appleCheck ?? "unreadable"]}
+        </p>
+      )}
       <details className="provenance-more">
         <summary>The record</summary>
         <dl>
@@ -92,14 +104,14 @@ export function WhereItCameFrom({ projectId }: { projectId: string }) {
         <div key={s.sha256} className="provenance-source">
           <Icon name="file" size={15} />
           <span>
-            The original, {s.name} ({formatBytes(s.bytes)}), is kept on this device.
+            The original, {s.name} ({formatBytes(s.bytes)}), is kept on this device, and copied to your cloud when notes sync.
           </span>
           <button type="button" className="link-btn" onClick={() => setDeleting(s.sha256)}>
             Delete the original
           </button>
         </div>
       ))}
-      {imported && !seen.sources.length && <p className="muted provenance-note">The original file isn't on this device. Its fingerprint stays in the record.</p>}
+      {imported && !seen.sources.length && <p className="muted provenance-note">The original file isn't on this device. A computer copies it down from your cloud when notes sync; its fingerprint stays in the record either way.</p>}
       <p className="muted provenance-note">This record is your own confirmation, kept with the book. It isn't a check of who wrote it, and it's never put into a book you export.</p>
       {seen.history.length > 0 && (
         <details className="provenance-more">
@@ -116,7 +128,7 @@ export function WhereItCameFrom({ projectId }: { projectId: string }) {
       {deleting && (
         <ConfirmDialog
           title="Delete the original file?"
-          body="The book stays as it is, and the signed record keeps the file's fingerprint. Only the copy of the original kept on this device is deleted."
+          body="The book stays as it is, and the signed record keeps the file's fingerprint. The original is deleted from this device and from your cloud. Another computer that already copied it keeps its copy until you delete it there too."
           confirm="Delete the original"
           danger
           onConfirm={() => {

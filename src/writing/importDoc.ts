@@ -13,6 +13,13 @@ export interface ImportedDocument {
   isbn?: string | null;
   /** The whole book as HTML, chapter headings as <h1>/<h2>. */
   html: string;
+  /** Things the reading itself couldn't carry over, for the import report. */
+  warnings?: ImportWarning[];
+}
+
+export interface ImportWarning {
+  kind: "images" | "formatting" | "poetry" | "text";
+  message: string;
 }
 
 export interface ImportedChapter {
@@ -69,9 +76,29 @@ export async function readDocumentBytes(name: string, bytes: Uint8Array): Promis
     }
     case "epub":
       return fromEpub(bytes, fallback);
+    case "pdf":
+      return (await import("./pdfImport")).fromPdf(bytes, fallback);
+    case "zip":
+      return fromKindleCreate(bytes, fallback);
     default:
       throw new Error("TBV can bring in Word (.docx), OpenDocument (.odt), RTF, text, Markdown, HTML and EPUB files.");
   }
+}
+
+// ---- Kindle Create ----
+
+/** A Kindle Create project made from a PDF, zipped: the book is that PDF, kept in resources/res. */
+async function fromKindleCreate(bytes: Uint8Array, fallback: string): Promise<ImportedDocument> {
+  const isPdf = (b: Uint8Array) => b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46;
+  let pdf: Uint8Array | undefined;
+  try {
+    const found = unzipSync(bytes, { filter: (f) => /(^|\/)resources\/res\//.test(f.name) && f.originalSize > 4 });
+    pdf = Object.values(found).find(isPdf);
+  } catch {
+    // Reported below.
+  }
+  if (!pdf) throw new Error("This Kindle Create project wasn't made from a PDF. Rebuilding those comes in a later update; import the Word file it was made from instead.");
+  return (await import("./pdfImport")).fromPdf(pdf, fallback);
 }
 
 // ---- Word ----

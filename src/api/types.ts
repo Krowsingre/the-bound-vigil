@@ -1408,6 +1408,8 @@ export interface ProvenanceRecord {
   keyId: string;
   /** Apple's App Attest vouched for it too (iPhone and iPad). */
   appleStamp: boolean;
+  /** Checking Apple's stamp against Apple's root certificate; null without one. */
+  appleCheck: "valid" | "development" | "invalid" | "unreadable" | null;
   device: string | null;
 }
 
