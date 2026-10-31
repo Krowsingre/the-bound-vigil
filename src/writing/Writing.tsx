@@ -664,6 +664,7 @@ function ProjectView({
             showing={chapter?.id ?? null}
             picked={picked}
             onShowList={listOpen ? undefined : () => setListOpen(true)}
+            onSettings={saveSettings}
             onClose={() => setSide(null)}
           />
         ) : (

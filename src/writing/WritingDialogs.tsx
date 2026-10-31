@@ -11,7 +11,7 @@ import { imageMime, loadBookFonts } from "./fonts";
 import { makeCiter } from "./sources";
 import { CoverMaker } from "./CoverMaker";
 import { pagesKey } from "./PaperbackCover";
-import { BOOK_STYLES, chooseStyle } from "./bookStyles";
+import { BOOK_STYLES } from "./bookStyles";
 import { buildDocx } from "./docx";
 import { printHtml, TRIMS } from "./printBook";
 import { bookFileName, buildTxt } from "./txt";
@@ -474,21 +474,9 @@ export function ExportDialog({
         <p className="muted dialog-lede">{lede}</p>
 
         {styled && (
-          <fieldset className="writing-export-group">
-            <legend>Book style</legend>
-            <div className="book-styles" role="radiogroup" aria-label="Book style">
-              <button type="button" role="radio" aria-checked={!settings.bookStyle} className="book-style" onClick={() => set(chooseStyle(settings, null))}>
-                <b>Your own</b>
-                <span>The settings below</span>
-              </button>
-              {BOOK_STYLES.map((s) => (
-                <button key={s.id} type="button" role="radio" aria-checked={settings.bookStyle === s.id} className={`book-style book-style-${s.id}`} onClick={() => publisher.check("Book styles", () => set(chooseStyle(settings, s.id)))}>
-                  <b>{s.label}</b>
-                  <span>{s.about}</span>
-                </button>
-              ))}
-            </div>
-          </fieldset>
+          <p className="muted writing-export-style">
+            Book style: <b>{BOOK_STYLES.find((s) => s.id === settings.bookStyle)?.label ?? "Your own"}</b>. Choose and compare styles in Preview, before exporting.
+          </p>
         )}
 
         {styled && (
