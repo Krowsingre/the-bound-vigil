@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import type { WritingChapter, WritingProject } from "../api/types";
-import { bookOrder, buildEpub, chapterXhtml, epubFileName, epubFiles, exportProblems, passageFonts, poemHtml, readExport, type ExportSettings } from "./epub";
+import { bookOrder, buildEpub, chapterXhtml, copyrightHtml, epubFileName, epubFiles, exportProblems, passageFonts, poemHtml, readExport, type ExportSettings } from "./epub";
 import { toTitleCase } from "./extensions";
-import { firstLine, poemWarnings } from "./pages";
+import { DEFAULT_COPYRIGHT, firstLine, poemWarnings } from "./pages";
 import { emptySource, makeCiter } from "./sources";
 import { countWords } from "./records";
 
@@ -412,5 +412,16 @@ describe("numbers in words", async () => {
       "One Hundred Five",
       "Three Hundred Forty-Two",
     ]);
+  });
+});
+
+describe("the Made with credit", () => {
+  it("is on the copyright page unless turned off, and always inside the EPUB", () => {
+    expect(copyrightHtml(project, DEFAULT_COPYRIGHT)).toContain("Made with The Bound Vigil");
+    expect(copyrightHtml(project, { ...DEFAULT_COPYRIGHT, credit: false })).not.toContain("Made with");
+    expect(readExport(JSON.stringify({ copyright: { credit: false } })).copyright.credit).toBe(false);
+    expect(readExport("{}").copyright.credit).toBe(true);
+    const opf = text(epubFiles({ project, chapters, settings: settings(), cover: null }).files, "OEBPS/content.opf");
+    expect(opf).toContain(`<meta name="generator" content="The Bound Vigil"/>`);
   });
 });

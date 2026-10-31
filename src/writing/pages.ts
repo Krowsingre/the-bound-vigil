@@ -215,12 +215,14 @@ export interface CopyrightDetails {
   isbn: string;
   edition: string;
   publisher: string;
+  /** "Made with The Bound Vigil" at the foot of the page; the writer can turn it off. */
+  credit: boolean;
 }
 
 export const DEFAULT_RIGHTS =
   "All rights reserved. No part of this book may be reproduced in any form or by any means without written permission from the copyright holder, except for brief quotations in reviews.";
 
-export const DEFAULT_COPYRIGHT: CopyrightDetails = { year: "", holder: "", rights: DEFAULT_RIGHTS, notice: "", isbn: "", edition: "", publisher: "" };
+export const DEFAULT_COPYRIGHT: CopyrightDetails = { year: "", holder: "", rights: DEFAULT_RIGHTS, notice: "", isbn: "", edition: "", publisher: "", credit: true };
 
 /** Ready-made sets of pages a new book can start with. */
 export type Template = "blank" | "novel" | "collection" | "nonfiction";

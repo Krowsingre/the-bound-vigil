@@ -589,6 +589,9 @@ export function ExportDialog({
             <strong>Where it goes</strong>
             {!isWeb && check("Add it to my library, where it can be read or sent to a Kindle", addToLibrary, setAddToLibrary)}
             {check(isWeb ? "Download the EPUB" : "Save a copy on this computer", saveCopy, setSaveCopy)}
+            <p className="muted writing-export-note">
+              Every EPUB made here notes, inside the file where readers don't see it, that it was made with The Bound Vigil. The "Made with" line on the copyright page can be turned off there.
+            </p>
           </div>
         )}
         {(error || problems.length > 0) && (

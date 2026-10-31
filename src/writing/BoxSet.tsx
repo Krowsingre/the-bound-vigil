@@ -41,7 +41,7 @@ export function boxSetSettings(each: ExportSettings[]): ExportSettings {
   const first = each[0] ?? readExport("{}");
   const sources = each.flatMap((s) => s.sources).filter((s, i, all) => all.findIndex((x) => x.id === s.id) === i);
   const storeBooks = each.flatMap((s) => s.storeBooks).filter((b, i, all) => all.findIndex((x) => x.title.trim().toLowerCase() === b.title.trim().toLowerCase()) === i);
-  return { ...first, sources, storeBooks, numbering: "restart", copyright: { ...DEFAULT_COPYRIGHT, holder: first.copyright.holder, publisher: first.copyright.publisher } };
+  return { ...first, sources, storeBooks, numbering: "restart", copyright: { ...DEFAULT_COPYRIGHT, holder: first.copyright.holder, publisher: first.copyright.publisher, credit: first.copyright.credit } };
 }
 
 export function BoxSetDialog({ onCreated, onCancel }: { onCreated: (id: string) => void; onCancel: () => void }) {

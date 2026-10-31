@@ -237,6 +237,10 @@ export function MadePage({
           {field("Publisher", copyright.publisher, (publisher) => change({ publisher }), "None")}
           {field("Rights", copyright.rights, (rights) => change({ rights }), DEFAULT_RIGHTS, true)}
           {field("Notice", copyright.notice, (notice) => change({ notice }), "e.g. This is a work of fiction. Names and places are the author's invention.", true)}
+          <label className="check-row">
+            <input type="checkbox" checked={copyright.credit !== false} onChange={(e) => change({ credit: e.target.checked })} />
+            <span>Add "Made with The Bound Vigil" at the foot of the page</span>
+          </label>
           <IsbnGuide />
         </div>
       )}
