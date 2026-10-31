@@ -30,6 +30,7 @@ import "./styles/privacy.css";
 import "./styles/writing.css";
 import "./styles/catalogs.css";
 import "./styles/browse.css";
+import "./styles/scribe.css";
 import { isApp, isHome, isIOS, isMac, isWeb } from "./api";
 import { HomePair } from "./web/HomePair";
 import { WebGate } from "./web/WebConnect";

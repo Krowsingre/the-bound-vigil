@@ -1,6 +1,7 @@
 import AVFoundation
 import AuthenticationServices
 import PhotosUI
+import Security
 import Tauri
 import StoreKit
 import UIKit
@@ -115,7 +116,7 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
   }
 
   private func reopenFolders() {
-    let saved = UserDefaults.standard.dictionary(forKey: TbvPlugin.foldersKey) as? [String: Data] ?? [:]
+    let saved = TbvPlugin.savedFolders()
     var kept = [String: Data]()
     for (_, bookmark) in saved {
       var stale = false
@@ -124,7 +125,43 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
       else { continue }
       kept[url.path] = stale ? ((try? url.bookmarkData()) ?? bookmark) : bookmark
     }
-    UserDefaults.standard.set(kept, forKey: TbvPlugin.foldersKey)
+    TbvPlugin.keepFolders(kept)
+  }
+
+  /// The chosen folders' bookmarks. They're also kept in the Keychain, which
+  /// outlives TBV being deleted, so a new install finds its folders again.
+  private static func savedFolders() -> [String: Data] {
+    if let saved = UserDefaults.standard.dictionary(forKey: foldersKey) as? [String: Data], !saved.isEmpty {
+      return saved
+    }
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "com.krowsingre.theboundvigil",
+      kSecAttrAccount as String: foldersKey,
+      kSecReturnData as String: true,
+    ]
+    var found: CFTypeRef?
+    guard SecItemCopyMatching(query as CFDictionary, &found) == errSecSuccess, let data = found as? Data,
+      let kept = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Data]
+    else { return [:] }
+    return kept
+  }
+
+  private static func keepFolders(_ kept: [String: Data]) {
+    UserDefaults.standard.set(kept, forKey: foldersKey)
+    guard let data = try? PropertyListSerialization.data(fromPropertyList: kept, format: .binary, options: 0) else { return }
+    let item: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "com.krowsingre.theboundvigil",
+      kSecAttrAccount as String: foldersKey,
+    ]
+    let update = [kSecValueData as String: data]
+    if SecItemUpdate(item as CFDictionary, update as CFDictionary) == errSecItemNotFound {
+      var add = item
+      add[kSecValueData as String] = data
+      add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+      SecItemAdd(add as CFDictionary, nil)
+    }
   }
 
   /// Asks for a folder in Files. Answers its path, or no path if cancelled.
@@ -214,10 +251,10 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
       invoke.reject("TBV wasn't allowed into that folder.")
       return
     }
-    var saved = UserDefaults.standard.dictionary(forKey: TbvPlugin.foldersKey) as? [String: Data] ?? [:]
+    var saved = TbvPlugin.savedFolders()
     if let bookmark = try? url.bookmarkData() {
       saved[url.path] = bookmark
-      UserDefaults.standard.set(saved, forKey: TbvPlugin.foldersKey)
+      TbvPlugin.keepFolders(saved)
     }
     invoke.resolve(["path": url.path])
   }

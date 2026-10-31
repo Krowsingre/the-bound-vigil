@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { WritingChapter, WritingProject } from "../api/types";
 import { Icon } from "../components/Icon";
+import { usePublisher } from "../license/Publisher";
+import { BOOK_STYLES, chooseStyle } from "./bookStyles";
 import { bookOrder, copyrightHtml, madeSectionHtml, previewHtml, type ExportSettings } from "./epub";
 import { imageMime, loadBookFonts } from "./fonts";
 import { IsbnGuide } from "./IsbnGuide";
@@ -25,6 +27,7 @@ export function BookPreview({
   showing,
   picked,
   onShowList,
+  onSettings,
   onClose,
 }: {
   project: WritingProject;
@@ -36,8 +39,11 @@ export function BookPreview({
   picked?: number;
   /** Brings back the list of pages, when it's hidden. */
   onShowList?: () => void;
+  /** Saves a book style picked here, so the export uses it. */
+  onSettings: (next: ExportSettings) => void;
   onClose: () => void;
 }) {
+  const publisher = usePublisher();
   const [url, setUrl] = useState<string | null>(null);
   const [width, setWidth] = useState<(typeof WIDTHS)[number]["value"]>("ereader");
   const [cover, setCover] = useState<{ bytes: Uint8Array; mime: string } | null>(null);
@@ -111,6 +117,19 @@ export function BookPreview({
         <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
           <Icon name="edit" size={16} /> Back to writing
         </button>
+      </div>
+      {/* Book styles are chosen here, where they can be seen, before the book is ever exported. */}
+      <div className="book-styles book-preview-styles" role="radiogroup" aria-label="Book style">
+        <button type="button" role="radio" aria-checked={!settings.bookStyle} className="book-style" onClick={() => onSettings(chooseStyle(settings, null))}>
+          <b>Your own</b>
+          <span>Your export settings</span>
+        </button>
+        {BOOK_STYLES.map((s) => (
+          <button key={s.id} type="button" role="radio" aria-checked={settings.bookStyle === s.id} className={`book-style book-style-${s.id}`} onClick={() => publisher.check("Book styles", () => onSettings(chooseStyle(settings, s.id)))}>
+            <b>{s.label}</b>
+            <span>{s.about}</span>
+          </button>
+        ))}
       </div>
       <div className="book-preview-stage">
         {url ? (

@@ -257,6 +257,10 @@ export interface Api {
   /** Changes the words on a highlight. Empty words make it a plain highlight. */
   setAnnotationNote(id: string, note: string | null): Promise<NoteItem>;
   deleteNote(id: string, kind: NoteKind): Promise<void>;
+  /** Pins a note above the rest in Scribe, or lets it go back among them. */
+  setNotePinned(id: string, pinned: boolean): Promise<void>;
+  /** Gives a note these tags in place of its old ones; answers them as kept. */
+  setNoteTags(id: string, tags: string[]): Promise<string[]>;
   /** Where this device keeps the library, and how big it is. */
   libraryInfo(): Promise<LibraryInfo>;
   /** Asks where to save, then writes the file. False if cancelled. */
@@ -302,6 +306,8 @@ export interface Api {
   unlockLicense(code: string): Promise<LicenseView | null>;
   /** Where a cloud app usually keeps its folder on this computer, if it's there. */
   suggestSyncFolder(service: string): Promise<string | null>;
+  /** True once, when TBV was installed again and picked up where it was. */
+  welcomedBack(): Promise<boolean>;
   resolveSyncConflict(kind: string, key: string, keepCloud: boolean): Promise<void>;
   /** Fetches a book that's only in the cloud onto this device. */
   downloadBook(bookId: string): Promise<void>;
@@ -918,6 +924,8 @@ function appApi(): Api {
     savePersonalNote: async (id, title, body) => (await core).invoke<NoteItem>("save_personal_note", { id, title, body }),
     setAnnotationNote: async (id, note) => (await core).invoke<NoteItem>("set_annotation_note", { id, note }),
     deleteNote: async (id, kind) => (await core).invoke("delete_note", { id, kind }),
+    setNotePinned: async (id, pinned) => (await core).invoke("set_note_pinned", { id, pinned }),
+    setNoteTags: async (id, tags) => (await core).invoke<string[]>("set_note_tags", { id, tags }),
     libraryInfo: async () => (await core).invoke<LibraryInfo>("library_info"),
     exportLibrary: () => saveTo("export_library", "Export library data", `TBV library ${today()}.json`, "JSON", ["json"]),
     exportNotesMarkdown: () => saveTo("export_notes_markdown", "Export notes", `TBV notes ${today()}.md`, "Markdown", ["md"]),
@@ -950,6 +958,7 @@ function appApi(): Api {
       return picked;
     },
     suggestSyncFolder: async (service) => (await core).invoke<string | null>("suggest_sync_folder", { service }),
+    welcomedBack: async () => (await core).invoke<boolean>("welcomed_back"),
     cloudSignIn: async (service) => (await core).invoke<ProviderChoice>("cloud_sign_in", { service }),
     cloudServices: async () => (await core).invoke<CloudService[]>("cloud_services"),
     checkForUpdate: async () => (await core).invoke<UpdateInfo>("update_check"),

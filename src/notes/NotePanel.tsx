@@ -6,13 +6,17 @@ import { authorLine, relativeTime } from "../lib/format";
 import { highlightHex } from "../reader/settings";
 import { personalTitle, placeLine } from "./noteInfo";
 import { KindChip, NoteArt } from "./NoteViews";
+import { TagEditor } from "./TagsDialog";
 
 /** The selected note in full, with your words editable in place. */
 export function NotePanel({
   note,
   related,
   menu,
+  tags,
   onSave,
+  onTags,
+  onClose,
   onOpenInReader,
   onSelect,
   onViewAllForBook,
@@ -21,7 +25,11 @@ export function NotePanel({
   /** Other notes from the same book. */
   related: NoteItem[];
   menu: MenuEntry[];
+  /** Every tag in use, offered to add. */
+  tags: string[];
   onSave: (note: NoteItem, words: string, title: string | null) => Promise<void>;
+  onTags: (note: NoteItem, tags: string[]) => Promise<void>;
+  onClose: () => void;
   onOpenInReader: (note: NoteItem) => void;
   onSelect: (note: NoteItem) => void;
   onViewAllForBook: (bookId: string) => void;
@@ -64,7 +72,7 @@ export function NotePanel({
   };
 
   return (
-    <aside className="note-panel" aria-label="Selected note">
+    <aside className="note-panel" aria-label="Open note" onKeyDown={(e) => e.key === "Escape" && !editing && onClose()}>
       <div className="note-panel-head">
         <NoteArt note={note} size="m" />
         <div className="note-panel-book">
@@ -75,7 +83,12 @@ export function NotePanel({
             {[place, relativeTime(note.createdAt)].filter(Boolean).join(" · ")}
           </p>
         </div>
-        {menu.length > 0 && <Menu label="More for this note" trigger={<Icon name="more" />} items={menu} />}
+        <div className="note-panel-tools">
+          {menu.length > 0 && <Menu label="More for this note" trigger={<Icon name="moreVertical" />} items={menu} />}
+          <button type="button" className="icon-btn" aria-label="Close the note" title="Close" onClick={onClose}>
+            <Icon name="close" size={16} />
+          </button>
+        </div>
       </div>
 
       {note.excerpt && (
@@ -125,6 +138,13 @@ export function NotePanel({
         ) : (
           <p className="muted note-panel-empty">Nothing written yet.</p>
         )}
+      </section>
+
+      <section className="note-panel-tags">
+        <div className="note-panel-label">
+          <h3>Tags</h3>
+        </div>
+        <TagEditor tags={note.tags ?? []} known={tags} onChange={(next) => void onTags(note, next)} />
       </section>
 
       {note.book && (

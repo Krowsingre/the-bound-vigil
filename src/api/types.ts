@@ -911,6 +911,9 @@ export interface NoteItem {
   locator: ReaderLocator | null;
   createdAt: IsoUtc;
   updatedAt: IsoUtc;
+  /** When it was pinned above the rest in Scribe; null when it isn't. */
+  pinnedAt?: IsoUtc | null;
+  tags?: string[];
 }
 
 export type NotesTab = "all" | "highlights" | "annotations" | "book_notes" | "personal";
@@ -922,6 +925,10 @@ export interface NotesQuery {
   search: string | null;
   bookId: BookId | null;
   colors: HighlightColor[];
+  /** Only notes with this tag. */
+  tag?: string | null;
+  /** Only notes changed at or after this moment. */
+  since?: IsoUtc | null;
 }
 
 export interface NoteCounts {
@@ -936,6 +943,8 @@ export interface NotesPage {
   notes: NoteItem[];
   counts: NoteCounts;
   books: CoverRef[];
+  /** Every tag a note has, for filtering by tag. */
+  tags: string[];
 }
 
 /** Where this device keeps the library, for Settings. */
@@ -1429,7 +1438,9 @@ export type BrowserEvent =
   /** A link for another app (mail, a phone number), not opened yet. */
   | { kind: "external"; tab: string; url: string }
   /** Chosen from a link's own menu: open it in a new tab, or bring its book into the library. */
-  | { kind: "menu"; tab: string; action: "newTab" | "addBook"; url: string };
+  | { kind: "menu"; tab: string; action: "newTab" | "addBook"; url: string }
+  /** A tab shortcut pressed while a page had the keyboard (Windows). */
+  | { kind: "key"; tab: string; key: "newTab" | "closeTab" | "nextTab" | "previousTab" | "reopenTab" };
 
 /** An article found on a page by reader mode (Mozilla's Readability). */
 export interface ReaderArticle {

@@ -12,7 +12,7 @@ import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Writing } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
-import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserHomeButton, BrowserRowToggle, BrowserSiteButton } from "./browse/Browser";
+import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton } from "./browse/Browser";
 import { AddressSuggestions } from "./browse/AddressSuggestions";
 import { readBrowserPrefs, shortAddress } from "./browse/browserPrefs";
 import { loadHistory } from "./browse/browserHistory";
@@ -200,6 +200,10 @@ export function App() {
 
   useEffect(() => api.onHardcoverNotice((message) => toast(message)), [toast]);
   useEffect(() => api.onSharedBooks((message) => toast(message)), [toast]);
+  // Installed again: the old install's place in sync, name and sign-ins came back.
+  useEffect(() => {
+    void api.welcomedBack().then((back) => back && toast("Welcome back. TBV is picking up where you left off."), () => undefined);
+  }, [toast]);
 
   // Chosen in Preferences › Discover: every site's cookies and data go each time TBV starts.
   useEffect(() => {
@@ -532,7 +536,7 @@ export function App() {
             } else if (route !== "notes" && route !== "writing" && route !== "documents" && route !== "audiobooks" && route !== "collections") setRoute("library");
           }}
           address={route === "catalogs" ? browserAddress : undefined}
-          pageAction={route === "catalogs" ? <BrowserHomeButton /> : undefined}
+          pageAction={route === "catalogs" ? <BrowserNav /> : undefined}
           searchStart={route === "catalogs" ? <BrowserSiteButton url={browserAddress} /> : undefined}
           addressLabel={route === "catalogs" ? shortAddress(browserAddress) : undefined}
           typingPanel={
@@ -553,7 +557,6 @@ export function App() {
                 )
               : undefined
           }
-          searchEnd={route === "catalogs" ? <BrowserRowToggle /> : undefined}
           onOpenProfile={openProfile}
           onOpenPlan={isApp || api.kind === "preview" ? openPlan : undefined}
           onImportBooks={importBooks}

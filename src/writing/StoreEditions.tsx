@@ -195,6 +195,9 @@ export function StoreEditionsDialog({
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <div className="dialog writing-dialog store-editions" role="dialog" aria-label="Store editions" onKeyDown={(e) => e.key === "Escape" && !busy && onClose()}>
         <h2>Store editions</h2>
+        <p className="dialog-lede">
+          Create a separate EPUB for each bookstore, with links to your other books adjusted for that store. Your manuscript stays the same; only the retailer-specific links change.
+        </p>
         <p className="muted dialog-lede">
           Stores turn books away when they send readers to another store. List your books' pages in each store, and every edition's links go to the right one. Links to other stores that aren't in the list keep their words but lose the link.
         </p>

@@ -314,8 +314,14 @@
   font-style: italic;
 }
 
+/* The search box reaches across to the profile circle; the window still
+   drags by the strips above and below it and the gap at its end. */
+.header > .search {
+  flex: 1 1 auto;
+}
+
 .header-spacer {
-  flex: 1;
+  flex: 0 0 8px;
   align-self: stretch;
 }
 

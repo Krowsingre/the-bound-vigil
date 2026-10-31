@@ -225,11 +225,26 @@ export const DEFAULT_COPYRIGHT: CopyrightDetails = { year: "", holder: "", right
 /** Ready-made sets of pages a new book can start with. */
 export type Template = "blank" | "novel" | "collection" | "nonfiction";
 
-export const TEMPLATES: { value: Template; label: string; hint: string }[] = [
-  { value: "blank", label: "Blank", hint: "Just a first chapter" },
-  { value: "novel", label: "Novel", hint: "Title page, copyright, dedication, contents, chapters, acknowledgments, about the author" },
-  { value: "collection", label: "Short story collection", hint: "Title page, copyright, contents, a story to start, about the author" },
-  { value: "nonfiction", label: "Non-fiction", hint: "Title page, copyright, contents, introduction, Part One, notes, bibliography, about the author" },
+export const TEMPLATES: { value: Template; label: string; hint: string; about: string }[] = [
+  { value: "blank", label: "Blank", hint: "Just a first chapter", about: "Begin with a single chapter and shape your book as you write." },
+  {
+    value: "novel",
+    label: "Novel",
+    hint: "Title page, copyright, dedication, contents, chapters, acknowledgments, about the author",
+    about: "Begin with the essential pages of a novel, from title and copyright to acknowledgments and author biography.",
+  },
+  {
+    value: "collection",
+    label: "Short Story Collection",
+    hint: "Title page, copyright, contents, a story to start, about the author",
+    about: "Bring individual stories together in one volume, with the opening and closing pages already prepared.",
+  },
+  {
+    value: "nonfiction",
+    label: "Non-fiction",
+    hint: "Title page, copyright, contents, introduction, Part One, notes, bibliography, about the author",
+    about: "Organize your work into parts, with an introduction, notes, bibliography, and supporting pages.",
+  },
 ];
 
 /** A template's sections after the first chapter, which every book starts with: front matter before it, the rest after. */

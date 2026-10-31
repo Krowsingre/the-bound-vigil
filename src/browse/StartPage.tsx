@@ -76,7 +76,6 @@ export function StartPage({
   search,
   onSearchChange,
   onSearch,
-  onScrolled,
   closed,
   onReopen,
   privately = false,
@@ -89,8 +88,6 @@ export function StartPage({
   onSearchChange: (text: string) => void;
   /** Searches for (or goes to) what's typed. */
   onSearch: (text: string) => void;
-  /** How far down it's scrolled, for hiding Discover's bar. */
-  onScrolled?: (y: number, room: number) => void;
   /** Tabs closed lately, for the Recently closed fold-out. */
   closed: ClosedTab[];
   onReopen: (index: number) => void;
@@ -144,13 +141,13 @@ export function StartPage({
     <div
       ref={scroller}
       className={`start-page${backdrop ? " has-backdrop" : ""}`}
-      onScroll={(e) => onScrolled?.(e.currentTarget.scrollTop, e.currentTarget.scrollHeight - e.currentTarget.clientHeight)}
     >
       <button type="button" className="start-background-button" title="Change the background" aria-label="Change the background" onClick={() => setChoosing(true)}>
         <Icon name="image" size={17} />
       </button>
       <div className="start-inner">
         <h1 className="start-title">Discover</h1>
+        <p className="start-lede">Explore the web, find new stories, and keep what matters to you.</p>
         <span className="start-rule" aria-hidden />
         {privately && (
           <p className="start-private">

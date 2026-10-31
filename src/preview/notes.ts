@@ -4,6 +4,7 @@
 
 import type { Api } from "../api";
 import type { Annotation, BookPreview, HighlightColor, NoteItem, NoteKind, NotesQuery } from "../api/types";
+import { cleanTags, notesPageOf } from "../notes/noteQuery";
 
 const day = 86_400_000;
 const ago = (days: number) => new Date(Date.now() - days * day).toISOString();
@@ -103,7 +104,7 @@ const sampleBookNote = (books: BookPreview[]): Annotation[] => {
     : [];
 };
 
-type NotesApi = Pick<Api, "getNotes" | "saveBookNote" | "savePersonalNote" | "setAnnotationNote" | "deleteNote">;
+type NotesApi = Pick<Api, "getNotes" | "saveBookNote" | "savePersonalNote" | "setAnnotationNote" | "deleteNote" | "setNotePinned" | "setNoteTags">;
 
 export function previewNotes(
   books: () => BookPreview[],
@@ -129,6 +130,18 @@ export function previewNotes(
         },
       ];
   if (!empty) annotations.set([...annotations.get(), ...sampleBookNote(books())]);
+  // Pins and tags, by note.
+  const marks = new Map<string, { pinnedAt: string | null; tags: string[] }>(
+    empty
+      ? []
+      : [
+          ["p1", { pinnedAt: ago(1), tags: ["plans", "reading"] }],
+          ["sample-booknote-middlemarch", { pinnedAt: ago(2), tags: ["reread"] }],
+          ["sample-Middlemarch-0.99", { pinnedAt: null, tags: ["epigraph", "themes"] }],
+          ["sample-Persuasion-0.93", { pinnedAt: null, tags: ["letters"] }],
+        ],
+  );
+  const markOf = (id: string) => marks.get(id) ?? { pinnedAt: null, tags: [] };
 
   const toItem = (a: Annotation): NoteItem | null => {
     const b = books().find((x) => x.id === a.bookId);
@@ -167,6 +180,7 @@ export function previewNotes(
       ),
     ]
       .filter((n): n is NoteItem => !!n)
+      .map((n) => ({ ...n, ...markOf(n.id) }))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const one = (id: string) => {
     const n = all().find((x) => x.id === id);
@@ -177,44 +191,16 @@ export function previewNotes(
     annotations.set(annotations.get().map((a) => (a.id === id ? { ...a, ...change, updatedAt: stamp() } : a)));
 
   return {
-    getNotes: async (q: NotesQuery) => {
-      const list = all();
-      const books: NoteItem["book"][] = [];
-      for (const n of list) if (n.book && !books.some((b) => b?.id === n.book?.id)) books.push(n.book);
-      const s = q.search?.trim().toLowerCase();
-      let notes = list.filter(
-        (n) =>
-          (q.tab === "all" ||
-            (q.tab === "highlights" && n.kind === "highlight") ||
-            (q.tab === "annotations" && n.kind === "annotation") ||
-            (q.tab === "book_notes" && n.kind === "book_note") ||
-            (q.tab === "personal" && n.kind === "personal")) &&
-          (!q.bookId || n.book?.id === q.bookId) &&
-          (!q.colors.length || (n.color && q.colors.includes(n.color))) &&
-          (!s ||
-            [n.excerpt, n.note, n.title, n.book?.title, n.locator?.chapter, ...(n.book?.authors ?? [])].some((t) =>
-              t?.toLowerCase().includes(s),
-            )),
-      );
-      if (q.sort === "updated") notes = [...notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      if (q.sort === "book")
-        notes = [...notes].sort(
-          (a, b) =>
-            Number(!a.book) - Number(!b.book) ||
-            (a.book?.title ?? "").localeCompare(b.book?.title ?? "") ||
-            (a.locator?.totalProgression ?? -1) - (b.locator?.totalProgression ?? -1),
-        );
-      return {
-        notes,
-        counts: {
-          all: list.length,
-          highlights: list.filter((n) => n.kind === "highlight").length,
-          annotations: list.filter((n) => n.kind === "annotation").length,
-          bookNotes: list.filter((n) => n.kind === "book_note").length,
-          personal: list.filter((n) => n.kind === "personal").length,
-        },
-        books: (books as NonNullable<NoteItem["book"]>[]).sort((a, b) => a.title.localeCompare(b.title)),
-      };
+    getNotes: async (q: NotesQuery) => notesPageOf(all(), q),
+    setNotePinned: async (id, pinned) => {
+      one(id);
+      marks.set(id, { ...markOf(id), pinnedAt: pinned ? stamp() : null });
+    },
+    setNoteTags: async (id, tags) => {
+      one(id);
+      const kept = cleanTags(tags);
+      marks.set(id, { ...markOf(id), tags: kept });
+      return kept;
     },
     saveBookNote: async (bookId, id, text) => {
       if (!text.trim()) throw new Error("the note is empty");

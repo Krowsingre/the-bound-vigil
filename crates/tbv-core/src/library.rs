@@ -597,6 +597,14 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (device_id, ebook_id, audiobook_id)
     );
     "#,
+    // v34: notes pinned above the rest in Scribe, and tags on notes, synced
+    // (annotation_mark, personal_note_mark).
+    r#"
+    ALTER TABLE annotations ADD COLUMN pinned_at TEXT;
+    ALTER TABLE annotations ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';
+    ALTER TABLE personal_notes ADD COLUMN pinned_at TEXT;
+    ALTER TABLE personal_notes ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

@@ -7,6 +7,8 @@ export interface BrowserTab {
   title: string | null;
   /** A private tab: no history, cookies or storage kept, and gone when TBV closes. */
   private?: boolean;
+  /** Pinned: kept small at the start of the row, and left open by Close other tabs. */
+  pinned?: boolean;
 }
 
 export interface TabsState {
@@ -54,7 +56,7 @@ export function writeTabs(state: TabsState): void {
   const kept = state.tabs.filter((t) => !t.private);
   const active = kept.some((t) => t.id === state.active) ? state.active : kept[0]?.id;
   try {
-    localStorage.setItem(KEY, JSON.stringify({ tabs: kept.map(({ id, url, title }) => ({ id, url, title })), active }));
+    localStorage.setItem(KEY, JSON.stringify({ tabs: kept.map(({ id, url, title, pinned }) => (pinned ? { id, url, title, pinned } : { id, url, title })), active }));
   } catch {
     // Forgotten after this visit.
   }
@@ -64,7 +66,8 @@ export function writeTabs(state: TabsState): void {
 export function openTab(state: TabsState, tab: BrowserTab): TabsState {
   const at = state.tabs.findIndex((t) => t.id === state.active);
   const tabs = [...state.tabs.slice(0, at + 1), tab, ...state.tabs.slice(at + 1)];
-  return { tabs: tabs.length > MOST_TABS ? tabs.filter((t) => t.id !== tabs.find((x) => x.id !== tab.id)!.id) : tabs, active: tab.id };
+  const oldest = tabs.find((x) => x.id !== tab.id && !x.pinned);
+  return { tabs: tabs.length > MOST_TABS && oldest ? tabs.filter((t) => t.id !== oldest.id) : tabs, active: tab.id };
 }
 
 /** Closes a tab; the one beside it comes forward. The last one closed leaves a fresh tab at `home`. */
@@ -103,10 +106,38 @@ export function duplicateTab(state: TabsState, id: string): TabsState {
   return openTab({ ...state, active: id }, { id: newTabId(), url: tab.url, title: tab.title, private: tab.private });
 }
 
-/** Closes every tab but `id`, which comes forward. */
+/** The tabs Close other tabs would close: every one but `id` and the pinned ones. */
+export function othersOf(state: TabsState, id: string): string[] {
+  return state.tabs.filter((t) => t.id !== id && !t.pinned).map((t) => t.id);
+}
+
+/** The tabs after `id` that Close tabs to the right would close, leaving pinned ones. */
+export function rightOf(state: TabsState, id: string): string[] {
+  const at = state.tabs.findIndex((t) => t.id === id);
+  return at < 0 ? [] : state.tabs.slice(at + 1).filter((t) => !t.pinned).map((t) => t.id);
+}
+
+/** Closes the tabs named; `id` comes forward when the one in front went with them. */
+export function closeTabs(state: TabsState, ids: string[], id: string): TabsState {
+  const tabs = state.tabs.filter((t) => !ids.includes(t.id));
+  if (!tabs.some((t) => t.id === id)) return state;
+  return { tabs, active: tabs.some((t) => t.id === state.active) ? state.active : id };
+}
+
+/** Closes every tab but `id` (and the pinned ones), and brings `id` forward. */
 export function closeOtherTabs(state: TabsState, id: string): TabsState {
+  const next = closeTabs(state, othersOf(state, id), id);
+  return next === state && !state.tabs.some((t) => t.id === id) ? state : { ...next, active: id };
+}
+
+/** Pins a tab (to the end of the pinned ones at the start of the row) or unpins it (to just after them). */
+export function pinTab(state: TabsState, id: string, pinned: boolean): TabsState {
   const tab = state.tabs.find((t) => t.id === id);
-  return tab ? { tabs: [tab], active: id } : state;
+  if (!tab) return state;
+  const rest = state.tabs.filter((t) => t.id !== id);
+  const after = rest.filter((t) => t.pinned).length;
+  rest.splice(after, 0, pinned ? { ...tab, pinned: true } : { ...tab, pinned: undefined });
+  return { ...state, tabs: rest };
 }
 
 /** A tab closed lately, for Reopen closed tab. */
@@ -170,5 +201,6 @@ export function reopenTab(state: TabsState, closed: ClosedTab): TabsState {
   const tab = { id: newTabId(), url: closed.url, title: closed.title };
   const tabs = [...state.tabs];
   tabs.splice(Math.min(closed.at, tabs.length), 0, tab);
-  return { tabs: tabs.length > MOST_TABS ? tabs.filter((t) => t.id !== tabs.find((x) => x.id !== tab.id)!.id) : tabs, active: tab.id };
+  const oldest = tabs.find((x) => x.id !== tab.id && !x.pinned);
+  return { tabs: tabs.length > MOST_TABS && oldest ? tabs.filter((t) => t.id !== oldest.id) : tabs, active: tab.id };
 }

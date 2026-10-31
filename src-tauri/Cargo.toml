@@ -1,6 +1,6 @@
 [package]
 name = "the-bound-vigil"
-version = "1.60.0"
+version = "1.61.0"
 edition.workspace = true
 license.workspace = true
 
@@ -36,7 +36,7 @@ tempfile = "3"
 webview2-com = "0.39"
 windows-core = "0.62"
 # The Microsoft Store, for buying the unlock.
-windows = { version = "0.62", features = ["std", "ApplicationModel", "Services_Store", "Foundation", "Foundation_Collections", "ApplicationModel_DataTransfer", "Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_Graphics_Dwm"] }
+windows = { version = "0.62", features = ["std", "ApplicationModel", "Services_Store", "Foundation", "Foundation_Collections", "ApplicationModel_DataTransfer", "Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_Graphics_Dwm", "Win32_Security_Credentials", "Win32_UI_Input_KeyboardAndMouse"] }
 windows-collections = "0.3"
 
 # Updating itself, on computers (phones update from their app store).
@@ -44,6 +44,10 @@ windows-collections = "0.3"
 tauri-plugin-updater = "2"
 # Noticing at once when a cloud app changes the synced folder.
 notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
+
+# What this device remembers across a reinstall, in the Keychain (remember.rs).
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+security-framework = "3"
 
 # Keeping the way into folders chosen on the Mac (folder_access.rs).
 [target.'cfg(target_os = "macos")'.dependencies]

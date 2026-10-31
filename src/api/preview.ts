@@ -930,7 +930,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "1.60.0", version: "1.61.0", notes: "The Bound Vigil 1.61.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "1.61.0", version: "1.62.0", notes: "The Bound Vigil 1.62.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
@@ -951,6 +951,7 @@ export function previewApi(): Api {
     unlockLicense: async (code) => (code.trim() ? (previewLicense = { ...previewLicense, state: "owned", daysLeft: 0 }) : null),
     suggestSyncFolder: async (service) =>
       ({ icloud: "C:\\Users\\you\\iCloudDrive", dropbox: "C:\\Users\\you\\Dropbox", onedrive: "C:\\Users\\you\\OneDrive", gdrive: "G:\\My Drive" })[service] ?? null,
+    welcomedBack: async () => new URLSearchParams(location.search).has("welcomeBack"),
     resolveSyncConflict: async (_kind, key) => {
       sync = { ...sync, conflicts: sync.conflicts.filter((c) => c.key !== key) };
       if (!sync.conflicts.length) sync.status = { ...sync.status, state: "idle" };

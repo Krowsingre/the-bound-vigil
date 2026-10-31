@@ -1090,6 +1090,16 @@
   letter-spacing: 0.01em;
 }
 
+.start-lede {
+  margin: 10px 0 0;
+  font: 400 17px/1.4 var(--font-serif);
+  text-align: center;
+}
+
+.start-page.has-backdrop .start-lede {
+  text-shadow: 0 1px 6px color-mix(in srgb, var(--bg) 80%, transparent);
+}
+
 /* A thin line with a small diamond at its middle, as under TBV's name. */
 .start-rule {
   position: relative;
@@ -1763,4 +1773,106 @@
     --chrome-strip: var(--surface-sunk);
     --chrome-bar: color-mix(in srgb, var(--text) 7%, var(--surface));
   }
+}
+
+/* 1.61, from embre's Discover concept: the page's buttons sit in the top bar
+   beside the address, and the tabs run edge to edge under it with no frame:
+   the open tab marked by the accent along its foot, the strip's own buttons
+   (every tab, bookmarks, add a catalogue, downloads, •••) at its right end. */
+.browser-nav {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 2px;
+}
+
+.browser-nav .header-action {
+  width: 38px;
+  height: 38px;
+}
+
+.header-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.header-action:disabled:hover {
+  background: none;
+}
+
+.header-action.is-on {
+  color: var(--accent);
+}
+
+.library.browse-browser:has(> .browser > .browser-strip) {
+  padding: 0;
+}
+
+.browser-strip {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  background: var(--chrome-strip);
+}
+
+.browser-strip .browser-tabs {
+  flex: 1;
+  align-items: stretch;
+  min-width: 0;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.browser-strip .browser-tab {
+  flex: 0 1 210px;
+  min-width: 96px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.browser-strip .browser-tab.is-active {
+  border: 0;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.browser-strip .browser-tab-name {
+  height: 42px;
+  padding-left: 14px;
+  font: 400 14px var(--font-serif);
+}
+
+.browser-strip .browser-tab.is-pinned {
+  flex: none;
+  min-width: 0;
+}
+
+.browser-strip .browser-tab.is-pinned .browser-tab-name {
+  padding: 0 14px;
+}
+
+.browser-strip-tools {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 2px;
+  padding: 0 10px 0 4px;
+}
+
+.browser-strip-tools .toolbar-button {
+  justify-content: center;
+  width: 34px;
+  padding: 0;
+}
+
+.browser-strip ~ .browser-view {
+  border: 0;
+}
+
+.browser-strip ~ .browser-offer {
+  border-width: 0 0 1px;
 }

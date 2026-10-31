@@ -11,7 +11,7 @@ import { imageMime, loadBookFonts } from "./fonts";
 import { makeCiter } from "./sources";
 import { CoverMaker } from "./CoverMaker";
 import { pagesKey } from "./PaperbackCover";
-import { BOOK_STYLES, chooseStyle } from "./bookStyles";
+import { BOOK_STYLES } from "./bookStyles";
 import { buildDocx } from "./docx";
 import { printHtml, TRIMS } from "./printBook";
 import { bookFileName, buildTxt } from "./txt";
@@ -38,10 +38,19 @@ const OPENS_WITH: { value: WritingProject["coverPage"]; label: string }[] = [
 ];
 
 /** Starting a new book. */
-export function NewBookDialog({ onCreated, onCancel }: { onCreated: (id: string) => void; onCancel: () => void }) {
+export function NewBookDialog({
+  onCreated,
+  onCancel,
+  startWith = "blank",
+}: {
+  onCreated: (id: string) => void;
+  onCancel: () => void;
+  /** The template chosen on Scribe's Books page. */
+  startWith?: Template;
+}) {
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
-  const [template, setTemplate] = useState<Template>("blank");
+  const [template, setTemplate] = useState<Template>(startWith);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const create = async () => {
@@ -59,6 +68,8 @@ export function NewBookDialog({ onCreated, onCancel }: { onCreated: (id: string)
         });
         if (s.role === "part" && first) await api.setWritingChapterPart(first.id, added.id);
       }
+      // Remembered for the book's card ("Novel · 12 chapters").
+      await api.setWritingExport(made.project.id, JSON.stringify({ ...readExport(made.project.export), kind: template }));
       onCreated(made.project.id);
     } catch (e) {
       setError(String(e));
@@ -121,8 +132,11 @@ export function DetailsDialog({
   project,
   onSaved,
   onCancel,
+  focus = "title",
 }: {
   project: WritingProject;
+  /** Where to start: the title, the author (Change Author) or the cover (Change Cover). */
+  focus?: "title" | "author" | "cover";
   onSaved: (project: WritingProject) => void;
   /** Closed without saving the words; the cover may still have changed. */
   onCancel: (project: WritingProject) => void;
@@ -187,7 +201,7 @@ export function DetailsDialog({
           <div className="writing-details-cover">
             {coverSrc ? <img src={coverSrc} alt="" /> : <div className="writing-cover-blank">{details.title || "Cover"}</div>}
             {!isWeb && (
-              <button type="button" className="btn btn-quiet btn-small" onClick={() => void pickCover()}>
+              <button type="button" className="btn btn-quiet btn-small" onClick={() => void pickCover()} autoFocus={focus === "cover"}>
                 {cover.cover ? "Change cover" : "Choose a cover"}
               </button>
             )}
@@ -205,11 +219,11 @@ export function DetailsDialog({
           <div className="writing-details-fields">
             <label className="field">
               <span>Title</span>
-              <input value={details.title} onChange={(e) => set({ title: e.target.value })} maxLength={200} autoFocus />
+              <input value={details.title} onChange={(e) => set({ title: e.target.value })} maxLength={200} autoFocus={focus === "title"} />
             </label>
             <label className="field">
               <span>Author</span>
-              <input value={details.author ?? ""} onChange={(e) => set({ author: e.target.value })} />
+              <input value={details.author ?? ""} onChange={(e) => set({ author: e.target.value })} autoFocus={focus === "author"} />
             </label>
             <div className="writing-details-row">
               <label className="field">
@@ -460,21 +474,9 @@ export function ExportDialog({
         <p className="muted dialog-lede">{lede}</p>
 
         {styled && (
-          <fieldset className="writing-export-group">
-            <legend>Book style</legend>
-            <div className="book-styles" role="radiogroup" aria-label="Book style">
-              <button type="button" role="radio" aria-checked={!settings.bookStyle} className="book-style" onClick={() => set(chooseStyle(settings, null))}>
-                <b>Your own</b>
-                <span>The settings below</span>
-              </button>
-              {BOOK_STYLES.map((s) => (
-                <button key={s.id} type="button" role="radio" aria-checked={settings.bookStyle === s.id} className={`book-style book-style-${s.id}`} onClick={() => publisher.check("Book styles", () => set(chooseStyle(settings, s.id)))}>
-                  <b>{s.label}</b>
-                  <span>{s.about}</span>
-                </button>
-              ))}
-            </div>
-          </fieldset>
+          <p className="muted writing-export-style">
+            Book style: <b>{BOOK_STYLES.find((s) => s.id === settings.bookStyle)?.label ?? "Your own"}</b>. Choose and compare styles in Preview, before exporting.
+          </p>
         )}
 
         {styled && (

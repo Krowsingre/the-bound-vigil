@@ -71,6 +71,12 @@ pub(crate) enum Event {
     #[serde(rename_all = "camelCase")]
     #[cfg_attr(not(windows), allow(dead_code))]
     Menu { tab: String, action: String, url: String },
+    /// A tab shortcut pressed while a page has the keyboard, which keeps keys
+    /// from reaching TBV's page on Windows: `newTab`, `closeTab`, `nextTab`,
+    /// `previousTab` or `reopenTab`.
+    #[serde(rename_all = "camelCase")]
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Key { tab: String, key: String },
 }
 
 /// A page the tab went through, for the Back and Forward buttons' menus.
@@ -509,7 +515,7 @@ mod windows {
 
     use webview2_com::Microsoft::Web::WebView2::Win32::*;
     use webview2_com::{
-        take_pwstr, CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler, CustomItemSelectedEventHandler, DownloadStartingEventHandler,
+        take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler, CustomItemSelectedEventHandler, DownloadStartingEventHandler,
         NavigationCompletedEventHandler, WebResourceRequestedEventHandler, WindowCloseRequestedEventHandler,
     };
     use windows_core::{Interface, BOOL, HSTRING, PWSTR};
@@ -562,6 +568,7 @@ mod windows {
         let _ = set_tracking(&core, view::protection().level);
         let mut token = 0i64;
         let _ = context_menu(&core, environment.clone(), app.clone(), tab.clone());
+        let _ = tab_keys(platform, app.clone(), tab.clone());
         let (failed_app, failing) = (app.clone(), tab.clone());
         // A page that couldn't open: TBV says why on a page of its own.
         core.add_NavigationCompleted(
@@ -627,6 +634,38 @@ mod windows {
             )?;
         }
         Ok(())
+    }
+
+    /// Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab and Ctrl+Shift+T work while a page
+    /// has the keyboard: they're passed to TBV's page instead of the site.
+    unsafe fn tab_keys(platform: &tauri::webview::PlatformWebview, app: tauri::AppHandle, tab: String) -> windows_core::Result<()> {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_SHIFT, VK_TAB};
+        let mut token = 0i64;
+        platform.controller().add_AcceleratorKeyPressed(
+            &AcceleratorKeyPressedEventHandler::create(Box::new(move |_, args| {
+                let Some(args) = args else { return Ok(()) };
+                let mut kind = COREWEBVIEW2_KEY_EVENT_KIND::default();
+                args.KeyEventKind(&mut kind)?;
+                if kind != COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN || GetKeyState(VK_CONTROL.0 as i32) >= 0 {
+                    return Ok(());
+                }
+                let shift = GetKeyState(VK_SHIFT.0 as i32) < 0;
+                let mut key = 0u32;
+                args.VirtualKey(&mut key)?;
+                let what = match (key, shift) {
+                    (0x54, false) => "newTab",
+                    (0x54, true) => "reopenTab",
+                    (0x57, false) => "closeTab",
+                    (k, false) if k == VK_TAB.0 as u32 => "nextTab",
+                    (k, true) if k == VK_TAB.0 as u32 => "previousTab",
+                    _ => return Ok(()),
+                };
+                args.SetHandled(true)?;
+                tell(&app, Event::Key { tab: tab.clone(), key: what.into() });
+                Ok(())
+            })),
+            &mut token,
+        )
     }
 
     /// A link's right-click menu gets TBV's own items at the top.

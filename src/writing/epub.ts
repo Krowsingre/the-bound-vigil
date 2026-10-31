@@ -61,7 +61,11 @@ export interface ExportSettings {
   print: PrintSettings;
   /** Your books' pages in each store, for store editions (editions.ts). */
   storeBooks: StoreBook[];
+  /** The template the book started from, shown on its card in Scribe; null for older books. */
+  kind?: BookKind | null;
 }
+
+export type BookKind = "blank" | "novel" | "collection" | "nonfiction";
 
 export const DEFAULT_EXPORT: ExportSettings = {
   font: "none",
@@ -82,6 +86,7 @@ export const DEFAULT_EXPORT: ExportSettings = {
   bookStyle: null,
   print: DEFAULT_PRINT,
   storeBooks: [],
+  kind: null,
 };
 
 const text = (value: unknown, fallback: string, max = 2000) => (typeof value === "string" ? value.slice(0, max) : fallback);
@@ -133,6 +138,7 @@ export function readExport(json: string | null | undefined): ExportSettings {
       bookStyle: typeof saved.bookStyle === "string" && styleById(saved.bookStyle) ? saved.bookStyle : null,
       print: readPrint(saved.print),
       storeBooks: readStoreBooks(saved.storeBooks),
+      kind: oneOf(saved.kind, ["blank", "novel", "collection", "nonfiction", null] as const, null),
     };
   } catch {
     return DEFAULT_EXPORT;

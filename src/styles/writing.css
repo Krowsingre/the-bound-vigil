@@ -811,6 +811,26 @@
   gap: 8px;
 }
 
+/* In Preview, the styles sit in one row above the page, scrolling sideways. */
+.book-preview-styles {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  padding: 10px 14px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: thin;
+}
+
+.book-preview-styles .book-style {
+  flex: 0 0 150px;
+}
+
+.writing-export-style {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
 .book-style {
   display: flex;
   flex-direction: column;

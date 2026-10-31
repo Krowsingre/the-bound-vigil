@@ -22,7 +22,6 @@ import type {
   HighlightColor,
   HomeViewModel,
   NoteItem,
-  NoteKind,
   ReaderLocator,
   ReadStatus,
   SmartKind,
@@ -37,6 +36,7 @@ import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
 import { cleanValue, DETAIL_FIELDS, listOf } from "../lib/details";
 import { copyName } from "../lib/format";
 import { DESKTOP_ONLY as SENDING_DESKTOP_ONLY } from "../ereaders/ereaders";
+import { cleanTags, notesPageOf } from "../notes/noteQuery";
 import { WebDb } from "./db";
 import { SEND_TO_DEVICE, UP_NEXT, WebLibrary, type BookRow } from "./library";
 import { WebSync } from "./sync";
@@ -462,6 +462,14 @@ export async function webApi(): Promise<Api> {
     updatedAt: String(a.updated_at),
   });
 
+  const tagList = (json: unknown): string[] => {
+    try {
+      const list = JSON.parse(String(json ?? "[]")) as unknown;
+      return Array.isArray(list) ? list.filter((t): t is string => typeof t === "string") : [];
+    } catch {
+      return [];
+    }
+  };
   const noteItems = (): NoteItem[] => {
     const all = bookById();
     const items: NoteItem[] = [];
@@ -481,6 +489,8 @@ export async function webApi(): Promise<Api> {
         locator: bookNote ? null : a.locator,
         createdAt: a.createdAt,
         updatedAt: a.updatedAt,
+        pinnedAt: (row.pinned_at as string | null) ?? null,
+        tags: tagList(row.tags),
       });
     }
     for (const p of library.rows("personal_notes")) {
@@ -496,6 +506,8 @@ export async function webApi(): Promise<Api> {
         locator: null,
         createdAt: String(p.created_at),
         updatedAt: String(p.updated_at),
+        pinnedAt: (p.pinned_at as string | null) ?? null,
+        tags: tagList(p.tags),
       });
     }
     return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -1020,38 +1032,19 @@ export async function webApi(): Promise<Api> {
         .map((m) => String(m.collection_id));
     },
 
-    getNotes: async (q) => {
-      const list = noteItems();
-      const noteBooks = new Map<string, CoverRef>();
-      for (const n of list) if (n.book) noteBooks.set(n.book.id, n.book);
-      const s = q.search?.trim().toLowerCase();
-      const tabOf: Record<string, NoteKind | null> = { all: null, highlights: "highlight", annotations: "annotation", book_notes: "book_note", personal: "personal" };
-      let notes = list.filter(
-        (n) =>
-          (!tabOf[q.tab] || n.kind === tabOf[q.tab]) &&
-          (!q.bookId || n.book?.id === q.bookId) &&
-          (!q.colors.length || (n.color && q.colors.includes(n.color))) &&
-          (!s || [n.excerpt, n.note, n.title, n.book?.title, n.locator?.chapter, ...(n.book?.authors ?? [])].some((t) => t?.toLowerCase().includes(s))),
-      );
-      if (q.sort === "updated") notes = [...notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      if (q.sort === "book")
-        notes = [...notes].sort(
-          (a, b) =>
-            Number(!a.book) - Number(!b.book) ||
-            (a.book?.title ?? "").localeCompare(b.book?.title ?? "") ||
-            (a.locator?.totalProgression ?? -1) - (b.locator?.totalProgression ?? -1),
-        );
-      return {
-        notes,
-        counts: {
-          all: list.length,
-          highlights: list.filter((n) => n.kind === "highlight").length,
-          annotations: list.filter((n) => n.kind === "annotation").length,
-          bookNotes: list.filter((n) => n.kind === "book_note").length,
-          personal: list.filter((n) => n.kind === "personal").length,
-        },
-        books: [...noteBooks.values()].sort((a, b) => a.title.localeCompare(b.title)),
-      };
+    getNotes: async (q) => notesPageOf(noteItems(), q),
+    setNotePinned: async (id, pinned) => {
+      const p = library.row("personal_notes", [id]);
+      const pinnedAt = pinned ? now() : null;
+      if (p && !p.deleted_at) await library.write("personal_note_mark", { ...p, pinned_at: pinnedAt });
+      else await library.write("annotation_mark", { ...annotationRow(id), pinned_at: pinnedAt });
+    },
+    setNoteTags: async (id, tags) => {
+      const kept = cleanTags(tags);
+      const p = library.row("personal_notes", [id]);
+      if (p && !p.deleted_at) await library.write("personal_note_mark", { ...p, tags: JSON.stringify(kept) });
+      else await library.write("annotation_mark", { ...annotationRow(id), tags: JSON.stringify(kept) });
+      return kept;
     },
     saveBookNote: async (bookId, id, text) => {
       const body = clean(text);
@@ -1143,6 +1136,7 @@ export async function webApi(): Promise<Api> {
     },
     chooseFolder: async () => null,
     suggestSyncFolder: async () => null,
+    welcomedBack: async () => false,
     cloudSignIn: async () => {
       throw new Error("The web version syncs through Supabase only.");
     },

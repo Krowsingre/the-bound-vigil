@@ -86,7 +86,7 @@ export function BrowserTab() {
   );
   return (
     <Columns side={side}>
-      <SectionGroup id="start" title="Start and search" lede="What Discover opens to, how it searches, and its row of buttons." holds={["search", "home", "bar"]}>
+      <SectionGroup id="start" title="Start and search" lede="What Discover opens to and how it searches." holds={["search", "home"]}>
         <Section id="search" title="Searching" lede="Words typed into Discover's address box that aren't a web address are searched for.">
           <Toggle
             label="Suggest from history and bookmarks while typing"
@@ -170,14 +170,6 @@ export function BrowserTab() {
               onChange={(linksOpen) => writeBrowserPrefs({ linksOpen })}
             />
           </Row>
-        </Section>
-        <Section id="bar" title="Discover bar" lede="The row of buttons under the address: back, forward, reload, bookmark, tabs, reader view, downloads and •••.">
-          <Toggle
-            label="Hide the bar while scrolling"
-            hint="It hides as a page scrolls down and comes back as it scrolls up, and the arrow in the address box takes you back to the top. Off: the arrow folds the bar away."
-            checked={prefs.hideBar}
-            onChange={(hideBar) => writeBrowserPrefs({ hideBar })}
-          />
         </Section>
       </SectionGroup>
       <Section id="history" title="History" lede="Pages visited and words searched for in Discover. Open it from Discover's ••• menu. To have the same history on every device, turn on Sync Discover history in Preferences › Sync & Backup.">
