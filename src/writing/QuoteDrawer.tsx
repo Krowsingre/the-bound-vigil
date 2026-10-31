@@ -73,7 +73,7 @@ export function QuoteDrawer({
     try {
       await api.setNoteProject(n.id, null);
       setReload((r) => r + 1);
-      toast("It's a note of its own again, in Scribe › Notes.");
+      toast("It's a note of its own again, in Scribe › Personal notes.");
     } catch (e) {
       toast(String(e));
     }
@@ -136,7 +136,7 @@ export function QuoteDrawer({
           {search.trim()
             ? "No notes match."
             : showing === "book"
-              ? "No notes for this book yet. Write one above, or give a note to this book from its menu in Scribe › Notes."
+              ? "No notes for this book yet. Write one above, or give a note to this book from its menu in Scribe › Personal notes."
               : "Highlights and notes from your reading show up here."}
         </p>
       ) : (
