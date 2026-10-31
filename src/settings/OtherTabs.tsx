@@ -5,7 +5,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { DuplicatesDialog } from "./DuplicatesDialog";
-import { OwnerCode, PlanButtons, shopName, useLicense } from "../license/License";
+import { ManageSubscription, OwnerCode, PlanButtons, shopName, useLicense } from "../license/License";
 import { canSelfUpdate, useUpdater, type UpdateState } from "./updates";
 import { SORTS, type Layout } from "../library/libraryView";
 import { TextSettings } from "../reader/ReaderPopovers";
@@ -898,14 +898,22 @@ function YourCopy() {
   const { license, busy, buy, restore } = useLicense();
   if (!license) return null;
   const ends = new Date(license.trialEnds * 1000).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+  // TBV for life with Publisher on a subscription on top.
+  const publisherOnTop = license.state === "owned" && license.plan === "lifetime" && !!license.publisher && !license.publisherForLife && license.shop !== "none";
+  const manage = license.shop === "apple" ? "manage it in your Apple ID's Subscriptions" : "manage it in the Microsoft Store's Subscriptions";
   const words =
     license.state === "owned"
       ? license.plan === "yearly" || license.plan === "monthly"
-        ? `On the ${license.publisher ? "Publisher " : ""}${license.plan} plan from ${shopName(license.shop)}. Thank you. It renews each ${license.plan === "yearly" ? "year" : "month"}; ${license.shop === "apple" ? "manage it in your Apple ID's Subscriptions" : "manage it in the Microsoft Store's Subscriptions"}.`
-        : `${license.publisher ? "TBV Publisher, bought" : "Bought"} in ${shopName(license.shop)}. Thank you.`
+        ? `On the ${license.publisher ? "Publisher " : ""}${license.plan} plan from ${shopName(license.shop)}. Thank you. It renews each ${license.plan === "yearly" ? "year" : "month"}; ${manage}.`
+        : publisherOnTop
+          ? `The Bound Vigil is yours for life, and Publisher comes with a subscription from ${shopName(license.shop)}. Thank you. It renews until you cancel; ${manage}. When it ends, TBV stays yours.`
+          : `${license.publisher ? "TBV Publisher, bought" : "Bought"} in ${shopName(license.shop)}. Thank you.`
       : license.trialDays > 0
         ? `${license.daysLeft === 1 ? "1 day" : `${license.daysLeft} days`} left of your free trial (until ${ends}). Choose a plan to keep using it after that.`
         : "Choose a plan to use The Bound Vigil.";
+  // Publisher for good: the upgrade for those who bought TBV for life themselves, otherwise full price.
+  const keepPublisher = publisherOnTop && !license.lifetimeShared ? "publisherUpgrade" : "publisherLifetime";
+  const keepPrice = keepPublisher === "publisherUpgrade" ? license.upgradePrice : license.publisherPrice;
   return (
     <Section id="licence" title="Your copy" lede={words}>
       {license.state !== "owned" && license.shop !== "none" && (
@@ -923,6 +931,22 @@ function YourCopy() {
         <div className="settings-actions">
           <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void buy(license.publisher ? "publisherLifetime" : "lifetime")}>
             Switch to lifetime{(license.publisher ? license.publisherPrice : license.price) ? ` for ${license.publisher ? license.publisherPrice : license.price}` : ""}
+          </button>
+          <ManageSubscription />
+        </div>
+      )}
+      {publisherOnTop && (
+        <div className="settings-actions">
+          <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void buy(keepPublisher)}>
+            Keep Publisher for life{keepPrice ? ` for ${keepPrice}` : ""}
+          </button>
+          <ManageSubscription />
+        </div>
+      )}
+      {license.state === "owned" && license.shop !== "none" && (
+        <div className="settings-actions">
+          <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void restore()}>
+            Restore purchases
           </button>
         </div>
       )}

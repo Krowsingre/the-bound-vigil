@@ -255,7 +255,14 @@ pub struct StoreStatus {
     /// The running plan is shared by someone in their family, who pays for it.
     #[serde(default)]
     pub shared: bool,
+    /// The lifetime unlock came from someone else (family), not their own purchase.
+    #[serde(default)]
+    pub lifetime_shared: bool,
 }
+
+/// What a purchase that's waiting on approval says.
+#[cfg(target_os = "ios")]
+const PENDING: &str = "Waiting for approval. The Bound Vigil unlocks by itself once the purchase is approved.";
 
 /// Asks the App Store about the lifetime unlock and the yearly plan.
 pub fn store_status(lifetime: &str, yearly: &str) -> Result<StoreStatus, String> {
@@ -276,7 +283,12 @@ pub fn store_buy(product: &str) -> Result<(), String> {
     #[cfg(target_os = "ios")]
     {
         let swift = SWIFT.get().ok_or("The App Store isn't ready.")?;
-        swift.run_mobile_plugin::<serde_json::Value>("storeBuy", ProductArgs { product, yearly: None }).map(|_| ()).map_err(|e| e.to_string())
+        let done = swift.run_mobile_plugin::<serde_json::Value>("storeBuy", ProductArgs { product, yearly: None }).map_err(|e| e.to_string())?;
+        // Ask to Buy, or a bank check: it goes through later, on its own.
+        if done.get("pending").and_then(|p| p.as_bool()) == Some(true) {
+            return Err(PENDING.into());
+        }
+        Ok(())
     }
     #[cfg(not(target_os = "ios"))]
     {

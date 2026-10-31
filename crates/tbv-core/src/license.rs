@@ -29,6 +29,10 @@ pub const OWNED: &str = "license.owned";
 pub const PLAN: &str = "license.plan";
 /// Set while the Publisher level is owned.
 pub const PUBLISHER: &str = "license.publisher";
+/// PUBLISHER's value when Publisher is owned for good ("1" while a subscription gives it).
+const FOR_LIFE: &str = "life";
+/// Apple keeps a subscription going this long while it retries a failed payment.
+const GRACE_DAYS: i64 = 16;
 /// Set when the owner's code was entered, for copies that can't be bought in.
 pub const CODE: &str = "license.code";
 /// The owner's code, kept only as a fingerprint so the code itself isn't public.
@@ -85,10 +89,14 @@ pub struct LicenseView {
     pub free_month: bool,
     /// Their subscription is shared with them through Family Sharing, so someone else pays for it.
     pub subscription_shared: bool,
+    /// Their TBV for life came through Family Sharing rather than their own purchase, so the Publisher upgrade isn't theirs to buy.
+    pub lifetime_shared: bool,
     /// Bought on "monthly", "yearly" or "lifetime" (none when not bought, or unlocked by code).
     pub plan: Option<String>,
     /// The Publisher level is owned (or unlocked by the owner's code).
     pub publisher: bool,
+    /// Publisher is theirs for good (Publisher for life, or TBV for life plus the upgrade), not only while a subscription runs.
+    pub publisher_for_life: bool,
     /// Publisher for life, like "$119.99".
     pub publisher_price: Option<String>,
     /// Publisher yearly, like "$39.99".
@@ -117,10 +125,13 @@ pub struct StoreAnswer {
     pub monthly_price: Option<String>,
     pub free_month: bool,
     pub subscription_shared: bool,
+    pub lifetime_shared: bool,
     /// What's owned: "monthly" or "yearly" (a subscription that's running) or "lifetime".
     pub plan: Option<String>,
     /// The Publisher level is owned, on either plan or as an upgrade.
     pub publisher: bool,
+    /// Publisher for life, or the upgrade on top of TBV for life.
+    pub publisher_for_life: bool,
     pub publisher_price: Option<String>,
     pub publisher_yearly_price: Option<String>,
     pub publisher_monthly_price: Option<String>,
@@ -137,8 +148,10 @@ impl StoreAnswer {
             monthly_price: None,
             free_month: false,
             subscription_shared: false,
+            lifetime_shared: false,
             plan: None,
             publisher: false,
+            publisher_for_life: false,
             publisher_price: None,
             publisher_yearly_price: None,
             publisher_monthly_price: None,
@@ -184,7 +197,7 @@ impl Library {
                 self.set_setting(OWNED, &now.to_string())?;
                 self.set_setting(PLAN, a.plan.as_deref().unwrap_or("lifetime"))?;
                 if a.publisher {
-                    self.set_setting(PUBLISHER, "1")?;
+                    self.set_setting(PUBLISHER, if a.publisher_for_life { FOR_LIFE } else { "1" })?;
                 } else {
                     self.conn.execute("DELETE FROM device_settings WHERE key = ?1", [PUBLISHER])?;
                 }
@@ -195,7 +208,17 @@ impl Library {
                 self.conn.execute("DELETE FROM device_settings WHERE key IN (?1, ?2, ?3)", [OWNED, PLAN, PUBLISHER])?;
                 false
             }
-            None => self.seconds(OWNED)?.is_some(),
+            // Offline: what the store said last, but a subscription only for
+            // as long as it could still be running (its period plus Apple's
+            // 16-day billing grace), so it can't outlast its payments.
+            None => match self.seconds(OWNED)? {
+                Some(seen_owned) => match self.setting(PLAN)?.as_deref() {
+                    Some("monthly") => now - seen_owned <= (31 + GRACE_DAYS) * DAY,
+                    Some("yearly") => now - seen_owned <= (366 + GRACE_DAYS) * DAY,
+                    _ => true,
+                },
+                None => false,
+            },
         };
         let owned = bought || coded;
         let ends = start + trial_days(shop) * DAY;
@@ -218,8 +241,10 @@ impl Library {
             monthly_price: answer.and_then(|a| a.monthly_price.clone()),
             free_month: answer.is_some_and(|a| a.free_month),
             subscription_shared: answer.is_some_and(|a| a.subscription_shared),
+            lifetime_shared: answer.is_some_and(|a| a.lifetime_shared),
             plan: if bought { self.setting(PLAN)? } else { None },
             publisher: coded || (bought && self.setting(PUBLISHER)?.is_some()),
+            publisher_for_life: coded || (bought && self.setting(PUBLISHER)?.as_deref() == Some(FOR_LIFE)),
             publisher_price: answer.and_then(|a| a.publisher_price.clone()),
             publisher_yearly_price: answer.and_then(|a| a.publisher_yearly_price.clone()),
             publisher_monthly_price: answer.and_then(|a| a.publisher_monthly_price.clone()),
@@ -281,6 +306,22 @@ mod tests {
         // Remembered offline; dropped when the store stops saying so.
         assert!(library.license(now + 2 * DAY, None, Shop::Microsoft, None).unwrap().publisher);
         assert!(!library.license(now + 3 * DAY, None, Shop::Microsoft, Some(&base)).unwrap().publisher);
+        let for_life = StoreAnswer { publisher: true, publisher_for_life: true, ..base.clone() };
+        assert!(library.license(now + 4 * DAY, None, Shop::Microsoft, Some(&for_life)).unwrap().publisher_for_life);
+        assert!(library.license(now + 5 * DAY, None, Shop::Microsoft, None).unwrap().publisher_for_life);
+    }
+
+    #[test]
+    fn offline_a_subscription_lasts_only_as_long_as_it_could_run() {
+        let (_dir, library) = crate::library::tests::open_temp_library();
+        let now = 1_800_000_000;
+        let monthly = StoreAnswer { owned: true, plan: Some("monthly".into()), ..StoreAnswer::nothing() };
+        library.license(now, None, Shop::Apple, Some(&monthly)).unwrap();
+        assert_eq!(library.license(now + 40 * DAY, None, Shop::Apple, None).unwrap().state, LicenseState::Owned);
+        assert_ne!(library.license(now + 60 * DAY, None, Shop::Apple, None).unwrap().state, LicenseState::Owned);
+        let life = StoreAnswer { owned: true, plan: Some("lifetime".into()), ..StoreAnswer::nothing() };
+        library.license(now + 61 * DAY, None, Shop::Apple, Some(&life)).unwrap();
+        assert_eq!(library.license(now + 2000 * DAY, None, Shop::Apple, None).unwrap().state, LicenseState::Owned);
     }
 
     #[test]

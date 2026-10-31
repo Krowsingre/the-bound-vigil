@@ -27,13 +27,15 @@ const REMIND_DAYS = 3;
 interface LicenseContext {
   license: LicenseView | null;
   busy: boolean;
+  /** Asks the store again, as when TBV opens: what's owned and the prices. */
+  refresh(): void;
   buy(plan: LicensePlan): Promise<void>;
   restore(): Promise<void>;
   /** False when the code is wrong. */
   unlock(code: string): Promise<boolean>;
 }
 
-const Context = createContext<LicenseContext>({ license: null, busy: false, buy: async () => undefined, restore: async () => undefined, unlock: async () => false });
+const Context = createContext<LicenseContext>({ license: null, busy: false, refresh: () => undefined, buy: async () => undefined, restore: async () => undefined, unlock: async () => false });
 
 export function useLicense() {
   return useContext(Context);
@@ -53,14 +55,22 @@ const LIFETIME_PLANS: LicensePlan[] = ["lifetime", "publisherLifetime", "publish
  * doesn't, so there any new purchase leaves the old one running.
  */
 export function leavesSubscriptionRunning(license: LicenseView | null, plan: LicensePlan): boolean {
-  if (!license || license.state !== "owned" || (license.plan !== "monthly" && license.plan !== "yearly")) return false;
+  if (!license || !onSubscription(license)) return false;
   // Shared by family: it's the organiser's to keep or cancel, and buying doesn't charge this person twice.
   if (license.subscriptionShared) return false;
   return LIFETIME_PLANS.includes(plan) || license.shop !== "apple";
 }
 
+/** A subscription is running: a plan of its own, or Publisher monthly or yearly on top of TBV for life. */
+export function onSubscription(license: LicenseView): boolean {
+  if (license.state !== "owned" || license.shop === "none") return false;
+  return license.plan === "monthly" || license.plan === "yearly" || (license.plan === "lifetime" && !!license.publisher && !license.publisherForLife);
+}
+
 /** The subscription someone is on, as words and what it charges. */
 function currentSubscription(license: LicenseView) {
+  // TBV for life with Publisher by subscription: which one isn't known here.
+  if (license.plan === "lifetime") return { name: "TBV Publisher subscription", charge: "each time it renews" };
   const monthly = license.plan === "monthly";
   const price = license.publisher ? (monthly ? license.publisherMonthlyPrice : license.publisherYearlyPrice) : monthly ? license.monthlyPrice : license.yearlyPrice;
   return { name: `${license.publisher ? "TBV Publisher " : ""}${monthly ? "monthly" : "yearly"} plan`, charge: price ? `${price} every ${monthly ? "month" : "year"}` : `every ${monthly ? "month" : "year"}` };
@@ -151,10 +161,19 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
   /** After a purchase that left a subscription running: the state from before it. */
   const [stillBilled, setStillBilled] = useState<LicenseView | null>(null);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     if (!isApp && api.kind !== "preview") return;
     void api.licenseStatus().then(setLicense, () => setLicense(null));
   }, []);
+
+  // Asked when TBV opens and each time it comes back to the front, so a
+  // renewal, a refund, an approved Ask to Buy or a family change shows.
+  useEffect(() => {
+    refresh();
+    const back = () => document.visibilityState === "visible" && refresh();
+    document.addEventListener("visibilitychange", back);
+    return () => document.removeEventListener("visibilitychange", back);
+  }, [refresh]);
 
   useEffect(() => {
     if (!license || license.state !== "trial" || license.daysLeft > REMIND_DAYS || reminded.current) return;
@@ -222,7 +241,7 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <Context.Provider value={{ license, busy, buy, restore, unlock }}>
+    <Context.Provider value={{ license, busy, refresh, buy, restore, unlock }}>
       {license?.state === "expired" ? <LicenseGate /> : children}
       {asking && license && (
         <KeepsChargingWarning
@@ -338,7 +357,7 @@ export function PlanButtons() {
     <div className="license-plans">
       <button type="button" className="btn btn-primary license-plan" disabled={busy} onClick={() => void buy("yearly")}>
         <b>{license.freeMonth ? "Start your free month" : yearly}</b>
-        <span>{license.freeMonth ? `Then ${yearly}. Cancel any time.` : "Renews each year. Cancel any time."}</span>
+        <span>{license.freeMonth ? `Then ${license.yearlyPrice ? `${license.yearlyPrice} a year` : "renews each year"}. Cancel any time.` : "Renews each year. Cancel any time."}</span>
       </button>
       <button type="button" className="btn btn-quiet license-plan" disabled={busy} onClick={() => void buy("monthly")}>
         <b>{license.monthlyPrice ? `${license.monthlyPrice} a month` : "Monthly"}</b>
@@ -348,20 +367,48 @@ export function PlanButtons() {
         <b>{license.price ? `${license.price} for life` : "For life"}</b>
         <span>Pay once, keep it for good.</span>
       </button>
-      {/* Apple asks a subscription's screen to link its terms and the privacy policy. */}
-      <p className="license-terms muted">
-        {license.shop === "apple" && (
-          <>
-            <button type="button" className="link-btn" onClick={() => void openExternal(APPLE_TERMS)}>
-              Terms of use
-            </button>
-            {" · "}
-          </>
-        )}
-        <button type="button" className="link-btn" onClick={() => void openExternal(PRIVACY_POLICY)}>
-          Privacy policy
-        </button>
-      </p>
+      <PurchaseLinks />
     </div>
+  );
+}
+
+/** Apple asks a subscription's screen to link its terms and the privacy policy. Prices that didn't load can be asked for again. */
+export function PurchaseLinks() {
+  const { license, busy, refresh } = useLicense();
+  if (!license) return null;
+  const missing = license.shop !== "none" && !license.price && !license.yearlyPrice;
+  return (
+    <p className="license-terms muted">
+      {missing && (
+        <>
+          <button type="button" className="link-btn" disabled={busy} onClick={refresh}>
+            Prices didn't load. Try again
+          </button>
+          {" · "}
+        </>
+      )}
+      {license.shop === "apple" && (
+        <>
+          <button type="button" className="link-btn" onClick={() => void openExternal(APPLE_TERMS)}>
+            Terms of use
+          </button>
+          {" · "}
+        </>
+      )}
+      <button type="button" className="link-btn" onClick={() => void openExternal(PRIVACY_POLICY)}>
+        Privacy policy
+      </button>
+    </p>
+  );
+}
+
+/** Where the store lets them change or cancel a subscription. */
+export function ManageSubscription() {
+  const { license } = useLicense();
+  if (!license || !onSubscription(license)) return null;
+  return (
+    <button type="button" className="btn btn-quiet" onClick={() => void openExternal(SUBSCRIPTIONS[license.shop])}>
+      Manage subscription
+    </button>
   );
 }

@@ -941,8 +941,10 @@ export function previewApi(): Api {
         ...previewLicense,
         state: "owned",
         daysLeft: 0,
-        plan: plan === "monthly" || plan === "publisherMonthly" ? "monthly" : plan === "yearly" || plan === "publisherYearly" ? "yearly" : "lifetime",
+        // Like the store: a subscription on top of TBV for life leaves it for life.
+        plan: previewLicense.plan === "lifetime" || plan.endsWith("ifetime") || plan === "publisherUpgrade" ? "lifetime" : plan === "monthly" || plan === "publisherMonthly" ? "monthly" : "yearly",
         publisher: previewLicense.publisher || plan.startsWith("publisher"),
+        publisherForLife: previewLicense.publisherForLife || plan === "publisherLifetime" || plan === "publisherUpgrade",
       }),
     restoreLicense: async () => previewLicense,
     unlockLicense: async (code) => (code.trim() ? (previewLicense = { ...previewLicense, state: "owned", daysLeft: 0 }) : null),

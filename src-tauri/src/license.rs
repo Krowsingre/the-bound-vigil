@@ -13,25 +13,25 @@ use tbv_core::license::{LicenseView, Shop, StoreAnswer};
 use tbv_core::Library;
 
 /// The lifetime unlock's name in both stores (its product ID).
-#[cfg(any(windows, target_os = "ios", target_os = "macos"))]
+#[cfg(any(test, windows, target_os = "ios", target_os = "macos"))]
 const PRODUCT: &str = if cfg!(windows) { "full_unlock" } else { "com.krowsingre.theboundvigil.unlock" };
 /// The yearly plan's name in both stores (a subscription).
-#[cfg(any(windows, target_os = "ios", target_os = "macos"))]
+#[cfg(any(test, windows, target_os = "ios", target_os = "macos"))]
 const YEARLY: &str = if cfg!(windows) { "yearly" } else { "com.krowsingre.theboundvigil.yearly" };
 /// The monthly plan (a subscription).
-#[cfg(any(windows, target_os = "ios", target_os = "macos"))]
+#[cfg(any(test, windows, target_os = "ios", target_os = "macos"))]
 const MONTHLY: &str = if cfg!(windows) { "monthly" } else { "com.krowsingre.theboundvigil.monthly" };
 /// TBV Publisher for life.
-#[cfg(any(windows, target_os = "ios", target_os = "macos"))]
+#[cfg(any(test, windows, target_os = "ios", target_os = "macos"))]
 const PUBLISHER: &str = if cfg!(windows) { "publisher" } else { "com.krowsingre.theboundvigil.publisher" };
 /// TBV Publisher yearly (in the App Store, the same subscription group as `YEARLY`).
-#[cfg(any(windows, target_os = "ios", target_os = "macos"))]
+#[cfg(any(test, windows, target_os = "ios", target_os = "macos"))]
 const PUBLISHER_YEARLY: &str = if cfg!(windows) { "publisher_yearly" } else { "com.krowsingre.theboundvigil.publisher.yearly" };
 /// TBV Publisher monthly (the same subscription group again).
-#[cfg(any(windows, target_os = "ios", target_os = "macos"))]
+#[cfg(any(test, windows, target_os = "ios", target_os = "macos"))]
 const PUBLISHER_MONTHLY: &str = if cfg!(windows) { "publisher_monthly" } else { "com.krowsingre.theboundvigil.publisher.monthly" };
 /// Publisher for someone who owns TBV for life, priced at the difference.
-#[cfg(any(windows, target_os = "ios", target_os = "macos"))]
+#[cfg(any(test, windows, target_os = "ios", target_os = "macos"))]
 const UPGRADE: &str = if cfg!(windows) { "publisher_upgrade" } else { "com.krowsingre.theboundvigil.publisher.upgrade" };
 
 /// Which plan to buy.
@@ -64,7 +64,7 @@ fn product_of(plan: Plan) -> &'static str {
 /// What the App Store says about one pair of products (a lifetime one and a
 /// subscription), as both Apple sides answer it. The monthly plans are asked
 /// about as a second pair, with the monthly plan in the subscription's place.
-#[cfg(any(target_os = "ios", target_os = "macos"))]
+#[cfg(any(test, target_os = "ios", target_os = "macos"))]
 struct ApplePair {
     lifetime: bool,
     yearly: bool,
@@ -73,10 +73,12 @@ struct ApplePair {
     free_month: bool,
     /// The running plan is shared with them by family (someone else pays).
     shared: bool,
+    /// The lifetime unlock is shared with them, not bought by them.
+    lifetime_shared: bool,
 }
 
 /// Puts the App Store questions (TBV, Publisher, each monthly too, and the upgrade) together.
-#[cfg(any(target_os = "ios", target_os = "macos"))]
+#[cfg(any(test, target_os = "ios", target_os = "macos"))]
 fn apple_answer(ask: impl Fn(&str, &str) -> Result<ApplePair, String>) -> Option<StoreAnswer> {
     let base = ask(PRODUCT, YEARLY).ok()?;
     let monthly = ask(PRODUCT, MONTHLY).ok();
@@ -100,8 +102,11 @@ fn apple_answer(ask: impl Fn(&str, &str) -> Result<ApplePair, String>) -> Option
         monthly_price: monthly.and_then(|m| m.yearly_price),
         free_month: base.free_month,
         subscription_shared: shared,
+        // Only TBV for life bought by this person qualifies for the upgrade's price.
+        lifetime_shared: base.lifetime && base.lifetime_shared,
         plan: plan_name(owned, lifetime, yearly),
         publisher: publisher_owned || upgraded,
+        publisher_for_life: upgraded || publisher.as_ref().is_some_and(|p| p.lifetime),
         publisher_price: publisher.as_ref().and_then(|p| p.price.clone()),
         publisher_yearly_price: publisher.as_ref().and_then(|p| p.yearly_price.clone()),
         publisher_monthly_price: publisher_monthly.and_then(|m| m.yearly_price),
@@ -110,7 +115,7 @@ fn apple_answer(ask: impl Fn(&str, &str) -> Result<ApplePair, String>) -> Option
 }
 
 /// The plan as the app names it: the longest one owned.
-#[cfg(any(windows, target_os = "ios", target_os = "macos"))]
+#[cfg(any(test, windows, target_os = "ios", target_os = "macos"))]
 fn plan_name(owned: bool, lifetime: bool, yearly: bool) -> Option<String> {
     if !owned {
         None
@@ -169,6 +174,7 @@ fn ask_store(app: &AppHandle) -> Option<StoreAnswer> {
                 yearly_price: s.yearly_price,
                 free_month: s.free_month,
                 shared: s.shared,
+                lifetime_shared: s.lifetime_shared,
             })
         });
     }
@@ -183,6 +189,7 @@ fn ask_store(app: &AppHandle) -> Option<StoreAnswer> {
                 yearly_price: s.yearly_price,
                 free_month: s.free_month,
                 shared: s.shared,
+                lifetime_shared: s.lifetime_shared,
             })
         });
     }
@@ -314,9 +321,11 @@ mod store {
             monthly_price: price_of(super::MONTHLY),
             free_month: false,
             subscription_shared: false,
+            lifetime_shared: false,
             plan: super::plan_name(owned, lifetime || publisher, yearly || publisher_yearly),
             // The upgrade only counts on top of TBV for life.
             publisher: publisher || publisher_yearly || publisher_monthly || (upgrade && lifetime),
+            publisher_for_life: publisher || (upgrade && lifetime),
             publisher_price: price_of(super::PUBLISHER),
             publisher_yearly_price: price_of(super::PUBLISHER_YEARLY),
             publisher_monthly_price: price_of(super::PUBLISHER_MONTHLY),
@@ -372,12 +381,14 @@ mod mac_store {
         pub yearly_price: Option<String>,
         pub free_month: bool,
         pub shared: bool,
+        pub lifetime_shared: bool,
     }
 
     #[derive(serde::Deserialize, Default)]
     #[serde(default)]
     struct Done {
         error: Option<String>,
+        pending: bool,
     }
 
     /// Takes the Swift side's JSON answer, and frees it.
@@ -393,6 +404,10 @@ mod mac_store {
 
     fn done(answer: *mut c_char) -> Result<(), String> {
         let done: Done = serde_json::from_value(read(answer)?).unwrap_or_default();
+        if done.pending {
+            // Ask to Buy, or a bank check: it goes through later, on its own.
+            return Err("Waiting for approval. The Bound Vigil unlocks by itself once the purchase is approved.".into());
+        }
         done.error.map_or(Ok(()), Err)
     }
 
@@ -412,5 +427,82 @@ mod mac_store {
     pub fn restore() -> Result<(), String> {
         // SAFETY: takes nothing.
         done(unsafe { tbv_mac_store_restore() })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    /// What each App Store product says: (owned and running, shared with them by family or a seat).
+    fn store(owned: &[(&str, bool)]) -> Option<StoreAnswer> {
+        let owned: HashMap<&str, bool> = owned.iter().copied().collect();
+        apple_answer(|lifetime, plan| {
+            Ok(ApplePair {
+                lifetime: owned.contains_key(lifetime),
+                yearly: owned.contains_key(plan),
+                price: Some(format!("{lifetime} price")),
+                yearly_price: Some(format!("{plan} price")),
+                free_month: false,
+                shared: owned.get(plan).copied().unwrap_or(false),
+                lifetime_shared: owned.get(lifetime).copied().unwrap_or(false),
+            })
+        })
+    }
+
+    fn level(a: &StoreAnswer) -> (bool, Option<&str>, bool, bool) {
+        (a.owned, a.plan.as_deref(), a.publisher, a.publisher_for_life)
+    }
+
+    #[test]
+    fn the_upgrade_alone_unlocks_nothing() {
+        let a = store(&[(UPGRADE, false)]).unwrap();
+        assert_eq!(level(&a), (false, None, false, false));
+    }
+
+    #[test]
+    fn lifetime_plus_upgrade_is_publisher_for_good() {
+        let a = store(&[(PRODUCT, false), (UPGRADE, false)]).unwrap();
+        assert_eq!(level(&a), (true, Some("lifetime"), true, true));
+        assert!(!a.lifetime_shared);
+        let b = store(&[(PUBLISHER, false)]).unwrap();
+        assert_eq!(level(&b), (true, Some("lifetime"), true, true));
+    }
+
+    #[test]
+    fn lifetime_with_a_publisher_subscription_falls_back_to_lifetime() {
+        let a = store(&[(PRODUCT, false), (PUBLISHER_MONTHLY, false)]).unwrap();
+        assert_eq!(level(&a), (true, Some("lifetime"), true, false));
+        let after = store(&[(PRODUCT, false)]).unwrap();
+        assert_eq!(level(&after), (true, Some("lifetime"), false, false));
+    }
+
+    #[test]
+    fn subscriptions_give_their_level() {
+        assert_eq!(level(&store(&[(MONTHLY, false)]).unwrap()), (true, Some("monthly"), false, false));
+        assert_eq!(level(&store(&[(YEARLY, false)]).unwrap()), (true, Some("yearly"), false, false));
+        assert_eq!(level(&store(&[(PUBLISHER_MONTHLY, false)]).unwrap()), (true, Some("monthly"), true, false));
+        assert_eq!(level(&store(&[(PUBLISHER_YEARLY, false)]).unwrap()), (true, Some("yearly"), true, false));
+        assert_eq!(level(&store(&[]).unwrap()), (false, None, false, false));
+    }
+
+    #[test]
+    fn a_subscriber_who_buys_lifetime_is_on_lifetime() {
+        let a = store(&[(YEARLY, false), (PRODUCT, false)]).unwrap();
+        assert_eq!(level(&a), (true, Some("lifetime"), false, false));
+        let b = store(&[(PUBLISHER_YEARLY, false), (PUBLISHER, false), (YEARLY, false)]).unwrap();
+        assert_eq!(level(&b), (true, Some("lifetime"), true, true));
+    }
+
+    #[test]
+    fn shared_purchases_unlock_but_a_shared_lifetime_cant_take_the_upgrade() {
+        let a = store(&[(PRODUCT, true)]).unwrap();
+        assert_eq!(level(&a), (true, Some("lifetime"), false, false));
+        assert!(a.lifetime_shared);
+        // A seat or family share of Publisher monthly.
+        let b = store(&[(PUBLISHER_MONTHLY, true)]).unwrap();
+        assert_eq!(level(&b), (true, Some("monthly"), true, false));
+        assert!(b.subscription_shared);
     }
 }
