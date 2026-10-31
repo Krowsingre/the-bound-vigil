@@ -2087,3 +2087,21 @@ kbd {
   border-radius: var(--radius-s);
   font-weight: 600;
 }
+
+/* Long enough to need room: scrolls inside a short screen, and its buttons
+   wrap, the main one first, rather than run off the side of a phone. */
+.subscription-warning {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+
+.subscription-warning .dialog-actions {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 560px) {
+  .subscription-warning .dialog-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+}

@@ -927,24 +927,19 @@ function YourCopy() {
       {license.state !== "owned" && license.shop === "none" && (
         <p className="settings-row-hint">This copy didn't come from a store, so it can't be bought in. The Bound Vigil will be sold in the Microsoft Store and the App Store.</p>
       )}
-      {license.state === "owned" && (license.plan === "monthly" || license.plan === "yearly") && license.shop !== "none" && (
-        <div className="settings-actions">
-          <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void buy(license.publisher ? "publisherLifetime" : "lifetime")}>
-            Switch to lifetime{(license.publisher ? license.publisherPrice : license.price) ? ` for ${license.publisher ? license.publisherPrice : license.price}` : ""}
-          </button>
-          <ManageSubscription />
-        </div>
-      )}
-      {publisherOnTop && (
-        <div className="settings-actions">
-          <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void buy(keepPublisher)}>
-            Keep Publisher for life{keepPrice ? ` for ${keepPrice}` : ""}
-          </button>
-          <ManageSubscription />
-        </div>
-      )}
       {license.state === "owned" && license.shop !== "none" && (
         <div className="settings-actions">
+          {(license.plan === "monthly" || license.plan === "yearly") && (
+            <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void buy(license.publisher ? "publisherLifetime" : "lifetime")}>
+              Switch to lifetime{(license.publisher ? license.publisherPrice : license.price) ? ` for ${license.publisher ? license.publisherPrice : license.price}` : ""}
+            </button>
+          )}
+          {publisherOnTop && (
+            <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void buy(keepPublisher)}>
+              Keep Publisher for life{keepPrice ? ` for ${keepPrice}` : ""}
+            </button>
+          )}
+          <ManageSubscription />
           <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void restore()}>
             Restore purchases
           </button>
@@ -1025,7 +1020,7 @@ function AboutVersion({ version }: { version: string }) {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.57.0");
+  const [version, setVersion] = useState("1.58.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

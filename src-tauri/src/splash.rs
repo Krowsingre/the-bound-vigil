@@ -105,6 +105,13 @@ fn build_card(app: &AppHandle, width: f64, height: f64) -> tauri::Result<tauri::
         .shadow(false);
     #[cfg(not(target_os = "macos"))]
     let card = card.transparent(true);
+    // A see-through window needs Apple's private API, which the Mac App Store
+    // refuses, so on a Mac the window is the card itself, dark to its edges.
+    #[cfg(target_os = "macos")]
+    let card = {
+        let _ = (width, height);
+        card.inner_size(CARD.0, CARD.1).center().background_color(tauri::window::Color(11, 12, 14, 255))
+    };
     card.build()
 }
 

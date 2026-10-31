@@ -79,12 +79,15 @@ struct ApplePair {
 
 /// Puts the App Store questions (TBV, Publisher, each monthly too, and the upgrade) together.
 #[cfg(any(test, target_os = "ios", target_os = "macos"))]
-fn apple_answer(ask: impl Fn(&str, &str) -> Result<ApplePair, String>) -> Option<StoreAnswer> {
-    let base = ask(PRODUCT, YEARLY).ok()?;
-    let monthly = ask(PRODUCT, MONTHLY).ok();
-    let publisher = ask(PUBLISHER, PUBLISHER_YEARLY).ok();
-    let publisher_monthly = ask(PUBLISHER, PUBLISHER_MONTHLY).ok();
-    let upgrade = ask(UPGRADE, PUBLISHER_YEARLY).ok();
+fn apple_answer(ask: impl Fn(&str, &str) -> Result<ApplePair, String> + Sync) -> Option<StoreAnswer> {
+    // All at once: each is a trip to the App Store, and one after another
+    // they kept TBV waiting after a purchase.
+    let [base, monthly, publisher, publisher_monthly, upgrade] = std::thread::scope(|s| {
+        [(PRODUCT, YEARLY), (PRODUCT, MONTHLY), (PUBLISHER, PUBLISHER_YEARLY), (PUBLISHER, PUBLISHER_MONTHLY), (UPGRADE, PUBLISHER_YEARLY)]
+            .map(|(lifetime, plan)| s.spawn(|| ask(lifetime, plan).ok()))
+            .map(|h| h.join().ok().flatten())
+    });
+    let base = base?;
     let by_month = monthly.as_ref().is_some_and(|m| m.yearly);
     let publisher_by_month = publisher_monthly.as_ref().is_some_and(|m| m.yearly);
     let publisher_owned = publisher.as_ref().is_some_and(|p| p.lifetime || p.yearly) || publisher_by_month;
