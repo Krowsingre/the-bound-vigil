@@ -190,6 +190,12 @@ export interface LicenseView {
   monthlyPrice?: string | null;
   /** The App Store gives this person the yearly plan's first month free. */
   freeMonth?: boolean;
+  /** Their subscription comes through Family Sharing, so someone else pays for it. */
+  subscriptionShared?: boolean;
+  /** Their TBV for life came through Family Sharing, so the Publisher upgrade isn't theirs to buy. */
+  lifetimeShared?: boolean;
+  /** Publisher is theirs for good (Publisher for life, or TBV for life plus the upgrade), not only while a subscription runs. */
+  publisherForLife?: boolean;
   /** Bought on this plan; none when not bought or unlocked by code. */
   plan?: "monthly" | "yearly" | "lifetime" | null;
   /** The Publisher level is owned (or unlocked by the owner's code). */

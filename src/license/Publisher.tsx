@@ -9,7 +9,7 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { api } from "../api";
 import type { LicenseView } from "../api/types";
-import { OwnerCode, shopName, useLicense } from "./License";
+import { OwnerCode, PurchaseLinks, shopName, useLicense } from "./License";
 
 interface PublisherContext {
   /** Whether the publishing tools can be used now. */
@@ -34,7 +34,7 @@ function previewLicense(): LicenseView | null {
     return null;
   }
   if (owned !== "1" && owned !== "yearly") return null;
-  return { state: "owned", daysLeft: 0, trialEnds: 0, trialDays: 30, shop: "microsoft", price: "$59.99", yearlyPrice: "$19.99", monthlyPrice: "$2.99", plan: owned === "yearly" ? "yearly" : "lifetime", publisher: false, publisherPrice: "$119.99", publisherYearlyPrice: "$39.99", publisherMonthlyPrice: "$9.99", upgradePrice: "$60.00" };
+  return { state: "owned", daysLeft: 0, trialEnds: 0, trialDays: 30, shop: "microsoft", price: "$59.99", yearlyPrice: "$19.99", monthlyPrice: "$2.99", plan: owned === "yearly" ? "yearly" : "lifetime", publisher: false, publisherForLife: false, publisherPrice: "$119.99", publisherYearlyPrice: "$39.99", publisherMonthlyPrice: "$9.99", upgradePrice: "$60.00" };
 }
 
 /** Publisher is there when it's owned, while trying TBV, and wherever there's nothing to buy it from (the web version, a copy from outside a store unlocked by code). */
@@ -70,11 +70,14 @@ const TOOLS = [
 
 function PublisherOffer({ tool, license, onClose }: { tool: string; license: LicenseView; onClose: () => void }) {
   const { busy, buy, restore } = useLicense();
-  const upgrade = license.state === "owned" && license.plan === "lifetime";
+  // TBV for life without Publisher means the TBV for life purchase itself;
+  // only someone who bought it (not family) gets the upgrade's price.
+  const forLife = license.state === "owned" && license.plan === "lifetime" && !license.publisher;
+  const upgrade = forLife && !license.lifetimeShared;
   const canBuy = license.shop !== "none";
-  const yearly = license.publisherYearlyPrice ?? "$39.99";
-  const monthly = license.publisherMonthlyPrice ?? "$9.99";
-  const life = license.publisherPrice ?? "$119.99";
+  const yearly = license.publisherYearlyPrice ? `${license.publisherYearlyPrice} a year` : "Yearly";
+  const monthly = license.publisherMonthlyPrice ? `${license.publisherMonthlyPrice} a month` : "Monthly";
+  const life = license.publisherPrice ? `${license.publisherPrice} for life` : "For life";
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <div className="dialog publisher-offer" role="dialog" aria-label="TBV Publisher" onKeyDown={(e) => e.key === "Escape" && !busy && onClose()}>
@@ -88,30 +91,30 @@ function PublisherOffer({ tool, license, onClose }: { tool: string; license: Lic
         </ul>
         {canBuy ? (
           <div className="license-plans">
-            {upgrade ? (
+            {upgrade && (
               <button type="button" className="btn btn-primary license-plan" disabled={busy} onClick={() => void buy("publisherUpgrade").then(onClose)}>
-                <b>Upgrade for {license.upgradePrice ?? "the difference"}</b>
-                <span>You own TBV for life, so you pay only the difference. Publisher is yours for good.</span>
+                <b>{license.upgradePrice ? `Upgrade for ${license.upgradePrice}` : "Upgrade for the difference"}</b>
+                <span>One payment. You own TBV for life, so you pay only the difference, and Publisher is yours for good.</span>
               </button>
-            ) : (
-              <>
-                <button type="button" className="btn btn-primary license-plan" disabled={busy} onClick={() => void buy("publisherYearly").then(onClose)}>
-                  <b>{yearly} a year</b>
-                  <span>All of TBV and Publisher. Renews each year. Cancel any time.</span>
-                </button>
-                <button type="button" className="btn btn-quiet license-plan" disabled={busy} onClick={() => void buy("publisherMonthly").then(onClose)}>
-                  <b>{monthly} a month</b>
-                  <span>All of TBV and Publisher. Renews each month. Cancel any time.</span>
-                </button>
-                <button type="button" className="btn btn-quiet license-plan" disabled={busy} onClick={() => void buy("publisherLifetime").then(onClose)}>
-                  <b>{life} for life</b>
-                  <span>Pay once, keep it for good.</span>
-                </button>
-              </>
+            )}
+            <button type="button" className={`btn ${upgrade ? "btn-quiet" : "btn-primary"} license-plan`} disabled={busy} onClick={() => void buy("publisherYearly").then(onClose)}>
+              <b>{yearly}</b>
+              <span>{forLife ? "Publisher while it runs; TBV stays yours for life." : "All of TBV and Publisher."} Renews each year until you cancel.</span>
+            </button>
+            <button type="button" className="btn btn-quiet license-plan" disabled={busy} onClick={() => void buy("publisherMonthly").then(onClose)}>
+              <b>{monthly}</b>
+              <span>{forLife ? "Publisher while it runs; TBV stays yours for life." : "All of TBV and Publisher."} Renews each month until you cancel.</span>
+            </button>
+            {!upgrade && (
+              <button type="button" className="btn btn-quiet license-plan" disabled={busy} onClick={() => void buy("publisherLifetime").then(onClose)}>
+                <b>{life}</b>
+                <span>One payment, keep it for good. What you've paid for a subscription isn't taken off.</span>
+              </button>
             )}
             <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void restore()}>
               I bought it already
             </button>
+            <PurchaseLinks />
           </div>
         ) : (
           <p className="muted">This copy didn't come from a store, so Publisher can't be bought in it. Get The Bound Vigil from {shopName("microsoft")}.</p>

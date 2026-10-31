@@ -415,6 +415,22 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
     }
   }
 
+  private static var listening = false
+
+  /// Finishes purchases that arrive outside the purchase sheet: renewals,
+  /// Ask to Buy approvals, refunds, seats given or taken away. What they
+  /// change shows the next time TBV asks the App Store (on opening, and
+  /// whenever TBV comes back to the front).
+  static func listenForUpdates() {
+    if listening { return }
+    listening = true
+    Task.detached {
+      for await update in Transaction.updates {
+        if case .verified(let t) = update { await t.finish() }
+      }
+    }
+  }
+
   /// Whether the lifetime unlock was bought and whether the yearly plan is
   /// running (verified, unrevoked), their prices, and whether this person
   /// would get the yearly plan's free first month.
@@ -423,15 +439,35 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
     Task {
       var lifetime = false
       var yearly = false
+      var shared = false
+      var lifetimeShared = false
+      TbvPlugin.listenForUpdates()
       for await entitlement in Transaction.currentEntitlements {
         guard case .verified(let t) = entitlement, t.revocationDate == nil else { continue }
-        if t.productID == args.product { lifetime = true }
-        if let y = args.yearly, t.productID == y, (t.expirationDate ?? .distantFuture) > Date() { yearly = true }
+        // Bought by someone else (family, or a seat an organisation gave them).
+        if t.productID == args.product {
+          lifetime = true
+          lifetimeShared = t.ownershipType != .purchased
+        }
+        if let y = args.yearly, t.productID == y, (t.expirationDate ?? .distantFuture) > Date() {
+          yearly = true
+          shared = t.ownershipType != .purchased
+        }
       }
       let ids = [args.product] + (args.yearly.map { [$0] } ?? [])
       let products = (try? await Product.products(for: ids)) ?? []
       let price = products.first { $0.id == args.product }?.displayPrice
       let plan = products.first { $0.id == args.yearly }
+      // A renewal that couldn't be charged keeps the plan through Apple's
+      // billing grace period (16 days) while Apple tries again.
+      if !yearly, let statuses = try? await plan?.subscription?.status {
+        for s in statuses {
+          if case .verified(let t) = s.transaction, t.productID == args.yearly, t.revocationDate == nil, s.state == .inGracePeriod {
+          yearly = true
+          shared = t.ownershipType != .purchased
+        }
+        }
+      }
       var freeMonth = false
       if let sub = plan?.subscription, sub.introductoryOffer?.paymentMode == .freeTrial {
         freeMonth = await sub.isEligibleForIntroOffer
@@ -442,6 +478,8 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
         "price": price.map { $0 as Any } ?? NSNull(),
         "yearlyPrice": (plan?.displayPrice).map { $0 as Any } ?? NSNull(),
         "freeMonth": freeMonth,
+        "shared": shared,
+        "lifetimeShared": lifetimeShared,
       ])
     }
   }
@@ -463,7 +501,10 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
           } else {
             invoke.reject("The App Store couldn't confirm the purchase.")
           }
-        case .userCancelled, .pending:
+        case .pending:
+          // Ask to Buy, or the bank wants a check: it goes through later, and the listener finishes it.
+          invoke.resolve(["ok": false, "pending": true])
+        case .userCancelled:
           invoke.resolve(["ok": false])
         @unknown default:
           invoke.resolve(["ok": false])

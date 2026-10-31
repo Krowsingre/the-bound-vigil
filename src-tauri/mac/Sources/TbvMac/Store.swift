@@ -22,6 +22,21 @@ private func wait(_ work: @escaping () async -> [String: Any]) -> UnsafeMutableP
   return answer(result)
 }
 
+private var listening = false
+
+/// Finishes purchases that arrive outside the purchase sheet: renewals,
+/// Ask to Buy approvals, refunds, seats given or taken away. What they change
+/// shows the next time TBV asks the App Store.
+private func listenForUpdates() {
+  if listening { return }
+  listening = true
+  Task.detached {
+    for await update in Transaction.updates {
+      if case .verified(let t) = update { await t.finish() }
+    }
+  }
+}
+
 /// Which plans are owned, their prices, and whether the free month is on offer.
 @_cdecl("tbv_mac_store_status")
 public func storeStatus(_ lifetimeId: UnsafePointer<CChar>, _ yearlyId: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>? {
@@ -30,13 +45,33 @@ public func storeStatus(_ lifetimeId: UnsafePointer<CChar>, _ yearlyId: UnsafePo
   return wait {
     var lifetime = false
     var yearly = false
+    var shared = false
+    var lifetimeShared = false
+    listenForUpdates()
     for await entitlement in Transaction.currentEntitlements {
       guard case .verified(let t) = entitlement, t.revocationDate == nil else { continue }
-      if t.productID == lifetimeProduct { lifetime = true }
-      if t.productID == yearlyProduct, (t.expirationDate ?? .distantFuture) > Date() { yearly = true }
+      // Bought by someone else (family, or a seat an organisation gave them).
+      if t.productID == lifetimeProduct {
+        lifetime = true
+        lifetimeShared = t.ownershipType != .purchased
+      }
+      if t.productID == yearlyProduct, (t.expirationDate ?? .distantFuture) > Date() {
+        yearly = true
+        shared = t.ownershipType != .purchased
+      }
     }
     let products = (try? await Product.products(for: [lifetimeProduct, yearlyProduct])) ?? []
     let plan = products.first { $0.id == yearlyProduct }
+    // A renewal that couldn't be charged keeps the plan through Apple's
+    // billing grace period (16 days) while Apple tries again.
+    if !yearly, let statuses = try? await plan?.subscription?.status {
+      for s in statuses {
+        if case .verified(let t) = s.transaction, t.productID == yearlyProduct, t.revocationDate == nil, s.state == .inGracePeriod {
+          yearly = true
+          shared = t.ownershipType != .purchased
+        }
+      }
+    }
     var freeMonth = false
     if let sub = plan?.subscription, sub.introductoryOffer?.paymentMode == .freeTrial {
       freeMonth = await sub.isEligibleForIntroOffer
@@ -47,6 +82,8 @@ public func storeStatus(_ lifetimeId: UnsafePointer<CChar>, _ yearlyId: UnsafePo
       "price": (products.first { $0.id == lifetimeProduct }?.displayPrice).map { $0 as Any } ?? NSNull(),
       "yearlyPrice": (plan?.displayPrice).map { $0 as Any } ?? NSNull(),
       "freeMonth": freeMonth,
+      "shared": shared,
+      "lifetimeShared": lifetimeShared,
     ]
   }
 }
@@ -65,7 +102,10 @@ public func storeBuy(_ productId: UnsafePointer<CChar>) -> UnsafeMutablePointer<
         guard case .verified(let t) = result else { return ["error": "The App Store couldn't confirm the purchase."] }
         await t.finish()
         return ["ok": true]
-      case .userCancelled, .pending:
+      case .pending:
+        // Ask to Buy, or the bank wants a check: it goes through later.
+        return ["ok": false, "pending": true]
+      case .userCancelled:
         return ["ok": false]
       @unknown default:
         return ["ok": false]

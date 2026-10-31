@@ -930,7 +930,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "1.56.0", version: "1.57.0", notes: "The Bound Vigil 1.57.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "1.57.0", version: "1.58.0", notes: "The Bound Vigil 1.58.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
@@ -941,8 +941,10 @@ export function previewApi(): Api {
         ...previewLicense,
         state: "owned",
         daysLeft: 0,
-        plan: plan === "monthly" || plan === "publisherMonthly" ? "monthly" : plan === "yearly" || plan === "publisherYearly" ? "yearly" : "lifetime",
+        // Like the store: a subscription on top of TBV for life leaves it for life.
+        plan: previewLicense.plan === "lifetime" || plan.endsWith("ifetime") || plan === "publisherUpgrade" ? "lifetime" : plan === "monthly" || plan === "publisherMonthly" ? "monthly" : "yearly",
         publisher: previewLicense.publisher || plan.startsWith("publisher"),
+        publisherForLife: previewLicense.publisherForLife || plan === "publisherLifetime" || plan === "publisherUpgrade",
       }),
     restoreLicense: async () => previewLicense,
     unlockLicense: async (code) => (code.trim() ? (previewLicense = { ...previewLicense, state: "owned", daysLeft: 0 }) : null),
