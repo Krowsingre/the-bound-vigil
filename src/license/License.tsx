@@ -318,10 +318,13 @@ function LicenseGate() {
 
 /** A box for the owner's code, behind a link so it stays out of the way. */
 export function OwnerCode() {
-  const { unlock } = useLicense();
+  const { license, unlock } = useLicense();
   const [open, setOpen] = useState(false);
   const [code, setCode] = useState("");
   const [wrong, setWrong] = useState(false);
+  // Apple allows unlocking only through In-App Purchase (App Review 3.1.1).
+  // A device already unlocked by code stays unlocked.
+  if (license?.shop === "apple") return null;
   if (!open)
     return (
       <button type="button" className="link-btn owner-code-link" onClick={() => setOpen(true)}>
