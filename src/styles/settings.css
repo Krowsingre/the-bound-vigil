@@ -1298,7 +1298,7 @@ kbd {
   margin: 0;
 }
 
-/* Use on your phone at home: the QR code and the steps beside it. */
+/* Stream to your phone at home: the QR code and the steps beside it. */
 .home-pair {
   display: flex;
   flex-wrap: wrap;
@@ -1675,6 +1675,12 @@ kbd {
 
 /* A computer's Preferences: the list of pages in groups, the page's name
    over a small ornament, and its cards in two columns. */
+.settings-landing + .settings-landing {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
 .settings-menu + .settings-menu {
   margin-top: 6px;
   padding-top: 12px;

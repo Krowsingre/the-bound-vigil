@@ -129,7 +129,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
       )}
 
       {!isWeb && !isIOS && (
-        <SectionGroup id="yourphone" title="Your phone" lede="The books your phone keeps, and using it at home." holds={["phone", "home"]}>
+        <SectionGroup id="yourphone" title="Your phone" lede="The books your phone keeps, and streaming to it at home." holds={["phone", "home"]}>
           {overview && <PhoneSection overview={overview} />}
           <HomeSection />
         </SectionGroup>
@@ -360,12 +360,6 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
                 onChange={(splitBigFiles) => changeSync({ splitBigFiles })}
               />
             )}
-            <Toggle
-              label="Stream audiobooks that aren't on this computer"
-              hint="Play them straight from the cloud without downloading. Turn off to download each one before it plays."
-              checked={sync.streamAudio}
-              onChange={(streamAudio) => changeSync({ streamAudio })}
-            />
           </div>
           {isIOS && (
             <Row

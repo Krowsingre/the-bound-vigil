@@ -653,7 +653,7 @@ export interface SeriesReview {
   ownedBooks: OwnedBook[];
 }
 
-/** "Use on your phone at home": the computer serving TBV to a phone on the same Wi-Fi. */
+/** "Stream to your phone at home": the computer serving TBV to a phone on the same Wi-Fi. */
 export interface HomeStatus {
   on: boolean;
   /** Addresses to open on the phone, best first. */

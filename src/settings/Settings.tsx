@@ -192,19 +192,22 @@ export function Settings({
           {query.trim() ? (
             found
           ) : (
-            <ul className="settings-landing">
-              {TABS.map((t) => (
-                <li key={t.tab}>
-                  <button type="button" className="settings-landing-card" onClick={() => onTab(t.tab)}>
-                    <Icon name={t.icon} size={22} />
-                    <span className="settings-landing-text">
-                      <span className="settings-landing-name">{t.label}</span>
-                      <span className="settings-row-hint">{t.lede}</span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            // The same groups as the computer's list, split by a thin line.
+            GROUPED.map((group, i) => (
+              <ul key={i} className="settings-landing">
+                {group.map((t) => (
+                  <li key={t.tab}>
+                    <button type="button" className="settings-landing-card" onClick={() => onTab(t.tab)}>
+                      <Icon name={t.icon} size={22} />
+                      <span className="settings-landing-text">
+                        <span className="settings-landing-name">{t.label}</span>
+                        <span className="settings-row-hint">{t.lede}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ))
           )}
         </div>
       </div>
@@ -218,7 +221,7 @@ export function Settings({
         {query.trim() ? (
           found
         ) : (
-          (narrow ? [TABS] : GROUPED).map((group, i) => (
+          GROUPED.map((group, i) => (
             <ul key={i} className="settings-menu">
               {group.map((t) => (
                 <li key={t.tab}>
