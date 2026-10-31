@@ -2067,3 +2067,259 @@
 .isbn-guide li + li {
   margin-top: 4px;
 }
+
+/* The ⓘ beside a field's label, and its note. */
+.field-label-with-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.info-tip {
+  display: inline-flex;
+}
+.info-tip-button {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin: -3px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: help;
+}
+.info-tip-button:hover,
+.info-tip-button[aria-expanded="true"] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.info-tip-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.info-tip-panel {
+  position: fixed;
+  z-index: 200;
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.5;
+  text-transform: none;
+  color: var(--text);
+  cursor: auto;
+}
+.info-tip-panel p {
+  margin: 0 0 8px;
+}
+.info-tip-title {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+.info-tip-list {
+  margin: 0 0 8px;
+  padding-left: 18px;
+}
+.info-tip-list li {
+  margin: 4px 0;
+}
+
+/* Importing a manuscript: the confirmation, then Front / Body / Back. */
+.import-book-picked {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+}
+.import-unsupported {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface-sunk);
+  font-size: 13px;
+}
+.import-unsupported p {
+  margin: 4px 0 0;
+}
+.import-ack {
+  max-height: 46vh;
+  overflow: auto;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.import-ack h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.import-ack p {
+  margin: 0 0 8px;
+}
+.import-ack-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+}
+.import-ack-confirm input {
+  flex: none;
+  margin-top: 3px;
+}
+.import-report {
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  font-size: 13px;
+}
+.import-report strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.import-report ul {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+.import-report p {
+  margin: 4px 0 0;
+}
+.import-areas {
+  display: grid;
+  gap: 12px;
+  max-height: 46vh;
+  overflow: auto;
+}
+.import-area h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+.import-area .import-book-chapters {
+  max-height: none;
+}
+.import-area-empty {
+  margin: 0;
+  font-size: 13px;
+}
+.import-kind {
+  flex: none;
+  max-width: 44%;
+  font-size: 12px;
+}
+.import-words {
+  flex: none;
+  min-width: 3.5em;
+  text-align: right;
+  font-size: 12px;
+}
+.import-book-chapters li.is-flagged {
+  border-left: 2px solid var(--accent);
+  padding-left: 6px;
+}
+.import-flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 6px 26px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.import-flag svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+/* Book details: where an imported book came from. */
+.provenance {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.provenance h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.provenance-records {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.provenance-record {
+  margin-bottom: 10px;
+}
+.provenance-record p {
+  margin: 0 0 4px;
+}
+.provenance-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+.provenance-check.is-invalid,
+.provenance-check.is-unreadable {
+  color: var(--danger, #b3261e);
+}
+.provenance-more summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.provenance-more dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 6px 0 0;
+}
+.provenance-more dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.provenance-hash {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+}
+.provenance-source {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+.provenance-source > span {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.provenance-source .link-btn {
+  color: var(--accent);
+}
+.provenance-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+.provenance-history {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.info-tip-panel a {
+  color: var(--accent);
+}

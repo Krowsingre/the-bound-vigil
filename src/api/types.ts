@@ -1382,6 +1382,51 @@ export interface WritingProjectView {
   chapters: WritingChapter[];
 }
 
+/** What the person agreed to when importing a manuscript into Scribe (src/writing/acknowledgment.ts). */
+export interface ImportAcknowledgment {
+  policyVersion: string;
+  /** The warning and the confirmation, word for word. The core keeps only its SHA-256. */
+  wording: string;
+  sourceName: string;
+  /** The original file's SHA-256, in hex. */
+  sourceSha256: string;
+  sourceBytes: number;
+  sourceFormat: string;
+  method: "checkbox";
+}
+
+/** A signed record of where a Scribe book came from, checked when read. */
+export interface ProvenanceRecord {
+  id: string;
+  /** This book, or the book it was duplicated from. */
+  projectId: string;
+  event: "import" | "duplicate";
+  createdAt: IsoUtc;
+  /** The record as signed: policyVersion, wordingSha256, source {name, sha256, bytes, format}, at, installation, keyId… */
+  record: Record<string, unknown>;
+  signature: "valid" | "invalid" | "unreadable";
+  keyId: string;
+  /** Apple's App Attest vouched for it too (iPhone and iPad). */
+  appleStamp: boolean;
+  device: string | null;
+}
+
+/** An import's original file, kept on the device that imported it. */
+export interface WritingSource {
+  sha256: string;
+  name: string;
+  bytes: number;
+  keptAt: IsoUtc;
+  path: string;
+}
+
+export interface WritingProvenance {
+  records: ProvenanceRecord[];
+  sources: WritingSource[];
+  /** This device's own history of imports, duplicates and checks. */
+  history: { at: IsoUtc; event: string; detail: string }[];
+}
+
 export interface WritingDetails {
   title: string;
   author: string | null;

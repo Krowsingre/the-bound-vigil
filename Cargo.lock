@@ -6298,7 +6298,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-tbv-ios"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -6442,7 +6442,7 @@ dependencies = [
 
 [[package]]
 name = "tbv-core"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "cfb",
  "chrono",
@@ -6459,6 +6459,7 @@ dependencies = [
  "mp4ameta",
  "quick-xml 0.37.5",
  "rcgen",
+ "ring",
  "rusqlite",
  "russh",
  "russh-sftp",
@@ -6483,7 +6484,7 @@ dependencies = [
 
 [[package]]
 name = "tbv-speech"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "serde_json",
  "tbv-core",
@@ -6514,7 +6515,7 @@ dependencies = [
 
 [[package]]
 name = "the-bound-vigil"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "notify",
  "objc2",

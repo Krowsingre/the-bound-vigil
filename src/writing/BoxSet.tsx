@@ -3,6 +3,7 @@
 // (copyright, dedication, acknowledgements…) and its chapters, numbered from
 // 1 again in each. The books themselves are left as they are.
 
+import { AuthorLabel } from "./AuthorInfo";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { WritingChapter, WritingProject } from "../api/types";
@@ -165,7 +166,7 @@ export function BoxSetDialog({ onCreated, onCancel }: { onCreated: (id: string) 
             <input value={title} placeholder={suggestedTitle || "Box set"} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
           </label>
           <label className="field">
-            <span>Author</span>
+            <AuthorLabel />
             <input value={author} placeholder={authors.join(", ") || "Your name"} onChange={(e) => setAuthor(e.target.value)} maxLength={200} />
           </label>
         </div>

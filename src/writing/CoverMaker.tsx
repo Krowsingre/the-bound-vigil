@@ -2,6 +2,7 @@
 // picture of your own, drawn at the size stores ask for (1600 × 2560) and
 // kept as the book's cover.
 
+import { AuthorLabel } from "./AuthorInfo";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { WritingProject } from "../api/types";
@@ -190,7 +191,7 @@ export function CoverMaker({ project, onMade, onCancel }: { project: WritingProj
               <input value={design.title} onChange={(e) => set({ title: e.target.value })} maxLength={200} />
             </label>
             <label className="field">
-              <span>Author</span>
+              <AuthorLabel />
               <input value={design.author} onChange={(e) => set({ author: e.target.value })} maxLength={200} />
             </label>
             <div className="field">

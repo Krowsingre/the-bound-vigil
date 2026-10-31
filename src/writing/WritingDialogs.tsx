@@ -9,7 +9,9 @@ import { useToast } from "../components/Toast";
 import { bookOrder, buildEpub, epubFileName, exportProblems, readExport, type EpubInput, type ExportSettings } from "./epub";
 import { imageMime, loadBookFonts } from "./fonts";
 import { makeCiter } from "./sources";
+import { AuthorLabel } from "./AuthorInfo";
 import { CoverMaker } from "./CoverMaker";
+import { WhereItCameFrom } from "./WhereItCameFrom";
 import { pagesKey } from "./PaperbackCover";
 import { BOOK_STYLES } from "./bookStyles";
 import { buildDocx } from "./docx";
@@ -94,7 +96,7 @@ export function NewBookDialog({
           <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} autoFocus />
         </label>
         <label className="field">
-          <span>Author</span>
+          <AuthorLabel />
           <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="Your name, or a pen name" />
         </label>
         <fieldset className="writing-templates">
@@ -222,7 +224,7 @@ export function DetailsDialog({
               <input value={details.title} onChange={(e) => set({ title: e.target.value })} maxLength={200} autoFocus={focus === "title"} />
             </label>
             <label className="field">
-              <span>Author</span>
+              <AuthorLabel />
               <input value={details.author ?? ""} onChange={(e) => set({ author: e.target.value })} autoFocus={focus === "author"} />
             </label>
             <div className="writing-details-row">
@@ -261,6 +263,7 @@ export function DetailsDialog({
             </label>
           </div>
         </div>
+        <WhereItCameFrom projectId={project.id} />
         {error && (
           <p className="form-error" role="alert">
             {error}

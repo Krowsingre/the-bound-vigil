@@ -640,6 +640,51 @@ const MIGRATIONS: &[&str] = &[
     -- research and plans, synced (personal_note_project).
     ALTER TABLE personal_notes ADD COLUMN project_id TEXT;
     "#,
+    // v36: where a book in Scribe came from (see provenance.rs).
+    // `writing_provenance`: each signed record of the person confirming they
+    // may publish a manuscript they imported, or of a book being duplicated,
+    // synced (writing_provenance) and never changed once made.
+    // `provenance_log`: this device's own history of those events, and of
+    // records that failed their check. `writing_sources`: the original file
+    // of each import, kept on the device that imported it. `signing_key`:
+    // this device's key for signing records. The last three stay on the device.
+    r#"
+    CREATE TABLE writing_provenance (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        event TEXT NOT NULL,
+        record TEXT NOT NULL,
+        signature TEXT NOT NULL,
+        public_key TEXT NOT NULL,
+        key_id TEXT NOT NULL,
+        apple_stamp TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE INDEX writing_provenance_project ON writing_provenance (project_id);
+    CREATE TABLE provenance_log (
+        id INTEGER PRIMARY KEY,
+        at TEXT NOT NULL,
+        event TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        record_id TEXT,
+        detail TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE writing_sources (
+        project_id TEXT NOT NULL,
+        sha256 TEXT NOT NULL,
+        name TEXT NOT NULL,
+        bytes INTEGER NOT NULL,
+        file TEXT NOT NULL,
+        kept_at TEXT NOT NULL,
+        PRIMARY KEY (project_id, sha256)
+    );
+    CREATE TABLE signing_key (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        pkcs8 BLOB NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

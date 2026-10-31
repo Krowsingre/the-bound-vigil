@@ -99,7 +99,7 @@ export function Writing({
       ? [
           { label: "Book", icon: "bookOpen" as const, description: "Create a manuscript for EPUB export", onSelect: () => newBook() },
           {
-            label: "Import a book",
+            label: "Import a manuscript",
             icon: "importFile" as const,
             description: "From Word, OpenDocument, RTF, text, Markdown or EPUB",
             onSelect: () => {
