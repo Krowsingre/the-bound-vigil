@@ -1,7 +1,8 @@
 // Discover: a web browser inside TBV. Each tab's page shows in a view of its
-// own laid over the space below the button row (see src-tauri/src/browser.rs);
-// this draws the row, the tabs, the Downloads list and reader mode, and keeps
-// the page's view in place. The top bar's search box is the address bar.
+// own laid over the space below the tab row (see src-tauri/src/browser.rs);
+// this draws the tabs, the Downloads list and reader mode, and keeps the
+// page's view in place. The top bar's search box is the address bar, with the
+// page's buttons (back, forward, reload, home, bookmark, reader) beside it.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isIOS, openExternal } from "../api";
@@ -34,16 +35,20 @@ import {
 import {
   closeOtherTabs,
   closeTab,
+  closeTabs,
   duplicateTab,
   freshTabs,
   moveTab,
   newTabId,
   onClosedTabs,
   openTab,
+  othersOf,
+  pinTab,
   readClosedTabs,
   readTabs,
   rememberClosed,
   reopenTab,
+  rightOf,
   takeClosed,
   updateTab,
   writeTabs,
@@ -67,12 +72,12 @@ export const BROWSER_GO = "tbv:browser-go";
 /** The page in front, told to the header so its search box can show the address. */
 export const BROWSER_PAGE = "tbv:browser-page";
 
-/** The top bar's buttons, on Discover, ask the browser here: "home", "reload", "stop", "top" (back to the top of the page), "site" (the Site information sheet). */
+/** The top bar's buttons, on Discover, ask the browser here: "back", "forward", "reload", "stop", "home", "mark", "reader", "site" (the Site information sheet), or "travel:back|forward:x:y". */
 const BROWSER_DO = "tbv:browser-do";
 /** The address suggestions' "Switch to tab", with the tab's id. */
 export const BROWSER_SWITCH = "tbv:browser-switch";
-/** Whether the page in front is loading, told to the top bar's Reload button. */
-const BROWSER_BUSY = "tbv:browser-busy";
+/** The page in front's state, told to the top bar's buttons. */
+const BROWSER_STATE = "tbv:browser-state";
 
 /** Book sites to start from, until you've bookmarked your own. */
 export const SUGGESTED_SITES: { title: string; url: string }[] = [
@@ -87,67 +92,83 @@ export const SUGGESTED_SITES: { title: string; url: string }[] = [
 /** Files TBV can bring in, by the end of their name. */
 const BOOK_FILE = /\.(epub|kepub|pdf|mobi|azw3?|fb2|cbz|cbr|djvu|txt|docx?|rtf|m4b|mp3|m4a)(\?|#|$)/i;
 
-const ROW_KEY = "tbv.browser.row";
-const ROW_CHANGED = "tbv:browser-row";
+/** What the top bar's buttons show about the page in front. */
+interface BarState {
+  busy: boolean;
+  marked: boolean;
+  reader: boolean;
+  /** A web page (not the start page), which can be bookmarked or read in reader view. */
+  web: boolean;
+}
+const BAR_START: BarState = { busy: false, marked: false, reader: false, web: false };
+let barNow = BAR_START;
 
-/** A phone held sideways, where height is short: the row starts folded. */
-const sideways = () => typeof matchMedia === "function" && matchMedia("(max-height: 500px) and (orientation: landscape)").matches;
+const ask = (what: string) => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: what }));
 
-function readRow(): boolean {
-  try {
-    const saved = localStorage.getItem(ROW_KEY);
-    if (saved === "open") return true;
-    if (saved === "folded") return false;
-  } catch {
-    // The default, then.
-  }
-  return !sideways();
+/** Holding Back or Forward (or right-clicking it) lists the pages that way. */
+function useTravel(way: "back" | "forward") {
+  const timer = useRef<number | null>(null);
+  const swallowUntil = useRef(0);
+  return {
+    onContextMenu: (e: React.MouseEvent) => {
+      e.preventDefault();
+      ask(`travel:${way}:${e.clientX}:${e.clientY}`);
+    },
+    onTouchStart: (e: React.TouchEvent) => {
+      const t = e.touches[0];
+      if (!t) return;
+      const [x, y] = [t.clientX, t.clientY];
+      timer.current = window.setTimeout(() => {
+        timer.current = null;
+        swallowUntil.current = Date.now() + 800;
+        ask(`travel:${way}:${x}:${y}`);
+      }, 500);
+    },
+    onTouchEnd: () => {
+      if (timer.current) window.clearTimeout(timer.current);
+      timer.current = null;
+    },
+    onClickCapture: (e: React.MouseEvent) => {
+      // The press that opened the list doesn't also go back a page.
+      if (Date.now() < swallowUntil.current) {
+        swallowUntil.current = 0;
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    },
+  };
 }
 
-/** Whether Discover's button row is unfolded, shared by the row and the top bar's arrow. */
-export function useBrowserRow(): [boolean, () => void] {
-  const [open, setOpen] = useState(readRow);
+/**
+ * The top bar's buttons on Discover, before the address: Back, Forward,
+ * Reload, Home, Bookmark and Reader view. A phone has Home here and the rest
+ * in the row under the bar.
+ */
+export function BrowserNav() {
+  const narrow = useNarrow();
+  const [state, setState] = useState(barNow);
   useEffect(() => {
-    const changed = () => setOpen(readRow());
-    window.addEventListener(ROW_CHANGED, changed);
-    return () => window.removeEventListener(ROW_CHANGED, changed);
+    const heard = (e: Event) => setState((e as CustomEvent<BarState>).detail);
+    window.addEventListener(BROWSER_STATE, heard);
+    return () => window.removeEventListener(BROWSER_STATE, heard);
   }, []);
-  const toggle = useCallback(() => {
-    try {
-      localStorage.setItem(ROW_KEY, readRow() ? "folded" : "open");
-    } catch {
-      // For this visit only.
-    }
-    window.dispatchEvent(new CustomEvent(ROW_CHANGED));
-  }, []);
-  return [open, toggle];
-}
-
-/** The arrow inside the right end of the address that folds the row. */
-export function BrowserRowToggle() {
-  const [open, toggle] = useBrowserRow();
-  const [hideBar, setHideBar] = useState(() => readBrowserPrefs().hideBar);
-  useEffect(() => onBrowserPrefs(() => setHideBar(readBrowserPrefs().hideBar)), []);
-  // The row hides itself while the page scrolls down, so the arrow takes you back up instead.
-  if (hideBar)
-    return (
-      <button type="button" className="search-action browser-row-toggle" onPointerDown={(e) => e.preventDefault()} aria-label="Back to top" title="Back to top" onClick={() => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: "top" }))}>
-        <Icon name="arrowUp" size={18} />
-      </button>
-    );
-  return (
-    <button type="button" className="search-action browser-row-toggle" onPointerDown={(e) => e.preventDefault()} aria-expanded={open} aria-label={open ? "Hide the browser buttons" : "Show the browser buttons"} onClick={toggle}>
-      <Icon name={open ? "chevronUp" : "chevronDown"} size={18} />
+  const back = useTravel("back");
+  const forward = useTravel("forward");
+  const button = (label: string, icon: Parameters<typeof Icon>[0]["name"], what: string, more: React.ButtonHTMLAttributes<HTMLButtonElement> = {}) => (
+    <button type="button" className="header-action" aria-label={label} title={label} onClick={() => ask(what)} {...more}>
+      <Icon name={icon} size={20} />
     </button>
   );
-}
-
-/** The top bar's Home button, between the menu button and the address. */
-export function BrowserHomeButton() {
+  if (narrow) return button("Home page", "home", "home");
   return (
-    <button type="button" className="header-action" aria-label="Home page" title="Home page" onClick={() => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: "home" }))}>
-      <Icon name="home" size={21} />
-    </button>
+    <div className="browser-nav">
+      {button("Back", "arrowLeft", "back", back)}
+      {button("Forward", "arrowRight", "forward", forward)}
+      {button(state.busy ? "Stop" : "Reload", state.busy ? "close" : "sync", state.busy ? "stop" : "reload")}
+      {button("Home page", "home", "home")}
+      {button(state.marked ? "Remove bookmark" : "Bookmark this page", "bookmark", "mark", { disabled: !state.web, "aria-pressed": state.marked, className: `header-action${state.marked ? " is-on" : ""}` })}
+      {button("Reader view", "bookOpen", "reader", { disabled: !state.web && !state.reader, "aria-pressed": state.reader, className: `header-action${state.reader ? " is-on" : ""}` })}
+    </div>
   );
 }
 
@@ -233,10 +254,6 @@ function startingTabs(): TabsState {
 
 const titleOf = (title: string | null, url: string, privately = false) => (isStartPage(url) ? (privately ? "Private tab" : "Start page") : title?.trim() || siteOf(url) || url);
 
-/** How far down the page is, for hiding the row while scrolling. */
-const SCROLL_Y = `JSON.stringify(Math.round(window.scrollY || (document.scrollingElement && document.scrollingElement.scrollTop) || 0))`;
-const TO_TOP = `(function () { window.scrollTo({ top: 0, behavior: "smooth" }); return JSON.stringify(null); })()`;
-
 /** Pauses every video and sound on a page, for leaving Discover. */
 const PAUSE_ALL = `(function () {
   document.querySelectorAll("video, audio").forEach(function (m) { try { m.pause(); } catch (e) {} });
@@ -262,7 +279,6 @@ export function Browser({
   onSearchChange: (text: string) => void;
 }) {
   const narrow = useNarrow();
-  const [rowOpen] = useBrowserRow();
   const [tabs, setTabs] = useState<TabsState>(startingTabs);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [marks, setMarks] = useState<Bookmark[]>([]);
@@ -275,8 +291,6 @@ export function Browser({
   const [closedTabs, setClosedTabs] = useState(readClosedTabs);
   /** A link for another app, waiting for an answer. */
   const [appLink, setAppLink] = useState<string | null>(null);
-  /** Scrolled down the page: the row is out of the way until it scrolls back up. */
-  const [scrolledAway, setScrolledAway] = useState(false);
   const [finding, setFinding] = useState<string | null>(null);
   const [article, setArticle] = useState<ReaderArticle | null>(null);
   const [saving, setSaving] = useState(false);
@@ -296,6 +310,8 @@ export function Browser({
   fetchedRef.current = fetched;
   const refit = useRef<() => void>(() => undefined);
   const heardAsk = useRef<(ask: BrowserAsk) => void>(() => undefined);
+  /** A tab shortcut, pressed in TBV or (on Windows) while a page had the keyboard. */
+  const shortcut = useRef<(key: string) => void>(() => undefined);
   const toast = useToast();
 
   const active = tabs.tabs.find((t) => t.id === tabs.active) ?? tabs.tabs[0];
@@ -450,6 +466,9 @@ export function Browser({
             );
           }
           break;
+        case "key":
+          shortcut.current(ev.key);
+          break;
         case "closed":
           made.current.delete(ev.tab);
           void api.browserAct(ev.tab, "close");
@@ -547,9 +566,7 @@ export function Browser({
 
   const act = (action: "back" | "forward" | "reload" | "stop") => void api.browserAct(active.id, action).catch(() => undefined);
 
-  /** Holding Back or Forward (or right-clicking it) lists the pages that way, to jump to one. */
-  const travelHeld = useRef<{ timer: number; x: number; y: number } | null>(null);
-  const swallowClick = useRef(0);
+  /** The pages behind or ahead, listed to jump to one. */
   const showTravel = (way: "back" | "forward", x: number, y: number) => {
     const tab = active.id;
     if (!made.current.has(tab)) return;
@@ -572,37 +589,6 @@ export function Browser({
       () => undefined,
     );
   };
-  const travelProps = (way: "back" | "forward") => ({
-    onContextMenu: (e: React.MouseEvent) => {
-      e.preventDefault();
-      showTravel(way, e.clientX, e.clientY);
-    },
-    onTouchStart: (e: React.TouchEvent) => {
-      const t = e.touches[0];
-      if (!t) return;
-      const at = { x: t.clientX, y: t.clientY };
-      travelHeld.current = {
-        ...at,
-        timer: window.setTimeout(() => {
-          travelHeld.current = null;
-          swallowClick.current = Date.now() + 800;
-          showTravel(way, at.x, at.y);
-        }, 500),
-      };
-    },
-    onTouchEnd: () => {
-      if (travelHeld.current) window.clearTimeout(travelHeld.current.timer);
-      travelHeld.current = null;
-    },
-    onClickCapture: (e: React.MouseEvent) => {
-      // The press that opened the list doesn't also go back a page.
-      if (Date.now() < swallowClick.current) {
-        swallowClick.current = 0;
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    },
-  });
 
   const go = (text: string) => {
     const prefsNow = readBrowserPrefs();
@@ -674,9 +660,18 @@ export function Browser({
   };
   const closeOthers = (id: string) => {
     setArticle(null);
-    forget(tabsRef.current.tabs.filter((t) => t.id !== id).map((t) => t.id));
+    forget(othersOf(tabsRef.current, id));
     setTabs((s) => closeOtherTabs(s, id));
   };
+  const closeRight = (id: string) => {
+    const ids = rightOf(tabsRef.current, id);
+    forget(ids);
+    setTabs((s) => closeTabs(s, ids, id));
+  };
+  const reloadTab = (id: string) => {
+    if (made.current.has(id)) void api.browserAct(id, "reload").catch(() => undefined);
+  };
+  const copyLink = (to: string) => void navigator.clipboard?.writeText(to).then(() => toast("Link copied."));
   const duplicate = (id: string) => {
     setArticle(null);
     setPanel(null);
@@ -695,15 +690,47 @@ export function Browser({
     setUndo(null);
     setTabs((s) => back.sort((a, b) => a.at - b.at).reduce(reopenTab, s));
   };
-  const tabMenu = (id: string): MenuEntry[] => [
-    { label: "New tab", icon: "plus", onSelect: () => newTab() },
-    { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) },
-    { label: "Duplicate tab", icon: "copy", disabled: isStartPage(tabsRef.current.tabs.find((t) => t.id === id)?.url ?? ""), onSelect: () => duplicate(id) },
-    { label: "Reopen closed tab", icon: "undo", disabled: !closedTabs.length, onSelect: () => reopen() },
-    "divider",
-    { label: "Close other tabs", icon: "layers", disabled: tabs.tabs.length < 2, onSelect: () => closeOthers(id) },
-    { label: "Close tab", icon: "close", onSelect: () => close(id) },
-  ];
+  const tabMenu = (id: string): MenuEntry[] => {
+    const tab = tabsRef.current.tabs.find((t) => t.id === id);
+    const web = /^https?:/i.test(tab?.url ?? "");
+    return [
+      { label: "New tab", icon: "plus", onSelect: () => newTab() },
+      { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) },
+      { label: "Reload tab", icon: "sync", disabled: !web || !made.current.has(id), onSelect: () => reloadTab(id) },
+      { label: "Duplicate tab", icon: "copy", disabled: !web, onSelect: () => duplicate(id) },
+      { label: "Copy link", icon: "link", disabled: !web, onSelect: () => copyLink(tab!.url) },
+      // Private tabs aren't kept, so they can't stay pinned through a restart.
+      tab?.pinned
+        ? { label: "Unpin tab", icon: "pin", onSelect: () => setTabs((s) => pinTab(s, id, false)) }
+        : { label: "Pin tab", icon: "pin", disabled: !!tab?.private, onSelect: () => setTabs((s) => pinTab(s, id, true)) },
+      { label: "Reopen closed tab", icon: "undo", disabled: !closedTabs.length, onSelect: () => reopen() },
+      "divider",
+      { label: "Close tabs to the right", icon: "close", disabled: !rightOf(tabsRef.current, id).length, onSelect: () => closeRight(id) },
+      { label: "Close other tabs", icon: "layers", disabled: !othersOf(tabsRef.current, id).length, onSelect: () => closeOthers(id) },
+      { label: "Close tab", icon: "close", onSelect: () => close(id) },
+    ];
+  };
+  shortcut.current = (key) => {
+    const list = tabsRef.current.tabs;
+    const at = list.findIndex((t) => t.id === tabsRef.current.active);
+    if (key === "newTab") newTab();
+    else if (key === "closeTab") close(tabsRef.current.active);
+    else if (key === "reopenTab") reopen();
+    else if (list.length > 1 && (key === "nextTab" || key === "previousTab")) switchTo(list[(at + (key === "nextTab" ? 1 : list.length - 1)) % list.length].id);
+  };
+  // Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab and Ctrl+Shift+T, as in other browsers.
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || document.querySelector(".dialog-backdrop")) return;
+      const k = e.key.toLowerCase();
+      const what = k === "t" ? (e.shiftKey ? "reopenTab" : "newTab") : k === "w" && !e.shiftKey ? "closeTab" : e.key === "Tab" ? (e.shiftKey ? "previousTab" : "nextTab") : null;
+      if (!what) return;
+      e.preventDefault();
+      shortcut.current(what);
+    };
+    window.addEventListener("keydown", down);
+    return () => window.removeEventListener("keydown", down);
+  }, []);
   // Phone: a sideways swipe along the address box goes to the next tab, or the one before.
   const switchBy = useRef<(by: number) => void>(() => undefined);
   switchBy.current = (by) => {
@@ -746,18 +773,21 @@ export function Browser({
   const busy = !!loading[active.id];
   const coming = fetched.filter((d) => d.state === "coming").length;
   const asking = fetched.filter((d) => d.asking);
+  const web = url.startsWith("http") && !failure;
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent(BROWSER_BUSY, { detail: busy }));
-  }, [busy]);
+    barNow = { busy: busy && !onStart, marked: !!marked, reader: !!article, web };
+    window.dispatchEvent(new CustomEvent(BROWSER_STATE, { detail: barNow }));
+  }, [busy, onStart, marked, article, web]);
   const fromTop = useRef<(what: string) => void>(() => undefined);
   fromTop.current = (what) => {
-    if (what === "home") goHome();
+    const travel = /^travel:(back|forward):(-?[\d.]+):(-?[\d.]+)$/.exec(what);
+    if (travel) showTravel(travel[1] as "back" | "forward", Number(travel[2]), Number(travel[3]));
+    else if (what === "home") goHome();
     else if (what === "site") setPanel("site");
-    else if (what === "top") {
-      setScrolledAway(false);
-      if (onStart) document.querySelector(".start-page")?.scrollTo({ top: 0, behavior: "smooth" });
-      else void api.browserRead(active.id, TO_TOP).catch(() => undefined);
-    } else act(what === "stop" ? "stop" : "reload");
+    else if (what === "mark") void toggleMark();
+    else if (what === "reader") void (article ? setArticle(null) : openReader());
+    else if (what === "back" || what === "forward" || what === "stop") act(what);
+    else act("reload");
   };
   // Sanctum's Quick Links: a website, or one of the panels.
   // Sanctum's Quick links, heard once the page in front is showing (see the
@@ -779,51 +809,10 @@ export function Browser({
     return () => {
       window.removeEventListener(BROWSER_DO, heard);
       window.removeEventListener(BROWSER_SWITCH, toTab);
-      window.dispatchEvent(new CustomEvent(BROWSER_BUSY, { detail: false }));
+      barNow = BAR_START;
+      window.dispatchEvent(new CustomEvent(BROWSER_STATE, { detail: BAR_START }));
     };
   }, []);
-
-  // Chosen in Preferences › Discover: the row hides while the page scrolls
-  // down and comes back as it scrolls up. Pages can't tell TBV themselves,
-  // so TBV looks at how far down the page in front is, a few times a second.
-  const watchScroll = prefs.hideBar && !onStart && !article && panel !== "tabs" && !problem;
-  /** The start page scrolls in TBV itself, so it says how far as it goes. */
-  const startY = useRef(0);
-  const startScrolled = (y: number, room: number) => {
-    // Too little to scroll: hiding the bar would make it all fit, and it would bounce back.
-    if (!prefs.hideBar || room < 140) return;
-    if (y < 48 || y < startY.current - 24) setScrolledAway(false);
-    else if (y > startY.current + 24) setScrolledAway(true);
-    if (Math.abs(y - startY.current) > 24 || y < 48) startY.current = y;
-  };
-  useEffect(() => {
-    setScrolledAway(false);
-    startY.current = 0;
-    if (!watchScroll) return;
-    let last = -1;
-    let asking = false;
-    const tab = active.id;
-    const look = () => {
-      if (asking || !shown.current || covered()) return;
-      asking = true;
-      api
-        .browserRead(tab, SCROLL_Y)
-        .then((y) => {
-          if (typeof y !== "number") return;
-          if (last >= 0) {
-            if (y < 48 || y < last - 24) setScrolledAway(false);
-            else if (y > last + 24) setScrolledAway(true);
-          }
-          // Small moves add up until they pass the line either way.
-          if (last < 0 || Math.abs(y - last) > 24 || y < 48) last = y;
-        })
-        .catch(() => undefined)
-        .finally(() => (asking = false));
-    };
-    const every = window.setInterval(look, 350);
-    return () => window.clearInterval(every);
-  }, [watchScroll, active.id, url]);
-
 
   const share = (to: string, title: string) => {
     setPanel(null);
@@ -988,48 +977,77 @@ export function Browser({
     </button>
   );
 
+  const backTravel = useTravel("back");
+  const forwardTravel = useTravel("forward");
+  const downloadsButton = (
+    <button type="button" className="toolbar-button browser-downloads-button" aria-label={coming ? `Downloads, ${coming} coming down` : "Downloads"} title="Downloads" onClick={() => setPanel("downloads")}>
+      <Icon name="download" size={17} />
+      {(coming > 0 || asking.length > 0) && <span className="browser-badge">{coming || asking.length}</span>}
+    </button>
+  );
+  const tabList: MenuEntry[] = [
+    { heading: <strong>{tabs.tabs.length === 1 ? "1 tab" : `${tabs.tabs.length} tabs`}</strong> },
+    ...tabs.tabs.map((t) => ({
+      label: titleOf(t.title, t.url, t.private),
+      icon: (t.pinned ? "pin" : t.private ? "eyeOff" : "globe") as Parameters<typeof Icon>[0]["name"],
+      checked: t.id === tabs.active,
+      hint: siteOf(t.url) ?? undefined,
+      onSelect: () => switchTo(t.id),
+    })),
+  ];
+
   return (
     <div className="browser">
       {!narrow && (
-        <div className="browser-tabs" role="tablist" aria-label="Tabs">
-          {tabs.tabs.map((t) => (
-            <div key={t.id} className={`browser-tab${t.id === tabs.active ? " is-active" : ""}${t.private ? " is-private" : ""}`} {...drag(t.id)} onContextMenu={(e) => openContextMenu(e, `${titleOf(t.title, t.url, t.private)}: tab`, tabMenu(t.id))}>
-              <button type="button" role="tab" aria-selected={t.id === tabs.active} className="browser-tab-name" title={t.url} onClick={() => switchTo(t.id)}>
-                {loading[t.id] ? <span className="browser-tab-busy" aria-hidden /> : <Icon name={t.private ? "eyeOff" : "globe"} size={13} />}
-                <span>{titleOf(t.title, t.url, t.private)}</span>
-              </button>
-              <button type="button" className="browser-tab-close" aria-label={`Close ${titleOf(t.title, t.url, t.private)}`} onClick={() => close(t.id)}>
-                <Icon name="close" size={12} />
-              </button>
-            </div>
-          ))}
-          <button type="button" className="browser-tab-new" aria-label="New tab" title="New tab (right-click for a private one)" onClick={() => newTab()} onContextMenu={(e) => openContextMenu(e, "New tab", [{ label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) }])}>
-            <Icon name="plus" size={15} />
-          </button>
+        <div className="browser-strip">
+          <div className="browser-tabs" role="tablist" aria-label="Tabs">
+            {tabs.tabs.map((t) => (
+              <div
+                key={t.id}
+                className={`browser-tab${t.id === tabs.active ? " is-active" : ""}${t.private ? " is-private" : ""}${t.pinned ? " is-pinned" : ""}`}
+                {...drag(t.id)}
+                onContextMenu={(e) => openContextMenu(e, `${titleOf(t.title, t.url, t.private)}: tab`, tabMenu(t.id))}
+              >
+                <button type="button" role="tab" aria-selected={t.id === tabs.active} className="browser-tab-name" title={t.pinned ? `${titleOf(t.title, t.url)} (pinned)` : t.url} onClick={() => switchTo(t.id)}>
+                  {loading[t.id] ? <span className="browser-tab-busy" aria-hidden /> : <Icon name={t.private ? "eyeOff" : isStartPage(t.url) ? "compass" : "globe"} size={14} />}
+                  {!t.pinned && <span>{titleOf(t.title, t.url, t.private)}</span>}
+                </button>
+                {!t.pinned && (
+                  <button type="button" className="browser-tab-close" aria-label={`Close ${titleOf(t.title, t.url, t.private)}`} onClick={() => close(t.id)}>
+                    <Icon name="close" size={12} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button type="button" className="browser-tab-new" aria-label="New tab" title="New tab (Ctrl+T; right-click for a private one)" onClick={() => newTab()} onContextMenu={(e) => openContextMenu(e, "New tab", [{ label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) }])}>
+              <Icon name="plus" size={15} />
+            </button>
+          </div>
+          <div className="browser-strip-tools">
+            <Menu label="Every tab" className="toolbar-button" trigger={<Icon name="chevronDown" size={16} />} items={tabList} />
+            <span className="browser-bar-divider" aria-hidden />
+            <Menu label="Bookmarks" className="toolbar-button" trigger={<Icon name="bookmark" size={17} />} items={bookmarkItems} />
+            {button("Add a catalogue", "globePlus", onOpenCatalogues)}
+            {downloadsButton}
+            <Menu label="More" className="toolbar-button" trigger={<Icon name="more" size={17} />} items={moreItems} />
+          </div>
         </div>
       )}
       {busy && !onStart && <span className="browser-loading" role="progressbar" aria-label="Loading" />}
-      {(prefs.hideBar ? !scrolledAway : rowOpen) && (
+      {narrow && (
         <div className="browser-bar">
-          {button("Back", "arrowLeft", () => act("back"), "", travelProps("back"))}
-          {button("Forward", "arrowRight", () => act("forward"), "", travelProps("forward"))}
+          {button("Back", "arrowLeft", () => act("back"), "", backTravel)}
+          {button("Forward", "arrowRight", () => act("forward"), "", forwardTravel)}
           {button(busy ? "Stop" : "Reload", busy ? "close" : "sync", () => act(busy ? "stop" : "reload"))}
           <button type="button" className={`toolbar-button${marked ? " is-on" : ""}`} aria-pressed={!!marked} aria-label={marked ? "Remove bookmark" : "Bookmark this page"} title={marked ? "Remove bookmark" : "Bookmark this page"} onClick={() => void toggleMark()}>
             <Icon name="bookmark" size={17} />
           </button>
-          {narrow && (
-            <button type="button" className={`toolbar-button browser-count${panel === "tabs" ? " is-on" : ""}`} aria-label={`Tabs: ${tabs.tabs.length} open`} title="Tabs" onClick={() => setPanel(panel === "tabs" ? null : "tabs")}>
-              <span>{tabs.tabs.length}</span>
-            </button>
-          )}
-          <span className="browser-bar-divider" aria-hidden />
+          <button type="button" className={`toolbar-button browser-count${panel === "tabs" ? " is-on" : ""}`} aria-label={`Tabs: ${tabs.tabs.length} open`} title="Tabs" onClick={() => setPanel(panel === "tabs" ? null : "tabs")}>
+            <span>{tabs.tabs.length}</span>
+          </button>
           {button("Reader view", "bookOpen", () => void (article ? setArticle(null) : openReader()), article ? " is-on" : "")}
           {isFile && button("Add to library", "plus", () => void addThisFile(), " is-on")}
-          <span className="browser-bar-space" />
-          <button type="button" className="toolbar-button browser-downloads-button" aria-label={coming ? `Downloads, ${coming} coming down` : "Downloads"} title="Downloads" onClick={() => setPanel("downloads")}>
-            <Icon name="download" size={17} />
-            {(coming > 0 || asking.length > 0) && <span className="browser-badge">{coming || asking.length}</span>}
-          </button>
+          {downloadsButton}
           <Menu label="More" className="toolbar-button" trigger={<Icon name="more" size={17} />} items={moreItems} />
         </div>
       )}
@@ -1078,7 +1096,7 @@ export function Browser({
           </button>
         </div>
       ))}
-      {isFile && !(prefs.hideBar ? !scrolledAway : rowOpen) && (
+      {isFile && !narrow && (
         <div className="browser-offer" role="status">
           <span>This page is a {formatLabel(url.match(BOOK_FILE)![1].toLowerCase())} file.</span>
           <button type="button" className="btn btn-primary btn-small" onClick={() => void addThisFile()}>
@@ -1092,7 +1110,6 @@ export function Browser({
             onGo={go}
             onNewTab={openInNewTab}
             onPanel={setPanel}
-            onScrolled={startScrolled}
             search={search}
             onSearchChange={onSearchChange}
             onSearch={(text) => {

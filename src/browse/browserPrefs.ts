@@ -67,8 +67,6 @@ export interface BrowserPrefs {
   showRecent: boolean;
   /** The picture behind the start page: "" for none, "gallery:<name>", or "own" (kept on this device). */
   background: string;
-  /** The button row hides while a page scrolls down, and comes back scrolling up. */
-  hideBar: boolean;
   /** The address box suggests from History, bookmarks, Quick Links and open tabs. */
   suggest: boolean;
   /** Each site's own choices from its Site information sheet, by site (as `siteOf` names it). */
@@ -130,7 +128,6 @@ export function readBrowserPrefs(): BrowserPrefs {
     startPage: saved.startPage !== false,
     showRecent: saved.showRecent !== false,
     background: typeof saved.background === "string" && /^(own|gallery:[a-z-]+)$/.test(saved.background) ? saved.background : "",
-    hideBar: saved.hideBar !== false,
     suggest: saved.suggest !== false,
     sites: readSites(saved.sites),
     askApps: saved.askApps !== false,

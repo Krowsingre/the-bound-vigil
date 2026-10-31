@@ -604,14 +604,14 @@ mod tests {
         let page = library.notes_page(&NotesQuery::default()).unwrap();
         assert_eq!(page.tags, ["Light", "poems", "Wren"]);
         let pinned: Vec<_> = page.notes.iter().filter(|n| n.pinned_at.is_some()).map(|n| n.id.clone()).collect();
-        assert_eq!(pinned, [idea.clone()]);
+        assert_eq!(pinned, std::slice::from_ref(&idea));
 
         let only = |q: NotesQuery| library.notes_page(&q).unwrap().notes.into_iter().map(|n| n.id).collect::<Vec<_>>();
-        assert_eq!(only(NotesQuery { tag: Some("light".into()), ..Default::default() }), [lit.clone()]);
-        assert_eq!(only(NotesQuery { search: Some("poems".into()), ..Default::default() }), [idea.clone()]);
+        assert_eq!(only(NotesQuery { tag: Some("light".into()), ..Default::default() }), std::slice::from_ref(&lit));
+        assert_eq!(only(NotesQuery { search: Some("poems".into()), ..Default::default() }), std::slice::from_ref(&idea));
         assert_eq!(only(NotesQuery { since: Some("2999-01-01T00:00:00Z".into()), ..Default::default() }).len(), 0);
         // Highlights belong with the notes about books.
-        assert_eq!(only(NotesQuery { tab: NotesTab::BookNotes, ..Default::default() }), [lit.clone()]);
+        assert_eq!(only(NotesQuery { tab: NotesTab::BookNotes, ..Default::default() }), std::slice::from_ref(&lit));
 
         library.set_note_pinned(&idea, false).unwrap();
         assert!(library.notes_page(&NotesQuery::default()).unwrap().notes.iter().all(|n| n.pinned_at.is_none()));

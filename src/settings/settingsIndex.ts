@@ -298,12 +298,6 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "browser",
-    section: "bar",
-    label: "Discover bar",
-    words: "discover browser bar buttons row hide scrolling scroll back to top",
-  },
-  {
-    tab: "browser",
     section: "history",
     label: "Discover history",
     words: "discover browser history pages visited searches searched clear delete keep days privacy sync synced every device",

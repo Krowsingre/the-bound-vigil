@@ -1,4 +1,4 @@
-import { closeOtherTabs, closeTab, duplicateTab, freshTabs, moveTab, openTab, readClosedTabs, readTabs, rememberClosed, reopenTab, takeClosed, updateTab, writeTabs, type TabsState } from "./browserTabs";
+import { closeOtherTabs, closeTab, closeTabs, pinTab, rightOf, duplicateTab, freshTabs, moveTab, openTab, readClosedTabs, readTabs, rememberClosed, reopenTab, takeClosed, updateTab, writeTabs, type TabsState } from "./browserTabs";
 
 const HOME = "https://www.gutenberg.org/";
 
@@ -105,4 +105,24 @@ test("private tabs are never kept or remembered", () => {
   rememberClosed(state, ["p"]);
   expect(readClosedTabs()).toEqual([]);
   expect(duplicateTab(state, "p").tabs[2].private).toBe(true);
+});
+
+test("pinned tabs sit first, are kept, and are left open by the bulk closes", () => {
+  const s: TabsState = {
+    tabs: [
+      { id: "a", url: "https://a.example/", title: "A" },
+      { id: "b", url: "https://b.example/", title: "B" },
+      { id: "c", url: "https://c.example/", title: "C" },
+    ],
+    active: "a",
+  };
+  const pinned = pinTab(s, "c", true);
+  expect(pinned.tabs.map((t) => t.id)).toEqual(["c", "a", "b"]);
+  expect(closeOtherTabs(pinned, "b").tabs.map((t) => t.id)).toEqual(["c", "b"]);
+  expect(rightOf(pinned, "c")).toEqual(["a", "b"]);
+  expect(closeTabs(pinned, rightOf(pinned, "a"), "a").tabs.map((t) => t.id)).toEqual(["c", "a"]);
+  writeTabs(pinned);
+  expect(readTabs("https://home.example/").tabs[0]).toEqual({ id: "c", url: "https://c.example/", title: "C", pinned: true });
+  expect(pinTab(pinned, "c", false).tabs.map((t) => t.id)).toEqual(["c", "a", "b"]);
+  expect(pinTab(pinned, "c", false).tabs[0].pinned).toBeUndefined();
 });

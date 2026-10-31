@@ -1438,7 +1438,9 @@ export type BrowserEvent =
   /** A link for another app (mail, a phone number), not opened yet. */
   | { kind: "external"; tab: string; url: string }
   /** Chosen from a link's own menu: open it in a new tab, or bring its book into the library. */
-  | { kind: "menu"; tab: string; action: "newTab" | "addBook"; url: string };
+  | { kind: "menu"; tab: string; action: "newTab" | "addBook"; url: string }
+  /** A tab shortcut pressed while a page had the keyboard (Windows). */
+  | { kind: "key"; tab: string; key: "newTab" | "closeTab" | "nextTab" | "previousTab" | "reopenTab" };
 
 /** An article found on a page by reader mode (Mozilla's Readability). */
 export interface ReaderArticle {
