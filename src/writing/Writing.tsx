@@ -29,17 +29,16 @@ import { usePublisher } from "../license/Publisher";
 
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
 
-/** Scribe's tabs: everything you've noted, your own notes, what you noted from books, or the books you write. */
-type Chip = "all" | "notes" | "book_notes" | "books";
+/** Scribe's tabs: your own notes, what you noted from books, or the books you write (embre, 31 October: no All tab). */
+type Chip = "notes" | "book_notes" | "books";
 /** What the tab of notes from books is called. */
 export const BOOK_NOTES_LABEL = "Reading notes";
 const CHIPS: { chip: Chip; label: string }[] = [
-  { chip: "all", label: "All" },
-  { chip: "notes", label: "Notes" },
+  { chip: "notes", label: "Personal notes" },
   { chip: "book_notes", label: BOOK_NOTES_LABEL },
-  { chip: "books", label: "Books" },
+  { chip: "books", label: "Write a book" },
 ];
-const NOTES_TAB = { all: "all", notes: "personal", book_notes: "book_notes" } as const;
+const NOTES_TAB = { notes: "personal", book_notes: "book_notes" } as const;
 
 /** Scribe: the books you write and everything you've noted while reading or on your own. */
 export function Writing({
@@ -64,8 +63,8 @@ export function Writing({
   const publisher = usePublisher();
   const [ask, setAsk] = useState<{ kind: NewNoteKind; n: number } | null>(null);
   const [reload, setReload] = useState(0);
-  const [chip, setChip] = useState<Chip>("all");
-  const showing: Chip = booksShown || chip !== "books" ? chip : "all";
+  const [chip, setChip] = useState<Chip>("notes");
+  const showing: Chip = booksShown || chip !== "books" ? chip : "notes";
   const projects = useProjects(booksShown, refreshKey, reload);
 
   if (openId && booksShown)

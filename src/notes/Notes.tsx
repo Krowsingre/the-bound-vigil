@@ -22,7 +22,7 @@ import { TagsDialog } from "./TagsDialog";
 export type NotesKindTab = "all" | "personal" | "book_notes";
 
 /** What the notes are called under each tab, above the list. */
-export const NOTES_HEADING: Record<NotesKindTab, string> = { all: "All notes", personal: "Notes", book_notes: "Reading notes" };
+export const NOTES_HEADING: Record<NotesKindTab, string> = { all: "All notes", personal: "Personal notes", book_notes: "Reading notes" };
 
 const SORTS: { sort: NotesSort; label: string }[] = [
   { sort: "recent", label: "Date added" },
