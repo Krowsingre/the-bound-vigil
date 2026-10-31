@@ -471,10 +471,10 @@ mod tests {
                 .notes
         };
         assert_eq!(tab(NotesTab::Annotations)[0].id, annotated);
-        assert_eq!(
-            tab(NotesTab::BookNotes)[0].book.as_ref().unwrap().title,
-            "Tides"
-        );
+        // Reading notes hold everything about books: the book's own note, and its highlights and annotations.
+        let reading = tab(NotesTab::BookNotes);
+        assert_eq!(reading.len(), 3);
+        assert!(reading.iter().any(|n| n.kind == NoteKind::BookNote && n.book.as_ref().unwrap().title == "Tides"));
 
         let search = |s: &str| {
             library
