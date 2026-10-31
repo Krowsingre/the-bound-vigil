@@ -45,6 +45,10 @@ export interface SyncSettings {
   phoneChosenOnly: boolean;
   /** Discover's history (pages visited and searches). */
   browserHistory: boolean;
+  /** Supabase: files over its free plan's 50 MB limit go up in pieces. */
+  splitBigFiles: boolean;
+  /** A phone removes books it fetched just to open after this many days unopened, unless kept. 0 keeps them. */
+  phoneKeepDays: PhoneKeepDays;
   /** Audiobooks that aren't on this device play straight from the cloud instead of downloading first. */
   streamAudio: boolean;
   frequency: SyncFrequency;
@@ -134,6 +138,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     alsoAudioFiles: false,
     phoneChosenOnly: false,
     browserHistory: false,
+    splitBigFiles: false,
+    phoneKeepDays: 14,
     streamAudio: true,
     frequency: "automatic",
     onStartup: true,
@@ -147,6 +153,10 @@ export const SCALES: Record<InterfaceScale, number> = {
   medium: 1,
   large: 1.12,
 };
+
+/** How long a phone keeps books it fetched just to open: a week, two, a month, or for good (0). */
+export const PHONE_KEEP_DAYS = [7, 14, 30, 0] as const;
+export type PhoneKeepDays = (typeof PHONE_KEEP_DAYS)[number];
 
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T => (allowed.includes(value as T) ? (value as T) : fallback);
 const flag = (value: unknown, fallback: boolean) => (typeof value === "boolean" ? value : fallback);
@@ -203,6 +213,8 @@ export function parseAppSettings(json: string | null): AppSettings {
       alsoAudioFiles: flag(s.alsoAudioFiles, d.sync.alsoAudioFiles),
       phoneChosenOnly: flag(s.phoneChosenOnly, d.sync.phoneChosenOnly),
       browserHistory: flag(s.browserHistory, d.sync.browserHistory),
+      splitBigFiles: flag(s.splitBigFiles, d.sync.splitBigFiles),
+      phoneKeepDays: PHONE_KEEP_DAYS.includes(s.phoneKeepDays as PhoneKeepDays) ? (s.phoneKeepDays as PhoneKeepDays) : d.sync.phoneKeepDays,
       streamAudio: flag(s.streamAudio, d.sync.streamAudio),
       frequency: oneOf(s.frequency, ["automatic", "15min", "hourly", "manual"], d.sync.frequency),
       onStartup: flag(s.onStartup, d.sync.onStartup),

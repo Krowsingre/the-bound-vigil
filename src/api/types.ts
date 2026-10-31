@@ -14,6 +14,17 @@ export interface BookFile {
   downloaded: boolean;
 }
 
+/** A place a book's file is: this device, another device, or a sync place. */
+export interface BookLocation {
+  /** "Embre's iPhone", "iCloud Drive". */
+  name: string;
+  kind: "computer" | "phone" | "place";
+  /** This device. */
+  here: boolean;
+  /** Fetched on this phone just to open, so removed again after a while unless kept. */
+  temporary: boolean;
+}
+
 export interface ReaderLocator {
   href?: string;
   cfi?: string;
@@ -914,6 +925,8 @@ export interface NoteItem {
   /** When it was pinned above the rest in Scribe; null when it isn't. */
   pinnedAt?: IsoUtc | null;
   tags?: string[];
+  /** The book you're writing in Scribe that a personal note belongs to. */
+  project?: { id: string; title: string } | null;
 }
 
 export type NotesTab = "all" | "highlights" | "annotations" | "book_notes" | "personal";
@@ -929,6 +942,8 @@ export interface NotesQuery {
   tag?: string | null;
   /** Only notes changed at or after this moment. */
   since?: IsoUtc | null;
+  /** Only the notes that belong to this book you're writing. */
+  projectId?: string | null;
 }
 
 export interface NoteCounts {

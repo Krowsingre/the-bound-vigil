@@ -1073,8 +1073,59 @@
   text-align: left;
 }
 
+.quote-drawer-list li {
+  position: relative;
+}
+
+.quote-drawer-list .quote-drawer-untie {
+  position: absolute;
+  top: 6px;
+  right: 4px;
+  width: auto;
+  padding: 4px;
+  border: 0;
+  color: var(--text-muted);
+}
+
+.quote-drawer-list li:has(.quote-drawer-untie) > button:first-child {
+  padding-right: 30px;
+}
+
 .quote-drawer-list button:hover {
   background: var(--surface-sunk);
+}
+
+.quote-drawer-switch {
+  margin: 0;
+}
+
+.quote-drawer-add {
+  align-self: flex-start;
+}
+
+/* A note written for the book from the drawer. */
+.quote-drawer-new {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quote-drawer-new input,
+.quote-drawer-new textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface-sunk);
+  color: var(--text);
+  font: 400 14px/1.45 var(--font-sans);
+  resize: vertical;
+}
+
+.quote-drawer-new-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .quote-drawer-quote {

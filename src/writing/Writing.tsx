@@ -689,7 +689,7 @@ function ProjectView({
             </footer>
           </section>
         )}
-        {side === "quotes" && <QuoteDrawer refreshKey={refreshKey} onInsert={(n) => insertInEditor.current?.(quoteHtml(n))} onClose={() => setSide(null)} />}
+        {side === "quotes" && <QuoteDrawer refreshKey={refreshKey} projectId={project.id} onInsert={(n) => insertInEditor.current?.(quoteHtml(n))} onClose={() => setSide(null)} />}
       </div>
 
       {dialog === "sources" && (

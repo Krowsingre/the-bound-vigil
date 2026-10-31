@@ -104,7 +104,7 @@ const sampleBookNote = (books: BookPreview[]): Annotation[] => {
     : [];
 };
 
-type NotesApi = Pick<Api, "getNotes" | "saveBookNote" | "savePersonalNote" | "setAnnotationNote" | "deleteNote" | "setNotePinned" | "setNoteTags">;
+type NotesApi = Pick<Api, "getNotes" | "saveBookNote" | "savePersonalNote" | "setAnnotationNote" | "deleteNote" | "setNotePinned" | "setNoteTags" | "setNoteProject">;
 
 export function previewNotes(
   books: () => BookPreview[],
@@ -142,6 +142,8 @@ export function previewNotes(
         ],
   );
   const markOf = (id: string) => marks.get(id) ?? { pinnedAt: null, tags: [] };
+  // The Scribe book each personal note belongs to.
+  const projects = new Map<string, { id: string; title: string }>();
 
   const toItem = (a: Annotation): NoteItem | null => {
     const b = books().find((x) => x.id === a.bookId);
@@ -180,7 +182,7 @@ export function previewNotes(
       ),
     ]
       .filter((n): n is NoteItem => !!n)
-      .map((n) => ({ ...n, ...markOf(n.id) }))
+      .map((n) => ({ ...n, ...markOf(n.id), project: projects.get(n.id) ?? null }))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const one = (id: string) => {
     const n = all().find((x) => x.id === id);
@@ -195,6 +197,16 @@ export function previewNotes(
     setNotePinned: async (id, pinned) => {
       one(id);
       marks.set(id, { ...markOf(id), pinnedAt: pinned ? stamp() : null });
+    },
+    setNoteProject: async (id, projectId) => {
+      one(id);
+      if (projectId) {
+        const { api } = await import("../api");
+        const title = (await api.writingProjects()).find((w) => w.id === projectId)?.title ?? "Your book";
+        projects.set(id, { id: projectId, title });
+      }
+      else projects.delete(id);
+      return one(id);
     },
     setNoteTags: async (id, tags) => {
       one(id);

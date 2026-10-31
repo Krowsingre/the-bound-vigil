@@ -7,6 +7,10 @@
 // Left out on purpose: Feedbooks (closed in 2024, now Cantook), the Unbound
 // Bible (discontinued by Biola University), Bible Gateway (read online only;
 // its ebooks are sold and most of its translations are copyrighted).
+// Checked and left out (October 2026): Standard Ebooks' catalogue (for its
+// paying patrons only), Wikisource's (a bot check stops apps reading it),
+// OpenEdition's (most books sell their downloads), and catalogues of
+// pirated books.
 
 export interface SuggestedCatalog {
   name: string;
@@ -36,6 +40,7 @@ export const SUGGESTED_GROUPS: SuggestedGroup[] = [
       site("eBible.org", "https://ebible.org/download.php", "Over 1,000 Bible translations, free to share. Opens in Discover; an EPUB you download comes into your library."),
       opds("Internet Archive", "https://archive.org/services/opds", "Millions of open-access and public-domain books, and audiobooks."),
       opds("Open Library", "https://openlibrary.org/opds/", "English and more. Many books are borrow-only on its website."),
+      opds("Unglue.it", "https://unglue.it/api/opds/", "Books their authors and publishers made free, under Creative Commons and other open licences."),
       opds("Ebooks libres et gratuits", "https://www.ebooksgratuits.com/opds/", "French classics"),
       opds("textos.info", "https://textos.info/opds", "Spanish classics"),
       opds("Wolne Lektury", "https://wolnelektury.pl/opds/", "Polish literature"),
@@ -63,6 +68,8 @@ export const SUGGESTED_GROUPS: SuggestedGroup[] = [
     about: "They open in Discover.",
     items: [
       site("LibriVox", "https://librivox.org/", "Public-domain audiobooks, read by volunteers."),
+      site("OAPEN Library", "https://library.oapen.org/", "Open-access academic books, free to download, mostly as PDFs."),
+      site("Open Textbook Library", "https://open.umn.edu/opentextbooks", "Free, openly licensed university textbooks."),
       site("HathiTrust", "https://www.hathitrust.org/", "Millions of scanned library books. Public-domain ones are free to read; whole-book downloads may need a member library's sign-in."),
       site("Sefaria", "https://www.sefaria.org/texts", "Jewish texts in Hebrew and English, from the Torah to modern works."),
       site("Christian Classics Ethereal Library", "https://www.ccel.org/", "Classic Christian writings, mostly public domain, free for personal use."),

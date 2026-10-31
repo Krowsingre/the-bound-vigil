@@ -379,7 +379,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "sync",
     section: "options",
     label: "Sync options",
-    words: "progress notes highlights collections metadata book files audiobook audio stream streaming play without downloading",
+    words: "progress notes highlights collections metadata book files audiobook audio stream streaming play without downloading split pieces big files 50 mb free plan supabase books opened on this phone remove keep storage room",
   },
   {
     tab: "sync",

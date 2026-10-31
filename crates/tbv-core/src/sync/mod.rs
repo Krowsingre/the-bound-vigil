@@ -11,6 +11,7 @@
 
 pub mod contents;
 pub mod files;
+pub mod holdings;
 pub mod moving;
 pub mod places;
 pub mod supabase;
@@ -179,6 +180,22 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "device",
+        table: "devices",
+        keys: &["device_id"],
+        cols: &["name", "kind", "updated_at"],
+        category: Category::Library,
+        creates: true,
+    },
+    Kind {
+        name: "book_holder",
+        table: "book_holders",
+        keys: &["device_id", "book_id"],
+        cols: &["held", "updated_at"],
+        category: Category::Library,
+        creates: true,
+    },
+    Kind {
         name: "series",
         table: "series_lists",
         keys: &["id"],
@@ -249,6 +266,14 @@ pub(crate) const KINDS: &[Kind] = &[
         table: "personal_notes",
         keys: &["id"],
         cols: &["pinned_at", "tags"],
+        category: Category::Notes,
+        creates: false,
+    },
+    Kind {
+        name: "personal_note_project",
+        table: "personal_notes",
+        keys: &["id"],
+        cols: &["project_id"],
         category: Category::Notes,
         creates: false,
     },
@@ -431,6 +456,12 @@ pub struct SyncOptions {
     pub phone_chosen_only: bool,
     /// Discover's history (pages visited and searches).
     pub browser_history: bool,
+    /// Supabase: files over its free plan's 50 MB limit go up in pieces.
+    /// Off, they go up whole, which a paid plan's bigger limit takes.
+    pub split_big_files: bool,
+    /// A phone removes books it fetched just to open once they've gone this
+    /// many days unopened, unless they're kept. 0 keeps them all.
+    pub phone_keep_days: u32,
 }
 
 impl Default for SyncOptions {
@@ -450,6 +481,8 @@ impl Default for SyncOptions {
             also_audio_files: false,
             phone_chosen_only: false,
             browser_history: false,
+            split_big_files: false,
+            phone_keep_days: 14,
         }
     }
 }
@@ -1124,7 +1157,9 @@ impl Library {
         match provider {
             Provider::Supabase => {
                 let (Some(project), Some(session)) = (self.supabase_project()?, self.sync_session()?) else { return Ok(None) };
-                Ok(Some(Cloud::Supabase(Box::new(supabase::Supabase::new(project, session, self.device_id()?)))))
+                Ok(Some(Cloud::Supabase(Box::new(
+                    supabase::Supabase::new(project, session, self.device_id()?).split_big_files(self.sync_options()?.split_big_files),
+                ))))
             }
             Provider::Off => Ok(None),
             _ => Ok(Some(Cloud::Files(open_files(provider, self.device_id()?)?.0))),
@@ -1455,6 +1490,7 @@ impl Library {
             "book_same" => format!("Kept together: {}", book(0)),
             "book_pin" => format!("Pinned in the Archive: {}", book(0)),
             "annotation_mark" | "personal_note_mark" => "A note's pin or tags".into(),
+            "personal_note_project" => "Which of your books a note belongs to".into(),
             "book_shelves" => format!("Up next, favourite or rating: {}", book(0)),
             "override" => format!("Details edited: {}", book(0)),
             "fetched" => format!("Details found online: {}", book(0)),
@@ -1462,6 +1498,8 @@ impl Library {
             "read_along_piece" => format!("Read-along lined up a little further: {}", book(0)),
             "read_along_queue" => format!("Read-along queue: {}", book(0)),
             "read_along_holder" => format!("Downloaded for Confluence: {}", book(1)),
+            "device" => named("A device or place", text("name")),
+            "book_holder" => format!("Where it's downloaded: {}", book(1)),
             "series" => named("Series", text("name")),
             "collection" => named(if gone { "Compendium removed" } else { "Compendium" }, text("name")),
             "collection_book" => format!("Compendium book: {}", book(1)),
@@ -1719,6 +1757,7 @@ impl Library {
             "book_same" => format!("Copies kept together{}", book(key.first())?),
             "book_pin" => format!("Pinned to the top of the Archive{}", book(key.first())?),
             "annotation_mark" | "personal_note_mark" => "A note's pin and tags".into(),
+            "personal_note_project" => "Which of your books a note belongs to".into(),
             "override" => format!("A corrected detail{}", book(key.first())?),
             "fetched" => format!("A detail found online{}", book(key.first())?),
             "audiobook" => format!("Chapters and narrators{}", book(key.first())?),
@@ -1737,6 +1776,8 @@ impl Library {
             "read_along_piece" => format!("A piece of read-along timing{}", book(key.first())?),
             "read_along_queue" => format!("Its place in the read-along queue{}", book(key.first())?),
             "read_along_holder" => format!("Which devices can converge{}", book(key.get(1))?),
+            "device" => format!("The name of {}", field("name").unwrap_or_default()),
+            "book_holder" => format!("Where it's downloaded{}", book(key.get(1))?),
             "writing_draft" => "A draft of a book in Scribe".into(),
             "reading_history" => format!("A book in your reading history: {}", field("title").unwrap_or_default()),
             _ => format!("The note {}", field("title").filter(|t| !t.is_empty()).unwrap_or_else(|| "without a title".into())),
@@ -2226,6 +2267,8 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         }
         "book_same" => if text("same_as").is_empty() { "A book of its own".into() } else { "Kept with another copy".into() },
         "read_along_holder" => if data.get("held").and_then(Value::as_i64) == Some(1) { "Both halves downloaded".into() } else { "Not both downloaded".into() },
+        "book_holder" => if data.get("held").and_then(Value::as_i64) == Some(1) { "Downloaded".into() } else { "Not downloaded".into() },
+        "device" => short(text("name")),
         "read_along_queue" => if data.get("queued").and_then(Value::as_i64) == Some(0) { "Left out of lining up".into() } else { "Queued to line up".into() },
         "book_pin" => if text("pinned_at").is_empty() { "Unpinned".into() } else { "Pinned to the top of the Archive".into() },
         "annotation_mark" | "personal_note_mark" => if text("pinned_at").is_empty() { "Not pinned".into() } else { "Pinned in Scribe".into() },
@@ -2659,6 +2702,8 @@ fn push(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, 
     tell(SyncEvent::Step { lane, step: SyncStep::Sending });
     // Other devices learn which read-along pairs this one can converge.
     let _ = lock()?.note_read_along_holdings();
+    // …and where each book is downloaded.
+    lock()?.note_book_holdings()?;
     let mut seen = HashSet::new();
     loop {
         let batch = lock()?.lane_outbox(options, BATCH, lane)?;
@@ -2763,9 +2808,12 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
     };
     // Covers and pictures go first, then the cloud's covers come down, and
     // only then the book files: in a big library those take far longer, and
-    // every device should show every cover meanwhile.
+    // every device should show every cover meanwhile. A phone sends the
+    // books added on it first instead, and fetches covers as they're shown.
+    let lazy = holdings::covers_on_view();
     let (books, small): (Vec<_>, Vec<_>) = to_send.into_iter().partition(|(path, ..)| path.starts_with("books/"));
-    send(lock, tell, remote, lane, report, small)?;
+    let (send_first, send_last) = if lazy { (books, small) } else { (small, books) };
+    send(lock, tell, remote, lane, report, send_first)?;
 
     let mut fetches: Vec<(String, PathBuf, String, Option<String>)> = Vec::new();
     {
@@ -2781,7 +2829,12 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
     }
     let (bare, stale, covers_dir) = {
         let library = lock()?;
-        (library.books_without_covers()?, library.stale_covers()?, library.paths.covers_dir.clone())
+        if lazy {
+            library.drop_stale_covers()?;
+            (Vec::new(), Vec::new(), library.paths.covers_dir.clone())
+        } else {
+            (library.books_without_covers()?, library.stale_covers()?, library.paths.covers_dir.clone())
+        }
     };
     // A cover another device replaced comes down under a new name, and only
     // then takes the old one's place.
@@ -2861,7 +2914,7 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
         }
     }
 
-    send(lock, tell, remote, lane, report, books)
+    send(lock, tell, remote, lane, report, send_last)
 }
 
 type Upload = (String, PathBuf, String, u64);

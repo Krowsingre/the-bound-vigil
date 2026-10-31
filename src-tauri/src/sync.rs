@@ -479,6 +479,55 @@ pub fn stream_places(library: &Arc<Mutex<Library>>) -> Vec<Cloud> {
     first.into_iter().chain(connect_second(library)).collect()
 }
 
+/// What each sync place's covers/ folder held when last looked, so covers
+/// shown one after another don't each list it again.
+static COVER_LISTS: Mutex<Vec<(Lane, Instant, Vec<String>)>> = Mutex::new(Vec::new());
+const COVER_LIST_FOR: Duration = Duration::from_secs(10 * 60);
+
+/// A phone: fetches a book's cover because it's being shown, from the first
+/// place that has it. None if neither has one.
+pub fn cover_on_view(library: &Arc<Mutex<Library>>, book_id: &str) -> tbv_core::Result<Option<String>> {
+    if let Some(cover) = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?.cover_here(book_id)? {
+        return Ok(Some(cover));
+    }
+    let first = (|| {
+        let l = library.lock().ok()?;
+        match l.sync_provider().ok()? {
+            Provider::Supabase | Provider::Off => connect(library, &l).ok().flatten(),
+            other => {
+                let device = l.device_id().ok()?;
+                drop(l);
+                core_sync::open_files(&other, device).ok().map(|(files, _)| Cloud::Files(files))
+            }
+        }
+    })();
+    for (cloud, lane) in [(first, Lane::Main), (connect_second(library), Lane::Also)] {
+        let Some(mut cloud) = cloud else { continue };
+        let listed = {
+            let lists = COVER_LISTS.lock().map_err(|_| Error::Unsuitable("covers are unavailable".into()))?;
+            lists.iter().find(|(l, at, _)| *l == lane && at.elapsed() < COVER_LIST_FOR).map(|(_, _, names)| names.clone())
+        };
+        let names = match listed {
+            Some(names) => names,
+            None => {
+                let names = core_sync::Remote::list(&mut cloud, "covers/")?;
+                let mut lists = COVER_LISTS.lock().map_err(|_| Error::Unsuitable("covers are unavailable".into()))?;
+                lists.retain(|(l, ..)| *l != lane);
+                lists.push((lane, Instant::now(), names.clone()));
+                names
+            }
+        };
+        let outcome = core_sync::holdings::cover_on_view(library, &mut cloud, lane, &names, book_id);
+        if let Ok(library) = library.lock() {
+            keep_session(&library, &cloud, &outcome);
+        }
+        if let Some(cover) = outcome? {
+            return Ok(Some(cover));
+        }
+    }
+    Ok(None)
+}
+
 fn fetch_book(library: &Arc<Mutex<Library>>, book_id: &str, client: Option<Cloud>, second: Option<Cloud>) -> tbv_core::Result<()> {
     // The first place, then the second if the first hasn't got it or can't be reached.
     let mut trouble = None;

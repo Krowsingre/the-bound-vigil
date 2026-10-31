@@ -543,6 +543,12 @@ impl Remote for SwitchMidPush<'_> {
     }
 }
 
+/// Notes where the books are now, and counts those records waiting to go.
+fn holdings_news(a: &Device) -> usize {
+    a.lib().note_book_holdings().unwrap();
+    a.lib().sync_outbox(&SyncOptions::default(), 5000).unwrap().iter().filter(|r| r.kind == "device" || r.kind == "book_holder").count()
+}
+
 #[test]
 fn switching_mid_run_leaves_everything_for_the_new_place() {
     let old = tempfile::tempdir().unwrap();
@@ -551,6 +557,7 @@ fn switching_mid_run_leaves_everything_for_the_new_place() {
     let a = Device::new();
     a.lib().set_sync_provider(&folder(&old)).unwrap();
     a.import("Carmilla");
+    a.lib().note_book_holdings().unwrap();
     let waiting = a.lib().sync_outbox(&SyncOptions::default(), 500).unwrap().len();
     assert!(waiting > 0);
 
@@ -650,9 +657,10 @@ fn moving_copies_records_and_files_then_switches_over() {
     let provider = Provider::Folder { service: "dropbox".into(), path: folder.path().display().to_string() };
     a.lib().adopt_move(&Destination::Files(provider.clone()), &check, MoveScope::All).unwrap();
     assert_eq!(a.lib().sync_provider().unwrap(), provider);
-    assert_eq!(a.lib().sync_overview().unwrap().waiting_to_send, 0);
+    let news = holdings_news(&a);
+    assert_eq!(a.lib().sync_overview().unwrap().waiting_to_send as usize, news);
     let after = a.sync(&new);
-    assert_eq!((after.sent, after.files_sent), (0, 0), "{after:?}");
+    assert_eq!((after.sent as usize, after.files_sent), (news, 0), "only the news that the new place holds the books: {after:?}");
 }
 
 #[test]
@@ -849,8 +857,9 @@ fn a_migration_after_a_backup_only_copies_whats_new() {
     let folder = tempfile::tempdir().unwrap();
     let provider = Provider::Folder { service: "mega".into(), path: folder.path().display().to_string() };
     a.lib().adopt_move(&Destination::Files(provider), &check, MoveScope::All).unwrap();
+    let news = holdings_news(&a);
     let after = a.sync(&backup);
-    assert_eq!((after.sent, after.files_sent), (0, 0), "and sync doesn't send them again");
+    assert_eq!((after.sent as usize, after.files_sent), (news, 0), "and sync doesn't send them again, only where they now are");
 }
 
 /// Moving to the Supabase stand-in, from a device that has only some of its
@@ -1382,6 +1391,95 @@ mod tidying {
 
     fn book_path(id: &str) -> String {
         format!("books/{}.epub", crate::ids::book_id_hex(id))
+    }
+
+    #[test]
+    fn books_a_phone_has_downloaded_stay_and_every_device_knows_where_each_book_is() {
+        let supabase = FakeRemote::default();
+        let pc = Device::new();
+        pc.set_options(json!({ "bookFiles": true }));
+        let kept = pc.import("Dracula");
+        let read = pc.import("Carmilla");
+        pc.sync(&supabase);
+        pc.lib().remove_download(&kept).unwrap();
+        pc.lib().remove_download(&read).unwrap();
+        let phone = Device::new();
+        phone.lib().set_device_name("Embre's iPhone").unwrap();
+        phone.sync(&supabase);
+        assert!(download_book_from(&phone.library, &mut supabase.clone(), &kept, Lane::Main).unwrap());
+        phone.sync(&supabase);
+        pc.sync(&supabase);
+        // Tests run on a computer; the phone says it's a phone.
+        let phone_id = phone.lib().device_id().unwrap();
+        pc.lib().conn.execute("UPDATE devices SET kind = 'phone' WHERE device_id = ?1", params![phone_id]).unwrap();
+
+        let plan = plan_tidy(&pc.library, &mut supabase.clone(), None).unwrap();
+        assert_eq!(plan.keep, 1);
+        assert_eq!(plan.lose, [book_path(&read)]);
+
+        let names = |l: &Library, id: &str| l.book_locations(id).unwrap().into_iter().map(|p| (p.name, p.kind, p.here)).collect::<Vec<_>>();
+        assert_eq!(
+            names(&pc.lib(), &kept),
+            [("Embre's iPhone".to_string(), "phone".to_string(), false), ("Supabase".to_string(), "place".to_string(), false)]
+        );
+        assert_eq!(names(&pc.lib(), &read), [("Supabase".to_string(), "place".to_string(), false)]);
+        let on_phone = names(&phone.lib(), &kept);
+        assert_eq!(on_phone[0], ("Embre's iPhone".to_string(), "computer".to_string(), true));
+
+        // Taken out of Supabase by tidying: every device hears it's gone from there.
+        let temp = tempfile::tempdir().unwrap();
+        tidy(&pc.library, &mut supabase.clone(), Lane::Main, None, &plan, temp.path(), &AtomicBool::new(false), &mut |_| {}).unwrap();
+        pc.sync(&supabase);
+        phone.sync(&supabase);
+        assert!(names(&phone.lib(), &read).is_empty());
+    }
+
+    #[test]
+    fn a_phone_lets_books_it_only_opened_go_unless_they_are_kept() {
+        let supabase = FakeRemote::default();
+        let pc = Device::new();
+        pc.set_options(json!({ "bookFiles": true }));
+        let opened = pc.import("Dracula");
+        let kept = pc.import("Carmilla");
+        pc.sync(&supabase);
+        let phone = Device::new();
+        phone.sync(&supabase);
+        for id in [&opened, &kept] {
+            assert!(download_book_from(&phone.library, &mut supabase.clone(), id, Lane::Main).unwrap());
+            phone.lib().note_visit(id).unwrap();
+        }
+        phone.lib().keep_download(&kept, true).unwrap();
+        let long_ago = "2020-01-01T00:00:00.000Z";
+        phone.lib().conn.execute("UPDATE phone_visits SET fetched_at = ?1", params![long_ago]).unwrap();
+        phone.lib().conn.execute("UPDATE books SET last_opened_at = ?1", params![long_ago]).unwrap();
+        assert!(phone.lib().book_locations(&opened).unwrap()[0].temporary);
+
+        assert_eq!(phone.lib().drop_old_visits(14).unwrap(), 1);
+        assert!(!phone.lib().has_local_file(&opened).unwrap());
+        assert!(phone.lib().has_local_file(&kept).unwrap());
+    }
+
+    #[test]
+    fn covers_fetched_when_shown_share_a_set_room() {
+        let supabase = FakeRemote::default();
+        let pc = Device::new();
+        let first = pc.import("Dracula");
+        let second = pc.import("Carmilla");
+        pc.sync(&supabase);
+        let phone = Device::new();
+        phone.sync(&supabase);
+        let covers = supabase.clone().list("covers/").unwrap();
+        for id in [&first, &second] {
+            phone.lib().conn.execute("UPDATE local_files SET cover_path = NULL WHERE book_id = ?1", params![id]).unwrap();
+            let got = crate::sync::holdings::cover_on_view(&phone.library, &mut supabase.clone(), Lane::Main, &covers, id).unwrap();
+            assert!(got.is_some_and(|p| Path::new(&p).exists()));
+            tick();
+        }
+        // Room for one: the older goes, to come back when it's shown again.
+        let one: i64 = phone.lib().conn.query_row("SELECT bytes FROM cover_cache WHERE book_id = ?1", params![second], |r| r.get(0)).unwrap();
+        assert_eq!(phone.lib().trim_cover_cache(one as u64).unwrap(), 1);
+        assert!(phone.lib().cover_here(&first).unwrap().is_none());
+        assert!(phone.lib().cover_here(&second).unwrap().is_some());
     }
 
     #[test]

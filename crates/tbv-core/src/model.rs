@@ -747,6 +747,17 @@ pub struct NoteItem {
     pub pinned_at: Option<IsoUtc>,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// The book you're writing in Scribe that a personal note belongs to.
+    #[serde(default)]
+    pub project: Option<ProjectRef>,
+}
+
+/// A book you're writing in Scribe, by name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectRef {
+    pub id: String,
+    pub title: String,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -786,6 +797,8 @@ pub struct NotesQuery {
     pub tag: Option<String>,
     /// Only notes changed at or after this moment.
     pub since: Option<IsoUtc>,
+    /// Only the notes that belong to this book you're writing.
+    pub project_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
