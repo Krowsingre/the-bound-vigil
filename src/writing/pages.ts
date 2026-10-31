@@ -81,11 +81,12 @@ export const KINDS: Record<PageKind, KindInfo> = {
   foreword: { label: "Foreword", hint: "Written by someone else", areas: ["front"] },
   preface: { label: "Preface", hint: "The author on how the book came to be", areas: ["front"] },
   introduction: { label: "Introduction", areas: ["front"] },
-  prologue: { label: "Prologue", areas: ["front"] },
+  // Part of the story, so in the body (embre, 31 October 2026). Front and back still hold ones made before.
+  prologue: { label: "Prologue", areas: ["chapter", "front"] },
   interlude: { label: "Interlude", hint: "Between chapters, not numbered", areas: ["chapter"] },
   poem: { label: "Poem", hint: "Each line kept as written; a blank line starts a stanza", areas: ["front", "chapter", "back"], title: () => "" },
   haiku: { label: "Haiku", hint: "Three short lines, no title", areas: ["chapter"], untitled: true, title: () => "" },
-  epilogue: { label: "Epilogue", areas: ["back"] },
+  epilogue: { label: "Epilogue", areas: ["chapter", "back"] },
   afterword: { label: "Afterword", areas: ["back"] },
   acknowledgments: { label: "Acknowledgments", areas: ["back"] },
   about_author: { label: "About the author", areas: ["back"] },
@@ -100,9 +101,9 @@ export const KINDS: Record<PageKind, KindInfo> = {
 
 /** The Add menu of each area, in the order a book usually has them. */
 export const ADD_MENUS: Record<Area, PageKind[]> = {
-  front: ["half_title", "title_page", "copyright", "dedication", "epigraph", "contents", "contents_manual", "also_by", "foreword", "preface", "introduction", "prologue", "poem", "custom"],
-  chapter: ["chapter", "poem", "haiku", "interlude", "custom"],
-  back: ["epilogue", "afterword", "acknowledgments", "about_author", "also_by", "endnotes", "glossary", "appendix", "sources", "bibliography", "discussion", "excerpt", "custom"],
+  front: ["half_title", "title_page", "copyright", "dedication", "epigraph", "contents", "contents_manual", "also_by", "foreword", "preface", "introduction", "poem", "custom"],
+  chapter: ["chapter", "prologue", "epilogue", "poem", "haiku", "interlude", "custom"],
+  back: ["afterword", "acknowledgments", "about_author", "also_by", "endnotes", "glossary", "appendix", "sources", "bibliography", "discussion", "excerpt", "custom"],
 };
 
 const KIND_NAMES = Object.keys(KINDS) as PageKind[];

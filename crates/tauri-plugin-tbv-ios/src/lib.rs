@@ -395,3 +395,26 @@ pub fn fetch(path: &Path) -> bool {
         false
     }
 }
+
+/// Apple's App Attest vouching for a Scribe record: the record's JSON and
+/// this device's public signing key go in; a stamp comes back as JSON
+/// (key id, Apple's certificate and the assertion), or None where App Attest
+/// isn't available. Talks to Apple the first time, so not on the main thread.
+pub fn app_attest(public_key: &str, record: &str) -> Option<String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get()?;
+        let answer: serde_json::Value = swift
+            .run_mobile_plugin("appAttest", serde_json::json!({ "publicKey": public_key, "record": record }))
+            .ok()?;
+        if answer.get("assertion").and_then(|a| a.as_str()).is_none() {
+            return None;
+        }
+        Some(answer.to_string())
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = (public_key, record);
+        None
+    }
+}

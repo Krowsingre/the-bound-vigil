@@ -3,7 +3,7 @@
 
 import { printInBrowser } from "../print/inBrowser";
 import type { Api } from "../api";
-import type { CatalogView, OpdsEntry, OpdsFeed, ReadingHistoryEntry, WritingDraft } from "../api/types";
+import type { CatalogView, OpdsEntry, OpdsFeed, ProvenanceRecord, ReadingHistoryEntry, WritingDraft, WritingSource } from "../api/types";
 import { writingCalls } from "../writing/records";
 
 type Row = { [column: string]: unknown };
@@ -48,6 +48,11 @@ type Calls = Pick<
   | "addWritingSection"
   | "setWritingChapterPage"
   | "setWritingCoverPage"
+  | "recordWritingImport"
+  | "keepWritingSource"
+  | "writingProvenance"
+  | "deleteWritingSource"
+  | "duplicateWritingProject"
   | "readingHistory"
   | "forgetReading"
   | "markSuggestion"
@@ -152,8 +157,70 @@ export function previewWriting(): Calls {
     { bookId: "gone-2", title: "Vathek", authors: ["William Beckford"], status: null, stars: 3.25, finishedAt: null, inLibrary: false },
   ];
 
+  // Where books came from, as the app keeps it. The preview can't sign, so
+  // its records show as checked to look at the screen.
+  let records: ProvenanceRecord[] = [];
+  let sources: (WritingSource & { projectId: string })[] = [];
+  const stamp = new URLSearchParams(location.search).has("apple");
+  const record = (projectId: string, event: ProvenanceRecord["event"], fields: Record<string, unknown>): ProvenanceRecord => {
+    const made: ProvenanceRecord = {
+      id: crypto.randomUUID(),
+      projectId,
+      event,
+      createdAt: new Date().toISOString(),
+      record: { schema: 1, event, projectId, at: new Date().toISOString(), installation: "preview", algorithm: "Ed25519", keyId: "0f3a9c51d2e87b44", ...fields },
+      signature: "valid",
+      keyId: "0f3a9c51d2e87b44",
+      appleStamp: stamp,
+      device: "This computer",
+    };
+    records = [...records, made];
+    return made;
+  };
+
   return {
     ...calls,
+    recordWritingImport: async (projectId, ack) => {
+      const wording = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ack.wording)));
+      return record(projectId, "import", {
+        policyVersion: ack.policyVersion,
+        wordingSha256: [...wording].map((b) => b.toString(16).padStart(2, "0")).join(""),
+        method: ack.method,
+        source: { name: ack.sourceName, sha256: ack.sourceSha256, bytes: ack.sourceBytes, format: ack.sourceFormat },
+      });
+    },
+    keepWritingSource: async (projectId, fileName, bytes) => {
+      const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes as Uint8Array<ArrayBuffer>));
+      const kept = { projectId, sha256: [...hash].map((b) => b.toString(16).padStart(2, "0")).join(""), name: fileName, bytes: bytes.length, keptAt: new Date().toISOString(), path: fileName };
+      sources = [...sources, kept];
+      return kept;
+    },
+    writingProvenance: async (projectId) => {
+      const own = records.filter((r) => r.projectId === projectId);
+      const from = own.map((r) => r.record.duplicatedFrom).filter((id): id is string => typeof id === "string");
+      return {
+        records: [...own, ...records.filter((r) => from.includes(r.projectId))],
+        sources: sources.filter((s) => s.projectId === projectId),
+        history: own.map((r) => ({ at: r.createdAt, event: r.event, detail: r.appleStamp ? "Signed on this device, with Apple's stamp" : "Signed on this device" })),
+      };
+    },
+    deleteWritingSource: async (projectId, sha256) => {
+      sources = sources.filter((s) => !(s.projectId === projectId && s.sha256 === sha256));
+    },
+    duplicateWritingProject: async (id) => {
+      const original = await calls.writingProject(id);
+      const copy = await calls.createWritingProject(`${original.project.title} (copy)`, original.project.author);
+      await calls.updateWritingDetails(copy.project.id, { ...original.project, title: copy.project.title });
+      for (const c of copy.chapters) await calls.deleteWritingChapter(c.id);
+      const parts = new Map<string, string>();
+      for (const c of original.chapters) {
+        const added = await calls.addWritingSection(copy.project.id, { title: c.title, body: c.body, role: c.role, page: c.page, part: c.part ? (parts.get(c.part) ?? null) : null });
+        parts.set(c.id, added.id);
+      }
+      record(copy.project.id, "duplicate", { duplicatedFrom: id, duplicatedRecords: records.filter((r) => r.projectId === id).map((r) => r.id) });
+      sources = [...sources, ...sources.filter((s) => s.projectId === id).map((s) => ({ ...s, projectId: copy.project.id }))];
+      return calls.writingProject(copy.project.id);
+    },
     saveWritingDraft: async (projectId) => {
       const project = await calls.writingProject(projectId);
       const number = drafts.filter((d) => d.projectId === projectId).reduce((n, d) => Math.max(n, d.number), 0) + 1;

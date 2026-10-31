@@ -13,6 +13,10 @@ import type {
   SanctumLink,
   CustomTheme,
   NewWritingSection,
+  ImportAcknowledgment,
+  ProvenanceRecord,
+  WritingProvenance,
+  WritingSource,
   BrowserFrame,
   BrowserEvent,
   BrowserProtection,
@@ -605,6 +609,16 @@ export interface Api {
   addWritingSection(projectId: string, section: NewWritingSection): Promise<WritingChapter>;
   /** Changes what kind of page a section is, or how it's set out (JSON). */
   setWritingChapterPage(id: string, page: string): Promise<WritingChapter>;
+  /** Signs the record of the person confirming they may import and publish a manuscript into this book. */
+  recordWritingImport(projectId: string, acknowledgment: ImportAcknowledgment): Promise<ProvenanceRecord>;
+  /** Keeps an import's original file on this device. */
+  keepWritingSource(projectId: string, fileName: string, bytes: Uint8Array): Promise<WritingSource>;
+  /** Where a book came from: its signed records, checked, its kept original, this device's history. */
+  writingProvenance(projectId: string): Promise<WritingProvenance>;
+  /** Deletes a kept original; its fingerprint stays in the signed record. */
+  deleteWritingSource(projectId: string, sha256: string): Promise<void>;
+  /** A copy of a book with its own identity, and a record pointing back at the original. */
+  duplicateWritingProject(id: string): Promise<WritingProjectView>;
   /** Books finished, dropped or rated, most recently finished first. */
   readingHistory(): Promise<ReadingHistoryEntry[]>;
   /** Takes a book off Reading history for good. */
@@ -1216,6 +1230,12 @@ function appApi(): Api {
         section: { title: section.title, body: section.body ?? "", role: section.role, part: section.part ?? null, page: section.page ?? "{}", after: section.after ?? null },
       }),
     setWritingChapterPage: async (id, page) => (await core).invoke<WritingChapter>("set_writing_chapter_page", { id, page }),
+    recordWritingImport: async (projectId, acknowledgment) => (await core).invoke<ProvenanceRecord>("record_writing_import", { projectId, acknowledgment }),
+    keepWritingSource: async (projectId, fileName, bytes) =>
+      (await core).invoke<WritingSource>("keep_writing_source", bytes, { headers: { "project-id": projectId, "file-name": encodeURIComponent(fileName) } }),
+    writingProvenance: async (projectId) => (await core).invoke<WritingProvenance>("writing_provenance", { projectId }),
+    deleteWritingSource: async (projectId, sha256) => (await core).invoke("delete_writing_source", { projectId, sha256 }),
+    duplicateWritingProject: async (id) => (await core).invoke<WritingProjectView>("duplicate_writing_project", { id }),
     readingHistory: async () => (await core).invoke<ReadingHistoryEntry[]>("reading_history"),
     forgetReading: async (bookId) => (await core).invoke("forget_reading", { bookId }),
     markSuggestion: async (key, title, authors, status, stars) => (await core).invoke("mark_suggestion", { key, title, authors, status, stars }),

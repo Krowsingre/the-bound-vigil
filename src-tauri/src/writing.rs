@@ -347,3 +347,75 @@ mod tests {
         assert_eq!(super::percent_decode("50%"), "50%");
     }
 }
+
+/// After a record is signed, asks Apple to vouch for it on iPhone and iPad,
+/// without holding the library while Apple answers.
+async fn stamp_record(state: &State<'_, AppLibrary>, record: tbv_core::provenance::ProvenanceRecord) -> CommandResult<tbv_core::provenance::ProvenanceRecord> {
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = state;
+        Ok(record)
+    }
+    #[cfg(target_os = "ios")]
+    {
+    let id = record.id.clone();
+    let (public, text) = {
+        let id = id.clone();
+        with_library(state.clone(), move |library| Ok((library.signing_public_key()?, library.provenance_text(&id)?))).await?
+    };
+    let stamp: Option<String> = tauri::async_runtime::spawn_blocking(move || tauri_plugin_tbv_ios::app_attest(&public, &text)).await.ok().flatten();
+    let Some(stamp) = stamp else { return Ok(record) };
+    with_library(state.clone(), move |library| {
+        library.attach_apple_stamp(&id, &stamp)?;
+        Ok(library.writing_provenance(&record.project_id)?.records.into_iter().find(|r| r.id == id).unwrap_or(record))
+    })
+    .await
+    }
+}
+
+/// The person confirmed they may import and publish a manuscript: signs the record.
+#[tauri::command]
+pub async fn record_writing_import(
+    state: State<'_, AppLibrary>,
+    project_id: String,
+    acknowledgment: tbv_core::provenance::ImportAcknowledgment,
+) -> CommandResult<tbv_core::provenance::ProvenanceRecord> {
+    let made = with_library(state.clone(), move |library| library.record_writing_import(&project_id, &acknowledgment, |_| None)).await?;
+    stamp_record(&state, made).await
+}
+
+/// The original file of an import, sent as its raw bytes with the book's id and file name in headers.
+#[tauri::command]
+pub async fn keep_writing_source(state: State<'_, AppLibrary>, request: tauri::ipc::Request<'_>) -> CommandResult<tbv_core::provenance::WritingSource> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("expected the file".into());
+    };
+    let header = |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
+    let id = header("project-id").ok_or("which book?")?;
+    let name = header("file-name").map(|n| percent_decode(&n)).unwrap_or_else(|| "Original".into());
+    let bytes = bytes.clone();
+    with_library(state, move |library| library.keep_writing_source(&id, &name, &bytes)).await
+}
+
+#[tauri::command]
+pub async fn writing_provenance(state: State<'_, AppLibrary>, project_id: String) -> CommandResult<tbv_core::provenance::WritingProvenance> {
+    with_library(state, move |library| library.writing_provenance(&project_id)).await
+}
+
+#[tauri::command]
+pub async fn delete_writing_source(state: State<'_, AppLibrary>, project_id: String, sha256: String) -> CommandResult<()> {
+    with_library(state, move |library| library.delete_writing_source(&project_id, &sha256)).await
+}
+
+#[tauri::command]
+pub async fn duplicate_writing_project(state: State<'_, AppLibrary>, id: String) -> CommandResult<WritingProjectView> {
+    let copy = with_library(state.clone(), move |library| library.duplicate_writing_project(&id, |_| None)).await?;
+    let record = {
+        let copy_id = copy.project.id.clone();
+        with_library(state.clone(), move |library| Ok(library.writing_provenance(&copy_id)?.records.into_iter().next())).await?
+    };
+    if let Some(record) = record {
+        stamp_record(&state, record).await?;
+    }
+    Ok(copy)
+}

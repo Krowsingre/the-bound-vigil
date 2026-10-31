@@ -213,6 +213,22 @@ export function ScribeBooks({
     { label: "Change Cover", icon: "image", onSelect: () => setDialog({ kind: "details", project: p, focus: "cover" }) },
     { label: "Change Author", icon: "edit", onSelect: () => setDialog({ kind: "details", project: p, focus: "author" }) },
     { label: "Plagiarism Check", icon: "checkCircle", onSelect: () => setDialog({ kind: "copies", project: p }) },
+    ...(isWeb
+      ? []
+      : [
+          {
+            label: "Duplicate Book",
+            icon: "copy" as const,
+            onSelect: () =>
+              void api.duplicateWritingProject(p.id).then(
+                (copy) => {
+                  onChanged();
+                  toast(`Made “${copy.project.title}”. Where the original came from stays in its Book details.`);
+                },
+                (e: unknown) => toast(`Couldn't duplicate the book: ${String(e).replace(/^Error: /, "")}`),
+              ),
+          },
+        ]),
     "divider",
     { label: "Delete Book", icon: "trash", danger: true, onSelect: () => setDialog({ kind: "delete", project: p }) },
   ];

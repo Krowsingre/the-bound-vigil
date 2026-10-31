@@ -1,5 +1,7 @@
 import AVFoundation
 import AuthenticationServices
+import CryptoKit
+import DeviceCheck
 import PhotosUI
 import Security
 import Tauri
@@ -16,6 +18,11 @@ class PickArgs: Decodable {
   /// Kept for good (a key file a saved server reads at every sign-in),
   /// rather than only until it's imported.
   let keep: Bool?
+}
+
+class AttestArgs: Decodable {
+  let publicKey: String
+  let record: String
 }
 
 class UrlArgs: Decodable {
@@ -569,6 +576,60 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
       self.signIn?.cancel()
       self.signIn = nil
       invoke.resolve(["ok": true])
+    }
+  }
+
+  /// Apple's App Attest vouching for a Scribe record (see tbv-core
+  /// provenance.rs). The first time, a key in the Secure Enclave is made and
+  /// Apple certifies it, tied to this device's signing key; each record then
+  /// gets an assertion from that key. Answers the key's id, Apple's
+  /// certificate (attestation) and the assertion, all as they came, or
+  /// `unsupported` where App Attest can't be used.
+  @objc public func appAttest(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(AttestArgs.self)
+    let service = DCAppAttestService.shared
+    guard service.isSupported else {
+      invoke.resolve(["unsupported": true])
+      return
+    }
+    let defaults = UserDefaults.standard
+    let keyName = "tbv.appAttest.keyId"
+    let attestationName = "tbv.appAttest.attestation"
+    let forName = "tbv.appAttest.publicKey"
+    let recordHash = Data(SHA256.hash(data: Data(args.record.utf8)))
+    func stamp(_ keyId: String, _ attestation: String) {
+      service.generateAssertion(keyId, clientDataHash: recordHash) { assertion, error in
+        guard let assertion = assertion, error == nil else {
+          defaults.removeObject(forKey: keyName)
+          invoke.resolve(["unsupported": true])
+          return
+        }
+        invoke.resolve(["keyId": keyId, "attestation": attestation, "assertion": assertion.base64EncodedString()])
+      }
+    }
+    if let keyId = defaults.string(forKey: keyName), let attestation = defaults.string(forKey: attestationName),
+      defaults.string(forKey: forName) == args.publicKey
+    {
+      stamp(keyId, attestation)
+      return
+    }
+    service.generateKey { keyId, error in
+      guard let keyId = keyId, error == nil else {
+        invoke.resolve(["unsupported": true])
+        return
+      }
+      let keyHash = Data(SHA256.hash(data: Data(args.publicKey.utf8)))
+      service.attestKey(keyId, clientDataHash: keyHash) { attestation, error in
+        guard let attestation = attestation, error == nil else {
+          invoke.resolve(["unsupported": true])
+          return
+        }
+        let encoded = attestation.base64EncodedString()
+        defaults.set(keyId, forKey: keyName)
+        defaults.set(encoded, forKey: attestationName)
+        defaults.set(args.publicKey, forKey: forName)
+        stamp(keyId, encoded)
+      }
     }
   }
 

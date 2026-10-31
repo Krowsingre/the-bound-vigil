@@ -558,6 +558,19 @@ export async function webApi(): Promise<Api> {
     deleteWritingDraft: async () => {
       throw new Error(DESKTOP_ONLY);
     },
+    recordWritingImport: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    keepWritingSource: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    writingProvenance: async () => ({ records: [], sources: [], history: [] }),
+    deleteWritingSource: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    duplicateWritingProject: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
     readingHistory: async () => [],
     forgetReading: async () => {
       throw new Error(DESKTOP_ONLY);

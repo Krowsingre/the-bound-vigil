@@ -9,6 +9,8 @@ export interface ImportedDocument {
   title: string;
   author: string | null;
   description: string | null;
+  language?: string | null;
+  isbn?: string | null;
   /** The whole book as HTML, chapter headings as <h1>/<h2>. */
   html: string;
 }
@@ -17,6 +19,8 @@ export interface ImportedChapter {
   title: string;
   body: string;
   words: number;
+  /** What the file itself says the section is (an EPUB's epub:type: dedication, bodymatter…), when it says. */
+  hint?: string;
 }
 
 export type SplitAt = "headings" | "lines" | "none";
@@ -505,7 +509,12 @@ export function markdownToHtml(md: string): string {
       const ordered = /^\s*\d/.test(b);
       const items = b.split(/\n(?=\s*(?:[-*+]|\d+[.)])\s)/).map((li) => `<li><p>${markdownInline(li.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, ""), notes)}</p></li>`);
       out.push(ordered ? `<ol>${items.join("")}</ol>` : `<ul>${items.join("")}</ul>`);
-    } else out.push(`<p>${markdownInline(b, notes)}</p>`);
+    } else {
+      // Short lines kept apart, as a poem's are; prose wrapped in the file runs on as usual.
+      const lines = b.split("\n");
+      const verse = lines.length >= 2 && lines.every((l) => l.trim().length <= 60);
+      out.push(`<p>${verse ? lines.map((l) => markdownInline(l, notes)).join("<br>") : markdownInline(b, notes)}</p>`);
+    }
   }
   return out.join("");
 }
@@ -524,6 +533,11 @@ export function textToHtml(text: string): string {
 function fromEpub(bytes: Uint8Array, fallback: string): ImportedDocument {
   const files = unzipSync(bytes);
   const text = (path: string) => (files[path] ? strFromU8(files[path]) : "");
+  // Fonts may be obfuscated by the EPUB standard itself; anything else encrypted is copy protection, which TBV never removes.
+  const algorithms = [...text("META-INF/encryption.xml").matchAll(/Algorithm="([^"]+)"/g)].map((m) => m[1]);
+  const fontsOnly = algorithms.every((a) => /idpf\.org\/2008\/embedding|ns\.adobe\.com\/pdf\/enc#RC/.test(a));
+  if (files["META-INF/rights.xml"] || files["META-INF/sinf.xml"] || !fontsOnly)
+    throw new Error("That EPUB is copy-protected (DRM). TBV doesn't remove copy protection. If it's your own book, import the file you made it from.");
   const container = new DOMParser().parseFromString(text("META-INF/container.xml"), "application/xml");
   const opfPath = container.getElementsByTagName("rootfile")[0]?.getAttribute("full-path") ?? "";
   const opf = new DOMParser().parseFromString(text(opfPath), "application/xml");
@@ -565,15 +579,19 @@ function fromEpub(bytes: Uint8Array, fallback: string): ImportedDocument {
     if (!body) continue;
     const words = (body.textContent ?? "").trim().split(/\s+/).filter(Boolean).length;
     if (words < 3 && !body.querySelector("img")) continue;
+    // What the book says this file is (dedication, copyright-page, bodymatter…), kept for sorting it into Front, Body or Back.
+    const kind = [body, body.querySelector("section, div")].map((el) => el?.getAttribute("epub:type") ?? "").join(" ").trim();
     const heading = body.querySelector("h1, h2, h3");
+    const h1 = doc.createElement("h1");
+    if (kind) h1.setAttribute("data-kind", kind);
     if (heading) {
-      const h1 = doc.createElement("h1");
       h1.innerHTML = heading.innerHTML;
       heading.replaceWith(h1);
-    } else body.insertAdjacentHTML("afterbegin", "<h1></h1>");
+    } else body.prepend(h1);
     html += body.innerHTML;
   }
-  return { title: meta("dc:title") ?? fallback, author: meta("dc:creator"), description: meta("dc:description"), html };
+  const isbn = [...opf.getElementsByTagName("dc:identifier")].map((el) => el.textContent?.trim() ?? "").map((t) => t.replace(/^urn:isbn:/i, "")).find((t) => /^(97[89])?[\d-]{9,16}[\dX]$/i.test(t.replace(/[\s-]/g, "")) && /^[\d\sX-]+$/i.test(t)) ?? null;
+  return { title: meta("dc:title") ?? fallback, author: meta("dc:creator"), description: meta("dc:description"), language: meta("dc:language"), isbn, html };
 }
 
 /**
@@ -649,7 +667,11 @@ function tidy(root: Element) {
       }
       const centred = /text-align:\s*center/i.test(child.getAttribute("style") ?? "") || child.getAttribute("align") === "center" || /\bcent(er|re)/i.test(child.getAttribute("class") ?? "");
       for (const attr of [...child.attributes]) {
-        const allowed = (tag === "A" && attr.name === "href") || (tag === "IMG" && (attr.name === "src" || attr.name === "alt")) || (tag === "SUP" && attr.name === "data-footnote");
+        const allowed =
+          (tag === "A" && attr.name === "href") ||
+          (tag === "IMG" && (attr.name === "src" || attr.name === "alt")) ||
+          (tag === "SUP" && attr.name === "data-footnote") ||
+          (/^H[123]$/.test(tag) && attr.name === "data-kind");
         if (!allowed) child.removeAttribute(attr.name);
       }
       if (centred && tag === "P") child.setAttribute("style", "text-align: center");
@@ -662,7 +684,8 @@ function tidy(root: Element) {
   for (const p of [...root.querySelectorAll("p")]) {
     const text = p.textContent ?? "";
     if (text.trim() && SCENE_BREAK.test(text) && !p.querySelector("img")) p.replaceWith(root.ownerDocument.createElement("hr"));
-    else if (!text.trim() && !p.querySelector("img, br")) p.remove();
+    // An empty paragraph is marked, not dropped: in a poem it may part two stanzas, in prose mark a break (see manuscript.ts).
+    else if (!text.trim() && !p.querySelector("img, br")) p.setAttribute("data-blank", "");
   }
 }
 
@@ -682,17 +705,19 @@ export function bestSplit(html: string): SplitAt {
   return lines.length >= 2 ? "lines" : "none";
 }
 
-/** The document cut into chapters. Whatever comes before the first chapter is kept as an opening page. */
-export function splitChapters(html: string, at: SplitAt, bookTitle: string): ImportedChapter[] {
+/** The document cut into chapters. Whatever comes before the first chapter is kept as an opening page.
+ * Empty paragraphs are left out unless `keepBlanks`, which leaves them as `<p data-blank>`. */
+export function splitChapters(html: string, at: SplitAt, bookTitle: string, keepBlanks = false): ImportedChapter[] {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
   tidy(doc.body);
+  if (!keepBlanks) doc.body.querySelectorAll("p[data-blank]").forEach((p) => p.remove());
   const level = doc.body.querySelector("h1") ? "H1" : "H2";
   const isBreak = (el: Element) =>
     at === "headings" ? el.tagName === level : at === "lines" ? el.tagName === "P" && CHAPTER_LINE.test(el.textContent ?? "") || el.tagName === level : false;
-  const out: { title: string; nodes: Node[] }[] = [{ title: "", nodes: [] }];
+  const out: { title: string; nodes: Node[]; hint?: string }[] = [{ title: "", nodes: [] }];
   for (const node of [...doc.body.childNodes]) {
     if (node.nodeType === Node.ELEMENT_NODE && isBreak(node as Element)) {
-      out.push({ title: (node.textContent ?? "").replace(/\s+/g, " ").trim(), nodes: [] });
+      out.push({ title: (node.textContent ?? "").replace(/\s+/g, " ").trim(), nodes: [], hint: (node as Element).getAttribute("data-kind") ?? undefined });
       continue;
     }
     out[out.length - 1].nodes.push(node);
@@ -704,7 +729,7 @@ export function splitChapters(html: string, at: SplitAt, bookTitle: string): Imp
     const body = holder.innerHTML.trim();
     const words = wordCount(body);
     if (i === 0 && !words && !holder.querySelector("img")) return;
-    chapters.push({ title: part.title || (i === 0 ? (out.length > 1 ? "Opening" : bookTitle) : "Untitled"), body, words });
+    chapters.push({ title: part.title || (i === 0 ? (out.length > 1 ? "Opening" : bookTitle) : "Untitled"), body, words, ...(part.hint ? { hint: part.hint } : {}) });
   });
   // A chapter number alone ("1") reads better as "Chapter 1".
   for (const c of chapters) if (/^\d{1,3}\.?$/.test(c.title)) c.title = `Chapter ${parseInt(c.title, 10)}`;

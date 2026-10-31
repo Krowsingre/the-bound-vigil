@@ -1,6 +1,7 @@
 // The paperback cover maker: back, spine and front together, at the size the
 // printer asks for, with the trim, spine and safe area shown while it's made.
 
+import { AuthorLabel } from "./AuthorInfo";
 import { useEffect, useRef, useState } from "react";
 import { api, isWeb } from "../api";
 import type { WritingProject } from "../api/types";
@@ -225,7 +226,7 @@ export function PaperbackCover({ project, trim: startTrim, onClose }: { project:
               <input value={design.title} onChange={(e) => set({ title: e.target.value })} maxLength={200} />
             </label>
             <label className="field">
-              <span>Author</span>
+              <AuthorLabel />
               <input value={design.author} onChange={(e) => set({ author: e.target.value })} maxLength={200} />
             </label>
           </div>
