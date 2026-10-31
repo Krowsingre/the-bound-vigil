@@ -30,7 +30,7 @@ export const SETTINGS_TABS: {
     tab: "plan",
     label: "Your plan",
     icon: "tag",
-    lede: "Your plan, TBV Publisher, and buying, switching or restoring.",
+    lede: "Your plan, TBV Publisher, buying, switching or restoring, and about TBV.",
   },
   {
     tab: "appearance",

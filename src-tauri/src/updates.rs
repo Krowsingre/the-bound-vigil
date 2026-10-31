@@ -34,6 +34,13 @@ mod desktop {
     use tauri::{AppHandle, Emitter, Manager};
     use tauri_plugin_updater::{Update, UpdaterExt};
 
+    /// Whether `remote` should replace `current`. TBV was numbered 1.x before
+    /// launch and moved to 0.x (embre, 31 October 2026), so a 0.x release also
+    /// replaces any 1.x install; 1.0.0 is kept for launch.
+    pub(super) fn is_newer(current: &semver::Version, remote: &semver::Version) -> bool {
+        remote > current || (current.major == 1 && remote.major == 0)
+    }
+
     /// The update found by the last check, ready to install.
     #[derive(Default)]
     pub struct Found(pub Mutex<Option<Update>>);
@@ -44,7 +51,9 @@ mod desktop {
             return Ok(UpdateInfo { can_update: false, current, ..Default::default() });
         }
         let found = app
-            .updater()
+            .updater_builder()
+            .version_comparator(|current, remote| is_newer(&current, &remote.version))
+            .build()
             .map_err(|e| e.to_string())?
             .check()
             .await
@@ -125,5 +134,21 @@ pub async fn update_install(app: tauri::AppHandle) -> Result<(), String> {
     {
         let _ = app;
         Err("This copy of TBV is updated by the App Store.".into())
+    }
+}
+
+#[cfg(all(test, not(any(target_os = "ios", target_os = "android"))))]
+mod tests {
+    use super::desktop::is_newer;
+    use semver::Version;
+
+    #[test]
+    fn the_move_to_0_x_still_updates_1_x_installs() {
+        let v = |s: &str| Version::parse(s).unwrap();
+        assert!(is_newer(&v("1.61.0"), &v("0.62.0")));
+        assert!(is_newer(&v("0.62.0"), &v("0.63.0")));
+        assert!(!is_newer(&v("0.63.0"), &v("0.62.0")));
+        assert!(!is_newer(&v("0.62.0"), &v("0.62.0")));
+        assert!(is_newer(&v("0.70.0"), &v("1.0.0")), "launch");
     }
 }

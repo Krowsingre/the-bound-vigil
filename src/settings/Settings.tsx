@@ -19,7 +19,11 @@ import { useNarrow } from "../lib/useNarrow";
 const WEB_TABS = new Set<SettingsTab>(["appearance", "reading", "collections", "sync", "activity", "accessibility", "about"]);
 // On the phone at home, the computer keeps the settings; these change only how this phone shows things.
 const HOME_TABS = new Set<SettingsTab>(["appearance", "reading", "accessibility", "about"]);
-const TABS = isWeb ? SETTINGS_TABS.filter((t) => WEB_TABS.has(t.tab)) : isHome ? SETTINGS_TABS.filter((t) => HOME_TABS.has(t.tab)) : SETTINGS_TABS;
+const ALL_TABS = isWeb ? SETTINGS_TABS.filter((t) => WEB_TABS.has(t.tab)) : isHome ? SETTINGS_TABS.filter((t) => HOME_TABS.has(t.tab)) : SETTINGS_TABS;
+/** Where there's a Your plan page, About is part of it (embre, 31 October). */
+const ABOUT_IN_PLAN = ALL_TABS.some((t) => t.tab === "plan");
+const TABS = ABOUT_IN_PLAN ? ALL_TABS.filter((t) => t.tab !== "about") : ALL_TABS;
+const pageOf = (tab: SettingsTab): SettingsTab => (ABOUT_IN_PLAN && tab === "about" ? "plan" : tab);
 
 /** The computer's list of pages, in groups split by a thin line. */
 const GROUPS: SettingsTab[][] = [
@@ -44,6 +48,8 @@ export function Settings({
   onSidebarShown,
   onRestored,
   activity,
+  query,
+  onQuery,
 }: {
   /** null: the landing page, with a button for each tab. */
   tab: SettingsTab | null;
@@ -60,11 +66,14 @@ export function Settings({
   onRestored: () => void;
   /** Preferences › Activity: which side shows, and the app's Imports and Sync activity panes. */
   activity: { side: ActivitySide; onSide: (side: ActivitySide) => void; imports: React.ReactNode; sync: React.ReactNode };
+  /** What's typed in the top bar's search box, which searches Preferences here (there's no second box). */
+  query: string;
+  onQuery: (text: string) => void;
 }) {
   const narrow = useNarrow();
   // A computer has no landing page.
-  tab = tab ?? (narrow ? null : "appearance");
-  const [query, setQuery] = useState("");
+  tab = tab ? pageOf(tab) : narrow ? null : "appearance";
+  const setQuery = onQuery;
   const [jumpTo, setJumpTo] = useState<string | null>(null);
   useEffect(() => {
     if (!jump) return;
@@ -73,7 +82,9 @@ export function Settings({
   }, [jump, onJumped]);
   const body = useRef<HTMLDivElement>(null);
   const jumped = useRef(false);
-  const results = searchSettings(query).filter((r) => TABS.some((t) => t.tab === r.tab));
+  const results = searchSettings(query)
+    .map((r) => ({ ...r, tab: pageOf(r.tab) }))
+    .filter((r) => TABS.some((t) => t.tab === r.tab));
   const page = SETTINGS_TABS.find((t) => t.tab === tab);
 
   // A new page starts at its top, or at the section picked from search
@@ -106,7 +117,12 @@ export function Settings({
   const content = (() => {
     switch (tab) {
       case "plan":
-        return <PlanTab />;
+        return (
+          <>
+            <PlanTab />
+            <AboutTab />
+          </>
+        );
       case "appearance":
         return (
           <AppearanceTab
@@ -145,12 +161,6 @@ export function Settings({
     }
   })();
 
-  const search = (
-    <label className="search settings-search">
-      <Icon name="search" size={16} />
-      <input type="search" placeholder="Search preferences…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search preferences" />
-    </label>
-  );
   const found = (
     <ul className="settings-menu settings-results">
       {results.length === 0 ? (
@@ -188,7 +198,6 @@ export function Settings({
               <h1>Preferences</h1>
               <p className="muted">Choose what to change.</p>
             </div>
-            {search}
           </header>
           {query.trim() ? (
             found
@@ -216,7 +225,6 @@ export function Settings({
     <div className="settings-page">
       <nav className="settings-nav" aria-label="Preferences">
         <p className="settings-eyebrow">Preferences</p>
-        {search}
         {query.trim() ? (
           found
         ) : (
