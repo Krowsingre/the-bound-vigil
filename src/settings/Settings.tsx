@@ -4,7 +4,7 @@ import { Icon } from "../components/Icon";
 import type { Layout } from "../library/libraryView";
 import { AppearanceTab } from "./AppearanceTab";
 import { BrowserTab } from "./BrowserTab";
-import { AboutTab, AccessibilityTab, AdvancedTab, CollectionsTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
+import { AboutTab, AccessibilityTab, PlanTab, AdvancedTab, CollectionsTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
 import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex";
 import { SyncTab } from "./SyncTab";
 import { EreadersTab } from "./EreadersTab";
@@ -23,6 +23,7 @@ const TABS = isWeb ? SETTINGS_TABS.filter((t) => WEB_TABS.has(t.tab)) : isHome ?
 
 /** The computer's list of pages, in groups split by a thin line. */
 const GROUPS: SettingsTab[][] = [
+  ["plan"],
   ["appearance", "reading", "library", "collections", "notes", "browser", "files", "ereaders"],
   ["sync", "activity", "servers"],
   ["accessibility", "shortcuts", "advanced", "about"],
@@ -104,6 +105,8 @@ export function Settings({
 
   const content = (() => {
     switch (tab) {
+      case "plan":
+        return <PlanTab />;
       case "appearance":
         return (
           <AppearanceTab

@@ -38,6 +38,7 @@ export function SyncMenu({
   onOpenActivity,
   onOpenPlaces,
   onOpenProfile,
+  onOpenPlan,
 }: {
   sync: SyncStatus | null;
   profile: Profile | null;
@@ -50,6 +51,8 @@ export function SyncMenu({
   onOpenPlaces?: () => void;
   /** Preferences › Appearance › Profile: picture, name and device name. */
   onOpenProfile: () => void;
+  /** Preferences › Your plan; left out where nothing can be bought (the web version). */
+  onOpenPlan?: () => void;
 }) {
   const state = sync?.state ?? "disabled";
   // Up to date as far as this device knows, but another has more.
@@ -136,6 +139,7 @@ export function SyncMenu({
         },
         "divider",
         { label: "Profile…", icon: "edit", hint: "Picture and names", onSelect: onOpenProfile },
+        ...(onOpenPlan ? [{ label: "Your plan…", icon: "tag" as const, hint: "Plans, purchases, Publisher", onSelect: onOpenPlan }] : []),
       ]}
     />
   );

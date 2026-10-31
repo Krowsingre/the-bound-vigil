@@ -32,6 +32,7 @@ export interface ReaderShellProps {
   onImportFolder: () => void;
   onOpenSyncSettings: () => void;
   onOpenProfile: () => void;
+  onOpenPlan?: () => void;
 }
 
 const PANELS_KEY = "tbv.reader.panels";
