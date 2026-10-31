@@ -1,4 +1,4 @@
-// Preferences › Sync › Use on your phone at home: TBV on this computer serves
+// Preferences › Sync › Stream to your phone at home: TBV on this computer serves
 // itself to a phone on the same Wi-Fi, so books and audiobooks here (and in
 // a cloud app's folder, like iCloud) open on the phone without Supabase.
 
@@ -22,12 +22,12 @@ export function HomeSection() {
   return (
     <Section
       id="home"
-      title="Use on your phone at home"
-      lede="Open TBV on your phone straight from this computer while both are on the same Wi-Fi. Books and audiobooks here, and in your iCloud or other cloud folder, open and play on the phone without going through Supabase."
+      title="Stream to your phone at home"
+      lede="Stream your books and audiobooks from this computer to your phone while both are on the same Wi-Fi. Open the address below in the phone's browser: books here, and in your iCloud or other cloud folder, open and play there without being copied to the phone."
     >
       <Toggle
         label="Serve TBV to my phone"
-        hint="Works while TBV is open on this computer. Away from home, the phone uses the normal web version."
+        hint="Works while TBV is open on this computer and the phone is on the same Wi-Fi."
         checked={Boolean(status?.on)}
         disabled={!isApp && status === null}
         onChange={(on) => run(() => api.setHome(on))}

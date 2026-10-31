@@ -198,7 +198,7 @@ export interface Api {
    * The links to play each part from, or null to use `audioUrl`. Throws when it can't be streamed.
    */
   prepareStream(bookId: string): Promise<string[] | null>;
-  /** "Use on your phone at home" (desktop app). */
+  /** "Stream to your phone at home" (desktop app). */
   homeStatus(): Promise<HomeStatus>;
   setHome(on: boolean): Promise<HomeStatus>;
   /** A new pairing code, for another phone. */
@@ -620,7 +620,7 @@ export const SERVER_BOOK = "abs~";
 export const isServerBook = (bookId: string) => bookId.startsWith(SERVER_BOOK);
 /** The player's id for an audiobook on a saved Audiobookshelf catalogue. */
 export const serverBookId = (catalogId: string, itemId: string) => `${SERVER_BOOK}${catalogId}~${itemId}`;
-/** The pages TBV on the computer serves to a phone at home (Preferences › Sync › Use on your phone at home). */
+/** The pages TBV on the computer serves to a phone at home (Preferences › Sync › Stream to your phone at home). */
 export const isHome = !isApp && typeof document !== "undefined" && !!document.querySelector('meta[name="tbv-home"]');
 /** The iPhone app: the full app, laid out for a phone. iPads say they're Macs. */
 export const isIOS =

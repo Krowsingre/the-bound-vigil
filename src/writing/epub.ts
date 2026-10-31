@@ -119,6 +119,7 @@ export function readExport(json: string | null | undefined): ExportSettings {
           isbn: text(c.isbn, d.isbn, 40),
           edition: text(c.edition, d.edition, 200),
           publisher: text(c.publisher, d.publisher, 200),
+          credit: typeof c.credit === "boolean" ? c.credit : d.credit,
         };
       })(),
       sources: readSources(saved.sources),
@@ -217,6 +218,10 @@ const SEMANTIC: Partial<Record<PageKind, string>> = {
   sources: "bibliography",
 };
 
+/** Noted inside every EPUB Scribe makes, where readers never see it
+ * (embre, 31 October 2026: always there, and the export says so). */
+export const GENERATOR = "The Bound Vigil";
+
 /** The copyright page Scribe makes from the book's details. */
 export function copyrightHtml(project: WritingProject, details: CopyrightDetails, now = new Date()): string {
   const year = details.year.trim() || String(now.getFullYear());
@@ -230,6 +235,7 @@ export function copyrightHtml(project: WritingProject, details: CopyrightDetails
     line(details.isbn ? `ISBN ${details.isbn.replace(/^isbn[:\s]*/i, "")}` : ""),
     line(details.edition),
     line(details.publisher ? `Published by ${details.publisher}` : ""),
+    line(details.credit === false ? "" : "Made with The Bound Vigil", "copyright-credit"),
   ].join("");
 }
 
@@ -601,6 +607,7 @@ section.page-half-title .title { font-size: 1.6em; margin: 35% 0 0; text-align: 
 section.page-copyright { padding-top: 30%; }
 section.page-copyright p { text-indent: 0; text-align: left; font-size: 0.85em; margin: 0 0 0.8em; }
 section.page-copyright .copyright-title { font-style: italic; }
+section.page-copyright .copyright-credit { margin-top: 2em; font-size: 0.8em; }
 section.page-dedication, section.page-epigraph { text-align: center; padding-top: 25%; }
 section.page-dedication p, section.page-epigraph p { text-align: center; text-indent: 0; }
 section.page-dedication p { font-style: italic; }
@@ -862,7 +869,8 @@ ${author ? `<dc:creator id="author">${escapeXml(author)}</dc:creator>\n<meta ref
           project.seriesIndex != null ? `<meta refines="#series" property="group-position">${project.seriesIndex}</meta>\n` : ""
         }<meta name="calibre:series" content="${escapeXml(series)}"/>\n${project.seriesIndex != null ? `<meta name="calibre:series_index" content="${project.seriesIndex}"/>\n` : ""}`
       : ""
-  }${useCover ? `<meta name="cover" content="cover-image"/>\n` : ""}<meta property="dcterms:modified">${modified}</meta>
+  }${useCover ? `<meta name="cover" content="cover-image"/>\n` : ""}<meta name="generator" content="${GENERATOR}"/>
+<meta property="dcterms:modified">${modified}</meta>
 </metadata>
 <manifest>
 ${manifest.join("\n")}

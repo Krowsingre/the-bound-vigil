@@ -47,7 +47,7 @@ export function HomePair({ children }: { children: React.ReactNode }) {
       >
         <h1>The Bound Vigil</h1>
         <p className="muted">
-          Enter the code TBV shows on your computer, in Preferences › Sync › Use on your phone at home. This phone only needs it
+          Enter the code TBV shows on your computer, in Preferences › Sync › Stream to your phone at home. This phone only needs it
           once.
         </p>
         <label className="field">
