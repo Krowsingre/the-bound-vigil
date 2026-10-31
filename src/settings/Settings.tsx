@@ -19,18 +19,15 @@ import { useNarrow } from "../lib/useNarrow";
 const WEB_TABS = new Set<SettingsTab>(["appearance", "reading", "collections", "sync", "activity", "accessibility", "about"]);
 // On the phone at home, the computer keeps the settings; these change only how this phone shows things.
 const HOME_TABS = new Set<SettingsTab>(["appearance", "reading", "accessibility", "about"]);
-const ALL_TABS = isWeb ? SETTINGS_TABS.filter((t) => WEB_TABS.has(t.tab)) : isHome ? SETTINGS_TABS.filter((t) => HOME_TABS.has(t.tab)) : SETTINGS_TABS;
-/** Where there's a Your plan page, About is part of it (embre, 31 October). */
-const ABOUT_IN_PLAN = ALL_TABS.some((t) => t.tab === "plan");
-const TABS = ABOUT_IN_PLAN ? ALL_TABS.filter((t) => t.tab !== "about") : ALL_TABS;
-const pageOf = (tab: SettingsTab): SettingsTab => (ABOUT_IN_PLAN && tab === "about" ? "plan" : tab);
+const TABS = isWeb ? SETTINGS_TABS.filter((t) => WEB_TABS.has(t.tab)) : isHome ? SETTINGS_TABS.filter((t) => HOME_TABS.has(t.tab)) : SETTINGS_TABS;
 
 /** The computer's list of pages, in groups split by a thin line. */
 const GROUPS: SettingsTab[][] = [
-  ["plan"],
+  // About is its own page, straight under Your plan (embre, 31 October).
+  ["plan", "about"],
   ["appearance", "reading", "library", "collections", "notes", "browser", "files", "ereaders"],
   ["sync", "activity", "servers"],
-  ["accessibility", "shortcuts", "advanced", "about"],
+  ["accessibility", "shortcuts", "advanced"],
 ];
 const GROUPED = GROUPS.map((group) => group.flatMap((tab) => TABS.filter((t) => t.tab === tab))).filter((g) => g.length > 0);
 
@@ -72,7 +69,7 @@ export function Settings({
 }) {
   const narrow = useNarrow();
   // A computer has no landing page.
-  tab = tab ? pageOf(tab) : narrow ? null : "appearance";
+  tab = tab ?? (narrow ? null : "appearance");
   const setQuery = onQuery;
   const [jumpTo, setJumpTo] = useState<string | null>(null);
   useEffect(() => {
@@ -82,9 +79,7 @@ export function Settings({
   }, [jump, onJumped]);
   const body = useRef<HTMLDivElement>(null);
   const jumped = useRef(false);
-  const results = searchSettings(query)
-    .map((r) => ({ ...r, tab: pageOf(r.tab) }))
-    .filter((r) => TABS.some((t) => t.tab === r.tab));
+  const results = searchSettings(query).filter((r) => TABS.some((t) => t.tab === r.tab));
   const page = SETTINGS_TABS.find((t) => t.tab === tab);
 
   // A new page starts at its top, or at the section picked from search
@@ -117,12 +112,7 @@ export function Settings({
   const content = (() => {
     switch (tab) {
       case "plan":
-        return (
-          <>
-            <PlanTab />
-            <AboutTab />
-          </>
-        );
+        return <PlanTab />;
       case "appearance":
         return (
           <AppearanceTab

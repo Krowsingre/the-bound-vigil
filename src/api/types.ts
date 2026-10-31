@@ -158,7 +158,7 @@ export interface ProviderView {
 /** A service TBV can sign in to directly. */
 export type CloudService = "dropbox" | "google" | "onedrive";
 
-/** Whether there's a newer version of TBV (Preferences › Your plan). */
+/** Whether there's a newer version of TBV (Preferences › About). */
 export interface UpdateInfo {
   /** False where updates come from an app store. */
   canUpdate: boolean;
