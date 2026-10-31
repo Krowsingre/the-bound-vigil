@@ -237,6 +237,14 @@ export function App() {
     setRoute("settings");
   }, []);
 
+  // Preferences › Your plan, where nothing can be bought it isn't offered.
+  const openPlan = useCallback(() => {
+    setReading(null);
+    setMenuOpen(false);
+    setSettingsTab("plan");
+    setRoute("settings");
+  }, []);
+
   // Imports run in the background, book by book; the Imports page follows them.
   useEffect(() => {
     const drawCovers = async () => {
@@ -403,6 +411,7 @@ export function App() {
     sync,
     profile,
     onOpenProfile: openProfile,
+    onOpenPlan: isApp || api.kind === "preview" ? openPlan : undefined,
     onImportBooks: importBooks,
     onImportFolder: importFolder,
     onOpenSyncSettings: () => {
@@ -546,6 +555,7 @@ export function App() {
           }
           searchEnd={route === "catalogs" ? <BrowserRowToggle /> : undefined}
           onOpenProfile={openProfile}
+          onOpenPlan={isApp || api.kind === "preview" ? openPlan : undefined}
           onImportBooks={importBooks}
           onImportFolder={importFolder}
           onOpenSyncSettings={() => navigate("sync")}

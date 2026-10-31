@@ -3,6 +3,7 @@
 import type { IconName } from "../components/Icon";
 
 export type SettingsTab =
+  | "plan"
   | "appearance"
   | "reading"
   | "library"
@@ -25,6 +26,12 @@ export const SETTINGS_TABS: {
   icon: IconName;
   lede: string;
 }[] = [
+  {
+    tab: "plan",
+    label: "Your plan",
+    icon: "tag",
+    lede: "Your plan, TBV Publisher, and buying, switching or restoring.",
+  },
   {
     tab: "appearance",
     label: "Appearance",
@@ -457,6 +464,18 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     section: "reset",
     label: "Reset settings",
     words: "reset defaults start over",
+  },
+  {
+    tab: "plan",
+    section: "licence",
+    label: "Your copy",
+    words: "plan subscription buy purchase lifetime restore manage cancel upgrade price trial",
+  },
+  {
+    tab: "plan",
+    section: "publisher",
+    label: "TBV Publisher",
+    words: "publisher upgrade print kdp ingramspark",
   },
   {
     tab: "about",

@@ -178,7 +178,7 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!license || license.state !== "trial" || license.daysLeft > REMIND_DAYS || reminded.current) return;
     reminded.current = true;
-    toast(`${license.daysLeft === 1 ? "1 day" : `${license.daysLeft} days`} left to try The Bound Vigil. Buy it in Preferences › About.`);
+    toast(`${license.daysLeft === 1 ? "1 day" : `${license.daysLeft} days`} left to try The Bound Vigil. Choose a plan in Preferences › Your plan.`);
   }, [license, toast]);
 
   const run = useCallback(

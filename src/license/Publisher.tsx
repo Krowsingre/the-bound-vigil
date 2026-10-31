@@ -68,54 +68,70 @@ const TOOLS = [
   "Side-by-side previews on each device",
 ];
 
-function PublisherOffer({ tool, license, onClose }: { tool: string; license: LicenseView; onClose: () => void }) {
+/** Publisher's plans for this person: the upgrade for those who bought TBV for life, otherwise monthly, yearly and for life. */
+export function PublisherPlans({ license, onDone }: { license: LicenseView; onDone?: () => void }) {
   const { busy, buy, restore } = useLicense();
   // TBV for life without Publisher means the TBV for life purchase itself;
   // only someone who bought it (not family) gets the upgrade's price.
   const forLife = license.state === "owned" && license.plan === "lifetime" && !license.publisher;
   const upgrade = forLife && !license.lifetimeShared;
-  const canBuy = license.shop !== "none";
   const yearly = license.publisherYearlyPrice ? `${license.publisherYearlyPrice} a year` : "Yearly";
   const monthly = license.publisherMonthlyPrice ? `${license.publisherMonthlyPrice} a month` : "Monthly";
   const life = license.publisherPrice ? `${license.publisherPrice} for life` : "For life";
+  const done = () => onDone?.();
+  return (
+    <div className="license-plans">
+      {upgrade && (
+        <button type="button" className="btn btn-primary license-plan" disabled={busy} onClick={() => void buy("publisherUpgrade").then(done)}>
+          <b>{license.upgradePrice ? `Upgrade for ${license.upgradePrice}` : "Upgrade for the difference"}</b>
+          <span>One payment. You own TBV for life, so you pay only the difference, and Publisher is yours for good.</span>
+        </button>
+      )}
+      <button type="button" className={`btn ${upgrade ? "btn-quiet" : "btn-primary"} license-plan`} disabled={busy} onClick={() => void buy("publisherYearly").then(done)}>
+        <b>{yearly}</b>
+        <span>{forLife ? "Publisher while it runs; TBV stays yours for life." : "All of TBV and Publisher."} Renews each year until you cancel.</span>
+      </button>
+      <button type="button" className="btn btn-quiet license-plan" disabled={busy} onClick={() => void buy("publisherMonthly").then(done)}>
+        <b>{monthly}</b>
+        <span>{forLife ? "Publisher while it runs; TBV stays yours for life." : "All of TBV and Publisher."} Renews each month until you cancel.</span>
+      </button>
+      {!upgrade && (
+        <button type="button" className="btn btn-quiet license-plan" disabled={busy} onClick={() => void buy("publisherLifetime").then(done)}>
+          <b>{life}</b>
+          <span>One payment, keep it for good. What you've paid for a subscription isn't taken off.</span>
+        </button>
+      )}
+      <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void restore()}>
+        I bought it already
+      </button>
+      <PurchaseLinks />
+    </div>
+  );
+}
+
+/** What Publisher adds, as a list. */
+export function PublisherTools() {
+  return (
+    <ul className="publisher-offer-list">
+      {TOOLS.map((t) => (
+        <li key={t}>{t}</li>
+      ))}
+    </ul>
+  );
+}
+
+function PublisherOffer({ tool, license, onClose }: { tool: string; license: LicenseView; onClose: () => void }) {
+  const { busy } = useLicense();
+  const canBuy = license.shop !== "none";
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <div className="dialog publisher-offer" role="dialog" aria-label="TBV Publisher" onKeyDown={(e) => e.key === "Escape" && !busy && onClose()}>
         <p className="publisher-offer-kicker">{tool}</p>
         <h2>Part of TBV Publisher</h2>
         <p className="muted dialog-lede">Everything you need to publish, on top of all of TBV. Your writing and exports to EPUB, Word and text stay free to use either way.</p>
-        <ul className="publisher-offer-list">
-          {TOOLS.map((t) => (
-            <li key={t}>{t}</li>
-          ))}
-        </ul>
+        <PublisherTools />
         {canBuy ? (
-          <div className="license-plans">
-            {upgrade && (
-              <button type="button" className="btn btn-primary license-plan" disabled={busy} onClick={() => void buy("publisherUpgrade").then(onClose)}>
-                <b>{license.upgradePrice ? `Upgrade for ${license.upgradePrice}` : "Upgrade for the difference"}</b>
-                <span>One payment. You own TBV for life, so you pay only the difference, and Publisher is yours for good.</span>
-              </button>
-            )}
-            <button type="button" className={`btn ${upgrade ? "btn-quiet" : "btn-primary"} license-plan`} disabled={busy} onClick={() => void buy("publisherYearly").then(onClose)}>
-              <b>{yearly}</b>
-              <span>{forLife ? "Publisher while it runs; TBV stays yours for life." : "All of TBV and Publisher."} Renews each year until you cancel.</span>
-            </button>
-            <button type="button" className="btn btn-quiet license-plan" disabled={busy} onClick={() => void buy("publisherMonthly").then(onClose)}>
-              <b>{monthly}</b>
-              <span>{forLife ? "Publisher while it runs; TBV stays yours for life." : "All of TBV and Publisher."} Renews each month until you cancel.</span>
-            </button>
-            {!upgrade && (
-              <button type="button" className="btn btn-quiet license-plan" disabled={busy} onClick={() => void buy("publisherLifetime").then(onClose)}>
-                <b>{life}</b>
-                <span>One payment, keep it for good. What you've paid for a subscription isn't taken off.</span>
-              </button>
-            )}
-            <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void restore()}>
-              I bought it already
-            </button>
-            <PurchaseLinks />
-          </div>
+          <PublisherPlans license={license} onDone={onClose} />
         ) : (
           <p className="muted">This copy didn't come from a store, so Publisher can't be bought in it. Get The Bound Vigil from {shopName("microsoft")}.</p>
         )}

@@ -6,6 +6,7 @@ import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { DuplicatesDialog } from "./DuplicatesDialog";
 import { ManageSubscription, OwnerCode, PlanButtons, shopName, useLicense } from "../license/License";
+import { PublisherPlans, PublisherTools } from "../license/Publisher";
 import { canSelfUpdate, useUpdater, type UpdateState } from "./updates";
 import { SORTS, type Layout } from "../library/libraryView";
 import { TextSettings } from "../reader/ReaderPopovers";
@@ -1019,15 +1020,42 @@ function AboutVersion({ version }: { version: string }) {
   );
 }
 
+/** Preferences › Your plan: TBV itself beside Publisher. */
+export function PlanTab() {
+  return (
+    <Columns side={<PublisherPlan />}>
+      <YourCopy />
+    </Columns>
+  );
+}
+
+function PublisherPlan() {
+  const { license } = useLicense();
+  if (!license) return null;
+  const lede = license.publisherForLife
+    ? "TBV Publisher is yours for good. Thank you."
+    : license.publisher
+      ? "TBV Publisher comes with your subscription."
+      : license.state === "trial"
+        ? "Everything you need to publish, on top of all of TBV, included while you try it."
+        : "Everything you need to publish, on top of all of TBV. Your writing and exports to EPUB, Word and text stay free to use either way.";
+  return (
+    <Section id="publisher" title="TBV Publisher" lede={lede}>
+      <PublisherTools />
+      {!license.publisher && license.shop !== "none" && <PublisherPlans license={license} />}
+    </Section>
+  );
+}
+
 export function AboutTab() {
-  const [version, setVersion] = useState("1.58.0");
+  const [version, setVersion] = useState("1.59.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));
   }, []);
   return (
     <>
-      <Columns side={<YourCopy />}>
+      <Columns>
       {canSelfUpdate ? (
         <SectionGroup id="about" title="The Bound Vigil" holds={["updates"]}>
           <AboutVersion version={version} />
