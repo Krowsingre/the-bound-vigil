@@ -65,6 +65,8 @@ export const KINDS: Kind[] = [
   },
   { name: "profile", table: "profile", keys: ["id"], cols: ["avatar", "name", "updated_at"] },
   { name: "personal_note", table: "personal_notes", keys: ["id"], cols: ["title", "body", "created_at", "updated_at", "deleted_at"] },
+  { name: "annotation_mark", table: "annotations", keys: ["id"], cols: ["pinned_at", "tags"] },
+  { name: "personal_note_mark", table: "personal_notes", keys: ["id"], cols: ["pinned_at", "tags"] },
   {
     name: "writing_project",
     table: "writing_projects",

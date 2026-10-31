@@ -1,4 +1,5 @@
-// The splash breaking up: a line sweeps across it on a slant, and behind
+// The splash breaking up: a line sweeps across it on a slant (a different
+// way each time TBV opens), and behind
 // the line the picture turns to specks that drift off and fade, showing TBV
 // underneath. The splash is drawn onto a canvas first (from where its parts
 // sit on the page), then the canvas is broken up. On the iPhone it fills the
@@ -43,17 +44,19 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
 
   const cols = Math.ceil(box.width / SPECK);
   const rows = Math.ceil(box.height / SPECK);
+  const way = sweepWay(Math.random() * Math.PI * 2);
   const specks: { x: number; y: number; start: number; vx: number; vy: number; spin: number }[] = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      // Top left first, bottom right last: the slant of the line.
-      const along = (c / cols + r / rows) / 2;
+      // Where the line reaches first goes first; the specks drift on the way it's going.
+      const speed = 60 + Math.random() * 90;
+      const aside = (Math.random() - 0.5) * 80;
       specks.push({
         x: c * SPECK,
         y: r * SPECK,
-        start: along * SWEEP + Math.random() * 70,
-        vx: 40 + Math.random() * 90,
-        vy: -(30 + Math.random() * 80),
+        start: way.along(c / cols, r / rows) * SWEEP + Math.random() * 70,
+        vx: way.dx * speed - way.dy * aside,
+        vy: way.dy * speed + way.dx * aside,
         spin: (Math.random() - 0.5) * 1.2,
       });
     }
@@ -91,6 +94,21 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
     requestAnimationFrame(frame);
   });
   dust.remove();
+}
+
+/**
+ * The way the line sweeps, at an angle (radians, 0 = rightwards, downwards
+ * positive): `along` says how far through the sweep a point is, from 0 where
+ * the line starts to 1 where it ends, for points given as 0..1 across and down.
+ */
+export function sweepWay(angle: number): { dx: number; dy: number; along: (x: number, y: number) => number } {
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  // The corners' reach along the way, so the first corner is 0 and the last is 1.
+  const reach = [0, dx, dy, dx + dy];
+  const low = Math.min(...reach);
+  const span = Math.max(...reach) - low || 1;
+  return { dx, dy, along: (x, y) => (x * dx + y * dy - low) / span };
 }
 
 /** Draws the splash as it looks now: painting, veil, emblem, words, divider and bar. */

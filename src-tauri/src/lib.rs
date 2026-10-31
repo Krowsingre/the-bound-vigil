@@ -25,6 +25,7 @@ mod copycheck;
 mod print;
 mod protection;
 mod push;
+mod remember;
 mod servers;
 #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
 mod shared;
@@ -778,6 +779,16 @@ async fn set_annotation_note(
 }
 
 #[tauri::command]
+async fn set_note_pinned(state: State<'_, AppLibrary>, id: String, pinned: bool) -> CommandResult<()> {
+    with_library(state, move |library| library.set_note_pinned(&id, pinned)).await
+}
+
+#[tauri::command]
+async fn set_note_tags(state: State<'_, AppLibrary>, id: String, tags: Vec<String>) -> CommandResult<Vec<String>> {
+    with_library(state, move |library| library.set_note_tags(&id, &tags)).await
+}
+
+#[tauri::command]
 async fn delete_note(
     state: State<'_, AppLibrary>,
     id: String,
@@ -1046,6 +1057,15 @@ fn cancel_move(mover: State<'_, Arc<moving::Mover>>) {
 #[tauri::command(async)]
 fn clear_move(app: tauri::AppHandle, mover: State<'_, Arc<moving::Mover>>) {
     mover.clear(&app);
+}
+
+/// Set when this start brought back what an earlier install remembered.
+static WELCOMED_BACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// True once, when TBV was installed again and picked up where it was.
+#[tauri::command]
+fn welcomed_back() -> bool {
+    WELCOMED_BACK.swap(false, std::sync::atomic::Ordering::Relaxed)
 }
 
 /// Where a cloud app usually keeps its folder on this computer, if it's there.
@@ -1832,6 +1852,13 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             let cache_dir = app.path().app_cache_dir()?;
             let library = Arc::new(Mutex::new(Library::open(LibraryPaths::new(&data_dir, &cache_dir))?));
+            // TBV installed again: the same place in sync, name and sign-ins as before.
+            if let Ok(l) = library.lock() {
+                if remember::bring_back(&l) {
+                    WELCOMED_BACK.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+            remember::keep(library.clone());
             // Audiobooks and ebooks already here find their other half.
             let linking = library.clone();
             std::thread::spawn(move || {
@@ -2091,6 +2118,8 @@ pub fn run() {
             get_notes,
             save_book_note,
             save_personal_note,
+            set_note_pinned,
+            set_note_tags,
             set_annotation_note,
             delete_note,
             library_info,
@@ -2113,6 +2142,7 @@ pub fn run() {
             sync_activity,
             clear_sync_changes,
             suggest_sync_folder,
+            welcomed_back,
             resolve_sync_conflict,
             download_book,
             plan_tidy_cloud,

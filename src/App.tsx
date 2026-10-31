@@ -200,6 +200,10 @@ export function App() {
 
   useEffect(() => api.onHardcoverNotice((message) => toast(message)), [toast]);
   useEffect(() => api.onSharedBooks((message) => toast(message)), [toast]);
+  // Installed again: the old install's place in sync, name and sign-ins came back.
+  useEffect(() => {
+    void api.welcomedBack().then((back) => back && toast("Welcome back. TBV is picking up where you left off."), () => undefined);
+  }, [toast]);
 
   // Chosen in Preferences › Discover: every site's cookies and data go each time TBV starts.
   useEffect(() => {

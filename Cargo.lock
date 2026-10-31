@@ -6520,6 +6520,7 @@ dependencies = [
  "objc2",
  "objc2-foundation",
  "qrcode",
+ "security-framework",
  "serde",
  "serde_json",
  "swift-rs",

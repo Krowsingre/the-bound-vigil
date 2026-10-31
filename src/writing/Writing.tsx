@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, isWeb } from "../api";
-import type { WritingChapter, WritingProject, WritingProjectView } from "../api/types";
+import type { WritingChapter, WritingProjectView } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
@@ -14,7 +14,8 @@ import { quoteHtml } from "./fromNotes";
 import { QuoteDrawer } from "./QuoteDrawer";
 import { BookPreview, MadePage } from "./BookPreview";
 import { bookOrder, escapeXml, readExport, type ExportSettings } from "./epub";
-import { ADD_MENUS, firstLine, isMade, isNumbered, isPoem, KINDS, numberInWords, readPage, romanOf, startingTitle, writePage, type PageKind, type PageSettings } from "./pages";
+import { ScribeBooks, type Projects } from "./ScribeBooks";
+import { ADD_MENUS, firstLine, isMade, isNumbered, isPoem, KINDS, numberInWords, readPage, romanOf, startingTitle, writePage, type PageKind, type PageSettings, type Template } from "./pages";
 import { DetailsDialog, DraftsDialog, ExportDialog, NewBookDialog } from "./WritingDialogs";
 import { PaperbackCover } from "./PaperbackCover";
 import { PreflightDialog } from "./Preflight";
@@ -27,19 +28,6 @@ import { PreviewsDialog } from "./Previews";
 import { usePublisher } from "../license/Publisher";
 
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
-
-function Cover({ project }: { project: WritingProject }) {
-  const path = project.coverSmallPath ?? project.coverPath;
-  const src = path ? (isWeb ? path : api.coverUrl(path)) : null;
-  return src ? (
-    <img className="writing-cover" src={src} alt="" />
-  ) : (
-    <div className="writing-cover writing-cover-blank" aria-hidden>
-      <span className="writing-cover-title">{project.title}</span>
-      {project.author && <span className="writing-cover-author">{project.author}</span>}
-    </div>
-  );
-}
 
 /** Two sheets of paper, one tilted behind the other: Scribe with nothing in it. */
 function PaperArt() {
@@ -54,17 +42,19 @@ function PaperArt() {
   );
 }
 
-/** Scribe's chips: everything, your own notes, notes about books, or the books you write. */
+/** Scribe's tabs: everything you've noted, your own notes, what you noted from books, or the books you write. */
 type Chip = "all" | "notes" | "book_notes" | "books";
+/** What the tab of notes from books is called. */
+export const BOOK_NOTES_LABEL = "Reading notes";
 const CHIPS: { chip: Chip; label: string }[] = [
   { chip: "all", label: "All" },
   { chip: "notes", label: "Notes" },
-  { chip: "book_notes", label: "Book notes" },
+  { chip: "book_notes", label: BOOK_NOTES_LABEL },
   { chip: "books", label: "Books" },
 ];
 const NOTES_TAB = { all: "all", notes: "personal", book_notes: "book_notes" } as const;
 
-/** Scribe: the books you write and everything you've noted while reading or on your own, in one list. */
+/** Scribe: the books you write and everything you've noted while reading or on your own. */
 export function Writing({
   refreshKey,
   search,
@@ -73,7 +63,7 @@ export function Writing({
   booksShown = true,
 }: {
   refreshKey: number;
-  /** The header's search box, which searches notes. */
+  /** The header's search box, which searches notes, and your books on the Books tab. */
   search: string;
   onClearSearch: () => void;
   onOpenBook: (bookId: string, cfi?: string) => void;
@@ -81,7 +71,7 @@ export function Writing({
   booksShown?: boolean;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<Template | null>(null);
   const [importing, setImporting] = useState(false);
   const [boxing, setBoxing] = useState(false);
   const publisher = usePublisher();
@@ -97,7 +87,10 @@ export function Writing({
         id={openId}
         refreshKey={refreshKey}
         onOpenBook={onOpenBook}
-        onBack={() => setOpenId(null)}
+        onBack={() => {
+          setOpenId(null);
+          setReload((n) => n + 1);
+        }}
         onDeleted={() => {
           setOpenId(null);
           setReload((n) => n + 1);
@@ -106,19 +99,19 @@ export function Writing({
     );
 
   const newNote = (kind: NewNoteKind) => {
-    if (showing === "books") setChip("all");
+    if (showing === "books") setChip(kind === "personal" ? "notes" : "book_notes");
     setAsk((a) => ({ kind, n: (a?.n ?? 0) + 1 }));
   };
-  const newBook = () => {
+  const newBook = (template: Template = "blank") => {
     setChip("books");
-    setCreating(true);
+    setCreating(template);
   };
   const newItems: MenuEntry[] = [
     { label: "Note", icon: "noteLines", description: "Write freely", onSelect: () => newNote("personal") },
     { label: "Book note", icon: "notePen", description: "Write about a book in your library", onSelect: () => newNote("book_note") },
     ...(booksShown
       ? [
-          { label: "Book", icon: "bookOpen" as const, description: "Create a manuscript for EPUB export", onSelect: newBook },
+          { label: "Book", icon: "bookOpen" as const, description: "Create a manuscript for EPUB export", onSelect: () => newBook() },
           {
             label: "Import a book",
             icon: "importFile" as const,
@@ -141,69 +134,62 @@ export function Writing({
         ]
       : []),
   ];
-  const books = projects.state === "ready" ? projects.list : [];
-
-  const chips = (
-    <div className="scribe-chips" role="tablist" aria-label="What to show">
-      {CHIPS.filter((c) => booksShown || c.chip !== "books").map((c) => (
-        <button
-          key={c.chip}
-          type="button"
-          role="tab"
-          aria-selected={showing === c.chip}
-          className={`chip${showing === c.chip ? " is-active" : ""}`}
-          onClick={() => setChip(c.chip)}
-        >
-          {c.label}
-        </button>
-      ))}
-    </div>
-  );
 
   return (
     <div className={`library writing-home scribe writing-${showing}`}>
-      <header className="library-head scribe-head">
-        <h1 className="library-title">Scribe</h1>
-        {/* New starts a note to write freely; the arrow has the other kinds. */}
-        <div className="split-button">
-          <button type="button" className="btn btn-primary split-main" onClick={() => newNote("personal")}>
-            <Icon name="plus" size={15} /> New
-          </button>
-          <Menu
-            label="Other kinds of new"
-            className="btn btn-primary split-arrow"
-            align="end"
-            trigger={<Icon name="chevronDown" size={14} />}
-            items={newItems}
-          />
+      {/* One header for every tab: the heading, New, and the tabs under them. */}
+      <header className="scribe-top">
+        <div className="library-head scribe-head">
+          <h1 className="library-title">Scribe</h1>
+          {/* New starts a note to write freely; the arrow has the other kinds. */}
+          <div className="split-button">
+            <button type="button" className="btn btn-primary split-main" onClick={() => newNote("personal")}>
+              <Icon name="plus" size={15} /> New
+            </button>
+            <Menu
+              label="Other kinds of new"
+              className="btn btn-primary split-arrow"
+              align="end"
+              trigger={<Icon name="chevronDown" size={14} />}
+              items={newItems}
+            />
+          </div>
+        </div>
+        <div className="scribe-chips" role="tablist" aria-label="What to show">
+          {CHIPS.filter((c) => booksShown || c.chip !== "books").map((c) => (
+            <button
+              key={c.chip}
+              type="button"
+              role="tab"
+              aria-selected={showing === c.chip}
+              className={`chip${showing === c.chip ? " is-active" : ""}`}
+              onClick={() => setChip(c.chip)}
+            >
+              {c.label}
+            </button>
+          ))}
         </div>
       </header>
       {showing === "books" ? (
-        <>
-          <div className="library-toolbar scribe-toolbar">{chips}</div>
-          <BookShelf projects={projects} onOpen={setOpenId} onCreate={newBook} onRetry={() => setReload((n) => n + 1)} />
-        </>
+        <ScribeBooks
+          projects={projects}
+          search={search}
+          onOpen={setOpenId}
+          onStart={newBook}
+          onChanged={() => setReload((n) => n + 1)}
+          onRetry={() => setReload((n) => n + 1)}
+        />
       ) : (
         <Notes
-          embedded
           kindTab={NOTES_TAB[showing]}
-          chips={chips}
           ask={ask}
           search={search}
           refreshKey={refreshKey}
           onClearSearch={onClearSearch}
           onOpenBook={onOpenBook}
           onGoToBooks={booksShown ? () => setChip("books") : undefined}
-          above={
-            showing === "all" && books.length > 0 ? (
-              <section className="scribe-books" aria-label="Books you're writing">
-                <h2 className="section-title">Books you're writing</h2>
-                <BookShelf projects={projects} onOpen={setOpenId} onCreate={newBook} onRetry={() => setReload((n) => n + 1)} />
-              </section>
-            ) : null
-          }
           emptyAll={
-            showing === "all" && books.length === 0 ? (
+            showing === "all" ? (
               <div className="library-empty scribe-empty">
                 <PaperArt />
                 <h2>No writing yet</h2>
@@ -237,9 +223,10 @@ export function Writing({
       )}
       {creating && (
         <NewBookDialog
-          onCancel={() => setCreating(false)}
+          startWith={creating}
+          onCancel={() => setCreating(null)}
           onCreated={(id) => {
-            setCreating(false);
+            setCreating(null);
             setReload((n) => n + 1);
             setOpenId(id);
           }}
@@ -248,8 +235,6 @@ export function Writing({
     </div>
   );
 }
-
-type Projects = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; list: WritingProject[] };
 
 /** The books you're writing, loaded again when something changes. */
 function useProjects(shown: boolean, refreshKey: number, reload: number): Projects {
@@ -266,47 +251,6 @@ function useProjects(shown: boolean, refreshKey: number, reload: number): Projec
     };
   }, [shown, refreshKey, reload]);
   return projects;
-}
-
-function BookShelf({ projects, onOpen, onCreate, onRetry }: { projects: Projects; onOpen: (id: string) => void; onCreate: () => void; onRetry: () => void }) {
-  return projects.state === "error" ? (
-    <div className="library-empty" role="alert">
-      <h2>Your writing couldn't be loaded</h2>
-      <p className="muted">{projects.message}</p>
-      <button type="button" className="btn btn-primary" onClick={onRetry}>
-        Try again
-      </button>
-    </div>
-  ) : projects.state === "loading" ? (
-    <div className="library-loading" aria-busy="true" aria-label="Loading your writing" />
-  ) : projects.list.length === 0 ? (
-    <div className="library-empty">
-      <h2>Write a book</h2>
-      <p className="muted">
-        Write chapter by chapter, add the book's details and a cover, then export an EPUB for your library, a Kindle or a store. Your notes and
-        highlights are a tap away while you write, and any note can become a chapter.
-      </p>
-      <div className="hero-actions">
-        <button type="button" className="btn btn-primary" onClick={onCreate}>
-          Start a book
-        </button>
-      </div>
-    </div>
-  ) : (
-    <ul className="writing-shelf">
-      {projects.list.map((p) => (
-        <li key={p.id}>
-          <button type="button" className="writing-book" onClick={() => onOpen(p.id)}>
-            <Cover project={p} />
-            <span className="writing-book-title">{p.title}</span>
-            <span className="muted writing-book-meta">
-              {p.chapters} {p.chapters === 1 ? "chapter" : "chapters"} · {words(p.words)}
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
 }
 
 type Area = "front" | "chapter" | "back";
@@ -686,9 +630,9 @@ function ProjectView({
               { label: "Store editions…", icon: "layers", onSelect: () => publisher.check("Store editions", () => setDialog("editions")) },
               { label: "Paperback cover…", icon: "image", onSelect: () => publisher.check("The paperback cover maker", () => setDialog("cover")) },
               { label: "Check before uploading…", icon: "checkCircle", onSelect: () => publisher.check("Checking before uploading", () => setDialog("preflight")) },
-              { label: "Check for copied passages…", icon: "search", onSelect: () => setDialog("copies") },
+              { label: "Plagiarism Check…", icon: "checkCircle", onSelect: () => setDialog("copies") },
               "divider",
-              { label: "Delete this book…", icon: "trash", danger: true, onSelect: () => setDialog("delete") },
+              { label: "Delete Book…", icon: "trash", danger: true, onSelect: () => setDialog("delete") },
             ]}
           />
         </div>
@@ -844,7 +788,7 @@ function ProjectView({
         <ConfirmDialog
           title={`Delete ${project.title}?`}
           body="Every chapter goes, on all your devices. Copies you've already exported stay as they are."
-          confirm="Delete book"
+          confirm="Delete Book"
           danger
           onCancel={() => setDialog(null)}
           onConfirm={() => {

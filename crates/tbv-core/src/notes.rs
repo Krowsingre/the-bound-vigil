@@ -22,19 +22,68 @@ fn in_tab(kind: NoteKind, tab: NotesTab) -> bool {
         NotesTab::All => true,
         NotesTab::Highlights => kind == NoteKind::Highlight,
         NotesTab::Annotations => kind == NoteKind::Annotation,
-        NotesTab::BookNotes => kind == NoteKind::BookNote,
+        // Everything from a book: notes about it, and highlights in it.
+        NotesTab::BookNotes => kind != NoteKind::Personal,
         NotesTab::Personal => kind == NoteKind::Personal,
     }
 }
 
+/// A note's tags as kept: a JSON list.
+fn tags_of(json: String) -> Vec<String> {
+    serde_json::from_str(&json).unwrap_or_default()
+}
+
+/// Tags as written: trimmed, without repeats, the first spelling kept.
+pub fn clean_tags(tags: &[String]) -> Vec<String> {
+    let mut kept: Vec<String> = Vec::new();
+    for t in tags {
+        let t: String = t.trim().trim_start_matches('#').trim().chars().take(40).collect();
+        if !t.is_empty() && !kept.iter().any(|k| k.eq_ignore_ascii_case(&t)) {
+            kept.push(t);
+        }
+    }
+    kept
+}
+
 impl Library {
+    /// The table a note lives in: personal notes on their own, the rest with highlights.
+    fn note_table(&self, id: &str) -> Result<&'static str> {
+        for table in ["annotations", "personal_notes"] {
+            let found: Option<i64> = self
+                .conn
+                .query_row(&format!("SELECT 1 FROM {table} WHERE id = ?1 AND deleted_at IS NULL"), params![id], |r| r.get(0))
+                .optional()?;
+            if found.is_some() {
+                return Ok(table);
+            }
+        }
+        Err(Error::Unsuitable("that note no longer exists".into()))
+    }
+
+    /// Pins a note above the rest, or lets it go back among them.
+    pub fn set_note_pinned(&self, id: &str, pinned: bool) -> Result<()> {
+        let table = self.note_table(id)?;
+        let at = pinned.then(now_utc);
+        self.conn.execute(&format!("UPDATE {table} SET pinned_at = ?2 WHERE id = ?1"), params![id, at])?;
+        Ok(())
+    }
+
+    /// Gives a note these tags in place of the ones it had.
+    pub fn set_note_tags(&self, id: &str, tags: &[String]) -> Result<Vec<String>> {
+        let table = self.note_table(id)?;
+        let tags = clean_tags(tags);
+        self.conn
+            .execute(&format!("UPDATE {table} SET tags = ?2 WHERE id = ?1"), params![id, serde_json::to_string(&tags)?])?;
+        Ok(tags)
+    }
+
     /// Every note, newest first, before any tab, search or filter.
     fn all_notes(&self) -> Result<Vec<NoteItem>> {
         let mut statement = self.conn.prepare(
             "SELECT a.id, a.kind, a.excerpt, a.note, a.color, a.locator,
                     COALESCE(a.created_at, a.updated_at), a.updated_at,
                     b.id, COALESCE(o_title.value, f_title.value, b.title), COALESCE(o_authors.value, f_authors.value, b.authors),
-                    lf.cover_path
+                    lf.cover_path, a.pinned_at, a.tags
              FROM annotations a
              JOIN books b ON b.id = a.book_id AND b.deleted_at IS NULL
              LEFT JOIN local_files lf ON lf.book_id = b.id
@@ -76,12 +125,14 @@ impl Library {
                         authors: serde_json::from_str(&authors).unwrap_or_default(),
                         cover_path: r.get(11)?,
                     }),
+                    pinned_at: r.get(12)?,
+                    tags: tags_of(r.get(13)?),
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
         let mut personal = self.conn.prepare(
-            "SELECT id, title, body, created_at, updated_at FROM personal_notes WHERE deleted_at IS NULL",
+            "SELECT id, title, body, created_at, updated_at, pinned_at, tags FROM personal_notes WHERE deleted_at IS NULL",
         )?;
         notes.extend(
             personal
@@ -97,6 +148,8 @@ impl Library {
                         locator: None,
                         created_at: r.get(3)?,
                         updated_at: r.get(4)?,
+                        pinned_at: r.get(5)?,
+                        tags: tags_of(r.get(6)?),
                     })
                 })?
                 .collect::<std::result::Result<Vec<_>, _>>()?,
@@ -127,6 +180,13 @@ impl Library {
             }
         }
         books.sort_by_key(|b| b.title.to_lowercase());
+        let mut tags: Vec<String> = Vec::new();
+        for t in all.iter().flat_map(|n| &n.tags) {
+            if !tags.iter().any(|x| x.eq_ignore_ascii_case(t)) {
+                tags.push(t.clone());
+            }
+        }
+        tags.sort_by_key(|t| t.to_lowercase());
 
         let search = clean(query.search.as_deref()).map(|s| s.to_lowercase());
         let mut notes: Vec<NoteItem> = all
@@ -138,6 +198,8 @@ impl Library {
                     .as_ref()
                     .is_none_or(|id| n.book.as_ref().is_some_and(|b| &b.id == id))
             })
+            .filter(|n| query.tag.as_ref().is_none_or(|t| n.tags.iter().any(|x| x.eq_ignore_ascii_case(t))))
+            .filter(|n| query.since.as_ref().is_none_or(|since| &n.updated_at >= since))
             .filter(|n| {
                 query.colors.is_empty()
                     || n.color.as_ref().is_some_and(|c| query.colors.contains(c))
@@ -152,6 +214,7 @@ impl Library {
                     n.note.as_deref(),
                     n.title.as_deref(),
                     book.map(|b| b.title.as_str()),
+                    Some(n.tags.join(" ").as_str()),
                     n.locator.as_ref().and_then(|l| l.chapter.as_deref()),
                 ]
                 .into_iter()
@@ -187,6 +250,7 @@ impl Library {
             notes,
             counts,
             books,
+            tags,
         })
     }
 
@@ -523,5 +587,34 @@ mod tests {
                 .all,
             0
         );
+    }
+
+    #[test]
+    fn notes_are_pinned_and_tagged() {
+        let (dir, mut library) = open_temp_library();
+        let lamps = add(&mut library, dir.path(), "Lamps", "Wren Hale");
+        let lit = highlight(&library, &lamps, "a light is a promise", None, 0.5);
+        let idea = library.save_personal_note(None, Some("Ideas"), "Read more poetry").unwrap().id;
+
+        library.set_note_pinned(&idea, true).unwrap();
+        let tags = library.set_note_tags(&lit, &[" #Light ".into(), "light".into(), "".into(), "Wren".into()]).unwrap();
+        assert_eq!(tags, ["Light", "Wren"]);
+        library.set_note_tags(&idea, &["poems".into()]).unwrap();
+
+        let page = library.notes_page(&NotesQuery::default()).unwrap();
+        assert_eq!(page.tags, ["Light", "poems", "Wren"]);
+        let pinned: Vec<_> = page.notes.iter().filter(|n| n.pinned_at.is_some()).map(|n| n.id.clone()).collect();
+        assert_eq!(pinned, [idea.clone()]);
+
+        let only = |q: NotesQuery| library.notes_page(&q).unwrap().notes.into_iter().map(|n| n.id).collect::<Vec<_>>();
+        assert_eq!(only(NotesQuery { tag: Some("light".into()), ..Default::default() }), [lit.clone()]);
+        assert_eq!(only(NotesQuery { search: Some("poems".into()), ..Default::default() }), [idea.clone()]);
+        assert_eq!(only(NotesQuery { since: Some("2999-01-01T00:00:00Z".into()), ..Default::default() }).len(), 0);
+        // Highlights belong with the notes about books.
+        assert_eq!(only(NotesQuery { tab: NotesTab::BookNotes, ..Default::default() }), [lit.clone()]);
+
+        library.set_note_pinned(&idea, false).unwrap();
+        assert!(library.notes_page(&NotesQuery::default()).unwrap().notes.iter().all(|n| n.pinned_at.is_none()));
+        assert!(library.set_note_pinned("gone", true).is_err());
     }
 }

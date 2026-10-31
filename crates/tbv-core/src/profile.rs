@@ -20,7 +20,7 @@ const MAX_AVATAR_BYTES: u64 = 10 * 1024 * 1024;
 const AVATAR_KEY: &str = "avatar_path";
 const ME: &str = "me";
 
-const DEVICE_NAME_KEY: &str = "device.name";
+pub const DEVICE_NAME_KEY: &str = "device.name";
 
 /// What kind of device this is ("iPad"), when the app knows better than the
 /// system does. Set once at startup.

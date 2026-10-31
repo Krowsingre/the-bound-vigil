@@ -1,6 +1,11 @@
+// Scribe's notes: everything you've noted (All), your own notes (Notes), and
+// what you noted from books, highlights included (Book notes). A row of
+// filters, the notes pinned above the rest, then the rest. Opening a note
+// slides it in at the side, where it can be read and changed.
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-import type { HighlightColor, NoteItem, NotesPage, NotesQuery, NotesSort, NotesTab } from "../api/types";
+import type { HighlightColor, NoteItem, NoteKind, NotesPage, NotesQuery, NotesSort } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
@@ -11,18 +16,17 @@ import { NewNoteDialog } from "./NewNoteDialog";
 import { KIND_LABEL } from "./noteInfo";
 import { NotePanel } from "./NotePanel";
 import { NoteCards, NoteList, NoteTable, type NotesLayout } from "./NoteViews";
+import { TagsDialog } from "./TagsDialog";
 
-const TABS: { tab: NotesTab; label: string; count: keyof NotesPage["counts"] }[] = [
-  { tab: "all", label: "All notes", count: "all" },
-  { tab: "highlights", label: "Highlights", count: "highlights" },
-  { tab: "annotations", label: "Annotations", count: "annotations" },
-  { tab: "book_notes", label: "Book notes", count: "bookNotes" },
-  { tab: "personal", label: "Personal notes", count: "personal" },
-];
+/** The tabs of Scribe that show notes. */
+export type NotesKindTab = "all" | "personal" | "book_notes";
+
+/** What the notes are called under each tab, above the list. */
+export const NOTES_HEADING: Record<NotesKindTab, string> = { all: "All notes", personal: "Notes", book_notes: "Book notes" };
 
 const SORTS: { sort: NotesSort; label: string }[] = [
-  { sort: "recent", label: "Recently added" },
-  { sort: "updated", label: "Recently changed" },
+  { sort: "recent", label: "Date added" },
+  { sort: "updated", label: "Date modified" },
   { sort: "book", label: "Book, in reading order" },
 ];
 
@@ -32,6 +36,38 @@ const LAYOUTS: { layout: NotesLayout; label: string; icon: "grid" | "list" | "ro
   { layout: "compact", label: "Compact list", icon: "rows" },
 ];
 
+/** The kinds each tab can narrow to. */
+const TYPES: Record<NotesKindTab, NoteKind[]> = {
+  all: ["personal", "book_note", "highlight", "annotation"],
+  book_notes: ["book_note", "highlight", "annotation"],
+  personal: [],
+};
+const TYPE_LABEL: Record<NoteKind, string> = {
+  personal: "Notes",
+  book_note: "Book notes",
+  highlight: "Highlights",
+  annotation: "Highlights with notes",
+};
+
+type When = "any" | "week" | "month" | "year";
+const WHEN: { when: When; label: string }[] = [
+  { when: "any", label: "Any date" },
+  { when: "week", label: "Last 7 days" },
+  { when: "month", label: "Last 30 days" },
+  { when: "year", label: "This year" },
+];
+
+function sinceOf(when: When): string | null {
+  const day = 86_400_000;
+  if (when === "week") return new Date(Date.now() - 7 * day).toISOString();
+  if (when === "month") return new Date(Date.now() - 30 * day).toISOString();
+  if (when === "year") return new Date(new Date().getFullYear(), 0, 1).toISOString();
+  return null;
+}
+
+/** Pinned notes shown before "Show all". */
+const PINNED_SHOWN = 3;
+
 const PREFS_KEY = "tbv.notes.view";
 
 function readPrefs(): { sort: NotesSort; layout: NotesLayout } {
@@ -39,27 +75,41 @@ function readPrefs(): { sort: NotesSort; layout: NotesLayout } {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}");
     return {
       sort: SORTS.some((s) => s.sort === p.sort) ? p.sort : "recent",
-      layout: LAYOUTS.some((l) => l.layout === p.layout) ? p.layout : "list",
+      layout: LAYOUTS.some((l) => l.layout === p.layout) ? p.layout : "cards",
     };
   } catch {
-    return { sort: "recent", layout: "list" };
+    return { sort: "recent", layout: "cards" };
   }
 }
 
 export type NewNoteKind = "personal" | "book_note";
 type Writing = { kind: NewNoteKind } | null;
 
+/** A filter's dropdown: its words, and a chevron. */
+function FilterButton({ label, on, items }: { label: string; on: boolean; items: MenuEntry[] }) {
+  return (
+    <Menu
+      label={label}
+      className={`notes-filter${on ? " is-on" : ""}`}
+      trigger={
+        <>
+          <span>{label}</span>
+          <Icon name="chevronDown" size={13} />
+        </>
+      }
+      items={items}
+    />
+  );
+}
+
 export function Notes({
   search,
   refreshKey,
   onClearSearch,
   onOpenBook,
-  embedded = false,
   ask = null,
   onGoToBooks,
   kindTab,
-  chips,
-  above,
   emptyAll,
 }: {
   /** The header's search box, which searches notes on this page. */
@@ -67,38 +117,30 @@ export function Notes({
   refreshKey: number;
   onClearSearch: () => void;
   onOpenBook: (bookId: string, cfi?: string) => void;
-  /** Shown as a tab of Writing, which has the page's heading and New button. */
-  embedded?: boolean;
-  /** Writing's New button asking for a note; a new `n` asks again. */
+  /** Scribe's New button asking for a note; a new `n` asks again. */
   ask?: { kind: NewNoteKind; n: number } | null;
   /** Where "Add to a book I'm writing" sends you when there's no book yet. Left out, notes aren't offered to books. */
   onGoToBooks?: () => void;
-  /** Scribe's chips choose the kind of note, in place of the tabs here. */
-  kindTab?: NotesTab;
-  chips?: React.ReactNode;
-  /** Shown above the notes, like the books you're writing. */
-  above?: React.ReactNode;
+  /** Which of Scribe's tabs is showing. */
+  kindTab: NotesKindTab;
   /** In place of "No notes yet" when there's nothing at all. */
   emptyAll?: React.ReactNode;
 }) {
-  const [ownTab, setOwnTab] = useState<NotesTab>("all");
-  // Under Scribe's All, Filter narrows to highlights or annotations.
-  const [onlyKind, setOnlyKind] = useState<"highlights" | "annotations" | null>(null);
-  const base = kindTab ?? ownTab;
-  const tab: NotesTab = base === "all" && onlyKind ? onlyKind : base;
-  const setTab = (t: NotesTab) => {
-    setOnlyKind(null);
-    setOwnTab(t);
-  };
   const [prefs, setPrefs] = useState(readPrefs);
+  const [type, setType] = useState<NoteKind | null>(null);
   const [bookId, setBookId] = useState<string | null>(null);
   const [colors, setColors] = useState<HighlightColor[]>([]);
+  const [tag, setTag] = useState<string | null>(null);
+  const [when, setWhen] = useState<When>("any");
   const [page, setPage] = useState<NotesPage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<Set<string> | null>(null);
+  const [allPinned, setAllPinned] = useState(false);
   const [writing, setWriting] = useState<Writing>(null);
-  const [deleting, setDeleting] = useState<NoteItem | null>(null);
+  const [deleting, setDeleting] = useState<NoteItem[] | null>(null);
+  const [tagging, setTagging] = useState<NoteItem | null>(null);
   const [related, setRelated] = useState<NoteItem[]>([]);
   const [toBook, setToBook] = useState<NoteItem | null>(null);
   const toast = useToast();
@@ -107,9 +149,24 @@ export function Notes({
     if (ask) setWriting({ kind: ask.kind });
   }, [ask]);
 
+  // Another tab: its own kinds, and nothing open or chosen.
+  useEffect(() => {
+    setType(null);
+    setSelectedId(null);
+    setChosen(null);
+  }, [kindTab]);
+
   const query: NotesQuery = useMemo(
-    () => ({ tab, sort: prefs.sort, search: search.trim() || null, bookId: bookId as NotesQuery["bookId"], colors }),
-    [tab, prefs.sort, search, bookId, colors],
+    () => ({
+      tab: kindTab,
+      sort: prefs.sort,
+      search: search.trim() || null,
+      bookId: bookId as NotesQuery["bookId"],
+      colors,
+      tag,
+      since: sinceOf(when),
+    }),
+    [kindTab, prefs.sort, search, bookId, colors, tag, when],
   );
 
   useEffect(() => {
@@ -127,10 +184,15 @@ export function Notes({
     };
   }, [query, refreshKey, reload]);
 
-  const notes = page?.notes ?? [];
-  const selected = notes.find((n) => n.id === selectedId) ?? notes[0] ?? null;
+  const notes = useMemo(() => (page?.notes ?? []).filter((n) => !type || n.kind === type), [page, type]);
+  const pinned = useMemo(
+    () => notes.filter((n) => n.pinnedAt).sort((a, b) => (b.pinnedAt ?? "").localeCompare(a.pinnedAt ?? "")),
+    [notes],
+  );
+  const rest = useMemo(() => notes.filter((n) => !n.pinnedAt), [notes]);
+  const selected = selectedId ? (notes.find((n) => n.id === selectedId) ?? null) : null;
 
-  // Related notes: the rest of the selected note's book, whatever tab is showing.
+  // Related notes: the rest of the open note's book, whatever tab is showing.
   const selectedBook = selected?.book?.id ?? null;
   useEffect(() => {
     if (!selectedBook) return setRelated([]);
@@ -173,19 +235,51 @@ export function Notes({
     }
   };
 
-  const copy = (n: NoteItem) => {
-    const text = [n.excerpt && `“${n.excerpt}”`, n.title, n.note, n.book && `— ${n.book.title}`].filter(Boolean).join("\n\n");
-    void navigator.clipboard?.writeText(text).then(
-      () => toast("Copied."),
+  const textOf = (n: NoteItem) => [n.excerpt && `“${n.excerpt}”`, n.title, n.note, n.book && `— ${n.book.title}`].filter(Boolean).join("\n\n");
+  const copy = (list: NoteItem[]) => {
+    void navigator.clipboard?.writeText(list.map(textOf).join("\n\n———\n\n")).then(
+      () => toast(list.length === 1 ? "Copied." : `${list.length} notes copied.`),
       () => toast("Copying isn't available here."),
     );
+  };
+
+  const pin = async (list: NoteItem[], on: boolean) => {
+    try {
+      for (const n of list) if (!!n.pinnedAt !== on) await api.setNotePinned(n.id, on);
+      changed();
+    } catch (e) {
+      toast(String(e));
+    }
+  };
+
+  const saveTags = async (n: NoteItem, tags: string[]) => {
+    try {
+      await api.setNoteTags(n.id, tags);
+      changed();
+    } catch (e) {
+      toast(String(e));
+    }
+  };
+
+  const colorNote = async (n: NoteItem, color: HighlightColor) => {
+    try {
+      const all = await api.getAnnotations(n.book!.id);
+      const a = all.find((x) => x.id === n.id);
+      if (!a) return;
+      await api.saveAnnotation({ id: a.id, bookId: a.bookId, kind: a.kind, excerpt: a.excerpt, note: a.note, color, locator: a.locator });
+      changed();
+    } catch (e) {
+      toast(String(e));
+    }
   };
 
   const menuFor = (n: NoteItem): MenuEntry[] => [
     ...(n.book
       ? [{ label: n.locator?.cfi ? "Open in Reader" : "Open the book", icon: "arrowRight" as const, onSelect: () => openInReader(n) }]
       : []),
-    { label: "Copy", icon: "copy", onSelect: () => copy(n) },
+    { label: n.pinnedAt ? "Unpin" : "Pin", icon: "pin", onSelect: () => void pin([n], !n.pinnedAt) },
+    { label: "Tags…", icon: "tag", onSelect: () => setTagging(n) },
+    { label: "Copy", icon: "copy", onSelect: () => copy([n]) },
     ...(onGoToBooks ? [{ label: "Add to a book I'm writing…", icon: "pen" as const, onSelect: () => setToBook(n) }] : []),
     ...(n.kind === "highlight" || n.kind === "annotation"
       ? ([
@@ -202,53 +296,63 @@ export function Notes({
       ? [{ label: `All notes from ${n.book.title}`, onSelect: () => setBookId(n.book!.id) }]
       : []),
     "divider",
-    { label: `Delete ${KIND_LABEL[n.kind].toLowerCase()}…`, icon: "trash", danger: true, onSelect: () => setDeleting(n) },
+    { label: `Delete ${KIND_LABEL[n.kind].toLowerCase()}…`, icon: "trash", danger: true, onSelect: () => setDeleting([n]) },
   ];
 
-  const colorNote = async (n: NoteItem, color: HighlightColor) => {
-    try {
-      const all = await api.getAnnotations(n.book!.id);
-      const a = all.find((x) => x.id === n.id);
-      if (!a) return;
-      await api.saveAnnotation({ id: a.id, bookId: a.bookId, kind: a.kind, excerpt: a.excerpt, note: a.note, color, locator: a.locator });
-      changed();
-    } catch (e) {
-      toast(String(e));
-    }
+  // Choosing several, or opening one.
+  const onCard = (n: NoteItem) => {
+    if (!chosen) return setSelectedId((id) => (id === n.id ? null : n.id));
+    setChosen((c) => {
+      const next = new Set(c);
+      if (next.has(n.id)) next.delete(n.id);
+      else next.add(n.id);
+      return next;
+    });
   };
+  const chosenNotes = notes.filter((n) => chosen?.has(n.id));
 
-  const filterCount = (bookId ? 1 : 0) + colors.length + (kindTab && onlyKind ? 1 : 0);
+  const types = TYPES[kindTab];
+  const filterBook = page?.books.find((b) => b.id === bookId);
+  const highlightsShown = kindTab !== "personal" && (!type || type === "highlight" || type === "annotation");
+  const typeItems: MenuEntry[] = [
+    { label: kindTab === "book_notes" ? "Everything from books" : "All types", checked: !type, onSelect: () => setType(null) },
+    ...types.map((k) => ({ label: TYPE_LABEL[k], checked: type === k, onSelect: () => setType(k) })),
+    ...(highlightsShown
+      ? ([
+          "divider",
+          { heading: <strong>Highlight colour</strong> },
+          ...HIGHLIGHT_COLORS.map((c) => ({
+            label: c.label,
+            checked: colors.includes(c.value),
+            onSelect: () => setColors((cs) => (cs.includes(c.value) ? cs.filter((x) => x !== c.value) : [...cs, c.value])),
+          })),
+        ] as MenuEntry[])
+      : []),
+  ];
+  const bookItems: MenuEntry[] = [
+    { label: "All books", checked: !bookId, onSelect: () => setBookId(null) },
+    ...(page?.books ?? []).map((b) => ({ label: b.title, checked: bookId === b.id, onSelect: () => setBookId(b.id) })),
+  ];
+  const tagItems: MenuEntry[] = [
+    { label: "All tags", checked: !tag, onSelect: () => setTag(null) },
+    ...(page?.tags.length
+      ? page.tags.map((t) => ({ label: t, checked: tag === t, onSelect: () => setTag(t) }))
+      : [{ label: "No tags yet. Add them from a note's menu.", disabled: true, onSelect: () => undefined }]),
+  ];
+
+  const filterCount = (bookId ? 1 : 0) + colors.length + (type ? 1 : 0) + (tag ? 1 : 0) + (when !== "any" ? 1 : 0);
   const clearFilters = () => {
     setBookId(null);
     setColors([]);
-    setOnlyKind(null);
+    setType(null);
+    setTag(null);
+    setWhen("any");
   };
-  const toggleColor = (c: HighlightColor) => setColors((cs) => (cs.includes(c) ? cs.filter((x) => x !== c) : [...cs, c]));
-  const filterBook = page?.books.find((b) => b.id === bookId);
-  const filterItems: MenuEntry[] = [
-    ...(kindTab === "all"
-      ? ([
-          { heading: <strong>Show</strong> },
-          { label: "Everything", checked: !onlyKind, onSelect: () => setOnlyKind(null) },
-          { label: "Highlights", checked: onlyKind === "highlights", onSelect: () => setOnlyKind("highlights") },
-          { label: "Annotations", checked: onlyKind === "annotations", onSelect: () => setOnlyKind("annotations") },
-          "divider",
-        ] as MenuEntry[])
-      : []),
-    { heading: <strong>Highlight colour</strong> },
-    ...HIGHLIGHT_COLORS.map((c) => ({ label: c.label, checked: colors.includes(c.value), onSelect: () => toggleColor(c.value) })),
-    "divider",
-    { heading: <strong>Book</strong> },
-    { label: "Every book", checked: !bookId, onSelect: () => setBookId(null) },
-    ...(page?.books ?? []).map((b) => ({ label: b.title, checked: bookId === b.id, onSelect: () => setBookId(b.id) })),
-    ...(filterCount
-      ? (["divider", { label: "Clear filters", onSelect: clearFilters }] as MenuEntry[])
-      : []),
-  ];
 
   const Layout = { cards: NoteCards, list: NoteList, compact: NoteTable }[prefs.layout];
   const anyNotes = (page?.counts.all ?? 0) > 0;
-  const filtered = !!search.trim() || filterCount > 0;
+  const shownPinned = allPinned ? pinned : pinned.slice(0, PINNED_SHOWN);
+  const views = { selectedId: selected?.id ?? null, menuFor, onSelect: onCard, onOpen: openInReader, chosen };
 
   let body: React.ReactNode;
   if (error)
@@ -272,7 +376,7 @@ export function Notes({
         </p>
         <div className="hero-actions">
           <button type="button" className="btn btn-primary" onClick={() => setWriting({ kind: "personal" })}>
-            Write a personal note
+            Write a note
           </button>
           <button type="button" className="btn btn-quiet" onClick={() => setWriting({ kind: "book_note" })}>
             Write about a book
@@ -304,28 +408,78 @@ export function Notes({
     );
   else
     body = (
-      <div className="notes-layout">
+      <div className={`notes-layout${selected ? " has-panel" : ""}`}>
         <div className="notes-list">
-          <Layout notes={notes} selectedId={selected?.id ?? null} menuFor={menuFor} onSelect={(n) => setSelectedId(n.id)} onOpen={openInReader} />
+          {pinned.length > 0 && (
+            <section className="notes-section notes-pinned" aria-labelledby="notes-pinned">
+              <div className="notes-section-head">
+                <h2 id="notes-pinned">
+                  <Icon name="pin" size={17} /> Pinned
+                </h2>
+                {pinned.length > PINNED_SHOWN && (
+                  <button type="button" className="link-btn notes-show-all" aria-expanded={allPinned} onClick={() => setAllPinned((a) => !a)}>
+                    {allPinned ? "Show fewer" : `Show all (${pinned.length})`} <Icon name={allPinned ? "chevronUp" : "chevronDown"} size={13} />
+                  </button>
+                )}
+              </div>
+              <Layout notes={shownPinned} {...views} />
+            </section>
+          )}
+          {pinned.length > 0 && rest.length > 0 && <div className="rule-diamond" aria-hidden />}
+          {rest.length > 0 && (
+            <section className="notes-section" aria-labelledby="notes-all">
+              <div className="notes-section-head">
+                <h2 id="notes-all">{NOTES_HEADING[kindTab]}</h2>
+                <div className="notes-section-tools">
+                  <Menu
+                    label={`Sort: ${SORTS.find((s) => s.sort === prefs.sort)?.label}`}
+                    className="notes-filter notes-sort"
+                    trigger={
+                      <>
+                        <span className="muted">Sort:</span> <span>{SORTS.find((s) => s.sort === prefs.sort)?.label}</span>
+                        <Icon name="chevronDown" size={13} />
+                      </>
+                    }
+                    items={SORTS.map((s) => ({ label: s.label, checked: prefs.sort === s.sort, onSelect: () => changePrefs({ sort: s.sort }) }))}
+                  />
+                  <button
+                    type="button"
+                    className={`notes-filter notes-select${chosen ? " is-on" : ""}`}
+                    aria-pressed={!!chosen}
+                    onClick={() => {
+                      setChosen((c) => (c ? null : new Set()));
+                      setSelectedId(null);
+                    }}
+                  >
+                    <Icon name="checkCircle" size={15} /> {chosen ? "Done" : "Select"}
+                  </button>
+                </div>
+              </div>
+              <Layout notes={rest} {...views} />
+            </section>
+          )}
         </div>
-        {selected && (
+        {selected && !chosen && (
           <NotePanel
+            key={selected.id}
             note={selected}
             related={related.filter((r) => r.id !== selected.id)}
             menu={menuFor(selected)}
+            tags={page?.tags ?? []}
             onSave={saveWords}
+            onTags={saveTags}
+            onClose={() => setSelectedId(null)}
             onOpenInReader={openInReader}
             onSelect={(n) => {
               // A related note hidden by the current filters brings them all down.
               if (!notes.some((x) => x.id === n.id)) {
-                setTab("all");
-                setColors([]);
+                clearFilters();
                 onClearSearch();
               }
               setSelectedId(n.id);
             }}
             onViewAllForBook={(id) => {
-              setTab("all");
+              clearFilters();
               setBookId(id);
             }}
           />
@@ -334,70 +488,26 @@ export function Notes({
     );
 
   return (
-    <div className={`library notes-page${embedded ? " is-embedded" : ""}`}>
-{!embedded && (
-      <header className="library-head">
-        <div>
-          <h1 className="library-title">Notes</h1>
-          <p className="eyebrow">Highlights, annotations and reflections from your reading</p>
-        </div>
-        <Menu
-          label="New note"
-          className="btn btn-primary"
-          trigger={
-            <>
-              <span aria-hidden>+</span> New note
-            </>
-          }
-          items={[
-            { label: "Personal note", icon: "notes", onSelect: () => setWriting({ kind: "personal" }) },
-            { label: "Note about a book…", icon: "library", onSelect: () => setWriting({ kind: "book_note" }) },
-          ]}
-        />
-      </header>
-      )}
-
-      <div className="library-toolbar is-compact">
-        {chips ?? (
-        <div className="tabs" role="tablist" aria-label="Kinds of note">
-          {TABS.map((t) => (
-            <button
-              key={t.tab}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.tab}
-              className={`tab${tab === t.tab ? " is-active" : ""}`}
-              onClick={() => setTab(t.tab)}
-            >
-              {t.label} {page && <span className="tab-count">{page.counts[t.count]}</span>}
-            </button>
-          ))}
-        </div>
-        )}
-        <div className="toolbar-controls">
-          <Menu
-            label={`Sort notes: ${SORTS.find((s) => s.sort === prefs.sort)?.label}`}
-            className="toolbar-button"
-            trigger={
-              <>
-                <Icon name="sort" size={16} className="toolbar-icon" />
-                <Icon name="chevronDown" size={12} className="toolbar-chevron" />
-              </>
-            }
-            items={SORTS.map((s) => ({ label: s.label, checked: prefs.sort === s.sort, onSelect: () => changePrefs({ sort: s.sort }) }))}
-          />
-          <Menu
-            label="Filter notes"
-            className={`toolbar-button${filterCount ? " is-on" : ""}`}
-            trigger={
-              <>
-                <Icon name="filter" size={16} />
-                {filterCount > 0 && <span className="tab-count num">{filterCount}</span>}
-                <Icon name="chevronDown" size={12} className="toolbar-chevron" />
-              </>
-            }
-            items={filterItems}
-          />
+    <div className="notes-page">
+      {anyNotes && (
+        <div className="notes-toolbar" role="toolbar" aria-label="Filter notes">
+          <div className="notes-filters">
+            {types.length > 0 && (
+              <FilterButton label={type ? TYPE_LABEL[type] : kindTab === "book_notes" ? "Everything" : "All types"} on={!!type || colors.length > 0} items={typeItems} />
+            )}
+            {kindTab !== "personal" && <FilterButton label={filterBook?.title ?? "All books"} on={!!bookId} items={bookItems} />}
+            <FilterButton label={tag ?? "All tags"} on={!!tag} items={tagItems} />
+            <FilterButton
+              label={WHEN.find((w) => w.when === when)!.label}
+              on={when !== "any"}
+              items={WHEN.map((w) => ({ label: w.label, checked: when === w.when, onSelect: () => setWhen(w.when) }))}
+            />
+            {filterCount > 0 && (
+              <button type="button" className="link-btn notes-clear" onClick={clearFilters}>
+                Clear
+              </button>
+            )}
+          </div>
           <div className="layout-switch" role="radiogroup" aria-label="Layout">
             {LAYOUTS.map((l) => (
               <button
@@ -415,32 +525,42 @@ export function Notes({
             ))}
           </div>
         </div>
-      </div>
+      )}
 
-      {(filtered || filterBook) && page && (
+      {chosen && (
+        <div className="notes-chosen-bar" role="toolbar" aria-label="Chosen notes">
+          <span>
+            {chosen.size} {chosen.size === 1 ? "note" : "notes"} chosen
+          </span>
+          <button type="button" className="link-btn" onClick={() => setChosen(new Set(notes.map((n) => n.id)))}>
+            Choose all
+          </button>
+          <span className="notes-chosen-actions">
+            <button type="button" className="btn btn-quiet btn-small" disabled={!chosen.size} onClick={() => void pin(chosenNotes, !chosenNotes.every((n) => n.pinnedAt))}>
+              <Icon name="pin" size={14} /> {chosenNotes.length > 0 && chosenNotes.every((n) => n.pinnedAt) ? "Unpin" : "Pin"}
+            </button>
+            <button type="button" className="btn btn-quiet btn-small" disabled={!chosen.size} onClick={() => copy(chosenNotes)}>
+              <Icon name="copy" size={14} /> Copy
+            </button>
+            <button type="button" className="btn btn-quiet btn-small is-danger" disabled={!chosen.size} onClick={() => setDeleting(chosenNotes)}>
+              <Icon name="trash" size={14} /> Delete
+            </button>
+            <button type="button" className="btn btn-primary btn-small" onClick={() => setChosen(null)}>
+              Done
+            </button>
+          </span>
+        </div>
+      )}
+
+      {search.trim() && page && (
         <p className="search-note">
-          {[
-            search.trim() && `Showing notes matching “${search.trim()}”`,
-            filterBook && `from ${filterBook.title}`,
-            colors.length > 0 && `in ${colors.join(", ")}`,
-            kindTab && onlyKind && `(${onlyKind} only)`,
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          <button
-            type="button"
-            className="view-all"
-            onClick={() => {
-              onClearSearch();
-              clearFilters();
-            }}
-          >
+          Showing notes matching “{search.trim()}”
+          <button type="button" className="view-all" onClick={onClearSearch}>
             Clear
           </button>
         </p>
       )}
 
-      {above}
       <div className="library-body">{body}</div>
 
       {writing && (
@@ -449,9 +569,20 @@ export function Notes({
           onCancel={() => setWriting(null)}
           onSaved={(n) => {
             setWriting(null);
-            setTab("all");
             setSelectedId(n.id);
             changed();
+          }}
+        />
+      )}
+      {tagging && (
+        <TagsDialog
+          note={tagging}
+          known={page?.tags ?? []}
+          onCancel={() => setTagging(null)}
+          onSave={(tags) => {
+            const n = tagging;
+            setTagging(null);
+            void saveTags(n, tags);
           }}
         />
       )}
@@ -467,25 +598,31 @@ export function Notes({
       )}
       {deleting && (
         <ConfirmDialog
-          title={`Delete this ${KIND_LABEL[deleting.kind].toLowerCase()}?`}
+          title={deleting.length === 1 ? `Delete this ${KIND_LABEL[deleting[0].kind].toLowerCase()}?` : `Delete ${deleting.length} notes?`}
           body={
-            deleting.kind === "highlight" || deleting.kind === "annotation"
-              ? "The highlight and anything you wrote on it go from every device. The book itself isn't changed."
-              : "The note goes from every device."
+            deleting.some((n) => n.kind === "highlight" || n.kind === "annotation")
+              ? "Highlights and anything written on them go from every device. The books themselves aren't changed."
+              : deleting.length === 1
+                ? "The note goes from every device."
+                : "The notes go from every device."
           }
           confirm="Delete"
           danger
           onCancel={() => setDeleting(null)}
-          onConfirm={() =>
-            void api.deleteNote(deleting.id, deleting.kind).then(
-              () => {
-                setDeleting(null);
-                if (selectedId === deleting.id) setSelectedId(null);
-                changed();
-              },
-              (e: unknown) => toast(String(e)),
-            )
-          }
+          onConfirm={() => {
+            const gone = deleting;
+            void (async () => {
+              try {
+                for (const n of gone) await api.deleteNote(n.id, n.kind);
+              } catch (e) {
+                toast(String(e));
+              }
+              setDeleting(null);
+              if (gone.some((n) => n.id === selectedId)) setSelectedId(null);
+              setChosen((c) => (c ? new Set([...c].filter((id) => !gone.some((n) => n.id === id))) : c));
+              changed();
+            })();
+          }}
         />
       )}
     </div>

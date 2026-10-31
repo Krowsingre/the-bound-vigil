@@ -951,6 +951,7 @@ export function previewApi(): Api {
     unlockLicense: async (code) => (code.trim() ? (previewLicense = { ...previewLicense, state: "owned", daysLeft: 0 }) : null),
     suggestSyncFolder: async (service) =>
       ({ icloud: "C:\\Users\\you\\iCloudDrive", dropbox: "C:\\Users\\you\\Dropbox", onedrive: "C:\\Users\\you\\OneDrive", gdrive: "G:\\My Drive" })[service] ?? null,
+    welcomedBack: async () => new URLSearchParams(location.search).has("welcomeBack"),
     resolveSyncConflict: async (_kind, key) => {
       sync = { ...sync, conflicts: sync.conflicts.filter((c) => c.key !== key) };
       if (!sync.conflicts.length) sync.status = { ...sync.status, state: "idle" };

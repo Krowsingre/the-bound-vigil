@@ -742,6 +742,11 @@ pub struct NoteItem {
     pub locator: Option<ReaderLocator>,
     pub created_at: IsoUtc,
     pub updated_at: IsoUtc,
+    /// When it was pinned above the rest; None when it isn't.
+    #[serde(default)]
+    pub pinned_at: Option<IsoUtc>,
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -777,6 +782,10 @@ pub struct NotesQuery {
     pub book_id: Option<BookId>,
     /// Highlight colours to keep. Empty keeps every colour.
     pub colors: Vec<String>,
+    /// Only notes with this tag.
+    pub tag: Option<String>,
+    /// Only notes changed at or after this moment.
+    pub since: Option<IsoUtc>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -797,4 +806,6 @@ pub struct NotesPage {
     pub counts: NoteCounts,
     /// Books that have notes, for filtering by book.
     pub books: Vec<CoverRef>,
+    /// Every tag a note has, for filtering by tag.
+    pub tags: Vec<String>,
 }

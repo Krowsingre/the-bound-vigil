@@ -911,6 +911,9 @@ export interface NoteItem {
   locator: ReaderLocator | null;
   createdAt: IsoUtc;
   updatedAt: IsoUtc;
+  /** When it was pinned above the rest in Scribe; null when it isn't. */
+  pinnedAt?: IsoUtc | null;
+  tags?: string[];
 }
 
 export type NotesTab = "all" | "highlights" | "annotations" | "book_notes" | "personal";
@@ -922,6 +925,10 @@ export interface NotesQuery {
   search: string | null;
   bookId: BookId | null;
   colors: HighlightColor[];
+  /** Only notes with this tag. */
+  tag?: string | null;
+  /** Only notes changed at or after this moment. */
+  since?: IsoUtc | null;
 }
 
 export interface NoteCounts {
@@ -936,6 +943,8 @@ export interface NotesPage {
   notes: NoteItem[];
   counts: NoteCounts;
   books: CoverRef[];
+  /** Every tag a note has, for filtering by tag. */
+  tags: string[];
 }
 
 /** Where this device keeps the library, for Settings. */
