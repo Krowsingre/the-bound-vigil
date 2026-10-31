@@ -2221,7 +2221,9 @@
   font-size: 13px;
 }
 .import-kind {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  width: 13em;
   max-width: 44%;
   font-size: 12px;
 }

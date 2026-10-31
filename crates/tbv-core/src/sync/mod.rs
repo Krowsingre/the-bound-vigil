@@ -1841,9 +1841,11 @@ impl Library {
         }
         // Sanctum's Quick links sync with the library, their pictures too.
         sources.push("SELECT picture FROM sanctum_links WHERE deleted_at IS NULL");
-        // Covers of books being written travel with notes.
+        // Covers of books being written travel with notes, and so do the
+        // originals Scribe books were imported from.
         if options.notes {
             sources.push("SELECT cover AS picture FROM writing_projects WHERE deleted_at IS NULL");
+            wanted.extend(self.originals_kept()?);
         }
         if !sources.is_empty() {
             let pictures = self
@@ -2122,8 +2124,21 @@ impl Library {
         Ok(out)
     }
 
-    fn files_to_erase(&self, lane: Lane) -> Result<Vec<String>> {
+    pub(crate) fn files_to_erase(&self, lane: Lane) -> Result<Vec<String>> {
         Ok(self.setting(lane.erase_key())?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default())
+    }
+
+    /// Erases files from the cloud (every sync place) at the next sync.
+    pub(crate) fn erase_files_from_cloud(&self, gone: &[String]) -> Result<()> {
+        let lanes: &[Lane] = if self.sync_also()?.is_some() { &[Lane::Main, Lane::Also] } else { &[Lane::Main] };
+        for &lane in lanes {
+            let mut paths = self.files_to_erase(lane)?;
+            paths.extend(gone.iter().cloned());
+            paths.sort();
+            paths.dedup();
+            self.put_setting(lane.erase_key(), Some(&serde_json::to_string(&paths)?))?;
+        }
+        Ok(())
     }
 
     /// Forgets erased files, so the same book imported again goes up afresh.
@@ -2158,6 +2173,9 @@ impl Library {
         }
         if path.starts_with("pictures/") {
             return "A collection picture".into();
+        }
+        if path.starts_with(crate::provenance::ORIGINALS) {
+            return "The original of a Scribe book".into();
         }
         path.to_string()
     }
@@ -2838,6 +2856,19 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
             }
         }
     }
+    // Originals of Scribe books come down to computers, once they're in the
+    // cloud; a phone, short of room, leaves them there.
+    if options.notes && !holdings::covers_on_view() {
+        let wanted = lock()?.originals_to_fetch()?;
+        if !wanted.is_empty() {
+            let there = remote.list(crate::provenance::ORIGINALS)?;
+            for (path, local) in wanted {
+                if there.iter().any(|n| path.ends_with(&format!("/{n}"))) {
+                    fetches.push((path, local, "The original of a Scribe book".into(), None));
+                }
+            }
+        }
+    }
     let (bare, stale, covers_dir) = {
         let library = lock()?;
         if lazy {
@@ -2919,6 +2950,7 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
                     library.cover_stale(book_id, false)?;
                 }
                 None if path.starts_with("pictures/avatar-") => library.tidy_avatars()?,
+                None if path.starts_with(crate::provenance::ORIGINALS) => library.original_fetched(&path)?,
                 None => {}
             }
             report.files_received += 1;

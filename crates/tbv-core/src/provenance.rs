@@ -9,13 +9,15 @@
 //! needed and kept on the device. The record is JSON with its keys sorted
 //! and no spaces, so every device reads back the very bytes that were
 //! signed; the public key travels with it so any device can check it. On
-//! iPhone and iPad the app also asks Apple's App Attest to vouch for the
-//! record, and that stamp is kept beside it as it came.
+//! iPhone, iPad and Mac the app also asks Apple's App Attest to vouch for
+//! the record; that stamp is kept beside it as it came, and checked against
+//! Apple's root certificate whenever it's shown (apple_attest.rs).
 //!
 //! None of this checks who wrote a book: it records the person's own
 //! promise, on the honour system. Records are synced with the book
-//! (writing_provenance) and never changed once made. The original file
-//! stays on the device that imported it, until the person deletes it.
+//! (writing_provenance) and never changed once made. The original file is
+//! kept on the device that imported it and copied to the cloud with notes;
+//! other computers copy it down. Deleting it erases it here and in the cloud.
 
 use std::fs;
 use std::path::PathBuf;
@@ -36,6 +38,13 @@ use crate::time::now_utc;
 /// The shape of a record. A later one adds fields; older ones still check.
 pub const RECORD_SCHEMA: u32 = 1;
 pub const ALGORITHM: &str = "Ed25519";
+/// Where originals are kept in the cloud.
+pub(crate) const ORIGINALS: &str = "originals/";
+
+/// A file name with no way out of its folder.
+fn safe_name(name: &str) -> bool {
+    !name.is_empty() && !name.contains(['/', '\\']) && !name.starts_with('.')
+}
 
 /// What the person agreed to, as the import dialog showed it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -72,6 +81,9 @@ pub struct ProvenanceRecord {
     pub key_id: String,
     /// Whether Apple's App Attest vouched for it too.
     pub apple_stamp: bool,
+    /// What checking Apple's stamp found: `valid`, `development`, `invalid`
+    /// or `unreadable` (see apple_attest.rs); None without a stamp.
+    pub apple_check: Option<String>,
     /// The device that made it, by the name it has now, when known.
     pub device: Option<String>,
 }
@@ -118,6 +130,17 @@ pub fn canonical(value: &Value) -> String {
         Value::Array(items) => format!("[{}]", items.iter().map(canonical).collect::<Vec<_>>().join(",")),
         other => other.to_string(),
     }
+}
+
+/// An original's file name, here and in the cloud: its SHA-256 and its own type.
+fn original_file_name(sha: &str, name: &str) -> String {
+    let extension = std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .filter(|e| e.len() <= 10 && e.chars().all(|c| c.is_ascii_alphanumeric()))
+        .map(|e| format!(".{}", e.to_ascii_lowercase()))
+        .unwrap_or_default();
+    format!("{}{extension}", sha.to_ascii_lowercase())
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -254,7 +277,8 @@ impl Library {
             .get("installation")
             .and_then(Value::as_str)
             .and_then(|d| self.conn.query_row("SELECT name FROM devices WHERE device_id = ?1", params![d], |r| r.get::<_, String>(0)).optional().ok().flatten());
-        Ok(ProvenanceRecord { id, project_id, event, created_at, record: parsed, signature: status.into(), key_id: key, apple_stamp: apple.is_some(), device })
+        let apple_check = apple.as_deref().map(|stamp| crate::apple_attest::check(stamp, &public_key, &record).as_str().to_string());
+        Ok(ProvenanceRecord { id, project_id, event, created_at, record: parsed, signature: status.into(), key_id: key, apple_stamp: apple.is_some(), apple_check, device })
     }
 
     /// Adds Apple's stamp to a record made a moment ago, once: a record
@@ -322,13 +346,7 @@ impl Library {
     /// Keeps the original file of an import, named by its SHA-256.
     pub fn keep_writing_source(&self, project_id: &str, name: &str, bytes: &[u8]) -> Result<WritingSource> {
         let sha = sha256_hex(bytes);
-        let extension = std::path::Path::new(name)
-            .extension()
-            .and_then(|e| e.to_str())
-            .filter(|e| e.len() <= 10 && e.chars().all(|c| c.is_ascii_alphanumeric()))
-            .map(|e| format!(".{}", e.to_ascii_lowercase()))
-            .unwrap_or_default();
-        let file = format!("{sha}{extension}");
+        let file = original_file_name(&sha, name);
         let dir = self.scribe_originals_dir();
         fs::create_dir_all(&dir)?;
         let path = dir.join(&file);
@@ -342,6 +360,89 @@ impl Library {
         )?;
         self.log_provenance("source_kept", project_id, None, &format!("Kept the original, {name}"))?;
         self.writing_sources(project_id)?.into_iter().find(|s| s.sha256 == sha).ok_or_else(|| Error::Unsuitable("the original couldn't be kept".into()))
+    }
+
+    /// The originals this device keeps, for sync to copy to the cloud, as
+    /// (cloud path, file).
+    pub(crate) fn originals_kept(&self) -> Result<Vec<(String, PathBuf)>> {
+        let dir = self.scribe_originals_dir();
+        let files = self
+            .conn
+            .prepare(
+                "SELECT DISTINCT s.file FROM writing_sources s JOIN writing_projects p ON p.id = s.project_id
+                 WHERE p.deleted_at IS NULL",
+            )?
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(files.into_iter().filter(|f| safe_name(f)).map(|f| (format!("{ORIGINALS}{f}"), dir.join(&f))).filter(|(_, p)| p.exists()).collect())
+    }
+
+    /// Originals named in records of books here whose file this device
+    /// hasn't got, and wasn't told to delete, as (cloud path, file).
+    pub(crate) fn originals_to_fetch(&self) -> Result<Vec<(String, PathBuf)>> {
+        let dir = self.scribe_originals_dir();
+        let mut out = Vec::new();
+        for (project_id, sha, name) in self.originals_named()? {
+            let file = original_file_name(&sha, &name);
+            let held: bool = self.conn.query_row("SELECT EXISTS (SELECT 1 FROM writing_sources WHERE project_id = ?1 AND sha256 = ?2)", params![project_id, sha], |r| r.get(0))?;
+            let dropped: bool = self.conn.query_row(
+                "SELECT EXISTS (SELECT 1 FROM provenance_log WHERE event = 'source_deleted' AND project_id = ?1)",
+                params![project_id],
+                |r| r.get(0),
+            )?;
+            let local = dir.join(&file);
+            if !held && !dropped && !local.exists() && !out.iter().any(|(_, p): &(String, PathBuf)| p == &local) {
+                out.push((format!("{ORIGINALS}{file}"), local));
+            }
+        }
+        Ok(out)
+    }
+
+    /// An original came down from the cloud: it's kept with every book here
+    /// whose record names it.
+    pub(crate) fn original_fetched(&self, cloud_path: &str) -> Result<()> {
+        let Some(file) = cloud_path.strip_prefix(ORIGINALS) else { return Ok(()) };
+        let local = self.scribe_originals_dir().join(file);
+        let Ok(bytes) = fs::read(&local) else { return Ok(()) };
+        let sha = sha256_hex(&bytes);
+        if !file.starts_with(&sha) {
+            // Not the file the record names: it isn't kept.
+            let _ = fs::remove_file(&local);
+            return Ok(());
+        }
+        for (project_id, named, name) in self.originals_named()? {
+            if named == sha {
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO writing_sources (project_id, sha256, name, bytes, file, kept_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![project_id, sha, name, bytes.len() as i64, file, now_utc()],
+                )?;
+                self.log_provenance("source_fetched", &project_id, None, &format!("Copied the original, {name}, from your cloud"))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// (book, SHA-256, file name) of each original named in an import
+    /// record of a book that's still here.
+    fn originals_named(&self) -> Result<Vec<(String, String, String)>> {
+        let rows = self
+            .conn
+            .prepare(
+                "SELECT r.project_id, r.record FROM writing_provenance r JOIN writing_projects p ON p.id = r.project_id
+                 WHERE r.event = 'import' AND p.deleted_at IS NULL",
+            )?
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(project, record)| {
+                let record: Value = serde_json::from_str(&record).ok()?;
+                let source = record.get("source")?;
+                let sha = source.get("sha256")?.as_str().filter(|s| is_sha256(s))?.to_ascii_lowercase();
+                let name = source.get("name").and_then(Value::as_str).unwrap_or("Original").to_string();
+                Some((project, sha, name))
+            })
+            .collect())
     }
 
     pub fn writing_sources(&self, project_id: &str) -> Result<Vec<WritingSource>> {
@@ -369,6 +470,8 @@ impl Library {
         let others: bool = self.conn.query_row("SELECT EXISTS (SELECT 1 FROM writing_sources WHERE file = ?1)", params![file], |r| r.get(0))?;
         if !others {
             let _ = fs::remove_file(self.scribe_originals_dir().join(&file));
+            // The copy in the cloud goes too.
+            self.erase_files_from_cloud(&[format!("{ORIGINALS}{file}")])?;
         }
         self.log_provenance("source_deleted", project_id, None, &format!("Deleted the original, {name}"))?;
         Ok(())
@@ -518,5 +621,45 @@ mod tests {
         assert!(seen.sources.is_empty());
         assert_eq!(seen.records[0].record["source"]["sha256"], json!(kept.sha256));
         assert!(seen.history.iter().any(|e| e.event == "source_deleted"));
+    }
+
+    #[test]
+    fn originals_go_to_the_cloud_and_come_down_elsewhere() {
+        let (_dir, lib) = temp_library();
+        let book = lib.create_writing_project("Night", None).unwrap();
+        let kept = lib.keep_writing_source(&book.project.id, "Night.DOCX", b"bytes").unwrap();
+        lib.record_writing_import(&book.project.id, &ack(&kept.sha256), |_| None).unwrap();
+        let cloud = format!("originals/{}.docx", kept.sha256);
+        assert_eq!(lib.originals_kept().unwrap(), vec![(cloud.clone(), std::path::PathBuf::from(&kept.path))]);
+        assert!(lib.originals_to_fetch().unwrap().is_empty());
+
+        // Another computer: the record came by sync, the file didn't.
+        lib.conn.execute("DELETE FROM writing_sources", []).unwrap();
+        std::fs::remove_file(&kept.path).unwrap();
+        let wanted = lib.originals_to_fetch().unwrap();
+        assert_eq!(wanted, vec![(cloud.clone(), std::path::PathBuf::from(&kept.path))]);
+        std::fs::write(&kept.path, b"bytes").unwrap();
+        lib.original_fetched(&cloud).unwrap();
+        assert_eq!(lib.writing_provenance(&book.project.id).unwrap().sources.len(), 1);
+        assert!(lib.originals_to_fetch().unwrap().is_empty());
+
+        // Deleting it here erases the cloud's copy, and it isn't fetched again.
+        lib.delete_writing_source(&book.project.id, &kept.sha256).unwrap();
+        assert!(lib.files_to_erase(crate::sync::Lane::Main).unwrap().contains(&cloud));
+        assert!(lib.originals_to_fetch().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_file_that_isnt_the_named_original_isnt_kept() {
+        let (_dir, lib) = temp_library();
+        let book = lib.create_writing_project("Night", None).unwrap();
+        let sha = sha256_hex(b"real");
+        lib.record_writing_import(&book.project.id, &ack(&sha), |_| None).unwrap();
+        let (cloud, local) = lib.originals_to_fetch().unwrap().remove(0);
+        std::fs::create_dir_all(local.parent().unwrap()).unwrap();
+        std::fs::write(&local, b"something else").unwrap();
+        lib.original_fetched(&cloud).unwrap();
+        assert!(!local.exists());
+        assert!(lib.writing_provenance(&book.project.id).unwrap().sources.is_empty());
     }
 }

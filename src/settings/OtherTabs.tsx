@@ -5,7 +5,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { DuplicatesDialog } from "./DuplicatesDialog";
-import { ManageSubscription, OwnerCode, PlanButtons, publisherWords, standardWords, useLicense } from "../license/License";
+import { ManageSubscription, OwnerCode, PlanButtons, PRIVACY_POLICY, publisherWords, standardWords, TERMS, useLicense } from "../license/License";
 import { PublisherPlans, PublisherTools } from "../license/Publisher";
 import { canSelfUpdate, useUpdater, type UpdateState } from "./updates";
 import { SORTS, type Layout } from "../library/libraryView";
@@ -1003,6 +1003,16 @@ function AboutVersion({ version }: { version: string }) {
       <Row label="Version">
         <span className="settings-value">{version}</span>
       </Row>
+      <p className="about-made muted">The Bound Vigil was designed by Krowsingre Publishing and built with the help of AI (Anthropic's Claude).</p>
+      <p className="about-links muted">
+        <button type="button" className="link-btn" onClick={() => void openExternal(TERMS)}>
+          Terms of use
+        </button>
+        {" · "}
+        <button type="button" className="link-btn" onClick={() => void openExternal(PRIVACY_POLICY)}>
+          Privacy policy
+        </button>
+      </p>
     </>
   );
 }
@@ -1046,7 +1056,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.67.0");
+  const [version, setVersion] = useState("0.68.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

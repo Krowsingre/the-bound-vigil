@@ -348,29 +348,56 @@ mod tests {
     }
 }
 
-/// After a record is signed, asks Apple to vouch for it on iPhone and iPad,
-/// without holding the library while Apple answers.
-async fn stamp_record(state: &State<'_, AppLibrary>, record: tbv_core::provenance::ProvenanceRecord) -> CommandResult<tbv_core::provenance::ProvenanceRecord> {
-    #[cfg(not(target_os = "ios"))]
-    {
-        let _ = state;
-        Ok(record)
+/// Apple's App Attest stamp for a record, on iPhone, iPad and Mac; None
+/// elsewhere, or where Apple can't give one.
+#[cfg(target_os = "ios")]
+fn apple_attest(public_key: &str, record: &str) -> Option<String> {
+    tauri_plugin_tbv_ios::app_attest(public_key, record)
+}
+
+#[cfg(target_os = "macos")]
+fn apple_attest(public_key: &str, record: &str) -> Option<String> {
+    use std::ffi::{c_char, c_void, CStr, CString};
+    extern "C" {
+        fn tbv_mac_app_attest(public_key: *const c_char, record: *const c_char) -> *mut c_char;
+        fn free(pointer: *mut c_void);
     }
-    #[cfg(target_os = "ios")]
-    {
+    let (public_key, record) = (CString::new(public_key).ok()?, CString::new(record).ok()?);
+    // SAFETY: both strings live for the call; the answer is a strdup'd string, freed once read.
+    let answer = unsafe { tbv_mac_app_attest(public_key.as_ptr(), record.as_ptr()) };
+    if answer.is_null() {
+        return None;
+    }
+    let text = unsafe { CStr::from_ptr(answer) }.to_string_lossy().into_owned();
+    unsafe { free(answer.cast()) };
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    value.get("assertion")?.as_str()?;
+    Some(value.to_string())
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "macos")))]
+fn apple_attest(_public_key: &str, _record: &str) -> Option<String> {
+    None
+}
+
+/// After a record is signed, asks Apple to vouch for it on iPhone, iPad and
+/// Mac, without holding the library while Apple answers.
+async fn stamp_record(state: &State<'_, AppLibrary>, record: tbv_core::provenance::ProvenanceRecord) -> CommandResult<tbv_core::provenance::ProvenanceRecord> {
+    if cfg!(not(any(target_os = "ios", target_os = "macos"))) {
+        return Ok(record);
+    }
     let id = record.id.clone();
     let (public, text) = {
         let id = id.clone();
         with_library(state.clone(), move |library| Ok((library.signing_public_key()?, library.provenance_text(&id)?))).await?
     };
-    let stamp: Option<String> = tauri::async_runtime::spawn_blocking(move || tauri_plugin_tbv_ios::app_attest(&public, &text)).await.ok().flatten();
+    let stamp: Option<String> = tauri::async_runtime::spawn_blocking(move || apple_attest(&public, &text)).await.ok().flatten();
     let Some(stamp) = stamp else { return Ok(record) };
     with_library(state.clone(), move |library| {
         library.attach_apple_stamp(&id, &stamp)?;
         Ok(library.writing_provenance(&record.project_id)?.records.into_iter().find(|r| r.id == id).unwrap_or(record))
     })
     .await
-    }
 }
 
 /// The person confirmed they may import and publish a manuscript: signs the record.

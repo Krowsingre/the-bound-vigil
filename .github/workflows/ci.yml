@@ -67,6 +67,9 @@ jobs:
   windows:
     name: Windows installer
     runs-on: windows-latest
+    # TBV's App ID, for checking Apple's stamps on Scribe records (apple_attest.rs).
+    env:
+      TBV_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     permissions:
       contents: write
     steps:

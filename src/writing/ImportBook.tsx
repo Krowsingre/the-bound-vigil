@@ -189,7 +189,7 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
         {stage === "choose" && (
           <>
             <p className="muted dialog-lede">
-              Rebuild a book you've written elsewhere as a Scribe book you can edit: Word, OpenDocument, RTF, plain text, Markdown, HTML or EPUB. For Google Docs, download it as Word first. Your file is
+              Rebuild a book you've written elsewhere as a Scribe book you can edit: Word, OpenDocument, RTF, plain text, Markdown, HTML, EPUB or PDF, or a Kindle Create project made from a PDF (zip its folder first). For Google Docs, download it as Word first. Your file is
               never changed.
             </p>
             <div className="import-book-file">
