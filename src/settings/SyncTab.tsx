@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, isApp, isIOS, isWeb } from "../api";
+import { api, isApp, isIOS, isMac, isWeb, isWindows } from "../api";
 import type { ProviderView, SupabaseProject, SyncOverview } from "../api/types";
 import { relativeTime } from "../lib/format";
 import { behindText } from "../shell/SyncMenu";
@@ -30,8 +30,12 @@ const STATE_TEXT: Record<SyncOverview["status"]["state"], string> = {
   error: "Sync failed",
 };
 
+/** The card picked before anything is set up: the cloud this device already has. */
+const FIRST_CARD: Provider = isIOS || isMac ? "icloud" : isWindows ? "onedrive" : "supabase";
+
 /** The card for the service in use. */
 function cardFor(view: ProviderView): Provider {
+  if (view.kind === "off") return FIRST_CARD;
   if (view.kind === "webdav") return "custom";
   if (view.kind === "cloud") return view.service === "google" ? "gdrive" : (view.service as Provider);
   if (view.kind === "folder") return PROVIDERS.some((p) => p.id === view.service) ? (view.service as Provider) : "custom";
@@ -42,7 +46,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
   const { settings, changeSync } = useAppSettings();
   const sync = settings.sync;
   const toast = useToast();
-  const [provider, setProvider] = useState<Provider>("supabase");
+  const [provider, setProvider] = useState<Provider>(FIRST_CARD);
   const [overview, setOverview] = useState<SyncOverview | null>(null);
   const [editing, setEditing] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -61,7 +65,8 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
   );
   useEffect(() => {
     void reload().then((o) => {
-      if (o) setProvider(cardFor(o.provider));
+      // Supabase not signed in to is nothing set up yet.
+      if (o) setProvider(o.provider.kind === "supabase" && !o.signedInAs ? FIRST_CARD : cardFor(o.provider));
     });
     return api.onSync({ status: () => void reload() });
   }, [reload]);

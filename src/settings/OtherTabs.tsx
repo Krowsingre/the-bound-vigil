@@ -5,7 +5,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { DuplicatesDialog } from "./DuplicatesDialog";
-import { ManageSubscription, OwnerCode, PlanButtons, shopName, useLicense } from "../license/License";
+import { ManageSubscription, OwnerCode, PlanButtons, publisherWords, standardWords, useLicense } from "../license/License";
 import { PublisherPlans, PublisherTools } from "../license/Publisher";
 import { canSelfUpdate, useUpdater, type UpdateState } from "./updates";
 import { SORTS, type Layout } from "../library/libraryView";
@@ -901,22 +901,14 @@ function YourCopy() {
   const ends = new Date(license.trialEnds * 1000).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
   // TBV for life with Publisher on a subscription on top.
   const publisherOnTop = license.state === "owned" && license.plan === "lifetime" && !!license.publisher && !license.publisherForLife && license.shop !== "none";
-  const manage = license.shop === "apple" ? "manage it in your Apple ID's Subscriptions" : "manage it in the Microsoft Store's Subscriptions";
   const words =
     license.state === "owned"
-      ? license.plan === "yearly" || license.plan === "monthly"
-        ? `On the ${license.publisher ? "Publisher " : ""}${license.plan} plan from ${shopName(license.shop)}. Thank you. It renews each ${license.plan === "yearly" ? "year" : "month"}; ${manage}.`
-        : publisherOnTop
-          ? `The Bound Vigil is yours for life, and Publisher comes with a subscription from ${shopName(license.shop)}. Thank you. It renews until you cancel; ${manage}. When it ends, TBV stays yours.`
-          : `${license.publisher ? "TBV Publisher, bought" : "Bought"} in ${shopName(license.shop)}. Thank you.`
+      ? standardWords(license)
       : license.trialDays > 0
         ? `${license.daysLeft === 1 ? "1 day" : `${license.daysLeft} days`} left of your free trial (until ${ends}). Choose a plan to keep using it after that.`
         : "Choose a plan to use The Bound Vigil.";
-  // Publisher for good: the upgrade for those who bought TBV for life themselves, otherwise full price.
-  const keepPublisher = publisherOnTop && !license.lifetimeShared ? "publisherUpgrade" : "publisherLifetime";
-  const keepPrice = keepPublisher === "publisherUpgrade" ? license.upgradePrice : license.publisherPrice;
   return (
-    <Section id="licence" title="Your copy" lede={words}>
+    <Section id="licence" title="TBV Standard" lede={words}>
       {license.state !== "owned" && license.shop !== "none" && (
         <div className="settings-actions">
           <PlanButtons />
@@ -935,12 +927,7 @@ function YourCopy() {
               Switch to lifetime{(license.publisher ? license.publisherPrice : license.price) ? ` for ${license.publisher ? license.publisherPrice : license.price}` : ""}
             </button>
           )}
-          {publisherOnTop && (
-            <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void buy(keepPublisher)}>
-              Keep Publisher for life{keepPrice ? ` for ${keepPrice}` : ""}
-            </button>
-          )}
-          <ManageSubscription />
+          {!publisherOnTop && <ManageSubscription />}
           <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void restore()}>
             Restore purchases
           </button>
@@ -1030,25 +1017,36 @@ export function PlanTab() {
 }
 
 function PublisherPlan() {
-  const { license } = useLicense();
+  const { license, busy, buy } = useLicense();
   if (!license) return null;
-  const lede = license.publisherForLife
-    ? "TBV Publisher is yours for good. Thank you."
-    : license.publisher
-      ? "TBV Publisher comes with your subscription."
-      : license.state === "trial"
+  // TBV for life with Publisher on a subscription on top: keeping Publisher for good is
+  // the upgrade for those who bought TBV for life themselves, otherwise full price.
+  const onTop = license.state === "owned" && license.plan === "lifetime" && !!license.publisher && !license.publisherForLife && license.shop !== "none";
+  const keep = license.lifetimeShared ? "publisherLifetime" : "publisherUpgrade";
+  const keepPrice = keep === "publisherUpgrade" ? license.upgradePrice : license.publisherPrice;
+  const lede = license.publisher
+    ? publisherWords(license)
+    : license.state === "trial"
         ? "Everything you need to publish, on top of all of TBV, included while you try it."
         : "Everything you need to publish, on top of all of TBV. Your writing and exports to EPUB, Word and text stay free to use either way.";
   return (
     <Section id="publisher" title="TBV Publisher" lede={lede}>
       <PublisherTools />
       {!license.publisher && license.shop !== "none" && <PublisherPlans license={license} />}
+      {onTop && (
+        <div className="settings-actions">
+          <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void buy(keep)}>
+            Keep Publisher for life{keepPrice ? ` for ${keepPrice}` : ""}
+          </button>
+          <ManageSubscription />
+        </div>
+      )}
     </Section>
   );
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("1.59.0");
+  const [version, setVersion] = useState("1.60.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

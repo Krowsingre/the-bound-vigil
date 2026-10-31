@@ -196,6 +196,8 @@ export interface LicenseView {
   lifetimeShared?: boolean;
   /** Publisher is theirs for good (Publisher for life, or TBV for life plus the upgrade), not only while a subscription runs. */
   publisherForLife?: boolean;
+  /** The Publisher subscription's period, when Publisher comes from one. */
+  publisherPlan?: "monthly" | "yearly" | null;
   /** Bought on this plan; none when not bought or unlocked by code. */
   plan?: "monthly" | "yearly" | "lifetime" | null;
   /** The Publisher level is owned (or unlocked by the owner's code). */

@@ -110,6 +110,13 @@ fn apple_answer(ask: impl Fn(&str, &str) -> Result<ApplePair, String> + Sync) ->
         plan: plan_name(owned, lifetime, yearly),
         publisher: publisher_owned || upgraded,
         publisher_for_life: upgraded || publisher.as_ref().is_some_and(|p| p.lifetime),
+        publisher_plan: if publisher.as_ref().is_some_and(|p| p.yearly) {
+            Some("yearly".into())
+        } else if publisher_by_month {
+            Some("monthly".into())
+        } else {
+            None
+        },
         publisher_price: publisher.as_ref().and_then(|p| p.price.clone()),
         publisher_yearly_price: publisher.as_ref().and_then(|p| p.yearly_price.clone()),
         publisher_monthly_price: publisher_monthly.and_then(|m| m.yearly_price),
@@ -329,6 +336,13 @@ mod store {
             // The upgrade only counts on top of TBV for life.
             publisher: publisher || publisher_yearly || publisher_monthly || (upgrade && lifetime),
             publisher_for_life: publisher || (upgrade && lifetime),
+            publisher_plan: if publisher_yearly {
+                Some("yearly".into())
+            } else if publisher_monthly {
+                Some("monthly".into())
+            } else {
+                None
+            },
             publisher_price: price_of(super::PUBLISHER),
             publisher_yearly_price: price_of(super::PUBLISHER_YEARLY),
             publisher_monthly_price: price_of(super::PUBLISHER_MONTHLY),
@@ -456,6 +470,15 @@ mod tests {
 
     fn level(a: &StoreAnswer) -> (bool, Option<&str>, bool, bool) {
         (a.owned, a.plan.as_deref(), a.publisher, a.publisher_for_life)
+    }
+
+    #[test]
+    fn the_publisher_subscriptions_period_is_known() {
+        let a = store(&[(PRODUCT, false), (PUBLISHER_MONTHLY, false)]).unwrap();
+        assert_eq!(a.publisher_plan.as_deref(), Some("monthly"));
+        let b = store(&[(PUBLISHER_YEARLY, false)]).unwrap();
+        assert_eq!(b.publisher_plan.as_deref(), Some("yearly"));
+        assert_eq!(store(&[(PUBLISHER, false)]).unwrap().publisher_plan, None);
     }
 
     #[test]

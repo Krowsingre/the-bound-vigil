@@ -930,7 +930,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "1.59.0", version: "1.60.0", notes: "The Bound Vigil 1.60.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "1.60.0", version: "1.61.0", notes: "The Bound Vigil 1.61.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
@@ -945,6 +945,7 @@ export function previewApi(): Api {
         plan: previewLicense.plan === "lifetime" || plan.endsWith("ifetime") || plan === "publisherUpgrade" ? "lifetime" : plan === "monthly" || plan === "publisherMonthly" ? "monthly" : "yearly",
         publisher: previewLicense.publisher || plan.startsWith("publisher"),
         publisherForLife: previewLicense.publisherForLife || plan === "publisherLifetime" || plan === "publisherUpgrade",
+        publisherPlan: plan === "publisherMonthly" ? "monthly" : plan === "publisherYearly" ? "yearly" : previewLicense.publisherPlan,
       }),
     restoreLicense: async () => previewLicense,
     unlockLicense: async (code) => (code.trim() ? (previewLicense = { ...previewLicense, state: "owned", daysLeft: 0 }) : null),
