@@ -108,7 +108,7 @@ function KeepsChargingWarning({ license, plan, onGo, onCancel }: { license: Lice
         </ul>
         <label className="check-row">
           <input type="checkbox" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} />
-          <span>I understand my subscription keeps charging me until I cancel it myself.</span>
+          <span>I understand my current subscription keeps charging me until I cancel it myself.</span>
         </label>
         <div className="dialog-actions">
           <button type="button" className="btn btn-quiet" onClick={() => void openExternal(SUBSCRIPTIONS[license.shop])}>
@@ -118,7 +118,7 @@ function KeepsChargingWarning({ license, plan, onGo, onCancel }: { license: Lice
             Don't buy
           </button>
           <button type="button" className="btn btn-primary" disabled={!understood} onClick={onGo}>
-            Continue to payment
+            {understood ? "Continue to payment" : "Tick the box to continue"}
           </button>
         </div>
       </div>
@@ -202,10 +202,11 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
       run(
         () => api.buyLicense(plan),
         (v) => {
-          if (v.state !== "owned") return;
-          // Bought (not just closed the sheet): the old subscription is still there to cancel.
-          const changed = v.plan !== before?.plan || !!v.publisher !== !!before?.publisher;
-          if (warned && before && changed) setStillBilled(before);
+          // Closing the store's sheet changes nothing, and says nothing.
+          const changed = v.state !== before?.state || v.plan !== before?.plan || !!v.publisher !== !!before?.publisher || !!v.publisherForLife !== !!before?.publisherForLife;
+          if (v.state !== "owned" || !changed) return;
+          // Bought: the old subscription is still there to cancel.
+          if (warned && before) setStillBilled(before);
           else toast("Thank you. The Bound Vigil is yours.");
         },
       ),

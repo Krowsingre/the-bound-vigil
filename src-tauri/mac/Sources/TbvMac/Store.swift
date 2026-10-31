@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import StoreKit
 
@@ -88,6 +89,21 @@ public func storeStatus(_ lifetimeId: UnsafePointer<CChar>, _ yearlyId: UnsafePo
   }
 }
 
+/// Buys with the sheet attached to TBV's own window. Without one, the Mac
+/// can open the sheet behind TBV, which then looks stuck while it waits.
+private func purchase(_ product: Product) async throws -> Product.PurchaseResult {
+  if #available(macOS 15.2, *) {
+    let window = await MainActor.run { () -> NSWindow? in
+      NSApp.activate(ignoringOtherApps: true)
+      return NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible }
+    }
+    if let window {
+      return try await product.purchase(confirmIn: window)
+    }
+  }
+  return try await product.purchase()
+}
+
 /// The App Store's sheet for buying a plan. `ok` is false if it was cancelled.
 @_cdecl("tbv_mac_store_buy")
 public func storeBuy(_ productId: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>? {
@@ -97,7 +113,7 @@ public func storeBuy(_ productId: UnsafePointer<CChar>) -> UnsafeMutablePointer<
       guard let product = try await Product.products(for: [id]).first else {
         return ["error": "The App Store isn't offering that plan yet."]
       }
-      switch try await product.purchase() {
+      switch try await purchase(product) {
       case .success(let result):
         guard case .verified(let t) = result else { return ["error": "The App Store couldn't confirm the purchase."] }
         await t.finish()
