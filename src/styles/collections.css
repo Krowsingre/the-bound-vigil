@@ -797,6 +797,54 @@
   margin: 0;
 }
 
+/* On a phone the picture sits as a short banner above the form, which gets the full width. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
+  .collection-editor {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 96px minmax(0, 1fr);
+    width: calc(100vw - 24px);
+    height: min(780px, calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+  }
+
+  .editor-preview {
+    padding: 12px 16px;
+  }
+
+  .editor-preview .collection-picture-covers {
+    flex-direction: row;
+  }
+
+  .editor-preview .collection-picture-covers .cover {
+    width: auto;
+    height: 80%;
+  }
+
+  .editor-body {
+    padding: 18px 16px 24px;
+  }
+
+  .editor-body .dialog-actions {
+    margin: auto -16px -24px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .collection-editor .field .segmented {
+    max-width: none;
+  }
+
+  .collection-editor .segmented button {
+    min-width: 0;
+    flex: 1 1 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .collection-editor .badge-grid .badge-none {
+    grid-column: 1 / -1;
+  }
+}
+
 .field {
   display: flex;
   flex-direction: column;
