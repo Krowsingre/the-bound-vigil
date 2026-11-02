@@ -67,6 +67,8 @@ export interface TbvBook {
   history: unknown[];
   /** Made by a newer TBV than this one. */
   newer: boolean;
+  /** Poems' sounds, by the name their pages give them. */
+  sounds: { file: string; bytes: Uint8Array }[];
 }
 
 export interface TbvInput {
@@ -76,7 +78,11 @@ export interface TbvInput {
   notes: NoteItem[];
   records: ProvenanceRecord[];
   app: string;
+  /** Poems' sounds this device has, by their kept file name. */
+  sounds?: Map<string, Uint8Array>;
 }
+
+const SOUND_FILE = /^sounds\/([0-9a-f]{64}\.(?:mp3|m4a|aac|wav|ogg|oga|opus|flac))$/;
 
 const isPng = (b: Uint8Array) => b.length > 4 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
 
@@ -137,6 +143,7 @@ export function writeTbv(input: TbvInput): Uint8Array {
       files[file] = strToU8(takeImages(n.note ?? ""));
       return { file, title: n.title, tags: n.tags ?? [], pinned: !!n.pinnedAt };
     });
+  for (const [file, bytes] of input.sounds ?? []) if (SOUND_FILE.test(`sounds/${file}`)) files[`sounds/${file}`] = [bytes, { level: 0 }];
   let cover: string | null = null;
   if (input.cover?.length) {
     cover = isPng(input.cover) ? "cover.png" : "cover.jpg";
@@ -275,6 +282,10 @@ export function readTbv(bytes: Uint8Array): TbvBook {
     notes,
     history: Array.isArray(json.history) ? json.history.slice(0, 200) : [],
     newer: formatVersion > TBV_VERSION,
+    sounds: Object.entries(files).flatMap(([path, bytes]) => {
+      const file = SOUND_FILE.exec(path)?.[1];
+      return file && bytes.length ? [{ file, bytes }] : [];
+    }),
   };
 }
 

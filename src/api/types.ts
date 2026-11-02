@@ -1416,6 +1416,13 @@ export interface ProvenanceRecord {
 }
 
 /** An import's original file, kept on the device that imported it. */
+/** A sound kept with a poem (writing_sounds.rs). */
+export interface WritingSound {
+  file: string;
+  bytes: number;
+  path: string;
+}
+
 export interface WritingSource {
   sha256: string;
   name: string;

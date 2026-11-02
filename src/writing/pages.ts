@@ -50,6 +50,41 @@ export interface PageSettings {
   byHand: boolean;
   /** A poem's lines set centred rather than from the left. */
   centred: boolean;
+  /** A poem's sound: a recording or song of it, and where else it can be heard. */
+  sound: PoemSound | null;
+}
+
+/** A sound kept with a poem (see writing_sounds.rs). */
+export interface PoemSound {
+  /** The kept file's name, its SHA-256 and kind ("…ab12.mp3"). */
+  file: string | null;
+  /** The name it had when it was added. */
+  name: string;
+  /** A web page where it can be heard, for editions that can't play it and the paperback's QR code. */
+  link: string | null;
+}
+
+const SOUND_FILE = /^[0-9a-f]{64}\.(mp3|m4a|aac|wav|ogg|oga|opus|flac)$/;
+
+/** A listening link, if it's a web address. */
+export function webLink(text: string | null | undefined): string | null {
+  const t = (text ?? "").trim();
+  if (!t) return null;
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:/i.test(t) ? t : `https://${t}`);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function readSound(saved: unknown): PoemSound | null {
+  if (!saved || typeof saved !== "object") return null;
+  const s = saved as Partial<PoemSound>;
+  const file = typeof s.file === "string" && SOUND_FILE.test(s.file) ? s.file : null;
+  const link = webLink(typeof s.link === "string" ? s.link : null);
+  if (!file && !link) return null;
+  return { file, name: typeof s.name === "string" ? s.name.slice(0, 200) : "", link };
 }
 
 interface KindInfo {
@@ -127,6 +162,7 @@ export function readPage(json: string | null | undefined, role: WritingChapter["
     showTitle: typeof saved.showTitle === "boolean" ? saved.showTitle : !info.untitled,
     byHand: saved.byHand === true,
     centred: saved.centred === true,
+    sound: readSound(saved.sound),
   };
 }
 
@@ -139,6 +175,7 @@ export function writePage(page: PageSettings): string {
   if (page.showTitle === !!info.untitled) out.showTitle = page.showTitle;
   if (page.byHand) out.byHand = true;
   if (page.centred) out.centred = true;
+  if (page.sound && (page.sound.file || page.sound.link)) out.sound = page.sound;
   return JSON.stringify(out);
 }
 

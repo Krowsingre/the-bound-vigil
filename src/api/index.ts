@@ -17,6 +17,7 @@ import type {
   ProvenanceRecord,
   WritingProvenance,
   WritingSource,
+  WritingSound,
   BrowserFrame,
   BrowserEvent,
   BrowserProtection,
@@ -613,6 +614,10 @@ export interface Api {
   recordWritingImport(projectId: string, acknowledgment: ImportAcknowledgment): Promise<ProvenanceRecord>;
   /** Keeps an import's original file on this device. */
   keepWritingSource(projectId: string, fileName: string, bytes: Uint8Array): Promise<WritingSource>;
+  /** Keeps a sound for a poem; the page names the file it returns. */
+  keepWritingSound(fileName: string, bytes: Uint8Array): Promise<WritingSound>;
+  /** A poem's sound, or null when this device hasn't got it (yet). */
+  writingSound(file: string): Promise<Uint8Array | null>;
   /** Where a book came from: its signed records, checked, its kept original, this device's history. */
   writingProvenance(projectId: string): Promise<WritingProvenance>;
   /** Deletes a kept original; its fingerprint stays in the signed record. */
@@ -1231,6 +1236,13 @@ function appApi(): Api {
       }),
     setWritingChapterPage: async (id, page) => (await core).invoke<WritingChapter>("set_writing_chapter_page", { id, page }),
     recordWritingImport: async (projectId, acknowledgment) => (await core).invoke<ProvenanceRecord>("record_writing_import", { projectId, acknowledgment }),
+    keepWritingSound: async (fileName, bytes) =>
+      (await core).invoke<WritingSound>("keep_writing_sound", bytes, { headers: { "file-name": encodeURIComponent(fileName) } }),
+    writingSound: async (file) => {
+      const raw = await (await core).invoke<ArrayBuffer | number[]>("writing_sound", { file });
+      const bytes = raw instanceof ArrayBuffer ? new Uint8Array(raw) : new Uint8Array(raw);
+      return bytes.length ? bytes : null;
+    },
     keepWritingSource: async (projectId, fileName, bytes) =>
       (await core).invoke<WritingSource>("keep_writing_source", bytes, { headers: { "project-id": projectId, "file-name": encodeURIComponent(fileName) } }),
     writingProvenance: async (projectId) => (await core).invoke<WritingProvenance>("writing_provenance", { projectId }),

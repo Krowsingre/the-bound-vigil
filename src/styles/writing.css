@@ -2386,3 +2386,60 @@
 .info-tip-panel a {
   color: var(--accent);
 }
+
+/* A poem's sound, above the poem. */
+.poem-sound-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-sunk);
+}
+
+.poem-sound-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.poem-sound-icon {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.poem-sound-what {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.poem-sound-what strong {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.poem-sound-what audio {
+  width: 100%;
+  max-width: 420px;
+  height: 36px;
+}
+
+.poem-sound-link {
+  margin: 0;
+  font-size: 13px;
+}
+
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
+  /* The player gets the whole width; its buttons go under it. */
+  .poem-sound-what {
+    flex-basis: calc(100% - 40px);
+  }
+}

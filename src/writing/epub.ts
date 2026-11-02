@@ -180,6 +180,19 @@ export interface EpubInput {
   now?: Date;
   /** One store's edition: links to your books go to this store, and links to the others lose their link. */
   edition?: Store | null;
+  /** Poems' sounds by their kept file name, to play inside the book (the plain EPUB and the Apple edition). */
+  sounds?: Map<string, Uint8Array> | null;
+}
+
+/** The kinds of sound a book can carry, by extension. */
+const AUDIO_TYPES: Record<string, string> = { mp3: "audio/mpeg", m4a: "audio/mp4", aac: "audio/aac", wav: "audio/wav", ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/ogg", flac: "audio/flac" };
+
+/** Editions whose readers play sound inside the book; the rest get the listening link. */
+const PLAYS_SOUND = (edition: Store | null | undefined) => !edition || edition === "apple";
+
+/** The line under a poem that says where to hear it (made into a QR code in print). */
+export function listenHtml(link: string): string {
+  return `<p class="poem-listen">Listen to this poem: <a href="${escapeXml(link)}">${escapeXml(link.replace(/^https?:\/\//, "").replace(/\/$/, ""))}</a></p>`;
 }
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -627,6 +640,10 @@ section.page-sources p.source { text-indent: -2em; padding-left: 2em; text-align
 .stanza { margin: 0 0 1.2em; page-break-inside: avoid; break-inside: avoid; }
 .stanza p.line { margin: 0; padding-left: 2em; text-indent: -2em; text-align: left; }
 .poem-centred .stanza p.line { padding-left: 0; text-indent: 0; text-align: center; }
+.poem-sound { margin: 1.5em 0 0; text-align: center; }
+.poem-sound audio { width: 100%; max-width: 24em; }
+p.poem-listen { margin: 1.5em 0 0; text-indent: 0; text-align: center; font-size: 0.85em; font-style: italic; }
+.poem-centred p.poem-listen, p.poem-listen a { text-align: center; }
 section.page-haiku { padding-top: 20%; }
 .cover { margin: 0; padding: 0; text-align: center; }
 .cover img { max-width: 100%; max-height: 100%; }
@@ -647,7 +664,7 @@ export interface Built {
 }
 
 /** Every file of the EPUB, before zipping (tests read these). */
-export function epubFiles({ project, chapters: own, settings, cover, font, passageFonts: passage = [], citer, now = new Date(), edition }: EpubInput): Built {
+export function epubFiles({ project, chapters: own, settings, cover, font, passageFonts: passage = [], citer, now = new Date(), edition, sounds }: EpubInput): Built {
   citer?.restart();
   // A book that cites sources gets a Sources page at the back, unless it has one already.
   const chapters =
@@ -672,6 +689,7 @@ export function epubFiles({ project, chapters: own, settings, cover, font, passa
     !chapters.some((c) => !c.part && c.role !== "part" && readPage(c.page, c.role).kind === "title_page");
 
   const ordered = bookOrder(chapters);
+  const audio = new Map<string, Uint8Array>();
   const pageOf = ordered.map((c) => readPage(c.page, c.role ?? "chapter"));
   const author = project.author?.trim();
   const series = project.series?.trim();
@@ -698,6 +716,15 @@ export function epubFiles({ project, chapters: own, settings, cover, font, passa
     const { body, headings, pictures, notes } = made
       ? { body: "", headings: [] as Heading[], pictures: [] as Picture[], notes: "" }
       : chapterXhtml(poem ? poemHtml(c.body) : c.body, settings.sceneBreak, `c${n}`, citer ? (id, locator) => citer.cite(id, locator) : undefined);
+    // A poem's sound plays inside the book where readers can play it; elsewhere it's a link.
+    const sound = poem && !made ? settingsOf.sound : null;
+    const playable = sound?.file && PLAYS_SOUND(edition) ? sounds?.get(sound.file) : undefined;
+    if (sound?.file && playable) audio.set(sound.file, playable);
+    const heard = playable
+      ? `<div class="poem-sound"><audio controls="controls" src="audio/${sound!.file}">${sound!.link ? listenHtml(sound!.link) : "<p>This reader can't play the poem's sound.</p>"}</audio></div>`
+      : sound?.link
+        ? listenHtml(sound.link)
+        : "";
     const numbered = role === "chapter" && settingsOf.kind === "chapter";
     const number = numbered ? ++chapterCount : 0;
     const named = c.title.trim();
@@ -718,7 +745,7 @@ export function epubFiles({ project, chapters: own, settings, cover, font, passa
       n,
       heading,
       label,
-      body,
+      body: heard ? `${body}\n${heard}` : body,
       notes,
       headings,
       pictures,
@@ -847,6 +874,7 @@ ${navPoints(points)}
     ...(showTitle ? [`<item id="titlepage" href="titlepage.xhtml" media-type="application/xhtml+xml"/>`] : []),
     ...content.map(([name], i) => `<item id="text${i + 1}" href="${name}" media-type="application/xhtml+xml"/>`),
     ...pictures.map((p, i) => `<item id="picture${i + 1}" href="${p.path}" media-type="${p.mime}"/>`),
+    ...[...audio.keys()].map((file, i) => `<item id="sound${i + 1}" href="audio/${file}" media-type="${AUDIO_TYPES[file.split(".").pop() ?? ""] ?? "audio/mpeg"}"/>`),
     ...fontItems,
   ];
   const spine = [
@@ -899,6 +927,7 @@ ${spine.join("\n")}
     ...(showTitle ? ([["OEBPS/titlepage.xhtml", titlePage]] as [string, string][]) : []),
     ...content.map(([name, text]) => [`OEBPS/${name}`, text] as [string, string]),
     ...pictures.map((p) => [`OEBPS/${p.path}`, p.bytes] as [string, Uint8Array]),
+    ...[...audio].map(([file, bytes]) => [`OEBPS/audio/${file}`, bytes] as [string, Uint8Array]),
     ...fontFiles.map((f) => [`OEBPS/fonts/${f.name}`, f.bytes] as [string, Uint8Array]),
   ];
   return { files };
@@ -918,7 +947,7 @@ export function buildEpub(input: EpubInput): Uint8Array {
   const entries: Record<string, [Uint8Array, { level: 0 | 6 }]> = {};
   for (const [name, data] of epubFiles(input).files) {
     const bytes = typeof data === "string" ? strToU8(data) : data;
-    entries[name] = [bytes, { level: name === "mimetype" || /\.(jpg|png|gif|webp|woff2)$/.test(name) ? 0 : 6 }];
+    entries[name] = [bytes, { level: name === "mimetype" || /\.(jpg|png|gif|webp|woff2|mp3|m4a|aac|ogg|oga|opus|flac)$/.test(name) ? 0 : 6 }];
   }
   return zipSync(entries);
 }

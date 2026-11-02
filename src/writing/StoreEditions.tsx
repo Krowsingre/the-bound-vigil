@@ -171,7 +171,7 @@ export function StoreEditionsDialog({
       if (!isWeb && !folder) return;
       setBusy("Making the editions…");
       const latest = await onFlush();
-      const input = await bookInput(project, latest, { ...settings, storeBooks: books });
+      const input = await bookInput(project, latest, { ...settings, storeBooks: books }, true);
       const join = (name: string) => (folder ? `${folder}${folder.includes("\\") ? "\\" : "/"}${name}` : null);
       const order = [...STORES.map((s) => s.id), "plain" as const].filter((s) => stores.includes(s));
       for (const [i, store] of order.entries()) {

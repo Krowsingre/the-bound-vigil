@@ -564,6 +564,10 @@ export async function webApi(): Promise<Api> {
     keepWritingSource: async () => {
       throw new Error(DESKTOP_ONLY);
     },
+    keepWritingSound: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    writingSound: async () => null,
     writingProvenance: async () => ({ records: [], sources: [], history: [] }),
     deleteWritingSource: async () => {
       throw new Error(DESKTOP_ONLY);

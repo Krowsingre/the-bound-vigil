@@ -6,6 +6,7 @@
 // src/print), from the same pages the EPUB has.
 
 import { bookSheets, escapeXml, inlineStyles, sheetHtml, type EpubInput } from "./epub";
+import { qrSvg } from "./qr";
 
 import { DEFAULT_PRINT, readPrint, TRIMS, type PrintSettings, type TrimSize } from "./printSettings";
 
@@ -80,6 +81,10 @@ section.page-copyright { padding-top: 3in; }
 section.page-dedication, section.page-epigraph { padding-top: 2in; }
 section.part > h1 { margin-top: 2.5in; }
 .footnotes { break-inside: avoid; }
+/* A poem's QR code: about an inch square, its address under it. */
+.poem-listen-print { break-inside: avoid; margin: 1.6em auto 0; text-align: center; }
+.poem-listen-print svg.qr { width: 0.9in; height: 0.9in; display: block; margin: 0 auto 0.4em; }
+.poem-listen-print p { margin: 0; text-indent: 0; text-align: center; font-size: 8.5pt; font-style: italic; }
 /* The contents page gives each chapter's page number. */
 ol.contents li > a { display: flex; gap: 1em; }
 ol.contents li > a::after { content: target-counter(attr(href url), page); margin-left: auto; }
@@ -94,7 +99,11 @@ export function printHtml(input: EpubInput, settings: PrintSettings): string {
   const body = sheets
     .filter((s) => !s.cls.split(/\s+/).includes("cover"))
     .map((s) => {
-      const html = sheetHtml(files, s);
+      // A poem's listening link becomes a QR code a phone can open, with the address under it.
+      const html = sheetHtml(files, s).replace(
+        /<p class="poem-listen">([^<]*)<a href="([^"]+)">([^<]*)<\/a><\/p>/g,
+        (_, lead: string, href: string, shown: string) => `<div class="poem-listen-print">${qrSvg(href.replace(/&amp;/g, "&"), `QR code: ${lead}${shown}`)}<p>${lead}${shown}</p></div>`,
+      );
       // The title page has no section of its own in the EPUB, so it's given one here.
       return `<div class="print-sheet">${s.cls.includes("titlepage") && !/<section/.test(html) ? `<section class="titlepage">${html}</section>` : html}</div>`;
     })

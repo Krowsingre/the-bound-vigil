@@ -1846,6 +1846,8 @@ impl Library {
         if options.notes {
             sources.push("SELECT cover AS picture FROM writing_projects WHERE deleted_at IS NULL");
             wanted.extend(self.originals_kept()?);
+            // And the sounds kept with poems.
+            wanted.extend(self.sounds_kept()?);
         }
         if !sources.is_empty() {
             let pictures = self
@@ -2176,6 +2178,9 @@ impl Library {
         }
         if path.starts_with(crate::provenance::ORIGINALS) {
             return "The original of a Scribe book".into();
+        }
+        if path.starts_with(crate::writing_sounds::SOUNDS) {
+            return "A poem's sound".into();
         }
         path.to_string()
     }
@@ -2869,6 +2874,18 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
             }
         }
     }
+    // A poem's sound comes down wherever the book is, phones too: it plays there.
+    if options.notes {
+        let wanted = lock()?.sounds_to_fetch()?;
+        if !wanted.is_empty() {
+            let there = remote.list(crate::writing_sounds::SOUNDS)?;
+            for (path, local) in wanted {
+                if there.iter().any(|n| path.ends_with(&format!("/{n}"))) {
+                    fetches.push((path, local, "A poem's sound".into(), None));
+                }
+            }
+        }
+    }
     let (bare, stale, covers_dir) = {
         let library = lock()?;
         if lazy {
@@ -2951,6 +2968,7 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
                 }
                 None if path.starts_with("pictures/avatar-") => library.tidy_avatars()?,
                 None if path.starts_with(crate::provenance::ORIGINALS) => library.original_fetched(&path)?,
+                None if path.starts_with(crate::writing_sounds::SOUNDS) => library.sound_fetched(&path)?,
                 None => {}
             }
             report.files_received += 1;

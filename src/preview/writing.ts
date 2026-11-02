@@ -50,6 +50,8 @@ type Calls = Pick<
   | "setWritingCoverPage"
   | "recordWritingImport"
   | "keepWritingSource"
+  | "keepWritingSound"
+  | "writingSound"
   | "writingProvenance"
   | "deleteWritingSource"
   | "duplicateWritingProject"
@@ -69,6 +71,9 @@ const CLASSICS: [string, string, string][] = [
 
 /** Who hears the sample copy check's progress. */
 const progress = new Set<(p: { done: number; total: number }) => void>();
+
+/** Poems' sounds added while trying the preview. */
+const previewSounds = new Map<string, Uint8Array>();
 
 export function previewWriting(): Calls {
   const pictures = new Map<string, string>();
@@ -196,6 +201,14 @@ export function previewWriting(): Calls {
       sources = [...sources, kept];
       return kept;
     },
+    keepWritingSound: async (fileName, bytes) => {
+      const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes as Uint8Array<ArrayBuffer>));
+      const extension = (fileName.split(".").pop() ?? "mp3").toLowerCase();
+      const file = `${[...hash].map((b) => b.toString(16).padStart(2, "0")).join("")}.${extension}`;
+      previewSounds.set(file, bytes);
+      return { file, bytes: bytes.length, path: file };
+    },
+    writingSound: async (file) => previewSounds.get(file) ?? null,
     writingProvenance: async (projectId) => {
       const own = records.filter((r) => r.projectId === projectId);
       const from = own.map((r) => r.record.duplicatedFrom).filter((id): id is string => typeof id === "string");

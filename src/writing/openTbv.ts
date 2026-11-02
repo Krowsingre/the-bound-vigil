@@ -57,6 +57,11 @@ export async function bookFromTbv(
         book.cover.extension,
       );
     }
+    // Poems' sounds, kept under the same names their pages give them.
+    for (const sound of book.sounds) {
+      step("Adding the poems' sounds…");
+      await api.keepWritingSound(sound.file, sound.bytes).catch(() => undefined);
+    }
     const ids: string[] = [];
     let previous: string | null = null;
     for (let i = 0; i < book.pages.length; i++) {
