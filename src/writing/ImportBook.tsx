@@ -6,6 +6,8 @@
 //    each one is, and anything to check;
 // 4. the book is made, with a signed record of the confirmation and the
 //    original file kept beside it. The report goes into the book's notes.
+// A Scribe book file (.tbv) is confirmed the same way, then opened exactly
+// as it was saved, with nothing rebuilt or guessed (see tbvFile.ts).
 
 import { useRef, useState } from "react";
 import { api } from "../api";
@@ -16,10 +18,12 @@ import { AuthorLabel } from "./AuthorInfo";
 import { readExport } from "./epub";
 import { pictureAddress } from "./extensions";
 import { bestSplit, readDocumentBytes, type ImportedDocument, type SplitAt } from "./importDoc";
-import { buildManuscript, inspect, MANUSCRIPT_ACCEPT, type Inspection, type Manuscript, type ManuscriptSection } from "./manuscript";
+import { buildManuscript, inspect, MANUSCRIPT_ACCEPT, MARK_HELP, type Inspection, type Manuscript, type ManuscriptSection } from "./manuscript";
 import { ADD_MENUS, KINDS, writePage, readPage, type Area, type PageKind } from "./pages";
+import { readTbv, type TbvBook } from "./tbvFile";
 
 const SPLITS: { value: SplitAt; label: string }[] = [
+  { value: "marks", label: "At its page marks (===)" },
   { value: "headings", label: "At its headings" },
   { value: "lines", label: "At lines like \"Chapter 1\"" },
   { value: "none", label: "Don't split: one section" },
@@ -67,9 +71,12 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
   const [agreed, setAgreed] = useState(false);
   const [doc, setDoc] = useState<ImportedDocument | null>(null);
   const [manuscript, setManuscript] = useState<Manuscript | null>(null);
+  const [tbv, setTbv] = useState<TbvBook | null>(null);
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [split, setSplit] = useState<SplitAt>("headings");
+  /** The file has page marks, so splitting at them is offered. */
+  const [marked, setMarked] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,10 +101,21 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
   const rebuild = async () => {
     if (!picked || !agreed) return;
     setError(null);
-    setBusy("Rebuilding the book…");
+    setBusy(picked.inspection.format === "tbv" ? "Opening the book file…" : "Rebuilding the book…");
     try {
+      if (picked.inspection.format === "tbv") {
+        const book = readTbv(picked.bytes);
+        setTbv(book);
+        setManuscript(null);
+        setTitle(book.title);
+        setAuthor(book.author ?? "");
+        setStage("review");
+        return;
+      }
+      setTbv(null);
       const d = await readDocumentBytes(picked.name, picked.bytes);
       const at = bestSplit(d.html);
+      setMarked(at === "marks");
       setDoc(d);
       setSplit(at);
       setManuscript(buildManuscript(d, at));
@@ -114,7 +132,71 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
   const change = (i: number, edit: Partial<ManuscriptSection>) =>
     setManuscript((m) => (m ? { ...m, sections: m.sections.map((s, j) => (j === i ? { ...s, ...edit, sure: true } : s)), issues: m.issues.filter((x) => !(x.section === i && x.kind === "classification" && edit.area)) } : m));
 
+  /** A Scribe book file, made into the book it was saved from. */
+  const makeFromTbv = async (book: TbvBook) => {
+    if (!picked || !agreed) return;
+    setError(null);
+    let made: string | null = null;
+    try {
+      setBusy("Making the book…");
+      const view = await api.createWritingProject(title.trim() || book.title, author.trim() || null);
+      made = view.project.id;
+      setBusy("Signing the record…");
+      await api.recordWritingImport(made, {
+        policyVersion: POLICY_VERSION,
+        wording: WORDING,
+        sourceName: picked.name,
+        sourceSha256: picked.sha256,
+        sourceBytes: picked.bytes.length,
+        sourceFormat: "tbv",
+        method: "checkbox",
+        ...(book.history.length ? { carried: book.history } : {}),
+      });
+      setBusy("Keeping the original…");
+      await api.keepWritingSource(made, picked.name, picked.bytes);
+      await api.updateWritingDetails(made, { title: view.project.title, author: view.project.author, series: book.series, seriesIndex: book.seriesIndex, language: book.language, description: book.description });
+      await api.setWritingExport(made, JSON.stringify(book.settings));
+      if (book.coverPage) await api.setWritingCoverPage(made, book.coverPage);
+      if (book.cover) {
+        setBusy("Adding the cover…");
+        await api.setWritingCoverPicture(made, book.cover.bytes, book.cover.extension);
+      }
+      const ids: string[] = [];
+      let previous: string | null = null;
+      for (let i = 0; i < book.pages.length; i++) {
+        setBusy(`Adding page ${i + 1} of ${book.pages.length}…`);
+        const p = book.pages[i];
+        const added: { id: string } = await api.addWritingSection(made, {
+          title: p.title,
+          body: p.body,
+          role: p.role,
+          part: p.part === null ? null : (ids[p.part] ?? null),
+          page: p.role === "part" ? "{}" : JSON.stringify(p.page),
+          after: previous,
+        });
+        ids.push(added.id);
+        previous = added.id;
+      }
+      // The empty chapter every new book starts with, unless the file had no pages at all.
+      if (book.pages.length) for (const c of view.chapters) await api.deleteWritingChapter(c.id).catch(() => undefined);
+      for (const n of book.notes) {
+        const note = await api.savePersonalNote(null, n.title, n.body).catch(() => null);
+        if (!note) continue;
+        await api.setNoteProject(note.id, made).catch(() => undefined);
+        if (n.tags.length) await api.setNoteTags(note.id, n.tags).catch(() => undefined);
+        if (n.pinned) await api.setNotePinned(note.id, true).catch(() => undefined);
+      }
+      onCreated(made);
+    } catch (e) {
+      // Nothing half-made is left behind.
+      if (made) await api.deleteWritingProject(made).catch(() => undefined);
+      setError(String(e).replace(/^Error: /, ""));
+      setBusy(null);
+    }
+  };
+
   const make = async () => {
+    if (tbv) return makeFromTbv(tbv);
     if (!picked || !manuscript || !agreed) return;
     const chosen = manuscript.sections.filter((s) => s.include);
     if (!chosen.length) return setError("Keep at least one section.");
@@ -144,11 +226,20 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
         await api.setWritingExport(made, JSON.stringify({ ...settings, copyright: { ...settings.copyright, isbn: manuscript.isbn } })).catch(() => undefined);
       }
       let previous: string | null = null;
+      // Each part made, by its place in the manuscript, so the sections after it go in it.
+      const parts = new Map<number, string>();
       for (let i = 0; i < chosen.length; i++) {
         setBusy(`Adding section ${i + 1} of ${chosen.length}…`);
         const s = chosen[i];
+        if (s.isPart) {
+          const part: { id: string } = await api.addWritingSection(made, { title: s.title, role: "part", page: "{}", after: previous });
+          parts.set(manuscript.sections.indexOf(s), part.id);
+          previous = part.id;
+          continue;
+        }
         const page = { ...readPage(JSON.stringify({ kind: s.kind }), s.area === "chapter" ? "chapter" : s.area), byHand: !!s.byHand };
-        const added = await api.addWritingSection(made, { title: s.title, body: await shrinkPictures(s.body), role: s.area, page: writePage(page), after: previous });
+        const part = s.partOf === undefined ? null : (parts.get(s.partOf) ?? null);
+        const added = await api.addWritingSection(made, { title: s.title, body: await shrinkPictures(s.body), role: s.area, part, page: writePage(page), after: previous });
         previous = added.id;
       }
       // The empty chapter every new book starts with.
@@ -189,8 +280,8 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
         {stage === "choose" && (
           <>
             <p className="muted dialog-lede">
-              Rebuild a book you've written elsewhere as a Scribe book you can edit: Word, OpenDocument, RTF, plain text, Markdown, HTML, EPUB or PDF, or a Kindle Create project made from a PDF (zip its folder first). For Google Docs, download it as Word first. Your file is
-              never changed.
+              Rebuild a book you've written elsewhere as a Scribe book you can edit: Word, OpenDocument, RTF, plain text, Markdown, HTML, EPUB or PDF, or a Kindle Create project made from a PDF (zip its folder first). For Google Docs, download it as Word first. A
+              Scribe book file (.tbv) opens exactly as it was saved. Your file is never changed.
             </p>
             <div className="import-book-file">
               <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => picking.current?.click()}>
@@ -198,6 +289,14 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
               </button>
               {picked && <span className="muted">{picked.name}</span>}
             </div>
+            <details className="import-marks">
+              <summary>Writing in another app? Mark your pages</summary>
+              <p>
+                In any app, put a line like these where each page starts. Scribe then knows what every page is, with nothing guessed. The words after the colon are the page's title.
+              </p>
+              <pre>{["=== title page", "=== copyright", "=== dedication", "=== contents", "=== part: Book One", "=== chapter: Arrival", "=== poem: Ash on the road", "=== end part", "=== acknowledgments", "=== about the author"].join("\n")}</pre>
+              <p className="muted">Every kind of page works: {MARK_HELP.join(", ")}.</p>
+            </details>
             {picked && !picked.inspection.supported && (
               <div className="import-unsupported" role="alert">
                 <Icon name="info" size={16} />
@@ -242,6 +341,22 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
           </>
         )}
 
+        {stage === "review" && tbv && (
+          <>
+            <div className="writing-export-styles import-book-details">
+              <label className="field">
+                <span>Title</span>
+                <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
+              </label>
+              <label className="field">
+                <AuthorLabel />
+                <input value={author} onChange={(e) => setAuthor(e.target.value)} maxLength={200} placeholder="Your name, or a pen name" />
+              </label>
+            </div>
+            <TbvSummary book={tbv} />
+          </>
+        )}
+
         {stage === "review" && manuscript && doc && (
           <>
             <div className="writing-export-styles import-book-details">
@@ -263,7 +378,7 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
                     setManuscript(buildManuscript(doc, at));
                   }}
                 >
-                  {SPLITS.map((s) => (
+                  {SPLITS.filter((s) => s.value !== "marks" || marked).map((s) => (
                     <option key={s.value} value={s.value}>
                       {s.label}
                     </option>
@@ -272,8 +387,10 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
               </label>
             </div>
             <p className="muted writing-export-note">
-              {kept.length} {kept.length === 1 ? "section" : "sections"}, {words.toLocaleString()} words. Check where each one goes and what it is; untick anything you don't want, such as a contents page,
-              which Scribe makes for you.
+              {kept.length} {kept.length === 1 ? "section" : "sections"}, {words.toLocaleString()} words.{" "}
+              {split === "marks"
+                ? "Each page is what its mark says. Untick anything you don't want."
+                : "Check where each one goes and what it is; untick anything you don't want, such as a contents page, which Scribe makes for you."}
             </p>
             {manuscript.issues.length > 0 && (
               <div className="import-report" role="status">
@@ -305,10 +422,13 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
                         {here.map(({ s, i }) => {
                           const flags = manuscript.issues.filter((x) => x.section === i);
                           return (
-                            <li key={i} className={flags.length ? "is-flagged" : undefined}>
+                            <li key={i} className={[flags.length ? "is-flagged" : "", s.partOf !== undefined ? "is-in-part" : ""].filter(Boolean).join(" ") || undefined}>
                               <div className="check-row">
                                 <input type="checkbox" aria-label={`Bring in ${s.title || "this section"}`} checked={s.include} onChange={(e) => change(i, { include: e.target.checked })} />
                                 <span className="import-book-chapter-title">{s.title || <em className="muted">Untitled poem</em>}</span>
+                                {s.isPart ? (
+                                  <span className="muted import-kind-label">Section</span>
+                                ) : (
                                 <select
                                   className="import-kind"
                                   aria-label={`What ${s.title || "this section"} is`}
@@ -321,7 +441,8 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
                                   {AREAS.map((g) => (
                                     <optgroup key={g.area} label={g.label}>
                                       {ADD_MENUS[g.area]
-                                        .filter((k) => k !== "contents" && k !== "sources")
+                                        // Made by Scribe, so only offered for a page the writer marked as one.
+                                        .filter((k) => (k !== "contents" && k !== "sources") || k === s.kind)
                                         .map((k) => (
                                           <option key={k} value={`${g.area}:${k}`}>
                                             {KINDS[k].label}
@@ -330,6 +451,7 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
                                     </optgroup>
                                   ))}
                                 </select>
+                                )}
                                 <span className="muted import-words">{s.words.toLocaleString()}</span>
                               </div>
                               {flags.map((f, n) => (
@@ -382,12 +504,70 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
             </button>
           )}
           {stage === "review" && (
-            <button type="submit" className="btn btn-primary" disabled={!!busy || !kept.length}>
+            <button type="submit" className="btn btn-primary" disabled={!!busy || (!tbv && !kept.length)}>
               {busy ?? "Make the book"}
             </button>
           )}
         </div>
       </form>
     </div>
+  );
+}
+
+/** What a Scribe book file holds, by area, before the book is made from it. */
+function TbvSummary({ book }: { book: TbvBook }) {
+  const label = (p: TbvBook["pages"][number]) => {
+    if (p.role === "part") return "Section";
+    const page = readPage(JSON.stringify(p.page), p.role);
+    return KINDS[page.kind].label;
+  };
+  const areaOf = (p: TbvBook["pages"][number]): Area => (p.role === "part" ? "chapter" : p.role);
+  const words = book.pages.reduce((n, p) => n + (new DOMParser().parseFromString(`<body>${p.body}</body>`, "text/html").body.textContent ?? "").split(/\s+/).filter((w) => /\w/.test(w)).length, 0);
+  const parts = book.pages.filter((p) => p.role === "part").length;
+  return (
+    <>
+      <p className="muted writing-export-note">
+        {book.pages.length} {book.pages.length === 1 ? "page" : "pages"}, {words.toLocaleString()} words
+        {parts ? `, in ${parts} ${parts === 1 ? "section" : "sections"}` : ""}
+        {book.cover ? ", with its cover" : ""}
+        {book.notes.length ? `, and ${book.notes.length} ${book.notes.length === 1 ? "note" : "notes"}` : ""}. Everything comes in as it was saved
+        {book.madeBy ? ` by ${book.madeBy}` : ""}: kinds, styles, store editions and sources.
+        {book.history.length ? " Where the book came from is kept too, signed into its new record." : ""}
+      </p>
+      {book.newer && (
+        <div className="import-report" role="status">
+          <strong>
+            <Icon name="info" size={15} /> Made by a newer TBV
+          </strong>
+          <p className="muted">Anything this version doesn't know yet is left out. Update TBV to bring in all of it.</p>
+        </div>
+      )}
+      <div className="import-areas">
+        {AREAS.map(({ area, label: heading }) => {
+          const here = book.pages.filter((p) => areaOf(p) === area);
+          return (
+            <section key={area} className="import-area" aria-label={heading}>
+              <h3>
+                {heading} <span className="muted">{here.length}</span>
+              </h3>
+              {here.length === 0 ? (
+                <p className="muted import-area-empty">Nothing here.</p>
+              ) : (
+                <ol className="import-book-chapters">
+                  {here.map((p, i) => (
+                    <li key={i} className={p.part !== null ? "is-in-part" : undefined}>
+                      <div className="check-row">
+                        <span className="import-book-chapter-title">{p.title || <em className="muted">{label(p) === "Poem" ? "Untitled poem" : "Untitled"}</em>}</span>
+                        <span className="muted import-kind-label">{label(p)}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+          );
+        })}
+      </div>
+    </>
   );
 }

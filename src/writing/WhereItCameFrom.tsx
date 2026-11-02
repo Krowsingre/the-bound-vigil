@@ -22,6 +22,24 @@ const APPLE_CHECK: Record<string, string> = {
 
 const source = (r: ProvenanceRecord) => (r.record.source ?? {}) as { name?: string; sha256?: string; bytes?: number; format?: string };
 
+/** The earlier records a Scribe book file brought with it, as it had them. */
+function carried(r: ProvenanceRecord): { event: string; at: string | null; name: string | null; signature: string | null; device: string | null }[] {
+  const list = Array.isArray(r.record.carriedRecords) ? (r.record.carriedRecords as unknown[]) : [];
+  return list
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
+    .map((x) => {
+      const inner = (x.record && typeof x.record === "object" ? x.record : {}) as Record<string, unknown>;
+      const src = (inner.source && typeof inner.source === "object" ? inner.source : {}) as Record<string, unknown>;
+      return {
+        event: x.event === "duplicate" ? "duplicate" : "import",
+        at: typeof inner.at === "string" ? inner.at : typeof x.createdAt === "string" ? x.createdAt : null,
+        name: typeof src.name === "string" ? src.name : null,
+        signature: typeof x.signature === "string" ? x.signature : null,
+        device: typeof x.device === "string" ? x.device : null,
+      };
+    });
+}
+
 function RecordRow({ record, own }: { record: ProvenanceRecord; own: boolean }) {
   const s = source(record);
   const what =
@@ -48,6 +66,23 @@ function RecordRow({ record, own }: { record: ProvenanceRecord; own: boolean }) 
           <Icon name={record.appleCheck === "valid" || record.appleCheck === "development" ? "checkCircle" : "info"} size={14} />
           {APPLE_CHECK[record.appleCheck ?? "unreadable"]}
         </p>
+      )}
+      {carried(record).length > 0 && (
+        <div className="provenance-carried">
+          <p className="muted">The book file brought its earlier history, signed into this record:</p>
+          <ul>
+            {carried(record).map((c, i) => (
+              <li key={i}>
+                {c.event === "duplicate" ? "Duplicated from another book" : `Imported from ${c.name ?? "a file"}`}
+                <span className="muted">
+                  {c.at ? `, ${when(c.at)}` : ""}
+                  {c.device ? `, on ${c.device}` : ""}
+                  {c.signature === "valid" ? ", its signature checked on the device that saved the file" : c.signature ? ", its signature didn't check on the device that saved the file" : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       <details className="provenance-more">
         <summary>The record</summary>

@@ -5,8 +5,9 @@
 // what a section is, it stays where the file had it and is flagged.
 
 import { strFromU8, unzipSync } from "fflate";
-import { IMPORT_ACCEPT, readDocumentBytes, splitChapters, type ImportedDocument, type SplitAt } from "./importDoc";
-import { KINDS, type Area, type PageKind } from "./pages";
+import { IMPORT_ACCEPT, pageMark, readDocumentBytes, splitChapters, type ImportedChapter, type ImportedDocument, type SplitAt } from "./importDoc";
+import { ADD_MENUS, KINDS, type Area, type PageKind } from "./pages";
+import { isTbv } from "./tbvFile";
 
 /** What a chosen file turned out to be. */
 export interface Inspection {
@@ -19,7 +20,7 @@ export interface Inspection {
   reason?: string;
 }
 
-export const MANUSCRIPT_ACCEPT = `${IMPORT_ACCEPT},.zip,.kcb,.kpf,.pdf`;
+export const MANUSCRIPT_ACCEPT = `${IMPORT_ACCEPT},.zip,.kcb,.kpf,.pdf,.tbv`;
 
 const LABELS: Record<string, string> = {
   docx: "Word document",
@@ -39,6 +40,8 @@ const extensionOf = (name: string) => /\.([^.]+)$/.exec(name)?.[1]?.toLowerCase(
 /** Looks at a file without making anything: its kind, and whether Scribe can rebuild a book from it. */
 export function inspect(name: string, bytes: Uint8Array): Inspection {
   const ext = extensionOf(name);
+  // Saved from Scribe: opened as it was, nothing rebuilt (damage is reported when it's read).
+  if (ext === "tbv" || isTbv(bytes)) return { format: "tbv", label: "Scribe book file", supported: true };
   if (LABELS[ext]) return { format: ext === "markdown" ? "md" : ext === "htm" ? "html" : ext, label: LABELS[ext], supported: true };
   if (ext === "pdf") return { format: "pdf", label: "PDF", supported: true };
   if (ext === "kcb")
@@ -106,6 +109,12 @@ export interface ManuscriptSection {
   include: boolean;
   /** Its words are the person's own copyright page, kept as written. */
   byHand?: boolean;
+  /** The writer marked it ("=== chapter: …"), so what it is was never guessed. */
+  marked?: boolean;
+  /** It's a part (an anthology's book, "Part One"), holding the sections after it. */
+  isPart?: boolean;
+  /** The part it sits in, by its place in the list. */
+  partOf?: number;
 }
 
 export type IssueKind = "classification" | "boundary" | "empty" | "images" | "formatting" | "poetry" | "text" | "breaks";
@@ -152,6 +161,89 @@ const TITLES: [RegExp, PageKind][] = [
   [/^(discussion questions|reading group guide|book club questions)$/i, "discussion"],
   [/^(excerpt|a sneak peek|sneak peek|preview)\b/i, "excerpt"],
 ];
+
+/** What each page mark's name means: every kind's own name and label, and the words writers use. */
+const MARK_NAMES: Record<string, PageKind | "part" | "end part"> = (() => {
+  const names: Record<string, PageKind | "part" | "end part"> = {};
+  for (const kind of Object.keys(KINDS) as PageKind[]) {
+    names[kind.replace(/_/g, " ")] = kind;
+    names[KINDS[kind].label.toLowerCase().replace(/\s*\(.*\)$/, "")] = kind;
+  }
+  Object.assign(names, {
+    contents: "contents",
+    toc: "contents",
+    "table of contents": "contents",
+    "contents by hand": "contents_manual",
+    "contents manual": "contents_manual",
+    "written contents": "contents_manual",
+    title: "title_page",
+    "half title page": "half_title",
+    "copyright page": "copyright",
+    "also by": "also_by",
+    "other books": "also_by",
+    acknowledgements: "acknowledgments",
+    acknowledgement: "acknowledgments",
+    acknowledgment: "acknowledgments",
+    "about author": "about_author",
+    "author bio": "about_author",
+    bio: "about_author",
+    notes: "endnotes",
+    endnotes: "endnotes",
+    "end notes": "endnotes",
+    appendices: "appendix",
+    references: "bibliography",
+    "reading group guide": "discussion",
+    discussion: "discussion",
+    "sneak peek": "excerpt",
+    sources: "sources",
+    page: "custom",
+    custom: "custom",
+    part: "part",
+    section: "part",
+    book: "part",
+    "end part": "end part",
+    "end section": "end part",
+    "end book": "end part",
+    "end of part": "end part",
+    "end of section": "end part",
+  } satisfies Record<string, PageKind | "part" | "end part">);
+  return names;
+})();
+
+/** What a page mark's name means, or null when it names nothing Scribe knows. */
+export function markKind(name: string): PageKind | "part" | "end part" | null {
+  const key = name.toLowerCase().replace(/[’']/g, "'").replace(/[\s_-]+/g, " ").trim();
+  return MARK_NAMES[key] ?? null;
+}
+
+/** Every page mark's name, in the order a book has its pages, for the help. */
+export const MARK_HELP: string[] = [
+  ...new Set(
+    [...ADD_MENUS.front, ...ADD_MENUS.chapter, ...ADD_MENUS.back].map((k) =>
+      k === "contents" ? "contents" : k === "contents_manual" ? "contents by hand" : KINDS[k].label.toLowerCase().replace(/\s*\(.*\)$/, ""),
+    ),
+  ),
+  "part",
+  "end part",
+];
+
+const MADE_ONLY: PageKind[] = ["contents", "sources"];
+
+/** A page the writer marked: what it is is never guessed, only where it goes when it could go in more than one place. */
+function markedSection(c: ImportedChapter, reached: Area, inBody: boolean): { kind: PageKind; area: Area; sure: boolean; why?: string; byHand?: boolean; isPart?: boolean; endsPart?: boolean } {
+  const said = markKind(c.mark ?? "");
+  if (said === "part") return { kind: "custom", area: "chapter", sure: true, isPart: true };
+  if (said === "end part") return { kind: "custom", area: reached, sure: true, endsPart: true };
+  if (!said) return { kind: "custom", area: reached, sure: false, why: `“=== ${c.mark}” isn't a kind of page Scribe knows, so it came in as a custom page. Check what it should be.` };
+  const areas = KINDS[said].areas;
+  let area: Area = areas.length === 1 ? areas[0] : areas.includes(reached) ? reached : areas[0];
+  // A poem goes with the poems: in the body, unless the back matter has begun.
+  if (said === "poem") area = reached === "back" ? "back" : "chapter";
+  if (said === "also_by") area = inBody ? "back" : "front";
+  if (said === "prologue" || said === "epilogue") area = "chapter";
+  const made = KINDS[said].made && !MADE_ONLY.includes(said);
+  return { kind: said, area, sure: true, ...(made && c.words > 0 ? { byHand: true } : {}) };
+}
 
 /** epub:type words, and the kind each means. */
 const EPUB_TYPES: [RegExp, PageKind | "front" | "body" | "back"][] = [
@@ -253,6 +345,11 @@ function settleBlanks(body: string, spacing: boolean): { body: string; breaks: n
 const textWords = (html: string) =>
   (new DOMParser().parseFromString(`<body>${html}</body>`, "text/html").body.textContent ?? "").split(/\s+/).filter((w) => /\w/.test(w)).length;
 
+/** The document without its page-mark lines. */
+function withoutMarks(html: string): string {
+  return html.replace(/<(p|h[1-6])[^>]*>([^<]*)<\/\1>/gi, (whole, _tag: string, text: string) => (pageMark(text) ? "" : whole)).replace(/(^|<br\s*\/?>)\s*={3,}[^<]*(?=<br|<\/p>)/gi, (whole, lead: string) => (pageMark(whole.slice(lead.length)) ? lead : whole));
+}
+
 /** The kind a section's title, the file's own label, and its words point to. */
 function sortSection(title: string, body: string, hint: string | undefined, index: number, bookTitle: string): { kind: PageKind; area: Area | null; sure: boolean; why?: string; byHand?: boolean; include?: boolean } {
   const t = title.replace(/[.:]+$/, "").trim();
@@ -308,7 +405,63 @@ export function buildManuscript(doc: ImportedDocument, at: SplitAt): Manuscript 
 
   let reached: Area = "front";
   let breaks = 0;
-  const sections: ManuscriptSection[] = chapters.map((c, i) => {
+  let inBody = false;
+  let part: number | null = null;
+  const marks: ManuscriptIssue[] = [];
+  /** Words left out on purpose: a typed list under "=== contents", words under a part's mark. */
+  const dropped: string[] = [];
+  const sections: ManuscriptSection[] = [];
+  for (const c of chapters) {
+    if (c.mark === undefined) {
+      sections.push(guessed(c, sections.length));
+      continue;
+    }
+    const m = markedSection(c, reached, inBody);
+    if (m.endsPart) {
+      part = null;
+      if (!c.words) continue;
+    }
+    if (m.isPart) {
+      // A part starts its own front, body and back, as an anthology's books do.
+      part = sections.length;
+      reached = "front";
+      sections.push({ title: c.title || `Part ${sections.filter((s) => s.isPart).length + 1}`, body: "", words: 0, area: "chapter", kind: "custom", sure: true, include: true, marked: true, isPart: true });
+      if (c.words) dropped.push(c.body);
+      if (c.words) marks.push({ kind: "text", section: sections.length - 1, message: "A part holds no words of its own, so the words under its mark were left out. Put them in a page after it." });
+      continue;
+    }
+    let body = c.body;
+    if ((m.kind === "contents" || m.kind === "sources") && c.words) {
+      dropped.push(body);
+      marks.push({ kind: "text", section: sections.length, message: m.kind === "contents" ? "Scribe makes the contents from the book's pages, so the list under this mark was left out. Use “=== contents by hand” to keep a list of your own." : "Scribe makes the Sources page from the sources you cite, so the words under this mark were left out." });
+      body = "";
+    }
+    if (m.kind === "poem" || m.kind === "haiku") body = asPoem(body);
+    else if (body) {
+      const settled = settleBlanks(body, spacing);
+      body = settled.body;
+      breaks += settled.breaks;
+    }
+    if (m.area === "chapter") inBody = true;
+    reached = m.area;
+    const unknown = !markKind(c.mark);
+    const title = c.title || (unknown ? c.mark.charAt(0).toUpperCase() + c.mark.slice(1) : m.kind === "chapter" || m.kind === "poem" || m.kind === "haiku" ? "" : m.kind === "contents" || m.kind === "contents_manual" ? "Contents" : KINDS[m.kind].label);
+    sections.push({
+      title,
+      body,
+      words: body ? c.words : 0,
+      area: m.area,
+      kind: m.kind,
+      sure: m.sure,
+      ...(m.why ? { why: m.why } : {}),
+      include: true,
+      marked: true,
+      ...(m.byHand ? { byHand: true } : {}),
+      ...(part !== null ? { partOf: part } : {}),
+    });
+  }
+
+  function guessed(c: ImportedChapter, i: number): ManuscriptSection {
     const sorted = sortSection(c.title, c.body, c.hint, i, doc.title);
     // A kind that fits more than one area takes the one the book is in by now.
     let area: Area = sorted.area ?? (ORDER[reached] > 0 ? reached : sorted.kind === "poem" || sorted.kind === "haiku" ? "chapter" : "front");
@@ -332,20 +485,22 @@ export function buildManuscript(doc: ImportedDocument, at: SplitAt): Manuscript 
       breaks += settled.breaks;
     }
     return { title: (kind === "poem" || kind === "haiku") && c.title === "Untitled" ? "" : c.title, body, words: c.words, area, kind, sure, ...(why ? { why } : {}), include: sorted.include ?? true, ...(sorted.byHand ? { byHand: true } : {}) };
-  });
+  }
 
   const poems = sections.filter((s) => s.kind === "poem" || s.kind === "haiku").length;
   sections.forEach((s, i) => {
     if (!s.sure) issues.push({ kind: "classification", section: i, message: s.why ?? `Check that “${s.title || "this section"}” is in the right place.` });
-    if ((s.title === "Untitled" || !s.title) && s.kind !== "poem" && s.kind !== "haiku") issues.push({ kind: "boundary", section: i, message: "No heading was found here. Check where this section starts and what it's called." });
-    if (!s.words && !/<img/i.test(s.body)) issues.push({ kind: "empty", section: i, message: "This section has no words." });
+    if (!s.marked && (s.title === "Untitled" || !s.title) && s.kind !== "poem" && s.kind !== "haiku") issues.push({ kind: "boundary", section: i, message: "No heading was found here. Check where this section starts and what it's called." });
+    if (!s.words && !/<img/i.test(s.body) && !s.isPart && !(s.marked && KINDS[s.kind].made)) issues.push({ kind: "empty", section: i, message: "This section has no words." });
     if ((s.kind === "poem" || s.kind === "haiku") && poems <= 5) issues.push({ kind: "poetry", section: i, message: "Check the poem's line breaks, stanzas and indents against the original." });
   });
+  issues.push(...marks);
   if (poems > 5) issues.push({ kind: "poetry", section: null, message: `${poems} poems were kept line by line. Check their line breaks, stanzas and indents against the original.` });
   const kept = sections.reduce((n, s) => n + (s.body.match(/<img/gi)?.length ?? 0), 0);
   if (kept < sourcePictures) issues.push({ kind: "images", section: null, message: `${sourcePictures - kept} of the file's ${sourcePictures} pictures couldn't be brought in.` });
   if (sourceDoc.body.querySelector("table")) issues.push({ kind: "formatting", section: null, message: "The file has tables. Scribe doesn't hold tables, so their words became plain paragraphs." });
-  const before = textWords(doc.html);
+  // The writer's page marks aren't words of the book.
+  const before = textWords(at === "marks" ? withoutMarks(doc.html) : doc.html) - textWords(dropped.join(" "));
   const after = sections.reduce((n, s) => n + textWords(s.body.replace(/<sup[^>]*data-footnote="([^"]*)"[^>]*>.*?<\/sup>/g, " $1 ")), 0) + sections.reduce((n, s) => n + textWords(s.title), 0);
   if (before > 0 && after < before * 0.98)
     issues.push({ kind: "text", section: null, message: `About ${(before - after).toLocaleString()} words in the file weren't recognised. Compare the book with the original before publishing.` });

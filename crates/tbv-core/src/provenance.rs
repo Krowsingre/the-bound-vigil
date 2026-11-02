@@ -62,6 +62,10 @@ pub struct ImportAcknowledgment {
     pub source_format: String,
     /// How they agreed: a ticked box.
     pub method: String,
+    /// The records a Scribe book file (.tbv) brought with it from the book it was saved from, as the file had them.
+    /// Signed into this record so they travel on; they were checked on the device that made them, not here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carried: Option<Value>,
 }
 
 /// A record as Book details shows it, checked.
@@ -248,6 +252,9 @@ impl Library {
             "source".into(),
             json!({ "name": ack.source_name, "sha256": ack.source_sha256.to_ascii_lowercase(), "bytes": ack.source_bytes, "format": ack.source_format }),
         );
+        if let Some(carried) = ack.carried.as_ref().filter(|c| c.as_array().is_some_and(|a| !a.is_empty())) {
+            fields.insert("carriedRecords".into(), carried.clone());
+        }
         self.sign_record(project_id, "import", fields, stamp)
     }
 
@@ -536,6 +543,7 @@ mod tests {
             source_bytes: 5,
             source_format: "docx".into(),
             method: "checkbox".into(),
+            carried: None,
         }
     }
 
@@ -564,6 +572,19 @@ mod tests {
         let stored: String = lib.conn.query_row("SELECT record FROM writing_provenance WHERE id = ?1", params![made.id], |r| r.get(0)).unwrap();
         assert_eq!(stored, signed);
         assert!(lib.record_writing_import(&book.project.id, &ack("not a hash"), |_| None).is_err());
+    }
+
+    #[test]
+    fn a_book_files_earlier_records_are_signed_in_with_the_import() {
+        let (_dir, lib) = temp_library();
+        let book = lib.create_writing_project("Night", None).unwrap();
+        let earlier = json!([{ "event": "import", "record": { "source": { "name": "Night.docx" } }, "signature": "valid" }]);
+        let made = lib.record_writing_import(&book.project.id, &ImportAcknowledgment { source_format: "tbv".into(), carried: Some(earlier.clone()), ..ack(&sha256_hex(b"t")) }, |_| None).unwrap();
+        assert_eq!(made.signature, "valid");
+        assert_eq!(made.record["carriedRecords"], earlier);
+        // None, or none at all, adds nothing.
+        let plain = lib.record_writing_import(&book.project.id, &ImportAcknowledgment { carried: Some(json!([])), ..ack(&sha256_hex(b"u")) }, |_| None).unwrap();
+        assert!(plain.record.get("carriedRecords").is_none());
     }
 
     #[test]

@@ -12,5 +12,30 @@
 	<!-- Sending books to LocalSend on devices on the same Wi-Fi. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>The Bound Vigil sends books to devices on your Wi-Fi that have LocalSend open.</string>
+	<!-- The Scribe book file (.tbv), TBV's own, so Finder names it (see Info.ios.plist). -->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.krowsingre.theboundvigil.book</string>
+			<key>UTTypeDescription</key>
+			<string>Scribe book file</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>tbv</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.krowsingre.tbv+zip</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

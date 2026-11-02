@@ -2233,6 +2233,41 @@
   text-align: right;
   font-size: 12px;
 }
+.import-book-chapters li.is-in-part {
+  padding-left: 14px;
+}
+.import-kind-label {
+  flex: none;
+  font-size: 12px;
+}
+.import-marks {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+.import-marks summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.import-marks pre {
+  margin: 6px 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  border-radius: var(--radius-s);
+  background: var(--surface-sunk);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.provenance-carried {
+  margin: 2px 0 6px;
+}
+.provenance-carried p {
+  margin: 0;
+}
+.provenance-carried ul {
+  margin: 2px 0 0;
+  padding-left: 18px;
+}
 .import-book-chapters li.is-flagged {
   border-left: 2px solid var(--accent);
   padding-left: 6px;
