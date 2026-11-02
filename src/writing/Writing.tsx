@@ -26,6 +26,7 @@ import { StoreEditionsDialog } from "./StoreEditions";
 import { BoxSetDialog } from "./BoxSet";
 import { PreviewsDialog } from "./Previews";
 import { usePublisher } from "../license/Publisher";
+import { addSampleBook, addSampleOnce, SAMPLE_AUTHOR, SAMPLE_TITLE } from "./sampleBook";
 
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
 
@@ -66,6 +67,12 @@ export function Writing({
   const [chip, setChip] = useState<Chip>("notes");
   const showing: Chip = booksShown || chip !== "books" ? chip : "notes";
   const projects = useProjects(booksShown, refreshKey, reload);
+  const toast = useToast();
+  // The sample book, the first time Scribe has no books on this device.
+  useEffect(() => {
+    if (projects.state === "ready" && booksShown && !isWeb)
+      void addSampleOnce(projects.list).then((added) => added && setReload((n) => n + 1));
+  }, [projects, booksShown]);
 
   if (openId && booksShown)
     return (
@@ -105,6 +112,22 @@ export function Writing({
             onSelect: () => {
               setChip("books");
               setImporting(true);
+            },
+          },
+          {
+            label: "Sample book",
+            icon: "bookClosed" as const,
+            description: `${SAMPLE_TITLE} by ${SAMPLE_AUTHOR}, to try Scribe on`,
+            onSelect: () => {
+              setChip("books");
+              toast(`Adding ${SAMPLE_TITLE}…`);
+              void addSampleBook().then(
+                () => {
+                  setReload((n) => n + 1);
+                  toast(`${SAMPLE_TITLE} is in your books`);
+                },
+                (e: unknown) => toast(String(e).replace(/^Error: /, "")),
+              );
             },
           },
           {
