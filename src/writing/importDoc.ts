@@ -28,9 +28,33 @@ export interface ImportedChapter {
   words: number;
   /** What the file itself says the section is (an EPUB's epub:type: dedication, bodymatter…), when it says. */
   hint?: string;
+  /** The page mark it started with ("=== chapter: Arrival" gives "chapter"), when the writer marked it. */
+  mark?: string;
 }
 
-export type SplitAt = "headings" | "lines" | "none";
+export type SplitAt = "marks" | "headings" | "lines" | "none";
+
+/**
+ * A line the writer puts where a page starts, in any app, saying what the
+ * page is: "=== chapter: Arrival", "=== copyright", "=== poem: Ash on the
+ * road". The name is a kind of page (see markKind in manuscript.ts).
+ */
+export const PAGE_MARK = /^\s*={3,}\s*([A-Za-z][A-Za-z '’-]{0,40}?)\s*(?::\s*(.*?))?\s*=*\s*$/;
+
+/** A page mark's name and title, if the line is one. */
+export function pageMark(line: string): { name: string; title: string } | null {
+  const m = PAGE_MARK.exec(line.replace(/\u00a0/g, " "));
+  return m ? { name: m[1].trim(), title: (m[2] ?? "").trim() } : null;
+}
+
+/** Page marks in plain text and Markdown get lines of their own, so they're never run into a paragraph. */
+function isolateMarks(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => (pageMark(line) ? `\n${line.trim()}\n` : line))
+    .join("\n");
+}
 
 export const IMPORT_ACCEPT = ".docx,.odt,.rtf,.txt,.md,.markdown,.html,.htm,.xhtml,.epub";
 
@@ -64,9 +88,9 @@ export async function readDocumentBytes(name: string, bytes: Uint8Array): Promis
       return { title: fallback, author: null, description: null, html: rtfToHtml(new TextDecoder("latin1").decode(bytes)) };
     case "md":
     case "markdown":
-      return { title: fallback, author: null, description: null, html: markdownToHtml(new TextDecoder().decode(bytes)) };
+      return { title: fallback, author: null, description: null, html: markdownToHtml(isolateMarks(new TextDecoder().decode(bytes))) };
     case "txt":
-      return { title: fallback, author: null, description: null, html: textToHtml(new TextDecoder().decode(bytes)) };
+      return { title: fallback, author: null, description: null, html: textToHtml(isolateMarks(new TextDecoder().decode(bytes))) };
     case "html":
     case "htm":
     case "xhtml": {
@@ -724,9 +748,38 @@ const wordCount = (html: string) =>
     .split(/\s+/)
     .filter((w) => /\w/.test(w)).length;
 
-/** How the document would split by itself: at its headings if it has them, else at lines like "Chapter 1", else not at all. */
+/** A mark the writer put on a line of its own inside a paragraph becomes a paragraph of its own. */
+function separateMarks(root: Element) {
+  for (const p of [...root.querySelectorAll("p")]) {
+    if (!/<br/i.test(p.innerHTML)) continue;
+    const lines = p.innerHTML.split(/<br\s*\/?>/i);
+    if (!lines.some((l) => pageMark(l.replace(/<[^>]+>/g, "")))) continue;
+    const out: string[] = [];
+    let run: string[] = [];
+    const flush = () => {
+      if (run.some((l) => l.replace(/<[^>]+>/g, "").trim())) out.push(`<p>${run.join("<br>")}</p>`);
+      run = [];
+    };
+    for (const l of lines) {
+      if (pageMark(l.replace(/<[^>]+>/g, ""))) {
+        flush();
+        out.push(`<p>${l.trim()}</p>`);
+      } else run.push(l);
+    }
+    flush();
+    const holder = root.ownerDocument.createElement("div");
+    holder.innerHTML = out.join("");
+    p.replaceWith(...holder.childNodes);
+  }
+}
+
+const isMark = (el: Element) => /^(P|H[1-6])$/.test(el.tagName) && !!pageMark(el.textContent ?? "");
+
+/** How the document would split by itself: at the writer's page marks, else its headings, else lines like "Chapter 1", else not at all. */
 export function bestSplit(html: string): SplitAt {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+  separateMarks(doc.body);
+  if ([...doc.body.children].some(isMark)) return "marks";
   if (doc.body.querySelectorAll("h1, h2").length >= 2) return "headings";
   const lines = [...doc.body.querySelectorAll("p")].filter((p) => CHAPTER_LINE.test(p.textContent ?? ""));
   return lines.length >= 2 ? "lines" : "none";
@@ -738,13 +791,16 @@ export function splitChapters(html: string, at: SplitAt, bookTitle: string, keep
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
   tidy(doc.body);
   if (!keepBlanks) doc.body.querySelectorAll("p[data-blank]").forEach((p) => p.remove());
+  if (at === "marks") separateMarks(doc.body);
   const level = doc.body.querySelector("h1") ? "H1" : "H2";
   const isBreak = (el: Element) =>
-    at === "headings" ? el.tagName === level : at === "lines" ? el.tagName === "P" && CHAPTER_LINE.test(el.textContent ?? "") || el.tagName === level : false;
-  const out: { title: string; nodes: Node[]; hint?: string }[] = [{ title: "", nodes: [] }];
+    at === "marks" ? isMark(el) : at === "headings" ? el.tagName === level : at === "lines" ? el.tagName === "P" && CHAPTER_LINE.test(el.textContent ?? "") || el.tagName === level : false;
+  const out: { title: string; nodes: Node[]; hint?: string; mark?: string }[] = [{ title: "", nodes: [] }];
   for (const node of [...doc.body.childNodes]) {
     if (node.nodeType === Node.ELEMENT_NODE && isBreak(node as Element)) {
-      out.push({ title: (node.textContent ?? "").replace(/\s+/g, " ").trim(), nodes: [], hint: (node as Element).getAttribute("data-kind") ?? undefined });
+      const mark = at === "marks" ? pageMark(node.textContent ?? "") : null;
+      if (mark) out.push({ title: mark.title, nodes: [], mark: mark.name.toLowerCase() });
+      else out.push({ title: (node.textContent ?? "").replace(/\s+/g, " ").trim(), nodes: [], hint: (node as Element).getAttribute("data-kind") ?? undefined });
       continue;
     }
     out[out.length - 1].nodes.push(node);
@@ -756,9 +812,11 @@ export function splitChapters(html: string, at: SplitAt, bookTitle: string, keep
     const body = holder.innerHTML.trim();
     const words = wordCount(body);
     if (i === 0 && !words && !holder.querySelector("img")) return;
+    // A marked page keeps the title the mark gave it, or none (Scribe names it by its kind).
+    if (part.mark !== undefined) return void chapters.push({ title: part.title, body, words, mark: part.mark });
     chapters.push({ title: part.title || (i === 0 ? (out.length > 1 ? "Opening" : bookTitle) : "Untitled"), body, words, ...(part.hint ? { hint: part.hint } : {}) });
   });
   // A chapter number alone ("1") reads better as "Chapter 1".
-  for (const c of chapters) if (/^\d{1,3}\.?$/.test(c.title)) c.title = `Chapter ${parseInt(c.title, 10)}`;
+  for (const c of chapters) if (c.mark === undefined && /^\d{1,3}\.?$/.test(c.title)) c.title = `Chapter ${parseInt(c.title, 10)}`;
   return chapters.length ? chapters : [{ title: bookTitle, body: "", words: 0 }];
 }

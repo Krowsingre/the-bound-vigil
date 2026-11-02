@@ -113,3 +113,80 @@ describe("Markdown poems", () => {
     expect(m.sections[1].body).toBe("<p>The heron waits<br>beside the reeds</p><p>and then the rain<br>and then the seeds</p>");
   });
 });
+
+describe("Page marks", () => {
+  const text = [
+    "=== title page",
+    "",
+    "=== copyright",
+    "© 2026 A. Pen. All rights reserved.",
+    "",
+    "=== dedication",
+    "For Mara.",
+    "=== contents",
+    "Arrival ....... 1",
+    "",
+    "=== part: Book One",
+    "=== chapter: Arrival",
+    "",
+    "Rain fell on the road for a long while and nobody minded at all.",
+    "",
+    "=== Poem: Ash on the road",
+    "Ash on the road",
+    "and salt in the sea",
+    "nobody walking",
+    "nobody free",
+    "",
+    "=== end part",
+    "=== acknowledgements",
+    "Thanks to everyone.",
+    "=== about the author",
+    "Lives by the sea.",
+    "=== map ===",
+    "A map of the coast.",
+  ].join("\n");
+
+  it("splits at the marks and takes what each page is from them, nothing guessed", async () => {
+    const d = await readDocumentBytes("Night.txt", new TextEncoder().encode(text));
+    const { bestSplit } = await import("./importDoc");
+    expect(bestSplit(d.html)).toBe("marks");
+    const m = buildManuscript(d, "marks");
+    expect(m.sections.map((s) => [s.title, s.area, s.kind, s.isPart ?? false, s.partOf ?? null])).toEqual([
+      ["Title page", "front", "title_page", false, null],
+      ["Copyright", "front", "copyright", false, null],
+      ["Dedication", "front", "dedication", false, null],
+      ["Contents", "front", "contents", false, null],
+      ["Book One", "chapter", "custom", true, null],
+      ["Arrival", "chapter", "chapter", false, 4],
+      ["Ash on the road", "chapter", "poem", false, 4],
+      ["Acknowledgments", "back", "acknowledgments", false, null],
+      ["About the author", "back", "about_author", false, null],
+      ["Map", "back", "custom", false, null],
+    ]);
+    // Every marked page comes in, the title page and contents included.
+    expect(m.sections.every((s) => s.include)).toBe(true);
+    expect(m.sections[1].byHand).toBe(true);
+    expect(m.sections[0].byHand).toBeUndefined();
+    expect(m.sections[3].body).toBe("");
+    expect(m.sections[6].body).toContain("Ash on the road<br>and salt in the sea");
+    // Nothing about what the pages are is flagged but the unknown mark; the poem's lines are worth a look as always.
+    expect(m.issues.map((i) => [i.section, i.kind])).toEqual([
+      [6, "poetry"],
+      [9, "classification"],
+      [3, "text"],
+    ]);
+  });
+
+  it("works in Markdown and in a Word file's paragraphs, and on lines run into a paragraph", async () => {
+    const md = await readDocumentBytes("Night.md", new TextEncoder().encode("Some words before.\n=== chapter: One\nIt rained.\n=== about the author\nLives by the sea."));
+    expect(buildManuscript(md, "marks").sections.map((s) => [s.title, s.kind])).toEqual([
+      ["Opening", "custom"],
+      ["One", "chapter"],
+      ["About the author", "about_author"],
+    ]);
+    const word = buildManuscript(doc("<p>=== copyright</p><p>All rights reserved.</p><p>Chapter text<br>=== chapter: Two<br>More text</p>"), "marks");
+    expect(word.sections.map((s) => s.kind)).toEqual(["copyright", "chapter"]);
+    expect(word.sections[0].body).toContain("Chapter text");
+    expect(word.sections[1].body).toContain("More text");
+  });
+});

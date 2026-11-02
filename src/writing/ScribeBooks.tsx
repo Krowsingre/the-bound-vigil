@@ -16,6 +16,7 @@ import { relativeTime } from "../lib/format";
 import { CopyCheckDialog } from "./CopyCheck";
 import { readExport } from "./epub";
 import { TEMPLATES, type Template } from "./pages";
+import { saveAsTbv } from "./saveTbv";
 import { DetailsDialog } from "./WritingDialogs";
 
 export type Projects = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; list: WritingProject[] };
@@ -213,6 +214,15 @@ export function ScribeBooks({
     { label: "Change Cover", icon: "image", onSelect: () => setDialog({ kind: "details", project: p, focus: "cover" }) },
     { label: "Change Author", icon: "edit", onSelect: () => setDialog({ kind: "details", project: p, focus: "author" }) },
     { label: "Plagiarism Check", icon: "checkCircle", onSelect: () => setDialog({ kind: "copies", project: p }) },
+    {
+      label: "Save as .tbv File",
+      icon: "download",
+      onSelect: () =>
+        void saveAsTbv(p.id).then(
+          (saved) => saved && toast(`Saved “${p.title}” as a Scribe book file. Open it in Scribe with Import a manuscript.`),
+          (e: unknown) => toast(`Couldn't save the book file: ${String(e).replace(/^Error: /, "")}`),
+        ),
+    },
     ...(isWeb
       ? []
       : [

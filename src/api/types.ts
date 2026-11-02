@@ -1393,6 +1393,8 @@ export interface ImportAcknowledgment {
   sourceBytes: number;
   sourceFormat: string;
   method: "checkbox";
+  /** The records a Scribe book file (.tbv) brought from the book it was saved from, signed into this one so they travel on. */
+  carried?: unknown[];
 }
 
 /** A signed record of where a Scribe book came from, checked when read. */
