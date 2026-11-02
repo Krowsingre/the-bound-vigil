@@ -115,3 +115,18 @@ describe("The Scribe book file", () => {
     expect(tbvFileName("  ")).toBe("Book.tbv");
   });
 });
+
+describe("The sample book", () => {
+  it("is Paradise Lost by John Milton, in twelve books, with its cover", async () => {
+    const { readFileSync } = await import("node:fs");
+    const book = readTbv(new Uint8Array(readFileSync("public/samples/paradise-lost.tbv")));
+    expect(book.title).toBe("Paradise Lost");
+    expect(book.author).toBe("John Milton");
+    expect(book.cover?.extension).toBe("jpg");
+    const body = book.pages.filter((p) => p.role === "chapter");
+    expect(body.map((p) => p.title)).toEqual(["Book I", "Book II", "Book III", "Book IV", "Book V", "Book VI", "Book VII", "Book VIII", "Book IX", "Book X", "Book XI", "Book XII"]);
+    expect(body[0].body).toContain("Of Man’s first disobedience");
+    expect(body[11].body).toContain("Through Eden took their solitary way.</p>");
+    expect(book.pages.map((p) => p.body).join("")).not.toMatch(/Gutenberg/i);
+  });
+});

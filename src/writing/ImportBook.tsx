@@ -20,6 +20,7 @@ import { pictureAddress } from "./extensions";
 import { bestSplit, readDocumentBytes, type ImportedDocument, type SplitAt } from "./importDoc";
 import { buildManuscript, inspect, MANUSCRIPT_ACCEPT, MARK_HELP, type Inspection, type Manuscript, type ManuscriptSection } from "./manuscript";
 import { ADD_MENUS, KINDS, writePage, readPage, type Area, type PageKind } from "./pages";
+import { bookFromTbv } from "./openTbv";
 import { readTbv, type TbvBook } from "./tbvFile";
 
 const SPLITS: { value: SplitAt; label: string }[] = [
@@ -136,60 +137,25 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
   const makeFromTbv = async (book: TbvBook) => {
     if (!picked || !agreed) return;
     setError(null);
-    let made: string | null = null;
     try {
-      setBusy("Making the book…");
-      const view = await api.createWritingProject(title.trim() || book.title, author.trim() || null);
-      made = view.project.id;
-      setBusy("Signing the record…");
-      await api.recordWritingImport(made, {
-        policyVersion: POLICY_VERSION,
-        wording: WORDING,
-        sourceName: picked.name,
-        sourceSha256: picked.sha256,
-        sourceBytes: picked.bytes.length,
-        sourceFormat: "tbv",
-        method: "checkbox",
-        ...(book.history.length ? { carried: book.history } : {}),
+      const made = await bookFromTbv(book, {
+        title: title.trim() || book.title,
+        author: author.trim() || null,
+        acknowledgment: {
+          policyVersion: POLICY_VERSION,
+          wording: WORDING,
+          sourceName: picked.name,
+          sourceSha256: picked.sha256,
+          sourceBytes: picked.bytes.length,
+          sourceFormat: "tbv",
+          method: "checkbox",
+          ...(book.history.length ? { carried: book.history } : {}),
+        },
+        source: { name: picked.name, bytes: picked.bytes },
+        onStep: setBusy,
       });
-      setBusy("Keeping the original…");
-      await api.keepWritingSource(made, picked.name, picked.bytes);
-      await api.updateWritingDetails(made, { title: view.project.title, author: view.project.author, series: book.series, seriesIndex: book.seriesIndex, language: book.language, description: book.description });
-      await api.setWritingExport(made, JSON.stringify(book.settings));
-      if (book.coverPage) await api.setWritingCoverPage(made, book.coverPage);
-      if (book.cover) {
-        setBusy("Adding the cover…");
-        await api.setWritingCoverPicture(made, book.cover.bytes, book.cover.extension);
-      }
-      const ids: string[] = [];
-      let previous: string | null = null;
-      for (let i = 0; i < book.pages.length; i++) {
-        setBusy(`Adding page ${i + 1} of ${book.pages.length}…`);
-        const p = book.pages[i];
-        const added: { id: string } = await api.addWritingSection(made, {
-          title: p.title,
-          body: p.body,
-          role: p.role,
-          part: p.part === null ? null : (ids[p.part] ?? null),
-          page: p.role === "part" ? "{}" : JSON.stringify(p.page),
-          after: previous,
-        });
-        ids.push(added.id);
-        previous = added.id;
-      }
-      // The empty chapter every new book starts with, unless the file had no pages at all.
-      if (book.pages.length) for (const c of view.chapters) await api.deleteWritingChapter(c.id).catch(() => undefined);
-      for (const n of book.notes) {
-        const note = await api.savePersonalNote(null, n.title, n.body).catch(() => null);
-        if (!note) continue;
-        await api.setNoteProject(note.id, made).catch(() => undefined);
-        if (n.tags.length) await api.setNoteTags(note.id, n.tags).catch(() => undefined);
-        if (n.pinned) await api.setNotePinned(note.id, true).catch(() => undefined);
-      }
       onCreated(made);
     } catch (e) {
-      // Nothing half-made is left behind.
-      if (made) await api.deleteWritingProject(made).catch(() => undefined);
       setError(String(e).replace(/^Error: /, ""));
       setBusy(null);
     }
