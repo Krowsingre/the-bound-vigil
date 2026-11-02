@@ -17,6 +17,8 @@ import { CopyCheckDialog } from "./CopyCheck";
 import { readExport } from "./epub";
 import { TEMPLATES, type Template } from "./pages";
 import { saveAsTbv } from "./saveTbv";
+import { isSample } from "./sampleBook";
+import { useNarrow } from "../lib/useNarrow";
 import { DetailsDialog } from "./WritingDialogs";
 
 export type Projects = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; list: WritingProject[] };
@@ -185,6 +187,7 @@ export function ScribeBooks({
   onRetry: () => void;
 }) {
   const toast = useToast();
+  const narrow = useNarrow();
   const [prefs, setPrefs] = useState(readView);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const change = (next: Partial<typeof prefs>) =>
@@ -314,55 +317,68 @@ export function ScribeBooks({
       </ul>
     );
 
+  // The writer's own books: the sample doesn't count. Until there's one, the
+  // banner invites them to begin; after, their books come first. On a phone the
+  // start cards are left out, since New and the banner's button do the same.
+  const own = list.some((p) => !isSample(p));
+  const yours = (
+    <section className="scribe-yours" aria-labelledby="scribe-yours">
+      <div className="scribe-yours-head">
+        <h2 id="scribe-yours" className="scribe-section-title">
+          Your books
+        </h2>
+        <div className="scribe-yours-tools">
+          <Menu
+            label={`Sort: ${SORTS.find((s) => s.sort === prefs.sort)?.label}`}
+            className="notes-filter notes-sort"
+            trigger={
+              <>
+                <span className="muted">Sort:</span> <span>{SORTS.find((s) => s.sort === prefs.sort)?.label}</span>
+                <Icon name="chevronDown" size={13} />
+              </>
+            }
+            items={SORTS.map((s) => ({ label: s.label, checked: prefs.sort === s.sort, onSelect: () => change({ sort: s.sort }) }))}
+          />
+          <div className="layout-switch" role="radiogroup" aria-label="Layout">
+            {(
+              [
+                ["grid", "Cards", "grid"],
+                ["list", "List", "list"],
+              ] as const
+            ).map(([view, label, icon]) => (
+              <button
+                key={view}
+                type="button"
+                role="radio"
+                aria-checked={prefs.view === view}
+                aria-label={label}
+                title={label}
+                className={prefs.view === view ? "is-active" : undefined}
+                onClick={() => change({ view })}
+              >
+                <Icon name={icon} size={16} />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      {books}
+    </section>
+  );
   return (
     <div className="scribe-books-page">
-      <Banner onCreate={() => onStart("blank")} />
-      <StartCards onStart={onStart} />
-      {list.length > 0 && (
+      {projects.state === "ready" && !own && <Banner onCreate={() => onStart("blank")} />}
+      {own && list.length > 0 && yours}
+      {!narrow && (
         <>
-          <DiamondRule />
-          <section className="scribe-yours" aria-labelledby="scribe-yours">
-            <div className="scribe-yours-head">
-              <h2 id="scribe-yours" className="scribe-section-title">
-                Your books
-              </h2>
-              <div className="scribe-yours-tools">
-                <Menu
-                  label={`Sort: ${SORTS.find((s) => s.sort === prefs.sort)?.label}`}
-                  className="notes-filter notes-sort"
-                  trigger={
-                    <>
-                      <span className="muted">Sort:</span> <span>{SORTS.find((s) => s.sort === prefs.sort)?.label}</span>
-                      <Icon name="chevronDown" size={13} />
-                    </>
-                  }
-                  items={SORTS.map((s) => ({ label: s.label, checked: prefs.sort === s.sort, onSelect: () => change({ sort: s.sort }) }))}
-                />
-                <div className="layout-switch" role="radiogroup" aria-label="Layout">
-                  {(
-                    [
-                      ["grid", "Cards", "grid"],
-                      ["list", "List", "list"],
-                    ] as const
-                  ).map(([view, label, icon]) => (
-                    <button
-                      key={view}
-                      type="button"
-                      role="radio"
-                      aria-checked={prefs.view === view}
-                      aria-label={label}
-                      title={label}
-                      className={prefs.view === view ? "is-active" : undefined}
-                      onClick={() => change({ view })}
-                    >
-                      <Icon name={icon} size={16} />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            {books}
-          </section>
+          {own && <DiamondRule />}
+          <StartCards onStart={onStart} />
+        </>
+      )}
+      {!own && list.length > 0 && (
+        <>
+          {!narrow && <DiamondRule />}
+          {yours}
         </>
       )}
       {dialog?.kind === "details" && (

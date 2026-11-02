@@ -594,8 +594,34 @@
     height: auto;
   }
 
+  .writing-project {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
   .writing-head {
     flex-wrap: wrap;
+  }
+
+  /* Every button stays on the screen: three to a row, the full width. */
+  .writing-head-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    gap: 6px;
+  }
+
+  .writing-head-actions > .btn,
+  .writing-head-actions > .menu-root,
+  .writing-head-actions > .menu-root > .btn {
+    min-width: 0;
+    width: 100%;
+    justify-content: center;
+    padding-left: 6px;
+    padding-right: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .writing-body {

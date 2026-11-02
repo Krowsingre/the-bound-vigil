@@ -348,7 +348,8 @@ export function ExportDialog({
     }
   });
   const [addToLibrary, setAddToLibrary] = useState(!isWeb);
-  const [saveCopy, setSaveCopy] = useState(isWeb);
+  // An EPUB goes to the library; Word, text and PDF files are saved as files too by default.
+  const [saveCopy, setSaveCopy] = useState(() => isWeb || format !== "epub");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
@@ -363,6 +364,7 @@ export function ExportDialog({
   const setManuscript = (change: Partial<ExportSettings["manuscript"]>) => set({ manuscript: { ...settings.manuscript, ...change } });
   const pick = (f: ExportFormat) => {
     setFormat(f);
+    setSaveCopy(isWeb || f !== "epub");
     setError(null);
     try {
       localStorage.setItem("tbv.writing.exportFormat", f);
@@ -377,7 +379,7 @@ export function ExportDialog({
   const input = (latest: WritingChapter[], s: ExportSettings) => bookInput(project, latest, s);
 
   const make = async () => {
-    if (format === "epub" && !addToLibrary && !saveCopy) return setError("Choose where the EPUB goes.");
+    if (format !== "pdf" && !addToLibrary && !saveCopy) return setError("Choose where it goes.");
     // A style or a print PDF chosen while trying TBV needs Publisher to export once the trial is over.
     if (!publisher.allowed && (format === "pdf" || (format !== "txt" && format !== "manuscript" && settings.bookStyle)))
       return publisher.check(format === "pdf" ? "Print-ready PDF" : "Book styles", () => undefined);
@@ -403,25 +405,33 @@ export function ExportDialog({
         const latest = await onFlush();
         await api.setWritingExport(project.id, JSON.stringify(settings));
         const pages = await api.printBook(printHtml(await input(latest, forPrint(settings)), settings.print), path);
+        // The saved PDF goes into the Archive's Documents too.
+        if (path && addToLibrary) await api.queueImports([path]).catch(() => 0);
         try {
           localStorage.setItem(pagesKey(project.id), String(pages));
         } catch {
           // The cover maker guesses from the words instead.
         }
-        toast(path ? `The PDF has been saved: ${pages} pages.` : `${pages} pages, ready to print or save as a PDF.`);
+        toast(path ? `The PDF has been saved: ${pages} pages${addToLibrary ? ", and is being added to your Documents" : ""}.` : `${pages} pages, ready to print or save as a PDF.`);
         return onClose();
       }
       const extension = format === "txt" ? "txt" : "docx";
       const fileName = bookFileName(format === "manuscript" ? `${project.title} (manuscript)` : project.title, extension);
-      const path = isWeb ? null : await api.pickExportPath(fileName, extension);
-      if (!isWeb && !path) return;
+      const path = saveCopy && !isWeb ? await api.pickExportPath(fileName, extension) : null;
+      if (saveCopy && !isWeb && !path && !addToLibrary) return;
       setBusy(format === "txt" ? "Making the text file…" : "Making the Word file…");
       const latest = await onFlush();
       await api.setWritingExport(project.id, JSON.stringify(settings));
       const book = await input(latest, settings);
       const bytes = format === "txt" ? new TextEncoder().encode(buildTxt(book)) : await buildDocx(book, format === "manuscript" ? settings.manuscript : null);
-      await api.saveExportFile(bytes, fileName, path);
-      toast(isWeb ? `${fileName} has been downloaded.` : `${fileName} has been saved.`);
+      if (isWeb) {
+        await api.saveExportFile(bytes, fileName, null);
+        toast(`${fileName} has been downloaded.`);
+      } else {
+        // The same saving as an EPUB's: a copy where it was asked for, and into the Archive's Documents.
+        await api.saveWritingEpub(bytes, fileName, path, addToLibrary);
+        toast(addToLibrary ? (path ? `${fileName} has been saved, and is being added to your Documents.` : `${fileName} is being added to your Documents.`) : `${fileName} has been saved.`);
+      }
       onClose();
     } catch (e) {
       setError(String(e).replace(/^Error: /, ""));
@@ -591,10 +601,23 @@ export function ExportDialog({
           <div className="writing-export-where">
             <strong>Where it goes</strong>
             {!isWeb && check("Add it to my library, where it can be read or sent to a Kindle", addToLibrary, setAddToLibrary)}
-            {check(isWeb ? "Download the EPUB" : "Save a copy on this computer", saveCopy, setSaveCopy)}
+            {check(isWeb ? "Download the EPUB" : "Save a copy on this device", saveCopy, setSaveCopy)}
             <p className="muted writing-export-note">
               Every EPUB made here notes, inside the file where readers don't see it, that it was made with The Bound Vigil. The "Made with" line on the copyright page can be turned off there.
             </p>
+          </div>
+        )}
+        {(format === "txt" || format === "docx" || format === "manuscript") && !isWeb && (
+          <div className="writing-export-where">
+            <strong>Where it goes</strong>
+            {check("Add it to my Documents in the Archive", addToLibrary, setAddToLibrary)}
+            {check("Save a copy on this device", saveCopy, setSaveCopy)}
+          </div>
+        )}
+        {format === "pdf" && isWindows && (
+          <div className="writing-export-where">
+            <strong>Where it goes</strong>
+            {check("Also add it to my Documents in the Archive", addToLibrary, setAddToLibrary)}
           </div>
         )}
         {(error || problems.length > 0) && (

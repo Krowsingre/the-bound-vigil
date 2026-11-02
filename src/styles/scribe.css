@@ -894,3 +894,8 @@
 .notes-empty-card .hero-actions {
   margin-top: 10px;
 }
+
+/* "Your books" stays on one line beside its sort and layout. */
+.scribe-yours-head h2 {
+  white-space: nowrap;
+}
