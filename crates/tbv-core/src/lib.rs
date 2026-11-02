@@ -48,6 +48,7 @@ pub mod sync;
 pub mod time;
 pub mod time_log;
 pub mod writing;
+pub mod writing_sounds;
 
 pub use error::{Error, Result};
 pub use library::{Library, LibraryPaths, SUPPORTED_FORMATS};

@@ -17,19 +17,39 @@ import { BOOK_STYLES } from "./bookStyles";
 import { buildDocx } from "./docx";
 import { printHtml, TRIMS } from "./printBook";
 import { bookFileName, buildTxt } from "./txt";
-import { startingTitle, TEMPLATES, templateSections, type Template } from "./pages";
+import { readPage, startingTitle, TEMPLATES, templateSections, type Template } from "./pages";
 
 /** Everything an export is made from: the book, its cover, its sources and the fonts chosen. */
-export async function bookInput(project: WritingProject, chapters: WritingChapter[], settings: ExportSettings): Promise<EpubInput> {
+export async function bookInput(project: WritingProject, chapters: WritingChapter[], settings: ExportSettings, withSounds = false): Promise<EpubInput> {
   const coverBytes = project.cover ? await api.writingCover(project.id) : new Uint8Array();
   const mime = coverBytes.length ? imageMime(coverBytes) : null;
   const citer = await makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters));
-  return { project, chapters, settings, cover: mime ? { bytes: coverBytes, mime } : null, citer, ...(await loadBookFonts(settings, chapters)) };
+  return {
+    project,
+    chapters,
+    settings,
+    cover: mime ? { bytes: coverBytes, mime } : null,
+    citer,
+    ...(await loadBookFonts(settings, chapters)),
+    ...(withSounds ? { sounds: await poemSounds(chapters) } : {}),
+  };
+}
+
+/** The sounds of the book's poems that this device has, to go inside an EPUB. */
+export async function poemSounds(chapters: WritingChapter[]): Promise<Map<string, Uint8Array>> {
+  const sounds = new Map<string, Uint8Array>();
+  for (const c of chapters) {
+    const file = readPage(c.page, c.role).sound?.file;
+    if (!file || sounds.has(file)) continue;
+    const bytes = await api.writingSound(file).catch(() => null);
+    if (bytes?.length) sounds.set(file, bytes);
+  }
+  return sounds;
 }
 
 /** The book made into an EPUB, with its cover and the font chosen. */
 export async function makeEpub(project: WritingProject, chapters: WritingChapter[], settings: ExportSettings): Promise<Uint8Array> {
-  return buildEpub(await bookInput(project, chapters, settings));
+  return buildEpub(await bookInput(project, chapters, settings, true));
 }
 
 const OPENS_WITH: { value: WritingProject["coverPage"]; label: string }[] = [

@@ -424,6 +424,28 @@ pub async fn keep_writing_source(state: State<'_, AppLibrary>, request: tauri::i
     with_library(state, move |library| library.keep_writing_source(&id, &name, &bytes)).await
 }
 
+/// A sound for a poem, sent as its raw bytes with its file name in a header.
+#[tauri::command]
+pub async fn keep_writing_sound(state: State<'_, AppLibrary>, request: tauri::ipc::Request<'_>) -> CommandResult<tbv_core::writing_sounds::WritingSound> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("expected the sound file".into());
+    };
+    let name = request.headers().get("file-name").and_then(|v| v.to_str().ok()).map(percent_decode).unwrap_or_default();
+    let bytes = bytes.clone();
+    with_library(state, move |library| library.keep_writing_sound(&name, &bytes)).await
+}
+
+/// A poem's sound as raw bytes, or nothing when this device hasn't got it (yet).
+#[tauri::command]
+pub async fn writing_sound(state: State<'_, AppLibrary>, file: String) -> CommandResult<tauri::ipc::Response> {
+    let sound = with_library(state, move |library| library.writing_sound(&file)).await?;
+    let bytes = match sound {
+        Some(s) => std::fs::read(&s.path).map_err(|e| e.to_string())?,
+        None => Vec::new(),
+    };
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 #[tauri::command]
 pub async fn writing_provenance(state: State<'_, AppLibrary>, project_id: String) -> CommandResult<tbv_core::provenance::WritingProvenance> {
     with_library(state, move |library| library.writing_provenance(&project_id)).await

@@ -2021,6 +2021,8 @@ pub fn run() {
             writing::delete_writing_project,
             writing::record_writing_import,
             writing::keep_writing_source,
+            writing::keep_writing_sound,
+            writing::writing_sound,
             writing::writing_provenance,
             writing::delete_writing_source,
             writing::duplicate_writing_project,

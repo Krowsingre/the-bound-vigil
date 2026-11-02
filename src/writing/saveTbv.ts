@@ -3,6 +3,7 @@
 
 import { api, isApp, isWeb } from "../api";
 import { tbvFileName, writeTbv } from "./tbvFile";
+import { poemSounds } from "./WritingDialogs";
 
 async function appVersion(): Promise<string> {
   if (!isApp) return "preview";
@@ -25,7 +26,8 @@ export async function makeTbv(projectId: string): Promise<{ bytes: Uint8Array; f
     .writingProvenance(projectId)
     .then((p) => p.records.filter((r) => r.projectId === projectId || r.event === "duplicate"))
     .catch(() => []);
-  const bytes = writeTbv({ project: view.project, chapters: view.chapters, cover, notes, records, app: await appVersion() });
+  const sounds = await poemSounds(view.chapters);
+  const bytes = writeTbv({ project: view.project, chapters: view.chapters, cover, notes, records, app: await appVersion(), sounds });
   return { bytes, fileName: tbvFileName(view.project.title) };
 }
 

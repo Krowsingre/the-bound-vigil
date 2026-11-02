@@ -18,6 +18,7 @@ import { ScribeBooks, type Projects } from "./ScribeBooks";
 import { ADD_MENUS, firstLine, isMade, isNumbered, isPoem, KINDS, numberInWords, readPage, romanOf, startingTitle, writePage, type PageKind, type PageSettings, type Template } from "./pages";
 import { DetailsDialog, DraftsDialog, ExportDialog, NewBookDialog } from "./WritingDialogs";
 import { PaperbackCover } from "./PaperbackCover";
+import { PoemSound } from "./PoemSound";
 import { PreflightDialog } from "./Preflight";
 import { CopyCheckDialog } from "./CopyCheck";
 import { ImportBookDialog } from "./ImportBook";
@@ -691,6 +692,8 @@ function ProjectView({
               />
             ) : (
               chapter && (
+                <>
+                {current && isPoem(current) && <PoemSound key={`sound-${chapter.id}`} sound={current.sound} onChange={(sound) => setPage(chapter, { sound })} />}
                 <ChapterEditor
                   key={chapter.id}
                   chapter={chapter}
@@ -703,6 +706,7 @@ function ProjectView({
                   citationStyle={settings.citationStyle}
                   onSources={(sources, citationStyle) => saveSettings({ ...settings, sources, citationStyle })}
                 />
+                </>
               )
             )}
             <footer className="writing-status muted" aria-live="polite">
