@@ -42,3 +42,6 @@ export function addSampleOnce(list: WritingProject[]): Promise<boolean> {
   );
   return adding;
 }
+
+/** The sample book, which isn't one of the writer's own. */
+export const isSample = (p: Pick<WritingProject, "title" | "author">) => p.title === SAMPLE_TITLE && p.author === SAMPLE_AUTHOR;
