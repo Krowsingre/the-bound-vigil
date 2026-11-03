@@ -1007,6 +1007,11 @@ export function sheetHtml(files: Map<string, string | Uint8Array>, sheet: Sheet)
       .replace(/src="(images\/[^"]+)"/g, (_, path: string) => `src="${pictureUrl(files, path)}"`)
       // Links between the book's own pages jump within the one page.
       .replace(/href="[^"#:]+\.xhtml#([^"]+)"/g, 'href="#$1"')
+      // A link to a whole page goes to its first section (the PDF's contents numbers each from it).
+      .replace(/href="([^"#:]+\.xhtml)"/g, (link, file: string) => {
+        const id = /<section\b[^>]*\bid="([^"]+)"/.exec(String(files.get(file) ?? ""))?.[1];
+        return id ? `href="#${id}"` : link;
+      })
   );
 }
 

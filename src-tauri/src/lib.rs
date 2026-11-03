@@ -2256,7 +2256,12 @@ pub fn run() {
         // page gets a moment to save the reading position first; then ratings
         // on their way to Hardcover and the last sync get their chance, and
         // the app quits regardless after that.
+        // Only the main window ends it: closing the hidden print window
+        // after a PDF is saved once quit the whole app (embre, 3 November).
         .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.emit("tbv://quit-requested", ());
