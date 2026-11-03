@@ -185,7 +185,7 @@ export async function drawCover(canvas: HTMLCanvasElement, design: CoverDesign, 
   // The title's box runs from the top of its first line to the bottom of the line under it.
   const titleBoxHeight = textHeight + (rule ? ruleGap + 6 : 0);
   ctx.font = fontOf(titleStyle, design.font, true, size);
-  const titleWidth = Math.max(1, ...titleLines.map((l) => ctx.measureText(l).width));
+  const titleWidth = Math.min(width, Math.max(1, ...titleLines.map((l) => ctx.measureText(l).width)));
   const autoTop = design.layout === "top" ? 380 : design.layout === "bottom" ? height - 520 - textHeight : (height - textHeight) / 2;
   const titlePlace = design.places?.title;
   const titleCx = titlePlace ? titlePlace.x * COVER_WIDTH : COVER_WIDTH / 2;
@@ -195,7 +195,7 @@ export async function drawCover(canvas: HTMLCanvasElement, design: CoverDesign, 
   ctx.fillStyle = titleStyle.colour ?? autoColour;
   ctx.textAlign = titleAlign;
   const titleX = anchor(titleCx, titleWidth, titleAlign);
-  titleLines.forEach((l, i) => ctx.fillText(l, titleX, titleTop + size + i * lineHeight));
+  titleLines.forEach((l, i) => ctx.fillText(l, titleX, titleTop + size + i * lineHeight, width));
 
   // A short rule between title and author, lined up with the title.
   const ruleY = titleTop + textHeight + ruleGap;
@@ -213,7 +213,7 @@ export async function drawCover(canvas: HTMLCanvasElement, design: CoverDesign, 
     const authorLines = lines(ctx, authorStyle.upper === false ? authorText : authorText.toUpperCase(), width);
     const authorLineHeight = authorSize * 1.25;
     const authorHeight = authorLines.length * authorLineHeight;
-    const authorWidth = Math.max(1, ...authorLines.map((l) => ctx.measureText(l).width));
+    const authorWidth = Math.min(width, Math.max(1, ...authorLines.map((l) => ctx.measureText(l).width)));
     const authorPlace = design.places?.author;
     const authorCx = authorPlace ? authorPlace.x * COVER_WIDTH : titlePlace ? titleCx : COVER_WIDTH / 2;
     // Left alone, the author sits under the title (or its line).
@@ -222,7 +222,7 @@ export async function drawCover(canvas: HTMLCanvasElement, design: CoverDesign, 
     ctx.fillStyle = authorStyle.colour ?? autoColour;
     ctx.textAlign = authorAlign;
     const authorX = anchor(authorCx, authorWidth, authorAlign);
-    authorLines.forEach((l, i) => ctx.fillText(l, authorX, authorTop + authorSize + i * authorLineHeight));
+    authorLines.forEach((l, i) => ctx.fillText(l, authorX, authorTop + authorSize + i * authorLineHeight, width));
     author = { x: authorCx - authorWidth / 2, y: authorTop, width: authorWidth, height: authorHeight };
   }
   return { height, title, author };
@@ -334,6 +334,8 @@ export function CoverMaker({ project, onMade, onCancel }: { project: WritingProj
     if (!box) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
+    // Keyboard focus follows, so the arrow keys move what was just picked.
+    e.currentTarget.focus();
     setSelected(block);
     drag.current = { block, id: e.pointerId, startX: e.clientX, startY: e.clientY, from: design.places?.[block] ?? placeOf(box, boxes.height) };
   };
