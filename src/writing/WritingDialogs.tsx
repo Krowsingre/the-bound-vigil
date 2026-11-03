@@ -1,3 +1,4 @@
+import { FormattedText } from "./FormattedText";
 import { useEffect, useState } from "react";
 import { api, isApp, isWeb, isWindows } from "../api";
 import type { WritingChapter, WritingDetails, WritingDraft, WritingProject } from "../api/types";
@@ -274,10 +275,10 @@ export function DetailsDialog({
               </label>
             </div>
             {!!details.series?.trim() && <SeriesStyleFields style={seriesStyle} index={details.seriesIndex} series={details.series.trim()} onChange={setSeriesStyle} />}
-            <label className="field">
+            <div className="field">
               <span>Description</span>
-              <textarea rows={4} value={details.description ?? ""} onChange={(e) => set({ description: e.target.value })} placeholder="The words on the back of the book" />
-            </label>
+              <FormattedText rows={4} value={details.description ?? ""} onChange={(description) => set({ description })} placeholder="The words on the back of the book" />
+            </div>
             <label className="field">
               <span>The book opens with</span>
               <select value={opensWith ?? ""} onChange={(e) => setOpensWith((e.target.value || null) as WritingProject["coverPage"])}>
@@ -726,12 +727,15 @@ export function DraftsDialog({
   project,
   onFlush,
   onOpen,
+  onImport,
   onClose,
 }: {
   project: WritingProject;
   /** Saves the chapter being written and gives the latest chapters. */
   onFlush: () => Promise<WritingChapter[]>;
   onOpen: (bookId: string) => void;
+  /** Brings a file in as another draft of this book. */
+  onImport?: () => void;
   onClose: () => void;
 }) {
   const [drafts, setDrafts] = useState<WritingDraft[] | null>(null);
@@ -820,6 +824,11 @@ export function DraftsDialog({
           </p>
         )}
         <div className="dialog-actions">
+          {onImport && (
+            <button type="button" className="btn btn-quiet writing-drafts-import" onClick={onImport} disabled={busy}>
+              <Icon name="upload" size={15} /> Import a file as a draft…
+            </button>
+          )}
           <button type="button" className="btn btn-quiet" onClick={onClose} disabled={busy}>
             Done
           </button>

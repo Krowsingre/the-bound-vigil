@@ -57,3 +57,36 @@ describe("moving words on the cover", () => {
     expect(placeOf({ x: 600, y: 1180, width: 400, height: 200 }, COVER_HEIGHT)).toEqual({ x: 0.5, y: 1280 / COVER_HEIGHT });
   });
 });
+
+describe("snapping to even spacing", () => {
+  const size = [{ w: 0.3, h: 0.04 }];
+  const others = [
+    { place: { x: 0.5, y: 0.2 }, size: { w: 0.4, h: 0.1 } }, // title, 0.15 to 0.25
+    { place: { x: 0.5, y: 0.8 }, size: { w: 0.3, h: 0.04 } }, // author, 0.78 to 0.82
+  ];
+
+  it("snaps halfway between two others, and marks both gaps", () => {
+    // Halfway: the gap from 0.25 to 0.78 holds the 0.04 block with 0.245 either side, so its centre is 0.515.
+    const r = dragBlocks([{ x: 0.3, y: 0.4 }], size, 0, 0.11, { axisLock: false, reach: { x: 0.001, y: 0.01 }, others });
+    expect(r.places[0].y).toBeCloseTo(0.515);
+    expect(r.gaps).toHaveLength(2);
+    expect(r.gaps[0].b - r.gaps[0].a).toBeCloseTo(r.gaps[1].b - r.gaps[1].a);
+  });
+
+  it("snaps as far below one block as that block is below the next", () => {
+    const two = [
+      { place: { x: 0.5, y: 0.2 }, size: { w: 0.4, h: 0.1 } }, // 0.15 to 0.25
+      { place: { x: 0.5, y: 0.37 }, size: { w: 0.3, h: 0.04 } }, // 0.35 to 0.39: a gap of 0.1
+    ];
+    // Below: top at 0.49, so the centre at 0.51.
+    const r = dragBlocks([{ x: 0.3, y: 0.62 }], size, 0, -0.105, { axisLock: false, reach: { x: 0.001, y: 0.01 }, others: two });
+    expect(r.places[0].y).toBeCloseTo(0.51);
+  });
+
+  it("prefers the middle of the cover when that's nearer", () => {
+    const r = dragBlocks([{ x: 0.3, y: 0.49 }], size, 0, 0.008, { axisLock: false, reach: { x: 0.001, y: 0.03 }, others });
+    expect(r.places[0].y).toBe(0.5);
+    expect(r.snapped.y).toBe(true);
+    expect(r.gaps).toEqual([]);
+  });
+});

@@ -2732,3 +2732,121 @@
   flex-basis: 100%;
   margin: 0;
 }
+
+/* An even gap the snap matched: a pink bar with ends, across the gap. */
+.cover-maker-gap {
+  position: absolute;
+  pointer-events: none;
+  border-color: #e0508a;
+  border-style: solid;
+  border-width: 0;
+}
+
+.cover-maker-gap.y {
+  width: 10px;
+  margin-left: -5px;
+  border-top-width: 1px;
+  border-bottom-width: 1px;
+  background: linear-gradient(#e0508a, #e0508a) center / 1px 100% no-repeat;
+}
+
+.cover-maker-gap.x {
+  height: 10px;
+  margin-top: -5px;
+  border-left-width: 1px;
+  border-right-width: 1px;
+  background: linear-gradient(#e0508a, #e0508a) center / 100% 1px no-repeat;
+}
+
+/* The description box with its formatting buttons. */
+.formatted-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.formatted-text-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.formatted-text-bar button {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-muted);
+  font: 500 13px/1 var(--font-sans);
+  cursor: pointer;
+}
+.formatted-text-bar button:hover:not(:disabled),
+.formatted-text-bar button.on {
+  border-color: var(--border);
+  color: var(--text);
+}
+.formatted-text-bar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.formatted-text-gap {
+  flex: 1;
+}
+.formatted-text-preview {
+  min-height: 84px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  font: 400 14px/1.45 var(--font-sans);
+  user-select: text;
+}
+.formatted-text-preview > :first-child {
+  margin-top: 0;
+}
+.formatted-text-preview > :last-child {
+  margin-bottom: 0;
+}
+.formatted-text-preview p,
+.formatted-text-preview ul,
+.formatted-text-preview ol,
+.formatted-text-preview blockquote {
+  margin: 0 0 8px;
+}
+.formatted-text-preview h1,
+.formatted-text-preview h2,
+.formatted-text-preview h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+.formatted-text-preview li p {
+  margin: 0;
+}
+.formatted-text-preview blockquote {
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  color: var(--text-muted);
+}
+.formatted-text-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* A file coming in as another draft of a book. */
+.import-into {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m, 10px);
+}
+.import-into .check-row {
+  align-items: flex-start;
+}
+.writing-drafts-import {
+  margin-right: auto;
+}

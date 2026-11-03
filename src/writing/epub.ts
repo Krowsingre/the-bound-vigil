@@ -5,6 +5,7 @@
 // converter still looks for it. Pure apart from the zip, so it's tested
 // without the app.
 
+import { blurbHtml, hasFormatting } from "./blurb";
 import { zipSync, strToU8 } from "fflate";
 import type { WritingChapter, WritingProject } from "../api/types";
 import { DEFAULT_COPYRIGHT, DEFAULT_RIGHTS, firstLine, isMade, isPoem, KINDS, numberInWords, readPage, writePage, type CopyrightDetails, type PageKind, type PageSettings } from "./pages";
@@ -902,7 +903,7 @@ ${navPoints(points)}
 ${ebookIsbn(settings.edition) ? `<dc:identifier id="isbn">urn:isbn:${escapeXml(ebookIsbn(settings.edition)!.replace(/[^0-9Xx]/g, ""))}</dc:identifier>\n` : ""}<dc:title>${escapeXml(title)}</dc:title>
 <dc:language>${escapeXml(lang)}</dc:language>
 ${author ? `<dc:creator id="author">${escapeXml(author)}</dc:creator>\n<meta refines="#author" property="role" scheme="marc:relators">aut</meta>\n` : ""}${
-    description ? `<dc:description>${escapeXml(description)}</dc:description>\n` : ""
+    description ? `<dc:description>${escapeXml(hasFormatting(description) ? blurbHtml(description) : description)}</dc:description>\n` : ""
   }${
     series
       ? `<meta property="belongs-to-collection" id="series">${escapeXml(series)}</meta>\n<meta refines="#series" property="collection-type">series</meta>\n${

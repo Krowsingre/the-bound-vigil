@@ -8,6 +8,7 @@ import type { WritingProject } from "../api/types";
 import { useToast } from "../components/Toast";
 import { BACKGROUNDS, COVER_FONTS } from "./CoverMaker";
 import { CanvaLink } from "./CanvaLink";
+import { FormattedText } from "./FormattedText";
 import { imageMime } from "./fonts";
 import { estimatePages } from "./printBook";
 import { TRIMS, type TrimSize } from "./printSettings";
@@ -267,10 +268,10 @@ export function PaperbackCover({ project, trim: startTrim, onClose }: { project:
               ))}
             </select>
           </label>
-          <label className="field">
+          <div className="field">
             <span>On the back</span>
-            <textarea rows={5} value={design.blurb} onChange={(e) => set({ blurb: e.target.value })} placeholder="What the book is about, to make a reader pick it up" />
-          </label>
+            <FormattedText rows={5} value={design.blurb} onChange={(blurb) => set({ blurb })} placeholder="What the book is about, to make a reader pick it up" />
+          </div>
           <label className="field">
             <span>About the author</span>
             <textarea rows={2} value={design.bio} onChange={(e) => set({ bio: e.target.value })} placeholder="A line or two" />

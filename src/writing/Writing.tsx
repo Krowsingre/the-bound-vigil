@@ -4,7 +4,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, isWeb } from "../api";
 import type { WritingChapter, WritingProject, WritingProjectView } from "../api/types";
-import { editionsOf } from "./bookEditions";
+import { editionName, editionsOf } from "./bookEditions";
+import { LinkBookDialog } from "./LinkBooks";
 import { startNewEdition } from "./newEdition";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
@@ -87,6 +88,7 @@ export function Writing({
           setReload((n) => n + 1);
           setOpenId(other);
         }}
+        onBooksChanged={() => setReload((n) => n + 1)}
         refreshKey={refreshKey}
         onOpenBook={onOpenBook}
         onBack={() => {
@@ -274,6 +276,7 @@ function ProjectView({
   id,
   books,
   onOpenEdition,
+  onBooksChanged,
   refreshKey,
   onOpenBook,
   onBack,
@@ -283,6 +286,8 @@ function ProjectView({
   /** Every book in Scribe, for this one's other editions. */
   books: WritingProject[];
   onOpenEdition: (id: string) => void;
+  /** Another book's details changed here (editions linked), so the list should be read again. */
+  onBooksChanged: () => void;
   refreshKey: number;
   onOpenBook: (bookId: string) => void;
   onBack: () => void;
@@ -292,7 +297,7 @@ function ProjectView({
   const [error, setError] = useState<string | null>(null);
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [save, setSave] = useState<{ state: SaveState; words: number }>({ state: "saved", words: 0 });
-  const [dialog, setDialog] = useState<"details" | "export" | "drafts" | "delete" | "sources" | "cover" | "preflight" | "copies" | "editions" | "previews" | null>(null);
+  const [dialog, setDialog] = useState<"details" | "export" | "drafts" | "delete" | "sources" | "cover" | "preflight" | "copies" | "editions" | "previews" | "importDraft" | "link" | null>(null);
   const publisher = usePublisher();
   const [deletingChapter, setDeletingChapter] = useState<WritingChapter | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -367,6 +372,21 @@ function ProjectView({
                   (e: unknown) => toast(`Couldn't start a new edition: ${String(e).replace(/^Error: /, "")}`),
                 ),
           },
+          { label: "Link another book…", icon: "link" as const, onSelect: () => void saving.current.then(() => setDialog("link")) },
+          ...(others.length
+            ? [
+                {
+                  label: "Unlink from its other editions",
+                  onSelect: () => {
+                    const e = settings.edition!;
+                    const named = e.name.trim() && e.name !== editionName(e.number);
+                    saveSettings({ ...settings, edition: { ...e, group: crypto.randomUUID(), number: 1, name: named ? e.name : editionName(1) } });
+                    onBooksChanged();
+                    toast("Unlinked. It's a book of its own again.");
+                  },
+                },
+              ]
+            : []),
         ]),
   ];
   const saveSettings = (next: ExportSettings) => {
@@ -840,7 +860,43 @@ function ProjectView({
             return (await load())?.chapters ?? chapters;
           }}
           onOpen={(bookId) => void saving.current.then(() => onOpenBook(bookId))}
+          onImport={async () => {
+            // Saved first, so "Write from it" keeps today's last words in the draft it makes.
+            await flushEditor.current?.();
+            await saving.current;
+            setDialog("importDraft");
+          }}
           onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === "link" && (
+        <LinkBookDialog
+          project={project}
+          books={books}
+          onCancel={() => setDialog(null)}
+          onDone={(message) => {
+            setDialog(null);
+            void load();
+            onBooksChanged();
+            toast(message);
+          }}
+        />
+      )}
+      {dialog === "importDraft" && (
+        <ImportBookDialog
+          into={project}
+          onCancel={() => setDialog("drafts")}
+          onCreated={() => setDialog("drafts")}
+          onIntoDone={(how) => {
+            void load();
+            if (how === "current") {
+              setDialog(null);
+              toast("The new version is in. What was there before is kept as a draft.");
+            } else {
+              setDialog("drafts");
+              toast("Kept as a new draft.");
+            }
+          }}
         />
       )}
       {dialog === "delete" && (
