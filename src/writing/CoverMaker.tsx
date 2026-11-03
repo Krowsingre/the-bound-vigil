@@ -559,6 +559,8 @@ export function CoverMaker({
                       onPointerUp={letGo}
                       onPointerCancel={letGo}
                       onKeyDown={nudge}
+                      // Tabbing to a block picks it, unless it's already among those picked.
+                      onFocus={() => setSelected((s) => (s.includes(block) ? s : [block]))}
                       onDoubleClick={() => {
                         setSelected([block]);
                         requestAnimationFrame(() => textBox.current?.focus());

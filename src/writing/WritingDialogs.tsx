@@ -322,14 +322,20 @@ export function DetailsDialog({
 
 /** What the book's place in its series is called: Book, Volume… and how the number is written. */
 function SeriesStyleFields({ style, index, series, onChange }: { style: SeriesStyle; index: number | null; series: string; onChange: (style: SeriesStyle) => void }) {
-  const preset = (SERIES_WORDS as readonly string[]).includes(style.word) ? style.word : style.word ? "other" : "none";
+  const isPreset = (SERIES_WORDS as readonly string[]).includes(style.word);
+  // Chosen apart from the word, so picking "Another word…" shows its box even while it still reads "Book".
+  const [custom, setCustom] = useState(!isPreset && !!style.word);
+  const preset = custom ? "other" : isPreset ? style.word : "none";
   return (
     <div className="writing-details-row series-style">
       <label className="field">
         <span>Called</span>
         <select
           value={preset}
-          onChange={(e) => onChange({ ...style, word: e.target.value === "none" ? "" : e.target.value === "other" ? style.word || "Saga" : e.target.value })}
+          onChange={(e) => {
+            setCustom(e.target.value === "other");
+            if (e.target.value !== "other") onChange({ ...style, word: e.target.value === "none" ? "" : e.target.value });
+          }}
         >
           {SERIES_WORDS.map((w) => (
             <option key={w} value={w}>
