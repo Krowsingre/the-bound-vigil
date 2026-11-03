@@ -66,6 +66,7 @@ const TOOLS = [
   "Box sets",
   "Captions and full-page pictures",
   "Side-by-side previews on each device",
+  "Canva for covers, pictures and page design",
 ];
 
 /** Publisher's plans for this person: the upgrade for those who bought TBV for life, otherwise monthly, yearly and for life. */

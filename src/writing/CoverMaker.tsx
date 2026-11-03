@@ -842,6 +842,16 @@ export function CoverMaker({
             <CanvaLink
               what="an e-book cover"
               size="1600 × 2560 px"
+              canva={{
+                project,
+                for: "cover",
+                title: `${project.title} (cover)`,
+                width: COVER_WIDTH,
+                height: COVER_HEIGHT,
+                format: "jpg",
+                backLabel: "Use the Canva cover",
+                onBack: (bytes) => keepCover(bytes, "jpg"),
+              }}
               extra={
                 <>
                   <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => finished.current?.click()}>

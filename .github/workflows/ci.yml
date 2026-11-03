@@ -89,6 +89,7 @@ jobs:
         env:
           # Google's desktop sign-in "secret" (not a real one, but kept off GitHub's pages).
           TBV_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          TBV_CANVA_CLIENT_SECRET: ${{ secrets.CANVA_CLIENT_SECRET }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
       # The setup program on its own, so it's the first thing in the download.

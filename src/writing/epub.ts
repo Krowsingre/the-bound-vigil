@@ -6,6 +6,7 @@
 // without the app.
 
 import { blurbHtml, hasFormatting } from "./blurb";
+import { readCanva, type CanvaDesigns } from "./canvaDesigns";
 import { zipSync, strToU8 } from "fflate";
 import type { WritingChapter, WritingProject } from "../api/types";
 import { DEFAULT_COPYRIGHT, DEFAULT_RIGHTS, firstLine, isMade, isPoem, KINDS, numberInWords, readPage, writePage, type CopyrightDetails, type PageKind, type PageSettings } from "./pages";
@@ -70,6 +71,8 @@ export interface ExportSettings {
   seriesStyle: SeriesStyle;
   /** The template the book started from, shown on its card in Scribe; null for older books. */
   kind?: BookKind | null;
+  /** Canva designs made for this book, by what they're for (canvaDesigns.ts). */
+  canva?: CanvaDesigns;
 }
 
 export type BookKind = "blank" | "novel" | "collection" | "nonfiction";
@@ -96,6 +99,7 @@ export const DEFAULT_EXPORT: ExportSettings = {
   edition: null,
   seriesStyle: DEFAULT_SERIES_STYLE,
   kind: null,
+  canva: {},
 };
 
 const text = (value: unknown, fallback: string, max = 2000) => (typeof value === "string" ? value.slice(0, max) : fallback);
@@ -151,6 +155,7 @@ export function readExport(json: string | null | undefined): ExportSettings {
       seriesStyle: readSeriesStyle(saved.seriesStyle),
       storeBooks: readStoreBooks(saved.storeBooks),
       kind: oneOf(saved.kind, ["blank", "novel", "collection", "nonfiction", null] as const, null),
+      canva: readCanva(saved.canva),
     };
   } catch {
     return DEFAULT_EXPORT;

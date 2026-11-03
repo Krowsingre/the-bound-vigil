@@ -119,6 +119,21 @@ export function PaperbackCover({ project, trim: startTrim, onClose }: { project:
     }
   };
 
+  /** The cover made in Canva, as the PDF the printer takes, at the cover's exact size. */
+  const saveFromCanva = async (jpeg: Uint8Array) => {
+    const fileName = bookFileName(`${project.title} (paperback cover)`, "pdf");
+    const path = isWeb ? null : await api.pickExportPath(fileName, "pdf");
+    if (!isWeb && !path) return;
+    const picture = await createImageBitmap(new Blob([jpeg as BlobPart], { type: "image/jpeg" }));
+    const pixels = { width: picture.width, height: picture.height };
+    picture.close();
+    // A design that's been resized in Canva no longer fits the printer's size.
+    if (Math.abs(pixels.width / pixels.height - wrap.width / wrap.height) > 0.01)
+      throw new Error(`The Canva design isn't the cover's shape any more (it needs to be ${inches(wrap.width)} × ${inches(wrap.height)}). Start a new design, or change its size back in Canva.`);
+    await api.saveExportFile(jpegPdf(jpeg, pixels, { width: wrap.width, height: wrap.height }), fileName, path);
+    toast(isWeb ? `${fileName} has been downloaded.` : `${fileName} has been saved.`);
+  };
+
   const inches = (n: number) => `${n.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")} in`;
   const lowFront = frontDpi !== null && frontDpi < 300;
 
@@ -152,6 +167,17 @@ export function PaperbackCover({ project, trim: startTrim, onClose }: { project:
           <CanvaLink
             what={`the whole cover (bleed included, spine ${inches(wrap.spine)} in the middle)`}
             size={`${inches(wrap.width)} × ${inches(wrap.height)}`.replace(/ in × /, " × ")}
+            canva={{
+              project,
+              for: "paperback",
+              title: `${project.title} (paperback cover)`,
+              // At 300 dots an inch, what printers ask for.
+              width: Math.round(wrap.width * 300),
+              height: Math.round(wrap.height * 300),
+              format: "jpg",
+              backLabel: "Save the Canva cover as PDF",
+              onBack: (bytes) => saveFromCanva(bytes),
+            }}
           />
         </div>
 

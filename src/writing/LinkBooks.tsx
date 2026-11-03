@@ -76,7 +76,8 @@ export function LinkBookDialog({
           if (JSON.stringify(settings.edition) === JSON.stringify(edition)) continue;
           await api.setWritingExport(id, JSON.stringify({ ...settings, edition }));
         }
-        onDone(`${other.title} is now ${(plan.get(other.id)?.name ?? "an edition").toLowerCase()} of this book.`);
+        const name = plan.get(other.id)?.name.toLowerCase();
+        onDone(name ? `Linked. ${other.title} is now the ${name}.` : "Linked as editions of one book.");
       } else {
         const view = await api.writingProject(other.id);
         const problems = exportProblems(view.chapters);

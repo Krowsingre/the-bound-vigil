@@ -37,7 +37,7 @@ pub(crate) fn percent_encode(value: &str) -> String {
         .collect()
 }
 
-pub(crate) fn percent_decode(value: &str) -> String {
+pub fn percent_decode(value: &str) -> String {
     let bytes = value.replace('+', " ").into_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;

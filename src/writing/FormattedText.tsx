@@ -30,7 +30,10 @@ export function FormattedText({ value, onChange, rows = 5, placeholder }: Props)
   const wrap = (mark: string) => {
     const el = box.current;
     if (!el) return;
-    const { selectionStart: a, selectionEnd: b } = el;
+    let { selectionStart: a, selectionEnd: b } = el;
+    // Spaces picked at either end stay outside the marks, or the formatting wouldn't take.
+    while (a < b && /\s/.test(value[a])) a++;
+    while (b > a && /\s/.test(value[b - 1])) b--;
     const picked = value.slice(a, b);
     // Already wrapped: take the marks off.
     if (value.slice(a - mark.length, a) === mark && value.slice(b, b + mark.length) === mark) {

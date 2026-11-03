@@ -749,6 +749,21 @@ export interface HardcoverStatus {
   sendRatings: boolean;
 }
 
+/** Whether Canva is connected on this device. */
+export interface CanvaStatus {
+  /** False in a copy of TBV built without Canva's key, and away from a computer. */
+  available: boolean;
+  /** The Canva account's name, when connected. */
+  name: string | null;
+}
+
+/** A design in Canva. Its link to edit lasts 30 days, so a fresh one is asked for each time. */
+export interface CanvaDesign {
+  id: string;
+  editUrl: string;
+  pageCount: number | null;
+}
+
 export interface HardcoverSendAll {
   sent: number;
   /** "Title by Author" for books Hardcover doesn't have. */

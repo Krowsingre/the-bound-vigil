@@ -6,6 +6,7 @@ import { api, isWeb } from "../api";
 import type { WritingChapter, WritingProject, WritingProjectView } from "../api/types";
 import { editionName, editionsOf } from "./bookEditions";
 import { LinkBookDialog } from "./LinkBooks";
+import { EXPORT_CHANGED } from "./CanvaLink";
 import { startNewEdition } from "./newEdition";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
@@ -328,6 +329,16 @@ function ProjectView({
   useEffect(() => {
     void load();
   }, [load, refreshKey]);
+
+  // Settings changed by a dialog on its own (a Canva design kept with the book).
+  useEffect(() => {
+    const changed = (e: Event) => {
+      const { projectId, json } = (e as CustomEvent<{ projectId: string; json: string }>).detail;
+      if (projectId === id) setView((v) => v && { ...v, project: { ...v.project, export: json } });
+    };
+    window.addEventListener(EXPORT_CHANGED, changed);
+    return () => window.removeEventListener(EXPORT_CHANGED, changed);
+  }, [id]);
 
   const chapters = useMemo(() => bookOrder(view?.chapters ?? []), [view?.chapters]);
   const settings = useMemo(() => readExport(view?.project.export), [view?.project.export]);
