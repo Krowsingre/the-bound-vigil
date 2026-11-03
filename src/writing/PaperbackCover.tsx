@@ -7,6 +7,7 @@ import { api, isWeb } from "../api";
 import type { WritingProject } from "../api/types";
 import { useToast } from "../components/Toast";
 import { BACKGROUNDS, COVER_FONTS } from "./CoverMaker";
+import { CanvaLink } from "./CanvaLink";
 import { imageMime } from "./fonts";
 import { estimatePages } from "./printBook";
 import { TRIMS, type TrimSize } from "./printSettings";
@@ -147,6 +148,10 @@ export function PaperbackCover({ project, trim: startTrim, onClose }: { project:
             <input type="checkbox" checked={guides} onChange={(e) => setGuides(e.target.checked)} />
             <span>Show the guides: trim (red), spine (blue) and where words are safe (green). They're never printed.</span>
           </label>
+          <CanvaLink
+            what={`the whole cover (bleed included, spine ${inches(wrap.spine)} in the middle)`}
+            size={`${inches(wrap.width)} × ${inches(wrap.height)}`.replace(/ in × /, " × ")}
+          />
         </div>
 
         <fieldset className="writing-export-group">
