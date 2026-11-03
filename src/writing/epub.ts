@@ -12,6 +12,7 @@ import { readSources, readStyle, type CitationStyle, type Cited, type Citer, typ
 import { styleById, styleCss } from "./bookStyles";
 import { DEFAULT_PRINT, readPrint, type PrintSettings } from "./printSettings";
 import { readStoreBooks, retarget, type Store, type StoreBook } from "./editions";
+import { ebookIsbn, editionLine, historyLines, isbnLines, readEdition, type EditionInfo } from "./bookEditions";
 
 export type SceneBreak = "asterisks" | "ornament" | "space" | "line";
 export type BookFont = "lora" | "echolume" | "none";
@@ -61,6 +62,8 @@ export interface ExportSettings {
   print: PrintSettings;
   /** Your books' pages in each store, for store editions (editions.ts). */
   storeBooks: StoreBook[];
+  /** Which edition of the book this is, and its ISBN for each format (bookEditions.ts); null until set. */
+  edition: EditionInfo | null;
   /** The template the book started from, shown on its card in Scribe; null for older books. */
   kind?: BookKind | null;
 }
@@ -86,6 +89,7 @@ export const DEFAULT_EXPORT: ExportSettings = {
   bookStyle: null,
   print: DEFAULT_PRINT,
   storeBooks: [],
+  edition: null,
   kind: null,
 };
 
@@ -138,6 +142,7 @@ export function readExport(json: string | null | undefined): ExportSettings {
       })(),
       bookStyle: typeof saved.bookStyle === "string" && styleById(saved.bookStyle) ? saved.bookStyle : null,
       print: readPrint(saved.print),
+      edition: readEdition(saved.edition),
       storeBooks: readStoreBooks(saved.storeBooks),
       kind: oneOf(saved.kind, ["blank", "novel", "collection", "nonfiction", null] as const, null),
     };
@@ -236,7 +241,7 @@ const SEMANTIC: Partial<Record<PageKind, string>> = {
 export const GENERATOR = "The Bound Vigil";
 
 /** The copyright page Scribe makes from the book's details. */
-export function copyrightHtml(project: WritingProject, details: CopyrightDetails, now = new Date()): string {
+export function copyrightHtml(project: WritingProject, details: CopyrightDetails, now = new Date(), edition: EditionInfo | null = null): string {
   const year = details.year.trim() || String(now.getFullYear());
   const holder = details.holder.trim() || project.author?.trim() || "";
   const line = (text: string, cls = "") => (text.trim() ? `<p${cls ? ` class="${cls}"` : ""}>${escapeXml(text.trim())}</p>\n` : "");
@@ -245,8 +250,10 @@ export function copyrightHtml(project: WritingProject, details: CopyrightDetails
     line(`Copyright © ${year}${holder ? ` ${holder}` : ""}`),
     line(details.rights.trim() ? details.rights : DEFAULT_RIGHTS),
     line(details.notice),
-    line(details.isbn ? `ISBN ${details.isbn.replace(/^isbn[:\s]*/i, "")}` : ""),
-    line(details.edition),
+    // An edition's earlier editions, then its own line, then an ISBN for each of its formats.
+    ...historyLines(edition).map((h) => line(h)),
+    line(edition ? editionLine(edition) : details.edition),
+    ...(isbnLines(edition).length ? isbnLines(edition).map((i) => line(i)) : [line(details.isbn ? `ISBN ${details.isbn.replace(/^isbn[:\s]*/i, "")}` : "")]),
     line(details.publisher ? `Published by ${details.publisher}` : ""),
     line(details.credit === false ? "" : "Made with The Bound Vigil", "copyright-credit"),
   ].join("");
@@ -800,7 +807,7 @@ export function epubFiles({ project, chapters: own, settings, cover, font, passa
       : kind === "title_page"
         ? titleBlock
         : kind === "copyright"
-          ? copyrightHtml(project, settings.copyright, now)
+          ? copyrightHtml(project, settings.copyright, now, settings.edition)
           : kind === "contents"
             ? navList(points, "contents")
             : kind === "sources"
@@ -887,7 +894,7 @@ ${navPoints(points)}
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="${escapeXml(lang)}">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
 <dc:identifier id="bookid">${escapeXml(id)}</dc:identifier>
-<dc:title>${escapeXml(title)}</dc:title>
+${ebookIsbn(settings.edition) ? `<dc:identifier id="isbn">urn:isbn:${escapeXml(ebookIsbn(settings.edition)!.replace(/[^0-9Xx]/g, ""))}</dc:identifier>\n` : ""}<dc:title>${escapeXml(title)}</dc:title>
 <dc:language>${escapeXml(lang)}</dc:language>
 ${author ? `<dc:creator id="author">${escapeXml(author)}</dc:creator>\n<meta refines="#author" property="role" scheme="marc:relators">aut</meta>\n` : ""}${
     description ? `<dc:description>${escapeXml(description)}</dc:description>\n` : ""

@@ -2,6 +2,7 @@
 // and cover, and each store's own rules, with every problem said in plain
 // words before a store turns the book away.
 
+import { bareIsbn, EDITION_FORMATS } from "./bookEditions";
 import { pictureSize } from "./docx";
 import { epubFiles, type EpubInput } from "./epub";
 import { imageMime } from "./fonts";
@@ -88,8 +89,18 @@ export function preflight({ book, stores, print }: PreflightInput): Finding[] {
     add({ level: "problem", title: "The description is too long", detail: `It's ${description.length.toLocaleString()} characters; Kindle and Apple Books take up to 4,000.`, stores: has(stores, "kdp", "apple", "kdpPrint") });
 
   // ISBN.
-  const isbn = copyright.isbn.trim();
-  if (isbn && !isbnValid(isbn)) add({ level: "problem", title: "The ISBN isn't valid", detail: `${isbn} doesn't add up (its last digit is a check on the others). Copy it again from where you bought it.` });
+  // Each of the edition's formats can have its own ISBN; an older book may have one with no format.
+  const edition = book.settings.edition;
+  const given = [
+    ...EDITION_FORMATS.filter((f) => edition?.isbns[f.id]?.trim()).map((f) => ({ label: f.label.toLowerCase(), isbn: bareIsbn(edition!.isbns[f.id]!) })),
+    ...(copyright.isbn.trim() && !EDITION_FORMATS.some((f) => edition?.isbns[f.id]?.trim()) ? [{ label: "", isbn: copyright.isbn.trim() }] : []),
+  ];
+  const wrong = given.filter((g) => !isbnValid(g.isbn));
+  const isbn = given.map((g) => g.isbn).join(", ");
+  const printIsbn = !!edition && ["paperback", "hardcover", "large_print"].some((f) => edition.isbns[f as "paperback"]?.trim());
+  if (wrong.length)
+    for (const w of wrong)
+      add({ level: "problem", title: `The ${w.label ? `${w.label} ` : ""}ISBN isn't valid`, detail: `${w.isbn} doesn't add up (its last digit is a check on the others). Copy it again from where you got it.` });
   else if (!isbn) {
     const needs = has(stores, "ingram");
     if (needs.length)
@@ -105,12 +116,12 @@ export function preflight({ book, stores, print }: PreflightInput): Finding[] {
     if (has(e, "bn").length)
       add({ level: "warning", title: "Barnes & Noble may ask for an ISBN", detail: "B&N Press's free ISBNs are for print books only, so an e-book uses your own if it needs one.", stores: ["bn"] });
   } else {
-    add({ level: "ok", title: "ISBN", detail: `${isbn} is valid.` });
-    if (e.length && has(stores, "kdpPrint", "ingram").length)
+    add({ level: "ok", title: given.length > 1 ? "ISBNs" : "ISBN", detail: `${given.map((g) => (g.label ? `${g.isbn} (${g.label})` : g.isbn)).join(", ")} ${given.length > 1 ? "are" : "is"} valid.` });
+    if (e.length && has(stores, "kdpPrint", "ingram").length && !(edition?.isbns.ebook?.trim() && printIsbn))
       add({
         level: "warning",
         title: "The e-book and the print book each need their own ISBN",
-        detail: "The Copyright page holds one. Put the print book's ISBN there before making the print PDF, and the e-book's (if it has one) before making the EPUB.",
+        detail: "Add each one to its own box under Edition on the Copyright page (the e-book's only if it has one). Both go on the page, each named by its format.",
       });
   }
 

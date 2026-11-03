@@ -3,7 +3,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, isWeb } from "../api";
-import type { WritingChapter, WritingProjectView } from "../api/types";
+import type { WritingChapter, WritingProject, WritingProjectView } from "../api/types";
+import { editionsOf } from "./bookEditions";
+import { startNewEdition } from "./newEdition";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
@@ -78,7 +80,13 @@ export function Writing({
   if (openId && booksShown)
     return (
       <ProjectView
+        key={openId}
         id={openId}
+        books={projects.state === "ready" ? projects.list : []}
+        onOpenEdition={(other) => {
+          setReload((n) => n + 1);
+          setOpenId(other);
+        }}
         refreshKey={refreshKey}
         onOpenBook={onOpenBook}
         onBack={() => {
@@ -264,12 +272,17 @@ type DropTarget = { section: WritingChapter } | { area: Area };
 
 function ProjectView({
   id,
+  books,
+  onOpenEdition,
   refreshKey,
   onOpenBook,
   onBack,
   onDeleted,
 }: {
   id: string;
+  /** Every book in Scribe, for this one's other editions. */
+  books: WritingProject[];
+  onOpenEdition: (id: string) => void;
   refreshKey: number;
   onOpenBook: (bookId: string) => void;
   onBack: () => void;
@@ -321,6 +334,41 @@ function ProjectView({
   const sections = chapters.filter((c) => c.role !== "part");
 
   /** Book-wide settings (numbering, the copyright page's details…), kept with the export settings. */
+  // The book's other editions, and starting the next one.
+  const others = settings.edition ? editionsOf(settings.edition.group, books.filter((b) => b.id !== id), (b) => readExport(b.export).edition) : [];
+  const editionItems: MenuEntry[] = [
+    ...(others.length
+      ? [
+          { heading: <span className="menu-tip">Editions</span> },
+          ...[...others, { id, edition: settings.edition! }]
+            .sort((a, b) => a.edition.number - b.edition.number)
+            .map((b) => ({
+              label: `${b.edition.name}${b.edition.year ? `, ${b.edition.year}` : ""}`,
+              checked: b.id === id,
+              onSelect: () => b.id !== id && void saving.current.then(() => onOpenEdition(b.id)),
+            })),
+        ]
+      : []),
+    ...(isWeb
+      ? []
+      : [
+          {
+            label: "Start a new edition…",
+            icon: "layers" as const,
+            onSelect: () =>
+              void saving.current
+                .then(() => flushEditor.current?.())
+                .then(() => startNewEdition(view!.project))
+                .then(
+                  (made) => {
+                    toast(`Made the ${readExport(made.project.export).edition?.name.toLowerCase() ?? "new edition"}, with every page of this one. You're in it now.`);
+                    onOpenEdition(made.project.id);
+                  },
+                  (e: unknown) => toast(`Couldn't start a new edition: ${String(e).replace(/^Error: /, "")}`),
+                ),
+          },
+        ]),
+  ];
   const saveSettings = (next: ExportSettings) => {
     const json = JSON.stringify(next);
     setView((v) => v && { ...v, project: { ...v.project, export: json } });
@@ -601,6 +649,7 @@ function ProjectView({
           <h1>{project.title}</h1>
           <span className="muted">
             {project.author ? `${project.author} · ` : ""}
+            {settings.edition ? `${settings.edition.name} · ` : ""}
             {words(project.words)}
           </span>
         </div>
@@ -628,6 +677,8 @@ function ProjectView({
             trigger={<Icon name="more" size={18} />}
             items={[
               { label: "Sources and citation style…", icon: "bookClosed", onSelect: () => setDialog("sources") },
+              "divider",
+              ...editionItems,
               "divider",
               { label: "Previews on each device…", icon: "phone", onSelect: () => publisher.check("Side-by-side previews", () => void Promise.resolve(flushEditor.current?.()).finally(() => setDialog("previews"))) },
               { label: "Store editions…", icon: "layers", onSelect: () => publisher.check("Store editions", () => setDialog("editions")) },
@@ -686,6 +737,7 @@ function ProjectView({
                 settings={settings}
                 onTitle={(title) => void saveChapter(chapter.id)(title, chapter.body).catch((e) => toast(String(e)))}
                 onCopyright={(copyright) => saveSettings({ ...settings, copyright })}
+                onEdition={(edition) => saveSettings({ ...settings, edition })}
                 onWriteMyself={(html) => void writeMyself(chapter, html)}
                 onOpenDetails={() => setDialog("details")}
               onOpenSources={() => setDialog("sources")}

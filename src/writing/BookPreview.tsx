@@ -10,6 +10,8 @@ import { usePublisher } from "../license/Publisher";
 import { BOOK_STYLES, chooseStyle } from "./bookStyles";
 import { bookOrder, copyrightHtml, madeSectionHtml, previewHtml, type ExportSettings } from "./epub";
 import { imageMime, loadBookFonts } from "./fonts";
+import { EditionFields } from "./EditionFields";
+import { editionName, firstEdition, type EditionInfo } from "./bookEditions";
 import { IsbnGuide } from "./IsbnGuide";
 import { makeCiter, type Citer } from "./sources";
 import { DEFAULT_RIGHTS, KINDS, readPage, type CopyrightDetails } from "./pages";
@@ -167,6 +169,7 @@ export function MadePage({
   settings,
   onTitle,
   onCopyright,
+  onEdition,
   onWriteMyself,
   onOpenDetails,
   onOpenSources,
@@ -177,6 +180,8 @@ export function MadePage({
   settings: ExportSettings;
   onTitle: (title: string) => void;
   onCopyright: (details: CopyrightDetails) => void;
+  /** The book's edition and its ISBNs, kept with the export settings. */
+  onEdition: (edition: EditionInfo) => void;
   onWriteMyself: (html: string) => void;
   onOpenDetails: () => void;
   onOpenSources: () => void;
@@ -195,8 +200,17 @@ export function MadePage({
   }, [page.kind, settings.citationStyle, settings.sources, chapters]);
   useEffect(() => setTitle(chapter.title), [chapter.id, chapter.title]);
   useEffect(() => setCopyright(settings.copyright), [settings.copyright]);
+  // Until the writer sets one, a first edition, named as their old Edition box had it.
+  const [edition, setEdition] = useState<EditionInfo | null>(settings.edition);
+  useEffect(() => setEdition(settings.edition), [settings.edition]);
+  const shownEdition = edition ?? { ...firstEdition(""), group: "", name: settings.copyright.edition.trim() || editionName(1) };
+  const changeEdition = (next: EditionInfo) => {
+    const kept = next.group ? next : { ...next, group: crypto.randomUUID() };
+    setEdition(kept);
+    onEdition(kept);
+  };
   const html =
-    page.kind === "copyright" ? copyrightHtml(project, copyright) : madeSectionHtml({ project, chapters, settings, citer }, chapter.id);
+    page.kind === "copyright" ? copyrightHtml(project, copyright, new Date(), edition) : madeSectionHtml({ project, chapters, settings, citer }, chapter.id);
   // Links between pages only work in the book itself.
   const shown = html.replace(/ href="[^"]*"/g, "");
   const change = (c: Partial<CopyrightDetails>) => {
@@ -230,10 +244,9 @@ export function MadePage({
             {field("Year", copyright.year, (year) => change({ year }), String(new Date().getFullYear()))}
             {field("Copyright holder", copyright.holder, (holder) => change({ holder }), project.author ?? "The author")}
           </div>
-          <div className="writing-details-row">
-            {field("ISBN", copyright.isbn, (isbn) => change({ isbn }), "None")}
-            {field("Edition", copyright.edition, (edition) => change({ edition }), "e.g. First edition, 2026")}
-          </div>
+          <EditionFields edition={shownEdition} onChange={changeEdition} />
+          {/* An ISBN typed before editions came in, with no format: shown until it's moved to its format above. */}
+          {copyright.isbn.trim() && !Object.values(shownEdition.isbns).some((i) => i?.trim()) && field("ISBN (format not given)", copyright.isbn, (isbn) => change({ isbn }), "None")}
           {field("Publisher", copyright.publisher, (publisher) => change({ publisher }), "None")}
           {field("Rights", copyright.rights, (rights) => change({ rights }), DEFAULT_RIGHTS, true)}
           {field("Notice", copyright.notice, (notice) => change({ notice }), "e.g. This is a work of fiction. Names and places are the author's invention.", true)}

@@ -225,6 +225,8 @@ export function previewWriting(): Calls {
       const original = await calls.writingProject(id);
       const copy = await calls.createWritingProject(`${original.project.title} (copy)`, original.project.author);
       await calls.updateWritingDetails(copy.project.id, { ...original.project, title: copy.project.title });
+      // The book's export settings come along, as in the app.
+      await calls.setWritingExport(copy.project.id, original.project.export);
       for (const c of copy.chapters) await calls.deleteWritingChapter(c.id);
       const parts = new Map<string, string>();
       for (const c of original.chapters) {
