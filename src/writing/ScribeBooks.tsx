@@ -17,6 +17,7 @@ import { CopyCheckDialog } from "./CopyCheck";
 import { readExport } from "./epub";
 import { TEMPLATES, type Template } from "./pages";
 import { saveAsTbv } from "./saveTbv";
+import { startNewEdition } from "./newEdition";
 import { isSample } from "./sampleBook";
 import { useNarrow } from "../lib/useNarrow";
 import { DetailsDialog } from "./WritingDialogs";
@@ -58,8 +59,8 @@ const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"
 
 /** "Novel · 12 chapters · 34,210 words". */
 function metaLine(p: WritingProject): string {
-  const kind = readExport(p.export).kind;
-  return [kind && KIND_NAME[kind], `${p.chapters} ${p.chapters === 1 ? "chapter" : "chapters"}`, words(p.words)].filter(Boolean).join(" · ");
+  const { kind, edition } = readExport(p.export);
+  return [edition?.name, kind && KIND_NAME[kind], `${p.chapters} ${p.chapters === 1 ? "chapter" : "chapters"}`, words(p.words)].filter(Boolean).join(" · ");
 }
 
 function coverOf(p: WritingProject): string | null {
@@ -239,6 +240,18 @@ export function ScribeBooks({
                   toast(`Made “${copy.project.title}”. Where the original came from stays in its Book details.`);
                 },
                 (e: unknown) => toast(`Couldn't duplicate the book: ${String(e).replace(/^Error: /, "")}`),
+              ),
+          },
+          {
+            label: "Start a New Edition",
+            icon: "layers" as const,
+            onSelect: () =>
+              void startNewEdition(p).then(
+                (made) => {
+                  onChanged();
+                  toast(`Made the ${readExport(made.project.export).edition?.name.toLowerCase() ?? "new edition"} of “${made.project.title}”, with every page of the last one. Add its ISBNs on the copyright page if you have them.`);
+                },
+                (e: unknown) => toast(`Couldn't start a new edition: ${String(e).replace(/^Error: /, "")}`),
               ),
           },
         ]),

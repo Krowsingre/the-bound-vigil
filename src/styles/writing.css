@@ -525,7 +525,8 @@
   margin: 0;
 }
 
-.writing-dialog .field select {
+.writing-dialog .field select,
+.edition-fields .field select {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -2442,4 +2443,51 @@
   .poem-sound-what {
     flex-basis: calc(100% - 40px);
   }
+}
+
+/* The copyright page's edition, its ISBNs (one box per format) and the editions before it. */
+.edition-fields {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  min-width: 0;
+}
+
+.edition-fields legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+
+.edition-fields .settings-row-hint {
+  margin: 0;
+}
+
+.edition-isbns {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px 12px;
+}
+
+.edition-earlier {
+  display: grid;
+  gap: 6px;
+}
+
+.edition-earlier-head {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.edition-earlier-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.edition-earlier .btn {
+  justify-self: start;
 }

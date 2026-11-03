@@ -864,7 +864,8 @@
 }
 
 .field input,
-.field textarea {
+.field textarea,
+.edition-earlier-row input {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -878,7 +879,8 @@
 }
 
 .field input:focus,
-.field textarea:focus {
+.field textarea:focus,
+.edition-earlier-row input:focus {
   border-color: var(--focus);
 }
 

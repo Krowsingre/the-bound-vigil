@@ -56,7 +56,7 @@ pub async fn print_book(app: tauri::AppHandle, html: String, path: Option<String
     {
         use tauri::Manager;
         if let Some(old) = app.get_webview_window(LABEL) {
-            let _ = old.close();
+            let _ = old.destroy();
         }
         let (send, receive) = channel();
         *JOB.lock().map_err(|e| e.to_string())? = Some(Job { html, done: send });
@@ -74,13 +74,13 @@ pub async fn print_book(app: tauri::AppHandle, html: String, path: Option<String
         let pages = match pages {
             Ok(pages) => pages,
             Err(e) => {
-                let _ = window.close();
+                let _ = window.destroy();
                 return Err(format!("The pages couldn't be laid out ({e})."));
             }
         };
         let saved = save(&window, path).await;
         if !shown {
-            let _ = window.close();
+            let _ = window.destroy();
         }
         saved.map(|_| pages)
     }

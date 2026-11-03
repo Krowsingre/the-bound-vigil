@@ -161,4 +161,17 @@ describe("Print PDF", () => {
     expect(html).not.toMatch(/class="[^"]*\bcover\b/);
     expect(html).toContain('name="tbv-print"');
   });
+
+  it("points each line of the contents at its chapter, so the page numbers can be filled in", () => {
+    const s = settings();
+    const contents = { ...chapter(0, "Contents", ""), role: "front" as const, page: JSON.stringify({ kind: "contents" }) };
+    const html = printHtml({ project, chapters: [contents, ...chapters], settings: s }, s.print);
+    const list = /<ol class="contents">([\s\S]*?)<\/ol>/.exec(html)?.[1] ?? "";
+    const links = [...list.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+    expect(links.length).toBeGreaterThanOrEqual(2);
+    for (const link of links) {
+      expect(link).toMatch(/^#/);
+      expect(html).toContain(`id="${link.slice(1)}"`);
+    }
+  });
 });
