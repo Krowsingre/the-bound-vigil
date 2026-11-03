@@ -27,8 +27,9 @@ export const NAV: { route: Route; label: string; caption: string; icon: IconName
  * reach most catalogs or hold a browser). Scribe holds notes too; the books you
  * write need synced records, which the phone at home doesn't keep, so there
  * it's only notes. */
-export function navFor({ web, home }: { web: boolean; home: boolean }) {
-  return NAV.filter((n) => !(n.route === "catalogs" && (web || home))).map((n) =>
+export function navFor({ web, home, android = false }: { web: boolean; home: boolean; android?: boolean }) {
+  // Android's test version has no browser yet.
+  return NAV.filter((n) => !(n.route === "catalogs" && (web || home || android))).map((n) =>
     n.route === "writing" && home ? { ...n, caption: "Your notes" } : n,
   );
 }

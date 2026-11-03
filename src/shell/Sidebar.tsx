@@ -1,7 +1,7 @@
 import emblem from "../assets/emblem.svg?raw";
 import { Icon } from "../components/Icon";
 import { navFor, navRouteOf, type Route } from "./routes";
-import { isHome, isWeb } from "../api";
+import { isAndroid, isHome, isWeb } from "../api";
 import { useEffect, useState } from "react";
 import { liningUp as liningUpNow, onLiningUp, type LiningUp } from "../readAlong/lineUp";
 
@@ -91,7 +91,7 @@ export function Sidebar({
 
         <nav aria-label="Main">
           <ul className="nav">
-            {navFor({ web: isWeb, home: isHome }).map((item, i) => (
+            {navFor({ web: isWeb, home: isHome, android: isAndroid }).map((item, i) => (
               <li key={item.route}>
                 <button
                   type="button"

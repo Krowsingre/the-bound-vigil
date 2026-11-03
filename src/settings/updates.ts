@@ -1,7 +1,7 @@
 // TBV updating itself on a computer. Phones update from their app store.
 
 import { useCallback, useEffect, useState } from "react";
-import { api, isApp, isIOS } from "../api";
+import { api, isAndroid, isApp, isIOS } from "../api";
 import type { UpdateInfo, UpdateProgress } from "../api/types";
 import { useToast } from "../components/Toast";
 import { startupHold, startupSay, stillOpening, UPDATED_KEY } from "../splash/startup";
@@ -17,7 +17,7 @@ function remember(version: string) {
 }
 
 /** Updating happens in the app on a computer only. */
-export const canSelfUpdate = (isApp && !isIOS) || api.kind === "preview";
+export const canSelfUpdate = (isApp && !isIOS && !isAndroid) || api.kind === "preview";
 
 /** How long opening waits to hear whether there's an update to install. */
 const LOOK_WAIT = 3000;

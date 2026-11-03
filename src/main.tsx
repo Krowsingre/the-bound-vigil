@@ -31,7 +31,7 @@ import "./styles/writing.css";
 import "./styles/catalogs.css";
 import "./styles/browse.css";
 import "./styles/scribe.css";
-import { isApp, isHome, isIOS, isMac, isWeb } from "./api";
+import { isAndroid, isApp, isHome, isIOS, isMac, isWeb } from "./api";
 import { HomePair } from "./web/HomePair";
 import { WebGate } from "./web/WebConnect";
 import { runBeforeQuit } from "./lib/beforeQuit";
@@ -62,6 +62,12 @@ if (isMac) document.documentElement.classList.add("is-mac-app");
 if (isIOS) {
   document.documentElement.classList.add("is-ios-app");
   document.querySelector('meta[name="viewport"]')?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover");
+}
+
+// The Android app doesn't zoom in when a box is tapped either.
+if (isAndroid) {
+  document.documentElement.classList.add("is-android-app");
+  document.querySelector('meta[name="viewport"]')?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1");
 }
 
 // The web version keeps working offline once it has been opened (public/sw.js).

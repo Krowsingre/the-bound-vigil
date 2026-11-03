@@ -167,7 +167,9 @@ fn shop() -> Shop {
     return Shop::Apple;
     #[cfg(windows)]
     return if store::packaged() { Shop::Microsoft } else { Shop::None };
-    #[cfg(not(any(windows, target_os = "ios", target_os = "macos")))]
+    #[cfg(target_os = "android")]
+    return Shop::Android;
+    #[cfg(not(any(windows, target_os = "ios", target_os = "macos", target_os = "android")))]
     Shop::None
 }
 
@@ -205,7 +207,14 @@ fn ask_store(app: &AppHandle) -> Option<StoreAnswer> {
     }
     #[cfg(windows)]
     return store::status(app).ok();
-    #[cfg(not(any(windows, target_os = "ios", target_os = "macos")))]
+    // Android's test version: open everywhere once this phone's key is in.
+    #[cfg(target_os = "android")]
+    return Some(if activated(app) {
+        StoreAnswer { owned: true, plan: Some("lifetime".into()), publisher: true, publisher_for_life: true, ..StoreAnswer::nothing() }
+    } else {
+        StoreAnswer::nothing()
+    });
+    #[cfg(not(any(windows, target_os = "ios", target_os = "macos", target_os = "android")))]
     {
         let _ = app;
         None
@@ -219,7 +228,50 @@ pub fn status(app: &AppHandle, library: &Mutex<Library>) -> tbv_core::Result<Lic
         .map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?
         .license(now(), outside_start(app), shop(), answer.as_ref())?;
     keep_outside(app, view.trial_ends - tbv_core::license::trial_days(shop()) * 86_400);
+    #[cfg(target_os = "android")]
+    let view = LicenseView { device_code: device_code(app), ..view };
     Ok(view)
+}
+
+/// This install's device code for activation, made the first time it's asked
+/// for and kept outside the library (a fresh library keeps the same code).
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+fn device_code(app: &AppHandle) -> Option<String> {
+    let path = app.path().app_local_data_dir().ok()?.join("device-code");
+    if let Some(code) = std::fs::read_to_string(&path).ok().filter(|c| tbv_core::activation::is_device_code(c.trim())) {
+        return Some(code.trim().to_string());
+    }
+    let code = tbv_core::activation::new_device_code();
+    std::fs::create_dir_all(path.parent()?).ok()?;
+    std::fs::write(&path, &code).ok()?;
+    Some(code)
+}
+
+fn activation_file(app: &AppHandle) -> Option<std::path::PathBuf> {
+    app.path().app_local_data_dir().ok().map(|d| d.join("activation"))
+}
+
+/// Whether this phone's own key is in.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+fn activated(app: &AppHandle) -> bool {
+    let (Some(code), Some(file)) = (device_code(app), activation_file(app)) else { return false };
+    std::fs::read_to_string(file).is_ok_and(|key| tbv_core::activation::key_fits(&code, &key))
+}
+
+/// Opens the Android test version with this phone's activation key. Nothing
+/// back when the key was made for another phone (or isn't a key).
+pub fn activate(app: &AppHandle, library: &Mutex<Library>, key: &str) -> tbv_core::Result<Option<LicenseView>> {
+    if shop() != Shop::Android {
+        return Err(tbv_core::Error::Unsuitable("Activation keys are only for the Android version.".into()));
+    }
+    let code = device_code(app).ok_or_else(|| tbv_core::Error::Unsuitable("This phone's code couldn't be made.".into()))?;
+    let key: String = key.chars().filter(|c| !c.is_whitespace()).collect();
+    if !tbv_core::activation::key_fits(&code, &key) {
+        return Ok(None);
+    }
+    let file = activation_file(app).ok_or_else(|| tbv_core::Error::Unsuitable("TBV's folder couldn't be found.".into()))?;
+    std::fs::write(file, key)?;
+    status(app, library).map(Some)
 }
 
 /// Opens the store's purchase sheet for a plan. The status afterwards says whether it went through.
@@ -230,7 +282,12 @@ pub fn buy(app: &AppHandle, library: &Mutex<Library>, plan: Plan) -> tbv_core::R
     mac_store::buy(product_of(plan)).map_err(tbv_core::Error::Unsuitable)?;
     #[cfg(windows)]
     store::buy(app, product_of(plan)).map_err(tbv_core::Error::Unsuitable)?;
-    #[cfg(not(any(windows, target_os = "ios", target_os = "macos")))]
+    #[cfg(target_os = "android")]
+    {
+        let _ = (app, library, plan);
+        Err(tbv_core::Error::Unsuitable("The Android test version is opened with an activation key, not bought.".into()))
+    }
+    #[cfg(not(any(windows, target_os = "ios", target_os = "macos", target_os = "android")))]
     {
         let _ = (app, library, plan);
         Err(tbv_core::Error::Unsuitable("This copy of TBV can't be bought in. Get The Bound Vigil from the Microsoft Store or the App Store.".into()))

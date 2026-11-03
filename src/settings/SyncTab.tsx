@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, isApp, isIOS, isMac, isWeb, isWindows } from "../api";
+import { api, isAndroid, isApp, isIOS, isMac, isWeb, isWindows } from "../api";
 import type { ProviderView, SupabaseProject, SyncOverview } from "../api/types";
 import { relativeTime } from "../lib/format";
 import { behindText } from "../shell/SyncMenu";
@@ -128,7 +128,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
         </SectionGroup>
       )}
 
-      {!isWeb && !isIOS && (
+      {!isWeb && !isIOS && !isAndroid && (
         <SectionGroup id="yourphone" title="Your phone" lede="The books your phone keeps, and streaming to it at home." holds={["phone", "home"]}>
           {overview && <PhoneSection overview={overview} />}
           <HomeSection />
@@ -137,7 +137,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
     </>
   );
   // Nothing for the side: Supabase isn't in use, and there's no phone part here.
-  const sideEmpty = !(overview && supabaseOn && !isWeb) && (isWeb || isIOS);
+  const sideEmpty = !(overview && supabaseOn && !isWeb) && (isWeb || isIOS || isAndroid);
 
   return (
     <Columns side={sideEmpty ? undefined : side}>
@@ -341,9 +341,9 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
             />
             <Toggle
               label="Sync book files"
-              hint={isIOS ? "Always on here: books added on this device go to the cloud, so your other devices can open them." : "Keep a copy of your books in the cloud."}
-              checked={isIOS || sync.bookFiles}
-              disabled={isIOS}
+              hint={isIOS || isAndroid ? "Always on here: books added on this device go to the cloud, so your other devices can open them." : "Keep a copy of your books in the cloud."}
+              checked={isIOS || isAndroid || sync.bookFiles}
+              disabled={isIOS || isAndroid}
               onChange={(bookFiles) => changeSync({ bookFiles })}
             />
             <Toggle
@@ -361,7 +361,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
               />
             )}
           </div>
-          {isIOS && (
+          {(isIOS || isAndroid) && (
             <Row
               label="Books opened on this phone"
               hint="A book that came down just so you could open it is removed again after this long unopened. Its file stays in the cloud. Books you download on purpose, or keep from their details page, stay."

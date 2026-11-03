@@ -12,7 +12,8 @@ tbv-core = { path = "../tbv-core" }
 # On the phone's or the Mac's graphics chip.
 whisper-rs = { version = "0.16", features = ["metal"] }
 
-[target.'cfg(not(any(target_os = "ios", target_os = "macos")))'.dependencies]
+# Not on Android yet: its test version lines up read-along on a computer or iPhone.
+[target.'cfg(not(any(target_os = "ios", target_os = "macos", target_os = "android")))'.dependencies]
 whisper-rs = "0.16"
 
 [dev-dependencies]

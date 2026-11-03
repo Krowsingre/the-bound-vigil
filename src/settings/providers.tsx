@@ -1,11 +1,12 @@
 // The services a library can be kept in, as Preferences › Sync shows them.
 
+import { isAndroid } from "../api";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 
 export type Provider = "supabase" | "dropbox" | "gdrive" | "onedrive" | "icloud" | "mega" | "custom";
 
-export const PROVIDERS: { id: Provider; name: string; art: React.ReactNode }[] = [
+const ALL_PROVIDERS: { id: Provider; name: string; art: React.ReactNode }[] = [
   {
     id: "supabase",
     name: "Supabase",
@@ -81,6 +82,9 @@ export const PROVIDERS: { id: Provider; name: string; art: React.ReactNode }[] =
     ),
   },
 ];
+
+/** The places to sync with here. Android's test version has no iCloud, and can't reach a folder a desktop app keeps in step (MEGA). */
+export const PROVIDERS = isAndroid ? ALL_PROVIDERS.filter((p) => p.id !== "icloud" && p.id !== "mega") : ALL_PROVIDERS;
 
 /**
  * The place chosen, as a card, and every other one in a dropdown. With

@@ -191,8 +191,10 @@ export interface LicenseView {
   trialEnds: number;
   /** How long the trial is here (0: none, bought before use). */
   trialDays: number;
-  /** Where it's bought: "none" for a copy from outside a store. */
-  shop: "microsoft" | "apple" | "none";
+  /** Where it's bought: "none" for a copy from outside a store; "android" for the Android test version, opened with an activation key. */
+  shop: "microsoft" | "apple" | "android" | "none";
+  /** On Android, this phone's code for its activation key, like "K7QFM-2XHRA". */
+  deviceCode?: string | null;
   /** The lifetime unlock's price as the store shows it, like "$59.99". */
   price: string | null;
   /** The yearly plan's price, like "$19.99". */

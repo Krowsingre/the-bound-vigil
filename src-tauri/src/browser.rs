@@ -864,8 +864,15 @@ mod view {
     use crate::protection::Protection;
     use crate::CommandResult;
 
+    #[cfg(target_os = "ios")]
     fn ask(args: serde_json::Value) -> CommandResult<serde_json::Value> {
         tauri_plugin_tbv_ios::browser(args)
+    }
+
+    /// Android's test version has no browser yet.
+    #[cfg(target_os = "android")]
+    fn ask(_args: serde_json::Value) -> CommandResult<serde_json::Value> {
+        Err("The browser isn't in the Android version yet.".into())
     }
 
     fn frame_of(frame: Frame) -> serde_json::Value {
@@ -953,7 +960,10 @@ fn app_link(url: &str) -> bool {
 
 /// On iPhone and iPad: hears what Apple's web views did and passes it on to
 /// TBV's page, as the computer's views do by themselves.
-#[cfg(mobile)]
+#[cfg(target_os = "android")]
+pub fn listen(_app: tauri::AppHandle) {}
+
+#[cfg(target_os = "ios")]
 pub fn listen(app: tauri::AppHandle) {
     std::thread::spawn(move || loop {
         match tauri_plugin_tbv_ios::browser_event() {
