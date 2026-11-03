@@ -1,26 +1,59 @@
 import { describe, expect, it } from "vitest";
-import { COVER_HEIGHT, COVER_WIDTH, movePlace, placeOf } from "./CoverMaker";
+import { COVER_HEIGHT, placeOf } from "./CoverMaker";
+import { centreBlocks, dragBlocks } from "./coverLayout";
+
+const reach = { x: 0.01, y: 0.01 };
 
 describe("moving words on the cover", () => {
-  const start = { x: 0.5, y: 0.5 };
+  const one = [{ x: 0.3, y: 0.3 }];
+  const size = [{ w: 0.2, h: 0.05 }];
 
   it("moves freely without Shift", () => {
-    const p = movePlace(start, 160, -256, COVER_HEIGHT, false);
-    expect(p.x).toBeCloseTo(0.6);
-    expect(p.y).toBeCloseTo(0.4);
+    const { places } = dragBlocks(one, size, 0.1, 0.1, { axisLock: false, reach: null });
+    expect(places[0].x).toBeCloseTo(0.4);
+    expect(places[0].y).toBeCloseTo(0.4);
   });
 
   it("keeps to one direction with Shift, the way it moved most", () => {
-    expect(movePlace(start, 300, 40, COVER_HEIGHT, true)).toEqual({ x: 0.5 + 300 / COVER_WIDTH, y: 0.5 });
-    expect(movePlace(start, 30, -900, COVER_HEIGHT, true)).toEqual({ x: 0.5, y: 0.5 - 900 / COVER_HEIGHT });
+    const across = dragBlocks(one, size, 0.15, 0.02, { axisLock: true, reach: null }).places[0];
+    expect(across.x).toBeCloseTo(0.45);
+    expect(across.y).toBe(0.3);
+    expect(dragBlocks(one, size, 0.02, -0.15, { axisLock: true, reach: null }).places[0].x).toBe(0.3);
   });
 
-  it("snaps to the middle and stays on the cover", () => {
-    expect(movePlace({ x: 0.3, y: 0.5 }, 0.2 * COVER_WIDTH + 8, 0, COVER_HEIGHT, false).x).toBe(0.5);
-    expect(movePlace(start, -5000, 9000, COVER_HEIGHT, false)).toEqual({ x: 0, y: 1 });
+  it("snaps a block to the middle on both axes, and says so", () => {
+    const r = dragBlocks(one, size, 0.195, 0.205, { axisLock: false, reach });
+    expect(r.places[0]).toEqual({ x: 0.5, y: 0.5 });
+    expect(r.snapped).toEqual({ x: true, y: true });
   });
 
-  it("finds a box's centre", () => {
+  it("doesn't snap sideways while Shift keeps it moving up and down", () => {
+    const r = dragBlocks([{ x: 0.495, y: 0.3 }], size, 0, 0.1, { axisLock: true, reach });
+    expect(r.places[0].x).toBe(0.495);
+  });
+
+  it("snaps a group by its middle as well as by each block", () => {
+    // Title at 0.4, author at 0.7 across: the pair's middle is 0.55.
+    const from = [{ x: 0.4, y: 0.2 }, { x: 0.7, y: 0.8 }];
+    const sizes = [{ w: 0.2, h: 0.1 }, { w: 0.2, h: 0.1 }];
+    const r = dragBlocks(from, sizes, -0.052, 0, { axisLock: false, reach });
+    expect(r.places[0].x).toBeCloseTo(0.35);
+    expect(r.places[1].x).toBeCloseTo(0.65);
+    expect(r.snapped.x).toBe(true);
+  });
+
+  it("centres several blocks together, keeping their places to each other", () => {
+    const from = [{ x: 0.2, y: 0.2 }, { x: 0.4, y: 0.9 }];
+    const sizes = [{ w: 0.2, h: 0.1 }, { w: 0.2, h: 0.1 }];
+    const across = centreBlocks(from, sizes, "x");
+    expect(across[0].x).toBeCloseTo(0.4);
+    expect(across[1].x).toBeCloseTo(0.6);
+    const down = centreBlocks(from, sizes, "y");
+    expect(down[0].y + down[1].y).toBeCloseTo(1);
+  });
+
+  it("stays on the cover and finds a box's centre", () => {
+    expect(dragBlocks(one, size, -5, 9, { axisLock: false, reach: null }).places[0]).toEqual({ x: 0, y: 1 });
     expect(placeOf({ x: 600, y: 1180, width: 400, height: 200 }, COVER_HEIGHT)).toEqual({ x: 0.5, y: 1280 / COVER_HEIGHT });
   });
 });

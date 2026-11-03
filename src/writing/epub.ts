@@ -13,6 +13,7 @@ import { styleById, styleCss } from "./bookStyles";
 import { DEFAULT_PRINT, readPrint, type PrintSettings } from "./printSettings";
 import { readStoreBooks, retarget, type Store, type StoreBook } from "./editions";
 import { ebookIsbn, editionLine, historyLines, isbnLines, readEdition, type EditionInfo } from "./bookEditions";
+import { DEFAULT_SERIES_STYLE, readSeriesStyle, titlePageSeries, type SeriesStyle } from "./seriesLabel";
 
 export type SceneBreak = "asterisks" | "ornament" | "space" | "line";
 export type BookFont = "lora" | "echolume" | "none";
@@ -64,6 +65,8 @@ export interface ExportSettings {
   storeBooks: StoreBook[];
   /** Which edition of the book this is, and its ISBN for each format (bookEditions.ts); null until set. */
   edition: EditionInfo | null;
+  /** What the book's place in its series is called, like "Book 2" or "Volume II" (seriesLabel.ts). */
+  seriesStyle: SeriesStyle;
   /** The template the book started from, shown on its card in Scribe; null for older books. */
   kind?: BookKind | null;
 }
@@ -90,6 +93,7 @@ export const DEFAULT_EXPORT: ExportSettings = {
   print: DEFAULT_PRINT,
   storeBooks: [],
   edition: null,
+  seriesStyle: DEFAULT_SERIES_STYLE,
   kind: null,
 };
 
@@ -143,6 +147,7 @@ export function readExport(json: string | null | undefined): ExportSettings {
       bookStyle: typeof saved.bookStyle === "string" && styleById(saved.bookStyle) ? saved.bookStyle : null,
       print: readPrint(saved.print),
       edition: readEdition(saved.edition),
+      seriesStyle: readSeriesStyle(saved.seriesStyle),
       storeBooks: readStoreBooks(saved.storeBooks),
       kind: oneOf(saved.kind, ["blank", "novel", "collection", "nonfiction", null] as const, null),
     };
@@ -701,7 +706,7 @@ export function epubFiles({ project, chapters: own, settings, cover, font, passa
   const author = project.author?.trim();
   const series = project.series?.trim();
   const titleBlock = `<p class="title">${escapeXml(title)}</p>\n${author ? `<p class="author">${escapeXml(author)}</p>\n` : ""}${
-    series ? `<p class="series">${escapeXml(series)}${project.seriesIndex != null ? `, book ${project.seriesIndex}` : ""}</p>\n` : ""
+    series ? `<p class="series">${escapeXml(titlePageSeries(series, project.seriesIndex, settings.seriesStyle))}</p>\n` : ""
   }`;
 
   // Chapters are numbered from 1 again in each body section (part), unless they run on through the book.

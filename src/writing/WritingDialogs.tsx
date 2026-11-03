@@ -11,6 +11,7 @@ import { imageMime, loadBookFonts } from "./fonts";
 import { makeCiter } from "./sources";
 import { AuthorLabel } from "./AuthorInfo";
 import { CoverMaker } from "./CoverMaker";
+import { coverSeries, SERIES_NUMBERS, SERIES_WORDS, titlePageSeries, type SeriesStyle } from "./seriesLabel";
 import { WhereItCameFrom } from "./WhereItCameFrom";
 import { pagesKey } from "./PaperbackCover";
 import { BOOK_STYLES } from "./bookStyles";
@@ -172,6 +173,8 @@ export function DetailsDialog({
     description: project.description,
   });
   const [cover, setCover] = useState(project);
+  const savedSeriesStyle = readExport(project.export).seriesStyle;
+  const [seriesStyle, setSeriesStyle] = useState<SeriesStyle>(savedSeriesStyle);
   const [opensWith, setOpensWith] = useState(project.coverPage);
   const [making, setMaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -181,6 +184,9 @@ export function DetailsDialog({
     if (!details.title.trim()) return setError("The book needs a title.");
     setBusy(true);
     try {
+      // Saved first, so the book that comes back carries it.
+      if (seriesStyle.word !== savedSeriesStyle.word || seriesStyle.numbers !== savedSeriesStyle.numbers)
+        await api.setWritingExport(project.id, JSON.stringify({ ...readExport(project.export), seriesStyle }));
       const saved = await api.updateWritingDetails(project.id, details);
       onSaved(opensWith !== project.coverPage ? await api.setWritingCoverPage(project.id, opensWith) : saved);
     } catch (e) {
@@ -267,6 +273,7 @@ export function DetailsDialog({
                 <input value={details.language ?? ""} onChange={(e) => set({ language: e.target.value })} placeholder="en" maxLength={20} />
               </label>
             </div>
+            {!!details.series?.trim() && <SeriesStyleFields style={seriesStyle} index={details.seriesIndex} series={details.series.trim()} onChange={setSeriesStyle} />}
             <label className="field">
               <span>Description</span>
               <textarea rows={4} value={details.description ?? ""} onChange={(e) => set({ description: e.target.value })} placeholder="The words on the back of the book" />
@@ -301,6 +308,7 @@ export function DetailsDialog({
       {making && (
         <CoverMaker
           project={{ ...cover, title: details.title || cover.title, author: details.author ?? cover.author }}
+          seriesLine={details.series?.trim() ? coverSeries(details.series.trim(), details.seriesIndex, seriesStyle) : null}
           onCancel={() => setMaking(false)}
           onMade={(p) => {
             setCover(p);
@@ -308,6 +316,55 @@ export function DetailsDialog({
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** What the book's place in its series is called: Book, Volume… and how the number is written. */
+function SeriesStyleFields({ style, index, series, onChange }: { style: SeriesStyle; index: number | null; series: string; onChange: (style: SeriesStyle) => void }) {
+  const isPreset = (SERIES_WORDS as readonly string[]).includes(style.word);
+  // Chosen apart from the word, so picking "Another word…" shows its box even while it still reads "Book".
+  const [custom, setCustom] = useState(!isPreset && !!style.word);
+  const preset = custom ? "other" : isPreset ? style.word : "none";
+  return (
+    <div className="writing-details-row series-style">
+      <label className="field">
+        <span>Called</span>
+        <select
+          value={preset}
+          onChange={(e) => {
+            setCustom(e.target.value === "other");
+            if (e.target.value !== "other") onChange({ ...style, word: e.target.value === "none" ? "" : e.target.value });
+          }}
+        >
+          {SERIES_WORDS.map((w) => (
+            <option key={w} value={w}>
+              {w}
+            </option>
+          ))}
+          <option value="other">Another word…</option>
+          <option value="none">Just the number</option>
+        </select>
+      </label>
+      {preset === "other" && (
+        <label className="field">
+          <span>Your word</span>
+          <input value={style.word} maxLength={40} onChange={(e) => onChange({ ...style, word: e.target.value })} />
+        </label>
+      )}
+      <label className="field">
+        <span>Number written as</span>
+        <select value={style.numbers} onChange={(e) => onChange({ ...style, numbers: e.target.value as SeriesStyle["numbers"] })}>
+          {SERIES_NUMBERS.map((n) => (
+            <option key={n.value} value={n.value}>
+              {n.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="settings-row-hint series-style-example">
+        Title page: {titlePageSeries(series, index ?? 2, style)}. Cover: {coverSeries(series, index ?? 2, style)}.
+      </p>
     </div>
   );
 }
