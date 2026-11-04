@@ -2,6 +2,7 @@
 // chapters, change its details and export an EPUB), and your notes from reading.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNarrow } from "../lib/useNarrow";
 import { api, isWeb } from "../api";
 import type { WritingChapter, WritingProject, WritingProjectView } from "../api/types";
 import { editionName, editionsOf } from "./bookEditions";
@@ -305,6 +306,9 @@ function ProjectView({
   const [deletingChapter, setDeletingChapter] = useState<WritingChapter | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(true);
+  // On a phone the contents and the page share the screen badly, so one shows at a time:
+  // picking a page opens it, and the Contents button goes back.
+  const narrow = useNarrow();
   const toast = useToast();
   // Waiting saves, so the EPUB and other chapters see the latest words.
   const saving = useRef<Promise<void>>(Promise.resolve());
@@ -450,6 +454,7 @@ function ProjectView({
       });
       await load();
       setChapterId(added.id);
+      if (narrow) setListOpen(false);
     } catch (e) {
       toast(String(e));
     }
@@ -632,7 +637,7 @@ function ProjectView({
           setDragging(null);
         }}
       >
-        <button type="button" className="writing-chapter" onClick={() => void saving.current.then(() => (setChapterId(c.id), setPicked((n) => n + 1)))}>
+        <button type="button" className="writing-chapter" onClick={() => void saving.current.then(() => (setChapterId(c.id), setPicked((n) => n + 1), narrow && setListOpen(false)))}>
           <span className="writing-chapter-number num">{number}</span>
           <span className={`writing-chapter-name${c.title ? "" : " muted"}`}>
             {c.title || (c.role === "part" ? "Untitled section" : numbers.has(c.id) ? `Chapter ${numbers.get(c.id)}` : (isPoem(page) && firstLine(c.body)) || KINDS[page.kind].label)}
@@ -759,8 +764,9 @@ function ProjectView({
         ) : (
           <section className="writing-main">
             {!listOpen && (
-              <button type="button" className="writing-list-toggle is-floating" aria-label="Show the list" title="Show the list" onClick={() => setListOpen(true)}>
-                <Icon name="panelLeft" size={17} />
+              <button type="button" className="writing-list-toggle is-floating" aria-label={narrow ? "Contents" : "Show the list"} title={narrow ? "Contents" : "Show the list"} onClick={() => setListOpen(true)}>
+                <Icon name={narrow ? "chevronLeft" : "panelLeft"} size={17} />
+                {narrow && <span>Contents</span>}
               </button>
             )}
             {chapter && current && isMade(current) ? (
