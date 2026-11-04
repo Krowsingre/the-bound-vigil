@@ -629,8 +629,30 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .writing-chapter-list {
-    max-height: 200px;
+  /* One at a time on a phone: the contents, or the page picked from them. */
+  .writing-project:not(.is-list-closed) .writing-main,
+  .writing-project:not(.is-list-closed) .writing-body > .book-preview {
+    display: none;
+  }
+
+  .writing-chapters {
+    overflow: auto;
+  }
+
+  .writing-list-toggle.is-floating {
+    position: static;
+    display: inline-flex;
+    gap: 2px;
+    width: auto;
+    height: 32px;
+    margin-bottom: 8px;
+    padding: 0 8px 0 2px;
+    color: var(--text);
+    font-size: 15px;
+  }
+
+  .is-list-closed .writing-toolbar {
+    padding-left: 10px;
   }
 
   .writing-sheet {
