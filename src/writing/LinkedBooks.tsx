@@ -50,6 +50,7 @@ export function LinkedBookView({
   onOpen,
   onOpenDraft,
   onBack,
+  refresh,
 }: {
   shelf: Extract<Shelf, { kind: "linked" }>;
   cover: (p: WritingProject) => string | null;
@@ -58,6 +59,8 @@ export function LinkedBookView({
   /** Opens a locked draft to read, like a book in the Archive. */
   onOpenDraft: (bookId: string) => void;
   onBack: () => void;
+  /** Changes whenever something may have added or removed drafts, so they're listed again. */
+  refresh: number;
 }) {
   const latest = latestOf(shelf);
   const [drafts, setDrafts] = useState<Record<string, WritingDraft[] | "error">>({});
@@ -71,7 +74,7 @@ export function LinkedBookView({
       );
     }
     return () => void (live = false);
-  }, [ids]);
+  }, [ids, refresh]);
 
   return (
     <section className="scribe-linked" aria-labelledby="scribe-linked-title">

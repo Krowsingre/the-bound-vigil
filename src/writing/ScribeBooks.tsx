@@ -204,6 +204,8 @@ export function ScribeBooks({
   const [dialog, setDialog] = useState<Dialog | null>(null);
   // The linked book whose editions and drafts are showing, by its edition group.
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  // Bumped after a change from a book's menu (like linking a draft), so the open linked book lists its drafts again.
+  const [changes, setChanges] = useState(0);
   const change = (next: Partial<typeof prefs>) =>
     setPrefs((p) => {
       const v = { ...p, ...next };
@@ -308,7 +310,7 @@ export function ScribeBooks({
   else if (projects.state === "loading") books = <div className="library-loading" aria-busy="true" aria-label="Loading your writing" />;
   else if (openShelf)
     books = (
-      <LinkedBookView shelf={openShelf} cover={coverOf} menuFor={menuFor} onOpen={onOpen} onOpenDraft={onOpenBook} onBack={() => setOpenGroup(null)} />
+      <LinkedBookView shelf={openShelf} cover={coverOf} menuFor={menuFor} onOpen={onOpen} onOpenDraft={onOpenBook} onBack={() => setOpenGroup(null)} refresh={changes} />
     );
   else if (shelves.length === 0)
     books = (
@@ -451,6 +453,7 @@ export function ScribeBooks({
           onCancel={() => setDialog(null)}
           onDone={(message) => {
             setDialog(null);
+            setChanges((n) => n + 1);
             onChanged();
             toast(message);
           }}
