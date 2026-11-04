@@ -630,8 +630,8 @@
   }
 
   /* One at a time on a phone: the contents, or the page picked from them. */
-  .writing-project:not(.is-list-closed):not(.has-preview) .writing-main,
-  .has-preview .writing-chapters {
+  .writing-project:not(.is-list-closed) .writing-main,
+  .writing-project:not(.is-list-closed) .writing-body > .book-preview {
     display: none;
   }
 

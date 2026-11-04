@@ -694,7 +694,7 @@ function ProjectView({
           </span>
         </div>
         <div className="writing-head-actions">
-          <button type="button" className={`btn btn-quiet${side === "preview" ? " is-on" : ""}`} aria-pressed={side === "preview"} onClick={() => void flushEditor.current?.().finally(() => setSide((s) => (s === "preview" ? null : "preview")))}>
+          <button type="button" className={`btn btn-quiet${side === "preview" ? " is-on" : ""}`} aria-pressed={side === "preview"} onClick={() => void flushEditor.current?.().finally(() => (setSide((s) => (s === "preview" ? null : "preview")), narrow && setListOpen(false)))}>
             <Icon name="bookOpen" size={16} /> Preview
           </button>
           <button type="button" className={`btn btn-quiet${side === "quotes" ? " is-on" : ""}`} aria-pressed={side === "quotes"} onClick={() => setSide((s) => (s === "quotes" ? null : "quotes"))}>
