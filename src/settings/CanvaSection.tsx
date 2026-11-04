@@ -1,9 +1,9 @@
 // Preferences › Scribe › Canva: connect a Canva account to design covers,
 // pictures and whole pages there (a Scribe Publisher feature, on computers). In Preferences › Scribe.
 
-import { useEffect, useState } from "react";
 import { api, isApp, isIOS, openExternal } from "../api";
-import type { CanvaStatus } from "../api/types";
+import { useState } from "react";
+import { useCanvaStatus } from "../writing/CanvaLink";
 import { useToast } from "../components/Toast";
 import { usePublisher } from "../license/Publisher";
 import { Row, Section } from "./controls";
@@ -14,12 +14,9 @@ export const canvaHere = !isIOS && !(typeof navigator !== "undefined" && /Androi
 export function CanvaSection() {
   const toast = useToast();
   const publisher = usePublisher();
-  const [status, setStatus] = useState<CanvaStatus | null>(null);
+  // Shared with the book's Canva buttons, so connecting here shows them there straight away.
+  const [status, setStatus] = useCanvaStatus();
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    api.canvaStatus().then(setStatus, () => setStatus(null));
-  }, []);
 
   if (!canvaHere) return null;
 

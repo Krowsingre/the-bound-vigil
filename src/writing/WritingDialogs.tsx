@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, isApp, isWeb, isWindows } from "../api";
 import type { CanvaDesign, WritingChapter, WritingDetails, WritingDraft, WritingProject } from "../api/types";
 import { canvaHere } from "../settings/CanvaSection";
-import { CanvaLink, keepCanvaDesign, keptCanvaDesign, useCanvaStatus } from "./CanvaLink";
+import { CanvaLink, EXPORT_CHANGED, keepCanvaDesign, keptCanvaDesign, useCanvaStatus } from "./CanvaLink";
 import { wordsStamp } from "./canvaDesigns";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
@@ -420,6 +420,15 @@ export function ExportDialog({
   onClose: () => void;
 }) {
   const [settings, setSettings] = useState(() => readExport(project.export));
+  // A Canva design kept while this is open (the printed pages) joins these settings, so the next change doesn't drop it.
+  useEffect(() => {
+    const changed = (e: Event) => {
+      const { projectId, json } = (e as CustomEvent<{ projectId: string; json: string }>).detail;
+      if (projectId === project.id) setSettings((s) => ({ ...s, canva: readExport(json).canva }));
+    };
+    window.addEventListener(EXPORT_CHANGED, changed);
+    return () => window.removeEventListener(EXPORT_CHANGED, changed);
+  }, [project.id]);
   const [format, setFormat] = useState<ExportFormat>(() => {
     try {
       const saved = localStorage.getItem("tbv.writing.exportFormat");
@@ -898,6 +907,18 @@ function CanvaPages({
     })().catch(() => undefined);
     return () => void (live = false);
   }, [on, project.id]);
+
+  // Closing the file picker without choosing fires "cancel", not "change".
+  useEffect(() => {
+    const input = picking.current;
+    if (!input) return;
+    const cancelled = () => {
+      waiting.current?.(null);
+      waiting.current = null;
+    };
+    input.addEventListener("cancel", cancelled);
+    return () => input.removeEventListener("cancel", cancelled);
+  }, []);
 
   const choosePdf = () =>
     new Promise<File | null>((resolve) => {

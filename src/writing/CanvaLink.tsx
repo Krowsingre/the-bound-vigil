@@ -17,10 +17,20 @@ import { readExport } from "./epub";
 export const CANVA_URL = "https://www.canva.com/";
 
 let known: Promise<CanvaStatus> | null = null;
+const listeners = new Set<(s: CanvaStatus) => void>();
 /** Whether Canva is connected, asked once and shared. */
 export function canvaStatus(fresh = false): Promise<CanvaStatus> {
-  if (!known || fresh) known = api.canvaStatus().catch(() => ({ available: false, name: null }));
+  if (!known || fresh) {
+    known = api.canvaStatus().catch(() => ({ available: false, name: null }));
+    void known.then((s) => listeners.forEach((l) => l(s)));
+  }
   return known;
+}
+
+/** Connected or disconnected somewhere: everything showing Canva changes with it. */
+export function setCanvaStatus(s: CanvaStatus) {
+  known = Promise.resolve(s);
+  listeners.forEach((l) => l(s));
 }
 
 export function useCanvaStatus(): [CanvaStatus | null, (s: CanvaStatus) => void] {
@@ -28,15 +38,14 @@ export function useCanvaStatus(): [CanvaStatus | null, (s: CanvaStatus) => void]
   useEffect(() => {
     let live = true;
     void canvaStatus().then((s) => live && setStatus(s));
-    return () => void (live = false);
+    const heard = (s: CanvaStatus) => live && setStatus(s);
+    listeners.add(heard);
+    return () => {
+      live = false;
+      listeners.delete(heard);
+    };
   }, []);
-  return [
-    status,
-    (s) => {
-      known = Promise.resolve(s);
-      setStatus(s);
-    },
-  ];
+  return [status, setCanvaStatus];
 }
 
 /** The design kept with a book for `what`, read fresh so another window's change isn't lost. */
