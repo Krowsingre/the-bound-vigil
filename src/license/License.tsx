@@ -20,6 +20,7 @@ const SUBSCRIPTIONS: Record<LicenseView["shop"], string> = {
   apple: "https://apps.apple.com/account/subscriptions",
   microsoft: "https://account.microsoft.com/services",
   none: "https://account.microsoft.com/services",
+  android: "",
 };
 /** The trial's last days get a reminder when TBV opens. */
 const REMIND_DAYS = 3;
@@ -33,12 +34,19 @@ interface LicenseContext {
   restore(): Promise<void>;
   /** False when the code is wrong. */
   unlock(code: string): Promise<boolean>;
+  /** Android: false when the key is for another phone. */
+  activate(key: string): Promise<boolean>;
 }
 
-const Context = createContext<LicenseContext>({ license: null, busy: false, refresh: () => undefined, buy: async () => undefined, restore: async () => undefined, unlock: async () => false });
+const Context = createContext<LicenseContext>({ license: null, busy: false, refresh: () => undefined, buy: async () => undefined, restore: async () => undefined, unlock: async () => false, activate: async () => false });
 
 export function useLicense() {
   return useContext(Context);
+}
+
+/** Whether plans can be bought in this copy (a store copy; not a test build or Android's test version). */
+export function canBuyIn(license: LicenseView): boolean {
+  return license.shop === "microsoft" || license.shop === "apple";
 }
 
 export function shopName(shop: LicenseView["shop"]): string {
@@ -63,7 +71,7 @@ export function leavesSubscriptionRunning(license: LicenseView | null, plan: Lic
 
 /** A subscription is running: a plan of its own, or Publisher monthly or yearly on top of TBV for life. */
 export function onSubscription(license: LicenseView): boolean {
-  if (license.state !== "owned" || license.shop === "none") return false;
+  if (license.state !== "owned" || !canBuyIn(license)) return false;
   return license.plan === "monthly" || license.plan === "yearly" || (license.plan === "lifetime" && !!license.publisher && !license.publisherForLife);
 }
 
@@ -241,8 +249,24 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     [toast],
   );
 
+  const activate = useCallback(
+    async (key: string) => {
+      try {
+        const view = await api.activateLicense(key);
+        if (!view) return false;
+        setLicense(view);
+        toast("This phone is activated.");
+        return true;
+      } catch (e) {
+        toast(String(e));
+        return false;
+      }
+    },
+    [toast],
+  );
+
   return (
-    <Context.Provider value={{ license, busy, refresh, buy, restore, unlock }}>
+    <Context.Provider value={{ license, busy, refresh, buy, restore, unlock, activate }}>
       {license?.state === "expired" ? <LicenseGate /> : children}
       {asking && license && (
         <KeepsChargingWarning
@@ -269,7 +293,8 @@ function LicenseGate() {
     startupStep("sanctum");
   }, []);
   if (!license) return null;
-  const canBuy = license.shop !== "none";
+  if (license.shop === "android") return <ActivateGate license={license} />;
+  const canBuy = canBuyIn(license);
   return (
     <div className="web-connect license-gate">
       <div className="web-connect-card">
@@ -317,6 +342,57 @@ function LicenseGate() {
   );
 }
 
+/** Android's test version opens one phone at a time: it shows this phone's
+ * code, and takes the key made for it by the "Activate an Android phone"
+ * workflow in TBV's GitHub. */
+function ActivateGate({ license }: { license: LicenseView }) {
+  const toast = useToast();
+  const { activate } = useLicense();
+  const [key, setKey] = useState("");
+  const [wrong, setWrong] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const code = license.deviceCode ?? "";
+  return (
+    <div className="web-connect license-gate">
+      <div className="web-connect-card">
+        <span className="web-connect-emblem" aria-hidden dangerouslySetInnerHTML={{ __html: emblem }} />
+        <h1>Activate this phone</h1>
+        <p className="muted">This is the Android test version of The Bound Vigil. Each phone needs its own key, made for the code below.</p>
+        <div className="activate-code">
+          <span className="muted">This phone's code</span>
+          <strong>{code || "…"}</strong>
+          <button
+            type="button"
+            className="btn btn-quiet btn-small"
+            disabled={!code}
+            onClick={() => void navigator.clipboard?.writeText(code).then(() => toast("Code copied."), () => toast(code))}
+          >
+            Copy
+          </button>
+        </div>
+        <form
+          className="owner-code"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!key.trim()) return;
+            setBusy(true);
+            void activate(key).then((ok) => (setWrong(!ok), setBusy(false)));
+          }}
+        >
+          <label className="field">
+            <span>Activation key</span>
+            <textarea value={key} rows={3} autoComplete="off" spellCheck={false} placeholder="Paste the key here" onChange={(e) => (setKey(e.target.value), setWrong(false))} />
+          </label>
+          {wrong && <p className="form-error">That key is for another phone, or it isn't whole. Check the code and paste the key again.</p>}
+          <button type="submit" className="btn btn-primary" disabled={!key.trim() || busy}>
+            {busy ? "Activating…" : "Activate"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /** A box for the owner's code, behind a link so it stays out of the way. */
 export function OwnerCode() {
   const { license, unlock } = useLicense();
@@ -325,7 +401,7 @@ export function OwnerCode() {
   const [wrong, setWrong] = useState(false);
   // Apple allows unlocking only through In-App Purchase (App Review 3.1.1).
   // A device already unlocked by code stays unlocked.
-  if (license?.shop === "apple") return null;
+  if (license?.shop === "apple" || license?.shop === "android") return null;
   if (!open)
     return (
       <button type="button" className="link-btn owner-code-link" onClick={() => setOpen(true)}>
@@ -380,7 +456,7 @@ export function PlanButtons() {
 export function PurchaseLinks() {
   const { license, busy, refresh } = useLicense();
   if (!license) return null;
-  const missing = license.shop !== "none" && !license.price && !license.yearlyPrice;
+  const missing = canBuyIn(license) && !license.price && !license.yearlyPrice;
   return (
     <p className="license-terms muted">
       {missing && (
@@ -422,6 +498,7 @@ function manageWords(shop: LicenseView["shop"]) {
 /** Exactly which TBV Standard plan someone owns, for Your plan. */
 export function standardWords(license: LicenseView): string {
   const shop = shopName(license.shop);
+  if (license.shop === "android") return "This phone is activated for testing. Everything is open, Publisher too.";
   if (license.publisherForLife && license.plan === "lifetime") return `Included with TBV Publisher Lifetime, yours for good. Thank you.`;
   if (license.plan === "lifetime") return `TBV Standard Lifetime, bought in ${shop}. It's yours for good. Thank you.`;
   if (license.plan === "monthly" || license.plan === "yearly") {
@@ -435,6 +512,7 @@ export function standardWords(license: LicenseView): string {
 
 /** Exactly which TBV Publisher plan someone owns, for Your plan. */
 export function publisherWords(license: LicenseView): string {
+  if (license.shop === "android") return "Open on this activated phone.";
   if (license.publisherForLife) return "TBV Publisher Lifetime. It's yours for good. Thank you.";
   if (license.publisherPlan) {
     const [name, unit] = PERIOD[license.publisherPlan];

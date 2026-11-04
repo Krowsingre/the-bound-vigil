@@ -283,6 +283,12 @@ async fn license_unlock(app: tauri::AppHandle, state: State<'_, AppLibrary>, cod
     blocking(state, move |library| license::unlock(&app, library, &code)).await
 }
 
+/// Opens the Android test version with this phone's key; nothing back when it's another phone's.
+#[tauri::command]
+async fn license_activate(app: tauri::AppHandle, state: State<'_, AppLibrary>, key: String) -> CommandResult<Option<tbv_core::license::LicenseView>> {
+    blocking(state, move |library| license::activate(&app, library, &key)).await
+}
+
 /// Which of Dropbox, Google Drive and OneDrive this copy of TBV can sign in to.
 #[tauri::command]
 fn cloud_services() -> Vec<tbv_core::sync::cloud::Service> {
@@ -1920,6 +1926,30 @@ async fn ios_pick_photo() -> CommandResult<Option<String>> {
     Err("Choosing from Photos only works on iPhone and iPad.".into())
 }
 
+/// A file chosen in the page's own picker (on Android), copied into TBV's
+/// folder so it can be imported or read again. Gives where it is. `keep`
+/// files (a key file) stay; others go with the cache.
+#[tauri::command]
+async fn keep_picked_file(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> CommandResult<String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("expected the file".into());
+    };
+    let header = |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok()).map(writing::percent_decode);
+    let name = header("file-name").unwrap_or_default();
+    let name = std::path::Path::new(&name).file_name().and_then(|n| n.to_str()).filter(|n| !n.starts_with('.')).unwrap_or("Picked file").to_string();
+    let base = if header("keep").as_deref() == Some("1") { app.path().app_data_dir().map(|d| d.join("Picked files")) } else { app.path().app_cache_dir().map(|d| d.join("Picked")) };
+    let dir = base.map_err(|e| e.to_string())?.join(uuid::Uuid::new_v4().to_string());
+    let bytes = bytes.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let path = dir.join(name);
+        std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+        Ok(path.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // iOS wants background tasks booked before the app has opened.
@@ -2033,6 +2063,7 @@ pub fn run() {
             folder_access::keep_folder_access,
             ios_pick_files,
             ios_pick_photo,
+            keep_picked_file,
             browser::browser_show,
             browser::browser_place,
             browser::browser_hide,
@@ -2191,6 +2222,7 @@ pub fn run() {
             license_buy,
             license_restore,
             license_unlock,
+            license_activate,
             hardcover_sign_out,
             canva_status,
             canva_sign_in,

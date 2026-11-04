@@ -4,7 +4,7 @@
 // the main window stays hidden until now, and the card breaks up over it;
 // on the iPhone the splash covers the page and breaks up to show it.
 
-import { api, isApp, isIOS } from "../api";
+import { api, isAndroid, isApp, isIOS } from "../api";
 import { disintegrate } from "./disintegrate";
 import { setSplash, showSplash } from "./splashView";
 
@@ -19,7 +19,7 @@ const AT_LEAST = 1_100;
 /** How long covers on the first screen are waited for. */
 const COVERS_WAIT = 2_500;
 
-const onComputer = isApp && !isIOS;
+const onComputer = isApp && !isIOS && !isAndroid;
 const openedAt = performance.now();
 const done = new Set<StartupStep>();
 let holds = 0;
@@ -51,7 +51,7 @@ if (onComputer) {
 }
 
 /** Over the page on the iPhone (and in the preview), nowhere on the web. */
-const overlay = !onComputer && (isIOS || api.kind === "preview") ? showSplash() : null;
+const overlay = !onComputer && (isIOS || isAndroid || api.kind === "preview") ? showSplash() : null;
 if (!onComputer && !overlay) document.documentElement.classList.remove("is-starting");
 const giveUp = setTimeout(() => {
   overdue = true;

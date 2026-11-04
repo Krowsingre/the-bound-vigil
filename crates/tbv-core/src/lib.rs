@@ -37,6 +37,7 @@ pub mod notes;
 pub mod oauth;
 pub mod opds;
 pub mod profile;
+pub mod activation;
 pub mod apple_attest;
 pub mod provenance;
 pub mod reader;

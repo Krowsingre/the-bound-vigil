@@ -16,6 +16,7 @@ pub struct UpdateInfo {
     pub notes: Option<String>,
 }
 
+#[cfg(desktop)]
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Progress {
@@ -25,6 +26,7 @@ struct Progress {
 
 /// A copy from the Microsoft Store is updated by the Store.
 /// The Mac app comes from the Mac App Store, which updates it.
+#[cfg(desktop)]
 const STORE_BUILD: bool = cfg!(target_os = "macos") || option_env!("TBV_STORE_BUILD").is_some();
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]

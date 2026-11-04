@@ -56,6 +56,8 @@ fn code_matches(code: &str) -> bool {
 pub enum Shop {
     Microsoft,
     Apple,
+    /// The Android test version: opened one phone at a time with an activation key.
+    Android,
     /// A copy from outside a store (a test build): it can't be bought in.
     None,
 }
@@ -108,11 +110,13 @@ pub struct LicenseView {
     pub publisher_monthly_price: Option<String>,
     /// Publisher for someone who already owns TBV for life: the difference.
     pub upgrade_price: Option<String>,
+    /// On Android, this phone's code for its activation key.
+    pub device_code: Option<String>,
 }
 
 /// How long the trial runs where the copy is bought.
 pub fn trial_days(shop: Shop) -> i64 {
-    if shop == Shop::Apple {
+    if shop == Shop::Apple || shop == Shop::Android {
         IOS_TRIAL_DAYS
     } else {
         TRIAL_DAYS
@@ -256,6 +260,7 @@ impl Library {
             publisher_yearly_price: answer.and_then(|a| a.publisher_yearly_price.clone()),
             publisher_monthly_price: answer.and_then(|a| a.publisher_monthly_price.clone()),
             upgrade_price: answer.and_then(|a| a.upgrade_price.clone()),
+            device_code: None,
         })
     }
 }

@@ -330,6 +330,8 @@ export interface Api {
   restoreLicense(): Promise<LicenseView>;
   /** Unlocks this device with the owner's code. Null if the code is wrong. */
   unlockLicense(code: string): Promise<LicenseView | null>;
+  /** Opens the Android test version with this phone's activation key; null when it's another phone's. */
+  activateLicense(key: string): Promise<LicenseView | null>;
   /** Where a cloud app usually keeps its folder on this computer, if it's there. */
   suggestSyncFolder(service: string): Promise<string | null>;
   /** True once, when TBV was installed again and picked up where it was. */
@@ -664,12 +666,34 @@ export const isIOS =
   isApp &&
   typeof navigator !== "undefined" &&
   (/iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
+/** The Android test version: the phone layout, without iCloud, the browser or saving files to the phone. */
+export const isAndroid = isApp && typeof navigator !== "undefined" && /Android/.test(navigator.userAgent);
 /** The Mac app: the computer's layout, with the Mac's own window buttons. */
-export const isMac = isApp && !isIOS && typeof navigator !== "undefined" && /Macintosh/.test(navigator.userAgent);
+export const isMac = isApp && !isIOS && !isAndroid && typeof navigator !== "undefined" && /Macintosh/.test(navigator.userAgent);
 /** The web version, for phones: built with `npm run build:web`, syncing through Supabase. */
 /** The Windows app, where a PDF can be saved straight to a file. */
-export const isWindows = isApp && !isIOS && typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
+export const isWindows = isApp && !isIOS && !isAndroid && typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
 export const isWeb = !isApp && import.meta.env.VITE_TBV_WEB === "1";
+
+const NOT_ON_ANDROID = "Saving to a file on the phone isn't in the Android test version yet.";
+
+/** Files chosen in the web view's own picker (empty if cancelled). */
+function pickInPage(multiple: boolean): Promise<File[]> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = multiple;
+    input.style.display = "none";
+    const done = (files: File[]) => {
+      input.remove();
+      resolve(files);
+    };
+    input.addEventListener("change", () => done(Array.from(input.files ?? [])), { once: true });
+    input.addEventListener("cancel", () => done([]), { once: true });
+    document.body.appendChild(input);
+    input.click();
+  });
+}
 
 const BOOK_EXTENSIONS = ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "cbz", "cbr", "txt", "docx", "doc"];
 
@@ -725,13 +749,37 @@ function appApi(): Api {
   // iCloud files may not be on the phone yet, so TBV's own picker copies
   // them in first.
   // `keep` is for a file read again later (a key file), not just imported.
+  // On Android the dialog answers with addresses the core can't open
+  // either, so the page's own picker hands the files over and TBV keeps them.
+  const pickOnAndroid = async (multiple: boolean, keep: boolean) => {
+    const files = await pickInPage(multiple);
+    const paths: string[] = [];
+    for (const file of files)
+      paths.push(
+        await (await core).invoke<string>("keep_picked_file", new Uint8Array(await file.arrayBuffer()), {
+          headers: { "file-name": encodeURIComponent(file.name), keep: keep ? "1" : "0" },
+        }),
+      );
+    return paths;
+  };
   const openFiles = async ({ keep, ...options }: { multiple: boolean; title: string; filters?: { name: string; extensions: string[] }[]; keep?: boolean }) =>
     isIOS
       ? (await (await core).invoke<string[]>("ios_pick_files", { keep: !!keep })).slice(0, options.multiple ? undefined : 1)
-      : asList(await (await dialog).open(options));
+      : isAndroid
+        ? pickOnAndroid(options.multiple, !!keep)
+        : asList(await (await dialog).open(options));
+  // Android's test version can't save to a file or open a folder on the phone yet.
+  const savePicker = async (options: Parameters<typeof import("@tauri-apps/plugin-dialog").save>[0]) => {
+    if (isAndroid) throw new Error(NOT_ON_ANDROID);
+    return (await dialog).save(options);
+  };
+  const folderPicker = async (options: Parameters<typeof import("@tauri-apps/plugin-dialog").open>[0]) => {
+    if (isAndroid) throw new Error("Choosing a folder isn't in the Android test version yet.");
+    return (await dialog).open(options);
+  };
   const today = () => new Date().toISOString().slice(0, 10);
   const saveTo = async (command: string, title: string, defaultPath: string, name: string, extensions: string[]) => {
-    const path = await (await dialog).save({ title, defaultPath, filters: [{ name, extensions }] });
+    const path = await savePicker({ title, defaultPath, filters: [{ name, extensions }] });
     if (!path) return false;
     await (await core).invoke(command, { path });
     return true;
@@ -800,7 +848,7 @@ function appApi(): Api {
       return path ? (await core).invoke<GoodreadsImport>("import_goodreads", { path }) : null;
     },
     exportGoodreads: async () => {
-      const path = await (await dialog).save({
+      const path = await savePicker({
         title: "Export for Goodreads",
         defaultPath: `TBV for Goodreads ${today()}.csv`,
         filters: [{ name: "Goodreads file", extensions: ["csv"] }],
@@ -937,7 +985,7 @@ function appApi(): Api {
     pickFolder: async () =>
       isIOS
         ? asList(await (await core).invoke<string | null>("ios_pick_folder"))
-        : keepAccess(asList(await (await dialog).open({ directory: true, multiple: false, title: "Import a folder of books" }))),
+        : keepAccess(asList(await folderPicker({ directory: true, multiple: false, title: "Import a folder of books" }))),
     coverUrl: (path) => (convert ? convert(path) : ""),
     openBook: async (bookId) => (await core).invoke<ReaderBook>("open_book", { bookId }),
     readBookFile: async (bookId) => {
@@ -1009,7 +1057,7 @@ function appApi(): Api {
     chooseFolder: async (title, start) => {
       // On iPhone a folder is chosen in Files, and TBV keeps permission to open it.
       if (isIOS) return (await core).invoke<string | null>("ios_pick_folder");
-      const picked = await (await dialog).open({ directory: true, multiple: false, title, defaultPath: start ?? undefined });
+      const picked = await folderPicker({ directory: true, multiple: false, title, defaultPath: start ?? undefined });
       if (typeof picked !== "string") return null;
       await keepAccess([picked]);
       return picked;
@@ -1025,6 +1073,7 @@ function appApi(): Api {
     buyLicense: async (plan) => (await core).invoke<LicenseView>("license_buy", { plan }),
     restoreLicense: async () => (await core).invoke<LicenseView>("license_restore"),
     unlockLicense: async (code) => (await core).invoke<LicenseView | null>("license_unlock", { code }),
+    activateLicense: async (key) => (await core).invoke<LicenseView | null>("license_activate", { key }),
     resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
     downloadBook: async (bookId, temporary) => (await core).invoke("download_book", { bookId, temporary: temporary ?? false }),
     bookLocations: async (bookId) => (await core).invoke<BookLocation[]>("book_locations", { bookId }),
@@ -1086,7 +1135,7 @@ function appApi(): Api {
     saveCopies: async (bookIds) => {
       const picked = isIOS
         ? await (await core).invoke<string | null>("ios_pick_folder")
-        : await (await dialog).open({ directory: true, multiple: false, title: "Save copies to this folder" });
+        : await folderPicker({ directory: true, multiple: false, title: "Save copies to this folder" });
       if (typeof picked !== "string") return null;
       const saved = await (await core).invoke<number>("save_copies", { bookIds, folder: picked });
       return { saved, folder: picked };
@@ -1235,13 +1284,13 @@ function appApi(): Api {
       return path ?? null;
     },
     pickEpubSavePath: async (fileName) =>
-      (await (await dialog).save({ title: "Save the EPUB", defaultPath: fileName, filters: [{ name: "EPUB", extensions: ["epub"] }] })) ?? null,
+      (await savePicker({ title: "Save the EPUB", defaultPath: fileName, filters: [{ name: "EPUB", extensions: ["epub"] }] })) ?? null,
     saveWritingEpub: async (bytes, fileName, path, addToLibrary) =>
       (await core).invoke("save_writing_epub", bytes, {
         headers: { path: encodeURIComponent(path ?? ""), add: addToLibrary ? "1" : "0", "file-name": encodeURIComponent(fileName) },
       }),
     pickExportPath: async (fileName, format) =>
-      (await (await dialog).save({
+      (await savePicker({
         title: format === "pdf" ? "Save the PDF" : format === "docx" ? "Save the Word file" : format === "tbv" ? "Save the Scribe book file" : "Save the text file",
         defaultPath: fileName,
         filters: [{ name: format === "pdf" ? "PDF" : format === "docx" ? "Word document" : format === "tbv" ? "Scribe book file" : "Text", extensions: [format] }],

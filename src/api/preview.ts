@@ -138,14 +138,16 @@ let imports: ImportItem[] = new URLSearchParams(location.search).has("imports")
 // `=welcome` is an iPhone copy not yet bought (no trial there);
 // `=lifetime` (or `=yearly`) an iPhone copy bought on that plan, for the
 // App Store review pictures of each Publisher purchase.
+// `=android` is the Android test version before its activation key is in.
 const licenseParam = new URLSearchParams(location.search).get("license");
 const lifetimeIPhone = licenseParam === "lifetime" || licenseParam === "yearly";
 let previewLicense: LicenseView = {
-  state: licenseParam === "expired" || licenseParam === "welcome" ? "expired" : licenseParam === "owned" || lifetimeIPhone ? "owned" : "trial",
+  state: licenseParam === "expired" || licenseParam === "welcome" || licenseParam === "android" ? "expired" : licenseParam === "owned" || lifetimeIPhone ? "owned" : "trial",
   daysLeft: licenseParam === "expired" || licenseParam === "welcome" || licenseParam === "owned" ? 0 : licenseParam === "ending" ? 2 : 21,
   trialEnds: Math.floor(Date.now() / 1000) + (licenseParam === "ending" ? 2 : 21) * 86_400,
-  trialDays: licenseParam === "welcome" ? 0 : 30,
-  shop: licenseParam === "welcome" || lifetimeIPhone ? "apple" : "microsoft",
+  trialDays: licenseParam === "welcome" || licenseParam === "android" ? 0 : 30,
+  shop: licenseParam === "android" ? "android" : licenseParam === "welcome" || lifetimeIPhone ? "apple" : "microsoft",
+  ...(licenseParam === "android" ? { deviceCode: "K7QFM-2XHRA" } : {}),
   ...(lifetimeIPhone ? { plan: licenseParam as "lifetime" | "yearly" } : {}),
   price: "$59.99",
   yearlyPrice: "$19.99",
@@ -1003,6 +1005,9 @@ export function previewApi(): Api {
         publisherPlan: plan === "publisherMonthly" ? "monthly" : plan === "publisherYearly" ? "yearly" : previewLicense.publisherPlan,
       }),
     restoreLicense: async () => previewLicense,
+    // Any key of the right length opens the preview.
+    activateLicense: async (key) =>
+      key.replace(/\s/g, "").length >= 80 ? (previewLicense = { ...previewLicense, state: "owned", daysLeft: 0, plan: "lifetime", publisher: true, publisherForLife: true }) : null,
     unlockLicense: async (code) => (code.trim() ? (previewLicense = { ...previewLicense, state: "owned", daysLeft: 0 }) : null),
     suggestSyncFolder: async (service) =>
       ({ icloud: "C:\\Users\\you\\iCloudDrive", dropbox: "C:\\Users\\you\\Dropbox", onedrive: "C:\\Users\\you\\OneDrive", gdrive: "G:\\My Drive" })[service] ?? null,

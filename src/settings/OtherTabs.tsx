@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { api, isApp, isIOS, openExternal } from "../api";
+import { api, isAndroid, isApp, isIOS, openExternal } from "../api";
 import type { DuplicateGroup, GoodreadsImport, LibraryInfo, SortOrder, TagCount } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { DuplicatesDialog } from "./DuplicatesDialog";
-import { ManageSubscription, OwnerCode, PlanButtons, PRIVACY_POLICY, publisherWords, standardWords, TERMS, useLicense } from "../license/License";
+import { canBuyIn, ManageSubscription, OwnerCode, PlanButtons, PRIVACY_POLICY, publisherWords, standardWords, TERMS, useLicense } from "../license/License";
 import { PublisherPlans, PublisherTools } from "../license/Publisher";
 import { canSelfUpdate, useUpdater, type UpdateState } from "./updates";
 import { SORTS, type Layout } from "../library/libraryView";
@@ -73,7 +73,7 @@ interface LineUpSettings {
 }
 
 /** On a phone, lining up is off until it's turned on and the warning agreed to. */
-const LINE_UP_DEFAULTS: LineUpSettings = { auto: !isIOS, model: "standard", effort: "gentle", background: true, agreed: false };
+const LINE_UP_DEFAULTS: LineUpSettings = { auto: !isIOS && !isAndroid, model: "standard", effort: "gentle", background: true, agreed: false };
 /** Said before lining up is turned on on a phone, and under the switch. */
 export const PHONE_LINE_UP_WARNING =
   "Confluence works the phone's processor hard for a long time. It can drain the battery, even when the phone is plugged in, and it may make the phone overheat. TBV pauses when the phone gets too warm and carries on once it has cooled down. A computer with TBV open converges pairs for your phone as well.";
@@ -101,6 +101,12 @@ function ReadAlongSection() {
     api.speechModels().then(setModels, () => setModels([]));
   }, []);
   if (!set) return null;
+  if (isAndroid)
+    return (
+      <Section id="read-along" title="Read-along">
+        <p className="settings-row-hint">Confluence doesn't run in the Android test version yet. Pairs converged on your computer or iPhone sync here, and the others follow along by chapter.</p>
+      </Section>
+    );
   const change = (patch: Partial<LineUpSettings>) => {
     const next = { ...set, ...patch };
     setSet(next);
@@ -903,7 +909,7 @@ function YourCopy() {
   if (!license) return null;
   const ends = new Date(license.trialEnds * 1000).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
   // TBV for life with Publisher on a subscription on top.
-  const publisherOnTop = license.state === "owned" && license.plan === "lifetime" && !!license.publisher && !license.publisherForLife && license.shop !== "none";
+  const publisherOnTop = license.state === "owned" && license.plan === "lifetime" && !!license.publisher && !license.publisherForLife && canBuyIn(license);
   const words =
     license.state === "owned"
       ? standardWords(license)
@@ -912,7 +918,7 @@ function YourCopy() {
         : "Choose a plan to use The Bound Vigil.";
   return (
     <Section id="licence" title="TBV Standard" lede={words}>
-      {license.state !== "owned" && license.shop !== "none" && (
+      {license.state !== "owned" && canBuyIn(license) && (
         <div className="settings-actions">
           <PlanButtons />
           <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void restore()}>
@@ -920,10 +926,10 @@ function YourCopy() {
           </button>
         </div>
       )}
-      {license.state !== "owned" && license.shop === "none" && (
+      {license.state !== "owned" && !canBuyIn(license) && (
         <p className="settings-row-hint">This copy didn't come from a store, so it can't be bought in. The Bound Vigil will be sold in the Microsoft Store and the App Store.</p>
       )}
-      {license.state === "owned" && license.shop !== "none" && (
+      {license.state === "owned" && canBuyIn(license) && (
         <div className="settings-actions">
           {(license.plan === "monthly" || license.plan === "yearly") && (
             <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void buy(license.publisher ? "publisherLifetime" : "lifetime")}>
@@ -1034,7 +1040,7 @@ function PublisherPlan() {
   if (!license) return null;
   // TBV for life with Publisher on a subscription on top: keeping Publisher for good is
   // the upgrade for those who bought TBV for life themselves, otherwise full price.
-  const onTop = license.state === "owned" && license.plan === "lifetime" && !!license.publisher && !license.publisherForLife && license.shop !== "none";
+  const onTop = license.state === "owned" && license.plan === "lifetime" && !!license.publisher && !license.publisherForLife && canBuyIn(license);
   const keep = license.lifetimeShared ? "publisherLifetime" : "publisherUpgrade";
   const keepPrice = keep === "publisherUpgrade" ? license.upgradePrice : license.publisherPrice;
   const lede = license.publisher
@@ -1045,7 +1051,7 @@ function PublisherPlan() {
   return (
     <Section id="publisher" title="TBV Publisher" lede={lede}>
       <PublisherTools />
-      {!license.publisher && license.shop !== "none" && <PublisherPlans license={license} />}
+      {!license.publisher && canBuyIn(license) && <PublisherPlans license={license} />}
       {onTop && (
         <div className="settings-actions">
           <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void buy(keep)}>

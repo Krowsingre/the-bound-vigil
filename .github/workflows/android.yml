@@ -1,0 +1,129 @@
+name: Android app
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Android test version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # GitHub's machines come with the Android tools; Tauri wants to know where the NDK is.
+      - name: Point to the Android NDK
+        run: echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+      # The Android project is made fresh each time from tauri.conf.json, so
+      # nothing generated is kept in the repo (as with the iPhone app).
+      - name: Make the Android project
+        run: npx tauri android init --ci
+      - name: Make the app icons
+        run: npx tauri icon src-tauri/icons/ios-icon-1024.png
+      - name: Sign it and turn off backups
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: python3 scripts/integrate_android.py
+      # For phones (arm64) and for the emulator below (x86_64), in one install file.
+      - name: Build the app
+        env:
+          TBV_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: npx tauri android build --apk --target aarch64 --target x86_64
+      - name: Name the install file
+        run: |
+          set -euo pipefail
+          apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' | head -1)
+          test -n "$apk" || { echo "::error::No APK was made."; exit 1; }
+          version=$(node -p "require('./package.json').version")
+          cp "$apk" "The-Bound-Vigil-$version-Android-test.apk"
+          echo "APK=The-Bound-Vigil-$version-Android-test.apk" >> "$GITHUB_ENV"
+          ls -l "The-Bound-Vigil-$version-Android-test.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: the-bound-vigil-android
+          path: ${{ env.APK }}
+          if-no-files-found: error
+      # On main, the newest test version goes to the "android-test" release,
+      # so a phone can download it straight from
+      # https://github.com/Krowsingre/the-bound-vigil/releases/tag/android-test
+      # (it opens only with that phone's activation key).
+      - name: Put it where phones can download it
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view android-test >/dev/null 2>&1 || gh release create android-test --prerelease --latest=false --title "Android test version" --notes "The newest Android test version of The Bound Vigil. Each phone needs its own activation key."
+          gh release upload android-test "$APK" --clobber
+          # Only the newest one stays.
+          for old in $(gh release view android-test --json assets --jq '.assets[].name'); do
+            [ "$old" = "$APK" ] || gh release delete-asset android-test "$old" -y
+          done
+
+  emulator:
+    name: Android emulator check
+    needs: apk
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: the-bound-vigil-android
+          path: apk
+      - name: Let the emulator use the processor directly
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Open TBV on an emulated phone
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          ACTIVATION_KEY_PEM: ${{ secrets.ANDROID_ACTIVATION_KEY }}
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: bash scripts/android_emulator_check.sh "$(ls apk/*.apk | head -1)" emulator-pictures
+      # Where Claude can look at them: GitHub's artifacts aren't reachable from its sessions.
+      - name: Keep the pictures
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          [ -d emulator-pictures ] || exit 0
+          tag=android-check
+          gh release view $tag >/dev/null 2>&1 || gh release create $tag --prerelease --latest=false --title "Android emulator pictures" --notes "Pictures from the newest Android emulator check."
+          cd emulator-pictures
+          for f in *.png logcat.txt; do [ -e "$f" ] && gh release upload $tag "$f" --clobber; done
+          true

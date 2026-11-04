@@ -1,0 +1,41 @@
+name: Activate an Android phone
+
+# Makes the activation key for one phone running TBV's Android test version.
+# On GitHub: Actions › Activate an Android phone › Run workflow, type the code
+# the phone shows, then open the finished run and copy the key from its summary.
+# A key opens only the phone whose code it was made for.
+
+on:
+  workflow_dispatch:
+    inputs:
+      code:
+        description: "The code the phone shows, like K7QFM-2XHRA"
+        required: true
+        type: string
+
+jobs:
+  key:
+    name: Make the key
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Make the key
+        env:
+          CODE: ${{ inputs.code }}
+          ACTIVATION_KEY_PEM: ${{ secrets.ANDROID_ACTIVATION_KEY }}
+        run: |
+          set -euo pipefail
+          key=$(node scripts/android_activation_key.mjs "$CODE")
+          {
+            echo "## Activation key"
+            echo
+            echo "For the phone showing **$(echo "$CODE" | tr -cd 'A-Za-z0-9-' | tr 'a-z' 'A-Z')**. Copy it and paste it into TBV on that phone."
+            echo
+            echo '```'
+            echo "$key"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "The key is in this run's summary."

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, isApp, isHome, isWeb } from "./api";
+import { api, isAndroid, isApp, isHome, isWeb } from "./api";
 import type { CollectionRef, HomeViewModel, ImportsView, Profile, SmartKind, SyncStatus } from "./api/types";
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { ContextMenuHost } from "./components/ContextMenu";
@@ -375,7 +375,7 @@ export function App() {
       if (e.key === "\\") toggleSidebar();
       else if (e.key.toLowerCase() === "o" && !e.shiftKey) importBooks();
       else if (e.key.toLowerCase() === "f" || e.key.toLowerCase() === "k") search.current?.focus();
-      else if (n >= 1 && n <= navFor({ web: isWeb, home: isHome }).length) navigate(navFor({ web: isWeb, home: isHome })[n - 1].route);
+      else if (n >= 1 && n <= navFor({ web: isWeb, home: isHome, android: isAndroid }).length) navigate(navFor({ web: isWeb, home: isHome, android: isAndroid })[n - 1].route);
       else return;
       e.preventDefault();
     };
