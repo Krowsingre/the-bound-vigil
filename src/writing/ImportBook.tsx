@@ -8,6 +8,9 @@
 //    original file kept beside it. The report goes into the book's notes.
 // A Scribe book file (.tbv) is confirmed the same way, then opened exactly
 // as it was saved, with nothing rebuilt or guessed (see tbvFile.ts).
+// Opened from a book's Drafts, the file comes in as another draft of that
+// book instead: kept as a locked draft to read, or made the version being
+// written (the words there now are kept as a draft first).
 
 import { useRef, useState } from "react";
 import { api } from "../api";
@@ -15,13 +18,15 @@ import { Icon } from "../components/Icon";
 import { formatBytes } from "../settings/controls";
 import { ACK_CONFIRMATION, ACK_PARAGRAPHS, ACK_TITLE, POLICY_VERSION, sha256Hex, WORDING } from "./acknowledgment";
 import { AuthorLabel } from "./AuthorInfo";
-import { readExport } from "./epub";
+import { exportProblems, readExport } from "./epub";
 import { pictureAddress } from "./extensions";
 import { bestSplit, readDocumentBytes, type ImportedDocument, type SplitAt } from "./importDoc";
 import { buildManuscript, inspect, MANUSCRIPT_ACCEPT, MARK_HELP, type Inspection, type Manuscript, type ManuscriptSection } from "./manuscript";
 import { ADD_MENUS, KINDS, writePage, readPage, type Area, type PageKind } from "./pages";
 import { bookFromTbv } from "./openTbv";
 import { readTbv, type TbvBook } from "./tbvFile";
+import type { WritingProject } from "../api/types";
+import { makeEpub } from "./WritingDialogs";
 
 const SPLITS: { value: SplitAt; label: string }[] = [
   { value: "marks", label: "At its page marks (===)" },
@@ -65,7 +70,41 @@ function reportNote(m: Manuscript, fileName: string): string {
   return `<p>Imported from ${escapeHtml(fileName)}. Check these against the original before publishing:</p><ul>${lines.join("")}</ul>`;
 }
 
-export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: string) => void; onCancel: () => void }) {
+/** How a file comes into a book that already exists. */
+export type IntoBook = "draft" | "current";
+
+/** Keeps a book's words as they are now as its next draft. Returns false when there's nothing written to keep. */
+async function keepAsDraft(projectId: string): Promise<boolean> {
+  const view = await api.writingProject(projectId);
+  if (exportProblems(view.chapters).length) return false;
+  const next = (await api.writingDrafts(projectId)).reduce((n, d) => Math.max(n, d.number), 0) + 1;
+  await api.saveWritingDraft(projectId, await makeEpub({ ...view.project, title: `${view.project.title} (Draft ${next})` }, view.chapters, readExport(view.project.export)));
+  return true;
+}
+
+/** Saves the chapters of `from` as the next draft of `into`, in `into`'s name and with `settings`' styles. */
+async function draftFrom(from: string, into: WritingProject, styles: "from" | "into"): Promise<void> {
+  const view = await api.writingProject(from);
+  const problems = exportProblems(view.chapters);
+  if (problems.length) throw new Error(problems[0]);
+  const next = (await api.writingDrafts(into.id)).reduce((n, d) => Math.max(n, d.number), 0) + 1;
+  const settings = readExport(styles === "from" ? view.project.export : into.export);
+  await api.saveWritingDraft(into.id, await makeEpub({ ...into, title: `${into.title} (Draft ${next})` }, view.chapters, settings));
+}
+
+export function ImportBookDialog({
+  onCreated,
+  onCancel,
+  into,
+  onIntoDone,
+}: {
+  onCreated: (id: string) => void;
+  onCancel: () => void;
+  /** The book the file becomes another draft of. */
+  into?: WritingProject;
+  onIntoDone?: (how: IntoBook) => void;
+}) {
+  const [how, setHow] = useState<IntoBook>("draft");
   const picking = useRef<HTMLInputElement>(null);
   const [stage, setStage] = useState<"choose" | "confirm" | "review">("choose");
   const [picked, setPicked] = useState<Picked | null>(null);
@@ -161,7 +200,105 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
     }
   };
 
+  /** The signed confirmation and the kept original, for the book the words go into. */
+  const sign = async (projectId: string, p: Picked) => {
+    setBusy("Signing the record…");
+    await api.recordWritingImport(projectId, {
+      policyVersion: POLICY_VERSION,
+      wording: WORDING,
+      sourceName: p.name,
+      sourceSha256: p.sha256,
+      sourceBytes: p.bytes.length,
+      sourceFormat: p.inspection.format,
+      method: "checkbox",
+    });
+    setBusy("Keeping the original…");
+    await api.keepWritingSource(projectId, p.name, p.bytes);
+  };
+
+  /** Adds the chosen sections to a book, after what's there. Returns the ids added. */
+  const addSections = async (projectId: string, m: Manuscript, chosen: ManuscriptSection[]): Promise<string[]> => {
+    const added: string[] = [];
+    let previous: string | null = null;
+    // Each part made, by its place in the manuscript, so the sections after it go in it.
+    const parts = new Map<number, string>();
+    for (let i = 0; i < chosen.length; i++) {
+      setBusy(`Adding section ${i + 1} of ${chosen.length}…`);
+      const s = chosen[i];
+      if (s.isPart) {
+        const part: { id: string } = await api.addWritingSection(projectId, { title: s.title, role: "part", page: "{}", after: previous });
+        parts.set(m.sections.indexOf(s), part.id);
+        previous = part.id;
+        added.push(part.id);
+        continue;
+      }
+      const page = { ...readPage(JSON.stringify({ kind: s.kind }), s.area === "chapter" ? "chapter" : s.area), byHand: !!s.byHand };
+      const part = s.partOf === undefined ? null : (parts.get(s.partOf) ?? null);
+      const made: { id: string } = await api.addWritingSection(projectId, { title: s.title, body: await shrinkPictures(s.body), role: s.area, part, page: writePage(page), after: previous });
+      previous = made.id;
+      added.push(made.id);
+    }
+    return added;
+  };
+
+  const saveReport = async (projectId: string, m: Manuscript, p: Picked) => {
+    if (!m.issues.length) return;
+    const note = await api.savePersonalNote(null, `Import report: ${p.name}`, reportNote(m, p.name)).catch(() => null);
+    if (note) await api.setNoteProject(note.id, projectId).catch(() => undefined);
+  };
+
+  /** The file as another draft of the book it was opened from. */
+  const makeInto = async (book: WritingProject) => {
+    if (!picked || !agreed) return;
+    const chosen = manuscript?.sections.filter((s) => s.include) ?? [];
+    if (manuscript && !chosen.length) return setError("Keep at least one section.");
+    setError(null);
+    let scratch: string | null = null;
+    try {
+      if (how === "current" && manuscript) {
+        // The words there now are kept first, so nothing is lost.
+        setBusy("Keeping today's words as a draft…");
+        await keepAsDraft(book.id);
+        const before = (await api.writingProject(book.id)).chapters;
+        await sign(book.id, picked);
+        const added = await addSections(book.id, manuscript, chosen);
+        setBusy("Putting the new words in place…");
+        try {
+          for (const c of before) await api.deleteWritingChapter(c.id);
+        } catch (e) {
+          // Half-swapped would be worse than either: take the new sections back out.
+          for (const id of added) await api.deleteWritingChapter(id).catch(() => undefined);
+          throw e;
+        }
+        await saveReport(book.id, manuscript, picked);
+      } else {
+        // A locked draft is an EPUB, so the file is made into a book out of sight first, then that book becomes the draft.
+        setBusy("Reading the file…");
+        if (tbv) {
+          // Its notes stay out: they'd belong to a book that's only there for a moment.
+          scratch = await bookFromTbv({ ...tbv, notes: [] }, { title: book.title, author: book.author, onStep: setBusy });
+        } else if (manuscript) {
+          const view = await api.createWritingProject(book.title, book.author);
+          scratch = view.project.id;
+          await addSections(scratch, manuscript, chosen);
+          for (const c of view.chapters) await api.deleteWritingChapter(c.id).catch(() => undefined);
+        } else return;
+        await sign(book.id, picked);
+        setBusy("Making the draft…");
+        await draftFrom(scratch, book, tbv ? "from" : "into");
+        if (manuscript) await saveReport(book.id, manuscript, picked);
+      }
+      onIntoDone?.(how);
+    } catch (e) {
+      setError(String(e).replace(/^Error: /, ""));
+      setBusy(null);
+    } finally {
+      if (scratch) await api.deleteWritingProject(scratch).catch(() => undefined);
+    }
+  };
+
   const make = async () => {
+    if (into) return makeInto(into);
     if (tbv) return makeFromTbv(tbv);
     if (!picked || !manuscript || !agreed) return;
     const chosen = manuscript.sections.filter((s) => s.include);
@@ -173,47 +310,17 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
       const view = await api.createWritingProject(title.trim() || manuscript.title || "Untitled", author.trim() || null);
       made = view.project.id;
       // The confirmation is signed first: no book is made from an import without it.
-      setBusy("Signing the record…");
-      await api.recordWritingImport(made, {
-        policyVersion: POLICY_VERSION,
-        wording: WORDING,
-        sourceName: picked.name,
-        sourceSha256: picked.sha256,
-        sourceBytes: picked.bytes.length,
-        sourceFormat: picked.inspection.format,
-        method: "checkbox",
-      });
-      setBusy("Keeping the original…");
-      await api.keepWritingSource(made, picked.name, picked.bytes);
+      await sign(made, picked);
       if (manuscript.description || manuscript.language)
         await api.updateWritingDetails(made, { title: view.project.title, author: view.project.author, series: null, seriesIndex: null, language: manuscript.language, description: manuscript.description }).catch(() => undefined);
       if (manuscript.isbn) {
         const settings = readExport(view.project.export);
         await api.setWritingExport(made, JSON.stringify({ ...settings, copyright: { ...settings.copyright, isbn: manuscript.isbn } })).catch(() => undefined);
       }
-      let previous: string | null = null;
-      // Each part made, by its place in the manuscript, so the sections after it go in it.
-      const parts = new Map<number, string>();
-      for (let i = 0; i < chosen.length; i++) {
-        setBusy(`Adding section ${i + 1} of ${chosen.length}…`);
-        const s = chosen[i];
-        if (s.isPart) {
-          const part: { id: string } = await api.addWritingSection(made, { title: s.title, role: "part", page: "{}", after: previous });
-          parts.set(manuscript.sections.indexOf(s), part.id);
-          previous = part.id;
-          continue;
-        }
-        const page = { ...readPage(JSON.stringify({ kind: s.kind }), s.area === "chapter" ? "chapter" : s.area), byHand: !!s.byHand };
-        const part = s.partOf === undefined ? null : (parts.get(s.partOf) ?? null);
-        const added = await api.addWritingSection(made, { title: s.title, body: await shrinkPictures(s.body), role: s.area, part, page: writePage(page), after: previous });
-        previous = added.id;
-      }
+      await addSections(made, manuscript, chosen);
       // The empty chapter every new book starts with.
       for (const c of view.chapters) await api.deleteWritingChapter(c.id).catch(() => undefined);
-      if (manuscript.issues.length) {
-        const note = await api.savePersonalNote(null, `Import report: ${picked.name}`, reportNote(manuscript, picked.name)).catch(() => null);
-        if (note) await api.setNoteProject(note.id, made).catch(() => undefined);
-      }
+      await saveReport(made, manuscript, picked);
       onCreated(made);
     } catch (e) {
       // Nothing half-made is left behind.
@@ -233,7 +340,7 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
       <form
         className="dialog writing-dialog import-book"
         role="dialog"
-        aria-label="Import a manuscript"
+        aria-label={into ? "Import a new draft" : "Import a manuscript"}
         onSubmit={(e) => {
           e.preventDefault();
           if (stage === "confirm") void rebuild();
@@ -241,10 +348,15 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
         }}
         onKeyDown={(e) => e.key === "Escape" && !busy && onCancel()}
       >
-        <h2>Import a manuscript</h2>
+        <h2>{into ? `A new draft of ${into.title}` : "Import a manuscript"}</h2>
 
         {stage === "choose" && (
           <>
+            {into && (
+              <p className="dialog-lede">
+                Bring in a version of this book you've worked on elsewhere, such as an edit in Word. It comes in as another draft, so the book's earlier drafts are all kept.
+              </p>
+            )}
             <p className="muted dialog-lede">
               Rebuild a book you've written elsewhere as a Scribe book you can edit: Word, OpenDocument, RTF, plain text, Markdown, HTML, EPUB or PDF, or a Kindle Create project made from a PDF (zip its folder first). For Google Docs, download it as Word first. A
               Scribe book file (.tbv) opens exactly as it was saved. Your file is never changed.
@@ -307,7 +419,30 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
           </>
         )}
 
-        {stage === "review" && tbv && (
+        {stage === "review" && into && (
+          <fieldset className="import-into" aria-label="How it comes in">
+            <label className="check-row">
+              <input type="radio" name="import-into" checked={how === "draft"} onChange={() => setHow("draft")} />
+              <span>
+                <strong>Keep it as a draft</strong>
+                <span className="muted"> · locked, to read, highlight and make notes in. The words you're writing don't change.</span>
+              </span>
+            </label>
+            <label className="check-row">
+              <input type="radio" name="import-into" checked={how === "current"} disabled={!!tbv} onChange={() => setHow("current")} />
+              <span>
+                <strong>Write from it</strong>
+                <span className="muted">
+                  {" "}
+                  · it becomes the version you're writing. The words there now are kept as a draft first.
+                  {tbv ? " (A Scribe book file can only come in as a draft; open it as its own book to write from it.)" : ""}
+                </span>
+              </span>
+            </label>
+          </fieldset>
+        )}
+
+        {stage === "review" && tbv && !into && (
           <>
             <div className="writing-export-styles import-book-details">
               <label className="field">
@@ -322,18 +457,23 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
             <TbvSummary book={tbv} />
           </>
         )}
+        {stage === "review" && tbv && into && <TbvSummary book={tbv} />}
 
         {stage === "review" && manuscript && doc && (
           <>
             <div className="writing-export-styles import-book-details">
-              <label className="field">
-                <span>Title</span>
-                <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
-              </label>
-              <label className="field">
-                <AuthorLabel />
-                <input value={author} onChange={(e) => setAuthor(e.target.value)} maxLength={200} placeholder="Your name, or a pen name" />
-              </label>
+              {!into && (
+                <>
+                  <label className="field">
+                    <span>Title</span>
+                    <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
+                  </label>
+                  <label className="field">
+                    <AuthorLabel />
+                    <input value={author} onChange={(e) => setAuthor(e.target.value)} maxLength={200} placeholder="Your name, or a pen name" />
+                  </label>
+                </>
+              )}
               <label className="field">
                 <span>Split into sections</span>
                 <select
@@ -471,7 +611,7 @@ export function ImportBookDialog({ onCreated, onCancel }: { onCreated: (id: stri
           )}
           {stage === "review" && (
             <button type="submit" className="btn btn-primary" disabled={!!busy || (!tbv && !kept.length)}>
-              {busy ?? "Make the book"}
+              {busy ?? (into ? (how === "current" ? "Write from it" : "Keep as a draft") : "Make the book")}
             </button>
           )}
         </div>

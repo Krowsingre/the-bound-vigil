@@ -15,6 +15,7 @@ import { readLocal, useAppDark, useAppSettings, writeLocal } from "./appSettings
 import { useReaderSettings } from "./AppearanceTab";
 import { ActionTile, Columns, formatBytes, RadioList, Row, Section, SectionGroup, Segmented, Select, Toggle } from "./controls";
 import { HardcoverSection } from "./HardcoverSection";
+import { CanvaSection, canvaHere } from "./CanvaSection";
 import { ReadingHistorySection } from "./ReadingHistory";
 
 const READING_FONTS = {
@@ -252,6 +253,7 @@ export function LibraryTab({
         <GoodreadsSection />
         <HardcoverSection />
       </SectionGroup>
+
     </>
   );
   return (
@@ -608,6 +610,7 @@ export function NotesTab() {
           </button>
         </Row>
       </Section>
+      {canvaHere && <CanvaSection />}
     </>
   );
 }
@@ -1056,7 +1059,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.75.0");
+  const [version, setVersion] = useState("0.76.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

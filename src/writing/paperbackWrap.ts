@@ -3,6 +3,7 @@
 // and the paper. Saved as a PDF at the exact size KDP and IngramSpark ask
 // for. The spine's width follows each printer's published paper thickness.
 
+import { drawBlurb } from "./blurb";
 import { BACKGROUNDS, drawCover, type CoverDesign } from "./CoverMaker";
 import { TRIMS, type TrimSize } from "./printSettings";
 
@@ -184,11 +185,7 @@ export async function drawWrap(canvas: HTMLCanvasElement, design: PaperbackDesig
   ctx.textBaseline = "alphabetic";
   const body = px(11 / 72);
   ctx.font = `400 ${body}px ${family}`;
-  let y = px(BLEED + SAFE + 0.35);
-  for (const line of wrapText(ctx, design.blurb.trim(), backWidth)) {
-    y += body * 1.45;
-    if (line) ctx.fillText(line, backLeft, y);
-  }
+  drawBlurb(ctx, design.blurb.trim(), backLeft, px(BLEED + SAFE + 0.35), backWidth, body, family);
 
   const barcodeTop = px(BLEED + wrap.trim.height - SAFE - BARCODE.height);
   const photoSize = px(1.1);

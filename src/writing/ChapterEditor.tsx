@@ -13,6 +13,8 @@ import { countWords } from "./records";
 import { poemWarnings } from "./pages";
 import { citationLabel, type CitationStyle, type Source } from "./sources";
 import { SourcesDialog } from "./SourcesDialog";
+import { CanvaPictureDialog, useCanvaStatus } from "./CanvaLink";
+import { canvaHere } from "../settings/CanvaSection";
 import { BlockLookExtension, Citation, Footnote, Highlight, PageBreak, Picture, pictureAddress, PoemLines, Subscript, Superscript, TextLookMark, type BlockLook, type TextLook } from "./extensions";
 import { useToast } from "../components/Toast";
 import { Menu, type MenuEntry } from "../components/Menu";
@@ -122,7 +124,11 @@ interface SourcesProps {
   onSources: (sources: Source[], style: CitationStyle) => void;
 }
 
-function Toolbar({ editor, poem, cites }: { editor: Editor; poem: boolean; cites?: SourcesProps }) {
+function Toolbar({ editor, poem, cites, chapter }: { editor: Editor; poem: boolean; cites?: SourcesProps; chapter?: WritingChapter }) {
+  const [canva] = useCanvaStatus();
+  const canvaOn = canvaHere && !!canva?.available && !!canva.name;
+  const [canvaPicture, setCanvaPicture] = useState(false);
+  const publisher = usePublisher();
   const state = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -254,7 +260,21 @@ function Toolbar({ editor, poem, cites }: { editor: Editor; poem: boolean; cites
       )}
       <Tool label="Scene break" text="⁂" onClick={() => run().setHorizontalRule().run()} />
       <Tool label="Page break" icon="pageBreak" onClick={() => run().setPageBreak().run()} />
-      <Tool label="Picture" icon="image" onClick={() => picking.current?.click()} />
+      {canvaOn ? (
+        <ToolMenu
+          label="Picture"
+          icon="image"
+          items={[
+            { label: "From a file…", icon: "image", onSelect: () => picking.current?.click() },
+            { label: "Design one in Canva…", icon: "palette", onSelect: () => publisher.check("Canva", () => setCanvaPicture(true)) },
+          ]}
+        />
+      ) : (
+        <Tool label="Picture" icon="image" onClick={() => picking.current?.click()} />
+      )}
+      {canvaPicture && chapter && (
+        <CanvaPictureDialog projectId={chapter.projectId} chapterId={chapter.id} onPicture={addPicture} onClose={() => setCanvaPicture(false)} />
+      )}
       <Tool
         label={state.footnote !== null ? "Change footnote" : "Footnote"}
         text="¹"
@@ -496,7 +516,7 @@ export function ChapterEditor({
 
   return (
     <div className="writing-editor">
-      {editor && <Toolbar editor={editor} poem={!!poem} cites={sources && onSources ? { sources, citationStyle, onSources } : undefined} />}
+      {editor && <Toolbar editor={editor} poem={!!poem} chapter={chapter} cites={sources && onSources ? { sources, citationStyle, onSources } : undefined} />}
       <div className={`writing-sheet${poem ? ` is-poem${poem === "centred" ? " is-centred" : ""}` : ""}`} onClick={(e) => e.target === e.currentTarget && editor?.commands.focus("end")}>
         <input
           className="writing-chapter-title"

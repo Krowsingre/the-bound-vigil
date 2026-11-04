@@ -66,7 +66,7 @@ export const SETTINGS_TABS: {
     tab: "notes",
     label: "Scribe",
     icon: "pen",
-    lede: "How your notes are shown, and taking them with you.",
+    lede: "How your notes are shown, taking them with you, and designing in Canva.",
   },
   {
     tab: "browser",
@@ -392,6 +392,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     section: "behaviour",
     label: "Sync behaviour",
     words: "frequency automatic startup close conflict resolution recent",
+  },
+  {
+    tab: "notes",
+    section: "canva",
+    label: "Canva",
+    words: "canva design cover covers pictures pages layout connect account publisher",
   },
   {
     tab: "library",

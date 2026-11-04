@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+import { FormattedText } from "./FormattedText";
+import { useEffect, useRef, useState } from "react";
 import { api, isApp, isWeb, isWindows } from "../api";
-import type { WritingChapter, WritingDetails, WritingDraft, WritingProject } from "../api/types";
+import type { CanvaDesign, WritingChapter, WritingDetails, WritingDraft, WritingProject } from "../api/types";
+import { canvaHere } from "../settings/CanvaSection";
+import { CanvaLink, EXPORT_CHANGED, keepCanvaDesign, keptCanvaDesign, useCanvaStatus } from "./CanvaLink";
+import { wordsStamp } from "./canvaDesigns";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
@@ -274,10 +278,10 @@ export function DetailsDialog({
               </label>
             </div>
             {!!details.series?.trim() && <SeriesStyleFields style={seriesStyle} index={details.seriesIndex} series={details.series.trim()} onChange={setSeriesStyle} />}
-            <label className="field">
+            <div className="field">
               <span>Description</span>
-              <textarea rows={4} value={details.description ?? ""} onChange={(e) => set({ description: e.target.value })} placeholder="The words on the back of the book" />
-            </label>
+              <FormattedText rows={4} value={details.description ?? ""} onChange={(description) => set({ description })} placeholder="The words on the back of the book" />
+            </div>
             <label className="field">
               <span>The book opens with</span>
               <select value={opensWith ?? ""} onChange={(e) => setOpensWith((e.target.value || null) as WritingProject["coverPage"])}>
@@ -416,6 +420,15 @@ export function ExportDialog({
   onClose: () => void;
 }) {
   const [settings, setSettings] = useState(() => readExport(project.export));
+  // A Canva design kept while this is open (the printed pages) joins these settings, so the next change doesn't drop it.
+  useEffect(() => {
+    const changed = (e: Event) => {
+      const { projectId, json } = (e as CustomEvent<{ projectId: string; json: string }>).detail;
+      if (projectId === project.id) setSettings((s) => ({ ...s, canva: readExport(json).canva }));
+    };
+    window.addEventListener(EXPORT_CHANGED, changed);
+    return () => window.removeEventListener(EXPORT_CHANGED, changed);
+  }, [project.id]);
   const [format, setFormat] = useState<ExportFormat>(() => {
     try {
       const saved = localStorage.getItem("tbv.writing.exportFormat");
@@ -618,6 +631,7 @@ export function ExportDialog({
             {check("Running heads: the book's title on the left, the chapter's on the right", settings.print.runningHeads, (runningHeads) => setPrint({ runningHeads }))}
             {check("Page numbers", settings.print.pageNumbers, (pageNumbers) => setPrint({ pageNumbers }))}
             {check("Bleed: an extra eighth of an inch for pictures that run to the edge", settings.print.bleed, (bleed) => setPrint({ bleed }))}
+            <CanvaPages project={project} settings={settings} onFlush={onFlush} input={input} />
             <p className="muted writing-export-note">
               {isWindows
                 ? "The PDF is saved where you choose, at the trim size, with its fonts inside it."
@@ -726,12 +740,15 @@ export function DraftsDialog({
   project,
   onFlush,
   onOpen,
+  onImport,
   onClose,
 }: {
   project: WritingProject;
   /** Saves the chapter being written and gives the latest chapters. */
   onFlush: () => Promise<WritingChapter[]>;
   onOpen: (bookId: string) => void;
+  /** Brings a file in as another draft of this book. */
+  onImport?: () => void;
   onClose: () => void;
 }) {
   const [drafts, setDrafts] = useState<WritingDraft[] | null>(null);
@@ -820,6 +837,11 @@ export function DraftsDialog({
           </p>
         )}
         <div className="dialog-actions">
+          {onImport && (
+            <button type="button" className="btn btn-quiet writing-drafts-import" onClick={onImport} disabled={busy}>
+              <Icon name="upload" size={15} /> Import a file as a draft…
+            </button>
+          )}
           <button type="button" className="btn btn-quiet" onClick={onClose} disabled={busy}>
             Done
           </button>
@@ -843,5 +865,144 @@ export function DraftsDialog({
         />
       )}
     </div>
+  );
+}
+
+/** Counts a PDF's pages from its page objects, without opening it. */
+export function pdfPageCount(bytes: Uint8Array): number {
+  const text = new TextDecoder("latin1").decode(bytes);
+  return (text.match(/\/Type\s*\/Page(?![s\w])/g) ?? []).length;
+}
+
+/** The printed pages laid out in Canva: sent as a PDF, changed there, and brought back as the PDF for the printer. */
+function CanvaPages({
+  project,
+  settings,
+  onFlush,
+  input,
+}: {
+  project: WritingProject;
+  settings: ExportSettings;
+  onFlush: () => Promise<WritingChapter[]>;
+  input: (latest: WritingChapter[], s: ExportSettings) => ReturnType<typeof bookInput>;
+}) {
+  const [status] = useCanvaStatus();
+  const [changed, setChanged] = useState(false);
+  const picking = useRef<HTMLInputElement>(null);
+  const waiting = useRef<((file: File | null) => void) | null>(null);
+  const toast = useToast();
+  const trim = TRIMS.find((t) => t.value === settings.print.trim) ?? TRIMS[0];
+  const on = canvaHere && !!status?.available && !!status.name;
+
+  // The words changed after the pages went to Canva: those changes aren't in the design.
+  useEffect(() => {
+    if (!on) return;
+    let live = true;
+    void (async () => {
+      const kept = await keptCanvaDesign(project.id, "interior");
+      if (!kept?.stamp) return;
+      const latest = await onFlush();
+      const now = await wordsStamp(latest.filter((c) => c.role !== "part").map((c) => c.body));
+      if (live) setChanged(now !== kept.stamp);
+    })().catch(() => undefined);
+    return () => void (live = false);
+  }, [on, project.id]);
+
+  // Closing the file picker without choosing fires "cancel", not "change".
+  useEffect(() => {
+    const input = picking.current;
+    if (!input) return;
+    const cancelled = () => {
+      waiting.current?.(null);
+      waiting.current = null;
+    };
+    input.addEventListener("cancel", cancelled);
+    return () => input.removeEventListener("cancel", cancelled);
+  }, []);
+
+  const choosePdf = () =>
+    new Promise<File | null>((resolve) => {
+      waiting.current = resolve;
+      picking.current?.click();
+    });
+
+  /** Lays the pages out as usual, then sends that PDF. */
+  const sendPages = async (): Promise<CanvaDesign> => {
+    const latest = await onFlush();
+    const title = `${project.title} (pages)`;
+    if (isWindows) {
+      const path = await api.pickExportPath(bookFileName(`${project.title} (pages for Canva)`, "pdf"), "pdf");
+      if (!path) throw new Error("Choose where to save the pages first.");
+      await api.printBook(printHtml(await input(latest, forPrint(settings)), settings.print), path);
+      toast("Sending the pages to Canva. A long book takes a minute or two.");
+      return api.canvaImportFile(path, title);
+    }
+    // Elsewhere the print dialog saves the PDF; then it's chosen to send.
+    await api.printBook(printHtml(await input(latest, forPrint(settings)), settings.print), null);
+    toast("Save the pages as a PDF in the print dialog, then choose that file.");
+    const file = await choosePdf();
+    if (!file) throw new Error("No PDF was chosen, so nothing went to Canva.");
+    toast("Sending the pages to Canva. A long book takes a minute or two.");
+    return api.canvaImport(title, "application/pdf", new Uint8Array(await file.arrayBuffer()));
+  };
+
+  const bringBack = async (pdf: Uint8Array) => {
+    const fileName = bookFileName(`${project.title} (pages from Canva)`, "pdf");
+    const path = isWeb ? null : await api.pickExportPath(fileName, "pdf");
+    if (!isWeb && !path) return;
+    await api.saveExportFile(pdf, fileName, path);
+    const pages = pdfPageCount(pdf);
+    if (pages) {
+      try {
+        // The paperback cover's spine follows the pages Canva sent back.
+        localStorage.setItem(pagesKey(project.id), String(pages));
+      } catch {
+        // The cover maker guesses from the words instead.
+      }
+      const kept = await keptCanvaDesign(project.id, "interior");
+      if (kept) await keepCanvaDesign(project.id, "interior", { ...kept, pages });
+    }
+    toast(`${fileName} has been saved${pages ? `: ${pages} pages` : ""}.`);
+  };
+
+  if (!canvaHere) return null;
+  return (
+    <>
+      {changed && (
+        <p className="import-flag canva-pages-changed" role="status">
+          <Icon name="warning" size={14} /> The book's words have changed since its pages went to Canva. Those changes aren't in the Canva design: make them there too, or send the pages
+          again with Start a new design.
+        </p>
+      )}
+      <CanvaLink
+        what="the book's pages"
+        size={`${trim.label}`}
+        canva={{
+          project,
+          for: "interior",
+          title: `${project.title} (pages)`,
+          width: Math.round(trim.width * 300),
+          height: Math.round(trim.height * 300),
+          format: "pdf",
+          make: sendPages,
+          record: async () => ({ stamp: await wordsStamp((await onFlush()).filter((c) => c.role !== "part").map((c) => c.body)) }),
+          designLabel: "Send the pages to Canva",
+          backLabel: "Bring the pages back as PDF",
+          onBack: (bytes) => bringBack(bytes),
+        }}
+      />
+      <input
+        ref={picking}
+        type="file"
+        accept="application/pdf,.pdf"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0] ?? null;
+          e.target.value = "";
+          waiting.current?.(file);
+          waiting.current = null;
+        }}
+      />
+    </>
   );
 }

@@ -5,6 +5,8 @@
 // converter still looks for it. Pure apart from the zip, so it's tested
 // without the app.
 
+import { blurbHtml, hasFormatting } from "./blurb";
+import { readCanva, type CanvaDesigns } from "./canvaDesigns";
 import { zipSync, strToU8 } from "fflate";
 import type { WritingChapter, WritingProject } from "../api/types";
 import { DEFAULT_COPYRIGHT, DEFAULT_RIGHTS, firstLine, isMade, isPoem, KINDS, numberInWords, readPage, writePage, type CopyrightDetails, type PageKind, type PageSettings } from "./pages";
@@ -69,6 +71,8 @@ export interface ExportSettings {
   seriesStyle: SeriesStyle;
   /** The template the book started from, shown on its card in Scribe; null for older books. */
   kind?: BookKind | null;
+  /** Canva designs made for this book, by what they're for (canvaDesigns.ts). */
+  canva?: CanvaDesigns;
 }
 
 export type BookKind = "blank" | "novel" | "collection" | "nonfiction";
@@ -95,6 +99,7 @@ export const DEFAULT_EXPORT: ExportSettings = {
   edition: null,
   seriesStyle: DEFAULT_SERIES_STYLE,
   kind: null,
+  canva: {},
 };
 
 const text = (value: unknown, fallback: string, max = 2000) => (typeof value === "string" ? value.slice(0, max) : fallback);
@@ -150,6 +155,7 @@ export function readExport(json: string | null | undefined): ExportSettings {
       seriesStyle: readSeriesStyle(saved.seriesStyle),
       storeBooks: readStoreBooks(saved.storeBooks),
       kind: oneOf(saved.kind, ["blank", "novel", "collection", "nonfiction", null] as const, null),
+      canva: readCanva(saved.canva),
     };
   } catch {
     return DEFAULT_EXPORT;
@@ -902,7 +908,7 @@ ${navPoints(points)}
 ${ebookIsbn(settings.edition) ? `<dc:identifier id="isbn">urn:isbn:${escapeXml(ebookIsbn(settings.edition)!.replace(/[^0-9Xx]/g, ""))}</dc:identifier>\n` : ""}<dc:title>${escapeXml(title)}</dc:title>
 <dc:language>${escapeXml(lang)}</dc:language>
 ${author ? `<dc:creator id="author">${escapeXml(author)}</dc:creator>\n<meta refines="#author" property="role" scheme="marc:relators">aut</meta>\n` : ""}${
-    description ? `<dc:description>${escapeXml(description)}</dc:description>\n` : ""
+    description ? `<dc:description>${escapeXml(hasFormatting(description) ? blurbHtml(description) : description)}</dc:description>\n` : ""
   }${
     series
       ? `<meta property="belongs-to-collection" id="series">${escapeXml(series)}</meta>\n<meta refines="#series" property="collection-type">series</meta>\n${

@@ -7,8 +7,9 @@ import { AuthorLabel } from "./AuthorInfo";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { api } from "../api";
 import type { WritingProject } from "../api/types";
-import { centreBlocks, dragBlocks, type Place, type Size } from "./coverLayout";
+import { centreBlocks, dragBlocks, type Gap, type Place, type Size } from "./coverLayout";
 import { CanvaLink } from "./CanvaLink";
+import { keepCoverPicture, keepDesign, keptCoverPicture, keptDesign } from "./coverStore";
 
 export const COVER_WIDTH = 1600;
 export const COVER_HEIGHT = 2560;
@@ -117,7 +118,14 @@ export const isUpper = (block: CoverBlock, style: CoverTextStyle | undefined) =>
  * (a paperback's front, at print resolution): it's laid out 1600 wide and
  * as tall as the size's shape, then scaled. Gives back where the words ended up.
  */
-export async function drawCover(canvas: HTMLCanvasElement, design: CoverDesign, pixels?: { width: number; height: number }): Promise<CoverBoxes> {
+/** The newest drawing asked of each canvas, so a slower older one never lands on top of it. */
+const drawings = new WeakMap<HTMLCanvasElement, number>();
+
+export async function drawCover(target: HTMLCanvasElement, design: CoverDesign, pixels?: { width: number; height: number }): Promise<CoverBoxes> {
+  const turn = (drawings.get(target) ?? 0) + 1;
+  drawings.set(target, turn);
+  // Drawn out of sight, then shown in one go.
+  const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d")!;
   canvas.width = pixels?.width ?? COVER_WIDTH;
   canvas.height = pixels?.height ?? COVER_HEIGHT;
@@ -235,6 +243,11 @@ export async function drawCover(canvas: HTMLCanvasElement, design: CoverDesign, 
   // Left alone, the author sits under the title (or its line), and the series above it.
   const author = smallBlock("author", design.author, 0.42, () => (rule ? ruleY + 6 : titleTop + textHeight) + 64);
   const series = smallBlock("series", design.series ?? "", 0.3, (h) => titleTop - 56 - h);
+  if (drawings.get(target) === turn) {
+    target.width = canvas.width;
+    target.height = canvas.height;
+    target.getContext("2d")!.drawImage(canvas, 0, 0);
+  }
   return { height, title, author, series };
 }
 
@@ -314,17 +327,6 @@ const BLOCK_LABEL: Record<CoverBlock, string> = { title: "Title", author: "Autho
 /** How near the middle, in screen pixels, a block snaps onto it. */
 const SNAP_PIXELS = 8;
 
-/** What the maker remembers on this device for each book, so a cover can be changed later. The picture isn't kept. */
-const savedKey = (id: string) => `tbv.coverMaker.${id}`;
-function savedDesign(id: string): Partial<CoverDesign> {
-  try {
-    const raw = JSON.parse(localStorage.getItem(savedKey(id)) ?? "null") as Partial<CoverDesign> | null;
-    return raw && typeof raw === "object" ? { ...raw, picture: null } : {};
-  } catch {
-    return {};
-  }
-}
-
 function TemplatePreview({ design, onPick, picked }: { design: CoverDesign; onPick: () => void; picked: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -351,22 +353,48 @@ export function CoverMaker({
   onCancel: () => void;
 }) {
   const [design, setDesign] = useState<CoverDesign>(() => {
-    const saved = savedDesign(project.id);
+    const kept = keptDesign<CoverDesign>(project.id);
+    const { bookTitle, bookAuthor, picture: _picture, ...saved } = kept;
+    const bookAuthorNow = project.author ?? "";
     return {
       background: 0,
       font: "Lora",
       layout: "middle",
       ...saved,
-      title: project.title,
-      author: project.author ?? "",
+      // The words as you left them, unless the book's own title or author has changed since.
+      title: saved.title !== undefined && bookTitle === project.title ? saved.title : project.title,
+      author: saved.author !== undefined && bookAuthor === bookAuthorNow ? saved.author : bookAuthorNow,
       // A series line the writer cleared stays cleared.
-      series: saved.series === "" ? "" : (seriesLine ?? ""),
+      series: saved.series !== undefined ? saved.series : (seriesLine ?? ""),
       picture: null,
     };
   });
+  // Your own picture comes back from this device's store.
+  const pictureFile = useRef<Blob | null>(null);
+  useEffect(() => {
+    let live = true;
+    void keptCoverPicture(project.id).then((blob) => {
+      if (live && blob) {
+        pictureFile.current = blob;
+        setDesign((d) => (d.picture ? d : { ...d, picture: URL.createObjectURL(blob) }));
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [project.id]);
+  // Everything else is kept as it changes, so closing the maker never loses it.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const { picture: _picture, ...keep } = design;
+      keepDesign(project.id, { ...keep, bookTitle: project.title, bookAuthor: project.author ?? "" });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [design, project.id, project.title, project.author]);
   const [boxes, setBoxes] = useState<CoverBoxes | null>(null);
   const [selected, setSelected] = useState<CoverBlock[]>(["title"]);
   const [guides, setGuides] = useState({ x: false, y: false });
+  const [gaps, setGaps] = useState<Gap[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -392,20 +420,11 @@ export function CoverMaker({
   // A chosen picture's address is let go when it's replaced or the maker closes.
   useEffect(() => () => void (design.picture && URL.revokeObjectURL(design.picture)), [design.picture]);
 
-  const remember = () => {
-    try {
-      const { picture: _picture, title: _title, author: _author, ...keep } = design;
-      localStorage.setItem(savedKey(project.id), JSON.stringify({ ...keep, series: design.series?.trim() ? undefined : "" }));
-    } catch {
-      // Only a convenience.
-    }
-  };
   const keepCover = async (bytes: Uint8Array, ext: "png" | "jpg") => {
     setBusy(true);
     setError(null);
     try {
       const made = await api.setWritingCoverPicture(project.id, bytes, ext);
-      remember();
       onMade(made);
     } catch (e) {
       setError(String(e));
@@ -467,8 +486,10 @@ export function CoverMaker({
     if (!d.moved && Math.hypot(dx, dy) < 2 * k) return;
     d.moved = true;
     const reach = e.altKey ? null : { x: (SNAP_PIXELS * k) / COVER_WIDTH, y: (SNAP_PIXELS * k) / boxes.height };
-    const result = dragBlocks(d.from, d.sizes, dx / COVER_WIDTH, dy / boxes.height, { axisLock: e.shiftKey, reach });
+    const others = shown.filter((b) => !d.blocks.includes(b)).map((b) => ({ place: placeFor(b), size: sizeOf(boxOf(b)!, boxes.height) }));
+    const result = dragBlocks(d.from, d.sizes, dx / COVER_WIDTH, dy / boxes.height, { axisLock: e.shiftKey, reach, others });
     setGuides(result.snapped);
+    setGaps(result.gaps);
     setPlaces(Object.fromEntries(d.blocks.map((b, i) => [b, result.places[i]])));
   };
   const letGo = (e: PointerEvent<HTMLDivElement>) => {
@@ -477,6 +498,7 @@ export function CoverMaker({
     if (!d.moved && d.collapseTo) setSelected([d.collapseTo]);
     drag.current = null;
     setGuides({ x: false, y: false });
+    setGaps([]);
   };
   const nudge = (e: KeyboardEvent<HTMLDivElement>) => {
     const step = e.shiftKey ? 50 : 10;
@@ -537,6 +559,18 @@ export function CoverMaker({
               <canvas ref={canvas} className="cover-maker-preview" aria-label="The cover as it will look" />
               {guides.x && <span className="cover-maker-guide across" aria-hidden="true" />}
               {guides.y && <span className="cover-maker-guide down" aria-hidden="true" />}
+              {gaps.map((g, i) => (
+                <span
+                  key={i}
+                  className={`cover-maker-gap ${g.axis}`}
+                  aria-hidden="true"
+                  style={
+                    g.axis === "y"
+                      ? { top: `${g.a * 100}%`, height: `${(g.b - g.a) * 100}%`, left: `${g.at * 100}%` }
+                      : { left: `${g.a * 100}%`, width: `${(g.b - g.a) * 100}%`, top: `${g.at * 100}%` }
+                  }
+                />
+              ))}
               {boxes &&
                 shown.map((block) => {
                   const box = boxOf(block)!;
@@ -571,7 +605,7 @@ export function CoverMaker({
             </div>
             <p className="muted cover-maker-tip">
               Drag the words to move them. Hold Shift to move straight across or straight up and down. Ctrl-click (⌘ on a Mac) picks more than one. They snap to the
-              middle; hold Alt to stop that.
+              middle and to even spacing; hold Alt to stop that.
             </p>
             <div className="cover-maker-centre">
               <button type="button" className="btn btn-quiet btn-small" onClick={() => centre("x")}>
@@ -738,7 +772,10 @@ export function CoverMaker({
                     title={b.name}
                     className="cover-maker-swatch"
                     style={{ background: `linear-gradient(${b.top}, ${b.bottom})` }}
-                    onClick={() => set({ background: i, picture: null })}
+                    onClick={() => {
+                      if (design.picture) void keepCoverPicture(project.id, null);
+                      set({ background: i, picture: null });
+                    }}
                   />
                 ))}
               </div>
@@ -747,7 +784,15 @@ export function CoverMaker({
                   {design.picture ? "Change picture" : "Use a picture of my own"}
                 </button>
                 {design.picture && (
-                  <button type="button" className="link-btn" onClick={() => set({ picture: null })}>
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => {
+                      pictureFile.current = null;
+                      void keepCoverPicture(project.id, null);
+                      set({ picture: null });
+                    }}
+                  >
                     Remove picture
                   </button>
                 )}
@@ -759,7 +804,11 @@ export function CoverMaker({
                 hidden
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (file) set({ picture: URL.createObjectURL(file) });
+                  if (file) {
+                    pictureFile.current = file;
+                    void keepCoverPicture(project.id, file);
+                    set({ picture: URL.createObjectURL(file) });
+                  }
                   e.target.value = "";
                 }}
               />
@@ -793,6 +842,16 @@ export function CoverMaker({
             <CanvaLink
               what="an e-book cover"
               size="1600 × 2560 px"
+              canva={{
+                project,
+                for: "cover",
+                title: `${project.title} (cover)`,
+                width: COVER_WIDTH,
+                height: COVER_HEIGHT,
+                format: "jpg",
+                backLabel: "Use the Canva cover",
+                onBack: (bytes) => keepCover(bytes, "jpg"),
+              }}
               extra={
                 <>
                   <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => finished.current?.click()}>

@@ -161,6 +161,27 @@ let previewLicense: LicenseView = {
 let hardcover: HardcoverStatus = new URLSearchParams(location.search).has("hardcover")
   ? { available: true, username: "wrenhale", sendRatings: true }
   : { available: true, username: null, sendRatings: false };
+// `?canva` shows Canva connected. Designs "made" here bring back a plain picture.
+let canva = { available: true, name: new URLSearchParams(location.search).has("canva") ? "Wren Hale" : (null as string | null) };
+const canvaDesigns = new Map<string, { width: number; height: number; title: string }>();
+async function previewCanvaPicture(id: string, format: "png" | "jpg" | "pdf"): Promise<Uint8Array> {
+  const d = canvaDesigns.get(id) ?? { width: 1600, height: 2560, title: "Design" };
+  const c = document.createElement("canvas");
+  c.width = Math.min(d.width, 1600);
+  c.height = Math.round((c.width * d.height) / d.width);
+  const ctx = c.getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, c.width, c.height);
+  g.addColorStop(0, "#7d2ae8");
+  g.addColorStop(1, "#00c4cc");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = "#fff";
+  ctx.font = `600 ${Math.round(c.width / 12)}px Georgia, serif`;
+  ctx.textAlign = "center";
+  ctx.fillText("Made in Canva", c.width / 2, c.height / 2);
+  const blob = await new Promise<Blob>((done) => c.toBlob((b) => done(b!), format === "jpg" ? "image/jpeg" : "image/png", 0.92));
+  return new Uint8Array(await blob.arrayBuffer());
+}
 // `?ereaders` shows a Kindle and a Kobo plugged in, and Kindle by email set
 // up, for reviewing the Send dialog and Preferences › E-readers. Sending itself
 // only works in the desktop app.
@@ -696,6 +717,35 @@ export function previewApi(): Api {
       notFound: ["Middlemarch by George Eliot", "Bleak House by Charles Dickens"],
     }),
     exportGoodreads: async () => 12,
+    canvaStatus: async () => ({ ...canva }),
+    canvaSignIn: async () => {
+      canva = { ...canva, name: "Wren Hale" };
+      return { ...canva };
+    },
+    canvaSignOut: async () => {
+      canva = { ...canva, name: null };
+      return { ...canva };
+    },
+    canvaNewDesign: async (title, width, height) => {
+      const id = `D${Math.random().toString(36).slice(2, 12)}`;
+      canvaDesigns.set(id, { width, height, title });
+      return { id, editUrl: `https://www.canva.com/design/${id}/edit`, pageCount: 1 };
+    },
+    canvaDesign: async (id) => ({ id, editUrl: `https://www.canva.com/design/${id}/edit`, pageCount: 1 }),
+    canvaImport: async (title) => {
+      const id = `D${Math.random().toString(36).slice(2, 12)}`;
+      canvaDesigns.set(id, { width: 1200, height: 1800, title });
+      return { id, editUrl: `https://www.canva.com/design/${id}/edit`, pageCount: 3 };
+    },
+    canvaImportFile: async (_path, title) => {
+      const id = `D${Math.random().toString(36).slice(2, 12)}`;
+      canvaDesigns.set(id, { width: 1200, height: 1800, title });
+      return { id, editUrl: `https://www.canva.com/design/${id}/edit`, pageCount: 212 };
+    },
+    canvaExport: async (id, format) => previewCanvaPicture(id, format),
+    canvaOpen: async (url) => {
+      window.open(url, "_blank", "noopener");
+    },
     hardcoverStatus: async () => ({ ...hardcover }),
     hardcoverSignIn: async () => {
       hardcover = { ...hardcover, username: "wrenhale", sendRatings: true };
@@ -935,7 +985,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.75.0", version: "0.76.0", notes: "The Bound Vigil 0.76.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.76.0", version: "0.77.0", notes: "The Bound Vigil 0.77.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

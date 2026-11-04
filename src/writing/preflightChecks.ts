@@ -2,6 +2,7 @@
 // and cover, and each store's own rules, with every problem said in plain
 // words before a store turns the book away.
 
+import { blurbPlain } from "./blurb";
 import { bareIsbn, EDITION_FORMATS } from "./bookEditions";
 import { pictureSize } from "./docx";
 import { epubFiles, type EpubInput } from "./epub";
@@ -85,8 +86,8 @@ export function preflight({ book, stores, print }: PreflightInput): Finding[] {
   if (!project.language?.trim()) add({ level: "warning", title: "The book's language isn't set", detail: "Stores and e-readers use it to choose the right dictionary and hyphenation. Add it in Book details." });
   const description = (project.description ?? "").trim();
   if (!description) add({ level: "warning", title: "There's no description", detail: "Stores ask for the words on the back of the book when you upload. Add them in Book details." });
-  else if (description.length > 4000)
-    add({ level: "problem", title: "The description is too long", detail: `It's ${description.length.toLocaleString()} characters; Kindle and Apple Books take up to 4,000.`, stores: has(stores, "kdp", "apple", "kdpPrint") });
+  else if (blurbPlain(description).length > 4000)
+    add({ level: "problem", title: "The description is too long", detail: `It's ${blurbPlain(description).length.toLocaleString()} characters; Kindle and Apple Books take up to 4,000.`, stores: has(stores, "kdp", "apple", "kdpPrint") });
 
   // ISBN.
   // Each of the edition's formats can have its own ISBN; an older book may have one with no format.

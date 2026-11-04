@@ -715,6 +715,27 @@ export async function webApi(): Promise<Api> {
     hardcoverSendAll: async () => {
       throw new Error(DESKTOP_ONLY);
     },
+    canvaStatus: async () => ({ available: false, name: null }),
+    canvaSignIn: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    canvaSignOut: async () => ({ available: false, name: null }),
+    canvaNewDesign: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    canvaDesign: async () => null,
+    canvaImport: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    canvaImportFile: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    canvaExport: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    canvaOpen: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
     onHardcoverNotice: () => () => undefined,
     onSharedBooks: () => () => undefined,
     bookText: async () => {

@@ -28,6 +28,8 @@ import type {
   WritingChapter,
   WritingDetails,
   WritingDraft,
+  CanvaDesign,
+  CanvaStatus,
   CopyMatch,
   ReadingHistoryEntry,
   WritingProject,
@@ -139,6 +141,22 @@ export interface Api {
   hardcoverSignOut(): Promise<HardcoverStatus>;
   hardcoverSetSending(on: boolean): Promise<HardcoverStatus>;
   hardcoverSendAll(): Promise<HardcoverSendAll>;
+  canvaStatus(): Promise<CanvaStatus>;
+  /** Opens Canva in the browser and waits for the person to allow TBV. */
+  canvaSignIn(): Promise<CanvaStatus>;
+  canvaSignOut(): Promise<CanvaStatus>;
+  /** A new, empty design of exactly this size in pixels. */
+  canvaNewDesign(title: string, width: number, height: number): Promise<CanvaDesign>;
+  /** A design made before, with a fresh link; null when it was deleted in Canva. */
+  canvaDesign(id: string): Promise<CanvaDesign | null>;
+  /** Sends a file (a PDF of the book's pages, or a picture) to Canva as a new design. */
+  canvaImport(title: string, mime: string, bytes: Uint8Array): Promise<CanvaDesign>;
+  /** Sends a PDF saved at `path` (the book's printed pages) to Canva as a new design. Computer only. */
+  canvaImportFile(path: string, title: string): Promise<CanvaDesign>;
+  /** Brings a design back: a picture of its first page, or every page as a PDF. */
+  canvaExport(id: string, format: "png" | "jpg" | "pdf"): Promise<Uint8Array>;
+  /** Opens a design in Canva, in the browser. */
+  canvaOpen(url: string): Promise<void>;
   /** Problems sending a rating to Hardcover in the background. */
   onHardcoverNotice(listener: (message: string) => void): () => void;
   /** Books shared to TBV from another app (iPhone and iPad): what's being added. */
@@ -792,6 +810,16 @@ function appApi(): Api {
     hardcoverStatus: async () => (await core).invoke<HardcoverStatus>("hardcover_status"),
     hardcoverSignIn: async () => (await core).invoke<HardcoverStatus>("hardcover_sign_in"),
     hardcoverSignOut: async () => (await core).invoke<HardcoverStatus>("hardcover_sign_out"),
+    canvaStatus: async () => (await core).invoke<CanvaStatus>("canva_status"),
+    canvaSignIn: async () => (await core).invoke<CanvaStatus>("canva_sign_in"),
+    canvaSignOut: async () => (await core).invoke<CanvaStatus>("canva_sign_out"),
+    canvaNewDesign: async (title, width, height) => (await core).invoke<CanvaDesign>("canva_new_design", { title, width: Math.round(width), height: Math.round(height) }),
+    canvaDesign: async (id) => (await core).invoke<CanvaDesign | null>("canva_design", { id }),
+    canvaImport: async (title, mime, bytes) =>
+      (await core).invoke<CanvaDesign>("canva_import", bytes, { headers: { title: encodeURIComponent(title), mime: encodeURIComponent(mime) } }),
+    canvaImportFile: async (path, title) => (await core).invoke<CanvaDesign>("canva_import_file", { path, title }),
+    canvaExport: async (id, format) => new Uint8Array(await (await core).invoke<ArrayBuffer>("canva_export", { id, format })),
+    canvaOpen: async (url) => (await core).invoke("canva_open", { url }),
     hardcoverSetSending: async (on) => (await core).invoke<HardcoverStatus>("hardcover_set_sending", { on }),
     hardcoverSendAll: async () => (await core).invoke<HardcoverSendAll>("hardcover_send_all"),
     onHardcoverNotice: (listener) => {

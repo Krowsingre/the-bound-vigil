@@ -7,6 +7,7 @@ mod audio;
 #[cfg(target_os = "ios")]
 mod background_sync;
 mod browser;
+mod canva;
 mod cloud;
 #[cfg(target_os = "ios")]
 mod cloud_events;
@@ -287,6 +288,71 @@ async fn license_unlock(app: tauri::AppHandle, state: State<'_, AppLibrary>, cod
 fn cloud_services() -> Vec<tbv_core::sync::cloud::Service> {
     use tbv_core::sync::cloud::{available, Service};
     [Service::Dropbox, Service::GoogleDrive, Service::OneDrive].into_iter().filter(|s| available(*s)).collect()
+}
+
+#[tauri::command]
+async fn canva_status(state: State<'_, AppLibrary>) -> CommandResult<tbv_core::canva::CanvaStatus> {
+    with_library(state, |library| library.canva_status()).await
+}
+
+#[tauri::command]
+async fn canva_sign_in(state: State<'_, AppLibrary>) -> CommandResult<tbv_core::canva::CanvaStatus> {
+    blocking(state, canva::sign_in).await
+}
+
+#[tauri::command]
+async fn canva_sign_out(state: State<'_, AppLibrary>) -> CommandResult<tbv_core::canva::CanvaStatus> {
+    blocking(state, canva::sign_out).await
+}
+
+/// A new, empty Canva design of exactly this size, in pixels.
+#[tauri::command]
+async fn canva_new_design(state: State<'_, AppLibrary>, title: String, width: u32, height: u32) -> CommandResult<tbv_core::canva::Design> {
+    blocking(state, move |library| canva::new_design(library, &title, width, height)).await
+}
+
+/// A design made before, with a fresh link to edit it; nothing when it's been deleted in Canva.
+#[tauri::command]
+async fn canva_design(state: State<'_, AppLibrary>, id: String) -> CommandResult<Option<tbv_core::canva::Design>> {
+    blocking(state, move |library| canva::design(library, &id)).await
+}
+
+/// Sends a file to Canva as a new design. The file comes as raw bytes; its title and type in the headers.
+#[tauri::command]
+async fn canva_import(state: State<'_, AppLibrary>, request: tauri::ipc::Request<'_>) -> CommandResult<tbv_core::canva::Design> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("expected the file's bytes".into());
+    };
+    let header = |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok()).map(tbv_core::oauth::percent_decode);
+    let title = header("title").unwrap_or_default();
+    let mime = header("mime").unwrap_or_else(|| "application/pdf".into());
+    let bytes = bytes.clone();
+    blocking(state, move |library| canva::import(library, &title, &mime, bytes)).await
+}
+
+/// Sends a PDF TBV just saved (the book's printed pages) to Canva, read from where it was saved.
+#[tauri::command]
+async fn canva_import_file(state: State<'_, AppLibrary>, path: String, title: String) -> CommandResult<tbv_core::canva::Design> {
+    let file = std::path::PathBuf::from(&path);
+    if !file.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf")) {
+        return Err("Only a PDF can be sent to Canva from here.".into());
+    }
+    blocking(state, move |library| {
+        let bytes = std::fs::read(&file)?;
+        canva::import(library, &title, "application/pdf", bytes)
+    })
+    .await
+}
+
+/// Brings a design back: a picture of its first page, or every page as a PDF.
+#[tauri::command]
+async fn canva_export(state: State<'_, AppLibrary>, id: String, format: tbv_core::canva::Format) -> CommandResult<tauri::ipc::Response> {
+    Ok(tauri::ipc::Response::new(blocking(state, move |library| canva::export(library, &id, format)).await?))
+}
+
+#[tauri::command]
+fn canva_open(url: String) -> CommandResult<()> {
+    canva::open(&url).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2126,6 +2192,15 @@ pub fn run() {
             license_restore,
             license_unlock,
             hardcover_sign_out,
+            canva_status,
+            canva_sign_in,
+            canva_sign_out,
+            canva_new_design,
+            canva_design,
+            canva_import,
+            canva_import_file,
+            canva_export,
+            canva_open,
             hardcover_send_all,
             book_text,
             fill_cover,
