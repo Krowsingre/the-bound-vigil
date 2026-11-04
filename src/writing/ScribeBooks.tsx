@@ -19,6 +19,7 @@ import { TEMPLATES, type Template } from "./pages";
 import { saveAsTbv } from "./saveTbv";
 import { startNewEdition } from "./newEdition";
 import { isSample } from "./sampleBook";
+import { LinkBookDialog } from "./LinkBooks";
 import { useNarrow } from "../lib/useNarrow";
 import { DetailsDialog } from "./WritingDialogs";
 
@@ -168,7 +169,7 @@ function StartCards({ onStart }: { onStart: (t: Template) => void }) {
   );
 }
 
-type Dialog = { kind: "details"; project: WritingProject; focus: "author" | "cover" } | { kind: "copies"; project: WritingProject } | { kind: "delete"; project: WritingProject };
+type Dialog = { kind: "details"; project: WritingProject; focus: "author" | "cover" } | { kind: "copies"; project: WritingProject } | { kind: "delete"; project: WritingProject } | { kind: "link"; project: WritingProject };
 
 export function ScribeBooks({
   projects,
@@ -242,6 +243,10 @@ export function ScribeBooks({
                 (e: unknown) => toast(`Couldn't duplicate the book: ${String(e).replace(/^Error: /, "")}`),
               ),
           },
+          // The sample book is Milton's, not the writer's, so it's never linked to theirs.
+          ...(isSample(p) || !list.some((b) => b.id !== p.id && !isSample(b))
+            ? []
+            : [{ label: "Link to Another Book…", icon: "link" as const, onSelect: () => setDialog({ kind: "link", project: p }) }]),
           {
             label: "Start a New Edition",
             icon: "layers" as const,
@@ -405,6 +410,18 @@ export function ScribeBooks({
           onCancel={() => {
             setDialog(null);
             onChanged();
+          }}
+        />
+      )}
+      {dialog?.kind === "link" && (
+        <LinkBookDialog
+          project={dialog.project}
+          books={list}
+          onCancel={() => setDialog(null)}
+          onDone={(message) => {
+            setDialog(null);
+            onChanged();
+            toast(message);
           }}
         />
       )}

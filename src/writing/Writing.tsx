@@ -6,6 +6,7 @@ import { api, isWeb } from "../api";
 import type { WritingChapter, WritingProject, WritingProjectView } from "../api/types";
 import { editionName, editionsOf } from "./bookEditions";
 import { LinkBookDialog } from "./LinkBooks";
+import { isSample } from "./sampleBook";
 import { EXPORT_CHANGED } from "./CanvaLink";
 import { startNewEdition } from "./newEdition";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -383,7 +384,9 @@ function ProjectView({
                   (e: unknown) => toast(`Couldn't start a new edition: ${String(e).replace(/^Error: /, "")}`),
                 ),
           },
-          { label: "Link another book…", icon: "link" as const, onSelect: () => void saving.current.then(() => setDialog("link")) },
+          ...(view && !isSample(view.project) && books.some((b) => b.id !== id && !isSample(b))
+            ? [{ label: "Link another book…", icon: "link" as const, onSelect: () => void saving.current.then(() => setDialog("link")) }]
+            : []),
           ...(others.length
             ? [
                 {
