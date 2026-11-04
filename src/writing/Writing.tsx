@@ -204,6 +204,7 @@ export function Writing({
           onStart={newBook}
           onChanged={() => setReload((n) => n + 1)}
           onRetry={() => setReload((n) => n + 1)}
+          onOpenBook={onOpenBook}
         />
       ) : (
         <Notes

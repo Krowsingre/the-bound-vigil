@@ -31,9 +31,24 @@ adb install -r "$apk" || { echo "::error::The APK didn't install."; exit 1; }
 adb logcat -c
 adb shell monkey -p "$app" -c android.intent.category.LAUNCHER 1 >/dev/null
 sleep 40
-shot 1-opened
 screen_xml 1-opened
-code=$(grep -oE '[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}' "$out/1-opened.xml" | head -1 || true)
+# A slow emulator sometimes shows "Pixel Launcher isn't responding" (Android's
+# own home screen, not TBV) over the app; choose Wait so the screen can be read.
+for _ in 1 2 3; do
+  grep -q "isn't responding" "$out/1-opened.xml" || break
+  read -r wx wy <<< "$(centre "$out/1-opened.xml" '(text|content-desc)="Wait"')"
+  if [ -n "${wx:-}" ]; then adb shell input tap "$wx" "$wy"; else adb shell input keyevent 4; fi
+  sleep 5
+  screen_xml 1-opened
+done
+shot 1-opened
+# The screen reader's view of the page can lag behind the picture, so look a few times.
+for _ in 1 2 3 4 5 6; do
+  code=$(grep -oE '[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}' "$out/1-opened.xml" | head -1 || true)
+  [ -n "$code" ] && break
+  sleep 5
+  screen_xml 1-opened
+done
 echo "Device code on screen: ${code:-none}"
 
 if [ -n "$code" ] && [ -n "${ACTIVATION_KEY_PEM:-}" ]; then

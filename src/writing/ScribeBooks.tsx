@@ -20,6 +20,7 @@ import { saveAsTbv } from "./saveTbv";
 import { startNewEdition } from "./newEdition";
 import { isSample } from "./sampleBook";
 import { LinkBookDialog } from "./LinkBooks";
+import { latestOf, LinkedBookView, shelve, type Shelf } from "./LinkedBooks";
 import { useNarrow } from "../lib/useNarrow";
 import { DetailsDialog } from "./WritingDialogs";
 
@@ -62,6 +63,12 @@ const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"
 function metaLine(p: WritingProject): string {
   const { kind, edition } = readExport(p.export);
   return [edition?.name, kind && KIND_NAME[kind], `${p.chapters} ${p.chapters === 1 ? "chapter" : "chapters"}`, words(p.words)].filter(Boolean).join(" · ");
+}
+
+/** "3 editions · Novel". */
+function linkedLine(s: Extract<Shelf, { kind: "linked" }>): string {
+  const kind = readExport(latestOf(s).export).kind;
+  return [`${s.editions.length} editions`, kind && KIND_NAME[kind]].filter(Boolean).join(" · ");
 }
 
 function coverOf(p: WritingProject): string | null {
@@ -178,6 +185,7 @@ export function ScribeBooks({
   onStart,
   onChanged,
   onRetry,
+  onOpenBook,
 }: {
   projects: Projects;
   /** The header's search, which finds your books by title and author here. */
@@ -187,11 +195,17 @@ export function ScribeBooks({
   onStart: (template: Template) => void;
   onChanged: () => void;
   onRetry: () => void;
+  /** Opens a locked draft to read. */
+  onOpenBook: (bookId: string) => void;
 }) {
   const toast = useToast();
   const narrow = useNarrow();
   const [prefs, setPrefs] = useState(readView);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  // The linked book whose editions and drafts are showing, by its edition group.
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  // Bumped after a change from a book's menu (like linking a draft), so the open linked book lists its drafts again.
+  const [changes, setChanges] = useState(0);
   const change = (next: Partial<typeof prefs>) =>
     setPrefs((p) => {
       const v = { ...p, ...next };
@@ -204,15 +218,17 @@ export function ScribeBooks({
     });
 
   const list = projects.state === "ready" ? projects.list : [];
-  const shown = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const found = q ? list.filter((p) => [p.title, p.author ?? "", p.series ?? ""].some((t) => t.toLowerCase().includes(q))) : list;
-    const sorted = [...found];
+  // Editions of one book share a card; it's found when any of them matches, and sorts by the one that sorts first.
+  const shelves = useMemo(() => {
+    const sorted = [...list];
     if (prefs.sort === "title") sorted.sort((a, b) => a.title.localeCompare(b.title));
     else if (prefs.sort === "newest") sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     else sorted.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    return sorted;
+    const q = search.trim().toLowerCase();
+    const matches = (p: WritingProject) => [p.title, p.author ?? "", p.series ?? ""].some((t) => t.toLowerCase().includes(q));
+    return shelve(sorted).filter((s) => !q || (s.kind === "book" ? matches(s.book) : s.editions.some((e) => matches(e.book))));
   }, [list, search, prefs.sort]);
+  const openShelf = shelves.find((s): s is Extract<Shelf, { kind: "linked" }> => s.kind === "linked" && s.group === openGroup) ?? null;
 
   const menuFor = (p: WritingProject): MenuEntry[] => [
     { label: "Open Book", icon: "bookOpen", onSelect: () => onOpen(p.id) },
@@ -263,12 +279,21 @@ export function ScribeBooks({
     "divider",
     { label: "Delete Book", icon: "trash", danger: true, onSelect: () => setDialog({ kind: "delete", project: p }) },
   ];
-  const cardProps = (p: WritingProject) => ({
-    ...holdForMenu(`${p.title}: book`, () => menuFor(p)),
-    onContextMenu: (e: React.MouseEvent) => openContextMenu(e, `${p.title}: book`, menuFor(p)),
+  // A linked book's menu leads with its editions and drafts; the rest is for its latest edition.
+  const cardMenu = (p: WritingProject, linked: Extract<Shelf, { kind: "linked" }> | null): MenuEntry[] =>
+    linked
+      ? [
+          { label: "Editions and Drafts", icon: "layers", onSelect: () => setOpenGroup(linked.group) },
+          { label: "Open Latest Edition", icon: "bookOpen", onSelect: () => onOpen(p.id) },
+          ...menuFor(p).filter((m) => typeof m !== "object" || !("label" in m) || m.label !== "Open Book"),
+        ]
+      : menuFor(p);
+  const cardProps = (p: WritingProject, linked: Extract<Shelf, { kind: "linked" }> | null = null) => ({
+    ...holdForMenu(`${p.title}: book`, () => cardMenu(p, linked)),
+    onContextMenu: (e: React.MouseEvent) => openContextMenu(e, `${p.title}: book`, cardMenu(p, linked)),
   });
-  const more = (p: WritingProject) => (
-    <Menu label={`More for ${p.title}`} className="icon-btn scribe-book-more" trigger={<Icon name="more" size={18} />} items={menuFor(p)} />
+  const more = (p: WritingProject, linked: Extract<Shelf, { kind: "linked" }> | null = null) => (
+    <Menu label={`More for ${p.title}`} className="icon-btn scribe-book-more" trigger={<Icon name="more" size={18} />} items={cardMenu(p, linked)} />
   );
 
   let books: React.ReactNode;
@@ -283,7 +308,11 @@ export function ScribeBooks({
       </div>
     );
   else if (projects.state === "loading") books = <div className="library-loading" aria-busy="true" aria-label="Loading your writing" />;
-  else if (shown.length === 0)
+  else if (openShelf)
+    books = (
+      <LinkedBookView shelf={openShelf} cover={coverOf} menuFor={menuFor} onOpen={onOpen} onOpenDraft={onOpenBook} onBack={() => setOpenGroup(null)} refresh={changes} />
+    );
+  else if (shelves.length === 0)
     books = (
       <p className="muted scribe-books-none">
         No book you're writing matches “{search.trim()}”.
@@ -292,20 +321,22 @@ export function ScribeBooks({
   else if (prefs.view === "list")
     books = (
       <ul className="scribe-book-rows">
-        {shown.map((p) => {
+        {shelves.map((s) => {
+          const p = s.kind === "book" ? s.book : latestOf(s);
+          const linked = s.kind === "linked" ? s : null;
           const cover = coverOf(p);
           return (
-            <li key={p.id} className="scribe-book-row" {...cardProps(p)}>
-              <button type="button" className="scribe-book-open" onClick={() => onOpen(p.id)}>
+            <li key={linked ? linked.group : p.id} className={`scribe-book-row${linked ? " is-linked" : ""}`} {...cardProps(p, linked)}>
+              <button type="button" className="scribe-book-open" onClick={() => (linked ? setOpenGroup(linked.group) : onOpen(p.id))}>
                 <span className="scribe-book-thumb">{cover ? <img src={cover} alt="" /> : <span className="scribe-book-blank">{p.title}</span>}</span>
                 <span className="scribe-book-text">
                   <strong>{p.title}</strong>
                   <span className="muted">{p.author || "No author yet"}</span>
                 </span>
-                <span className="muted scribe-book-meta">{metaLine(p)}</span>
+                <span className="muted scribe-book-meta">{linked ? linkedLine(linked) : metaLine(p)}</span>
                 <span className="muted scribe-book-when">Edited {relativeTime(p.updatedAt)}</span>
               </button>
-              {more(p)}
+              {more(p, linked)}
             </li>
           );
         })}
@@ -314,21 +345,23 @@ export function ScribeBooks({
   else
     books = (
       <ul className="scribe-book-cards">
-        {shown.map((p) => {
+        {shelves.map((s) => {
+          const p = s.kind === "book" ? s.book : latestOf(s);
+          const linked = s.kind === "linked" ? s : null;
           const cover = coverOf(p);
           return (
-            <li key={p.id} className="scribe-book-card" {...cardProps(p)}>
-              <button type="button" className="scribe-book-open" onClick={() => onOpen(p.id)}>
+            <li key={linked ? linked.group : p.id} className={`scribe-book-card${linked ? " is-linked" : ""}`} {...cardProps(p, linked)}>
+              <button type="button" className="scribe-book-open" onClick={() => (linked ? setOpenGroup(linked.group) : onOpen(p.id))}>
                 <span className="scribe-book-art">
                   {cover ? <img src={cover} alt="" draggable={false} /> : <span className="scribe-book-blank">{p.title}</span>}
                 </span>
                 <span className="scribe-book-text">
                   <strong>{p.title}</strong>
                   <span className="muted">{p.author || "No author yet"}</span>
-                  <span className="muted scribe-book-meta">{metaLine(p)}</span>
+                  <span className="muted scribe-book-meta">{linked ? linkedLine(linked) : metaLine(p)}</span>
                 </span>
               </button>
-              {more(p)}
+              {more(p, linked)}
             </li>
           );
         })}
@@ -345,7 +378,7 @@ export function ScribeBooks({
         <h2 id="scribe-yours" className="scribe-section-title">
           Your books
         </h2>
-        <div className="scribe-yours-tools">
+        {!openShelf && <div className="scribe-yours-tools">
           <Menu
             label={`Sort: ${SORTS.find((s) => s.sort === prefs.sort)?.label}`}
             className="notes-filter notes-sort"
@@ -378,7 +411,7 @@ export function ScribeBooks({
               </button>
             ))}
           </div>
-        </div>
+        </div>}
       </div>
       {books}
     </section>
@@ -420,6 +453,7 @@ export function ScribeBooks({
           onCancel={() => setDialog(null)}
           onDone={(message) => {
             setDialog(null);
+            setChanges((n) => n + 1);
             onChanged();
             toast(message);
           }}
