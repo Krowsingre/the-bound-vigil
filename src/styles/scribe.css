@@ -393,6 +393,198 @@
   margin: 0;
 }
 
+/* Linked books: one card, drawn as a small stack, for every edition of the book. */
+.scribe-book-card.is-linked,
+.scribe-book-row.is-linked {
+  box-shadow:
+    4px 4px 0 -1px var(--surface),
+    4px 4px 0 0 var(--border),
+    8px 8px 0 -1px var(--surface),
+    8px 8px 0 0 var(--border);
+}
+
+.scribe-book-card.is-linked .scribe-book-art {
+  border-radius: var(--radius-m) var(--radius-m) 0 0;
+}
+
+.scribe-linked {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
+}
+
+.scribe-linked-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: start;
+}
+
+.scribe-linked-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.scribe-linked-head p {
+  margin: 4px 0 0;
+}
+
+.scribe-linked-cover {
+  flex: none;
+  width: 64px;
+  height: 96px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--surface-sunk);
+  box-shadow: 3px 3px 0 -1px var(--surface), 3px 3px 0 0 var(--border);
+}
+
+.scribe-linked-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.scribe-linked-cover .scribe-book-blank {
+  font-size: 10px;
+}
+
+.scribe-linked-key {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.scribe-linked-key-draft {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text);
+}
+
+.scribe-editions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* An edition: a book of its own, in the accent colour, with its drafts tucked under it. */
+.scribe-edition {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+
+.scribe-edition-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px 12px 14px;
+}
+
+.scribe-edition-number {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font: 500 15px/1 var(--font-serif);
+}
+
+.scribe-edition-open {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.scribe-edition-name strong {
+  font: 500 16px/1.3 var(--font-serif);
+}
+
+.scribe-edition-note,
+.scribe-edition-meta {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scribe-edition-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: 2px;
+}
+
+.scribe-linked-key-badge {
+  margin-left: 0;
+}
+
+/* Drafts: quieter, locked, on a line hanging from their edition. */
+.scribe-edition-drafts {
+  margin: 0 14px 12px 29px;
+  padding-left: 18px;
+  border-left: 1px dashed var(--border);
+  font-size: 13px;
+}
+
+.scribe-edition-drafts ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scribe-draft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.scribe-draft:hover {
+  background: var(--surface-sunk);
+  color: var(--text);
+}
+
+.scribe-draft-name {
+  color: var(--text);
+  font-weight: 500;
+}
+
 /* Notes: the filter row. */
 .notes-toolbar {
   display: flex;
@@ -815,6 +1007,10 @@
 
   .scribe-book-row .scribe-book-meta,
   .scribe-book-when {
+    display: none;
+  }
+
+  .scribe-edition-write {
     display: none;
   }
 
