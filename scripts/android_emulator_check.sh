@@ -42,7 +42,13 @@ for _ in 1 2 3; do
   screen_xml 1-opened
 done
 shot 1-opened
-code=$(grep -oE '[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}' "$out/1-opened.xml" | head -1 || true)
+# The screen reader's view of the page can lag behind the picture, so look a few times.
+for _ in 1 2 3 4 5 6; do
+  code=$(grep -oE '[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}' "$out/1-opened.xml" | head -1 || true)
+  [ -n "$code" ] && break
+  sleep 5
+  screen_xml 1-opened
+done
 echo "Device code on screen: ${code:-none}"
 
 if [ -n "$code" ] && [ -n "${ACTIVATION_KEY_PEM:-}" ]; then
