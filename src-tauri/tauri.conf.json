@@ -36,6 +36,9 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "android": {
+      "minSdkVersion": 26
+    },
     "windows": {
       "nsis": {
         "template": "windows/installer.nsi"
