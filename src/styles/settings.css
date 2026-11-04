@@ -1620,6 +1620,50 @@ kbd {
   justify-self: center;
 }
 
+/* Android's activation screen: the phone's code, big enough to read out. */
+.activate-code {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2, var(--surface));
+}
+
+.activate-code .muted {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 13px;
+}
+
+.activate-code strong {
+  font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+  font-size: 22px;
+  letter-spacing: 0.08em;
+  user-select: all;
+  -webkit-user-select: all;
+}
+
+.license-gate .owner-code {
+  width: 100%;
+  max-width: none;
+}
+
+.license-gate .owner-code textarea {
+  width: 100%;
+  font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+  font-size: 13px;
+  word-break: break-all;
+  resize: vertical;
+}
+
+.license-gate .owner-code .btn-primary {
+  justify-self: stretch;
+}
+
 /* Preferences › Archive › Reading history. */
 .history-search {
   display: flex;

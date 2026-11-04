@@ -115,6 +115,7 @@ impl Home {
     }
 
     /// Starts serving if it was left on.
+    #[cfg_attr(mobile, allow(dead_code))]
     pub fn resume(self: &Arc<Self>, app: &AppHandle) {
         let library = app.state::<AppLibrary>().0.clone();
         let on = library.lock().ok().and_then(|l| l.setting(ON).ok().flatten()).is_some_and(|v| v == "1");

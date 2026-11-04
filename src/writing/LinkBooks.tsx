@@ -9,6 +9,7 @@ import type { WritingProject } from "../api/types";
 import { editionName, editionOrFirst, type EditionInfo } from "./bookEditions";
 import { exportProblems, readExport } from "./epub";
 import { makeEpub } from "./WritingDialogs";
+import { isSample } from "./sampleBook";
 
 export type LinkAs = "edition" | "draft";
 
@@ -53,7 +54,8 @@ export function LinkBookDialog({
   onDone: (message: string) => void;
   onCancel: () => void;
 }) {
-  const choices = useMemo(() => books.filter((b) => b.id !== project.id).sort((a, b) => a.title.localeCompare(b.title)), [books, project.id]);
+  // The sample book (Paradise Lost) is never offered.
+  const choices = useMemo(() => books.filter((b) => b.id !== project.id && !isSample(b)).sort((a, b) => a.title.localeCompare(b.title)), [books, project.id]);
   const [otherId, setOtherId] = useState(choices[0]?.id ?? "");
   const [as, setAs] = useState<LinkAs>("edition");
   const [place, setPlace] = useState<"before" | "after">("after");

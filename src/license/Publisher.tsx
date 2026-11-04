@@ -9,7 +9,7 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { api } from "../api";
 import type { LicenseView } from "../api/types";
-import { OwnerCode, PurchaseLinks, shopName, useLicense } from "./License";
+import { canBuyIn, OwnerCode, PurchaseLinks, shopName, useLicense } from "./License";
 
 interface PublisherContext {
   /** Whether the publishing tools can be used now. */
@@ -123,7 +123,7 @@ export function PublisherTools() {
 
 function PublisherOffer({ tool, license, onClose }: { tool: string; license: LicenseView; onClose: () => void }) {
   const { busy } = useLicense();
-  const canBuy = license.shop !== "none";
+  const canBuy = canBuyIn(license);
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <div className="dialog publisher-offer" role="dialog" aria-label="TBV Publisher" onKeyDown={(e) => e.key === "Escape" && !busy && onClose()}>
