@@ -310,6 +310,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "kindle_purchase",
+        table: "kindle_purchases",
+        keys: &["asin"],
+        cols: &["title", "author", "acquired_at", "borrowed", "read", "link", "cover_url", "book_id", "match_state", "dismissed_at", "added_at", "updated_at"],
+        category: Category::Collections,
+        creates: true,
+    },
+    Kind {
         name: "reading_history",
         table: "reading_history",
         keys: &["book_id"],
@@ -1527,6 +1535,7 @@ impl Library {
             "writing_chapter" => named("Chapter", text("title")),
             "writing_draft" => "A Scribe draft".into(),
             "writing_provenance" => "Where a Scribe book came from".into(),
+            "kindle_purchase" => named("Bought on Kindle", text("title")),
             "reading_history" => named(if gone { "Taken off reading history" } else { "Reading history" }, text("title")),
             "bookmark" => named("Discover bookmark", text("title")),
             "browser_history" => "Discover history".into(),
@@ -1789,6 +1798,7 @@ impl Library {
             "book_holder" => format!("Where it's downloaded{}", book(key.get(1))?),
             "writing_draft" => "A draft of a book in Scribe".into(),
             "writing_provenance" => "The signed record of where a Scribe book came from".into(),
+            "kindle_purchase" => format!("The Kindle purchase {}", field("title").unwrap_or_default()),
             "reading_history" => format!("A book in your reading history: {}", field("title").unwrap_or_default()),
             _ => format!("The note {}", field("title").filter(|t| !t.is_empty()).unwrap_or_else(|| "without a title".into())),
         })
@@ -2320,6 +2330,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "browser_history" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Taken off Discover's history".into() } else { short(text("url")) },
         "series" => short(text("name")),
         "writing_draft" => format!("Draft {}", data.get("number").and_then(Value::as_i64).unwrap_or(1)),
+        "kindle_purchase" => if text("dismissed_at").is_empty() { short(text("title")) } else { "Taken off the Kindle list".into() },
         "writing_provenance" => if text("event") == "duplicate" { "Duplicated".into() } else { "Imported, rights confirmed".into() },
         "reading_history" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Taken off".into() } else { short(text("title")) },
         "annotation" => short(if text("note").is_empty() { text("excerpt") } else { text("note") }),

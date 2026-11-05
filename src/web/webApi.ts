@@ -706,6 +706,14 @@ export async function webApi(): Promise<Api> {
     exportGoodreads: async () => {
       throw new Error(DESKTOP_ONLY);
     },
+    importKindle: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    kindleReview: async () => ({ matched: [], probable: [], missing: 0, readToMark: 0, markRead: true }),
+    applyKindle: async () => ({ tagged: 0, markedRead: 0, missing: 0 }),
+    kindleSummary: async () => ({ total: 0, inLibrary: 0, missing: 0, removed: 0, waiting: 0, lastAdded: null, covers: [] }),
+    kindleMissing: async () => [],
+    setKindleRemoved: async () => {},
     hardcoverStatus: async () => ({ available: false, username: null, sendRatings: false }),
     hardcoverSignIn: async () => {
       throw new Error(DESKTOP_ONLY);

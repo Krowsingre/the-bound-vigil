@@ -69,6 +69,11 @@ import type {
   CopiedToEreader,
   Ereader,
   GoodreadsImport,
+  KindleApplied,
+  KindleImport,
+  KindlePurchase,
+  KindleReview,
+  KindleSummary,
   HardcoverSendAll,
   HardcoverStatus,
   HomeViewModel,
@@ -135,6 +140,15 @@ export interface Api {
   importGoodreads(): Promise<GoodreadsImport | null>;
   /** Writes a Goodreads-format file of rated and shelved books. Null if cancelled, else how many. */
   exportGoodreads(): Promise<number | null>;
+  /** Asks for a KindLogger export and keeps its purchases, matched for review. Null if cancelled. */
+  importKindle(): Promise<KindleImport | null>;
+  kindleReview(): Promise<KindleReview>;
+  /** Accepts the matched books and the probable ones listed; tags them Kindle. */
+  applyKindle(confirmed: string[], markRead: boolean): Promise<KindleApplied>;
+  kindleSummary(): Promise<KindleSummary>;
+  /** Kindle books not in the library, or (removed) the ones taken off that list. */
+  kindleMissing(removed: boolean): Promise<KindlePurchase[]>;
+  setKindleRemoved(asins: string[], removed: boolean): Promise<void>;
   hardcoverStatus(): Promise<HardcoverStatus>;
   /** Opens Hardcover in the browser and waits for the person to approve. */
   hardcoverSignIn(): Promise<HardcoverStatus>;
@@ -847,6 +861,19 @@ function appApi(): Api {
       });
       return path ? (await core).invoke<GoodreadsImport>("import_goodreads", { path }) : null;
     },
+    importKindle: async () => {
+      const [path] = await openFiles({
+        multiple: false,
+        title: "Import your Kindle books",
+        filters: [{ name: "KindLogger export", extensions: ["json"] }],
+      });
+      return path ? (await core).invoke<KindleImport>("import_kindle", { path }) : null;
+    },
+    kindleReview: async () => (await core).invoke<KindleReview>("kindle_review"),
+    applyKindle: async (confirmed, markRead) => (await core).invoke<KindleApplied>("apply_kindle", { confirmed, markRead }),
+    kindleSummary: async () => (await core).invoke<KindleSummary>("kindle_summary"),
+    kindleMissing: async (removed) => (await core).invoke<KindlePurchase[]>("kindle_missing", { removed }),
+    setKindleRemoved: async (asins, removed) => (await core).invoke("set_kindle_removed", { asins, removed }),
     exportGoodreads: async () => {
       const path = await savePicker({
         title: "Export for Goodreads",

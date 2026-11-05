@@ -15,6 +15,7 @@ import { cleanValue, DETAIL_FIELDS, previewFields } from "../lib/details";
 import { DESKTOP_ONLY } from "../ereaders/ereaders";
 import { importsViewOf } from "../imports/view";
 import { previewWriting } from "../preview/writing";
+import { previewKindle } from "../preview/kindle";
 import { browseStub } from "../preview/browse";
 import type {
   BookLocation,
@@ -537,6 +538,11 @@ export function previewApi(): Api {
     problem: null,
   };
   let homeState: HomeStatus = HOME_OFF;
+  const kindle = previewKindle(
+    library,
+    (ids) => ids.forEach((id) => find(id).tags.includes("Kindle") || update(id, { tags: [...find(id).tags, "Kindle"].sort() })),
+    (id) => update(id, { status: "read", totalProgression: 1 }),
+  );
 
   // Find missing books: a made-up online list for each series asked about.
   const seriesLists = new Map<string, { list: SeriesEntry[]; hidden: Set<string>; denied: Set<string>; read: Set<string> }>();
@@ -719,6 +725,7 @@ export function previewApi(): Api {
       notFound: ["Middlemarch by George Eliot", "Bleak House by Charles Dickens"],
     }),
     exportGoodreads: async () => 12,
+    ...kindle,
     canvaStatus: async () => ({ ...canva }),
     canvaSignIn: async () => {
       canva = { ...canva, name: "Wren Hale" };
@@ -987,7 +994,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.79.0", version: "0.80.0", notes: "The Bound Vigil 0.80.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.80.0", version: "0.81.0", notes: "The Bound Vigil 0.81.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

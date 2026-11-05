@@ -499,6 +499,40 @@ async fn import_goodreads(
 }
 
 #[tauri::command]
+async fn import_kindle(state: State<'_, AppLibrary>, path: String) -> CommandResult<tbv_core::kindle::KindleImport> {
+    with_library(state, move |library| library.import_kindle(std::path::Path::new(&path))).await
+}
+
+#[tauri::command]
+async fn kindle_review(state: State<'_, AppLibrary>) -> CommandResult<tbv_core::kindle::KindleReview> {
+    with_library(state, move |library| library.kindle_review()).await
+}
+
+#[tauri::command]
+async fn apply_kindle(
+    state: State<'_, AppLibrary>,
+    confirmed: Vec<String>,
+    mark_read: bool,
+) -> CommandResult<tbv_core::kindle::KindleApplied> {
+    with_library(state, move |library| library.apply_kindle(&confirmed, mark_read)).await
+}
+
+#[tauri::command]
+async fn kindle_summary(state: State<'_, AppLibrary>) -> CommandResult<tbv_core::kindle::KindleSummary> {
+    with_library(state, move |library| library.kindle_summary()).await
+}
+
+#[tauri::command]
+async fn kindle_missing(state: State<'_, AppLibrary>, removed: bool) -> CommandResult<Vec<tbv_core::kindle::KindlePurchase>> {
+    with_library(state, move |library| library.kindle_missing(removed)).await
+}
+
+#[tauri::command]
+async fn set_kindle_removed(state: State<'_, AppLibrary>, asins: Vec<String>, removed: bool) -> CommandResult<()> {
+    with_library(state, move |library| library.set_kindle_removed(&asins, removed)).await
+}
+
+#[tauri::command]
 async fn set_want_to_read(
     state: State<'_, AppLibrary>,
     book_id: String,
@@ -2252,6 +2286,12 @@ pub fn run() {
             set_phone_wanted,
             set_rating,
             import_goodreads,
+            import_kindle,
+            kindle_review,
+            apply_kindle,
+            kindle_summary,
+            kindle_missing,
+            set_kindle_removed,
             get_profile,
             set_avatar,
             clear_avatar,
