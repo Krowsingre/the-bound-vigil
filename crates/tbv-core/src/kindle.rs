@@ -243,6 +243,7 @@ impl Library {
         let mut report = KindleImport { total: export.books.len() as u32, ..Default::default() };
         let tx = self.conn.unchecked_transaction()?;
         let mut seen = HashSet::new();
+        let mut changed = Vec::new();
         for book in &export.books {
             let asin = book.asin.trim();
             if asin.is_empty() || !seen.insert(asin.to_string()) {
@@ -261,7 +262,17 @@ impl Library {
             if added > 0 {
                 report.new_purchases += 1;
             } else {
-                // Read on Kindle since the last file, or bought after borrowing.
+                // Read on Kindle since the last file, or bought after borrowing:
+                // a book already confirmed takes the change (tag, Read) below.
+                let gained: bool = tx.query_row(
+                    "SELECT match_state = 'confirmed' AND ((read = 0 AND ?2) OR (borrowed = 1 AND NOT ?3)) FROM kindle_purchases WHERE asin = ?1",
+                    params![asin, book.read, borrowed],
+                    |r| r.get::<_, Option<bool>>(0),
+                )?
+                .unwrap_or(false);
+                if gained {
+                    changed.push(asin.to_string());
+                }
                 tx.execute(
                     "UPDATE kindle_purchases SET title = ?2, author = ?3, acquired_at = COALESCE(?4, acquired_at), borrowed = ?5,
                          read = MAX(read, ?6), link = ?7, cover_url = CASE WHEN ?8 = '' THEN cover_url ELSE ?8 END, updated_at = ?9
@@ -272,6 +283,9 @@ impl Library {
             }
         }
         tx.commit()?;
+        if !changed.is_empty() {
+            self.settle_kindle(&changed, self.setting(MARK_READ)?.as_deref() != Some("false"))?;
+        }
         self.match_kindle(false)?;
         report.review = self.kindle_review()?;
         Ok(report)
@@ -281,10 +295,12 @@ impl Library {
     /// matches wait for review; later (`arrivals`), books that have since
     /// come into the library are taken as found when sure, and tagged.
     fn match_kindle(&self, arrivals: bool) -> Result<()> {
-        let open: Vec<(String, String, String)> = self
+        // A rejected one is looked at again, for a book that has the same
+        // title and author and isn't the one turned down.
+        let open: Vec<(String, String, String, Option<String>)> = self
             .conn
-            .prepare("SELECT asin, title, author FROM kindle_purchases WHERE match_state IS NULL")?
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .prepare("SELECT asin, title, author, CASE WHEN match_state = 'rejected' THEN book_id END FROM kindle_purchases WHERE match_state IS NULL OR match_state = 'rejected'")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
             .collect::<std::result::Result<_, _>>()?;
         if open.is_empty() {
             return Ok(());
@@ -293,8 +309,13 @@ impl Library {
         let now = now_utc();
         let mut sure = Vec::new();
         let tx = self.conn.unchecked_transaction()?;
-        for (asin, title, author) in open {
-            let (index, state) = match matcher.find(&title, &author) {
+        for (asin, title, author, turned_down) in open {
+            let found = match (matcher.find(&title, &author), &turned_down) {
+                (Some(Found::Sure(i)), Some(no)) if matcher.known[i].id == *no => None,
+                (Some(Found::Probably(_)), Some(_)) => None,
+                (found, _) => found,
+            };
+            let (index, state) = match found {
                 Some(Found::Sure(i)) if arrivals => (i, "confirmed"),
                 Some(Found::Sure(i)) => (i, "auto"),
                 Some(Found::Probably(i)) => (i, "probable"),
@@ -601,8 +622,19 @@ mod tests {
         assert!(library.kindle_missing(false).unwrap().is_empty());
         assert_eq!(library.book_tags(&middlemarch).unwrap(), ["Kindle"]);
         assert_eq!(library.book(&middlemarch).unwrap().unwrap().status, ReadStatus::Read);
+        // Emma (turned down: someone else's) is found once the right one arrives.
+        library.set_kindle_removed(&["B05".into()], false).unwrap();
+        let emma2 = add(&mut library, dir.path(), "Emma ", "Someone Else");
+        assert!(library.kindle_missing(false).unwrap().is_empty());
+        assert_eq!(library.book_tags(&emma2).unwrap(), ["Kindle"]);
+        assert!(library.book_tags(&emma).unwrap().is_empty());
+
+        // Read on Kindle since the last file: a confirmed book takes it.
+        let file2 = export(dir.path(), &book("B02", "Warlock: Book One", "Glen Cook", "October 1, 2026", true));
+        library.import_kindle(&file2).unwrap();
+        assert_eq!(library.book(&warlock).unwrap().unwrap().status, ReadStatus::Read);
         let summary = library.kindle_summary().unwrap();
-        assert_eq!((summary.total, summary.in_library, summary.missing, summary.removed, summary.waiting), (5, 3, 0, 1, 0));
+        assert_eq!((summary.total, summary.in_library, summary.missing, summary.removed, summary.waiting), (5, 4, 0, 0, 0));
     }
 
     #[test]
