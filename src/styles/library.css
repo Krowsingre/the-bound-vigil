@@ -1398,3 +1398,170 @@ button.tag-chip-add:hover {
     padding: 0 8px;
   }
 }
+
+/* Kindle: the review after an import, and "Kindle, not in library". */
+.kindle-summary {
+  margin: 0 0 12px;
+}
+
+.kindle-review {
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+}
+
+.kindle-group {
+  margin: 0 0 14px;
+  font-size: 14px;
+}
+
+.kindle-group summary {
+  cursor: pointer;
+}
+
+.kindle-group svg {
+  vertical-align: -2px;
+}
+
+.kindle-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 6px;
+}
+
+.kindle-list {
+  max-height: 200px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 6px 10px 6px 28px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.kindle-probable {
+  max-height: 260px;
+  padding-left: 6px;
+  list-style: none;
+}
+
+.kindle-probable li + li {
+  border-top: 1px solid var(--border);
+}
+
+.kindle-probable label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 7px 4px;
+  cursor: pointer;
+}
+
+.kindle-probable input {
+  margin-top: 4px;
+}
+
+.kindle-probable label > span,
+.kindle-mark-read > span {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.kindle-label {
+  display: inline-block;
+  min-width: 46px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.kindle-mark-read {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 4px 0 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-sunk);
+  cursor: pointer;
+}
+
+.kindle-mark-read input {
+  margin-top: 4px;
+}
+
+.kindle-mark-read .muted {
+  font-size: 13px;
+}
+
+.kindle-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.kindle-filter {
+  flex: 1 1 220px;
+  max-width: 320px;
+  min-width: 0;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.kindle-show-removed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.kindle-row {
+  margin-top: 16px;
+}
+
+/* Amazon's own covers, a little greyed as missing books are. */
+.kindle-cover {
+  opacity: 0.8;
+  filter: grayscale(0.35);
+}
+
+.kindle-author {
+  overflow: hidden;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.kindle-more {
+  margin: 18px auto 0;
+  display: flex;
+}
+
+/* Collections' banners carry light text over a picture; the Kindle list has
+   no picture of its own, so it gets the ink tone. */
+.kindle-hero {
+  min-height: 0;
+  padding-top: 18px;
+  background: linear-gradient(135deg, var(--crow-ink), color-mix(in srgb, var(--crow-ink) 75%, var(--accent)));
+}
+
+.kindle-hero .back-link {
+  color: inherit;
+}
+
+.kindle-review > p.muted {
+  margin-bottom: 14px;
+}

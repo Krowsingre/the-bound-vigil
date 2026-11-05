@@ -267,6 +267,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     words: "goodreads import export csv file upload ratings stars shelves read dates",
   },
   {
+    tab: "library",
+    section: "kindle",
+    label: "Kindle",
+    words: "kindle amazon bought purchases kindlogger import json tag not in library owned read",
+  },
+  {
     tab: "collections",
     section: "show",
     label: "What the Compendium shows",

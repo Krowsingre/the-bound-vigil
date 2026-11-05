@@ -63,18 +63,18 @@ struct Row {
     exclusive_shelf: String,
 }
 
-struct Known {
-    id: BookId,
-    isbn: Option<String>,
-    title: String,
-    short_title: String,
-    surnames: Vec<String>,
+pub(crate) struct Known {
+    pub(crate) id: BookId,
+    pub(crate) isbn: Option<String>,
+    pub(crate) title: String,
+    pub(crate) short_title: String,
+    pub(crate) surnames: Vec<String>,
 }
 
 /// Lowercase letters and digits only, so punctuation and spacing never
 /// stop a match. Goodreads adds the series to titles, "Dune (Dune, #1)",
 /// which is dropped.
-fn title_key(title: &str) -> String {
+pub(crate) fn title_key(title: &str) -> String {
     let main = title.split(" (").next().unwrap_or(title);
     main.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
 }
@@ -82,13 +82,13 @@ fn title_key(title: &str) -> String {
 /// The title without a subtitle after a colon. Only trusted when it points
 /// at a single book, since "Collected Essays: Volume One" and "…: Volume Two"
 /// share it.
-fn short_title_key(title: &str) -> String {
+pub(crate) fn short_title_key(title: &str) -> String {
     title_key(title.split(':').next().unwrap_or(title))
 }
 
 /// The last word of a name, "Ursula K. Le Guin" → "guin", which survives
 /// initials and "Last, First" both being written different ways.
-fn surname(name: &str) -> Option<String> {
+pub(crate) fn surname(name: &str) -> Option<String> {
     let name = match name.split_once(',') {
         Some((last, _)) => last,
         None => name,
@@ -275,7 +275,7 @@ impl Library {
         Ok(report)
     }
 
-    fn books_for_matching(&self) -> Result<Vec<Known>> {
+    pub(crate) fn books_for_matching(&self) -> Result<Vec<Known>> {
         let mut statement = self.conn.prepare(&format!(
             "SELECT b.id, {isbn}, COALESCE(o_title.value, f_title.value, b.title), COALESCE(o_authors.value, f_authors.value, b.authors)
              FROM books b

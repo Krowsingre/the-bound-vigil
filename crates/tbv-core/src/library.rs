@@ -685,6 +685,29 @@ const MIGRATIONS: &[&str] = &[
         created_at TEXT NOT NULL
     );
     "#,
+    // v37: books bought on Kindle, from a KindLogger export (see kindle.rs),
+    // synced (kindle_purchase). `book_id` is the library book it was matched
+    // to; `match_state` is 'auto' or 'probable' while waiting for review,
+    // then 'confirmed' or 'rejected'. `dismissed_at`: taken off the
+    // "Kindle, not in library" list by hand, so a new import leaves it off.
+    r#"
+    CREATE TABLE kindle_purchases (
+        asin TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        author TEXT NOT NULL DEFAULT '',
+        acquired_at TEXT,
+        borrowed INTEGER NOT NULL DEFAULT 0,
+        read INTEGER NOT NULL DEFAULT 0,
+        link TEXT NOT NULL DEFAULT '',
+        cover_url TEXT NOT NULL DEFAULT '',
+        book_id TEXT,
+        match_state TEXT,
+        dismissed_at TEXT,
+        added_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE INDEX kindle_purchases_book ON kindle_purchases (book_id);
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

@@ -24,6 +24,7 @@ pub mod history;
 pub mod home;
 pub mod http;
 pub mod ids;
+pub mod kindle;
 pub mod library;
 pub mod license;
 pub mod localsend;

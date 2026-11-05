@@ -6,6 +6,7 @@ import type {
   CollectionSummary,
   CollectionsOverview,
   CoverRef,
+  KindleSummary,
   SmartSummary,
 } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -17,6 +18,8 @@ import { CollectionEditor } from "./CollectionEditor";
 import { sameRef, SMART_INFO } from "./collectionInfo";
 import { CollectionPanel } from "./CollectionPanel";
 import { CollectionView } from "./CollectionView";
+import { KindleCard, KindleView, KINDLE_NAME } from "./KindleList";
+import { KINDLE_CHANGED } from "../settings/KindleSection";
 import { moved, useReorder } from "./useReorder";
 import { useAppSettings } from "../settings/appSettings";
 import { Stat } from "../home/ReadingActivity";
@@ -142,6 +145,23 @@ export function Collections({
   const [deleting, setDeleting] = useState<CollectionSummary | null>(null);
   const toast = useToast();
   const { settings } = useAppSettings();
+  const [kindle, setKindle] = useState<KindleSummary | null>(null);
+  const [kindleOpen, setKindleOpen] = useState(false);
+
+  useEffect(() => {
+    let current = true;
+    const load = () => api.kindleSummary().then((k) => current && setKindle(k), () => undefined);
+    void load();
+    window.addEventListener(KINDLE_CHANGED, load);
+    return () => {
+      current = false;
+      window.removeEventListener(KINDLE_CHANGED, load);
+    };
+  }, [refreshKey, reload]);
+  // Opening another collection leaves the Kindle list.
+  useEffect(() => {
+    if (open) setKindleOpen(false);
+  }, [open]);
 
   useEffect(() => {
     let current = true;
@@ -277,6 +297,8 @@ export function Collections({
   const q = filter.trim().toLocaleLowerCase();
   const matches = (...texts: (string | null | undefined)[]) => !q || texts.some((t) => t?.toLocaleLowerCase().includes(q));
 
+  const kindleCard = !!kindle && kindle.total > 0 && (kindle.missing > 0 || kindle.removed > 0) && tab !== "reading_lists" && matches(KINDLE_NAME, "kindle amazon");
+
   const own = useMemo(() => {
     const list = (overview?.collections ?? []).filter(
       (c) =>
@@ -340,6 +362,17 @@ export function Collections({
   );
 
   const { shown: seriesShown, more } = useShownBit(series.length, `${side}/${q}`);
+
+  if (kindleOpen && !open)
+    return (
+      <KindleView
+        onBack={() => setKindleOpen(false)}
+        onChanged={() => {
+          setReload((n) => n + 1);
+          onChanged();
+        }}
+      />
+    );
 
   if (open)
     return (
@@ -563,7 +596,7 @@ export function Collections({
               </div>
             </div>
 
-            {own.length === 0 ? (
+            {own.length === 0 && !kindleCard ? (
               <div className="library-empty collections-empty">
                 {q ? (
                   <>
@@ -597,6 +630,7 @@ export function Collections({
                     />
                   );
                 })}
+                {kindleCard && <KindleCard summary={kindle} layout={prefs.layout} onOpen={() => setKindleOpen(true)} />}
                 {!q && (
                   <li className="collection-card collection-card-new">
                     <button type="button" className="collection-card-open" onClick={() => setEditing({ books: [] })}>

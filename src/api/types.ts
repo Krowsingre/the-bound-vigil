@@ -833,6 +833,69 @@ export interface GoodreadsImport {
   notFound: string[];
 }
 
+/** A book bought on Kindle, matched (or nearly) to one in the library. */
+export interface KindleMatch {
+  asin: string;
+  title: string;
+  author: string;
+  coverUrl: string;
+  read: boolean;
+  borrowed: boolean;
+  bookId: string;
+  bookTitle: string;
+  bookAuthors: string[];
+}
+
+/** What's waiting to be confirmed after a Kindle import. */
+export interface KindleReview {
+  matched: KindleMatch[];
+  /** Close but not the same: each needs a yes. */
+  probable: KindleMatch[];
+  /** Bought, but not in the library. */
+  missing: number;
+  /** Read on Kindle but not Read in TBV. */
+  readToMark: number;
+  /** The last choice for marking them Read. */
+  markRead: boolean;
+}
+
+export interface KindleImport {
+  total: number;
+  newPurchases: number;
+  /** Borrowed, not bought: never tagged or listed. */
+  borrowed: number;
+  review: KindleReview;
+}
+
+export interface KindleApplied {
+  tagged: number;
+  markedRead: number;
+  missing: number;
+}
+
+/** A book bought on Kindle that isn't in the library. */
+export interface KindlePurchase {
+  asin: string;
+  title: string;
+  author: string;
+  acquiredAt: string | null;
+  read: boolean;
+  link: string;
+  coverUrl: string;
+  removed: boolean;
+}
+
+export interface KindleSummary {
+  total: number;
+  inLibrary: number;
+  missing: number;
+  removed: number;
+  waiting: number;
+  lastAdded: string | null;
+  /** The newest few on the list, for its card. */
+  covers: MissingCover[];
+}
+
 export interface SeriesSummary {
   name: string;
   count: number;
