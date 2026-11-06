@@ -875,7 +875,8 @@ export function previewApi(): Api {
     clearAvatar: async () => (profile = { ...profile, avatarPath: null }),
     setAccountName: async (name) => (profile = { ...profile, name: name.trim() || null }),
     setDeviceName: async (name) => (profile = { ...profile, deviceName: name.trim() || "This computer" }),
-    pickBooks: async () => [],
+    // `?kindle` picks a list of Kindle books, to review that flow.
+    pickBooks: async () => (params.has("kindle") ? ["Kindle books.json"] : []),
     pickFolder: async () => [],
     coverUrl: (path) => (path.startsWith("data:") ? path : ""),
     openBook: async (bookId) => {
@@ -994,7 +995,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.80.0", version: "0.81.0", notes: "The Bound Vigil 0.81.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.81.0", version: "0.82.0", notes: "The Bound Vigil 0.82.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

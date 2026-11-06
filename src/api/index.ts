@@ -140,8 +140,8 @@ export interface Api {
   importGoodreads(): Promise<GoodreadsImport | null>;
   /** Writes a Goodreads-format file of rated and shelved books. Null if cancelled, else how many. */
   exportGoodreads(): Promise<number | null>;
-  /** Asks for a KindLogger export and keeps its purchases, matched for review. Null if cancelled. */
-  importKindle(): Promise<KindleImport | null>;
+  /** Keeps the purchases in a list of Kindle books (a .json chosen in Import books), matched for review. */
+  importKindle(path: string): Promise<KindleImport>;
   kindleReview(): Promise<KindleReview>;
   /** Accepts the matched books and the probable ones listed; tags them Kindle. */
   applyKindle(confirmed: string[], markRead: boolean): Promise<KindleApplied>;
@@ -861,14 +861,7 @@ function appApi(): Api {
       });
       return path ? (await core).invoke<GoodreadsImport>("import_goodreads", { path }) : null;
     },
-    importKindle: async () => {
-      const [path] = await openFiles({
-        multiple: false,
-        title: "Import your Kindle books",
-        filters: [{ name: "KindLogger export", extensions: ["json"] }],
-      });
-      return path ? (await core).invoke<KindleImport>("import_kindle", { path }) : null;
-    },
+    importKindle: async (path) => (await core).invoke<KindleImport>("import_kindle", { path }),
     kindleReview: async () => (await core).invoke<KindleReview>("kindle_review"),
     applyKindle: async (confirmed, markRead) => (await core).invoke<KindleApplied>("apply_kindle", { confirmed, markRead }),
     kindleSummary: async () => (await core).invoke<KindleSummary>("kindle_summary"),
@@ -1007,7 +1000,9 @@ function appApi(): Api {
       openFiles({
         multiple: true,
         title: "Import books",
-        filters: [{ name: "Books", extensions: BOOK_EXTENSIONS }],
+        // A list of books bought on Kindle (.json) can be chosen here too,
+        // under All files: it's read as a list, not imported as a book.
+        filters: isIOS || isAndroid ? [{ name: "Books", extensions: [...BOOK_EXTENSIONS, "json"] }] : [{ name: "Books", extensions: BOOK_EXTENSIONS }, { name: "All files", extensions: ["*"] }],
       }),
     pickFolder: async () =>
       isIOS

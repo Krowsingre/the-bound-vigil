@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isAndroid, isApp, isHome, isWeb } from "./api";
-import type { CollectionRef, HomeViewModel, ImportsView, Profile, SmartKind, SyncStatus } from "./api/types";
+import type { CollectionRef, HomeViewModel, ImportsView, KindleImport, Profile, SmartKind, SyncStatus } from "./api/types";
+import { isKindleList, KINDLE_CHANGED, KindleReviewDialog } from "./imports/KindleReview";
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { ContextMenuHost } from "./components/ContextMenu";
 import { BookDialogsHost } from "./library/BookDialogs";
@@ -277,8 +278,20 @@ export function App() {
     return api.onImports(seen);
   }, [toast]);
 
+  const [kindleReview, setKindleReview] = useState<KindleImport | null>(null);
   const runImport = useCallback(
-    async (paths: string[]) => {
+    async (chosen: string[]) => {
+      // A list of books bought on Kindle is read as a list, then reviewed.
+      const lists = chosen.filter(isKindleList);
+      const paths = chosen.filter((p) => !isKindleList(p));
+      for (const list of lists) {
+        try {
+          setKindleReview(await api.importKindle(list));
+        } catch (e) {
+          toast(`${list.split(/[\\/]/).pop()} isn't a book TBV can read.`);
+          console.warn(e);
+        }
+      }
       if (paths.length === 0) return;
       try {
         const found = await api.queueImports(paths);
@@ -704,6 +717,18 @@ export function App() {
         <button type="button" className="import-progress" onClick={() => navigate("imports")}>
           Imported {importCounts(imports).done} of {importCounts(imports).total} books <span className="import-progress-link">View</span>
         </button>
+      )}
+      {kindleReview && (
+        <KindleReviewDialog
+          review={kindleReview.review}
+          imported={kindleReview}
+          onClose={(applied) => {
+            setKindleReview(null);
+            // The list was kept even when nothing was applied, so the Compendium shows it.
+            window.dispatchEvent(new Event(KINDLE_CHANGED));
+            if (applied) refresh();
+          }}
+        />
       )}
       {!isWeb && !isHome && <LocalSendOffers />}
       <PlayerBar onShowAudiobooks={() => navigate("audiobooks")} />

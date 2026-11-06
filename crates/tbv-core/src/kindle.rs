@@ -1,5 +1,6 @@
-//! Books bought on Kindle, from the file the KindLogger browser extension
-//! saves from Amazon's "Manage your content" page. TBV can't download or
+//! Books bought on Kindle, from a list of them (the JSON the KindLogger
+//! browser extension saves), chosen in Import books. The app doesn't name or
+//! point to that extension (embre, 6 November 2026). TBV can't download or
 //! unlock Kindle books; the list is a record of what you own.
 //!
 //! Each purchase is kept by its ASIN, so importing a newer file only adds the
@@ -231,7 +232,7 @@ impl Library {
     pub fn import_kindle(&self, file: &Path) -> Result<KindleImport> {
         let not_kindle = || {
             Error::Unsuitable(
-                "this file isn't a KindLogger export. In KindLogger, open your Kindle books on Amazon and choose Export".into(),
+                "this file isn't a list of Kindle books".into(),
             )
         };
         let text = std::fs::read_to_string(file)?;

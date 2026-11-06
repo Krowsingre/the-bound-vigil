@@ -19,7 +19,7 @@ import { sameRef, SMART_INFO } from "./collectionInfo";
 import { CollectionPanel } from "./CollectionPanel";
 import { CollectionView } from "./CollectionView";
 import { KindleCard, KindleView, KINDLE_NAME } from "./KindleList";
-import { KINDLE_CHANGED } from "../settings/KindleSection";
+import { KINDLE_CHANGED } from "../imports/KindleReview";
 import { moved, useReorder } from "./useReorder";
 import { useAppSettings } from "../settings/appSettings";
 import { Stat } from "../home/ReadingActivity";
@@ -297,7 +297,7 @@ export function Collections({
   const q = filter.trim().toLocaleLowerCase();
   const matches = (...texts: (string | null | undefined)[]) => !q || texts.some((t) => t?.toLocaleLowerCase().includes(q));
 
-  const kindleCard = !!kindle && kindle.total > 0 && (kindle.missing > 0 || kindle.removed > 0) && tab !== "reading_lists" && matches(KINDLE_NAME, "kindle amazon");
+  const kindleCard = !!kindle && kindle.total > 0 && (kindle.missing > 0 || kindle.removed > 0 || kindle.waiting > 0) && tab !== "reading_lists" && matches(KINDLE_NAME, "kindle amazon");
 
   const own = useMemo(() => {
     const list = (overview?.collections ?? []).filter(

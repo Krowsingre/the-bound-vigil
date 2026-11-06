@@ -4,7 +4,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api, openExternal } from "../api";
-import type { KindlePurchase, KindleSummary } from "../api/types";
+import type { KindlePurchase, KindleReview, KindleSummary } from "../api/types";
+import { KindleReviewDialog } from "../imports/KindleReview";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { hashOf } from "../lib/format";
@@ -44,11 +45,17 @@ export function KindleView({ onBack, onChanged }: { onBack: () => void; onChange
   const [shown, setShown] = useState(AT_ONCE);
   const [filter, setFilter] = useState("");
   const [reload, setReload] = useState(0);
+  const [waiting, setWaiting] = useState(0);
+  const [review, setReview] = useState<KindleReview | null>(null);
   useEffect(() => {
     let live = true;
     setList(null);
     api.kindleMissing(removed).then(
-      (l) => live && setList(l),
+      (l) => {
+        if (!live) return;
+        setList(l);
+        void api.kindleSummary().then((k) => live && setWaiting(k.waiting), () => undefined);
+      },
       (e: unknown) => live && (toast(`The Kindle list couldn't be loaded: ${String(e)}`), setList([])),
     );
     return () => void (live = false);
@@ -97,6 +104,15 @@ export function KindleView({ onBack, onChanged }: { onBack: () => void; onChange
         <label className="kindle-show-removed">
           <input type="checkbox" checked={removed} onChange={(e) => setRemoved(e.target.checked)} /> Show removed books
         </label>
+        {waiting > 0 && (
+          <button
+            type="button"
+            className="btn btn-primary btn-small"
+            onClick={() => void api.kindleReview().then(setReview, (e: unknown) => toast(`That didn't work: ${String(e)}`))}
+          >
+            Review {waiting.toLocaleString()} {waiting === 1 ? "match" : "matches"}
+          </button>
+        )}
         <button type="button" className="btn btn-quiet btn-small" onClick={() => setReload((n) => n + 1)}>
           <Icon name="sync" size={14} /> Check the library again
         </button>
@@ -107,7 +123,7 @@ export function KindleView({ onBack, onChanged }: { onBack: () => void; onChange
         <div className="library-empty collections-empty">
           <h2>{q ? "Nothing matches" : removed ? "Nothing taken off the list" : "Every Kindle book is in your library"}</h2>
           <p className="muted">
-            {q ? `No Kindle books match “${filter.trim()}”.` : removed ? "Books you take off the list wait here." : "Import a newer Kindle list in Preferences, under Archive."}
+            {q ? `No Kindle books match “${filter.trim()}”.` : removed ? "Books you take off the list wait here." : "When you have a newer list, choose it in Import books."}
           </p>
         </div>
       ) : (
@@ -123,6 +139,19 @@ export function KindleView({ onBack, onChanged }: { onBack: () => void; onChange
             </button>
           )}
         </>
+      )}
+      {review && (
+        <KindleReviewDialog
+          review={review}
+          imported={null}
+          onClose={(applied) => {
+            setReview(null);
+            if (applied) {
+              setReload((n) => n + 1);
+              onChanged();
+            }
+          }}
+        />
       )}
     </div>
   );

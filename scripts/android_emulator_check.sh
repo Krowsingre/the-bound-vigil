@@ -29,6 +29,9 @@ PY
 
 adb install -r "$apk" || { echo "::error::The APK didn't install."; exit 1; }
 adb logcat -c
+# Don't let Android's "isn't responding" pop-ups (from its own home screen
+# on a slow emulator) cover the app.
+adb shell settings put global hide_error_dialogs 1 || true
 adb shell monkey -p "$app" -c android.intent.category.LAUNCHER 1 >/dev/null
 sleep 40
 # A slow emulator sometimes shows "Pixel Launcher isn't responding" (Android's
@@ -38,7 +41,7 @@ sleep 40
 code=""
 for _ in $(seq 1 12); do
   screen_xml 1-opened
-  if grep -q "isn't responding" "$out/1-opened.xml"; then
+  if grep -qE "isn.{1,3}t responding" "$out/1-opened.xml"; then
     read -r wx wy <<< "$(centre "$out/1-opened.xml" '(text|content-desc)="Wait"')"
     if [ -n "${wx:-}" ]; then adb shell input tap "$wx" "$wy"; else adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null; fi
     sleep 5
