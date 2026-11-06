@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isAndroid, isApp, isHome, isWeb } from "./api";
 import type { CollectionRef, HomeViewModel, ImportsView, KindleImport, Profile, SmartKind, SyncStatus } from "./api/types";
-import { isKindleList, KindleReviewDialog } from "./imports/KindleReview";
+import { isKindleList, KINDLE_CHANGED, KindleReviewDialog } from "./imports/KindleReview";
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { ContextMenuHost } from "./components/ContextMenu";
 import { BookDialogsHost } from "./library/BookDialogs";
@@ -724,6 +724,8 @@ export function App() {
           imported={kindleReview}
           onClose={(applied) => {
             setKindleReview(null);
+            // The list was kept even when nothing was applied, so the Compendium shows it.
+            window.dispatchEvent(new Event(KINDLE_CHANGED));
             if (applied) refresh();
           }}
         />
