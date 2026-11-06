@@ -1,14 +1,14 @@
-// Preferences › Archive › Kindle: bring in the books bought on Kindle (a
-// KindLogger export), review the matches, then tag them and, if wanted,
-// mark the ones read on Kindle as Read. The rest wait in the Compendium as
-// "Kindle, not in library".
+// The review after choosing a list of Kindle books in Import books (a .json
+// file): the books found in the library, the close ones to tick, and how
+// many aren't in it. Nothing changes until Tag is pressed: then the books
+// get the tag Kindle and, if wanted, the ones read on Kindle are marked Read.
+// The rest wait in the Compendium as "Kindle, not in library".
 
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import type { KindleImport, KindleMatch, KindleReview, KindleSummary } from "../api/types";
+import type { KindleImport, KindleMatch, KindleReview } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
-import { ActionTile, Section } from "./controls";
 
 const books = (n: number) => `${n.toLocaleString()} ${n === 1 ? "book" : "books"}`;
 const byLine = (title: string, authors: string | string[]) => {
@@ -19,83 +19,10 @@ const byLine = (title: string, authors: string | string[]) => {
 /** Tells the Compendium's Kindle card that the list changed. */
 export const KINDLE_CHANGED = "tbv:kindle-changed";
 
-export function KindleSection() {
-  const toast = useToast();
-  const [busy, setBusy] = useState(false);
-  const [summary, setSummary] = useState<KindleSummary | null>(null);
-  const [review, setReview] = useState<{ review: KindleReview; imported: KindleImport | null } | null>(null);
-  const load = () => api.kindleSummary().then(setSummary, () => setSummary(null));
-  useEffect(() => void load(), []);
+/** Whether a chosen file is a list of Kindle books rather than a book. */
+export const isKindleList = (path: string) => /\.json$/i.test(path);
 
-  const start = async () => {
-    setBusy(true);
-    try {
-      const done = await api.importKindle();
-      if (done) setReview({ review: done.review, imported: done });
-      void load();
-    } catch (e) {
-      toast(`That didn't work: ${String(e)}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const reopen = async () => {
-    try {
-      setReview({ review: await api.kindleReview(), imported: null });
-    } catch (e) {
-      toast(`That didn't work: ${String(e)}`);
-    }
-  };
-
-  return (
-    <Section
-      id="kindle"
-      title="Kindle"
-      lede="Bring in the list of books you've bought on Kindle. The ones in your library get the tag Kindle, and the rest wait in the Compendium as Kindle, not in library, so you can see what's still to bring over."
-    >
-      {summary && summary.total > 0 && (
-        <p className="kindle-summary">
-          <strong>{books(summary.total)}</strong> from Kindle: {summary.inLibrary.toLocaleString()} in your library,{" "}
-          {summary.missing.toLocaleString()} not in it yet
-          {summary.removed > 0 && `, ${summary.removed.toLocaleString()} taken off the list`}.
-          {summary.waiting > 0 && (
-            <>
-              {" "}
-              <button type="button" className="link-btn" onClick={() => void reopen()}>
-                Review {summary.waiting.toLocaleString()} {summary.waiting === 1 ? "match" : "matches"}
-              </button>
-            </>
-          )}
-        </p>
-      )}
-      <div className="action-tiles">
-        <ActionTile
-          icon={<Icon name="upload" size={22} />}
-          title={summary && summary.total > 0 ? "Import a newer Kindle list" : "Import your Kindle books"}
-          hint="A KindLogger export. Only new purchases are added."
-          disabled={busy}
-          onClick={() => void start()}
-        />
-      </div>
-      <p className="settings-row-hint">
-        Make the file with the KindLogger browser extension on Amazon's Manage your content page. TBV can't download or unlock Kindle books; this is a list of
-        what you own.
-      </p>
-      {review && (
-        <KindleReviewDialog
-          {...review}
-          onClose={(applied) => {
-            setReview(null);
-            void load();
-            if (applied) window.dispatchEvent(new Event(KINDLE_CHANGED));
-          }}
-        />
-      )}
-    </Section>
-  );
-}
-
-function KindleReviewDialog({ review, imported, onClose }: { review: KindleReview; imported: KindleImport | null; onClose: (applied: boolean) => void }) {
+export function KindleReviewDialog({ review, imported, onClose }: { review: KindleReview; imported: KindleImport | null; onClose: (applied: boolean) => void }) {
   const toast = useToast();
   const [yes, setYes] = useState<Set<string>>(new Set());
   const [markRead, setMarkRead] = useState(review.markRead);
@@ -115,6 +42,7 @@ function KindleReviewDialog({ review, imported, onClose }: { review: KindleRevie
         done.missing > 0 && `${books(done.missing)} are in Kindle, not in library.`,
       ].filter(Boolean);
       toast(parts.join(" "));
+      window.dispatchEvent(new Event(KINDLE_CHANGED));
       onClose(true);
     } catch (e) {
       toast(`That didn't work: ${String(e)}`);

@@ -19,7 +19,7 @@ import { sameRef, SMART_INFO } from "./collectionInfo";
 import { CollectionPanel } from "./CollectionPanel";
 import { CollectionView } from "./CollectionView";
 import { KindleCard, KindleView, KINDLE_NAME } from "./KindleList";
-import { KINDLE_CHANGED } from "../settings/KindleSection";
+import { KINDLE_CHANGED } from "../imports/KindleReview";
 import { moved, useReorder } from "./useReorder";
 import { useAppSettings } from "../settings/appSettings";
 import { Stat } from "../home/ReadingActivity";

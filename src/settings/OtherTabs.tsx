@@ -15,7 +15,6 @@ import { readLocal, useAppDark, useAppSettings, writeLocal } from "./appSettings
 import { useReaderSettings } from "./AppearanceTab";
 import { ActionTile, Columns, formatBytes, RadioList, Row, Section, SectionGroup, Segmented, Select, Toggle } from "./controls";
 import { HardcoverSection } from "./HardcoverSection";
-import { KindleSection } from "./KindleSection";
 import { CanvaSection, canvaHere } from "./CanvaSection";
 import { ReadingHistorySection } from "./ReadingHistory";
 
@@ -260,7 +259,6 @@ export function LibraryTab({
         <GoodreadsSection />
         <HardcoverSection />
       </SectionGroup>
-      <KindleSection />
 
     </>
   );
@@ -1067,7 +1065,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.80.0");
+  const [version, setVersion] = useState("0.81.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));
