@@ -171,7 +171,7 @@ export function Library({
 
   const shelf = view.tab === "collections" ? "all" : view.tab;
   const Layout = { grid: BookGrid, list: BookList, compact: BookTable }[view.layout];
-  const groupSeries = kind !== "documents" && view.seriesGrouping !== "individual" && !seriesBack && view.series.length !== 1 && selected === null;
+  const groupSeries = kind !== "documents" && view.seriesGrouping !== "individual" && !seriesBack && selected === null;
   const inSeries = !!seriesBack;
   const separatePins = kind === "books" && !inSeries;
   const pinnedFirst = !inSeries;

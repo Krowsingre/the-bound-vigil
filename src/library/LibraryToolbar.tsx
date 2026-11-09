@@ -298,7 +298,7 @@ export function LibraryToolbar({
             {allowSeries && <Menu
               label={`Series: ${GROUPING.find((item) => item.value === view.seriesGrouping)?.label}`}
               className="toolbar-button"
-              trigger={<><Icon name="bookOpen" size={16} /><Icon name="chevronDown" size={12} className="toolbar-chevron" /></>}
+              trigger={<><Icon name="bookOpen" size={16} /> Series <Icon name="chevronDown" size={12} className="toolbar-chevron" /></>}
               items={GROUPING.map(({ value, label }) => ({ label, checked: view.seriesGrouping === value,
                 onSelect: () => onChange({ seriesGrouping: value, page: 0 }) }))}
             />}

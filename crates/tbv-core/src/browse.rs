@@ -856,11 +856,11 @@ mod tests {
 
     #[test]
     fn mixed_title_sort_places_series_by_name_before_pagination() {
-        let (dir, library) = open_temp_library();
+        let (dir, mut library) = open_temp_library();
         let series = r#"<meta name="calibre:series" content="The Middle Series"/>"#;
-        let volume = add_with(&library, dir.path(), "Zebra Volume", "Writer", series);
-        let alpha = add(&library, dir.path(), "Alpha", "Writer");
-        let omega = add(&library, dir.path(), "Omega", "Writer");
+        let volume = add_with(&mut library, dir.path(), "Zebra Volume", "Writer", series);
+        let alpha = add(&mut library, dir.path(), "Alpha", "Writer");
+        let omega = add(&mut library, dir.path(), "Omega", "Writer");
         let page = |number, mixed| library.library_page(&query(|q| {
             q.sort = SortOrder::Title;
             q.group_series = true;
