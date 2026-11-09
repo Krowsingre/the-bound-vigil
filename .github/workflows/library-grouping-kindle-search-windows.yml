@@ -1,0 +1,51 @@
+name: Library Grouping and Kindle Search Windows setup
+
+on:
+  push:
+    branches: [codex/build-library-grouping-kindle-search]
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Library core tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p tbv-core --lib
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    # TBV's App ID, for checking Apple's stamps on Scribe records (apple_attest.rs).
+    env:
+      TBV_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the app and installers
+        shell: pwsh
+        run: |
+          # With the update signing key, the installer is signed for TBV's own updater too.
+          if ($env:TAURI_SIGNING_PRIVATE_KEY) { npx tauri build --bundles nsis --config src-tauri/tauri.updater.conf.json } else { npx tauri build --bundles nsis }
+        env:
+          # Google's desktop sign-in "secret" (not a real one, but kept off GitHub's pages).
+          TBV_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          TBV_CANVA_CLIENT_SECRET: ${{ secrets.CANVA_CLIENT_SECRET }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+      # The setup program on its own, so it's the first thing in the download.
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-bound-vigil-windows-setup
+          path: target/release/bundle/nsis/*.exe
+          if-no-files-found: error
