@@ -13,6 +13,40 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 static STAGING_IN_USE: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static FINISHED_TRANSFERS: Mutex<std::collections::VecDeque<serde_json::Value>> = Mutex::new(std::collections::VecDeque::new());
+
+fn remember_transfer(event: &serde_json::Value) {
+    if !matches!(event.get("kind").and_then(serde_json::Value::as_str), Some("download" | "downloadImport")) {
+        return;
+    }
+    if let Ok(mut finished) = FINISHED_TRANSFERS.lock() {
+        finished.push_back(event.clone());
+        if finished.len() > 100 {
+            finished.pop_front();
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct DownloadStatus {
+    active: Vec<String>,
+    finished: Vec<serde_json::Value>,
+}
+
+/// Check saved in-progress transfers against the current native process.
+#[tauri::command]
+pub async fn browser_download_status(ids: Vec<String>) -> CommandResult<DownloadStatus> {
+    #[allow(unused_mut)]
+    let mut active = STAGING_IN_USE.lock().map_err(|e| e.to_string())?.clone();
+    #[cfg(target_os = "ios")]
+    active.extend(tauri_plugin_tbv_ios::browser_active_downloads().ok_or("Couldn't check for active downloads.")?);
+    let finished = FINISHED_TRANSFERS.lock().map_err(|e| e.to_string())?.iter()
+        .filter(|event| event.get("id").and_then(serde_json::Value::as_str)
+            .is_some_and(|id| ids.iter().any(|requested| requested == id)))
+        .cloned().collect();
+    active.retain(|id| ids.contains(id));
+    Ok(DownloadStatus { active, finished })
+}
 
 pub(crate) struct DownloadHold(String);
 
@@ -151,6 +185,9 @@ fn link_menu(url: &str) -> Vec<(&'static str, &'static str)> {
 
 #[cfg_attr(mobile, allow(dead_code))]
 pub(crate) fn tell(app: &tauri::AppHandle, event: Event) {
+    if matches!(&event, Event::Download { .. } | Event::DownloadImport { .. }) {
+        if let Ok(value) = serde_json::to_value(&event) { remember_transfer(&value); }
+    }
     let _ = app.emit_to(EventTarget::webview("main"), "browser-event", event);
 }
 
@@ -1165,6 +1202,7 @@ pub fn listen(app: tauri::AppHandle) {
     std::thread::spawn(move || loop {
         match tauri_plugin_tbv_ios::browser_event() {
             Some(event) => {
+                remember_transfer(&event);
                 let _ = app.emit_to(EventTarget::webview("main"), "browser-event", event);
             }
             // Not ready yet, or nothing happened: ask again shortly.

@@ -4,6 +4,7 @@
 
 import { useSyncExternalStore } from "react";
 import { api } from "../api";
+import type { BrowserEvent } from "../api/types";
 import { readBrowserPrefs } from "./browserPrefs";
 
 export const BOOK_FILE = /\.(epub|kepub|pdf|mobi|azw3?|fb2|cbz|cbr|djvu|txt|docx?|rtf|m4b|mp3|m4a)(\?|#|$)/i;
@@ -32,6 +33,7 @@ export interface Fetched {
 
 const KEY = "tbv.browser.downloads";
 export const MOST_DOWNLOADS = 50;
+const interrupted = "The transfer is no longer running.";
 
 export function readDownloads(): Fetched[] {
   try {
@@ -62,12 +64,11 @@ let downloads: Fetched[] | undefined;
 const listeners = new Set<() => void>();
 const answering = new Set<string>();
 
-// Only a new app session interrupts its saved transfers. Switching screens
+// Switching screens
 // leaves this store and its native event subscription in place.
 function snapshot(): Fetched[] {
   return downloads ??= readDownloads().map((d) => {
     if (d.state === "checking") return { ...d, state: "done", asking: !!d.path };
-    if (d.state === "coming") return { ...d, state: "failed" };
     if (d.state === "importing") return { ...d, state: "importFailed", asking: !!d.path, error: "The app closed during import." };
     return d;
   });
@@ -161,37 +162,83 @@ async function finishDownload(row: Fetched, toast: (message: string) => void) {
   }
 }
 
+function receiveDownload(event: BrowserEvent, toast: (message: string) => void) {
+  if (event.kind === "downloadStart" || event.kind === "directDownloadStart") {
+    const row: Fetched = {
+      id: event.id, name: event.name, url: event.url, at: Date.now(), state: "coming",
+      ...(event.kind === "directDownloadStart" ? { direct: true } : { tab: event.tab }),
+    };
+    setDownloads((rows) => [row, ...rows.filter((d) => d.id !== row.id)]);
+  } else if (event.kind === "download") {
+    const before = snapshot().find((d) => d.id === event.id);
+    if (before && before.state !== "coming" && before.error !== interrupted) return;
+    const direct = before?.direct === true;
+    const row: Fetched = {
+      ...before, direct, id: event.id, name: event.name, tab: event.tab,
+      path: event.path || undefined, at: before?.at ?? Date.now(),
+      state: event.ok ? direct ? "importing" : "checking" : "failed",
+      asking: false,
+      error: event.error ?? undefined,
+      securityBlocked: event.securityBlocked,
+    };
+    setDownloads((rows) => [row, ...rows.filter((d) => d.id !== row.id)]);
+    if (row.state === "checking" && row.path) void finishDownload(row, toast);
+  } else if (event.kind === "downloadImport") {
+    if (!snapshot().some((row) => row.id === event.id && row.state === "importing")) return;
+    updateDownload(event.id, {
+      state: event.bookId ? "added" : "importFailed",
+      bookId: event.bookId ?? undefined, asking: !event.bookId,
+      ...(event.bookId && !event.error ? { path: undefined } : {}),
+      error: event.error ?? undefined,
+    });
+    if (event.error) toast(event.error);
+  }
+}
+
 export function listenForDownloads(toast: (message: string) => void) {
-  return api.onBrowserEvent((event) => {
-    if (event.kind === "downloadStart" || event.kind === "directDownloadStart") {
-      const row: Fetched = {
-        id: event.id, name: event.name, url: event.url, at: Date.now(), state: "coming",
-        ...(event.kind === "directDownloadStart" ? { direct: true } : { tab: event.tab }),
-      };
-      setDownloads((rows) => [row, ...rows.filter((d) => d.id !== row.id)]);
-    } else if (event.kind === "download") {
-      const before = snapshot().find((d) => d.id === event.id);
-      const direct = before?.direct === true;
-      const row: Fetched = {
-        ...before, direct, id: event.id, name: event.name, tab: event.tab,
-        path: event.path || undefined, at: before?.at ?? Date.now(),
-        state: event.ok ? direct ? "importing" : "checking" : "failed",
-        asking: false,
-        error: event.error ?? undefined,
-        securityBlocked: event.securityBlocked,
-      };
-      setDownloads((rows) => [row, ...rows.filter((d) => d.id !== row.id)]);
-      if (row.state === "checking" && row.path) void finishDownload(row, toast);
-    } else if (event.kind === "downloadImport") {
-      updateDownload(event.id, {
-        state: event.bookId ? "added" : "importFailed",
-        bookId: event.bookId ?? undefined, asking: !event.bookId,
-        ...(event.bookId && !event.error ? { path: undefined } : {}),
-        error: event.error ?? undefined,
-      });
-      if (event.error) toast(event.error);
+  const stop = api.onBrowserEvent((event) => receiveDownload(event, toast));
+  const missing = new Set<string>();
+  let disposed = false;
+  let checking = false;
+  const reconcile = async () => {
+    if (checking || !api.browserDownloadStatus) return;
+    const pending = snapshot().filter((row) => row.state === "coming" || (row.direct && row.state === "importing"));
+    if (!pending.length) return;
+    checking = true;
+    try {
+      const status = await api.browserDownloadStatus(pending.map((row) => row.id));
+      if (disposed) return;
+      const finished = new Set(status.finished.filter((event) => event.kind === "download").map((event) => event.id));
+      for (const event of status.finished) {
+        if (snapshot().some((row) => row.id === event.id)) receiveDownload(event, toast);
+      }
+      const active = new Set(status.active);
+      for (const row of pending) {
+        if (snapshot().find((item) => item.id === row.id)?.state !== "coming") continue;
+        if (finished.has(row.id) || active.has(row.id)) missing.delete(row.id);
+        else if (missing.has(row.id)) {
+          updateDownload(row.id, { state: "failed", error: interrupted });
+        } else {
+          // WebKit can finish just before its completion event reaches Rust.
+          missing.add(row.id);
+        }
+      }
+      const waiting = new Set(snapshot().filter((row) => row.state === "coming").map((row) => row.id));
+      for (const id of missing) if (!waiting.has(id)) missing.delete(id);
+    } catch {
+      // A failed status check cannot establish that a download stopped.
+      missing.clear();
+    } finally {
+      checking = false;
     }
-  });
+  };
+  void reconcile();
+  const timer = api.browserDownloadStatus ? setInterval(() => void reconcile(), 2_000) : undefined;
+  return () => {
+    disposed = true;
+    clearInterval(timer);
+    stop();
+  };
 }
 
 /** What a download's line says under its name. */

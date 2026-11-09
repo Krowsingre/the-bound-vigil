@@ -567,6 +567,7 @@ export interface Api {
   /** Runs reader mode's article finder in the tab; null when the page has no article. */
   browserRead(tab: string, script: string): Promise<unknown>;
   browserCancelDownload(id: string): Promise<void>;
+  browserDownloadStatus?(ids: string[]): Promise<{ active: string[]; finished: Extract<BrowserEvent, { kind: "download" | "downloadImport" }>[] }>;
   /** A picture from the web, for an article saved to the library. */
   browserFetchPicture(url: string): Promise<Uint8Array>;
   onBrowserEvent(listener: (event: BrowserEvent) => void): () => void;
@@ -1279,6 +1280,7 @@ function appApi(): Api {
     browserFind: async (tab, text, backwards) => (await core).invoke("browser_find", { tab, text, backwards }),
     browserProtect: async (protection) => (await core).invoke("browser_protect", { protection }),
     browserRead: async (tab, script) => (await core).invoke<unknown>("browser_read", { tab, script }),
+    browserDownloadStatus: async (ids) => (await core).invoke("browser_download_status", { ids }),
     browserCancelDownload: async (id) => (await core).invoke("browser_cancel_download", { id }),
     browserFetchPicture: async (url) => new Uint8Array(await (await core).invoke<ArrayBuffer>("browser_fetch_picture", { url })),
     onBrowserEvent: (listener) => onEvent<BrowserEvent>("browser-event", listener),
