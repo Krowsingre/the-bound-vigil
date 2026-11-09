@@ -47,6 +47,8 @@ export function LibraryToolbar({
   narrators = [],
   allLabel,
   allowSeries = false,
+  continuous = false,
+  onContinuous,
   selecting,
   onSelecting,
   onSelectAll,
@@ -65,6 +67,8 @@ export function LibraryToolbar({
   /** The first tab's name, when it isn't "All books". */
   allLabel?: string;
   allowSeries?: boolean;
+  continuous?: boolean;
+  onContinuous?: (enabled: boolean) => void;
   selecting: boolean;
   onSelecting: (on: boolean) => void;
   /** Starts choosing with every book the page shows already chosen. */
@@ -253,6 +257,17 @@ export function LibraryToolbar({
                 {tabName(view.tab)}
                 {view.location === "on_device" && " · Downloaded"}
               </span>
+            )}
+            {onContinuous && (
+              <Menu
+                label={continuous ? "Browsing mode: Continuous scroll" : "Browsing mode: Paged"}
+                className="toolbar-button"
+                trigger={<><Icon name="rows" size={16} /><Icon name="chevronDown" size={12} className="toolbar-chevron" /></>}
+                items={[
+                  { label: "Paged", checked: !continuous, onSelect: () => onContinuous(false) },
+                  { label: "Continuous scroll", checked: continuous, onSelect: () => onContinuous(true) },
+                ]}
+              />
             )}
             <div className="layout-switch" role="radiogroup" aria-label="Layout">
               {LAYOUTS.filter((l) => allowSeries || l.layout !== "series").map((l) => (

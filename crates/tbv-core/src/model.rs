@@ -356,6 +356,9 @@ pub struct LibraryQuery {
     pub pinned_first: bool,
     #[serde(default)]
     pub group_series: bool,
+    /// Restrict the page to pinned or unpinned books.
+    #[serde(default)]
+    pub pinned: Option<bool>,
     /// Zero-based.
     pub page: u32,
     pub page_size: u32,

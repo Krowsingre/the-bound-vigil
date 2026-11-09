@@ -888,7 +888,7 @@ export function previewApi(): Api {
     coverUrl: (path) => (path.startsWith("data:") ? path : ""),
     openBook: async (bookId) => {
       const before = find(bookId);
-      update(bookId, { lastOpenedAt: new Date().toISOString(), status: before.status === "unread" ? "in_progress" : before.status });
+      update(bookId, { lastOpenedAt: new Date().toISOString(), status: before.status === "unread" ? "in_progress" : before.status, wantToRead: false });
       return { book: find(bookId), publisher: "Sample Press", language: "en", fileSize: 48_000, previouslyOpenedAt: before.lastOpenedAt };
     },
     readBookFile: async (bookId) => {
