@@ -110,6 +110,7 @@ export function Collections({
   onOpen,
   onOpenBook,
   onChanged,
+  onDiscover,
   search,
 }: {
   /** What's typed in the top bar's search box: the collections are filtered by it. */
@@ -119,6 +120,7 @@ export function Collections({
   refreshKey: number;
   onOpen: (collection: CollectionRef | null) => void;
   onOpenBook: (bookId: string) => void;
+  onDiscover?: () => void;
   /** Something changed that other pages show (counts, Home's collections). */
   onChanged: () => void;
 }) {
@@ -366,6 +368,7 @@ export function Collections({
   if (kindleOpen && !open)
     return (
       <KindleView
+        onDiscover={onDiscover}
         onBack={() => setKindleOpen(false)}
         onChanged={() => {
           setReload((n) => n + 1);

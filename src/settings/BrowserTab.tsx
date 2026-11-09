@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, isIOS } from "../api";
+import { api, isIOS, isMac } from "../api";
 import { useToast } from "../components/Toast";
 import {
   COME_BACK,
@@ -8,6 +8,9 @@ import {
   lowerFor,
   onBrowserPrefs,
   PROTECTION_LEVELS,
+  REDIRECT_MODES,
+  redirectHost,
+  type RedirectMode,
   protectionOf,
   readBrowserPrefs,
   resetSite,
@@ -34,6 +37,7 @@ export function BrowserTab() {
   const toast = useToast();
   const [prefs, setPrefs] = useState(readBrowserPrefs);
   const [home, setHome] = useState(prefs.home);
+  const [redirectSite, setRedirectSite] = useState("");
   const [clearing, setClearing] = useState(false);
   useEffect(() => onBrowserPrefs(() => setPrefs(readBrowserPrefs())), []);
   useEffect(() => setHome(prefs.home), [prefs.home]);
@@ -86,6 +90,28 @@ export function BrowserTab() {
   );
   return (
     <Columns side={side}>
+      {!isMac && <Section id="redirects" title="Website redirects" lede="Choose what Discover does when a site automatically sends you to another page. Trusted sites can redirect under any mode.">
+        <Row label="Automatic redirects">
+          <Select label="Automatic redirects" value={prefs.redirects} options={REDIRECT_MODES}
+            onChange={(redirects: RedirectMode) => protect(writeBrowserPrefs({ redirects }))} />
+        </Row>
+        <form onSubmit={(event) => {
+          event.preventDefault();
+          const host = redirectHost(redirectSite);
+          if (!host) return toast("Enter a website host.");
+          protect(writeBrowserPrefs({ redirectAllowlist: [...new Set([...prefs.redirectAllowlist, host])] }));
+          setRedirectSite("");
+        }}>
+          <label>Allow redirects from <input value={redirectSite} placeholder="example.com" onChange={(event) => setRedirectSite(event.target.value)} /></label>
+          <button type="submit" className="btn btn-quiet btn-small">Add site</button>
+        </form>
+        {prefs.redirectAllowlist.map((host) => (
+          <Row key={host} label={host}>
+            <button type="button" className="btn btn-quiet btn-small" aria-label={"Remove " + host}
+              onClick={() => protect(writeBrowserPrefs({ redirectAllowlist: prefs.redirectAllowlist.filter((site) => site !== host) }))}>Remove</button>
+          </Row>
+        ))}
+      </Section>}
       <SectionGroup id="start" title="Start and search" lede="What Discover opens to and how it searches." holds={["search", "home"]}>
         <Section id="search" title="Searching" lede="Words typed into Discover's address box that aren't a web address are searched for.">
           <Toggle

@@ -312,6 +312,7 @@ export function Browser({
   const [undo, setUndo] = useState<{ count: number; at: number } | null>(null);
   const [closedTabs, setClosedTabs] = useState(readClosedTabs);
   /** A link for another app, waiting for an answer. */
+  const [redirects, setRedirects] = useState<Extract<BrowserEvent, { kind: "redirect" }>[]>([]);
   const [appLink, setAppLink] = useState<string | null>(null);
   const [finding, setFinding] = useState<string | null>(null);
   const [article, setArticle] = useState<ReaderArticle | null>(null);
@@ -320,6 +321,7 @@ export function Browser({
   const [problem, setProblem] = useState<string | null>(null);
   const area = useRef<HTMLDivElement>(null);
   const made = useRef(madeViews);
+  const preparing = useRef(new Map<string, Promise<void>>());
   const shown = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -395,6 +397,8 @@ export function Browser({
     const tab = list.find((t) => t.id === id) ?? list[0];
     // TBV's own start page: no web page to show.
     if (isStartPage(tab.url)) return api.browserHide();
+    await preparing.current.get(tab.id);
+    if (tabsRef.current.active !== tab.id || !mounted.current) return;
     const fresh = !made.current.has(tab.id);
     await api.browserShow(tab.id, fresh ? tab.url : null, at, protectionOf(readBrowserPrefs()), !!tab.private);
     made.current.add(tab.id);
@@ -404,6 +408,21 @@ export function Browser({
     // would show over whatever's there now, so it goes away again.
     if (!mounted.current || covered() || aside.current) await api.browserHide();
   }, [fitZoom]);
+
+  const prepareTab = (id: string, url: string, privately: boolean) => {
+    if (isIOS || !/^https?:/i.test(url)) return;
+    const at = frame();
+    if (!at) return;
+    const nextFrame = new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const task = nextFrame.then(async () => {
+      if (!mounted.current || !tabsRef.current.tabs.some((tab) => tab.id === id)) return;
+      await api.browserShow(id, url, at, protectionOf(readBrowserPrefs()), privately, true);
+      if (mounted.current && tabsRef.current.tabs.some((tab) => tab.id === id)) made.current.add(id);
+      else void api.browserAct(id, "close").catch(() => undefined);
+    }).catch(() => undefined)
+      .finally(() => preparing.current.delete(id));
+    preparing.current.set(id, task);
+  };
 
   const reloadMarks = useCallback(() => api.bookmarks().then(setMarks, () => undefined), []);
   useEffect(() => void reloadMarks(), [reloadMarks]);
@@ -441,11 +460,17 @@ export function Browser({
           // Opened from a private tab, it's private too.
           const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.from)?.private;
           setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null, private: privately || undefined }, !ev.foreground));
+          if (!ev.tab && !ev.foreground) prepareTab(id, ev.url, privately);
           break;
         }
         case "failed":
           setFailed((f) => ({ ...f, [ev.tab]: { url: ev.url, reason: ev.reason } }));
           if (/^https?:/i.test(ev.url)) setTabs((s) => updateTab(s, ev.tab, { url: ev.url }));
+          break;
+        case "redirect":
+          setLoading((loading) => ({ ...loading, [ev.tab]: false }));
+          if (ev.ask) setRedirects((pending) => [...pending.filter((item) => item.tab !== ev.tab), ev]);
+          else toast("Redirect blocked from " + (siteOf(ev.from) ?? "this site") + ".");
           break;
         case "external":
           if (readBrowserPrefs().askApps) setAppLink(ev.url);
@@ -455,7 +480,9 @@ export function Browser({
           if (!/^https?:/i.test(ev.url)) break;
           if (ev.action === "newTab") {
             const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.tab)?.private;
-            setTabs((s) => openTab(s, { id: newTabId(), url: ev.url, title: null, private: privately || undefined }, true));
+            const id = newTabId();
+            setTabs((s) => openTab(s, { id, url: ev.url, title: null, private: privately || undefined }, true));
+            prepareTab(id, ev.url, privately);
           } else {
             void api.downloadWebBook(ev.url, fileTitle(ev.url)).then(
               () => toast("It's being added to your library."),
@@ -616,7 +643,9 @@ export function Browser({
       setArticle(null);
       setPanel(null);
     }
-    setTabs((s) => openTab(s, { id: newTabId(), url: to, title: null }, background));
+    const id = newTabId();
+    setTabs((s) => openTab(s, { id, url: to, title: null }, background));
+    if (background) prepareTab(id, to, false);
   };
   const openInNewTabRef = useRef(openInNewTab);
   openInNewTabRef.current = openInNewTab;
@@ -828,7 +857,7 @@ export function Browser({
   /** Downloads › Retry: the same address again, in its tab if that's still open. */
   const retry = (d: Fetched) => {
     if (!d.url) return;
-    setDownloads((list) => list.filter((x) => x.id !== d.id));
+    if (d.securityBlocked) return;
     if (d.direct) {
       void api.downloadWebBook(d.url, d.name).catch((e: unknown) => toast(clean(e)));
       return;
@@ -1208,6 +1237,19 @@ export function Browser({
       )}
       {panel === "reading" && <ReadingListPanel onOpenBook={onOpenBook} onClose={() => setPanel(null)} />}
       {panel === "site" && site && <SiteInfo url={url} actions={siteActions} />}
+      {redirects.length > 0 && (
+        <ConfirmDialog
+          title="Allow this redirect?"
+          body={(siteOf(redirects[0].from) ?? "This site") + " wants to send you to " + (siteOf(redirects[0].url) ?? "another page") + "."}
+          confirm="Allow once"
+          onCancel={() => setRedirects((pending) => pending.slice(1))}
+          onConfirm={() => {
+            const target = redirects[0];
+            setRedirects((pending) => pending.slice(1));
+            void api.browserAct(target.tab, "go", target.url).catch((failure: unknown) => toast(clean(failure)));
+          }}
+        />
+      )}
       {appLink && (
         <ConfirmDialog
           title="Open another app?"
@@ -1259,10 +1301,14 @@ export function Browser({
                         Cancel
                       </button>
                     )}
-                    {d.state === "failed" && d.url && (
-                      <button type="button" className="btn btn-quiet btn-small" onClick={() => retry(d)}>
-                        Retry
-                      </button>
+                    {d.state === "failed" && d.url && !d.securityBlocked && (
+                      <>
+                        <button type="button" className="btn btn-quiet btn-small" onClick={() => retry(d)}>Retry</button>
+                        {/^https?:/i.test(d.url) && <Menu label={"Download options for " + d.name} trigger={<Icon name="more" size={16} />} items={[
+                          { label: "Copy download link", icon: "copy", onSelect: () => void navigator.clipboard.writeText(d.url!).then(() => toast("Copied download link."), () => toast("Couldn't copy the download link.")) },
+                          { label: "Open in your normal browser", icon: "link", onSelect: () => void openExternal(d.url!) },
+                        ]} />}
+                      </>
                     )}
                     {d.state === "added" && d.bookId && (
                       <>

@@ -184,13 +184,27 @@ pub enum Level {
     Off,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RedirectMode {
+    #[default]
+    Allow,
+    Block,
+    Ask,
+}
+
 /// The chosen level, and the sites (hosts) it's lowered for.
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Protection {
     #[serde(default)]
     pub level: Level,
     #[serde(default)]
     pub lowered: Vec<String>,
+    #[serde(default)]
+    pub redirects: RedirectMode,
+    #[serde(default)]
+    pub redirect_allowlist: Vec<String>,
 }
 
 fn lists(level: Level) -> Vec<&'static [&'static str]> {
@@ -208,6 +222,16 @@ fn under(host: &str, domain: &str) -> bool {
 }
 
 impl Protection {
+    #[cfg(windows)]
+    pub fn redirect_mode(&self, source: &str) -> RedirectMode {
+        let source = source.trim_end_matches('.').trim_start_matches("www.");
+        if self.redirect_allowlist.iter().any(|host| under(source, host)) {
+            RedirectMode::Allow
+        } else {
+            self.redirects
+        }
+    }
+
     /// Whether the page on `site` (the host of the page showing) has protection lowered.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub fn lowered_for(&self, site: &str) -> bool {
@@ -298,7 +322,7 @@ mod tests {
     use super::*;
 
     fn strict() -> Protection {
-        Protection { level: Level::Strict, lowered: vec![] }
+        Protection { level: Level::Strict, lowered: vec![], ..Default::default() }
     }
 
     #[test]
@@ -312,7 +336,7 @@ mod tests {
 
     #[test]
     fn balanced_lets_advertising_through() {
-        let p = Protection { level: Level::Balanced, lowered: vec![] };
+        let p = Protection { level: Level::Balanced, lowered: vec![], ..Default::default() };
         assert!(!p.blocks("https://cdn.taboola.com/x.js", "example.org"));
         assert!(p.blocks("https://www.googletagmanager.com/gtm.js", "example.org"));
         assert!(p.blocks("https://coinhive.com/lib.js", "example.org"));
@@ -320,8 +344,8 @@ mod tests {
 
     #[test]
     fn off_and_lowered_sites_block_nothing() {
-        assert!(!Protection { level: Level::Off, lowered: vec![] }.blocks("https://doubleclick.net/", "example.org"));
-        let p = Protection { level: Level::Strict, lowered: vec!["example.org".into()] };
+        assert!(!Protection { level: Level::Off, lowered: vec![], ..Default::default() }.blocks("https://doubleclick.net/", "example.org"));
+        let p = Protection { level: Level::Strict, lowered: vec!["example.org".into()], ..Default::default() };
         assert!(!p.blocks("https://doubleclick.net/", "www.example.org"));
         assert!(p.blocks("https://doubleclick.net/", "other.org"));
     }
@@ -337,7 +361,7 @@ mod tests {
         let list = rules.as_array().unwrap();
         assert!(list.iter().any(|r| r["action"]["type"] == "block-cookies"));
         assert!(list.iter().any(|r| r["trigger"]["url-filter"].as_str().unwrap().contains("doubleclick\\.net")));
-        let off: serde_json::Value = serde_json::from_str(&Protection { level: Level::Off, lowered: vec![] }.apple_rules()).unwrap();
+        let off: serde_json::Value = serde_json::from_str(&Protection { level: Level::Off, lowered: vec![], ..Default::default() }.apple_rules()).unwrap();
         assert_eq!(off.as_array().unwrap().len(), 1);
     }
 }

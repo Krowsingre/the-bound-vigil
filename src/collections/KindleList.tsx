@@ -3,6 +3,10 @@
 // once it's added to the library, or by hand, which is remembered.
 
 import { useEffect, useMemo, useState } from "react";
+import { Menu } from "../components/Menu";
+import { askBrowser } from "../browse/browserAsk";
+import { addressFor, readBrowserPrefs } from "../browse/browserPrefs";
+import { KindleArchivePicker } from "./KindleArchivePicker";
 import { api, openExternal } from "../api";
 import type { KindlePurchase, KindleReview, KindleSummary } from "../api/types";
 import { KindleReviewDialog } from "../imports/KindleReview";
@@ -38,7 +42,7 @@ export function KindleCard({ summary, layout, onOpen }: { summary: KindleSummary
 
 const dayOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : null);
 
-export function KindleView({ onBack, onChanged }: { onBack: () => void; onChanged: () => void }) {
+export function KindleView({ onBack, onChanged, onDiscover }: { onBack: () => void; onChanged: () => void; onDiscover?: () => void }) {
   const toast = useToast();
   const [removed, setRemoved] = useState(false);
   const [list, setList] = useState<KindlePurchase[] | null>(null);
@@ -46,6 +50,7 @@ export function KindleView({ onBack, onChanged }: { onBack: () => void; onChange
   const [filter, setFilter] = useState("");
   const [reload, setReload] = useState(0);
   const [waiting, setWaiting] = useState(0);
+  const [picking, setPicking] = useState<KindlePurchase | null>(null);
   const [review, setReview] = useState<KindleReview | null>(null);
   useEffect(() => {
     let live = true;
@@ -130,7 +135,7 @@ export function KindleView({ onBack, onChanged }: { onBack: () => void; onChange
         <>
           <ul className="missing-row kindle-row">
             {matching.slice(0, shown).map((p) => (
-              <KindleBook key={p.asin} book={p} removed={removed} onChange={() => void change(p)} />
+              <KindleBook key={p.asin} book={p} removed={removed} onMatch={() => setPicking(p)} onDiscover={onDiscover} onChange={() => void change(p)} />
             ))}
           </ul>
           {matching.length > shown && (
@@ -139,6 +144,18 @@ export function KindleView({ onBack, onChanged }: { onBack: () => void; onChange
             </button>
           )}
         </>
+      )}
+      {picking && (
+        <KindleArchivePicker
+          purchase={picking}
+          onClose={(matched) => {
+            setPicking(null);
+            if (matched) {
+              setList((previous) => previous?.filter((book) => book.asin !== picking.asin) ?? previous);
+              onChanged();
+            }
+          }}
+        />
       )}
       {review && (
         <KindleReviewDialog
@@ -157,7 +174,11 @@ export function KindleView({ onBack, onChanged }: { onBack: () => void; onChange
   );
 }
 
-function KindleBook({ book, removed, onChange }: { book: KindlePurchase; removed: boolean; onChange: () => void }) {
+function KindleBook({ book, removed, onChange, onMatch, onDiscover }: {
+  book: KindlePurchase; removed: boolean; onChange: () => void; onMatch: () => void; onDiscover?: () => void;
+}) {
+  const toast = useToast();
+  const query = [book.title, book.author].filter(Boolean).join(" ");
   const [failed, setFailed] = useState(false);
   const day = dayOf(book.acquiredAt);
   return (
@@ -183,26 +204,16 @@ function KindleBook({ book, removed, onChange }: { book: KindlePurchase; removed
       </span>
       <span className="missing-meta">
         <span className="muted">{day ?? ""}</span>
-        <span className="missing-actions">
-          <button
-            type="button"
-            className="icon-btn"
-            title="Open on Amazon"
-            aria-label={`Open ${book.title} on Amazon`}
-            onClick={() => void openExternal(book.link)}
-          >
-            <Icon name="link" size={14} />
-          </button>
-          <button
-            type="button"
-            className="icon-btn"
-            title={removed ? "Put it back on the list" : "Take it off the list"}
-            aria-label={removed ? `Put ${book.title} back on the list` : `Take ${book.title} off the list`}
-            onClick={onChange}
-          >
-            <Icon name={removed ? "undo" : "close"} size={14} />
-          </button>
-        </span>
+        <Menu label={"More for " + book.title} trigger={<Icon name="more" size={16} />} items={[
+          { label: "Copy title and author", icon: "copy", onSelect: () => void navigator.clipboard.writeText(query).then(() => toast("Copied title and author."), () => toast("Couldn't copy the title and author.")) },
+          { label: "Search in Discover", icon: "search", disabled: !onDiscover, onSelect: () => {
+            const url = addressFor(query, readBrowserPrefs().search);
+            if (url && onDiscover) { askBrowser({ url }); onDiscover(); }
+          } },
+          { label: "Open on Amazon", icon: "link", onSelect: () => void openExternal(book.link) },
+          { label: "It's in my Archive", icon: "library", onSelect: onMatch },
+          { label: removed ? "Put it back on the list" : "Take it off the list", icon: removed ? "undo" : "close", onSelect: onChange },
+        ]} />
       </span>
     </li>
   );

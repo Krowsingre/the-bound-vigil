@@ -710,6 +710,8 @@ const MIGRATIONS: &[&str] = &[
     "#,
     // v38: optional folders for browser bookmarks.
     "ALTER TABLE bookmarks ADD COLUMN folder TEXT;",
+    // v39: optional additional Archive matches for a Kindle box set.
+    "ALTER TABLE kindle_purchases ADD COLUMN matched_books TEXT;",
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
