@@ -208,6 +208,20 @@
   transform: translateY(-2px);
 }
 
+.library-pins {
+  margin-bottom: 24px;
+}
+
+.library-pins summary {
+  cursor: pointer;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.library-pins summary svg {
+  vertical-align: text-bottom;
+}
+
 .series-stack .grid-open .cover {
   box-shadow: 3px 3px var(--surface-sunk), 6px 6px var(--border);
 }

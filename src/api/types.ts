@@ -510,6 +510,7 @@ export interface LibraryQuery {
   /** Pinned books first: the Archive's own list. */
   pinnedFirst?: boolean;
   groupSeries?: boolean;
+  pinned?: boolean;
   /** Zero-based. */
   page: number;
   pageSize: number;

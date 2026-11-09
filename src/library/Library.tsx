@@ -103,7 +103,9 @@ export function Library({
   // On a phone there are no pages: more books load as the list nears its end.
   // A computer can ask for the same in Settings.
   const narrow = useNarrow();
-  const { scrollLibrary } = useAppSettings().settings;
+  const { settings: { scrollLibrary }, change: changeSettings } = useAppSettings();
+  const [pins, setPins] = useState<BookPreview[]>([]);
+  const [pinsExpanded, setPinsExpanded] = useState(true);
   const endless = narrow || scrollLibrary;
   /** Phone: how many pages are shown, and the books of every page after the first. */
   const [pages, setPages] = useState(1);
@@ -117,7 +119,10 @@ export function Library({
 
   const shelf = view.tab === "collections" ? "all" : view.tab;
   const groupSeries = kind === "books" && view.layout === "series" && view.series.length !== 1 && selected === null;
-  const pinnedFirst = !(view.layout === "series" && view.series.length === 1);
+  const inSeries = view.layout === "series" && view.series.length === 1;
+  const separatePins = kind === "books" && !inSeries;
+  const pinnedFirst = !inSeries;
+  const pinned = separatePins ? false : undefined;
   const query = {
     shelf,
     sort: view.sort,
@@ -136,6 +141,7 @@ export function Library({
     kind,
     paired,
     pinnedFirst,
+    pinned,
     groupSeries,
   };
   useEffect(() => {
@@ -159,6 +165,7 @@ export function Library({
         kind,
         paired,
         pinnedFirst,
+        pinned,
         groupSeries,
         page: endless ? 0 : view.page,
         pageSize: PAGE_SIZE,
@@ -170,13 +177,29 @@ export function Library({
     return () => {
       current = false;
     };
-  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.series, view.narrators, view.hideRead, view.exclude, view.page, paired, search, refreshKey, reload, endless, groupSeries, pinnedFirst]);
+  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.series, view.narrators, view.hideRead, view.exclude, view.page, paired, search, refreshKey, reload, endless, groupSeries, pinnedFirst, pinned]);
+
+  // Fetch pins separately so they repeat above the results on every page.
+  const pinQueryKey = JSON.stringify({ ...query, pinned: true, groupSeries: false });
+  useEffect(() => {
+    if (!separatePins || view.tab === "collections") {
+      setPins([]);
+      return;
+    }
+    let current = true;
+    api.getLibrary({ ...JSON.parse(pinQueryKey), page: 0, pageSize: 200 }).then(
+      (result) => { if (current) setPins(result.books.filter((book) => book.pinnedAt)); },
+      () => { if (current) setPins([]); },
+    );
+    return () => { current = false; };
+  }, [pinQueryKey, separatePins, view.tab, refreshKey, reload]);
 
   // A new search, filter, shelf or sort starts the phone's list from the top.
   const queryKey = JSON.stringify(query);
   useEffect(() => {
     setPages(1);
     setLater([]);
+    loadingMore.current = false;
   }, [queryKey, endless]);
 
   // The later pages come again after a change (a book moved shelf, say), so the list keeps its place.
@@ -251,7 +274,7 @@ export function Library({
     if (!ids.length) return;
     let current = true;
     const chunks = Array.from({ length: Math.ceil(ids.length / 200) }, (_, i) => ids.slice(i * 200, i * 200 + 200));
-    Promise.all(chunks.map((chunk) => api.getLibrary({ ...query, groupSeries: false, ids: chunk, page: 0, pageSize: 200 }))).then(
+    Promise.all(chunks.map((chunk) => api.getLibrary({ ...query, pinned: undefined, groupSeries: false, ids: chunk, page: 0, pageSize: 200 }))).then(
       (pages) => {
         if (!current) return;
         const shown = new Set<string>(pages.flatMap((p) => p.books.map((b) => b.id)));
@@ -334,7 +357,7 @@ export function Library({
     try {
       const all = new Map(selected ?? []);
       for (let p = 0; ; p++) {
-        const got = await api.getLibrary({ ...query, groupSeries: false, page: p, pageSize: 200 });
+        const got = await api.getLibrary({ ...query, pinned: undefined, groupSeries: false, page: p, pageSize: 200 });
         got.books.forEach((b) => all.set(b.id, b));
         if (got.page < p || (got.page + 1) * got.pageSize >= got.total) break;
       }
@@ -349,7 +372,8 @@ export function Library({
   const none = !selected?.size;
   const pageAllChosen = !!page?.books.length && page.books.every((b) => selected?.has(b.id));
   // Books a search or filter hides are let go from the choice, so this many means all of them.
-  const libraryAllChosen = !!page?.total && (selected?.size ?? 0) >= page.total;
+  const matchingBooks = (page?.total ?? 0) + pins.length;
+  const libraryAllChosen = matchingBooks > 0 && (selected?.size ?? 0) >= matchingBooks;
   const chosenActions: MenuEntry[] = [
     { label: "Edit details", icon: "edit", disabled: none, onSelect: () => askEditDetails(chosen) },
     { label: "Tags", icon: "tag", disabled: none, onSelect: () => setTagging(true) },
@@ -479,6 +503,8 @@ export function Library({
         </div>
       </div>
     );
+  } else if (page.total === 0 && pins.length > 0) {
+    body = null;
   } else if (page.total === 0) {
     body = (
       <div className="library-empty">
@@ -578,6 +604,12 @@ export function Library({
         narrators={page?.narrators ?? undefined}
         allLabel={kind === "books" ? undefined : `All ${words.many}`}
         allowSeries={kind === "books"}
+        continuous={scrollLibrary}
+        onContinuous={narrow ? undefined : (enabled) => {
+          changeSettings({ scrollLibrary: enabled });
+          onChange({ page: 0 });
+          document.querySelector(".content")?.scrollTo({ top: 0 });
+        }}
         selecting={selected !== null}
         onSelecting={(on) => setSelected(on ? new Map() : null)}
         onSelectAll={() => void chooseAll()}
@@ -684,7 +716,15 @@ export function Library({
         />
       )}
 
-      <div className="library-body">{body}</div>
+      <div className="library-body">
+        {separatePins && pins.length > 0 && view.tab !== "collections" && (
+          <details className="library-pins" open={pinsExpanded} onToggle={(event) => setPinsExpanded(event.currentTarget.open)}>
+            <summary><Icon name="pin" size={16} /> Pinned books <span className="tab-count num">{pins.length}</span></summary>
+            <BookGrid books={pins} actions={actions} selection={selection} />
+          </details>
+        )}
+        {body}
+      </div>
     </div>
   );
 }

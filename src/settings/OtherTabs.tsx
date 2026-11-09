@@ -276,7 +276,7 @@ export function LibraryTab({
             onChange={(s) => onChange({ sort: s })}
           />
         </Row>
-        <Row label="Pages" hint="On a phone the Archive always scrolls on without pages.">
+        <Row label="Pages" hint="Applies to Archive and Resonance on desktop. Phones always scroll continuously.">
           <Toggle
             label="Scroll on without page numbers"
             hint="More books load as you reach the end."

@@ -226,6 +226,9 @@ impl Library {
             conditions.push(kind_condition(kind));
         }
 
+        if let Some(pinned) = query.pinned {
+            conditions.push(if pinned { "b.pinned_at IS NOT NULL".into() } else { "b.pinned_at IS NULL".into() });
+        }
         match query.paired {
             Some(true) => conditions.push(PAIRED.into()),
             Some(false) => conditions.push(format!("NOT {PAIRED}")),

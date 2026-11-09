@@ -49,6 +49,7 @@ export function ReadingHistorySection() {
     <Section
       id="history"
       title="Reading history"
+      collapsible
       lede="Books you've finished, dropped or rated, kept even after they leave your library. Take one off and nothing about it is kept, on any of your devices."
     >
       {entries === null ? (

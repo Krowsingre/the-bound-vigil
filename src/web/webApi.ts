@@ -789,7 +789,10 @@ export async function webApi(): Promise<Api> {
     coverUrl: (path) => (/^(blob|data|https?):/.test(path) ? path : ""),
     openBook: async (bookId) => {
       const before = find(bookId);
-      await writeProgress(bookId, { last_opened_at: now(), status: before.status === "unread" ? "in_progress" : before.status });
+      const progress: Row = { ...before, last_opened_at: now(), status: before.status === "unread" ? "in_progress" : before.status };
+      await library.writeAll(before.want_to_read
+        ? [["book_progress", progress], ["book_shelves", { ...before, want_to_read: 0 }]]
+        : [["book_progress", progress]]);
       return {
         book: bookPreview(bookId),
         publisher: before.publisher,

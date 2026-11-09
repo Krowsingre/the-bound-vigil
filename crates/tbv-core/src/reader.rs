@@ -76,7 +76,7 @@ impl Library {
             .optional()?
             .flatten();
         let changed = self.conn.execute(
-            "UPDATE books SET last_opened_at = ?2,
+            "UPDATE books SET last_opened_at = ?2, want_to_read = 0,
                     status = CASE status WHEN 'unread' THEN 'in_progress' ELSE status END
              WHERE id = ?1 AND deleted_at IS NULL",
             params![book_id, now_utc()],
@@ -255,8 +255,10 @@ mod tests {
     fn opening_a_book_marks_it_in_progress_and_finds_its_file() {
         let (dir, mut library) = open_temp_library();
         let id = import(&mut library, dir.path(), "Piranesi");
+        library.set_want_to_read(&id, true).unwrap();
         let opened = library.open_book(&id).unwrap();
         assert_eq!(opened.book.status, ReadStatus::InProgress);
+        assert!(!opened.book.want_to_read);
         assert!(opened.book.last_opened_at.is_some());
         assert!(opened.file_size > 0);
         assert_eq!(opened.previously_opened_at, None);
