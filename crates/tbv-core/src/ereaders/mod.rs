@@ -7,6 +7,7 @@ pub mod email;
 
 use std::collections::HashMap;
 use std::fs;
+use std::io::{self, BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use rusqlite::{params, OptionalExtension};
@@ -254,30 +255,65 @@ pub fn save_copy(book: &Outgoing, folder: &Path) -> Result<Copied> {
     copy_into(book, folder, &folder.display().to_string())
 }
 
-/// Copies beside the target and renames, never replacing a different file
-/// of the same name. One of the same size is taken to be this book already.
-fn copy_into(book: &Outgoing, folder: &Path, place: &str) -> Result<Copied> {
-    fs::create_dir_all(folder)?;
-    let (stem, ext) = book.file_name.rsplit_once('.').unwrap_or((&book.file_name, &book.format));
-    let mut target = folder.join(&book.file_name);
-    let mut n = 2;
-    while let Ok(there) = fs::metadata(&target) {
-        if there.len() == book.size {
-            return Ok(Copied { path: target.display().to_string(), already_there: true });
+fn same_contents(left: &Path, right: &Path) -> io::Result<bool> {
+    let mut left = BufReader::new(fs::File::open(left)?);
+    let mut right = BufReader::new(fs::File::open(right)?);
+    loop {
+        let a = left.fill_buf()?;
+        let b = right.fill_buf()?;
+        if a.is_empty() || b.is_empty() {
+            return Ok(a.is_empty() && b.is_empty());
         }
-        target = folder.join(format!("{stem} ({n}).{ext}"));
-        n += 1;
+        let len = a.len().min(b.len());
+        if a[..len] != b[..len] {
+            return Ok(false);
+        }
+        left.consume(len);
+        right.consume(len);
     }
-    let partial = folder.join(format!(".{}.tbv-partial", book.file_name));
-    let copied = fs::copy(&book.path, &partial).and_then(|_| fs::rename(&partial, &target));
-    if let Err(e) = copied {
-        let _ = fs::remove_file(&partial);
-        return Err(match e.kind() {
-            std::io::ErrorKind::StorageFull => Error::Unsuitable(format!("{place} is full. Make some room on it and try again.")),
-            _ => Error::Unsuitable(format!("The book couldn't be copied to {place}: {e}")),
-        });
-    }
-    Ok(Copied { path: target.display().to_string(), already_there: false })
+}
+
+/// Stage a private copy and publish it without replacing another file.
+fn copy_into(book: &Outgoing, folder: &Path, place: &str) -> Result<Copied> {
+    let copy = || -> io::Result<Copied> {
+        fs::create_dir_all(folder)?;
+        let (stem, ext) = book.file_name.rsplit_once('.').unwrap_or((&book.file_name, &book.format));
+        let mut partial = None;
+        let mut n = 1;
+        loop {
+            let target = if n == 1 { folder.join(&book.file_name) } else { folder.join(format!("{stem} ({n}).{ext}")) };
+            loop {
+                match fs::symlink_metadata(&target) {
+                    Ok(there) => {
+                        if there.is_file() && there.len() == book.size && same_contents(&book.path, &target)? {
+                            return Ok(Copied { path: target.display().to_string(), already_there: true });
+                        }
+                        break;
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e),
+                }
+                let staged = match partial.take() {
+                    Some(staged) => staged,
+                    None => {
+                        let mut staged = tempfile::Builder::new().suffix(".tbv-partial").tempfile_in(folder)?;
+                        io::copy(&mut fs::File::open(&book.path)?, staged.as_file_mut())?;
+                        staged
+                    }
+                };
+                match staged.persist_noclobber(&target) {
+                    Ok(_) => return Ok(Copied { path: target.display().to_string(), already_there: false }),
+                    Err(e) if e.error.kind() == io::ErrorKind::AlreadyExists => partial = Some(e.file),
+                    Err(e) => return Err(e.error),
+                }
+            }
+            n += 1;
+        }
+    };
+    copy().map_err(|e| match e.kind() {
+        io::ErrorKind::StorageFull => Error::Unsuitable(format!("{place} is full. Make some room on it and try again.")),
+        _ => Error::Unsuitable(format!("The book couldn't be copied to {place}: {e}")),
+    })
 }
 
 impl Library {
@@ -437,6 +473,45 @@ mod tests {
         let kobo = detect(kobo_drive.path(), None).unwrap();
         drop(kobo_drive);
         assert!(matches!(copy_to(&kobo, &epub), Err(Error::Unsuitable(m)) if m.contains("isn't connected")));
+    }
+
+    #[test]
+    fn saves_the_selected_copy_and_preserves_a_same_size_destination() {
+        use crate::epub::tests::write_test_epub_with;
+        use crate::model::ImportResult;
+
+        let (dir, mut library) = crate::library::tests::open_temp_library();
+        let add = |library: &mut Library, name: &str, chapter: &str| {
+            let path = dir.path().join(name);
+            write_test_epub_with(&path, "Uncle Silas", "Le Fanu", false, chapter);
+            match library.import_files(&[path]).remove(0) {
+                ImportResult::Imported { book_id, .. } => book_id,
+                other => panic!("{other:?}"),
+            }
+        };
+        let primary = add(&mut library, "primary.epub", "<p>First edition</p>");
+        let alternate = add(&mut library, "alternate.epub", "<p>Other edition</p>");
+        library.keep_together(&primary, std::slice::from_ref(&alternate)).unwrap();
+
+        let primary = library.outgoing_book(&primary).unwrap();
+        let alternate = library.outgoing_book(&alternate).unwrap();
+        let source = fs::read(&alternate.path).unwrap();
+        assert_ne!(source, fs::read(&primary.path).unwrap());
+        let folder = tempfile::tempdir().unwrap();
+        let existing = folder.path().join(&alternate.file_name);
+        let mut different = source.clone();
+        different[0] ^= 1;
+        fs::write(&existing, &different).unwrap();
+
+        let saved = save_copy(&alternate, folder.path()).unwrap();
+        assert!(!saved.already_there);
+        assert_ne!(Path::new(&saved.path), existing.as_path());
+        assert_eq!(fs::read(&saved.path).unwrap(), source);
+        assert_eq!(fs::read(&alternate.path).unwrap(), source);
+        assert_eq!(fs::read(&existing).unwrap(), different);
+        let again = save_copy(&alternate, folder.path()).unwrap();
+        assert!(again.already_there);
+        assert_eq!(again.path, saved.path);
     }
 
     #[test]

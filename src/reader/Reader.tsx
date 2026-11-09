@@ -10,7 +10,7 @@ import { noteReading, recordReading } from "../lib/recordTime";
 import { SyncMenu } from "../shell/SyncMenu";
 import type { TocItem } from "../vendor/foliate-js/view.js";
 import { isBookmark, isNote } from "./annotations";
-import { isDocument } from "../lib/queryBooks";
+import { formatLabel, isDocument } from "../lib/queryBooks";
 import { drawPdfCover, readerSource, type ReaderSource } from "./formats";
 import { contentsEntries, currentEntry, pageOf, pushJump, type Jump } from "./pages";
 import { parseBibleTarget } from "../browse/bibleBooks";
@@ -85,6 +85,7 @@ export function Reader({
   const [file, setFile] = useState<ReaderSource | null>(null);
   // The format of the file open now, when it isn't the book's own.
   const [fileFormat, setFileFormat] = useState<string | null>(null);
+  const [openedFile, setOpenedFile] = useState<{ id: string; format: string } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
@@ -141,7 +142,10 @@ export function Reader({
         const opensAs = format === "cbr" ? "cbz" : format;
         const named = new File([blob], `book.${opensAs}`, { type: blob.type });
         const source = await readerSource(named, opensAs, reading.id, { title, author: authors.join(", "), language: opened.language });
-        if (!cancelled) setFile(source);
+        if (!cancelled) {
+          setFile(source);
+          setOpenedFile(reading);
+        }
         // A PDF imported elsewhere, or whose cover couldn't be drawn then.
         if (format === "pdf" && !coverPath && reading.id === bookId) {
           void drawPdfCover(blob)
@@ -536,6 +540,14 @@ export function Reader({
       ? { label: "Not dropped after all", onSelect: () => void markStatus("in_progress", "Marked as in progress.") }
       : { label: "Mark as dropped", icon: "close", onSelect: () => void markStatus("dropped", "Marked as dropped.") },
     "divider",
+    ...(openedFile && engine.ready ? [{
+      label: `Save a copy (${formatLabel(openedFile.format)})`,
+      icon: "download" as const,
+      onSelect: () => void api.saveCopies([openedFile.id]).then(
+        (done) => done && toast(`Saved a copy to ${done.folder}.`),
+        (e: unknown) => toast(`Couldn't save a copy: ${String(e)}`),
+      ),
+    }] : []),
     { label: "Close book", icon: "close", onSelect: leave },
   ];
 
