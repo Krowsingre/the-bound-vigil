@@ -1228,7 +1228,8 @@ button.tag-chip-add:hover {
   box-shadow: none;
 }
 
-.segmented.page-switch button[aria-checked="true"] {
+.segmented.page-switch button[aria-checked="true"],
+.segmented.page-switch button[aria-pressed="true"] {
   background: var(--accent);
   color: var(--accent-text);
 }
