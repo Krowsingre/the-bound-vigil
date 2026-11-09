@@ -1618,3 +1618,21 @@ button.tag-chip-add:hover {
     max-height: 100dvh;
   }
 }
+
+.series-cover-options {
+  max-height: 50dvh;
+  overflow-y: auto;
+}
+.series-cover-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-block: 6px;
+}
+.series-cover-option .cover {
+  width: 32px;
+  flex-shrink: 0;
+}
+.library-searching {
+  margin-inline: 24px;
+}

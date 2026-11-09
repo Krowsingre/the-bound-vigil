@@ -31,7 +31,8 @@ const OPENED_KEY = "tbv.filters.opened";
 
 function readOpened(): Set<string> {
   try {
-    return new Set(JSON.parse(localStorage.getItem(OPENED_KEY) ?? "[]") as string[]);
+    const names = JSON.parse(localStorage.getItem(OPENED_KEY) ?? "[]") as string[];
+    return new Set(names.map((name) => name === "Collections" ? "Shelf" : name));
   } catch {
     return new Set();
   }
@@ -49,8 +50,6 @@ export function LibraryToolbar({
   allLabel,
   allowSeries = false,
   seriesNames = [],
-  pinnedSeries = [],
-  onSeriesPin,
   paired = null,
   onPairing,
   continuous = false,
@@ -74,8 +73,6 @@ export function LibraryToolbar({
   allLabel?: string;
   allowSeries?: boolean;
   seriesNames?: string[];
-  pinnedSeries?: string[];
-  onSeriesPin?: (name: string, pinned: boolean) => void;
   paired?: boolean | null;
   onPairing?: (value: boolean | null) => void;
   continuous?: boolean;
@@ -91,6 +88,8 @@ export function LibraryToolbar({
   const tabName = (tab: LibraryTab) => (tab === "all" && allLabel ? allLabel : (TABS.find((t) => t.tab === tab)?.label ?? ""));
   // Filter's groups start folded; the ones opened stay open next time.
   const [opened, setOpened] = useState(readOpened);
+  const [mode, setMode] = useState<"include" | "exclude">("include");
+  const [find, setFind] = useState({ series: "", tags: "" });
   const fold = (name: string) => {
     const next = new Set(opened);
     if (next.has(name)) next.delete(name);
@@ -130,17 +129,15 @@ export function LibraryToolbar({
     view.series.length +
     view.narrators.length +
     (view.hideRead ? 1 : 0) +
-    (view.audioType ? 1 : 0) +
     (paired === null ? 0 : 1) +
     excludeCount(view.exclude);
-  // Each click moves a filter on: show only these, then leave these out, then off.
-  const cycle = (list: FilterList, value: string) => {
-    const shown = view[list].includes(value);
-    const hidden = view.exclude[list].includes(value);
-    const without = (l: string[]) => l.filter((x) => x !== value);
+  const toggleValue = (list: FilterList, value: string) => {
+    const included = view[list];
+    const excluded = view.exclude[list];
+    const without = (values: string[]) => values.filter((item) => item !== value);
     onChange({
-      [list]: shown ? without(view[list]) : hidden ? view[list] : [...view[list], value],
-      exclude: { ...view.exclude, [list]: shown ? [...view.exclude[list], value] : without(view.exclude[list]) },
+      [list]: mode === "include" && !included.includes(value) ? [...included, value] : without(included),
+      exclude: { ...view.exclude, [list]: mode === "exclude" && !excluded.includes(value) ? [...excluded, value] : without(excluded) },
       page: 0,
     });
   };
@@ -148,22 +145,28 @@ export function LibraryToolbar({
     label,
     checked: view[list].includes(value),
     excluded: view.exclude[list].includes(value),
-    onSelect: () => cycle(list, value),
+    onSelect: () => toggleValue(list, value),
   });
   const all = (list: FilterList, known: string[]) => [...new Set([...known, ...view[list], ...view.exclude[list]])];
-  const names = (list: "authors" | "series" | "narrators", heading: string, known: string[]): MenuEntry[] =>
-    group(
-      heading,
-      onIn(list),
-      all(list, known).map((n) => item(list, n, n)),
-    );
+  const names = (list: "authors" | "narrators", heading: string, known: string[]): MenuEntry[] =>
+    group(heading, onIn(list), all(list, known).map((name) => item(list, name, name)));
+  const searchable = (list: "series" | "tags", heading: string, known: string[]): MenuEntry[] => {
+    const values = all(list, known);
+    if (!values.length) return [];
+    return group(heading, onIn(list), [
+      { heading: <input type="search" aria-label={`Find ${heading.toLowerCase()}`} placeholder={`Find ${heading.toLowerCase()}…`}
+        value={find[list]} onChange={(event) => setFind({ ...find, [list]: event.target.value })} /> },
+      ...values.filter((value) => value.toLowerCase().includes(find[list].trim().toLowerCase()))
+        .map((value) => item(list, value, value)),
+    ]);
+  };
   // A shelf is chosen in Filter, so it counts there too.
   const filterBadge = filterCount + (view.tab !== "all" ? 1 : 0);
 
 
   const clearFilters = () => {
     onPairing?.(null);
-    onChange(NO_FILTERS);
+    onChange({ ...NO_FILTERS, audioType: view.audioType, tab: "all", page: 0 });
   };
 
   // Put quick filters first, then shelves and metadata filters.
@@ -178,10 +181,15 @@ export function LibraryToolbar({
       ] },
     ] as MenuEntry[]) : []),
     "divider",
-    ...(filterCount ? ([{ label: "Clear filters", icon: "close", onSelect: clearFilters }] as MenuEntry[]) : []),
-    { heading: <span className="menu-tip">Click once to show only those, twice to hide them.</span> },
+    ...(filterBadge ? [{ label: "Clear filters", icon: "close", onSelect: clearFilters } as MenuEntry] : []),
+    ...(filterBadge ? [{ heading: <span className="menu-tip">
+      {[view.tab !== "all" ? tabName(view.tab) : "", view.hideRead ? "Hide finished" : "",
+        view.location ? "On this device" : "", paired !== null ? paired ? "Paired" : "Unpaired" : "",
+        ...(["series", "tags", "genres", "formats", "languages", "authors", "narrators"] as const)
+          .flatMap((key) => [...view[key], ...view.exclude[key].map((value) => `Exclude ${value}`)])].filter(Boolean).join(" · ")}
+    </span> } as MenuEntry] : []),
     ...group(
-      "Collections",
+      "Shelf",
       view.tab === "all" ? 0 : 1,
       TABS.filter(({ tab }) => tab !== "send_to_device" || phoneChoiceShown()).map(({ tab }) => ({
         label: tabName(tab),
@@ -190,44 +198,22 @@ export function LibraryToolbar({
         onSelect: () => onChange({ tab }),
       })),
     ),
-    ...group(
-      "Genres",
-      onIn("genres"),
-      all("genres", genres).map((g) => item("genres", g, g)),
-    ),
-    ...(languages.length > 1 || view.languages.length || view.exclude.languages.length
-      ? group(
-          "Language",
-          onIn("languages"),
-          all("languages", languages)
-            .map((l) => ({ code: l, name: languageName(l) }))
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map(({ code, name }) => item("languages", code, name)),
-        )
-      : []),
-    ...group(
-      "Format",
-      onIn("formats"),
-      all("formats", formats).map((f) => item("formats", f, formatLabel(f))),
-    ),
-    ...group(
-      "Tags",
-      onIn("tags"),
-      all("tags", tags).map((t) => item("tags", t, t)),
-    ),
-    ...names("authors", "Authors", authors),
-    ...group("Series", onIn("series"), [
-      ...(onSeriesPin && (seriesNames.length || pinnedSeries.length) ? [{
-        label: "Pin or unpin a series",
-        icon: "pin" as const,
-        submenu: [...new Set([...pinnedSeries, ...seriesNames])].map((name) => {
-          const pinned = pinnedSeries.some((value) => value.toLowerCase() === name.toLowerCase());
-          return { label: name, checked: pinned, onSelect: () => onSeriesPin(name, !pinned) };
-        }),
-      }] : []),
-      ...all("series", seriesNames).map((name) => item("series", name, name)),
+    "divider",
+    { heading: <div className="menu-tip" role="group" aria-label="Filter selection">
+      <button type="button" className="btn btn-quiet btn-small" aria-pressed={mode === "include"} onClick={() => setMode("include")}>Include</button>
+      <button type="button" className="btn btn-quiet btn-small" aria-pressed={mode === "exclude"} onClick={() => setMode("exclude")}>Exclude</button>
+    </div> },
+    ...searchable("series", "Series", seriesNames),
+    ...searchable("tags", "Tags", tags),
+    ...group("More filters", onIn("genres") + onIn("languages") + onIn("formats") + onIn("authors") + onIn("narrators"), [
+      ...group("Genres", onIn("genres"), all("genres", genres).map((g) => item("genres", g, g))),
+      ...group("Language", onIn("languages"), all("languages", languages)
+        .map((code) => ({ code, name: languageName(code) })).sort((a, b) => a.name.localeCompare(b.name))
+        .map(({ code, name }) => item("languages", code, name))),
+      ...group("Format", onIn("formats"), all("formats", formats).map((f) => item("formats", f, formatLabel(f)))),
+      ...names("authors", "Authors", authors),
+      ...names("narrators", "Narrators", narrators),
     ]),
-    ...names("narrators", "Narrators", narrators),
   ];
 
   return (
@@ -243,11 +229,15 @@ export function LibraryToolbar({
                 <Icon name="chevronDown" size={12} className="toolbar-chevron" />
               </>
             }
-            items={SORTS.map((s) => ({
-              label: s.label,
-              checked: s.sort === view.sort,
-              onSelect: () => onChange({ sort: s.sort }),
-            }))}
+            items={[
+              ...SORTS.slice(0, 5).map((entry) => ({
+                label: entry.label, checked: entry.sort === view.sort, onSelect: () => onChange({ sort: entry.sort }),
+              })),
+              { label: "More sort options", hint: SORTS.slice(5).some((entry) => entry.sort === view.sort) ? sortLabel : undefined,
+                submenu: SORTS.slice(5).map((entry) => ({
+                  label: entry.label, checked: entry.sort === view.sort, onSelect: () => onChange({ sort: entry.sort }),
+                })) },
+            ]}
           />
         )}
         <Menu

@@ -1,3 +1,4 @@
+import { SeriesCoverPicker } from "./SeriesCoverPicker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, isHome, isWeb } from "../api";
 import type { BookPreview, CollectionPreview, ItemKind, LibraryPage } from "../api/types";
@@ -117,7 +118,37 @@ export function Library({
   const { settings: { scrollLibrary }, change: changeSettings } = useAppSettings();
   const [pins, setPins] = useState<BookPreview[]>([]);
   const [pinnedSeries, setPinnedSeries] = useState<string[]>([]);
-  const [seriesCards, setSeriesCards] = useState<{ name: string; book: BookPreview; count: number }[]>([]);
+  const [pinnedStacks, setPinnedStacks] = useState<LibraryPage | null>(null);
+  const [facets, setFacets] = useState<LibraryPage | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [coverPicker, setCoverPicker] = useState<string | null>(null);
+  const coverKey = `tbv.stackCovers.${kind}`;
+  const [coverChoices, setCoverChoices] = useState<Record<string, string>>(() => {
+    try {
+      const value: unknown = JSON.parse(localStorage.getItem(coverKey) ?? "{}");
+      return Object.fromEntries(Object.entries(value ?? {}).filter(([, id]) => typeof id === "string"));
+    } catch { return {}; }
+  });
+  const changeCover = (name: string, id?: string) => {
+    const key = name.trim().toLowerCase();
+    const next = { ...coverChoices };
+    if (id) next[key] = id;
+    else delete next[key];
+    setCoverChoices(next);
+    try { localStorage.setItem(coverKey, JSON.stringify(next)); } catch { /* Keep this session's choice. */ }
+  };
+  const toggleSeriesPin = (name: string, pinned: boolean) => {
+    void api.setArchiveSeriesPin(name, pinned).then(() => setReload((n) => n + 1), (error: unknown) => toast(String(error)));
+  };
+  const seriesMenu = (name: string): import("../components/Menu").MenuEntry[] => {
+    const key = name.trim().toLowerCase();
+    const pinned = pinnedSeries.some((value) => value.trim().toLowerCase() === key);
+    return [
+      { label: "Choose stack cover", onSelect: () => setCoverPicker(name) },
+      ...(coverChoices[key] ? [{ label: "Reset to automatic", onSelect: () => changeCover(name) }] : []),
+      ...(kind === "books" ? [{ label: pinned ? "Unpin series" : "Pin series", onSelect: () => toggleSeriesPin(name, !pinned) }] : []),
+    ];
+  };
   const [pinsExpanded, setPinsExpanded] = useState(() => {
     try { return localStorage.getItem("tbv.archive.pinsCollapsed") === "0"; }
     catch { return false; }
@@ -165,52 +196,84 @@ export function Library({
     pinnedFirst,
     pinned,
     groupSeries,
+    omitFacets: true,
+    seriesCoverChoices: coverChoices,
   };
   const queryKey = JSON.stringify(query);
   const requestKey = queryKey + ":" + (endless ? 0 : view.page);
+  const inFlight = useRef(false);
+  const pendingRequest = useRef<(() => void) | null>(null);
+  const previousSearch = useRef(query.search);
   useEffect(() => {
     let current = true;
-    api
-      .getLibrary({ ...query, page: endless ? 0 : view.page, pageSize: PAGE_SIZE })
-      .then(
+    void api.getLibrary({ kind, shelf: "all", sort: "recently_added", search: null, formats: [], location: null, page: 0, pageSize: 1 })
+      .then((data) => { if (current) setFacets(data); }, () => undefined);
+    if (kind === "books") void api.archiveSeriesPins?.().then((names) => {
+      if (current) setPinnedSeries(names);
+    }, () => undefined);
+    return () => { current = false; };
+  }, [kind, refreshKey, reload]);
+
+  useEffect(() => {
+    let current = true;
+    let scheduled = false;
+    let indicator: number | undefined;
+    setSearching(false);
+    const wait = previousSearch.current !== query.search && !!query.search;
+    previousSearch.current = query.search;
+    const run = () => {
+      if (!current) return;
+      inFlight.current = true;
+      if (query.search) indicator = window.setTimeout(() => { if (current) setSearching(true); }, 180);
+      const results = api.getLibrary({ ...query, page: endless ? 0 : view.page, pageSize: PAGE_SIZE }).then(
         (data) => {
           if (!current) return;
+          window.clearTimeout(indicator);
           loadedView.current = requestKey;
           setLoad({ state: "ready", data });
+          setSearching(false);
         },
-        (e: unknown) => current && setLoad({ state: "error", message: String(e) }),
+        (error: unknown) => {
+          if (!current) return;
+          setSearching(false);
+          window.clearTimeout(indicator);
+          setLoad({ state: "error", message: String(error) });
+        },
       );
+      const pinnedRequests: Promise<unknown>[] = [];
+      if (separatePins && view.tab !== "collections") {
+        pinnedRequests.push(api.getLibrary({ ...query, pinned: true, groupSeries: false, page: 0, pageSize: 200 })
+          .then((data) => { if (current) setPins(data.books.filter((book) => book.pinnedAt)); }, () => { if (current) setPins([]); }));
+        const matching = pinnedSeries.filter((name) => !query.series.length || query.series.some((value) => value.toLowerCase() === name.toLowerCase()));
+        if (matching.length) pinnedRequests.push(api.getLibrary({
+          ...query, pinned: undefined, pinnedFirst: false, groupSeries: true, series: matching, page: 0, pageSize: 200,
+        }).then((data) => { if (current) setPinnedStacks(data); }, () => { if (current) setPinnedStacks(null); }));
+        else setPinnedStacks(null);
+      }
+      void Promise.all([results, ...pinnedRequests]).finally(() => {
+        inFlight.current = false;
+        const next = pendingRequest.current;
+        pendingRequest.current = null;
+        next?.();
+      });
+    };
+    const submit = () => {
+      if (scheduled) return;
+      scheduled = true;
+      if (inFlight.current) pendingRequest.current = run;
+      else run();
+    };
+    const timer = wait ? window.setTimeout(submit, 150) : undefined;
+    if (!wait) submit();
+    window.addEventListener("tbv:submit-library-search", submit);
     return () => {
       current = false;
+      window.clearTimeout(timer);
+      window.clearTimeout(indicator);
+      window.removeEventListener("tbv:submit-library-search", submit);
+      if (pendingRequest.current === run) pendingRequest.current = null;
     };
-  }, [requestKey, refreshKey, reload]);
-
-  // Fetch pins separately so they repeat above the results on every page.
-  const pinQueryKey = JSON.stringify({ ...query, pinned: true, groupSeries: false });
-  useEffect(() => {
-    if (!separatePins || view.tab === "collections") {
-      setPins([]);
-      setSeriesCards([]);
-      return;
-    }
-    let current = true;
-    const pinQuery = JSON.parse(pinQueryKey) as import("../api/types").LibraryQuery;
-    void api.archiveSeriesPins?.().then(async (names) => {
-      if (!current) return;
-      setPinnedSeries(names);
-      const matching = names.filter((name) => !pinQuery.series?.length || pinQuery.series.some((value) => value.toLowerCase() === name.toLowerCase()));
-      const cards = await Promise.all(matching.map(async (name) => {
-        const result = await api.getLibrary({ ...pinQuery, pinned: undefined, pinnedFirst: false, series: [name], page: 0, pageSize: 1 });
-        return result.books[0] ? [{ name, book: result.books[0], count: result.total }] : [];
-      }));
-      if (current) setSeriesCards(cards.flat());
-    }).catch(() => { if (current) setSeriesCards([]); });
-    api.getLibrary({ ...pinQuery, page: 0, pageSize: 200 }).then(
-      (result) => { if (current) setPins(result.books.filter((book) => book.pinnedAt)); },
-      () => { if (current) setPins([]); },
-    );
-    return () => { current = false; };
-  }, [pinQueryKey, separatePins, view.tab, refreshKey, reload]);
+  }, [requestKey, pinnedSeries, separatePins, refreshKey, reload]);
 
   // A new search, filter, shelf or sort starts the phone's list from the top.
   useEffect(() => {
@@ -319,6 +382,7 @@ export function Library({
       ...first,
       books: [...first.books, ...later.flatMap((p) => p.books)],
       seriesCounts: Object.assign({}, first.seriesCounts, ...later.map((p) => p.seriesCounts)),
+      seriesCovers: Object.assign({}, first.seriesCovers, ...later.map((p) => p.seriesCovers)),
     } : first),
     [first, endless, later],
   );
@@ -338,16 +402,16 @@ export function Library({
       return true;
     }
   }, [restoreScroll, first, later.length, endless, onScrollRestored, requestKey]);
-  const hasMore = endless && page !== null && (later.length + 1) * PAGE_SIZE < page.total;
+  const hasMore = endless && loadedView.current === requestKey && page !== null && (later.length + 1) * PAGE_SIZE < page.total;
 
   // Genres, tags, formats and languages come from the books themselves: a
   // filter on one that no book has any more (its last book changed or went)
   // is dropped, so the lists never hold names the library doesn't.
   useEffect(() => {
-    if (!first) return;
-    const change = gone(view, first);
+    if (!facets) return;
+    const change = gone(view, facets);
     if (change) onChange(change);
-  }, [first]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [facets]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Near the end of the list, the next page loads.
   useEffect(() => {
@@ -362,7 +426,7 @@ export function Library({
     watch.observe(target);
     return () => watch.disconnect();
   }, [hasMore, later.length]);
-  const counts = page?.counts ?? null;
+  const counts = facets?.counts ?? null;
   const filtered =
     view.formats.length > 0 || view.location !== null || view.tags.length > 0 || view.genres.length > 0 || view.languages.length > 0 || view.downloadable || view.authors.length > 0 || view.series.length > 0 || view.narrators.length > 0 || view.hideRead || excludeCount(view.exclude) > 0;
   const selection: Selection | null = selected && {
@@ -536,7 +600,7 @@ export function Library({
         </div>
       </div>
     );
-  } else if (page.total === 0 && (pins.length > 0 || seriesCards.length > 0)) {
+  } else if (page.total === 0 && (pins.length > 0 || (pinnedStacks?.books.length ?? 0) > 0)) {
     body = null;
   } else if (page.total === 0) {
     body = (
@@ -573,7 +637,7 @@ export function Library({
       onClearSearch();
       onChange({ ...NO_FILTERS, tab: "all", series: [name], sort: "series", page: 0 });
     });
-    const items = <Layout books={page.books} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} showStatus={inSeries} onOpenSeries={openSeries} />;
+    const items = <Layout books={page.books} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} seriesCovers={page.seriesCovers} seriesMenu={seriesMenu} showStatus={inSeries} onOpenSeries={openSeries} />;
     body = endless ? (
       <>
         {items}
@@ -630,19 +694,15 @@ export function Library({
       {!seriesBack && <LibraryToolbar
         view={view}
         counts={counts}
-        formats={page?.formats ?? []}
-        tags={page?.tags ?? []}
-        genres={page?.genres ?? []}
-        languages={page?.languages ?? []}
-        authors={page?.authors ?? undefined}
-        narrators={page?.narrators ?? undefined}
+        formats={facets?.formats ?? []}
+        tags={facets?.tags ?? []}
+        genres={facets?.genres ?? []}
+        languages={facets?.languages ?? []}
+        authors={facets?.authors ?? undefined}
+        narrators={facets?.narrators ?? undefined}
         allLabel={kind === "books" ? undefined : `All ${words.many}`}
         allowSeries={kind !== "documents"}
-        seriesNames={page?.seriesNames ?? []}
-        pinnedSeries={pinnedSeries}
-        onSeriesPin={kind === "books" ? (name, pinned) => {
-          void api.setArchiveSeriesPin(name, pinned).then(() => setReload((n) => n + 1), (error: unknown) => toast(String(error)));
-        } : undefined}
+        seriesNames={facets?.seriesNames ?? []}
         paired={paired}
         onPairing={onPairing}
         continuous={scrollLibrary}
@@ -757,16 +817,17 @@ export function Library({
         />
       )}
 
+      {searching && <p className="muted library-searching" role="status">Searching…</p>}
+      {coverPicker && <SeriesCoverPicker name={coverPicker} kind={kind} chosen={coverChoices[coverPicker.trim().toLowerCase()]}
+        onChoose={(id) => { changeCover(coverPicker, id); setCoverPicker(null); }} onClose={() => setCoverPicker(null)} />}
       <div className="library-body">
-        {separatePins && (pins.length > 0 || seriesCards.length > 0) && view.tab !== "collections" && (
+        {separatePins && (pins.length > 0 || (pinnedStacks?.books.length ?? 0) > 0) && view.tab !== "collections" && (
           <details className="library-pins" open={pinsExpanded} onToggle={(event) => togglePins(event.currentTarget.open)}>
-            <summary><Icon name="pin" size={16} /> Pinned books <span className="tab-count num">{pins.length + seriesCards.length}</span></summary>
+            <summary><Icon name="pin" size={16} /> Pinned books <span className="tab-count num">{pins.length + (pinnedStacks?.books.length ?? 0)}</span></summary>
             <BookGrid books={pins} actions={actions} selection={selection} />
-            {seriesCards.length > 0 && (
-              <BookGrid books={seriesCards.map((card) => card.book)} actions={actions}
-                seriesCounts={Object.fromEntries(seriesCards.map((card) => [card.book.id, card.count]))}
-                onOpenSeries={onOpenSeries}
-                onUnpinSeries={(name) => void api.setArchiveSeriesPin(name, false).then(() => setReload((n) => n + 1), (error: unknown) => toast(String(error)))} />
+            {pinnedStacks && pinnedStacks.books.length > 0 && (
+              <BookGrid books={pinnedStacks.books} actions={actions} seriesCounts={pinnedStacks.seriesCounts}
+                seriesCovers={pinnedStacks.seriesCovers} onOpenSeries={onOpenSeries} seriesMenu={seriesMenu} />
             )}
           </details>
         )}

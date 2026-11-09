@@ -311,22 +311,65 @@ impl Library {
             rows.collect::<std::result::Result<_, _>>()?
         };
 
+        let series_covers = self.stack_covers(query, &books, &series_counts)?;
         Ok(LibraryPage {
             books,
             series_counts,
-            series_names: self.series_names(query.kind)?,
+            series_covers,
+            series_names: if query.omit_facets { Vec::new() } else { self.series_names(query.kind)? },
             total,
             page,
             page_size,
-            counts: self.shelf_counts_of(query.kind)?,
-            formats: self.formats_in_library(query.kind)?,
-            tags: self.all_tags()?.into_iter().map(|t| t.name).collect(),
-            genres: self.genres_in_library(query.kind)?,
-            languages: self.languages_in_library(query.kind)?,
+            counts: if query.omit_facets { ShelfCounts::default() } else { self.shelf_counts_of(query.kind)? },
+            formats: if query.omit_facets { Vec::new() } else { self.formats_in_library(query.kind)? },
+            tags: if query.omit_facets { Vec::new() } else { self.all_tags()?.into_iter().map(|t| t.name).collect() },
+            genres: if query.omit_facets { Vec::new() } else { self.genres_in_library(query.kind)? },
+            languages: if query.omit_facets { Vec::new() } else { self.languages_in_library(query.kind)? },
             // Only audiobooks filter by author and narrator; other pages search instead.
-            authors: if query.kind == Some(ItemKind::Audiobooks) { self.names_in_library(AUTHORS, query.kind)? } else { Vec::new() },
-            narrators: if query.kind == Some(ItemKind::Audiobooks) { self.names_in_library(NARRATORS, query.kind)? } else { Vec::new() },
+            authors: if !query.omit_facets && query.kind == Some(ItemKind::Audiobooks) { self.names_in_library(AUTHORS, query.kind)? } else { Vec::new() },
+            narrators: if !query.omit_facets && query.kind == Some(ItemKind::Audiobooks) { self.names_in_library(NARRATORS, query.kind)? } else { Vec::new() },
         })
+    }
+
+    fn stack_covers(
+        &self,
+        query: &LibraryQuery,
+        books: &[BookPreview],
+        counts: &std::collections::BTreeMap<BookId, u32>,
+    ) -> Result<std::collections::BTreeMap<BookId, BookPreview>> {
+        let names: std::collections::BTreeMap<_, _> = books.iter()
+            .filter(|book| counts.contains_key(&book.id))
+            .filter_map(|book| Some((book.series.as_deref()?.trim().to_lowercase(), book.id.clone())))
+            .collect();
+        if names.is_empty() {
+            return Ok(Default::default());
+        }
+        let choices = serde_json::to_string(&query.series_cover_choices).unwrap_or_else(|_| "{}".into());
+        let keys = serde_json::to_string(&names.keys().collect::<Vec<_>>()).unwrap_or_else(|_| "[]".into());
+        let kind = query.kind.map(|kind| format!(" AND {}", kind_condition(kind))).unwrap_or_default();
+        let series = format!("tbv_fold(trim({SERIES}))");
+        let order = sort_title();
+        let sql = format!(
+            "WITH candidates AS (
+               SELECT b.id, ROW_NUMBER() OVER (
+                 PARTITION BY {series}
+                 ORDER BY (b.id IS NOT COALESCE((SELECT value FROM json_each(?2) WHERE key = {series}), '')),
+                          b.status IN ('read', 'dropped'), {SERIES_INDEX} IS NULL, {SERIES_INDEX}, {order}, b.id
+               ) AS pick
+               {BOOK_FROM}{kind} AND {series} IN (SELECT value FROM json_each(?1))
+             )
+             {BOOK_COLUMNS} {BOOK_FROM} AND b.id IN (SELECT id FROM candidates WHERE pick = 1)"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let books = stmt.query_map(params![keys, choices], book_from_row)?;
+        let mut result = std::collections::BTreeMap::new();
+        for book in books {
+            let book = book?;
+            if let Some(id) = book.series.as_deref().and_then(|name| names.get(&name.trim().to_lowercase())) {
+                result.insert(id.clone(), book);
+            }
+        }
+        Ok(result)
     }
 
     fn series_names(&self, kind: Option<ItemKind>) -> Result<Vec<String>> {
@@ -803,6 +846,42 @@ mod tests {
     }
 
     #[test]
+    fn stack_cover_uses_reading_order_and_respects_an_owned_manual_choice() {
+        let (dir, mut library) = open_temp_library();
+        let volume = |number| format!(
+            r#"<meta name="calibre:series" content="Shared Series"/><meta name="calibre:series_index" content="{number}"/>"#
+        );
+        let one = add_with(&mut library, dir.path(), "Last in title sort", "Writer", &volume(1));
+        let two = add_with(&mut library, dir.path(), "Middle in title sort", "Writer", &volume(2));
+        let three = add_with(&mut library, dir.path(), "First in title sort", "Writer", &volume(3));
+        library.set_status(&two, ReadStatus::InProgress).unwrap();
+        library.set_status(&three, ReadStatus::InProgress).unwrap();
+        let mut q = query(|q| {
+            q.sort = SortOrder::Title;
+            q.group_series = true;
+            q.search = Some("First in title".into());
+            q.omit_facets = true;
+        });
+        let cover = |library: &Library, q: &LibraryQuery| {
+            let page = library.library_page(q).unwrap();
+            assert_eq!(page.books[0].id, three);
+            assert_eq!(page.series_counts[&three], 1);
+            assert!(page.series_names.is_empty());
+            page.series_covers[&three].id.clone()
+        };
+        assert_eq!(cover(&library, &q), one);
+        library.set_status(&one, ReadStatus::Read).unwrap();
+        assert_eq!(cover(&library, &q), two);
+        q.series_cover_choices.insert("shared series".into(), three.clone());
+        assert_eq!(cover(&library, &q), three);
+        q.series_cover_choices.insert("shared series".into(), "missing book".into());
+        assert_eq!(cover(&library, &q), two);
+        library.set_status(&two, ReadStatus::Dropped).unwrap();
+        library.set_status(&three, ReadStatus::Read).unwrap();
+        assert_eq!(cover(&library, &q), one);
+    }
+
+    #[test]
     fn a_series_and_a_book_share_the_archive_pin_limit() {
         let (dir, mut library) = open_temp_library();
         let ids: Vec<_> = (0..10).map(|i| add(&mut library, dir.path(), &format!("Book {i}"), "Writer")).collect();
@@ -1045,6 +1124,18 @@ mod scale {
         time("library page", &mut || {
             drop(library.library_page(&LibraryQuery { page_size: 60, ..Default::default() }).unwrap())
         });
+        for (name, group_series, omit_facets) in [
+            ("search with facets", false, false),
+            ("search without facets", false, true),
+            ("series search with facets", true, false),
+            ("series search without facets", true, true),
+        ] {
+            time(name, &mut || {
+                drop(library.library_page(&LibraryQuery {
+                    search: Some("Book 1".into()), page_size: 24, group_series, omit_facets, ..Default::default()
+                }).unwrap());
+            });
+        }
         time("collections", &mut || drop(library.collections(u32::MAX).unwrap()));
         time("collections overview", &mut || drop(library.collections_overview().unwrap()));
         time("notes", &mut || drop(library.notes_page(&Default::default()).unwrap()));

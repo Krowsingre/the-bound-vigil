@@ -360,6 +360,8 @@ pub struct LibraryQuery {
     pub pinned_first: bool,
     #[serde(default)]
     pub group_series: bool,
+    pub omit_facets: bool,
+    pub series_cover_choices: std::collections::BTreeMap<String, String>,
     /// Restrict the page to pinned or unpinned books.
     #[serde(default)]
     pub pinned: Option<bool>,
@@ -401,6 +403,8 @@ pub struct LibraryPage {
     pub books: Vec<BookPreview>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub series_counts: std::collections::BTreeMap<BookId, u32>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub series_covers: std::collections::BTreeMap<BookId, BookPreview>,
     #[serde(default)]
     pub series_names: Vec<String>,
     /// Items matching the query across all pages, counting each series stack once.

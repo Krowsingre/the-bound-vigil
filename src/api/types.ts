@@ -481,6 +481,8 @@ export type ItemKind = "books" | "documents" | "audiobooks";
 export type Location = "on_device" | "cloud_only";
 
 export interface LibraryQuery {
+  omitFacets?: boolean;
+  seriesCoverChoices?: Record<string, string>;
   audioType?: AudioType | null;
   shelf: Shelf;
   sort: SortOrder;
@@ -545,6 +547,7 @@ export interface ShelfCounts {
 export interface LibraryPage {
   books: BookPreview[];
   seriesCounts?: Record<string, number>;
+  seriesCovers?: Record<string, BookPreview>;
   seriesNames?: string[];
   total: number;
   page: number;

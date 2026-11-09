@@ -76,7 +76,7 @@ beforeEach(() => getLibrary.mockReset());
 
 function openShelves() {
   fireEvent.click(screen.getByRole("button", { name: "Filter" }));
-  const fold = screen.getByRole("button", { name: /Collections/ });
+  const fold = screen.getByRole("button", { name: /Shelf/ });
   if (fold.getAttribute("aria-expanded") !== "true") fireEvent.click(fold);
 }
 
@@ -98,7 +98,7 @@ test("shows the shelf counts, the page of books and where it is in the list", as
   expect((await screen.findAllByText("Book 1")).length).toBeGreaterThan(0);
   expect(screen.getByText("56%")).toBeInTheDocument();
   expect(screen.getByText("Showing 1–24 of 30 books")).toBeInTheDocument();
-  // The shelves, with their counts, are in Filter under Collections.
+  // The shelves, with their counts, are in Filter under Shelf.
   openShelves();
   expect(screen.getByRole("menuitemcheckbox", { name: /Read\s*3/ })).toBeInTheDocument();
   expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ shelf: "all", page: 0, pageSize: 24, search: null }));

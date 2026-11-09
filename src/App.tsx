@@ -556,7 +556,9 @@ export function App() {
             if (route === "catalogs") {
               window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: browserDraft }));
               setBrowserDraft("");
-            } else if (route !== "notes" && route !== "writing" && route !== "documents" && route !== "audiobooks" && route !== "collections" && route !== "settings") setRoute("library");
+            } else if (route === "library" || route === "audiobooks" || route === "documents") {
+              window.dispatchEvent(new Event("tbv:submit-library-search"));
+            } else if (route !== "notes" && route !== "writing" && route !== "collections" && route !== "settings") setRoute("library");
           }}
           onPasteAndGo={route === "catalogs" && !narrow ? (text) => {
             window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: text }));

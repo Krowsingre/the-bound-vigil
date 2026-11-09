@@ -100,14 +100,28 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
   const pageSize = q.pageSize || 24;
   const page = Math.min(q.page, Math.max(0, Math.ceil(list.length / pageSize) - 1));
   const books = list.slice(page * pageSize, (page + 1) * pageSize);
+  const seriesCovers: Record<string, BookPreview> = {};
+  const seriesKey = (b: BookPreview) => b.series?.trim().toLowerCase();
+  const finished = (b: BookPreview) => Number(b.status === "read" || b.status === "dropped");
+  for (const book of books) {
+    if (!seriesCounts[book.id]) continue;
+    const name = seriesKey(book);
+    const chosen = name && q.seriesCoverChoices?.[name];
+    const candidates = all.filter((b) => seriesKey(b) === name);
+    const cover = candidates.find((b) => b.id === chosen) ?? candidates.sort((a, b) =>
+      finished(a) - finished(b) || sorters.series(a, b) || a.id.localeCompare(b.id)
+    )[0];
+    if (cover) seriesCovers[book.id] = cover;
+  }
   return {
     books,
-    seriesNames: namesIn(all, (book) => book.series ? [book.series] : []),
+    seriesCovers,
+    seriesNames: q.omitFacets ? [] : namesIn(all, (book) => book.series ? [book.series] : []),
     seriesCounts: Object.fromEntries(books.flatMap((book) => seriesCounts[book.id] ? [[book.id, seriesCounts[book.id]]] : [])),
     total: list.length,
     page,
     pageSize,
-    counts: {
+    counts: q.omitFacets ? { all: 0, favorites: 0, wantToRead: 0, sendToDevice: 0, inProgress: 0, read: 0, unread: 0, collections: 0 } : {
       all: all.length,
       favorites: all.filter((b) => b.favorite).length,
       wantToRead: all.filter((b) => b.wantToRead).length,
@@ -117,12 +131,12 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
       unread: all.filter((b) => b.status === "unread").length,
       collections: collectionCount,
     },
-    formats: [...new Set(all.map((b) => b.format))].sort(),
-    tags: tagCounts(everything).map((t) => t.name),
-    genres: namesIn(all, (b) => b.genres ?? []),
-    languages: [...new Set(all.flatMap((b) => (b.language ? [b.language] : [])))].sort(),
-    authors: q.kind === "audiobooks" ? namesIn(all, (b) => b.authors) : [],
-    narrators: q.kind === "audiobooks" ? namesIn(all, (b) => b.narrators ?? []) : [],
+    formats: q.omitFacets ? [] : [...new Set(all.map((b) => b.format))].sort(),
+    tags: q.omitFacets ? [] : tagCounts(everything).map((t) => t.name),
+    genres: q.omitFacets ? [] : namesIn(all, (b) => b.genres ?? []),
+    languages: q.omitFacets ? [] : [...new Set(all.flatMap((b) => (b.language ? [b.language] : [])))].sort(),
+    authors: !q.omitFacets && q.kind === "audiobooks" ? namesIn(all, (b) => b.authors) : [],
+    narrators: !q.omitFacets && q.kind === "audiobooks" ? namesIn(all, (b) => b.narrators ?? []) : [],
   };
 }
 
