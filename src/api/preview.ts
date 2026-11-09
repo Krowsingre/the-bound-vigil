@@ -571,10 +571,11 @@ export function previewApi(): Api {
   };
   const HOLMES = ["A Study in Scarlet", "The Sign of the Four", "The Adventures of Sherlock Holmes", "The Memoirs of Sherlock Holmes", "The Hound of the Baskervilles", "The Return of Sherlock Holmes", "The Valley of Fear", "His Last Bow", "The Case-Book of Sherlock Holmes"];
 
+  const { readDraftFile, ...writing } = previewWriting();
   return {
     kind: "preview",
     ...previewMove(params),
-    ...previewWriting(),
+    ...writing,
     ...browseStub(),
     findSeriesBooks: async (name, author) => {
       await new Promise((r) => setTimeout(r, 600));
@@ -903,6 +904,8 @@ export function previewApi(): Api {
       return { book: find(bookId), publisher: "Sample Press", language: "en", fileSize: 48_000, previouslyOpenedAt: before.lastOpenedAt };
     },
     readBookFile: async (bookId) => {
+      const draft = readDraftFile(bookId);
+      if (draft) return draft;
       const b = find(bookId);
       const author = b.authors.join(", ");
       const { sampleComic, sampleDocx, sampleFb2, samplePdf, sampleText } = await import("../preview/sampleFiles");
