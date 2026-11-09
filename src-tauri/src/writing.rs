@@ -259,13 +259,6 @@ pub async fn writing_drafts(state: State<'_, AppLibrary>, project_id: String) ->
 }
 
 #[tauri::command]
-pub async fn keep_draft_in_archive(app: tauri::AppHandle, state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
-    with_library(state, move |library| library.keep_draft_in_archive(&id)).await?;
-    let _ = app.emit("library-changed", ());
-    Ok(())
-}
-
-#[tauri::command]
 pub async fn delete_writing_draft(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
     with_library(state, move |library| library.delete_writing_draft(&id)).await
 }
