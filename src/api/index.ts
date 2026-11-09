@@ -146,6 +146,7 @@ export interface Api {
   /** Accepts the matched books and the probable ones listed; tags them Kindle. */
   applyKindle(confirmed: string[], markRead: boolean): Promise<KindleApplied>;
   kindleSummary(): Promise<KindleSummary>;
+  matchKindleManually(asin: string, bookIds: string[], markRead: boolean): Promise<KindleApplied>;
   /** Kindle books not in the library, or (removed) the ones taken off that list. */
   kindleMissing(removed: boolean): Promise<KindlePurchase[]>;
   setKindleRemoved(asins: string[], removed: boolean): Promise<void>;
@@ -550,7 +551,7 @@ export interface Api {
   siteIcon(url: string): Promise<string>;
   /** Shows tab `tab` over `frame` (made at `url` if it's new), with the others hidden. App only. */
   /** Shows a tab, making it at `url` first if it's new; a new `privately` tab keeps nothing. */
-  browserShow(tab: string, url: string | null, frame: BrowserFrame, protection?: BrowserProtection, privately?: boolean): Promise<void>;
+  browserShow(tab: string, url: string | null, frame: BrowserFrame, protection?: BrowserProtection, privately?: boolean, background?: boolean): Promise<void>;
   browserPlace(frame: BrowserFrame): Promise<void>;
   /** Hides every tab; they keep their pages. */
   browserHide(): Promise<void>;
@@ -867,6 +868,7 @@ function appApi(): Api {
     kindleReview: async () => (await core).invoke<KindleReview>("kindle_review"),
     applyKindle: async (confirmed, markRead) => (await core).invoke<KindleApplied>("apply_kindle", { confirmed, markRead }),
     kindleSummary: async () => (await core).invoke<KindleSummary>("kindle_summary"),
+    matchKindleManually: async (asin, bookIds, markRead) => (await core).invoke<KindleApplied>("match_kindle_manually", { asin, bookIds, markRead }),
     kindleMissing: async (removed) => (await core).invoke<KindlePurchase[]>("kindle_missing", { removed }),
     setKindleRemoved: async (asins, removed) => (await core).invoke("set_kindle_removed", { asins, removed }),
     exportGoodreads: async () => {
@@ -1258,7 +1260,7 @@ function appApi(): Api {
     moveSanctumLink: async (id, to) => (await core).invoke("move_sanctum_link", { id, to }),
     ownedTitles: async (titles) => (await core).invoke<boolean[]>("owned_titles", { titles }),
     siteIcon: async (url) => (await core).invoke<string>("site_icon", { url }),
-    browserShow: async (tab, url, frame, protection, privately) => (await core).invoke("browser_show", { tab, url, frame, protection: protection ?? null, private: privately ?? false }),
+    browserShow: async (tab, url, frame, protection, privately, background) => (await core).invoke("browser_show", { tab, url, frame, protection: protection ?? null, private: privately ?? false, background: background ?? false }),
     browserPlace: async (frame) => (await core).invoke("browser_place", { frame }),
     browserHide: async () => (await core).invoke("browser_hide"),
     browserAct: async (tab, action, url) => (await core).invoke("browser_act", { tab, action, url: url ?? null }),

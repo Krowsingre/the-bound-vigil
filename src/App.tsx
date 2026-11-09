@@ -622,6 +622,7 @@ export function App() {
               open={openCollection}
               refreshKey={refreshKey}
               onOpen={setOpenCollection}
+              onDiscover={navFor({ web: isWeb, home: isHome, android: isAndroid }).some((item) => item.route === "catalogs") ? () => navigate("catalogs") : undefined}
               onOpenBook={openBook}
               onChanged={refresh}
               search={searchText}

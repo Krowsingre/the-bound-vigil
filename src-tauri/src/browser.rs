@@ -52,7 +52,7 @@ pub(crate) enum Event {
     DownloadImport { id: String, book_id: Option<String>, error: Option<String> },
     /// A file finished coming down (or failed, or was cancelled).
     #[serde(rename_all = "camelCase")]
-    Download { tab: String, id: String, path: String, name: String, ok: bool },
+    Download { tab: String, id: String, path: String, name: String, ok: bool, error: Option<String>, security_blocked: bool },
     /// A link that opens a new window: it opens in a new tab instead.
     #[serde(rename_all = "camelCase")]
     NewTab { url: String, from: String },
@@ -69,6 +69,8 @@ pub(crate) enum Event {
     /// TBV's page asks first, if chosen, then opens it with `browser_open_app`.
     #[serde(rename_all = "camelCase")]
     External { tab: String, url: String },
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Redirect { tab: String, from: String, url: String, ask: bool },
     /// Chosen from a link's own menu (right-click, or holding it): `newTab`
     /// (open it in a new tab) or `addBook` (bring the book it links to into the library).
     #[serde(rename_all = "camelCase")]
@@ -137,7 +139,7 @@ fn tab_name(tab: &str) -> CommandResult<String> {
 mod view {
     use std::collections::{HashMap, HashSet};
     use std::sync::Mutex;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
     use tauri::webview::{DownloadEvent as Download, NewWindowResponse, PageLoadEvent, WebviewBuilder};
     use tauri::{LogicalPosition, LogicalSize, Manager, WebviewUrl};
@@ -155,17 +157,12 @@ mod view {
     /// The tab in front.
     static ACTIVE: Mutex<Option<String>> = Mutex::new(None);
     /// Downloads under way, by address: their id, where they're saved, and the tab.
-    static SAVING: Mutex<Option<HashMap<String, Saving>>> = Mutex::new(None);
-    /// When each address last started downloading, so a page asking again and
-    /// again (as one waiting for a sign-in can) brings it down once.
-    static RECENT: Mutex<Option<HashMap<String, Instant>>> = Mutex::new(None);
+    static SAVING: Mutex<Option<HashMap<(String, String), Saving>>> = Mutex::new(None);
     /// Downloads cancelled before they finished; what arrives is thrown away.
     static CANCELLED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
     /// A download's id, where it's being saved, and its tab.
     type Saving = (String, std::path::PathBuf, String);
-
-    const AGAIN_AFTER: Duration = Duration::from_secs(30);
 
     #[cfg_attr(not(windows), allow(dead_code))]
     pub(super) fn protection() -> Protection {
@@ -203,21 +200,26 @@ mod view {
         app.webviews().into_iter().filter(|(l, _)| l.starts_with(PREFIX) && !l.starts_with("browser-popup-")).map(|(_, v)| v).collect()
     }
 
-    pub fn show(app: &tauri::AppHandle, tab: &str, url: Option<tauri::Url>, frame: Frame, protection: Option<Protection>, private: bool) -> CommandResult<()> {
+    pub fn show(app: &tauri::AppHandle, tab: &str, url: Option<tauri::Url>, frame: Frame, protection: Option<Protection>, private: bool, background: bool) -> CommandResult<()> {
         if let Some(p) = protection {
             set_protection(app, p);
         }
-        let (at, size) = (LogicalPosition::new(frame.x, frame.y), LogicalSize::new(frame.width.max(1.0), frame.height.max(1.0)));
-        if let Ok(mut active) = ACTIVE.lock() {
-            *active = Some(tab.to_string());
-        }
-        for other in tabs(app).into_iter().filter(|v| v.label() != label(tab)) {
-            let _ = other.hide();
+        let x = if background { -10000.0 } else { frame.x };
+        let (at, size) = (LogicalPosition::new(x, frame.y), LogicalSize::new(frame.width.max(1.0), frame.height.max(1.0)));
+        if !background {
+            if let Ok(mut active) = ACTIVE.lock() {
+                *active = Some(tab.to_string());
+            }
+            for other in tabs(app).into_iter().filter(|v| v.label() != label(tab)) {
+                let _ = other.hide();
+            }
         }
         if let Some(view) = app.get_webview(&label(tab)) {
-            view.set_position(at).map_err(|e| e.to_string())?;
-            view.set_size(size).map_err(|e| e.to_string())?;
-            view.show().map_err(|e| e.to_string())?;
+            if !background {
+                view.set_position(at).map_err(|e| e.to_string())?;
+                view.set_size(size).map_err(|e| e.to_string())?;
+                view.show().map_err(|e| e.to_string())?;
+            }
             if let Some(url) = url {
                 set_site(tab, &url);
                 view.navigate(url).map_err(|e| e.to_string())?;
@@ -232,7 +234,11 @@ mod view {
         let (pages, titles, windows, downloads, others) = (app.clone(), app.clone(), app.clone(), app.clone(), app.clone());
         let (page_tab, title_tab, window_tab, download_tab, other_tab) = (tab.to_string(), tab.to_string(), tab.to_string(), tab.to_string(), tab.to_string());
         let saves = downloads_dir(app)?;
-        let builder = WebviewBuilder::new(label(tab), WebviewUrl::External(start))
+        #[cfg(windows)]
+        let initial = tauri::Url::parse("about:blank").expect("a fixed address");
+        #[cfg(not(windows))]
+        let initial = start;
+        let builder = WebviewBuilder::new(label(tab), WebviewUrl::External(initial))
             // Its own cookies, saved logins and storage, so clearing them leaves TBV's alone.
             .data_directory(data)
             // A private tab keeps nothing once it's closed.
@@ -290,16 +296,9 @@ mod view {
                 match event {
                     Download::Requested { url, destination } => {
                         let address = url.to_string();
-                        // Asked for again while it's coming down, or just after: once is enough.
-                        let now = Instant::now();
-                        if let Ok(mut recent) = RECENT.lock() {
-                            let recent = recent.get_or_insert_with(HashMap::new);
-                            recent.retain(|_, at| now.duration_since(*at) < AGAIN_AFTER);
-                            let busy = SAVING.lock().ok().is_some_and(|s| s.as_ref().is_some_and(|s| s.contains_key(&address)));
-                            if busy || recent.contains_key(&address) {
-                                return false;
-                            }
-                            recent.insert(address.clone(), now);
+                        let key = (download_tab.clone(), address.clone());
+                        if SAVING.lock().ok().is_some_and(|saving| saving.as_ref().is_some_and(|items| items.contains_key(&key))) {
+                            return false;
                         }
                         let name = destination
                             .file_name()
@@ -309,34 +308,47 @@ mod view {
                             .unwrap_or_else(|| "download".into());
                         let id = tbv_core::ids::new_record_id();
                         let folder = saves.join(&id);
-                        if std::fs::create_dir_all(&folder).is_err() {
+                        if let Err(error) = std::fs::create_dir_all(&folder) {
+                            tell(&downloads, Event::DownloadStart { tab: download_tab.clone(), id: id.clone(), name: name.clone(), url: address });
+                            tell(&downloads, Event::Download { tab: download_tab.clone(), id, name, path: String::new(), ok: false, error: Some(error.to_string()), security_blocked: false });
                             return false;
                         }
                         *destination = folder.join(&name);
                         if let Ok(mut saving) = SAVING.lock() {
-                            saving.get_or_insert_with(HashMap::new).insert(address.clone(), (id.clone(), destination.clone(), download_tab.clone()));
+                            saving.get_or_insert_with(HashMap::new).insert(key, (id.clone(), destination.clone(), download_tab.clone()));
                         }
                         tell(&downloads, Event::DownloadStart { tab: download_tab.clone(), id, name, url: address });
                     }
                     Download::Finished { url, path, success } => {
-                        let kept = SAVING.lock().ok().and_then(|mut s| s.as_mut().and_then(|s| s.remove(url.as_str())));
-                        // One that failed can be tried again straight away.
-                        if !success {
-                            if let Ok(mut recent) = RECENT.lock() {
-                                recent.get_or_insert_with(HashMap::new).remove(url.as_str());
-                            }
-                        }
+                        let key = (download_tab.clone(), url.to_string());
+                        let kept = SAVING.lock().ok().and_then(|mut saving| {
+                            let items = saving.as_mut()?;
+                            let by_path = path.as_ref().and_then(|path| items.iter().find(|(_, (_, saved, _))| saved == path).map(|(key, _)| key.clone()));
+                            items.remove(by_path.as_ref().unwrap_or(&key))
+                        });
                         if let Some((id, saved, tab)) = kept {
-                            let path = path.unwrap_or(saved);
+                            let folder = saved.parent().map(std::path::Path::to_path_buf);
+                            let path = path.filter(|path| path.parent() == saved.parent()).unwrap_or(saved);
                             let cancelled = CANCELLED.lock().ok().is_some_and(|mut c| c.as_mut().is_some_and(|c| c.remove(&id)));
                             if cancelled {
-                                if let Some(folder) = path.parent() {
+                                if let Some(folder) = folder.as_ref() {
                                     let _ = std::fs::remove_dir_all(folder);
                                 }
                                 return true;
                             }
                             let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                            tell(&downloads, Event::Download { tab, id, path: path.to_string_lossy().into_owned(), name, ok: success });
+                            #[cfg(windows)]
+                            let (error, security_blocked) = super::windows::finish_download(&tab, url.as_str(), success);
+                            #[cfg(not(windows))]
+                            let (error, security_blocked) = (None, false);
+                            let ok = success && path.is_file();
+                            if !ok {
+                                if let Some(folder) = folder.as_ref() {
+                                    let _ = std::fs::remove_dir_all(folder);
+                                }
+                            }
+                            let path = if ok { path.to_string_lossy().into_owned() } else { String::new() };
+                            tell(&downloads, Event::Download { tab, id, path, name, ok, error, security_blocked });
                         }
                     }
                     _ => {}
@@ -345,8 +357,13 @@ mod view {
             });
         let view = window.add_child(builder, at, size).map_err(|e| e.to_string())?;
         #[cfg(windows)]
-        super::windows::tab(&view, app.clone(), tab.to_string());
-        let _ = view;
+        {
+            super::windows::tab(&view, app.clone(), tab.to_string());
+            view.navigate(start).map_err(|e| e.to_string())?;
+        }
+        if background {
+            view.hide().map_err(|e| e.to_string())?;
+        }
         follow_front(app);
         // With a second view in it, TBV's own page has to be told to keep filling the window.
         if let Some(main) = app.get_webview("main") {
@@ -445,14 +462,14 @@ mod view {
     }
 
     pub fn cancel(app: &tauri::AppHandle, id: &str) -> CommandResult<()> {
-        let found = SAVING.lock().ok().and_then(|s| s.as_ref().and_then(|s| s.iter().find(|(_, (i, _, _))| i == id).map(|(url, (_, _, tab))| (url.clone(), tab.clone()))));
+        let found = SAVING.lock().ok().and_then(|s| s.as_ref().and_then(|s| s.iter().find(|(_, (i, _, _))| i == id).map(|((_, url), (_, _, tab))| (url.clone(), tab.clone()))));
         let Some((url, tab)) = found else { return Ok(()) };
         if let Ok(mut cancelled) = CANCELLED.lock() {
             cancelled.get_or_insert_with(HashSet::new).insert(id.to_string());
         }
         #[cfg(windows)]
         if let Some(view) = app.get_webview(&label(&tab)) {
-            super::windows::cancel(&view, url);
+            super::windows::cancel(&view, tab, url);
         }
         #[cfg(not(windows))]
         let _ = (app, url, tab);
@@ -519,17 +536,17 @@ mod windows {
     use webview2_com::Microsoft::Web::WebView2::Win32::*;
     use webview2_com::{
         take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler, CustomItemSelectedEventHandler, DownloadStartingEventHandler,
-        NavigationCompletedEventHandler, WebResourceRequestedEventHandler, WindowCloseRequestedEventHandler,
+        NavigationCompletedEventHandler, NavigationStartingEventHandler, WebResourceRequestedEventHandler, WindowCloseRequestedEventHandler,
     };
     use windows_core::{Interface, BOOL, HSTRING, PWSTR};
 
     use super::{tell, view, Event};
-    use crate::protection::Level;
+    use crate::protection::{Level, RedirectMode};
 
     thread_local! {
         /// Downloads under way, by address, so one can be cancelled. Kept on
         /// the window's own thread, where the web view lives.
-        static OPERATIONS: RefCell<HashMap<String, ICoreWebView2DownloadOperation>> = RefCell::new(HashMap::new());
+        static OPERATIONS: RefCell<HashMap<(String, String), ICoreWebView2DownloadOperation>> = RefCell::new(HashMap::new());
     }
 
     fn level(level: Level) -> COREWEBVIEW2_TRACKING_PREVENTION_LEVEL {
@@ -572,6 +589,7 @@ mod windows {
         let mut token = 0i64;
         let _ = context_menu(&core, environment.clone(), app.clone(), tab.clone());
         let _ = tab_keys(platform, app.clone(), tab.clone());
+        let _ = redirects(&core, app.clone(), tab.clone());
         let (failed_app, failing) = (app.clone(), tab.clone());
         // A page that couldn't open: TBV says why on a page of its own.
         core.add_NavigationCompleted(
@@ -606,6 +624,7 @@ mod windows {
             &mut token,
         )?;
         // Every request passes the protection level; a refused one gets an empty answer.
+        let download_tab = tab.clone();
         core.AddWebResourceRequestedFilter(windows_core::w!("*"), COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL)?;
         core.add_WebResourceRequested(
             &WebResourceRequestedEventHandler::create(Box::new(move |_, args| {
@@ -623,12 +642,12 @@ mod windows {
         )?;
         if let Ok(core4) = core.cast::<ICoreWebView2_4>() {
             core4.add_DownloadStarting(
-                &DownloadStartingEventHandler::create(Box::new(|_, args| {
+                &DownloadStartingEventHandler::create(Box::new(move |_, args| {
                     if let Some(operation) = args.and_then(|a| a.DownloadOperation().ok()) {
                         let mut uri = PWSTR::null();
                         if operation.Uri(&mut uri).is_ok() {
                             let uri = take_pwstr(uri);
-                            OPERATIONS.with(|o| o.borrow_mut().insert(uri, operation));
+                            OPERATIONS.with(|o| o.borrow_mut().insert((download_tab.clone(), uri), operation));
                         }
                     }
                     Ok(())
@@ -637,6 +656,54 @@ mod windows {
             )?;
         }
         Ok(())
+    }
+
+    fn redirects(core: &ICoreWebView2, app: tauri::AppHandle, tab: String) -> windows_core::Result<()> {
+        let previous = RefCell::new(None::<(u64, String)>);
+        let mut token = 0;
+        unsafe {
+            core.add_NavigationStarting(
+                &NavigationStartingEventHandler::create(Box::new(move |sender, args| {
+                    let Some(args) = args else { return Ok(()) };
+                    let mut redirected = BOOL::default();
+                    let mut user = BOOL::default();
+                    let mut nav = 0u64;
+                    let mut target = PWSTR::null();
+                    args.IsRedirected(&mut redirected)?;
+                    args.IsUserInitiated(&mut user)?;
+                    args.NavigationId(&mut nav)?;
+                    args.Uri(&mut target)?;
+                    let url = take_pwstr(target);
+                    let Ok(to) = super::web_url(&url) else { return Ok(()) };
+                    let from = if redirected.as_bool() {
+                        previous.borrow().as_ref().filter(|(id, _)| *id == nav).map(|(_, uri)| uri.clone())
+                    } else if !user.as_bool() {
+                        sender.and_then(|view| {
+                            let mut source = PWSTR::null();
+                            view.Source(&mut source).ok()?;
+                            Some(take_pwstr(source))
+                        })
+                    } else { None };
+                    previous.replace(Some((nav, url.clone())));
+                    if let Some(from) = from {
+                        let Ok(mut source) = super::web_url(&from) else { return Ok(()) };
+                        source.set_fragment(None);
+                        let mut target = to;
+                        target.set_fragment(None);
+                        if !redirected.as_bool() && source == target {
+                            return Ok(());
+                        }
+                        let mode = view::protection().redirect_mode(source.host_str().unwrap_or(""));
+                        if mode != RedirectMode::Allow {
+                            args.SetCancel(true)?;
+                            tell(&app, Event::Redirect { tab: tab.clone(), from, url, ask: mode == RedirectMode::Ask });
+                        }
+                    }
+                    Ok(())
+                })),
+                &mut token,
+            )
+        }
     }
 
     /// Tab shortcuts and Alt navigation work while a native page has the keyboard.
@@ -866,9 +933,26 @@ mod windows {
         });
     }
 
-    pub fn cancel(view: &tauri::Webview, url: String) {
+    pub fn finish_download(tab: &str, url: &str, success: bool) -> (Option<String>, bool) {
+        let operation = OPERATIONS.with(|items| items.borrow_mut().remove(&(tab.to_string(), url.to_string())));
+        if success { return (None, false) }
+        let mut reason = COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON::default();
+        let Some(operation) = operation else { return (None, false) };
+        if unsafe { operation.InterruptReason(&mut reason) }.is_err() { return (None, false) }
+        let (message, security) = match reason {
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_MALICIOUS => ("Windows reported the file as potentially unsafe.", true),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_BLOCKED_BY_POLICY | COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_SECURITY_CHECK_FAILED
+                | COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_ACCESS_DENIED => ("A Windows security check or policy stopped the download.", true),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_NO_SPACE => ("The device ran out of disk space.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_NETWORK_TIMEOUT => ("The download timed out.", false),
+            _ => ("The browser interrupted this transfer.", false),
+        };
+        (Some(message.into()), security)
+    }
+
+    pub fn cancel(view: &tauri::Webview, tab: String, url: String) {
         let _ = view.with_webview(move |_| {
-            if let Some(operation) = OPERATIONS.with(|o| o.borrow_mut().remove(&url)) {
+            if let Some(operation) = OPERATIONS.with(|o| o.borrow_mut().remove(&(tab, url))) {
                 unsafe {
                     let _ = operation.Cancel();
                 }
@@ -899,11 +983,11 @@ mod view {
     }
 
     fn rules(protection: &Protection) -> serde_json::Value {
-        serde_json::json!({ "level": protection.level_name(), "rules": protection.apple_rules() })
+        serde_json::json!({ "level": protection.level_name(), "rules": protection.apple_rules(), "redirects": protection.redirects, "redirectAllowlist": protection.redirect_allowlist })
     }
 
-    pub fn show(_app: &tauri::AppHandle, tab: &str, url: Option<tauri::Url>, frame: Frame, protection: Option<Protection>, private: bool) -> CommandResult<()> {
-        let mut args = serde_json::json!({ "action": "show", "tab": tab, "url": url.map(|u| u.to_string()), "frame": frame_of(frame), "incognito": private });
+    pub fn show(_app: &tauri::AppHandle, tab: &str, url: Option<tauri::Url>, frame: Frame, protection: Option<Protection>, private: bool, background: bool) -> CommandResult<()> {
+        let mut args = serde_json::json!({ "action": if background { "prepare" } else { "show" }, "tab": tab, "url": url.map(|u| u.to_string()), "frame": frame_of(frame), "incognito": private });
         if let Some(p) = protection {
             args["protection"] = rules(&p);
         }
@@ -998,10 +1082,10 @@ pub fn listen(app: tauri::AppHandle) {
 /// Shows tab `tab` in `frame` (making it, at `url`, if it's new) and hides
 /// the others. A new `private` tab keeps no cookies, storage or history.
 #[tauri::command]
-pub async fn browser_show(app: tauri::AppHandle, tab: String, url: Option<String>, frame: Frame, protection: Option<Protection>, private: Option<bool>) -> CommandResult<()> {
+pub async fn browser_show(app: tauri::AppHandle, tab: String, url: Option<String>, frame: Frame, protection: Option<Protection>, private: Option<bool>, background: Option<bool>) -> CommandResult<()> {
     let tab = tab_name(&tab)?;
     let url = url.as_deref().map(web_url).transpose()?;
-    view::show(&app, &tab, url, frame, protection, private.unwrap_or(false))
+    view::show(&app, &tab, url, frame, protection, private.unwrap_or(false), background.unwrap_or(false))
 }
 
 /// Moves the tab in front when the space for it moves or changes size.
@@ -1215,7 +1299,7 @@ pub async fn download_web_book(
         tell(&app, Event::DirectDownloadStart { id: id.clone(), name: title.clone(), url: url.clone() });
         match tbv_core::opds::download_book(&url, &title, &folder) {
             Ok(path) => {
-                tell(&app, Event::Download { tab: String::new(), id: id.clone(), path: path.to_string_lossy().into_owned(), name: title, ok: true });
+                tell(&app, Event::Download { tab: String::new(), id: id.clone(), path: path.to_string_lossy().into_owned(), name: title, ok: true, error: None, security_blocked: false });
                 if imports.queue_browser_download(&app, &library, path, id.clone()) {
                     Ok(())
                 } else {
@@ -1226,7 +1310,7 @@ pub async fn download_web_book(
             }
             Err(e) => {
                 let _ = std::fs::remove_dir_all(folder);
-                tell(&app, Event::Download { tab: String::new(), id, path: String::new(), name: title, ok: false });
+                tell(&app, Event::Download { tab: String::new(), id, path: String::new(), name: title, ok: false, error: Some(e.to_string()), security_blocked: false });
                 Err(e.to_string())
             }
         }

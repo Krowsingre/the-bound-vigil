@@ -313,7 +313,7 @@ pub(crate) const KINDS: &[Kind] = &[
         name: "kindle_purchase",
         table: "kindle_purchases",
         keys: &["asin"],
-        cols: &["title", "author", "acquired_at", "borrowed", "read", "link", "cover_url", "book_id", "match_state", "dismissed_at", "added_at", "updated_at"],
+        cols: &["title", "author", "acquired_at", "borrowed", "read", "link", "cover_url", "book_id", "match_state", "dismissed_at", "added_at", "updated_at", "matched_books"],
         category: Category::Collections,
         creates: true,
     },

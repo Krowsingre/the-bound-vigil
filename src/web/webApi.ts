@@ -719,6 +719,7 @@ export async function webApi(): Promise<Api> {
     applyKindle: async () => ({ tagged: 0, markedRead: 0, missing: 0 }),
     kindleSummary: async () => ({ total: 0, inLibrary: 0, missing: 0, removed: 0, waiting: 0, lastAdded: null, covers: [] }),
     kindleMissing: async () => [],
+    matchKindleManually: async () => { throw new Error(DESKTOP_ONLY); },
     setKindleRemoved: async () => {},
     hardcoverStatus: async () => ({ available: false, username: null, sendRatings: false }),
     hardcoverSignIn: async () => {

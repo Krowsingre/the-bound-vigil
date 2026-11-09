@@ -14,6 +14,7 @@ export interface Fetched {
   state: "coming" | "done" | "failed" | "importing" | "importFailed" | "added" | "kept";
   direct?: boolean;
   error?: string;
+  securityBlocked?: boolean;
   path?: string;
   /** Where it came from, for Retry. */
   url?: string;
@@ -125,12 +126,14 @@ export function listenForDownloads(toast: (message: string) => void) {
       setDownloads((rows) => [row, ...rows.filter((d) => d.id !== row.id)]);
     } else if (event.kind === "download") {
       const before = snapshot().find((d) => d.id === event.id);
-      const direct = before?.direct || !event.tab;
+      const direct = before?.direct === true;
       const row: Fetched = {
         ...before, direct, id: event.id, name: event.name, tab: event.tab,
         path: event.path || undefined, at: before?.at ?? Date.now(),
         state: event.ok ? direct ? "importing" : "done" : "failed",
         asking: event.ok && !direct,
+        error: event.error ?? undefined,
+        securityBlocked: event.securityBlocked,
       };
       setDownloads((rows) => [row, ...rows.filter((d) => d.id !== row.id)]);
       if (row.asking && BOOK_FILE.test(row.name) && readBrowserPrefs().addWithoutAsking) {

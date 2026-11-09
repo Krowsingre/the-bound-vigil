@@ -17,6 +17,22 @@ export const SEARCH_ENGINES: { value: SearchEngine; label: string; url: string }
 
 export const DEFAULT_HOME = "https://www.gutenberg.org/";
 
+export type RedirectMode = "allow" | "block" | "ask";
+export const REDIRECT_MODES: { value: RedirectMode; label: string }[] = [
+  { value: "allow", label: "Automatically approve" },
+  { value: "block", label: "Automatically reject" },
+  { value: "ask", label: "Ask every time" },
+];
+
+export function redirectHost(value: string): string | null {
+  const text = value.trim();
+  try {
+    const url = new URL(/^https?:\/\//i.test(text) ? text : "https://" + text);
+    return /^https?:$/.test(url.protocol) && url.hostname && !url.username && !url.password
+      ? url.hostname.toLowerCase().replace(/^www\./, "").replace(/\.$/, "") : null;
+  } catch { return null; }
+}
+
 export type ProtectionLevel = "strict" | "balanced" | "off";
 
 export const PROTECTION_LEVELS: { value: ProtectionLevel; label: string; hint: string }[] = [
@@ -46,6 +62,8 @@ export interface BrowserPrefs {
   /** Ebook downloads join the library without asking first. */
   addWithoutAsking: boolean;
   protection: ProtectionLevel;
+  redirects: RedirectMode;
+  redirectAllowlist: string[];
   /** Videos and sound go on playing after leaving Discover (otherwise they pause). */
   keepPlaying: boolean;
   /** Where Discover is when you come back: as you left it, or at the home
@@ -117,6 +135,9 @@ export function readBrowserPrefs(): BrowserPrefs {
     search: SEARCH_ENGINES.some((e) => e.value === saved.search) ? (saved.search as SearchEngine) : "duckduckgo",
     home,
     addWithoutAsking: saved.addWithoutAsking === true,
+    redirects: saved.redirects === "block" || saved.redirects === "ask" ? saved.redirects : "allow",
+    redirectAllowlist: [...new Set((Array.isArray(saved.redirectAllowlist) ? saved.redirectAllowlist : [])
+      .flatMap((host) => typeof host === "string" ? redirectHost(host) ?? [] : []))],
     keepPlaying: saved.keepPlaying === true,
     historyOn: saved.historyOn !== false,
     historySearches: saved.historySearches !== false,
@@ -202,8 +223,8 @@ export function readableAddress(url: string): string {
 }
 
 /** What the browser is told about protection. */
-export function protectionOf(prefs: BrowserPrefs): { level: ProtectionLevel; lowered: string[] } {
-  return { level: prefs.protection, lowered: prefs.lowered };
+export function protectionOf(prefs: BrowserPrefs) {
+  return { level: prefs.protection, lowered: prefs.lowered, redirects: prefs.redirects, redirectAllowlist: prefs.redirectAllowlist };
 }
 
 /** Lowers protection for a site, or puts it back. */

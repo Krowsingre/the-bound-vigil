@@ -105,7 +105,15 @@ export function Library({
   const narrow = useNarrow();
   const { settings: { scrollLibrary }, change: changeSettings } = useAppSettings();
   const [pins, setPins] = useState<BookPreview[]>([]);
-  const [pinsExpanded, setPinsExpanded] = useState(true);
+  const [pinsExpanded, setPinsExpanded] = useState(() => {
+    try { return localStorage.getItem("tbv.archive.pinsCollapsed") !== "1"; }
+    catch { return true; }
+  });
+  const togglePins = (expanded: boolean) => {
+    setPinsExpanded(expanded);
+    try { localStorage.setItem("tbv.archive.pinsCollapsed", expanded ? "0" : "1"); }
+    catch { /* The current view still folds. */ }
+  };
   const endless = narrow || scrollLibrary;
   /** Phone: how many pages are shown, and the books of every page after the first. */
   const [pages, setPages] = useState(1);
@@ -718,7 +726,7 @@ export function Library({
 
       <div className="library-body">
         {separatePins && pins.length > 0 && view.tab !== "collections" && (
-          <details className="library-pins" open={pinsExpanded} onToggle={(event) => setPinsExpanded(event.currentTarget.open)}>
+          <details className="library-pins" open={pinsExpanded} onToggle={(event) => togglePins(event.currentTarget.open)}>
             <summary><Icon name="pin" size={16} /> Pinned books <span className="tab-count num">{pins.length}</span></summary>
             <BookGrid books={pins} actions={actions} selection={selection} />
           </details>

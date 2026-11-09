@@ -15,6 +15,8 @@ struct BrowserProtectionArgs: Decodable {
   let level: String
   /// WKContentRuleList JSON, made by TBV from its lists.
   let rules: String
+  let redirects: String?
+  let redirectAllowlist: [String]?
 }
 
 class BrowserArgs: Decodable {
@@ -56,6 +58,23 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
   private var recent = [String: Date]()
   /// The protection level's rules, once compiled.
   private var rules: WKContentRuleList?
+  private var redirectMode = "allow"
+  private var redirectAllowlist = Set<String>()
+  private var requested = [String: URL]()
+  private var provisional = [String: URL]()
+
+  private func load(_ address: URL, in view: WKWebView) {
+    if let tab = nameOf(view) { requested[tab] = address }
+    view.load(URLRequest(url: address))
+  }
+
+  private func refuseRedirect(tab: String, from: URL, to: URL) -> Bool {
+    guard redirectMode != "allow", let host = from.host?.lowercased(), ["http", "https"].contains(to.scheme ?? "") else { return false }
+    let source = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    if redirectAllowlist.contains(where: { source == $0 || source.hasSuffix("." + $0) }) { return false }
+    tell(["kind": "redirect", "tab": tab, "from": from.absoluteString, "url": to.absoluteString, "ask": redirectMode == "ask"])
+    return true
+  }
   /// Sites shown as on a computer (Request desktop site), by host.
   private var desktopHosts = Set<String>()
   /// What private tabs share while any is open, kept in memory only.
@@ -147,6 +166,8 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
 
   /// Compiles the level's rules and puts them on every tab; Off takes them away.
   private func protect(_ protection: BrowserProtectionArgs, then done: @escaping () -> Void) {
+    redirectMode = protection.redirects ?? "allow"
+    redirectAllowlist = Set(protection.redirectAllowlist ?? [])
     let apply = { (list: WKContentRuleList?) in
       self.rules = list
       for view in self.views.values {
@@ -267,9 +288,9 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         switch args.action {
         case "show":
           if mine == self.turn { self.bringForward(tab) } else { self.front = tab }
-          if let address = address { view.load(URLRequest(url: address)) }
+          if let address = address { self.load(address, in: view) }
         case "go":
-          if let address = address { view.load(URLRequest(url: address)) }
+          if let address = address { self.load(address, in: view) }
         case "back":
           view.goBack()
         case "forward":
@@ -320,7 +341,14 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     tellPage(webView, loading: true)
   }
 
+  func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
+    guard let tab = nameOf(webView), let from = provisional[tab], let to = webView.url, from != to else { return }
+    provisional[tab] = to
+    if refuseRedirect(tab: tab, from: from, to: to) { webView.stopLoading() }
+  }
+
   func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    if let tab = nameOf(webView) { provisional.removeValue(forKey: tab) }
     tellPage(webView, loading: true)
   }
 
@@ -466,7 +494,7 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
   private func again(_ url: URL?) -> Bool {
     guard let address = url?.absoluteString else { return false }
     let now = Date()
-    recent = recent.filter { now.timeIntervalSince($0.value) < 30 }
+    recent = recent.filter { now.timeIntervalSince($0.value) < 1 }
     if recent[address] != nil || saving.values.contains(where: { $0.url == address }) { return true }
     recent[address] = now
     return false
@@ -490,6 +518,15 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     if #available(iOS 14.5, *), navigationAction.shouldPerformDownload {
       decisionHandler(again(navigationAction.request.url) ? .cancel : .download, preferences)
       return
+    }
+    if navigationAction.targetFrame?.isMainFrame == true, let tab = nameOf(webView), let to = navigationAction.request.url {
+      let explicit = requested.removeValue(forKey: tab) == to
+      if !explicit, navigationAction.navigationType == .other, let from = provisional[tab] ?? webView.url,
+         from != to, from.host != to.host, refuseRedirect(tab: tab, from: from, to: to) {
+        decisionHandler(.cancel, preferences)
+        return
+      }
+      provisional[tab] = to
     }
     if navigationAction.targetFrame?.isMainFrame ?? true, let host = navigationAction.request.url?.host?.lowercased() {
       preferences.preferredContentMode = desktopHosts.contains(host) ? .desktop : .recommended
@@ -528,11 +565,19 @@ extension TbvBrowser: WKDownloadDelegate {
   ) {
     let id = UUID().uuidString.lowercased()
     let folder = TbvBrowser.downloadsFolder.appendingPathComponent(id, isDirectory: true)
-    try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-    let name = suggestedFilename.isEmpty ? "download" : suggestedFilename
+    let filename = URL(fileURLWithPath: suggestedFilename).lastPathComponent
+    let name = filename.isEmpty || filename == "." || filename == ".." ? "download" : filename
     let target = folder.appendingPathComponent(name)
     let tab = download.webView.flatMap { nameOf($0) } ?? ""
     let address = download.originalRequest?.url?.absoluteString ?? response.url?.absoluteString ?? ""
+    do {
+      try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    } catch {
+      tell(["kind": "downloadStart", "tab": tab, "id": id, "name": name, "url": address])
+      tell(["kind": "download", "tab": tab, "id": id, "path": "", "name": name, "ok": false, "error": error.localizedDescription])
+      completionHandler(nil)
+      return
+    }
     saving[ObjectIdentifier(download)] = (id: id, target: target, tab: tab, url: address)
     downloads[id] = download
     tell(["kind": "downloadStart", "tab": tab, "id": id, "name": name, "url": address])
@@ -554,6 +599,7 @@ extension TbvBrowser: WKDownloadDelegate {
       try? FileManager.default.removeItem(at: saved.target.deletingLastPathComponent())
       return
     }
-    tell(["kind": "download", "tab": saved.tab, "id": saved.id, "path": saved.target.path, "name": saved.target.lastPathComponent, "ok": false])
+    try? FileManager.default.removeItem(at: saved.target.deletingLastPathComponent())
+    tell(["kind": "download", "tab": saved.tab, "id": saved.id, "path": "", "name": saved.target.lastPathComponent, "ok": false, "error": error.localizedDescription])
   }
 }

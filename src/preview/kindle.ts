@@ -27,7 +27,8 @@ export function previewKindle(library: () => BookPreview[], tag: (ids: string[])
   let purchases: Purchase[] = [];
   let markReadChoice = true;
   const bookOf = (p: Purchase) => library().find((b) => b.id === p.bookId);
-  const missing = () => purchases.filter((p) => !p.borrowed && !((p.state === "auto" || p.state === "confirmed") && bookOf(p)));
+  const complete = (p: Purchase) => p.bookIds?.length ? p.bookIds.every((id) => library().some((b) => b.id === id)) : !!bookOf(p);
+  const missing = () => purchases.filter((p) => !p.borrowed && !((p.state === "auto" || p.state === "confirmed") && complete(p)));
   const asMatch = (p: Purchase): KindleMatch => {
     const b = bookOf(p)!;
     return { asin: p.asin, title: p.title, author: p.author, coverUrl: p.coverUrl, read: p.read, borrowed: p.borrowed, bookId: b.id, bookTitle: b.title, bookAuthors: b.authors };
@@ -100,7 +101,7 @@ export function previewKindle(library: () => BookPreview[], tag: (ids: string[])
     },
     kindleSummary: async () => ({
       total: purchases.length,
-      inLibrary: purchases.filter((p) => p.state === "confirmed" && bookOf(p)).length,
+      inLibrary: purchases.filter((p) => p.state === "confirmed" && complete(p)).length,
       missing: missing().filter((p) => !p.removed).length,
       removed: missing().filter((p) => p.removed).length,
       waiting: purchases.filter((p) => p.state === "auto" || p.state === "probable").length,
@@ -115,7 +116,18 @@ export function previewKindle(library: () => BookPreview[], tag: (ids: string[])
       missing()
         .filter((p) => p.removed === removed)
         .sort((a, b) => (b.acquiredAt ?? "").localeCompare(a.acquiredAt ?? ""))
-        .map(({ asin, title, author, acquiredAt, read, link, coverUrl, removed }) => ({ asin, title, author, acquiredAt, read, link, coverUrl, removed })),
+        .map(({ asin, title, author, acquiredAt, read, link, coverUrl, removed, bookIds }) => ({ asin, title, author, acquiredAt, read, link, coverUrl, removed, bookIds })),
+    matchKindleManually: async (asin: string, bookIds: string[], mark: boolean) => {
+      const purchase = purchases.find((p) => p.asin === asin);
+      if (!purchase || !bookIds.length || bookIds.some((id) => !library().some((b) => b.id === id))) throw new Error("Choose Archive books for this purchase.");
+      const ids = [...new Set(bookIds)];
+      const tagged = ids.filter((id) => !library().find((b) => b.id === id)?.tags.includes("Kindle")).length;
+      const read = mark && purchase.read ? ids.filter((id) => library().find((b) => b.id === id)?.status === "unread") : [];
+      Object.assign(purchase, { bookId: ids[0], bookIds: ids, state: "confirmed", removed: false });
+      tag(ids);
+      read.forEach(markRead);
+      return { tagged, markedRead: read.length, missing: missing().filter((p) => !p.removed).length };
+    },
     setKindleRemoved: async (asins: string[], removed: boolean) => {
       for (const p of purchases) if (asins.includes(p.asin)) p.removed = removed;
     },

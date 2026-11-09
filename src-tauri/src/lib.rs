@@ -523,6 +523,11 @@ async fn kindle_summary(state: State<'_, AppLibrary>) -> CommandResult<tbv_core:
 }
 
 #[tauri::command]
+async fn match_kindle_manually(state: State<'_, AppLibrary>, asin: String, book_ids: Vec<String>, mark_read: bool) -> CommandResult<tbv_core::kindle::KindleApplied> {
+    with_library(state, move |library| library.match_kindle_manually(&asin, &book_ids, mark_read)).await
+}
+
+#[tauri::command]
 async fn kindle_missing(state: State<'_, AppLibrary>, removed: bool) -> CommandResult<Vec<tbv_core::kindle::KindlePurchase>> {
     with_library(state, move |library| library.kindle_missing(removed)).await
 }
@@ -2298,6 +2303,7 @@ pub fn run() {
             apply_kindle,
             kindle_summary,
             kindle_missing,
+            match_kindle_manually,
             set_kindle_removed,
             get_profile,
             set_avatar,
