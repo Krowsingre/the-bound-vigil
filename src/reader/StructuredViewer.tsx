@@ -15,6 +15,8 @@ export function StructuredViewer({ content, onClose }: { content: StructuredCont
   const viewport = useRef<HTMLDivElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const gesture = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const touchPoints = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ distance: number; zoom: number } | null>(null);
   const [angle, setAngle] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [size, setSize] = useState({ width: 1, height: 1, areaWidth: 1, areaHeight: 1 });
@@ -43,6 +45,20 @@ export function StructuredViewer({ content, onClose }: { content: StructuredCont
     return () => observer.disconnect();
   }, []);
 
+  const updateTouch = (id: number, x: number, y: number) => {
+    touchPoints.current.set(id, { x, y });
+    const [first, second] = touchPoints.current.values();
+    if (!second) return;
+    const distance = Math.hypot(first.x - second.x, first.y - second.y);
+    if (gesture.current) gesture.current.moved = true;
+    if (!pinch.current) pinch.current = { distance: Math.max(1, distance), zoom };
+    else setZoom(Math.max(1, Math.min(8, pinch.current.zoom * distance / pinch.current.distance)));
+  };
+  const endTouch = (id: number) => {
+    touchPoints.current.delete(id);
+    if (touchPoints.current.size < 2) pinch.current = null;
+  };
+
   const sideways = angle % 180 !== 0;
   const width = sideways ? size.height : size.width;
   const height = sideways ? size.width : size.height;
@@ -65,7 +81,21 @@ export function StructuredViewer({ content, onClose }: { content: StructuredCont
       <button type="button" className="btn btn-quiet" onClick={() => { setAngle(0); setZoom(1); }}>Reset view</button>
       <button ref={close} type="button" className="btn btn-primary" onClick={onClose}>Close</button>
     </header>
-    <div ref={viewport} className="structured-viewer-viewport" tabIndex={0} aria-label="Expanded content, scroll to pan">
+    <div ref={viewport} className="structured-viewer-viewport" tabIndex={0} aria-label="Expanded content, scroll to pan"
+      onPointerDown={(event) => {
+        if (event.pointerType === "touch") updateTouch(event.pointerId, event.clientX, event.clientY);
+      }}
+      onPointerMove={(event) => {
+        const last = touchPoints.current.get(event.pointerId);
+        if (!last) return;
+        if (touchPoints.current.size === 1 && gesture.current?.moved) {
+          event.currentTarget.scrollLeft += last.x - event.clientX;
+          event.currentTarget.scrollTop += last.y - event.clientY;
+        }
+        updateTouch(event.pointerId, event.clientX, event.clientY);
+      }}
+      onPointerUp={(event) => endTouch(event.pointerId)}
+      onPointerCancel={(event) => endTouch(event.pointerId)}>
       <div className="structured-viewer-stage" style={{ width: width * scale, height: height * scale }}>
         <div ref={surface} className="structured-viewer-surface"
           style={{ transform: `translate(-50%, -50%) rotate(${angle}deg) scale(${scale})` }}
@@ -80,7 +110,8 @@ export function StructuredViewer({ content, onClose }: { content: StructuredCont
             gesture.current = null;
             if (tap && !tap.moved && !window.getSelection()?.toString()) onClose();
           }}>
-          {content.kind === "table" ? renderTable(content.table) : <pre>{content.text}</pre>}
+          {content.kind === "table" ? renderTable(content.table) : content.kind === "pre" ? <pre>{content.text}</pre> :
+            <figure><img src={content.image} alt={content.alt} />{content.caption && <figcaption>{content.caption}</figcaption>}</figure>}
         </div>
       </div>
     </div>

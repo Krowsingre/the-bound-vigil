@@ -14,7 +14,8 @@ export interface TableNode {
 
 export type StructuredContent =
   | { kind: "table"; label: string; table: TableNode }
-  | { kind: "pre"; label: string; text: string };
+  | { kind: "pre"; label: string; text: string }
+  | { kind: "figure"; label: string; caption: string; alt: string; image: string };
 
 export interface StructuredTarget {
   id: string;
@@ -41,9 +42,36 @@ const safeText = (element: Element, limit: number) => {
   return text;
 };
 
+function describeFigure(figure: Element): StructuredContent | null {
+  const images = figure.querySelectorAll("img");
+  if (images.length !== 1) return null;
+  const image = images[0];
+  if (!image.complete || !image.naturalWidth || !image.naturalHeight) return null;
+  const source = image.currentSrc;
+  if (!source.startsWith("blob:") && !/^data:image\/(png|jpeg|webp|gif);base64,/i.test(source)) return null;
+  const canvas = figure.ownerDocument.createElement("canvas");
+  const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  try {
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const snapshot = canvas.toDataURL("image/png");
+    if (snapshot.length > 6_000_000) return null;
+    const captionNode = figure.querySelector(":scope > figcaption");
+    const caption = captionNode ? safeText(captionNode, 2_000) ?? "" : "";
+    return { kind: "figure", label: caption.trim().slice(0, 120) || "Figure",
+      caption, alt: image.alt.slice(0, 2_000), image: snapshot };
+  } catch {
+    return null;
+  }
+}
+
 /** Build a local, inert snapshot. No publisher markup or URLs enter the viewer. */
 export function describeStructuredContent(element: Element): StructuredContent | null {
   if (element.namespaceURI !== "http://www.w3.org/1999/xhtml") return null;
+  if (element.localName === "figure") return describeFigure(element);
   if (element.localName === "pre") {
     const text = safeText(element, 64_000);
     return text?.trim() ? { kind: "pre", label: "Preformatted text", text } : null;

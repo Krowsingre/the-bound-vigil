@@ -171,11 +171,11 @@ export function useReaderEngine({
         if (cancelled) return;
         viewRef.current = view;
         const v = view;
-        const structuredEpub = file instanceof File && /\.(epub|kepub)$/i.test(file.name);
+        const supportsStructuredContent = file instanceof File && /\.(epub|kepub|mobi|azw3)$/i.test(file.name);
         const snapshots = new WeakMap<Element, StructuredContent | null>();
         let inspectFrame = 0;
         const inspect = () => {
-          if (!structuredEpub) return;
+          if (!supportsStructuredContent) return;
           cancelAnimationFrame(inspectFrame);
           inspectFrame = requestAnimationFrame(() => {
             if (cancelled || v.isFixedLayout || !host.current) return;
@@ -184,10 +184,10 @@ export function useReaderEngine({
             for (const { doc, index } of v.renderer.getContents()) {
               const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
               if (!frame) continue;
-              const elements = doc.querySelectorAll("table, pre");
+              const elements = doc.querySelectorAll("table, pre, figure");
               for (let i = 0; i < Math.min(elements.length, 200); i++) {
                 const element = elements[i];
-                if (element.parentElement?.closest("table, pre")) continue;
+                if (element.parentElement?.closest("table, pre, figure")) continue;
                 const intersects = Array.from(element.getClientRects()).some((rect) =>
                   rect.width > 0 && rect.height > 0 &&
                   rect.left + frame.left < Math.min(area.right, frame.right) &&
@@ -195,7 +195,10 @@ export function useReaderEngine({
                   rect.top + frame.top < Math.min(area.bottom, frame.bottom) &&
                   rect.bottom + frame.top > Math.max(area.top, frame.top));
                 if (!intersects) continue;
-                if (!snapshots.has(element)) snapshots.set(element, describeStructuredContent(element));
+                if (!snapshots.has(element)) {
+                  const snapshot = describeStructuredContent(element);
+                  if (snapshot || element.localName !== "figure") snapshots.set(element, snapshot);
+                }
                 const content = snapshots.get(element);
                 if (content) visible.push({ id: `${index}:${i}`, content });
                 if (visible.length >= 8) break;
@@ -226,6 +229,7 @@ export function useReaderEngine({
         v.addEventListener("load", (e) => {
           const { doc, index } = (e as CustomEvent<{ doc: Document; index: number }>).detail;
           if (!v.isFixedLayout) applyPublisherBaseSize(doc);
+          if (supportsStructuredContent) doc.addEventListener("load", inspect, true);
           inspect();
           // After the book's own styles have applied, so their colours are what's read.
           requestAnimationFrame(() => {
