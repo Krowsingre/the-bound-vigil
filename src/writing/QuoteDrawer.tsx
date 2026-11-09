@@ -139,7 +139,7 @@ export function QuoteDrawer({
                   <span className="muted quote-drawer-source">{sourceLine(n) ?? personalTitle(n)}</span>
                 </button>
                 {n.kind === "personal" && (
-                  <button type="button" className="toolbar-button quote-drawer-untie" aria-label={`Edit ${personalTitle(n)}`} onClick={() => setWriting({ note: n })}>
+                  <button type="button" className="toolbar-button quote-drawer-edit" aria-label={`Edit ${personalTitle(n)}`} onClick={() => setWriting({ note: n })}>
                     <Icon name="edit" size={14} />
                   </button>
                 )}
