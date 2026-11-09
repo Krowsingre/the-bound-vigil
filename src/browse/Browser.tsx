@@ -1055,6 +1055,11 @@ export function Browser({
   };
 
   const moreItems: MenuEntry[] = [
+    ...(companion && !narrow ? [
+      { label: "Home page", icon: "home" as const, onSelect: goHome },
+      { label: marked ? "Remove bookmark" : "Bookmark this page", icon: "bookmark" as const, disabled: !web, onSelect: () => void toggleMark() },
+      { label: article ? "Exit Reader view" : "Reader view", icon: "bookOpen" as const, disabled: !web && !article, onSelect: () => void (article ? setArticle(null) : openReader()) },
+    ] : []),
     { label: "Share and open", icon: "share", disabled: !web, submenu: [
       { label: "Copy link", icon: "copy", onSelect: () => void navigator.clipboard?.writeText(url).then(() => toast("Link copied.")) },
       { label: "Share...", icon: "share", onSelect: () => share(url, titleOf(active.title, url)) },
