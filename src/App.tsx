@@ -636,7 +636,10 @@ export function App() {
             <BookDetailsPage
               bookId={details.bookId}
               refreshKey={refreshKey}
-              onBack={() => setRoute(details.from)}
+              onBack={() => {
+                if (seriesPlace?.route === details.from) back();
+                else setRoute(details.from);
+              }}
               onOpenBook={openBook}
               onOpenCollection={showCollection}
               onOpenLibrary={(genre, documents) => {
