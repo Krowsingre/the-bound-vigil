@@ -107,7 +107,7 @@ pub(crate) enum Event {
     Menu { tab: String, action: String, url: String },
     /// A tab shortcut pressed while a page has the keyboard, which keeps keys
     /// from reaching TBV's page on Windows: `newTab`, `closeTab`, `nextTab`,
-    /// `previousTab`, `reopenTab`, or app/page Back and Forward.
+    /// `previousTab`, `reopenTab`, `focusAddress`, or app/page Back and Forward.
     #[serde(rename_all = "camelCase")]
     #[cfg_attr(not(windows), allow(dead_code))]
     Key { tab: String, key: String },
@@ -780,6 +780,7 @@ mod windows {
                     }
                 } else {
                     match (key, shift) {
+                        (0x4B, false) => "focusAddress",
                         (0x54, false) => "newTab",
                         (0x54, true) => "reopenTab",
                         (0x57, false) => "closeTab",
@@ -789,7 +790,18 @@ mod windows {
                     }
                 };
                 args.SetHandled(true)?;
-                tell(&app, Event::Key { tab: tab.clone(), key: what.into() });
+                if matches!(what, "focusAddress" | "newTab") {
+                    let (app, tab) = (app.clone(), tab.clone());
+                    let dispatcher = app.clone();
+                    let _ = dispatcher.run_on_main_thread(move || {
+                        if let Some(main) = app.get_webview("main") {
+                            let _ = main.set_focus();
+                        }
+                        tell(&app, Event::Key { tab, key: what.into() });
+                    });
+                } else {
+                    tell(&app, Event::Key { tab: tab.clone(), key: what.into() });
+                }
                 Ok(())
             })),
             &mut token,
