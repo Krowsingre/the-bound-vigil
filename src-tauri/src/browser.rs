@@ -416,7 +416,11 @@ mod view {
                 set_site(tab, &url);
                 view.navigate(url)
             }
+            #[cfg(windows)]
+            ("back" | "forward", _) => super::windows::travel_one(&view, action == "forward"),
+            #[cfg(not(windows))]
             ("back", _) => view.eval("history.back()"),
+            #[cfg(not(windows))]
             ("forward", _) => view.eval("history.forward()"),
             ("reload", _) => view.reload(),
             ("stop", _) => view.eval("window.stop()"),
@@ -656,6 +660,14 @@ mod windows {
             )?;
         }
         Ok(())
+    }
+
+    pub fn travel_one(view: &tauri::Webview, forward: bool) -> tauri::Result<()> {
+        view.with_webview(move |platform| unsafe {
+            if let Ok(core) = platform.controller().CoreWebView2() {
+                let _ = if forward { core.GoForward() } else { core.GoBack() };
+            }
+        })
     }
 
     fn redirects(core: &ICoreWebView2, app: tauri::AppHandle, tab: String) -> windows_core::Result<()> {

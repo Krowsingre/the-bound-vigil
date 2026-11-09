@@ -413,11 +413,13 @@ export function Browser({
     if (isIOS || !/^https?:/i.test(url)) return;
     const at = frame();
     if (!at) return;
-    const task = api.browserShow(id, url, at, undefined, privately, true)
-      .then(() => {
-        if (mounted.current && tabsRef.current.tabs.some((tab) => tab.id === id)) made.current.add(id);
-        else void api.browserAct(id, "close").catch(() => undefined);
-      }, () => undefined)
+    const nextFrame = new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const task = nextFrame.then(async () => {
+      if (!mounted.current || !tabsRef.current.tabs.some((tab) => tab.id === id)) return;
+      await api.browserShow(id, url, at, protectionOf(readBrowserPrefs()), privately, true);
+      if (mounted.current && tabsRef.current.tabs.some((tab) => tab.id === id)) made.current.add(id);
+      else void api.browserAct(id, "close").catch(() => undefined);
+    }).catch(() => undefined)
       .finally(() => preparing.current.delete(id));
     preparing.current.set(id, task);
   };

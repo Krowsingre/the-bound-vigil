@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { BookPreview, KindlePurchase, LibraryPage } from "../api/types";
+import type { BookPreview, KindlePurchase, LibraryPage, SeriesSummary } from "../api/types";
 import { Pagination } from "../library/Pagination";
+
+const fold = (value: string) => " " + value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim() + " ";
 
 export function KindleArchivePicker({ purchase, onClose }: {
   purchase: KindlePurchase;
@@ -9,6 +11,23 @@ export function KindleArchivePicker({ purchase, onClose }: {
 }) {
   const [search, setSearch] = useState("");
   const [series, setSeries] = useState("");
+  const [suggested, setSuggested] = useState<SeriesSummary[]>([]);
+  useEffect(() => {
+    let live = true;
+    const title = fold(purchase.title);
+    const author = fold(purchase.author);
+    const box = /\b(box\s*set|collection|omnibus|books|volumes|trilogy)\b/i.test(purchase.title);
+    void api.getCollectionsOverview().then((overview) => {
+      if (!live) return;
+      const matches = overview.series.filter((item) => {
+        const name = fold(item.name);
+        return name.trim().length >= 3 && title.includes(name);
+      });
+      const related = box && author.trim() ? overview.series.filter((item) => item.authors.some((name) => fold(name) === author)) : [];
+      setSuggested([...new Map([...matches, ...related].map((item) => [item.name, item])).values()].slice(0, 4));
+    }, () => undefined);
+    return () => { live = false; };
+  }, [purchase]);
   const [page, setPage] = useState(0);
   const [results, setResults] = useState<LibraryPage | null>(null);
   const [picked, setPicked] = useState<BookPreview[]>([]);
@@ -35,6 +54,7 @@ export function KindleArchivePicker({ purchase, onClose }: {
     }, 140);
     return () => { live = false; clearTimeout(timer); };
   }, [search, series, page]);
+  const showSeries = (name: string) => { setSeries(name); setSearch(""); setPage(0); };
   const choose = (book: BookPreview) => setPicked((items) => items.some((item) => item.id === book.id)
     ? items.filter((item) => item.id !== book.id) : [...items, book]);
   const save = async () => {
@@ -58,6 +78,12 @@ export function KindleArchivePicker({ purchase, onClose }: {
           {purchase.author && <button type="button" className="btn btn-quiet btn-small" onClick={() => { setSearch(purchase.author); setSeries(""); setPage(0); }}>Books by {purchase.author}</button>}
           {series && <button type="button" className="btn btn-quiet btn-small" onClick={() => { setSeries(""); setPage(0); }}>Clear series filter</button>}
         </div>
+        {!series && suggested.length > 0 && (
+          <div className="hero-actions">
+            <span className="muted">Suggested series</span>
+            {suggested.map((item) => <button key={item.name} type="button" className="btn btn-quiet btn-small" onClick={() => showSeries(item.name)}>{item.name}</button>)}
+          </div>
+        )}
         {picked.length > 0 && <p className="muted">Selected {picked.length} · {picked.map((book) => book.title).join(", ")}</p>}
         {results && (
           <>
@@ -69,7 +95,7 @@ export function KindleArchivePicker({ purchase, onClose }: {
                     <input type="checkbox" checked={picked.some((item) => item.id === book.id)} onChange={() => choose(book)} />
                     {" "}{book.title} · {book.authors.join(", ")}
                   </label>
-                  {book.series && !series && <button type="button" className="btn btn-quiet btn-small" onClick={() => { setSeries(book.series!); setSearch(""); setPage(0); }}>Show {book.series}</button>}
+                  {book.series && !series && <button type="button" className="btn btn-quiet btn-small" onClick={() => showSeries(book.series!)}>Show {book.series}</button>}
                 </li>
               ))}
             </ul>

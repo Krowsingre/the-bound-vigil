@@ -510,7 +510,8 @@ impl Library {
         self.match_kindle(true)?;
         let missing = missing_clause();
         let mut statement = self.conn.prepare(&format!(
-            "SELECT k.asin, k.title, k.author, k.acquired_at, k.read, k.link, k.cover_url, k.dismissed_at IS NOT NULL, {BOOK_IDS}
+            "SELECT k.asin, k.title, k.author, k.acquired_at, k.read, k.link, k.cover_url, k.dismissed_at IS NOT NULL,
+                    CASE WHEN k.match_state = 'confirmed' THEN {BOOK_IDS} ELSE '[]' END
              FROM kindle_purchases k
              WHERE {missing} AND (k.dismissed_at IS NOT NULL) = ?1
              ORDER BY k.acquired_at DESC, k.title COLLATE NOCASE"
