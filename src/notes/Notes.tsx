@@ -462,7 +462,7 @@ export function Notes({
                   <Icon name="pin" size={17} /> Pinned
                 </h2>
                 {pinned.length > PINNED_SHOWN && (
-                  <button type="button" className="link-btn notes-show-all" aria-expanded={allPinned} onClick={() => setAllPinned((a) => !a)}>
+                  <button type="button" className="link-btn notes-show-all" aria-expanded={allPinned} onClick={() => setAllPinned(!allPinned)}>
                     {allPinned ? "Show fewer" : `Show all (${pinned.length})`} <Icon name={allPinned ? "chevronUp" : "chevronDown"} size={13} />
                   </button>
                 )}

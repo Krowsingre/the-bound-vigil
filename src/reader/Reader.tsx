@@ -609,7 +609,7 @@ export function Reader({
       <div className="reader-body">
         {showLeft && info && (
           <LeftPanel
-            key={book.id}
+            key={info.book.id}
             book={info.book}
             fraction={r?.fraction ?? info.book.totalProgression}
             position={position}

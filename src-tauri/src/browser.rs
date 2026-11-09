@@ -1297,7 +1297,9 @@ fn staging_root(app: &tauri::AppHandle) -> CommandResult<PathBuf> {
 #[tauri::command]
 pub async fn browser_download_kind(app: tauri::AppHandle, path: String) -> CommandResult<&'static str> {
     let path = in_downloads(&app, &path)?;
+    let hold = DownloadHold::for_path(&path)?;
     tauri::async_runtime::spawn_blocking(move || {
+        let _hold = hold;
         let format = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
         match format.as_str() {
             f if tbv_core::formats::is_downloaded_ebook(&path, f) => "ebook",
