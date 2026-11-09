@@ -176,12 +176,6 @@ export function LibraryToolbar({
         { label: "Paired", checked: paired === true, onSelect: () => onPairing(true) },
         { label: "Unpaired", checked: paired === false, onSelect: () => onPairing(false) },
       ] },
-      { label: "Audio type", submenu: [
-        { label: "All audio", checked: !view.audioType, onSelect: () => onChange({ audioType: null }) },
-        { label: "Audiobooks", checked: view.audioType === "audiobook", onSelect: () => onChange({ audioType: "audiobook" }) },
-        { label: "Podcasts", checked: view.audioType === "podcast", onSelect: () => onChange({ audioType: "podcast" }) },
-        { label: "Music", checked: view.audioType === "music", onSelect: () => onChange({ audioType: "music" }) },
-      ] },
     ] as MenuEntry[]) : []),
     "divider",
     ...(filterCount ? ([{ label: "Clear filters", icon: "close", onSelect: clearFilters }] as MenuEntry[]) : []),

@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api, isServerBook } from "../api";
-import type { Audiobook, BookDetails, BookPreview } from "../api/types";
+import type { AudioType, Audiobook, BookDetails, BookPreview } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
@@ -34,6 +34,12 @@ function timeLeft(book: BookPreview): string | null {
   const left = book.durationMs - (book.resumeLocator?.audioMs ?? 0);
   return left > 0 ? `${formatLength(left)} left` : null;
 }
+
+const AUDIO_VIEWS: { type: AudioType; label: string }[] = [
+  { type: "audiobook", label: "Audiobooks" },
+  { type: "podcast", label: "Podcasts" },
+  { type: "music", label: "Music" },
+];
 
 type Pairing = "all" | "paired" | "alone";
 const PAIRING_KEY = "tbv.audiobooks.pairing";
@@ -158,6 +164,21 @@ export function Audiobooks({
           onScrollRestored={onScrollRestored}
           paired={pairing === "all" ? null : pairing === "paired"}
           onPairing={(value) => choosePairing(value === null ? "all" : value ? "paired" : "alone")}
+          switcher={!seriesBack && (
+            <div className="segmented page-switch" role="group" aria-label="Audio type">
+              {AUDIO_VIEWS.map(({ type, label }) => (
+                <button
+                  key={type}
+                  type="button"
+                  aria-pressed={view.audioType === type}
+                  title={view.audioType === type ? "Show all audio" : undefined}
+                  onClick={() => onChange({ audioType: view.audioType === type ? null : type, page: 0 })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           view={view}
           search={search}
           refreshKey={refreshKey + reload}
