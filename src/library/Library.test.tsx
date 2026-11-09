@@ -117,15 +117,15 @@ test("choosing a shelf and a page reports the change", async () => {
 
 test("pinned books stay above the second page of Archive results", async () => {
   getLibrary.mockImplementation(async (query) => ({
-    books: query.pinned ? [book(1, { pinnedAt: "2026-01-01" })] : [book(25)],
-    total: query.pinned ? 1 : 30,
-    page: query.page, pageSize: query.pageSize, counts, formats: ["epub"],
+    books: query?.pinned ? [book(1, { pinnedAt: "2026-01-01" })] : [book(25)],
+    total: query?.pinned ? 1 : 30,
+    page: query?.page ?? 0, pageSize: query?.pageSize ?? 24, counts, formats: ["epub"],
     tags: [], genres: [], authors: [], narrators: [], languages: [],
   }));
   renderLibrary({ view: { ...view, page: 1 } });
   const heading = await screen.findByText("Pinned books");
   expect(heading.closest("details")).toHaveAttribute("open");
-  expect(await screen.findByText("Book 25")).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "More for Book 25" })).toBeInTheDocument();
   expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ pinned: true, page: 0 }));
   expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ pinned: false, page: 1 }));
 });

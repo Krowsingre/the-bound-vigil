@@ -21,6 +21,7 @@ type Props = {
   actions: BookActions;
   selection?: Selection | null;
   seriesCounts?: Record<string, number>;
+  showStatus?: boolean;
   onOpenSeries?: (name: string) => void;
 };
 
@@ -84,7 +85,7 @@ function Progress({ book }: { book: BookPreview }) {
   );
 }
 
-export function BookGrid({ books, actions, selection, seriesCounts, onOpenSeries }: Props) {
+export function BookGrid({ books, actions, selection, seriesCounts, onOpenSeries, showStatus }: Props) {
   return (
     <ul className={`book-grid${selection ? " is-selecting" : ""}`}>
       {books.map((book) => {
@@ -129,6 +130,7 @@ export function BookGrid({ books, actions, selection, seriesCounts, onOpenSeries
                   {authorLine(book.authors)}
                   <Marks book={book} />
                 </span>
+                {showStatus && <span className="book-author">{[seriesLine(book), STATUS[book.status]].filter(Boolean).join(" · ")}</span>}
               </div>
               <MoreMenu book={book} actions={actions} />
             </div>

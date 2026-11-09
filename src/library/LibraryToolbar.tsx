@@ -21,9 +21,9 @@ const COUNT_OF: Record<LibraryTab, keyof ShelfCounts> = {
 
 const LAYOUTS: { layout: Layout; label: string; icon: "grid" | "list" | "rows" | "bookOpen" }[] = [
   { layout: "grid", label: "Covers", icon: "grid" },
+  { layout: "series", label: "Series stacks", icon: "bookOpen" },
   { layout: "list", label: "List", icon: "list" },
   { layout: "compact", label: "Compact list", icon: "rows" },
-  { layout: "series", label: "Series stacks", icon: "bookOpen" },
 ];
 
 const OPENED_KEY = "tbv.filters.opened";

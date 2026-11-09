@@ -540,7 +540,7 @@ export function Library({
       onClearSearch();
       onChange({ ...NO_FILTERS, tab: "all", series: [name], sort: "series", page: 0 });
     };
-    const items = <Layout books={page.books} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} onOpenSeries={openSeries} />;
+    const items = <Layout books={page.books} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} showStatus={inSeries} onOpenSeries={openSeries} />;
     body = endless ? (
       <>
         {items}

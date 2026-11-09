@@ -205,7 +205,7 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
             <p className="fetch-chosen">
               From {SOURCE_NAME[chosen.source]}. Tick what to keep.
               {details?.fields.some((f) => f.edited !== null && values[f.field]) &&
-                " Details you edited yourself keep showing your edit."}
+                " A checked value replaces your manual edit for that field."}
             </p>
             <div className="fetch-compare" role="table" aria-label="Details found">
               <div className="fetch-row fetch-row-head" role="row">
