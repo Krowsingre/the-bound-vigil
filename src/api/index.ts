@@ -645,7 +645,7 @@ export interface Api {
   /** A book's drafts, oldest first. */
   writingDrafts(projectId: string): Promise<WritingDraft[]>;
   deleteWritingDraft(id: string): Promise<void>;
-  keepDraftInArchive(id: string): Promise<void>;
+  restoreWritingDraft(projectId: string, draftId: string, revision: string, sections: { section: NewWritingSection; partIndex?: number }[]): Promise<void>;
   setWritingCoverPage(id: string, page: WritingProject["coverPage"]): Promise<WritingProject>;
   /** Puts a section into a part of an anthology, or back into the book's own (null). */
   setWritingChapterPart(id: string, part: string | null): Promise<WritingChapter>;
@@ -1342,7 +1342,7 @@ function appApi(): Api {
     onCopyCheckProgress: (listener) => listenFor("copy-check-progress", listener),
     saveWritingDraft: async (projectId, bytes) => (await core).invoke<WritingDraft>("save_writing_draft", bytes, { headers: { "project-id": projectId } }),
     writingDrafts: async (projectId) => (await core).invoke<WritingDraft[]>("writing_drafts", { projectId }),
-    keepDraftInArchive: async (id) => (await core).invoke("keep_draft_in_archive", { id }),
+    restoreWritingDraft: async (projectId, draftId, revision, sections) => (await core).invoke("restore_writing_draft", { projectId, draftId, revision, sections }),
     deleteWritingDraft: async (id) => (await core).invoke("delete_writing_draft", { id }),
     setWritingCoverPage: async (id, page) => (await core).invoke<WritingProject>("set_writing_cover_page", { id, page }),
     setWritingChapterPart: async (id, part) => (await core).invoke<WritingChapter>("set_writing_chapter_part", { id, part }),

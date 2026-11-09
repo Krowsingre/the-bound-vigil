@@ -742,6 +742,7 @@ export function DraftsDialog({
   onFlush,
   onOpen,
   onImport,
+  onRestore,
   onClose,
 }: {
   project: WritingProject;
@@ -750,13 +751,13 @@ export function DraftsDialog({
   onOpen: (bookId: string) => void;
   /** Brings a file in as another draft of this book. */
   onImport?: () => void;
+  onRestore: (draft: WritingDraft) => void;
   onClose: () => void;
 }) {
   const [drafts, setDrafts] = useState<WritingDraft[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<WritingDraft | null>(null);
-  const [keeping, setKeeping] = useState<WritingDraft | null>(null);
   const toast = useToast();
   useEffect(() => {
     let current = true;
@@ -823,7 +824,7 @@ export function DraftsDialog({
                   trigger={<Icon name="more" size={16} />}
                   items={[
                     { label: "Open", icon: "bookOpen", onSelect: () => onOpen(d.bookId) },
-                    { label: "Keep in Archive…", icon: "bookOpen", onSelect: () => setKeeping(d) },
+                    { label: "Un-draft…", icon: "edit", onSelect: () => onRestore(d) },
                     "divider",
                     { label: "Delete draft…", icon: "trash", danger: true, onSelect: () => setDeleting(d) },
                   ]}
@@ -850,25 +851,6 @@ export function DraftsDialog({
           </button>
         </div>
       </div>
-      {keeping && <ConfirmDialog
-        title={`Keep Draft ${keeping.number} in Archive?`}
-        body="The book will appear in Archive with its file, reading progress, highlights, and notes. Draft entries for this same file will be removed from Scribe."
-        confirm="Keep in Archive"
-        confirmDisabled={busy}
-        onCancel={() => { if (!busy) setKeeping(null); }}
-        onConfirm={() => {
-          if (busy) return;
-          setBusy(true);
-          void api.keepDraftInArchive(keeping.id).then(
-            () => {
-              setDrafts((list) => (list ?? []).filter((draft) => draft.bookId !== keeping.bookId));
-              setKeeping(null);
-              toast("Book kept in Archive.");
-            },
-            (failure) => toast(String(failure)),
-          ).finally(() => setBusy(false));
-        }}
-      />}
       {deleting && (
         <ConfirmDialog
           title={`Delete Draft ${deleting.number}?`}

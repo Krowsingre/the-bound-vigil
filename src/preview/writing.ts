@@ -44,7 +44,7 @@ type Calls = Pick<
   | "saveWritingDraft"
   | "writingDrafts"
   | "deleteWritingDraft"
-  | "keepDraftInArchive"
+  | "restoreWritingDraft"
   | "setWritingChapterPart"
   | "addWritingSection"
   | "setWritingChapterPage"
@@ -246,9 +246,19 @@ export function previewWriting(): Calls {
       return draft;
     },
     writingDrafts: async (projectId) => drafts.filter((d) => d.projectId === projectId),
-    keepDraftInArchive: async (id) => {
-      const draft = drafts.find((item) => item.id === id);
-      if (draft) drafts = drafts.filter((item) => item.bookId !== draft.bookId || item.projectId !== draft.projectId);
+    restoreWritingDraft: async (projectId, draftId, revision, sections) => {
+      const before = await calls.writingProject(projectId);
+      if (before.project.updatedAt !== revision || !drafts.some((draft) => draft.id === draftId && draft.projectId === projectId)) {
+        throw new Error("The book or its draft changed.");
+      }
+      const added: string[] = [];
+      for (const { section, partIndex } of sections) {
+        const item = await calls.addWritingSection(projectId, {
+          ...section, after: added.at(-1), part: partIndex === undefined ? null : added[partIndex],
+        });
+        added.push(item.id);
+      }
+      for (const item of before.chapters) await calls.deleteWritingChapter(item.id);
     },
     deleteWritingDraft: async (id) => {
       drafts = drafts.filter((d) => d.id !== id);

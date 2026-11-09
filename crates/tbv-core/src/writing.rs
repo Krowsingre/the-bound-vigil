@@ -84,6 +84,13 @@ pub struct NewWritingSection {
     pub after: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoredWritingSection {
+    pub section: NewWritingSection,
+    pub part_index: Option<usize>,
+}
+
 /// Where a section of a written book goes.
 pub const CHAPTER_ROLES: &[&str] = &["chapter", "front", "back", "part"];
 
@@ -468,24 +475,41 @@ impl Library {
             .ok_or_else(|| Error::Unsuitable("the draft couldn't be kept".into()))
     }
 
-    /// Removes draft links while keeping the existing book and its reading records.
-    pub fn keep_draft_in_archive(&self, id: &str) -> Result<()> {
+    /// Restores editable sections without changing the locked source snapshot.
+    pub fn restore_writing_draft(
+        &self,
+        project_id: &str,
+        draft_id: &str,
+        revision: &str,
+        sections: Vec<RestoredWritingSection>,
+    ) -> Result<()> {
+        if sections.is_empty() {
+            return Err(Error::Unsuitable("keep at least one section".into()));
+        }
         let tx = self.conn.unchecked_transaction()?;
-        let book_id: Option<String> = tx.query_row(
-            "SELECT d.book_id FROM writing_drafts d
-             JOIN books b ON b.id = d.book_id AND b.deleted_at IS NULL
-             WHERE d.id = ?1 AND d.deleted_at IS NULL AND b.same_as LIKE 'draft:%'",
-            params![id],
-            |r| r.get(0),
-        ).optional()?;
-        let Some(book_id) = book_id else { return Ok(()) };
-        let now = now_utc();
-        // An identical file can have several saved draft entries.
-        tx.execute(
-            "UPDATE writing_drafts SET deleted_at = ?2, updated_at = ?2 WHERE book_id = ?1 AND deleted_at IS NULL",
-            params![book_id, now],
+        let project = self.writing_project_row(project_id)?;
+        if project.updated_at != revision {
+            return Err(Error::Unsuitable("the manuscript changed; reopen the draft and try again".into()));
+        }
+        let exists: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM writing_drafts WHERE id = ?1 AND project_id = ?2 AND deleted_at IS NULL)",
+            params![draft_id, project_id], |row| row.get(0),
         )?;
-        tx.execute("UPDATE books SET same_as = NULL WHERE id = ?1", params![book_id])?;
+        if !exists {
+            return Err(Error::Unsuitable("that draft no longer exists".into()));
+        }
+        tx.execute(
+            "UPDATE writing_chapters SET deleted_at = ?2, updated_at = ?2 WHERE project_id = ?1 AND deleted_at IS NULL",
+            params![project_id, now_utc()],
+        )?;
+        let mut added: Vec<String> = Vec::with_capacity(sections.len());
+        for item in sections {
+            let mut section = item.section;
+            section.after = added.last().cloned();
+            section.part = item.part_index.map(|index| added.get(index).cloned()
+                .ok_or_else(|| Error::Unsuitable("a restored section refers to a missing part".into()))).transpose()?;
+            added.push(self.add_writing_section(project_id, &section)?.id);
+        }
         tx.commit()?;
         Ok(())
     }
@@ -758,26 +782,25 @@ mod tests {
     }
 
     #[test]
-    fn keeping_a_draft_in_archive_preserves_the_book_and_its_notes() {
+    fn restoring_a_draft_atomically_replaces_editable_sections_and_keeps_the_snapshot() {
         let (dir, mut library) = open_temp_library();
-        let project = library.create_writing_project("Draft", None).unwrap().project;
+        let project = library.create_writing_project("Restore test", None).unwrap().project;
         let epub = dir.path().join("draft.epub");
-        crate::epub::tests::write_test_epub_with(&epub, "Draft", "Embre", false, "");
+        crate::epub::tests::write_test_epub_with(&epub, "Restore test", "Embre", false, "");
         let draft = library.save_writing_draft(&project.id, &epub).unwrap();
-        let duplicate = library.save_writing_draft(&project.id, &epub).unwrap();
-        let note = library.save_book_note(&draft.book_id, None, "Keep this").unwrap();
-        library.set_status(&draft.book_id, crate::model::ReadStatus::InProgress).unwrap();
-
-        library.keep_draft_in_archive(&draft.id).unwrap();
-        library.keep_draft_in_archive(&draft.id).unwrap();
-        assert!(library.writing_drafts(&project.id).unwrap().is_empty());
-        library.delete_writing_draft(&duplicate.id).unwrap();
-        library.delete_writing_project(&project.id).unwrap();
+        let before = library.writing_project(&project.id).unwrap();
+        let section = |role: &str| RestoredWritingSection {
+            section: NewWritingSection { title: "Restored".into(), body: "<p>Words</p>".into(), role: role.into(), ..Default::default() },
+            part_index: None,
+        };
+        assert!(library.restore_writing_draft(&project.id, &draft.id, &before.project.updated_at,
+            vec![section("chapter"), section("invalid")]).is_err());
+        assert_eq!(library.writing_project(&project.id).unwrap().chapters, before.chapters);
+        library.restore_writing_draft(&project.id, &draft.id, &before.project.updated_at, vec![section("chapter")]).unwrap();
+        let restored = library.writing_project(&project.id).unwrap();
+        assert_eq!(restored.chapters.len(), 1);
+        assert_eq!(restored.chapters[0].body, "<p>Words</p>");
         assert!(library.open_book(&draft.book_id).is_ok());
-        let notes = library.notes_page(&crate::model::NotesQuery::default()).unwrap();
-        assert!(notes.notes.iter().any(|item| item.id == note.id && item.note.as_deref() == Some("Keep this")));
-        let archive = library.library_page(&crate::model::LibraryQuery::default()).unwrap();
-        assert!(archive.books.iter().any(|b| b.id == draft.book_id && b.status == crate::model::ReadStatus::InProgress));
     }
 
     #[test]
