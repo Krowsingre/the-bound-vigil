@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Scribe Fixture</title>
+<style data-book>
+body {
+  margin: 0 5%;
+  line-height: 1.5;
+}
+h1 { font-size: 1.6em; text-align: center; margin: 2em 0 1.5em; font-weight: normal; }
+h2 { font-size: 1.25em; margin: 1.5em 0 0.75em; }
+h3 { font-size: 1.1em; margin: 1.25em 0 0.5em; }
+p { margin: 0; text-indent: 1.5em; text-align: justify; }
+p[style*="text-align: center"], p[style*="text-align: right"] { text-indent: 0; }
+h1 + p, h2 + p, h3 + p, .scene + p, hr + p, blockquote + p, .blank + p, .picture + p, p:first-child { text-indent: 0; }
+.chapter-label { text-align: center; text-indent: 0; margin: 2em 0 -1.2em; font-size: 0.85em; letter-spacing: 0.12em; text-transform: uppercase; }
+.picture { text-align: center; text-indent: 0; margin: 1em 0; }
+.picture img, p img { max-width: 100%; }
+figure.picture { margin: 1.2em 0; }
+figure.picture figcaption { font-size: 0.85em; font-style: italic; text-align: center; text-indent: 0; margin-top: 0.5em; }
+figure.full-page { page-break-before: always; break-before: page; page-break-after: always; break-after: page; margin: 0; height: 95vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+figure.full-page img { max-height: 88vh; max-width: 100%; object-fit: contain; }
+sup a { text-decoration: none; }
+.footnotes { margin-top: 2em; border-top: 1px solid currentColor; padding-top: 0.5em; font-size: 0.85em; }
+.footnote p { text-indent: 0; text-align: left; margin: 0 0 0.4em; }
+.blank { text-indent: 0; }
+blockquote { margin: 1em 2em; font-style: italic; }
+blockquote p { text-indent: 0; }
+.scene { text-align: center; text-indent: 0; margin: 1em 0; }
+hr.scene { border: none; border-top: 1px solid currentColor; width: 25%; margin: 1.5em auto; }
+ul, ol { margin: 1em 0 1em 1.5em; }
+pre { white-space: pre-wrap; font-family: monospace; }
+section.chapter, section.frontmatter, section.backmatter, section.part { page-break-before: always; break-before: page; }
+section.follows { page-break-before: auto; break-before: auto; margin-top: 3em; }
+section.page-half-title .title { font-size: 1.6em; margin: 35% 0 0; text-align: center; text-indent: 0; }
+section.page-copyright { padding-top: 30%; }
+section.page-copyright p { text-indent: 0; text-align: left; font-size: 0.85em; margin: 0 0 0.8em; }
+section.page-copyright .copyright-title { font-style: italic; }
+section.page-copyright .copyright-credit { margin-top: 2em; font-size: 0.8em; }
+section.page-dedication, section.page-epigraph { text-align: center; padding-top: 25%; }
+section.page-dedication p, section.page-epigraph p { text-align: center; text-indent: 0; }
+section.page-dedication p { font-style: italic; }
+ol.contents, ol.contents ol { list-style: none; padding: 0; margin: 0.5em 0; }
+ol.contents ol { padding-left: 1.5em; }
+ol.contents li { margin: 0.4em 0; }
+ol.contents a { text-decoration: none; }
+.titlepage { text-align: center; }
+.titlepage .title { font-size: 2em; margin: 30% 0 0.5em; text-indent: 0; text-align: center; }
+.titlepage .author { font-size: 1.2em; text-indent: 0; text-align: center; }
+.titlepage .series { font-style: italic; margin-top: 1em; text-indent: 0; text-align: center; }
+.pagebreak { height: 0; margin: 0; page-break-after: always; break-after: page; -webkit-column-break-after: always; }
+section.part { text-align: center; }
+section.part > h1 { margin-top: 30%; font-size: 1.8em; }
+section.part p { text-align: center; text-indent: 0; }
+section.page-sources p.source { text-indent: -2em; padding-left: 2em; text-align: left; margin: 0 0 0.7em; }
+.stanza { margin: 0 0 1.2em; page-break-inside: avoid; break-inside: avoid; }
+.stanza p.line { margin: 0; padding-left: 2em; text-indent: -2em; text-align: left; }
+.poem-centred .stanza p.line { padding-left: 0; text-indent: 0; text-align: center; }
+.poem-sound { margin: 1.5em 0 0; text-align: center; }
+.poem-sound audio { width: 100%; max-width: 24em; }
+p.poem-listen { margin: 1.5em 0 0; text-indent: 0; text-align: center; font-size: 0.85em; font-style: italic; }
+.poem-centred p.poem-listen, p.poem-listen a { text-align: center; }
+section.page-haiku { padding-top: 20%; }
+.cover { margin: 0; padding: 0; text-align: center; }
+.cover img { max-width: 100%; max-height: 100%; }
+
+</style>
+<style data-print>
+
+@page {
+  size: 6in 9in;
+  margin: 0.75in 0.6in 0.8in 0.625in;
+  
+  @bottom-center { content: counter(page); font-size: 9pt; }
+}
+@page :left { margin-left: 0.6in; margin-right: 0.625in; }
+@page :right { margin-left: 0.625in; margin-right: 0.6in; }
+@page main:left { @top-center { content: "Scribe Fixture"; font-size: 8.5pt; letter-spacing: 0.12em; text-transform: uppercase; } }
+@page main:right { @top-center { content: string(chapter, first); font-size: 8.5pt; letter-spacing: 0.12em; text-transform: uppercase; } }
+@page main:first { @top-center { content: none; } }
+@page front { @top-center { content: none; } @bottom-center { content: none; } }
+@page :blank { @top-center { content: none; } @bottom-center { content: none; } }
+
+html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+body { font-size: 11pt; line-height: 1.45; }
+section.chapter, section.backmatter, section.part { page: main; }
+section.frontmatter, section.titlepage { page: front; }
+section > h1 { string-set: chapter content(text); }
+section.chapter:not(.follows), section.part:not(.follows) { break-before: right; }
+section.frontmatter:not(.follows), section.backmatter:not(.follows), section.titlepage { break-before: page; }
+.print-sheet:first-child section:first-child, .print-sheet:first-child > section.titlepage { break-before: auto; }
+p { widows: 2; orphans: 2; }
+h1, h2, h3, .chapter-label { break-after: avoid; }
+.picture, .stanza { break-inside: avoid; }
+img { max-width: 100%; max-height: 7in; }
+figure.picture { break-inside: avoid; }
+/* A picture with a page of its own fills the space inside the margins. */
+figure.full-page { break-before: page; break-after: page; height: calc(9in - 1.6in); margin: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+figure.full-page img { max-height: calc(9in - 2.2in); object-fit: contain; }
+a { color: inherit; text-decoration: none; }
+section.page-half-title .title, .titlepage .title { margin-top: 2.2in; }
+section.page-copyright { padding-top: 3in; }
+section.page-dedication, section.page-epigraph { padding-top: 2in; }
+section.part > h1 { margin-top: 2.5in; }
+.footnotes { break-inside: avoid; }
+/* A poem's QR code: about an inch square, its address under it. */
+.poem-listen-print { break-inside: avoid; margin: 1.6em auto 0; text-align: center; }
+.poem-listen-print svg.qr { width: 0.9in; height: 0.9in; display: block; margin: 0 auto 0.4em; }
+.poem-listen-print p { margin: 0; text-indent: 0; text-align: center; font-size: 8.5pt; font-style: italic; }
+/* The contents page gives each chapter's page number. */
+ol.contents li > a { display: flex; gap: 1em; }
+ol.contents li > a::after { content: target-counter(attr(href url), page); margin-left: auto; }
+
+</style>
+<meta name="tbv-print" content="{&quot;settings&quot;:{&quot;trim&quot;:&quot;6x9&quot;,&quot;mirrored&quot;:true,&quot;bleed&quot;:false,&quot;chaptersRight&quot;:true,&quot;runningHeads&quot;:true,&quot;pageNumbers&quot;:true},&quot;title&quot;:&quot;Scribe Fixture&quot;,&quot;gutter&quot;:0.625}"/>
+</head>
+<body>
+<div class="print-sheet">
+<section class="titlepage" epub:type="titlepage">
+<p class="title">Scribe Fixture</p>
+<p class="author">Test</p>
+</section>
+</div>
+<div class="print-sheet">
+<section class="chapter" epub:type="chapter" id="c1">
+<h1>Chapter One</h1>
+<p>Ordinary reading.</p><figure class="picture full-page"><img src="data:image/png;base64,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" alt="Blue chart"/><figcaption>Fixture caption</figcaption></figure>
+</section>
+</div>
+</body>
+</html>

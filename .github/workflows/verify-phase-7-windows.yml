@@ -1,0 +1,44 @@
+name: Verify Phase 7 Windows installer
+on:
+  push:
+    branches: [codex/verify-phase-7-windows]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 42698294294
+          name: the-bound-vigil-windows-setup
+          path: installer
+      - name: Install exact release binary
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem installer -Filter '*-setup.exe').FullName
+          if ((Get-FileHash -LiteralPath $setup).Hash -ne 'ADD25BD2DA767478D29BED65CE3DD655357F42AE588067E67D142E5793700C63') { throw 'Unexpected installer bytes' }
+          $target = Join-Path $env:RUNNER_TEMP 'Phase7Installed'
+          $install = Start-Process -FilePath $setup -ArgumentList @('/S',"/D=$target") -Wait -PassThru -WindowStyle Hidden
+          if ($install.ExitCode -ne 0) { throw "Installer exited $($install.ExitCode)" }
+          $exe = Join-Path $target 'the-bound-vigil.exe'
+          if (!(Test-Path -LiteralPath $exe)) { throw 'Installed executable missing' }
+          "TBV_TEST_EXE=$exe" >> $env:GITHUB_ENV
+      - name: Test native Reader, export, and print
+        shell: pwsh
+        run: |
+          npm install --prefix qa-phase7 --no-save --no-package-lock playwright-core@1.58.2
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node qa-phase7/verify.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase7-verification-output
+          path: qa-phase7/result/
