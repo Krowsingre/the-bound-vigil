@@ -123,15 +123,15 @@ export function PersonalNoteEditor({ initial, refreshKey, onSaved, onClose }: {
           </section>
         </div>
         {error && <p className="form-error" role="alert">{error}</p>}
-        {discard ? <div className="dialog-actions" role="group" aria-label="Unsaved changes">
+        {discard ? <div key="discard" className="dialog-actions" role="group" aria-label="Unsaved changes">
           <span>Discard unsaved changes?</span>
-          <button type="button" className="btn btn-quiet" autoFocus onClick={() => setDiscard(null)}>Keep editing</button>
+          <button type="button" className="btn btn-quiet" autoFocus onClick={(event) => { event.preventDefault(); setDiscard(null); }}>Keep editing</button>
           <button type="button" className="btn btn-danger" onClick={() => {
             setDiscard(null);
             if (discard.close) onClose();
             else load(discard.next);
           }}>Discard changes</button>
-        </div> : <div className="dialog-actions">
+        </div> : <div key="save" className="dialog-actions">
           <button type="button" className="btn btn-quiet" onClick={() => leave(true)} disabled={busy}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={busy}>Save note</button>
         </div>}
