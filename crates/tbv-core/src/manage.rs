@@ -384,10 +384,10 @@ impl Library {
         let sql = format!(
             "{BOOK_COLUMNS},
                     COALESCE((SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = 'isbn'),
-                             (SELECT value FROM metadata_fetched WHERE book_id = b.id AND field = 'isbn'), b.isbn),
-                    b.file_size,
-                    (SELECT COUNT(*) FROM annotations a WHERE a.book_id = b.id AND a.deleted_at IS NULL),
-                    (SELECT COUNT(*) FROM collection_books c WHERE c.book_id = b.id AND c.removed_at IS NULL)
+                             (SELECT value FROM metadata_fetched WHERE book_id = b.id AND field = 'isbn'), b.isbn) AS duplicate_isbn,
+                    b.file_size AS duplicate_file_size,
+                    (SELECT COUNT(*) FROM annotations a WHERE a.book_id = b.id AND a.deleted_at IS NULL) AS duplicate_annotations,
+                    (SELECT COUNT(*) FROM collection_books c WHERE c.book_id = b.id AND c.removed_at IS NULL) AS duplicate_collections
              {BOOK_FROM} ORDER BY b.added_at"
         );
         let mut statement = self.conn.prepare(&sql)?;
@@ -395,10 +395,10 @@ impl Library {
             .query_map([], |r| {
                 Ok((
                     book_from_row(r)?,
-                    r.get::<_, Option<String>>(28)?,
-                    r.get::<_, i64>(29)?,
-                    r.get::<_, u32>(30)?,
-                    r.get::<_, u32>(31)?,
+                    r.get::<_, Option<String>>("duplicate_isbn")?,
+                    r.get::<_, i64>("duplicate_file_size")?,
+                    r.get::<_, u32>("duplicate_annotations")?,
+                    r.get::<_, u32>("duplicate_collections")?,
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
