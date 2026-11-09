@@ -581,7 +581,7 @@ export function Library({
     body = <CollectionsTab collections={collections} onOpenCollection={onOpenCollection} />;
   } else if (!page) {
     body = <div className="library-loading" aria-busy="true" aria-label="Loading your library" />;
-  } else if (page.counts.all === 0) {
+  } else if (facets?.counts.all === 0) {
     body = (
       <div className="library-empty">
         <h2>No {words.many} yet</h2>

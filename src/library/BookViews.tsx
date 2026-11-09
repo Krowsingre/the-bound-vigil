@@ -94,10 +94,11 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesCovers
         const count = seriesCounts?.[book.id];
         if (count && book.series && onOpenSeries) {
           const name = book.series.trim();
+          const cover = seriesCovers?.[book.id] ?? book;
           return (
             <li key={book.id} className="grid-card series-stack">
               <button type="button" className="grid-open" aria-label={"Open series " + name} onClick={() => onOpenSeries(name)}>
-                <BookCover book={seriesCovers?.[book.id] ?? book} />
+                <BookCover key={cover.id} book={cover} />
               </button>
               <div className="grid-caption">
                 <div className="grid-text">
