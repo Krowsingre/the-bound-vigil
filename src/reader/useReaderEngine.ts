@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import type { Annotation } from "../api/types";
 import type { Relocation, SearchResult, TocItem, View } from "../vendor/foliate-js/view.js";
 import { fitTextToPage, hexToRgb, luminance } from "./darkText";
+import { describeStructuredContent, type StructuredContent, type StructuredTarget } from "./structuredContent";
 import type { ReaderSource } from "./formats";
 import { DEFAULT_SETTINGS, highlightHex, readerCss, WIDTHS, type PageColors, type ReaderSettings } from "./settings";
 
@@ -31,6 +32,7 @@ export interface ReaderEngine {
   ready: boolean;
   error: string | null;
   relocation: Relocation | null;
+  structuredTargets: StructuredTarget[];
   toc: TocItem[];
   /** Where each section (file) of the book starts, as a fraction of the whole. */
   sectionStarts: number[];
@@ -131,6 +133,7 @@ export function useReaderEngine({
 }): ReaderEngine {
   const viewRef = useRef<View | null>(null);
   const [ready, setReady] = useState(false);
+  const [structuredTargets, setStructuredTargets] = useState<StructuredTarget[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [relocation, setRelocation] = useState<Relocation | null>(null);
   const [toc, setToc] = useState<TocItem[]>([]);
@@ -154,6 +157,7 @@ export function useReaderEngine({
     let cancelled = false;
     let view: View | null = null;
     setReady(false);
+    setStructuredTargets([]);
     setError(null);
 
     void (async () => {
@@ -167,6 +171,41 @@ export function useReaderEngine({
         if (cancelled) return;
         viewRef.current = view;
         const v = view;
+        const structuredEpub = file instanceof File && /\.(epub|kepub)$/i.test(file.name);
+        const snapshots = new WeakMap<Element, StructuredContent | null>();
+        let inspectFrame = 0;
+        const inspect = () => {
+          if (!structuredEpub) return;
+          cancelAnimationFrame(inspectFrame);
+          inspectFrame = requestAnimationFrame(() => {
+            if (cancelled || v.isFixedLayout || !host.current) return;
+            const area = host.current.getBoundingClientRect();
+            const visible: StructuredTarget[] = [];
+            for (const { doc, index } of v.renderer.getContents()) {
+              const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
+              if (!frame) continue;
+              const elements = doc.querySelectorAll("table, pre");
+              for (let i = 0; i < Math.min(elements.length, 200); i++) {
+                const element = elements[i];
+                if (element.parentElement?.closest("table, pre")) continue;
+                const intersects = Array.from(element.getClientRects()).some((rect) =>
+                  rect.width > 0 && rect.height > 0 &&
+                  rect.left + frame.left < Math.min(area.right, frame.right) &&
+                  rect.right + frame.left > Math.max(area.left, frame.left) &&
+                  rect.top + frame.top < Math.min(area.bottom, frame.bottom) &&
+                  rect.bottom + frame.top > Math.max(area.top, frame.top));
+                if (!intersects) continue;
+                if (!snapshots.has(element)) snapshots.set(element, describeStructuredContent(element));
+                const content = snapshots.get(element);
+                if (content) visible.push({ id: `${index}:${i}`, content });
+                if (visible.length >= 8) break;
+              }
+              if (visible.length >= 8) break;
+            }
+            setStructuredTargets((before) => before.length === visible.length &&
+              before.every((item, i) => item.id === visible[i].id && item.content === visible[i].content) ? before : visible);
+          });
+        };
 
         v.addEventListener("relocate", (e) => {
           const detail = (e as CustomEvent<Relocation>).detail;
@@ -180,12 +219,14 @@ export function useReaderEngine({
             detail.fraction = total ? (current + 1) / total : 0;
           }
           setRelocation(detail);
+          inspect();
           eventsRef.current.onRelocate?.(detail);
         });
 
         v.addEventListener("load", (e) => {
           const { doc, index } = (e as CustomEvent<{ doc: Document; index: number }>).detail;
           if (!v.isFixedLayout) applyPublisherBaseSize(doc);
+          inspect();
           // After the book's own styles have applied, so their colours are what's read.
           requestAnimationFrame(() => {
             const { colors } = styleRef.current;
@@ -308,6 +349,7 @@ export function useReaderEngine({
     ready,
     error,
     relocation,
+    structuredTargets,
     toc,
     sectionStarts,
     sectionOf,

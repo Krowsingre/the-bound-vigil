@@ -24,6 +24,8 @@ import { BOOK_OPENED, useAppDark } from "../settings/appSettings";
 import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, resolveTheme, SETTINGS_KEY, zoomStep, type ReaderSettings } from "./settings";
 import { useReadAloud } from "./useReadAloud";
 import { useReadAlong } from "./useReadAlong";
+import { StructuredViewer } from "./StructuredViewer";
+import type { StructuredContent } from "./structuredContent";
 import { useReaderEngine, type TextSelection } from "./useReaderEngine";
 
 export interface ReaderShellProps {
@@ -100,6 +102,8 @@ export function Reader({
   const [noteEdit, setNoteEdit] = useState<{ a?: Annotation; selection?: TextSelection } | null>(null);
   const [lastColor, setLastColor] = useState<HighlightColor>("rose");
   const host = useRef<HTMLDivElement>(null);
+  const [expandedContent, setExpandedContent] = useState<StructuredContent | null>(null);
+  useEffect(() => setExpandedContent(null), [file]);
   const searchInput = useRef<HTMLInputElement>(null);
   const prefersDark = useAppDark();
   const narrow = useNarrow();
@@ -439,7 +443,7 @@ export function Reader({
   // Keyboard: the window's keys, plus keys pressed inside the book's pages.
   const onKeyRef = useRef<(e: KeyboardEvent, fromBook: boolean) => void>(() => {});
   onKeyRef.current = (e, fromBook) => {
-    if (noteEdit || e.defaultPrevented) return;
+    if (noteEdit || expandedContent || e.defaultPrevented) return;
     const backKey = navigationDirection(e, true) === "back";
     if (!fromBook && isTyping(e.target) && e.key !== "Escape" && !backKey) return;
     const ctrl = e.ctrlKey || e.metaKey;
@@ -638,6 +642,13 @@ export function Reader({
           )}
           {jumps.length > 0 && !focus && <ReturnPill jump={jumps.at(-1)!} onReturn={goBack} onDismiss={() => setJumps([])} />}
           <div className="reader-host" ref={host} aria-busy={!engine.ready} />
+          {engine.ready && !selection && !active && file instanceof File && /\.(epub|kepub)$/i.test(file.name) && engine.structuredTargets.length > 0 &&
+            <div className="structured-reader-tools" aria-label="Expandable content on this page">
+              {engine.structuredTargets.map(({ id, content }) =>
+                <button key={id} type="button" className="btn btn-quiet" title={content.label}
+                  onClick={() => setExpandedContent(content)}>Expand {content.label}</button>)}
+            </div>}
+          {expandedContent && <StructuredViewer content={expandedContent} onClose={() => setExpandedContent(null)} />}
           {!engine.ready && !engine.error && <p className="reader-loading">Opening the book…</p>}
           {engine.error && (
             <div className="reader-message-body">
