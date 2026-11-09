@@ -47,6 +47,7 @@ let page;
   const selected=books.find(b=>b.format==='epub');
   assert(primary && selected,'Both test formats imported');
   await invoke('keep_together',{mainId:primary.id,otherIds:[selected.id]});
+  await invoke('open_book',{bookId:primary.id});
   await invoke('save_position',{bookId:primary.id,locator:{format:'epub',totalProgression:0.1,chapter:'Chapter One'}});
   await page.reload();
   await page.getByRole('button',{name:/continue reading/i}).first().click();
