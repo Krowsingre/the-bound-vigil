@@ -482,7 +482,7 @@ export function Browser({
           if (ev.tab) made.current.add(id);
           // Opened from a private tab, it's private too.
           const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.from)?.private;
-          setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null, private: privately || undefined }, !ev.foreground));
+          setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null, private: privately || undefined }, !ev.foreground, ev.from));
           if (!ev.tab && !ev.foreground) prepareTab(id, ev.url, privately);
           break;
         }
@@ -504,7 +504,7 @@ export function Browser({
           if (ev.action === "newTab") {
             const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.tab)?.private;
             const id = newTabId();
-            setTabs((s) => openTab(s, { id, url: ev.url, title: null, private: privately || undefined }, true));
+            setTabs((s) => openTab(s, { id, url: ev.url, title: null, private: privately || undefined }, true, ev.tab));
             prepareTab(id, ev.url, privately);
           } else {
             void api.downloadWebBook(ev.url, fileTitle(ev.url)).then(
@@ -648,10 +648,10 @@ export function Browser({
     return () => window.removeEventListener(BROWSER_GO, fromHeader);
   }, []);
 
-  const newTab = (privately = false) => {
+  const newTab = (privately = false, beside?: string) => {
     setArticle(null);
     setPanel(null);
-    setTabs((s) => openTab(s, { id: newTabId(), url: "tbv:start", title: null, private: privately || undefined }));
+    setTabs((s) => openTab(s, { id: newTabId(), url: "tbv:start", title: null, private: privately || undefined }, false, beside));
     onSearchChange("");
     const input = document.getElementById("global-search");
     if (input) {
@@ -743,8 +743,8 @@ export function Browser({
     const tab = tabsRef.current.tabs.find((t) => t.id === id);
     const web = /^https?:/i.test(tab?.url ?? "");
     return [
-      { label: "New tab", icon: "plus", onSelect: () => newTab() },
-      { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) },
+      { label: "Open new tab", icon: "plus", onSelect: () => newTab(false, id) },
+      { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true, id) },
       { label: "Reload tab", icon: "sync", disabled: !web || !made.current.has(id), onSelect: () => reloadTab(id) },
       { label: "Duplicate tab", icon: "copy", disabled: !web, onSelect: () => duplicate(id) },
       { label: "Copy link", icon: "link", disabled: !web, onSelect: () => copyLink(tab!.url) },
@@ -762,7 +762,8 @@ export function Browser({
   shortcut.current = (key) => {
     const list = tabsRef.current.tabs;
     const at = list.findIndex((t) => t.id === tabsRef.current.active);
-    if (key === "newTab") newTab();
+    if (key === "focusAddress") document.getElementById("global-search")?.focus();
+    else if (key === "newTab") newTab();
     else if (key === "closeTab") close(tabsRef.current.active);
     else if (key === "reopenTab") reopen();
     else if (list.length > 1 && (key === "nextTab" || key === "previousTab")) switchTo(list[(at + (key === "nextTab" ? 1 : list.length - 1)) % list.length].id);

@@ -64,11 +64,16 @@ export function writeTabs(state: TabsState): void {
   }
 }
 
-/** New tabs go at the end. A background link keeps the current tab in front. */
-export function openTab(state: TabsState, tab: BrowserTab, background = false): TabsState {
+/** Append unless a contextual action names the tab to open beside. */
+export function openTab(state: TabsState, tab: BrowserTab, background = false, beside?: string): TabsState {
   const active = background ? state.active : tab.id;
-  const tabs = pinnedFirst([...state.tabs, tab]);
-  const oldest = tabs.find((x) => x.id !== tab.id && x.id !== active && !x.pinned);
+  const tabs = pinnedFirst(state.tabs);
+  const source = tabs.findIndex((item) => item.id === beside);
+  const firstUnpinned = tabs.findIndex((item) => !item.pinned);
+  const boundary = firstUnpinned < 0 ? tabs.length : firstUnpinned;
+  const position = tab.pinned ? boundary : source < 0 ? tabs.length : Math.max(source + 1, boundary);
+  tabs.splice(position, 0, tab);
+  const oldest = state.tabs.find((x) => x.id !== active && x.id !== beside && !x.pinned);
   return { tabs: tabs.length > MOST_TABS && oldest ? tabs.filter((t) => t.id !== oldest.id) : tabs, active };
 }
 

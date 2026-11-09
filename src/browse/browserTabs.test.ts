@@ -39,6 +39,23 @@ test("background tabs append without disturbing pinned tabs or focus", () => {
   expect(moveTab(opened, "d", "b")).toBe(opened);
 });
 
+test("contextual tabs open beside their source without splitting pinned tabs", () => {
+  const state: TabsState = {
+    tabs: ["pin-a", "pin-b", "first", "last"].map((id) => ({ id, url: HOME, title: null, pinned: id.startsWith("pin") })),
+    active: "last",
+  };
+  const tab = { id: "new", url: HOME, title: null };
+  const opened = openTab(state, tab, false, "first");
+  expect(opened.tabs.map((entry) => entry.id)).toEqual(["pin-a", "pin-b", "first", "new", "last"]);
+  expect(opened.active).toBe("new");
+  for (const pin of ["pin-a", "pin-b"]) {
+    const linked = openTab(state, tab, true, pin);
+    expect(linked.tabs.map((entry) => entry.id)).toEqual(["pin-a", "pin-b", "new", "first", "last"]);
+    expect(linked.active).toBe("last");
+  }
+  expect(openTab(state, tab, false, "closed").tabs.at(-1)?.id).toBe("new");
+});
+
 test("closing the tab in front brings its neighbour forward, and the last leaves a fresh one", () => {
   let state: TabsState = { tabs: [{ id: "a", url: HOME, title: null }, { id: "b", url: HOME, title: null }], active: "b" };
   state = closeTab(state, "b", HOME);
