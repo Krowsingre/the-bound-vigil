@@ -191,6 +191,8 @@ export function App() {
   useEffect(
     () =>
       onShowInLibrary((kind, change) => {
+        setSeriesPlace(null);
+        setSeriesScroll(null);
         setSearchText("");
         if (kind === "documents") changeDocumentsView(change);
         else if (kind === "audiobooks") changeAudiobooksView(change);
@@ -202,6 +204,8 @@ export function App() {
 
   const openLibrary = useCallback(
     (change: Partial<LibraryView> = {}) => {
+      setSeriesPlace(null);
+      setSeriesScroll(null);
       changeLibraryView(change);
       setRoute("library");
     },

@@ -130,6 +130,8 @@ export function LibraryToolbar({
     view.series.length +
     view.narrators.length +
     (view.hideRead ? 1 : 0) +
+    (view.audioType ? 1 : 0) +
+    (paired === null ? 0 : 1) +
     excludeCount(view.exclude);
   // Each click moves a filter on: show only these, then leave these out, then off.
   const cycle = (list: FilterList, value: string) => {
@@ -159,8 +161,12 @@ export function LibraryToolbar({
   const filterBadge = filterCount + (view.tab !== "all" ? 1 : 0);
 
 
-  // Clear filters, then where the file is, the shelves, genre and
-  // language, then the rest.
+  const clearFilters = () => {
+    onPairing?.(null);
+    onChange(NO_FILTERS);
+  };
+
+  // Put quick filters first, then shelves and metadata filters.
   const filterItems: MenuEntry[] = [
     { label: "Hide finished books", checked: view.hideRead, onSelect: () => onChange({ hideRead: !view.hideRead, page: 0 }) },
     { label: "On this device", checked: view.location === "on_device", onSelect: () => onChange({ location: view.location === "on_device" ? null : "on_device" }) },
@@ -178,7 +184,7 @@ export function LibraryToolbar({
       ] },
     ] as MenuEntry[]) : []),
     "divider",
-    ...(filterCount ? ([{ label: "Clear filters", icon: "close", onSelect: () => onChange(NO_FILTERS) }] as MenuEntry[]) : []),
+    ...(filterCount ? ([{ label: "Clear filters", icon: "close", onSelect: clearFilters }] as MenuEntry[]) : []),
     { heading: <span className="menu-tip">Click once to show only those, twice to hide them.</span> },
     ...group(
       "Collections",
@@ -217,7 +223,6 @@ export function LibraryToolbar({
     ),
     ...names("authors", "Authors", authors),
     ...group("Series", onIn("series"), [
-      ...all("series", seriesNames).map((name) => item("series", name, name)),
       ...(onSeriesPin && (seriesNames.length || pinnedSeries.length) ? [{
         label: "Pin or unpin a series",
         icon: "pin" as const,
@@ -226,6 +231,7 @@ export function LibraryToolbar({
           return { label: name, checked: pinned, onSelect: () => onSeriesPin(name, !pinned) };
         }),
       }] : []),
+      ...all("series", seriesNames).map((name) => item("series", name, name)),
     ]),
     ...names("narrators", "Narrators", narrators),
   ];
