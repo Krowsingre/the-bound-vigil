@@ -556,6 +556,7 @@ export interface Api {
   /** Shows a tab, making it at `url` first if it's new; a new `privately` tab keeps nothing. */
   browserShow(tab: string, url: string | null, frame: BrowserFrame, protection?: BrowserProtection, privately?: boolean, background?: boolean): Promise<void>;
   browserPlace(frame: BrowserFrame): Promise<void>;
+  browserLayout(panes: import("./types").BrowserPane[], active: string): Promise<void>;
   /** Hides every tab; they keep their pages. */
   browserHide(): Promise<void>;
   browserAct(tab: string, action: "go" | "back" | "forward" | "reload" | "stop" | "close", url?: string): Promise<void>;
@@ -1271,6 +1272,7 @@ function appApi(): Api {
     siteIcon: async (url) => (await core).invoke<string>("site_icon", { url }),
     browserShow: async (tab, url, frame, protection, privately, background) => (await core).invoke("browser_show", { tab, url, frame, protection: protection ?? null, private: privately ?? false, background: background ?? false }),
     browserPlace: async (frame) => (await core).invoke("browser_place", { frame }),
+    browserLayout: async (panes, active) => (await core).invoke("browser_layout", { panes, active }),
     browserHide: async () => (await core).invoke("browser_hide"),
     browserAct: async (tab, action, url) => (await core).invoke("browser_act", { tab, action, url: url ?? null }),
     browserClear: async () => (await core).invoke("browser_clear"),

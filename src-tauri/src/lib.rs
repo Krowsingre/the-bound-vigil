@@ -2126,6 +2126,7 @@ pub fn run() {
             keep_picked_file,
             browser::browser_show,
             browser::browser_place,
+            browser::browser_layout,
             browser::browser_hide,
             browser::browser_act,
             browser::browser_clear,

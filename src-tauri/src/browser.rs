@@ -64,11 +64,18 @@ pub struct Frame {
     height: f64,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct BrowserPane {
+    tab: String,
+    frame: Frame,
+}
+
 /// Something a tab did, for TBV's page.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[cfg_attr(mobile, allow(dead_code))]
 pub(crate) enum Event {
+    Focus { tab: String },
     /// The page it's on, and whether it's still loading.
     #[serde(rename_all = "camelCase")]
     Page { tab: String, url: String, title: Option<String>, loading: bool },
@@ -411,6 +418,24 @@ mod view {
         Ok(())
     }
 
+    pub fn layout(app: &tauri::AppHandle, panes: &[super::BrowserPane], active: &str) -> CommandResult<()> {
+        if let Ok(mut front) = ACTIVE.lock() {
+            *front = Some(active.to_string());
+        }
+        for view in tabs(app) {
+            if let Some(pane) = panes.iter().find(|pane| view.label() == label(&pane.tab)) {
+                let frame = pane.frame;
+                view.set_position(LogicalPosition::new(frame.x, frame.y)).map_err(|e| e.to_string())?;
+                view.set_size(LogicalSize::new(frame.width, frame.height)).map_err(|e| e.to_string())?;
+                view.show().map_err(|e| e.to_string())?;
+            } else {
+                view.hide().map_err(|e| e.to_string())?;
+            }
+        }
+        follow_front(app);
+        Ok(())
+    }
+
     pub fn hide(app: &tauri::AppHandle) -> CommandResult<()> {
         for view in tabs(app) {
             view.hide().map_err(|e| e.to_string())?;
@@ -571,7 +596,7 @@ mod windows {
 
     use webview2_com::Microsoft::Web::WebView2::Win32::*;
     use webview2_com::{
-        take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler, CustomItemSelectedEventHandler, DownloadStartingEventHandler,
+        take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler, CustomItemSelectedEventHandler, DownloadStartingEventHandler, FocusChangedEventHandler,
         NavigationCompletedEventHandler, NavigationStartingEventHandler, WebResourceRequestedEventHandler, WindowCloseRequestedEventHandler,
     };
     use windows_core::{Interface, BOOL, HSTRING, PWSTR};
@@ -625,6 +650,14 @@ mod windows {
         let mut token = 0i64;
         let _ = context_menu(&core, environment.clone(), app.clone(), tab.clone());
         let _ = tab_keys(platform, app.clone(), tab.clone());
+        let (focus_app, focus_tab) = (app.clone(), tab.clone());
+        let _ = platform.controller().add_GotFocus(
+            &FocusChangedEventHandler::create(Box::new(move |_, _| {
+                tell(&focus_app, Event::Focus { tab: focus_tab.clone() });
+                Ok(())
+            })),
+            &mut token,
+        );
         let _ = redirects(&core, app.clone(), tab.clone());
         let (failed_app, failing) = (app.clone(), tab.clone());
         // A page that couldn't open: TBV says why on a page of its own.
@@ -1054,6 +1087,11 @@ mod view {
         ask(serde_json::json!({ "action": "place", "frame": frame_of(frame) })).map(|_| ())
     }
 
+    pub fn layout(_app: &tauri::AppHandle, panes: &[super::BrowserPane], active: &str) -> CommandResult<()> {
+        let panes: Vec<_> = panes.iter().map(|pane| serde_json::json!({ "tab": pane.tab, "frame": frame_of(pane.frame) })).collect();
+        ask(serde_json::json!({ "action": "layout", "panes": panes, "tab": active })).map(|_| ())
+    }
+
     pub fn hide(_app: &tauri::AppHandle) -> CommandResult<()> {
         ask(serde_json::json!({ "action": "hide" })).map(|_| ())
     }
@@ -1142,6 +1180,23 @@ pub async fn browser_show(app: tauri::AppHandle, tab: String, url: Option<String
     let tab = tab_name(&tab)?;
     let url = url.as_deref().map(web_url).transpose()?;
     view::show(&app, &tab, url, frame, protection, private.unwrap_or(false), background.unwrap_or(false))
+}
+
+/// Places only the named panes. Other tabs keep their pages while hidden.
+#[tauri::command]
+pub async fn browser_layout(app: tauri::AppHandle, panes: Vec<BrowserPane>, active: String) -> CommandResult<()> {
+    let active = tab_name(&active)?;
+    if panes.len() > 2 || (panes.len() == 2 && panes[0].tab == panes[1].tab) {
+        return Err("Discover can show up to two different tabs.".into());
+    }
+    for pane in &panes {
+        tab_name(&pane.tab)?;
+        let Frame { x, y, width, height } = pane.frame;
+        if ![x, y, width, height].iter().all(|value| value.is_finite()) || width <= 0.0 || height <= 0.0 {
+            return Err("That browser pane has an invalid size.".into());
+        }
+    }
+    view::layout(&app, &panes, &active)
 }
 
 /// Moves the tab in front when the space for it moves or changes size.

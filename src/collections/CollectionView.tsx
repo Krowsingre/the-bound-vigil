@@ -141,7 +141,7 @@ export function CollectionView({
           </p>
           {description && <p className="collection-hero-description">{description}</p>}
         </div>
-        <div className="collection-hero-actions">
+        <div className="collection-hero-actions" data-item-menu>
           {own && (
             <button type="button" className="btn btn-primary" onClick={() => setAdding(true)}>
               <span aria-hidden>+</span> Add books

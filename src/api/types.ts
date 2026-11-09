@@ -1573,6 +1573,8 @@ export interface SanctumLink {
 }
 
 /** The space the Browser tab keeps for web pages, in the window's points. */
+export interface BrowserPane { tab: string; frame: BrowserFrame }
+
 export interface BrowserFrame {
   x: number;
   y: number;
@@ -1610,6 +1612,7 @@ export type BrowserEvent =
   /** Chosen from a link's own menu: open it in a new tab, or bring its book into the library. */
   | { kind: "menu"; tab: string; action: "newTab" | "addBook"; url: string }
   /** A tab shortcut pressed while a page had the keyboard (Windows). */
+  | { kind: "focus"; tab: string }
   | { kind: "key"; tab: string; key: "focusAddress" | "newTab" | "closeTab" | "nextTab" | "previousTab" | "reopenTab" | "appBack" | "appForward" | "pageBack" | "pageForward" };
 
 /** An article found on a page by reader mode (Mozilla's Readability). */

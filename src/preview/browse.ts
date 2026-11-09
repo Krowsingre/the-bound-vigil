@@ -51,6 +51,7 @@ type Calls = Pick<
   | "siteIcon"
   | "browserShow"
   | "browserPlace"
+  | "browserLayout"
   | "browserHide"
   | "browserAct"
   | "browserClear"
@@ -170,6 +171,7 @@ export function browseStub(): Calls {
       throw new Error(APP_ONLY);
     },
     browserPlace: async () => undefined,
+    browserLayout: async () => undefined,
     browserHide: async () => undefined,
     browserAct: async () => undefined,
     browserClear: async () => undefined,

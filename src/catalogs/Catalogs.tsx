@@ -388,7 +388,7 @@ export function Catalogs({
             </div>
           )}
           {(catalogs ?? []).map((c) => (
-            <div key={c.id} className={`catalogs-item${c.id === current ? " is-current" : ""}`}>
+            <div key={c.id} data-item-menu className={`catalogs-item${c.id === current ? " is-current" : ""}`}>
               <button type="button" onClick={() => setCurrent(c.id)} aria-current={c.id === current ? "true" : undefined}>
                 <Icon name={c.kind === "audiobookshelf" ? "headphones" : "globe"} size={16} />
                 <span>{c.name}</span>

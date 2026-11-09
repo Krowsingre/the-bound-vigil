@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, isAndroid, isApp, isHome, isWeb } from "./api";
+import { api, isAndroid, isApp, isHome, isIOS, isWeb } from "./api";
 import type { CollectionRef, HomeViewModel, ImportsView, KindleImport, Profile, SmartKind, SyncStatus } from "./api/types";
 import { isKindleList, KINDLE_CHANGED, KindleReviewDialog } from "./imports/KindleReview";
 import { AddToCollectionHost } from "./collections/AddToCollection";
@@ -14,6 +14,7 @@ import { Collections } from "./collections/Collections";
 import { Writing } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
 import { UpNextReplacementHost } from "./library/UpNextReplacement";
+import { SplitDivider } from "./browse/SplitDivider";
 import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory } from "./browse/Browser";
 import { AddressSuggestions } from "./browse/AddressSuggestions";
 import { readBrowserPrefs, shortAddress } from "./browse/browserPrefs";
@@ -72,6 +73,18 @@ export function App() {
   const [collapsedWide, setCollapsed] = useState(readCollapsed);
   // On a phone the sidebar is a menu opened from the header, always with names.
   const narrow = useNarrow();
+  const [discoverSplit, setDiscoverSplit] = useState(false);
+  const [splitRatio, setSplitRatio] = useState(55);
+  const [splitWidth, setSplitWidth] = useState(() => window.innerWidth >= 760);
+  useEffect(() => {
+    const size = window.matchMedia("(min-width: 760px)");
+    const update = () => setSplitWidth(size.matches);
+    size.addEventListener("change", update);
+    update();
+    return () => size.removeEventListener("change", update);
+  }, []);
+  const tablet = isIOS && (/iPad/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+  const splitAllowed = splitWidth && !isAndroid && (!isIOS || tablet) && !isWeb && !isHome;
   const collapsed = collapsedWide && !narrow;
   const [menuOpen, setMenuOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -378,6 +391,9 @@ export function App() {
       a.details?.bookId === b.details?.bookId && a.details?.from === b.details?.from && a.series === b.series,
   );
   const showingSeries = seriesPlace?.route === route ? seriesPlace : null;
+  const splitCompanion = splitAllowed && discoverSplit && route !== "catalogs" &&
+    ["library", "documents", "audiobooks", "writing", "notes", "collections", "book"].includes(route);
+  const showDiscover = route === "catalogs" || splitCompanion;
   const seriesView = (base: LibraryView): LibraryView => showingSeries
     ? { ...base, ...NO_FILTERS, tab: "all", series: [showingSeries.name], sort: "series", layout: "series", page: seriesPage }
     : base;
@@ -395,14 +411,18 @@ export function App() {
       const n = Number(e.key);
       if (e.key === "\\") toggleSidebar();
       else if (e.key.toLowerCase() === "o" && !e.shiftKey) importBooks();
-      else if (e.key.toLowerCase() === "f" || e.key.toLowerCase() === "k") search.current?.focus();
+      else if (e.key.toLowerCase() === "f" || e.key.toLowerCase() === "k") {
+        const browser = splitCompanion && document.activeElement?.closest(".discover-workspace-pane");
+        if (browser) document.getElementById("discover-split-search")?.focus();
+        else search.current?.focus();
+      }
       else if (n >= 1 && n <= navFor({ web: isWeb, home: isHome, android: isAndroid }).length) navigate(navFor({ web: isWeb, home: isHome, android: isAndroid })[n - 1].route);
       else return;
       e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleSidebar, importBooks, reading, navigate, togglePrivacy]);
+  }, [toggleSidebar, importBooks, reading, navigate, togglePrivacy, splitCompanion]);
 
   const onHomeLoaded = useCallback((home: HomeViewModel) => setSync(home.sync), []);
   const openBook = useCallback((bookId: string, at?: string, fileId?: string) => setReading({ bookId, at, fileId }), []);
@@ -594,7 +614,9 @@ export function App() {
           onOpenActivity={shell.onOpenActivity}
           onOpenPlaces={shell.onOpenPlaces}
         />
-        <main className="content">
+        <div className={`workspace-content${splitCompanion ? " is-split" : ""}`}
+          style={splitCompanion ? { gridTemplateColumns: `minmax(min(300px, 40%), ${splitRatio}fr) 12px minmax(min(300px, 40%), ${100 - splitRatio}fr)` } : undefined}>
+        {route !== "catalogs" && <main className="content">
           {route === "home" ? (
             <Home
               refreshKey={refreshKey}
@@ -692,8 +714,6 @@ export function App() {
               onClearSearch={() => changeSearch("")}
               onOpenBook={openBook}
             />
-          ) : route === "catalogs" ? (
-            <Browse refreshKey={refreshKey} onOpenBook={openBook} catalogues={catalogues} onOpenCatalogues={() => setCatalogues(true)} onCloseCatalogues={() => setCatalogues(false)} search={browserDraft} onSearchChange={setBrowserDraft} />
           ) : (
             <Settings
               tab={settingsTab}
@@ -732,7 +752,17 @@ export function App() {
               }}
             />
           )}
-        </main>
+        </main>}
+        {splitCompanion && <SplitDivider value={splitRatio} onChange={setSplitRatio} label="Resize Discover and app panes" minimum={306} />}
+        {showDiscover && <main className="content discover-workspace-pane" key="discover-workspace">
+          <Browse refreshKey={refreshKey} onOpenBook={openBook} catalogues={catalogues}
+            onOpenCatalogues={() => setCatalogues(true)} onCloseCatalogues={() => setCatalogues(false)}
+            search={browserDraft} onSearchChange={setBrowserDraft} address={browserAddress}
+            allowSplit={splitAllowed} companion={splitCompanion}
+            onSplitWith={(section) => { setDiscoverSplit(true); navigate(section); }}
+            onCloseSplit={() => setDiscoverSplit(false)} />
+        </main>}
+        </div>
       </div>
       {dropping && (
         <div className="drop-overlay" aria-hidden>

@@ -4,7 +4,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { MenuList, type MenuEntry } from "./Menu";
+import { itemMenus, MenuList, type MenuEntry } from "./Menu";
 
 interface Request {
   x: number;
@@ -93,6 +93,28 @@ export function ContextMenuHost() {
     return () => {
       listener = null;
     };
+  }, []);
+
+  useEffect(() => {
+    const ownerSelector = "[data-item-menu], li, tr, article";
+    const fromItem = (event: MouseEvent) => {
+      if (event.defaultPrevented || !(event.target instanceof Element)) return;
+      if (event.target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false]), [role=menu]")) return;
+      const owner = event.target.closest(ownerSelector);
+      if (!owner) return;
+      const roots = [...owner.querySelectorAll(".menu-root")].filter((root) => root.closest(ownerSelector) === owner);
+      const target = event.target.closest(".menu-root");
+      const root = target && roots.includes(target) ? target : roots.length === 1 ? roots[0] : null;
+      const request = root && itemMenus.get(root);
+      if (!request?.items.length) return;
+      event.preventDefault();
+      letGo();
+      const bounds = owner.getBoundingClientRect();
+      const keyboard = event.clientX === 0 && event.clientY === 0;
+      openContextMenuAt(keyboard ? bounds.left : event.clientX, keyboard ? bounds.bottom : event.clientY, request.label, request.items);
+    };
+    document.addEventListener("contextmenu", fromItem);
+    return () => document.removeEventListener("contextmenu", fromItem);
   }, []);
 
   useLayoutEffect(() => {

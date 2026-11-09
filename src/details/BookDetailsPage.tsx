@@ -149,7 +149,7 @@ export function BookDetailsPage({
     <div className="book-details">
       {back}
       <div className="details-layout">
-        <aside className="details-side">
+        <aside className="details-side" data-item-menu>
           <BookCover book={book} size="l" onExpand={privacy.on ? undefined : setExpandedCover} />
           {expandedCover && !privacy.on && (
             <div className="dialog-backdrop book-cover-preview" role="dialog" aria-modal="true" aria-label={"Cover for " + book.title}

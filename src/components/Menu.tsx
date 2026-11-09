@@ -28,6 +28,8 @@ export interface MenuItem {
 
 export type MenuEntry = MenuItem | "divider" | { heading: ReactNode };
 
+export const itemMenus = new WeakMap<Element, { label: string; items: MenuEntry[] }>();
+
 /**
  * A button that opens a small dropdown. Closes on outside click or Escape.
  * The dropdown sits on top of the whole window, so a small card or a
@@ -63,6 +65,12 @@ export function Menu({
   const [place, setPlace] = useState<CSSProperties>({ visibility: "hidden" });
   const root = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = root.current;
+    if (!element) return;
+    itemMenus.set(element, { label, items });
+    return () => { itemMenus.delete(element); };
+  }, [label, items]);
 
   useLayoutEffect(() => {
     if (!open) return;

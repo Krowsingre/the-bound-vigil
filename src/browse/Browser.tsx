@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isIOS, openExternal } from "../api";
-import type { Bookmark, BrowserEvent, BrowserFrame, ReaderArticle } from "../api/types";
+import type { Bookmark, BrowserEvent, BrowserFrame, BrowserPane, ReaderArticle } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { openContextMenu, openContextMenuAt } from "../components/ContextMenu";
 import { Icon } from "../components/Icon";
@@ -15,6 +15,8 @@ import { useToast } from "../components/Toast";
 import { askSendWithLocalSend } from "../localsend/SendWithLocalSend";
 import { formatLabel } from "../lib/queryBooks";
 import { useNarrow } from "../lib/useNarrow";
+import type { Route } from "../shell/routes";
+import { SplitDivider } from "./SplitDivider";
 import {
   addressFor,
   desktopHosts,
@@ -283,7 +285,7 @@ const PAUSE_ALL = `(function () {
 })()`;
 
 /** Something on top (a menu, a dialog, the phone's menu of pages) would be hidden under the page, so the page steps aside. */
-const covered = () => !!document.querySelector(".dialog-backdrop, [role=menu], [role=alertdialog], .sidebar-backdrop, .address-suggestions");
+const covered = () => !!document.querySelector(".dialog-backdrop, [role=menu], [role=alertdialog], .sidebar-backdrop, .address-suggestions, dialog[open], .split-resizing");
 
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
 const clean = (e: unknown) => String(e).replace(/^Error: /, "");
@@ -293,21 +295,37 @@ export function Browser({
   onOpenBook,
   search,
   onSearchChange,
+  allowSplit,
+  companion,
+  onSplitWith,
 }: {
   onOpenCatalogues: () => void;
   onOpenBook: (bookId: string) => void;
   /** The top search box's typing, which the start page's box shares. */
   search: string;
   onSearchChange: (text: string) => void;
+  allowSplit: boolean;
+  companion: boolean;
+  onSplitWith: (route: Route) => void;
 }) {
   const narrow = useNarrow();
   const [tabs, setTabs] = useState<TabsState>(startingTabs);
+  const [pair, setPair] = useState<{ other: string; activeLeft: boolean } | null>(null);
+  const [ratio, setRatio] = useState(50);
+  const pairRef = useRef(pair);
+  pairRef.current = pair;
+  const companionRef = useRef(companion);
+  companionRef.current = companion;
+  const secondary = useRef<HTMLDivElement>(null);
+  const activate = useRef<(id: string) => void>(() => undefined);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [marks, setMarks] = useState<Bookmark[]>([]);
   const fetched = useDownloads();
   const [panel, setPanel] = useState<null | "tabs" | "site" | StartPanel>(null);
   /** Pages that couldn't open, by tab: TBV's own page says why. */
   const [failed, setFailed] = useState<Record<string, { url: string; reason: string }>>({});
+  const failedRef = useRef(failed);
+  failedRef.current = failed;
   /** Tabs just closed, for the Undo line. */
   const [undo, setUndo] = useState<{ count: number; at: number } | null>(null);
   const [closedTabs, setClosedTabs] = useState(readClosedTabs);
@@ -322,7 +340,6 @@ export function Browser({
   const area = useRef<HTMLDivElement>(null);
   const made = useRef(madeViews);
   const preparing = useRef(new Map<string, Promise<void>>());
-  const shown = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -338,6 +355,13 @@ export function Browser({
 
   const active = tabs.tabs.find((t) => t.id === tabs.active) ?? tabs.tabs[0];
   const url = active?.url ?? "";
+  const other = allowSplit && !companion && pair?.other !== active.id
+    ? tabs.tabs.find((tab) => tab.id === pair?.other) : undefined;
+  const otherRef = useRef(other);
+  otherRef.current = other;
+  useEffect(() => {
+    if (pair && (pair.other === active.id || !tabs.tabs.some((tab) => tab.id === pair.other))) setPair(null);
+  }, [pair, active.id, tabs.tabs]);
   const onStart = isStartPage(url);
   const failure = onStart ? null : failed[active.id] ?? null;
   /** Reader mode, the tab grid, the start page and the error page cover the page, so the page's view steps aside. */
@@ -386,43 +410,32 @@ export function Browser({
   }, [url]);
   useEffect(() => () => void window.dispatchEvent(new CustomEvent(BROWSER_PAGE, { detail: "" })), []);
 
-  const frame = (): BrowserFrame | null => {
-    const r = area.current?.getBoundingClientRect();
+  const frame = (element = area.current): BrowserFrame | null => {
+    const r = element?.getBoundingClientRect();
     return r && r.width > 0 && r.height > 0 ? { x: r.left, y: r.top, width: r.width, height: r.height } : null;
   };
 
-  /** Shows the tab in front, making its view first if it's new. */
-  const showActive = useCallback(async (at: BrowserFrame) => {
-    const { tabs: list, active: id } = tabsRef.current;
-    const tab = list.find((t) => t.id === id) ?? list[0];
-    // TBV's own start page: no web page to show.
-    if (isStartPage(tab.url)) return api.browserHide();
-    await preparing.current.get(tab.id);
-    if (tabsRef.current.active !== tab.id || !mounted.current) return;
-    const fresh = !made.current.has(tab.id);
-    await api.browserShow(tab.id, fresh ? tab.url : null, at, protectionOf(readBrowserPrefs()), !!tab.private);
-    made.current.add(tab.id);
-    if (fresh) fitZoom(tab.id, tab.url);
-    // A new tab's page can take a moment to come up (iPhone readies its
-    // protection first). Left Discover, or covered, in that moment: the page
-    // would show over whatever's there now, so it goes away again.
-    if (!mounted.current || covered() || aside.current) await api.browserHide();
-  }, [fitZoom]);
-
-  const prepareTab = (id: string, url: string, privately: boolean) => {
-    if (isIOS || !/^https?:/i.test(url)) return;
-    const at = frame();
-    if (!at) return;
-    const nextFrame = new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    const task = nextFrame.then(async () => {
-      if (!mounted.current || !tabsRef.current.tabs.some((tab) => tab.id === id)) return;
-      await api.browserShow(id, url, at, protectionOf(readBrowserPrefs()), privately, true);
-      if (mounted.current && tabsRef.current.tabs.some((tab) => tab.id === id)) made.current.add(id);
-      else void api.browserAct(id, "close").catch(() => undefined);
-    }).catch(() => undefined)
+  const prepareTab = useCallback((id: string, url: string, privately: boolean, at = frame()) => {
+    if (!at || !/^https?:/i.test(url)) return;
+    const waiting = preparing.current.get(id);
+    if (waiting) return waiting;
+    if (made.current.has(id)) return;
+    const task = new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      .then(() => {
+        if (mounted.current && tabsRef.current.tabs.some((tab) => tab.id === id)) {
+          return api.browserShow(id, url, at, protectionOf(readBrowserPrefs()), privately, true);
+        }
+      })
+      .then(() => {
+        if (mounted.current && tabsRef.current.tabs.some((tab) => tab.id === id)) {
+          made.current.add(id);
+          fitZoom(id, url);
+        } else void api.browserAct(id, "close").catch(() => undefined);
+      })
       .finally(() => preparing.current.delete(id));
     preparing.current.set(id, task);
-  };
+    return task;
+  }, [fitZoom]);
 
   const reloadMarks = useCallback(() => api.bookmarks().then(setMarks, () => undefined), []);
   useEffect(() => void reloadMarks(), [reloadMarks]);
@@ -483,7 +496,7 @@ export function Browser({
           // Opened from a private tab, it's private too.
           const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.from)?.private;
           setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null, private: privately || undefined }, !ev.foreground, ev.from));
-          if (!ev.tab && !ev.foreground) prepareTab(id, ev.url, privately);
+          if (!ev.tab && !ev.foreground) void prepareTab(id, ev.url, privately)?.catch(() => undefined);
           break;
         }
         case "failed":
@@ -505,7 +518,7 @@ export function Browser({
             const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.tab)?.private;
             const id = newTabId();
             setTabs((s) => openTab(s, { id, url: ev.url, title: null, private: privately || undefined }, true, ev.tab));
-            prepareTab(id, ev.url, privately);
+            void prepareTab(id, ev.url, privately)?.catch(() => undefined);
           } else {
             void api.downloadWebBook(ev.url, fileTitle(ev.url)).then(
               () => toast("It's being added to your library."),
@@ -513,11 +526,17 @@ export function Browser({
             );
           }
           break;
+        case "focus":
+          if (otherRef.current?.id === ev.tab && !covered()) activate.current(ev.tab);
+          break;
         case "key":
           if (ev.key === "appBack" || ev.key === "appForward") requestAppHistory(ev.key === "appBack" ? "back" : "forward");
           else if (ev.key === "pageBack" || ev.key === "pageForward")
             void api.browserAct(ev.tab, ev.key === "pageBack" ? "back" : "forward").catch(() => undefined);
-          else shortcut.current(ev.key);
+          else {
+            if (otherRef.current?.id === ev.tab && !covered()) activate.current(ev.tab);
+            shortcut.current(ev.key);
+          }
           break;
         case "closed":
           made.current.delete(ev.tab);
@@ -529,78 +548,92 @@ export function Browser({
     return api.onBrowserEvent(heard);
   }, [fitZoom, toast]);
 
-  // The page shows over the space below the row, follows it as it moves,
-  // and steps aside for menus, dialogs and reader mode. Hidden on leaving.
+  // Apply one visible set at a time. Late preparations never put a page over a dialog.
   useEffect(() => {
     let live = true;
-    let hidden = false;
+    let frameRequest = 0;
+    let running = false;
+    let pending = false;
     let placed = "";
-    let stopAsks = () => undefined as void;
-    const fit = () => {
-      if (!shown.current) return;
-      const now = frame();
-      const hide = covered() || aside.current || !now;
-      if (hide !== hidden) {
-        hidden = hide;
-        placed = hide ? "" : JSON.stringify(now);
-        void (hide ? api.browserHide() : showActive(now!));
-      } else if (!hide && now && JSON.stringify(now) !== placed) {
-        placed = JSON.stringify(now);
-        void api.browserPlace(now);
+    const stopAsks = onBrowserAsk((ask) => heardAsk.current(ask));
+    const visible = (): BrowserPane[] => {
+      if (covered()) return [];
+      const state = tabsRef.current;
+      const front = state.tabs.find((tab) => tab.id === state.active);
+      const panes: BrowserPane[] = [];
+      const main = frame();
+      if (front && main && !aside.current && /^https?:/i.test(front.url)) panes.push({ tab: front.id, frame: main });
+      const back = otherRef.current;
+      const second = frame(secondary.current);
+      if (back && second && back.id !== front?.id && !failedRef.current[back.id] && /^https?:/i.test(back.url)) {
+        panes.push({ tab: back.id, frame: second });
+      }
+      return panes;
+    };
+    const fit = async () => {
+      if (!live) return;
+      if (running) { pending = true; return; }
+      running = true;
+      try {
+        const panes = visible();
+        const id = tabsRef.current.active;
+        const key = JSON.stringify([id, panes]);
+        if (key === placed) return;
+        const needed = panes.filter((pane) => !made.current.has(pane.tab));
+        if (needed.length) {
+          await api.browserLayout(panes.filter((pane) => made.current.has(pane.tab)), id);
+          await Promise.all(needed.map((pane) => {
+            const tab = tabsRef.current.tabs.find((item) => item.id === pane.tab);
+            return tab && prepareTab(tab.id, tab.url, !!tab.private, pane.frame);
+          }));
+        }
+        if (!live) return;
+        const current = visible().filter((pane) => made.current.has(pane.tab));
+        const activeTab = tabsRef.current.active;
+        placed = JSON.stringify([activeTab, current]);
+        await api.browserLayout(current, activeTab);
+      } catch (error) {
+        if (live) setProblem(clean(error));
+      } finally {
+        running = false;
+        if (!live) void api.browserHide().catch(() => undefined);
+        else if (pending) { pending = false; schedule(); }
       }
     };
-    refit.current = () => {
-      // A different tab in front, or the page stepping aside: shown or hidden
-      // again, whatever was done before.
-      hidden = !(covered() || aside.current || !frame());
-      fit();
+    const schedule = () => {
+      cancelAnimationFrame(frameRequest);
+      frameRequest = requestAnimationFrame(() => void fit());
     };
-    // Once laid out, so the space has its size.
-    const starting = requestAnimationFrame(() => {
-      const start = frame();
-      if (!start) return;
-      placed = JSON.stringify(start);
-      showActive(start).then(
-        () => {
-          shown.current = true;
-          if (!live) void api.browserHide();
-          else {
-            fit();
-            stopAsks = onBrowserAsk((ask) => heardAsk.current(ask));
-          }
-        },
-        (e: unknown) => live && setProblem(String(e).replace(/^Error: /, "")),
-      );
-    });
-    const resized = new ResizeObserver(fit);
+    refit.current = schedule;
+    const resized = new ResizeObserver(schedule);
     if (area.current) resized.observe(area.current);
-    const watching = new MutationObserver(fit);
-    watching.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener("resize", fit);
+    const watching = new MutationObserver(schedule);
+    watching.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["open", "class"] });
+    window.addEventListener("resize", schedule);
+    window.addEventListener("scroll", schedule, true);
+    window.visualViewport?.addEventListener("resize", schedule);
+    schedule();
     return () => {
       live = false;
       stopAsks();
-      shown.current = false;
       refit.current = () => undefined;
-      cancelAnimationFrame(starting);
+      cancelAnimationFrame(frameRequest);
       resized.disconnect();
       watching.disconnect();
-      window.removeEventListener("resize", fit);
-      void api.browserHide();
-      // Chosen in Preferences › Discover: back to the home page next time, so
-      // every tab's page is closed now.
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("scroll", schedule, true);
+      window.visualViewport?.removeEventListener("resize", schedule);
+      void api.browserHide().catch(() => undefined);
       if (readBrowserPrefs().comeBack === "leave") {
         for (const id of made.current) void api.browserAct(id, "close").catch(() => undefined);
         made.current.clear();
-        return;
+      } else if (!readBrowserPrefs().keepPlaying) {
+        for (const id of made.current) void api.browserRead(id, PAUSE_ALL).catch(() => undefined);
       }
-      // Chosen in Preferences › Discover: whatever was playing stops on leaving.
-      if (!readBrowserPrefs().keepPlaying) for (const id of made.current) void api.browserRead(id, PAUSE_ALL).catch(() => undefined);
     };
-  }, [showActive]);
+  }, [prepareTab]);
 
-  // Another tab came forward, reader mode opened or closed, or a page failed or came back.
-  useEffect(() => refit.current(), [tabs.active, article, panel, !!failure]);
+  useEffect(() => refit.current(), [tabs.active, url, article, panel, !!failure, other, ratio, companion]);
 
   const act = (action: "back" | "forward" | "reload" | "stop") => void api.browserAct(active.id, action).catch(() => undefined);
 
@@ -653,7 +686,7 @@ export function Browser({
     setPanel(null);
     setTabs((s) => openTab(s, { id: newTabId(), url: "tbv:start", title: null, private: privately || undefined }, false, beside));
     onSearchChange("");
-    const input = document.getElementById("global-search");
+    const input = document.getElementById(companionRef.current ? "discover-split-search" : "global-search");
     if (input) {
       input.dataset.blankTab = "";
       input.focus();
@@ -668,7 +701,7 @@ export function Browser({
     }
     const id = newTabId();
     setTabs((s) => openTab(s, { id, url: to, title: null }, background));
-    if (background) prepareTab(id, to, false);
+    if (background) void prepareTab(id, to, false)?.catch(() => undefined);
   };
   const openInNewTabRef = useRef(openInNewTab);
   openInNewTabRef.current = openInNewTab;
@@ -686,9 +719,19 @@ export function Browser({
     setTabs((s) => updateTab(s, s.active, { url: START_PAGE, title: null }));
   };
   const switchTo = (id: string) => {
+    const previous = tabsRef.current.active;
+    if (id !== previous && otherRef.current?.id === id) {
+      setPair((current) => current && { other: previous, activeLeft: !current.activeLeft });
+    }
     setArticle(null);
     setPanel(null);
+    tabsRef.current = { ...tabsRef.current, active: id };
     setTabs((s) => ({ ...s, active: id }));
+  };
+  activate.current = switchTo;
+  const splitWithTab = (id: string) => {
+    if (id === tabsRef.current.active) return;
+    setPair((current) => ({ other: id, activeLeft: current?.activeLeft ?? true }));
   };
   const drag = useTabDrag((id, onto) => setTabs((s) => moveTab(s, id, onto)));
   /** Closes tabs' pages; the tabs are remembered for Reopen closed tab and Undo. */
@@ -744,6 +787,9 @@ export function Browser({
     const web = /^https?:/i.test(tab?.url ?? "");
     return [
       { label: "Open new tab", icon: "plus", onSelect: () => newTab(false, id) },
+      ...(allowSplit && !companion && id !== tabs.active ? [
+        { label: "Open beside current tab", onSelect: () => splitWithTab(id) },
+      ] : []),
       { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true, id) },
       { label: "Reload tab", icon: "sync", disabled: !web || !made.current.has(id), onSelect: () => reloadTab(id) },
       { label: "Duplicate tab", icon: "copy", disabled: !web, onSelect: () => duplicate(id) },
@@ -762,7 +808,7 @@ export function Browser({
   shortcut.current = (key) => {
     const list = tabsRef.current.tabs;
     const at = list.findIndex((t) => t.id === tabsRef.current.active);
-    if (key === "focusAddress") document.getElementById("global-search")?.focus();
+    if (key === "focusAddress") document.getElementById(companionRef.current ? "discover-split-search" : "global-search")?.focus();
     else if (key === "newTab") newTab();
     else if (key === "closeTab") close(tabsRef.current.active);
     else if (key === "reopenTab") reopen();
@@ -771,7 +817,15 @@ export function Browser({
   // Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab and Ctrl+Shift+T, as in other browsers.
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || document.querySelector(".dialog-backdrop")) return;
+      if (document.querySelector(".dialog-backdrop, dialog[open], [role=alertdialog]")) return;
+      const inCompanion = companionRef.current && e.target instanceof Element && e.target.closest(".discover-workspace-pane");
+      if (companionRef.current && !inCompanion) return;
+      if (inCompanion && e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        void api.browserAct(tabsRef.current.active, e.key === "ArrowLeft" ? "back" : "forward").catch(() => undefined);
+        return;
+      }
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
       const k = e.key.toLowerCase();
       const what = k === "t" ? (e.shiftKey ? "reopenTab" : "newTab") : k === "w" && !e.shiftKey ? "closeTab" : e.key === "Tab" ? (e.shiftKey ? "previousTab" : "nextTab") : null;
       if (!what) return;
@@ -1023,6 +1077,17 @@ export function Browser({
     ...(!narrow ? [] : ["divider" as const, { label: "Add a catalogue", icon: "globePlus" as const, onSelect: onOpenCatalogues }]),
   ];
 
+  const splitItems: MenuEntry[] = [
+    ...(other ? [{ label: "Close tab split", onSelect: () => setPair(null) }] : []),
+    ...tabs.tabs.filter((tab) => tab.id !== tabs.active).map((tab) => ({
+      label: `Beside ${titleOf(tab.title, tab.url, tab.private)}`, onSelect: () => splitWithTab(tab.id),
+    })),
+    "divider",
+    ...([{ label: "Archive", route: "library" }, { label: "Resonance", route: "audiobooks" },
+      { label: "Scribe", route: "writing" }, { label: "Compendium", route: "collections" }] as const)
+      .map(({ label, route }) => ({ label: `Beside ${label}`, onSelect: () => { setPair(null); onSplitWith(route); } })),
+  ];
+
   const button = (label: string, icon: Parameters<typeof Icon>[0]["name"], onClick: () => void, extra = "", more: React.ButtonHTMLAttributes<HTMLButtonElement> = {}) => (
     <button type="button" className={`toolbar-button${extra}`} aria-label={label} title={label} onClick={onClick} {...more}>
       <Icon name={icon} size={17} />
@@ -1050,6 +1115,9 @@ export function Browser({
 
   return (
     <div className="browser">
+      {allowSplit && !companion && <div className="browser-split-tools">
+        <Menu label="Split screen" className="toolbar-button" trigger={<><Icon name="layers" size={16} /> Split screen</>} items={splitItems} />
+      </div>}
       {!narrow && (
         <div className="browser-strip">
           <div className="browser-tabs" role="tablist" aria-label="Tabs">
@@ -1149,7 +1217,11 @@ export function Browser({
           </button>
         </div>
       )}
-      <div className="browser-view" ref={area}>
+      <div className={`browser-panes${other ? " is-split" : ""}`}
+        style={other ? { gridTemplateColumns: `minmax(180px, ${ratio}fr) 12px minmax(180px, ${100 - ratio}fr)` } : undefined}>
+      <section className="browser-pane" style={other ? { gridColumn: pair?.activeLeft ? 1 : 3 } : undefined} aria-label="Active browser pane">
+        {other && <div className="browser-pane-title" aria-current="true">{titleOf(active.title, url, active.private)}</div>}
+        <div className="browser-view" ref={area}>
         {onStart && !article && (
           <StartPage
             onGo={go}
@@ -1224,7 +1296,7 @@ export function Browser({
             </div>
             <div className="browser-grid-tabs">
               {tabs.tabs.map((t) => (
-                <div key={t.id} className={`browser-grid-tab${t.id === tabs.active ? " is-active" : ""}${t.private ? " is-private" : ""}`} {...drag(t.id)}>
+                <div key={t.id} data-item-menu className={`browser-grid-tab${t.id === tabs.active ? " is-active" : ""}${t.private ? " is-private" : ""}`} {...drag(t.id)}>
                   <button type="button" className="browser-grid-open" onClick={() => switchTo(t.id)}>
                     <Icon name={t.private ? "eyeOff" : "globe"} size={22} />
                     <strong>{titleOf(t.title, t.url, t.private)}</strong>
@@ -1247,6 +1319,20 @@ export function Browser({
             )}
           </div>
         )}
+        </div>
+      </section>
+      {other && <>
+        <SplitDivider value={ratio} onChange={setRatio} label="Resize Discover tabs" minimum={186} />
+        <section className="browser-pane" style={{ gridColumn: pair?.activeLeft ? 3 : 1 }} aria-label="Other browser pane">
+          <button type="button" className="browser-pane-title" onClick={() => switchTo(other.id)}>
+            Focus {titleOf(other.title, other.url, other.private)}
+          </button>
+          <div className="browser-view" ref={secondary}>
+            {isStartPage(other.url) && <button type="button" className="btn btn-quiet" onClick={() => switchTo(other.id)}>Use this start page</button>}
+            {failed[other.id] && <p className="muted">{failed[other.id].reason}</p>}
+          </div>
+        </section>
+      </>}
       </div>
       {panel === "bookmarks" && (
         <BookmarksPanel

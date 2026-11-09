@@ -10,6 +10,11 @@ struct BrowserFrameArgs: Decodable {
   let height: Double
 }
 
+struct BrowserPaneArgs: Decodable {
+  let tab: String
+  let frame: BrowserFrameArgs
+}
+
 struct BrowserProtectionArgs: Decodable {
   /// "strict", "balanced" or "off".
   let level: String
@@ -24,6 +29,7 @@ class BrowserArgs: Decodable {
   let tab: String?
   let url: String?
   let frame: BrowserFrameArgs?
+  let panes: [BrowserPaneArgs]?
   let protection: BrowserProtectionArgs?
   let text: String?
   let backwards: Bool?
@@ -39,7 +45,7 @@ class BrowserArgs: Decodable {
 /// Sites in them can't reach TBV. What they do (the page each is on, files
 /// brought down, a pop-up opening as a new tab) waits in a queue that the
 /// Rust side reads one at a time.
-class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
+class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecognizerDelegate {
   static let shared = TbvBrowser()
 
   private var views = [String: WKWebView]()
@@ -141,9 +147,23 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     made.uiDelegate = self
     made.allowsBackForwardNavigationGestures = true
     made.isHidden = true
+    let focus = UITapGestureRecognizer(target: self, action: #selector(focusTab(_:)))
+    focus.cancelsTouchesInView = false
+    focus.delegate = self
+    made.addGestureRecognizer(focus)
     host.insertSubview(made, aboveSubview: tbv)
     views[tab] = made
     return made
+  }
+
+  @objc private func focusTab(_ gesture: UITapGestureRecognizer) {
+    if let view = gesture.view as? WKWebView, let tab = nameOf(view) {
+      tell(["kind": "focus", "tab": tab])
+    }
+  }
+
+  func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+    true
   }
 
   private func bringForward(_ tab: String) {
@@ -195,6 +215,21 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
       if args.action == "show" || args.action == "hide" { self.turn += 1 }
       let mine = self.turn
       switch args.action {
+      case "layout":
+        self.turn += 1
+        self.front = args.tab
+        let corner = self.tbv?.frame.origin ?? .zero
+        for (name, view) in self.views {
+          if let pane = args.panes?.first(where: { $0.tab == name }) {
+            let frame = pane.frame
+            view.frame = CGRect(x: corner.x + frame.x, y: corner.y + frame.y, width: frame.width, height: frame.height)
+            view.isHidden = false
+          } else {
+            view.isHidden = true
+          }
+        }
+        invoke.resolve(["ok": true])
+        return
       case "hide":
         for view in self.views.values { view.isHidden = true }
         invoke.resolve(["ok": true])
@@ -290,7 +325,7 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         case "show":
           if mine == self.turn { self.bringForward(tab) } else { self.front = tab }
           if let address = address { self.load(address, in: view) }
-        case "go":
+        case "prepare", "go":
           if let address = address { self.load(address, in: view) }
         case "back":
           view.goBack()
@@ -328,7 +363,7 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         invoke.resolve(["ok": true])
       }
       // A first show brings the protection level with it, set before the page loads.
-      if args.action == "show", let protection = args.protection, self.views[tab] == nil {
+      if (args.action == "show" || args.action == "prepare"), let protection = args.protection, self.views[tab] == nil {
         self.protect(protection, then: show)
       } else {
         show()
