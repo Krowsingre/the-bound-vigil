@@ -567,6 +567,8 @@ mod windows {
     use std::cell::RefCell;
     use std::collections::HashMap;
 
+    use tauri::Manager;
+
     use webview2_com::Microsoft::Web::WebView2::Win32::*;
     use webview2_com::{
         take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler, CustomItemSelectedEventHandler, DownloadStartingEventHandler,
