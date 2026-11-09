@@ -8,7 +8,7 @@ import { TagEditor } from "./TagsDialog";
 export function PersonalNoteEditor({ initial, refreshKey, onSaved, onClose }: {
   initial?: NoteItem;
   refreshKey: number;
-  onSaved: (note: NoteItem) => void;
+  onSaved: (note: NoteItem, created: boolean) => void;
   onClose: () => void;
 }) {
   const [note, setNote] = useState(initial);
@@ -74,7 +74,7 @@ export function PersonalNoteEditor({ initial, refreshKey, onSaved, onClose }: {
     setBusy(true);
     setError("");
     try {
-      onSaved(await api.savePersonalNote(note?.id ?? null, title.trim() || null, text, tags));
+      onSaved(await api.savePersonalNote(note?.id ?? null, title.trim() || null, text, tags), !note);
     } catch (failure) {
       setError(String(failure));
       setBusy(false);
