@@ -581,7 +581,7 @@ export function ImportBookDialog({
                     ))}
                   </ul>
                 )}
-                <p className="muted">The list is also kept in the book's notes, so you can work through it after the import.</p>
+                {!restoreDraft && <p className="muted">The list is also kept in the book's notes, so you can work through it after the import.</p>}
               </div>
             )}
             <div className="import-areas">
