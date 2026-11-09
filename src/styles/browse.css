@@ -1793,6 +1793,16 @@
    beside the address, and the tabs run edge to edge under it with no frame:
    the open tab marked by the accent along its foot, the strip's own buttons
    (every tab, bookmarks, add a catalogue, downloads, •••) at its right end. */
+.browser-nav .header-action.browser-bookmark-saved,
+.browser-bar .toolbar-button.browser-bookmark-saved {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.browser-bookmark-saved svg {
+  fill: currentColor;
+}
+
 .browser-nav {
   display: flex;
   align-items: center;

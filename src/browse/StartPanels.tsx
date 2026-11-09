@@ -26,15 +26,14 @@ function Panel({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-export function BookmarksPanel({ onGo, onClose, onChanged, initial }: {
+export function BookmarksPanel({ onGo, onClose, onChanged }: {
   onGo: (url: string) => void;
   onClose: () => void;
   onChanged: () => void;
-  initial?: { title: string; url: string };
 }) {
   const toast = useToast();
   const [marks, setMarks] = useState<Bookmark[]>([]);
-  const [draft, setDraft] = useState<Bookmark | null>(initial ? { id: "", ...initial } : null);
+  const [draft, setDraft] = useState<Bookmark | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { void api.bookmarks().then(setMarks, (e) => toast(String(e))); }, [toast]);
 
