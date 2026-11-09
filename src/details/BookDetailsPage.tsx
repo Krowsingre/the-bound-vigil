@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type { BookDetails, BookFile, DetailField, DetailFieldName } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
+import { useAppSettings } from "../settings/appSettings";
 import { BookCover } from "../components/BookCover";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
@@ -54,6 +55,9 @@ export function BookDetailsPage({
 }) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [reload, setReload] = useState(0);
+  const [expandedCover, setExpandedCover] = useState<string | null>(null);
+  const { privacy } = useAppSettings().settings;
+  useEffect(() => { setExpandedCover(null); }, [bookId, privacy.on]);
   const [resetting, setResetting] = useState(false);
   const toast = useToast();
   const refresh = () => setReload((n) => n + 1);
@@ -146,7 +150,16 @@ export function BookDetailsPage({
       {back}
       <div className="details-layout">
         <aside className="details-side">
-          <BookCover book={book} size="l" />
+          <BookCover book={book} size="l" onExpand={privacy.on ? undefined : setExpandedCover} />
+          {expandedCover && !privacy.on && (
+            <div className="dialog-backdrop book-cover-preview" role="dialog" aria-modal="true" aria-label={"Cover for " + book.title}
+              onPointerDown={(event) => { if (event.target === event.currentTarget) setExpandedCover(null); }}
+              onKeyDown={(event) => { if (event.key === "Escape") setExpandedCover(null); }}>
+              <button type="button" autoFocus aria-label="Close cover preview" onClick={() => setExpandedCover(null)}>
+                <img src={expandedCover} alt={book.title} />
+              </button>
+            </div>
+          )}
           <button type="button" className="btn btn-primary btn-wide" onClick={() => actions.open(book)}>
             <Icon name="play" size={16} />{" "}
             {isAudio(book.format)

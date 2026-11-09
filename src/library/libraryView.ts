@@ -1,4 +1,4 @@
-import type { ItemKind, LibraryExclude, Location, Shelf, SortOrder } from "../api/types";
+import type { AudioType, ItemKind, LibraryExclude, Location, Shelf, SortOrder } from "../api/types";
 
 export type LibraryTab = Shelf | "collections";
 export type Layout = "grid" | "list" | "compact" | "series";
@@ -25,6 +25,7 @@ export interface LibraryView {
   narrators: string[];
   /** Leaves out books marked read. Remembered, like sort and layout. */
   hideRead: boolean;
+  audioType?: AudioType | null;
   /** Filters turned round (a second click): books with any of these are left out. */
   exclude: LibraryExclude;
   page: number;
@@ -50,6 +51,7 @@ export const NO_FILTERS: Partial<LibraryView> = {
   series: [],
   narrators: [],
   hideRead: false,
+  audioType: null,
   exclude: NO_EXCLUDE,
 };
 
@@ -84,7 +86,7 @@ export function initialView(kind: ItemKind = "books"): LibraryView {
   try {
     const saved = JSON.parse(localStorage.getItem(keyOf(kind)) ?? "{}") as Partial<LibraryView>;
     if (SORTS.some((s) => s.sort === saved.sort)) view.sort = saved.sort!;
-    if (saved.layout === "grid" || saved.layout === "list" || saved.layout === "compact" || (kind === "books" && saved.layout === "series")) view.layout = saved.layout;
+    if (saved.layout === "grid" || saved.layout === "list" || saved.layout === "compact" || (kind !== "documents" && saved.layout === "series")) view.layout = saved.layout;
     view.hideRead = saved.hideRead === true;
   } catch {
     /* fall back to defaults */

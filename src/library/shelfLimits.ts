@@ -1,9 +1,9 @@
 import type { BookPreview } from "../api/types";
 
-export const PIN_LIMIT = 5;
+export const PIN_LIMIT = 10;
 export const UP_NEXT_LIMIT = 15;
 export const UP_NEXT_FULL = "Up Next is full.";
-export const PIN_LIMIT_MESSAGE = "The Archive holds five pins. Unpin a book first.";
+export const PIN_LIMIT_MESSAGE = "The Archive holds ten pins. Unpin a book or series first.";
 
 export function upNextChanges(books: BookPreview[], bookId: string, want: boolean, replace?: string): string[] {
   const current = books.find((book) => book.id === bookId);

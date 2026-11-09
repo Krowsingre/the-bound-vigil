@@ -181,6 +181,21 @@ async fn get_collections(state: State<'_, AppLibrary>) -> CommandResult<Vec<Coll
 }
 
 #[tauri::command]
+async fn archive_series_pins(state: State<'_, AppLibrary>) -> CommandResult<Vec<String>> {
+    with_library(state, |library| library.archive_series_pins()).await
+}
+
+#[tauri::command]
+async fn set_archive_series_pin(state: State<'_, AppLibrary>, name: String, pinned: bool) -> CommandResult<()> {
+    with_library(state, move |library| library.set_archive_series_pin(&name, pinned)).await
+}
+
+#[tauri::command]
+async fn set_audio_type(state: State<'_, AppLibrary>, book_id: String, kind: Option<String>) -> CommandResult<()> {
+    with_library(state, move |library| library.set_audio_type(&book_id, kind.as_deref())).await
+}
+
+#[tauri::command]
 async fn set_pinned(state: State<'_, AppLibrary>, book_id: String, pinned: bool) -> CommandResult<()> {
     with_library(state, move |library| library.set_pinned(&book_id, pinned)).await
 }
@@ -2294,6 +2309,9 @@ pub fn run() {
             get_collections,
             set_favorite,
             set_pinned,
+            set_audio_type,
+            archive_series_pins,
+            set_archive_series_pin,
             set_want_to_read,
             set_phone_wanted,
             set_rating,

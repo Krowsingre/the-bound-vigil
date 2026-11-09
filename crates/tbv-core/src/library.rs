@@ -712,6 +712,14 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE bookmarks ADD COLUMN folder TEXT;",
     // v39: optional additional Archive matches for a Kindle box set.
     "ALTER TABLE kindle_purchases ADD COLUMN matched_books TEXT;",
+    r#"
+    ALTER TABLE books ADD COLUMN audio_type TEXT;
+    CREATE TABLE archive_series_pins (
+        name TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        pinned_at TEXT
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
@@ -758,6 +766,9 @@ fn register_functions(conn: &Connection, sync_live: &Arc<AtomicBool>) -> Result<
         |ctx| Ok(ctx.get::<Option<String>>(0)?.and_then(|s| crate::browse::language_code(&s))),
     )?;
     let live = sync_live.clone();
+    conn.create_scalar_function("tbv_file_exists", 1, FunctionFlags::SQLITE_UTF8, |ctx| {
+        Ok(ctx.get::<Option<String>>(0)?.is_some_and(|path| std::path::Path::new(&path).is_file()))
+    })?;
     conn.create_scalar_function("tbv_sync_live", 0, FunctionFlags::SQLITE_UTF8, move |_| {
         Ok(live.load(Ordering::Relaxed))
     })?;

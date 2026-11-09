@@ -229,6 +229,10 @@ impl Library {
         if let Some(pinned) = query.pinned {
             conditions.push(if pinned { "b.pinned_at IS NOT NULL".into() } else { "b.pinned_at IS NULL".into() });
         }
+        if let Some(audio_type) = &query.audio_type {
+            conditions.push(format!("b.audio_type = ?{}", values.len() + 1));
+            values.push(Value::Text(audio_type.clone()));
+        }
         match query.paired {
             Some(true) => conditions.push(PAIRED.into()),
             Some(false) => conditions.push(format!("NOT {PAIRED}")),
@@ -243,7 +247,7 @@ impl Library {
         }
 
         match query.location {
-            Some(Location::OnDevice) => conditions.push("lf.path IS NOT NULL".into()),
+            Some(Location::OnDevice) => conditions.push("tbv_file_exists(lf.path)".into()),
             Some(Location::CloudOnly) => conditions.push("lf.path IS NULL".into()),
             None => {}
         }
@@ -307,6 +311,7 @@ impl Library {
         Ok(LibraryPage {
             books,
             series_counts,
+            series_names: self.series_names(query.kind)?,
             total,
             page,
             page_size,
@@ -319,6 +324,16 @@ impl Library {
             authors: if query.kind == Some(ItemKind::Audiobooks) { self.names_in_library(AUTHORS, query.kind)? } else { Vec::new() },
             narrators: if query.kind == Some(ItemKind::Audiobooks) { self.names_in_library(NARRATORS, query.kind)? } else { Vec::new() },
         })
+    }
+
+    fn series_names(&self, kind: Option<ItemKind>) -> Result<Vec<String>> {
+        let only = kind.map(|kind| format!(" AND {}", kind_condition(kind))).unwrap_or_default();
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT MIN(trim({SERIES})) {BOOK_FROM}{only} AND NULLIF(trim({SERIES}), '') IS NOT NULL
+             GROUP BY tbv_fold(trim({SERIES})) ORDER BY tbv_fold(trim({SERIES}))"
+        ))?;
+        let rows = statement.query_map([], |row| row.get(0))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
     pub fn shelf_counts(&self) -> Result<ShelfCounts> {
@@ -392,6 +407,45 @@ impl Library {
     }
 
     /// Pins a book to the top of the Archive, or takes the pin off.
+    pub fn archive_series_pins(&self) -> Result<Vec<String>> {
+        let mut statement = self.conn.prepare("SELECT label FROM archive_series_pins WHERE pinned_at IS NOT NULL ORDER BY name")?;
+        let rows = statement.query_map([], |row| row.get(0))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    pub fn set_archive_series_pin(&self, label: &str, pinned: bool) -> Result<()> {
+        let label = label.trim();
+        if label.is_empty() { return Err(Error::Unsuitable("Choose a series to pin.".into())); }
+        let name = label.to_lowercase();
+        let tx = self.conn.unchecked_transaction()?;
+        let already: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM archive_series_pins WHERE name = ?1 AND pinned_at IS NOT NULL)",
+            params![name], |row| row.get(0),
+        )?;
+        if already == pinned { return Ok(()); }
+        if pinned { Self::check_archive_pin_limit(&tx)?; }
+        let at = pinned.then(crate::time::now_utc);
+        tx.execute(
+            "INSERT INTO archive_series_pins (name, label, pinned_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(name) DO UPDATE SET label = excluded.label, pinned_at = excluded.pinned_at",
+            params![name, label, at],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn check_archive_pin_limit(conn: &rusqlite::Connection) -> Result<()> {
+        let count: u32 = conn.query_row(
+            "SELECT (SELECT COUNT(*) FROM books WHERE pinned_at IS NOT NULL AND deleted_at IS NULL AND same_as IS NULL)
+                  + (SELECT COUNT(*) FROM archive_series_pins WHERE pinned_at IS NOT NULL)",
+            [], |row| row.get(0),
+        )?;
+        if count >= 10 {
+            return Err(Error::Unsuitable("The Archive holds ten pins. Unpin a book or series first.".into()));
+        }
+        Ok(())
+    }
+
     pub fn set_pinned(&self, book_id: &str, pinned: bool) -> Result<()> {
         // Only a real change is written, so syncing doesn't send pins that didn't move.
         if pinned {
@@ -402,20 +456,25 @@ impl Library {
                 |row| row.get(0),
             )?;
             if can_pin {
-                let count: u32 = tx.query_row(
-                    "SELECT COUNT(*) FROM books WHERE pinned_at IS NOT NULL AND deleted_at IS NULL AND same_as IS NULL",
-                    [],
-                    |row| row.get(0),
-                )?;
-                if count >= 5 {
-                    return Err(Error::Unsuitable("The Archive holds five pins. Unpin a book first.".into()));
-                }
+                Self::check_archive_pin_limit(&tx)?;
                 tx.execute("UPDATE books SET pinned_at = ?2 WHERE id = ?1", params![book_id, crate::time::now_utc()])?;
             }
             tx.commit()?;
         } else {
             self.conn.execute("UPDATE books SET pinned_at = NULL WHERE id = ?1 AND pinned_at IS NOT NULL", params![book_id])?;
         }
+        Ok(())
+    }
+
+    pub fn set_audio_type(&self, book_id: &str, kind: Option<&str>) -> Result<()> {
+        if kind.is_some_and(|kind| !matches!(kind, "audiobook" | "podcast" | "music")) {
+            return Err(Error::Unsuitable("Choose an audio type.".into()));
+        }
+        let changed = self.conn.execute(
+            &format!("UPDATE books AS b SET audio_type = ?2 WHERE id = ?1 AND deleted_at IS NULL AND {}", kind_condition(ItemKind::Audiobooks)),
+            params![book_id, kind],
+        )?;
+        if changed == 0 { return Err(Error::Unsuitable("This audio item is no longer in Resonance.".into())); }
         Ok(())
     }
 
@@ -741,13 +800,40 @@ mod tests {
     }
 
     #[test]
+    fn a_series_and_a_book_share_the_archive_pin_limit() {
+        let (dir, mut library) = open_temp_library();
+        let ids: Vec<_> = (0..10).map(|i| add(&mut library, dir.path(), &format!("Book {i}"), "Writer")).collect();
+        for id in &ids[..9] { library.set_pinned(id, true).unwrap(); }
+        library.set_archive_series_pin(" A Series ", true).unwrap();
+        library.set_archive_series_pin("a series", true).unwrap();
+        assert_eq!(library.archive_series_pins().unwrap(), ["A Series"]);
+        assert!(library.set_pinned(&ids[9], true).is_err());
+        library.set_archive_series_pin("a SERIES", false).unwrap();
+        library.set_pinned(&ids[9], true).unwrap();
+    }
+
+    #[test]
+    fn audio_type_is_opt_in_and_filterable() {
+        let (dir, mut library) = open_temp_library();
+        let id = add(&mut library, dir.path(), "Audio test", "Writer");
+        assert!(library.set_audio_type(&id, Some("music")).is_err());
+        library.conn.execute("UPDATE books SET format = 'mp3' WHERE id = ?1", params![id]).unwrap();
+        let podcasts = query(|q| { q.kind = Some(ItemKind::Audiobooks); q.audio_type = Some("podcast".into()); });
+        assert_eq!(library.library_page(&podcasts).unwrap().total, 0);
+        library.set_audio_type(&id, Some("podcast")).unwrap();
+        assert_eq!(library.library_page(&podcasts).unwrap().books[0].audio_type.as_deref(), Some("podcast"));
+        library.set_audio_type(&id, None).unwrap();
+        assert_eq!(library.library_page(&podcasts).unwrap().total, 0);
+    }
+
+    #[test]
     fn shelf_limits_require_an_explicit_replacement() {
         let (dir, mut library) = open_temp_library();
         let ids: Vec<String> = (0..16).map(|i| add(&mut library, dir.path(), &format!("Book {i}"), "Writer")).collect();
-        for id in &ids[..5] {
+        for id in &ids[..10] {
             library.set_pinned(id, true).unwrap();
         }
-        assert!(library.set_pinned(&ids[5], true).is_err());
+        assert!(library.set_pinned(&ids[10], true).is_err());
         library.set_pinned(&ids[0], true).unwrap();
         for id in &ids[..15] {
             library.set_want_to_read(id, true).unwrap();

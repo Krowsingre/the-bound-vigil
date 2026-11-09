@@ -22,6 +22,7 @@ type Props = {
   selection?: Selection | null;
   seriesCounts?: Record<string, number>;
   showStatus?: boolean;
+  onUnpinSeries?: (name: string) => void;
   onOpenSeries?: (name: string) => void;
 };
 
@@ -85,7 +86,7 @@ function Progress({ book }: { book: BookPreview }) {
   );
 }
 
-export function BookGrid({ books, actions, selection, seriesCounts, onOpenSeries, showStatus }: Props) {
+export function BookGrid({ books, actions, selection, seriesCounts, onOpenSeries, onUnpinSeries, showStatus }: Props) {
   return (
     <ul className={`book-grid${selection ? " is-selecting" : ""}`}>
       {books.map((book) => {
@@ -102,6 +103,9 @@ export function BookGrid({ books, actions, selection, seriesCounts, onOpenSeries
                   <span className="book-title">{name}</span>
                   <span className="book-author">{count} matching {count === 1 ? "book" : "books"}</span>
                 </div>
+                {onUnpinSeries && <Menu label={"More for " + name} trigger={<Icon name="more" />} items={[
+                  { label: "Unpin series", icon: "pin", onSelect: () => onUnpinSeries(name) },
+                ]} />}
               </div>
             </li>
           );

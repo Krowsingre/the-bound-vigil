@@ -233,6 +233,7 @@ export async function webApi(): Promise<Api> {
       phoneWanted: !!b.phone_wanted,
       phoneHas: !!b.phone_has,
       pinnedAt: b.pinned_at ?? null,
+      audioType: b.audio_type ?? null,
     };
   };
 
@@ -687,10 +688,19 @@ export async function webApi(): Promise<Api> {
     getLibrary: async (query) => queryBooks(books(), query, previews().length),
     getCollections: async () => previews(),
     setFavorite: async (bookId, favorite) => writeShelves(bookId, { favorite: favorite ? 1 : 0 }),
+    archiveSeriesPins: async () => library.rows("archive_series_pins").filter((row) => row.pinned_at).map((row) => String(row.label)),
+    setArchiveSeriesPin: async (label, pinned) => {
+      const name = label.trim().toLowerCase();
+      const pins = library.rows("archive_series_pins").filter((row) => row.pinned_at);
+      if (pins.some((row) => row.name === name) === pinned) return;
+      if (pinned && pins.length + books().filter((book) => book.pinnedAt).length >= PIN_LIMIT) throw new Error(PIN_LIMIT_MESSAGE);
+      await library.write("archive_series_pin", { name, label, pinned_at: pinned ? now() : null });
+    },
+    setAudioType: async (bookId, audio_type) => library.write("book_audio_type", { ...find(bookId), audio_type }),
     setPinned: async (bookId, pinned) => {
       const b = find(bookId);
       if (!!b.pinned_at === pinned) return;
-      if (pinned && books().filter((book) => book.pinnedAt).length >= PIN_LIMIT) throw new Error(PIN_LIMIT_MESSAGE);
+      if (pinned && library.rows("archive_series_pins").filter((row) => row.pinned_at).length + books().filter((book) => book.pinnedAt).length >= PIN_LIMIT) throw new Error(PIN_LIMIT_MESSAGE);
       await library.write("book_pin", { ...b, pinned_at: pinned ? new Date().toISOString().replace(/\.\d+Z$/, "Z") : null });
     },
     setWantToRead: async (bookId, want, replace) => {

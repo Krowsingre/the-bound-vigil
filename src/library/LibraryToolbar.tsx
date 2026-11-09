@@ -1,5 +1,6 @@
 import { useState } from "react";
-import type { Location, ShelfCounts } from "../api/types";
+import { phoneChoiceShown } from "../home/bookActions";
+import type { ShelfCounts } from "../api/types";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { formatLabel } from "../lib/queryBooks";
@@ -47,6 +48,11 @@ export function LibraryToolbar({
   narrators = [],
   allLabel,
   allowSeries = false,
+  seriesNames = [],
+  pinnedSeries = [],
+  onSeriesPin,
+  paired = null,
+  onPairing,
   continuous = false,
   onContinuous,
   selecting,
@@ -67,6 +73,11 @@ export function LibraryToolbar({
   /** The first tab's name, when it isn't "All books". */
   allLabel?: string;
   allowSeries?: boolean;
+  seriesNames?: string[];
+  pinnedSeries?: string[];
+  onSeriesPin?: (name: string, pinned: boolean) => void;
+  paired?: boolean | null;
+  onPairing?: (value: boolean | null) => void;
   continuous?: boolean;
   onContinuous?: (enabled: boolean) => void;
   selecting: boolean;
@@ -146,21 +157,33 @@ export function LibraryToolbar({
     );
   // A shelf is chosen in Filter, so it counts there too.
   const filterBadge = filterCount + (view.tab !== "all" ? 1 : 0);
-  const setLocation = (l: Location) => onChange({ location: view.location === l ? null : l });
+
 
   // Clear filters, then where the file is, the shelves, genre and
   // language, then the rest.
   const filterItems: MenuEntry[] = [
+    { label: "Hide finished books", checked: view.hideRead, onSelect: () => onChange({ hideRead: !view.hideRead, page: 0 }) },
+    { label: "On this device", checked: view.location === "on_device", onSelect: () => onChange({ location: view.location === "on_device" ? null : "on_device" }) },
+    ...(onPairing ? ([
+      { label: "Pairing", hint: paired === null ? "All" : paired ? "Paired" : "Unpaired", submenu: [
+        { label: "All", checked: paired === null, onSelect: () => onPairing(null) },
+        { label: "Paired", checked: paired === true, onSelect: () => onPairing(true) },
+        { label: "Unpaired", checked: paired === false, onSelect: () => onPairing(false) },
+      ] },
+      { label: "Audio type", submenu: [
+        { label: "All audio", checked: !view.audioType, onSelect: () => onChange({ audioType: null }) },
+        { label: "Audiobooks", checked: view.audioType === "audiobook", onSelect: () => onChange({ audioType: "audiobook" }) },
+        { label: "Podcasts", checked: view.audioType === "podcast", onSelect: () => onChange({ audioType: "podcast" }) },
+        { label: "Music", checked: view.audioType === "music", onSelect: () => onChange({ audioType: "music" }) },
+      ] },
+    ] as MenuEntry[]) : []),
+    "divider",
     ...(filterCount ? ([{ label: "Clear filters", icon: "close", onSelect: () => onChange(NO_FILTERS) }] as MenuEntry[]) : []),
     { heading: <span className="menu-tip">Click once to show only those, twice to hide them.</span> },
-    ...group("Location", view.location ? 1 : 0, [
-      { label: "Downloaded", checked: view.location === "on_device", onSelect: () => setLocation("on_device") },
-      { label: "Not downloaded", checked: view.location === "cloud_only", onSelect: () => setLocation("cloud_only") },
-    ]),
     ...group(
       "Collections",
       view.tab === "all" ? 0 : 1,
-      TABS.map(({ tab }) => ({
+      TABS.filter(({ tab }) => tab !== "send_to_device" || phoneChoiceShown()).map(({ tab }) => ({
         label: tabName(tab),
         hint: counts?.[COUNT_OF[tab]] !== undefined ? String(counts[COUNT_OF[tab]]) : undefined,
         checked: view.tab === tab,
@@ -193,10 +216,18 @@ export function LibraryToolbar({
       all("tags", tags).map((t) => item("tags", t, t)),
     ),
     ...names("authors", "Authors", authors),
-    ...names("series", "Series", []),
+    ...group("Series", onIn("series"), [
+      ...all("series", seriesNames).map((name) => item("series", name, name)),
+      ...(onSeriesPin && (seriesNames.length || pinnedSeries.length) ? [{
+        label: "Pin or unpin a series",
+        icon: "pin" as const,
+        submenu: [...new Set([...pinnedSeries, ...seriesNames])].map((name) => {
+          const pinned = pinnedSeries.some((value) => value.toLowerCase() === name.toLowerCase());
+          return { label: name, checked: pinned, onSelect: () => onSeriesPin(name, !pinned) };
+        }),
+      }] : []),
+    ]),
     ...names("narrators", "Narrators", narrators),
-    "divider",
-    { label: "Hide finished books", checked: view.hideRead, onSelect: () => onChange({ hideRead: !view.hideRead, page: 0 }) },
   ];
 
   return (

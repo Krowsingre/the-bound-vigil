@@ -12,7 +12,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { showBookDetails } from "../details/openDetails";
 import { bookContextMenu, makeBookActions } from "../home/bookActions";
 import { useToast } from "../components/Toast";
-import { Library, PageSwitch } from "../library/Library";
+import { Library } from "../library/Library";
 import type { LibraryView } from "../library/libraryView";
 import { formatLength } from "../lib/queryBooks";
 import { formatBytes } from "../settings/controls";
@@ -57,6 +57,10 @@ export function Audiobooks({
   onImportFolder,
   onOpenCollection,
   onReadAlong,
+  onOpenSeries,
+  seriesBack,
+  restoreScroll,
+  onScrollRestored,
 }: {
   view: LibraryView;
   search: string;
@@ -68,6 +72,10 @@ export function Audiobooks({
   onOpenCollection: (id: string) => void;
   /** Opens the linked ebook to read along with the audiobook. */
   onReadAlong: (ebookId: string) => void;
+  onOpenSeries?: (name: string) => void;
+  seriesBack?: () => void;
+  restoreScroll?: number | null;
+  onScrollRestored?: () => void;
 }) {
   const player = usePlayer();
   const [chosen, setChosen] = useState<string | null>(null);
@@ -102,7 +110,8 @@ export function Audiobooks({
         paired: pairing === "all" ? null : pairing === "paired",
         search: null,
         formats: [],
-        location: null,
+        location: view.location,
+        audioType: view.audioType,
         page: 0,
         pageSize: 10,
       })
@@ -113,13 +122,13 @@ export function Audiobooks({
     return () => {
       current = false;
     };
-  }, [refreshKey, reload, player.playing, pairing]);
+  }, [refreshKey, reload, player.playing, pairing, view.location, view.audioType]);
 
   // The panel shows the book chosen, else the one playing (if it's in the
   // library, not played from a server), else the last listened to.
   const playingHere = player.book && !isServerBook(player.book.book.id) ? player.book.book.id : null;
   const shown = chosen ?? playingHere ?? listening?.[0]?.id ?? null;
-  const showContinue = view.tab === "all" && !search.trim() && listening !== null && listening.length > 0;
+  const showContinue = !seriesBack && view.tab === "all" && !search.trim() && listening !== null && listening.length > 0;
 
   // Tapping a cover shows the audiobook in the panel (and the player bar);
   // playing stays on the Listen and Play buttons. On a phone the panel opens
@@ -143,19 +152,12 @@ export function Audiobooks({
       <div className="audiobooks-main">
         <Library
           kind="audiobooks"
+          onOpenSeries={onOpenSeries}
+          seriesBack={seriesBack}
+          restoreScroll={restoreScroll}
+          onScrollRestored={onScrollRestored}
           paired={pairing === "all" ? null : pairing === "paired"}
-          switcher={
-            <PageSwitch<Pairing>
-              label="Which audiobooks"
-              value={pairing}
-              options={[
-                { value: "all", label: "All" },
-                { value: "paired", label: "Paired" },
-                { value: "alone", label: "Audiobooks only" },
-              ]}
-              onChange={choosePairing}
-            />
-          }
+          onPairing={(value) => choosePairing(value === null ? "all" : value ? "paired" : "alone")}
           view={view}
           search={search}
           refreshKey={refreshKey + reload}

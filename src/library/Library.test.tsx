@@ -164,6 +164,7 @@ test("the book menu can add a favourite", async () => {
   renderLibrary();
   await screen.findAllByText("Book 7");
   fireEvent.click(screen.getByRole("button", { name: "More for Book 7" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Organize" }));
   fireEvent.click(screen.getByRole("menuitem", { name: /Add to favourites/ }));
   expect(setFavorite).toHaveBeenCalledWith("sha256:7", true);
 });

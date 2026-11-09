@@ -107,6 +107,8 @@ pub struct RemotePosition {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BookPreview {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_type: Option<String>,
     pub id: BookId,
     pub title: String,
     pub authors: Vec<String>,
@@ -309,6 +311,8 @@ pub enum Location {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct LibraryQuery {
+    #[serde(default)]
+    pub audio_type: Option<String>,
     pub shelf: Shelf,
     pub sort: SortOrder,
     /// Matches title, author or series, ignoring case.
@@ -397,6 +401,8 @@ pub struct LibraryPage {
     pub books: Vec<BookPreview>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub series_counts: std::collections::BTreeMap<BookId, u32>,
+    #[serde(default)]
+    pub series_names: Vec<String>,
     /// Items matching the query across all pages, counting each series stack once.
     pub total: u32,
     pub page: u32,

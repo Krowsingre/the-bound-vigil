@@ -55,6 +55,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     if (q.downloadable && !b.inCloud) return false;
     if (q.hideRead && (b.status === "read" || b.status === "dropped")) return false;
     if (q.pinned != null && !!b.pinnedAt !== q.pinned) return false;
+    if (q.audioType && b.audioType !== q.audioType) return false;
     if (q.paired != null && !!b.paired !== q.paired) return false;
     if (!hasAny(b.genres, q.genres) || !hasAny(b.authors, q.authors) || !hasAny(b.narrators, q.narrators)) return false;
     if (q.series?.length && !q.series.some((s) => s.trim().toLowerCase() === (b.series ?? "").trim().toLowerCase())) return false;
@@ -100,6 +101,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
   const books = list.slice(page * pageSize, (page + 1) * pageSize);
   return {
     books,
+    seriesNames: namesIn(all, (book) => book.series ? [book.series] : []),
     seriesCounts: Object.fromEntries(books.flatMap((book) => seriesCounts[book.id] ? [[book.id, seriesCounts[book.id]]] : [])),
     total: list.length,
     page,

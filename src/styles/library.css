@@ -1583,3 +1583,37 @@ button.tag-chip-add:hover {
 .kindle-review > p.muted {
   margin-bottom: 14px;
 }
+
+.cover-expand {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  cursor: zoom-in;
+}
+
+.book-cover-preview button {
+  max-width: 100vw;
+  max-height: 100dvh;
+  cursor: zoom-out;
+}
+
+.book-cover-preview img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  object-fit: contain;
+}
+
+@media (max-width: 760px) {
+  .book-cover-preview img {
+    width: 100vw;
+    height: 100dvh;
+    max-width: 100vw;
+    max-height: 100dvh;
+  }
+}

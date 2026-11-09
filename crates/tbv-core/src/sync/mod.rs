@@ -108,6 +108,22 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: false,
     },
     Kind {
+        name: "book_audio_type",
+        table: "books",
+        keys: &["id"],
+        cols: &["audio_type"],
+        category: Category::Library,
+        creates: false,
+    },
+    Kind {
+        name: "archive_series_pin",
+        table: "archive_series_pins",
+        keys: &["name"],
+        cols: &["label", "pinned_at"],
+        category: Category::Library,
+        creates: true,
+    },
+    Kind {
         name: "book_pin",
         table: "books",
         keys: &["id"],

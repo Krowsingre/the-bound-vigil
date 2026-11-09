@@ -432,6 +432,8 @@ function home(): HomeViewModel {
   };
 }
 
+const seriesPins = new Map<string, string>();
+
 const update = (bookId: string, change: Partial<BookPreview>) => {
   books = books.map((b) => (b.id === bookId ? { ...b, ...change } : b));
 };
@@ -709,9 +711,18 @@ export function previewApi(): Api {
     getLibrary: async (query) => queryBooks(library(), query, collections.previews().length),
     getCollections: async () => collections.previews(),
     setFavorite: async (bookId, favorite) => update(bookId, { favorite }),
+    archiveSeriesPins: async () => [...seriesPins.values()],
+    setArchiveSeriesPin: async (label, pinned) => {
+      const key = label.trim().toLowerCase();
+      if (seriesPins.has(key) === pinned) return;
+      if (pinned && seriesPins.size + books.filter((book) => book.pinnedAt).length >= PIN_LIMIT) throw new Error(PIN_LIMIT_MESSAGE);
+      if (pinned) seriesPins.set(key, label);
+      else seriesPins.delete(key);
+    },
+    setAudioType: async (bookId, audioType) => update(bookId, { audioType }),
     setPinned: async (bookId, pinned) => {
       if (!!find(bookId).pinnedAt === pinned) return;
-      if (pinned && books.filter((book) => book.pinnedAt).length >= PIN_LIMIT) throw new Error(PIN_LIMIT_MESSAGE);
+      if (pinned && seriesPins.size + books.filter((book) => book.pinnedAt).length >= PIN_LIMIT) throw new Error(PIN_LIMIT_MESSAGE);
       update(bookId, { pinnedAt: pinned ? new Date().toISOString() : null });
     },
     setWantToRead: async (bookId, want, replace) => {

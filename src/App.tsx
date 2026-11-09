@@ -39,7 +39,7 @@ import { BookPlacesPage } from "./sync/BookPlaces";
 import { importSummary } from "./lib/importSummary";
 import { Library, PageSwitch } from "./library/Library";
 import { Reader } from "./reader/Reader";
-import { initialView, rememberView, type LibraryView } from "./library/libraryView";
+import { initialView, NO_FILTERS, rememberView, type LibraryView } from "./library/libraryView";
 import { useAppSettings } from "./settings/appSettings";
 import { Settings } from "./settings/Settings";
 import type { SettingsTab } from "./settings/settingsIndex";
@@ -85,6 +85,16 @@ export function App() {
   const drawingCovers = useRef(false);
   const wasRunning = useRef(false);
   const [libraryView, setLibraryView] = useState<LibraryView>(() => initialView("books"));
+  type SeriesPlace = { route: "library" | "audiobooks"; name: string; parentScroll: number };
+  const [seriesPlace, setSeriesPlace] = useState<SeriesPlace | null>(null);
+  const [seriesScroll, setSeriesScroll] = useState<number | null>(null);
+  const [seriesSearch, setSeriesSearch] = useState("");
+  const [seriesPage, setSeriesPage] = useState(0);
+  const openSeries = (route: SeriesPlace["route"], name: string) => {
+    setSeriesPlace({ route, name, parentScroll: document.querySelector(".content")?.scrollTop ?? 0 });
+    setSeriesSearch("");
+    setSeriesPage(0);
+  };
   const [documentsView, setDocumentsView] = useState<LibraryView>(() => initialView("documents"));
   const [audiobooksView, setAudiobooksView] = useState<LibraryView>(() => initialView("audiobooks"));
   const player = usePlayer();
@@ -108,6 +118,8 @@ export function App() {
 
   const navigate = useCallback((r: Route) => {
     setMenuOpen(false);
+    setSeriesPlace(null);
+    setSeriesScroll(null);
     // The sidebar's Collections always starts at the overview.
     if (r === "collections") setOpenCollection(null);
     // Sync & Accounts is a page inside Settings.
@@ -344,17 +356,27 @@ export function App() {
   }, [runImport]);
 
   // App Back/Forward (Alt+Shift+Left/Right), independent of webpage history.
-  type Place = { route: Route; collection: CollectionRef | null; details: typeof details };
+  type Place = { route: Route; collection: CollectionRef | null; details: typeof details; series: SeriesPlace | null };
   const { back, forward } = useNavigationHistory<Place>(
-    { route, collection: openCollection, details },
+    { route, collection: openCollection, details, series: seriesPlace },
     (place) => {
+      if (seriesPlace && !place.series && seriesPlace.route === place.route) setSeriesScroll(seriesPlace.parentScroll);
+      if (place.series !== seriesPlace) {
+        setSeriesSearch("");
+        setSeriesPage(0);
+      }
+      setSeriesPlace(place.series);
       setDetails(place.details);
       setOpenCollection(place.collection);
       setRoute(place.route);
     },
     (a, b) => a.route === b.route && JSON.stringify(a.collection) === JSON.stringify(b.collection) &&
-      a.details?.bookId === b.details?.bookId && a.details?.from === b.details?.from,
+      a.details?.bookId === b.details?.bookId && a.details?.from === b.details?.from && a.series === b.series,
   );
+  const showingSeries = seriesPlace?.route === route ? seriesPlace : null;
+  const seriesView = (base: LibraryView): LibraryView => showingSeries
+    ? { ...base, ...NO_FILTERS, tab: "all", series: [showingSeries.name], sort: "series", layout: "series", page: seriesPage }
+    : base;
   useNavigationShortcuts({ back, forward, reading: !!reading, discover: route === "catalogs", webpage: navigateBrowserHistory });
 
   useEffect(() => {
@@ -510,8 +532,8 @@ export function App() {
           onOpenMenu={() => setMenuOpen(true)}
           sync={sync}
           profile={profile}
-          search={route === "catalogs" ? browserDraft : searchText}
-          onSearchChange={route === "catalogs" ? setBrowserDraft : changeSearch}
+          search={route === "catalogs" ? browserDraft : showingSeries ? seriesSearch : searchText}
+          onSearchChange={route === "catalogs" ? setBrowserDraft : showingSeries ? (value) => { setSeriesSearch(value); setSeriesPage(0); } : changeSearch}
           placeholder={
             route === "notes" || route === "writing"
               ? "Search notes, books, authors or words…"
@@ -578,11 +600,15 @@ export function App() {
           ) : route === "library" ? (
             <Library
               switcher={archiveSwitch}
-              view={libraryView}
-              search={searchText}
+              view={seriesView(libraryView)}
+              search={showingSeries ? seriesSearch : searchText}
               refreshKey={refreshKey}
-              onChange={changeLibraryView}
-              onClearSearch={() => changeSearch("")}
+              onChange={showingSeries ? (change) => setSeriesPage(change.page ?? 0) : changeLibraryView}
+              onClearSearch={() => showingSeries ? setSeriesSearch("") : changeSearch("")}
+              onOpenSeries={(name) => openSeries("library", name)}
+              seriesBack={showingSeries ? back : undefined}
+              restoreScroll={seriesScroll}
+              onScrollRestored={() => setSeriesScroll(null)}
               onImportBooks={importBooks}
               onImportFolder={importFolder}
               onOpenBook={openBook}
@@ -629,11 +655,15 @@ export function App() {
             />
           ) : route === "audiobooks" ? (
             <Audiobooks
-              view={audiobooksView}
-              search={searchText}
+              view={seriesView(audiobooksView)}
+              search={showingSeries ? seriesSearch : searchText}
               refreshKey={refreshKey}
-              onChange={changeAudiobooksView}
-              onClearSearch={() => changeSearch("")}
+              onChange={showingSeries ? (change) => setSeriesPage(change.page ?? 0) : changeAudiobooksView}
+              onClearSearch={() => showingSeries ? setSeriesSearch("") : changeSearch("")}
+              onOpenSeries={(name) => openSeries("audiobooks", name)}
+              seriesBack={showingSeries ? back : undefined}
+              restoreScroll={seriesScroll}
+              onScrollRestored={() => setSeriesScroll(null)}
               onImportBooks={importBooks}
               onImportFolder={importFolder}
               onOpenCollection={showCollection}

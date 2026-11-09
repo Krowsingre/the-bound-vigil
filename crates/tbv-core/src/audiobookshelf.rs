@@ -625,6 +625,7 @@ fn remote_book_from(id: &str, item: &str, body: &Value, seconds: f64) -> Result<
     let series = field("series").and_then(Value::as_array).and_then(|s| s.first()).and_then(|s| s.get("name")?.as_str().map(str::to_string));
     let position_ms = ((seconds.max(0.0)) * 1000.0).round() as u64;
     let book = crate::model::BookPreview {
+        audio_type: None,
         id: id.to_string(),
         title: field("title").and_then(Value::as_str).unwrap_or("Untitled").to_string(),
         authors,

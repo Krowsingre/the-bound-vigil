@@ -79,6 +79,7 @@ export function holdForMenu(label: string, items: () => MenuEntry[]) {
 }
 
 export function ContextMenuHost() {
+  const [section, setSection] = useState<number | null>(null);
   const [request, setRequest] = useState<Request | null>(null);
   const [place, setPlace] = useState<CSSProperties>({ visibility: "hidden" });
   const menu = useRef<HTMLDivElement>(null);
@@ -86,6 +87,7 @@ export function ContextMenuHost() {
   useEffect(() => {
     listener = (r) => {
       setPlace({ visibility: "hidden" });
+      setSection(null);
       setRequest(r);
     };
     return () => {
@@ -100,7 +102,7 @@ export function ContextMenuHost() {
     const left = request.x + box.width > window.innerWidth - margin ? Math.max(margin, request.x - box.width) : request.x;
     const top = request.y + box.height > window.innerHeight - margin ? Math.max(margin, window.innerHeight - margin - box.height) : request.y;
     setPlace({ top, left });
-  }, [request]);
+  }, [request, section]);
 
   useEffect(() => {
     if (!request) return;
@@ -122,11 +124,16 @@ export function ContextMenuHost() {
       window.removeEventListener("resize", shut);
       window.removeEventListener("blur", shut);
     };
-  }, [request]);
+  }, [request, section]);
 
   if (!request) return null;
+  const group = section === null ? undefined : request.items[section];
+  const submenu = group && typeof group === "object" && "label" in group ? group.submenu : undefined;
+  const items: MenuEntry[] = submenu
+    ? [{ label: "Back to book menu", icon: "arrowLeft", onSelect: () => setSection(null) }, "divider", ...submenu]
+    : request.items;
   return createPortal(
-    <MenuList ref={menu} label={request.label} items={request.items} style={place} onClose={() => setRequest(null)} />,
+    <MenuList ref={menu} label={request.label} items={items} back={!!submenu} onSubmenu={submenu ? undefined : setSection} style={place} onClose={() => setRequest(null)} />,
     document.body,
   );
 }

@@ -48,7 +48,10 @@ export interface RemotePosition {
   at: IsoUtc;
 }
 
+export type AudioType = "audiobook" | "podcast" | "music";
+
 export interface BookPreview {
+  audioType?: AudioType | null;
   id: BookId;
   title: string;
   authors: string[];
@@ -478,6 +481,7 @@ export type ItemKind = "books" | "documents" | "audiobooks";
 export type Location = "on_device" | "cloud_only";
 
 export interface LibraryQuery {
+  audioType?: AudioType | null;
   shelf: Shelf;
   sort: SortOrder;
   search: string | null;
@@ -541,6 +545,7 @@ export interface ShelfCounts {
 export interface LibraryPage {
   books: BookPreview[];
   seriesCounts?: Record<string, number>;
+  seriesNames?: string[];
   total: number;
   page: number;
   pageSize: number;
