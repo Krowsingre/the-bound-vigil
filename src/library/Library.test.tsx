@@ -124,7 +124,7 @@ test("pinned books stay above the second page of Archive results", async () => {
   }));
   renderLibrary({ view: { ...view, page: 1 } });
   const heading = await screen.findByText("Pinned books");
-  expect(heading.closest("details")).toHaveAttribute("open");
+  expect(heading.closest("details")).not.toHaveAttribute("open");
   expect(await screen.findByRole("button", { name: "More for Book 25" })).toBeInTheDocument();
   expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ pinned: true, page: 0 }));
   expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ pinned: false, page: 1 }));

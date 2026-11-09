@@ -81,8 +81,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
       ...(audio && actions.setAudioType ? [
         "divider" as const,
         { heading: "Audio type" },
-        ...types.map(([kind, label]) => ({ label, checked: book.audioType === kind, onSelect: () => actions.setAudioType?.(book, kind) })),
-        { label: "Unclassified", checked: !book.audioType, onSelect: () => actions.setAudioType?.(book, null) },
+        ...types.map(([kind, label]) => ({ label, checked: (book.audioType ?? "audiobook") === kind, onSelect: () => actions.setAudioType?.(book, kind) })),
       ] : []),
     ] },
     { label: audio ? "Listening status" : "Reading status", icon: "checkCircle", submenu: [

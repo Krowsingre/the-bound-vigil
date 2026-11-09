@@ -1,4 +1,4 @@
-import { forwardRef, useState, type ReactNode } from "react";
+import { forwardRef, useRef, useState, type ReactNode } from "react";
 import type { Profile, SyncStatus } from "../api/types";
 import { Icon } from "../components/Icon";
 import { SyncMenu } from "./SyncMenu";
@@ -14,6 +14,7 @@ export const Header = forwardRef<
     placeholder?: string;
     onSearchChange: (query: string) => void;
     onSearchSubmit: () => void;
+    onPasteAndGo?: (text: string) => void;
     onImportBooks: () => void;
     onImportFolder: () => void;
     onOpenSyncSettings: () => void;
@@ -36,8 +37,11 @@ export const Header = forwardRef<
     /** Drops down under the box while typing (Discover's suggestions); `done` empties and leaves the box. */
     typingPanel?: (typed: string, done: () => void) => ReactNode;
   }
->(function Header({ sync, profile, search, placeholder, onSearchChange, onSearchSubmit, onOpenMenu, pageAction, address, searchStart, searchEnd, addressLabel, typingPanel, ...menu }, searchRef) {
+>(function Header({ sync, profile, search, placeholder, onSearchChange, onSearchSubmit, onPasteAndGo, onOpenMenu, pageAction, address, searchStart, searchEnd, addressLabel, typingPanel, ...menu }, searchRef) {
   const [typing, setTyping] = useState(false);
+  const [edited, setEdited] = useState(false);
+  const revision = useRef(0);
+  const pasteHint = !!onPasteAndGo && typing && !edited;
   const showing = address !== undefined && !typing && !search ? (addressLabel ?? address) : search;
   const done = () => {
     onSearchChange("");
@@ -73,10 +77,13 @@ export const Header = forwardRef<
           id="global-search"
           ref={searchRef}
           type="search"
+          className={pasteHint ? "search-paste-hint-input" : undefined}
+          aria-describedby={pasteHint ? "search-paste-hint" : undefined}
           placeholder={placeholder ?? "Search books, authors or series…"}
           value={showing}
           onFocus={(e) => {
             if (address === undefined) return;
+            setEdited(false);
             setTyping(true);
             if (!search && address && e.currentTarget.dataset.blankTab === undefined) {
               onSearchChange(address);
@@ -87,12 +94,34 @@ export const Header = forwardRef<
             }
           }}
           onBlur={() => {
+            revision.current++;
             setTyping(false);
             // Left without going anywhere: back to showing the page's address.
             if (address !== undefined && search === address) onSearchChange("");
           }}
-          onChange={(e) => onSearchChange(e.target.value)}
+          onChange={(e) => {
+            revision.current++;
+            setEdited(true);
+            onSearchChange(e.target.value);
+          }}
           onKeyDown={(e) => {
+            if (e.defaultPrevented || e.nativeEvent.isComposing) return;
+            if (e.key === "Enter" && pasteHint && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+              e.preventDefault();
+              const request = ++revision.current;
+              if (!navigator.clipboard) { setEdited(true); return; }
+              void navigator.clipboard.readText().then((value) => {
+                if (request !== revision.current) return;
+                const text = value.trim();
+                if (text) {
+                  onPasteAndGo?.(text);
+                  done();
+                } else setEdited(true);
+              }, () => { if (request === revision.current) setEdited(true); });
+            } else if (pasteHint && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "Delete", "Backspace"].includes(e.key)) {
+              revision.current++;
+              setEdited(true);
+            }
             if (e.key === "Escape" && !e.nativeEvent.isComposing) {
               onSearchChange("");
               e.currentTarget.blur();
@@ -103,6 +132,7 @@ export const Header = forwardRef<
           autoCapitalize={address === undefined ? undefined : "off"}
           spellCheck={false}
         />
+        {pasteHint && <span id="search-paste-hint" className="search-paste-hint">Press Enter to paste and go</span>}
         {searchEnd}
         {typing && typingPanel?.(search, done)}
       </form>

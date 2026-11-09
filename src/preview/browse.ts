@@ -62,6 +62,8 @@ type Calls = Pick<
   | "onBrowserEvent"
   | "browserAddDownload"
   | "browserKeepDownload"
+  | "browserDownloadKind"
+  | "browserTemporaryDownloads"
   | "browserDiscardDownload"
   | "browserZoom"
   | "browserDesktopSites"
@@ -197,6 +199,8 @@ export function browseStub(): Calls {
     browserKeepDownload: async () => {
       throw new Error(APP_ONLY);
     },
+    browserDownloadKind: async () => "other",
+    browserTemporaryDownloads: async () => ({ files: 0, bytes: 0, removed: [], failed: 0 }),
     browserDiscardDownload: async () => undefined,
     browserZoom: async () => undefined,
     browserDesktopSites: async () => undefined,

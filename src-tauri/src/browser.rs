@@ -10,7 +10,36 @@
 //! reaches TBV's page as "browser-event".
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+
+static STAGING_IN_USE: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+pub(crate) struct DownloadHold(String);
+
+impl DownloadHold {
+    fn new(id: &str) -> CommandResult<Self> {
+        let mut active = STAGING_IN_USE.lock().map_err(|e| e.to_string())?;
+        if active.iter().any(|item| item.eq_ignore_ascii_case(id)) {
+            return Err("That download is busy.".into());
+        }
+        active.push(id.to_owned());
+        Ok(Self(id.to_owned()))
+    }
+
+    fn for_path(path: &Path) -> CommandResult<Self> {
+        let id = path.parent().and_then(Path::file_name).and_then(|name| name.to_str())
+            .ok_or("That isn't one of the browser's downloads.")?;
+        Self::new(id)
+    }
+}
+
+impl Drop for DownloadHold {
+    fn drop(&mut self) {
+        if let Ok(mut active) = STAGING_IN_USE.lock() {
+            active.retain(|item| item != &self.0);
+        }
+    }
+}
 
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, EventTarget, Manager, State};
@@ -162,7 +191,7 @@ mod view {
     static CANCELLED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
     /// A download's id, where it's being saved, and its tab.
-    type Saving = (String, std::path::PathBuf, String);
+    type Saving = (String, std::path::PathBuf, String, super::DownloadHold);
 
     #[cfg_attr(not(windows), allow(dead_code))]
     pub(super) fn protection() -> Protection {
@@ -307,6 +336,7 @@ mod view {
                             .or_else(|| url.path_segments().and_then(|mut s| s.next_back()).map(str::to_string).filter(|n| !n.is_empty()))
                             .unwrap_or_else(|| "download".into());
                         let id = tbv_core::ids::new_record_id();
+                        let Ok(hold) = super::DownloadHold::new(&id) else { return false };
                         let folder = saves.join(&id);
                         if let Err(error) = std::fs::create_dir_all(&folder) {
                             tell(&downloads, Event::DownloadStart { tab: download_tab.clone(), id: id.clone(), name: name.clone(), url: address });
@@ -315,7 +345,7 @@ mod view {
                         }
                         *destination = folder.join(&name);
                         if let Ok(mut saving) = SAVING.lock() {
-                            saving.get_or_insert_with(HashMap::new).insert(key, (id.clone(), destination.clone(), download_tab.clone()));
+                            saving.get_or_insert_with(HashMap::new).insert(key, (id.clone(), destination.clone(), download_tab.clone(), hold));
                         }
                         tell(&downloads, Event::DownloadStart { tab: download_tab.clone(), id, name, url: address });
                     }
@@ -323,10 +353,10 @@ mod view {
                         let key = (download_tab.clone(), url.to_string());
                         let kept = SAVING.lock().ok().and_then(|mut saving| {
                             let items = saving.as_mut()?;
-                            let by_path = path.as_ref().and_then(|path| items.iter().find(|(_, (_, saved, _))| saved == path).map(|(key, _)| key.clone()));
+                            let by_path = path.as_ref().and_then(|path| items.iter().find(|(_, (_, saved, _, _))| saved == path).map(|(key, _)| key.clone()));
                             items.remove(by_path.as_ref().unwrap_or(&key))
                         });
-                        if let Some((id, saved, tab)) = kept {
+                        if let Some((id, saved, tab, _hold)) = kept {
                             let folder = saved.parent().map(std::path::Path::to_path_buf);
                             let path = path.filter(|path| path.parent() == saved.parent()).unwrap_or(saved);
                             let cancelled = CANCELLED.lock().ok().is_some_and(|mut c| c.as_mut().is_some_and(|c| c.remove(&id)));
@@ -466,7 +496,7 @@ mod view {
     }
 
     pub fn cancel(app: &tauri::AppHandle, id: &str) -> CommandResult<()> {
-        let found = SAVING.lock().ok().and_then(|s| s.as_ref().and_then(|s| s.iter().find(|(_, (i, _, _))| i == id).map(|((_, url), (_, _, tab))| (url.clone(), tab.clone()))));
+        let found = SAVING.lock().ok().and_then(|s| s.as_ref().and_then(|s| s.iter().find(|(_, (i, _, _, _))| i == id).map(|((_, url), (_, _, tab, _))| (url.clone(), tab.clone()))));
         let Some((url, tab)) = found else { return Ok(()) };
         if let Ok(mut cancelled) = CANCELLED.lock() {
             cancelled.get_or_insert_with(HashSet::new).insert(id.to_string());
@@ -1223,9 +1253,7 @@ pub async fn browser_fetch_picture(url: String) -> CommandResult<tauri::ipc::Res
 /// A file the browser brought down: added to the library, or let go.
 fn in_downloads(app: &tauri::AppHandle, path: &str) -> CommandResult<PathBuf> {
     let path = PathBuf::from(path);
-    let ours = downloads_dir(app)?;
-    #[cfg(target_os = "ios")]
-    let ours = tauri_plugin_tbv_ios::browser_downloads_dir().unwrap_or(ours);
+    let ours = staging_root(app)?;
     let real = path.canonicalize().map_err(|_| "That download is gone.".to_string())?;
     let ours = ours.canonicalize().unwrap_or(ours);
     if !real.is_file() || real.parent().and_then(Path::parent) != Some(ours.as_path()) {
@@ -1245,9 +1273,10 @@ pub async fn browser_add_download(
     id: String,
 ) -> CommandResult<()> {
     let path = in_downloads(&app, &path)?;
+    let hold = DownloadHold::for_path(&path)?;
     let (library, imports) = (state.0.clone(), imports.inner().clone());
     tauri::async_runtime::spawn_blocking(move || {
-        if imports.queue_browser_download(&app, &library, path, id) {
+        if imports.queue_browser_download(&app, &library, path, id, hold) {
             Ok(())
         } else {
             Err("Couldn't queue that download.".into())
@@ -1257,36 +1286,151 @@ pub async fn browser_add_download(
     .map_err(|e| e.to_string())?
 }
 
-/// Moves a download to the computer's Downloads folder; answers where it went.
+fn staging_root(app: &tauri::AppHandle) -> CommandResult<PathBuf> {
+    #[cfg(target_os = "ios")]
+    if let Some(root) = tauri_plugin_tbv_ios::browser_downloads_dir() {
+        return Ok(root);
+    }
+    downloads_dir(app)
+}
+
 #[tauri::command]
-pub async fn browser_keep_download(app: tauri::AppHandle, path: String) -> CommandResult<String> {
+pub async fn browser_download_kind(app: tauri::AppHandle, path: String) -> CommandResult<&'static str> {
     let path = in_downloads(&app, &path)?;
-    let downloads = app.path().download_dir().map_err(|_| "This device has no Downloads folder.".to_string())?;
-    let name = path.file_name().ok_or("That download is gone.")?.to_owned();
-    let mut target = downloads.join(&name);
-    let stem = Path::new(&name).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    let extension = Path::new(&name).extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
-    let mut n = 2;
-    while target.exists() {
-        target = downloads.join(format!("{stem} ({n}){extension}"));
-        n += 1;
+    tauri::async_runtime::spawn_blocking(move || {
+        let format = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+        match format.as_str() {
+            f if tbv_core::formats::is_downloaded_ebook(&path, f) => "ebook",
+            "pdf" | "cbz" | "cbr" | "djvu" | "txt" | "doc" | "docx" | "rtf" => "document",
+            f if tbv_core::audio::is_audio(f) => "audio",
+            _ => "other",
+        }
+    }).await.map_err(|e| e.to_string())
+}
+
+/// Save a completed download to a user-visible folder.
+#[tauri::command]
+pub async fn browser_keep_download(app: tauri::AppHandle, path: String, folder: Option<String>) -> CommandResult<String> {
+    let path = in_downloads(&app, &path)?;
+    let hold = DownloadHold::for_path(&path)?;
+    let downloads = match folder {
+        Some(folder) => PathBuf::from(folder),
+        None => {
+            let dir = app.path().download_dir().or_else(|_| app.path().document_dir().map(|dir| dir.join("Downloads")))
+                .map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            dir
+        }
+    }.canonicalize().map_err(|e| e.to_string())?;
+    let staging = staging_root(&app)?.canonicalize().map_err(|e| e.to_string())?;
+    if downloads.starts_with(staging) {
+        return Err("Choose a folder outside TBV's temporary downloads.".into());
     }
-    if std::fs::rename(&path, &target).is_err() {
-        std::fs::copy(&path, &target).map_err(|e| e.to_string())?;
-    }
-    if let Some(folder) = path.parent() {
-        let _ = std::fs::remove_dir_all(folder);
-    }
-    Ok(target.to_string_lossy().into_owned())
+    tauri::async_runtime::spawn_blocking(move || {
+        let name = path.file_name().ok_or("That download is gone.")?;
+        let stem = path.file_stem().unwrap_or(name).to_string_lossy();
+        let extension = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+        let _hold = hold;
+        for n in 1.. {
+            let target = if n == 1 { downloads.join(name) } else { downloads.join(format!("{stem} ({n}){extension}")) };
+            let destination = match std::fs::OpenOptions::new().write(true).create_new(true).open(&target) {
+                Ok(file) => file,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(e.to_string()),
+            };
+            drop(destination);
+            let copied = std::fs::copy(&path, &target).and_then(|_| std::fs::OpenOptions::new().write(true).open(&target)?.sync_all());
+            if let Err(error) = copied {
+                let _ = std::fs::remove_file(&target);
+                return Err(error.to_string());
+            }
+            if std::fs::remove_file(&path).is_ok() {
+                if let Some(folder) = path.parent() {
+                    let _ = std::fs::remove_dir(folder);
+                }
+            }
+            return Ok(target.to_string_lossy().into_owned());
+        }
+        unreachable!()
+    }).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 pub async fn browser_discard_download(app: tauri::AppHandle, path: String) -> CommandResult<()> {
+    if !Path::new(&path).try_exists().map_err(|e| e.to_string())? {
+        return Ok(());
+    }
     let path = in_downloads(&app, &path)?;
+    let _hold = DownloadHold::for_path(&path)?;
+    std::fs::remove_file(&path).map_err(|e| e.to_string())?;
     if let Some(folder) = path.parent() {
-        let _ = std::fs::remove_dir_all(folder);
+        let _ = std::fs::remove_dir(folder);
     }
     Ok(())
+}
+
+#[derive(serde::Serialize, Default)]
+pub struct TemporaryDownloads {
+    files: usize,
+    bytes: u64,
+    removed: Vec<String>,
+    failed: usize,
+}
+
+#[tauri::command]
+pub async fn browser_temporary_downloads(app: tauri::AppHandle, active: Vec<String>, remove: bool) -> CommandResult<TemporaryDownloads> {
+    let root = staging_root(&app)?;
+    #[cfg(target_os = "ios")]
+    let active: Vec<String> = active.into_iter().chain(tauri_plugin_tbv_ios::browser_active_downloads()
+        .ok_or("Couldn't check for active downloads.")?).collect();
+    #[cfg(target_os = "ios")]
+    let started = std::time::SystemTime::now();
+    tauri::async_runtime::spawn_blocking(move || {
+        let held = STAGING_IN_USE.lock().map_err(|e| e.to_string())?;
+        let mut result = TemporaryDownloads::default();
+        let entries = match std::fs::read_dir(root) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(result),
+            Err(e) => return Err(e.to_string()),
+        };
+        for entry in entries {
+            let Ok(entry) = entry else { result.failed += 1; continue };
+            let id = entry.file_name().to_string_lossy().into_owned();
+            if uuid::Uuid::parse_str(&id).is_err() || active.iter().chain(held.iter()).any(|item| item.eq_ignore_ascii_case(&id))
+                || !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                continue;
+            }
+            #[cfg(target_os = "ios")]
+            if entry.metadata().and_then(|info| info.created()).map_or(true, |created| {
+                started.duration_since(created).map_or(true, |age| age < std::time::Duration::from_secs(2))
+            }) {
+                continue;
+            }
+            let children = match std::fs::read_dir(entry.path()) {
+                Ok(children) => children,
+                Err(_) => { result.failed += 1; continue; }
+            };
+            let mut complete = true;
+            for child in children {
+                let Ok(child) = child else { result.failed += 1; complete = false; continue };
+                let Ok(info) = std::fs::symlink_metadata(child.path()) else { result.failed += 1; complete = false; continue };
+                if !info.is_file() { complete = false; continue; }
+                result.files += 1;
+                result.bytes += info.len();
+                if remove && std::fs::remove_file(child.path()).is_err() {
+                    result.failed += 1;
+                    complete = false;
+                }
+            }
+            if remove && complete {
+                match std::fs::remove_dir(entry.path()) {
+                    Ok(()) => result.removed.push(id),
+                    Err(_) => result.failed += 1,
+                }
+            }
+        }
+        Ok(result)
+    }).await.map_err(|e| e.to_string())?
 }
 
 /// Brings a book down from a web address (a Bible from the Bible tab, or
@@ -1306,13 +1450,14 @@ pub async fn download_web_book(
     let (library, imports) = (state.0.clone(), imports.inner().clone());
     tauri::async_runtime::spawn_blocking(move || {
         let id = tbv_core::ids::new_record_id();
+        let hold = DownloadHold::new(&id)?;
         let folder = downloads.join(&id);
         std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
         tell(&app, Event::DirectDownloadStart { id: id.clone(), name: title.clone(), url: url.clone() });
         match tbv_core::opds::download_book(&url, &title, &folder) {
             Ok(path) => {
                 tell(&app, Event::Download { tab: String::new(), id: id.clone(), path: path.to_string_lossy().into_owned(), name: title, ok: true, error: None, security_blocked: false });
-                if imports.queue_browser_download(&app, &library, path, id.clone()) {
+                if imports.queue_browser_download(&app, &library, path, id.clone(), hold) {
                     Ok(())
                 } else {
                     let error = "Couldn't queue that download.".to_string();

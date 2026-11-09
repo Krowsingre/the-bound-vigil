@@ -34,6 +34,17 @@ pub fn read_metadata(path: &Path, format: &str) -> Result<BookMetadata> {
     Ok(read.unwrap_or_default())
 }
 
+/// Strict format readers used before a browser download can auto-import.
+pub fn is_downloaded_ebook(path: &Path, format: &str) -> bool {
+    match format {
+        "epub" | "kepub" => read_epub_metadata(path).is_ok(),
+        "mobi" | "azw" | "azw3" => mobi::read(path).is_ok(),
+        "fb2" => fb2::read(path, false).is_ok(),
+        "fbz" => fb2::read(path, true).is_ok(),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 pub(crate) use mobi::tests::sample_mobi as mobi_sample;
 

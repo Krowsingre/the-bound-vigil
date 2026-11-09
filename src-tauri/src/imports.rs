@@ -192,8 +192,8 @@ impl Imports {
     }
 
     /// The browser retains the file until the library has a successful import.
-    pub(crate) fn queue_browser_download(self: &Arc<Self>, app: &AppHandle, library: &Arc<Mutex<Library>>, path: PathBuf, download: String) -> bool {
-        self.enqueue_sources(app, library, vec![(path, None)], Some(download)) == 1
+    pub(crate) fn queue_browser_download(self: &Arc<Self>, app: &AppHandle, library: &Arc<Mutex<Library>>, path: PathBuf, download: String, hold: crate::browser::DownloadHold) -> bool {
+        self.enqueue_sources(app, library, vec![(path, Some(Arc::new(hold)))], Some(download)) == 1
     }
 
     fn enqueue_sources(self: &Arc<Self>, app: &AppHandle, library: &Arc<Mutex<Library>>, sources: Vec<(PathBuf, Option<Hold>)>, download: Option<String>) -> usize {

@@ -1,3 +1,4 @@
+import { RememberedDetails } from "../components/RememberedDetails";
 // Bringing a manuscript written elsewhere into Scribe, in stages:
 // 1. choose the file, which is only looked at (nothing is made yet);
 // 2. confirm you own it or may publish it, a box that is never ticked for
@@ -367,14 +368,14 @@ export function ImportBookDialog({
               </button>
               {picked && <span className="muted">{picked.name}</span>}
             </div>
-            <details className="import-marks">
+            <RememberedDetails disclosure="writing.importMarks" className="import-marks">
               <summary>Writing in another app? Mark your pages</summary>
               <p>
                 In any app, put a line like these where each page starts. Scribe then knows what every page is, with nothing guessed. The words after the colon are the page's title.
               </p>
               <pre>{["=== title page", "=== copyright", "=== dedication", "=== contents", "=== part: Book One", "=== chapter: Arrival", "=== poem: Ash on the road", "=== end part", "=== acknowledgments", "=== about the author"].join("\n")}</pre>
               <p className="muted">Every kind of page works: {MARK_HELP.join(", ")}.</p>
-            </details>
+            </RememberedDetails>
             {picked && !picked.inspection.supported && (
               <div className="import-unsupported" role="alert">
                 <Icon name="info" size={16} />

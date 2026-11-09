@@ -130,7 +130,7 @@ export function Collections({
   const [selected, setSelected] = useState<CollectionRef | null>(null);
   const [tab, setTab] = useState<Tab>("all");
   const [side, setSide] = useState<Side>(() => (readStored(SIDE_KEY) === "series" ? "series" : "compendiums"));
-  const [smartFolded, setSmartFolded] = useState(() => readStored(SMART_FOLDED_KEY) === "1");
+  const [smartFolded, setSmartFolded] = useState(() => readStored(SMART_FOLDED_KEY) !== "0");
   const changeSide = (next: Side) => {
     setSide(next);
     store(SIDE_KEY, next);

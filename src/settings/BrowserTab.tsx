@@ -25,6 +25,7 @@ import {
   type SearchEngine,
 } from "../browse/browserPrefs";
 import { Columns, Row, Section, SectionGroup, Select, Toggle } from "./controls";
+import { temporaryDownloads } from "../browse/browserDownloads";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DiscoverBackgroundPicker } from "../browse/DiscoverBackground";
 import { clearHistory, HISTORY_KEEPS, trimHistory, type HistoryKeep } from "../browse/browserHistory";
@@ -39,6 +40,26 @@ export function BrowserTab() {
   const [home, setHome] = useState(prefs.home);
   const [redirectSite, setRedirectSite] = useState("");
   const [clearing, setClearing] = useState(false);
+  const [cleanup, setCleanup] = useState<{ files: number; bytes: number } | null>(null);
+  const [working, setWorking] = useState(false);
+  const manageTemporary = async (remove: boolean) => {
+    setWorking(true);
+    try {
+      const result = await temporaryDownloads(remove);
+      if (remove) {
+        setCleanup(null);
+        toast(result.failed ? `Couldn't remove ${result.failed} temporary entries.` : "Temporary files removed.");
+      } else if (result.files || result.failed) setCleanup(result);
+      else toast("There are no temporary files to remove.");
+    } catch (error) { toast(String(error)); }
+    finally { setWorking(false); }
+  };
+  const chooseDownloadFolder = async () => {
+    try {
+      const downloadFolder = await api.chooseFolder("Choose where to save Discover downloads", prefs.downloadFolder);
+      if (downloadFolder) writeBrowserPrefs({ downloadFolder, askDownloadFolder: false });
+    } catch (error) { toast(String(error)); }
+  };
   useEffect(() => onBrowserPrefs(() => setPrefs(readBrowserPrefs())), []);
   useEffect(() => setHome(prefs.home), [prefs.home]);
 
@@ -68,6 +89,23 @@ export function BrowserTab() {
             checked={prefs.addWithoutAsking}
             onChange={(addWithoutAsking) => writeBrowserPrefs({ addWithoutAsking })}
           />
+          <Row label="Download to" hint={prefs.askDownloadFolder ? "Ask every time" : prefs.downloadFolder ?? "Downloads (TBV default)"}>
+            <button type="button" className="btn btn-quiet btn-small" onClick={() => void chooseDownloadFolder()}>Choose folder</button>
+            <button type="button" className="btn btn-quiet btn-small" onClick={() => writeBrowserPrefs({ downloadFolder: null, askDownloadFolder: false })}>Reset to TBV default</button>
+          </Row>
+          <Toggle label="Ask where to save each download" checked={prefs.askDownloadFolder}
+            onChange={(askDownloadFolder) => writeBrowserPrefs({ askDownloadFolder })} />
+          <Toggle label="Delete temporary files when removing downloads from history"
+            hint="Files saved to your download folder and books in your library stay where they are."
+            checked={prefs.deleteTemporaryWithHistory}
+            onChange={(deleteTemporaryWithHistory) => writeBrowserPrefs({ deleteTemporaryWithHistory })} />
+          <Row label="Temporary files">
+            <button type="button" className="btn btn-quiet btn-small" disabled={working} onClick={() => void manageTemporary(false)}>Remove all temporary files</button>
+          </Row>
+          {cleanup && <ConfirmDialog title="Remove temporary files?"
+            body={`${cleanup.files} files (${(cleanup.bytes / 1024 / 1024).toFixed(1)} MB). Active transfers and imports are skipped.`}
+            confirm="Remove" onCancel={() => setCleanup(null)}
+            onConfirm={() => { if (!working) void manageTemporary(true); }} />}
         </Section>
         <Section id="playing" title="Videos and sound" lede="What happens to a video or music playing in Discover when you go to another page.">
           <Toggle

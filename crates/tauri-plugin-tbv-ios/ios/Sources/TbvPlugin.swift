@@ -365,7 +365,7 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
 
   /// Where the browser's downloads wait.
   @objc public func browserDownloads(_ invoke: Invoke) throws {
-    invoke.resolve(["path": TbvBrowser.downloadsFolder.path])
+    invoke.resolve(["path": TbvBrowser.downloadsFolder.path, "active": TbvBrowser.shared.activeDownloads])
   }
 
   override func load(webview: WKWebView) {

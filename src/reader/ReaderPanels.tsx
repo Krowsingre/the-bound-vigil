@@ -141,7 +141,14 @@ export function LeftPanel({
   handlers: AnnotationHandlers;
 }) {
   const current = entries.find((e) => e.id === currentId);
-  const [open, setOpen] = useState<Set<string>>(() => new Set(current?.parents ?? []));
+  const disclosureKey = `tbv.contents.expanded.${book.id}`;
+  const [remembered, setRemembered] = useState<Set<string>>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(disclosureKey) ?? "[]");
+      return new Set(Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : []);
+    } catch { return new Set(); }
+  });
+  const [open, setOpen] = useState<Set<string>>(() => new Set([...remembered, ...(current?.parents ?? [])]));
   const body = useRef<HTMLDivElement>(null);
   const activeRow = useRef<HTMLLIElement>(null);
   const pendingReveal = useRef(false);
@@ -178,13 +185,15 @@ export function LeftPanel({
   }, [reveal]);
 
   const visible = entries.filter((e) => e.parents.every((p) => open.has(p)));
-  const toggle = (id: string) =>
-    setOpen((o) => {
-      const n = new Set(o);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
-    });
+  const toggle = (id: string) => {
+    const next = new Set(open);
+    const saved = new Set(remembered);
+    if (next.delete(id)) saved.delete(id);
+    else { next.add(id); saved.add(id); }
+    setOpen(next);
+    setRemembered(saved);
+    try { localStorage.setItem(disclosureKey, JSON.stringify([...saved])); } catch { /* Keep the current view. */ }
+  };
   const highlights = annotations.filter(isHighlight);
   const notes = annotations.filter(isNote);
   const total = position?.total ?? 0;

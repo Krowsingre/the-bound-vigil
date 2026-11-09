@@ -119,8 +119,8 @@ export function Library({
   const [pinnedSeries, setPinnedSeries] = useState<string[]>([]);
   const [seriesCards, setSeriesCards] = useState<{ name: string; book: BookPreview; count: number }[]>([]);
   const [pinsExpanded, setPinsExpanded] = useState(() => {
-    try { return localStorage.getItem("tbv.archive.pinsCollapsed") !== "1"; }
-    catch { return true; }
+    try { return localStorage.getItem("tbv.archive.pinsCollapsed") === "0"; }
+    catch { return false; }
   });
   const togglePins = (expanded: boolean) => {
     setPinsExpanded(expanded);

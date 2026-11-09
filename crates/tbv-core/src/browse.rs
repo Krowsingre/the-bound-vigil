@@ -230,7 +230,7 @@ impl Library {
             conditions.push(if pinned { "b.pinned_at IS NOT NULL".into() } else { "b.pinned_at IS NULL".into() });
         }
         if let Some(audio_type) = &query.audio_type {
-            conditions.push(format!("b.audio_type = ?{}", values.len() + 1));
+            conditions.push(format!("COALESCE(b.audio_type, 'audiobook') = ?{}", values.len() + 1));
             values.push(Value::Text(audio_type.clone()));
         }
         match query.paired {
@@ -276,18 +276,21 @@ impl Library {
         let limit = format!("LIMIT {page_size} OFFSET {}", page * page_size);
         let mut series_counts = std::collections::BTreeMap::new();
         let books = if query.group_series {
+            let pin_rank = if query.pinned_first { "b.pinned_at IS NULL" } else { "0" };
             let sql = format!(
                 "WITH ranked AS (
-                    SELECT b.id, {group} AS stack, COUNT(*) OVER (PARTITION BY {group}) AS matches,
+                    SELECT b.id, {pin_rank} AS pin_rank, {group} AS stack, COUNT(*) OVER (PARTITION BY {group}) AS matches,
                            ROW_NUMBER() OVER (PARTITION BY {group} ORDER BY {order}) AS pick,
                            ROW_NUMBER() OVER (ORDER BY {order}) AS position
                     {BOOK_FROM} {filter}
                 ), page AS (
-                    SELECT id, stack, matches, position FROM ranked WHERE pick = 1 ORDER BY position {limit}
+                    SELECT id, stack, matches, position, pin_rank FROM ranked WHERE pick = 1 ORDER BY pin_rank, stack NOT LIKE 'series:%', position {limit}
                 )
                 {BOOK_COLUMNS}, (SELECT matches FROM page WHERE page.id = b.id AND stack LIKE 'series:%') AS series_matches
                 {BOOK_FROM} AND b.id IN (SELECT id FROM page)
-                ORDER BY (SELECT position FROM page WHERE page.id = b.id)"
+                ORDER BY (SELECT pin_rank FROM page WHERE page.id = b.id),
+                         (SELECT stack NOT LIKE 'series:%' FROM page WHERE page.id = b.id),
+                         (SELECT position FROM page WHERE page.id = b.id)"
             );
             let mut statement = self.conn.prepare(&sql)?;
             let rows = statement.query_map(params_from_iter(values.iter()), |row| {

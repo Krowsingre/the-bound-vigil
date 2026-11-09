@@ -55,7 +55,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     if (q.downloadable && !b.inCloud) return false;
     if (q.hideRead && (b.status === "read" || b.status === "dropped")) return false;
     if (q.pinned != null && !!b.pinnedAt !== q.pinned) return false;
-    if (q.audioType && b.audioType !== q.audioType) return false;
+    if (q.audioType && (b.audioType ?? "audiobook") !== q.audioType) return false;
     if (q.paired != null && !!b.paired !== q.paired) return false;
     if (!hasAny(b.genres, q.genres) || !hasAny(b.authors, q.authors) || !hasAny(b.narrators, q.narrators)) return false;
     if (q.series?.length && !q.series.some((s) => s.trim().toLowerCase() === (b.series ?? "").trim().toLowerCase())) return false;
@@ -95,6 +95,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
       seriesCounts[book.id] = 1;
       return true;
     });
+    list.sort((a, b) => pins(a, b) || Number(Boolean(seriesCounts[b.id])) - Number(Boolean(seriesCounts[a.id])));
   }
   const pageSize = q.pageSize || 24;
   const page = Math.min(q.page, Math.max(0, Math.ceil(list.length / pageSize) - 1));

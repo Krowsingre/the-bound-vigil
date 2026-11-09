@@ -558,6 +558,9 @@ export function App() {
               setBrowserDraft("");
             } else if (route !== "notes" && route !== "writing" && route !== "documents" && route !== "audiobooks" && route !== "collections" && route !== "settings") setRoute("library");
           }}
+          onPasteAndGo={route === "catalogs" && !narrow ? (text) => {
+            window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: text }));
+          } : undefined}
           address={route === "catalogs" ? browserAddress : undefined}
           pageAction={route === "catalogs" ? <BrowserNav /> : undefined}
           searchStart={route === "catalogs" ? <BrowserSiteButton url={browserAddress} /> : undefined}
@@ -566,6 +569,7 @@ export function App() {
             route === "catalogs"
               ? (typed, done) => (
                   <AddressSuggestions
+                    showPaste={narrow}
                     typed={typed}
                     current={browserAddress}
                     onGo={(text) => {

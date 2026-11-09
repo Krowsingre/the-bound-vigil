@@ -1,3 +1,4 @@
+import { useRememberedDisclosure } from "../components/RememberedDetails";
 // Scribe's notes: everything you've noted (All), your own notes (Notes), and
 // what you noted from books, highlights included (Book notes). A row of
 // filters, the notes pinned above the rest, then the rest. Opening a note
@@ -136,7 +137,7 @@ export function Notes({
   const [reload, setReload] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [chosen, setChosen] = useState<Set<string> | null>(null);
-  const [allPinned, setAllPinned] = useState(false);
+  const [allPinned, setAllPinned] = useRememberedDisclosure("notes.allPinned");
   const [writing, setWriting] = useState<Writing>(null);
   const [deleting, setDeleting] = useState<NoteItem[] | null>(null);
   const [tagging, setTagging] = useState<NoteItem | null>(null);

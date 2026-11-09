@@ -11,8 +11,10 @@ export const BOOK_FILE = /\.(epub|kepub|pdf|mobi|azw3?|fb2|cbz|cbr|djvu|txt|docx
 export interface Fetched {
   id: string;
   name: string;
-  state: "coming" | "done" | "failed" | "importing" | "importFailed" | "added" | "kept";
+  state: "coming" | "checking" | "done" | "failed" | "importing" | "importFailed" | "added" | "kept";
   direct?: boolean;
+  media?: "ebook" | "audio" | "document" | "other";
+  savedTo?: string;
   error?: string;
   securityBlocked?: boolean;
   path?: string;
@@ -54,7 +56,7 @@ export function writeDownloads(list: Fetched[]): void {
   }
 }
 
-export const isActiveDownload = (d: Fetched) => d.state === "coming" || d.state === "importing";
+export const isActiveDownload = (d: Fetched) => d.state === "coming" || d.state === "checking" || d.state === "importing";
 
 let downloads: Fetched[] | undefined;
 const listeners = new Set<() => void>();
@@ -64,6 +66,7 @@ const answering = new Set<string>();
 // leaves this store and its native event subscription in place.
 function snapshot(): Fetched[] {
   return downloads ??= readDownloads().map((d) => {
+    if (d.state === "checking") return { ...d, state: "done", asking: !!d.path };
     if (d.state === "coming") return { ...d, state: "failed" };
     if (d.state === "importing") return { ...d, state: "importFailed", asking: !!d.path, error: "The app closed during import." };
     return d;
@@ -91,7 +94,7 @@ function updateDownload(id: string, change: Partial<Fetched>) {
   setDownloads((rows) => rows.map((d) => d.id === id ? { ...d, ...change } : d));
 }
 
-export async function answerDownload(d: Fetched, how: "add" | "keep" | "drop", toast: (message: string) => void) {
+export async function answerDownload(d: Fetched, how: "add" | "keep", toast: (message: string) => void) {
   const current = snapshot().find((row) => row.id === d.id);
   if (!current?.path || !current.asking || answering.has(d.id)) return;
   const path = current.path;
@@ -100,19 +103,61 @@ export async function answerDownload(d: Fetched, how: "add" | "keep" | "drop", t
     if (how === "add") {
       updateDownload(d.id, { state: "importing", asking: false, error: undefined });
       await api.browserAddDownload(path, d.id);
-    } else if (how === "keep") {
-      const where = await api.browserKeepDownload(path);
-      updateDownload(d.id, { state: "kept", asking: false, path: undefined, error: undefined });
-      toast(`Saved to ${where}`);
     } else {
-      await api.browserDiscardDownload(path);
-      setDownloads((rows) => rows.filter((row) => row.id !== d.id));
+      const prefs = readBrowserPrefs();
+      const folder = prefs.askDownloadFolder ? await api.chooseFolder("Save download to this folder", prefs.downloadFolder) : prefs.downloadFolder;
+      if (prefs.askDownloadFolder && !folder) return;
+      const where = await api.browserKeepDownload(path, folder);
+      updateDownload(d.id, { state: "kept", asking: false, savedTo: where, error: undefined });
+      toast(`Saved to ${where}`);
     }
   } catch (e) {
     if (how === "add") updateDownload(d.id, { state: "importFailed", asking: true, error: String(e) });
     toast(String(e));
   } finally {
     answering.delete(d.id);
+  }
+}
+
+export async function removeDownloads(ids: string[], toast: (message: string) => void) {
+  const deleteFiles = readBrowserPrefs().deleteTemporaryWithHistory;
+  for (const id of ids) {
+    const row = snapshot().find((item) => item.id === id);
+    if (!row || isActiveDownload(row) || answering.has(id)) continue;
+    answering.add(id);
+    try {
+      if (deleteFiles && row.path) await api.browserDiscardDownload(row.path);
+      setDownloads((rows) => rows.filter((item) => item.id !== id));
+    } catch (error) {
+      toast(String(error));
+    } finally {
+      answering.delete(id);
+    }
+  }
+}
+
+export async function temporaryDownloads(remove: boolean) {
+  const active = snapshot().filter((row) => isActiveDownload(row) || answering.has(row.id)).map((row) => row.id);
+  const result = await api.browserTemporaryDownloads(active, remove);
+  if (remove && result.removed.length) {
+    const gone = new Set(result.removed.map((id) => id.toLowerCase()));
+    setDownloads((rows) => rows.map((row) => {
+      const directory = row.path?.split(/[\\/]/).at(-2);
+      return directory && gone.has(directory.toLowerCase())
+        ? { ...row, path: undefined, asking: false } : row;
+    }));
+  }
+  return result;
+}
+
+async function finishDownload(row: Fetched, toast: (message: string) => void) {
+  try {
+    const media = await api.browserDownloadKind(row.path!);
+    updateDownload(row.id, { state: "done", media, asking: true });
+    if (media === "other") await answerDownload(row, "keep", toast);
+    else if (media === "ebook" && readBrowserPrefs().addWithoutAsking) await answerDownload(row, "add", toast);
+  } catch (error) {
+    updateDownload(row.id, { state: "done", media: "other", asking: true, error: String(error) });
   }
 }
 
@@ -130,19 +175,18 @@ export function listenForDownloads(toast: (message: string) => void) {
       const row: Fetched = {
         ...before, direct, id: event.id, name: event.name, tab: event.tab,
         path: event.path || undefined, at: before?.at ?? Date.now(),
-        state: event.ok ? direct ? "importing" : "done" : "failed",
-        asking: event.ok && !direct,
+        state: event.ok ? direct ? "importing" : "checking" : "failed",
+        asking: false,
         error: event.error ?? undefined,
         securityBlocked: event.securityBlocked,
       };
       setDownloads((rows) => [row, ...rows.filter((d) => d.id !== row.id)]);
-      if (row.asking && BOOK_FILE.test(row.name) && readBrowserPrefs().addWithoutAsking) {
-        void answerDownload(row, "add", toast);
-      }
+      if (row.state === "checking" && row.path) void finishDownload(row, toast);
     } else if (event.kind === "downloadImport") {
       updateDownload(event.id, {
         state: event.bookId ? "added" : "importFailed",
         bookId: event.bookId ?? undefined, asking: !event.bookId,
+        ...(event.bookId && !event.error ? { path: undefined } : {}),
         error: event.error ?? undefined,
       });
       if (event.error) toast(event.error);
@@ -155,6 +199,8 @@ export function downloadState(d: Fetched): string {
   switch (d.state) {
     case "coming":
       return "Coming down…";
+    case "checking":
+      return "Checking file…";
     case "failed":
       return "Didn't finish";
     case "importing":
@@ -164,7 +210,7 @@ export function downloadState(d: Fetched): string {
     case "added":
       return "Added to your library";
     case "kept":
-      return "Kept in Downloads";
+      return d.savedTo ? `Saved to ${d.savedTo}` : "Saved to Downloads";
     default:
       return "Downloaded";
   }

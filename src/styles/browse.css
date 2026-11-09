@@ -623,13 +623,25 @@
 }
 
 /* Downloads. */
-.dialog.browser-downloads {
-  width: min(520px, calc(100vw - 32px));
-  max-height: min(640px, calc(100vh - 48px));
-  overflow: auto;
+.browser-downloads-backdrop {
+  align-items: start;
+  padding-top: 78px;
 }
 
+.dialog.browser-downloads {
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(640px, calc(100dvh - 100px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.browser-downloads .catalogues-head { flex-shrink: 0; }
+.browser-downloads .catalogues-head h2 { margin-inline-end: auto; }
+
 .browser-download-list {
+  overflow-y: auto;
+  min-height: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1899,4 +1911,13 @@
 
 .browser-strip ~ .browser-offer {
   border-width: 0 0 1px;
+}
+
+.search input.search-paste-hint-input { color: transparent; }
+.search input.search-paste-hint-input::placeholder { color: transparent; }
+.search-paste-hint {
+  position: absolute;
+  inset-inline-start: 40px;
+  pointer-events: none;
+  color: var(--muted);
 }

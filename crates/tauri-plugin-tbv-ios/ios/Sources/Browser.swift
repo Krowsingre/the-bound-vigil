@@ -51,6 +51,7 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
   private var waiting: Invoke?
   private var queue = [[String: Any]]()
   /// Downloads under way: their id, where each is saved, its tab and address.
+  var activeDownloads: [String] { saving.values.map { $0.id } }
   private var saving = [ObjectIdentifier: (id: String, target: URL, tab: String, url: String)]()
   private var downloads = [String: AnyObject]()
   /// When each address last started coming down, so a page asking again and

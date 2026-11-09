@@ -114,6 +114,12 @@ pub fn browser_event() -> Option<serde_json::Value> {
     None
 }
 
+#[cfg(target_os = "ios")]
+pub fn browser_active_downloads() -> Option<Vec<String>> {
+    let answer: serde_json::Value = SWIFT.get()?.run_mobile_plugin("browserDownloads", ()).ok()?;
+    serde_json::from_value(answer.get("active")?.clone()).ok()
+}
+
 /// Where the browser's downloads wait on the phone.
 pub fn browser_downloads_dir() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "ios")]

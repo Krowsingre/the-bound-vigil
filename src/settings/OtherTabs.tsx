@@ -1,3 +1,4 @@
+import { RememberedDetails } from "../components/RememberedDetails";
 import { useEffect, useRef, useState } from "react";
 import { api, isAndroid, isApp, isIOS, openExternal } from "../api";
 import type { DuplicateGroup, GoodreadsImport, LibraryInfo, SortOrder, TagCount } from "../api/types";
@@ -499,7 +500,7 @@ function GoodreadsReport({ report, onClose }: { report: GoodreadsImport; onClose
           <p>TBV already had everything the export holds, so nothing changed.</p>
         )}
         {report.notFound.length > 0 && (
-          <details>
+          <RememberedDetails disclosure="preferences.goodreadsReport">
             <summary>
               {books(report.notFound.length)} from Goodreads aren't in your library
             </summary>
@@ -508,7 +509,7 @@ function GoodreadsReport({ report, onClose }: { report: GoodreadsImport; onClose
                 <li key={b}>{b}</li>
               ))}
             </ul>
-          </details>
+          </RememberedDetails>
         )}
         <div className="dialog-actions">
           <button ref={close} type="button" className="btn btn-primary" onClick={onClose}>

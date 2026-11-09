@@ -33,9 +33,9 @@ async function findInLibrary(t: Translation): Promise<string | null> {
 const FOLDED_KEY = "tbv.bible.folded";
 function readFolded(): boolean {
   try {
-    return localStorage.getItem(FOLDED_KEY) === "1";
+    return localStorage.getItem(FOLDED_KEY) !== "0";
   } catch {
-    return false;
+    return true;
   }
 }
 

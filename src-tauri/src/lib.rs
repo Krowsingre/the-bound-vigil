@@ -2146,6 +2146,8 @@ pub fn run() {
             browser::trim_browser_history,
             browser::browser_add_download,
             browser::browser_keep_download,
+            browser::browser_download_kind,
+            browser::browser_temporary_downloads,
             browser::browser_discard_download,
             browser::download_web_book,
             browser::bookmarks,

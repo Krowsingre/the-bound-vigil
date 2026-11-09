@@ -52,7 +52,7 @@ export function suggestionsFor(typed: string, from: Suggestion[]): Suggestion[] 
 
 const ICONS: Record<Suggestion["kind"], IconName> = { tab: "arrowRight", quick: "link", bookmark: "bookmark", history: "clock", search: "search" };
 
-export function AddressSuggestions({ typed, current, onGo, onTab }: { typed: string; current: string; onGo: (text: string) => void; onTab: (id: string) => void }) {
+export function AddressSuggestions({ typed, current, onGo, onTab, showPaste = true }: { showPaste?: boolean; typed: string; current: string; onGo: (text: string) => void; onTab: (id: string) => void }) {
   const [marks, setMarks] = useState<Bookmark[]>([]);
   const [links, setLinks] = useState<QuickLink[]>([]);
   const [history, setHistory] = useState(readHistory);
@@ -115,16 +115,17 @@ export function AddressSuggestions({ typed, current, onGo, onTab }: { typed: str
     }
   };
 
+  if (!showPaste && !list.length) return null;
   return (
     <div className="address-suggestions" role="listbox" aria-label="Suggestions" onPointerDown={(e) => e.preventDefault()}>
-      <button type="button" role="option" aria-selected={false} className="address-suggestion" onClick={() => void paste()}>
+      {showPaste && <button type="button" role="option" aria-selected={false} className="address-suggestion" onClick={() => void paste()}>
         <span className="address-suggestion-icon">
           <Icon name="paste" size={18} />
         </span>
         <span className="address-suggestion-text">
           <b>Paste and go</b>
         </span>
-      </button>
+      </button>}
       {list.map((s, index) => (
         <div key={`${s.kind}:${s.url}`} className="address-suggestion-row">
         <button type="button" role="option" aria-selected={selected === index} className="address-suggestion" onClick={() => choose(s)}>

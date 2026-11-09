@@ -55,7 +55,7 @@ import {
   type ClosedTab,
   type TabsState,
 } from "./browserTabs";
-import { answerDownload, BOOK_FILE, downloadState, isActiveDownload, setDownloads, useDownloads, type Fetched } from "./browserDownloads";
+import { answerDownload, BOOK_FILE, downloadState, isActiveDownload, removeDownloads, setDownloads, useDownloads, type Fetched } from "./browserDownloads";
 import { requestAppHistory } from "../shell/navigationKeys";
 import { addToHistory } from "./browserHistory";
 import { HistoryPanel } from "./HistoryPanel";
@@ -427,7 +427,30 @@ export function Browser({
   const reloadMarks = useCallback(() => api.bookmarks().then(setMarks, () => undefined), []);
   useEffect(() => void reloadMarks(), [reloadMarks]);
 
-  const answer = (d: Fetched, how: "add" | "keep" | "drop") => answerDownload(d, how, toast);
+  const downloadTrigger = useRef<HTMLButtonElement>(null);
+  const downloadClose = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (panel !== "downloads") return;
+    const previous = document.activeElement;
+    downloadClose.current?.focus();
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+      else downloadTrigger.current?.focus();
+    };
+  }, [panel]);
+  const removeDownloadRows = async (ids: string[], from: HTMLElement) => {
+    const dialog = from.closest(".browser-downloads");
+    const previous = Array.from(dialog?.querySelectorAll<HTMLButtonElement>("[data-remove-download]") ?? []);
+    const index = previous.indexOf(from as HTMLButtonElement);
+    await removeDownloads(ids, toast);
+    requestAnimationFrame(() => {
+      if (!dialog?.isConnected || (from.isConnected && !from.matches(":disabled"))) return;
+      if (document.activeElement !== document.body && document.activeElement !== from) return;
+      const buttons = dialog.querySelectorAll<HTMLButtonElement>("[data-remove-download]");
+      (buttons[Math.min(Math.max(index, 0), buttons.length - 1)] ?? downloadClose.current)?.focus();
+    });
+  };
+  const answer = (d: Fetched, how: "add" | "keep") => answerDownload(d, how, toast);
 
   // What the tabs did.
   useEffect(() => {
@@ -798,7 +821,7 @@ export function Browser({
   const site = siteOf(url);
   const busy = !!loading[active.id];
   const coming = fetched.filter(isActiveDownload).length;
-  const asking = fetched.filter((d) => d.asking);
+  const asking = fetched.filter((d) => d.asking && d.media !== "other");
   const web = url.startsWith("http") && !failure;
   useEffect(() => {
     barNow = { busy: busy && !onStart, marked: !!marked, bookmarks: marks, reader: !!article, web };
@@ -1008,7 +1031,7 @@ export function Browser({
   const backTravel = useTravel("back");
   const forwardTravel = useTravel("forward");
   const downloadsButton = (
-    <button type="button" className="toolbar-button browser-downloads-button" aria-label={coming ? `Downloads, ${coming} in progress` : "Downloads"} title="Downloads" onClick={() => setPanel("downloads")}>
+    <button type="button" ref={downloadTrigger} className="toolbar-button browser-downloads-button" aria-label={coming ? `Downloads, ${coming} in progress` : "Downloads"} title="Downloads" onClick={() => setPanel("downloads")}>
       <Icon name="download" size={17} />
       {(coming > 0 || asking.length > 0) && <span className="browser-badge">{coming || asking.length}</span>}
     </button>
@@ -1106,19 +1129,15 @@ export function Browser({
       {asking.map((d) => (
         <div key={d.id} className="browser-offer" role="status">
           <span>
-            Downloaded <b>{d.name}</b>. Add it to your library?
+            Downloaded <b title={d.name}>{d.name}</b>.
           </span>
-          <button type="button" className="btn btn-primary btn-small" onClick={() => void answer(d, "add")}>
-            Add to library
-          </button>
-          {!isIOS && (
-            <button type="button" className="btn btn-quiet btn-small" onClick={() => void answer(d, "keep")}>
-              Keep in Downloads
+          {d.media !== "other" && (
+            <button type="button" className="btn btn-primary btn-small" onClick={() => void answer(d, "add")}>
+              {d.media === "audio" ? "Add to Resonance" : "Add to Archive"}
             </button>
           )}
-          <button type="button" className="btn btn-quiet btn-small" onClick={() => void answer(d, "drop")}>
-            No thanks
-          </button>
+          <button type="button" className="btn btn-quiet btn-small" onClick={() => void answer(d, "keep")}>Save</button>
+          <button type="button" className="btn btn-quiet btn-small" onClick={(e) => void removeDownloadRows([d.id], e.currentTarget)}>Remove</button>
         </div>
       ))}
       {isFile && !narrow && (
@@ -1265,11 +1284,15 @@ export function Browser({
       )}
       {panel === "history" && <HistoryPanel onGo={(to) => (setPanel(null), go(to))} onClose={() => setPanel(null)} />}
       {panel === "downloads" && (
-        <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && setPanel(null)}>
+        <div className="dialog-backdrop browser-downloads-backdrop" onPointerDown={(e) => e.target === e.currentTarget && setPanel(null)}>
           <div className="dialog browser-downloads" role="dialog" aria-label="Downloads" onKeyDown={(e) => e.key === "Escape" && setPanel(null)}>
             <header className="catalogues-head">
               <h2>Downloads</h2>
-              <button type="button" className="icon-btn" aria-label="Close" onClick={() => setPanel(null)}>
+              <button type="button" className="btn btn-quiet btn-small" disabled={!fetched.some((d) => !isActiveDownload(d))}
+                onClick={(e) => void removeDownloadRows(fetched.map((d) => d.id), e.currentTarget)}>
+                Remove all
+              </button>
+              <button ref={downloadClose} type="button" className="icon-btn" aria-label="Close" onClick={() => setPanel(null)}>
                 <Icon name="close" size={18} />
               </button>
             </header>
@@ -1281,7 +1304,7 @@ export function Browser({
                   <li key={d.id}>
                     <Icon name="file" size={18} />
                     <span className="browser-download-name">
-                      <b>{d.name}</b>
+                      <b title={d.name}>{d.name}</b>
                       <span className="muted">
                         {downloadState(d)}{d.error && ` · ${d.error}`}
                         {d.at > 0 && d.state !== "coming" && ` · ${new Date(d.at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`}
@@ -1325,18 +1348,19 @@ export function Browser({
                     )}
                     {d.asking && (
                       <>
-                        <button type="button" className="btn btn-primary btn-small" onClick={() => void answer(d, "add")}>
-                          {d.state === "importFailed" ? "Retry import" : "Add"}
-                        </button>
-                        {!isIOS && (
-                          <button type="button" className="btn btn-quiet btn-small" onClick={() => void answer(d, "keep")}>
-                            Keep
+                        {d.media !== "other" && (
+                          <button type="button" className="btn btn-primary btn-small" onClick={() => void answer(d, "add")}>
+                            {d.state === "importFailed" ? "Retry import" : d.media === "audio" ? "Add to Resonance" : "Add to Archive"}
                           </button>
                         )}
+                        <button type="button" className="btn btn-quiet btn-small" onClick={() => void answer(d, "keep")}>
+                          Save
+                        </button>
                       </>
                     )}
                     {!isActiveDownload(d) && (
-                      <button type="button" className="icon-btn" aria-label={`Remove ${d.name} from the list`} onClick={() => (d.asking ? void answer(d, "drop") : setDownloads((list) => list.filter((x) => x.id !== d.id)))}>
+                      <button type="button" className="icon-btn" data-remove-download aria-label={`Remove ${d.name} from the list`}
+                        title="Remove from history" onClick={(e) => void removeDownloadRows([d.id], e.currentTarget)}>
                         <Icon name="close" size={14} />
                       </button>
                     )}

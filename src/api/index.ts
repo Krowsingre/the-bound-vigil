@@ -592,7 +592,9 @@ export interface Api {
   /** Lets go of what's older than `before` on this device only. */
   trimBrowserHistory(before: number): Promise<void>;
   /** Moves a download to the Downloads folder; resolves to where it went. */
-  browserKeepDownload(path: string): Promise<string>;
+  browserKeepDownload(path: string, folder: string | null): Promise<string>;
+  browserDownloadKind(path: string): Promise<"ebook" | "audio" | "document" | "other">;
+  browserTemporaryDownloads(active: string[], remove: boolean): Promise<{ files: number; bytes: number; removed: string[]; failed: number }>;
   browserDiscardDownload(path: string): Promise<void>;
   /** Books being written, most recently changed first. */
   writingProjects(): Promise<WritingProject[]>;
@@ -1289,7 +1291,9 @@ function appApi(): Api {
     removeBrowserHistory: async (ids) => (await core).invoke("remove_browser_history", { ids }),
     clearBrowserHistory: async (since, kind) => (await core).invoke("clear_browser_history", { since, kind: kind ?? null }),
     trimBrowserHistory: async (before) => (await core).invoke("trim_browser_history", { before: Math.round(before) }),
-    browserKeepDownload: async (path) => (await core).invoke<string>("browser_keep_download", { path }),
+    browserKeepDownload: async (path, folder) => (await core).invoke<string>("browser_keep_download", { path, folder }),
+    browserDownloadKind: async (path) => (await core).invoke("browser_download_kind", { path }),
+    browserTemporaryDownloads: async (active, remove) => (await core).invoke("browser_temporary_downloads", { active, remove }),
     browserDiscardDownload: async (path) => (await core).invoke("browser_discard_download", { path }),
     writingProjects: async () => (await core).invoke<WritingProject[]>("writing_projects"),
     writingProject: async (id) => (await core).invoke<WritingProjectView>("writing_project", { id }),

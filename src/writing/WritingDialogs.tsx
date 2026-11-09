@@ -1,3 +1,4 @@
+import { RememberedDetails } from "../components/RememberedDetails";
 import { FormattedText } from "./FormattedText";
 import { useEffect, useRef, useState } from "react";
 import { api, isApp, isWeb, isWindows } from "../api";
@@ -583,7 +584,7 @@ export function ExportDialog({
         )}
 
         {styled && (
-          <details className="writing-export-more" open={!settings.bookStyle}>
+          <RememberedDetails disclosure="writing.exportOptions" className="writing-export-more">
             <summary>Fonts, headings and paragraphs</summary>
             {select("Font", settings.font, FONTS, (font) => set({ font }), true)}
             {select("Scene breaks", settings.sceneBreak, BREAKS, (sceneBreak) => set({ sceneBreak }))}
@@ -619,7 +620,7 @@ export function ExportDialog({
             </div>
             {check("A large first letter at the start of each chapter", settings.dropCap, (dropCap) => set({ dropCap }))}
             {check("The first line of each chapter in small capitals", settings.smallCaps, (smallCaps) => set({ smallCaps }))}
-          </details>
+          </RememberedDetails>
         )}
 
         {format === "pdf" && (

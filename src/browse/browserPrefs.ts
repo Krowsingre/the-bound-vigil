@@ -61,6 +61,9 @@ export interface BrowserPrefs {
   home: string;
   /** Ebook downloads join the library without asking first. */
   addWithoutAsking: boolean;
+  deleteTemporaryWithHistory: boolean;
+  downloadFolder: string | null;
+  askDownloadFolder: boolean;
   protection: ProtectionLevel;
   redirects: RedirectMode;
   redirectAllowlist: string[];
@@ -135,6 +138,9 @@ export function readBrowserPrefs(): BrowserPrefs {
     search: SEARCH_ENGINES.some((e) => e.value === saved.search) ? (saved.search as SearchEngine) : "duckduckgo",
     home,
     addWithoutAsking: saved.addWithoutAsking === true,
+    deleteTemporaryWithHistory: saved.deleteTemporaryWithHistory !== false,
+    downloadFolder: typeof saved.downloadFolder === "string" ? saved.downloadFolder : null,
+    askDownloadFolder: saved.askDownloadFolder === true,
     redirects: saved.redirects === "block" || saved.redirects === "ask" ? saved.redirects : "allow",
     redirectAllowlist: [...new Set((Array.isArray(saved.redirectAllowlist) ? saved.redirectAllowlist : [])
       .flatMap((host) => typeof host === "string" ? redirectHost(host) ?? [] : []))],
