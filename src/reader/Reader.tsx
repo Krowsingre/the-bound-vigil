@@ -102,7 +102,7 @@ export function Reader({
   const [noteEdit, setNoteEdit] = useState<{ a?: Annotation; selection?: TextSelection } | null>(null);
   const [lastColor, setLastColor] = useState<HighlightColor>("rose");
   const host = useRef<HTMLDivElement>(null);
-  const [expandedContent, setExpandedContent] = useState<StructuredContent | null>(null);
+  const [expandedContent, setExpandedContent] = useState<{ content: StructuredContent; cfi?: string; width: number; height: number } | null>(null);
   useEffect(() => setExpandedContent(null), [file]);
   const searchInput = useRef<HTMLInputElement>(null);
   const prefersDark = useAppDark();
@@ -642,13 +642,19 @@ export function Reader({
           )}
           {jumps.length > 0 && !focus && <ReturnPill jump={jumps.at(-1)!} onReturn={goBack} onDismiss={() => setJumps([])} />}
           <div className="reader-host" ref={host} aria-busy={!engine.ready} />
-          {engine.ready && !selection && !active && file instanceof File && /\.(epub|kepub)$/i.test(file.name) && engine.structuredTargets.length > 0 &&
+          {engine.ready && !selection && !active && engine.structuredTargets.length > 0 &&
             <div className="structured-reader-tools" aria-label="Expandable content on this page">
               {engine.structuredTargets.map(({ id, content }) =>
                 <button key={id} type="button" className="btn btn-quiet" title={content.label}
-                  onClick={() => setExpandedContent(content)}>Expand {content.label}</button>)}
+                  onClick={() => setExpandedContent({ content, cfi: r?.cfi, width: host.current?.clientWidth ?? 0, height: host.current?.clientHeight ?? 0 })}>Expand {content.label}</button>)}
             </div>}
-          {expandedContent && <StructuredViewer content={expandedContent} onClose={() => setExpandedContent(null)} />}
+          {expandedContent && <StructuredViewer content={expandedContent.content} onClose={() => {
+            const { cfi, width, height } = expandedContent;
+            setExpandedContent(null);
+            if (cfi && host.current && (width !== host.current.clientWidth || height !== host.current.clientHeight)) {
+              void engine.goTo(cfi);
+            }
+          }} />}
           {!engine.ready && !engine.error && <p className="reader-loading">Opening the book…</p>}
           {engine.error && (
             <div className="reader-message-body">
