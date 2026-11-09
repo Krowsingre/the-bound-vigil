@@ -44,6 +44,7 @@ type Calls = Pick<
   | "saveWritingDraft"
   | "writingDrafts"
   | "deleteWritingDraft"
+  | "keepDraftInArchive"
   | "setWritingChapterPart"
   | "addWritingSection"
   | "setWritingChapterPage"
@@ -245,6 +246,10 @@ export function previewWriting(): Calls {
       return draft;
     },
     writingDrafts: async (projectId) => drafts.filter((d) => d.projectId === projectId),
+    keepDraftInArchive: async (id) => {
+      const draft = drafts.find((item) => item.id === id);
+      if (draft) drafts = drafts.filter((item) => item.bookId !== draft.bookId || item.projectId !== draft.projectId);
+    },
     deleteWritingDraft: async (id) => {
       drafts = drafts.filter((d) => d.id !== id);
     },

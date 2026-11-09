@@ -557,6 +557,7 @@ export async function webApi(): Promise<Api> {
       throw new Error(DESKTOP_ONLY);
     },
     writingDrafts: async () => [],
+    keepDraftInArchive: async () => { throw new Error(DESKTOP_ONLY); },
     deleteWritingDraft: async () => {
       throw new Error(DESKTOP_ONLY);
     },

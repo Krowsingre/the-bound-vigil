@@ -2196,6 +2196,7 @@ pub fn run() {
             writing::save_writing_draft,
             writing::writing_drafts,
             writing::delete_writing_draft,
+            writing::keep_draft_in_archive,
             writing::set_writing_cover_page,
             writing::set_writing_chapter_part,
             writing::add_writing_section,
