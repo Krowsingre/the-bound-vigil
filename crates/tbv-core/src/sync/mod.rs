@@ -329,7 +329,7 @@ pub(crate) const KINDS: &[Kind] = &[
         name: "bookmark",
         table: "bookmarks",
         keys: &["id"],
-        cols: &["title", "url", "position", "created_at", "updated_at", "deleted_at"],
+        cols: &["title", "url", "position", "created_at", "updated_at", "deleted_at", "folder"],
         category: Category::Library,
         creates: true,
     },

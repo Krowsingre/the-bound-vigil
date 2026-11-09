@@ -55,7 +55,7 @@ import {
   type ClosedTab,
   type TabsState,
 } from "./browserTabs";
-import { downloadState, readDownloads, writeDownloads, type Fetched } from "./browserDownloads";
+import { answerDownload, BOOK_FILE, downloadState, isActiveDownload, setDownloads, useDownloads, type Fetched } from "./browserDownloads";
 import { requestAppHistory } from "../shell/navigationKeys";
 import { addToHistory } from "./browserHistory";
 import { HistoryPanel } from "./HistoryPanel";
@@ -90,8 +90,6 @@ export const SUGGESTED_SITES: { title: string; url: string }[] = [
   { title: "LibriVox (audiobooks)", url: "https://librivox.org/" },
 ];
 
-/** Files TBV can bring in, by the end of their name. */
-const BOOK_FILE = /\.(epub|kepub|pdf|mobi|azw3?|fb2|cbz|cbr|djvu|txt|docx?|rtf|m4b|mp3|m4a)(\?|#|$)/i;
 
 /** What the top bar's buttons show about the page in front. */
 interface BarState {
@@ -285,8 +283,8 @@ export function Browser({
   const [tabs, setTabs] = useState<TabsState>(startingTabs);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [marks, setMarks] = useState<Bookmark[]>([]);
-  const [fetched, setFetched] = useState<Fetched[]>(readDownloads);
-  const [panel, setPanel] = useState<null | "tabs" | "site" | StartPanel>(null);
+  const fetched = useDownloads();
+  const [panel, setPanel] = useState<null | "tabs" | "site" | "add-bookmark" | StartPanel>(null);
   /** Pages that couldn't open, by tab: TBV's own page says why. */
   const [failed, setFailed] = useState<Record<string, { url: string; reason: string }>>({});
   /** Tabs just closed, for the Undo line. */
@@ -309,8 +307,6 @@ export function Browser({
   }, []);
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
-  const fetchedRef = useRef(fetched);
-  fetchedRef.current = fetched;
   const refit = useRef<() => void>(() => undefined);
   const heardAsk = useRef<(ask: BrowserAsk) => void>(() => undefined);
   /** A tab shortcut, pressed in TBV or (on Windows) while a page had the keyboard. */
@@ -326,7 +322,6 @@ export function Browser({
   aside.current = !!article || panel === "tabs" || onStart || !!failure;
 
   useEffect(() => writeTabs(tabs), [tabs]);
-  useEffect(() => writeDownloads(fetched), [fetched]);
   useEffect(() => onClosedTabs(() => setClosedTabs(readClosedTabs())), []);
   useEffect(() => {
     if (!undo) return;
@@ -392,29 +387,7 @@ export function Browser({
   const reloadMarks = useCallback(() => api.bookmarks().then(setMarks, () => undefined), []);
   useEffect(() => void reloadMarks(), [reloadMarks]);
 
-  const answer = useCallback(
-    async (d: Fetched, how: "add" | "keep" | "drop") => {
-      if (!d.path) return;
-      let bookId: string | undefined;
-      try {
-        if (how === "add") {
-          bookId = await api.browserAddDownload(d.path);
-          toast(`${d.name} is being added to your library.`);
-        } else if (how === "keep") {
-          const where = await api.browserKeepDownload(d.path);
-          toast(`Saved to ${where}`);
-        } else await api.browserDiscardDownload(d.path);
-      } catch (e) {
-        // Left as it was, so it can be tried again.
-        toast(String(e));
-        return;
-      }
-      setFetched((list) =>
-        how === "drop" ? list.filter((x) => x.id !== d.id) : list.map((x) => (x.id === d.id ? { ...x, asking: false, state: how === "add" ? "added" : "kept", bookId: bookId ?? x.bookId } : x)),
-      );
-    },
-    [toast],
-  );
+  const answer = (d: Fetched, how: "add" | "keep" | "drop") => answerDownload(d, how, toast);
 
   // What the tabs did.
   useEffect(() => {
@@ -446,7 +419,7 @@ export function Browser({
           if (ev.tab) made.current.add(id);
           // Opened from a private tab, it's private too.
           const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.from)?.private;
-          setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null, private: privately || undefined }));
+          setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null, private: privately || undefined }, !ev.foreground));
           break;
         }
         case "failed":
@@ -461,7 +434,7 @@ export function Browser({
           if (!/^https?:/i.test(ev.url)) break;
           if (ev.action === "newTab") {
             const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.tab)?.private;
-            setTabs((s) => openTab(s, { id: newTabId(), url: ev.url, title: null, private: privately || undefined }));
+            setTabs((s) => openTab(s, { id: newTabId(), url: ev.url, title: null, private: privately || undefined }, true));
           } else {
             void api.downloadWebBook(ev.url, fileTitle(ev.url)).then(
               () => toast("It's being added to your library."),
@@ -480,22 +453,10 @@ export function Browser({
           void api.browserAct(ev.tab, "close");
           setTabs((s) => closeTab(s, ev.tab, homeOf()));
           break;
-        case "downloadStart":
-          setFetched((list) => [{ id: ev.id, name: ev.name, state: "coming" as const, url: ev.url, tab: ev.tab, at: Date.now() }, ...list.filter((x) => x.id !== ev.id)]);
-          break;
-        case "download": {
-          const before = fetchedRef.current.find((x) => x.id === ev.id);
-          const done: Fetched = { ...before, id: ev.id, name: ev.name, path: ev.path, state: ev.ok ? "done" : "failed", asking: ev.ok, tab: ev.tab, at: before?.at ?? Date.now() };
-          // Chosen in Preferences › Discover: ebooks go straight in.
-          const straightIn = ev.ok && BOOK_FILE.test(ev.name) && readBrowserPrefs().addWithoutAsking;
-          setFetched((list) => [done, ...list.filter((x) => x.id !== ev.id)]);
-          if (straightIn) void answer(done, "add");
-          break;
-        }
       }
     };
     return api.onBrowserEvent(heard);
-  }, [answer, fitZoom, toast]);
+  }, [fitZoom, toast]);
 
   // The page shows over the space below the row, follows it as it moves,
   // and steps aside for menus, dialogs and reader mode. Hidden on leaving.
@@ -619,13 +580,22 @@ export function Browser({
   const newTab = (privately = false) => {
     setArticle(null);
     setPanel(null);
-    setTabs((s) => openTab(s, { id: newTabId(), url: homeOf(), title: null, private: privately || undefined }));
+    setTabs((s) => openTab(s, { id: newTabId(), url: "tbv:start", title: null, private: privately || undefined }));
+    onSearchChange("");
+    const input = document.getElementById("global-search");
+    if (input) {
+      input.dataset.blankTab = "";
+      input.focus();
+      delete input.dataset.blankTab;
+    }
   };
   /** A page in a tab of its own, from the start page's ⋮ menus. */
-  const openInNewTab = (to: string) => {
-    setArticle(null);
-    setPanel(null);
-    setTabs((s) => openTab(s, { id: newTabId(), url: to, title: null }));
+  const openInNewTab = (to: string, background = true) => {
+    if (!background) {
+      setArticle(null);
+      setPanel(null);
+    }
+    setTabs((s) => openTab(s, { id: newTabId(), url: to, title: null }, background));
   };
   const openInNewTabRef = useRef(openInNewTab);
   openInNewTabRef.current = openInNewTab;
@@ -777,7 +747,7 @@ export function Browser({
   const isFile = BOOK_FILE.test(url);
   const site = siteOf(url);
   const busy = !!loading[active.id];
-  const coming = fetched.filter((d) => d.state === "coming").length;
+  const coming = fetched.filter(isActiveDownload).length;
   const asking = fetched.filter((d) => d.asking);
   const web = url.startsWith("http") && !failure;
   useEffect(() => {
@@ -802,7 +772,7 @@ export function Browser({
   heardAsk.current = (ask) => {
     if ("panel" in ask) setPanel(ask.panel);
     else if (!("url" in ask)) fromTop.current("home");
-    else if (readBrowserPrefs().linksOpen === "newTab" && !isStartPage(tabsRef.current.tabs.find((t) => t.id === tabsRef.current.active)?.url ?? "")) openInNewTabRef.current(ask.url);
+    else if (readBrowserPrefs().linksOpen === "newTab" && !isStartPage(tabsRef.current.tabs.find((t) => t.id === tabsRef.current.active)?.url ?? "")) openInNewTabRef.current(ask.url, false);
     else goRef.current(ask.url);
   };
   const switchRef = useRef<(id: string) => void>(() => undefined);
@@ -835,7 +805,11 @@ export function Browser({
   /** Downloads › Retry: the same address again, in its tab if that's still open. */
   const retry = (d: Fetched) => {
     if (!d.url) return;
-    setFetched((list) => list.filter((x) => x.id !== d.id));
+    setDownloads((list) => list.filter((x) => x.id !== d.id));
+    if (d.direct) {
+      void api.downloadWebBook(d.url, d.name).catch((e: unknown) => toast(clean(e)));
+      return;
+    }
     const tab = d.tab && made.current.has(d.tab) ? d.tab : made.current.has(active.id) && !onStart ? active.id : null;
     if (tab) void api.browserAct(tab, "go", d.url).catch((e: unknown) => toast(clean(e)));
     else go(d.url);
@@ -954,6 +928,8 @@ export function Browser({
 
   const sites = marks.length ? marks : SUGGESTED_SITES.map((s, i) => ({ id: `suggested-${i}`, ...s }));
   const bookmarkItems: MenuEntry[] = [
+    { label: "Add bookmark", icon: "bookmark", onSelect: () => setPanel("add-bookmark") },
+    { label: "Manage bookmarks", icon: "edit", onSelect: () => setPanel("bookmarks") },
     { heading: <strong>{marks.length ? "Bookmarks" : "Book sites to start with"}</strong> },
     ...sites.map((m) => ({ label: m.title, icon: "globe" as const, onSelect: () => go(m.url) })),
   ];
@@ -986,7 +962,7 @@ export function Browser({
   const backTravel = useTravel("back");
   const forwardTravel = useTravel("forward");
   const downloadsButton = (
-    <button type="button" className="toolbar-button browser-downloads-button" aria-label={coming ? `Downloads, ${coming} coming down` : "Downloads"} title="Downloads" onClick={() => setPanel("downloads")}>
+    <button type="button" className="toolbar-button browser-downloads-button" aria-label={coming ? `Downloads, ${coming} in progress` : "Downloads"} title="Downloads" onClick={() => setPanel("downloads")}>
       <Icon name="download" size={17} />
       {(coming > 0 || asking.length > 0) && <span className="browser-badge">{coming || asking.length}</span>}
     </button>
@@ -1209,7 +1185,14 @@ export function Browser({
           </div>
         )}
       </div>
-      {panel === "bookmarks" && <BookmarksPanel onGo={(to) => (setPanel(null), go(to))} onClose={() => setPanel(null)} />}
+      {(panel === "bookmarks" || panel === "add-bookmark") && (
+        <BookmarksPanel
+          onGo={(to) => (setPanel(null), go(to))}
+          onClose={() => setPanel(null)}
+          onChanged={reloadMarks}
+          initial={panel === "add-bookmark" ? { title: url.startsWith("http") ? titleOf(active.title, url) : "", url: url.startsWith("http") ? url : "" } : undefined}
+        />
+      )}
       {panel === "reading" && <ReadingListPanel onOpenBook={onOpenBook} onClose={() => setPanel(null)} />}
       {panel === "site" && site && <SiteInfo url={url} actions={siteActions} />}
       {appLink && (
@@ -1245,17 +1228,19 @@ export function Browser({
                     <span className="browser-download-name">
                       <b>{d.name}</b>
                       <span className="muted">
-                        {downloadState(d)}
+                        {downloadState(d)}{d.error && ` · ${d.error}`}
                         {d.at > 0 && d.state !== "coming" && ` · ${new Date(d.at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`}
                       </span>
                     </span>
-                    {d.state === "coming" && (
+                    {d.state === "coming" && !d.direct && (
                       <button
                         type="button"
                         className="btn btn-quiet btn-small"
                         onClick={() => {
-                          void api.browserCancelDownload(d.id);
-                          setFetched((list) => list.filter((x) => x.id !== d.id));
+                          void api.browserCancelDownload(d.id).then(
+                            () => setDownloads((list) => list.filter((x) => x.id !== d.id || x.state !== "coming")),
+                            (e: unknown) => toast(clean(e)),
+                          );
                         }}
                       >
                         Cancel
@@ -1282,7 +1267,7 @@ export function Browser({
                     {d.asking && (
                       <>
                         <button type="button" className="btn btn-primary btn-small" onClick={() => void answer(d, "add")}>
-                          Add
+                          {d.state === "importFailed" ? "Retry import" : "Add"}
                         </button>
                         {!isIOS && (
                           <button type="button" className="btn btn-quiet btn-small" onClick={() => void answer(d, "keep")}>
@@ -1291,8 +1276,8 @@ export function Browser({
                         )}
                       </>
                     )}
-                    {d.state !== "coming" && (
-                      <button type="button" className="icon-btn" aria-label={`Remove ${d.name} from the list`} onClick={() => (d.asking ? void answer(d, "drop") : setFetched((list) => list.filter((x) => x.id !== d.id)))}>
+                    {!isActiveDownload(d) && (
+                      <button type="button" className="icon-btn" aria-label={`Remove ${d.name} from the list`} onClick={() => (d.asking ? void answer(d, "drop") : setDownloads((list) => list.filter((x) => x.id !== d.id)))}>
                         <Icon name="close" size={14} />
                       </button>
                     )}

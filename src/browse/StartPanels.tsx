@@ -26,68 +26,86 @@ function Panel({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-export function BookmarksPanel({ onGo, onClose }: { onGo: (url: string) => void; onClose: () => void }) {
+export function BookmarksPanel({ onGo, onClose, onChanged, initial }: {
+  onGo: (url: string) => void;
+  onClose: () => void;
+  onChanged: () => void;
+  initial?: { title: string; url: string };
+}) {
   const toast = useToast();
-  const [marks, setMarks] = useState<Bookmark[] | null>(null);
-  const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
-  const reload = () => api.bookmarks().then(setMarks, () => setMarks([]));
-  useEffect(() => void reload(), []);
+  const [marks, setMarks] = useState<Bookmark[]>([]);
+  const [draft, setDraft] = useState<Bookmark | null>(initial ? { id: "", ...initial } : null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void api.bookmarks().then(setMarks, (e) => toast(String(e))); }, [toast]);
 
-  const rename = async () => {
-    if (!renaming) return;
+  const change = async (work: () => Promise<unknown>, after?: () => void) => {
+    setBusy(true);
     try {
-      await api.renameBookmark(renaming.id, renaming.title);
-      setRenaming(null);
-      await reload();
+      await work();
+      after?.();
+      setMarks(await api.bookmarks());
+      onChanged();
     } catch (e) {
       toast(String(e).replace(/^Error: /, ""));
+    } finally {
+      setBusy(false);
     }
+  };
+  const folders = new Map<string, Bookmark[]>();
+  for (const mark of marks) {
+    const name = mark.folder ?? "";
+    const group = folders.get(name) ?? [];
+    group.push(mark);
+    folders.set(name, group);
+  }
+  const save = () => {
+    if (!draft) return;
+    const folder = draft.folder?.trim() || null;
+    void change(() => draft.id
+      ? api.editBookmark(draft.id, draft.title, draft.url, folder)
+      : api.addBookmark(draft.title, draft.url, folder), () => setDraft(null));
   };
 
   return (
     <Panel title="Bookmarks" onClose={onClose}>
-      {marks && marks.length === 0 && <p className="muted">Pages you bookmark with the bookmark button show here, on every device.</p>}
-      {marks && marks.length > 0 && (
-        <ul className="browser-download-list browser-history-list">
-          {marks.map((m) =>
-            renaming?.id === m.id ? (
-              <li key={m.id}>
-                <form
-                  className="bookmark-rename"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void rename();
-                  }}
-                >
-                  <input autoFocus value={renaming.title} maxLength={120} aria-label="Bookmark name" onChange={(e) => setRenaming({ ...renaming, title: e.target.value })} />
-                  <button type="submit" className="btn btn-primary btn-small">
-                    Save
-                  </button>
-                  <button type="button" className="btn btn-quiet btn-small" onClick={() => setRenaming(null)}>
-                    Cancel
-                  </button>
-                </form>
-              </li>
-            ) : (
-              <li key={m.id}>
-                <button type="button" className="browser-history-open" onClick={() => onGo(m.url)} title={m.url}>
-                  <SiteBadge url={m.url} title={m.title} size={22} />
-                  <span className="browser-download-name">
-                    <b>{m.title}</b>
-                    <span className="muted">{siteOf(m.url) ?? m.url}</span>
-                  </span>
-                </button>
-                <button type="button" className="icon-btn" aria-label={`Rename ${m.title}`} onClick={() => setRenaming({ id: m.id, title: m.title })}>
-                  <Icon name="edit" size={15} />
-                </button>
-                <button type="button" className="icon-btn" aria-label={`Remove the bookmark for ${m.title}`} onClick={() => void api.removeBookmark(m.id).then(reload)}>
-                  <Icon name="close" size={14} />
-                </button>
-              </li>
-            ),
-          )}
-        </ul>
+      {draft ? (
+        <form className="bookmark-editor" onSubmit={(e) => { e.preventDefault(); save(); }}>
+          <label>Name <input autoFocus value={draft.title} maxLength={200} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></label>
+          <label>Address <input type="url" required value={draft.url} onChange={(e) => setDraft({ ...draft, url: e.target.value })} /></label>
+          <label>Folder <input list="bookmark-folders" placeholder="No folder" value={draft.folder ?? ""} maxLength={120} onChange={(e) => setDraft({ ...draft, folder: e.target.value })} /></label>
+          <datalist id="bookmark-folders">{[...folders.keys()].filter(Boolean).map((name) => <option key={name} value={name} />)}</datalist>
+          <div className="bookmark-editor-actions">
+            <button type="submit" className="btn btn-primary btn-small" disabled={busy}>Save</button>
+            <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => setDraft(null)}>Cancel</button>
+          </div>
+        </form>
+      ) : (
+        <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => setDraft({ id: "", title: "", url: "" })}>Add bookmark</button>
       )}
+      <ul className="browser-download-list browser-history-list">
+        {[...folders].flatMap(([name, group]) => [
+          <li key={"folder:" + name}><h3>{name || "No folder"}</h3></li>,
+          ...group.map((m, index) => (
+            <li key={m.id}>
+              <button type="button" className="browser-history-open" onClick={() => onGo(m.url)} title={m.url}>
+                <SiteBadge url={m.url} title={m.title} size={22} />
+                <span className="browser-download-name">
+                  <b>{m.title}</b>
+                  <span className="muted">{siteOf(m.url) ?? m.url}</span>
+                </span>
+              </button>
+              <button type="button" className="icon-btn" disabled={busy || index === 0} aria-label={"Move " + m.title + " up"} onClick={() => void change(() => api.moveBookmark(m.id, -1))}>↑</button>
+              <button type="button" className="icon-btn" disabled={busy || index === group.length - 1} aria-label={"Move " + m.title + " down"} onClick={() => void change(() => api.moveBookmark(m.id, 1))}>↓</button>
+              <button type="button" className="icon-btn" disabled={busy} aria-label={"Edit " + m.title} onClick={() => setDraft(m)}>
+                <Icon name="edit" size={15} />
+              </button>
+              <button type="button" className="icon-btn" disabled={busy} aria-label={"Remove the bookmark for " + m.title} onClick={() => void change(() => api.removeBookmark(m.id), () => { if (draft?.id === m.id) setDraft(null); })}>
+                <Icon name="close" size={14} />
+              </button>
+            </li>
+          )),
+        ])}
+      </ul>
     </Panel>
   );
 }

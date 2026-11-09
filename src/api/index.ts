@@ -519,7 +519,9 @@ export interface Api {
   /** Websites saved in the browser, in order. */
   bookmarks(): Promise<Bookmark[]>;
   /** Saves a page; one saved already is only renamed. */
-  addBookmark(title: string, url: string): Promise<Bookmark>;
+  addBookmark(title: string, url: string, folder?: string | null): Promise<Bookmark>;
+  editBookmark(id: string, title: string, url: string, folder: string | null): Promise<void>;
+  moveBookmark(id: string, direction: -1 | 1): Promise<void>;
   renameBookmark(id: string, title: string): Promise<void>;
   removeBookmark(id: string): Promise<void>;
   /** Quick Links on Discover's start page, synced like bookmarks. */
@@ -564,7 +566,7 @@ export interface Api {
   browserFetchPicture(url: string): Promise<Uint8Array>;
   onBrowserEvent(listener: (event: BrowserEvent) => void): () => void;
   /** Adds a file the browser brought down to the library; resolves to the id the book will have. */
-  browserAddDownload(path: string): Promise<string>;
+  browserAddDownload(path: string, id: string): Promise<void>;
   /** How large the tab's page is drawn (1 is the site's own size). */
   browserZoom(tab: string, zoom: number): Promise<void>;
   /** iPhone and iPad: the sites shown in their computer version. */
@@ -582,7 +584,7 @@ export interface Api {
   putBrowserHistory(entries: HistoryEntry[]): Promise<void>;
   removeBrowserHistory(ids: string[]): Promise<void>;
   /** Clears what's from `since` (milliseconds since 1970) on, or everything. */
-  clearBrowserHistory(since: number | null): Promise<void>;
+  clearBrowserHistory(since: number | null, kind?: HistoryEntry["kind"]): Promise<void>;
   /** Lets go of what's older than `before` on this device only. */
   trimBrowserHistory(before: number): Promise<void>;
   /** Moves a download to the Downloads folder; resolves to where it went. */
@@ -1235,7 +1237,9 @@ function appApi(): Api {
     downloadFromCatalog: async (id, file, title) => (await core).invoke("download_from_catalog", { id, file, title }),
     downloadWebBook: async (url, title) => (await core).invoke("download_web_book", { url, title }),
     bookmarks: async () => (await core).invoke<Bookmark[]>("bookmarks"),
-    addBookmark: async (title, url) => (await core).invoke<Bookmark>("add_bookmark", { title, url }),
+    addBookmark: async (title, url, folder) => (await core).invoke<Bookmark>("add_bookmark", { title, url, folder }),
+    editBookmark: async (id, title, url, folder) => (await core).invoke("edit_bookmark", { id, title, url, folder }),
+    moveBookmark: async (id, direction) => (await core).invoke("move_bookmark", { id, direction }),
     renameBookmark: async (id, title) => (await core).invoke("rename_bookmark", { id, title }),
     removeBookmark: async (id) => (await core).invoke("remove_bookmark", { id }),
     quickLinks: async () => (await core).invoke<QuickLink[]>("quick_links"),
@@ -1265,7 +1269,7 @@ function appApi(): Api {
     browserCancelDownload: async (id) => (await core).invoke("browser_cancel_download", { id }),
     browserFetchPicture: async (url) => new Uint8Array(await (await core).invoke<ArrayBuffer>("browser_fetch_picture", { url })),
     onBrowserEvent: (listener) => onEvent<BrowserEvent>("browser-event", listener),
-    browserAddDownload: async (path) => (await core).invoke<string>("browser_add_download", { path }),
+    browserAddDownload: async (path, id) => (await core).invoke("browser_add_download", { path, id }),
     browserZoom: async (tab, zoom) => (await core).invoke("browser_zoom", { tab, zoom }),
     browserDesktopSites: async (hosts) => (await core).invoke("browser_desktop_sites", { hosts }),
     browserClearSite: async (site) => (await core).invoke("browser_clear_site", { site }),
@@ -1275,7 +1279,7 @@ function appApi(): Api {
     browserHistory: async () => (await core).invoke<HistoryEntry[]>("browser_history"),
     putBrowserHistory: async (entries) => (await core).invoke("put_browser_history", { entries }),
     removeBrowserHistory: async (ids) => (await core).invoke("remove_browser_history", { ids }),
-    clearBrowserHistory: async (since) => (await core).invoke("clear_browser_history", { since }),
+    clearBrowserHistory: async (since, kind) => (await core).invoke("clear_browser_history", { since, kind: kind ?? null }),
     trimBrowserHistory: async (before) => (await core).invoke("trim_browser_history", { before: Math.round(before) }),
     browserKeepDownload: async (path) => (await core).invoke<string>("browser_keep_download", { path }),
     browserDiscardDownload: async (path) => (await core).invoke("browser_discard_download", { path }),

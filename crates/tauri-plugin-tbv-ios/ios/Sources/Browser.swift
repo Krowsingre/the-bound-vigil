@@ -377,8 +377,8 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
       webView.load(navigationAction.request)
       return nil
     }
-    bringForward(tab)
-    tell(["kind": "newTab", "tab": tab, "url": navigationAction.request.url?.absoluteString ?? "", "from": nameOf(webView) ?? ""])
+    let foreground = windowFeatures.width != nil || windowFeatures.height != nil
+    tell(["kind": "newTab", "tab": tab, "url": navigationAction.request.url?.absoluteString ?? "", "from": nameOf(webView) ?? "", "foreground": foreground])
     return view
   }
 

@@ -22,6 +22,8 @@ const LAST_KEY = "tbv.browser.last";
 /** Enough for anyone; the oldest go first past this. */
 export const MOST_TABS = 30;
 
+const pinnedFirst = (tabs: BrowserTab[]) => [...tabs.filter((t) => t.pinned), ...tabs.filter((t) => !t.pinned)];
+
 /** A new tab's name: letters and digits, as the browser accepts. */
 export function newTabId(): string {
   return `t${Math.random().toString(36).slice(2, 12)}`;
@@ -37,7 +39,7 @@ export function readTabs(home: string): TabsState {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<TabsState> | null;
     const tabs = (saved?.tabs ?? []).filter((t): t is BrowserTab => !!t && /^[a-z0-9-]{1,40}$/i.test(t.id) && (/^https?:\/\//i.test(t.url) || t.url === "tbv:start"));
-    if (tabs.length) return { tabs, active: tabs.some((t) => t.id === saved?.active) ? saved!.active! : tabs[0].id };
+    if (tabs.length) return { tabs: pinnedFirst(tabs), active: tabs.some((t) => t.id === saved?.active) ? saved!.active! : tabs[0].id };
   } catch {
     // Start afresh.
   }
@@ -62,12 +64,12 @@ export function writeTabs(state: TabsState): void {
   }
 }
 
-/** Opens a tab after the one in front and brings it forward. */
-export function openTab(state: TabsState, tab: BrowserTab): TabsState {
-  const at = state.tabs.findIndex((t) => t.id === state.active);
-  const tabs = [...state.tabs.slice(0, at + 1), tab, ...state.tabs.slice(at + 1)];
-  const oldest = tabs.find((x) => x.id !== tab.id && !x.pinned);
-  return { tabs: tabs.length > MOST_TABS && oldest ? tabs.filter((t) => t.id !== oldest.id) : tabs, active: tab.id };
+/** New tabs go at the end. A background link keeps the current tab in front. */
+export function openTab(state: TabsState, tab: BrowserTab, background = false): TabsState {
+  const active = background ? state.active : tab.id;
+  const tabs = pinnedFirst([...state.tabs, tab]);
+  const oldest = tabs.find((x) => x.id !== tab.id && x.id !== active && !x.pinned);
+  return { tabs: tabs.length > MOST_TABS && oldest ? tabs.filter((t) => t.id !== oldest.id) : tabs, active };
 }
 
 /** Closes a tab; the one beside it comes forward. The last one closed leaves a fresh tab at `home`. */
@@ -93,17 +95,17 @@ export function updateTab(state: TabsState, id: string, change: Partial<Omit<Bro
 export function moveTab(state: TabsState, id: string, onto: string): TabsState {
   const tab = state.tabs.find((t) => t.id === id);
   const to = state.tabs.findIndex((t) => t.id === onto);
-  if (!tab || to < 0 || id === onto) return state;
+  if (!tab || to < 0 || id === onto || !!tab.pinned !== !!state.tabs[to].pinned) return state;
   const tabs = state.tabs.filter((t) => t.id !== id);
   tabs.splice(to, 0, tab);
   return { ...state, tabs };
 }
 
-/** A copy of a tab, opened beside it and brought forward. */
+/** A copy of a tab, opened at the end and brought forward. */
 export function duplicateTab(state: TabsState, id: string): TabsState {
   const tab = state.tabs.find((t) => t.id === id);
   if (!tab) return state;
-  return openTab({ ...state, active: id }, { id: newTabId(), url: tab.url, title: tab.title, private: tab.private });
+  return openTab(state, { id: newTabId(), url: tab.url, title: tab.title, private: tab.private });
 }
 
 /** The tabs Close other tabs would close: every one but `id` and the pinned ones. */
@@ -200,7 +202,7 @@ export function takeClosed(index = 0): ClosedTab | null {
 export function reopenTab(state: TabsState, closed: ClosedTab): TabsState {
   const tab = { id: newTabId(), url: closed.url, title: closed.title };
   const tabs = [...state.tabs];
-  tabs.splice(Math.min(closed.at, tabs.length), 0, tab);
+  tabs.splice(Math.max(tabs.filter((t) => t.pinned).length, Math.min(closed.at, tabs.length)), 0, tab);
   const oldest = tabs.find((x) => x.id !== tab.id && !x.pinned);
   return { tabs: tabs.length > MOST_TABS && oldest ? tabs.filter((t) => t.id !== oldest.id) : tabs, active: tab.id };
 }

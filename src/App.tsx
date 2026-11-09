@@ -17,6 +17,8 @@ import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton
 import { AddressSuggestions } from "./browse/AddressSuggestions";
 import { readBrowserPrefs, shortAddress } from "./browse/browserPrefs";
 import { loadHistory } from "./browse/browserHistory";
+import { askBrowser } from "./browse/browserAsk";
+import { isActiveDownload, listenForDownloads, useDownloads } from "./browse/browserDownloads";
 import { Audiobooks } from "./audio/Audiobooks";
 import { PlayerBar } from "./audio/PlayerBar";
 import { usePlayer } from "./audio/player";
@@ -88,6 +90,7 @@ export function App() {
   // The book the details page shows, and the page to go back to.
   const [details, setDetails] = useState<{ bookId: string; from: Route } | null>(null);
   const [searchText, setSearchText] = useState("");
+  const [browserDraft, setBrowserDraft] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [reading, setReading] = useState<{ bookId: string; at?: string; fileId?: string } | null>(null);
   const [openCollection, setOpenCollection] = useState<CollectionRef | null>(null);
@@ -97,6 +100,8 @@ export function App() {
   const [activitySide, setActivitySide] = useState<ActivitySide>("imports");
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
+  const activeDownloads = useDownloads().filter(isActiveDownload).length;
+  useEffect(() => listenForDownloads(toast), [toast]);
   const { refreshAdaptive, togglePrivacy } = useAppSettings();
   useStartupUpdateCheck();
 
@@ -504,8 +509,8 @@ export function App() {
           onOpenMenu={() => setMenuOpen(true)}
           sync={sync}
           profile={profile}
-          search={searchText}
-          onSearchChange={changeSearch}
+          search={route === "catalogs" ? browserDraft : searchText}
+          onSearchChange={route === "catalogs" ? setBrowserDraft : changeSearch}
           placeholder={
             route === "notes" || route === "writing"
               ? "Search notes, books, authors or words…"
@@ -522,8 +527,8 @@ export function App() {
           onSearchSubmit={() => {
             // On Discover the top search box is the browser's address bar.
             if (route === "catalogs") {
-              window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: searchText }));
-              changeSearch("");
+              window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: browserDraft }));
+              setBrowserDraft("");
             } else if (route !== "notes" && route !== "writing" && route !== "documents" && route !== "audiobooks" && route !== "collections" && route !== "settings") setRoute("library");
           }}
           address={route === "catalogs" ? browserAddress : undefined}
@@ -643,7 +648,7 @@ export function App() {
               onOpenBook={openBook}
             />
           ) : route === "catalogs" ? (
-            <Browse refreshKey={refreshKey} onOpenBook={openBook} catalogues={catalogues} onOpenCatalogues={() => setCatalogues(true)} onCloseCatalogues={() => setCatalogues(false)} search={searchText} onSearchChange={changeSearch} />
+            <Browse refreshKey={refreshKey} onOpenBook={openBook} catalogues={catalogues} onOpenCatalogues={() => setCatalogues(true)} onCloseCatalogues={() => setCatalogues(false)} search={browserDraft} onSearchChange={setBrowserDraft} />
           ) : (
             <Settings
               tab={settingsTab}
@@ -689,7 +694,11 @@ export function App() {
           <p>Drop to add to your library</p>
         </div>
       )}
-      {!(route === "settings" && settingsTab === "activity" && activitySide === "imports") && importCounts(imports).running && (
+      {route !== "catalogs" && activeDownloads > 0 ? (
+        <button type="button" className="import-progress" onClick={() => { askBrowser({ panel: "downloads" }); navigate("catalogs"); }}>
+          {activeDownloads} {activeDownloads === 1 ? "download" : "downloads"} in progress <span className="import-progress-link">View</span>
+        </button>
+      ) : !(route === "settings" && settingsTab === "activity" && activitySide === "imports") && importCounts(imports).running && (
         <button type="button" className="import-progress" onClick={() => navigate("imports")}>
           Imported {importCounts(imports).done} of {importCounts(imports).total} books <span className="import-progress-link">View</span>
         </button>

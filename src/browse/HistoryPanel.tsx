@@ -38,6 +38,7 @@ export function HistoryPanel({ onGo, onClose }: { onGo: (url: string) => void; o
   const [showing, setShowing] = useState<Showing>("all");
   const [shown, setShown] = useState(AT_ONCE);
   const [clearing, setClearing] = useState<(typeof CLEARS)[number] | null>(null);
+  const [clearKind, setClearKind] = useState<Showing>("all");
   useEffect(() => {
     trimHistory(readBrowserPrefs().historyKeep);
     return onHistory(() => setList(kept()));
@@ -72,7 +73,7 @@ export function HistoryPanel({ onGo, onClose }: { onGo: (url: string) => void; o
                 Clear <Icon name="chevronDown" size={12} />
               </>
             }
-            items={CLEARS.map((c) => ({ label: c.label, onSelect: () => setClearing(c) }))}
+            items={CLEARS.map((c) => ({ label: c.label, onSelect: () => { setClearKind(showing); setClearing(c); } }))}
           />
           <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
             <Icon name="close" size={18} />
@@ -134,12 +135,21 @@ export function HistoryPanel({ onGo, onClose }: { onGo: (url: string) => void; o
       {clearing && (
         <ConfirmDialog
           title={clearing.label === "Everything" ? "Clear all history?" : `Clear ${clearing.label.toLocaleLowerCase()}?`}
-          body="The pages and searches go from Discover's history. Bookmarks, tabs and site sign-ins stay."
+          body={
+            <label className="field">
+              <span>Remove from Discover history</span>
+              <select value={clearKind} onChange={(e) => setClearKind(e.target.value as Showing)}>
+                <option value="all">Pages and searches</option>
+                <option value="page">Visited pages</option>
+                <option value="search">Searches</option>
+              </select>
+            </label>
+          }
           confirm="Clear"
           danger
           onCancel={() => setClearing(null)}
           onConfirm={() => {
-            clearHistory(clearing.since());
+            clearHistory(clearing.since(), Date.now(), clearKind === "all" ? undefined : clearKind);
             setClearing(null);
           }}
         />

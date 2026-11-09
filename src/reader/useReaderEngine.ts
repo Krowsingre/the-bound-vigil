@@ -63,6 +63,31 @@ function windowRect(doc: Document, range: Range): DOMRect {
 
 const isDarkPage = (colors: PageColors) => luminance(hexToRgb(colors.background)) < 0.2;
 
+/** Make the publisher's base-size keyword follow the reader's size in this frame. */
+function applyPublisherBaseSize(doc: Document) {
+  const apply = (style: CSSStyleDeclaration) => {
+    if (style.getPropertyValue("font-size").trim().toLowerCase() === "medium") {
+      style.setProperty("font-size", "var(--tbv-reading-size)", style.getPropertyPriority("font-size"));
+    }
+  };
+  const visit = (rules: CSSRuleList) => {
+    for (const rule of Array.from(rules)) {
+      if ("style" in rule) apply((rule as CSSStyleRule).style);
+      if ("cssRules" in rule) visit((rule as CSSGroupingRule).cssRules);
+      if ("styleSheet" in rule) read((rule as CSSImportRule).styleSheet);
+    }
+  };
+  const read = (sheet: CSSStyleSheet | null) => {
+    try {
+      if (sheet) visit(sheet.cssRules);
+    } catch {
+      // A cross-origin sheet can be applied by the browser but cannot be edited.
+    }
+  };
+  for (const sheet of Array.from(doc.styleSheets)) read(sheet);
+  for (const element of doc.querySelectorAll<HTMLElement>("[style]")) apply(element.style);
+}
+
 /** Styles inside the pages, and page layout around them. */
 async function applyLayout(view: View, settings: ReaderSettings, colors: PageColors) {
   // Scrolling shows chapters one after another on a single long page, which
@@ -160,6 +185,7 @@ export function useReaderEngine({
 
         v.addEventListener("load", (e) => {
           const { doc, index } = (e as CustomEvent<{ doc: Document; index: number }>).detail;
+          if (!v.isFixedLayout) applyPublisherBaseSize(doc);
           // After the book's own styles have applied, so their colours are what's read.
           requestAnimationFrame(() => {
             const { colors } = styleRef.current;

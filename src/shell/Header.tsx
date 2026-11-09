@@ -78,10 +78,12 @@ export const Header = forwardRef<
           onFocus={(e) => {
             if (address === undefined) return;
             setTyping(true);
-            if (!search && address) {
+            if (!search && address && e.currentTarget.dataset.blankTab === undefined) {
               onSearchChange(address);
-              const box = e.currentTarget;
-              requestAnimationFrame(() => box.select());
+              // Replace the display label before selecting, in the same event.
+              // A deferred selection can select text the user has just typed.
+              e.currentTarget.value = address;
+              e.currentTarget.select();
             }
           }}
           onBlur={() => {
@@ -91,12 +93,14 @@ export const Header = forwardRef<
           }}
           onChange={(e) => onSearchChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Escape") {
+            if (e.key === "Escape" && !e.nativeEvent.isComposing) {
               onSearchChange("");
               e.currentTarget.blur();
             }
           }}
           autoComplete="off"
+          autoCorrect={address === undefined ? undefined : "off"}
+          autoCapitalize={address === undefined ? undefined : "off"}
           spellCheck={false}
         />
         {searchEnd}

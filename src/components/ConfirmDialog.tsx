@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 /** Asks before something that can't be taken back. */
 export function ConfirmDialog({
@@ -10,7 +10,7 @@ export function ConfirmDialog({
   onCancel,
 }: {
   title: string;
-  body: string;
+  body: ReactNode;
   confirm: string;
   danger?: boolean;
   onConfirm: () => void;
@@ -22,7 +22,7 @@ export function ConfirmDialog({
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onCancel()}>
       <div className="dialog confirm-dialog" role="alertdialog" aria-label={title} onKeyDown={(e) => e.key === "Escape" && onCancel()}>
         <h2>{title}</h2>
-        <p className="muted">{body}</p>
+        {typeof body === "string" ? <p className="muted">{body}</p> : body}
         <div className="dialog-actions">
           <button ref={cancel} type="button" className="btn btn-quiet" onClick={onCancel}>
             Cancel

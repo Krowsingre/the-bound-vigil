@@ -708,6 +708,8 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX kindle_purchases_book ON kindle_purchases (book_id);
     "#,
+    // v38: optional folders for browser bookmarks.
+    "ALTER TABLE bookmarks ADD COLUMN folder TEXT;",
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

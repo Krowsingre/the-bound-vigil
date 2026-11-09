@@ -2,7 +2,9 @@
 // browser that only works in the app.
 
 import type { Api } from "../api";
-import type { Bookmark, CustomTheme, QuickLink, SanctumLink } from "../api/types";
+import type { Bookmark, BrowserEvent, CustomTheme, QuickLink, SanctumLink } from "../api/types";
+
+const browserListeners = new Set<(event: BrowserEvent) => void>();
 
 /** The ones a library starts with (the same as crates/tbv-core/src/quick_links.rs). */
 export const STARTER_LINKS: QuickLink[] = [
@@ -29,6 +31,8 @@ type Calls = Pick<
   | "bookmarks"
   | "addBookmark"
   | "renameBookmark"
+  | "editBookmark"
+  | "moveBookmark"
   | "removeBookmark"
   | "quickLinks"
   | "addQuickLink"
@@ -95,15 +99,26 @@ export function browseStub(): Calls {
       throw new Error("Books come down from the web in the TBV app.");
     },
     bookmarks: async () => marks,
-    addBookmark: async (title, url) => {
+    addBookmark: async (title, url, folder) => {
       const found = marks.find((m) => m.url === url);
       if (found) return Object.assign(found, { title: title || url });
-      const made = { id: crypto.randomUUID(), title: title || url, url };
+      const made = { id: crypto.randomUUID(), title: title || url, url, folder };
       marks = [...marks, made];
       return made;
     },
     renameBookmark: async (id, title) => {
       marks = marks.map((m) => (m.id === id ? { ...m, title } : m));
+    },
+    editBookmark: async (id, title, url, folder) => {
+      if (marks.some((m) => m.id !== id && m.url === url)) throw new Error("That address is already bookmarked.");
+      marks = marks.map((m) => (m.id === id ? { ...m, title, url, folder } : m));
+    },
+    moveBookmark: async (id, direction) => {
+      const index = marks.findIndex((m) => m.id === id);
+      if (index < 0) return;
+      let next = index + direction;
+      while (marks[next] && (marks[next].folder ?? null) !== (marks[index].folder ?? null)) next += direction;
+      if (marks[next]) [marks[index], marks[next]] = [marks[next], marks[index]];
     },
     removeBookmark: async (id) => {
       marks = marks.filter((m) => m.id !== id);
@@ -170,8 +185,11 @@ export function browseStub(): Calls {
     },
     // Design previews can act out what a page did: window.tbvPreviewBrowserEvent({ kind: "failed", … }).
     onBrowserEvent: (listener) => {
-      (window as unknown as { tbvPreviewBrowserEvent?: typeof listener }).tbvPreviewBrowserEvent = listener;
-      return () => undefined;
+      browserListeners.add(listener);
+      (window as unknown as { tbvPreviewBrowserEvent?: typeof listener }).tbvPreviewBrowserEvent = (event) => {
+        browserListeners.forEach((take) => take(event));
+      };
+      return () => { browserListeners.delete(listener); };
     },
     browserAddDownload: async () => {
       throw new Error(APP_ONLY);

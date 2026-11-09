@@ -2132,6 +2132,8 @@ pub fn run() {
             browser::move_quick_link,
             browser::site_icon,
             browser::rename_bookmark,
+            browser::edit_bookmark,
+            browser::move_bookmark,
             browser::remove_bookmark,
             writing::catalogs,
             writing::save_catalog,

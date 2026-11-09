@@ -17,7 +17,6 @@ use tauri::{Emitter, EventTarget, Manager, State};
 use tbv_core::bookmarks::Bookmark;
 use tbv_core::browser_history::HistoryEntry;
 use tbv_core::quick_links::QuickLink;
-use tbv_core::servers::TempFolder;
 
 use crate::protection::Protection;
 use crate::{imports, with_library, AppLibrary, CommandResult};
@@ -47,6 +46,10 @@ pub(crate) enum Event {
     /// A file started coming down.
     #[serde(rename_all = "camelCase")]
     DownloadStart { tab: String, id: String, name: String, url: String },
+    #[serde(rename_all = "camelCase")]
+    DirectDownloadStart { id: String, name: String, url: String },
+    #[serde(rename_all = "camelCase")]
+    DownloadImport { id: String, book_id: Option<String>, error: Option<String> },
     /// A file finished coming down (or failed, or was cancelled).
     #[serde(rename_all = "camelCase")]
     Download { tab: String, id: String, path: String, name: String, ok: bool },
@@ -1129,30 +1132,30 @@ fn in_downloads(app: &tauri::AppHandle, path: &str) -> CommandResult<PathBuf> {
     let ours = tauri_plugin_tbv_ios::browser_downloads_dir().unwrap_or(ours);
     let real = path.canonicalize().map_err(|_| "That download is gone.".to_string())?;
     let ours = ours.canonicalize().unwrap_or(ours);
-    if !real.starts_with(&ours) {
+    if !real.is_file() || real.parent().and_then(Path::parent) != Some(ours.as_path()) {
         return Err("That isn't one of the browser's downloads.".into());
     }
     Ok(real)
 }
 
 /// Adds a file the browser brought down to the library, through the import
-/// queue, and answers the id the book will have.
+/// queue. The import result is reported separately.
 #[tauri::command]
 pub async fn browser_add_download(
     app: tauri::AppHandle,
     state: State<'_, AppLibrary>,
     imports: State<'_, Arc<imports::Imports>>,
     path: String,
-) -> CommandResult<String> {
+    id: String,
+) -> CommandResult<()> {
     let path = in_downloads(&app, &path)?;
-    let folder = path.parent().map(Path::to_path_buf).ok_or("That download is gone.")?;
     let (library, imports) = (state.0.clone(), imports.inner().clone());
     tauri::async_runtime::spawn_blocking(move || {
-        // The id the book will have, so Read now can open it once it's in.
-        let id = tbv_core::ids::book_id_for_file(&path).map_err(|e| e.to_string())?;
-        let holding = Arc::new(TempFolder::adopt(folder));
-        imports.add_holding(&app, &library, vec![path], Some(holding));
-        Ok(id)
+        if imports.queue_browser_download(&app, &library, path, id) {
+            Ok(())
+        } else {
+            Err("Couldn't queue that download.".into())
+        }
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1201,13 +1204,32 @@ pub async fn download_web_book(
     title: String,
 ) -> CommandResult<()> {
     let url = web_url(&url)?.to_string();
-    let downloads = crate::writing::downloads_dir(&app.path().app_data_dir().map_err(|e| e.to_string())?);
+    let downloads = downloads_dir(&app)?;
+    #[cfg(target_os = "ios")]
+    let downloads = tauri_plugin_tbv_ios::browser_downloads_dir().unwrap_or(downloads);
     let (library, imports) = (state.0.clone(), imports.inner().clone());
     tauri::async_runtime::spawn_blocking(move || {
-        let folder = Arc::new(TempFolder::new(&downloads).map_err(|e| e.to_string())?);
-        let path = tbv_core::opds::download_book(&url, &title, folder.path()).map_err(|e| e.to_string())?;
-        imports.add_holding(&app, &library, vec![path], Some(folder));
-        Ok(())
+        let id = tbv_core::ids::new_record_id();
+        let folder = downloads.join(&id);
+        std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+        tell(&app, Event::DirectDownloadStart { id: id.clone(), name: title.clone(), url: url.clone() });
+        match tbv_core::opds::download_book(&url, &title, &folder) {
+            Ok(path) => {
+                tell(&app, Event::Download { tab: String::new(), id: id.clone(), path: path.to_string_lossy().into_owned(), name: title, ok: true });
+                if imports.queue_browser_download(&app, &library, path, id.clone()) {
+                    Ok(())
+                } else {
+                    let error = "Couldn't queue that download.".to_string();
+                    tell(&app, Event::DownloadImport { id, book_id: None, error: Some(error.clone()) });
+                    Err(error)
+                }
+            }
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(folder);
+                tell(&app, Event::Download { tab: String::new(), id, path: String::new(), name: title, ok: false });
+                Err(e.to_string())
+            }
+        }
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1219,8 +1241,18 @@ pub async fn bookmarks(state: State<'_, AppLibrary>) -> CommandResult<Vec<Bookma
 }
 
 #[tauri::command]
-pub async fn add_bookmark(state: State<'_, AppLibrary>, title: String, url: String) -> CommandResult<Bookmark> {
-    with_library(state, move |library| library.add_bookmark(&title, &url)).await
+pub async fn add_bookmark(state: State<'_, AppLibrary>, title: String, url: String, folder: Option<String>) -> CommandResult<Bookmark> {
+    with_library(state, move |library| library.add_bookmark_in(&title, &url, folder.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn edit_bookmark(state: State<'_, AppLibrary>, id: String, title: String, url: String, folder: Option<String>) -> CommandResult<()> {
+    with_library(state, move |library| library.edit_bookmark(&id, &title, &url, folder.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn move_bookmark(state: State<'_, AppLibrary>, id: String, direction: i32) -> CommandResult<()> {
+    with_library(state, move |library| library.move_bookmark(&id, direction)).await
 }
 
 #[tauri::command]
@@ -1285,8 +1317,8 @@ pub async fn remove_browser_history(state: State<'_, AppLibrary>, ids: Vec<Strin
 
 /// Clears what's from `since` (milliseconds since 1970) on, or everything.
 #[tauri::command]
-pub async fn clear_browser_history(state: State<'_, AppLibrary>, since: Option<i64>) -> CommandResult<()> {
-    with_library(state, move |library| library.clear_browser_history(since)).await
+pub async fn clear_browser_history(state: State<'_, AppLibrary>, since: Option<i64>, kind: Option<String>) -> CommandResult<()> {
+    with_library(state, move |library| library.clear_browser_history(since, kind.as_deref())).await
 }
 
 /// Lets go of what's older than `before` on this device only.

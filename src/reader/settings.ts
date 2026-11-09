@@ -207,7 +207,8 @@ html {
   color-scheme: ${colors.background === PAGE_COLORS.dark.background ? "dark" : "light"};
   background: ${colors.background} !important;
   color: ${colors.text} !important;
-  font-size: ${settings.size}px !important;
+  --tbv-reading-size: ${settings.size}px;
+  font-size: var(--tbv-reading-size) !important;
 }
 body { background: transparent !important; color: inherit !important; }
 ${fontRule}

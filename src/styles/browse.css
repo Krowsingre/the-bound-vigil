@@ -898,6 +898,17 @@
   cursor: pointer;
 }
 
+.address-suggestion-row {
+  display: flex;
+  align-items: center;
+}
+
+.address-suggestion-row .address-suggestion {
+  flex: 1;
+  min-width: 0;
+}
+
+.address-suggestion[aria-selected="true"],
 .address-suggestion:hover,
 .address-suggestion:focus-visible {
   background: var(--surface-sunk);
@@ -1459,16 +1470,19 @@
   overflow: auto;
 }
 
-.bookmark-rename {
-  display: flex;
-  flex: 1;
-  gap: 6px;
-  align-items: center;
+.bookmark-editor {
+  display: grid;
+  gap: 8px;
 }
 
-.bookmark-rename input {
-  flex: 1;
-  min-width: 0;
+.bookmark-editor label {
+  display: grid;
+  gap: 4px;
+}
+
+.bookmark-editor-actions {
+  display: flex;
+  gap: 6px;
 }
 
 @media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {

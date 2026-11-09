@@ -1532,6 +1532,7 @@ export interface Bookmark {
   id: string;
   title: string;
   url: string;
+  folder?: string | null;
 }
 
 /** A favourite website on Discover's start page, on one of the gallery paintings. */
@@ -1578,10 +1579,12 @@ export type BrowserEvent =
   | { kind: "page"; tab: string; url: string; title?: string | null; loading: boolean }
   /** A file started coming down. */
   | { kind: "downloadStart"; tab: string; id: string; name: string; url: string }
+  | { kind: "directDownloadStart"; id: string; name: string; url: string }
+  | { kind: "downloadImport"; id: string; bookId: BookId | null; error: string | null }
   /** A file finished coming down (`ok`), or failed. */
   | { kind: "download"; tab: string; id: string; path: string; name: string; ok: boolean }
   /** A link that wants a new window. With `tab`, the tab is made already (a pop-up on iPhone). */
-  | { kind: "newTab"; url: string; from: string; tab?: string }
+  | { kind: "newTab"; url: string; from: string; tab?: string; foreground?: boolean }
   /** A page that closed itself. */
   | { kind: "closed"; tab: string }
   /** A page that couldn't open, and why, in plain words. */

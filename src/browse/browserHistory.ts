@@ -91,9 +91,9 @@ export function removeFromHistory(ids: string[]) {
 }
 
 /** Clears what's newer than `since` (milliseconds ago), or everything. */
-export function clearHistory(since: number | null = null, now = Date.now()) {
-  save(since === null ? [] : readHistory().filter((e) => now - e.at > since));
-  tell(api.clearBrowserHistory(since === null ? null : now - since));
+export function clearHistory(since: number | null = null, now = Date.now(), kind?: HistoryEntry["kind"]) {
+  save(readHistory().filter((e) => (kind && e.kind !== kind) || (since !== null && now - e.at > since)));
+  tell(api.clearBrowserHistory(since === null ? null : now - since, kind));
 }
 
 /** Applies a shorter keeping time straight away. */

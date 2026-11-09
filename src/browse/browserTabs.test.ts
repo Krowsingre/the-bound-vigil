@@ -18,10 +18,25 @@ test("tabs come back as they were left", () => {
   expect(back.active).toBe("tb");
 });
 
-test("a new tab opens beside the one in front", () => {
+test("a new tab opens at the end", () => {
   let state: TabsState = { tabs: [{ id: "a", url: HOME, title: null }, { id: "c", url: HOME, title: null }], active: "a" };
   state = openTab(state, { id: "b", url: HOME, title: null });
-  expect(state.tabs.map((t) => t.id)).toEqual(["a", "b", "c"]);
+  expect(state.tabs.map((t) => t.id)).toEqual(["a", "c", "b"]);
+});
+
+test("background tabs append without disturbing pinned tabs or focus", () => {
+  const state: TabsState = {
+    tabs: [
+      { id: "a", url: HOME, title: null, pinned: true },
+      { id: "b", url: HOME, title: null, pinned: true },
+      { id: "c", url: HOME, title: null },
+    ],
+    active: "a",
+  };
+  const opened = openTab(state, { id: "d", url: HOME, title: null }, true);
+  expect(opened.tabs.map((tab) => tab.id)).toEqual(["a", "b", "c", "d"]);
+  expect(opened.active).toBe("a");
+  expect(moveTab(opened, "d", "b")).toBe(opened);
 });
 
 test("closing the tab in front brings its neighbour forward, and the last leaves a fresh one", () => {
@@ -62,11 +77,11 @@ describe("moving tabs", () => {
   });
 });
 
-test("a duplicate opens beside its tab, and close others keeps one", () => {
+test("a duplicate opens at the end, and close others keeps one", () => {
   const state: TabsState = { tabs: [{ id: "a", url: "https://a.org/", title: "A" }, { id: "b", url: "https://b.org/", title: "B" }], active: "b" };
   const copied = duplicateTab(state, "a");
-  expect(copied.tabs.map((t) => t.url)).toEqual(["https://a.org/", "https://a.org/", "https://b.org/"]);
-  expect(copied.active).toBe(copied.tabs[1].id);
+  expect(copied.tabs.map((t) => t.url)).toEqual(["https://a.org/", "https://b.org/", "https://a.org/"]);
+  expect(copied.active).toBe(copied.tabs[2].id);
   expect(closeOtherTabs(copied, "b")).toEqual({ tabs: [state.tabs[1]], active: "b" });
 });
 
