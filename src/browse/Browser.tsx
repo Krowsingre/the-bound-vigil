@@ -56,6 +56,7 @@ import {
   type TabsState,
 } from "./browserTabs";
 import { downloadState, readDownloads, writeDownloads, type Fetched } from "./browserDownloads";
+import { requestAppHistory } from "../shell/navigationKeys";
 import { addToHistory } from "./browserHistory";
 import { HistoryPanel } from "./HistoryPanel";
 import { onBrowserAsk, type BrowserAsk } from "./browserAsk";
@@ -104,6 +105,8 @@ const BAR_START: BarState = { busy: false, marked: false, reader: false, web: fa
 let barNow = BAR_START;
 
 const ask = (what: string) => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: what }));
+/** Webpage Back/Forward when a control in TBV, rather than the native page, has focus. */
+export const navigateBrowserHistory = (direction: "back" | "forward") => ask(direction);
 
 /** Holding Back or Forward (or right-clicking it) lists the pages that way. */
 function useTravel(way: "back" | "forward") {
@@ -467,7 +470,10 @@ export function Browser({
           }
           break;
         case "key":
-          shortcut.current(ev.key);
+          if (ev.key === "appBack" || ev.key === "appForward") requestAppHistory(ev.key === "appBack" ? "back" : "forward");
+          else if (ev.key === "pageBack" || ev.key === "pageForward")
+            void api.browserAct(ev.tab, ev.key === "pageBack" ? "back" : "forward").catch(() => undefined);
+          else shortcut.current(ev.key);
           break;
         case "closed":
           made.current.delete(ev.tab);

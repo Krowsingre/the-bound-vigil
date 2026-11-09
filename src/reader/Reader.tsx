@@ -16,7 +16,8 @@ import { contentsEntries, currentEntry, pageOf, pushJump, type Jump } from "./pa
 import { parseBibleTarget } from "../browse/bibleBooks";
 import { openChapter } from "../browse/openChapter";
 import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars";
-import { LeftPanel, RightPanel, type AnnotationHandlers, type RightTab } from "./ReaderPanels";
+import { LeftPanel, RightPanel, type AnnotationHandlers, type LeftTab, type RightTab } from "./ReaderPanels";
+import { navigationDirection } from "../shell/navigationKeys";
 import { ListenAlongPanel, NoteDialog, PageSettings, ReadAloudPlayer, SelectionToolbar, TextSettings, ZoomControls } from "./ReaderPopovers";
 import { ReaderSearch } from "./ReaderSearch";
 import { BOOK_OPENED, useAppDark } from "../settings/appSettings";
@@ -87,6 +88,8 @@ export function Reader({
   const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
   const [panels, setPanels] = useState(readPanels);
   const [rightTab, setRightTab] = useState<RightTab>("notes");
+  const [leftTab, setLeftTab] = useState<LeftTab>("contents");
+  const [contentsRequest, setContentsRequest] = useState(0);
   const [focus, setFocus] = useState(false);
   // Phones: the search box is hidden in the top bar and opened from the menu.
   const [phoneSearch, setPhoneSearch] = useState(false);
@@ -436,8 +439,9 @@ export function Reader({
   // Keyboard: the window's keys, plus keys pressed inside the book's pages.
   const onKeyRef = useRef<(e: KeyboardEvent, fromBook: boolean) => void>(() => {});
   onKeyRef.current = (e, fromBook) => {
-    if (noteEdit) return;
-    if (!fromBook && isTyping(e.target) && e.key !== "Escape") return;
+    if (noteEdit || e.defaultPrevented) return;
+    const backKey = navigationDirection(e, true) === "back";
+    if (!fromBook && isTyping(e.target) && e.key !== "Escape" && !backKey) return;
     const ctrl = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
     if (ctrl && engine.fixed && (key === "=" || key === "+" || key === "-" || key === "0")) {
@@ -456,7 +460,7 @@ export function Reader({
       } else if (fullscreen) toggleFullscreen();
       else if (focus) setFocus(false);
       else return;
-    } else if (e.altKey && !ctrl && e.key === "ArrowLeft") {
+    } else if (backKey) {
       // Back: to where a link jumped from, else out of the book.
       if (jumps.length) goBack();
       else leave();
@@ -611,6 +615,9 @@ export function Reader({
             previouslyOpenedAt={info.previouslyOpenedAt}
             entries={entries}
             currentId={current?.id ?? null}
+            tab={leftTab}
+            onTab={setLeftTab}
+            revealRequest={contentsRequest}
             annotations={annotations}
             onGoHref={(href) => {
               void jumpTo(href);
@@ -642,6 +649,12 @@ export function Reader({
             position={position}
             fraction={r?.fraction ?? 0}
             chapter={r?.tocItem?.label?.trim() ?? null}
+            onContents={() => {
+              setFocus(false);
+              setLeftTab("contents");
+              setContentsRequest((n) => n + 1);
+              pagePanels({ left: true, ...(narrow ? { right: false } : {}) });
+            }}
             onSeek={(f) => {
               remember();
               void engine.goToFraction(f);

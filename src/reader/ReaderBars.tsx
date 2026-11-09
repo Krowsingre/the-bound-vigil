@@ -118,6 +118,7 @@ export function ReaderBottomBar({
   position,
   fraction,
   chapter,
+  onContents,
   onSeek,
   onPrev,
   onNext,
@@ -127,6 +128,7 @@ export function ReaderBottomBar({
   position: PagePosition | null;
   fraction: number;
   chapter: string | null;
+  onContents: () => void;
   onSeek: (fraction: number) => void;
   onPrev: () => void;
   onNext: () => void;
@@ -162,9 +164,9 @@ export function ReaderBottomBar({
         onBlur={() => setDragging(null)}
       />
       <span className="reader-bottom-percent">{percent(shown)}</span>
-      <span className="reader-bottom-chapter" title={chapter ?? undefined}>
-        {chapter ?? ""}
-      </span>
+      <button type="button" className="reader-bottom-chapter" title="Show contents" aria-label={chapter ? `Show contents: ${chapter}` : "Show contents"} onClick={onContents}>
+        {chapter || "Contents"}
+      </button>
       {!focus && zoom}
       {!focus && (
         <span className="reader-bottom-turns">

@@ -1591,7 +1591,7 @@ export type BrowserEvent =
   /** Chosen from a link's own menu: open it in a new tab, or bring its book into the library. */
   | { kind: "menu"; tab: string; action: "newTab" | "addBook"; url: string }
   /** A tab shortcut pressed while a page had the keyboard (Windows). */
-  | { kind: "key"; tab: string; key: "newTab" | "closeTab" | "nextTab" | "previousTab" | "reopenTab" };
+  | { kind: "key"; tab: string; key: "newTab" | "closeTab" | "nextTab" | "previousTab" | "reopenTab" | "appBack" | "appForward" | "pageBack" | "pageForward" };
 
 /** An article found on a page by reader mode (Mozilla's Readability). */
 export interface ReaderArticle {

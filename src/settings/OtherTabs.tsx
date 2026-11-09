@@ -708,6 +708,8 @@ export function AccessibilityTab() {
 }
 
 const EVERYWHERE: [string, string][] = [
+  ["Alt + Shift + ← / →", "Back / Forward through app screens"],
+  ["Alt + ← / → in Discover", "Back / Forward through webpages"],
   ["Ctrl + 1 to 7", "Go to Sanctum, Archive, Resonance, Compendium, Scribe, Discover or Preferences"],
   ["Ctrl + F  or  Ctrl + K", "Search"],
   ["Ctrl + O", "Import books"],
@@ -716,6 +718,7 @@ const EVERYWHERE: [string, string][] = [
 ];
 
 const READER: [string, string][] = [
+  ["Alt + Shift + ←", "Return from a book jump, or leave the book"],
   ["→  or  Page Down  or  Space", "Next page"],
   ["←  or  Page Up  or  Shift + Space", "Previous page"],
   ["Ctrl + F", "Search in the book"],

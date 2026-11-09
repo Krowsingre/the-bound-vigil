@@ -829,12 +829,25 @@
 }
 
 .reader-bottom-chapter {
+  border: 0;
+  background: transparent;
+  padding: 4px 6px;
+  cursor: pointer;
   max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font: 400 14px var(--font-serif);
   color: var(--page-text);
+}
+
+.reader-bottom-chapter:hover {
+  text-decoration: underline;
+}
+
+.reader-bottom-chapter:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 
 .reader-bottom-turns {

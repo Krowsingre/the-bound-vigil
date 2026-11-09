@@ -13,7 +13,7 @@ import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Writing } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
-import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton } from "./browse/Browser";
+import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory } from "./browse/Browser";
 import { AddressSuggestions } from "./browse/AddressSuggestions";
 import { readBrowserPrefs, shortAddress } from "./browse/browserPrefs";
 import { loadHistory } from "./browse/browserHistory";
@@ -48,6 +48,8 @@ import { PairHost } from "./audio/LinkEbook";
 import { useNarrow } from "./lib/useNarrow";
 import { useSwipes } from "./shell/useSwipes";
 import { drawImportedCovers } from "./reader/formats";
+import { useNavigationHistory } from "./shell/useNavigationHistory";
+import { useNavigationShortcuts } from "./shell/useNavigationShortcuts";
 
 const COLLAPSE_KEY = "tbv.sidebarCollapsed";
 const NO_IMPORTS = isHome
@@ -335,48 +337,22 @@ export function App() {
     return () => unlisten?.();
   }, [runImport]);
 
-  // Back (Alt + Left, or the mouse's back button): the page before, as it was.
+  // App Back/Forward (Alt+Shift+Left/Right), independent of webpage history.
   type Place = { route: Route; collection: CollectionRef | null; details: typeof details };
-  const past = useRef<Place[]>([]);
-  const here = useRef<Place>({ route, collection: openCollection, details });
-  const goingBack = useRef(false);
-  useEffect(() => {
-    const now = { route, collection: openCollection, details };
-    const was = here.current;
-    const same =
-      was.route === now.route &&
-      JSON.stringify(was.collection) === JSON.stringify(now.collection) &&
-      was.details?.bookId === now.details?.bookId;
-    if (same) return;
-    if (!goingBack.current) past.current = [...past.current.slice(-49), was];
-    goingBack.current = false;
-    here.current = now;
-  }, [route, openCollection, details]);
-  const back = useCallback(() => {
-    const was = past.current.pop();
-    if (!was) return;
-    goingBack.current = true;
-    setDetails(was.details);
-    setOpenCollection(was.collection);
-    setRoute(was.route);
-  }, []);
-  useEffect(() => {
-    const onMouse = (e: MouseEvent) => {
-      if (e.button !== 3 || reading) return;
-      e.preventDefault();
-      back();
-    };
-    window.addEventListener("mouseup", onMouse);
-    return () => window.removeEventListener("mouseup", onMouse);
-  }, [back, reading]);
+  const { back, forward } = useNavigationHistory<Place>(
+    { route, collection: openCollection, details },
+    (place) => {
+      setDetails(place.details);
+      setOpenCollection(place.collection);
+      setRoute(place.route);
+    },
+    (a, b) => a.route === b.route && JSON.stringify(a.collection) === JSON.stringify(b.collection) &&
+      a.details?.bookId === b.details?.bookId && a.details?.from === b.details?.from,
+  );
+  useNavigationShortcuts({ back, forward, reading: !!reading, discover: route === "catalogs", webpage: navigateBrowserHistory });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === "ArrowLeft" && !reading) {
-        e.preventDefault();
-        back();
-        return;
-      }
       // Privacy mode works everywhere, the reader included.
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "h") {
         e.preventDefault();
@@ -394,7 +370,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleSidebar, importBooks, reading, navigate, togglePrivacy, back]);
+  }, [toggleSidebar, importBooks, reading, navigate, togglePrivacy]);
 
   const onHomeLoaded = useCallback((home: HomeViewModel) => setSync(home.sync), []);
   const openBook = useCallback((bookId: string, at?: string, fileId?: string) => setReading({ bookId, at, fileId }), []);
