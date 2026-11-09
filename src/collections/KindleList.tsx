@@ -42,12 +42,11 @@ export function KindleCard({ summary, layout, onOpen }: { summary: KindleSummary
 
 const dayOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : null);
 
-export function KindleView({ onBack, onChanged, onDiscover }: { onBack: () => void; onChanged: () => void; onDiscover?: () => void }) {
+export function KindleView({ onBack, onChanged, onDiscover, filter }: { onBack: () => void; onChanged: () => void; onDiscover?: () => void; filter: string }) {
   const toast = useToast();
   const [removed, setRemoved] = useState(false);
   const [list, setList] = useState<KindlePurchase[] | null>(null);
   const [shown, setShown] = useState(AT_ONCE);
-  const [filter, setFilter] = useState("");
   const [reload, setReload] = useState(0);
   const [waiting, setWaiting] = useState(0);
   const [picking, setPicking] = useState<KindlePurchase | null>(null);
@@ -98,14 +97,6 @@ export function KindleView({ onBack, onChanged, onDiscover }: { onBack: () => vo
         </div>
       </header>
       <div className="collection-view-tools kindle-tools">
-        <input
-          type="search"
-          className="kindle-filter"
-          placeholder="Find a title or author"
-          aria-label="Find a Kindle book"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
         <label className="kindle-show-removed">
           <input type="checkbox" checked={removed} onChange={(e) => setRemoved(e.target.checked)} /> Show removed books
         </label>

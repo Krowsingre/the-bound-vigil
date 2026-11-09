@@ -516,6 +516,7 @@ export interface LibraryQuery {
   /** Pinned books first: the Archive's own list. */
   pinnedFirst?: boolean;
   groupSeries?: boolean;
+  mixSeries?: boolean;
   pinned?: boolean;
   /** Zero-based. */
   page: number;

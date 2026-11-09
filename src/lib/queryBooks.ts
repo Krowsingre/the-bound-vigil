@@ -95,7 +95,11 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
       seriesCounts[book.id] = 1;
       return true;
     });
-    list.sort((a, b) => pins(a, b) || Number(Boolean(seriesCounts[b.id])) - Number(Boolean(seriesCounts[a.id])));
+    const titleOf = (book: BookPreview) => seriesCounts[book.id] && book.series
+      ? { ...book, title: book.series.trim() } : book;
+    list.sort((a, b) => pins(a, b) || (q.mixSeries
+      ? q.sort === "title" ? byTitle(titleOf(a), titleOf(b)) || a.id.localeCompare(b.id) : 0
+      : Number(Boolean(seriesCounts[b.id])) - Number(Boolean(seriesCounts[a.id]))));
   }
   const pageSize = q.pageSize || 24;
   const page = Math.min(q.page, Math.max(0, Math.ceil(list.length / pageSize) - 1));

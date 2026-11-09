@@ -5,7 +5,7 @@ import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { formatLabel } from "../lib/queryBooks";
 import { languageName } from "../lib/language";
-import { excludeCount, NO_FILTERS, SORTS, TABS, type Layout, type LibraryTab, type LibraryView } from "./libraryView";
+import { excludeCount, NO_FILTERS, SORTS, TABS, type Layout, type SeriesGrouping, type LibraryTab, type LibraryView } from "./libraryView";
 
 type FilterList = "formats" | "tags" | "genres" | "languages" | "authors" | "series" | "narrators";
 
@@ -20,11 +20,16 @@ const COUNT_OF: Record<LibraryTab, keyof ShelfCounts> = {
   collections: "collections",
 };
 
-const LAYOUTS: { layout: Layout; label: string; icon: "grid" | "list" | "rows" | "bookOpen" }[] = [
+const LAYOUTS: { layout: Layout; label: string; icon: "grid" | "list" | "rows" }[] = [
   { layout: "grid", label: "Covers", icon: "grid" },
-  { layout: "series", label: "Series stacks", icon: "bookOpen" },
   { layout: "list", label: "List", icon: "list" },
   { layout: "compact", label: "Compact list", icon: "rows" },
+];
+
+const GROUPING: { value: SeriesGrouping; label: string }[] = [
+  { value: "individual", label: "Individual books" },
+  { value: "mixed", label: "Stacked and mixed" },
+  { value: "seriesFirst", label: "Stacked, series first" },
 ];
 
 const OPENED_KEY = "tbv.filters.opened";
@@ -290,8 +295,15 @@ export function LibraryToolbar({
                 ]}
               />
             )}
+            {allowSeries && <Menu
+              label={`Series: ${GROUPING.find((item) => item.value === view.seriesGrouping)?.label}`}
+              className="toolbar-button"
+              trigger={<><Icon name="bookOpen" size={16} /><Icon name="chevronDown" size={12} className="toolbar-chevron" /></>}
+              items={GROUPING.map(({ value, label }) => ({ label, checked: view.seriesGrouping === value,
+                onSelect: () => onChange({ seriesGrouping: value, page: 0 }) }))}
+            />}
             <div className="layout-switch" role="radiogroup" aria-label="Layout">
-              {LAYOUTS.filter((l) => allowSeries || l.layout !== "series").map((l) => (
+              {LAYOUTS.map((l) => (
                 <button
                   key={l.layout}
                   type="button"

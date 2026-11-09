@@ -170,7 +170,8 @@ export function Library({
   );
 
   const shelf = view.tab === "collections" ? "all" : view.tab;
-  const groupSeries = kind !== "documents" && view.layout === "series" && view.series.length !== 1 && selected === null;
+  const Layout = { grid: BookGrid, list: BookList, compact: BookTable }[view.layout];
+  const groupSeries = kind !== "documents" && view.seriesGrouping !== "individual" && !seriesBack && view.series.length !== 1 && selected === null;
   const inSeries = !!seriesBack;
   const separatePins = kind === "books" && !inSeries;
   const pinnedFirst = !inSeries;
@@ -196,6 +197,7 @@ export function Library({
     pinnedFirst,
     pinned,
     groupSeries,
+    mixSeries: groupSeries && view.seriesGrouping === "mixed",
     omitFacets: true,
     seriesCoverChoices: coverChoices,
   };
@@ -246,7 +248,7 @@ export function Library({
           .then((data) => { if (current) setPins(data.books.filter((book) => book.pinnedAt)); }, () => { if (current) setPins([]); }));
         const matching = pinnedSeries.filter((name) => !query.series.length || query.series.some((value) => value.toLowerCase() === name.toLowerCase()));
         if (matching.length) pinnedRequests.push(api.getLibrary({
-          ...query, pinned: undefined, pinnedFirst: false, groupSeries: true, series: matching, page: 0, pageSize: 200,
+          ...query, pinned: undefined, pinnedFirst: false, groupSeries: true, mixSeries: false, series: matching, page: 0, pageSize: 200,
         }).then((data) => { if (current) setPinnedStacks(data); }, () => { if (current) setPinnedStacks(null); }));
         else setPinnedStacks(null);
       }
@@ -630,8 +632,6 @@ export function Library({
       </div>
     );
   } else {
-    // The phone has no list view, for now.
-    const Layout = { grid: BookGrid, list: narrow ? BookGrid : BookList, compact: BookTable, series: BookGrid }[view.layout];
     const noun: [string, string] = groupSeries ? ["item", "items"] : [words.one, words.many];
     const openSeries = onOpenSeries ?? ((name: string) => {
       onClearSearch();
@@ -824,9 +824,9 @@ export function Library({
         {separatePins && (pins.length > 0 || (pinnedStacks?.books.length ?? 0) > 0) && view.tab !== "collections" && (
           <details className="library-pins" open={pinsExpanded} onToggle={(event) => togglePins(event.currentTarget.open)}>
             <summary><Icon name="pin" size={16} /> Pinned books <span className="tab-count num">{pins.length + (pinnedStacks?.books.length ?? 0)}</span></summary>
-            <BookGrid books={pins} actions={actions} selection={selection} />
+            <Layout books={pins} actions={actions} selection={selection} />
             {pinnedStacks && pinnedStacks.books.length > 0 && (
-              <BookGrid books={pinnedStacks.books} actions={actions} seriesCounts={pinnedStacks.seriesCounts}
+              <Layout books={pinnedStacks.books} actions={actions} seriesCounts={pinnedStacks.seriesCounts}
                 seriesCovers={pinnedStacks.seriesCovers} onOpenSeries={onOpenSeries} seriesMenu={seriesMenu} />
             )}
           </details>

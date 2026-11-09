@@ -146,10 +146,25 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesCovers
   );
 }
 
-export function BookList({ books, actions, selection }: Props) {
+export function BookList({ books, actions, selection, seriesCounts, seriesCovers, onOpenSeries, seriesMenu }: Props) {
   return (
     <ul className="book-list">
       {books.map((book) => {
+        const count = seriesCounts?.[book.id];
+        const name = book.series?.trim();
+        if (count && name && onOpenSeries) {
+          const cover = seriesCovers?.[book.id] ?? book;
+          return <li key={book.id} className="list-row series-list-row">
+            <button type="button" className="list-open" aria-label={`Open series ${name}`} onClick={() => onOpenSeries(name)}>
+              <BookCover key={cover.id} book={cover} size="s" />
+              <span className="list-text">
+                <span className="book-title">{name}</span>
+                <span className="book-author">{count} matching {count === 1 ? "book" : "books"}</span>
+              </span>
+            </button>
+            {seriesMenu && <Menu label={`More for ${name}`} trigger={<Icon name="more" />} items={seriesMenu(name)} />}
+          </li>;
+        }
         const { mark, props } = picked(book, selection);
         return (
           <li
@@ -184,7 +199,7 @@ export function BookList({ books, actions, selection }: Props) {
   );
 }
 
-export function BookTable({ books, actions, selection }: Props) {
+export function BookTable({ books, actions, selection, seriesCounts, onOpenSeries, seriesMenu }: Props) {
   return (
     <table className="book-table">
       <thead>
@@ -203,6 +218,15 @@ export function BookTable({ books, actions, selection }: Props) {
       </thead>
       <tbody>
         {books.map((book) => {
+          const count = seriesCounts?.[book.id];
+          const name = book.series?.trim();
+          if (count && name && onOpenSeries) return <tr key={book.id} className="series-table-row">
+            <td colSpan={7}>
+              <button type="button" className="table-title" aria-label={`Open series ${name}`} onClick={() => onOpenSeries(name)}>{name}</button>
+              <span className="muted"> · {count} matching {count === 1 ? "book" : "books"}</span>
+            </td>
+            <td>{seriesMenu && <Menu label={`More for ${name}`} trigger={<Icon name="more" />} items={seriesMenu(name)} />}</td>
+          </tr>;
           const { mark, props } = picked(book, selection);
           return (
             <tr key={book.id} className={selection?.has(book.id) ? "is-selected" : undefined} {...bookContextMenu(book, actions)}>

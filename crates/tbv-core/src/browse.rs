@@ -32,11 +32,15 @@ pub(crate) fn kind_condition(kind: ItemKind) -> String {
 
 /// Title without a leading "The", "A" or "An", so "The Hobbit" sorts under H.
 fn sort_title() -> String {
+    sort_title_value(TITLE)
+}
+
+fn sort_title_value(title: &str) -> String {
     format!(
-        "CASE WHEN lower({TITLE}) LIKE 'the %' THEN substr({TITLE}, 5) \
-              WHEN lower({TITLE}) LIKE 'an %' THEN substr({TITLE}, 4) \
-              WHEN lower({TITLE}) LIKE 'a %' THEN substr({TITLE}, 3) \
-              ELSE {TITLE} END COLLATE NOCASE"
+        "CASE WHEN lower(({title})) LIKE 'the %' THEN substr(({title}), 5) \
+              WHEN lower(({title})) LIKE 'an %' THEN substr(({title}), 4) \
+              WHEN lower(({title})) LIKE 'a %' THEN substr(({title}), 3) \
+              ELSE ({title}) END COLLATE NOCASE"
     )
 }
 
@@ -277,19 +281,24 @@ impl Library {
         let mut series_counts = std::collections::BTreeMap::new();
         let books = if query.group_series {
             let pin_rank = if query.pinned_first { "b.pinned_at IS NULL" } else { "0" };
+            let rank = if query.mix_series { "0".into() } else { format!("({group}) NOT LIKE 'series:%'") };
+            let position_order = if query.mix_series && query.sort == SortOrder::Title {
+                let name = format!("CASE WHEN ({group}) LIKE 'series:%' THEN trim({SERIES}) ELSE {TITLE} END");
+                format!("{}, b.id", sort_title_value(&name))
+            } else { order.clone() };
             let sql = format!(
                 "WITH ranked AS (
-                    SELECT b.id, {pin_rank} AS pin_rank, {group} AS stack, COUNT(*) OVER (PARTITION BY {group}) AS matches,
+                    SELECT b.id, {pin_rank} AS pin_rank, {rank} AS series_rank, {group} AS stack, COUNT(*) OVER (PARTITION BY {group}) AS matches,
                            ROW_NUMBER() OVER (PARTITION BY {group} ORDER BY {order}) AS pick,
-                           ROW_NUMBER() OVER (ORDER BY {order}) AS position
+                           ROW_NUMBER() OVER (ORDER BY {position_order}) AS position
                     {BOOK_FROM} {filter}
                 ), page AS (
-                    SELECT id, stack, matches, position, pin_rank FROM ranked WHERE pick = 1 ORDER BY pin_rank, stack NOT LIKE 'series:%', position {limit}
+                    SELECT id, stack, matches, position, pin_rank, series_rank FROM ranked WHERE pick = 1 ORDER BY pin_rank, series_rank, position {limit}
                 )
                 {BOOK_COLUMNS}, (SELECT matches FROM page WHERE page.id = b.id AND stack LIKE 'series:%') AS series_matches
                 {BOOK_FROM} AND b.id IN (SELECT id FROM page)
                 ORDER BY (SELECT pin_rank FROM page WHERE page.id = b.id),
-                         (SELECT stack NOT LIKE 'series:%' FROM page WHERE page.id = b.id),
+                         (SELECT series_rank FROM page WHERE page.id = b.id),
                          (SELECT position FROM page WHERE page.id = b.id)"
             );
             let mut statement = self.conn.prepare(&sql)?;
@@ -843,6 +852,26 @@ mod tests {
         library.set_pinned(&c, true).unwrap();
         assert_eq!(stack(&library, 0).books[0].id, c);
         assert_eq!(stack(&library, 1).series_counts.get(&a), Some(&1));
+    }
+
+    #[test]
+    fn mixed_title_sort_places_series_by_name_before_pagination() {
+        let (dir, library) = open_temp_library();
+        let series = r#"<meta name="calibre:series" content="The Middle Series"/>"#;
+        let volume = add_with(&library, dir.path(), "Zebra Volume", "Writer", series);
+        let alpha = add(&library, dir.path(), "Alpha", "Writer");
+        let omega = add(&library, dir.path(), "Omega", "Writer");
+        let page = |number, mixed| library.library_page(&query(|q| {
+            q.sort = SortOrder::Title;
+            q.group_series = true;
+            q.mix_series = mixed;
+            q.page_size = 1;
+            q.page = number;
+        })).unwrap();
+        assert_eq!(page(0, true).books[0].id, alpha);
+        assert_eq!(page(1, true).books[0].id, volume);
+        assert_eq!(page(2, true).books[0].id, omega);
+        assert_eq!(page(0, false).books[0].id, volume);
     }
 
     #[test]

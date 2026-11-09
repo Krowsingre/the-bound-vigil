@@ -114,6 +114,8 @@ export function App() {
   // The book the details page shows, and the page to go back to.
   const [details, setDetails] = useState<{ bookId: string; from: Route } | null>(null);
   const [searchText, setSearchText] = useState("");
+  const [kindleSearch, setKindleSearch] = useState("");
+  const [kindleOpen, setKindleOpen] = useState(false);
   const [browserDraft, setBrowserDraft] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [reading, setReading] = useState<{ bookId: string; at?: string; fileId?: string } | null>(null);
@@ -391,11 +393,13 @@ export function App() {
       a.details?.bookId === b.details?.bookId && a.details?.from === b.details?.from && a.series === b.series,
   );
   const showingSeries = seriesPlace?.route === route ? seriesPlace : null;
+  const searchingKindle = route === "collections" && kindleOpen && !openCollection;
+  useEffect(() => { if (route !== "collections") setKindleOpen(false); }, [route]);
   const splitCompanion = splitAllowed && discoverSplit && route !== "catalogs" &&
     ["library", "documents", "audiobooks", "writing", "notes", "collections", "book"].includes(route);
   const showDiscover = route === "catalogs" || splitCompanion;
   const seriesView = (base: LibraryView): LibraryView => showingSeries
-    ? { ...base, ...NO_FILTERS, tab: "all", series: [showingSeries.name], sort: "series", layout: "series", page: seriesPage }
+    ? { ...base, ...NO_FILTERS, tab: "all", series: [showingSeries.name], sort: "series", seriesGrouping: "individual", page: seriesPage }
     : base;
   useNavigationShortcuts({ back, forward, reading: !!reading, discover: route === "catalogs", webpage: navigateBrowserHistory });
 
@@ -556,8 +560,8 @@ export function App() {
           onOpenMenu={() => setMenuOpen(true)}
           sync={sync}
           profile={profile}
-          search={route === "catalogs" ? browserDraft : showingSeries ? seriesSearch : searchText}
-          onSearchChange={route === "catalogs" ? setBrowserDraft : showingSeries ? (value) => { setSeriesSearch(value); setSeriesPage(0); } : changeSearch}
+          search={route === "catalogs" ? browserDraft : searchingKindle ? kindleSearch : showingSeries ? seriesSearch : searchText}
+          onSearchChange={route === "catalogs" ? setBrowserDraft : searchingKindle ? setKindleSearch : showingSeries ? (value) => { setSeriesSearch(value); setSeriesPage(0); } : changeSearch}
           placeholder={
             route === "notes" || route === "writing"
               ? "Search notes, books, authors or words…"
@@ -566,7 +570,7 @@ export function App() {
                 : route === "catalogs"
                   ? "Search or enter a website…"
                   : route === "collections"
-                    ? "Search the Compendium…"
+                    ? searchingKindle ? "Find a Kindle title or author…" : "Search the Compendium…"
                     : route === "settings"
                       ? "Search preferences…"
                   : undefined
@@ -681,6 +685,7 @@ export function App() {
           ) : route === "collections" ? (
             <Collections
               open={openCollection}
+              kindleOpen={kindleOpen} setKindleOpen={setKindleOpen} kindleSearch={kindleSearch}
               refreshKey={refreshKey}
               onOpen={setOpenCollection}
               onDiscover={navFor({ web: isWeb, home: isHome, android: isAndroid }).some((item) => item.route === "catalogs") ? () => navigate("catalogs") : undefined}

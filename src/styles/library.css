@@ -1527,17 +1527,6 @@ button.tag-chip-add:hover {
   gap: 10px 16px;
 }
 
-.kindle-filter {
-  flex: 1 1 220px;
-  max-width: 320px;
-  min-width: 0;
-  padding: 7px 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-}
 
 .kindle-show-removed {
   display: inline-flex;
@@ -1636,3 +1625,6 @@ button.tag-chip-add:hover {
 .library-searching {
   margin-inline: 24px;
 }
+
+.list-row.series-list-row { grid-template-columns: minmax(0, 1fr) auto; }
+.series-table-row .table-title { font-weight: 600; }

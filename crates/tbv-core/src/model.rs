@@ -360,6 +360,7 @@ pub struct LibraryQuery {
     pub pinned_first: bool,
     #[serde(default)]
     pub group_series: bool,
+    pub mix_series: bool,
     pub omit_facets: bool,
     pub series_cover_choices: std::collections::BTreeMap<String, String>,
     /// Restrict the page to pinned or unpinned books.
