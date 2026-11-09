@@ -892,9 +892,10 @@ async fn save_personal_note(
     id: Option<String>,
     title: Option<String>,
     body: String,
+    tags: Option<Vec<String>>,
 ) -> CommandResult<NoteItem> {
     with_library(state, move |library| {
-        library.save_personal_note(id.as_deref(), title.as_deref(), &body)
+        library.save_personal_note_with_tags(id.as_deref(), title.as_deref(), &body, tags.as_deref())
     })
     .await
 }

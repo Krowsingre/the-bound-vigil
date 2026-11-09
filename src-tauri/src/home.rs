@@ -448,7 +448,7 @@ async fn dispatch(app: &AppHandle, command: &str, a: Value) -> Result<Answer, St
         "set_annotation_note" => answer(set_annotation_note(s(), arg(&a, "id")?, arg(&a, "note")?).await),
         "get_notes" => answer(get_notes(s(), arg(&a, "query")?).await),
         "save_book_note" => answer(save_book_note(s(), arg(&a, "bookId")?, arg(&a, "id")?, arg(&a, "text")?).await),
-        "save_personal_note" => answer(save_personal_note(s(), arg(&a, "id")?, arg(&a, "title")?, arg(&a, "body")?).await),
+        "save_personal_note" => answer(save_personal_note(s(), arg(&a, "id")?, arg(&a, "title")?, arg(&a, "body")?, arg(&a, "tags")?).await),
         "delete_note" => answer(delete_note(s(), arg(&a, "id")?, arg(&a, "kind")?).await),
         "audiobook" => answer(audiobook(s(), arg(&a, "bookId")?).await),
         "prepare_stream" => answer(prepare_stream(s(), arg(&a, "bookId")?).await),

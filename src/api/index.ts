@@ -295,7 +295,7 @@ export interface Api {
   getNotes(query: NotesQuery): Promise<NotesPage>;
   /** Writes a note about a whole book; with an id, rewrites that one. */
   saveBookNote(bookId: string, id: string | null, text: string): Promise<NoteItem>;
-  savePersonalNote(id: string | null, title: string | null, body: string): Promise<NoteItem>;
+  savePersonalNote(id: string | null, title: string | null, body: string, tags?: string[]): Promise<NoteItem>;
   /** Changes the words on a highlight. Empty words make it a plain highlight. */
   setAnnotationNote(id: string, note: string | null): Promise<NoteItem>;
   deleteNote(id: string, kind: NoteKind): Promise<void>;
@@ -1059,7 +1059,7 @@ function appApi(): Api {
     collectionsForBook: async (bookId) => (await core).invoke<string[]>("collections_for_book", { bookId }),
     getNotes: async (query) => (await core).invoke<NotesPage>("get_notes", { query }),
     saveBookNote: async (bookId, id, text) => (await core).invoke<NoteItem>("save_book_note", { bookId, id, text }),
-    savePersonalNote: async (id, title, body) => (await core).invoke<NoteItem>("save_personal_note", { id, title, body }),
+    savePersonalNote: async (id, title, body, tags) => (await core).invoke<NoteItem>("save_personal_note", { id, title, body, tags }),
     setAnnotationNote: async (id, note) => (await core).invoke<NoteItem>("set_annotation_note", { id, note }),
     deleteNote: async (id, kind) => (await core).invoke("delete_note", { id, kind }),
     setNotePinned: async (id, pinned) => (await core).invoke("set_note_pinned", { id, pinned }),

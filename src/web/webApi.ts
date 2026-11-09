@@ -1141,7 +1141,10 @@ export async function webApi(): Promise<Api> {
       });
       return note(fresh);
     },
-    savePersonalNote: async (id, title, body) => {
+    savePersonalNote: async (id, title, body, tags) => {
+      const write = (row: Row) => library.writeAll(tags === undefined
+        ? [["personal_note", row]]
+        : [["personal_note", row], ["personal_note_mark", { ...row, tags: JSON.stringify(cleanTags(tags)) }]]);
       const t = clean(title, MAX_TITLE);
       const b = clean(body);
       if (!t && !b) throw new Error("the note is empty");
@@ -1149,11 +1152,11 @@ export async function webApi(): Promise<Api> {
       if (id) {
         const p = library.row("personal_notes", [id]);
         if (!p || p.deleted_at) throw new Error("that note no longer exists");
-        await library.write("personal_note", { ...p, title: t, body: b ?? "", updated_at: at });
+        await write({ ...p, title: t, body: b ?? "", updated_at: at });
         return note(id);
       }
       const fresh = crypto.randomUUID();
-      await library.write("personal_note", { id: fresh, title: t, body: b ?? "", created_at: at, updated_at: at, deleted_at: null });
+      await write({ id: fresh, title: t, body: b ?? "", created_at: at, updated_at: at, deleted_at: null });
       return note(fresh);
     },
     setAnnotationNote: async (id, text) => {
