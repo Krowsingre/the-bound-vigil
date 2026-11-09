@@ -95,11 +95,12 @@ export const SUGGESTED_SITES: { title: string; url: string }[] = [
 interface BarState {
   busy: boolean;
   marked: boolean;
+  bookmarks: Bookmark[];
   reader: boolean;
   /** A web page (not the start page), which can be bookmarked or read in reader view. */
   web: boolean;
 }
-const BAR_START: BarState = { busy: false, marked: false, reader: false, web: false };
+const BAR_START: BarState = { busy: false, marked: false, bookmarks: [], reader: false, web: false };
 let barNow = BAR_START;
 
 const ask = (what: string) => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: what }));
@@ -140,6 +141,26 @@ function useTravel(way: "back" | "forward") {
   };
 }
 
+function BrowserBookmarks({ state, className }: { state: BarState; className: string }) {
+  const sites = state.bookmarks.length ? state.bookmarks : SUGGESTED_SITES;
+  const items: MenuEntry[] = [
+    { label: state.marked ? "Remove bookmark" : "Bookmark this page", icon: "bookmark", disabled: !state.web, onSelect: () => ask("mark") },
+    { label: "Manage bookmarks", icon: "edit", onSelect: () => ask("bookmarks") },
+    "divider",
+    { heading: <strong>{state.bookmarks.length ? "Saved sites" : "Book sites to start with"}</strong> },
+    ...sites.map((site) => ({ label: site.title, icon: "globe" as const, onSelect: () => ask("bookmark:" + site.url) })),
+  ];
+  return (
+    <Menu
+      label={state.marked ? "Bookmarks (page saved)" : "Bookmarks"}
+      className={className + (state.marked ? " browser-bookmark-saved" : "")}
+      align="start"
+      trigger={<Icon name="bookmark" size={20} />}
+      items={items}
+    />
+  );
+}
+
 /**
  * The top bar's buttons on Discover, before the address: Back, Forward,
  * Reload, Home, Bookmark and Reader view. A phone has Home here and the rest
@@ -167,7 +188,7 @@ export function BrowserNav() {
       {button("Forward", "arrowRight", "forward", forward)}
       {button(state.busy ? "Stop" : "Reload", state.busy ? "close" : "sync", state.busy ? "stop" : "reload")}
       {button("Home page", "home", "home")}
-      {button(state.marked ? "Remove bookmark" : "Bookmark this page", "bookmark", "mark", { disabled: !state.web, "aria-pressed": state.marked, className: `header-action${state.marked ? " is-on" : ""}` })}
+      <BrowserBookmarks state={state} className="header-action" />
       {button("Reader view", "bookOpen", "reader", { disabled: !state.web && !state.reader, "aria-pressed": state.reader, className: `header-action${state.reader ? " is-on" : ""}` })}
     </div>
   );
@@ -284,7 +305,7 @@ export function Browser({
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [marks, setMarks] = useState<Bookmark[]>([]);
   const fetched = useDownloads();
-  const [panel, setPanel] = useState<null | "tabs" | "site" | "add-bookmark" | StartPanel>(null);
+  const [panel, setPanel] = useState<null | "tabs" | "site" | StartPanel>(null);
   /** Pages that couldn't open, by tab: TBV's own page says why. */
   const [failed, setFailed] = useState<Record<string, { url: string; reason: string }>>({});
   /** Tabs just closed, for the Undo line. */
@@ -751,9 +772,9 @@ export function Browser({
   const asking = fetched.filter((d) => d.asking);
   const web = url.startsWith("http") && !failure;
   useEffect(() => {
-    barNow = { busy: busy && !onStart, marked: !!marked, reader: !!article, web };
+    barNow = { busy: busy && !onStart, marked: !!marked, bookmarks: marks, reader: !!article, web };
     window.dispatchEvent(new CustomEvent(BROWSER_STATE, { detail: barNow }));
-  }, [busy, onStart, marked, article, web]);
+  }, [busy, onStart, marked, marks, article, web]);
   const fromTop = useRef<(what: string) => void>(() => undefined);
   fromTop.current = (what) => {
     const travel = /^travel:(back|forward):(-?[\d.]+):(-?[\d.]+)$/.exec(what);
@@ -761,6 +782,8 @@ export function Browser({
     else if (what === "home") goHome();
     else if (what === "site") setPanel("site");
     else if (what === "mark") void toggleMark();
+    else if (what === "bookmarks") setPanel("bookmarks");
+    else if (what.startsWith("bookmark:")) go(what.slice("bookmark:".length));
     else if (what === "reader") void (article ? setArticle(null) : openReader());
     else if (what === "back" || what === "forward" || what === "stop") act(what);
     else act("reload");
@@ -926,31 +949,25 @@ export function Browser({
     }
   };
 
-  const sites = marks.length ? marks : SUGGESTED_SITES.map((s, i) => ({ id: `suggested-${i}`, ...s }));
-  const bookmarkItems: MenuEntry[] = [
-    { label: "Add bookmark", icon: "bookmark", onSelect: () => setPanel("add-bookmark") },
-    { label: "Manage bookmarks", icon: "edit", onSelect: () => setPanel("bookmarks") },
-    { heading: <strong>{marks.length ? "Bookmarks" : "Book sites to start with"}</strong> },
-    ...sites.map((m) => ({ label: m.title, icon: "globe" as const, onSelect: () => go(m.url) })),
-  ];
   const moreItems: MenuEntry[] = [
-    { label: "Copy link", icon: "copy", disabled: !url.startsWith("http"), onSelect: () => void navigator.clipboard?.writeText(url).then(() => toast("Link copied.")) },
-    { label: "Share…", icon: "share", disabled: !url.startsWith("http"), onSelect: () => share(url, titleOf(active.title, url)) },
-    { label: "Open in your normal browser", icon: "link", disabled: !url.startsWith("http"), onSelect: () => void openExternal(url) },
-    { label: "Save to Reading List", icon: "notes", disabled: !url.startsWith("http") || saving, onSelect: () => void saveToReadingList() },
+    { label: "Share and open", icon: "share", disabled: !web, submenu: [
+      { label: "Copy link", icon: "copy", onSelect: () => void navigator.clipboard?.writeText(url).then(() => toast("Link copied.")) },
+      { label: "Share...", icon: "share", onSelect: () => share(url, titleOf(active.title, url)) },
+      { label: "Open in your normal browser", icon: "link", onSelect: () => void openExternal(url) },
+    ] },
     { label: "Bookmarks", icon: "bookmark", onSelect: () => setPanel("bookmarks") },
-    { label: "Reading List", icon: "bookOpen", onSelect: () => setPanel("reading") },
+    { label: "Reading List", icon: "bookOpen", submenu: [
+      { label: "Save this page", icon: "notes", disabled: !web || saving, onSelect: () => void saveToReadingList() },
+      { label: "Open Reading List", icon: "bookOpen", onSelect: () => setPanel("reading") },
+    ] },
     { label: "History", icon: "clock", onSelect: () => setPanel("history") },
     { label: "Find on page", icon: "search", onSelect: () => setFinding("") },
     { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) },
     { label: "Reopen closed tab", icon: "undo", disabled: !closedTabs.length, onSelect: () => reopen() },
-    { label: "Make this your home page", icon: "home", disabled: !url.startsWith("http"), onSelect: () => (writeBrowserPrefs({ home: url }), toast("This is your home page now.")) },
-    { label: "Site information", icon: "info", disabled: !site, onSelect: () => setPanel("site") },
-    { label: "Clear cookies and site data", icon: "trash", onSelect: () => void api.browserClear().then(() => toast("Every site's cookies and data are cleared.")) },
-    "divider",
-    { label: "Add a catalogue", icon: "globePlus", onSelect: onOpenCatalogues },
-    "divider",
-    ...bookmarkItems,
+    { label: "Make this your home page", icon: "home", disabled: !web, onSelect: () => (writeBrowserPrefs({ home: url }), toast("This is your home page now.")) },
+    ...(narrow ? [{ label: "Site information", icon: "info" as const, disabled: !site, onSelect: () => setPanel("site") }] : []),
+    { label: "Clear all cookies and site data", icon: "trash", onSelect: () => void api.browserClear().then(() => toast("Every site's cookies and data are cleared.")) },
+    ...(!narrow ? [] : ["divider" as const, { label: "Add a catalogue", icon: "globePlus" as const, onSelect: onOpenCatalogues }]),
   ];
 
   const button = (label: string, icon: Parameters<typeof Icon>[0]["name"], onClick: () => void, extra = "", more: React.ButtonHTMLAttributes<HTMLButtonElement> = {}) => (
@@ -1008,7 +1025,6 @@ export function Browser({
           <div className="browser-strip-tools">
             <Menu label="Every tab" className="toolbar-button" trigger={<Icon name="chevronDown" size={16} />} items={tabList} />
             <span className="browser-bar-divider" aria-hidden />
-            <Menu label="Bookmarks" className="toolbar-button" trigger={<Icon name="bookmark" size={17} />} items={bookmarkItems} />
             {button("Add a catalogue", "globePlus", onOpenCatalogues)}
             {downloadsButton}
             <Menu label="More" className="toolbar-button" trigger={<Icon name="more" size={17} />} items={moreItems} />
@@ -1021,9 +1037,7 @@ export function Browser({
           {button("Back", "arrowLeft", () => act("back"), "", backTravel)}
           {button("Forward", "arrowRight", () => act("forward"), "", forwardTravel)}
           {button(busy ? "Stop" : "Reload", busy ? "close" : "sync", () => act(busy ? "stop" : "reload"))}
-          <button type="button" className={`toolbar-button${marked ? " is-on" : ""}`} aria-pressed={!!marked} aria-label={marked ? "Remove bookmark" : "Bookmark this page"} title={marked ? "Remove bookmark" : "Bookmark this page"} onClick={() => void toggleMark()}>
-            <Icon name="bookmark" size={17} />
-          </button>
+          <BrowserBookmarks state={{ busy, web, marked: !!marked, bookmarks: marks, reader: !!article }} className="toolbar-button" />
           <button type="button" className={`toolbar-button browser-count${panel === "tabs" ? " is-on" : ""}`} aria-label={`Tabs: ${tabs.tabs.length} open`} title="Tabs" onClick={() => setPanel(panel === "tabs" ? null : "tabs")}>
             <span>{tabs.tabs.length}</span>
           </button>
@@ -1185,12 +1199,11 @@ export function Browser({
           </div>
         )}
       </div>
-      {(panel === "bookmarks" || panel === "add-bookmark") && (
+      {panel === "bookmarks" && (
         <BookmarksPanel
           onGo={(to) => (setPanel(null), go(to))}
           onClose={() => setPanel(null)}
           onChanged={reloadMarks}
-          initial={panel === "add-bookmark" ? { title: url.startsWith("http") ? titleOf(active.title, url) : "", url: url.startsWith("http") ? url : "" } : undefined}
         />
       )}
       {panel === "reading" && <ReadingListPanel onOpenBook={onOpenBook} onClose={() => setPanel(null)} />}

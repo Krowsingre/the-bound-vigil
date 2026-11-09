@@ -23,6 +23,7 @@ export interface MenuItem {
   /** With `checked`: turned round, so it's left out (shown as a cross). */
   excluded?: boolean;
   onSelect?: () => void;
+  submenu?: MenuEntry[];
 }
 
 export type MenuEntry = MenuItem | "divider" | { heading: ReactNode };
@@ -50,6 +51,15 @@ export function Menu({
   menuClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [section, setSection] = useState<number | null>(null);
+  const group = section === null ? undefined : items[section];
+  const submenu = group && typeof group === "object" && "label" in group ? group.submenu : undefined;
+  const visible: MenuEntry[] = submenu ? [
+    { label: "Back to " + label, icon: "arrowLeft", onSelect: () => setSection(null) },
+    "divider",
+    ...submenu,
+  ] : items;
+  const closeMenu = () => { setOpen(false); setSection(null); };
   const [place, setPlace] = useState<CSSProperties>({ visibility: "hidden" });
   const root = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -75,7 +85,7 @@ export function Menu({
       Math.min(preferred, window.innerWidth - margin - box.width),
     );
     setPlace({ top: Math.max(margin, top), left, maxHeight: Math.max(120, height) });
-  }, [open, align, items.length]);
+  }, [open, align, visible.length, section]);
 
   useEffect(() => {
     if (!open) return;
@@ -84,14 +94,14 @@ export function Menu({
       menu.current?.contains(target as Node);
     const close = (e: Event) => {
       if (e instanceof KeyboardEvent ? e.key === "Escape" : !inside(e.target))
-        setOpen(false);
+        closeMenu();
     };
     // The dropdown is pinned to the window, so it closes rather than drift
     // away from its button when the page scrolls or the window changes size.
     const away = (e: Event) => {
-      if (!inside(e.target)) setOpen(false);
+      if (!inside(e.target)) closeMenu();
     };
-    const shut = () => setOpen(false);
+    const shut = closeMenu;
     document.addEventListener("pointerdown", close);
     document.addEventListener("keydown", close);
     document.addEventListener("scroll", away, true);
@@ -105,7 +115,7 @@ export function Menu({
       document.removeEventListener("scroll", away, true);
       window.removeEventListener("resize", shut);
     };
-  }, [open]);
+  }, [open, section]);
 
   useEffect(() => {
     if (!open) setPlace({ visibility: "hidden" });
@@ -120,7 +130,7 @@ export function Menu({
         title={label}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => open ? closeMenu() : setOpen(true)}
       >
         {trigger}
       </button>
@@ -129,10 +139,12 @@ export function Menu({
           <MenuList
             ref={menu}
             label={label}
-            items={items}
+            items={visible}
             className={menuClassName}
             style={place}
-            onClose={() => setOpen(false)}
+            onClose={closeMenu}
+            onSubmenu={submenu ? undefined : setSection}
+            back={!!submenu}
           />,
           document.body,
         )}
@@ -149,8 +161,10 @@ export const MenuList = forwardRef<
     className?: string;
     style: CSSProperties;
     onClose: () => void;
+    onSubmenu?: (index: number) => void;
+    back?: boolean;
   }
->(function MenuList({ label, items, className = "", style, onClose }, ref) {
+>(function MenuList({ label, items, className = "", style, onClose, onSubmenu, back }, ref) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
     e.preventDefault();
@@ -185,11 +199,16 @@ export const MenuList = forwardRef<
             key={i}
             type="button"
             role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+            aria-haspopup={item.submenu ? "menu" : undefined}
             aria-checked={item.excluded ? "mixed" : item.checked}
             className={`menu-item${item.danger ? " menu-item-danger" : ""}${item.excluded ? " menu-item-excluded" : ""}${item.description ? " has-description" : ""}`}
             disabled={item.disabled}
             onClick={() => {
-              if (item.checked === undefined) onClose();
+              if (item.submenu && onSubmenu) {
+                onSubmenu(i);
+                return;
+              }
+              if (item.checked === undefined && !(back && i === 0)) onClose();
               item.onSelect?.();
             }}
           >
@@ -208,6 +227,7 @@ export const MenuList = forwardRef<
             ) : (
               <span className="menu-label">{item.label}</span>
             )}
+            {item.submenu && <Icon name="chevronRight" size={14} />}
             {(item.excluded ? "Hidden" : item.hint) && <span className="menu-hint">{item.excluded ? "Hidden" : item.hint}</span>}
           </button>
         ),
