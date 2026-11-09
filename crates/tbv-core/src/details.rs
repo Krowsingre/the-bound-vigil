@@ -318,6 +318,9 @@ impl Library {
         let now = now_utc();
         let tx = self.conn.unchecked_transaction()?;
         for (field, value) in cleaned {
+            if source != "file" {
+                tx.execute("DELETE FROM metadata_overrides WHERE book_id = ?1 AND field = ?2", params![book_id, field])?;
+            }
             tx.execute(
                 "INSERT INTO metadata_fetched (book_id, field, value, source, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
                  ON CONFLICT(book_id, field) DO UPDATE SET value = excluded.value, source = excluded.source,
@@ -434,6 +437,21 @@ mod tests {
         assert_eq!(library.book(&id).unwrap().unwrap().title, "Frankenstein; or, The Modern Prometheus");
         library.reset_details(&id, true).unwrap();
         assert_eq!(library.book(&id).unwrap().unwrap().title, "Frankenstein");
+    }
+
+    #[test]
+    fn approving_online_details_replaces_only_the_selected_manual_fields() {
+        let (dir, mut library) = open_temp_library();
+        let id = import(&mut library, dir.path(), "Frankenstein");
+        library.edit_details(std::slice::from_ref(&id), &[
+            DetailChange { field: "title".into(), value: Some("Manual title".into()) },
+            DetailChange { field: "publisher".into(), value: Some("Manual publisher".into()) },
+        ]).unwrap();
+        library.save_fetched(&id, "openlibrary", &BTreeMap::from([("title".into(), "Approved title".into())])).unwrap();
+        let details = library.book_details(&id).unwrap();
+        assert_eq!(details.book.title, "Approved title");
+        assert_eq!(details.fields.iter().find(|f| f.field == "title").unwrap().edited, None);
+        assert_eq!(details.fields.iter().find(|f| f.field == "publisher").unwrap().edited.as_deref(), Some("Manual publisher"));
     }
 
     #[test]

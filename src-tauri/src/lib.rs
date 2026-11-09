@@ -537,9 +537,14 @@ async fn set_want_to_read(
     state: State<'_, AppLibrary>,
     book_id: String,
     want: bool,
+    replace: Option<String>,
 ) -> CommandResult<()> {
     with_library(state, move |library| {
-        library.set_want_to_read(&book_id, want)
+        if replace.is_some() {
+            library.update_up_next(&book_id, want, replace.as_deref())
+        } else {
+            library.set_want_to_read(&book_id, want)
+        }
     })
     .await
 }

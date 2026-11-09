@@ -19,10 +19,11 @@ const COUNT_OF: Record<LibraryTab, keyof ShelfCounts> = {
   collections: "collections",
 };
 
-const LAYOUTS: { layout: Layout; label: string; icon: "grid" | "list" | "rows" }[] = [
+const LAYOUTS: { layout: Layout; label: string; icon: "grid" | "list" | "rows" | "bookOpen" }[] = [
   { layout: "grid", label: "Covers", icon: "grid" },
   { layout: "list", label: "List", icon: "list" },
   { layout: "compact", label: "Compact list", icon: "rows" },
+  { layout: "series", label: "Series stacks", icon: "bookOpen" },
 ];
 
 const OPENED_KEY = "tbv.filters.opened";
@@ -45,6 +46,7 @@ export function LibraryToolbar({
   authors = [],
   narrators = [],
   allLabel,
+  allowSeries = false,
   selecting,
   onSelecting,
   onSelectAll,
@@ -62,6 +64,7 @@ export function LibraryToolbar({
   narrators?: string[];
   /** The first tab's name, when it isn't "All books". */
   allLabel?: string;
+  allowSeries?: boolean;
   selecting: boolean;
   onSelecting: (on: boolean) => void;
   /** Starts choosing with every book the page shows already chosen. */
@@ -252,7 +255,7 @@ export function LibraryToolbar({
               </span>
             )}
             <div className="layout-switch" role="radiogroup" aria-label="Layout">
-              {LAYOUTS.map((l) => (
+              {LAYOUTS.filter((l) => allowSeries || l.layout !== "series").map((l) => (
                 <button
                   key={l.layout}
                   type="button"
@@ -262,7 +265,7 @@ export function LibraryToolbar({
                   aria-label={l.label}
                   title={l.label}
                   className={view.layout === l.layout ? "is-active" : undefined}
-                  onClick={() => onChange({ layout: l.layout })}
+                  onClick={() => onChange({ layout: l.layout, page: 0 })}
                 >
                   <Icon name={l.icon} size={18} />
                 </button>

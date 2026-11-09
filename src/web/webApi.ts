@@ -3,6 +3,7 @@
 // It is lighter than the desktop app: no importing, backups, folder sync or
 // Hardcover, and books open from the cloud.
 
+import { PIN_LIMIT, PIN_LIMIT_MESSAGE, upNextChanges } from "../library/shelfLimits";
 import { printInBrowser } from "../print/inBrowser";
 import { browseStub } from "../preview/browse";
 import type { Api } from "../api";
@@ -688,9 +689,14 @@ export async function webApi(): Promise<Api> {
     setFavorite: async (bookId, favorite) => writeShelves(bookId, { favorite: favorite ? 1 : 0 }),
     setPinned: async (bookId, pinned) => {
       const b = find(bookId);
-      if (!!b.pinned_at !== pinned) await library.write("book_pin", { ...b, pinned_at: pinned ? new Date().toISOString().replace(/\.\d+Z$/, "Z") : null });
+      if (!!b.pinned_at === pinned) return;
+      if (pinned && books().filter((book) => book.pinnedAt).length >= PIN_LIMIT) throw new Error(PIN_LIMIT_MESSAGE);
+      await library.write("book_pin", { ...b, pinned_at: pinned ? new Date().toISOString().replace(/\.\d+Z$/, "Z") : null });
     },
-    setWantToRead: async (bookId, want) => writeShelves(bookId, { want_to_read: want ? 1 : 0 }),
+    setWantToRead: async (bookId, want, replace) => {
+      const ids = upNextChanges(books(), bookId, want, replace);
+      if (ids.length) await library.writeAll(ids.map((id) => ["book_shelves", { ...find(id), want_to_read: id === bookId && want ? 1 : 0 }]));
+    },
     setPhoneWanted: async (bookIds, wanted) => {
       const changes: [string, Row][] = [];
       for (const id of bookIds) {
@@ -1395,7 +1401,7 @@ export async function webApi(): Promise<Api> {
         const v = cleanValue(field as DetailField["field"], value);
         if (v && v !== "[]") writes.push(["fetched", { book_id: bookId, field, value: v, source, updated_at: at }]);
       }
-      await library.writeAll(writes);
+      await library.writeAll(writes, writes.flatMap(([, row]) => library.row("metadata_overrides", [bookId, row.field]) ? [["override", [bookId, row.field]]] : []));
     },
     dismissDuplicates: async () => undefined,
     shareBestCover: async () => {

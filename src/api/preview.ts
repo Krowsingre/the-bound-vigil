@@ -2,6 +2,7 @@
 // It is never used inside the desktop app (see api/index.ts), and the shell
 // shows a "Preview" badge whenever it is active.
 
+import { PIN_LIMIT, PIN_LIMIT_MESSAGE, upNextChanges } from "../library/shelfLimits";
 import type { Api } from "./index";
 import { previewCollections } from "../preview/collections";
 import { previewNotes, sampleAnnotations } from "../preview/notes";
@@ -708,8 +709,14 @@ export function previewApi(): Api {
     getLibrary: async (query) => queryBooks(library(), query, collections.previews().length),
     getCollections: async () => collections.previews(),
     setFavorite: async (bookId, favorite) => update(bookId, { favorite }),
-    setPinned: async (bookId, pinned) => update(bookId, { pinnedAt: pinned ? new Date().toISOString() : null }),
-    setWantToRead: async (bookId, wantToRead) => update(bookId, { wantToRead }),
+    setPinned: async (bookId, pinned) => {
+      if (!!find(bookId).pinnedAt === pinned) return;
+      if (pinned && books.filter((book) => book.pinnedAt).length >= PIN_LIMIT) throw new Error(PIN_LIMIT_MESSAGE);
+      update(bookId, { pinnedAt: pinned ? new Date().toISOString() : null });
+    },
+    setWantToRead: async (bookId, want, replace) => {
+      for (const id of upNextChanges(books, bookId, want, replace)) update(id, { wantToRead: id === bookId && want });
+    },
     setPhoneWanted: async (bookIds, phoneWanted) => bookIds.forEach((id) => update(id, { phoneWanted })),
     setRating: async (bookId, rating) => update(bookId, { rating }),
     // The preview has no files to read, so it shows what an import reports.
@@ -1118,11 +1125,16 @@ export function previewApi(): Api {
     saveFetched: async (bookId, source, values) => {
       ownOf(bookId);
       const found = { ...fetched.get(bookId) };
+      const mine = { ...edited.get(bookId) };
       for (const [field, value] of Object.entries(values)) {
-        const v = cleanValue(field as DetailFieldName, value);
-        if (v && v !== "[]") found[field] = { value: v, source };
+        const name = field as DetailFieldName;
+        const v = cleanValue(name, value);
+        if (!v || v === "[]") continue;
+        found[name] = { value: v, source };
+        delete mine[name];
       }
       fetched.set(bookId, found);
+      edited.set(bookId, mine);
       relayer(bookId);
     },
     listEreaders: async () => sampleReaders,

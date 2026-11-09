@@ -13,6 +13,7 @@ import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Writing } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
+import { UpNextReplacementHost } from "./library/UpNextReplacement";
 import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory } from "./browse/Browser";
 import { AddressSuggestions } from "./browse/AddressSuggestions";
 import { readBrowserPrefs, shortAddress } from "./browse/browserPrefs";
@@ -719,6 +720,7 @@ export function App() {
       <PlayerBar onShowAudiobooks={() => navigate("audiobooks")} />
       <AddToCollectionHost onChanged={refresh} />
       <BookDialogsHost onChanged={refresh} />
+      <UpNextReplacementHost onChanged={refresh} />
       <DetailsHost onChanged={refresh} />
       <SendToEreaderHost
         onSetUp={() => {

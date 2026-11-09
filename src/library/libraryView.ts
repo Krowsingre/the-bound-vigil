@@ -1,7 +1,7 @@
 import type { ItemKind, LibraryExclude, Location, Shelf, SortOrder } from "../api/types";
 
 export type LibraryTab = Shelf | "collections";
-export type Layout = "grid" | "list" | "compact";
+export type Layout = "grid" | "list" | "compact" | "series";
 
 /** What the Library page is showing. Search lives in the header, so it is kept apart. */
 export interface LibraryView {
@@ -84,7 +84,7 @@ export function initialView(kind: ItemKind = "books"): LibraryView {
   try {
     const saved = JSON.parse(localStorage.getItem(keyOf(kind)) ?? "{}") as Partial<LibraryView>;
     if (SORTS.some((s) => s.sort === saved.sort)) view.sort = saved.sort!;
-    if (saved.layout === "grid" || saved.layout === "list" || saved.layout === "compact") view.layout = saved.layout;
+    if (saved.layout === "grid" || saved.layout === "list" || saved.layout === "compact" || (kind === "books" && saved.layout === "series")) view.layout = saved.layout;
     view.hideRead = saved.hideRead === true;
   } catch {
     /* fall back to defaults */

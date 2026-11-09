@@ -6,6 +6,7 @@ export function ConfirmDialog({
   body,
   confirm,
   danger = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: {
@@ -13,6 +14,7 @@ export function ConfirmDialog({
   body: ReactNode;
   confirm: string;
   danger?: boolean;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -27,7 +29,7 @@ export function ConfirmDialog({
           <button ref={cancel} type="button" className="btn btn-quiet" onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className={`btn ${danger ? "btn-danger" : "btn-primary"}`} onClick={onConfirm}>
+          <button type="button" className={`btn ${danger ? "btn-danger" : "btn-primary"}`} disabled={confirmDisabled} onClick={onConfirm}>
             {confirm}
           </button>
         </div>

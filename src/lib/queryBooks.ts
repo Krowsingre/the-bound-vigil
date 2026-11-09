@@ -56,7 +56,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     if (q.hideRead && (b.status === "read" || b.status === "dropped")) return false;
     if (q.paired != null && !!b.paired !== q.paired) return false;
     if (!hasAny(b.genres, q.genres) || !hasAny(b.authors, q.authors) || !hasAny(b.narrators, q.narrators)) return false;
-    if (q.series?.length && !q.series.some((s) => s.toLowerCase() === (b.series ?? "").toLowerCase())) return false;
+    if (q.series?.length && !q.series.some((s) => s.trim().toLowerCase() === (b.series ?? "").trim().toLowerCase())) return false;
     if (q.exclude && excluded(b, q.exclude)) return false;
     if (search && ![b.title, ...b.authors, b.series ?? ""].some((t) => t.toLowerCase().includes(search))) return false;
     return true;
@@ -76,12 +76,30 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     genre: (a, b) =>
       nullsLast(a.genres?.[0] ?? null, b.genres?.[0] ?? null, (x, y) => x.localeCompare(y, undefined, { sensitivity: "base" })) || byTitle(a, b),
   };
-  const pins = (a: BookPreview, b: BookPreview) => (q.pinnedFirst ? (b.pinnedAt ?? "").localeCompare(a.pinnedAt ?? "") : 0);
+  const pins = (a: BookPreview, b: BookPreview) => (q.pinnedFirst ? Number(!!b.pinnedAt) - Number(!!a.pinnedAt) : 0);
   list = [...list].sort((a, b) => pins(a, b) || sorters[q.sort](a, b));
+  const seriesCounts: Record<string, number> = {};
+  if (q.groupSeries) {
+    const stacks = new Map<string, BookPreview>();
+    list = list.filter((book) => {
+      const name = book.series?.trim().toLowerCase();
+      if (!name || (q.pinnedFirst && book.pinnedAt)) return true;
+      const first = stacks.get(name);
+      if (first) {
+        seriesCounts[first.id] += 1;
+        return false;
+      }
+      stacks.set(name, book);
+      seriesCounts[book.id] = 1;
+      return true;
+    });
+  }
   const pageSize = q.pageSize || 24;
   const page = Math.min(q.page, Math.max(0, Math.ceil(list.length / pageSize) - 1));
+  const books = list.slice(page * pageSize, (page + 1) * pageSize);
   return {
-    books: list.slice(page * pageSize, (page + 1) * pageSize),
+    books,
+    seriesCounts: Object.fromEntries(books.flatMap((book) => seriesCounts[book.id] ? [[book.id, seriesCounts[book.id]]] : [])),
     total: list.length,
     page,
     pageSize,

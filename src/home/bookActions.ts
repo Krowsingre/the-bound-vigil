@@ -11,6 +11,8 @@ import { askDeleteBook, askEditTags, askRemoveBook } from "../library/BookDialog
 import { cueAudiobook, playAudiobook } from "../audio/player";
 import { askPair } from "../audio/LinkEbook";
 import { isAudio, kindOf } from "../lib/queryBooks";
+import { UP_NEXT_FULL } from "../library/shelfLimits";
+import { askUpNextReplacement } from "../library/UpNextReplacement";
 import { NO_FILTERS } from "../library/libraryView";
 import { isApp, isHome, isWeb } from "../api";
 
@@ -221,7 +223,12 @@ export function makeBookActions(
     },
     setStatus: (book, status) => void run(book, api.setBookStatus(book.id, status)),
     setFavorite: (book, favorite) => void run(book, api.setFavorite(book.id, favorite)),
-    setWantToRead: (book, want) => void run(book, api.setWantToRead(book.id, want)),
+    setWantToRead: (book, want) => {
+      void run(book, api.setWantToRead(book.id, want).catch((error: unknown) => {
+        if (!want || !String(error).includes(UP_NEXT_FULL)) throw error;
+        askUpNextReplacement(book);
+      }));
+    },
     setRating: (book, rating) => void run(book, api.setRating(book.id, rating)),
     setPinned: api.setPinned && ((book, pinned) => void run(book, api.setPinned!(book.id, pinned))),
     download: api.downloadBook && ((book) => {

@@ -354,6 +354,8 @@ pub struct LibraryQuery {
     /// Pinned books first (the Archive's own list).
     #[serde(default)]
     pub pinned_first: bool,
+    #[serde(default)]
+    pub group_series: bool,
     /// Zero-based.
     pub page: u32,
     pub page_size: u32,
@@ -390,7 +392,9 @@ pub struct LibraryExclude {
 #[serde(rename_all = "camelCase")]
 pub struct LibraryPage {
     pub books: Vec<BookPreview>,
-    /// Books matching the query across all pages.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub series_counts: std::collections::BTreeMap<BookId, u32>,
+    /// Items matching the query across all pages, counting each series stack once.
     pub total: u32,
     pub page: u32,
     pub page_size: u32,

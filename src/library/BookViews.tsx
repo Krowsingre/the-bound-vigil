@@ -16,7 +16,13 @@ export interface Selection {
   toggle: (book: BookPreview, range?: BookPreview[]) => void;
 }
 
-type Props = { books: BookPreview[]; actions: BookActions; selection?: Selection | null };
+type Props = {
+  books: BookPreview[];
+  actions: BookActions;
+  selection?: Selection | null;
+  seriesCounts?: Record<string, number>;
+  onOpenSeries?: (name: string) => void;
+};
 
 const press = (book: BookPreview, actions: BookActions, selection: Selection | null | undefined, books: BookPreview[], shift: boolean) =>
   selection ? selection.toggle(book, shift ? books : undefined) : clickBook(book, actions);
@@ -78,10 +84,27 @@ function Progress({ book }: { book: BookPreview }) {
   );
 }
 
-export function BookGrid({ books, actions, selection }: Props) {
+export function BookGrid({ books, actions, selection, seriesCounts, onOpenSeries }: Props) {
   return (
     <ul className={`book-grid${selection ? " is-selecting" : ""}`}>
       {books.map((book) => {
+        const count = seriesCounts?.[book.id];
+        if (count && book.series && onOpenSeries) {
+          const name = book.series.trim();
+          return (
+            <li key={book.id} className="grid-card series-stack">
+              <button type="button" className="grid-open" aria-label={"Open series " + name} onClick={() => onOpenSeries(name)}>
+                <BookCover book={book} />
+              </button>
+              <div className="grid-caption">
+                <div className="grid-text">
+                  <span className="book-title">{name}</span>
+                  <span className="book-author">{count} matching {count === 1 ? "book" : "books"}</span>
+                </div>
+              </div>
+            </li>
+          );
+        }
         const { mark, props } = picked(book, selection);
         return (
           <li

@@ -225,7 +225,7 @@ export class WebLibrary {
     await this.writeAll([[kindName, row]]);
   }
 
-  async writeAll(changes: [kind: string, row: Row][]): Promise<void> {
+  async writeAll(changes: [kind: string, row: Row][], removes: [kind: string, keys: unknown[]][] = []): Promise<void> {
     const out: Stored[] = [];
     for (const [kindName, row] of changes) {
       const kind = kindNamed.get(kindName)!;
@@ -235,6 +235,11 @@ export class WebLibrary {
       for (const c of [...kind.keys, ...kind.cols]) data[c] = row[c] ?? null;
       const previous = this.db.records.get(recordId(kind.name, key));
       out.push({ kind: kind.name, key, data, changed_at: stampAfter(previous?.changed_at), pushed: false });
+    }
+    for (const [kindName, keys] of removes) {
+      const key = JSON.stringify(keys);
+      const previous = this.db.records.get(recordId(kindName, key));
+      out.push({ kind: kindName, key, data: null, changed_at: stampAfter(previous?.changed_at), pushed: false });
     }
     await this.db.putRecords(out);
     this.changed();

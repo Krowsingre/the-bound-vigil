@@ -475,6 +475,7 @@ function GoodreadsReport({ report, onClose }: { report: GoodreadsImport; onClose
   const lines = [
     report.ratings > 0 && `Ratings added to ${books(report.ratings)}.`,
     report.statuses > 0 && `Reading status brought in for ${books(report.statuses)}.`,
+    !!report.upNextSkipped && `${books(report.upNextSkipped)} left out because Up Next is full.`,
     report.upNext > 0 && `${books(report.upNext)} put in Up next.`,
     report.favourites > 0 && `${books(report.favourites)} marked as favourites.`,
     report.collectionsCreated.length > 0 &&

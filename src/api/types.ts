@@ -509,6 +509,7 @@ export interface LibraryQuery {
   ids?: string[];
   /** Pinned books first: the Archive's own list. */
   pinnedFirst?: boolean;
+  groupSeries?: boolean;
   /** Zero-based. */
   page: number;
   pageSize: number;
@@ -538,6 +539,7 @@ export interface ShelfCounts {
 
 export interface LibraryPage {
   books: BookPreview[];
+  seriesCounts?: Record<string, number>;
   total: number;
   page: number;
   pageSize: number;
@@ -826,6 +828,7 @@ export interface GoodreadsImport {
   ratings: number;
   statuses: number;
   upNext: number;
+  upNextSkipped?: number;
   favourites: number;
   collectionsCreated: string[];
   collectionBooks: number;

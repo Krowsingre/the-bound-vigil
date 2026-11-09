@@ -131,7 +131,7 @@ export interface Api {
   setFavorite(bookId: string, favorite: boolean): Promise<void>;
   /** Pins a book to the top of the Archive, or unpins it. */
   setPinned(bookId: string, pinned: boolean): Promise<void>;
-  setWantToRead(bookId: string, want: boolean): Promise<void>;
+  setWantToRead(bookId: string, want: boolean, replace?: string): Promise<void>;
   /** Chooses books to go to the phone (when only chosen ones do), or stops. On the phone: asks a computer to send them. */
   setPhoneWanted(bookIds: string[], wanted: boolean): Promise<void>;
   /** 1 to 5 stars, or null to clear. */
@@ -852,7 +852,7 @@ function appApi(): Api {
     getCollections: async () => (await core).invoke<CollectionPreview[]>("get_collections"),
     setFavorite: async (bookId, favorite) => (await core).invoke("set_favorite", { bookId, favorite }),
     setPinned: async (bookId, pinned) => (await core).invoke("set_pinned", { bookId, pinned }),
-    setWantToRead: async (bookId, want) => (await core).invoke("set_want_to_read", { bookId, want }),
+    setWantToRead: async (bookId, want, replace) => (await core).invoke("set_want_to_read", { bookId, want, replace }),
     setPhoneWanted: async (bookIds, wanted) => (await core).invoke("set_phone_wanted", { bookIds, wanted }),
     setRating: async (bookId, rating) => (await core).invoke("set_rating", { bookId, rating }),
     importGoodreads: async () => {

@@ -107,7 +107,7 @@ export function Library({
   const endless = narrow || scrollLibrary;
   /** Phone: how many pages are shown, and the books of every page after the first. */
   const [pages, setPages] = useState(1);
-  const [later, setLater] = useState<BookPreview[][]>([]);
+  const [later, setLater] = useState<LibraryPage[]>([]);
   const loadingMore = useRef(false);
   const end = useRef<HTMLDivElement>(null);
   const actions = useMemo(
@@ -116,6 +116,8 @@ export function Library({
   );
 
   const shelf = view.tab === "collections" ? "all" : view.tab;
+  const groupSeries = kind === "books" && view.layout === "series" && view.series.length !== 1 && selected === null;
+  const pinnedFirst = !(view.layout === "series" && view.series.length === 1);
   const query = {
     shelf,
     sort: view.sort,
@@ -133,7 +135,8 @@ export function Library({
     exclude: view.exclude,
     kind,
     paired,
-    pinnedFirst: true,
+    pinnedFirst,
+    groupSeries,
   };
   useEffect(() => {
     let current = true;
@@ -155,7 +158,8 @@ export function Library({
         exclude: view.exclude,
         kind,
         paired,
-        pinnedFirst: true,
+        pinnedFirst,
+        groupSeries,
         page: endless ? 0 : view.page,
         pageSize: PAGE_SIZE,
       })
@@ -166,7 +170,7 @@ export function Library({
     return () => {
       current = false;
     };
-  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.series, view.narrators, view.hideRead, view.exclude, view.page, paired, search, refreshKey, reload, endless]);
+  }, [kind, shelf, view.sort, view.formats, view.location, view.tags, view.genres, view.languages, view.downloadable, view.authors, view.series, view.narrators, view.hideRead, view.exclude, view.page, paired, search, refreshKey, reload, endless, groupSeries, pinnedFirst]);
 
   // A new search, filter, shelf or sort starts the phone's list from the top.
   const queryKey = JSON.stringify(query);
@@ -182,7 +186,7 @@ export function Library({
     loadingMore.current = true;
     Promise.all(Array.from({ length: pages - 1 }, (_, i) => api.getLibrary({ ...query, page: i + 1, pageSize: PAGE_SIZE })))
       .then(
-        (got) => current && setLater(got.map((p, i) => (p.page === i + 1 ? p.books : []))),
+        (got) => current && setLater(got.filter((p, i) => p.page === i + 1)),
         () => {},
       )
       .finally(() => {
@@ -203,7 +207,7 @@ export function Library({
     api
       .getLibrary({ ...query, page: want, pageSize: PAGE_SIZE })
       .then(
-        (p) => current && setLater((l) => (l.length === want - 1 && p.page === want ? [...l, p.books] : l)),
+        (p) => current && setLater((l) => (l.length === want - 1 && p.page === want ? [...l, p] : l)),
         () => {},
       )
       .finally(() => {
@@ -247,7 +251,7 @@ export function Library({
     if (!ids.length) return;
     let current = true;
     const chunks = Array.from({ length: Math.ceil(ids.length / 200) }, (_, i) => ids.slice(i * 200, i * 200 + 200));
-    Promise.all(chunks.map((chunk) => api.getLibrary({ ...query, ids: chunk, page: 0, pageSize: 200 }))).then(
+    Promise.all(chunks.map((chunk) => api.getLibrary({ ...query, groupSeries: false, ids: chunk, page: 0, pageSize: 200 }))).then(
       (pages) => {
         if (!current) return;
         const shown = new Set<string>(pages.flatMap((p) => p.books.map((b) => b.id)));
@@ -271,7 +275,11 @@ export function Library({
   const first = load.state === "ready" ? load.data : null;
   // On a phone, the first page with every later one loaded so far.
   const page = useMemo(
-    () => (first && endless && later.length ? { ...first, books: [...first.books, ...later.flat()] } : first),
+    () => (first && endless && later.length ? {
+      ...first,
+      books: [...first.books, ...later.flatMap((p) => p.books)],
+      seriesCounts: Object.assign({}, first.seriesCounts, ...later.map((p) => p.seriesCounts)),
+    } : first),
     [first, endless, later],
   );
   const hasMore = endless && page !== null && (later.length + 1) * PAGE_SIZE < page.total;
@@ -326,7 +334,7 @@ export function Library({
     try {
       const all = new Map(selected ?? []);
       for (let p = 0; ; p++) {
-        const got = await api.getLibrary({ ...query, page: p, pageSize: 200 });
+        const got = await api.getLibrary({ ...query, groupSeries: false, page: p, pageSize: 200 });
         got.books.forEach((b) => all.set(b.id, b));
         if (got.page < p || (got.page + 1) * got.pageSize >= got.total) break;
       }
@@ -500,19 +508,25 @@ export function Library({
     );
   } else {
     // The phone has no list view, for now.
-    const Layout = { grid: BookGrid, list: narrow ? BookGrid : BookList, compact: BookTable }[view.layout];
+    const Layout = { grid: BookGrid, list: narrow ? BookGrid : BookList, compact: BookTable, series: BookGrid }[view.layout];
+    const noun: [string, string] = groupSeries ? ["item", "items"] : [words.one, words.many];
+    const openSeries = (name: string) => {
+      onClearSearch();
+      onChange({ ...NO_FILTERS, tab: "all", series: [name], sort: "series", page: 0 });
+    };
+    const items = <Layout books={page.books} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} onOpenSeries={openSeries} />;
     body = endless ? (
       <>
-        <Layout books={page.books} actions={actions} selection={selection} />
+        {items}
         <div ref={end} className="library-end muted num">
-          {hasMore ? <span className="library-more" aria-busy="true" aria-label={`Loading more ${words.many}`} /> : `${page.total.toLocaleString()} ${page.total === 1 ? words.one : words.many}`}
+          {hasMore ? <span className="library-more" aria-busy="true" aria-label={`Loading more ${words.many}`} /> : `${page.total.toLocaleString()} ${page.total === 1 ? noun[0] : noun[1]}`}
         </div>
       </>
     ) : (
       <>
         <Pagination top page={page.page} pageSize={page.pageSize} total={page.total} onPage={(p) => onChange({ page: p })} />
-        <Layout books={page.books} actions={actions} selection={selection} />
-        <Pagination noun={[words.one, words.many]} page={page.page} pageSize={page.pageSize} total={page.total} onPage={(p) => onChange({ page: p })} />
+        {items}
+        <Pagination noun={noun} page={page.page} pageSize={page.pageSize} total={page.total} onPage={(p) => onChange({ page: p })} />
       </>
     );
   }
@@ -563,6 +577,7 @@ export function Library({
         authors={page?.authors ?? undefined}
         narrators={page?.narrators ?? undefined}
         allLabel={kind === "books" ? undefined : `All ${words.many}`}
+        allowSeries={kind === "books"}
         selecting={selected !== null}
         onSelecting={(on) => setSelected(on ? new Map() : null)}
         onSelectAll={() => void chooseAll()}

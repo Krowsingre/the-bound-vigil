@@ -208,6 +208,10 @@
   transform: translateY(-2px);
 }
 
+.series-stack .grid-open .cover {
+  box-shadow: 3px 3px var(--surface-sunk), 6px 6px var(--border);
+}
+
 .grid-open .cover-generated {
   font-size: 15px;
 }

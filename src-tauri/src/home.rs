@@ -460,7 +460,7 @@ async fn dispatch(app: &AppHandle, command: &str, a: Value) -> Result<Answer, St
         "set_book_status" => answer(set_book_status(s(), arg(&a, "bookId")?, arg(&a, "status")?).await),
         "set_pinned" => answer(set_pinned(s(), arg(&a, "bookId")?, arg(&a, "pinned")?).await),
         "set_favorite" => answer(set_favorite(s(), arg(&a, "bookId")?, arg(&a, "favorite")?).await),
-        "set_want_to_read" => answer(set_want_to_read(s(), arg(&a, "bookId")?, arg(&a, "want")?).await),
+        "set_want_to_read" => answer(set_want_to_read(s(), arg(&a, "bookId")?, arg(&a, "want")?, arg(&a, "replace")?).await),
         "set_rating" => answer(set_rating(app.clone(), app.state(), s(), arg(&a, "bookId")?, arg(&a, "rating")?).await),
         "get_profile" => answer(get_profile(s()).await),
         "get_setting" => answer(get_setting(s(), arg(&a, "key")?).await),
