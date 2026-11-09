@@ -10,6 +10,7 @@ import type { NoteItem } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { noteHeadline, personalTitle } from "../notes/noteInfo";
+import { PersonalNoteEditor } from "../notes/PersonalNoteEditor";
 import { sourceLine } from "./fromNotes";
 
 type Showing = "book" | "all";
@@ -30,7 +31,7 @@ export function QuoteDrawer({
   const [showing, setShowing] = useState<Showing>("book");
   const [search, setSearch] = useState("");
   const [notes, setNotes] = useState<NoteItem[] | null>(null);
-  const [writing, setWriting] = useState<{ title: string; body: string } | null>(null);
+  const [writing, setWriting] = useState<{ note?: NoteItem } | null>(null);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
@@ -57,15 +58,14 @@ export function QuoteDrawer({
     };
   }, [search, refreshKey, showing, projectId, reload]);
 
-  const save = async () => {
-    if (!writing) return;
+  const saved = async (note: NoteItem, created: boolean) => {
+    setWriting(null);
     try {
-      const note = await api.savePersonalNote(null, writing.title.trim() || null, writing.body);
-      await api.setNoteProject(note.id, projectId);
-      setWriting(null);
+      if (created) await api.setNoteProject(note.id, projectId);
+    } catch (error) {
+      toast(`The note was saved in Personal notes. It couldn't be linked to this book: ${String(error)}`);
+    } finally {
       setReload((n) => n + 1);
-    } catch (e) {
-      toast(`Couldn't save the note: ${String(e)}`);
     }
   };
 
@@ -107,25 +107,13 @@ export function QuoteDrawer({
         placeholder={showing === "book" ? "Search this book's notes" : "Search notes and highlights"}
         aria-label={showing === "book" ? "Search this book's notes" : "Search notes and highlights"}
       />
-      {showing === "book" &&
-        (writing ? (
-          <div className="quote-drawer-new">
-            <input value={writing.title} onChange={(e) => setWriting({ ...writing, title: e.target.value })} placeholder="Title (optional)" aria-label="Title" />
-            <textarea value={writing.body} onChange={(e) => setWriting({ ...writing, body: e.target.value })} placeholder="Research, plans, ideas…" aria-label="Note" rows={4} autoFocus />
-            <div className="quote-drawer-new-actions">
-              <button type="button" className="btn btn-quiet" onClick={() => setWriting(null)}>
-                Cancel
-              </button>
-              <button type="button" className="btn btn-primary" disabled={!writing.title.trim() && !writing.body.trim()} onClick={() => void save()}>
-                Save
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button type="button" className="btn btn-quiet quote-drawer-add" onClick={() => setWriting({ title: "", body: "" })}>
-            <Icon name="plus" size={15} /> Write a note for this book
-          </button>
-        ))}
+      {showing === "book" && (
+        <button type="button" className="btn btn-quiet quote-drawer-add" onClick={() => setWriting({})}>
+          <Icon name="plus" size={15} /> Write a note for this book
+        </button>
+      )}
+      {writing && <PersonalNoteEditor initial={writing.note} refreshKey={refreshKey}
+        onClose={() => setWriting(null)} onSaved={(note, created) => void saved(note, created)} />}
       <p className="muted quote-drawer-hint">
         {showing === "book" ? "Kept with this book, never in it. Choose one to put it in where you're writing." : "Choose one to put it in where you're writing."}
       </p>
@@ -150,6 +138,11 @@ export function QuoteDrawer({
                   {text && <span className="quote-drawer-text">{text}</span>}
                   <span className="muted quote-drawer-source">{sourceLine(n) ?? personalTitle(n)}</span>
                 </button>
+                {n.kind === "personal" && (
+                  <button type="button" className="toolbar-button quote-drawer-untie" aria-label={`Edit ${personalTitle(n)}`} onClick={() => setWriting({ note: n })}>
+                    <Icon name="edit" size={14} />
+                  </button>
+                )}
                 {showing === "book" && (
                   <button type="button" className="toolbar-button quote-drawer-untie" aria-label="Take it off this book" title="Take it off this book" onClick={() => void untie(n)}>
                     <Icon name="close" size={14} />
