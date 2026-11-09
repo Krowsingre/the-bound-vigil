@@ -86,7 +86,7 @@ let page;
   if (!page) {
     const {execFileSync}=require('node:child_process');
     const diagnostic="Get-Process the-bound-vigil,msedgewebview2 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,SessionId,MainWindowTitle | Format-Table -AutoSize; Get-NetTCPConnection -LocalPort 19357 -ErrorAction SilentlyContinue | Select-Object State,OwningProcess";
-    console.error(execFileSync('powershell.exe',['-NoProfile','-Command',diagnostic],{encoding:'utf8'}));
+    try { console.error(execFileSync('powershell.exe',['-NoProfile','-Command',diagnostic],{encoding:'utf8'})); } catch (diagnosticError) { console.error(diagnosticError.stdout); }
   }
   if(page) {
     console.error((await page.locator('body').innerText({timeout:3000}).catch(()=>'' )).slice(0,1400));

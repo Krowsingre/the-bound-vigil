@@ -36,7 +36,13 @@ jobs:
         run: |
           npm install --prefix qa-phase7 --no-save --no-package-lock playwright-core@1.58.2
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          node qa-phase7/verify.cjs
+          $flags = 'HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+          New-Item -Path $flags -Force | Out-Null
+          New-ItemProperty -Path $flags -Name 'the-bound-vigil.exe' -Value '--remote-debugging-port=19357 --remote-allow-origins=*' -PropertyType String -Force | Out-Null
+          $result = 1
+          try { node qa-phase7/verify.cjs; $result = $LASTEXITCODE }
+          finally { Remove-ItemProperty -Path $flags -Name 'the-bound-vigil.exe' -ErrorAction SilentlyContinue }
+          exit $result
       - uses: actions/upload-artifact@v4
         if: always()
         with:
