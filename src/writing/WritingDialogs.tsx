@@ -742,6 +742,7 @@ export function DraftsDialog({
   onFlush,
   onOpen,
   onImport,
+  onRestore,
   onClose,
 }: {
   project: WritingProject;
@@ -750,6 +751,7 @@ export function DraftsDialog({
   onOpen: (bookId: string) => void;
   /** Brings a file in as another draft of this book. */
   onImport?: () => void;
+  onRestore: (draft: WritingDraft) => void;
   onClose: () => void;
 }) {
   const [drafts, setDrafts] = useState<WritingDraft[] | null>(null);
@@ -822,6 +824,7 @@ export function DraftsDialog({
                   trigger={<Icon name="more" size={16} />}
                   items={[
                     { label: "Open", icon: "bookOpen", onSelect: () => onOpen(d.bookId) },
+                    { label: "Un-draft…", icon: "edit", onSelect: () => onRestore(d) },
                     "divider",
                     { label: "Delete draft…", icon: "trash", danger: true, onSelect: () => setDeleting(d) },
                   ]}

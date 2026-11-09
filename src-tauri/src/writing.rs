@@ -259,6 +259,14 @@ pub async fn writing_drafts(state: State<'_, AppLibrary>, project_id: String) ->
 }
 
 #[tauri::command]
+pub async fn restore_writing_draft(
+    state: State<'_, AppLibrary>, project_id: String, draft_id: String, revision: String,
+    sections: Vec<tbv_core::writing::RestoredWritingSection>,
+) -> CommandResult<()> {
+    with_library(state, move |library| library.restore_writing_draft(&project_id, &draft_id, &revision, sections)).await
+}
+
+#[tauri::command]
 pub async fn delete_writing_draft(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
     with_library(state, move |library| library.delete_writing_draft(&id)).await
 }

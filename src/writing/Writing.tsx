@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNarrow } from "../lib/useNarrow";
 import { api, isWeb } from "../api";
-import type { WritingChapter, WritingProject, WritingProjectView } from "../api/types";
+import type { WritingChapter, WritingDraft, WritingProject, WritingProjectView } from "../api/types";
 import { editionName, editionsOf } from "./bookEditions";
 import { LinkBookDialog } from "./LinkBooks";
 import { isSample } from "./sampleBook";
@@ -301,6 +301,7 @@ function ProjectView({
   const [error, setError] = useState<string | null>(null);
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [save, setSave] = useState<{ state: SaveState; words: number }>({ state: "saved", words: 0 });
+  const [restoreDraft, setRestoreDraft] = useState<WritingDraft>();
   const [dialog, setDialog] = useState<"details" | "export" | "drafts" | "delete" | "sources" | "cover" | "preflight" | "copies" | "editions" | "previews" | "importDraft" | "link" | null>(null);
   const publisher = usePublisher();
   const [deletingChapter, setDeletingChapter] = useState<WritingChapter | null>(null);
@@ -881,10 +882,21 @@ function ProjectView({
             return (await load())?.chapters ?? chapters;
           }}
           onOpen={(bookId) => void saving.current.then(() => onOpenBook(bookId))}
+          onRestore={(draft) => {
+            void (async () => {
+              try {
+                await flushEditor.current?.();
+                await saving.current;
+                setRestoreDraft(draft);
+                setDialog("importDraft");
+              } catch (error) { toast(String(error)); }
+            })();
+          }}
           onImport={async () => {
             // Saved first, so "Write from it" keeps today's last words in the draft it makes.
             await flushEditor.current?.();
             await saving.current;
+            setRestoreDraft(undefined);
             setDialog("importDraft");
           }}
           onClose={() => setDialog(null)}
@@ -906,13 +918,14 @@ function ProjectView({
       {dialog === "importDraft" && (
         <ImportBookDialog
           into={project}
+          restoreDraft={restoreDraft}
           onCancel={() => setDialog("drafts")}
           onCreated={() => setDialog("drafts")}
           onIntoDone={(how) => {
             void load();
             if (how === "current") {
               setDialog(null);
-              toast("The new version is in. What was there before is kept as a draft.");
+              toast(restoreDraft ? "The draft is now editable in Scribe." : "The new version is in. What was there before is kept as a draft.");
             } else {
               setDialog("drafts");
               toast("Kept as a new draft.");
