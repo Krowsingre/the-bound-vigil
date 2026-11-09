@@ -7,25 +7,26 @@ const root = __dirname;
 const out = path.join(root, 'result');
 fs.mkdirSync(out, { recursive: true });
 const child = spawn(process.env.TBV_TEST_EXE, [], {
-  env: {...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=19357', WEBVIEW2_USER_DATA_FOLDER: path.join(process.env.RUNNER_TEMP,'tbv-test-webview')},
-  stdio: 'ignore',
+  env: {...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=19357 --remote-allow-origins=* --enable-logging=stderr', WEBVIEW2_USER_DATA_FOLDER: path.join(process.env.RUNNER_TEMP,'tbv-test-webview')},
+  stdio: ['ignore', 'inherit', 'inherit'],
 });
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 let page;
 (async () => {
   let browser;
+  let lastError;
   for (let i=0;i<60;i++) {
     try {
       const response=await fetch('http://127.0.0.1:19357/json/version');
       if (response.ok) {
-        browser=await chromium.connectOverCDP((await response.json()).webSocketDebuggerUrl,{timeout:5000});
+        console.log('WebView2 debug endpoint responded'); browser=await chromium.connectOverCDP('http://127.0.0.1:19357',{timeout:5000});
         break;
       }
-    } catch {}
+    } catch (error) { lastError=error; }
     if (child.exitCode !== null) throw Error('Installed app exited with '+child.exitCode);
     await wait(1000);
   }
-  assert(browser,'WebView2 debugger did not start');
+  assert(browser,'WebView2 debugger did not start: '+lastError?.stack+' '+lastError?.cause);
   for (let i=0;i<30 && !page;i++) {
     page=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url().includes('tauri.localhost') && !p.url().includes('splash'));
     if (!page) await wait(500);
@@ -82,6 +83,11 @@ let page;
   console.log('Installed Windows: Reader expanded the linked EPUB, native Scribe PDF contained an image, selected EPUB export was byte-identical, and destination collision was preserved.');
 })().catch(async error=>{
   console.error(error);
+  if (!page) {
+    const {execFileSync}=require('node:child_process');
+    const diagnostic="Get-Process the-bound-vigil,msedgewebview2 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,SessionId,MainWindowTitle | Format-Table -AutoSize; Get-NetTCPConnection -LocalPort 19357 -ErrorAction SilentlyContinue | Select-Object State,OwningProcess";
+    console.error(execFileSync('powershell.exe',['-NoProfile','-Command',diagnostic],{encoding:'utf8'}));
+  }
   if(page) {
     console.error((await page.locator('body').innerText({timeout:3000}).catch(()=>'' )).slice(0,1400));
     await page.screenshot({path:path.join(out,'failure.png'),timeout:3000}).catch(()=>{});
