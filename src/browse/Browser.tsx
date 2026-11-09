@@ -168,7 +168,7 @@ function BrowserBookmarks({ state, className }: { state: BarState; className: st
  * Reload, Home, Bookmark and Reader view. A phone has Home here and the rest
  * in the row under the bar.
  */
-export function BrowserNav() {
+export function BrowserNav({ compact = false }: { compact?: boolean } = {}) {
   const narrow = useNarrow();
   const [state, setState] = useState(barNow);
   useEffect(() => {
@@ -189,9 +189,9 @@ export function BrowserNav() {
       {button("Back", "arrowLeft", "back", back)}
       {button("Forward", "arrowRight", "forward", forward)}
       {button(state.busy ? "Stop" : "Reload", state.busy ? "close" : "sync", state.busy ? "stop" : "reload")}
-      {button("Home page", "home", "home")}
-      <BrowserBookmarks state={state} className="header-action" />
-      {button("Reader view", "bookOpen", "reader", { disabled: !state.web && !state.reader, "aria-pressed": state.reader, className: `header-action${state.reader ? " is-on" : ""}` })}
+      {!compact && button("Home page", "home", "home")}
+      {!compact && <BrowserBookmarks state={state} className="header-action" />}
+      {!compact && button("Reader view", "bookOpen", "reader", { disabled: !state.web && !state.reader, "aria-pressed": state.reader, className: `header-action${state.reader ? " is-on" : ""}` })}
     </div>
   );
 }
@@ -312,8 +312,6 @@ export function Browser({
   const [tabs, setTabs] = useState<TabsState>(startingTabs);
   const [pair, setPair] = useState<{ other: string; activeLeft: boolean } | null>(null);
   const [ratio, setRatio] = useState(50);
-  const pairRef = useRef(pair);
-  pairRef.current = pair;
   const companionRef = useRef(companion);
   companionRef.current = companion;
   const secondary = useRef<HTMLDivElement>(null);

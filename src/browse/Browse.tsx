@@ -41,7 +41,7 @@ export function Browse({
   return (
     <div className="library browse-page browse-browser">
       {companion && <div className="discover-companion-bar">
-        <BrowserNav />
+        <BrowserNav compact />
         <form onSubmit={(event) => {
           event.preventDefault();
           window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: search }));

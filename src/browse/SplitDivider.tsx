@@ -1,9 +1,12 @@
+import { useEffect } from "react";
+
 export function SplitDivider({ value, onChange, label, minimum = 280 }: {
   value: number;
   onChange: (ratio: number) => void;
   label: string;
   minimum?: number;
 }) {
+  useEffect(() => () => document.body.classList.remove("split-resizing"), []);
   const limits = (width: number) => {
     const min = Math.min(50, (minimum / Math.max(1, width)) * 100);
     return { min, max: 100 - min };
