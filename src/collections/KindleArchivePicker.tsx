@@ -70,7 +70,7 @@ export function KindleArchivePicker({ purchase, onClose }: {
   };
   return (
     <div className="dialog-backdrop" onPointerDown={(event) => { if (!busy && event.target === event.currentTarget) onClose(false); }}>
-      <div className="dialog details-dialog" role="dialog" aria-label="Match a Kindle purchase" onKeyDown={(event) => { if (!busy && event.key === "Escape") onClose(false); }}>
+      <div className="dialog details-dialog kindle-archive-picker" role="dialog" aria-label="Match a Kindle purchase" onKeyDown={(event) => { if (!busy && event.key === "Escape") onClose(false); }}>
         <h2>Match with your Archive</h2>
         <p>Choose one book or the members of “{purchase.title}”.</p>
         <input autoFocus type="search" aria-label="Search Archive" placeholder="Search by title, author or series" value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); }} />
@@ -88,7 +88,7 @@ export function KindleArchivePicker({ purchase, onClose }: {
         {results && (
           <>
             {results.books.length === 0 && <p>No Archive books match.</p>}
-            <ul className="history-list">
+            <ul className="history-list kindle-picker-results">
               {results.books.map((book) => (
                 <li key={book.id} className="history-row">
                   <label>
