@@ -1,6 +1,7 @@
 // The browser preview's Writing page and Catalogs: a sample book being
 // written, and a pretend catalog, kept in memory.
 
+import { sampleEpub } from "./sampleEpub";
 import { printInBrowser } from "../print/inBrowser";
 import type { Api } from "../api";
 import type { CatalogView, OpdsEntry, OpdsFeed, ProvenanceRecord, ReadingHistoryEntry, WritingDraft, WritingSource } from "../api/types";
@@ -76,7 +77,8 @@ const progress = new Set<(p: { done: number; total: number }) => void>();
 /** Poems' sounds added while trying the preview. */
 const previewSounds = new Map<string, Uint8Array>();
 
-export function previewWriting(): Calls {
+export function previewWriting(): Calls & { readDraftFile: (id: string) => Blob | undefined } {
+  const draftFiles = new Map<string, Blob>();
   const pictures = new Map<string, string>();
   const tables = { writing_projects: new Map<string, Row>(), writing_chapters: new Map<string, Row>() };
   const store = {
@@ -154,6 +156,7 @@ export function previewWriting(): Calls {
         }
       : { url, title: url === "popular" ? "Popular" : "Latest", entries: CLASSICS.map(book), next: "page-2", previous: null, search: "search?q={searchTerms}" };
 
+  draftFiles.set("b1", sampleEpub("The Ash Road", "Embre"));
   let drafts: WritingDraft[] = [
     { id: "draft-1", projectId: "sample-book", number: 1, bookId: "b1", words: 1840, createdAt: "2026-10-12T18:20:00.000Z", here: true },
   ];
@@ -238,10 +241,13 @@ export function previewWriting(): Calls {
       sources = [...sources, ...sources.filter((s) => s.projectId === id).map((s) => ({ ...s, projectId: copy.project.id }))];
       return calls.writingProject(copy.project.id);
     },
-    saveWritingDraft: async (projectId) => {
+    readDraftFile: (id) => draftFiles.get(id),
+    saveWritingDraft: async (projectId, bytes) => {
       const project = await calls.writingProject(projectId);
       const number = drafts.filter((d) => d.projectId === projectId).reduce((n, d) => Math.max(n, d.number), 0) + 1;
-      const draft = { id: crypto.randomUUID(), projectId, number, bookId: "b1", words: project.project.words, createdAt: new Date().toISOString(), here: true };
+      const bookId = `draft-${crypto.randomUUID()}`;
+      draftFiles.set(bookId, new Blob([new Uint8Array(bytes)], { type: "application/epub+zip" }));
+      const draft = { id: crypto.randomUUID(), projectId, number, bookId, words: project.project.words, createdAt: new Date().toISOString(), here: true };
       drafts = [...drafts, draft];
       return draft;
     },
@@ -261,6 +267,8 @@ export function previewWriting(): Calls {
       for (const item of before.chapters) await calls.deleteWritingChapter(item.id);
     },
     deleteWritingDraft: async (id) => {
+      const draft = drafts.find((item) => item.id === id);
+      if (draft) draftFiles.delete(draft.bookId);
       drafts = drafts.filter((d) => d.id !== id);
     },
     readingHistory: async () => history,
