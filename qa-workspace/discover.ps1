@@ -82,10 +82,10 @@ try{
   $screen=[Windows.Forms.Screen]::PrimaryScreen.Bounds
   $middle=$screen.X+$screen.Width/2
   Click-Ui (Wait-Ui '^Discover(?: .*)?$' 'Button' 'left')
-  Go-To 'left' 'any'
-  $null=Wait-Ui '^Left fixture$' 'Text' 'left'
   Open-Split '^Discover(?: .*)?$'
   $null=Wait-Ui '^Close split$' 'Button'
+  Go-To 'left' 'left'
+  $null=Wait-Ui '^Left fixture$' 'Text' 'left'
   Go-To 'right' 'right'
   $null=Wait-Ui '^Right fixture$' 'Text' 'right'
   $null=Wait-Ui '^Left fixture$' 'Text' 'left'
