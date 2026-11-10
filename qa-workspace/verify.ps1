@@ -52,6 +52,8 @@ try{
   Click-Ui (Wait-Ui '^Sanctum(?: .*)?$' 'Button') $true
   Click-Ui (Wait-Ui '^Split screen$' 'MenuItem')
   $null=Wait-Ui '^Close split$' 'Button'
+  $menu=All-Ui '^Menu$' | Where-Object { $_.Current.BoundingRectangle.X -ge $middle } | Select-Object -First 1
+  if($menu){Click-Ui $menu}
   $null=Wait-Ui '^Sanctum(?: .*)?$' 'Button' 'right'
   Write-Host 'PASS opened Sanctum in secondary pane from the Archive sidebar'
   Click-Ui (Wait-Ui '^Archive(?: .*)?$' 'Button' 'right')

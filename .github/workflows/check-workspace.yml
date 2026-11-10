@@ -1,0 +1,58 @@
+name: Verify installed split and preview
+on:
+  push:
+    branches: [codex/check-workspace-split]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm install --prefix qa-workspace --no-save --no-package-lock playwright@1.58.2
+      - run: npx --prefix qa-workspace playwright install --with-deps chromium
+      - run: |
+          npx vite preview --host 127.0.0.1 --port 2452 &
+          for i in {1..20}; do curl -fs http://127.0.0.1:2452/ >/dev/null && break; sleep 1; done
+          node qa-workspace/preview.cjs
+  installed:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for candidate installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for($i=0;$i -lt 65;$i++){
+            $data=gh api "repos/${{ github.repository }}/actions/runs/42816447707/artifacts" | ConvertFrom-Json
+            if($data.artifacts.name -contains 'the-bound-vigil-windows-setup'){exit 0}
+            Start-Sleep -Seconds 15
+          }
+          throw 'Candidate installer was not uploaded'
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 42816447707
+          name: the-bound-vigil-windows-setup
+          path: installer
+      - name: Verify two Readers in the installed Windows app
+        shell: pwsh
+        run: |
+          $setup=(Get-ChildItem installer -Filter '*-setup.exe').FullName
+          $target=Join-Path $env:RUNNER_TEMP 'TBVWorkspace'
+          $install=Start-Process -FilePath $setup -ArgumentList @('/S',"/D=$target") -Wait -PassThru -WindowStyle Hidden
+          if($install.ExitCode -ne 0){throw "Installer exited $($install.ExitCode)"}
+          $env:TBV_TEST_EXE=Join-Path $target 'the-bound-vigil.exe'
+          & powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File qa-workspace/verify.ps1
+          exit $LASTEXITCODE
