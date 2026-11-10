@@ -15,20 +15,21 @@ function AppWindow {
   $matches=$root.FindAll([Windows.Automation.TreeScope]::Children,$cond)
   foreach($item in $matches){if($item.Current.Name -eq 'The Bound Vigil'){return $item}}
 }
-function FindElement($pattern) {
+function FindElement($pattern,$type) {
   $window=AppWindow
   if(!$window){return}
   foreach($item in $window.FindAll($scope,$any)){
     try {
       if($item.Current.ControlType -eq [Windows.Automation.ControlType]::ListItem -and $pattern -ne "Coming down"){continue}
+      if($type -and $item.Current.ControlType.ProgrammaticName -ne "ControlType.$type"){continue}
       if($item.Current.Name -match $pattern -and !$item.Current.IsOffscreen -and $item.Current.IsEnabled){return $item}
     } catch {}
   }
 }
-function WaitElement($pattern,[int]$seconds=20) {
+function WaitElement($pattern,[int]$seconds=20,$type) {
   $until=(Get-Date).AddSeconds($seconds)
   do {
-    $item=FindElement $pattern
+    $item=FindElement $pattern $type
     if($item){return $item}
     Start-Sleep -Milliseconds 300
   } while((Get-Date) -lt $until)
@@ -48,6 +49,23 @@ function GoTo($path) {
   $shell.SendKeys('^k')
   $shell.SendKeys('http://127.0.0.1:19421/'+$path)
   $shell.SendKeys('{ENTER}')
+}
+function RedirectSettings([int]$index,[bool]$allowlist=$false) {
+  Activate (WaitElement '^Preferences(?: SETTINGS.*)?$' 20 'Button')
+  Activate (WaitElement "^Discover(?: Discover's .*)?$" 20 'Button')
+  $combo=WaitElement '^Automatic redirects$' 20 'ComboBox'
+  $combo.SetFocus()
+  $shell.SendKeys('%{DOWN}{HOME}')
+  if($index){$shell.SendKeys(('{DOWN}' * $index))}
+  $shell.SendKeys('{ENTER}')
+  if($allowlist){
+    $field=WaitElement '^Allow redirects from$' 20 'Edit'
+    $field.SetFocus()
+    $shell.SendKeys('127.0.0.1')
+    Activate (WaitElement '^Add site$' 20 'Button')
+    $null=WaitElement '^Remove 127\.0\.0\.1$' 20 'Button'
+  }
+  Activate (WaitElement '^Discover FIND NEW BOOKS$' 20 'Button')
 }
 function SaveEvidence {
   try {
@@ -96,6 +114,19 @@ try {
   GoTo 'redirect'
   $null=WaitElement '^Redirect reached$'
   Write-Host 'Default redirect policy allowed the real HTTP redirect'
+  RedirectSettings 1
+  GoTo 'block-entry'
+  $null=WaitElement 'Redirect blocked' 12
+  if((Get-Content (Join-Path $out 'http.log') -Raw) -match 'GET /block-target'){throw 'Block mode reached the destination'}
+  RedirectSettings 2
+  GoTo 'ask-entry'
+  Activate (WaitElement '^Allow once$' 20 'Button')
+  $null=WaitElement '^Policy reached ask$'
+  RedirectSettings 1 $true
+  GoTo 'allowlist-entry'
+  $null=WaitElement '^Policy reached allowlist$'
+  Write-Host 'Windows reject, ask/allow once and source allowlist passed against real HTTP redirects'
+  RedirectSettings 0
   GoTo 'popup'
   Activate (WaitElement '^Download now$')
   $null=WaitElement '^Downloads, 1 in progress$'

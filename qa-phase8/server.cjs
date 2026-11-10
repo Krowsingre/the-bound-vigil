@@ -10,6 +10,10 @@ const server = http.createServer((req,res)=>{
     res.end('<title>Popup fixture</title><button onclick="window.open(\'/slow.epub\',\'fixture\',\'width=560,height=400\')">Download now</button>');
     return;
   }
+  const policy=/^\/(block|ask|allowlist)-entry$/.exec(req.url);
+  if(policy){res.writeHead(302,{location:"/"+policy[1]+"-target"});res.end();return;}
+  const target=/^\/(block|ask|allowlist)-target$/.exec(req.url);
+  if(target){res.setHeader("content-type","text/html");res.end("<h1>Policy reached "+target[1]+"</h1>");return;}
   if(req.url==="/redirect"){res.writeHead(302,{location:"/landed"});res.end();return;}
   if(req.url==="/landed"){res.setHeader("content-type","text/html");res.end("<title>Redirect fixture</title><h1>Redirect reached</h1>");return;}
   if(req.url!=="/slow.epub"){res.end("Fixture");return;}
