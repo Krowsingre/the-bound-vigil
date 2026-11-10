@@ -66,9 +66,12 @@ try {
   Click-Ui (Wait-Ui '^Discover(?: .*)?$' 'Button')
   $null=Wait-Ui '^Discover$' 'Text'
   $null=$shell.AppActivate($app.Id)
-  $shell.SendKeys('^k')
-  $shell.SendKeys('middle edit')
   $field=Wait-Ui '^Search$' 'Edit'
+  Click-Ui $field
+  Start-Sleep -Milliseconds 350
+  $field.SetFocus()
+  [Windows.Forms.SendKeys]::SendWait('middle edit')
+  Start-Sleep -Milliseconds 350
   $value=$field.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
   if($value.Current.Value -ne 'middle edit'){throw "Unexpected address input '$($value.Current.Value)'"}
   $shell.SendKeys('{HOME}{RIGHT 3}{BACKSPACE}')
