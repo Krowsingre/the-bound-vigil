@@ -10,6 +10,10 @@ jobs:
   windows:
     runs-on: windows-latest
     timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [reader, print]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -26,6 +30,8 @@ jobs:
           $target=Join-Path $env:RUNNER_TEMP 'Phase10Installed'
           $install=Start-Process -FilePath $setup -ArgumentList @('/S',"/D=$target") -Wait -PassThru -WindowStyle Hidden
           if($install.ExitCode -ne 0){throw "Installer exited $($install.ExitCode)"}
+          $env:TBV_VERIFY_KIND='${{ matrix.kind }}'
+          if($env:TBV_VERIFY_KIND -eq 'print'){python -m pip install pypdf; if($LASTEXITCODE){exit $LASTEXITCODE}}
           $env:TBV_TEST_EXE=Join-Path $target 'the-bound-vigil.exe'
           & powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File qa-phase10/reader.ps1
           exit $LASTEXITCODE

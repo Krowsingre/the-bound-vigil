@@ -51,6 +51,34 @@ function Enter-Path($edit,$path){
 try{
   $null=Wait-Ui '^Close$' 'Button' 45
   $null=$shell.AppActivate($app.Id)
+  if($env:TBV_VERIFY_KIND -eq 'print'){
+    Invoke-Ui (Wait-Ui '^Close$' 'Button')
+    if(!$app.WaitForExit(15000)){throw 'Initial app run did not close'}
+    & python (Join-Path $PSScriptRoot scribe.py) seed
+    if($LASTEXITCODE){throw 'Could not seed synthetic Scribe book'}
+    $app=Start-Process -FilePath $env:TBV_TEST_EXE -PassThru
+    $processFilter=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty,$app.Id)
+    $null=Wait-Ui '^Close$' 'Button' 45
+    $null=$shell.AppActivate($app.Id)
+    $shell.SendKeys('^5')
+    Invoke-Ui (Wait-Ui '^Write a book$')
+    Invoke-Ui (Wait-Ui '^Shutdown Probe.*' 'Button')
+    $null=Wait-Ui '^Chapter text$'
+    Invoke-Ui (Wait-Ui '^Export$' 'Button')
+    Invoke-Ui (Wait-Ui '^Print PDF.*')
+    Invoke-Ui (Wait-Ui '^Export$' 'Button')
+    Start-Sleep -Milliseconds 950
+    $pdf=Join-Path $out 'Native Print.pdf'
+    [Windows.Forms.Clipboard]::SetText($pdf)
+    [Windows.Forms.SendKeys]::SendWait('%n^a^v{ENTER}')
+    $deadline=(Get-Date).AddSeconds(50)
+    while(!(Test-Path $pdf) -and (Get-Date) -lt $deadline){Start-Sleep -Milliseconds 300}
+    if(!(Test-Path $pdf)){throw 'Native PDF was not created'}
+    & python -c 'import sys; from pypdf import PdfReader; pages=PdfReader(sys.argv[1]).pages; assert len(pages)>0; assert any("Initial words" in page.extract_text() for page in pages)' $pdf
+    if($LASTEXITCODE){throw 'PDF text check failed'}
+    Write-Host 'PASS Native Windows Scribe PDF includes the original chapter text'
+    return
+  }
   $shell.SendKeys('^o')
   Start-Sleep -Milliseconds 950
   [Windows.Forms.Clipboard]::SetText($source)
