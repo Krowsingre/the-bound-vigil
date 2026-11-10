@@ -83,6 +83,7 @@ export function ContextMenuHost() {
   const [request, setRequest] = useState<Request | null>(null);
   const [place, setPlace] = useState<CSSProperties>({ visibility: "hidden" });
   const menu = useRef<HTMLDivElement>(null);
+  const sizedRequest = useRef<Request | null>(null);
 
   useEffect(() => {
     listener = (r) => {
@@ -118,12 +119,19 @@ export function ContextMenuHost() {
   }, []);
 
   useLayoutEffect(() => {
-    const box = menu.current?.getBoundingClientRect();
-    if (!request || !box) return;
+    const element = menu.current;
+    if (!request || !element) return;
+    if (sizedRequest.current === request) {
+      element.scrollTop = 0;
+      return;
+    }
+    const box = element.getBoundingClientRect();
     const margin = 8;
     const left = request.x + box.width > window.innerWidth - margin ? Math.max(margin, request.x - box.width) : request.x;
     const top = request.y + box.height > window.innerHeight - margin ? Math.max(margin, window.innerHeight - margin - box.height) : request.y;
-    setPlace({ top, left });
+    const stable = request.items.some((item) => typeof item === "object" && "submenu" in item && item.submenu?.length);
+    sizedRequest.current = stable ? request : null;
+    setPlace({ top, left, ...(stable ? { width: box.width, height: box.height } : {}) });
   }, [request, section]);
 
   useEffect(() => {
@@ -138,7 +146,7 @@ export function ContextMenuHost() {
     document.addEventListener("keydown", key);
     window.addEventListener("resize", shut);
     window.addEventListener("blur", shut);
-    menu.current?.querySelector<HTMLButtonElement>(".menu-item:not(:disabled)")?.focus();
+    menu.current?.querySelector<HTMLButtonElement>(".menu-item:not(:disabled)")?.focus({ preventScroll: true });
     return () => {
       document.removeEventListener("pointerdown", away);
       document.removeEventListener("scroll", away, true);

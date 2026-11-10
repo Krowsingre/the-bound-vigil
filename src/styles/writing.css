@@ -1582,6 +1582,28 @@
   color: var(--warning, #b7791f);
 }
 
+.writing-bibliography {
+  padding: 0;
+  list-style: none;
+}
+
+.writing-bibliography li {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.writing-bibliography .is-additional {
+  color: var(--accent);
+}
+
+.writing-bibliography small {
+  display: block;
+  font-family: var(--font-sans);
+}
+
 /* A citation in the editor: the short label, marked as one piece. */
 .writing-page cite.writing-citation {
   font-style: normal;

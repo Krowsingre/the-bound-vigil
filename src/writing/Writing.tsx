@@ -35,6 +35,8 @@ import { PreviewsDialog } from "./Previews";
 import { usePublisher } from "../license/Publisher";
 import { addSampleBook, addSampleOnce, SAMPLE_AUTHOR, SAMPLE_TITLE } from "./sampleBook";
 
+type BibliographySettings = Pick<ExportSettings, "sources" | "citationStyle" | "customSourceFormat">;
+
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
 
 /** Scribe's tabs: your own notes, what you noted from books, or the books you write (embre, 31 October: no All tab). */
@@ -302,6 +304,7 @@ function ProjectView({
   onDeleted: () => void;
 }) {
   const [view, setView] = useState<WritingProjectView | null>(null);
+  const [sourceHistory, setSourceHistory] = useState<{ undo: BibliographySettings[]; redo: BibliographySettings[] }>({ undo: [], redo: [] });
   const [error, setError] = useState<string | null>(null);
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [save, setSave] = useState<{ state: SaveState; words: number }>({ state: "saved", words: 0 });
@@ -416,7 +419,30 @@ function ProjectView({
   const saveSettings = (next: ExportSettings) => {
     const json = JSON.stringify(next);
     setView((v) => v && { ...v, project: { ...v.project, export: json } });
-    void api.setWritingExport(id, json).catch((e) => toast(String(e)));
+    saving.current = saving.current.then(() => api.setWritingExport(id, json)).then(() => undefined, (e) => toast(String(e)));
+  };
+
+  const sourceSnapshot = (): BibliographySettings => ({
+    sources: settings.sources, citationStyle: settings.citationStyle, customSourceFormat: settings.customSourceFormat,
+  });
+  const changeSources = (change: Partial<BibliographySettings>) => {
+    const previous = sourceSnapshot();
+    const next = { ...previous, ...change };
+    if (JSON.stringify(next) === JSON.stringify(previous)) return;
+    setSourceHistory((history) => ({ undo: [...history.undo, previous].slice(-100), redo: [] }));
+    saveSettings({ ...settings, ...next });
+  };
+  const restoreSources = (direction: "undo" | "redo") => {
+    const snapshot = sourceHistory[direction].at(-1);
+    if (!snapshot) return;
+    const opposite = direction === "undo" ? "redo" : "undo";
+    const previous = sourceSnapshot();
+    setSourceHistory((history) => ({
+      ...history,
+      [direction]: history[direction].slice(0, -1),
+      [opposite]: [...history[opposite], previous],
+    }));
+    saveSettings({ ...settings, ...snapshot });
   };
 
   const saveChapter = (cid: string) => async (title: string, body: string) => {
@@ -483,7 +509,7 @@ function ProjectView({
         const body = madeSectionHtml({ project: view.project, chapters, settings }, c.id);
         await api.saveWritingChapter(c.id, c.title, body);
       }
-      await setPage(c, { kind, byHand: !!KINDS[kind].made });
+      await setPage(c, { kind, byHand: kind !== "sources" && !!KINDS[kind].made });
       if (isMade(before)) await load();
     } catch (error) {
       toast(String(error));
@@ -810,7 +836,13 @@ function ProjectView({
                 onEdition={(edition) => saveSettings({ ...settings, edition })}
                 onWriteMyself={(html) => void writeMyself(chapter, html)}
                 onOpenDetails={() => setDialog("details")}
-              onOpenSources={() => setDialog("sources")}
+                onOpenSources={() => setDialog("sources")}
+                onSourcesChange={(sources) => changeSources({ sources })}
+                onFormatChange={(citationStyle, customSourceFormat) => changeSources({ citationStyle, customSourceFormat })}
+                canUndoSources={sourceHistory.undo.length > 0}
+                canRedoSources={sourceHistory.redo.length > 0}
+                onUndoSources={() => restoreSources("undo")}
+                onRedoSources={() => restoreSources("redo")}
               />
             ) : (
               chapter && (
@@ -825,8 +857,9 @@ function ProjectView({
                   insertRef={insertInEditor}
                   poem={current && isPoem(current) ? (current.centred ? "centred" : "left") : null}
                   sources={settings.sources}
+                  citationChapters={chapters}
                   citationStyle={settings.citationStyle}
-                  onSources={(sources, citationStyle) => saveSettings({ ...settings, sources, citationStyle })}
+                  onSources={(sources, citationStyle) => changeSources({ sources, citationStyle })}
                 />
                 </>
               )
@@ -844,7 +877,7 @@ function ProjectView({
         <SourcesDialog
           sources={settings.sources}
           style={settings.citationStyle}
-          onChange={(sources, citationStyle) => saveSettings({ ...settings, sources, citationStyle })}
+          onChange={(sources, citationStyle) => changeSources({ sources, citationStyle })}
           onClose={() => setDialog(null)}
         />
       )}

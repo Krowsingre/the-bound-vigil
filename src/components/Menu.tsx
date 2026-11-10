@@ -58,6 +58,7 @@ export function Menu({
 }) {
   const [open, setOpen] = useState(false);
   const [section, setSection] = useState<number | null>(null);
+  const hasSubmenus = items.some((item) => typeof item === "object" && "submenu" in item && item.submenu?.length);
   const group = section === null ? undefined : items[section];
   const submenu = group && typeof group === "object" && "label" in group ? group.submenu : undefined;
   const visible: MenuEntry[] = submenu ? [
@@ -69,6 +70,7 @@ export function Menu({
   const [place, setPlace] = useState<CSSProperties>({ visibility: "hidden" });
   const root = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
+  const stableSize = useRef<CSSProperties | null>(null);
   useLayoutEffect(() => {
     const element = root.current;
     if (!element) return;
@@ -77,10 +79,19 @@ export function Menu({
   }, [label, items]);
 
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open) {
+      stableSize.current = null;
+      return;
+    }
     const button = root.current?.getBoundingClientRect();
-    const box = menu.current?.getBoundingClientRect();
-    if (!button || !box) return;
+    const element = menu.current;
+    if (!button || !element) return;
+    if (stableSize.current) {
+      element.scrollTop = 0;
+      return;
+    }
+    const box = element.getBoundingClientRect();
+    const naturalHeight = element.scrollHeight + element.offsetHeight - element.clientHeight;
     const gap = 6;
     const margin = 8;
     const below = button.bottom + gap;
@@ -88,16 +99,21 @@ export function Menu({
     const roomAbove = button.top - gap - margin;
     // Below when it fits, or when there's more room there; a long menu (a big
     // library's genres) then scrolls inside the room it has.
-    const goBelow = box.height <= roomBelow || roomBelow >= roomAbove;
-    const height = Math.min(box.height, goBelow ? roomBelow : roomAbove);
+    const goBelow = naturalHeight <= roomBelow || roomBelow >= roomAbove;
+    const available = Math.max(0, goBelow ? roomBelow : roomAbove);
+    const height = Math.min(naturalHeight, available);
     const top = goBelow ? below : button.top - gap - height;
     const preferred = align === "end" ? button.right - box.width : button.left;
     const left = Math.max(
       margin,
       Math.min(preferred, window.innerWidth - margin - box.width),
     );
-    setPlace({ top: Math.max(margin, top), left, maxHeight: Math.max(120, height) });
-  }, [open, align, visible.length, section]);
+    const position = { top: Math.max(margin, top), left, maxHeight: available };
+    if (hasSubmenus) {
+      stableSize.current = { ...position, width: box.width, height };
+    }
+    setPlace(stableSize.current ?? position);
+  }, [open, align, hasSubmenus, visible.length, section]);
 
   useEffect(() => {
     if (!open) return;
@@ -120,7 +136,7 @@ export function Menu({
     window.addEventListener("resize", shut);
     menu.current
       ?.querySelector<HTMLButtonElement>(".menu-item:not(:disabled)")
-      ?.focus();
+      ?.focus({ preventScroll: true });
     return () => {
       document.removeEventListener("pointerdown", close);
       document.removeEventListener("keydown", close);
@@ -188,7 +204,7 @@ export const MenuList = forwardRef<
     const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
     const next =
       (at + (e.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
-    buttons[next]?.focus();
+    buttons[next]?.focus({ preventScroll: true });
   };
   return (
     <div

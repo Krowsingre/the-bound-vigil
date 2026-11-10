@@ -128,8 +128,8 @@ export const KINDS: Record<PageKind, KindInfo> = {
   endnotes: { label: "Notes", hint: "Endnotes", areas: ["back"] },
   glossary: { label: "Glossary", areas: ["back"] },
   appendix: { label: "Appendix", areas: ["back"] },
-  bibliography: { label: "Bibliography", hint: "Written by hand", areas: ["back"] },
-  sources: { label: "Sources (automatic)", hint: "Every source you cite, in the citation style", areas: ["back"], made: true, title: () => "" },
+  bibliography: { label: "Bibliography (written by hand)", hint: "Written by hand", areas: ["back"] },
+  sources: { label: "Bibliography", hint: "Fills in cited sources and lets you edit or add entries", areas: ["back"], made: true, title: () => "" },
   discussion: { label: "Discussion questions", hint: "For reading groups", areas: ["back"] },
   excerpt: { label: "Excerpt from your next book", areas: ["back"], title: () => "A sneak peek" },
 };
