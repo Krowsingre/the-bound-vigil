@@ -45,6 +45,7 @@ export function Menu({
   align = "end",
   className = "icon-btn",
   menuClassName = "",
+  closeOnScroll = true,
 }: {
   trigger: ReactNode;
   label: string;
@@ -53,6 +54,7 @@ export function Menu({
   className?: string;
   /** Extra classes for the dropdown itself. */
   menuClassName?: string;
+  closeOnScroll?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [section, setSection] = useState<number | null>(null);
@@ -114,7 +116,7 @@ export function Menu({
     const shut = closeMenu;
     document.addEventListener("pointerdown", close);
     document.addEventListener("keydown", close);
-    document.addEventListener("scroll", away, true);
+    if (closeOnScroll) document.addEventListener("scroll", away, true);
     window.addEventListener("resize", shut);
     menu.current
       ?.querySelector<HTMLButtonElement>(".menu-item:not(:disabled)")
@@ -125,7 +127,7 @@ export function Menu({
       document.removeEventListener("scroll", away, true);
       window.removeEventListener("resize", shut);
     };
-  }, [open, section]);
+  }, [open, section, closeOnScroll]);
 
   useEffect(() => {
     if (!open) setPlace({ visibility: "hidden" });
