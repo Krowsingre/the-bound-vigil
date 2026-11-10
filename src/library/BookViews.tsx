@@ -197,7 +197,7 @@ export function BookList({ books, actions, selection, seriesCounts, seriesCovers
   );
 }
 
-export function BookTable({ books, actions, selection, seriesCounts, onOpenSeries, seriesMenu }: Props) {
+export function BookTable({ books, actions, selection, seriesCounts, seriesCovers, onOpenSeries, seriesMenu }: Props) {
   return (
     <table className="book-table">
       <thead>
