@@ -96,8 +96,17 @@ try{
     Invoke-Ui (Wait-Ui '^Shutdown Probe.*' 'Button')
     $null=Wait-Ui '^Chapter text$'
     Invoke-Ui (Wait-Ui '^Export$' 'Button')
-    Invoke-Ui (Wait-Ui '^Print PDF.*')
-    Invoke-Ui (Wait-Ui '^Export$' 'Button')
+    Invoke-Ui (Wait-Ui '^Print PDF.*' 'RadioButton')
+    Start-Sleep -Milliseconds 400
+    $export=$null
+    foreach($top in $root.FindAll([Windows.Automation.TreeScope]::Children,$processFilter)){
+      $export=$top.FindAll($scope,$any) | Where-Object {
+        $_.Current.Name -eq 'Export' -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::Button -and $_.Current.IsEnabled
+      } | Select-Object -Last 1
+      if($export){break}
+    }
+    if(!$export){throw 'Could not find the enabled Export submit button'}
+    Invoke-Ui $export
     $picker=Wait-Picker 'Save the PDF'
     [PickerProbe]::SetForegroundWindow($picker) | Out-Null
 $documents=[Environment]::GetFolderPath('MyDocuments')
