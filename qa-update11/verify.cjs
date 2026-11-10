@@ -82,7 +82,9 @@ async function main() {
     assert.match(await page.getByRole("option").first().innerText(),/Bookmark fixture.*Open in new tab/s);
     await first.click();
     assert.equal(await tabList.getByRole("tab").count(),101);
-    await field.fill("unfinished draft");
+    await field.focus();
+    await field.press("Control+a");
+    await page.keyboard.type("unfinished draft");
     await field.blur();
     await field.focus();
     assert.equal(await field.inputValue(),"unfinished draft");
