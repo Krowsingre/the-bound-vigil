@@ -18,6 +18,7 @@ function requestedRoute() {
 export function Workspace() {
   const [route, setRoute] = useState<Route | null>(null);
   const [ratio, setRatio] = useState(50);
+  const [compactReader, setCompactReader] = useState(false);
   const [stacked, setStacked] = useState(() => matchMedia(narrowSplit).matches);
   const [primaryRoute, setPrimaryRoute] = useState<Route>();
   const [secondaryRoute, setSecondaryRoute] = useState<Route>();
@@ -60,6 +61,16 @@ export function Workspace() {
     return () => watcher.disconnect();
   }, [route]);
 
+  useEffect(() => {
+    if (!route || !primary.current) return;
+    const pane = primary.current;
+    const measure = () => setCompactReader(pane.clientWidth <= 760);
+    const observer = new ResizeObserver(measure);
+    observer.observe(pane);
+    measure();
+    return () => observer.disconnect();
+  }, [route]);
+
   if (workspaceFrame) return <App initialRoute={requestedRoute()} onSplit={(next) => workspaceHost.tbvWorkspace?.open(next)} />;
 
   const open = (next: Route) => {
@@ -77,7 +88,7 @@ export function Workspace() {
     <div className={`tbv-workspaces${route ? " is-split" : ""}${stacked ? " is-stacked" : ""}`}
       style={route ? { [stacked ? "gridTemplateRows" : "gridTemplateColumns"]: `minmax(0, ${ratio}fr) 12px minmax(0, ${100 - ratio}fr)` } : undefined}>
       <div ref={primary} tabIndex={-1} className="tbv-workspace-primary" aria-label="Primary TBV pane">
-        <App onSplit={canSplit ? open : undefined} workspaceSplit={!!route} requestedRoute={primaryRoute}
+        <App onSplit={canSplit ? open : undefined} workspaceSplit={!!route} compactReader={!!route && compactReader} requestedRoute={primaryRoute}
           onRouteHandled={() => setPrimaryRoute(undefined)} />
       </div>
       {route && <>
