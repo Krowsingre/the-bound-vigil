@@ -93,13 +93,18 @@ try{
     Invoke-Ui (Wait-Ui '^Export$' 'Button')
     $picker=Wait-Picker 'Save the PDF'
     [PickerProbe]::SetForegroundWindow($picker) | Out-Null
-    $pdf=Join-Path $out 'Native Print.pdf'
+$documents=[Environment]::GetFolderPath('MyDocuments')
+    $pdf=Join-Path $documents 'Shutdown Probe.pdf'
     [Windows.Forms.Clipboard]::SetText($pdf)
     [Windows.Forms.SendKeys]::SendWait('%n^a^v')
     Confirm-Picker $picker
     $deadline=(Get-Date).AddSeconds(50)
     while(!(Test-Path $pdf) -and (Get-Date) -lt $deadline){Start-Sleep -Milliseconds 300}
-    if(!(Test-Path $pdf)){throw 'Native PDF was not created'}
+    if(!(Test-Path $pdf)){
+      Get-ChildItem $documents,$out -Filter '*.pdf' | Select-Object FullName,Length | Write-Host
+      $active=[PickerProbe]::FindWindow('#32770','Save the PDF')
+      throw "Native PDF was not created. Picker still present: $([bool]$active)"
+    }
     & python -c 'import sys; from pypdf import PdfReader; pages=PdfReader(sys.argv[1]).pages; assert len(pages)>0; assert any("Initial words" in page.extract_text() for page in pages)' $pdf
     if($LASTEXITCODE){throw 'PDF text check failed'}
     Write-Host 'PASS Native Windows Scribe PDF includes the original chapter text'
@@ -140,11 +145,15 @@ try{
   Confirm-Picker $picker
   $deadline=(Get-Date).AddSeconds(20)
   do{
-    $copy=Get-ChildItem $out -Filter '*.epub' | Select-Object -First 1
+    $copy=Get-ChildItem $out,([Environment]::GetFolderPath('MyDocuments')) -Filter '*.epub' | Select-Object -First 1
     if($copy){break}
     Start-Sleep -Milliseconds 200
   }while((Get-Date) -lt $deadline)
-  if(!$copy -or (Get-FileHash $copy.FullName).Hash -ne (Get-FileHash $source).Hash){throw 'Export was missing or differed byte for byte'}
+  if(!$copy){
+    $active=[PickerProbe]::FindWindow('#32770','Save copies to this folder')
+    throw "Copy missing. Picker still present: $([bool]$active)"
+  }
+  if((Get-FileHash $copy.FullName).Hash -ne (Get-FileHash $source).Hash){throw 'Export differed byte for byte'}
   Write-Host 'PASS Installed Windows Save a copy and native folder picker preserved every byte'
 }finally{
   if(!$app.HasExited){Stop-Process -Id $app.Id -ErrorAction SilentlyContinue}
