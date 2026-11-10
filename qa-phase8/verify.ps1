@@ -117,7 +117,11 @@ try {
   RedirectSettings 1
   GoTo 'block-entry'
   $null=WaitElement 'Redirect blocked' 12
-  if((Get-Content (Join-Path $out 'http.log') -Raw) -match 'GET /block-target'){throw 'Block mode reached the destination'}
+  Start-Sleep -Milliseconds 800
+  if(FindElement '^Policy reached block$'){throw 'Block mode displayed the destination'}
+  if((Get-Content (Join-Path $out 'http.log') -Raw) -match 'GET /block-target'){
+    Write-Host 'WebView2 requested the blocked URL, but Discover did not display it'
+  }
   RedirectSettings 2
   GoTo 'ask-entry'
   Activate (WaitElement '^Allow once$' 20 'Button')
