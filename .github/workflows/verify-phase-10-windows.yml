@@ -1,0 +1,41 @@
+name: Measure Phase 10 Windows shutdown
+on:
+  push:
+    branches: [codex/verify-phase-10-windows]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        include:
+          - name: baseline
+            run: 42739287940
+    name: Close timing (${{ matrix.name }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ matrix.run }}
+          name: the-bound-vigil-windows-setup
+          path: installer
+      - name: Install and measure Windows close
+        shell: pwsh
+        run: |
+          $setup=(Get-ChildItem installer -Filter '*-setup.exe').FullName
+          $target=Join-Path $env:RUNNER_TEMP 'Phase10Installed'
+          $install=Start-Process -FilePath $setup -ArgumentList @('/S',"/D=$target") -Wait -PassThru -WindowStyle Hidden
+          if($install.ExitCode -ne 0){throw "Installer exited $($install.ExitCode)"}
+          $env:TBV_TEST_EXE=Join-Path $target 'the-bound-vigil.exe'
+          $env:TBV_TEST_KIND='${{ matrix.name }}'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File qa-phase10/close.ps1
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: close-timing-${{ matrix.name }}
+          path: qa-phase10/result/
