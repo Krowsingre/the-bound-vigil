@@ -2,12 +2,15 @@ import type { BookPreview } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
+import { seriesCover } from "../lib/queryBooks";
 import { authorLine } from "../lib/format";
 import { bookContextMenu, bookMenu, clickBook, type BookActions } from "./bookActions";
 import { EmptyNote, Section } from "./Section";
 
 /** The newest books, as covers. On a computer each has a ••• menu beside its title. */
 export function RecentlyAdded({ books, actions, onViewAll, onOpenSeries, menus = false }: { books: BookPreview[]; actions: BookActions; onViewAll: () => void; onOpenSeries: (name: string) => void; menus?: boolean }) {
+  let coverChoices: Record<string, string> = {};
+  try { coverChoices = JSON.parse(localStorage.getItem("tbv.stackCovers.books") ?? "{}") ?? {}; } catch { /* Use automatic covers. */ }
   const stacks = new Map<string, BookPreview[]>();
   for (const book of books) {
     const key = book.series?.trim().toLowerCase();
@@ -27,9 +30,7 @@ export function RecentlyAdded({ books, actions, onViewAll, onOpenSeries, menus =
             const members = name ? stacks.get(name.toLowerCase()) : undefined;
             if (name && members && members.length > 1) {
               if (members[0] !== book) return null;
-              const finished = (b: BookPreview) => Number(b.status === "read" || b.status === "dropped");
-              const cover = [...members].sort((a, b) => finished(a) - finished(b) ||
-                (a.seriesIndex ?? Infinity) - (b.seriesIndex ?? Infinity) || a.title.localeCompare(b.title))[0];
+              const cover = seriesCover(members, coverChoices[name.toLowerCase()]) ?? book;
               return <li key={book.id} className="series-stack">
                 <button type="button" className="shelf-book" aria-label={`Open series ${name}`} onClick={() => onOpenSeries(name)}>
                   <BookCover book={cover} seriesCount={members.length} />

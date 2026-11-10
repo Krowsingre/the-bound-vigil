@@ -222,7 +222,7 @@
   vertical-align: text-bottom;
 }
 
-.series-stack .grid-open .cover {
+.series-stack :is(.grid-open, .shelf-book) .cover {
   box-shadow: 3px 3px var(--surface-sunk), 6px 6px var(--border);
 }
 
@@ -1647,3 +1647,12 @@ button.tag-chip-add:hover {
 }
 .series-table-open { display: inline-flex; align-items: center; gap: 8px; }
 .series-table-open .cover { width: 28px; }
+
+.cover:has(.cover-series-count) .cover-badge {
+  inset-inline-start: 4px;
+  inset-inline-end: auto;
+}
+.series-table-open .cover:has(.cover-series-count) .cover-badge {
+  top: 2px;
+  bottom: auto;
+}
