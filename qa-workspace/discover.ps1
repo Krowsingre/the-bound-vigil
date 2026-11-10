@@ -63,7 +63,7 @@ function Open-Split($label){
     Start-Sleep -Milliseconds 400
     $option=Wait-Ui '^Split screen$' 'MenuItem'
     if($attempt -eq 0){
-      $option.SetFocus()
+      try{$option.SetFocus()}catch [Windows.Automation.ElementNotAvailableException]{continue}
       $shell.SendKeys('{ENTER}')
     }else{
       $rect=$option.Current.BoundingRectangle
