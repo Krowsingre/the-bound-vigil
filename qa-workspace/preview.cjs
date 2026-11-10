@@ -10,7 +10,7 @@ const assert = require("node:assert/strict");
       page.on("pageerror", e => errors.push(e.message));
       page.setDefaultTimeout(120000); await page.goto("http://127.0.0.1:2452/", { waitUntil: "commit", timeout: 120000 });
       await page.getByRole("button", {name: /continue reading/i}).first().waitFor();
-      if (mobile) await page.locator(".header button").filter({has: page.locator("svg")}).count();
+
       const nav = page.getByRole("navigation", {name:"Main"});
       const menu = page.getByRole("button", {name: /^(open menu|menu|open the menu)$/i}).first();
       if (mobile) await menu.click();
@@ -28,7 +28,7 @@ const assert = require("node:assert/strict");
       const other = secondary.locator('.grid-open[title^="Middlemarch"], .book-row button[title^="Middlemarch"]').first();
       await other.click();
       const detailsRead=secondary.getByRole("button",{name:/^(Read|Continue reading)$/}).first();
-      if (await detailsRead.isVisible()) await detailsRead.click();
+      await detailsRead.click();
       await secondary.locator('.reader-host[aria-busy="false"]').waitFor();
       await page.getByRole("button", {name:/continue reading/i}).first().click();
       await page.locator('.reader-host[aria-busy="false"]').waitFor();
