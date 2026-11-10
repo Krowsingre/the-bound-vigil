@@ -39,9 +39,6 @@ jobs:
           run-id: ${{ matrix.run }}
           name: the-bound-vigil-windows-setup
           path: installer
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - name: Install and measure Windows close
         shell: pwsh
         run: |
@@ -58,6 +55,3 @@ jobs:
         with:
           name: close-timing-${{ matrix.name }}
           path: qa-phase10/result/
-
-
-
