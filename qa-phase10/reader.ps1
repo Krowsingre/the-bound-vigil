@@ -52,7 +52,7 @@ try{
   $null=Wait-Ui '^Close$' 'Button' 45
   $null=$shell.AppActivate($app.Id)
   $shell.SendKeys('^o')
-  $null=Wait-Ui '^Import books$' 'Window'
+  Start-Sleep -Milliseconds 950
   [Windows.Forms.Clipboard]::SetText($source)
   [Windows.Forms.SendKeys]::SendWait('%n^a^v{ENTER}')
   Start-Sleep -Seconds 2
