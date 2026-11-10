@@ -91,7 +91,15 @@ try{
   $null=Wait-Ui '^Left fixture$' 'Text' 'left'
   Write-Host 'PASS the real WebView2 pages occupy separate panes'
   Click-Ui (Wait-Ui '^Open the fixture link$' 'Hyperlink' 'left') $true
-  Click-Ui (Wait-Ui '^Open link in new tab$')
+  $condition=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty,'Open link in new tab')
+  $deadline=(Get-Date).AddSeconds(12)
+  do {
+    $item=$root.FindAll($scope,$condition) | Where-Object { !$_.Current.IsOffscreen } | Select-Object -First 1
+    if($item){break}
+    Start-Sleep -Milliseconds 200
+  }while((Get-Date) -lt $deadline)
+  if(!$item){throw 'Native WebView2 link menu item was unavailable'}
+  Click-Ui $item
   $null=Wait-Ui '^Link target fixture$' 'TabItem' 'left'
   $null=Wait-Ui '^Left fixture$' 'Text' 'left'
   $null=Wait-Ui '^Right fixture$' 'Text' 'right'
