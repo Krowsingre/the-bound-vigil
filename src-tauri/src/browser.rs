@@ -273,6 +273,71 @@ mod view {
         app.webviews().into_iter().filter(|(l, _)| l.starts_with(PREFIX) && !l.starts_with("browser-popup-")).map(|(_, v)| v).collect()
     }
 
+    fn track_download(downloads: &tauri::AppHandle, download_tab: &str, saves: &std::path::Path, event: Download<'_>) -> bool {
+        match event {
+            Download::Requested { url, destination } => {
+                let address = url.to_string();
+                let key = (download_tab.to_owned(), address.clone());
+                if SAVING.lock().ok().is_some_and(|saving| saving.as_ref().is_some_and(|items| items.contains_key(&key))) {
+                    return false;
+                }
+                let name = destination
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .filter(|n| !n.is_empty())
+                    .or_else(|| url.path_segments().and_then(|mut s| s.next_back()).map(str::to_string).filter(|n| !n.is_empty()))
+                    .unwrap_or_else(|| "download".into());
+                let id = tbv_core::ids::new_record_id();
+                let Ok(hold) = super::DownloadHold::new(&id) else { return false };
+                let folder = saves.join(&id);
+                if let Err(error) = std::fs::create_dir_all(&folder) {
+                    tell(downloads, Event::DownloadStart { tab: download_tab.to_owned(), id: id.clone(), name: name.clone(), url: address });
+                    tell(downloads, Event::Download { tab: download_tab.to_owned(), id, name, path: String::new(), ok: false, error: Some(error.to_string()), security_blocked: false });
+                    return false;
+                }
+                *destination = folder.join(&name);
+                if let Ok(mut saving) = SAVING.lock() {
+                    saving.get_or_insert_with(HashMap::new).insert(key, (id.clone(), destination.clone(), download_tab.to_owned(), hold));
+                }
+                tell(downloads, Event::DownloadStart { tab: download_tab.to_owned(), id, name, url: address });
+            }
+            Download::Finished { url, path, success } => {
+                let key = (download_tab.to_owned(), url.to_string());
+                let kept = SAVING.lock().ok().and_then(|mut saving| {
+                    let items = saving.as_mut()?;
+                    let by_path = path.as_ref().and_then(|path| items.iter().find(|(_, (_, saved, _, _))| saved == path).map(|(key, _)| key.clone()));
+                    items.remove(by_path.as_ref().unwrap_or(&key))
+                });
+                if let Some((id, saved, tab, _hold)) = kept {
+                    let folder = saved.parent().map(std::path::Path::to_path_buf);
+                    let path = path.filter(|path| path.parent() == saved.parent()).unwrap_or(saved);
+                    let cancelled = CANCELLED.lock().ok().is_some_and(|mut c| c.as_mut().is_some_and(|c| c.remove(&id)));
+                    if cancelled {
+                        if let Some(folder) = folder.as_ref() {
+                            let _ = std::fs::remove_dir_all(folder);
+                        }
+                        return true;
+                    }
+                    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    #[cfg(windows)]
+                    let (error, security_blocked) = super::windows::finish_download(&tab, url.as_str(), success);
+                    #[cfg(not(windows))]
+                    let (error, security_blocked) = (None, false);
+                    let ok = success && path.is_file();
+                    if !ok {
+                        if let Some(folder) = folder.as_ref() {
+                            let _ = std::fs::remove_dir_all(folder);
+                        }
+                    }
+                    let path = if ok { path.to_string_lossy().into_owned() } else { String::new() };
+                    tell(downloads, Event::Download { tab, id, path, name, ok, error, security_blocked });
+                }
+            }
+            _ => {}
+        }
+        true
+    }
+
     pub fn show(app: &tauri::AppHandle, tab: &str, url: Option<tauri::Url>, frame: Frame, protection: Option<Protection>, private: bool, background: bool) -> CommandResult<()> {
         if let Some(p) = protection {
             set_protection(app, p);
@@ -307,6 +372,7 @@ mod view {
         let (pages, titles, windows, downloads, others) = (app.clone(), app.clone(), app.clone(), app.clone(), app.clone());
         let (page_tab, title_tab, window_tab, download_tab, other_tab) = (tab.to_string(), tab.to_string(), tab.to_string(), tab.to_string(), tab.to_string());
         let saves = downloads_dir(app)?;
+        let popup_saves = saves.clone();
         #[cfg(windows)]
         let initial = tauri::Url::parse("about:blank").expect("a fixed address");
         #[cfg(not(windows))]
@@ -342,14 +408,20 @@ mod view {
             .on_new_window(move |url, features| {
                 // A window the page sized itself is a pop-up (usually a sign-in): it opens
                 // as a small window of its own, still joined to the page, and closes when done.
-                if features.size().is_some() {
+                // A blob address also needs its opener; a fresh tab cannot recreate it.
+                if features.size().is_some() || url.scheme() == "blob" {
+                    let popup_tab = format!("popup-{}", tbv_core::ids::new_record_id());
+                    let download_tab = popup_tab.clone();
+                    let downloads = windows.clone();
+                    let saves = popup_saves.clone();
                     let popup = tauri::WebviewWindowBuilder::new(
                         &windows,
-                        format!("browser-popup-{}", tbv_core::ids::new_record_id()),
+                        label(&popup_tab),
                         WebviewUrl::External(tauri::Url::parse("about:blank").expect("a fixed address")),
                     )
                     .window_features(features)
                     .incognito(private)
+                    .on_download(move |_, event| track_download(&downloads, &download_tab, &saves, event))
                     .title(url.host_str().unwrap_or("Sign in"))
                     .on_document_title_changed(|window, title| {
                         let _ = window.set_title(&title);
@@ -357,7 +429,7 @@ mod view {
                     .build();
                     if let Ok(window) = popup {
                         #[cfg(windows)]
-                        super::windows::popup(&window);
+                        super::windows::popup(&window, popup_tab);
                         return NewWindowResponse::Create { window };
                     }
                 }
@@ -365,70 +437,7 @@ mod view {
                 tell(&windows, Event::NewTab { url: url.to_string(), from: window_tab.clone() });
                 NewWindowResponse::Deny
             })
-            .on_download(move |_, event| {
-                match event {
-                    Download::Requested { url, destination } => {
-                        let address = url.to_string();
-                        let key = (download_tab.clone(), address.clone());
-                        if SAVING.lock().ok().is_some_and(|saving| saving.as_ref().is_some_and(|items| items.contains_key(&key))) {
-                            return false;
-                        }
-                        let name = destination
-                            .file_name()
-                            .map(|n| n.to_string_lossy().into_owned())
-                            .filter(|n| !n.is_empty())
-                            .or_else(|| url.path_segments().and_then(|mut s| s.next_back()).map(str::to_string).filter(|n| !n.is_empty()))
-                            .unwrap_or_else(|| "download".into());
-                        let id = tbv_core::ids::new_record_id();
-                        let Ok(hold) = super::DownloadHold::new(&id) else { return false };
-                        let folder = saves.join(&id);
-                        if let Err(error) = std::fs::create_dir_all(&folder) {
-                            tell(&downloads, Event::DownloadStart { tab: download_tab.clone(), id: id.clone(), name: name.clone(), url: address });
-                            tell(&downloads, Event::Download { tab: download_tab.clone(), id, name, path: String::new(), ok: false, error: Some(error.to_string()), security_blocked: false });
-                            return false;
-                        }
-                        *destination = folder.join(&name);
-                        if let Ok(mut saving) = SAVING.lock() {
-                            saving.get_or_insert_with(HashMap::new).insert(key, (id.clone(), destination.clone(), download_tab.clone(), hold));
-                        }
-                        tell(&downloads, Event::DownloadStart { tab: download_tab.clone(), id, name, url: address });
-                    }
-                    Download::Finished { url, path, success } => {
-                        let key = (download_tab.clone(), url.to_string());
-                        let kept = SAVING.lock().ok().and_then(|mut saving| {
-                            let items = saving.as_mut()?;
-                            let by_path = path.as_ref().and_then(|path| items.iter().find(|(_, (_, saved, _, _))| saved == path).map(|(key, _)| key.clone()));
-                            items.remove(by_path.as_ref().unwrap_or(&key))
-                        });
-                        if let Some((id, saved, tab, _hold)) = kept {
-                            let folder = saved.parent().map(std::path::Path::to_path_buf);
-                            let path = path.filter(|path| path.parent() == saved.parent()).unwrap_or(saved);
-                            let cancelled = CANCELLED.lock().ok().is_some_and(|mut c| c.as_mut().is_some_and(|c| c.remove(&id)));
-                            if cancelled {
-                                if let Some(folder) = folder.as_ref() {
-                                    let _ = std::fs::remove_dir_all(folder);
-                                }
-                                return true;
-                            }
-                            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                            #[cfg(windows)]
-                            let (error, security_blocked) = super::windows::finish_download(&tab, url.as_str(), success);
-                            #[cfg(not(windows))]
-                            let (error, security_blocked) = (None, false);
-                            let ok = success && path.is_file();
-                            if !ok {
-                                if let Some(folder) = folder.as_ref() {
-                                    let _ = std::fs::remove_dir_all(folder);
-                                }
-                            }
-                            let path = if ok { path.to_string_lossy().into_owned() } else { String::new() };
-                            tell(&downloads, Event::Download { tab, id, path, name, ok, error, security_blocked });
-                        }
-                    }
-                    _ => {}
-                }
-                true
-            });
+            .on_download(move |_, event| track_download(&downloads, &download_tab, &saves, event));
         let view = window.add_child(builder, at, size).map_err(|e| e.to_string())?;
         #[cfg(windows)]
         {
@@ -746,6 +755,12 @@ mod windows {
             })),
             &mut token,
         )?;
+        watch_downloads(&core, download_tab)?;
+        Ok(())
+    }
+
+    unsafe fn watch_downloads(core: &ICoreWebView2, download_tab: String) -> windows_core::Result<()> {
+        let mut token = 0;
         if let Ok(core4) = core.cast::<ICoreWebView2_4>() {
             core4.add_DownloadStarting(
                 &DownloadStartingEventHandler::create(Box::new(move |_, args| {
@@ -1043,10 +1058,11 @@ mod windows {
     }
 
     /// A sign-in pop-up: it closes itself when the site is done with it.
-    pub fn popup(window: &tauri::WebviewWindow) {
+    pub fn popup(window: &tauri::WebviewWindow, tab: String) {
         let closing = window.clone();
         let _ = window.with_webview(move |platform| unsafe {
             if let Ok(core) = platform.controller().CoreWebView2() {
+                let _ = watch_downloads(&core, tab);
                 let mut token = 0i64;
                 let _ = core.add_WindowCloseRequested(
                     &WindowCloseRequestedEventHandler::create(Box::new(move |_, _| {

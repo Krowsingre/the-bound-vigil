@@ -932,8 +932,7 @@ export function Browser({
 
   /** Downloads › Retry: the same address again, in its tab if that's still open. */
   const retry = (d: Fetched) => {
-    if (!d.url) return;
-    if (d.securityBlocked) return;
+    if (!d.url || !/^https?:/i.test(d.url) || d.securityBlocked) return;
     if (d.direct) {
       void api.downloadWebBook(d.url, d.name).catch((e: unknown) => toast(clean(e)));
       return;
@@ -1397,6 +1396,7 @@ export function Browser({
                       <b title={d.name}>{d.name}</b>
                       <span className="muted">
                         {downloadState(d)}{d.error && ` · ${d.error}`}
+                        {d.state === "failed" && d.url && !/^https?:/i.test(d.url) && !d.securityBlocked && " · Try the download again from the webpage"}
                         {d.at > 0 && d.state !== "coming" && ` · ${new Date(d.at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`}
                       </span>
                     </span>
@@ -1414,7 +1414,7 @@ export function Browser({
                         Cancel
                       </button>
                     )}
-                    {d.state === "failed" && d.url && !d.securityBlocked && (
+                    {d.state === "failed" && d.url && /^https?:/i.test(d.url) && !d.securityBlocked && (
                       <>
                         <button type="button" className="btn btn-quiet btn-small" onClick={() => retry(d)}>Retry</button>
                         {/^https?:/i.test(d.url) && <Menu label={"Download options for " + d.name} trigger={<Icon name="more" size={16} />} items={[
