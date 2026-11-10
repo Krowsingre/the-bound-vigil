@@ -14,6 +14,16 @@ with sqlite3.connect(db) as con:
                     ("close-probe", "Shutdown Probe", stamp, stamp))
         con.execute("INSERT INTO writing_chapters (id, project_id, title, body, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     ("close-chapter", "close-probe", "Test Chapter", "<p>Initial words</p>", 0, stamp, stamp))
+    elif sys.argv[1] == "seed-reader":
+        from hashlib import sha256
+        from shutil import copyfile
+        source = Path(sys.argv[2])
+        copy = db.parent / "Library" / "Scribe Fixture.epub"
+        copyfile(source, copy)
+        book_id = "sha256:" + sha256(copy.read_bytes()).hexdigest()
+        con.execute("INSERT INTO books (id,title,authors,format,file_size,added_at) VALUES (?,?,?,?,?,?)",
+                    (book_id,"Scribe Fixture",'["Test"]',"epub",copy.stat().st_size,stamp))
+        con.execute("INSERT INTO local_files (book_id,path) VALUES (?,?)",(book_id,str(copy)))
     elif sys.argv[1] == "lock":
         ready, release = map(Path, sys.argv[2:])
         con.execute("BEGIN IMMEDIATE")
@@ -26,4 +36,3 @@ with sqlite3.connect(db) as con:
         if "saved on close" not in body:
             raise SystemExit(f"Scribe did not save edit: {body!r}")
         print("Verified Scribe edit persisted after Windows shutdown")
-

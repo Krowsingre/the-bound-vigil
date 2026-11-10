@@ -60,7 +60,7 @@ try{
     $processFilter=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty,$app.Id)
     $null=Wait-Ui '^Close$' 'Button' 45
     $null=$shell.AppActivate($app.Id)
-    $shell.SendKeys('^5')
+    Invoke-Ui (Wait-Ui '^Scribe .*' 'Button')
     Invoke-Ui (Wait-Ui '^Write a book$')
     Invoke-Ui (Wait-Ui '^Shutdown Probe.*' 'Button')
     $null=Wait-Ui '^Chapter text$'
@@ -79,13 +79,13 @@ try{
     Write-Host 'PASS Native Windows Scribe PDF includes the original chapter text'
     return
   }
-  $shell.SendKeys('^o')
-  Start-Sleep -Milliseconds 950
-  [Windows.Forms.Clipboard]::SetText($source)
-  [Windows.Forms.SendKeys]::SendWait('%n^a^v{ENTER}')
-  Start-Sleep -Seconds 2
-  $null=$shell.AppActivate($app.Id)
-  $shell.SendKeys('^2')
+  Invoke-Ui (Wait-Ui '^Close$' 'Button')
+  if(!$app.WaitForExit(15000)){throw 'Initial app run did not close'}
+  & python (Join-Path $PSScriptRoot scribe.py) seed-reader $source
+  if($LASTEXITCODE){throw 'Could not seed synthetic Reader book'}
+  $app=Start-Process -FilePath $env:TBV_TEST_EXE -PassThru
+  $processFilter=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty,$app.Id)
+  Invoke-Ui (Wait-Ui '^Archive .*' 'Button' 45)
   $book=Wait-Ui '^(?:Open |Read )?Scribe Fixture' 'Button'
   Invoke-Ui $book
   if(!(Find-Ui '^Next page$' 'Button')){
