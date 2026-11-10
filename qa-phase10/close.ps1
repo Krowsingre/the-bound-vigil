@@ -109,79 +109,9 @@ try{
   $null=$shell.AppActivate($app.Id)
   Start-Sleep -Seconds 1
   [Windows.Forms.SendKeys]::SendWait('^5')
-  Click-Ui (Find-Ui '^Write a book  $close=$window.FindFirst($scope,$buttons)
-  if(!$close){throw 'Cannot find close button in Scribe'}
-  $ready=Join-Path $out 'lock-ready'
-  $release=Join-Path $out 'lock-release'
-  $locker=Start-Process -FilePath $python -ArgumentList @(('"{0}"' -f $helper),'lock',('"{0}"' -f $ready),('"{0}"' -f $release)) -PassThru -WindowStyle Hidden
-  $ends=(Get-Date).AddSeconds(3)
-  while(!(Test-Path $ready)){
-    if($locker.HasExited -or (Get-Date) -gt $ends){throw 'Could not hold database lock'}
-    Start-Sleep -Milliseconds 20
-  }
-  $editor.SetFocus()
-  [Windows.Forms.SendKeys]::SendWait('^{END} saved on close')
-  $clock=[Diagnostics.Stopwatch]::StartNew()
-  $close.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
-  $hidden=$null
-  do{
-    if($null -eq $hidden -and ![CloseProbe]::IsWindowVisible($handle)){$hidden=$clock.ElapsedMilliseconds}
-    if($clock.ElapsedMilliseconds -ge 650 -and !(Test-Path $release)){New-Item -ItemType File $release | Out-Null}
-    if($app.HasExited){break}
-    Start-Sleep -Milliseconds 15
-  }while($clock.ElapsedMilliseconds -lt 14000)
-  if(!$app.HasExited){throw 'App did not exit with a pending Scribe save'}
-  $row=[pscustomobject]@{Build=$env:TBV_TEST_KIND;Method='X with pending Scribe save';HiddenMs=$hidden;ExitedMs=$clock.ElapsedMilliseconds}
-  $row | ConvertTo-Json -Compress | Write-Host
-  $rows+=$row
-  $rows | ConvertTo-Json | Set-Content (Join-Path $out 'timing.json')
-  if($env:TBV_TEST_KIND -eq 'fixed' -and ($null -eq $hidden -or $hidden -ge 650)){throw 'Window stayed visible during the entire save delay'}
-  & $python $helper check
-  if($LASTEXITCODE){throw 'Scribe save did not persist'}
-}finally{
-  if($locker -and !$locker.HasExited){Stop-Process -Id $locker.Id -ErrorAction SilentlyContinue}
-  if(!$app.HasExited){Stop-Process -Id $app.Id -ErrorAction SilentlyContinue}
-}
-
-
-)
+  Click-Ui (Find-Ui '^Write a book$')
   Click-Ui (Find-Ui '^Shutdown Probe.*' 'Button')
-  $editor=Find-Ui '^Chapter text  $close=$window.FindFirst($scope,$buttons)
-  if(!$close){throw 'Cannot find close button in Scribe'}
-  $ready=Join-Path $out 'lock-ready'
-  $release=Join-Path $out 'lock-release'
-  $locker=Start-Process -FilePath $python -ArgumentList @(('"{0}"' -f $helper),'lock',('"{0}"' -f $ready),('"{0}"' -f $release)) -PassThru -WindowStyle Hidden
-  $ends=(Get-Date).AddSeconds(3)
-  while(!(Test-Path $ready)){
-    if($locker.HasExited -or (Get-Date) -gt $ends){throw 'Could not hold database lock'}
-    Start-Sleep -Milliseconds 20
-  }
-  $editor.SetFocus()
-  [Windows.Forms.SendKeys]::SendWait('^{END} saved on close')
-  $clock=[Diagnostics.Stopwatch]::StartNew()
-  $close.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
-  $hidden=$null
-  do{
-    if($null -eq $hidden -and ![CloseProbe]::IsWindowVisible($handle)){$hidden=$clock.ElapsedMilliseconds}
-    if($clock.ElapsedMilliseconds -ge 650 -and !(Test-Path $release)){New-Item -ItemType File $release | Out-Null}
-    if($app.HasExited){break}
-    Start-Sleep -Milliseconds 15
-  }while($clock.ElapsedMilliseconds -lt 14000)
-  if(!$app.HasExited){throw 'App did not exit with a pending Scribe save'}
-  $row=[pscustomobject]@{Build=$env:TBV_TEST_KIND;Method='X with pending Scribe save';HiddenMs=$hidden;ExitedMs=$clock.ElapsedMilliseconds}
-  $row | ConvertTo-Json -Compress | Write-Host
-  $rows+=$row
-  $rows | ConvertTo-Json | Set-Content (Join-Path $out 'timing.json')
-  if($env:TBV_TEST_KIND -eq 'fixed' -and ($null -eq $hidden -or $hidden -ge 650)){throw 'Window stayed visible during the entire save delay'}
-  & $python $helper check
-  if($LASTEXITCODE){throw 'Scribe save did not persist'}
-}finally{
-  if($locker -and !$locker.HasExited){Stop-Process -Id $locker.Id -ErrorAction SilentlyContinue}
-  if(!$app.HasExited){Stop-Process -Id $app.Id -ErrorAction SilentlyContinue}
-}
-
-
-
+  $editor=Find-Ui '^Chapter text$'
   $close=$window.FindFirst($scope,$buttons)
   if(!$close){throw 'Cannot find close button in Scribe'}
   $ready=Join-Path $out 'lock-ready'
