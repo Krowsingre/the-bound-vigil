@@ -20,6 +20,7 @@ function FindElement($pattern) {
   if(!$window){return}
   foreach($item in $window.FindAll($scope,$any)){
     try {
+      if($item.Current.ControlType -eq [Windows.Automation.ControlType]::ListItem){continue}
       if($item.Current.Name -match $pattern -and !$item.Current.IsOffscreen -and $item.Current.IsEnabled){return $item}
     } catch {}
   }
@@ -60,7 +61,7 @@ function SaveEvidence {
   } catch { Write-Warning $_ }
 }
 try {
-  $discover=WaitElement '^Discover(,.*)?$' 45
+  $discover=WaitElement '^Discover(?: .*)?$' 45
   Write-Host 'Installed app accessibility tree is reachable'
   Activate $discover
   Start-Sleep -Milliseconds 500
@@ -70,8 +71,8 @@ try {
   $shell.SendKeys('{ENTER}')
   $null=WaitElement '^Downloads, 1 in progress$'
   Write-Host 'Live download started'
-  Activate (WaitElement '^Archive(,.*)?$')
-  Activate (WaitElement '^Discover(,.*)?$')
+  Activate (WaitElement '^Archive(?: .*)?$')
+  Activate (WaitElement '^Discover(?: .*)?$')
   Activate (WaitElement '^Downloads, 1 in progress$')
   $null=WaitElement 'Coming down'
   if(FindElement '^Retry$'){throw 'Active transfer showed Retry'}
