@@ -1,0 +1,31 @@
+name: Verify the Phase 10 Windows Reader
+on:
+  push:
+    branches: [codex/verify-phase-10-windows]
+    paths: ['qa-phase10/reader.ps1', '.github/workflows/verify-phase-10-reader.yml']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 42741330286
+          name: the-bound-vigil-windows-setup
+          path: installer
+      - name: Install and exercise Windows Reader
+        shell: pwsh
+        run: |
+          $setup=(Get-ChildItem installer -Filter '*-setup.exe').FullName
+          if((Get-FileHash $setup).Hash -ne 'CB74CB84848FB195823019B65943668BB47240D85BAE2060084FA342B48BBEA5'){throw 'Unexpected installer checksum'}
+          $target=Join-Path $env:RUNNER_TEMP 'Phase10Installed'
+          $install=Start-Process -FilePath $setup -ArgumentList @('/S',"/D=$target") -Wait -PassThru -WindowStyle Hidden
+          if($install.ExitCode -ne 0){throw "Installer exited $($install.ExitCode)"}
+          $env:TBV_TEST_EXE=Join-Path $target 'the-bound-vigil.exe'
+          & powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File qa-phase10/reader.ps1
+          exit $LASTEXITCODE
