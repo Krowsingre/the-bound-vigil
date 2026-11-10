@@ -63,6 +63,10 @@ function Find-ByName($parent,$name,$timeout=15){
   $until=(Get-Date).AddSeconds($timeout)
   do {
     $element=$parent.FindFirst($scope,$condition)
+    if(!$element -and $name -in @('Scribe','Shutdown Probe')){
+      $buttonType=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::Button)
+      $element=$parent.FindAll($scope,$buttonType) | Where-Object { $_.Current.Name -like "*$name*" } | Select-Object -First 1
+    }
     if($element){return $element}
     Start-Sleep -Milliseconds 100
   }while((Get-Date) -lt $until)
@@ -109,6 +113,7 @@ try{
     if($locker.HasExited -or (Get-Date) -gt $ends){throw 'Could not hold database lock'}
     Start-Sleep -Milliseconds 20
   }
+  (New-Object -ComObject WScript.Shell).AppActivate($app.Id) | Out-Null
   $editor.SetFocus()
   [Windows.Forms.SendKeys]::SendWait('^{END} saved on close')
   $clock=[Diagnostics.Stopwatch]::StartNew()
@@ -132,3 +137,4 @@ try{
   if($locker -and !$locker.HasExited){Stop-Process -Id $locker.Id -ErrorAction SilentlyContinue}
   if(!$app.HasExited){Stop-Process -Id $app.Id -ErrorAction SilentlyContinue}
 }
+
