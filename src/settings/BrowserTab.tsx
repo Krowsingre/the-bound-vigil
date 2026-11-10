@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, isIOS, isMac } from "../api";
+import { api, isIOS } from "../api";
 import { useToast } from "../components/Toast";
 import {
   COME_BACK,
@@ -128,7 +128,7 @@ export function BrowserTab() {
   );
   return (
     <Columns side={side}>
-      {!isMac && <Section id="redirects" title="Website redirects" lede="Choose what Discover does when a site automatically sends you to another page. Trusted sites can redirect under any mode.">
+      <Section id="redirects" title="Website redirects" lede="Choose what Discover does when a site automatically sends you to another page. Trusted sites can redirect under any mode.">
         <Row label="Automatic redirects">
           <Select label="Automatic redirects" value={prefs.redirects} options={REDIRECT_MODES}
             onChange={(redirects: RedirectMode) => protect(writeBrowserPrefs({ redirects }))} />
@@ -149,7 +149,7 @@ export function BrowserTab() {
               onClick={() => protect(writeBrowserPrefs({ redirectAllowlist: prefs.redirectAllowlist.filter((site) => site !== host) }))}>Remove</button>
           </Row>
         ))}
-      </Section>}
+      </Section>
       <SectionGroup id="start" title="Start and search" lede="What Discover opens to and how it searches." holds={["search", "home"]}>
         <Section id="search" title="Searching" lede="Words typed into Discover's address box that aren't a web address are searched for.">
           <Toggle

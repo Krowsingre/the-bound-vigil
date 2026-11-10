@@ -6519,9 +6519,11 @@ dependencies = [
 name = "the-bound-vigil"
 version = "0.81.0"
 dependencies = [
+ "block2",
  "notify",
  "objc2",
  "objc2-foundation",
+ "objc2-web-kit",
  "qrcode",
  "security-framework",
  "semver",

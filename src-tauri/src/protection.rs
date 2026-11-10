@@ -222,7 +222,7 @@ fn under(host: &str, domain: &str) -> bool {
 }
 
 impl Protection {
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     pub fn redirect_mode(&self, source: &str) -> RedirectMode {
         let source = source.trim_end_matches('.').trim_start_matches("www.");
         if self.redirect_allowlist.iter().any(|host| under(source, host)) {

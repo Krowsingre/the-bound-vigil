@@ -247,23 +247,23 @@ mod view {
         SITES.lock().ok().and_then(|s| s.as_ref().and_then(|s| s.get(tab).cloned())).unwrap_or_default()
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     static APP_NAVIGATIONS: Mutex<Option<HashMap<String, tauri::Url>>> = Mutex::new(None);
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     pub(super) fn consume_app_navigation(tab: &str, url: &tauri::Url) -> bool {
         APP_NAVIGATIONS.lock().ok().and_then(|mut pending| pending.as_mut()?.remove(tab))
             .is_some_and(|expected| expected == *url)
     }
 
     fn navigate(view: &tauri::Webview, tab: &str, url: tauri::Url) -> tauri::Result<()> {
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         if let Ok(mut pending) = APP_NAVIGATIONS.lock() {
             pending.get_or_insert_with(HashMap::new).insert(tab.to_owned(), url.clone());
         }
         let _ = tab;
         let result = view.navigate(url);
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         if result.is_err() {
             if let Ok(mut pending) = APP_NAVIGATIONS.lock() {
                 if let Some(pending) = pending.as_mut() { pending.remove(tab); }
@@ -398,9 +398,9 @@ mod view {
         let (page_tab, title_tab, window_tab, download_tab, other_tab) = (tab.to_string(), tab.to_string(), tab.to_string(), tab.to_string(), tab.to_string());
         let saves = downloads_dir(app)?;
         let popup_saves = saves.clone();
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         let initial = tauri::Url::parse("about:blank").expect("a fixed address");
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "macos")))]
         let initial = start;
         let builder = WebviewBuilder::new(label(tab), WebviewUrl::External(initial))
             // Its own cookies, saved logins and storage, so clearing them leaves TBV's alone.
@@ -467,6 +467,11 @@ mod view {
         #[cfg(windows)]
         {
             super::windows::tab(&view, app.clone(), tab.to_string());
+            navigate(&view, tab, start).map_err(|e| e.to_string())?;
+        }
+        #[cfg(target_os = "macos")]
+        {
+            super::mac_redirects::attach(&view, app.clone(), tab.to_owned()).map_err(|e| e.to_string())?;
             navigate(&view, tab, start).map_err(|e| e.to_string())?;
         }
         if background {
@@ -1133,6 +1138,10 @@ mod windows {
             .map_err(|_| "The browser did not confirm cancellation.".to_string())?
     }
 }
+
+#[cfg(target_os = "macos")]
+#[path = "browser_mac_redirects.rs"]
+mod mac_redirects;
 
 #[cfg(mobile)]
 mod view {
