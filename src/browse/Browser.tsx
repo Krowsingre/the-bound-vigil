@@ -1197,7 +1197,7 @@ export function Browser({
             </button>
           </div>
           <div className="browser-strip-tools">
-            <Menu label="Every tab" className="toolbar-button" trigger={<Icon name="chevronDown" size={16} />} items={tabList} />
+            <Menu label="Every tab" closeOnScroll={false} className="toolbar-button" trigger={<Icon name="chevronDown" size={16} />} items={tabList} />
             <span className="browser-bar-divider" aria-hidden />
             {button("Add a catalogue", "globePlus", onOpenCatalogues)}
             {downloadsButton}
@@ -1523,4 +1523,3 @@ export function Browser({
     </div>
   );
 }
-
