@@ -1,0 +1,41 @@
+name: Verify installed Update 11
+on:
+  push:
+    branches: [codex/test-update-11]
+    paths: ['qa-update11/native.ps1', 'qa-update11/seed.py', '.github/workflows/native-update-11.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  installed:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for Update 11 installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for($i=0;$i -lt 65;$i++){
+            $data=gh api "repos/${{ github.repository }}/actions/runs/42860775447/artifacts" | ConvertFrom-Json
+            if($data.artifacts.name -contains 'the-bound-vigil-windows-setup'){exit 0}
+            Start-Sleep -Seconds 15
+          }
+          throw 'Update 11 installer was not uploaded'
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 42860775447
+          name: the-bound-vigil-windows-setup
+          path: installer
+      - name: Install and exercise Update 11
+        shell: pwsh
+        run: |
+          $setup=(Get-ChildItem installer -Filter '*-setup.exe').FullName
+          $target=Join-Path $env:RUNNER_TEMP 'TBVUpdate11'
+          $install=Start-Process -FilePath $setup -ArgumentList @('/S',"/D=$target") -Wait -PassThru -WindowStyle Hidden
+          if($install.ExitCode -ne 0){throw "Installer exited $($install.ExitCode)"}
+          $env:TBV_TEST_EXE=Join-Path $target 'the-bound-vigil.exe'
+          & powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File qa-update11/native.ps1
+          exit $LASTEXITCODE
