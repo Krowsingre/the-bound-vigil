@@ -36,7 +36,11 @@ function Wait-Ui($regex,$type,$side='any'){
 function Click-Ui($item,[bool]$right=$false){
   if(!$right -and $item.Current.ControlType -ne [Windows.Automation.ControlType]::Edit){
     $invoke=$null
-    if($item.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern,[ref]$invoke)){$invoke.Invoke();return}
+    if($item.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern,[ref]$invoke)){
+      try{$invoke.Invoke()}catch [Windows.Automation.ElementNotAvailableException]{}
+      Start-Sleep -Milliseconds 300
+      return
+    }
   }
   $rect=$item.Current.BoundingRectangle
   [Windows.Forms.Cursor]::Position=New-Object Drawing.Point([int]($rect.X+$rect.Width/2),[int]($rect.Y+$rect.Height/2))
@@ -46,8 +50,10 @@ function Click-Ui($item,[bool]$right=$false){
 function Go-To($url,$side){
   $field=Wait-Ui '^Search$' 'Edit' $side
   Click-Ui $field
-  [Windows.Forms.Clipboard]::SetText("http://127.0.0.1:19421/$url")
-  [Windows.Forms.SendKeys]::SendWait('^a^v{ENTER}')
+  $shell=New-Object -ComObject WScript.Shell
+  $shell.SendKeys('^a')
+  $shell.SendKeys("http://127.0.0.1:19421/$url")
+  $shell.SendKeys('{ENTER}')
 }
 $server=Start-Process -FilePath (Get-Command node).Source -ArgumentList (Join-Path $PSScriptRoot server.cjs) -WindowStyle Hidden -PassThru
 $app=Start-Process -FilePath $env:TBV_TEST_EXE -PassThru
