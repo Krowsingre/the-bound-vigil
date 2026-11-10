@@ -1345,32 +1345,6 @@ export function Browser({
       )}
       {panel === "reading" && <ReadingListPanel onOpenBook={onOpenBook} onClose={() => setPanel(null)} />}
       {panel === "site" && site && <SiteInfo url={url} actions={siteActions} />}
-      {redirects.length > 0 && (
-        <ConfirmDialog
-          title="Allow this redirect?"
-          body={(siteOf(redirects[0].from) ?? "This site") + " wants to send you to " + (siteOf(redirects[0].url) ?? "another page") + "."}
-          confirm="Allow once"
-          onCancel={() => setRedirects((pending) => pending.slice(1))}
-          onConfirm={() => {
-            const target = redirects[0];
-            setRedirects((pending) => pending.slice(1));
-            void api.browserAct(target.tab, "go", target.url).catch((failure: unknown) => toast(clean(failure)));
-          }}
-        />
-      )}
-      {appLink && (
-        <ConfirmDialog
-          title="Open another app?"
-          body={appLinkAsk(appLink)}
-          confirm="Open"
-          onCancel={() => setAppLink(null)}
-          onConfirm={() => {
-            const to = appLink;
-            setAppLink(null);
-            void api.browserOpenApp(to).catch((e: unknown) => toast(clean(e)));
-          }}
-        />
-      )}
       {panel === "history" && <HistoryPanel onGo={(to) => (setPanel(null), go(to))} onClose={() => setPanel(null)} />}
       {panel === "downloads" && (
         <div className="dialog-backdrop browser-downloads-backdrop" onPointerDown={(e) => e.target === e.currentTarget && setPanel(null)}>
@@ -1460,6 +1434,32 @@ export function Browser({
             )}
           </div>
         </div>
+      )}
+      {redirects.length > 0 && (
+        <ConfirmDialog
+          title="Allow this redirect?"
+          body={(siteOf(redirects[0].from) ?? "This site") + " wants to send you to " + (siteOf(redirects[0].url) ?? "another page") + "."}
+          confirm="Allow once"
+          onCancel={() => setRedirects((pending) => pending.slice(1))}
+          onConfirm={() => {
+            const target = redirects[0];
+            setRedirects((pending) => pending.slice(1));
+            void api.browserAct(target.tab, "go", target.url).catch((failure: unknown) => toast(clean(failure)));
+          }}
+        />
+      )}
+      {appLink && (
+        <ConfirmDialog
+          title="Open another app?"
+          body={appLinkAsk(appLink)}
+          confirm="Open"
+          onCancel={() => setAppLink(null)}
+          onConfirm={() => {
+            const to = appLink;
+            setAppLink(null);
+            void api.browserOpenApp(to).catch((e: unknown) => toast(clean(e)));
+          }}
+        />
       )}
     </div>
   );

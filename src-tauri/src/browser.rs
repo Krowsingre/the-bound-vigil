@@ -247,6 +247,31 @@ mod view {
         SITES.lock().ok().and_then(|s| s.as_ref().and_then(|s| s.get(tab).cloned())).unwrap_or_default()
     }
 
+    #[cfg(windows)]
+    static APP_NAVIGATIONS: Mutex<Option<HashMap<String, tauri::Url>>> = Mutex::new(None);
+
+    #[cfg(windows)]
+    pub(super) fn consume_app_navigation(tab: &str, url: &tauri::Url) -> bool {
+        APP_NAVIGATIONS.lock().ok().and_then(|mut pending| pending.as_mut()?.remove(tab))
+            .is_some_and(|expected| expected == *url)
+    }
+
+    fn navigate(view: &tauri::Webview, tab: &str, url: tauri::Url) -> tauri::Result<()> {
+        #[cfg(windows)]
+        if let Ok(mut pending) = APP_NAVIGATIONS.lock() {
+            pending.get_or_insert_with(HashMap::new).insert(tab.to_owned(), url.clone());
+        }
+        let _ = tab;
+        let result = view.navigate(url);
+        #[cfg(windows)]
+        if result.is_err() {
+            if let Ok(mut pending) = APP_NAVIGATIONS.lock() {
+                if let Some(pending) = pending.as_mut() { pending.remove(tab); }
+            }
+        }
+        result
+    }
+
     fn set_site(tab: &str, url: &tauri::Url) {
         if let (Ok(mut sites), Some(host)) = (SITES.lock(), url.host_str()) {
             sites.get_or_insert_with(HashMap::new).insert(tab.to_string(), host.to_ascii_lowercase());
@@ -360,7 +385,7 @@ mod view {
             }
             if let Some(url) = url {
                 set_site(tab, &url);
-                view.navigate(url).map_err(|e| e.to_string())?;
+                navigate(&view, tab, url).map_err(|e| e.to_string())?;
             }
             follow_front(app);
             return Ok(());
@@ -442,7 +467,7 @@ mod view {
         #[cfg(windows)]
         {
             super::windows::tab(&view, app.clone(), tab.to_string());
-            view.navigate(start).map_err(|e| e.to_string())?;
+            navigate(&view, tab, start).map_err(|e| e.to_string())?;
         }
         if background {
             view.hide().map_err(|e| e.to_string())?;
@@ -515,7 +540,7 @@ mod view {
         match (action, url) {
             ("go", Some(url)) => {
                 set_site(tab, &url);
-                view.navigate(url)
+                navigate(&view, tab, url)
             }
             #[cfg(windows)]
             ("back" | "forward", _) => super::windows::travel_one(&view, action == "forward"),
@@ -804,9 +829,10 @@ mod windows {
                     args.Uri(&mut target)?;
                     let url = take_pwstr(target);
                     let Ok(to) = super::web_url(&url) else { return Ok(()) };
+                    let explicit = !redirected.as_bool() && view::consume_app_navigation(&tab, &to);
                     let from = if redirected.as_bool() {
                         previous.borrow().as_ref().filter(|(id, _)| *id == nav).map(|(_, uri)| uri.clone())
-                    } else if !user.as_bool() {
+                    } else if !user.as_bool() && !explicit {
                         sender.and_then(|view| {
                             let mut source = PWSTR::null();
                             view.Source(&mut source).ok()?;
