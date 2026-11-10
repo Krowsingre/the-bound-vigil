@@ -102,7 +102,7 @@ try{
     $handle=$app.MainWindowHandle
     if($handle -and [CloseProbe]::IsWindowVisible($handle)){
       $window=[Windows.Automation.AutomationElement]::FromHandle($handle)
-      if($window.Current.Name -eq 'The Bound Vigil'){break}
+      if($window.Current.Name -eq 'The Bound Vigil' -and $window.FindFirst($scope,$buttons)){break}
     }
     Start-Sleep -Milliseconds 100
   }while((Get-Date) -lt $ends)
