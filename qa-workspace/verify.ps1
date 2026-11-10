@@ -52,13 +52,13 @@ try{
   Click-Ui (Wait-Ui '^Sanctum(?: .*)?$' 'Button') $true
   Click-Ui (Wait-Ui '^Split screen$' 'MenuItem')
   $null=Wait-Ui '^Close split$' 'Button'
-  $null=Wait-Ui '^Sanctum(?: .*)?$' 'Button' 'right'
+  $archive=Wait-Ui '^Open Archive$' 'Button' 'right'
   Write-Host 'PASS opened Sanctum in secondary pane from the Archive sidebar'
-  Click-Ui (Wait-Ui '^Archive(?: .*)?$' 'Button' 'right')
-  Click-Ui (Wait-Ui '^(Open |Read )?Split Fixture Beta(?:,.*)?$' 'Button' 'right')
+  Click-Ui $archive
+  Click-Ui (Wait-Ui '^(Open |Read )?Split Fixture Beta(?: .*)?$' 'Button' 'right')
   Click-Ui (Wait-Ui '^Read$' 'Button' 'right')
   $null=Wait-Ui '^Next page$' 'Button' 'right'
-  Click-Ui (Wait-Ui '^(Open |Read )?Split Fixture Alpha(?:,.*)?$' 'Button' 'left')
+  Click-Ui (Wait-Ui '^(Open |Read )?Split Fixture Alpha(?: .*)?$' 'Button' 'left')
   Click-Ui (Wait-Ui '^Read$' 'Button' 'left')
   $null=Wait-Ui '^Next page$' 'Button' 'left'
   $null=Wait-Ui '^Split Fixture Alpha$' 'Text' 'left'
