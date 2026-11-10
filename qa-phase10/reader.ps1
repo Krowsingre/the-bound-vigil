@@ -121,7 +121,7 @@ $documents=[Environment]::GetFolderPath('MyDocuments')
       $active=[PickerProbe]::FindWindow('#32770','Save the PDF')
       throw "Native PDF was not created. Picker still present: $($active -ne [IntPtr]::Zero)"
     }
-    & python -c 'import sys; from pypdf import PdfReader; pages=PdfReader(sys.argv[1]).pages; assert len(pages)>0; assert any("Initial words" in page.extract_text() for page in pages)' $pdf
+    & python (Join-Path $PSScriptRoot pdf_check.py) $pdf
     if($LASTEXITCODE){throw 'PDF text check failed'}
     Write-Host 'PASS Native Windows Scribe PDF includes the original chapter text'
     return
