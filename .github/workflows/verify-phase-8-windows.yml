@@ -1,0 +1,49 @@
+name: Verify Phase 8 Windows transfers
+on:
+  push:
+    branches: [codex/verify-phase-8-windows]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for the Phase 8 installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers=@{Authorization="Bearer $env:GH_TOKEN";Accept='application/vnd.github+json'}
+          for($i=0;$i -lt 70;$i++){
+            $run=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/42734017623"
+            if($run.status -eq 'completed'){
+              if($run.conclusion -ne 'success'){throw "Installer build ended with $($run.conclusion)"}
+              exit 0
+            }
+            Start-Sleep -Seconds 12
+          }
+          throw 'Installer build did not finish in time'
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 42734017623
+          name: the-bound-vigil-windows-setup
+          path: installer
+      - name: Install and exercise a real slow transfer
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem installer -Filter '*-setup.exe').FullName
+          $target = Join-Path $env:RUNNER_TEMP 'Phase8Installed'
+          $install = Start-Process -FilePath $setup -ArgumentList @('/S',"/D=$target") -Wait -PassThru -WindowStyle Hidden
+          if ($install.ExitCode -ne 0) { throw "Installer exited $($install.ExitCode)" }
+          $env:TBV_TEST_EXE=Join-Path $target 'the-bound-vigil.exe'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File qa-phase8/verify.ps1
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase8-native-test-evidence
+          path: qa-phase8/result/
