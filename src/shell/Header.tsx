@@ -1,4 +1,4 @@
-import { forwardRef, useRef, useState, type ReactNode } from "react";
+import { forwardRef, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Profile, SyncStatus } from "../api/types";
 import { Icon } from "../components/Icon";
 import { SyncMenu } from "./SyncMenu";
@@ -46,6 +46,30 @@ export const Header = forwardRef<
     revision.current++;
     setClipboardReady(false);
   };
+  useEffect(() => {
+    const clearSearch = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "x") return;
+      if (document.querySelector(".dialog-backdrop, dialog[open], [role=alertdialog], [role=menu]")) return;
+      const input = document.getElementById("global-search") as HTMLInputElement | null;
+      if (!input) return;
+      const target = event.target;
+      if (target === input) {
+        if (input.selectionStart !== input.selectionEnd) return;
+      } else if (target instanceof Element && (target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])") || window.getSelection()?.toString())) {
+        return;
+      }
+      event.preventDefault();
+      if (address !== undefined) {
+        input.focus();
+        setTyping(true);
+        revision.current++;
+        setClipboardReady(false);
+      }
+      onSearchChange("");
+    };
+    window.addEventListener("keydown", clearSearch);
+    return () => window.removeEventListener("keydown", clearSearch);
+  }, [address, onSearchChange]);
   const showing = address !== undefined && !typing && !search ? (addressLabel ?? address) : search;
   const done = () => {
     onSearchChange("");

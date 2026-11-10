@@ -901,6 +901,7 @@ mod windows {
                 } else {
                     match (key, shift) {
                         (0x4B, false) => "focusAddress",
+                        (0x44, false) => "bookmarkPage",
                         (0x54, false) => "newTab",
                         (0x54, true) => "reopenTab",
                         (0x57, false) => "closeTab",
@@ -910,7 +911,7 @@ mod windows {
                     }
                 };
                 args.SetHandled(true)?;
-                if matches!(what, "focusAddress" | "newTab") {
+                if matches!(what, "focusAddress" | "newTab" | "bookmarkPage") {
                     let (app, tab) = (app.clone(), tab.clone());
                     let dispatcher = app.clone();
                     let _ = dispatcher.run_on_main_thread(move || {

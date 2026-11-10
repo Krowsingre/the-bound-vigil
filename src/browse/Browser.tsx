@@ -323,7 +323,7 @@ export function Browser({
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [marks, setMarks] = useState<Bookmark[]>([]);
   const fetched = useDownloads();
-  const [panel, setPanel] = useState<null | "tabs" | "site" | StartPanel>(null);
+  const [panel, setPanel] = useState<null | "tabs" | "site" | "bookmark-page" | StartPanel>(null);
   /** Pages that couldn't open, by tab: TBV's own page says why. */
   const [failed, setFailed] = useState<Record<string, { url: string; reason: string }>>({});
   const failedRef = useRef(failed);
@@ -775,10 +775,6 @@ export function Browser({
     forget(ids);
     setTabs((s) => closeTabs(s, ids, id));
   };
-  const reloadTab = (id: string) => {
-    if (made.current.has(id)) void api.browserAct(id, "reload").catch(() => undefined);
-  };
-  const copyLink = (to: string) => void navigator.clipboard?.writeText(to).then(() => toast("Link copied."));
   const duplicate = (id: string) => {
     setArticle(null);
     setPanel(null);
@@ -801,23 +797,15 @@ export function Browser({
     const tab = tabsRef.current.tabs.find((t) => t.id === id);
     const web = /^https?:/i.test(tab?.url ?? "");
     return [
-      { label: "Open new tab", icon: "plus", onSelect: () => newTab(false, id) },
-      ...(allowSplit && !companion && id !== tabs.active ? [
-        { label: "Open beside current tab", onSelect: () => splitWithTab(id) },
-      ] : []),
-      { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true, id) },
-      { label: "Reload tab", icon: "sync", disabled: !web || !made.current.has(id), onSelect: () => reloadTab(id) },
-      { label: "Duplicate tab", icon: "copy", disabled: !web, onSelect: () => duplicate(id) },
-      { label: "Copy link", icon: "link", disabled: !web, onSelect: () => copyLink(tab!.url) },
       // Private tabs aren't kept, so they can't stay pinned through a restart.
       tab?.pinned
         ? { label: "Unpin tab", icon: "pin", onSelect: () => setTabs((s) => pinTab(s, id, false)) }
         : { label: "Pin tab", icon: "pin", disabled: !!tab?.private, onSelect: () => setTabs((s) => pinTab(s, id, true)) },
-      { label: "Reopen closed tab", icon: "undo", disabled: !closedTabs.length, onSelect: () => reopen() },
+      { label: "Close tab", icon: "close", onSelect: () => close(id) },
+      { label: "Duplicate tab", icon: "copy", disabled: !web, onSelect: () => duplicate(id) },
       "divider",
       { label: "Close tabs to the right", icon: "close", disabled: !rightOf(tabsRef.current, id).length, onSelect: () => closeRight(id) },
       { label: "Close other tabs", icon: "layers", disabled: !othersOf(tabsRef.current, id).length, onSelect: () => closeOthers(id) },
-      { label: "Close tab", icon: "close", onSelect: () => close(id) },
     ];
   };
   shortcut.current = (key) => {
@@ -827,6 +815,9 @@ export function Browser({
     else if (key === "newTab") newTab();
     else if (key === "closeTab") close(tabsRef.current.active);
     else if (key === "reopenTab") reopen();
+    else if (key === "bookmarkPage") {
+      if (!covered() && /^https?:/i.test(list[at]?.url ?? "")) setPanel("bookmark-page");
+    }
     else if (list.length > 1 && (key === "nextTab" || key === "previousTab")) switchTo(list[(at + (key === "nextTab" ? 1 : list.length - 1)) % list.length].id);
   };
   // Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab and Ctrl+Shift+T, as in other browsers.
@@ -842,7 +833,7 @@ export function Browser({
       }
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
       const k = e.key.toLowerCase();
-      const what = k === "t" ? (e.shiftKey ? "reopenTab" : "newTab") : k === "w" && !e.shiftKey ? "closeTab" : e.key === "Tab" ? (e.shiftKey ? "previousTab" : "nextTab") : null;
+      const what = k === "t" ? (e.shiftKey ? "reopenTab" : "newTab") : k === "w" && !e.shiftKey ? "closeTab" : k === "d" && !e.shiftKey ? "bookmarkPage" : e.key === "Tab" ? (e.shiftKey ? "previousTab" : "nextTab") : null;
       if (!what) return;
       e.preventDefault();
       shortcut.current(what);
@@ -1093,6 +1084,7 @@ export function Browser({
     ] },
     { label: "History", icon: "clock", onSelect: () => setPanel("history") },
     { label: "Find on page", icon: "search", onSelect: () => setFinding("") },
+    { label: "New tab", icon: "plus", onSelect: () => newTab() },
     { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) },
     { label: "Reopen closed tab", icon: "undo", disabled: !closedTabs.length, onSelect: () => reopen() },
     { label: "Make this your home page", icon: "home", disabled: !web, onSelect: () => (writeBrowserPrefs({ home: url }), toast("This is your home page now.")) },
@@ -1391,8 +1383,10 @@ export function Browser({
         </section>
       </>}
       </div>
-      {panel === "bookmarks" && (
+      {(panel === "bookmarks" || panel === "bookmark-page") && (
         <BookmarksPanel
+          key={panel}
+          page={panel === "bookmark-page" ? marked ?? { id: "", title: titleOf(active.title, url), url } : undefined}
           onGo={(to) => (setPanel(null), go(to))}
           onClose={() => setPanel(null)}
           onChanged={reloadMarks}

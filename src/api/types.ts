@@ -1614,7 +1614,7 @@ export type BrowserEvent =
   | { kind: "menu"; tab: string; action: "newTab" | "addBook"; url: string }
   /** A tab shortcut pressed while a page had the keyboard (Windows). */
   | { kind: "focus"; tab: string }
-  | { kind: "key"; tab: string; key: "focusAddress" | "newTab" | "closeTab" | "nextTab" | "previousTab" | "reopenTab" | "appBack" | "appForward" | "pageBack" | "pageForward" };
+  | { kind: "key"; tab: string; key: "focusAddress" | "bookmarkPage" | "newTab" | "closeTab" | "nextTab" | "previousTab" | "reopenTab" | "appBack" | "appForward" | "pageBack" | "pageForward" };
 
 /** An article found on a page by reader mode (Mozilla's Readability). */
 export interface ReaderArticle {

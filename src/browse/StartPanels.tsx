@@ -26,14 +26,15 @@ function Panel({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-export function BookmarksPanel({ onGo, onClose, onChanged }: {
+export function BookmarksPanel({ onGo, onClose, onChanged, page }: {
+  page?: Bookmark;
   onGo: (url: string) => void;
   onClose: () => void;
   onChanged: () => void;
 }) {
   const toast = useToast();
   const [marks, setMarks] = useState<Bookmark[]>([]);
-  const [draft, setDraft] = useState<Bookmark | null>(null);
+  const [draft, setDraft] = useState<Bookmark | null>(page ?? null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { void api.bookmarks().then(setMarks, (e) => toast(String(e))); }, [toast]);
 
@@ -62,11 +63,11 @@ export function BookmarksPanel({ onGo, onClose, onChanged }: {
     const folder = draft.folder?.trim() || null;
     void change(() => draft.id
       ? api.editBookmark(draft.id, draft.title, draft.url, folder)
-      : api.addBookmark(draft.title, draft.url, folder), () => setDraft(null));
+      : api.addBookmark(draft.title, draft.url, folder), () => page ? onClose() : setDraft(null));
   };
 
   return (
-    <Panel title="Bookmarks" onClose={onClose}>
+    <Panel title={page ? (page.id ? "Edit bookmark" : "Add bookmark") : "Bookmarks"} onClose={onClose}>
       {draft ? (
         <form className="bookmark-editor" onSubmit={(e) => { e.preventDefault(); save(); }}>
           <label>Name <input autoFocus value={draft.title} maxLength={200} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></label>
@@ -74,14 +75,15 @@ export function BookmarksPanel({ onGo, onClose, onChanged }: {
           <label>Folder <input list="bookmark-folders" placeholder="No folder" value={draft.folder ?? ""} maxLength={120} onChange={(e) => setDraft({ ...draft, folder: e.target.value })} /></label>
           <datalist id="bookmark-folders">{[...folders.keys()].filter(Boolean).map((name) => <option key={name} value={name} />)}</datalist>
           <div className="bookmark-editor-actions">
-            <button type="submit" className="btn btn-primary btn-small" disabled={busy}>Save</button>
-            <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => setDraft(null)}>Cancel</button>
+            <button type="submit" className="btn btn-primary btn-small" disabled={busy}>{page && !page.id ? "Add bookmark" : "Save"}</button>
+            {page?.id && <button type="button" className="btn btn-danger btn-small" disabled={busy} onClick={() => void change(() => api.removeBookmark(page.id), onClose)}>Remove bookmark</button>}
+            <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => page ? onClose() : setDraft(null)}>Cancel</button>
           </div>
         </form>
       ) : (
         <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => setDraft({ id: "", title: "", url: "" })}>Add bookmark</button>
       )}
-      <ul className="browser-download-list browser-history-list">
+      {!page && <ul className="browser-download-list browser-history-list">
         {[...folders].flatMap(([name, group]) => [
           <li key={"folder:" + name}><h3>{name || "No folder"}</h3></li>,
           ...group.map((m, index) => (
@@ -104,7 +106,7 @@ export function BookmarksPanel({ onGo, onClose, onChanged }: {
             </li>
           )),
         ])}
-      </ul>
+      </ul>}
     </Panel>
   );
 }
