@@ -336,6 +336,10 @@ mod view {
                 if let Some((id, saved, tab, _hold)) = kept {
                     let folder = saved.parent().map(std::path::Path::to_path_buf);
                     let path = path.filter(|path| path.parent() == saved.parent()).unwrap_or(saved);
+                    #[cfg(windows)]
+                    let (error, security_blocked) = super::windows::finish_download(&tab, url.as_str(), success);
+                    #[cfg(not(windows))]
+                    let (error, security_blocked) = (None, false);
                     let cancelled = CANCELLED.lock().ok().is_some_and(|mut c| c.as_mut().is_some_and(|c| c.remove(&id)));
                     if cancelled {
                         if let Some(folder) = folder.as_ref() {
@@ -344,10 +348,6 @@ mod view {
                         return true;
                     }
                     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    #[cfg(windows)]
-                    let (error, security_blocked) = super::windows::finish_download(&tab, url.as_str(), success);
-                    #[cfg(not(windows))]
-                    let (error, security_blocked) = (None, false);
                     let ok = success && path.is_file();
                     if !ok {
                         if let Some(folder) = folder.as_ref() {
@@ -594,12 +594,14 @@ mod view {
     pub fn cancel(app: &tauri::AppHandle, id: &str) -> CommandResult<()> {
         let found = SAVING.lock().ok().and_then(|s| s.as_ref().and_then(|s| s.iter().find(|(_, (i, _, _, _))| i == id).map(|((_, url), (_, _, tab, _))| (url.clone(), tab.clone()))));
         let Some((url, tab)) = found else { return Ok(()) };
-        if let Ok(mut cancelled) = CANCELLED.lock() {
-            cancelled.get_or_insert_with(HashSet::new).insert(id.to_string());
-        }
+        CANCELLED.lock().map_err(|error| error.to_string())?
+            .get_or_insert_with(HashSet::new).insert(id.to_string());
         #[cfg(windows)]
-        if let Some(view) = app.get_webview(&label(&tab)) {
-            super::windows::cancel(&view, tab, url);
+        if let Err(error) = super::windows::cancel(app, tab, url) {
+            if let Ok(mut cancelled) = CANCELLED.lock() {
+                if let Some(cancelled) = cancelled.as_mut() { cancelled.remove(id); }
+            }
+            return Err(error);
         }
         #[cfg(not(windows))]
         let _ = (app, url, tab);
@@ -1118,14 +1120,17 @@ mod windows {
         (Some(message.into()), security)
     }
 
-    pub fn cancel(view: &tauri::Webview, tab: String, url: String) {
-        let _ = view.with_webview(move |_| {
-            if let Some(operation) = OPERATIONS.with(|o| o.borrow_mut().remove(&(tab, url))) {
-                unsafe {
-                    let _ = operation.Cancel();
-                }
-            }
-        });
+    pub fn cancel(app: &tauri::AppHandle, tab: String, url: String) -> crate::CommandResult<()> {
+        let (send, receive) = std::sync::mpsc::channel();
+        app.run_on_main_thread(move || {
+            let operation = OPERATIONS.with(|items| items.borrow().get(&(tab, url)).cloned());
+            let result = operation
+                .ok_or_else(|| "The browser no longer has this transfer.".to_string())
+                .and_then(|operation| unsafe { operation.Cancel() }.map_err(|error| error.to_string()));
+            let _ = send.send(result);
+        }).map_err(|error| error.to_string())?;
+        receive.recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|_| "The browser did not confirm cancellation.".to_string())?
     }
 }
 
