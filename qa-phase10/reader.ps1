@@ -15,7 +15,7 @@ function Wait-Picker($title){
   $until=(Get-Date).AddSeconds(15)
   do{
     $handle=[PickerProbe]::FindWindow('#32770',$title)
-    if($handle){return $handle}
+    if($handle -ne [IntPtr]::Zero){return $handle}
     Start-Sleep -Milliseconds 200
   }while((Get-Date) -lt $until)
   throw "Picker did not appear: $title"
@@ -110,7 +110,7 @@ $documents=[Environment]::GetFolderPath('MyDocuments')
     if(!(Test-Path $pdf)){
       Get-ChildItem $documents,$out -Filter '*.pdf' | Select-Object FullName,Length | Write-Host
       $active=[PickerProbe]::FindWindow('#32770','Save the PDF')
-      throw "Native PDF was not created. Picker still present: $([bool]$active)"
+      throw "Native PDF was not created. Picker still present: $($active -ne [IntPtr]::Zero)"
     }
     & python -c 'import sys; from pypdf import PdfReader; pages=PdfReader(sys.argv[1]).pages; assert len(pages)>0; assert any("Initial words" in page.extract_text() for page in pages)' $pdf
     if($LASTEXITCODE){throw 'PDF text check failed'}
@@ -158,7 +158,7 @@ $documents=[Environment]::GetFolderPath('MyDocuments')
   }while((Get-Date) -lt $deadline)
   if(!$copy){
     $active=[PickerProbe]::FindWindow('#32770','Save copies to this folder')
-    throw "Copy missing. Picker still present: $([bool]$active)"
+    throw "Copy missing. Picker still present: $($active -ne [IntPtr]::Zero)"
   }
   if((Get-FileHash $copy.FullName).Hash -ne (Get-FileHash $source).Hash){throw 'Export differed byte for byte'}
   Write-Host 'PASS Installed Windows Save a copy and native folder picker preserved every byte'
