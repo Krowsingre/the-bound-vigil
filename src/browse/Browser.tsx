@@ -6,7 +6,7 @@ import { placeWorkspaceBrowser, workspaceOffset } from "./workspaceBrowser";
 // page's view in place. The top bar's search box is the address bar, with the
 // page's buttons (back, forward, reload, home, bookmark, reader) beside it.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, isIOS, openExternal } from "../api";
 import type { Bookmark, BrowserEvent, BrowserFrame, BrowserPane, ReaderArticle } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -51,6 +51,7 @@ import {
   readClosedTabs,
   readTabs,
   rememberClosed,
+  removeClosedBatch,
   reopenTab,
   rightOf,
   takeClosed,
@@ -73,6 +74,7 @@ import { useTabDrag } from "./useTabDrag";
 import { articleByline, articleEpub, articleFrom, cleanArticle, readerScript } from "./readerArticle";
 
 /** The header's search box, on Discover, sends what's typed here. */
+export const BROWSER_NEW = "tbv:browser-new";
 export const BROWSER_GO = "tbv:browser-go";
 /** The page in front, told to the header so its search box can show the address. */
 export const BROWSER_PAGE = "tbv:browser-page";
@@ -327,7 +329,7 @@ export function Browser({
   const failedRef = useRef(failed);
   failedRef.current = failed;
   /** Tabs just closed, for the Undo line. */
-  const [undo, setUndo] = useState<{ count: number; at: number } | null>(null);
+  const [undo, setUndo] = useState<ClosedTab[]>([]);
   const [closedTabs, setClosedTabs] = useState(readClosedTabs);
   /** A link for another app, waiting for an answer. */
   const [redirects, setRedirects] = useState<Extract<BrowserEvent, { kind: "redirect" }>[]>([]);
@@ -371,8 +373,8 @@ export function Browser({
   useEffect(() => writeTabs(tabs), [tabs]);
   useEffect(() => onClosedTabs(() => setClosedTabs(readClosedTabs())), []);
   useEffect(() => {
-    if (!undo) return;
-    const gone = window.setTimeout(() => setUndo(null), 7000);
+    if (!undo.length) return;
+    const gone = window.setTimeout(() => setUndo([]), 7000);
     return () => window.clearTimeout(gone);
   }, [undo]);
   // A tab that's gone (the oldest, past the most kept) has its page closed too.
@@ -724,6 +726,13 @@ export function Browser({
     }
     setTabs((s) => updateTab(s, s.active, { url: START_PAGE, title: null }));
   };
+  const openNewRef = useRef(openInNewTab);
+  openNewRef.current = openInNewTab;
+  useEffect(() => {
+    const open = (e: Event) => openNewRef.current((e as CustomEvent<string>).detail, false);
+    window.addEventListener(BROWSER_NEW, open);
+    return () => window.removeEventListener(BROWSER_NEW, open);
+  }, []);
   const switchTo = (id: string) => {
     const previous = tabsRef.current.active;
     if (id !== previous && otherRef.current?.id === id) {
@@ -731,6 +740,7 @@ export function Browser({
     }
     setArticle(null);
     setPanel(null);
+    onSearchChange("");
     tabsRef.current = { ...tabsRef.current, active: id };
     setTabs((s) => ({ ...s, active: id }));
   };
@@ -742,15 +752,14 @@ export function Browser({
   const drag = useTabDrag((id, onto) => setTabs((s) => moveTab(s, id, onto)));
   /** Closes tabs' pages; the tabs are remembered for Reopen closed tab and Undo. */
   const forget = (ids: string[]) => {
-    const remembered = tabsRef.current.tabs.filter((t) => ids.includes(t.id) && /^https?:/i.test(t.url)).length;
-    rememberClosed(tabsRef.current, ids);
+    const remembered = rememberClosed(tabsRef.current, ids);
     for (const id of ids) {
       made.current.delete(id);
       delete zoomed.current[id];
       void api.browserAct(id, "close");
     }
     setFailed((f) => Object.fromEntries(Object.entries(f).filter(([t]) => !ids.includes(t))));
-    setUndo(remembered ? { count: remembered, at: Date.now() } : null);
+    setUndo(remembered);
   };
   const close = (id: string) => {
     forget([id]);
@@ -785,7 +794,7 @@ export function Browser({
     if (!back.length) return;
     setArticle(null);
     setPanel(null);
-    setUndo(null);
+    setUndo([]);
     setTabs((s) => back.sort((a, b) => a.at - b.at).reduce(reopenTab, s));
   };
   const tabMenu = (id: string): MenuEntry[] => {
@@ -907,6 +916,11 @@ export function Browser({
   // as chosen in Preferences › Discover.
   heardAsk.current = (ask) => {
     if ("panel" in ask) setPanel(ask.panel);
+    else if ("start" in ask) {
+      const start = tabsRef.current.tabs.find((tab) => isStartPage(tab.url) && !tab.private);
+      if (start) switchTo(start.id);
+      else openInNewTabRef.current(START_PAGE, false);
+    }
     else if (!("url" in ask)) fromTop.current("home");
     else if (readBrowserPrefs().linksOpen === "newTab" && !isStartPage(tabsRef.current.tabs.find((t) => t.id === tabsRef.current.active)?.url ?? "")) openInNewTabRef.current(ask.url, false);
     else goRef.current(ask.url);
@@ -1115,13 +1129,58 @@ export function Browser({
   const tabList: MenuEntry[] = [
     { heading: <strong>{tabs.tabs.length === 1 ? "1 tab" : `${tabs.tabs.length} tabs`}</strong> },
     ...tabs.tabs.map((t) => ({
+      id: t.id,
       label: titleOf(t.title, t.url, t.private),
+      closeAction: { label: `Close ${titleOf(t.title, t.url, t.private)}`, run: () => close(t.id) },
       icon: (t.pinned ? "pin" : t.private ? "eyeOff" : "globe") as Parameters<typeof Icon>[0]["name"],
       checked: t.id === tabs.active,
       hint: siteOf(t.url) ?? undefined,
       onSelect: () => switchTo(t.id),
     })),
+    ...(closedTabs.length ? [
+      { heading: "Recently closed" },
+      ...closedTabs.map((tab, index) => ({ label: tab.title || tab.url, icon: "undo" as const, onSelect: () => reopen(1, index) })),
+    ] : []),
   ];
+
+  const tabRow = (t: TabsState["tabs"][number]) => (
+    <div
+      key={t.id}
+      className={`browser-tab${t.id === tabs.active ? " is-active" : ""}${t.private ? " is-private" : ""}${t.pinned ? " is-pinned" : ""}`}
+      {...drag(t.id)}
+      onContextMenu={(e) => openContextMenu(e, `${titleOf(t.title, t.url, t.private)}: tab`, tabMenu(t.id))}
+    >
+      <button type="button" role="tab" aria-selected={t.id === tabs.active} className="browser-tab-name" title={t.pinned ? `${titleOf(t.title, t.url)} (pinned)` : t.url} onClick={() => switchTo(t.id)}>
+        {loading[t.id] ? <span className="browser-tab-busy" aria-hidden /> : <Icon name={t.private ? "eyeOff" : isStartPage(t.url) ? "compass" : "globe"} size={14} />}
+        {!t.pinned && <span>{titleOf(t.title, t.url, t.private)}</span>}
+      </button>
+      {!t.pinned && (
+        <button type="button" className="browser-tab-close" aria-label={`Close ${titleOf(t.title, t.url, t.private)}`} onClick={() => close(t.id)}>
+          <Icon name="close" size={12} />
+        </button>
+      )}
+    </div>
+  );
+  const strip = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const list = strip.current;
+    if (!list) return;
+    const reveal = () => {
+      const selected = list.querySelector<HTMLElement>(".browser-tab.is-active");
+      if (!selected) return;
+      const pins = list.querySelector<HTMLElement>(".browser-pinned-tabs");
+      const scroller = selected.parentElement === pins && pins ? pins : list;
+      const bounds = scroller.getBoundingClientRect();
+      const tab = selected.getBoundingClientRect();
+      const left = bounds.left + (scroller === list ? pins?.offsetWidth ?? 0 : 0);
+      if (tab.right > bounds.right) scroller.scrollLeft += tab.right - bounds.right;
+      else if (tab.left < left) scroller.scrollLeft += tab.left - left;
+    };
+    const resize = new ResizeObserver(reveal);
+    resize.observe(list);
+    reveal();
+    return () => resize.disconnect();
+  }, [tabs, narrow]);
 
   return (
     <div className="browser">
@@ -1130,25 +1189,9 @@ export function Browser({
       </div>}
       {!narrow && (
         <div className="browser-strip">
-          <div className="browser-tabs" role="tablist" aria-label="Tabs">
-            {tabs.tabs.map((t) => (
-              <div
-                key={t.id}
-                className={`browser-tab${t.id === tabs.active ? " is-active" : ""}${t.private ? " is-private" : ""}${t.pinned ? " is-pinned" : ""}`}
-                {...drag(t.id)}
-                onContextMenu={(e) => openContextMenu(e, `${titleOf(t.title, t.url, t.private)}: tab`, tabMenu(t.id))}
-              >
-                <button type="button" role="tab" aria-selected={t.id === tabs.active} className="browser-tab-name" title={t.pinned ? `${titleOf(t.title, t.url)} (pinned)` : t.url} onClick={() => switchTo(t.id)}>
-                  {loading[t.id] ? <span className="browser-tab-busy" aria-hidden /> : <Icon name={t.private ? "eyeOff" : isStartPage(t.url) ? "compass" : "globe"} size={14} />}
-                  {!t.pinned && <span>{titleOf(t.title, t.url, t.private)}</span>}
-                </button>
-                {!t.pinned && (
-                  <button type="button" className="browser-tab-close" aria-label={`Close ${titleOf(t.title, t.url, t.private)}`} onClick={() => close(t.id)}>
-                    <Icon name="close" size={12} />
-                  </button>
-                )}
-              </div>
-            ))}
+          <div ref={strip} className="browser-tabs" role="tablist" aria-label="Tabs">
+            <div className="browser-pinned-tabs">{tabs.tabs.filter((tab) => tab.pinned).map(tabRow)}</div>
+            {tabs.tabs.filter((tab) => !tab.pinned).map(tabRow)}
             <button type="button" className="browser-tab-new" aria-label="New tab" title="New tab (Ctrl+T; right-click for a private one)" onClick={() => newTab()} onContextMenu={(e) => openContextMenu(e, "New tab", [{ label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) }])}>
               <Icon name="plus" size={15} />
             </button>
@@ -1194,13 +1237,17 @@ export function Browser({
           {button("Close find", "close", () => setFinding(null))}
         </form>
       )}
-      {undo && (
-        <div className="browser-offer" role="status">
-          <span>{undo.count === 1 ? "Tab closed." : `${undo.count} tabs closed.`}</span>
-          <button type="button" className="btn btn-primary btn-small" onClick={() => reopen(undo.count)}>
+      {undo.length > 0 && (
+        <div className="browser-close-undo" role="status">
+          <span>{undo.length === 1 ? "Tab closed." : `${undo.length} tabs closed.`}</span>
+          <button type="button" className="btn btn-primary btn-small" onClick={() => {
+            removeClosedBatch(undo);
+            setTabs((state) => [...undo].reverse().reduce(reopenTab, state));
+            setUndo([]);
+          }}>
             <Icon name="undo" size={14} /> Undo
           </button>
-          <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setUndo(null)}>
+          <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setUndo([])}>
             <Icon name="close" size={14} />
           </button>
         </div>

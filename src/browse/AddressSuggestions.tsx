@@ -21,7 +21,7 @@ export interface Suggestion {
 }
 
 const MOST = 6;
-const ORDER: Suggestion["kind"][] = ["tab", "quick", "bookmark", "history", "search"];
+const ORDER: Suggestion["kind"][] = ["bookmark", "history", "tab", "quick", "search"];
 
 /** Best first: the site starting with what's typed, then the title, then anywhere in the address. */
 export function suggestionsFor(typed: string, from: Suggestion[]): Suggestion[] {
@@ -33,26 +33,30 @@ export function suggestionsFor(typed: string, from: Suggestion[]): Suggestion[] 
     const site = siteOf(s.url) ?? "";
     const address = s.url.toLocaleLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "");
     const title = s.title.toLocaleLowerCase();
-    const score = site.startsWith(bare) ? 3 : title.split(/\s+/).some((w) => w.startsWith(q)) ? 2 : address.includes(bare) || title.includes(q) ? 1 : 0;
-    if (score) scored.push({ s, score: score * 10 - ORDER.indexOf(s.kind) });
+    const score = address === bare || site === bare || title === q ? 4 : site.startsWith(bare) || address.startsWith(bare) ? 3 : title.split(/\s+/).some((w) => w.startsWith(q)) ? 2 : address.includes(bare) || title.includes(q) ? 1 : 0;
+    if (score) scored.push({ s, score: (ORDER.length - ORDER.indexOf(s.kind)) * 10 + score });
   }
   scored.sort((a, b) => b.score - a.score);
   const seen = new Set<string>();
   const out: Suggestion[] = [];
   for (const { s } of scored) {
-    // One line per address, an open tab winning.
-    const key = s.kind === "search" ? `search:${s.url}` : s.url;
+    // Keep navigation and switching distinct, and prefer a bookmark for duplicate URLs.
+    const key = `${s.kind === "tab" || s.kind === "search" ? s.kind : "open"}:${s.url}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(s);
     if (out.length === MOST) break;
   }
-  return out;
+  if (out[0]?.kind === "tab") {
+    const { tab: _tab, ...site } = out[0];
+    out.unshift({ ...site, kind: "history" });
+  }
+  return out.slice(0, MOST);
 }
 
 const ICONS: Record<Suggestion["kind"], IconName> = { tab: "arrowRight", quick: "link", bookmark: "bookmark", history: "clock", search: "search" };
 
-export function AddressSuggestions({ typed, current, onGo, onTab, showPaste = true }: { showPaste?: boolean; typed: string; current: string; onGo: (text: string) => void; onTab: (id: string) => void }) {
+export function AddressSuggestions({ typed, current, onGo, onOpen, onTab, showPaste = true }: { showPaste?: boolean; typed: string; current: string; onGo: (text: string) => void; onOpen: (url: string) => void; onTab: (id: string) => void }) {
   const [marks, setMarks] = useState<Bookmark[]>([]);
   const [links, setLinks] = useState<QuickLink[]>([]);
   const [history, setHistory] = useState(readHistory);
@@ -84,7 +88,7 @@ export function AddressSuggestions({ typed, current, onGo, onTab, showPaste = tr
     }));
   }, [suggest, typed, current, marks, links, history]);
 
-  const choose = (s: Suggestion) => s.tab ? onTab(s.tab) : onGo(s.url);
+  const choose = (s: Suggestion) => s.tab ? onTab(s.tab) : s.kind === "search" ? onGo(s.url) : onOpen(s.url);
   useEffect(() => {
     const input = document.getElementById("global-search");
     const key = (event: KeyboardEvent) => {
@@ -104,7 +108,7 @@ export function AddressSuggestions({ typed, current, onGo, onTab, showPaste = tr
     };
     input?.addEventListener("keydown", key);
     return () => input?.removeEventListener("keydown", key);
-  }, [list, selected, onGo, onTab]);
+  }, [list, selected, onGo, onOpen, onTab]);
 
   const paste = async () => {
     try {
@@ -134,7 +138,7 @@ export function AddressSuggestions({ typed, current, onGo, onTab, showPaste = tr
           </span>
           <span className="address-suggestion-text">
             <b>{s.title}</b>
-            <span className="muted">{s.kind === "tab" ? "Switch to tab" : s.kind === "search" ? "Previous search" : readableAddress(s.url)}</span>
+            <span className="muted">{s.kind === "tab" ? "Switch to tab" : s.kind === "search" ? "Previous search" : `Open in new tab · ${s.kind === "bookmark" ? "Bookmarked · " : ""}${readableAddress(s.url)}`}</span>
           </span>
           <Icon name={ICONS[s.kind]} size={14} className="address-suggestion-kind" />
         </button>

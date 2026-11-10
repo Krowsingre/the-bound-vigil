@@ -12,6 +12,8 @@ import { Icon, type IconName } from "./Icon";
 
 export interface MenuItem {
   label: string;
+  id?: string;
+  closeAction?: { label: string; run: () => void };
   icon?: IconName;
   hint?: string;
   /** A second, smaller line under the label, with a larger icon beside both. */
@@ -195,51 +197,64 @@ export const MenuList = forwardRef<
       style={style}
       onKeyDown={onKeyDown}
     >
-      {items.map((item, i) =>
-        item === "divider" ? (
-          <div key={i} className="menu-divider" role="separator" />
-        ) : "heading" in item ? (
-          <div key={i} className="menu-heading">
-            {item.heading}
-          </div>
-        ) : (
-          <button
-            key={i}
-            type="button"
-            role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
-            aria-haspopup={item.submenu ? "menu" : undefined}
-            aria-checked={item.excluded ? "mixed" : item.checked}
-            className={`menu-item${item.danger ? " menu-item-danger" : ""}${item.excluded ? " menu-item-excluded" : ""}${item.description ? " has-description" : ""}`}
-            disabled={item.disabled}
-            onClick={() => {
-              if (item.submenu && onSubmenu) {
-                onSubmenu(i);
-                return;
-              }
-              if (item.checked === undefined && !(back && i === 0)) onClose();
-              item.onSelect?.();
-            }}
-          >
-            {item.checked !== undefined ? (
-              <span className="menu-check">
-                {item.excluded ? <Icon name="close" size={16} /> : item.checked && <Icon name="check" size={16} />}
-              </span>
-            ) : (
-              item.icon && <Icon name={item.icon} size={item.description ? 24 : 16} />
-            )}
-            {item.description ? (
-              <span className="menu-label">
-                {item.label}
-                <span className="menu-description">{item.description}</span>
-              </span>
-            ) : (
-              <span className="menu-label">{item.label}</span>
-            )}
-            {item.submenu && <Icon name="chevronRight" size={14} />}
-            {(item.excluded ? "Hidden" : item.hint) && <span className="menu-hint">{item.excluded ? "Hidden" : item.hint}</span>}
-          </button>
-        ),
-      )}
+      {items.map((item, i) => {
+        if (item !== "divider" && "label" in item) {
+          const row = (
+            <button
+              key={item.id ?? i}
+              type="button"
+              role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+              aria-haspopup={item.submenu ? "menu" : undefined}
+              aria-checked={item.excluded ? "mixed" : item.checked}
+              className={`menu-item${item.danger ? " menu-item-danger" : ""}${item.excluded ? " menu-item-excluded" : ""}${item.description ? " has-description" : ""}`}
+              disabled={item.disabled}
+              onClick={() => {
+                if (item.submenu && onSubmenu) {
+                  onSubmenu(i);
+                  return;
+                }
+                if (item.checked === undefined && !(back && i === 0)) onClose();
+                item.onSelect?.();
+              }}
+            >
+              {item.checked !== undefined ? (
+                <span className="menu-check">
+                  {item.excluded ? <Icon name="close" size={16} /> : item.checked && <Icon name="check" size={16} />}
+                </span>
+              ) : (
+                item.icon && <Icon name={item.icon} size={item.description ? 24 : 16} />
+              )}
+              {item.description ? (
+                <span className="menu-label">
+                  {item.label}
+                  <span className="menu-description">{item.description}</span>
+                </span>
+              ) : (
+                <span className="menu-label">{item.label}</span>
+              )}
+              {item.submenu && <Icon name="chevronRight" size={14} />}
+              {(item.excluded ? "Hidden" : item.hint) && <span className="menu-hint">{item.excluded ? "Hidden" : item.hint}</span>}
+            </button>
+          );
+          if (!item.closeAction) return row;
+          const action = item.closeAction;
+          return <div className="menu-row-action" key={item.id ?? i}>
+            {row}
+            <button type="button" role="menuitem" className="menu-item menu-row-close" aria-label={action.label} title={action.label}
+              onClick={(event) => {
+                const row = event.currentTarget.parentElement;
+                const next = row?.nextElementSibling ?? row?.previousElementSibling;
+                action.run();
+                requestAnimationFrame(() => next?.querySelector<HTMLButtonElement>(".menu-row-close, .menu-item")?.focus());
+              }}>
+              <Icon name="close" size={14} />
+            </button>
+          </div>;
+        }
+        return item === "divider"
+          ? <div key={i} className="menu-divider" role="separator" />
+          : <div key={i} className="menu-heading">{item.heading}</div>;
+      })}
     </div>
   );
 });

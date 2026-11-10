@@ -38,7 +38,8 @@ import { addSampleBook, addSampleOnce, SAMPLE_AUTHOR, SAMPLE_TITLE } from "./sam
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
 
 /** Scribe's tabs: your own notes, what you noted from books, or the books you write (embre, 31 October: no All tab). */
-type Chip = "notes" | "book_notes" | "books";
+export type WritingSection = "notes" | "book_notes" | "books";
+type Chip = WritingSection;
 /** What the tab of notes from books is called. */
 export const BOOK_NOTES_LABEL = "Reading notes";
 const CHIPS: { chip: Chip; label: string }[] = [
@@ -55,8 +56,13 @@ export function Writing({
   onClearSearch,
   onOpenBook,
   booksShown = true,
+  chip, setChip, openId, setOpenId,
 }: {
   refreshKey: number;
+  chip: WritingSection;
+  setChip: (section: WritingSection) => void;
+  openId: string | null;
+  setOpenId: (id: string | null) => void;
   /** The header's search box, which searches notes, and your books on the Books tab. */
   search: string;
   onClearSearch: () => void;
@@ -64,14 +70,12 @@ export function Writing({
   /** False where your own books aren't kept (the phone web app): only notes show. */
   booksShown?: boolean;
 }) {
-  const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState<Template | null>(null);
   const [importing, setImporting] = useState(false);
   const [boxing, setBoxing] = useState(false);
   const publisher = usePublisher();
   const [ask, setAsk] = useState<{ kind: NewNoteKind; n: number } | null>(null);
   const [reload, setReload] = useState(0);
-  const [chip, setChip] = useState<Chip>("notes");
   const showing: Chip = booksShown || chip !== "books" ? chip : "notes";
   const projects = useProjects(booksShown, refreshKey, reload);
   const toast = useToast();

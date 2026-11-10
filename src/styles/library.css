@@ -1628,3 +1628,22 @@ button.tag-chip-add:hover {
 
 .list-row.series-list-row { grid-template-columns: minmax(0, 1fr) auto; }
 .series-table-row .table-title { font-weight: 600; }
+.cover-series-count {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  z-index: 2;
+  min-width: 1.45em;
+  padding: 1px 4px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 4px #0005;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.series-table-open { display: inline-flex; align-items: center; gap: 8px; }
+.series-table-open .cover { width: 28px; }

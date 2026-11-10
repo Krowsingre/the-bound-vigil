@@ -39,9 +39,13 @@ export const Header = forwardRef<
   }
 >(function Header({ sync, profile, search, placeholder, onSearchChange, onSearchSubmit, onPasteAndGo, onOpenMenu, pageAction, address, searchStart, searchEnd, addressLabel, typingPanel, ...menu }, searchRef) {
   const [typing, setTyping] = useState(false);
-  const [edited, setEdited] = useState(false);
+  const [clipboardReady, setClipboardReady] = useState(false);
   const revision = useRef(0);
-  const pasteHint = !!onPasteAndGo && typing && !edited;
+  const pasteHint = !!onPasteAndGo && typing && !search && clipboardReady;
+  const stopHint = () => {
+    revision.current++;
+    setClipboardReady(false);
+  };
   const showing = address !== undefined && !typing && !search ? (addressLabel ?? address) : search;
   const done = () => {
     onSearchChange("");
@@ -77,50 +81,48 @@ export const Header = forwardRef<
           id="global-search"
           ref={searchRef}
           type="search"
-          className={pasteHint ? "search-paste-hint-input" : undefined}
-          aria-describedby={pasteHint ? "search-paste-hint" : undefined}
-          placeholder={placeholder ?? "Search books, authors or series…"}
+          placeholder={pasteHint ? "Press Enter to paste and go" : placeholder ?? "Search books, authors or series…"}
           value={showing}
           onFocus={(e) => {
             if (address === undefined) return;
-            setEdited(false);
+            stopHint();
             setTyping(true);
-            if (!search && address && e.currentTarget.dataset.blankTab === undefined) {
+            const blankTab = e.currentTarget.dataset.blankTab !== undefined;
+            if (!search && address && !blankTab) {
               onSearchChange(address);
-              // Replace the display label before selecting, in the same event.
-              // A deferred selection can select text the user has just typed.
-              e.currentTarget.value = address;
-              e.currentTarget.select();
+            } else if (!search && onPasteAndGo && navigator.clipboard) {
+              const request = revision.current;
+              void navigator.clipboard.readText().then((value) => {
+                if (request === revision.current) setClipboardReady(!!value.trim());
+              }, () => undefined);
             }
           }}
           onBlur={() => {
-            revision.current++;
+            stopHint();
             setTyping(false);
-            // Left without going anywhere: back to showing the page's address.
             if (address !== undefined && search === address) onSearchChange("");
           }}
           onChange={(e) => {
-            revision.current++;
-            setEdited(true);
+            stopHint();
             onSearchChange(e.target.value);
           }}
+          onCompositionStart={stopHint}
           onKeyDown={(e) => {
             if (e.defaultPrevented || e.nativeEvent.isComposing) return;
             if (e.key === "Enter" && pasteHint && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
               e.preventDefault();
               const request = ++revision.current;
-              if (!navigator.clipboard) { setEdited(true); return; }
+              if (!navigator.clipboard) { setClipboardReady(false); return; }
               void navigator.clipboard.readText().then((value) => {
                 if (request !== revision.current) return;
                 const text = value.trim();
                 if (text) {
                   onPasteAndGo?.(text);
                   done();
-                } else setEdited(true);
-              }, () => { if (request === revision.current) setEdited(true); });
-            } else if (pasteHint && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "Delete", "Backspace"].includes(e.key)) {
-              revision.current++;
-              setEdited(true);
+                } else setClipboardReady(false);
+              }, () => { if (request === revision.current) setClipboardReady(false); });
+            } else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "Delete", "Backspace"].includes(e.key)) {
+              stopHint();
             }
             if (e.key === "Escape" && !e.nativeEvent.isComposing) {
               onSearchChange("");
@@ -132,7 +134,6 @@ export const Header = forwardRef<
           autoCapitalize={address === undefined ? undefined : "off"}
           spellCheck={false}
         />
-        {pasteHint && <span id="search-paste-hint" className="search-paste-hint">Press Enter to paste and go</span>}
         {searchEnd}
         {typing && typingPanel?.(search, done)}
       </form>

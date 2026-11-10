@@ -11,11 +11,11 @@ import { BookDetailsPage } from "./details/BookDetailsPage";
 import { DetailsHost } from "./details/DetailsHost";
 import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
-import { Writing } from "./writing/Writing";
+import { Writing, type WritingSection } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
 import { UpNextReplacementHost } from "./library/UpNextReplacement";
 import { workspaceFrame } from "./shell/workspaceFrame";
-import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory } from "./browse/Browser";
+import { BROWSER_GO, BROWSER_NEW, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory } from "./browse/Browser";
 import { AddressSuggestions } from "./browse/AddressSuggestions";
 import { readBrowserPrefs, shortAddress } from "./browse/browserPrefs";
 import { loadHistory } from "./browse/browserHistory";
@@ -45,7 +45,7 @@ import { useAppSettings } from "./settings/appSettings";
 import { Settings } from "./settings/Settings";
 import type { SettingsTab } from "./settings/settingsIndex";
 import { Header } from "./shell/Header";
-import { navFor, type Route } from "./shell/routes";
+import { navFor, navRouteOf, type Route } from "./shell/routes";
 import { Sidebar } from "./shell/Sidebar";
 import { Icon } from "./components/Icon";
 import { PairHost } from "./audio/LinkEbook";
@@ -114,6 +114,8 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const [browserDraft, setBrowserDraft] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [reading, setReading] = useState<{ bookId: string; at?: string; fileId?: string } | null>(null);
+  const [writingSection, setWritingSection] = useState<WritingSection>("notes");
+  const [writingBook, setWritingBook] = useState<string | null>(null);
   const [openCollection, setOpenCollection] = useState<CollectionRef | null>(null);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   /** A section of Preferences to show once it opens. */
@@ -147,6 +149,62 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     }
     setRoute(r);
   }, []);
+
+  type SidebarPlace = {
+    route: Route;
+    details: typeof details;
+    series: typeof seriesPlace;
+    seriesSearch: string;
+    seriesPage: number;
+    scroll: number;
+    collection: typeof openCollection;
+    kindle: boolean;
+    settings: typeof settingsTab;
+    activity: ActivitySide;
+    writingSection: WritingSection;
+    writingBook: string | null;
+  };
+  const sidebarPlaces = useRef(new Map<Route, SidebarPlace>());
+  const section = navRouteOf(route === "book" ? details?.from ?? "library" : route);
+  const selectSidebar = (target: Route) => {
+    if (!navFor({ web: isWeb, home: isHome, android: isAndroid }).some(({ route }) => route === target)) {
+      navigate(target);
+      return;
+    }
+    const content = document.querySelector<HTMLElement>(".workspace-content > .content");
+    const same = target === section;
+    if (!same) {
+      sidebarPlaces.current.set(section, {
+        route, details, series: seriesPlace, seriesSearch, seriesPage,
+        scroll: content?.scrollTop ?? 0, collection: openCollection, kindle: kindleOpen,
+        settings: settingsTab, activity: activitySide, writingSection, writingBook,
+      });
+    }
+    const place = same ? undefined : sidebarPlaces.current.get(target);
+    setMenuOpen(false);
+    setReading(null);
+    setDetails(place?.details ?? null);
+    setSeriesPlace(place?.series ?? null);
+    setSeriesSearch(place?.seriesSearch ?? "");
+    setSeriesPage(place?.seriesPage ?? 0);
+    setOpenCollection(place?.collection ?? null);
+    setKindleOpen(place?.kindle ?? false);
+    setSettingsTab(place?.settings ?? null);
+    setSettingsJump(null);
+    setActivitySide(place?.activity ?? "imports");
+    setWritingSection(place?.writingSection ?? "notes");
+    setWritingBook(place?.writingBook ?? null);
+    setRoute(place?.route ?? target);
+    if (target === "library" || target === "audiobooks") setSeriesScroll(place?.scroll ?? 0);
+    else if (same && content) content.scrollTop = 0;
+    if (same && target === "catalogs") {
+      setBrowserDraft("");
+      setCatalogues(false);
+      askBrowser({ start: true });
+    }
+  };
+  const sidebarAction = useRef(selectSidebar);
+  sidebarAction.current = selectSidebar;
 
   const toggleSidebar = useCallback(() => {
     setCollapsed((c) => {
@@ -389,7 +447,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   );
   const showingSeries = seriesPlace?.route === route ? seriesPlace : null;
   const searchingKindle = route === "collections" && kindleOpen && !openCollection;
-  useEffect(() => { if (route !== "collections") setKindleOpen(false); }, [route]);
+
   useEffect(() => {
     if (!requestedRoute) return;
     setReading(null);
@@ -425,7 +483,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
       else if (e.key.toLowerCase() === "f" || e.key.toLowerCase() === "k") {
         search.current?.focus();
       }
-      else if (n >= 1 && n <= navFor({ web: isWeb, home: isHome, android: isAndroid }).length) navigate(navFor({ web: isWeb, home: isHome, android: isAndroid })[n - 1].route);
+      else if (n >= 1 && n <= navFor({ web: isWeb, home: isHome, android: isAndroid }).length) sidebarAction.current(navFor({ web: isWeb, home: isHome, android: isAndroid })[n - 1].route);
       else return;
       e.preventDefault();
     };
@@ -542,7 +600,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
         collapsed={collapsed}
         drawerOpen={narrow && menuOpen}
         onCloseDrawer={() => setMenuOpen(false)}
-        onNavigate={navigate}
+        onNavigate={selectSidebar}
         onSplit={onSplit && ((target) => {
           setMenuOpen(false);
           onSplit(target);
@@ -611,6 +669,10 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
                       window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: text }));
                       done();
                     }}
+                    onOpen={(url) => {
+                      window.dispatchEvent(new CustomEvent(BROWSER_NEW, { detail: url }));
+                      done();
+                    }}
                     onTab={(id) => {
                       window.dispatchEvent(new CustomEvent(BROWSER_SWITCH, { detail: id }));
                       done();
@@ -634,6 +696,10 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
               refreshKey={refreshKey}
               onNavigate={navigate}
               onOpenLibrary={openLibrary}
+              onOpenSeries={(name) => {
+                setRoute("library");
+                openSeries("library", name);
+              }}
               onImportBooks={importBooks}
               onImportFolder={importFolder}
               onLoaded={onHomeLoaded}
@@ -676,10 +742,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
             <BookDetailsPage
               bookId={details.bookId}
               refreshKey={refreshKey}
-              onBack={() => {
-                if (seriesPlace?.route === details.from) back();
-                else setRoute(details.from);
-              }}
+              onBack={() => setRoute(details.from)}
               onOpenBook={openBook}
               onOpenCollection={showCollection}
               onOpenLibrary={(genre, documents) => {
@@ -721,6 +784,8 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
             <BookPlacesPage onOpenSyncSettings={() => navigate("sync")} />
           ) : route === "notes" || route === "writing" ? (
             <Writing
+              chip={writingSection} setChip={setWritingSection}
+              openId={writingBook} setOpenId={setWritingBook}
               booksShown={!isHome}
               search={searchText}
               refreshKey={refreshKey}

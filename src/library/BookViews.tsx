@@ -98,12 +98,11 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesCovers
           return (
             <li key={book.id} className="grid-card series-stack">
               <button type="button" className="grid-open" aria-label={"Open series " + name} onClick={() => onOpenSeries(name)}>
-                <BookCover key={cover.id} book={cover} />
+                <BookCover key={cover.id} book={cover} seriesCount={count} />
               </button>
               <div className="grid-caption">
                 <div className="grid-text">
                   <span className="book-title">{name}</span>
-                  <span className="book-author">{count} matching {count === 1 ? "book" : "books"}</span>
                 </div>
                 {seriesMenu && <Menu label={"More for " + name} trigger={<Icon name="more" />} items={seriesMenu(name)} />}
               </div>
@@ -156,10 +155,9 @@ export function BookList({ books, actions, selection, seriesCounts, seriesCovers
           const cover = seriesCovers?.[book.id] ?? book;
           return <li key={book.id} className="list-row series-list-row">
             <button type="button" className="list-open" aria-label={`Open series ${name}`} onClick={() => onOpenSeries(name)}>
-              <BookCover key={cover.id} book={cover} size="s" />
+              <BookCover key={cover.id} book={cover} size="s" seriesCount={count} />
               <span className="list-text">
                 <span className="book-title">{name}</span>
-                <span className="book-author">{count} matching {count === 1 ? "book" : "books"}</span>
               </span>
             </button>
             {seriesMenu && <Menu label={`More for ${name}`} trigger={<Icon name="more" />} items={seriesMenu(name)} />}
@@ -222,8 +220,10 @@ export function BookTable({ books, actions, selection, seriesCounts, onOpenSerie
           const name = book.series?.trim();
           if (count && name && onOpenSeries) return <tr key={book.id} className="series-table-row">
             <td colSpan={7}>
-              <button type="button" className="table-title" aria-label={`Open series ${name}`} onClick={() => onOpenSeries(name)}>{name}</button>
-              <span className="muted"> · {count} matching {count === 1 ? "book" : "books"}</span>
+              <button type="button" aria-label={`Open series ${name}`} className="table-title series-table-open" onClick={() => onOpenSeries(name)}>
+                <BookCover book={seriesCovers?.[book.id] ?? book} size="s" seriesCount={count} />
+                {name}
+              </button>
             </td>
             <td>{seriesMenu && <Menu label={`More for ${name}`} trigger={<Icon name="more" />} items={seriesMenu(name)} />}</td>
           </tr>;

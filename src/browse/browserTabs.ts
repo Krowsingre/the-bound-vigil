@@ -21,8 +21,6 @@ export interface TabsState {
 const KEY = workspaceFrame ? "tbv.browser.tabs.secondary" : "tbv.browser.tabs";
 /** Where the one page was kept before there were tabs. */
 const LAST_KEY = "tbv.browser.last";
-/** Enough for anyone; the oldest go first past this. */
-export const MOST_TABS = 30;
 
 const pinnedFirst = (tabs: BrowserTab[]) => [...tabs.filter((t) => t.pinned), ...tabs.filter((t) => !t.pinned)];
 
@@ -75,8 +73,7 @@ export function openTab(state: TabsState, tab: BrowserTab, background = false, b
   const boundary = firstUnpinned < 0 ? tabs.length : firstUnpinned;
   const position = tab.pinned ? boundary : source < 0 ? tabs.length : Math.max(source + 1, boundary);
   tabs.splice(position, 0, tab);
-  const oldest = state.tabs.find((x) => x.id !== active && x.id !== beside && !x.pinned);
-  return { tabs: tabs.length > MOST_TABS && oldest ? tabs.filter((t) => t.id !== oldest.id) : tabs, active };
+  return { tabs, active };
 }
 
 /** Closes a tab; the one beside it comes forward. The last one closed leaves a fresh tab at `home`. */
@@ -156,9 +153,11 @@ export interface ClosedTab {
   /** Where it was in the row. */
   at: number;
   closed: number;
+  id?: string;
+  pinned?: boolean;
 }
 
-const CLOSED_KEY = "tbv.browser.closed";
+const CLOSED_KEY = workspaceFrame ? "tbv.browser.closed.secondary" : "tbv.browser.closed";
 const CLOSED_CHANGED = "tbv:browser-closed";
 /** How many closed tabs are remembered, newest first. */
 export const MOST_CLOSED = 10;
@@ -188,13 +187,14 @@ export function onClosedTabs(listener: () => void): () => void {
 }
 
 /** Remembers tabs as they close. The start page isn't worth reopening, and private tabs leave nothing behind. */
-export function rememberClosed(state: TabsState, ids: string[], now = Date.now()): void {
+export function rememberClosed(state: TabsState, ids: string[], now = Date.now()): ClosedTab[] {
   const gone = state.tabs
     .map((t, at) => ({ t, at }))
     .filter(({ t }) => ids.includes(t.id) && !t.private && /^https?:\/\//i.test(t.url))
-    .map(({ t, at }) => ({ url: t.url, title: t.title, at, closed: now }))
+    .map(({ t, at }) => ({ url: t.url, title: t.title, at, closed: now, id: t.id, pinned: t.pinned }))
     .reverse();
   if (gone.length) writeClosed([...gone, ...readClosedTabs()]);
+  return gone;
 }
 
 /** Takes a closed tab off the list (the newest, without `index`) to open it again. */
@@ -205,11 +205,18 @@ export function takeClosed(index = 0): ClosedTab | null {
   return taken;
 }
 
+/** Removes only the entries this Undo is restoring. Older saved entries have no ID. */
+export function removeClosedBatch(batch: ClosedTab[]) {
+  const ids = new Set(batch.map((tab) => tab.id));
+  writeClosed(readClosedTabs().filter((tab) => !tab.id || !ids.has(tab.id)));
+}
+
 /** Opens a closed tab again, back where it was in the row. */
 export function reopenTab(state: TabsState, closed: ClosedTab): TabsState {
-  const tab = { id: newTabId(), url: closed.url, title: closed.title };
+  const tab = { id: newTabId(), url: closed.url, title: closed.title, pinned: closed.pinned };
   const tabs = [...state.tabs];
-  tabs.splice(Math.max(tabs.filter((t) => t.pinned).length, Math.min(closed.at, tabs.length)), 0, tab);
-  const oldest = tabs.find((x) => x.id !== tab.id && !x.pinned);
-  return { tabs: tabs.length > MOST_TABS && oldest ? tabs.filter((t) => t.id !== oldest.id) : tabs, active: tab.id };
+  const pinned = tabs.filter((t) => t.pinned).length;
+  const position = tab.pinned ? Math.min(closed.at, pinned) : Math.max(pinned, Math.min(closed.at, tabs.length));
+  tabs.splice(position, 0, tab);
+  return { tabs, active: tab.id };
 }

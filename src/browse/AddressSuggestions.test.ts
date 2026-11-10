@@ -10,10 +10,10 @@ const from: Suggestion[] = [
 ];
 
 describe("address suggestions", () => {
-  it("puts the site starting with what's typed first, one line per address, an open tab winning", () => {
+  it("offers a fresh tab before switching to the same address", () => {
     const found = suggestionsFor("gut", from);
-    expect(found.map((s) => s.kind)).toEqual(["tab"]);
-    expect(suggestionsFor("pride", from)[0].tab).toBe("t1");
+    expect(found.map((s) => s.kind)).toEqual(["history", "tab"]);
+    expect(suggestionsFor("pride", from)[1].tab).toBe("t1");
     expect(suggestionsFor("standard", from)[0].url).toBe("https://standardebooks.org/");
     expect(suggestionsFor("  ", from)).toEqual([]);
   });

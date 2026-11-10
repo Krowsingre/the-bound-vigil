@@ -11,7 +11,7 @@ const CLOTH = ["#2f3a44", "#3d3a33", "#33403a", "#41323a", "#2e3540", "#463c2e"]
 
 type CoverBook = Pick<BookPreview, "id" | "title" | "authors" | "coverPath"> & Partial<Pick<BookPreview, "availability" | "format" | "paired">>;
 
-export function BookCover({ book, size = "m", onExpand }: { book: CoverBook; size?: "s" | "m" | "l"; onExpand?: (url: string) => void }) {
+export function BookCover({ book, size = "m", onExpand, seriesCount }: { book: CoverBook; size?: "s" | "m" | "l"; onExpand?: (url: string) => void; seriesCount?: number }) {
   const [failed, setFailed] = useState(false);
   const [element, setElement] = useState<HTMLDivElement | null>(null);
   // On iPhone a cover comes down from the cloud when it's shown.
@@ -52,6 +52,7 @@ export function BookCover({ book, size = "m", onExpand }: { book: CoverBook; siz
           <Icon name="cloud" size={14} label="In the cloud" />
         </span>
       )}
+      {seriesCount !== undefined && <span className="cover-series-count" title={`${seriesCount} books in this stack`}>{seriesCount}</span>}
       {book.availability === "missing" && (
         <span className="cover-badge cover-badge-warn" title="The file is missing from this device">
           <Icon name="warning" size={14} label="File missing" />
