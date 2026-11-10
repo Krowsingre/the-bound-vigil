@@ -15,16 +15,28 @@ const assert = require("node:assert/strict");
       const menu = page.getByRole("button", {name: /^(open menu|menu|open the menu)$/i}).first();
       if (mobile) await menu.click();
       const sanctum = nav.getByRole("button", {name:/^Sanctum/i});
-      await sanctum.click({button:"right"});
+      if (mobile) {
+        const touch = await page.context().newCDPSession(page);
+        const rect = await sanctum.boundingBox();
+        await touch.send("Input.dispatchTouchEvent", {type:"touchStart", touchPoints:[{x:rect.x+rect.width/2,y:rect.y+rect.height/2}]});
+        await page.getByRole("menuitem",{name:"Split screen",exact:true}).waitFor();
+        await touch.send("Input.dispatchTouchEvent", {type:"touchEnd", touchPoints:[]});
+      } else {
+        await sanctum.click({button:"right"});
+      }
       await page.getByRole("menuitem", {name:"Split screen", exact:true}).click();
       const secondary = page.frameLocator('iframe[title="Secondary TBV pane"]');
       await secondary.getByRole("button", {name:/continue reading/i}).first().waitFor();
       assert.equal(await page.getByRole("separator", {name:"Resize TBV panes"}).getAttribute("aria-orientation"), mobile ? "horizontal" : "vertical");
-      if (mobile && await page.getByRole("button", {name:"Close the menu"}).isVisible()) await page.getByRole("button", {name:"Close the menu"}).click();
+      await page.locator(".sidebar.is-drawer-open").waitFor({state:"detached"});
       const secondMenu = secondary.getByRole("button",{name:"Menu",exact:true});
       const secondaryNav = secondary.getByRole("navigation",{name:"Main"});
       if (await secondMenu.isVisible()) await secondMenu.click();
       await secondaryNav.getByRole("button",{name:/^Archive/i}).click();
+      const firstSearch = page.locator("#global-search");
+      const previousSearch = await firstSearch.inputValue();
+      await secondary.locator("#global-search").fill("Middlemarch");
+      assert.equal(await firstSearch.inputValue(), previousSearch);
       const other = secondary.locator('.grid-open[title^="Middlemarch"], .book-row button[title^="Middlemarch"]').first();
       await other.click();
       const detailsRead=secondary.getByRole("button",{name:/^(Read|Continue reading)$/}).first();
