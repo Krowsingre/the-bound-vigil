@@ -73,10 +73,13 @@ async function main() {
     console.log("PASS 100th tab visible without reordering; close in Every tab and undo without vertical movement");
 
     const field=page.locator("#global-search");
-    await field.fill("example");
-    const first=page.getByRole("option").first();
+    await field.focus();
+    await field.press("Control+a");
+    await page.keyboard.type("example");
+    assert.equal(await field.inputValue(),"example");
+    const first=page.getByRole("option").filter({hasText:"Bookmark fixture"});
     await first.waitFor();
-    assert.match(await first.innerText(),/Bookmark fixture.*Open in new tab/s);
+    assert.match(await page.getByRole("option").first().innerText(),/Bookmark fixture.*Open in new tab/s);
     await first.click();
     assert.equal(await tabList.getByRole("tab").count(),101);
     await field.fill("unfinished draft");
