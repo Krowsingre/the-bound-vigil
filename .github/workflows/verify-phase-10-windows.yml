@@ -10,13 +10,29 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     strategy:
+      fail-fast: false
       matrix:
         include:
           - name: baseline
             run: 42739287940
+          - name: fixed
+            run: 42741330286
     name: Close timing (${{ matrix.name }})
     steps:
       - uses: actions/checkout@v4
+      - name: Wait for Windows installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          do {
+            $job = (gh api "repos/${{ github.repository }}/actions/runs/${{ matrix.run }}/jobs" | ConvertFrom-Json).jobs | Where-Object name -eq 'Windows installer'
+            if ($job.status -eq 'completed') {
+              if ($job.conclusion -ne 'success') { throw "Installer build: $($job.conclusion)" }
+              break
+            }
+            Start-Sleep -Seconds 20
+          } while ($true)
       - uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
@@ -32,10 +48,12 @@ jobs:
           if($install.ExitCode -ne 0){throw "Installer exited $($install.ExitCode)"}
           $env:TBV_TEST_EXE=Join-Path $target 'the-bound-vigil.exe'
           $env:TBV_TEST_KIND='${{ matrix.name }}'
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File qa-phase10/close.ps1
+          & powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File qa-phase10/close.ps1
           exit $LASTEXITCODE
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: close-timing-${{ matrix.name }}
           path: qa-phase10/result/
+
+
