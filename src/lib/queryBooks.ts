@@ -19,6 +19,15 @@ const byTitle = (a: BookPreview, b: BookPreview) => sortTitle(a).localeCompare(s
 const nullsLast = <T>(a: T | null, b: T | null, cmp: (x: T, y: T) => number) =>
   a === null ? (b === null ? 0 : 1) : b === null ? -1 : cmp(a, b);
 
+/** First unfinished volume in series order, unless a cover was chosen. */
+export function seriesCover(books: BookPreview[], chosen?: string) {
+  const finished = (book: BookPreview) => Number(book.status === "read" || book.status === "dropped");
+  return books.find((book) => book.id === chosen) ?? [...books].sort((a, b) =>
+    finished(a) - finished(b) || nullsLast(a.seriesIndex, b.seriesIndex, (x, y) => x - y) ||
+    byTitle(a, b) || a.id.localeCompare(b.id)
+  )[0];
+}
+
 /** Whether a book has any of the things chosen to leave out. */
 function excluded(b: BookPreview, x: LibraryExclude): boolean {
   const any = (has: (string | null | undefined)[], out: string[]) => {
@@ -106,15 +115,12 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
   const books = list.slice(page * pageSize, (page + 1) * pageSize);
   const seriesCovers: Record<string, BookPreview> = {};
   const seriesKey = (b: BookPreview) => b.series?.trim().toLowerCase();
-  const finished = (b: BookPreview) => Number(b.status === "read" || b.status === "dropped");
   for (const book of books) {
     if (!seriesCounts[book.id]) continue;
     const name = seriesKey(book);
     const chosen = name && q.seriesCoverChoices?.[name];
     const candidates = all.filter((b) => seriesKey(b) === name);
-    const cover = candidates.find((b) => b.id === chosen) ?? candidates.sort((a, b) =>
-      finished(a) - finished(b) || sorters.series(a, b) || a.id.localeCompare(b.id)
-    )[0];
+    const cover = seriesCover(candidates, chosen || undefined);
     if (cover) seriesCovers[book.id] = cover;
   }
   return {
