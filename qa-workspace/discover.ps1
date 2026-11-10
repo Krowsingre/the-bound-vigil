@@ -34,6 +34,10 @@ function Wait-Ui($regex,$type,$side='any'){
   throw "Unavailable: $regex ($type, $side)"
 }
 function Click-Ui($item,[bool]$right=$false){
+  if(!$right -and $item.Current.ControlType -ne [Windows.Automation.ControlType]::Edit){
+    $invoke=$null
+    if($item.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern,[ref]$invoke)){$invoke.Invoke();return}
+  }
   $rect=$item.Current.BoundingRectangle
   [Windows.Forms.Cursor]::Position=New-Object Drawing.Point([int]($rect.X+$rect.Width/2),[int]($rect.Y+$rect.Height/2))
   if($right){[Pointer]::mouse_event(8,0,0,0,[IntPtr]::Zero); [Pointer]::mouse_event(16,0,0,0,[IntPtr]::Zero)}
@@ -51,7 +55,7 @@ try{
   $screen=[Windows.Forms.Screen]::PrimaryScreen.Bounds
   $middle=$screen.X+$screen.Width/2
   Click-Ui (Wait-Ui '^Discover(?: .*)?$' 'Button' 'left')
-  Go-To 'left' 'left'
+  Go-To 'left' 'any'
   $null=Wait-Ui '^Left fixture$' 'Text' 'left'
   Click-Ui (Wait-Ui '^Discover(?: .*)?$' 'Button' 'left') $true
   Click-Ui (Wait-Ui '^Split screen$' 'MenuItem')
