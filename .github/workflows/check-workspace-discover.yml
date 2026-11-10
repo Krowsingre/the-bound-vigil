@@ -1,0 +1,45 @@
+name: Verify native Discover in split
+on:
+  push:
+    branches: [codex/check-workspace-split]
+    paths: ['qa-workspace/discover.ps1', 'qa-workspace/server.cjs', '.github/workflows/check-workspace-discover.yml']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  discover:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for corrected Windows installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $data=gh api "repos/${{ github.repository }}/actions/workflows/verify-workspace.yml/runs?branch=codex%2Fverify-workspace-split" | ConvertFrom-Json
+          $build=($data.workflow_runs | Where-Object head_sha -eq '33d6b42edb287b75fc10e5c8a618bd8ee4b7cc1f').id
+          if(!$build){throw 'No build for the corrected app'}
+          "TBV_BUILD_RUN=$build" >> $env:GITHUB_ENV
+          for($i=0;$i -lt 65;$i++){
+            $data=gh api "repos/${{ github.repository }}/actions/runs/$build/artifacts" | ConvertFrom-Json
+            if($data.artifacts.name -contains 'the-bound-vigil-windows-setup'){exit 0}
+            Start-Sleep -Seconds 15
+          }
+          throw 'Corrected installer was not uploaded'
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.TBV_BUILD_RUN }}
+          name: the-bound-vigil-windows-setup
+          path: installer
+      - name: Install and verify native Discover
+        shell: pwsh
+        run: |
+          $setup=(Get-ChildItem installer -Filter '*-setup.exe').FullName
+          $target=Join-Path $env:RUNNER_TEMP 'TBVWorkspaceDiscover'
+          $install=Start-Process -FilePath $setup -ArgumentList @('/S',"/D=$target") -Wait -PassThru -WindowStyle Hidden
+          if($install.ExitCode -ne 0){throw "Installer exited $($install.ExitCode)"}
+          $env:TBV_TEST_EXE=Join-Path $target 'the-bound-vigil.exe'
+          & powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File qa-workspace/discover.ps1
+          exit $LASTEXITCODE
