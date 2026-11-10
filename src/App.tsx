@@ -68,12 +68,13 @@ function readCollapsed(): boolean {
   }
 }
 
-export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onSplit, workspaceSplit = false }: {
+export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onSplit, workspaceSplit = false, compactReader = false }: {
   initialRoute?: Route;
   requestedRoute?: Route;
   onRouteHandled?: () => void;
   onSplit?: (route: Route) => void;
   workspaceSplit?: boolean;
+  compactReader?: boolean;
 } = {}) {
   const [route, setRoute] = useState<Route>(initialRoute);
   const [collapsedWide, setCollapsed] = useState(readCollapsed);
@@ -526,7 +527,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   useSwipes(appRoot, pullHome, narrow && menuOpen && !reading, { onLeft: closeMenu, overMenu: true });
 
-  if (reading) return <Reader key={`${reading.bookId}/${reading.fileId ?? ""}`} bookId={reading.bookId} fileId={reading.fileId} openAt={reading.at} shell={shell} onClose={closeBook} />;
+  if (reading) return <Reader key={`${reading.bookId}/${reading.fileId ?? ""}`} bookId={reading.bookId} fileId={reading.fileId} openAt={reading.at} compact={compactReader} shell={shell} onClose={closeBook} />;
 
   return (
     <div ref={appRoot} className={`app${collapsed ? " sidebar-collapsed" : ""}${player.book ? " has-player" : ""}`}>
