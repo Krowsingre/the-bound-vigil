@@ -1,3 +1,4 @@
+import { offerFinishedDownloadRemoval } from "../library/FinishedDownloadPrompt";
 // The audiobook player: one for the whole app, so listening carries on while
 // you browse or read. It plays an audiobook's files one after another as if
 // they were one long recording, and remembers where you are as you listen.
@@ -322,7 +323,10 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
       now.current = { ...now.current, positionMs: book.durationMs };
       void save()
         .then(() => api.setBookStatus(book.book.id, "read"))
-        .then(() => changed.current?.())
+        .then(() => {
+          changed.current?.();
+          offerFinishedDownloadRemoval(book.book, "read", () => changed.current?.());
+        })
         .catch(() => undefined);
       toast(`You've finished “${book.book.title}”.`);
       if (now.current.shuffle) void playAnother(book.book.id);

@@ -1,3 +1,4 @@
+import { FinishedDownloadPrompt } from "../library/FinishedDownloadPrompt";
 import { useEffect, useRef, useState } from "react";
 import { App } from "../App";
 import { SplitDivider } from "../browse/SplitDivider";
@@ -71,7 +72,10 @@ export function Workspace() {
     return () => observer.disconnect();
   }, [route]);
 
-  if (workspaceFrame) return <App initialRoute={requestedRoute()} onSplit={(next) => workspaceHost.tbvWorkspace?.open(next)} />;
+  if (workspaceFrame) return <>
+    <App workspaceSplit initialRoute={requestedRoute()} onSplit={(next) => workspaceHost.tbvWorkspace?.open(next)} />
+    <FinishedDownloadPrompt />
+  </>;
 
   const open = (next: Route) => {
     if (!route) setRoute(next);
@@ -90,6 +94,7 @@ export function Workspace() {
       <div ref={primary} tabIndex={-1} className="tbv-workspace-primary" aria-label="Primary TBV pane">
         <App onSplit={canSplit ? open : undefined} workspaceSplit={!!route} compactReader={!!route && compactReader} requestedRoute={primaryRoute}
           onRouteHandled={() => setPrimaryRoute(undefined)} />
+        <FinishedDownloadPrompt />
       </div>
       {route && <>
         <SplitDivider value={ratio} onChange={setRatio} label="Resize TBV panes" minimum={isIOS || stacked ? 150 : 260} horizontal={stacked} />

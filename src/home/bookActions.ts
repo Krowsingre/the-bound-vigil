@@ -1,3 +1,4 @@
+import { offerFinishedDownloadRemoval } from "../library/FinishedDownloadPrompt";
 import { createElement } from "react";
 import type { AudioType, BookPreview } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
@@ -224,7 +225,9 @@ export function makeBookActions(
       if (reason) toast(reason);
       else openBook(book.id);
     },
-    setStatus: (book, status) => void run(book, api.setBookStatus(book.id, status)),
+    setStatus: (book, status) => void run(book, api.setBookStatus(book.id, status).then(() => {
+      if (api.removeDownload) offerFinishedDownloadRemoval(book, status, refresh);
+    })),
     setFavorite: (book, favorite) => void run(book, api.setFavorite(book.id, favorite)),
     setWantToRead: (book, want) => {
       void run(book, api.setWantToRead(book.id, want).catch((error: unknown) => {

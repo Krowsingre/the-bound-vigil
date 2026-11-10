@@ -13,6 +13,7 @@ const INNER_ARCH = "M16 42V22.5a8 8 0 0 1 16 0V42";
 export function Sidebar({
   route,
   collapsed,
+  lockedCollapsed = false,
   drawerOpen = false,
   onCloseDrawer,
   onNavigate,
@@ -25,6 +26,7 @@ export function Sidebar({
   imports: { done: number; total: number; running: boolean } | null;
   route: Route;
   collapsed: boolean;
+  lockedCollapsed?: boolean;
   /** On a phone: the menu is open over the page. */
   drawerOpen?: boolean;
   onCloseDrawer?: () => void;
@@ -58,7 +60,7 @@ export function Sidebar({
         <div className="sidebar-top" data-tauri-drag-region />
 
         <div className="brand" data-tauri-drag-region>
-          {drawerOpen ? (
+          {drawerOpen || lockedCollapsed ? (
             <span className="brand-emblem" aria-hidden dangerouslySetInnerHTML={{ __html: emblem }} />
           ) : (
             // The emblem folds the sidebar away and back: closing turns the inner arch left, opening turns the outer arch right.
@@ -102,6 +104,7 @@ export function Sidebar({
                 <button
                   type="button"
                   className={`nav-item${active === item.route ? " is-active" : ""}`}
+                  aria-label={collapsed ? item.label : undefined}
                   aria-current={active === item.route ? "page" : undefined}
                   {...split(item.route, item.label)}
                   onClick={() => onNavigate(item.route)}

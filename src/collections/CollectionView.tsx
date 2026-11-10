@@ -41,8 +41,8 @@ export function CollectionView({
   const [reload, setReload] = useState(0);
   const [layout, setLayout] = useState<"grid" | "list">("grid");
   const [adding, setAdding] = useState(false);
-  /** The Read compendium's switch: every book, only those finished, or only those dropped. */
-  const [ended, setEnded] = useState<"all" | "read" | "dropped">("all");
+  /** The Read compendium separates finished and dropped books. */
+  const [ended, setEnded] = useState<"read" | "dropped">("read");
   const toast = useToast();
   const key = JSON.stringify(collection);
 
@@ -116,7 +116,7 @@ export function CollectionView({
           ? "Filled by rules"
           : c && KIND_LABEL[c.kind];
   const readSwitch = collection.kind === "smart" && collection.smart === "read";
-  const books = readSwitch && ended !== "all" ? detail.books.filter((b) => b.status === ended) : detail.books;
+  const books = readSwitch ? detail.books.filter((b) => b.status === ended) : detail.books;
   const covers = detail.books.slice(0, 3).map(({ id, title, authors, coverPath }) => ({ id, title, authors, coverPath }));
   const menu = menuFor(detail);
   const move = (book: BookPreview, to: number) =>
@@ -168,8 +168,7 @@ export function CollectionView({
             label="Which books"
             value={ended}
             options={[
-              { value: "all", label: "All" },
-              { value: "read", label: "Finished" },
+              { value: "read", label: "Read" },
               { value: "dropped", label: "Dropped" },
             ]}
             onChange={setEnded}

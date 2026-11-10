@@ -1,3 +1,4 @@
+import { offerFinishedDownloadRemoval } from "../library/FinishedDownloadPrompt";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, isApp } from "../api";
 import { isNarrow, useNarrow } from "../lib/useNarrow";
@@ -539,6 +540,7 @@ export function Reader({
       () => {
         setInfo((i) => (i ? { ...i, book: { ...i.book, status } } : i));
         toast(done);
+        offerFinishedDownloadRemoval(info.book, status, onClose);
       },
       (e: unknown) => toast(String(e)),
     );

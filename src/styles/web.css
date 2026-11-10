@@ -494,3 +494,18 @@
     color: var(--sidebar-text);
   }
 }
+
+/* Split panes always keep their navigation rail beside the page or Reader. */
+.app.workspace-rail.sidebar-collapsed {
+  grid-template-columns: var(--sidebar-rail) minmax(0, 1fr);
+}
+.app.workspace-rail > .sidebar.is-collapsed {
+  position: relative;
+  inset: auto;
+  width: auto;
+  transform: none;
+  box-shadow: none;
+}
+.app.workspace-rail > .sidebar.is-collapsed .brand-emblem {
+  flex: none;
+}

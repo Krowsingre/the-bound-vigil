@@ -80,7 +80,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const [collapsedWide, setCollapsed] = useState(readCollapsed);
   // On a phone the sidebar is a menu opened from the header, always with names.
   const narrow = useNarrow();
-  const collapsed = (collapsedWide || workspaceSplit) && !narrow;
+  const collapsed = workspaceSplit || (collapsedWide && !narrow);
   const [menuOpen, setMenuOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [sync, setSync] = useState<SyncStatus | null>(null);
@@ -478,7 +478,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
       }
       if (!(e.ctrlKey || e.metaKey) || e.altKey || reading) return;
       const n = Number(e.key);
-      if (e.key === "\\") toggleSidebar();
+      if (e.key === "\\") { if (!workspaceSplit) toggleSidebar(); }
       else if (e.key.toLowerCase() === "o" && !e.shiftKey) importBooks();
       else if (e.key.toLowerCase() === "f" || e.key.toLowerCase() === "k") {
         search.current?.focus();
@@ -489,7 +489,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleSidebar, importBooks, reading, navigate, togglePrivacy]);
+  }, [toggleSidebar, importBooks, reading, navigate, togglePrivacy, workspaceSplit]);
 
   const onHomeLoaded = useCallback((home: HomeViewModel) => setSync(home.sync), []);
   const openBook = useCallback((bookId: string, at?: string, fileId?: string) => setReading({ bookId, at, fileId }), []);
@@ -575,7 +575,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     />
   );
   const toHome = useCallback(() => navigate("home"), [navigate]);
-  useSwipes(appRoot, pullHome, narrow && !menuOpen && !reading, {
+  useSwipes(appRoot, pullHome, narrow && !workspaceSplit && !menuOpen && !reading, {
     // Left goes to the library from any other page; right opens the menu of pages.
     onLeft: route !== "library" ? toLibrary : undefined,
     onRight: openMenu,
@@ -583,48 +583,70 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   });
   // With the menu of pages open, a swipe left closes it, back to the page underneath.
   const closeMenu = useCallback(() => setMenuOpen(false), []);
-  useSwipes(appRoot, pullHome, narrow && menuOpen && !reading, { onLeft: closeMenu, overMenu: true });
+  useSwipes(appRoot, pullHome, narrow && !workspaceSplit && menuOpen && !reading, { onLeft: closeMenu, overMenu: true });
 
-  if (reading) return <Reader key={`${reading.bookId}/${reading.fileId ?? ""}`} bookId={reading.bookId} fileId={reading.fileId} openAt={reading.at} compact={compactReader} shell={shell} onClose={closeBook} />;
+  const leaveSeries = () => {
+    if (seriesPlace) setSeriesScroll(seriesPlace.parentScroll);
+    setSeriesPlace(null);
+    setSeriesSearch("");
+    setSeriesPage(0);
+  };
+  const closeDetails = () => {
+    const destination = details?.from;
+    setDetails(null);
+    setRoute(destination && destination !== "book" ? destination : "library");
+  };
+  const sidebar = (
+    <Sidebar
+      route={route === "book" && details ? details.from : route}
+      collapsed={collapsed}
+      lockedCollapsed={workspaceSplit}
+      drawerOpen={!workspaceSplit && narrow && menuOpen}
+      onCloseDrawer={() => setMenuOpen(false)}
+      onNavigate={selectSidebar}
+      onSplit={onSplit && ((target) => {
+        setMenuOpen(false);
+        onSplit(target);
+      })}
+      onToggle={toggleSidebar}
+      preview={api.kind === "preview"}
+      imports={
+        imports.total
+          ? importCounts(imports)
+          : serverCounts.total
+            ? { done: serverCounts.done, total: serverCounts.total, running: serverCounts.done + serverCounts.failed < serverCounts.total }
+            : sent.length
+              ? {
+                  done: sent.filter((f) => f.state !== "waiting" && f.state !== "arriving").length,
+                  total: sent.length,
+                  running: sent.some((f) => f.state === "waiting" || f.state === "arriving"),
+                }
+              : null
+      }
+    />
+  );
+  if (reading) {
+    const reader = <Reader key={`${reading.bookId}/${reading.fileId ?? ""}`} bookId={reading.bookId}
+      fileId={reading.fileId} openAt={reading.at} compact={compactReader || workspaceSplit} shell={shell} onClose={closeBook} />;
+    return <>
+      {workspaceSplit ? <div className="app sidebar-collapsed workspace-rail">{sidebar}<div className="main">{reader}</div></div> : reader}
+      {workspaceSplit && <ContextMenuHost />}
+    </>;
+  }
 
   return (
-    <div ref={appRoot} className={`app${collapsed ? " sidebar-collapsed" : ""}${player.book ? " has-player" : ""}`}>
-      {narrow && route !== "home" && (
+    <div ref={appRoot} className={`app${collapsed ? " sidebar-collapsed" : ""}${workspaceSplit ? " workspace-rail" : ""}${player.book ? " has-player" : ""}`}>
+      {narrow && !workspaceSplit && route !== "home" && (
         <div ref={pullHome} className="pull-home" aria-hidden>
           <Icon name="home" size={16} /> <span className="pull-home-far">Keep pulling for Home</span>
           <span className="pull-home-ready">Let go for Home</span>
         </div>
       )}
-      <Sidebar
-        route={route === "book" && details ? details.from : route}
-        collapsed={collapsed}
-        drawerOpen={narrow && menuOpen}
-        onCloseDrawer={() => setMenuOpen(false)}
-        onNavigate={selectSidebar}
-        onSplit={onSplit && ((target) => {
-          setMenuOpen(false);
-          onSplit(target);
-        })}
-        onToggle={toggleSidebar}
-        preview={api.kind === "preview"}
-        imports={
-          imports.total
-            ? importCounts(imports)
-            : serverCounts.total
-              ? { done: serverCounts.done, total: serverCounts.total, running: serverCounts.done + serverCounts.failed < serverCounts.total }
-              : sent.length
-                ? {
-                    done: sent.filter((f) => f.state !== "waiting" && f.state !== "arriving").length,
-                    total: sent.length,
-                    running: sent.some((f) => f.state === "waiting" || f.state === "arriving"),
-                  }
-                : null
-        }
-      />
+      {sidebar}
       <div className="main">
         <Header
           ref={search}
-          onOpenMenu={() => setMenuOpen(true)}
+          onOpenMenu={workspaceSplit ? undefined : () => setMenuOpen(true)}
           sync={sync}
           profile={profile}
           search={route === "catalogs" ? browserDraft : searchingKindle ? kindleSearch : showingSeries ? seriesSearch : searchText}
@@ -716,7 +738,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
               onChange={showingSeries ? (change) => setSeriesPage(change.page ?? 0) : changeLibraryView}
               onClearSearch={() => showingSeries ? setSeriesSearch("") : changeSearch("")}
               onOpenSeries={(name) => openSeries("library", name)}
-              seriesBack={showingSeries ? back : undefined}
+              seriesBack={showingSeries ? leaveSeries : undefined}
               restoreScroll={seriesScroll}
               onScrollRestored={() => setSeriesScroll(null)}
               onImportBooks={importBooks}
@@ -742,7 +764,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
             <BookDetailsPage
               bookId={details.bookId}
               refreshKey={refreshKey}
-              onBack={() => setRoute(details.from)}
+              onBack={closeDetails}
               onOpenBook={openBook}
               onOpenCollection={showCollection}
               onOpenLibrary={(genre, documents) => {
@@ -772,7 +794,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
               onChange={showingSeries ? (change) => setSeriesPage(change.page ?? 0) : changeAudiobooksView}
               onClearSearch={() => showingSeries ? setSeriesSearch("") : changeSearch("")}
               onOpenSeries={(name) => openSeries("audiobooks", name)}
-              seriesBack={showingSeries ? back : undefined}
+              seriesBack={showingSeries ? leaveSeries : undefined}
               restoreScroll={seriesScroll}
               onScrollRestored={() => setSeriesScroll(null)}
               onImportBooks={importBooks}
