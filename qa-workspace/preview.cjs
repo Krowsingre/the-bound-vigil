@@ -1,12 +1,12 @@
-const { chromium } = require("playwright");
+const { chromium } = require("playwright-core");
 const assert = require("node:assert/strict");
 
 (async () => {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, channel: "chrome" });
   try {
     for (const width of [1536, 1024, 430]) {
       const mobile = width === 430;
-      const page = await browser.newPage(mobile ? { viewport: {width: 430, height: 932}, hasTouch: true, isMobile: true } : { viewport: {width: 1536, height: 1024} });
+      const page = await browser.newPage(mobile ? { viewport: {width: 430, height: 932}, hasTouch: true, isMobile: true } : { viewport: {width, height: 1024} });
       const errors = [];
       page.on("pageerror", e => errors.push(e.message));
       page.setDefaultTimeout(120000); await page.goto("http://127.0.0.1:2452/", { waitUntil: "commit", timeout: 120000 });

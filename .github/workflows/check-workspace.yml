@@ -18,8 +18,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
-      - run: npm install --prefix qa-workspace --no-save --no-package-lock playwright@1.58.2
-      - run: npx --prefix qa-workspace playwright install --with-deps chromium
+      - run: npm install --prefix qa-workspace --no-save --no-package-lock playwright-core@1.58.2
       - run: |
           npx vite preview --host 127.0.0.1 --port 2452 &
           for i in {1..20}; do curl -fs http://127.0.0.1:2452/ >/dev/null && break; sleep 1; done
