@@ -20,7 +20,7 @@ function FindElement($pattern) {
   if(!$window){return}
   foreach($item in $window.FindAll($scope,$any)){
     try {
-      if($item.Current.ControlType -eq [Windows.Automation.ControlType]::ListItem){continue}
+      if($item.Current.ControlType -eq [Windows.Automation.ControlType]::ListItem -and $pattern -ne "Coming down"){continue}
       if($item.Current.Name -match $pattern -and !$item.Current.IsOffscreen -and $item.Current.IsEnabled){return $item}
     } catch {}
   }
