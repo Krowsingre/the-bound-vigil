@@ -1258,3 +1258,46 @@
 .structured-viewer-surface figure { margin: 0; }
 .structured-viewer-surface figure img { display: block; max-width: 100%; }
 .structured-viewer-surface figcaption { margin-top: 8px; overflow-wrap: anywhere; }
+
+
+/* A narrow desktop workspace pane has the same controls as the phone Reader. */
+.reader.is-compact .reader-body {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr);
+}
+.reader.is-compact :is(.reader-left, .reader-right) {
+  position: absolute;
+  inset-block: 0;
+  z-index: 30;
+  width: min(360px, 88%);
+  box-shadow: var(--shadow);
+  overflow-y: auto;
+}
+.reader.is-compact .reader-left { left: 0; }
+.reader.is-compact .reader-right { right: 0; }
+.reader.is-compact .reader-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  background: rgb(18 20 22 / 0.35);
+}
+.reader.is-compact .reader-top { gap: 2px; padding: 0 4px; }
+.reader.is-compact .reader-top :is(.reader-top-app, .reader-top-author, .reader-top-rule, .reader-search, .sync-circle) { display: none; }
+.reader.is-compact .reader-top-title strong { font-size: 15px; }
+.reader.is-compact .reader-bottom {
+  grid-template-columns: auto minmax(48px, 1fr) auto minmax(0, max-content) auto;
+  gap: 8px;
+  margin-inline: 10px;
+}
+.reader.is-compact .reader-bottom-focus { grid-template-columns: auto minmax(48px, 1fr) auto minmax(0, max-content); }
+.reader.is-compact .reader-bottom-chapter { max-width: min(120px, 22cqw); min-height: 44px; }
+.reader.is-compact .reader-bottom.has-zoom { grid-template-columns: auto minmax(48px, 1fr) auto auto; height: auto; row-gap: 0; }
+.reader.is-compact .reader-bottom.has-zoom .reader-bottom-percent { display: none; }
+.reader.is-compact .reader-bottom.has-zoom .reader-bottom-chapter { grid-column: 1 / -1; grid-row: 2; max-width: 100%; }
+.reader.is-compact .reader-top .popover {
+  position: fixed;
+  inset: calc(var(--header-h) + 4px) 8px auto;
+  width: auto;
+  max-height: calc(100% - var(--header-h) - 16px);
+  overflow-y: auto;
+}

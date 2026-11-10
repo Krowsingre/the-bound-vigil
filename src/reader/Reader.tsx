@@ -72,6 +72,7 @@ export function Reader({
   bookId,
   fileId,
   openAt,
+  compact = false,
   shell,
   onClose,
 }: {
@@ -80,6 +81,7 @@ export function Reader({
   fileId?: string;
   /** A place to go to once the book is open (a highlight from Notes). */
   openAt?: string;
+  compact?: boolean;
   shell: ReaderShellProps;
   onClose: () => void;
 }) {
@@ -92,7 +94,10 @@ export function Reader({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
-  const [panels, setPanels] = useState(readPanels);
+  const [widePanels, setWidePanels] = useState(readPanels);
+  const [compactPanels, setCompactPanels] = useState({ left: false, right: false });
+  const panels = compact ? compactPanels : widePanels;
+  const setPanels = compact ? setCompactPanels : setWidePanels;
   const [rightTab, setRightTab] = useState<RightTab>("notes");
   const [leftTab, setLeftTab] = useState<LeftTab>("contents");
   const [contentsRequest, setContentsRequest] = useState(0);
@@ -110,7 +115,8 @@ export function Reader({
   useEffect(() => setExpandedContent(null), [file]);
   const searchInput = useRef<HTMLInputElement>(null);
   const prefersDark = useAppDark();
-  const narrow = useNarrow();
+  const narrowViewport = useNarrow();
+  const narrow = compact || narrowViewport;
 
   // Load the book, its highlights and the reading settings, then the file.
   useEffect(() => {
@@ -342,7 +348,7 @@ export function Reader({
   const pagePanels = (change: Partial<typeof panels>) =>
     setPanels((p) => {
       const next = { ...p, ...change };
-      if (narrow) return next;
+      if (narrow) return { left: change.right ? false : next.left, right: change.left ? false : next.right };
       try {
         localStorage.setItem(PANELS_KEY, JSON.stringify(next));
       } catch {
@@ -574,7 +580,7 @@ export function Reader({
 
   return (
     <div
-      className={`reader theme-${theme}${focus ? " is-focus" : ""}${showLeft ? " has-left" : ""}${showRight ? " has-right" : ""}`}
+      className={`reader theme-${theme}${compact ? " is-compact" : ""}${focus ? " is-focus" : ""}${showLeft ? " has-left" : ""}${showRight ? " has-right" : ""}`}
       style={{ ["--page-bg" as string]: colors.background, ["--page-text" as string]: colors.text, ["--page-muted" as string]: colors.muted }}
     >
       <ReaderTopBar

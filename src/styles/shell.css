@@ -859,6 +859,7 @@
 .tbv-workspace-primary { min-width: 0; min-height: 0; }
 .tbv-workspaces.is-split .tbv-workspace-primary {
   contain: layout paint;
+  container-type: inline-size;
   outline: none;
   grid-column: 1;
   grid-row: 1;
