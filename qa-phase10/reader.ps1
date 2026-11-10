@@ -8,6 +8,7 @@ public static class PickerProbe {
   [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr hwnd, int id);
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wparam, IntPtr lparam);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, IntPtr extra);
 }
 "@
 function Wait-Picker($title){
@@ -20,9 +21,15 @@ function Wait-Picker($title){
   throw "Picker did not appear: $title"
 }
 function Confirm-Picker($handle){
-  $ok=[PickerProbe]::GetDlgItem($handle,1)
-  if($ok){[PickerProbe]::PostMessage($ok,0x00F5,[IntPtr]::Zero,[IntPtr]::Zero) | Out-Null}
-  else{[PickerProbe]::PostMessage($handle,0x0111,[IntPtr]1,[IntPtr]::Zero) | Out-Null}
+  $picker=[Windows.Automation.AutomationElement]::FromHandle($handle)
+  $options=$picker.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)
+  $ok=$options | Where-Object { $_.Current.Name -match '^(Select Folder|Save)$' -and !$_.Current.IsOffscreen } | Select-Object -Last 1
+  if(!$ok){throw 'No accessible native confirmation control'}
+  $r=$ok.Current.BoundingRectangle
+  if($r.IsEmpty){throw 'Native confirmation control has no bounds'}
+  [Windows.Forms.Cursor]::Position=New-Object Drawing.Point([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2))
+  [PickerProbe]::mouse_event(2,0,0,0,[IntPtr]::Zero)
+  [PickerProbe]::mouse_event(4,0,0,0,[IntPtr]::Zero)
 }
 $root=[Windows.Automation.AutomationElement]::RootElement
 $scope=[Windows.Automation.TreeScope]::Descendants
