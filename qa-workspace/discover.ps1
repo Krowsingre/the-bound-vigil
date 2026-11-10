@@ -56,6 +56,27 @@ function Go-To($url,$side){
   $shell.SendKeys('{ENTER}')
 }
 $server=Start-Process -FilePath (Get-Command node).Source -ArgumentList (Join-Path $PSScriptRoot server.cjs) -WindowStyle Hidden -PassThru
+function Open-Split($label){
+  $shell=New-Object -ComObject WScript.Shell
+  for($attempt=0;$attempt -lt 3;$attempt++){
+    Click-Ui (Wait-Ui $label 'Button' 'left') $true
+    Start-Sleep -Milliseconds 400
+    $option=Wait-Ui '^Split screen$' 'MenuItem'
+    if($attempt -eq 0){
+      $option.SetFocus()
+      $shell.SendKeys('{ENTER}')
+    }else{
+      $rect=$option.Current.BoundingRectangle
+      [Windows.Forms.Cursor]::Position=New-Object Drawing.Point([int]($rect.X+$rect.Width/2),[int]($rect.Y+$rect.Height/2))
+      [Pointer]::mouse_event(2,0,0,0,[IntPtr]::Zero)
+      [Pointer]::mouse_event(4,0,0,0,[IntPtr]::Zero)
+    }
+    Start-Sleep -Milliseconds 1100
+    if(All-Ui '^Close split$'){return}
+    $shell.SendKeys('{ESC}')
+  }
+  $null=Wait-Ui '^Close split$' 'Button'
+}
 $app=Start-Process -FilePath $env:TBV_TEST_EXE -PassThru
 try{
   $screen=[Windows.Forms.Screen]::PrimaryScreen.Bounds
@@ -63,8 +84,7 @@ try{
   Click-Ui (Wait-Ui '^Discover(?: .*)?$' 'Button' 'left')
   Go-To 'left' 'any'
   $null=Wait-Ui '^Left fixture$' 'Text' 'left'
-  Click-Ui (Wait-Ui '^Discover(?: .*)?$' 'Button' 'left') $true
-  Click-Ui (Wait-Ui '^Split screen$' 'MenuItem')
+  Open-Split '^Discover(?: .*)?$'
   $null=Wait-Ui '^Close split$' 'Button'
   Go-To 'right' 'right'
   $null=Wait-Ui '^Right fixture$' 'Text' 'right'

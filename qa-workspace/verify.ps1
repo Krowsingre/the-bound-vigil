@@ -47,6 +47,27 @@ function Click-Ui($item,[bool]$right=$false){
   if($right){[Pointer]::mouse_event(8,0,0,0,[IntPtr]::Zero); [Pointer]::mouse_event(16,0,0,0,[IntPtr]::Zero)}
   else{[Pointer]::mouse_event(2,0,0,0,[IntPtr]::Zero); [Pointer]::mouse_event(4,0,0,0,[IntPtr]::Zero)}
 }
+function Open-Split($label){
+  $shell=New-Object -ComObject WScript.Shell
+  for($attempt=0;$attempt -lt 3;$attempt++){
+    Click-Ui (Wait-Ui $label 'Button' 'left') $true
+    Start-Sleep -Milliseconds 400
+    $option=Wait-Ui '^Split screen$' 'MenuItem'
+    if($attempt -eq 0){
+      $option.SetFocus()
+      $shell.SendKeys('{ENTER}')
+    }else{
+      $rect=$option.Current.BoundingRectangle
+      [Windows.Forms.Cursor]::Position=New-Object Drawing.Point([int]($rect.X+$rect.Width/2),[int]($rect.Y+$rect.Height/2))
+      [Pointer]::mouse_event(2,0,0,0,[IntPtr]::Zero)
+      [Pointer]::mouse_event(4,0,0,0,[IntPtr]::Zero)
+    }
+    Start-Sleep -Milliseconds 1100
+    if(All-Ui '^Close split$'){return}
+    $shell.SendKeys('{ESC}')
+  }
+  $null=Wait-Ui '^Close split$' 'Button'
+}
 $app=Start-Process -FilePath $env:TBV_TEST_EXE -PassThru
 try{
   Click-Ui (Wait-Ui '^Close$' 'Button')
@@ -57,8 +78,7 @@ try{
   $screen=[Windows.Forms.Screen]::PrimaryScreen.Bounds
   $middle=$screen.X+$screen.Width/2
   Click-Ui (Wait-Ui '^Archive(?: .*)?$' 'Button')
-  Click-Ui (Wait-Ui '^Sanctum(?: .*)?$' 'Button') $true
-  Click-Ui (Wait-Ui '^Split screen$' 'MenuItem')
+  Open-Split '^Sanctum(?: .*)?$'
   $null=Wait-Ui '^Close split$' 'Button'
   $archive=Wait-Ui '^Open Archive$' 'Button' 'right'
   Write-Host 'PASS opened Sanctum in secondary pane from the Archive sidebar'
