@@ -57,34 +57,12 @@ foreach($method in @('X','Windows close','X','Windows close','X','Windows close'
     if(!$app.HasExited){Stop-Process -Id $app.Id -ErrorAction SilentlyContinue}
   }
 }
-Add-Type -AssemblyName System.Windows.Forms
-function Find-ByName($parent,$name,$timeout=15){
-  $condition=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty,$name)
-  $until=(Get-Date).AddSeconds($timeout)
-  do {
-    $element=$parent.FindFirst($scope,$condition)
-    if(!$element -and $name -in @('Scribe','Shutdown Probe')){
-      $buttonType=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::Button)
-      $element=$parent.FindAll($scope,$buttonType) | Where-Object { $_.Current.Name -like "*$name*" } | Select-Object -First 1
-    }
-    if($element){return $element}
-    Start-Sleep -Milliseconds 100
-  }while((Get-Date) -lt $until)
-  throw "Cannot find '$name'"
-}
-function Click-Element($element){
-  $pattern=$null
-  if($element.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern,[ref]$pattern)){
-    $pattern.Invoke()
-  }else{
-    $element.SetFocus()
-    [Windows.Forms.SendKeys]::SendWait('{ENTER}')
-  }
-}
 $python=(Get-Command python).Source
 $helper=Join-Path $PSScriptRoot scribe.py
 & $python $helper seed
 if($LASTEXITCODE){throw 'Could not prepare synthetic Scribe data'}
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=9222'
+$editorScript=Join-Path $PSScriptRoot editor.mjs
 $app=Start-Process -FilePath $env:TBV_TEST_EXE -PassThru
 $locker=$null
 try{
@@ -99,10 +77,8 @@ try{
     }
     Start-Sleep -Milliseconds 100
   }while((Get-Date) -lt $ends)
-  Click-Element (Find-ByName $window 'Scribe')
-  Click-Element (Find-ByName $window 'Write a book')
-  Click-Element (Find-ByName $window 'Shutdown Probe')
-  $editor=Find-ByName $window 'Chapter text'
+  & node $editorScript open
+  if($LASTEXITCODE){throw 'Could not open synthetic Scribe project'}
   $close=$window.FindFirst($scope,$buttons)
   if(!$close){throw 'Cannot find close button in Scribe'}
   $ready=Join-Path $out 'lock-ready'
@@ -113,9 +89,8 @@ try{
     if($locker.HasExited -or (Get-Date) -gt $ends){throw 'Could not hold database lock'}
     Start-Sleep -Milliseconds 20
   }
-  (New-Object -ComObject WScript.Shell).AppActivate($app.Id) | Out-Null
-  $editor.SetFocus()
-  [Windows.Forms.SendKeys]::SendWait('^{END} saved on close')
+  & node $editorScript edit
+  if($LASTEXITCODE){throw 'Could not edit Scribe chapter'}
   $clock=[Diagnostics.Stopwatch]::StartNew()
   $close.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
   $hidden=$null
@@ -137,4 +112,5 @@ try{
   if($locker -and !$locker.HasExited){Stop-Process -Id $locker.Id -ErrorAction SilentlyContinue}
   if(!$app.HasExited){Stop-Process -Id $app.Id -ErrorAction SilentlyContinue}
 }
+
 
