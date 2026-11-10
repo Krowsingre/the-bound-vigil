@@ -396,6 +396,10 @@ export class Scroller extends HTMLElement {
         this.#scrollBy(distance ?? this.#container.clientHeight - this.#margin * 2)
     }
     // the arrow keys
+    scrollByPixels(distance) {
+        this.#lastInput = performance.now()
+        this.#container.scrollBy({ top: distance, behavior: 'instant' })
+    }
     scrollStep(direction) {
         this.#scrollBy(direction * Math.round(this.#container.clientHeight / 10))
     }

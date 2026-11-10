@@ -350,6 +350,20 @@ function withoutMarks(html: string): string {
   return html.replace(/<(p|h[1-6])[^>]*>([^<]*)<\/\1>/gi, (whole, _tag: string, text: string) => (pageMark(text) ? "" : whole)).replace(/(^|<br\s*\/?>)\s*={3,}[^<]*(?=<br|<\/p>)/gi, (whole, lead: string) => (pageMark(whole.slice(lead.length)) ? lead : whole));
 }
 
+function restoredKind(hint: string | undefined): { kind: PageKind; area: Area | null } | undefined {
+  if (!hint) return;
+  const authored = /^scribe:([a-z_]+)/.exec(hint)?.[1] as PageKind | undefined;
+  if (authored && Object.hasOwn(KINDS, authored)) {
+    const area = /\bfrontmatter\b/.test(hint) ? "front" : /\bbackmatter\b/.test(hint) ? "back" : areaOf(authored);
+    if (!area || KINDS[authored].areas.includes(area)) return { kind: authored, area };
+  }
+  for (const [pattern, kind] of EPUB_TYPES) {
+    if (!pattern.test(hint)) continue;
+    if (kind === "front" || kind === "back") return { kind: "custom", area: kind };
+    if (kind === "body") return { kind: "chapter", area: "chapter" };
+    return { kind, area: areaOf(kind) };
+  }
+}
 /** The kind a section's title, the file's own label, and its words point to. */
 function sortSection(title: string, body: string, hint: string | undefined, index: number, bookTitle: string): { kind: PageKind; area: Area | null; sure: boolean; why?: string; byHand?: boolean; include?: boolean } {
   const t = title.replace(/[.:]+$/, "").trim();
@@ -462,13 +476,14 @@ export function buildManuscript(doc: ImportedDocument, at: SplitAt): Manuscript 
   }
 
   function guessed(c: ImportedChapter, i: number): ManuscriptSection {
-    const sorted = sortSection(c.title, c.body, c.hint, i, doc.title);
+    const explicit = at === "spine" ? restoredKind(c.hint) : undefined;
+    const sorted = explicit ? { ...explicit, sure: true } : sortSection(c.title, c.body, c.hint, i, doc.title);
     // A kind that fits more than one area takes the one the book is in by now.
     let area: Area = sorted.area ?? (ORDER[reached] > 0 ? reached : sorted.kind === "poem" || sorted.kind === "haiku" ? "chapter" : "front");
     let why = sorted.why;
     let sure = sorted.sure;
     let kind = sorted.kind;
-    if (ORDER[area] < ORDER[reached]) {
+    if (!explicit && ORDER[area] < ORDER[reached]) {
       // Never moved out of order: it stays where the file has it, as a page of its own.
       why = `Looks like ${KINDS[kind].label.toLowerCase()}, but comes after ${reached === "chapter" ? "the chapters had begun" : "the back matter had begun"}, so it's kept where it is.`;
       area = reached;
@@ -484,7 +499,10 @@ export function buildManuscript(doc: ImportedDocument, at: SplitAt): Manuscript 
       body = settled.body;
       breaks += settled.breaks;
     }
-    return { title: (kind === "poem" || kind === "haiku") && c.title === "Untitled" ? "" : c.title, body, words: c.words, area, kind, sure, ...(why ? { why } : {}), include: sorted.include ?? true, ...(sorted.byHand ? { byHand: true } : {}) };
+    const unnamed = c.title === "Untitled";
+    const title = unnamed && (kind === "poem" || kind === "haiku") ? "" : unnamed && explicit && kind !== "custom" && kind !== "chapter" ? KINDS[kind].label : c.title;
+    return { title, body, words: c.words, area, kind, sure, ...(why ? { why } : {}), include: at === "spine" || (sorted.include ?? true),
+      ...(sorted.byHand || at === "spine" && KINDS[kind].made ? { byHand: true } : {}) };
   }
 
   const poems = sections.filter((s) => s.kind === "poem" || s.kind === "haiku").length;

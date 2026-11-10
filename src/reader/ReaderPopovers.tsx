@@ -139,6 +139,13 @@ export function TextSettings({ settings, onChange }: { settings: ReaderSettings;
         ]}
         onChange={(flow) => onChange({ flow })}
       />
+      {settings.flow === "scrolled" && (
+        <label className="field">
+          <span>Arrow-key scroll speed</span>
+          <input type="range" min={120} max={1200} step={60} value={settings.keyboardScrollSpeed}
+            onChange={(event) => onChange({ keyboardScrollSpeed: Number(event.target.value) })} />
+        </label>
+      )}
       {settings.flow === "paginated" && (
         <Choice<TextSpread>
           label="Pages at a time"

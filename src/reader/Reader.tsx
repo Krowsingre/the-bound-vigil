@@ -22,6 +22,7 @@ import { ListenAlongPanel, NoteDialog, PageSettings, ReadAloudPlayer, SelectionT
 import { ReaderSearch } from "./ReaderSearch";
 import { BOOK_OPENED, useAppDark } from "../settings/appSettings";
 import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, resolveTheme, SETTINGS_KEY, zoomStep, type ReaderSettings } from "./settings";
+import { useKeyboardScroll } from "./useKeyboardScroll";
 import { useReadAloud } from "./useReadAloud";
 import { useReadAlong } from "./useReadAlong";
 import { StructuredViewer } from "./StructuredViewer";
@@ -61,8 +62,10 @@ async function setWindowFullscreen(on: boolean) {
   else if (document.fullscreenElement) await document.exitFullscreen();
 }
 
-const isTyping = (target: EventTarget | null) =>
-  target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+const isTyping = (target: EventTarget | null) => {
+  const element = target as HTMLElement | null;
+  return !!(element?.isContentEditable || element?.matches?.("input, textarea, select"));
+};
 
 /** The reading screen. It replaces the sidebar and header while a book is open. */
 export function Reader({
@@ -228,7 +231,8 @@ export function Reader({
           setActive({ a, rect });
         }
       },
-      onKey: (e) => onKeyRef.current(e, true),
+      onKey: (e) => onKeyRef.current(e),
+      onKeyUp: (e) => keyScrollRef.current(e),
       onZoom: (pageZoom) => changeSettingsRef.current({ pageZoom }),
     },
   });
@@ -444,12 +448,16 @@ export function Reader({
     void flush().then(onClose);
   }, [flush, onClose, fullscreen]);
 
+  const keyboardScroll = useKeyboardScroll(engine.scrollByPixels, settings.keyboardScrollSpeed, engine.ready && !engine.fixed && settings.flow === "scrolled" && !expandedContent && !noteEdit);
+  const keyScrollRef = useRef(keyboardScroll.release);
+  keyScrollRef.current = keyboardScroll.release;
+
   // Keyboard: the window's keys, plus keys pressed inside the book's pages.
-  const onKeyRef = useRef<(e: KeyboardEvent, fromBook: boolean) => void>(() => {});
-  onKeyRef.current = (e, fromBook) => {
+  const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  onKeyRef.current = (e) => {
     if (noteEdit || expandedContent || e.defaultPrevented) return;
     const backKey = navigationDirection(e, true) === "back";
-    if (!fromBook && isTyping(e.target) && e.key !== "Escape" && !backKey) return;
+    if (isTyping(e.target) && e.key !== "Escape" && !backKey) return;
     const ctrl = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
     if (ctrl && engine.fixed && (key === "=" || key === "+" || key === "-" || key === "0")) {
@@ -480,7 +488,11 @@ export function Reader({
     }
     else if (e.key === "ArrowLeft") turn(false);
     else if (e.key === "ArrowRight") turn(true);
-    else if ((engine.fixed || settings.flow === "scrolled") && (e.key === "ArrowUp" || e.key === "ArrowDown")) engine.scrollStep(e.key === "ArrowUp" ? -1 : 1);
+    else if (!e.shiftKey && (engine.fixed || settings.flow === "scrolled") && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      const direction = e.key === "ArrowUp" ? -1 : 1;
+      if (engine.fixed) engine.scrollStep(direction);
+      else keyboardScroll.press(direction, e.repeat);
+    }
     // In scroll mode these move the long page on by a screen.
     else if (e.key === "PageUp" || (e.key === " " && e.shiftKey)) turn(false);
     else if (e.key === "PageDown" || e.key === " ") turn(true);
@@ -488,9 +500,14 @@ export function Reader({
     e.preventDefault();
   };
   useEffect(() => {
-    const on = (e: KeyboardEvent) => onKeyRef.current(e, false);
+    const on = (e: KeyboardEvent) => onKeyRef.current(e);
     window.addEventListener("keydown", on);
-    return () => window.removeEventListener("keydown", on);
+    const up = (e: KeyboardEvent) => keyScrollRef.current(e);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", on);
+      window.removeEventListener("keyup", up);
+    };
   }, []);
 
   if (loadError) {

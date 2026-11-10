@@ -19,7 +19,7 @@ import { ChapterEditor, type SaveState } from "./ChapterEditor";
 import { quoteHtml } from "./fromNotes";
 import { QuoteDrawer } from "./QuoteDrawer";
 import { BookPreview, MadePage } from "./BookPreview";
-import { bookOrder, escapeXml, readExport, type ExportSettings } from "./epub";
+import { bookOrder, escapeXml, madeSectionHtml, readExport, type ExportSettings } from "./epub";
 import { ScribeBooks, type Projects } from "./ScribeBooks";
 import { ADD_MENUS, firstLine, isMade, isNumbered, isPoem, KINDS, numberInWords, readPage, romanOf, startingTitle, writePage, type PageKind, type PageSettings, type Template } from "./pages";
 import { DetailsDialog, DraftsDialog, ExportDialog, NewBookDialog } from "./WritingDialogs";
@@ -470,6 +470,22 @@ function ProjectView({
     }
   };
 
+  const changeFrontPageType = async (c: WritingChapter, kind: PageKind) => {
+    const before = readPage(c.page, c.role);
+    if (before.kind === kind || !view) return;
+    try {
+      await saving.current;
+      if (isMade(before)) {
+        const body = madeSectionHtml({ project: view.project, chapters, settings }, c.id);
+        await api.saveWritingChapter(c.id, c.title, body);
+      }
+      await setPage(c, { kind, byHand: !!KINDS[kind].made });
+      if (isMade(before)) await load();
+    } catch (error) {
+      toast(String(error));
+    }
+  };
+
   /** A ready-made page becomes one you write, starting from what Scribe made. */
   const writeMyself = async (c: WritingChapter, html: string) => {
     await saving.current;
@@ -575,6 +591,14 @@ function ProjectView({
       { label: "Move down", icon: "chevronDown", disabled: !neighbour(c, 1), onSelect: () => nudge(c, 1) },
       "divider",
       { heading: <span className="menu-tip">This page</span> },
+      ...(c.role === "front" ? ([{
+        label: "Change page type",
+        submenu: ADD_MENUS.front.map((kind) => ({
+          label: KINDS[kind].label,
+          checked: page.kind === kind,
+          onSelect: () => void changeFrontPageType(c, kind),
+        })),
+      }] as MenuEntry[]) : []),
       { label: "Show in the contents", checked: page.inContents, onSelect: () => void setPage(c, { inContents: !page.inContents }) },
       { label: "Show its title", checked: page.showTitle, onSelect: () => void setPage(c, { showTitle: !page.showTitle }) },
       {

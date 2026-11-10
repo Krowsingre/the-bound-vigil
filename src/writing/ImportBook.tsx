@@ -21,7 +21,7 @@ import { ACK_CONFIRMATION, ACK_PARAGRAPHS, ACK_TITLE, POLICY_VERSION, sha256Hex,
 import { AuthorLabel } from "./AuthorInfo";
 import { exportProblems, readExport } from "./epub";
 import { pictureAddress } from "./extensions";
-import { bestSplit, readDocumentBytes, type ImportedDocument, type SplitAt } from "./importDoc";
+import { bestSplit, readDocumentBytes, readDraftEpub, type ImportedDocument, type SplitAt } from "./importDoc";
 import { buildManuscript, inspect, MANUSCRIPT_ACCEPT, MARK_HELP, type Inspection, type Manuscript, type ManuscriptSection } from "./manuscript";
 import { ADD_MENUS, KINDS, writePage, readPage, type Area, type PageKind } from "./pages";
 import { bookFromTbv } from "./openTbv";
@@ -30,6 +30,7 @@ import type { NewWritingSection, WritingDraft, WritingProject } from "../api/typ
 import { makeEpub } from "./WritingDialogs";
 
 const SPLITS: { value: SplitAt; label: string }[] = [
+  { value: "spine", label: "Keep the draft pages" },
   { value: "marks", label: "At its page marks (===)" },
   { value: "headings", label: "At its headings" },
   { value: "lines", label: "At lines like \"Chapter 1\"" },
@@ -130,10 +131,10 @@ export function ImportBookDialog({
     void (async () => {
       try {
         const file = await api.readBookFile(restoreDraft.bookId);
-        const d = await readDocumentBytes("draft.epub", new Uint8Array(await file.arrayBuffer()));
+        const d = readDraftEpub(new Uint8Array(await file.arrayBuffer()));
         if (!current) return;
-        const at = bestSplit(d.html);
-        setMarked(at === "marks");
+        const at = "spine";
+        setMarked(false);
         setDoc(d);
         setSplit(at);
         setManuscript(buildManuscript(d, at));
@@ -555,7 +556,7 @@ export function ImportBookDialog({
                     setManuscript(buildManuscript(doc, at));
                   }}
                 >
-                  {SPLITS.filter((s) => s.value !== "marks" || marked).map((s) => (
+                  {SPLITS.filter((s) => (s.value !== "marks" || marked) && (s.value !== "spine" || restoreDraft)).map((s) => (
                     <option key={s.value} value={s.value}>
                       {s.label}
                     </option>
@@ -612,7 +613,7 @@ export function ImportBookDialog({
                                   value={`${s.area}:${s.kind}`}
                                   onChange={(e) => {
                                     const [a, k] = e.target.value.split(":") as [Area, PageKind];
-                                    change(i, { area: a, kind: k });
+                                    change(i, { area: a, kind: k, ...(restoreDraft && KINDS[k].made ? { byHand: true } : {}) });
                                   }}
                                 >
                                   {AREAS.map((g) => (

@@ -24,6 +24,7 @@ export interface EngineEvents {
   onAnnotationClick?: (cfi: string, rect: DOMRect) => void;
   /** Key presses inside the book's frames, which the window never sees. */
   onKey?: (event: KeyboardEvent) => void;
+  onKeyUp?: (event: KeyboardEvent) => void;
   /** PDFs and comics: zoomed with Ctrl+wheel or two fingers, to this scale. */
   onZoom?: (zoom: number) => void;
 }
@@ -52,6 +53,7 @@ export interface ReaderEngine {
   scale: number;
   /** Fixed pages: scrolls a little up or down (arrow keys). */
   scrollStep: (direction: 1 | -1) => void;
+  scrollByPixels: (distance: number) => void;
 }
 
 const drawable = (a: Annotation) => a.kind !== "bookmark" && !!a.locator.cfi;
@@ -252,6 +254,7 @@ export function useReaderEngine({
           doc.addEventListener("pointerup", () => setTimeout(check, 0));
           doc.addEventListener("keyup", (k) => k.shiftKey && check());
           doc.addEventListener("keydown", (k) => eventsRef.current.onKey?.(k));
+          doc.addEventListener("keyup", (k) => eventsRef.current.onKeyUp?.(k));
         });
 
         v.addEventListener("create-overlay", (e) => {
@@ -394,6 +397,7 @@ export function useReaderEngine({
     getView: useCallback(() => viewRef.current, []),
     fixed,
     scale,
+    scrollByPixels: useCallback((distance: number) => viewRef.current?.renderer.scrollByPixels?.(distance), []),
     scrollStep: useCallback((direction: 1 | -1) => {
       viewRef.current?.renderer.scrollStep?.(direction);
     }, []),

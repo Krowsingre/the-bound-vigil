@@ -32,7 +32,7 @@ export interface ImportedChapter {
   mark?: string;
 }
 
-export type SplitAt = "marks" | "headings" | "lines" | "none";
+export type SplitAt = "spine" | "marks" | "headings" | "lines" | "none";
 
 /**
  * A line the writer puts where a page starts, in any app, saying what the
@@ -581,7 +581,11 @@ export function textToHtml(text: string): string {
 
 // ---- EPUB ----
 
-function fromEpub(bytes: Uint8Array, fallback: string): ImportedDocument {
+export function readDraftEpub(bytes: Uint8Array): ImportedDocument {
+  return fromEpub(bytes, "Draft", true);
+}
+
+function fromEpub(bytes: Uint8Array, fallback: string, restoring = false): ImportedDocument {
   const files = unzipSync(bytes);
   const text = (path: string) => (files[path] ? strFromU8(files[path]) : "");
   // Fonts may be obfuscated by the EPUB standard itself; anything else encrypted is copy protection, which TBV never removes.
@@ -628,6 +632,32 @@ function fromEpub(bytes: Uint8Array, fallback: string): ImportedDocument {
   for (const { doc } of docs) {
     const body = doc.body;
     if (!body) continue;
+    if (restoring) {
+      const spine = doc.createElement("div");
+      const sections = [...body.children].filter((el) => el.localName === "section" && el.hasAttribute("epub:type"));
+      // Scribe can put several pages into a single EPUB spine item.
+      const pages = sections.length && [...body.childNodes].every((node) =>
+        node.nodeType === Node.COMMENT_NODE || (node.nodeType === Node.TEXT_NODE ? !node.textContent?.trim() : sections.includes(node as Element)))
+        ? sections : [body];
+      for (const section of pages) {
+        const own = [...section.classList].find((name) => name.startsWith("page-"))?.slice(5).replace(/-/g, "_");
+        const semantic = section.getAttribute("epub:type") ?? section.querySelector("section, div")?.getAttribute("epub:type") ?? "";
+        if (semantic.split(/\s+/).includes("cover")) continue;
+        if (!section.textContent?.trim() && !section.querySelector("img")) continue;
+        const area = [...section.classList].filter((name) => /^(frontmatter|backmatter)$/.test(name)).join(" ");
+        const heading = section.querySelector(":scope > h1, :scope > header > h1");
+        const marker = doc.createElement("h1");
+        marker.setAttribute("data-spine-start", "");
+        marker.setAttribute("data-kind", [own ? "scribe:" + own : "", semantic, area].join(" ").trim());
+        if (heading) {
+          marker.textContent = heading.textContent;
+          heading.remove();
+        }
+        spine.append(marker, ...section.childNodes);
+      }
+      html += spine.innerHTML;
+      continue;
+    }
     const words = (body.textContent ?? "").trim().split(/\s+/).filter(Boolean).length;
     if (words < 3 && !body.querySelector("img")) continue;
     // What the book says this file is (dedication, copyright-page, bodymatter…), kept for sorting it into Front, Body or Back.
@@ -722,7 +752,7 @@ function tidy(root: Element) {
           (tag === "A" && attr.name === "href") ||
           (tag === "IMG" && (attr.name === "src" || attr.name === "alt")) ||
           (tag === "SUP" && attr.name === "data-footnote") ||
-          (/^H[123]$/.test(tag) && attr.name === "data-kind");
+          (/^H[123]$/.test(tag) && (attr.name === "data-kind" || attr.name === "data-spine-start"));
         if (!allowed) child.removeAttribute(attr.name);
       }
       if (centred && tag === "P") child.setAttribute("style", "text-align: center");
@@ -794,7 +824,7 @@ export function splitChapters(html: string, at: SplitAt, bookTitle: string, keep
   if (at === "marks") separateMarks(doc.body);
   const level = doc.body.querySelector("h1") ? "H1" : "H2";
   const isBreak = (el: Element) =>
-    at === "marks" ? isMark(el) : at === "headings" ? el.tagName === level : at === "lines" ? el.tagName === "P" && CHAPTER_LINE.test(el.textContent ?? "") || el.tagName === level : false;
+    at === "spine" ? el.hasAttribute("data-spine-start") : at === "marks" ? isMark(el) : at === "headings" ? el.tagName === level : at === "lines" ? el.tagName === "P" && CHAPTER_LINE.test(el.textContent ?? "") || el.tagName === level : false;
   const out: { title: string; nodes: Node[]; hint?: string; mark?: string }[] = [{ title: "", nodes: [] }];
   for (const node of [...doc.body.childNodes]) {
     if (node.nodeType === Node.ELEMENT_NODE && isBreak(node as Element)) {

@@ -35,6 +35,7 @@ export interface ReaderSettings {
   lineHeight: number;
   width: ReadingWidth;
   flow: ReadingFlow;
+  keyboardScrollSpeed: number;
   /** With `flow` "paginated": two pages side by side when there's room. */
   textSpread: TextSpread;
   theme: ReadingTheme;
@@ -57,6 +58,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   lineHeight: 1.6,
   width: "medium",
   flow: "paginated",
+  keyboardScrollSpeed: 420,
   textSpread: "one",
   theme: "auto",
   justify: false,
@@ -116,6 +118,8 @@ export function parseSettings(json: string | null): ReaderSettings {
     lineHeight: typeof raw.lineHeight === "number" ? clamp(raw.lineHeight, 1.2, 2.2) : d.lineHeight,
     width: oneOf(raw.width, ["narrow", "medium", "wide"], d.width),
     flow: oneOf(raw.flow, ["paginated", "scrolled"], d.flow),
+    keyboardScrollSpeed: typeof raw.keyboardScrollSpeed === "number" && Number.isFinite(raw.keyboardScrollSpeed)
+      ? Math.max(120, Math.min(1_200, raw.keyboardScrollSpeed)) : d.keyboardScrollSpeed,
     textSpread: oneOf(raw.textSpread, ["one", "auto"], d.textSpread),
     theme: oneOf(raw.theme, ["auto", "light", "paper", "dark"], d.theme),
     justify: typeof raw.justify === "boolean" ? raw.justify : d.justify,
