@@ -542,7 +542,10 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
         drawerOpen={narrow && menuOpen}
         onCloseDrawer={() => setMenuOpen(false)}
         onNavigate={navigate}
-        onSplit={onSplit}
+        onSplit={onSplit && ((target) => {
+          setMenuOpen(false);
+          onSplit(target);
+        })}
         onToggle={toggleSidebar}
         preview={api.kind === "preview"}
         imports={
