@@ -1,0 +1,95 @@
+import { useEffect, useRef, useState } from "react";
+import { App } from "../App";
+import { SplitDivider } from "../browse/SplitDivider";
+import { api, isAndroid, isHome, isIOS, isWeb } from "../api";
+import { runBeforeQuit } from "../lib/beforeQuit";
+import { navFor, type Route } from "./routes";
+import { workspaceFrame, workspaceHost } from "./workspaceFrame";
+
+const routes = [...navFor({ web: isWeb, home: isHome, android: isAndroid }).map(({ route }) => route), "imports", "lining"];
+const canSplit = !isHome && !isWeb && !isAndroid && (api.kind === "app" || api.kind === "preview");
+const narrowSplit = "(max-width: 760px), (max-aspect-ratio: 1/1) and (pointer: coarse)";
+
+function requestedRoute() {
+  const route = new URLSearchParams(location.search).get("workspace");
+  return routes.find((entry) => entry === route) as Route | undefined;
+}
+
+export function Workspace() {
+  const [route, setRoute] = useState<Route | null>(null);
+  const [ratio, setRatio] = useState(50);
+  const [stacked, setStacked] = useState(() => matchMedia(narrowSplit).matches);
+  const [primaryRoute, setPrimaryRoute] = useState<Route>();
+  const [secondaryRoute, setSecondaryRoute] = useState<Route>();
+  const frame = useRef<HTMLIFrameElement>(null);
+  const primary = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (workspaceFrame) return;
+    const query = matchMedia(narrowSplit);
+    const change = () => setStacked(query.matches);
+    query.addEventListener("change", change);
+    return () => query.removeEventListener("change", change);
+  }, []);
+
+  useEffect(() => {
+    if (workspaceFrame) {
+      const host = workspaceHost.tbvWorkspace;
+      if (host) host.flush = () => runBeforeQuit();
+      return () => { if (host) delete host.flush; };
+    }
+    const host = { open: (next: string) => {
+      const found = routes.find((entry) => entry === next) as Route | undefined;
+      if (found) setPrimaryRoute(found);
+    } };
+    workspaceHost.tbvWorkspace = host;
+    return () => { delete workspaceHost.tbvWorkspace; };
+  }, []);
+
+  useEffect(() => {
+    if (!secondaryRoute || !frame.current?.contentWindow) return;
+    const target = frame.current.contentWindow;
+    target.dispatchEvent(new CustomEvent("tbv:workspace-navigate", { detail: secondaryRoute }));
+    setSecondaryRoute(undefined);
+  }, [secondaryRoute]);
+
+  useEffect(() => {
+    if (workspaceFrame || !route) return;
+    const watcher = new MutationObserver(() => window.dispatchEvent(new Event("tbv:workspace-layout")));
+    watcher.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    return () => watcher.disconnect();
+  }, [route]);
+
+  if (workspaceFrame) return <App initialRoute={requestedRoute()} onSplit={(next) => workspaceHost.tbvWorkspace?.open(next)} />;
+
+  const open = (next: Route) => {
+    if (!route) setRoute(next);
+    else setSecondaryRoute(next);
+  };
+  const close = async () => {
+    await workspaceHost.tbvWorkspace?.flush?.();
+    workspaceHost.tbvWorkspace?.dispose?.();
+    setRoute(null);
+    primary.current?.focus();
+  };
+
+  return (
+    <div className={`tbv-workspaces${route ? " is-split" : ""}${stacked ? " is-stacked" : ""}`}
+      style={route ? { [stacked ? "gridTemplateRows" : "gridTemplateColumns"]: `minmax(0, ${ratio}fr) 12px minmax(0, ${100 - ratio}fr)` } : undefined}>
+      <div ref={primary} tabIndex={-1} className="tbv-workspace-primary" aria-label="Primary TBV pane">
+        <App onSplit={canSplit ? open : undefined} workspaceSplit={!!route} requestedRoute={primaryRoute}
+          onRouteHandled={() => setPrimaryRoute(undefined)} />
+      </div>
+      {route && <>
+        <SplitDivider value={ratio} onChange={setRatio} label="Resize TBV panes" minimum={isIOS || stacked ? 150 : 260} horizontal={stacked} />
+        <div className="tbv-workspace-secondary">
+          <div className="tbv-workspace-bar">
+            <button type="button" className="btn btn-quiet" onClick={() => void close()}>Close split</button>
+          </div>
+          <iframe ref={frame} data-tbv-workspace="secondary" title="Secondary TBV pane"
+            src={`${location.pathname}?workspace=${encodeURIComponent(route)}`} />
+        </div>
+      </>}
+    </div>
+  );
+}

@@ -1,4 +1,5 @@
 import emblem from "../assets/emblem.svg?raw";
+import { holdForMenu } from "../components/ContextMenu";
 import { Icon } from "../components/Icon";
 import { navFor, navRouteOf, type Route } from "./routes";
 import { isAndroid, isHome, isWeb } from "../api";
@@ -15,6 +16,7 @@ export function Sidebar({
   drawerOpen = false,
   onCloseDrawer,
   onNavigate,
+  onSplit,
   onToggle,
   preview,
   imports,
@@ -27,10 +29,14 @@ export function Sidebar({
   drawerOpen?: boolean;
   onCloseDrawer?: () => void;
   onNavigate: (route: Route) => void;
+  onSplit?: (route: Route) => void;
   onToggle: () => void;
   preview: boolean;
 }) {
   const active = navRouteOf(route);
+  const split = (target: Route, name: string) => onSplit && holdForMenu(name, () => [
+    { label: "Split screen", icon: "layers", onSelect: () => onSplit(target) },
+  ]);
   // A book and its audiobook being lined up word by word, in the background.
   const [lining, setLining] = useState<LiningUp | null>(liningUpNow());
   useEffect(() => onLiningUp(setLining), []);
@@ -97,6 +103,7 @@ export function Sidebar({
                   type="button"
                   className={`nav-item${active === item.route ? " is-active" : ""}`}
                   aria-current={active === item.route ? "page" : undefined}
+                  {...split(item.route, item.label)}
                   onClick={() => onNavigate(item.route)}
                   title={collapsed ? `${item.label} (Ctrl+${i + 1})` : undefined}
                 >
@@ -114,6 +121,7 @@ export function Sidebar({
                   type="button"
                   className={`nav-item nav-imports${active === "imports" ? " is-active" : ""}`}
                   aria-current={active === "imports" ? "page" : undefined}
+                  {...split("imports", "Imports")}
                   onClick={() => onNavigate("imports")}
                   title={collapsed ? `Imports: ${imports.done} of ${imports.total}` : undefined}
                 >
@@ -133,6 +141,7 @@ export function Sidebar({
                 <button
                   type="button"
                   className="nav-item nav-imports nav-lining"
+                  {...split("lining", "Converging")}
                   onClick={() => onNavigate("lining")}
                   title={`${lining.title || "A book"} is converging with its audiobook: ${liningPercent}%`}
                 >

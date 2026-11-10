@@ -1,3 +1,5 @@
+import { workspaceFrame } from "../shell/workspaceFrame";
+
 // Discover's tabs: what each shows, which is in front, kept on this device
 // so they come back next time.
 
@@ -16,7 +18,7 @@ export interface TabsState {
   active: string;
 }
 
-const KEY = "tbv.browser.tabs";
+const KEY = workspaceFrame ? "tbv.browser.tabs.secondary" : "tbv.browser.tabs";
 /** Where the one page was kept before there were tabs. */
 const LAST_KEY = "tbv.browser.last";
 /** Enough for anyone; the oldest go first past this. */
@@ -45,7 +47,7 @@ export function readTabs(home: string): TabsState {
   }
   let last: string | null = null;
   try {
-    last = localStorage.getItem(LAST_KEY);
+    last = workspaceFrame ? null : localStorage.getItem(LAST_KEY);
   } catch {
     // Home, then.
   }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, isAndroid, isApp, isHome, isIOS, isWeb } from "./api";
+import { api, isAndroid, isApp, isHome, isWeb } from "./api";
 import type { CollectionRef, HomeViewModel, ImportsView, KindleImport, Profile, SmartKind, SyncStatus } from "./api/types";
 import { isKindleList, KINDLE_CHANGED, KindleReviewDialog } from "./imports/KindleReview";
 import { AddToCollectionHost } from "./collections/AddToCollection";
@@ -14,7 +14,7 @@ import { Collections } from "./collections/Collections";
 import { Writing } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
 import { UpNextReplacementHost } from "./library/UpNextReplacement";
-import { SplitDivider } from "./browse/SplitDivider";
+import { workspaceFrame } from "./shell/workspaceFrame";
 import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory } from "./browse/Browser";
 import { AddressSuggestions } from "./browse/AddressSuggestions";
 import { readBrowserPrefs, shortAddress } from "./browse/browserPrefs";
@@ -68,24 +68,18 @@ function readCollapsed(): boolean {
   }
 }
 
-export function App() {
-  const [route, setRoute] = useState<Route>("home");
+export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onSplit, workspaceSplit = false }: {
+  initialRoute?: Route;
+  requestedRoute?: Route;
+  onRouteHandled?: () => void;
+  onSplit?: (route: Route) => void;
+  workspaceSplit?: boolean;
+} = {}) {
+  const [route, setRoute] = useState<Route>(initialRoute);
   const [collapsedWide, setCollapsed] = useState(readCollapsed);
   // On a phone the sidebar is a menu opened from the header, always with names.
   const narrow = useNarrow();
-  const [discoverSplit, setDiscoverSplit] = useState(false);
-  const [splitRatio, setSplitRatio] = useState(55);
-  const [splitWidth, setSplitWidth] = useState(() => window.innerWidth >= 760);
-  useEffect(() => {
-    const size = window.matchMedia("(min-width: 760px)");
-    const update = () => setSplitWidth(size.matches);
-    size.addEventListener("change", update);
-    update();
-    return () => size.removeEventListener("change", update);
-  }, []);
-  const tablet = isIOS && (/iPad/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
-  const splitAllowed = splitWidth && !isAndroid && (!isIOS || tablet) && !isWeb && !isHome;
-  const collapsed = collapsedWide && !narrow;
+  const collapsed = (collapsedWide || workspaceSplit) && !narrow;
   const [menuOpen, setMenuOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [sync, setSync] = useState<SyncStatus | null>(null);
@@ -127,9 +121,9 @@ export function App() {
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
   const activeDownloads = useDownloads().filter(isActiveDownload).length;
-  useEffect(() => listenForDownloads(toast), [toast]);
+  useEffect(() => workspaceFrame ? undefined : listenForDownloads(toast), [toast]);
   const { refreshAdaptive, togglePrivacy } = useAppSettings();
-  useStartupUpdateCheck();
+  useStartupUpdateCheck(!workspaceFrame);
 
   const navigate = useCallback((r: Route) => {
     setMenuOpen(false);
@@ -247,7 +241,7 @@ export function App() {
 
   // Chosen in Preferences › Discover: every site's cookies and data go each time TBV starts.
   useEffect(() => {
-    if (api.kind === "app" && readBrowserPrefs().clearOnStart) void api.browserClear().catch(() => undefined);
+    if (!workspaceFrame && api.kind === "app" && readBrowserPrefs().clearOnStart) void api.browserClear().catch(() => undefined);
   }, []);
 
   // Discover's history comes from the library, and again when sync brings some from another device.
@@ -354,12 +348,12 @@ export function App() {
 
   // Lining up paired books and audiobooks word by word, in the background.
   useEffect(() => {
-    if (isApp) startLiningUp();
+    if (isApp && !workspaceFrame) startLiningUp();
   }, []);
 
   // Dropping files or folders anywhere on the window imports them.
   useEffect(() => {
-    if (!isApp) return;
+    if (!isApp || workspaceFrame) return;
     let unlisten: (() => void) | undefined;
     void import("@tauri-apps/api/webview").then(async ({ getCurrentWebview }) => {
       unlisten = await getCurrentWebview().onDragDropEvent(({ payload }) => {
@@ -395,9 +389,21 @@ export function App() {
   const showingSeries = seriesPlace?.route === route ? seriesPlace : null;
   const searchingKindle = route === "collections" && kindleOpen && !openCollection;
   useEffect(() => { if (route !== "collections") setKindleOpen(false); }, [route]);
-  const splitCompanion = splitAllowed && discoverSplit && route !== "catalogs" &&
-    ["library", "documents", "audiobooks", "writing", "notes", "collections", "book"].includes(route);
-  const showDiscover = route === "catalogs" || splitCompanion;
+  useEffect(() => {
+    if (!requestedRoute) return;
+    setReading(null);
+    navigate(requestedRoute);
+    onRouteHandled?.();
+  }, [requestedRoute, onRouteHandled, navigate]);
+  useEffect(() => {
+    const open = (event: Event) => {
+      setReading(null);
+      navigate((event as CustomEvent<Route>).detail);
+    };
+    if (!workspaceFrame) return;
+    window.addEventListener("tbv:workspace-navigate", open);
+    return () => window.removeEventListener("tbv:workspace-navigate", open);
+  }, [navigate]);
   const seriesView = (base: LibraryView): LibraryView => showingSeries
     ? { ...base, ...NO_FILTERS, tab: "all", series: [showingSeries.name], sort: "series", seriesGrouping: "individual", page: seriesPage }
     : base;
@@ -416,9 +422,7 @@ export function App() {
       if (e.key === "\\") toggleSidebar();
       else if (e.key.toLowerCase() === "o" && !e.shiftKey) importBooks();
       else if (e.key.toLowerCase() === "f" || e.key.toLowerCase() === "k") {
-        const browser = splitCompanion && document.activeElement?.closest(".discover-workspace-pane");
-        if (browser) document.getElementById("discover-split-search")?.focus();
-        else search.current?.focus();
+        search.current?.focus();
       }
       else if (n >= 1 && n <= navFor({ web: isWeb, home: isHome, android: isAndroid }).length) navigate(navFor({ web: isWeb, home: isHome, android: isAndroid })[n - 1].route);
       else return;
@@ -426,7 +430,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleSidebar, importBooks, reading, navigate, togglePrivacy, splitCompanion]);
+  }, [toggleSidebar, importBooks, reading, navigate, togglePrivacy]);
 
   const onHomeLoaded = useCallback((home: HomeViewModel) => setSync(home.sync), []);
   const openBook = useCallback((bookId: string, at?: string, fileId?: string) => setReading({ bookId, at, fileId }), []);
@@ -538,6 +542,7 @@ export function App() {
         drawerOpen={narrow && menuOpen}
         onCloseDrawer={() => setMenuOpen(false)}
         onNavigate={navigate}
+        onSplit={onSplit}
         onToggle={toggleSidebar}
         preview={api.kind === "preview"}
         imports={
@@ -618,8 +623,7 @@ export function App() {
           onOpenActivity={shell.onOpenActivity}
           onOpenPlaces={shell.onOpenPlaces}
         />
-        <div className={`workspace-content${splitCompanion ? " is-split" : ""}`}
-          style={splitCompanion ? { gridTemplateColumns: `minmax(min(300px, 40%), ${splitRatio}fr) 12px minmax(min(300px, 40%), ${100 - splitRatio}fr)` } : undefined}>
+        <div className="workspace-content">
         {route !== "catalogs" && <main className="content">
           {route === "home" ? (
             <Home
@@ -758,14 +762,12 @@ export function App() {
             />
           )}
         </main>}
-        {splitCompanion && <SplitDivider value={splitRatio} onChange={setSplitRatio} label="Resize Discover and app panes" minimum={306} />}
-        {showDiscover && <main className="content discover-workspace-pane" key="discover-workspace">
+        {route === "catalogs" && <main className="content discover-workspace-pane" key="discover-workspace">
           <Browse refreshKey={refreshKey} onOpenBook={openBook} catalogues={catalogues}
             onOpenCatalogues={() => setCatalogues(true)} onCloseCatalogues={() => setCatalogues(false)}
-            search={browserDraft} onSearchChange={setBrowserDraft} address={browserAddress}
-            allowSplit={splitAllowed} companion={splitCompanion}
-            onSplitWith={(section) => { setDiscoverSplit(true); navigate(section); }}
-            onCloseSplit={() => setDiscoverSplit(false)} />
+            search={browserDraft} onSearchChange={setBrowserDraft}
+            allowTabSplit={!workspaceSplit && !workspaceFrame}
+            onSplitWith={onSplit} />
         </main>}
         </div>
       </div>

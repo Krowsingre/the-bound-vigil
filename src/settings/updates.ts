@@ -24,10 +24,10 @@ const LOOK_WAIT = 3000;
 
 /** When TBV opens (if the settings allow): installs a newer version straight
  * away with the splash still up, or says that one is ready. */
-export function useStartupUpdateCheck() {
+export function useStartupUpdateCheck(enabled = true) {
   const toast = useToast();
   useEffect(() => {
-    if (!canSelfUpdate) return;
+    if (!enabled || !canSelfUpdate) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const say = (info: UpdateInfo | null) =>
       info?.version && toast(`The Bound Vigil ${info.version} is ready. Install it in Preferences › About.`);
@@ -60,7 +60,7 @@ export function useStartupUpdateCheck() {
       timer = setTimeout(() => void api.checkForUpdate().then(say, () => undefined), 8000);
     });
     return () => clearTimeout(timer);
-  }, [toast]);
+  }, [enabled, toast]);
 }
 
 export type UpdateState =

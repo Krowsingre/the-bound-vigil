@@ -1,3 +1,4 @@
+import { workspaceFrame } from "../shell/workspaceFrame";
 // Opening TBV in one go: the splash stays up while the first screen gets
 // ready, its bar filling as each step finishes, then gives way to a
 // finished page. On a computer the splash is a card in its own window and
@@ -19,7 +20,7 @@ const AT_LEAST = 1_100;
 /** How long covers on the first screen are waited for. */
 const COVERS_WAIT = 2_500;
 
-const onComputer = isApp && !isIOS && !isAndroid;
+const onComputer = !workspaceFrame && isApp && !isIOS && !isAndroid;
 const openedAt = performance.now();
 const done = new Set<StartupStep>();
 let holds = 0;
@@ -51,7 +52,7 @@ if (onComputer) {
 }
 
 /** Over the page on the iPhone (and in the preview), nowhere on the web. */
-const overlay = !onComputer && (isIOS || isAndroid || api.kind === "preview") ? showSplash() : null;
+const overlay = !workspaceFrame && !onComputer && (isIOS || isAndroid || api.kind === "preview") ? showSplash() : null;
 if (!onComputer && !overlay) document.documentElement.classList.remove("is-starting");
 const giveUp = setTimeout(() => {
   overdue = true;

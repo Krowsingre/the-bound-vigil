@@ -5,6 +5,7 @@
 import { useSyncExternalStore } from "react";
 import { api } from "../api";
 import type { BrowserEvent } from "../api/types";
+import { workspaceFrame, workspaceHost } from "../shell/workspaceFrame";
 import { readBrowserPrefs } from "./browserPrefs";
 
 export const BOOK_FILE = /\.(epub|kepub|pdf|mobi|azw3?|fb2|cbz|cbr|djvu|txt|docx?|rtf|m4b|mp3|m4a)(\?|#|$)/i;
@@ -60,14 +61,20 @@ export function writeDownloads(list: Fetched[]): void {
 
 export const isActiveDownload = (d: Fetched) => d.state === "coming" || d.state === "checking" || d.state === "importing";
 
-let downloads: Fetched[] | undefined;
-const listeners = new Set<() => void>();
-const answering = new Set<string>();
+interface DownloadStore {
+  downloads?: Fetched[];
+  listeners: Set<() => void>;
+  answering: Set<string>;
+}
+const host = workspaceHost as Window & { tbvDownloadStore?: DownloadStore };
+const store = (workspaceFrame ? host.tbvDownloadStore : undefined) ?? { listeners: new Set(), answering: new Set() } as DownloadStore;
+if (!workspaceFrame) host.tbvDownloadStore = store;
+const { listeners, answering } = store;
 
 // Switching screens
 // leaves this store and its native event subscription in place.
 function snapshot(): Fetched[] {
-  return downloads ??= readDownloads().map((d) => {
+  return store.downloads ??= readDownloads().map((d) => {
     if (d.state === "checking") return { ...d, state: "done", asking: !!d.path };
     if (d.state === "importing") return { ...d, state: "importFailed", asking: !!d.path, error: "The app closed during import." };
     return d;
@@ -85,9 +92,9 @@ export function useDownloads() {
 
 export function setDownloads(update: (rows: Fetched[]) => Fetched[]) {
   const next = update(snapshot());
-  downloads = [...next.filter((d) => isActiveDownload(d) || d.asking), ...next.filter((d) => !isActiveDownload(d) && !d.asking).slice(0, MOST_DOWNLOADS)]
+  store.downloads = [...next.filter((d) => isActiveDownload(d) || d.asking), ...next.filter((d) => !isActiveDownload(d) && !d.asking).slice(0, MOST_DOWNLOADS)]
     .sort((a, b) => b.at - a.at);
-  writeDownloads(downloads);
+  writeDownloads(store.downloads);
   listeners.forEach((listener) => listener());
 }
 

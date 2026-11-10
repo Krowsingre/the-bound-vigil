@@ -1,3 +1,5 @@
+import { workspaceHost } from "../shell/workspaceFrame";
+import { placeWorkspaceBrowser, workspaceOffset } from "./workspaceBrowser";
 // Discover: a web browser inside TBV. Each tab's page shows in a view of its
 // own laid over the space below the tab row (see src-tauri/src/browser.rs);
 // this draws the tabs, the Downloads list and reader mode, and keeps the
@@ -306,7 +308,7 @@ export function Browser({
   onSearchChange: (text: string) => void;
   allowSplit: boolean;
   companion: boolean;
-  onSplitWith: (route: Route) => void;
+  onSplitWith?: (route: Route) => void;
 }) {
   const narrow = useNarrow();
   const [tabs, setTabs] = useState<TabsState>(startingTabs);
@@ -410,7 +412,8 @@ export function Browser({
 
   const frame = (element = area.current): BrowserFrame | null => {
     const r = element?.getBoundingClientRect();
-    return r && r.width > 0 && r.height > 0 ? { x: r.left, y: r.top, width: r.width, height: r.height } : null;
+    const offset = workspaceOffset();
+    return r && r.width > 0 && r.height > 0 ? { x: r.left + offset.x, y: r.top + offset.y, width: r.width, height: r.height } : null;
   };
 
   const prepareTab = useCallback((id: string, url: string, privately: boolean, at = frame()) => {
@@ -466,6 +469,8 @@ export function Browser({
   // What the tabs did.
   useEffect(() => {
     const heard = (ev: BrowserEvent) => {
+      const owner = ev.kind === "newTab" ? ev.from : "tab" in ev ? ev.tab : null;
+      if (!owner || !tabsRef.current.tabs.some((tab) => tab.id === owner)) return;
       switch (ev.kind) {
         case "page": {
           setLoading((l) => ({ ...l, [ev.tab]: ev.loading }));
@@ -555,7 +560,7 @@ export function Browser({
     let placed = "";
     const stopAsks = onBrowserAsk((ask) => heardAsk.current(ask));
     const visible = (): BrowserPane[] => {
-      if (covered()) return [];
+      if (covered() || workspaceOffset().resizing) return [];
       const state = tabsRef.current;
       const front = state.tabs.find((tab) => tab.id === state.active);
       const panes: BrowserPane[] = [];
@@ -579,7 +584,7 @@ export function Browser({
         if (key === placed) return;
         const needed = panes.filter((pane) => !made.current.has(pane.tab));
         if (needed.length) {
-          await api.browserLayout(panes.filter((pane) => made.current.has(pane.tab)), id);
+          await placeWorkspaceBrowser(panes.filter((pane) => made.current.has(pane.tab)), id);
           await Promise.all(needed.map((pane) => {
             const tab = tabsRef.current.tabs.find((item) => item.id === pane.tab);
             return tab && prepareTab(tab.id, tab.url, !!tab.private, pane.frame);
@@ -589,12 +594,12 @@ export function Browser({
         const current = visible().filter((pane) => made.current.has(pane.tab));
         const activeTab = tabsRef.current.active;
         placed = JSON.stringify([activeTab, current]);
-        await api.browserLayout(current, activeTab);
+        await placeWorkspaceBrowser(current, activeTab);
       } catch (error) {
         if (live) setProblem(clean(error));
       } finally {
         running = false;
-        if (!live) void api.browserHide().catch(() => undefined);
+        if (!live) void placeWorkspaceBrowser([], "").catch(() => undefined);
         else if (pending) { pending = false; schedule(); }
       }
     };
@@ -605,8 +610,10 @@ export function Browser({
     refit.current = schedule;
     const resized = new ResizeObserver(schedule);
     if (area.current) resized.observe(area.current);
+    if (document.documentElement.classList.contains("tbv-workspace-frame") && window.frameElement) resized.observe(window.frameElement);
     const watching = new MutationObserver(schedule);
     watching.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["open", "class"] });
+    workspaceHost.addEventListener("tbv:workspace-layout", schedule);
     window.addEventListener("resize", schedule);
     window.addEventListener("scroll", schedule, true);
     window.visualViewport?.addEventListener("resize", schedule);
@@ -618,10 +625,11 @@ export function Browser({
       cancelAnimationFrame(frameRequest);
       resized.disconnect();
       watching.disconnect();
+      workspaceHost.removeEventListener("tbv:workspace-layout", schedule);
       window.removeEventListener("resize", schedule);
       window.removeEventListener("scroll", schedule, true);
       window.visualViewport?.removeEventListener("resize", schedule);
-      void api.browserHide().catch(() => undefined);
+      void placeWorkspaceBrowser([], "").catch(() => undefined);
       if (readBrowserPrefs().comeBack === "leave") {
         for (const id of made.current) void api.browserAct(id, "close").catch(() => undefined);
         made.current.clear();
@@ -1081,13 +1089,13 @@ export function Browser({
 
   const splitItems: MenuEntry[] = [
     ...(other ? [{ label: "Close tab split", onSelect: () => setPair(null) }] : []),
-    ...tabs.tabs.filter((tab) => tab.id !== tabs.active).map((tab) => ({
+    ...tabs.tabs.filter((tab) => allowSplit && tab.id !== tabs.active).map((tab) => ({
       label: `Beside ${titleOf(tab.title, tab.url, tab.private)}`, onSelect: () => splitWithTab(tab.id),
     })),
     "divider",
-    ...([{ label: "Archive", route: "library" }, { label: "Resonance", route: "audiobooks" },
-      { label: "Scribe", route: "writing" }, { label: "Compendium", route: "collections" }] as const)
-      .map(({ label, route }) => ({ label: `Beside ${label}`, onSelect: () => { setPair(null); onSplitWith(route); } })),
+    ...(onSplitWith ? ([{ label: "Sanctum", route: "home" }, { label: "Archive", route: "library" }, { label: "Resonance", route: "audiobooks" },
+      { label: "Scribe", route: "writing" }, { label: "Compendium", route: "collections" }, { label: "Preferences", route: "settings" }] as const)
+      .map(({ label, route }) => ({ label: `Beside ${label}`, onSelect: () => { setPair(null); onSplitWith(route); } })) : []),
   ];
 
   const button = (label: string, icon: Parameters<typeof Icon>[0]["name"], onClick: () => void, extra = "", more: React.ButtonHTMLAttributes<HTMLButtonElement> = {}) => (
@@ -1117,7 +1125,7 @@ export function Browser({
 
   return (
     <div className="browser">
-      {allowSplit && !companion && <div className="browser-split-tools">
+      {(allowSplit || onSplitWith) && !companion && <div className="browser-split-tools">
         <Menu label="Split screen" className="toolbar-button" trigger={<><Icon name="layers" size={16} /> Split screen</>} items={splitItems} />
       </div>}
       {!narrow && (
