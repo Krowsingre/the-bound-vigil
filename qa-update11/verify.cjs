@@ -61,6 +61,7 @@ async function main() {
     assert.equal(await selected.textContent(),"Fixture tab 100");
     assert.equal(await tabList.getByRole("tab").nth(99).textContent(),"Fixture tab 100");
     const frameBefore = await page.locator(".browser-view").boundingBox();
+    if (!(await popup.isVisible())) await page.getByRole("button",{name:"Every tab",exact:true}).click();
     await popup.getByRole("menuitem",{name:"Close Fixture tab 99",exact:true}).click();
     await popup.waitFor();
     assert.equal(await selected.textContent(),"Fixture tab 100");

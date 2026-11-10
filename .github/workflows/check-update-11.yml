@@ -1,7 +1,7 @@
 name: Verify Update 11
 on:
   push:
-    branches: [codex/check-update-11]
+    branches: [codex/test-update-11]
 permissions:
   contents: read
 jobs:
