@@ -1,5 +1,29 @@
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,System.Windows.Forms
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class PickerProbe {
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+  [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr hwnd, int id);
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wparam, IntPtr lparam);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+}
+"@
+function Wait-Picker($title){
+  $until=(Get-Date).AddSeconds(15)
+  do{
+    $handle=[PickerProbe]::FindWindow('#32770',$title)
+    if($handle){return $handle}
+    Start-Sleep -Milliseconds 200
+  }while((Get-Date) -lt $until)
+  throw "Picker did not appear: $title"
+}
+function Confirm-Picker($handle){
+  $ok=[PickerProbe]::GetDlgItem($handle,1)
+  if($ok){[PickerProbe]::PostMessage($ok,0x00F5,[IntPtr]::Zero,[IntPtr]::Zero) | Out-Null}
+  else{[PickerProbe]::PostMessage($handle,0x0111,[IntPtr]1,[IntPtr]::Zero) | Out-Null}
+}
 $root=[Windows.Automation.AutomationElement]::RootElement
 $scope=[Windows.Automation.TreeScope]::Descendants
 $any=[Windows.Automation.Condition]::TrueCondition
@@ -67,10 +91,12 @@ try{
     Invoke-Ui (Wait-Ui '^Export$' 'Button')
     Invoke-Ui (Wait-Ui '^Print PDF.*')
     Invoke-Ui (Wait-Ui '^Export$' 'Button')
-    Start-Sleep -Milliseconds 950
+    $picker=Wait-Picker 'Save the PDF'
+    [PickerProbe]::SetForegroundWindow($picker) | Out-Null
     $pdf=Join-Path $out 'Native Print.pdf'
     [Windows.Forms.Clipboard]::SetText($pdf)
-    [Windows.Forms.SendKeys]::SendWait('%n^a^v{ENTER}')
+    [Windows.Forms.SendKeys]::SendWait('%n^a^v')
+    Confirm-Picker $picker
     $deadline=(Get-Date).AddSeconds(50)
     while(!(Test-Path $pdf) -and (Get-Date) -lt $deadline){Start-Sleep -Milliseconds 300}
     if(!(Test-Path $pdf)){throw 'Native PDF was not created'}
@@ -107,11 +133,11 @@ try{
   Write-Host 'PASS Installed Windows Reader opened and closed the expanded figure and used Zoom in'
   Invoke-Ui (Wait-Ui '^More$' 'Button')
   Invoke-Ui (Wait-Ui '^Save a copy \(EPUB\)$')
-  Start-Sleep -Milliseconds 700
+  $picker=Wait-Picker 'Save copies to this folder'
+  [PickerProbe]::SetForegroundWindow($picker) | Out-Null
   [Windows.Forms.Clipboard]::SetText($out)
-  [Windows.Forms.SendKeys]::SendWait('%d^a^v{ENTER}')
-  Start-Sleep -Milliseconds 400
-  [Windows.Forms.SendKeys]::SendWait('{ENTER}')
+  [Windows.Forms.SendKeys]::SendWait('%n^a^v')
+  Confirm-Picker $picker
   $deadline=(Get-Date).AddSeconds(20)
   do{
     $copy=Get-ChildItem $out -Filter '*.epub' | Select-Object -First 1
