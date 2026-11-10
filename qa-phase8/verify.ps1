@@ -43,6 +43,12 @@ function Activate($element) {
   $element.SetFocus()
   $shell.SendKeys('{ENTER}')
 }
+function GoTo($path) {
+  $null=$shell.AppActivate($app.Id)
+  $shell.SendKeys('^k')
+  $shell.SendKeys('http://127.0.0.1:19421/'+$path)
+  $shell.SendKeys('{ENTER}')
+}
 function SaveEvidence {
   try {
     $window=AppWindow
@@ -86,6 +92,14 @@ try {
   } while((Get-Date) -lt $deadline)
   if($log -notmatch 'slow connection closed' -or $folders.Count){throw 'Cancellation did not close the connection and clear staging'}
   Write-Host 'Native Windows transfer stayed active across navigation, then cancellation closed the connection and removed staging'
+  $shell.SendKeys('{ESC}')
+  GoTo 'redirect'
+  $null=WaitElement '^Redirect reached$'
+  Write-Host 'Default redirect policy allowed the real HTTP redirect'
+  GoTo 'popup'
+  Activate (WaitElement '^Download now$')
+  $null=WaitElement '^Downloads, 1 in progress$'
+  Write-Host 'A real sized popup download reached the Discover indicator'
   SaveEvidence
 } catch {
   SaveEvidence
