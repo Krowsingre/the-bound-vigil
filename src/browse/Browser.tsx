@@ -1378,9 +1378,13 @@ export function Browser({
                       <button
                         type="button"
                         className="btn btn-quiet btn-small"
-                        onClick={() => {
+                        onClick={(event) => {
+                          const button = event.currentTarget;
                           void api.browserCancelDownload(d.id).then(
-                            () => setDownloads((list) => list.filter((x) => x.id !== d.id || x.state !== "coming")),
+                            () => {
+                              setDownloads((list) => list.filter((x) => x.id !== d.id || x.state !== "coming"));
+                              if (document.activeElement === button || document.activeElement === document.body) downloadClose.current?.focus({ preventScroll: true });
+                            },
                             (e: unknown) => toast(clean(e)),
                           );
                         }}
