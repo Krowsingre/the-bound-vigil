@@ -31,6 +31,8 @@ mod servers;
 #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
 mod shared;
 mod splash;
+#[cfg(windows)]
+mod windows_quit;
 mod sync;
 mod updates;
 mod writing;
@@ -620,6 +622,14 @@ fn supported_formats() -> Vec<&'static str> {
     SUPPORTED_FORMATS.to_vec()
 }
 
+#[cfg(windows)]
+#[tauri::command]
+async fn quit_app(app: tauri::AppHandle) -> CommandResult<()> {
+    windows_quit::finish(app);
+    Ok(())
+}
+
+#[cfg(not(windows))]
 /// Ends the whole app, not just the window. The close button uses this so
 /// nothing is left running in the background after the window goes away.
 /// A last sync gets a moment to finish first, if the user wants one.
@@ -2448,25 +2458,30 @@ pub fn run() {
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                let _ = window.emit("tbv://quit-requested", ());
-                let app = window.app_handle().clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_secs(2));
-                    for window in app.webview_windows().values() {
-                        let _ = window.hide();
-                    }
-                    let sends = app.try_state::<Arc<hardcover::Sends>>().map(|s| s.inner().clone());
-                    let ratings = std::thread::spawn(move || {
-                        if let Some(sends) = sends {
-                            sends.finish(Duration::from_secs(5));
+                #[cfg(windows)]
+                windows_quit::request(window);
+                #[cfg(not(windows))]
+                {
+                    let _ = window.emit("tbv://quit-requested", ());
+                    let app = window.app_handle().clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_secs(2));
+                        for window in app.webview_windows().values() {
+                            let _ = window.hide();
                         }
+                        let sends = app.try_state::<Arc<hardcover::Sends>>().map(|s| s.inner().clone());
+                        let ratings = std::thread::spawn(move || {
+                            if let Some(sends) = sends {
+                                sends.finish(Duration::from_secs(5));
+                            }
+                        });
+                        if let Some(worker) = app.try_state::<Arc<sync::SyncWorker>>() {
+                            worker.finish(Duration::from_secs(8));
+                        }
+                        let _ = ratings.join();
+                        app.exit(0);
                     });
-                    if let Some(worker) = app.try_state::<Arc<sync::SyncWorker>>() {
-                        worker.finish(Duration::from_secs(8));
-                    }
-                    let _ = ratings.join();
-                    app.exit(0);
-                });
+                }
             }
         })
         .build(tauri::generate_context!())
