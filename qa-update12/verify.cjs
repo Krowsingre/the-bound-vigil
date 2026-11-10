@@ -15,6 +15,15 @@ const {chromium}=require("playwright-core");
     await page.evaluate(async()=>{
       const {api}=await import("/src/api/index.ts");
       api.allTags=async()=>[{name:"Fantasy",count:3},{name:"Urban Fantasy",count:1}];
+      const home=api.getHome.bind(api);
+      api.getHome=async()=>{
+        const data=await home();
+        const sample=data.resumeBook;
+        return {...data,recentlyAdded:[
+          {...sample,id:"fixture1",title:"Fixture One",series:"Sherlock Holmes",seriesIndex:1},
+          {...sample,id:"fixture2",title:"Fixture Two",series:"Sherlock Holmes",seriesIndex:2},
+        ]};
+      };
       const original=api.bookDetails.bind(api);
       api.bookDetails=async id=>{const data=await original(id);return {...data,book:{...data.book,inCloud:true,availability:"local"}};};
       api.removeDownload=async id=>{window.removed=id;};
@@ -26,8 +35,8 @@ const {chromium}=require("playwright-core");
     assert.equal(await readSwitch.getByRole("radio",{name:"All",exact:true}).count(),0);
     await readSwitch.getByRole("radio",{name:"Dropped",exact:true}).click();
     console.log("PASS Read compendium only offers Read and Dropped");
-    await nav(page,"Archive").click();
-    await page.getByRole("button",{name:"Open series Sherlock Holmes",exact:true}).first().click();
+    await nav(page,"Sanctum").click();
+    await page.locator(".recent").getByRole("button",{name:"Open series Sherlock Holmes",exact:true}).click();
     await page.getByRole("button",{name:"Back to Archive",exact:true}).waitFor();
     await page.locator(".grid-open[title^='The Sign of the Four']").first().click();
     await page.getByRole("button",{name:"Back",exact:true}).waitFor();
@@ -59,7 +68,8 @@ const {chromium}=require("playwright-core");
     await page.waitForFunction(()=>!!window.removed);
     await page.getByRole("button",{name:"Back",exact:true}).click();
     await page.getByRole("button",{name:"Back to Archive",exact:true}).click();
-    await page.getByRole("button",{name:"Open series Sherlock Holmes",exact:true}).first().waitFor();
+    await page.getByRole("button",{name:"Back to Archive",exact:true}).waitFor({state:"detached"});
+    assert.equal(await page.getByRole("button",{name:"Back",exact:true}).count(),0);
     console.log("PASS matching tag options preserve typing; dropped prompts without deleting; Details and series Back reach Archive");
 
     await nav(page,"Sanctum").click();
