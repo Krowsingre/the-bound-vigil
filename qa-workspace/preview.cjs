@@ -4,7 +4,8 @@ const assert = require("node:assert/strict");
 (async () => {
   const browser = await chromium.launch({ headless: true });
   try {
-    for (const mobile of [false, true]) {
+    for (const width of [1536, 1024, 430]) {
+      const mobile = width === 430;
       const page = await browser.newPage(mobile ? { viewport: {width: 430, height: 932}, hasTouch: true, isMobile: true } : { viewport: {width: 1536, height: 1024} });
       const errors = [];
       page.on("pageerror", e => errors.push(e.message));
@@ -52,12 +53,18 @@ const assert = require("node:assert/strict");
       await secondary.getByRole("button",{name:"Next page",exact:true}).click();
       assert.equal(await page.locator(".reader-bottom-chapter").textContent(),chapter);
       assert.equal(await page.locator(".reader").count(),1);
+      if (width === 1024) {
+        assert.equal(await page.locator(".reader.is-compact").count(),1);
+        const pane = await page.locator(".tbv-workspace-primary").boundingBox();
+        const next = await page.getByRole("button", {name:"Next page",exact:true}).boundingBox();
+        assert(next.x+next.width <= pane.x+pane.width);
+      }
       assert.equal(await secondary.locator(".reader").count(),1);
       await page.getByRole("button", {name:"Close split", exact:true}).click();
       await page.locator('iframe[title="Secondary TBV pane"]').waitFor({state:"detached"});
       await page.locator('.reader-host[aria-busy="false"]').waitFor();
       assert.deepEqual(errors,[]);
-      console.log(mobile?"phone":"desktop", "Sanctum split, concurrent Readers, close keeps primary");
+      console.log(width, "Sanctum split, concurrent Readers, close keeps primary");
       await page.close();
     }
   } finally { await browser.close(); }
