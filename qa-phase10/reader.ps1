@@ -89,8 +89,7 @@ try{
   $book=Wait-Ui '^(?:Open |Read )?Scribe Fixture' 'Button'
   Invoke-Ui $book
   if(!(Find-Ui '^Next page$' 'Button')){
-    $read=Find-Ui '^(Read|Open book|Continue reading)( .*)?$' 'Button'
-    if($read){Invoke-Ui $read}
+    Invoke-Ui (Wait-Ui '^(Read|Open book|Continue reading)( .*)?$' 'Button' 10)
   }
   $expand=$null
   for($i=0;$i -lt 10;$i++){
