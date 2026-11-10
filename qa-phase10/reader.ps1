@@ -52,9 +52,9 @@ try{
   $null=Wait-Ui '^Close$' 'Button' 45
   $null=$shell.AppActivate($app.Id)
   $shell.SendKeys('^o')
-  $path=Wait-Ui '^File name:?$' 'Edit'
-  Enter-Path $path $source
-  Invoke-Ui (Wait-Ui '^Open$' 'Button')
+  $null=Wait-Ui '^Import books$' 'Window'
+  [Windows.Forms.Clipboard]::SetText($source)
+  [Windows.Forms.SendKeys]::SendWait('%n^a^v{ENTER}')
   Start-Sleep -Seconds 2
   $null=$shell.AppActivate($app.Id)
   $shell.SendKeys('^2')
@@ -80,9 +80,11 @@ try{
   Write-Host 'PASS Installed Windows Reader opened and closed the expanded figure and used Zoom in'
   Invoke-Ui (Wait-Ui '^More$' 'Button')
   Invoke-Ui (Wait-Ui '^Save a copy \(EPUB\)$')
-  $folder=Wait-Ui '^(Folder|Folder name):?$' 'Edit'
-  Enter-Path $folder $out
-  Invoke-Ui (Wait-Ui '^Select Folder$' 'Button')
+  Start-Sleep -Milliseconds 700
+  [Windows.Forms.Clipboard]::SetText($out)
+  [Windows.Forms.SendKeys]::SendWait('%d^a^v{ENTER}')
+  Start-Sleep -Milliseconds 400
+  [Windows.Forms.SendKeys]::SendWait('{ENTER}')
   $deadline=(Get-Date).AddSeconds(20)
   do{
     $copy=Get-ChildItem $out -Filter '*.epub' | Select-Object -First 1
