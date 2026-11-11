@@ -5,13 +5,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, isHome, isWeb } from "../api";
 import type { BookPreview, CollectionPreview, ItemKind, LibraryPage } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
-import { askEditDetails } from "../details/openDetails";
+import { askEditDetails, showBookDetails } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
 import { askSendWithLocalSend, canSendWithLocalSend } from "../localsend/SendWithLocalSend";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry, type MenuItem } from "../components/Menu";
-import { SeriesPanel } from "./SeriesPanel";
+import { FindMissingButton, SeriesPanel, useSeriesReview } from "./SeriesPanel";
 import { useToast } from "../components/Toast";
 import { makeBookActions, phoneChoiceShown } from "../home/bookActions";
 import { Spent, Stat } from "../home/ReadingActivity";
@@ -110,6 +110,8 @@ export function Library({
   const [selected, setSelected] = useState<Map<string, BookPreview> | null>(null);
   /** The book picked last, where a Shift-click range starts. */
   const lastPicked = useRef<string | null>(null);
+  /** The books of each series chosen as a stack, by series name. */
+  const [stackBooks, setStackBooks] = useState<Map<string, BookPreview[]>>(() => new Map());
   const [tagging, setTagging] = useState(false);
   const [asking, setAsking] = useState<"remove" | "delete" | "download" | null>(null);
   const [seriesRemoval, setSeriesRemoval] = useState<{ name: string; books: BookPreview[] } | null>(null);
@@ -204,7 +206,8 @@ export function Library({
 
   const shelf = view.tab === "collections" ? "all" : view.tab;
   const Layout = { grid: BookGrid, list: BookList, compact: BookTable }[view.layout];
-  const groupSeries = kind !== "documents" && view.seriesGrouping !== "individual" && !seriesBack && selected === null;
+  // Series stay stacked while choosing: a stack is chosen whole.
+  const groupSeries = kind !== "documents" && view.seriesGrouping !== "individual" && !seriesBack;
   const inSeries = !!seriesBack;
   const seriesName = inSeries ? view.series[0] : undefined;
   const [seriesTotal, setSeriesTotal] = useState<{ name: string; count: number } | null>(null);
@@ -394,6 +397,8 @@ export function Library({
   const chosenIds = useRef<string[]>([]);
   chosenIds.current = selected ? [...selected.keys()] : [];
   useEffect(() => {
+    // A series' books are looked up again under the new search and filters.
+    setStackBooks((m) => (m.size ? new Map() : m));
     const ids = chosenIds.current;
     if (!ids.length) return;
     let current = true;
@@ -431,6 +436,11 @@ export function Library({
     } : first),
     [first, endless, later],
   );
+  // One series shown: its check for missing books (button up top, list under the books).
+  const checkedSeries = !isWeb && !isHome && view.tab !== "collections" && view.series.length === 1 ? view.series[0] : null;
+  const seriesAuthor = page?.books[0]?.authors[0] ?? "";
+  const seriesCheckState = useSeriesReview(checkedSeries, seriesAuthor, refreshKey + reload, () => setReload((n) => n + 1));
+  const seriesCheck = checkedSeries ? seriesCheckState : null;
   useEffect(() => {
     if (restoreScroll == null || !first || loadedView.current !== requestKey || (endless && hasPendingScroll())) return;
     const id = requestAnimationFrame(() => {
@@ -490,7 +500,62 @@ export function Library({
         return next;
       });
     },
+    hasSeries: (name) => {
+      const books = stackBooks.get(name);
+      return !!books?.length && books.every((b) => selected.has(b.id));
+    },
+    toggleSeries: (name) => void chooseSeries([name], !selection?.hasSeries?.(name)),
   };
+  /** Every book of these series (as the filters show them), chosen or let go together. */
+  async function booksOfSeries(name: string): Promise<BookPreview[]> {
+    const known = stackBooks.get(name);
+    if (known) return known;
+    const found: BookPreview[] = [];
+    for (let p = 0; ; p++) {
+      const got = await api.getLibrary({ ...query, series: [name], pinned: undefined, groupSeries: false, page: p, pageSize: 200 });
+      found.push(...got.books);
+      if (got.page < p || (got.page + 1) * got.pageSize >= got.total) break;
+    }
+    return found;
+  }
+  async function chooseSeries(names: string[], on: boolean, alsoBooks: BookPreview[] = []) {
+    try {
+      const lists = await Promise.all(names.map(async (n) => [n, await booksOfSeries(n)] as const));
+      setStackBooks((m) => {
+        const next = new Map(m);
+        for (const [n, books] of lists) next.set(n, books);
+        return next;
+      });
+      setSelected((s) => {
+        const next = new Map(s ?? []);
+        for (const b of [...lists.flatMap(([, books]) => books), ...alsoBooks]) {
+          if (on) next.set(b.id, b);
+          else next.delete(b.id);
+        }
+        return next;
+      });
+    } catch (e) {
+      toast(`Couldn't choose that series: ${String(e)}`);
+    }
+  }
+  /**
+   * A series with one book in the library, or just one of its books on this
+   * device, opens that book's page (which shows the rest of the series too);
+   * any other series opens as a series.
+   */
+  const openStack = (name: string, openAsSeries: (name: string) => void) => {
+    void seriesBooks(name).then(
+      (books) => {
+        const here = books.filter((b) => b.availability === "local");
+        const only = books.length === 1 ? books[0] : here.length === 1 ? here[0] : null;
+        if (only) showBookDetails(only.id);
+        else openAsSeries(name);
+      },
+      () => openAsSeries(name),
+    );
+  };
+  /** A book shown as its series' stack, or null for a book shown on its own. */
+  const stackOf = (b: BookPreview) => (groupSeries && page?.seriesCounts?.[b.id] && b.series?.trim() ? b.series.trim() : null);
   const chosen = selected ? [...selected.values()] : [];
 
   /** Chooses every book the current filters and search show, on every page. */
@@ -504,6 +569,16 @@ export function Library({
         if (got.page < p || (got.page + 1) * got.pageSize >= got.total) break;
       }
       setSelected(all);
+      setEverything(all.size);
+      if (groupSeries) {
+        // Every stack is chosen too, so its tick shows and choosing it again lets it go.
+        const bySeries = new Map<string, BookPreview[]>();
+        for (const b of all.values()) {
+          const name = b.series?.trim();
+          if (name) bySeries.set(name, [...(bySeries.get(name) ?? []), b]);
+        }
+        setStackBooks(bySeries);
+      }
     } catch (e) {
       toast(`Couldn't choose them all: ${String(e)}`);
     } finally {
@@ -512,10 +587,17 @@ export function Library({
   };
 
   const none = !selected?.size;
-  const pageAllChosen = !!page?.books.length && page.books.every((b) => selected?.has(b.id));
+  const pageAllChosen = !!page?.books.length && page.books.every((b) => {
+    const name = stackOf(b);
+    return name ? !!selection?.hasSeries?.(name) : selected?.has(b.id);
+  });
   // Books a search or filter hides are let go from the choice, so this many means all of them.
   const matchingBooks = (page?.total ?? 0) + pins.length;
-  const libraryAllChosen = matchingBooks > 0 && (selected?.size ?? 0) >= matchingBooks;
+  const [everything, setEverything] = useState<number | null>(null);
+  // Stacked series count once in the total, so "all" is the number of books "All in library" found.
+  const libraryAllChosen = groupSeries
+    ? everything !== null && everything > 0 && (selected?.size ?? 0) >= everything
+    : matchingBooks > 0 && (selected?.size ?? 0) >= matchingBooks;
   const chosenActions: MenuEntry[] = [
     { label: "Edit details", icon: "edit", disabled: none, onSelect: () => askEditDetails(chosen) },
     { label: "Tags", icon: "tag", disabled: none, onSelect: () => setTagging(true) },
@@ -666,7 +748,7 @@ export function Library({
       onClearSearch();
       onChange({ ...NO_FILTERS, tab: "all", series: [name], sort: "series", page: 0 });
     });
-    const items = <Layout books={page.books} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} seriesCovers={page.seriesCovers} seriesPublished={page.seriesPublished} seriesMenu={seriesMenu} showStatus={inSeries} onOpenSeries={openSeries} />;
+    const items = <Layout books={page.books} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} seriesCovers={page.seriesCovers} seriesPublished={page.seriesPublished} seriesMenu={seriesMenu} showStatus={inSeries} onOpenSeries={(name) => openStack(name, openSeries)} />;
     body = endless ? (
       <>
         {items}
@@ -695,6 +777,12 @@ export function Library({
           <div className="settings-actions">
             <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => void downloadSeries(seriesName)}>Download</button>
             <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => void askRemoveSeriesDownloads(seriesName)}>Remove download</button>
+            {seriesCheck && <FindMissingButton state={seriesCheck} />}
+          </div>
+        )}
+        {!seriesName && seriesCheck && (
+          <div className="settings-actions">
+            <FindMissingButton state={seriesCheck} />
           </div>
         )}
         {seriesName && seriesTotal?.name === seriesName && page && page.total < seriesTotal.count && (
@@ -785,9 +873,10 @@ export function Library({
                   disabled={!page?.books.length || busy !== null}
                   onChange={(e) => {
                     if (!page) return;
-                    const next = new Map(selected);
-                    page.books.forEach((b) => (e.target.checked ? next.set(b.id, b) : next.delete(b.id)));
-                    setSelected(next);
+                    const on = e.target.checked;
+                    const stacks = page.books.map(stackOf).filter((n): n is string => !!n);
+                    const single = page.books.filter((b) => !stackOf(b));
+                    void chooseSeries(stacks, on, single);
                   }}
                 />
                 All on page
@@ -850,14 +939,6 @@ export function Library({
 
       {view.tab !== "collections" && intro}
 
-      {!isWeb && !isHome && view.tab !== "collections" && view.series.length === 1 && (
-        <SeriesPanel
-          name={view.series[0]}
-          author={page?.books[0]?.authors[0] ?? ""}
-          refreshKey={refreshKey + reload}
-          onChanged={() => setReload((n) => n + 1)}
-        />
-      )}
 
       {searching && <p className="muted library-searching" role="status">Searching…</p>}
       {coverPicker && <SeriesCoverPicker name={coverPicker} kind={kind} chosen={coverChoices[coverPicker.trim().toLowerCase()]}
@@ -870,12 +951,21 @@ export function Library({
             <Layout books={pins} actions={actions} selection={selection} />
             {pinnedStacks && pinnedStacks.books.length > 0 && (
               <Layout books={pinnedStacks.books} actions={actions} seriesCounts={pinnedStacks.seriesCounts}
-                seriesCovers={pinnedStacks.seriesCovers} seriesPublished={pinnedStacks.seriesPublished} onOpenSeries={onOpenSeries} seriesMenu={seriesMenu} />
+                seriesCovers={pinnedStacks.seriesCovers} seriesPublished={pinnedStacks.seriesPublished} onOpenSeries={onOpenSeries && ((name) => openStack(name, onOpenSeries))} seriesMenu={seriesMenu} />
             )}
           </details>
         )}
         {body}
       </div>
+      {seriesCheck && checkedSeries && (
+        <SeriesPanel
+          name={checkedSeries}
+          author={seriesAuthor}
+          refreshKey={refreshKey + reload}
+          onChanged={() => setReload((n) => n + 1)}
+          state={seriesCheck}
+        />
+      )}
     </div>
   );
 }

@@ -720,6 +720,18 @@ const MIGRATIONS: &[&str] = &[
         pinned_at TEXT
     );
     "#,
+    // v41: Discover across devices. `browser_history.device_id`: the device
+    // each visit was made on (empty for visits from before). `browser_device_tabs`:
+    // the tabs open on each device (never private ones), as a JSON list,
+    // synced (browser_device_tabs) with Discover history.
+    r#"
+    ALTER TABLE browser_history ADD COLUMN device_id TEXT;
+    CREATE TABLE browser_device_tabs (
+        device_id TEXT PRIMARY KEY,
+        tabs TEXT NOT NULL DEFAULT '[]',
+        updated_at TEXT NOT NULL
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

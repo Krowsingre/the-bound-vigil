@@ -79,6 +79,8 @@ type Calls = Pick<
   | "removeBrowserHistory"
   | "clearBrowserHistory"
   | "trimBrowserHistory"
+  | "setBrowserOpenTabs"
+  | "browserOtherTabs"
 >;
 
 const APP_ONLY = "The browser works in the TBV app.";
@@ -267,5 +269,12 @@ export function browseStub(): Calls {
     removeBrowserHistory: async () => undefined,
     clearBrowserHistory: async () => undefined,
     trimBrowserHistory: async () => undefined,
+    setBrowserOpenTabs: async () => undefined,
+    browserOtherTabs: async () => [
+      { deviceId: "phone", name: "Phone", kind: "phone", updatedAt: new Date().toISOString(), tabs: [
+        { url: "https://www.gutenberg.org/ebooks/84", title: "Frankenstein by Mary Wollstonecraft Shelley | Project Gutenberg" },
+        { url: "https://en.wikipedia.org/wiki/Gothic_fiction", title: "Gothic fiction - Wikipedia" },
+      ] },
+    ],
   };
 }

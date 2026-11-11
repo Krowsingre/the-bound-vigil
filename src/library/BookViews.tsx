@@ -14,6 +14,24 @@ export interface Selection {
   /** `range` holds the books shown, when Shift was held: every book from the
    *  last one picked to this one is chosen. */
   toggle: (book: BookPreview, range?: BookPreview[]) => void;
+  /** Series shown as one stack are chosen whole: all their books at once. */
+  hasSeries?: (name: string) => boolean;
+  toggleSeries?: (name: string) => void;
+}
+
+/** A series stack while choosing: its tick, and whether a click chooses it. */
+function pickedSeries(name: string, selection?: Selection | null) {
+  if (!selection?.toggleSeries) return null;
+  const on = !!selection.hasSeries?.(name);
+  return {
+    on,
+    mark: (
+      <span className={`select-mark${on ? " is-on" : ""}`} aria-hidden>
+        {on && <Icon name="check" size={14} />}
+      </span>
+    ),
+    toggle: () => selection.toggleSeries!(name),
+  };
 }
 
 type Props = {
@@ -96,10 +114,18 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesPublis
         if (count && book.series && onOpenSeries) {
           const name = book.series.trim();
           const cover = seriesCovers?.[book.id] ?? book;
+          const pick = pickedSeries(name, selection);
           return (
-            <li key={book.id} className="grid-card series-stack">
-              <button type="button" className="grid-open" aria-label={"Open series " + name} onClick={() => onOpenSeries(name)}>
+            <li key={book.id} className={`grid-card series-stack${pick?.on ? " is-selected" : ""}`}>
+              <button
+                type="button"
+                className="grid-open"
+                aria-label={pick ? `Choose series ${name}` : "Open series " + name}
+                aria-pressed={pick ? pick.on : undefined}
+                onClick={() => (pick ? pick.toggle() : onOpenSeries(name))}
+              >
                 <BookCover key={cover.id} book={cover} seriesCount={count} seriesPublished={seriesPublished?.[book.id]} />
+                {pick?.mark}
               </button>
               <div className="grid-caption">
                 <div className="grid-text">
@@ -154,8 +180,11 @@ export function BookList({ books, actions, selection, seriesCounts, seriesPublis
         const name = book.series?.trim();
         if (count && name && onOpenSeries) {
           const cover = seriesCovers?.[book.id] ?? book;
-          return <li key={book.id} className="list-row series-list-row">
-            <button type="button" className="list-open" aria-label={`Open series ${name}`} onClick={() => onOpenSeries(name)}>
+          const pick = pickedSeries(name, selection);
+          return <li key={book.id} className={`list-row series-list-row${pick?.on ? " is-selected" : ""}`}>
+            <button type="button" className="list-open" aria-label={pick ? `Choose series ${name}` : `Open series ${name}`}
+              aria-pressed={pick ? pick.on : undefined} onClick={() => (pick ? pick.toggle() : onOpenSeries(name))}>
+              {pick?.mark}
               <BookCover key={cover.id} book={cover} size="s" seriesCount={count} seriesPublished={seriesPublished?.[book.id]} />
               <span className="list-text">
                 <span className="book-title">{name}</span>
@@ -219,9 +248,12 @@ export function BookTable({ books, actions, selection, seriesCounts, seriesPubli
         {books.map((book) => {
           const count = seriesCounts?.[book.id];
           const name = book.series?.trim();
-          if (count && name && onOpenSeries) return <tr key={book.id} className="series-table-row">
+          const pick = count && name ? pickedSeries(name, selection) : null;
+          if (count && name && onOpenSeries) return <tr key={book.id} className={`series-table-row${pick?.on ? " is-selected" : ""}`}>
             <td colSpan={7}>
-              <button type="button" aria-label={`Open series ${name}`} className="table-title series-table-open" onClick={() => onOpenSeries(name)}>
+              <button type="button" aria-label={pick ? `Choose series ${name}` : `Open series ${name}`} aria-pressed={pick ? pick.on : undefined}
+                className="table-title series-table-open" onClick={() => (pick ? pick.toggle() : onOpenSeries(name))}>
+                {pick?.mark}
                 <BookCover book={seriesCovers?.[book.id] ?? book} size="s" seriesCount={count} seriesPublished={seriesPublished?.[book.id]} />
                 {name}
               </button>

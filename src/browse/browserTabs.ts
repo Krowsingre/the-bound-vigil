@@ -197,6 +197,11 @@ export function rememberClosed(state: TabsState, ids: string[], now = Date.now()
   return gone;
 }
 
+/** Forgets the tabs closed in the last `since` milliseconds, or all of them (clearing history clears these too). */
+export function clearClosedTabs(since: number | null = null, now = Date.now()) {
+  writeClosed(since === null ? [] : readClosedTabs().filter((t) => now - t.closed > since));
+}
+
 /** Takes a closed tab off the list (the newest, without `index`) to open it again. */
 export function takeClosed(index = 0): ClosedTab | null {
   const list = readClosedTabs();

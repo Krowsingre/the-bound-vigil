@@ -2160,6 +2160,8 @@ pub fn run() {
             browser::remove_browser_history,
             browser::clear_browser_history,
             browser::trim_browser_history,
+            browser::set_browser_open_tabs,
+            browser::browser_other_tabs,
             browser::browser_add_download,
             browser::browser_keep_download,
             browser::browser_download_kind,

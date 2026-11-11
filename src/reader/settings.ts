@@ -88,7 +88,9 @@ export function parseZoom(raw: unknown): PageZoom {
 }
 
 export const SIZE_RANGE = { min: 14, max: 30, step: 1 } as const;
-export const LINE_HEIGHTS = [1.4, 1.6, 1.8, 2.0] as const;
+/** Line spacing: a slider from 1 to 2.5, in steps of 0.1, with notches on the whole and half steps. */
+export const LINE_HEIGHT_RANGE = { min: 1, max: 2.5, step: 0.1 } as const;
+export const LINE_HEIGHT_NOTCHES = [1, 1.5, 2, 2.5] as const;
 
 export const FONTS: { value: ReadingFont; label: string }[] = [
   { value: "lora", label: "Lora" },
@@ -117,7 +119,8 @@ export function parseSettings(json: string | null): ReaderSettings {
   return {
     font: oneOf(raw.font, ["lora", "georgia", "sans", "echolume", "publisher"], d.font),
     size: typeof raw.size === "number" ? clamp(Math.round(raw.size), SIZE_RANGE.min, SIZE_RANGE.max) : d.size,
-    lineHeight: typeof raw.lineHeight === "number" ? clamp(raw.lineHeight, 1.2, 2.2) : d.lineHeight,
+    lineHeight: typeof raw.lineHeight === "number" && Number.isFinite(raw.lineHeight)
+      ? clamp(Math.round(raw.lineHeight * 10) / 10, LINE_HEIGHT_RANGE.min, LINE_HEIGHT_RANGE.max) : d.lineHeight,
     width: oneOf(raw.width, ["narrow", "medium", "wide"], d.width),
     flow: oneOf(raw.flow, ["paginated", "scrolled"], d.flow),
     keyboardScrollSpeed: typeof raw.keyboardScrollSpeed === "number" && Number.isFinite(raw.keyboardScrollSpeed)
@@ -203,12 +206,15 @@ const FONT_STACKS: Record<Exclude<ReadingFont, "publisher">, string> = {
   echolume: `"TBV Echolume", system-ui, "Segoe UI", sans-serif`,
 };
 
+const HEADINGS = "h1, h2, h3, h4, h5, h6";
+const CODE = "pre, code, kbd, samp, tt";
+
 /** The style sheet laid over every page of the book. */
 export function readerCss(settings: ReaderSettings, colors: PageColors): string {
   const fontRule =
     settings.font === "publisher"
       ? ""
-      : `html, body, p, li, blockquote, dd, div, span, h1, h2, h3, h4, h5, h6 { font-family: ${FONT_STACKS[settings.font]} !important; }`;
+      : `html, body, body :not(${CODE}, :is(pre, code) *) { font-family: ${FONT_STACKS[settings.font]} !important; }`;
   return `
 ${fontFaces()}
 @namespace epub "http://www.idpf.org/2007/ops";
@@ -221,8 +227,8 @@ html {
 }
 body { background: transparent !important; color: inherit !important; }
 ${fontRule}
+body, body :not(${HEADINGS}, :is(${HEADINGS}) *) { line-height: ${settings.lineHeight} !important; }
 p, li, blockquote, dd {
-  line-height: ${settings.lineHeight} !important;
   text-align: ${settings.justify ? "justify" : "start"};
   hyphens: ${settings.justify ? "auto" : "manual"};
   -webkit-hyphens: ${settings.justify ? "auto" : "manual"};

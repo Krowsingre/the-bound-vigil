@@ -1759,10 +1759,54 @@
   border-top: 1px solid var(--border);
 }
 
-/* Private tabs. */
+/* Private tabs: deep violet with light text, unlike any ordinary tab, so
+   it's plain which tabs keep nothing. With one in front, the top bar's
+   address box and the tab strip take the same colour. */
+:root {
+  --private: #3b2f63;
+  --private-ink: #f1edfa;
+  --private-line: #a493e6;
+}
 .browser-tab.is-private,
 .browser-grid-tab.is-private {
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  background: color-mix(in srgb, var(--private) 30%, var(--chrome-strip, var(--bg)));
+  color: var(--text);
+}
+.browser-tab.is-private.is-active,
+.browser-grid-tab.is-private.is-active {
+  border-color: var(--private);
+  background: var(--private);
+  color: var(--private-ink);
+  box-shadow: inset 0 2px 0 var(--private-line);
+}
+.browser-tab.is-private.is-active .browser-tab-close,
+.browser-tab.is-private.is-active .browser-tab-name {
+  color: inherit;
+}
+.browser.is-private-tab .browser-tabs {
+  box-shadow: inset 0 -2px 0 var(--private);
+}
+:root[data-discover-private] .header .search {
+  background: var(--private);
+  color: var(--private-ink);
+  box-shadow: 0 0 0 1px var(--private-line);
+}
+:root[data-discover-private] .header .search input,
+:root[data-discover-private] .header .search input::placeholder,
+:root[data-discover-private] .header .search svg {
+  color: var(--private-ink);
+}
+:root[data-discover-private] .header .search::after {
+  content: "Private";
+  flex: none;
+  margin-right: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--private-line);
+  color: #1d1733;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 .start-private {

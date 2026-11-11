@@ -38,6 +38,8 @@ class BrowserArgs: Decodable {
   let zoom: Double?
   /// A private tab: nothing it does is kept.
   let incognito: Bool?
+  /// Runs first on every page (src-tauri/src/browser_stand_ins.js).
+  let standIns: String?
 }
 
 /// Discover's browser on iPhone and iPad: a tab is one of Apple's web views,
@@ -66,6 +68,7 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
   private var recent = [String: Date]()
   /// The protection level's rules, once compiled.
   private var rules: WKContentRuleList?
+  private var standIns: String?
   private var redirectMode = "allow"
   private var redirectAllowlist = Set<String>()
   private var requested = [String: URL]()
@@ -144,6 +147,10 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
     config.allowsInlineMediaPlayback = true
     config.allowsPictureInPictureMediaPlayback = true
     if let rules = rules { config.userContentController.add(rules) }
+    // Buttons that wait on a blocked tracker still work.
+    if configuration == nil, let script = standIns {
+      config.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
     let made = WKWebView(frame: frame, configuration: config)
     made.navigationDelegate = self
     made.uiDelegate = self
@@ -329,6 +336,7 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
         return
       }
       let show = {
+        if let script = args.standIns { self.standIns = script }
         guard let view = self.made(tab, incognito: args.incognito ?? false) else {
           invoke.reject("TBV couldn't show the browser.")
           return

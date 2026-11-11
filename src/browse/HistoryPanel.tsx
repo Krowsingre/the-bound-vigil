@@ -8,8 +8,11 @@ import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { clearHistory, dayLabel, onHistory, readHistory, removeFromHistory, trimHistory, trimmed, type HistoryEntry } from "./browserHistory";
 import { readBrowserPrefs, siteOf } from "./browserPrefs";
+import { clearClosedTabs } from "./browserTabs";
 
 type Showing = "all" | "page" | "search";
+/** This device's history, or what was visited on the others (when history syncs). */
+type Where = "here" | "elsewhere";
 
 /** How many rows show before "Show more". */
 const AT_ONCE = 200;
@@ -36,6 +39,7 @@ export function HistoryPanel({ onGo, onClose }: { onGo: (url: string) => void; o
   const [list, setList] = useState(kept);
   const [find, setFind] = useState("");
   const [showing, setShowing] = useState<Showing>("all");
+  const [where, setWhere] = useState<Where>("here");
   const [shown, setShown] = useState(AT_ONCE);
   const [clearing, setClearing] = useState<(typeof CLEARS)[number] | null>(null);
   const [clearKind, setClearKind] = useState<Showing>("all");
@@ -43,12 +47,15 @@ export function HistoryPanel({ onGo, onClose }: { onGo: (url: string) => void; o
     trimHistory(readBrowserPrefs().historyKeep);
     return onHistory(() => setList(kept()));
   }, []);
-  useEffect(() => setShown(AT_ONCE), [find, showing]);
+  useEffect(() => setShown(AT_ONCE), [find, showing, where]);
+  const elsewhere = list.some((e) => e.device);
 
   const matching = useMemo(() => {
     const q = find.trim().toLocaleLowerCase();
-    return list.filter((e) => (showing === "all" || e.kind === showing) && (!q || e.url.toLocaleLowerCase().includes(q) || (e.title ?? "").toLocaleLowerCase().includes(q)));
-  }, [list, find, showing]);
+    const wanted = elsewhere ? where : "here";
+    return list.filter((e) => (wanted === "here" ? !e.device : !!e.device)
+      && (showing === "all" || e.kind === showing) && (!q || e.url.toLocaleLowerCase().includes(q) || (e.title ?? "").toLocaleLowerCase().includes(q)));
+  }, [list, find, showing, where, elsewhere]);
 
   // Grouped by day, in order.
   const days: { label: string; entries: HistoryEntry[] }[] = [];
@@ -83,6 +90,20 @@ export function HistoryPanel({ onGo, onClose }: { onGo: (url: string) => void; o
           <Icon name="search" size={16} />
           <input type="search" placeholder="Search history…" aria-label="Search history" value={find} onChange={(e) => setFind(e.target.value)} />
         </label>
+        {elsewhere && (
+          <div className="scribe-chips browser-history-kinds" role="tablist" aria-label="Which devices">
+            {(
+              [
+                ["here", "This device"],
+                ["elsewhere", "Other devices"],
+              ] as const
+            ).map(([value, label]) => (
+              <button key={value} type="button" role="tab" aria-selected={where === value} className={`chip${where === value ? " is-active" : ""}`} onClick={() => setWhere(value)}>
+                <Icon name={value === "here" ? "computer" : "phone"} size={14} /> {label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="scribe-chips browser-history-kinds" role="tablist" aria-label="What to show">
           {(
             [
@@ -112,7 +133,7 @@ export function HistoryPanel({ onGo, onClose }: { onGo: (url: string) => void; o
                         <span className="browser-download-name">
                           <b>{e.kind === "search" ? `“${e.title}”` : e.title?.trim() || siteOf(e.url) || e.url}</b>
                           <span className="muted">
-                            {new Date(e.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })} · {e.kind === "search" ? "Searched" : siteOf(e.url) ?? e.url}
+                            {new Date(e.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })} · {e.kind === "search" ? "Searched" : siteOf(e.url) ?? e.url}{e.device ? ` · on ${e.device}` : ""}
                           </span>
                         </span>
                       </button>
@@ -150,6 +171,8 @@ export function HistoryPanel({ onGo, onClose }: { onGo: (url: string) => void; o
           onCancel={() => setClearing(null)}
           onConfirm={() => {
             clearHistory(clearing.since(), Date.now(), clearKind === "all" ? undefined : clearKind);
+            // Recently closed tabs are history too.
+            if (clearKind !== "search") clearClosedTabs(clearing.since());
             setClearing(null);
           }}
         />

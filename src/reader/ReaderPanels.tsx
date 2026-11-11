@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useAppSettings } from "../settings/appSettings";
 import type { Annotation, BookPreview, HighlightColor, ReaderBook } from "../api/types";
 import { api } from "../api";
 import { BookCover } from "../components/BookCover";
@@ -201,7 +202,7 @@ export function LeftPanel({
   return (
     <aside className="reader-left" aria-label="Book and contents">
       <div className="reader-book">
-        <BookCover book={book} size="s" />
+        <ExpandableCover book={book} />
         <div className="reader-book-text">
           <h2>{book.title}</h2>
           <p className="reader-book-author">{authorLine(book.authors)}</p>
@@ -457,5 +458,26 @@ function BookInfo({ info, totalPages }: { info: ReaderBook; totalPages: number }
         Pages are counted the same way on every device and at every text size, so a page number always means the same place.
       </p>
     </div>
+  );
+}
+
+/** The book's cover; clicking it shows it large, as on the book's page (not while covers are hidden for privacy). */
+function ExpandableCover({ book }: { book: BookPreview }) {
+  const { privacy } = useAppSettings().settings;
+  const [expanded, setExpanded] = useState<string | null>(null);
+  useEffect(() => setExpanded(null), [book.id, privacy.on]);
+  return (
+    <>
+      <BookCover book={book} size="s" onExpand={privacy.on ? undefined : setExpanded} />
+      {expanded && !privacy.on && (
+        <div className="dialog-backdrop book-cover-preview" role="dialog" aria-modal="true" aria-label={"Cover for " + book.title}
+          onPointerDown={(event) => { if (event.target === event.currentTarget) setExpanded(null); }}
+          onKeyDown={(event) => { if (event.key === "Escape") setExpanded(null); }}>
+          <button type="button" autoFocus aria-label="Close cover preview" onClick={() => setExpanded(null)}>
+            <img src={expanded} alt={book.title} />
+          </button>
+        </div>
+      )}
+    </>
   );
 }

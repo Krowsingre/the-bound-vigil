@@ -24,7 +24,36 @@ pub struct HistoryEntry {
     pub title: Option<String>,
     /// When, as milliseconds since 1970.
     pub at: i64,
+    /// The name of the other device it was visited on; none for this device
+    /// (and for visits from before devices were noted). Not taken from TBV's page.
+    #[serde(default, skip_deserializing, skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
 }
+
+/// A tab open in Discover on a device, as it's shown to the others.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenTab {
+    pub url: String,
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+/// The Discover tabs open on another device.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceTabs {
+    pub device_id: String,
+    pub name: String,
+    /// "phone", "tablet", "computer" and so on, as the device said.
+    pub kind: String,
+    /// When its tabs last changed.
+    pub updated_at: String,
+    pub tabs: Vec<OpenTab>,
+}
+
+/// The most tabs a device shows the others.
+const MOST_TABS: usize = 100;
 
 fn checked(entry: &HistoryEntry) -> Result<()> {
     if entry.id.is_empty() || entry.id.len() > 40 || !entry.id.chars().all(|c| c.is_ascii_alphanumeric()) {
@@ -40,11 +69,16 @@ fn checked(entry: &HistoryEntry) -> Result<()> {
 impl Library {
     /// Newest first.
     pub fn browser_history(&self) -> Result<Vec<HistoryEntry>> {
-        let mut statement = self
-            .conn
-            .prepare("SELECT id, kind, url, title, at FROM browser_history WHERE deleted_at IS NULL ORDER BY at DESC LIMIT ?1")?;
-        let rows = statement.query_map(params![MOST_HISTORY], |r| {
-            Ok(HistoryEntry { id: r.get(0)?, kind: r.get(1)?, url: r.get(2)?, title: r.get(3)?, at: r.get(4)? })
+        let here = self.device_id()?;
+        let mut statement = self.conn.prepare(
+            "SELECT h.id, h.kind, h.url, h.title, h.at,
+                    CASE WHEN h.device_id IS NULL OR h.device_id = '' OR h.device_id = ?2 THEN NULL
+                         ELSE COALESCE(d.name, 'Another device') END
+             FROM browser_history h LEFT JOIN devices d ON d.device_id = h.device_id
+             WHERE h.deleted_at IS NULL ORDER BY h.at DESC LIMIT ?1",
+        )?;
+        let rows = statement.query_map(params![MOST_HISTORY, here], |r| {
+            Ok(HistoryEntry { id: r.get(0)?, kind: r.get(1)?, url: r.get(2)?, title: r.get(3)?, at: r.get(4)?, device: r.get(5)? })
         })?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
@@ -52,14 +86,16 @@ impl Library {
     /// Adds entries, or updates ones already there (a page's title arriving).
     pub fn put_browser_history(&self, entries: &[HistoryEntry]) -> Result<()> {
         let now = now_utc();
+        let here = self.device_id()?;
         let tx = self.conn.unchecked_transaction()?;
         for e in entries {
             checked(e)?;
             let title = e.title.as_deref().map(|t| t.chars().take(300).collect::<String>());
+            // A visit made here is noted as this device's; one already known keeps its device.
             tx.execute(
-                "INSERT INTO browser_history (id, kind, url, title, at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "INSERT INTO browser_history (id, kind, url, title, at, updated_at, device_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                  ON CONFLICT(id) DO UPDATE SET url = excluded.url, title = excluded.title, at = excluded.at, updated_at = excluded.updated_at, deleted_at = NULL",
-                params![e.id, e.kind, e.url.trim(), title, e.at, now],
+                params![e.id, e.kind, e.url.trim(), title, e.at, now, here],
             )?;
         }
         tx.commit()?;
@@ -85,6 +121,49 @@ impl Library {
             params![now, since.unwrap_or(i64::MIN), kind],
         )?;
         Ok(())
+    }
+
+    /// The tabs open in Discover here, for the other devices to see (never
+    /// private ones; TBV's page leaves those out). Written only when they change.
+    pub fn set_open_tabs(&self, tabs: &[OpenTab]) -> Result<()> {
+        let tabs: Vec<OpenTab> = tabs
+            .iter()
+            .filter(|t| web_address(&t.url).is_ok())
+            .take(MOST_TABS)
+            .map(|t| OpenTab { url: t.url.trim().to_string(), title: t.title.as_deref().map(|x| x.chars().take(300).collect()) })
+            .collect();
+        let json = serde_json::to_string(&tabs)?;
+        let here = self.device_id()?;
+        let now = now_utc();
+        self.conn.execute(
+            "INSERT INTO browser_device_tabs (device_id, tabs, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(device_id) DO UPDATE SET tabs = excluded.tabs, updated_at = excluded.updated_at WHERE tabs IS NOT excluded.tabs",
+            params![here, json, now],
+        )?;
+        Ok(())
+    }
+
+    /// The tabs open on the other devices, the most lately changed first; a
+    /// device with none open is left out.
+    pub fn other_devices_tabs(&self) -> Result<Vec<DeviceTabs>> {
+        let here = self.device_id()?;
+        let mut statement = self.conn.prepare(
+            "SELECT t.device_id, COALESCE(d.name, 'Another device'), COALESCE(d.kind, ''), t.updated_at, t.tabs
+             FROM browser_device_tabs t LEFT JOIN devices d ON d.device_id = t.device_id
+             WHERE t.device_id != ?1 ORDER BY t.updated_at DESC",
+        )?;
+        let rows = statement.query_map(params![here], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (device_id, name, kind, updated_at, tabs) = row?;
+            let tabs: Vec<OpenTab> = serde_json::from_str(&tabs).unwrap_or_default();
+            if !tabs.is_empty() {
+                out.push(DeviceTabs { device_id, name, kind, updated_at, tabs });
+            }
+        }
+        Ok(out)
     }
 
     /// Lets go of what's older than `before` here only: each device keeps
@@ -118,11 +197,11 @@ impl Library {
 
 #[cfg(test)]
 mod tests {
-    use super::HistoryEntry;
+    use super::{HistoryEntry, OpenTab};
     use crate::library::tests::open_temp_library;
 
     fn entry(id: &str, at: i64) -> HistoryEntry {
-        HistoryEntry { id: id.into(), kind: "page".into(), url: format!("https://example.org/{id}"), title: None, at }
+        HistoryEntry { id: id.into(), kind: "page".into(), url: format!("https://example.org/{id}"), title: None, at, device: None }
     }
 
     #[test]
@@ -143,5 +222,28 @@ mod tests {
         let markers: i64 = library.conn.query_row("SELECT COUNT(*) FROM browser_history WHERE deleted_at IS NOT NULL", [], |r| r.get(0)).unwrap();
         assert_eq!(markers, 2);
         assert!(library.put_browser_history(&[HistoryEntry { url: "javascript:alert(1)".into(), ..entry("d", 1) }]).is_err());
+    }
+
+    #[test]
+    fn visits_and_open_tabs_say_which_device_they_are_from() {
+        let (_dir, library) = open_temp_library();
+        library.put_browser_history(&[entry("a", 1)]).unwrap();
+        // A visit synced from another device names it.
+        library.conn.execute("INSERT INTO devices (device_id, name, kind, updated_at) VALUES ('other', 'Phone', 'phone', 'x')", []).unwrap();
+        library.conn.execute("INSERT INTO browser_history (id, kind, url, title, at, updated_at, device_id) VALUES ('b', 'page', 'https://example.org/b', NULL, 2, 'x', 'other')", []).unwrap();
+        let got = library.browser_history().unwrap();
+        assert_eq!(got.iter().map(|e| (e.id.as_str(), e.device.as_deref())).collect::<Vec<_>>(), [("b", Some("Phone")), ("a", None)]);
+
+        // This device's tabs aren't listed as another's; the other's are.
+        library.set_open_tabs(&[OpenTab { url: "https://example.org/".into(), title: Some("Here".into()) }, OpenTab { url: "tbv:start".into(), title: None }]).unwrap();
+        assert!(library.other_devices_tabs().unwrap().is_empty());
+        library.conn.execute("INSERT INTO browser_device_tabs (device_id, tabs, updated_at) VALUES ('other', '[{\"url\":\"https://example.com/\",\"title\":\"There\"}]', 'y')", []).unwrap();
+        let others = library.other_devices_tabs().unwrap();
+        assert_eq!(others.len(), 1);
+        assert_eq!(others[0].name, "Phone");
+        assert_eq!(others[0].tabs[0].title.as_deref(), Some("There"));
+        // Only web pages are shared.
+        let mine: String = library.conn.query_row("SELECT tabs FROM browser_device_tabs WHERE device_id != 'other'", [], |r| r.get(0)).unwrap();
+        assert!(!mine.contains("tbv:start"));
     }
 }

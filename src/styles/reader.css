@@ -259,6 +259,10 @@
   font-size: 20px;
 }
 
+.line-row .size-value {
+  width: 30px;
+}
+
 .size-value {
   width: 24px;
   text-align: right;
@@ -331,6 +335,8 @@
 .reader-book .cover {
   width: 104px;
   flex: none;
+  /* Keeps its own shape when the title beside it runs long. */
+  align-self: flex-start;
 }
 
 .reader-book-text {
@@ -918,16 +924,9 @@
   --accent: #8fa3b5;
 }
 
-.reader.theme-vesper {
-  --bg: #141310;
-  --surface: #1B1916;
-  --surface-sunk: #25221E;
-  --text: #E2DDD3;
-  --text-muted: #A59E92;
-  --border: #3b352e;
+/* Vesper colours the page only; TBV's own panels and bars keep their look. */
+.reader.theme-vesper .reader-main {
   --accent: #BBAA8C;
-  --accent-text: #141310;
-  color-scheme: dark;
 }
 
 /* Floating toolbar over a selection or highlight */

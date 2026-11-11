@@ -6,7 +6,8 @@ import { formatRate, groupVoices, primaryLang, RATE_RANGE } from "./readAloud";
 import {
   FONTS,
   HIGHLIGHT_COLORS,
-  LINE_HEIGHTS,
+  LINE_HEIGHT_NOTCHES,
+  LINE_HEIGHT_RANGE,
   PAGE_COLORS,
   SIZE_RANGE,
   zoomStep,
@@ -132,12 +133,27 @@ export function TextSettings({ settings, onChange }: { settings: ReaderSettings;
           <span className="size-value">{settings.size}</span>
         </div>
       </fieldset>
-      <Choice
-        label="Line spacing"
-        value={settings.lineHeight}
-        options={LINE_HEIGHTS.map((h) => ({ value: h, label: h.toFixed(1) }))}
-        onChange={(lineHeight) => onChange({ lineHeight })}
-      />
+      <fieldset className="choice">
+        <legend>Line spacing</legend>
+        <div className="size-row line-row">
+          <input
+            type="range"
+            min={LINE_HEIGHT_RANGE.min}
+            max={LINE_HEIGHT_RANGE.max}
+            step={LINE_HEIGHT_RANGE.step}
+            value={settings.lineHeight}
+            list="reader-line-notches"
+            aria-label="Line spacing"
+            onChange={(e) => onChange({ lineHeight: Math.round(Number(e.target.value) * 10) / 10 })}
+          />
+          <datalist id="reader-line-notches">
+            {LINE_HEIGHT_NOTCHES.map((n) => (
+              <option key={n} value={n} label={n.toFixed(1)} />
+            ))}
+          </datalist>
+          <span className="size-value">{settings.lineHeight.toFixed(1)}</span>
+        </div>
+      </fieldset>
       <Choice<ReadingWidth>
         label="Page width"
         value={settings.width}
