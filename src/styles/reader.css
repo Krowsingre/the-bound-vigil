@@ -983,6 +983,92 @@
   background: var(--surface-sunk);
 }
 
+/* On a phone the toolbar keeps to icons, so Define, Search and Translate fit. */
+@media (max-width: 480px) {
+  .selection-toolbar .selection-label {
+    display: none;
+  }
+  .selection-toolbar {
+    gap: 4px;
+  }
+}
+
+/* What a word means (Define, from the offline dictionary) */
+.define-card {
+  position: fixed;
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 16px));
+  max-height: min(420px, 60vh);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.define-entries {
+  overflow-y: auto;
+  padding: 14px 16px 6px;
+}
+
+.define-entry + .define-entry {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.define-word {
+  margin: 0 0 6px;
+  font-family: var(--font-serif, Lora, Georgia, serif);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.define-part-name {
+  margin: 8px 0 2px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.define-part ol {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.define-part li + li {
+  margin-top: 4px;
+}
+
+.define-example {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.define-none {
+  margin: 0;
+  padding: 16px;
+  font-size: 14px;
+}
+
+.define-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 8px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.define-source {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 /* Note dialog */
 .dialog-backdrop {
   position: fixed;

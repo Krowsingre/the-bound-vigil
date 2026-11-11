@@ -1,8 +1,8 @@
 import { offerFinishedDownloadRemoval } from "../library/FinishedDownloadPrompt";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, isApp } from "../api";
+import { api, isApp, isIOS, isMac } from "../api";
 import { isNarrow, useNarrow } from "../lib/useNarrow";
-import type { Annotation, HighlightColor, Profile, ReadStatus, ReaderBook, ReaderLocator, SyncStatus } from "../api/types";
+import type { Annotation, HighlightColor, Profile, ReadStatus, ReaderBook, ReaderLocator, SyncStatus, WordDefinition } from "../api/types";
 import { Icon } from "../components/Icon";
 import type { MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
@@ -19,7 +19,8 @@ import { openChapter } from "../browse/openChapter";
 import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars";
 import { LeftPanel, RightPanel, type AnnotationHandlers, type LeftTab, type RightTab } from "./ReaderPanels";
 import { navigationDirection } from "../shell/navigationKeys";
-import { ListenAlongPanel, NoteDialog, PageSettings, ReadAloudPlayer, SelectionToolbar, TextSettings, ZoomControls } from "./ReaderPopovers";
+import { DefineCard, ListenAlongPanel, NoteDialog, PageSettings, ReadAloudPlayer, SelectionToolbar, TextSettings, ZoomControls } from "./ReaderPopovers";
+import { addressFor, readBrowserPrefs } from "../browse/browserPrefs";
 import { ReaderSearch } from "./ReaderSearch";
 import { BOOK_OPENED, useAppDark } from "../settings/appSettings";
 import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, resolveTheme, SETTINGS_KEY, zoomStep, type ReaderSettings } from "./settings";
@@ -38,9 +39,20 @@ export interface ReaderShellProps {
   onOpenSyncSettings: () => void;
   onOpenProfile: () => void;
   onOpenPlan?: () => void;
+  /** Leaves the book for a new Discover tab at this address (Search, and Translate where Apple's isn't there). */
+  onOpenWeb?: (url: string) => void;
 }
 
 const PANELS_KEY = "tbv.reader.panels";
+
+/** iPhone, iPad and Mac, which have Apple's own dictionary and translation. */
+const isApple = isIOS || isMac;
+
+/** Google Translate for the words, into the language TBV's device is set to. */
+export function googleTranslate(words: string): string {
+  const to = (typeof navigator !== "undefined" ? navigator.language : "en").split("-")[0] || "en";
+  return `https://translate.google.com/?sl=auto&tl=${encodeURIComponent(to)}&text=${encodeURIComponent(words)}&op=translate`;
+}
 const SAVE_DELAY_MS = 800;
 
 function readPanels(): { left: boolean; right: boolean } {
@@ -108,6 +120,8 @@ export function Reader({
   const [fullscreen, setFullscreen] = useState(false);
   const [jumps, setJumps] = useState<Jump[]>([]);
   const [selection, setSelection] = useState<TextSelection | null>(null);
+  const [defining, setDefining] = useState<{ text: string; rect: DOMRect; definitions: WordDefinition[] } | null>(null);
+  const closeDefining = useCallback(() => setDefining(null), []);
   const [active, setActive] = useState<{ a: Annotation; rect: DOMRect } | null>(null);
   const [noteEdit, setNoteEdit] = useState<{ a?: Annotation; selection?: TextSelection } | null>(null);
   const [lastColor, setLastColor] = useState<HighlightColor>("rose");
@@ -413,6 +427,39 @@ export function Reader({
       () => toast("Copied."),
       () => toast("Copying isn't available here."),
     );
+
+  // Define, Search and Translate, for selected words or a highlight's words.
+  const spotOf = (rect: DOMRect) => {
+    // In the second pane of a split, the pane's own place in TBV's window is added.
+    const pane = window.frameElement?.getBoundingClientRect();
+    return { x: rect.left + (pane?.left ?? 0), y: rect.top + (pane?.top ?? 0), width: rect.width, height: rect.height };
+  };
+  const define = (text: string, rect: DOMRect) => {
+    setSelection(null);
+    setActive(null);
+    api.lookUpWord(text, spotOf(rect)).then(
+      (found) => !found.shown && setDefining({ text: text.trim(), rect, definitions: found.definitions }),
+      (e: unknown) => toast(`The dictionary couldn't be opened: ${String(e)}`),
+    );
+  };
+  const searchWeb = (text: string) => {
+    const url = addressFor(text.trim().replace(/\s+/g, " "), readBrowserPrefs().search);
+    if (!url || !shell.onOpenWeb) return;
+    setDefining(null);
+    shell.onOpenWeb(url);
+  };
+  const translate = (text: string, rect: DOMRect) => {
+    setSelection(null);
+    setActive(null);
+    const words = text.trim().replace(/\s+/g, " ");
+    const inDiscover = () => shell.onOpenWeb?.(googleTranslate(words));
+    api.translateText(words, spotOf(rect)).then((shown) => !shown && inDiscover(), inDiscover);
+  };
+  const lookUps = (text: string, rect: DOMRect) => ({
+    onDefine: () => define(text, rect),
+    onSearch: shell.onOpenWeb ? () => searchWeb(text) : undefined,
+    onTranslate: shell.onOpenWeb || isApple ? () => translate(text, rect) : undefined,
+  });
 
   const handlers: AnnotationHandlers = {
     onGo: (a) => {
@@ -787,6 +834,7 @@ export function Reader({
           onColor={(c) => void highlight(selection, c)}
           onNote={() => setNoteEdit({ selection })}
           onCopy={() => copy(selection.text)}
+          {...lookUps(selection.text, selection.rect)}
         />
       )}
       {active && (
@@ -804,6 +852,16 @@ export function Reader({
           }}
           onCopy={() => copy(active.a.excerpt)}
           onDelete={() => void remove(active.a)}
+          {...lookUps(active.a.excerpt, active.rect)}
+        />
+      )}
+      {defining && (
+        <DefineCard
+          rect={defining.rect}
+          text={defining.text}
+          definitions={defining.definitions}
+          onSearch={() => searchWeb(defining.text)}
+          onClose={closeDefining}
         />
       )}
       {noteEdit && (

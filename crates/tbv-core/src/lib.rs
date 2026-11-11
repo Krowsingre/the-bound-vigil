@@ -32,6 +32,7 @@ pub mod lineup;
 pub mod listen;
 pub mod lookup;
 pub mod details;
+pub mod dictionary;
 pub mod manage;
 pub mod model;
 pub mod notes;

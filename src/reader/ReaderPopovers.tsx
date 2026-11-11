@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { HighlightColor } from "../api/types";
+import type { HighlightColor, WordDefinition, WordSense } from "../api/types";
 import { Icon } from "../components/Icon";
 import { isApp, isIOS } from "../api";
 import { formatRate, groupVoices, primaryLang, RATE_RANGE } from "./readAloud";
@@ -403,7 +403,7 @@ function useFloating(rect: DOMRect) {
   return { ref, style: pos ? { left: pos.left, top: pos.top } : { visibility: "hidden" as const } };
 }
 
-/** Shown over selected words: four colours, a note, copy. */
+/** Shown over selected words: four colours, a note, copy, and looking the words up. */
 export function SelectionToolbar({
   rect,
   activeColor,
@@ -412,6 +412,9 @@ export function SelectionToolbar({
   onNote,
   onCopy,
   onDelete,
+  onDefine,
+  onSearch,
+  onTranslate,
 }: {
   rect: DOMRect;
   /** Set when the toolbar is for an existing highlight. */
@@ -421,6 +424,9 @@ export function SelectionToolbar({
   onNote: () => void;
   onCopy: () => void;
   onDelete?: () => void;
+  onDefine?: () => void;
+  onSearch?: () => void;
+  onTranslate?: () => void;
 }) {
   const { ref, style } = useFloating(rect);
   return (
@@ -438,11 +444,26 @@ export function SelectionToolbar({
       ))}
       <span className="selection-rule" aria-hidden />
       <button type="button" className="selection-btn" onClick={onNote}>
-        <Icon name="note" size={16} /> {hasNote ? "Edit note" : "Add a note"}
+        <Icon name="note" size={16} /> <span className="selection-label">{hasNote ? "Edit note" : "Add a note"}</span>
       </button>
       <button type="button" className="icon-btn icon-btn-s" aria-label="Copy" title="Copy" onClick={onCopy}>
         <Icon name="copy" size={16} />
       </button>
+      {onDefine && (
+        <button type="button" className="icon-btn icon-btn-s" aria-label="Define" title="Define" onClick={onDefine}>
+          <Icon name="bookOpen" size={16} />
+        </button>
+      )}
+      {onSearch && (
+        <button type="button" className="icon-btn icon-btn-s" aria-label="Search the web" title="Search the web" onClick={onSearch}>
+          <Icon name="search" size={16} />
+        </button>
+      )}
+      {onTranslate && (
+        <button type="button" className="icon-btn icon-btn-s" aria-label="Translate" title="Translate" onClick={onTranslate}>
+          <Icon name="translate" size={16} />
+        </button>
+      )}
       {onDelete && (
         <button type="button" className="icon-btn icon-btn-s" aria-label="Remove highlight" title="Remove highlight" onClick={onDelete}>
           <Icon name="trash" size={16} />
@@ -561,6 +582,78 @@ export function ListenAlongPanel({ readAlong, ebookId }: { readAlong: ReadAlong;
           {isApp && <PauseLiningUpButton pauseLabel="Pause Confluence" resumeLabel="Carry on with Confluence" />}
         </div>
       )}
+    </div>
+  );
+}
+
+const PART_LABEL: Record<WordSense["part"], string> = { noun: "noun", verb: "verb", adjective: "adjective", adverb: "adverb" };
+
+/** What the selected word means, from the offline dictionary (Windows and Android). */
+export function DefineCard({
+  rect,
+  text,
+  definitions,
+  onSearch,
+  onClose,
+}: {
+  rect: DOMRect;
+  text: string;
+  definitions: WordDefinition[];
+  onSearch: () => void;
+  onClose: () => void;
+}) {
+  const { ref, style } = useFloating(rect);
+  useEffect(() => {
+    const away = (e: Event) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", key);
+    };
+  }, [ref, onClose]);
+  return (
+    <div ref={ref} className="define-card" style={style} role="dialog" aria-label={`Meaning of ${text}`}>
+      {definitions.length === 0 ? (
+        <p className="define-none">
+          No meaning found for <strong>{text}</strong>.
+        </p>
+      ) : (
+        <div className="define-entries">
+          {definitions.map((d) => {
+            const parts = [...new Set(d.senses.map((s) => s.part))];
+            return (
+              <section key={d.word} className="define-entry">
+                <h3 className="define-word">{d.word}</h3>
+                {parts.map((part) => (
+                  <div key={part} className="define-part">
+                    <p className="define-part-name">{PART_LABEL[part]}</p>
+                    <ol>
+                      {d.senses
+                        .filter((s) => s.part === part)
+                        .map((s, i) => (
+                          <li key={i}>
+                            {s.definition}
+                            {s.example && <span className="define-example"> “{s.example}”</span>}
+                          </li>
+                        ))}
+                    </ol>
+                  </div>
+                ))}
+              </section>
+            );
+          })}
+        </div>
+      )}
+      <div className="define-foot">
+        <span className="define-source">WordNet 3.1, Princeton University</span>
+        <button type="button" className="selection-btn" onClick={onSearch}>
+          <Icon name="search" size={14} /> Search the web
+        </button>
+      </div>
     </div>
   );
 }

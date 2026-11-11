@@ -15,7 +15,7 @@ import { Writing, type WritingSection } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
 import { UpNextReplacementHost } from "./library/UpNextReplacement";
 import { workspaceFrame } from "./shell/workspaceFrame";
-import { BROWSER_GO, BROWSER_NEW, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory } from "./browse/Browser";
+import { BROWSER_GO, BROWSER_NEW, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory, openInDiscover } from "./browse/Browser";
 import { AddressSuggestions } from "./browse/AddressSuggestions";
 import { readBrowserPrefs, shortAddress } from "./browse/browserPrefs";
 import { loadHistory } from "./browse/browserHistory";
@@ -531,6 +531,13 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     onOpenSyncSettings: () => {
       setReading(null);
       navigate("sync");
+    },
+    // The reader's Search (and Translate where Apple's isn't there): a new Discover tab.
+    onOpenWeb: (url: string) => {
+      closeBook();
+      setCatalogues(false);
+      navigate("catalogs");
+      openInDiscover(url);
     },
     // The phone version syncs in the background with no activity page.
     onOpenActivity:

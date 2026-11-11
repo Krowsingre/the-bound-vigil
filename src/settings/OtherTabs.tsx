@@ -835,6 +835,12 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
     url: "https://github.com/johnfactotum/foliate-js",
   },
   {
+    name: "WordNet 3.1",
+    what: "The reader's offline dictionary on Windows and Android. WordNet 3.0 Copyright 2006 by Princeton University. All rights reserved. Provided as is, without warranties.",
+    licence: "WordNet licence",
+    url: "https://wordnet.princeton.edu/license-and-commercial-use",
+  },
+  {
     name: "zip.js",
     what: "Opening EPUB files",
     licence: "BSD 3-Clause",
@@ -1070,7 +1076,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.82.0");
+  const [version, setVersion] = useState("0.83.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

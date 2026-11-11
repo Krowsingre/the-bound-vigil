@@ -5,11 +5,39 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { Annotation } from "../api/types";
+import { isAndroid, isIOS } from "../api";
 import type { Relocation, SearchResult, TocItem, View } from "../vendor/foliate-js/view.js";
 import { fitTextToPage, hexToRgb, luminance } from "./darkText";
 import { describeStructuredContent, type StructuredContent, type StructuredTarget } from "./structuredContent";
 import type { ReaderSource } from "./formats";
 import { DEFAULT_SETTINGS, highlightHex, readerCss, WIDTHS, type PageColors, type ReaderSettings } from "./settings";
+
+/** Phones and tablets, which select a word by pressing and holding it. */
+const touchOnly = typeof window !== "undefined" && (isIOS || isAndroid || window.matchMedia?.("(hover: none)").matches === true);
+
+/** Selects the word at a point in the page, if there's one there. */
+export function selectWordAt(doc: Document, x: number, y: number): boolean {
+  const caret = (doc as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }).caretRangeFromPoint?.(x, y) ?? null;
+  const node = caret?.startContainer;
+  if (!caret || !node || node.nodeType !== Node.TEXT_NODE) return false;
+  const text = node.textContent ?? "";
+  const isWord = (c: string | undefined) => !!c && /[\p{L}\p{N}'’-]/u.test(c);
+  let start = caret.startOffset;
+  let end = caret.startOffset;
+  while (start > 0 && isWord(text[start - 1])) start--;
+  while (end < text.length && isWord(text[end])) end++;
+  // Quotes and dashes at the edges aren't part of the word.
+  while (start < end && /['’-]/.test(text[start])) start++;
+  while (end > start && /['’-]/.test(text[end - 1])) end--;
+  if (start === end) return false;
+  const range = doc.createRange();
+  range.setStart(node, start);
+  range.setEnd(node, end);
+  const selection = doc.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  return true;
+}
 
 export interface TextSelection {
   cfi: string;
@@ -252,6 +280,20 @@ export function useReaderEngine({
             document.dispatchEvent(new Event("pointerdown"));
           });
           doc.addEventListener("pointerup", () => setTimeout(check, 0));
+          // Right-click (computers): the word under the pointer is selected, and its
+          // menu (highlight, note, Define, Search, Translate) shows in place of the
+          // system's. Phones press and hold instead, which selects the word already.
+          if (!touchOnly) {
+            doc.addEventListener("contextmenu", (e) => {
+              const selection = doc.getSelection();
+              if (!selection) return;
+              const inside = selection.rangeCount > 0 && !selection.isCollapsed &&
+                [...selection.getRangeAt(0).getClientRects()].some((r) => e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom);
+              if (!inside && !selectWordAt(doc, e.clientX, e.clientY)) return;
+              e.preventDefault();
+              check();
+            });
+          }
           doc.addEventListener("keyup", (k) => k.shiftKey && check());
           doc.addEventListener("keydown", (k) => eventsRef.current.onKey?.(k));
           doc.addEventListener("keyup", (k) => eventsRef.current.onKeyUp?.(k));
