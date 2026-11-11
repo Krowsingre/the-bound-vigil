@@ -169,8 +169,9 @@ export const MOST_CLOSED = 10;
  */
 function startFresh() {
   try {
-    if (sessionStorage.getItem("tbv.closedTabs.fresh")) return;
-    sessionStorage.setItem("tbv.closedTabs.fresh", "1");
+    const marker = `${CLOSED_KEY}.fresh`;
+    if (sessionStorage.getItem(marker)) return;
+    sessionStorage.setItem(marker, "1");
     localStorage.removeItem(CLOSED_KEY);
   } catch {
     // Nothing kept to clear.
