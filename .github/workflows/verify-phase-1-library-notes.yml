@@ -1,0 +1,17 @@
+name: Phase 1 library verification
+
+on:
+  push:
+    branches: [codex/verify-phase-1-library-notes]
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p tbv-core --lib
