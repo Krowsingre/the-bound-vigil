@@ -64,6 +64,9 @@ describe("reading settings", () => {
     expect(resolveTheme("auto", true)).toBe("dark");
     expect(resolveTheme("auto", false)).toBe("light");
     expect(resolveTheme("paper", true)).toBe("paper");
+    expect(resolveTheme("vesper", false)).toBe("vesper");
+    expect(parseSettings(null).autoScrollSpeed).toBe(15);
+    expect(parseSettings('{"theme":"vesper","autoScrollSpeed":25}')).toMatchObject({ theme: "vesper", autoScrollSpeed: 25 });
   });
 
   it("uses Lora unless the publisher's fonts are chosen", () => {

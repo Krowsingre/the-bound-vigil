@@ -65,7 +65,25 @@ const THEME_OPTIONS: { value: ReadingTheme; label: string; style?: React.CSSProp
   { value: "light", label: "Light", style: { background: PAGE_COLORS.light.background, color: PAGE_COLORS.light.text } },
   { value: "paper", label: "Paper", style: { background: PAGE_COLORS.paper.background, color: PAGE_COLORS.paper.text } },
   { value: "dark", label: "Dark", style: { background: PAGE_COLORS.dark.background, color: PAGE_COLORS.dark.text } },
+  { value: "vesper", label: "Vesper", style: { background: PAGE_COLORS.vesper.background, color: PAGE_COLORS.vesper.text } },
 ];
+
+function ScrollSpeeds({ settings, onChange }: { settings: ReaderSettings; onChange: (change: Partial<ReaderSettings>) => void }) {
+  return (
+    <div>
+      <label className="field">
+        <span>Manual scroll speed</span>
+        <input type="range" min={120} max={1200} step={60} value={settings.keyboardScrollSpeed}
+          onChange={(event) => onChange({ keyboardScrollSpeed: Number(event.target.value) })} />
+      </label>
+      <label className="field">
+        <span>Auto-scroll speed <output>{settings.autoScrollSpeed}%</output></span>
+        <input type="range" aria-label="Auto-scroll speed" min={1} max={100} value={settings.autoScrollSpeed}
+          onChange={(event) => onChange({ autoScrollSpeed: Number(event.target.value) })} />
+      </label>
+    </div>
+  );
+}
 
 /** The Aa panel: how the book text looks. */
 export function TextSettings({ settings, onChange }: { settings: ReaderSettings; onChange: (s: Partial<ReaderSettings>) => void }) {
@@ -139,13 +157,7 @@ export function TextSettings({ settings, onChange }: { settings: ReaderSettings;
         ]}
         onChange={(flow) => onChange({ flow })}
       />
-      {settings.flow === "scrolled" && (
-        <label className="field">
-          <span>Arrow-key scroll speed</span>
-          <input type="range" min={120} max={1200} step={60} value={settings.keyboardScrollSpeed}
-            onChange={(event) => onChange({ keyboardScrollSpeed: Number(event.target.value) })} />
-        </label>
-      )}
+      <ScrollSpeeds settings={settings} onChange={onChange} />
       {settings.flow === "paginated" && (
         <Choice<TextSpread>
           label="Pages at a time"
@@ -267,6 +279,7 @@ export function PageSettings({
         ]}
         onChange={(pageFlow) => onChange({ pageFlow })}
       />
+      <ScrollSpeeds settings={settings} onChange={onChange} />
       <Choice<ReadingTheme> label="Colour around the pages" value={settings.theme} options={THEME_OPTIONS} onChange={(theme) => onChange({ theme })} />
     </div>
   );

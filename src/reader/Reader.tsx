@@ -251,13 +251,13 @@ export function Reader({
     lang: bookLang,
     voices: settings.voices,
     rate: settings.rate,
-    dark: theme === "dark",
+    dark: theme === "dark" || theme === "vesper",
   });
   const readAlong = useReadAlong({
     getView: engine.getView,
     ready: engine.ready,
     bookId,
-    dark: theme === "dark",
+    dark: theme === "dark" || theme === "vesper",
     manual: !!info && isDocument(info.book.format),
     format: info?.book.format,
     onStart: readAloud.stop,
@@ -455,7 +455,28 @@ export function Reader({
     void flush().then(onClose);
   }, [flush, onClose, fullscreen]);
 
-  const keyboardScroll = useKeyboardScroll(engine.scrollByPixels, settings.keyboardScrollSpeed, engine.ready && !engine.fixed && settings.flow === "scrolled" && !expandedContent && !noteEdit);
+  const [autoScrolling, setAutoScrolling] = useState(false);
+  const scrolling = (engine.fixed ? settings.pageFlow : settings.flow) === "scrolled";
+  const { scrollByPixels } = engine;
+  useEffect(() => {
+    if (!autoScrolling || !scrolling || !engine.ready || expandedContent || noteEdit) return;
+    let frame = 0;
+    let previous = performance.now();
+    let remainder = 0;
+    const tick = (now: number) => {
+      if (!document.hidden) {
+        remainder += Math.min(50, Math.max(0, now - previous)) * settings.autoScrollSpeed * 0.004;
+        const pixels = Math.floor(remainder);
+        if (pixels) scrollByPixels(pixels);
+        remainder -= pixels;
+      }
+      previous = now;
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [autoScrolling, scrolling, engine.ready, scrollByPixels, expandedContent, noteEdit, settings.autoScrollSpeed]);
+  const keyboardScroll = useKeyboardScroll(scrollByPixels, settings.keyboardScrollSpeed, engine.ready && scrolling && !expandedContent && !noteEdit);
   const keyScrollRef = useRef(keyboardScroll.release);
   keyScrollRef.current = keyboardScroll.release;
 
@@ -467,7 +488,12 @@ export function Reader({
     if (isTyping(e.target) && e.key !== "Escape" && !backKey) return;
     const ctrl = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
-    if (ctrl && engine.fixed && (key === "=" || key === "+" || key === "-" || key === "0")) {
+    if (ctrl && (e.code === "Space" || key === " ") && !e.altKey && !e.shiftKey) {
+      if (!e.repeat && engine.ready) {
+        if (!autoScrolling && !scrolling) changeSettings(engine.fixed ? { pageFlow: "scrolled" } : { flow: "scrolled" });
+        setAutoScrolling(!autoScrolling);
+      }
+    } else if (ctrl && engine.fixed && (key === "=" || key === "+" || key === "-" || key === "0")) {
       // Zoom for PDFs and comics, in place of the window's own zoom.
       changeSettings({ pageZoom: key === "0" ? "fit-page" : zoomStep(engine.scale, key === "-" ? -1 : 1) });
     } else if (ctrl && (key === "k" || key === "f")) {
@@ -497,7 +523,7 @@ export function Reader({
     else if (e.key === "ArrowRight") turn(true);
     else if (!e.shiftKey && (engine.fixed || settings.flow === "scrolled") && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       const direction = e.key === "ArrowUp" ? -1 : 1;
-      if (engine.fixed) engine.scrollStep(direction);
+      if (engine.fixed && !scrolling) engine.scrollStep(direction);
       else keyboardScroll.press(direction, e.repeat);
     }
     // In scroll mode these move the long page on by a screen.

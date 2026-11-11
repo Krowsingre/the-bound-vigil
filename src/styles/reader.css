@@ -918,6 +918,18 @@
   --accent: #8fa3b5;
 }
 
+.reader.theme-vesper {
+  --bg: #141310;
+  --surface: #1B1916;
+  --surface-sunk: #25221E;
+  --text: #E2DDD3;
+  --text-muted: #A59E92;
+  --border: #3b352e;
+  --accent: #BBAA8C;
+  --accent-text: #141310;
+  color-scheme: dark;
+}
+
 /* Floating toolbar over a selection or highlight */
 .selection-toolbar {
   position: fixed;
