@@ -7,6 +7,8 @@
   if (window.__tbvStandIns) return;
   window.__tbvStandIns = true;
   const WAIT = 1000;
+  /** When the page last told a tracker something (a click counted, say). */
+  let counted = 0;
   const once = (fn) => {
     let done = false;
     return function () {
@@ -39,6 +41,7 @@
     });
     const wrapped = function () { look(arguments); return push.apply(this, arguments); };
     function look(items) {
+      counted = Date.now();
       for (const item of items) {
         if (!item || typeof item !== 'object') continue;
         guard(item, 'eventCallback');
@@ -59,6 +62,7 @@
   const watchGa = (ga) => {
     if (typeof ga !== 'function' || ga.__tbv) return ga;
     const wrapped = function () {
+      counted = Date.now();
       for (const arg of arguments) guard(arg, 'hitCallback');
       return ga.apply(this, arguments);
     };
@@ -66,9 +70,14 @@
     Object.defineProperty(wrapped, '__tbv', { value: true });
     return wrapped;
   };
-  // Any other kind: a link to another site whose click the page took over
-  // (to count it first) and then never followed. If nothing happened after a
-  // moment (no new page, no pop-up, no change of address), TBV follows it.
+  // Any other kind: a link to another site whose click the page took over to
+  // tell a tracker, and then never followed. Only when the page did tell a
+  // tracker as it was clicked, and nothing else happened after a moment (no new
+  // page, pop-up, change of address or dialog), TBV follows it.
+  if (navigator.sendBeacon) {
+    const beacon = navigator.sendBeacon;
+    navigator.sendBeacon = function () { counted = Date.now(); return beacon.apply(this, arguments); };
+  }
   const LINK_WAIT = 1500;
   let opened = 0;
   const open = window.open;
@@ -84,12 +93,15 @@
     let to;
     try { to = new URL(link.href, location.href); } catch (_) { return; }
     if (!/^https?:$/.test(to.protocol) || to.origin === location.origin) return;
+    const clicked = Date.now();
     const before = { href: location.href, opened, leaving };
     // Seen after the page's own handlers have had their turn.
     setTimeout(() => {
       if (!event.defaultPrevented) return;
       setTimeout(() => {
+        if (counted < clicked || counted - clicked > 500) return;
         if (location.href !== before.href || opened !== before.opened || leaving !== before.leaving || !link.isConnected) return;
+        if (document.querySelector('dialog[open], [aria-modal="true"], [role="dialog"]:not([aria-hidden="true"]), [role="alertdialog"]')) return;
         location.assign(to.href);
       }, LINK_WAIT);
     }, 0);
