@@ -534,7 +534,11 @@ export function Browser({
           if (!ev.tab && !ev.foreground) void prepareTab(id, ev.url, privately)?.catch(() => undefined);
           break;
         }
+        case "downloadStart":
+          setLoading((loading) => ({ ...loading, [ev.tab]: false }));
+          break;
         case "failed":
+          setLoading((loading) => ({ ...loading, [ev.tab]: false }));
           setFailed((f) => ({ ...f, [ev.tab]: { url: ev.url, reason: ev.reason } }));
           if (/^https?:/i.test(ev.url)) setTabs((s) => updateTab(s, ev.tab, { url: ev.url }));
           break;
@@ -672,7 +676,10 @@ export function Browser({
 
   useEffect(() => refit.current(), [tabs.active, url, article, panel, !!failure, other, ratio, companion]);
 
-  const act = (action: "back" | "forward" | "reload" | "stop") => void api.browserAct(active.id, action).catch(() => undefined);
+  const act = (action: "back" | "forward" | "reload" | "stop") => {
+    if (action === "stop") setLoading((loading) => ({ ...loading, [active.id]: false }));
+    void api.browserAct(active.id, action).catch(() => undefined);
+  };
 
   /** The pages behind or ahead, listed to jump to one. */
   const showTravel = (way: "back" | "forward", x: number, y: number) => {
