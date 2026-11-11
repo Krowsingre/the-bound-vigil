@@ -371,9 +371,15 @@ impl Library {
                {BOOK_FROM}{kind} AND {series} IN (SELECT value FROM json_each(?1))
              )
              {BOOK_COLUMNS}, (SELECT owned FROM candidates WHERE id = b.id) AS owned_count,
-             (SELECT COUNT(*) FROM series_lists sl, json_each(sl.books) entry
-              WHERE sl.id = lower(trim({SERIES})) AND sl.checked_at IS NOT NULL
-                AND json_extract(entry.value, '$.source') NOT IN ('you', '')) AS published_count
+             (SELECT COUNT(*) FROM (
+               SELECT json_extract(entry.value, '$.published') AS release_date
+               FROM series_lists sl, json_each(sl.books) entry
+               WHERE sl.id = lower(trim({SERIES})) AND sl.checked_at IS NOT NULL
+             ) WHERE CASE length(release_date)
+               WHEN 4 THEN date(release_date || '-12-31')
+               WHEN 7 THEN date(release_date || '-01', '+1 month', '-1 day')
+               WHEN 10 THEN date(release_date)
+             END <= date('now')) AS published_count
              {BOOK_FROM} AND b.id IN (SELECT id FROM candidates WHERE pick = 1)"
         );
         let mut stmt = self.conn.prepare(&sql)?;
@@ -904,11 +910,18 @@ mod tests {
         assert_eq!(page.series_counts[&second], 2);
         assert!(page.series_published.is_empty());
 
-        let listed = ["First", "Second", "Third"]
+        let listed = [
+            ("First", Some("2020-01-01")),
+            ("Second", Some("2020-01")),
+            ("Third", Some("2020")),
+            ("Future release", Some("9999-12-31")),
+            ("No release date", None),
+        ]
             .into_iter()
-            .map(|title| crate::series::SeriesEntry {
+            .map(|(title, published)| crate::series::SeriesEntry {
                 title: title.into(),
                 source: "hardcover".into(),
+                published: published.map(str::to_string),
                 ..Default::default()
             })
             .collect();

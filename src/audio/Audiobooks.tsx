@@ -165,7 +165,7 @@ export function Audiobooks({
           onShowAllSeries={onShowAllSeries}
           restoreScroll={restoreScroll}
           onScrollRestored={onScrollRestored}
-          paired={pairing === "all" ? null : pairing === "paired"}
+          paired={(seriesBack && !onShowAllSeries) || pairing === "all" ? null : pairing === "paired"}
           onPairing={(value) => choosePairing(value === null ? "all" : value ? "paired" : "alone")}
           switcher={!seriesBack && (
             <div className="segmented page-switch" role="group" aria-label="Audio type">

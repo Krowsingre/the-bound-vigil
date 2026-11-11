@@ -195,7 +195,7 @@ test("series stacks count the whole series and apply combined filters to the sam
 test("series details report the filtered count and offer to show the rest", async () => {
   const showAll = vi.fn();
   getLibrary.mockImplementation(async (query) => ({
-    books: [book(1, { series: "Shared series" })], total: query.hideRead ? 1 : 5,
+    books: [book(1, { series: "Shared series" })], total: query?.hideRead ? 1 : 5,
     page: 0, pageSize: 24, counts, formats: ["epub"], tags: [], genres: [], authors: [], narrators: [], languages: [],
   }));
   renderLibrary({ view: { ...view, series: ["Shared series"], hideRead: true }, seriesBack: () => {}, onShowAllSeries: showAll });

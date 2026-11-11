@@ -197,7 +197,7 @@ pub fn isfdb_series_from(html: &str, author: &str) -> Vec<SeriesEntry> {
         if !same_author(&authors, author) {
             continue;
         }
-        out.push(SeriesEntry { title, position: Some(position), authors, cover_url: None, source: "isfdb".into() });
+        out.push(SeriesEntry { title, position: Some(position), authors, cover_url: None, source: "isfdb".into(), published: None });
     }
     out
 }
@@ -263,7 +263,7 @@ pub fn google_series_from(volumes: &[Value], series_id: &str, author: &str) -> V
             let position = text(&info["seriesInfo"]["bookDisplayNumber"]).and_then(|n| number_in(&n)).or_else(|| series["orderNumber"].as_f64());
             let authors: Vec<String> = info["authors"].as_array().map(|a| a.iter().filter_map(text).collect()).unwrap_or_default();
             let cover_url = text(&info["imageLinks"]["thumbnail"]).map(|c| c.replace("http://", "https://"));
-            Some(SeriesEntry { title, position, authors, cover_url, source: "google".into() })
+            Some(SeriesEntry { title, position, authors, cover_url, source: "google".into(), published: text(&info["publishedDate"]) })
         })
         .filter(|e| same_author(&e.authors, author))
         .collect()

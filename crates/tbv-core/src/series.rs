@@ -31,6 +31,8 @@ pub struct SeriesEntry {
     pub authors: Vec<String>,
     pub cover_url: Option<String>,
     pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub published: Option<String>,
 }
 
 impl SeriesEntry {
@@ -181,7 +183,7 @@ pub fn audible_series_from(data: &Value, name: &str) -> Vec<SeriesEntry> {
         let cover = p["product_images"].as_object().and_then(|images| ["500", "1024", "252"].iter().find_map(|size| images.get(*size)).and_then(text));
         let authors = p["authors"].as_array().map(|a| a.iter().filter_map(|x| text(&x["name"])).collect()).unwrap_or_default();
         found.push((
-            SeriesEntry { title, position: number(sequence), authors, cover_url: cover.map(|c| c.replace("http://", "https://")), source: "audible".into() },
+            SeriesEntry { title, position: number(sequence), authors, cover_url: cover.map(|c| c.replace("http://", "https://")), source: "audible".into(), published: text(&p["release_date"]) },
             text(&p["language"]).map(|l| l.to_lowercase()),
         ));
     }
@@ -251,6 +253,7 @@ pub fn hardcover_series_from(data: &Value) -> Vec<SeriesEntry> {
                     .unwrap_or_default(),
                 cover_url: text(&book["image"]["url"]),
                 source: "hardcover".into(),
+                published: text(&book["release_date"]),
             })
         })
         .collect()
@@ -263,7 +266,7 @@ pub fn search_hardcover_series(net: &dyn Transport, token: &str, name: &str) -> 
         token,
         "query ($name: String!) { series(where: {name: {_eq: $name}}, limit: 5) { name \
          book_series(order_by: {position: asc}) { position compilation \
-         book { title image { url } contributions(limit: 3) { author { name } } } } } }",
+         book { title release_date image { url } contributions(limit: 3) { author { name } } } } } }",
         json!({ "name": name.trim() }),
     )?;
     Ok(hardcover_series_from(&data))
@@ -282,6 +285,9 @@ pub fn merge(lists: Vec<Vec<SeriesEntry>>) -> Vec<SeriesEntry> {
             }
             if kept.cover_url.is_none() {
                 kept.cover_url = entry.cover_url;
+            }
+            if kept.published.is_none() {
+                kept.published = entry.published;
             }
             if kept.authors.is_empty() {
                 kept.authors = entry.authors;
@@ -403,7 +409,7 @@ impl Library {
         }
         let mut saved = self.saved_series(name)?.unwrap_or_default();
         saved.name = name.trim().to_string();
-        let entry = SeriesEntry { title: title.to_string(), position, authors, cover_url: None, source: BY_HAND.into() };
+        let entry = SeriesEntry { title: title.to_string(), position, authors, cover_url: None, source: BY_HAND.into(), published: None };
         // Takes the place of a listed book with the same number.
         let key = entry.key();
         saved.books.retain(|b| b.key() != key);
@@ -559,7 +565,7 @@ mod tests {
     use crate::library::tests::open_temp_library;
 
     fn entry(title: &str, n: f64) -> SeriesEntry {
-        SeriesEntry { title: title.into(), position: Some(n), authors: vec!["Terry Pratchett".into()], cover_url: None, source: "test".into() }
+        SeriesEntry { title: title.into(), position: Some(n), authors: vec!["Terry Pratchett".into()], cover_url: None, source: "test".into(), published: None }
     }
 
     fn add(library: &mut Library, dir: &std::path::Path, title: &str, series: Option<(&str, u32)>) -> String {

@@ -215,7 +215,7 @@ export function Library({
     hideRead: view.hideRead,
     exclude: view.exclude,
     kind,
-    paired: inSeries ? null : paired,
+    paired,
     audioType: view.audioType,
     pinnedFirst,
     pinned,
