@@ -63,7 +63,7 @@ import {
   restoreClosedTabs,
 } from "./browserTabs";
 import { answerDownload, BOOK_FILE, downloadSource, downloadState, hasActiveTransfer, isActiveDownload, rememberDownloadSource, removeDownloads, setDownloads, useDownloads, type Fetched } from "./browserDownloads";
-import { HAS_PIP, INSTALL_YOUTUBE_PIP, isYouTube, READ_SELECTION, REMOVE_FROM_PAGE } from "./pageTools";
+import { HAS_PIP, INSTALL_YOUTUBE_PIP, isYouTube, PAGE_REPORT, READ_SELECTION, REMOVE_FROM_PAGE } from "./pageTools";
 import { requestAppHistory } from "../shell/navigationKeys";
 import { addToHistory } from "./browserHistory";
 import { HistoryPanel } from "./HistoryPanel";
@@ -934,6 +934,32 @@ export function Browser({
     setTabs((s) => duplicateTab(s, id));
   };
   /** Opens closed tabs again, back where they were: the last `count`, or the one at `index` in the list. */
+  /**
+   * What this tab's page did lately, as TBV and the page itself saw it, copied
+   * to paste into a message when a button or link doesn't work.
+   */
+  const copyPageReport = async (tab: string) => {
+    const [native, page] = await Promise.all([
+      api.browserReport(tab).catch(() => [] as string[]),
+      api.browserRead(tab, PAGE_REPORT).then((r) => (typeof r === "string" ? JSON.parse(r) : r) as { address: string; lines: string[] } | null).catch(() => null),
+    ]);
+    const text = [
+      `TBV ${navigator.userAgent}`,
+      `Protection: ${readBrowserPrefs().protection}, redirects: ${readBrowserPrefs().redirects}`,
+      "",
+      "What TBV saw:",
+      ...(native.length ? native : ["(nothing)"]),
+      "",
+      `What the page did${page ? ` (${page.address})` : ""}:`,
+      ...(page?.lines.length ? page.lines : ["(nothing, or the page doesn't allow it)"]),
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("Page report copied. Paste it into a message.");
+    } catch {
+      toast("Copying isn't available here.");
+    }
+  };
   /** Empties Recently closed, with an Undo. */
   const clearClosedWithUndo = () => {
     const was = readClosedTabs();
@@ -1291,6 +1317,7 @@ export function Browser({
     { label: "Remove things from this page", icon: "eyeOff", disabled: !web || !!article, onSelect: () => void api.browserRead(active.id, REMOVE_FROM_PAGE).then((on) => {
       if (!on) toast("This page doesn't allow it.");
     }, () => toast("This page doesn't allow it.")) },
+    { label: "Copy page report", icon: "copy", disabled: !web || !!article, onSelect: () => void copyPageReport(active.id) },
     { label: "New tab", icon: "plus", onSelect: () => newTab() },
     { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) },
     { label: "Reopen closed tab", icon: "undo", disabled: !closedTabs.length, onSelect: () => reopen() },
