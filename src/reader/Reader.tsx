@@ -22,6 +22,7 @@ import { navigationDirection } from "../shell/navigationKeys";
 import { DefineCard, ListenAlongPanel, NoteDialog, PageSettings, ReadAloudPlayer, SelectionToolbar, TextSettings, ZoomControls } from "./ReaderPopovers";
 import { addressFor, readBrowserPrefs } from "../browse/browserPrefs";
 import { ReaderSearch } from "./ReaderSearch";
+import { canTranslateInReader, TranslatePanel } from "./TranslatePanel";
 import { BOOK_OPENED, useAppDark } from "../settings/appSettings";
 import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, resolveTheme, SETTINGS_KEY, zoomStep, type ReaderSettings } from "./settings";
 import { useKeyboardScroll } from "./useKeyboardScroll";
@@ -122,6 +123,9 @@ export function Reader({
   const [selection, setSelection] = useState<TextSelection | null>(null);
   const [defining, setDefining] = useState<{ text: string; rect: DOMRect; definitions: WordDefinition[] } | null>(null);
   const closeDefining = useCallback(() => setDefining(null), []);
+  /** Google Translate in a panel beside the book (Windows), for these words. */
+  const [translating, setTranslating] = useState<string | null>(null);
+  const closeTranslating = useCallback(() => setTranslating(null), []);
   const [active, setActive] = useState<{ a: Annotation; rect: DOMRect } | null>(null);
   const [noteEdit, setNoteEdit] = useState<{ a?: Annotation; selection?: TextSelection } | null>(null);
   const [lastColor, setLastColor] = useState<HighlightColor>("rose");
@@ -452,13 +456,13 @@ export function Reader({
     setSelection(null);
     setActive(null);
     const words = text.trim().replace(/\s+/g, " ");
-    const inDiscover = () => shell.onOpenWeb?.(googleTranslate(words));
+    const inDiscover = () => (canTranslateInReader() ? setTranslating(words) : shell.onOpenWeb?.(googleTranslate(words)));
     api.translateText(words, spotOf(rect)).then((shown) => !shown && inDiscover(), inDiscover);
   };
   const lookUps = (text: string, rect: DOMRect) => ({
     onDefine: () => define(text, rect),
     onSearch: shell.onOpenWeb ? () => searchWeb(text) : undefined,
-    onTranslate: shell.onOpenWeb || isApple ? () => translate(text, rect) : undefined,
+    onTranslate: shell.onOpenWeb || isApple || canTranslateInReader() ? () => translate(text, rect) : undefined,
   });
 
   const handlers: AnnotationHandlers = {
@@ -864,6 +868,7 @@ export function Reader({
           onClose={closeDefining}
         />
       )}
+      {translating && <TranslatePanel words={translating} url={googleTranslate(translating)} onClose={closeTranslating} />}
       {noteEdit && (
         <NoteDialog
           excerpt={noteEdit.a?.excerpt ?? noteEdit.selection?.text ?? ""}
