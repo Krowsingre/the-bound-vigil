@@ -63,3 +63,6 @@ export const INSTALL_YOUTUBE_PIP = `(() => {
 
 /** Starts picking parts of the page to remove (src-tauri/src/browser_page_tools.js). */
 export const REMOVE_FROM_PAGE = `JSON.stringify(Boolean(window.__tbvPickToRemove && window.__tbvPickToRemove(true)))`;
+
+/** The page's own part of "Copy page report" (browser_page_report.js). */
+export const PAGE_REPORT = `(window.__tbvReport ? window.__tbvReport() : JSON.stringify(null))`;

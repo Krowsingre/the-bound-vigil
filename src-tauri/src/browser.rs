@@ -125,7 +125,7 @@ pub(crate) enum Event {
     Download { tab: String, id: String, path: String, name: String, ok: bool, error: Option<String>, security_blocked: bool },
     /// A link that opens a new window: it opens in a new tab instead.
     #[serde(rename_all = "camelCase")]
-    NewTab { url: String, from: String },
+    NewTab { url: String, from: String, foreground: bool },
     /// The page closed itself (window.close()). Told by Windows' web view.
     #[serde(rename_all = "camelCase")]
     #[cfg_attr(not(windows), allow(dead_code))]
@@ -185,6 +185,29 @@ fn link_menu(url: &str) -> Vec<(&'static str, &'static str)> {
         items.push(("Add to TBV library", "addBook"));
     }
     items
+}
+
+/// What each tab's page did lately, as TBV saw it, for "Copy page report".
+static REPORT: std::sync::Mutex<Option<std::collections::HashMap<String, std::collections::VecDeque<String>>>> = std::sync::Mutex::new(None);
+
+/// Adds a line to a tab's page report (the newest 200 are kept).
+#[cfg_attr(mobile, allow(dead_code))]
+pub(crate) fn note(tab: &str, line: impl Into<String>) {
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() % 100_000_000).unwrap_or(0);
+    if let Ok(mut all) = REPORT.lock() {
+        let lines = all.get_or_insert_with(std::collections::HashMap::new).entry(tab.to_string()).or_default();
+        lines.push_back(format!("{:>9.2}s {}", stamp as f64 / 1000.0, line.into()));
+        while lines.len() > 200 {
+            lines.pop_front();
+        }
+    }
+}
+
+/// A tab's page report, oldest first.
+#[tauri::command]
+pub async fn browser_report(tab: String) -> CommandResult<Vec<String>> {
+    let tab = tab_name(&tab)?;
+    Ok(REPORT.lock().ok().and_then(|all| all.as_ref()?.get(&tab).map(|l| l.iter().cloned().collect())).unwrap_or_default())
 }
 
 #[cfg_attr(mobile, allow(dead_code))]
@@ -408,6 +431,7 @@ mod view {
         let (page_tab, title_tab, window_tab, download_tab, other_tab) = (tab.to_string(), tab.to_string(), tab.to_string(), tab.to_string(), tab.to_string());
         let saves = downloads_dir(app)?;
         let popup_saves = saves.clone();
+        let popup_data = data.clone();
         #[cfg(any(windows, target_os = "macos"))]
         let initial = tauri::Url::parse("about:blank").expect("a fixed address");
         #[cfg(not(any(windows, target_os = "macos")))]
@@ -420,6 +444,7 @@ mod view {
             // Buttons that wait on a blocked tracker still work.
             .initialization_script(STAND_INS)
             .on_page_load(move |_, payload| {
+                super::note(&page_tab, format!("page {} {}", if matches!(payload.event(), PageLoadEvent::Started) { "started" } else { "finished" }, payload.url()));
                 if matches!(payload.event(), PageLoadEvent::Started) {
                     set_site(&page_tab, payload.url());
                     follow_front(&pages);
@@ -437,12 +462,14 @@ mod view {
             // apps, once TBV's page has asked (if chosen).
             .on_navigation(move |url| {
                 let web = matches!(url.scheme(), "http" | "https" | "about" | "blob" | "data");
+                super::note(&other_tab, format!("going to {url}{}", if web { "" } else { " (not a web page: TBV didn't open it here)" }));
                 if !web && super::app_link(url.as_str()) {
                     tell(&others, Event::External { tab: other_tab.clone(), url: url.to_string() });
                 }
                 web
             })
             .on_new_window(move |url, features| {
+                super::note(&window_tab, format!("page asked for a new window: {url} (sized: {})", features.size().is_some()));
                 // A window the page sized itself is a pop-up (usually a sign-in): it opens
                 // as a small window of its own, still joined to the page, and closes when done.
                 // A blob address also needs its opener; a fresh tab cannot recreate it.
@@ -457,6 +484,9 @@ mod view {
                         WebviewUrl::External(tauri::Url::parse("about:blank").expect("a fixed address")),
                     )
                     .window_features(features)
+                    // The same browser store as its page: Windows' web view won't
+                    // join a pop-up to a page from another store (it just doesn't open).
+                    .data_directory(popup_data.clone())
                     .incognito(private)
                     .initialization_script(STAND_INS)
                     .on_download(move |_, event| track_download(&downloads, &download_tab, &saves, event))
@@ -465,14 +495,21 @@ mod view {
                         let _ = window.set_title(&title);
                     })
                     .build();
-                    if let Ok(window) = popup {
-                        #[cfg(windows)]
-                        super::windows::popup(&window, popup_tab);
-                        return NewWindowResponse::Create { window };
+                    match popup {
+                        Ok(window) => {
+                            super::note(&window_tab, "  opened it as a pop-up window");
+                            #[cfg(windows)]
+                            super::windows::popup(&window, popup_tab);
+                            return NewWindowResponse::Create { window };
+                        }
+                        Err(e) => super::note(&window_tab, format!("  couldn't make the pop-up window: {e}")),
                     }
                 }
                 // Any other link that wants a new window opens in a new tab.
-                tell(&windows, Event::NewTab { url: url.to_string(), from: window_tab.clone() });
+                // Like other browsers, it comes to the front, unless Ctrl or the middle button sent it behind.
+                let foreground = !super::sent_behind();
+                super::note(&window_tab, format!("  opening it as a new tab ({})", if foreground { "in front" } else { "behind" }));
+                tell(&windows, Event::NewTab { url: url.to_string(), from: window_tab.clone(), foreground });
                 NewWindowResponse::Deny
             })
             .on_download(move |_, event| track_download(&downloads, &download_tab, &saves, event));
@@ -762,6 +799,7 @@ mod windows {
                 }
                 let mut status = COREWEBVIEW2_WEB_ERROR_STATUS::default();
                 args.WebErrorStatus(&mut status)?;
+                crate::browser::note(&failing, format!("page didn't open (Windows web error {})", status.0));
                 let Some(reason) = failure(status) else { return Ok(()) };
                 let url = sender
                     .and_then(|core| {
@@ -793,6 +831,7 @@ mod windows {
                 args.Request()?.Uri(&mut uri)?;
                 let uri = take_pwstr(uri);
                 if view::protection().blocks(&uri, &view::site_of(&tab)) {
+                    crate::browser::note(&tab, format!("blocked by protection: {}", uri.chars().take(200).collect::<String>()));
                     let refused = environment.CreateWebResourceResponse(None, 403, &HSTRING::from("Blocked"), &HSTRING::new())?;
                     args.SetResponse(&refused)?;
                 }
@@ -850,6 +889,7 @@ mod windows {
                     let url = take_pwstr(target);
                     let Ok(to) = super::web_url(&url) else { return Ok(()) };
                     let explicit = !redirected.as_bool() && view::consume_app_navigation(&tab, &to);
+                    crate::browser::note(&tab, format!("navigation starting: {url} (by a click: {}, redirect: {}, asked by TBV: {explicit})", user.as_bool(), redirected.as_bool()));
                     let from = if redirected.as_bool() {
                         previous.borrow().as_ref().filter(|(id, _)| *id == nav).map(|(_, uri)| uri.clone())
                     } else if !user.as_bool() && !explicit {
@@ -870,6 +910,7 @@ mod windows {
                         }
                         let mode = view::protection().redirect_mode(source.host_str().unwrap_or(""));
                         if mode != RedirectMode::Allow {
+                            crate::browser::note(&tab, format!("  stopped by the Automatic redirects setting ({mode:?})"));
                             args.SetCancel(true)?;
                             tell(&app, Event::Redirect { tab: tab.clone(), from, url, ask: mode == RedirectMode::Ask });
                         }
@@ -1289,8 +1330,22 @@ mod view {
     }
 }
 
+/// Ctrl (Cmd on a Mac) or the middle button held as a link asked for a new
+/// window: it opens behind, as in other browsers.
+#[cfg(windows)]
+fn sent_behind() -> bool {
+    use ::windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MBUTTON};
+    unsafe { GetKeyState(VK_CONTROL.0 as i32) < 0 || GetKeyState(VK_MBUTTON.0 as i32) < 0 }
+}
+/// The Mac's web view doesn't say which keys were held, so a new window
+/// opens behind there as it always has.
+#[cfg(all(desktop, not(windows)))]
+fn sent_behind() -> bool {
+    true
+}
+
 /// Run first on every page in Discover (see the two files).
-const PAGE_SCRIPTS: &str = concat!(include_str!("browser_stand_ins.js"), "\n", include_str!("browser_page_tools.js"));
+const PAGE_SCRIPTS: &str = concat!(include_str!("browser_stand_ins.js"), "\n", include_str!("browser_page_tools.js"), "\n", include_str!("browser_page_report.js"));
 
 /// A link for another app that TBV may open: never the computer's own files or a page's script.
 fn app_link(url: &str) -> bool {

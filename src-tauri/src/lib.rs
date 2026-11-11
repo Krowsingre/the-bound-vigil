@@ -2155,6 +2155,7 @@ pub fn run() {
             browser::browser_share,
             browser::browser_open_app,
             browser::browser_travelled,
+            browser::browser_report,
             browser::browser_history,
             browser::put_browser_history,
             browser::remove_browser_history,

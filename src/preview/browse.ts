@@ -60,6 +60,7 @@ type Calls = Pick<
   | "browserFind"
   | "browserProtect"
   | "browserRead"
+  | "browserReport"
   | "browserCancelDownload"
   | "browserFetchPicture"
   | "onBrowserEvent"
@@ -221,6 +222,7 @@ export function browseStub(): Calls {
     browserRead: async () => {
       throw new Error(APP_ONLY);
     },
+    browserReport: async () => [],
     browserCancelDownload: async () => undefined,
     siteIcon: async () => {
       throw new Error(APP_ONLY);
