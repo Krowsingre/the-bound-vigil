@@ -18,7 +18,7 @@ export function BookCover({ book, size = "m", onExpand, seriesCount, seriesPubli
   const fetched = useCoverOnView(book.id, !!book.coverPath, element);
   const cover = book.coverPath ?? fetched;
   const morePublished = seriesCount !== undefined && seriesPublished !== undefined && seriesPublished > seriesCount;
-  const seriesLabel = morePublished ? `${seriesCount} in your library · ${seriesPublished} published` : `${seriesCount} books in your library`;
+  const seriesLabel = morePublished ? `${seriesCount} in your library · at least ${seriesPublished} published` : `${seriesCount} books in your library`;
   const src = cover && !failed ? api.coverUrl(cover) : "";
   return (
     <div ref={setElement} className={`cover cover-${size}${book.format && isAudio(book.format) ? " cover-audio" : ""}`}>

@@ -412,7 +412,7 @@ export async function webApi(): Promise<Api> {
     if (ref.kind === "collection") return membersOf(collectionRow(ref.id));
     if (ref.kind === "series")
       return books()
-        .filter((b) => b.series === ref.name)
+        .filter((b) => b.series?.trim().toLowerCase() === ref.name.trim().toLowerCase())
         .sort((a, b) => (a.seriesIndex ?? 1e9) - (b.seriesIndex ?? 1e9) || byTitle(a, b));
     const members = books()
       .filter(smartBooks[ref.smart])
