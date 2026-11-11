@@ -125,7 +125,7 @@ pub(crate) enum Event {
     Download { tab: String, id: String, path: String, name: String, ok: bool, error: Option<String>, security_blocked: bool },
     /// A link that opens a new window: it opens in a new tab instead.
     #[serde(rename_all = "camelCase")]
-    NewTab { url: String, from: String },
+    NewTab { url: String, from: String, foreground: bool },
     /// The page closed itself (window.close()). Told by Windows' web view.
     #[serde(rename_all = "camelCase")]
     #[cfg_attr(not(windows), allow(dead_code))]
@@ -408,6 +408,7 @@ mod view {
         let (page_tab, title_tab, window_tab, download_tab, other_tab) = (tab.to_string(), tab.to_string(), tab.to_string(), tab.to_string(), tab.to_string());
         let saves = downloads_dir(app)?;
         let popup_saves = saves.clone();
+        let popup_data = data.clone();
         #[cfg(any(windows, target_os = "macos"))]
         let initial = tauri::Url::parse("about:blank").expect("a fixed address");
         #[cfg(not(any(windows, target_os = "macos")))]
@@ -457,6 +458,9 @@ mod view {
                         WebviewUrl::External(tauri::Url::parse("about:blank").expect("a fixed address")),
                     )
                     .window_features(features)
+                    // The same browser store as its page: Windows' web view won't
+                    // join a pop-up to a page from another store (it just doesn't open).
+                    .data_directory(popup_data.clone())
                     .incognito(private)
                     .initialization_script(STAND_INS)
                     .on_download(move |_, event| track_download(&downloads, &download_tab, &saves, event))
@@ -472,7 +476,8 @@ mod view {
                     }
                 }
                 // Any other link that wants a new window opens in a new tab.
-                tell(&windows, Event::NewTab { url: url.to_string(), from: window_tab.clone() });
+                // Like other browsers, it comes to the front, unless Ctrl or the middle button sent it behind.
+                tell(&windows, Event::NewTab { url: url.to_string(), from: window_tab.clone(), foreground: !super::sent_behind() });
                 NewWindowResponse::Deny
             })
             .on_download(move |_, event| track_download(&downloads, &download_tab, &saves, event));
@@ -1287,6 +1292,18 @@ mod view {
         let answer = ask(serde_json::json!({ "action": "history", "tab": tab }))?;
         Ok(serde_json::from_value::<super::Travelled>(answer).map(|t| super::Travelled { known: true, ..t }).unwrap_or_default())
     }
+}
+
+/// Ctrl (Cmd on a Mac) or the middle button held as a link asked for a new
+/// window: it opens behind, as in other browsers.
+#[cfg(windows)]
+fn sent_behind() -> bool {
+    use ::windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MBUTTON};
+    unsafe { GetKeyState(VK_CONTROL.0 as i32) < 0 || GetKeyState(VK_MBUTTON.0 as i32) < 0 }
+}
+#[cfg(all(desktop, not(windows)))]
+fn sent_behind() -> bool {
+    false
 }
 
 /// Run first on every page in Discover (see the two files).
