@@ -169,6 +169,10 @@ pub struct Visited {
 pub struct Travelled {
     pub back: Vec<Visited>,
     pub forward: Vec<Visited>,
+    /// False where the web view can't list its history (Mac desktop), so an
+    /// empty list there says nothing about what's behind.
+    #[serde(default)]
+    pub known: bool,
 }
 
 /// TBV's own items for a link's menu: a new tab, and the library for a book file.
@@ -1046,6 +1050,7 @@ mod windows {
         Ok(super::Travelled {
             back: history.entries[..at].iter().rev().enumerate().filter_map(web).collect(),
             forward: history.entries.iter().skip(at + 1).enumerate().filter_map(web).collect(),
+            known: true,
         })
     }
 
@@ -1280,7 +1285,7 @@ mod view {
 
     pub fn travelled(_app: &tauri::AppHandle, tab: &str) -> CommandResult<super::Travelled> {
         let answer = ask(serde_json::json!({ "action": "history", "tab": tab }))?;
-        Ok(serde_json::from_value(answer).unwrap_or_default())
+        Ok(serde_json::from_value::<super::Travelled>(answer).map(|t| super::Travelled { known: true, ..t }).unwrap_or_default())
     }
 }
 

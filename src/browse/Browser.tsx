@@ -798,7 +798,8 @@ export function Browser({
     if (isStartPage(tab.url) || !startBehind.current.has(id) || !made.current.has(id)) return native();
     void api.browserTravelled(id).then(
       (pages) => {
-        if (pages.back.length) return native();
+        // Only a web view that lists its history can say this is the first page.
+        if (pages.back.length || pages.known === false) return native();
         aheadOfStart.current.set(id, { url: tab.url, title: tab.title });
         void api.browserAct(id, "stop").catch(() => undefined);
         void api.browserRead(id, PAUSE_ALL).catch(() => undefined);

@@ -397,6 +397,8 @@ export function Library({
   const chosenIds = useRef<string[]>([]);
   chosenIds.current = selected ? [...selected.keys()] : [];
   useEffect(() => {
+    // A series' books are looked up again under the new search and filters.
+    setStackBooks((m) => (m.size ? new Map() : m));
     const ids = chosenIds.current;
     if (!ids.length) return;
     let current = true;
@@ -568,6 +570,15 @@ export function Library({
       }
       setSelected(all);
       setEverything(all.size);
+      if (groupSeries) {
+        // Every stack is chosen too, so its tick shows and choosing it again lets it go.
+        const bySeries = new Map<string, BookPreview[]>();
+        for (const b of all.values()) {
+          const name = b.series?.trim();
+          if (name) bySeries.set(name, [...(bySeries.get(name) ?? []), b]);
+        }
+        setStackBooks(bySeries);
+      }
     } catch (e) {
       toast(`Couldn't choose them all: ${String(e)}`);
     } finally {
