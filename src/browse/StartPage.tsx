@@ -12,7 +12,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon, type IconName } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { useToast } from "../components/Toast";
-import type { ClosedTab } from "./browserTabs";
+import { clearClosedTabs, type ClosedTab } from "./browserTabs";
 import { ClosedList } from "./ClosedList";
 import { clearHistory, onHistory, readHistory, removeFromHistory } from "./browserHistory";
 import { onBrowserPrefs, readBrowserPrefs, siteOf } from "./browserPrefs";
@@ -100,6 +100,7 @@ export function StartPage({
   const [editing, setEditing] = useState(false);
   const [recent, setRecent] = useState(recentSites);
   const [clearing, setClearing] = useState(false);
+  const [clearingClosed, setClearingClosed] = useState(false);
   const [showClosed, setShowClosed] = useRememberedDisclosure("discover.closedTabs");
   const [prefs, setPrefs] = useState(readBrowserPrefs);
   useEffect(() => onBrowserPrefs(() => setPrefs(readBrowserPrefs())), []);
@@ -275,9 +276,14 @@ export function StartPage({
             <section className="start-section" aria-labelledby="start-closed">
               <header>
                 <h2 id="start-closed">Recently closed tabs</h2>
-                <button type="button" className="start-more" aria-expanded={showClosed} onClick={() => setShowClosed(!showClosed)}>
-                  {showClosed ? "Hide" : `Show ${closed.length}`} <Icon name={showClosed ? "chevronUp" : "chevronDown"} size={16} />
-                </button>
+                <span className="start-more-row">
+                  <button type="button" className="start-more" aria-expanded={showClosed} onClick={() => setShowClosed(!showClosed)}>
+                    {showClosed ? "Hide" : `Show ${closed.length}`} <Icon name={showClosed ? "chevronUp" : "chevronDown"} size={16} />
+                  </button>
+                  <button type="button" className="start-more" onClick={() => setClearingClosed(true)}>
+                    Clear <Icon name="chevronRight" size={16} />
+                  </button>
+                </span>
               </header>
               {showClosed && <ClosedList closed={closed} onReopen={onReopen} />}
             </section>
@@ -299,6 +305,19 @@ export function StartPage({
         </div>
       )}
       {editing && <QuickLinksEditor links={links} onChanged={reload} onClose={() => setEditing(false)} />}
+      {clearingClosed && (
+        <ConfirmDialog
+          title="Clear Recently closed tabs?"
+          body="The list of tabs you closed is emptied. Open tabs, History and Bookmarks stay."
+          confirm="Clear"
+          danger
+          onCancel={() => setClearingClosed(false)}
+          onConfirm={() => {
+            clearClosedTabs(null);
+            setClearingClosed(false);
+          }}
+        />
+      )}
       {clearing && (
         <ConfirmDialog
           title="Clear Recent Sites?"
