@@ -833,7 +833,7 @@ export function epubFiles({ project, chapters, settings, cover, font, passageFon
   const sectionHtml = (p: (typeof parts)[number]) => {
     const type = { chapter: "chapter", front: "frontmatter", back: "backmatter", part: "part" }[p.role];
     const semantic = SEMANTIC[p.kind] ?? type;
-    const classes = [type, p.kind === "chapter" || p.kind === "custom" ? "" : `page-${p.kind.replace(/_/g, "-")}`, p.first ? "" : "follows", p.kind === "title_page" ? "titlepage" : "", p.centred ? "poem-centred" : ""].filter(Boolean).join(" ");
+    const classes = [type, p.kind === "chapter" || p.kind === "custom" ? "" : `page-${p.kind.replace(/_/g, "-")}`, p.first ? "" : "follows", p.kind === "title_page" ? "titlepage" : "", p.centred ? "poem-centred" : "", p.part && p.role !== "part" ? "in-part" : ""].filter(Boolean).join(" ");
     const top = `${p.label ? `<p class="chapter-label">${escapeXml(p.label)}</p>\n` : ""}${p.showTitle ? `<h1>${escapeXml(p.heading)}</h1>\n` : ""}`;
     return `<section class="${classes}" epub:type="${semantic}" id="c${p.n}">\n${top}${p.made ? madeBody(p.kind) : p.body}\n${p.notes}</section>`;
   };

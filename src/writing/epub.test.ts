@@ -441,7 +441,7 @@ describe("ready-made pages, numbering and headings", () => {
     const joined = [...book.slice(0, 5), page({ ...chapter(6, "Between", "<p>A pause.</p>"), part: "c4" }, "chapter", { kind: "interlude", newPage: false })];
     const f = epubFiles({ project, chapters: joined, settings: settings() }).files;
     expect(f.map(([n]) => n)).not.toContain("OEBPS/chapter-6.xhtml");
-    expect(text(f, "OEBPS/chapter-5.xhtml")).toContain(`<section class="chapter page-interlude follows"`);
+    expect(text(f, "OEBPS/chapter-5.xhtml")).toContain(`<section class="chapter page-interlude follows in-part"`);
   });
 });
 

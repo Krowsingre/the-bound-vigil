@@ -145,3 +145,31 @@ it("restores an EPUB draft with editable title and copyright pages and preserves
   expect(restored[2].body).toContain("For Ada");
   expect(restored[3].body).toContain("The first chapter remains.");
 });
+
+it("restores an anthology draft with its parts, without the generated chapter numbers", async () => {
+  const { buildEpub, readExport } = await import("./epub");
+  const { buildManuscript } = await import("./manuscript");
+  const project = { id: "p", title: "Two", author: "Ada", coverPage: "none" } as WritingProject;
+  const section = (n: number, title: string, body: string, role: WritingChapter["role"], part: string | null, kind = "chapter"): WritingChapter =>
+    ({ id: "c" + n, projectId: "p", title, body, position: n, words: 4, updatedAt: "", role, part, page: JSON.stringify({ kind }) });
+  const chapters = [
+    section(1, "First book", "", "part", null, "custom"),
+    section(2, "Arrival", "<p>The first story begins.</p>", "chapter", "c1"),
+    section(3, "Notes on the first", "<p>Written in spring.</p>", "back", "c1", "custom"),
+    section(4, "Second book", "", "part", null, "custom"),
+    section(5, "Leaving", "<p>The second story begins.</p>", "chapter", "c4"),
+    section(6, "About the author", "<p>Ada writes.</p>", "back", null, "about_author"),
+  ];
+  const bytes = buildEpub({ project, chapters, settings: { ...readExport("{}"), newPage: false, chapterHeading: "number" } });
+  const restored = buildManuscript(readDraftEpub(bytes), "spine").sections;
+  expect(restored.map((s) => [s.title, s.isPart ?? false, s.partOf ?? null])).toEqual([
+    ["First book", true, null],
+    ["Arrival", false, 0],
+    ["Notes on the first", false, 0],
+    ["Second book", true, null],
+    ["Leaving", false, 3],
+    ["About the author", false, null],
+  ]);
+  expect(restored[1].body).not.toContain("Chapter 1");
+  expect(restored[4].body).not.toContain("Chapter");
+});

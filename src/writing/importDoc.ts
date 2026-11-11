@@ -644,8 +644,10 @@ function fromEpub(bytes: Uint8Array, fallback: string, restoring = false): Impor
         const semantic = section.getAttribute("epub:type") ?? section.querySelector("section, div")?.getAttribute("epub:type") ?? "";
         if (semantic.split(/\s+/).includes("cover")) continue;
         if (!section.textContent?.trim() && !section.querySelector("img")) continue;
-        const area = [...section.classList].filter((name) => /^(frontmatter|backmatter)$/.test(name)).join(" ");
+        const area = [...section.classList].filter((name) => /^(frontmatter|backmatter|part|in-part)$/.test(name)).join(" ");
         const heading = section.querySelector(":scope > h1, :scope > header > h1");
+        // The "Chapter 3" line above a heading is made by Scribe on export, so it isn't part of the words.
+        section.querySelector(":scope > p.chapter-label, :scope > header > p.chapter-label")?.remove();
         const marker = doc.createElement("h1");
         marker.setAttribute("data-spine-start", "");
         marker.setAttribute("data-kind", [own ? "scribe:" + own : "", semantic, area].join(" ").trim());

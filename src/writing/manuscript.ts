@@ -425,9 +425,27 @@ export function buildManuscript(doc: ImportedDocument, at: SplitAt): Manuscript 
   /** Words left out on purpose: a typed list under "=== contents", words under a part's mark. */
   const dropped: string[] = [];
   const sections: ManuscriptSection[] = [];
-  for (const c of chapters) {
+  // A restored draft keeps its anthology parts: each part's own pages follow it.
+  const tokens = (c: ImportedChapter) => (c.hint ?? "").split(/\s+/);
+  const restoredPart = (c: ImportedChapter) => at === "spine" && tokens(c).includes("part");
+  // Drafts saved before 0.82 don't say which pages are in a part, so only the
+  // back matter after the last part is taken to be the whole book's.
+  const marksMembers = at === "spine" && chapters.some((c) => tokens(c).includes("in-part"));
+  const lastPart = chapters.reduce((last, c, i) => (restoredPart(c) ? i : last), -1);
+  for (const [index, c] of chapters.entries()) {
     if (c.mark === undefined) {
-      sections.push(guessed(c, sections.length));
+      if (restoredPart(c)) {
+        part = sections.length;
+        reached = "front";
+        sections.push({ title: c.title === "Untitled" ? `Part ${sections.filter((s) => s.isPart).length + 1}` : c.title, body: "", words: 0, area: "chapter", kind: "custom", sure: true, include: true, marked: true, isPart: true });
+        continue;
+      }
+      const section = guessed(c, sections.length);
+      const member = part !== null && (marksMembers ? tokens(c).includes("in-part") : !(index > lastPart && section.area === "back"));
+      if (member && part !== null) section.partOf = part;
+      // Out of the parts, the book's own back matter follows.
+      else part = null;
+      sections.push(section);
       continue;
     }
     const m = markedSection(c, reached, inBody);
