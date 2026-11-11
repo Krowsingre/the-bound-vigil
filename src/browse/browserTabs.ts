@@ -162,6 +162,23 @@ const CLOSED_CHANGED = "tbv:browser-closed";
 /** How many closed tabs are remembered, newest first. */
 export const MOST_CLOSED = 10;
 
+/**
+ * Recently closed tabs last only as long as the app is open: the list starts
+ * empty each time TBV starts (the same as clearing it as TBV closes, and it
+ * can't be missed when the app is ended some other way).
+ */
+function startFresh() {
+  try {
+    const marker = `${CLOSED_KEY}.fresh`;
+    if (sessionStorage.getItem(marker)) return;
+    sessionStorage.setItem(marker, "1");
+    localStorage.removeItem(CLOSED_KEY);
+  } catch {
+    // Nothing kept to clear.
+  }
+}
+if (typeof window !== "undefined") startFresh();
+
 export function readClosedTabs(): ClosedTab[] {
   try {
     const saved = JSON.parse(localStorage.getItem(CLOSED_KEY) ?? "[]") as unknown;

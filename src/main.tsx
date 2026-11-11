@@ -2,6 +2,7 @@ import { workspaceFrame, workspaceHost } from "./shell/workspaceFrame";
 // First, so the splash is up before anything else is drawn.
 import "./splash/startup";
 import { StrictMode } from "react";
+import { sendOutsideLinksOut } from "./lib/outsideLinks";
 import { createRoot } from "react-dom/client";
 import { Workspace } from "./shell/Workspace";
 import { ToastProvider } from "./components/Toast";
@@ -83,6 +84,7 @@ if (isWeb && import.meta.env.PROD && "serviceWorker" in navigator) {
     .catch(() => undefined);
 }
 
+sendOutsideLinksOut();
 const root = createRoot(document.getElementById("root")!);
 if (workspaceFrame && workspaceHost.tbvWorkspace) workspaceHost.tbvWorkspace.dispose = () => {
   root.unmount();
