@@ -424,3 +424,47 @@ pub fn app_attest(public_key: &str, record: &str) -> Option<String> {
         None
     }
 }
+
+#[cfg(target_os = "ios")]
+#[derive(serde::Serialize)]
+struct LookUpArgs<'a> {
+    text: &'a str,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+/// Shows Apple's dictionary for the words, over TBV (LookUp.swift). Must
+/// not be called on the main thread.
+pub fn look_up(text: &str, x: f64, y: f64, width: f64, height: f64) -> Result<bool, String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get().ok_or("The dictionary isn't ready.")?;
+        let answer: serde_json::Value =
+            swift.run_mobile_plugin("lookUp", LookUpArgs { text, x, y, width, height }).map_err(|e| e.to_string())?;
+        Ok(answer.get("shown").and_then(|s| s.as_bool()).unwrap_or(false))
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = (text, x, y, width, height);
+        Ok(false)
+    }
+}
+
+/// Shows Apple's translation for the words (iOS 17.4 and newer); false
+/// where it can't. Must not be called on the main thread.
+pub fn translate(text: &str, x: f64, y: f64, width: f64, height: f64) -> Result<bool, String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get().ok_or("Translation isn't ready.")?;
+        let answer: serde_json::Value =
+            swift.run_mobile_plugin("translate", LookUpArgs { text, x, y, width, height }).map_err(|e| e.to_string())?;
+        Ok(answer.get("shown").and_then(|s| s.as_bool()).unwrap_or(false))
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = (text, x, y, width, height);
+        Ok(false)
+    }
+}

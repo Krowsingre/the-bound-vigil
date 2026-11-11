@@ -78,6 +78,14 @@ import { articleByline, articleEpub, articleFrom, cleanArticle, readerScript } f
 /** The header's search box, on Discover, sends what's typed here. */
 export const BROWSER_NEW = "tbv:browser-new";
 export const BROWSER_GO = "tbv:browser-go";
+
+/** Pages asked for from elsewhere in TBV (the reader's Search), opened as new tabs when Discover shows. */
+const waiting: string[] = [];
+const WAITING = "tbv:browser-waiting";
+export function openInDiscover(url: string) {
+  waiting.push(url);
+  window.dispatchEvent(new Event(WAITING));
+}
 /** The page in front, told to the header so its search box can show the address. */
 export const BROWSER_PAGE = "tbv:browser-page";
 
@@ -772,6 +780,14 @@ export function Browser({
     const open = (e: Event) => openNewRef.current((e as CustomEvent<string>).detail, false);
     window.addEventListener(BROWSER_NEW, open);
     return () => window.removeEventListener(BROWSER_NEW, open);
+  }, []);
+  useEffect(() => {
+    const drain = () => {
+      for (let url = waiting.shift(); url; url = waiting.shift()) openNewRef.current(url, false);
+    };
+    drain();
+    window.addEventListener(WAITING, drain);
+    return () => window.removeEventListener(WAITING, drain);
   }, []);
   const switchTo = (id: string) => {
     const previous = tabsRef.current.active;

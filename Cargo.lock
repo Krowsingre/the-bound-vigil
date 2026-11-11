@@ -6298,7 +6298,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-tbv-ios"
-version = "0.82.0"
+version = "0.83.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -6442,13 +6442,14 @@ dependencies = [
 
 [[package]]
 name = "tbv-core"
-version = "0.82.0"
+version = "0.83.0"
 dependencies = [
  "base64 0.22.1",
  "cfb",
  "chrono",
  "csv",
  "encoding_rs",
+ "flate2",
  "hex",
  "id3",
  "image",
@@ -6486,7 +6487,7 @@ dependencies = [
 
 [[package]]
 name = "tbv-speech"
-version = "0.82.0"
+version = "0.83.0"
 dependencies = [
  "serde_json",
  "tbv-core",
@@ -6517,7 +6518,7 @@ dependencies = [
 
 [[package]]
 name = "the-bound-vigil"
-version = "0.82.0"
+version = "0.83.0"
 dependencies = [
  "block2",
  "notify",

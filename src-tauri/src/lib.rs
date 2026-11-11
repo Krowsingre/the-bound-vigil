@@ -20,6 +20,7 @@ mod home;
 mod imports;
 mod license;
 mod lining;
+mod look_up;
 mod localsend;
 mod moving;
 mod copycheck;
@@ -2129,6 +2130,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            look_up::look_up_word,
+            look_up::translate_text,
             ios_pick_folder,
             folder_access::keep_folder_access,
             ios_pick_files,

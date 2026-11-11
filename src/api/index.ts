@@ -9,6 +9,8 @@ import type {
   BookFile,
   BookLocation,
   Bookmark,
+  LookedUp,
+  ScreenSpot,
   QuickLink,
   SanctumLink,
   CustomTheme,
@@ -562,6 +564,10 @@ export interface Api {
   browserAct(tab: string, action: "go" | "back" | "forward" | "reload" | "stop" | "close", url?: string): Promise<void>;
   /** Clears every site's cookies, saved logins and data. */
   browserClear(): Promise<void>;
+  /** The reader's Define: Apple's dictionary shown over TBV on iPhone, iPad and Mac; the offline dictionary's meanings elsewhere. */
+  lookUpWord(text: string, spot: ScreenSpot): Promise<LookedUp>;
+  /** The reader's Translate: true when Apple's translation was shown (iOS 17.4 and macOS 14.4 or newer). */
+  translateText(text: string, spot: ScreenSpot): Promise<boolean>;
   browserFind(tab: string, text: string, backwards: boolean): Promise<void>;
   browserProtect(protection: BrowserProtection): Promise<void>;
   /** Runs reader mode's article finder in the tab; null when the page has no article. */
@@ -1277,6 +1283,8 @@ function appApi(): Api {
     browserHide: async () => (await core).invoke("browser_hide"),
     browserAct: async (tab, action, url) => (await core).invoke("browser_act", { tab, action, url: url ?? null }),
     browserClear: async () => (await core).invoke("browser_clear"),
+    lookUpWord: async (text, spot) => (await core).invoke("look_up_word", { text, spot }),
+    translateText: async (text, spot) => (await core).invoke("translate_text", { text, spot }),
     browserFind: async (tab, text, backwards) => (await core).invoke("browser_find", { tab, text, backwards }),
     browserProtect: async (protection) => (await core).invoke("browser_protect", { protection }),
     browserRead: async (tab, script) => (await core).invoke<unknown>("browser_read", { tab, script }),

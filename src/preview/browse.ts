@@ -2,7 +2,7 @@
 // browser that only works in the app.
 
 import type { Api } from "../api";
-import type { Bookmark, BrowserEvent, CustomTheme, QuickLink, SanctumLink } from "../api/types";
+import type { Bookmark, BrowserEvent, CustomTheme, QuickLink, SanctumLink, WordDefinition, WordSense } from "../api/types";
 
 const browserListeners = new Set<(event: BrowserEvent) => void>();
 
@@ -55,6 +55,8 @@ type Calls = Pick<
   | "browserHide"
   | "browserAct"
   | "browserClear"
+  | "lookUpWord"
+  | "translateText"
   | "browserFind"
   | "browserProtect"
   | "browserRead"
@@ -80,6 +82,37 @@ type Calls = Pick<
 >;
 
 const APP_ONLY = "The browser works in the TBV app.";
+
+const lookSenses: WordSense[] = [
+  { part: "noun", definition: "the feelings expressed on a person's face", example: "a sad expression" },
+  { part: "noun", definition: "physical appearance", example: "I don't like the looks of this place" },
+  { part: "verb", definition: "perceive with attention; direct one's gaze towards", example: "She looked over the expanse of land" },
+];
+/** A few words from the app's dictionary, to show what Define looks like. */
+const PREVIEW_WORDS: Record<string, WordDefinition[]> = {
+  lantern: [{ word: "lantern", senses: [{ part: "noun", definition: "light in a transparent protective case", example: null }] }],
+  looking: [
+    {
+      word: "looking",
+      senses: [
+        { part: "noun", definition: "the act of directing the eyes toward something and perceiving it visually", example: "he went out to have a look" },
+        { part: "noun", definition: "the act of searching visually", example: null },
+        { part: "adjective", definition: "appearing to be as specified; usually used as combining forms", example: "left their clothes dirty looking" },
+      ],
+    },
+    { word: "look", senses: lookSenses },
+  ],
+  look: [{ word: "look", senses: lookSenses }],
+  melancholy: [
+    {
+      word: "melancholy",
+      senses: [
+        { part: "noun", definition: "a constitutional tendency to be gloomy and depressed", example: null },
+        { part: "adjective", definition: "characterized by or causing or expressing sadness", example: "growing more melancholy every hour" },
+      ],
+    },
+  ],
+};
 
 export function browseStub(): Calls {
   let marks: Bookmark[] = [];
@@ -175,6 +208,12 @@ export function browseStub(): Calls {
     browserHide: async () => undefined,
     browserAct: async () => undefined,
     browserClear: async () => undefined,
+    // A few words to show what Define looks like; the app has the whole dictionary.
+    lookUpWord: async (text) => {
+      const word = text.trim().toLowerCase().replace(/[^a-z' -]/g, "");
+      return { shown: false, definitions: PREVIEW_WORDS[word] ?? [] };
+    },
+    translateText: async () => false,
     browserFind: async () => undefined,
     browserProtect: async () => undefined,
     browserRead: async () => {

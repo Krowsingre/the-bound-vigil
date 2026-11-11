@@ -1650,3 +1650,30 @@ export interface CopyMatch {
   words: number;
   passages: { section: number; words: number; text: string }[];
 }
+
+/** One meaning of a word, from the offline dictionary (Windows and Android). */
+export interface WordSense {
+  part: "noun" | "verb" | "adjective" | "adverb";
+  definition: string;
+  example: string | null;
+}
+
+export interface WordDefinition {
+  /** The dictionary's word for what was looked up ("ran" is found as "run"). */
+  word: string;
+  senses: WordSense[];
+}
+
+/** Where selected words are on screen, in the page's own units. */
+export interface ScreenSpot {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface LookedUp {
+  /** Apple's own dictionary was shown (iPhone, iPad and Mac); nothing more to show. */
+  shown: boolean;
+  definitions: WordDefinition[];
+}
