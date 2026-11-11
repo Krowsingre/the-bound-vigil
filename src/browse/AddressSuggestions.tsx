@@ -138,7 +138,7 @@ export function AddressSuggestions({ typed, current, onGo, onOpen, onTab, showPa
           </span>
           <span className="address-suggestion-text">
             <b>{s.title}</b>
-            <span className="muted">{s.kind === "tab" ? "Switch to tab" : s.kind === "search" ? "Previous search" : `Open in new tab · ${s.kind === "bookmark" ? "Bookmarked · " : ""}${readableAddress(s.url)}`}</span>
+            <span className="muted">{s.kind === "tab" ? "Switch to tab" : s.kind === "search" ? "Previous search" : `${s.kind === "bookmark" ? "Bookmarked · " : ""}${readableAddress(s.url)}`}</span>
           </span>
           <Icon name={ICONS[s.kind]} size={14} className="address-suggestion-kind" />
         </button>
