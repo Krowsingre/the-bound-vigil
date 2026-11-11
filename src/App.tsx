@@ -15,7 +15,7 @@ import { Writing, type WritingSection } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
 import { UpNextReplacementHost } from "./library/UpNextReplacement";
 import { workspaceFrame } from "./shell/workspaceFrame";
-import { BROWSER_GO, BROWSER_NEW, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory, openInDiscover } from "./browse/Browser";
+import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory, openInDiscover } from "./browse/Browser";
 import { AddressSuggestions } from "./browse/AddressSuggestions";
 import { readBrowserPrefs, shortAddress } from "./browse/browserPrefs";
 import { loadHistory } from "./browse/browserHistory";
@@ -701,7 +701,8 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
                       done();
                     }}
                     onOpen={(url) => {
-                      window.dispatchEvent(new CustomEvent(BROWSER_NEW, { detail: url }));
+                      // Like any browser: a suggestion opens in the tab it was typed in.
+                      window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: url }));
                       done();
                     }}
                     onTab={(id) => {

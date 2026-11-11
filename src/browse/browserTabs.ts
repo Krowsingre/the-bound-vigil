@@ -202,6 +202,11 @@ export function clearClosedTabs(since: number | null = null, now = Date.now()) {
   writeClosed(since === null ? [] : readClosedTabs().filter((t) => now - t.closed > since));
 }
 
+/** Puts back a list taken away by Clear (its Undo). */
+export function restoreClosedTabs(list: ClosedTab[]) {
+  writeClosed(list);
+}
+
 /** Takes a closed tab off the list (the newest, without `index`) to open it again. */
 export function takeClosed(index = 0): ClosedTab | null {
   const list = readClosedTabs();

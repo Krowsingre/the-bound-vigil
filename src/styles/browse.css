@@ -1324,6 +1324,11 @@
   color: var(--text);
 }
 
+.start-more-row {
+  display: inline-flex;
+  gap: 18px;
+}
+
 .quick-links {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1631,6 +1636,16 @@
 .browser-grid-closed h3 {
   margin: 0 0 6px;
   font: 600 15px var(--font-serif);
+}
+
+.browser-grid-closed-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.browser-grid-closed-head .start-more {
+  font-size: 14px;
 }
 
 /* TBV's own page for one that didn't open. */

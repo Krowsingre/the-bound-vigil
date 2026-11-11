@@ -59,6 +59,8 @@ import {
   writeTabs,
   type ClosedTab,
   type TabsState,
+  clearClosedTabs,
+  restoreClosedTabs,
 } from "./browserTabs";
 import { answerDownload, BOOK_FILE, downloadSource, downloadState, hasActiveTransfer, isActiveDownload, rememberDownloadSource, removeDownloads, setDownloads, useDownloads, type Fetched } from "./browserDownloads";
 import { HAS_PIP, INSTALL_YOUTUBE_PIP, isYouTube, READ_SELECTION, REMOVE_FROM_PAGE } from "./pageTools";
@@ -932,6 +934,12 @@ export function Browser({
     setTabs((s) => duplicateTab(s, id));
   };
   /** Opens closed tabs again, back where they were: the last `count`, or the one at `index` in the list. */
+  /** Empties Recently closed, with an Undo. */
+  const clearClosedWithUndo = () => {
+    const was = readClosedTabs();
+    clearClosedTabs(null);
+    toast("Recently closed tabs cleared.", { label: "Undo", run: () => restoreClosedTabs(was) });
+  };
   const reopen = (count = 1, index?: number) => {
     const back: ClosedTab[] = [];
     for (let i = 0; i < count; i++) {
@@ -1329,6 +1337,7 @@ export function Browser({
     ...(closedTabs.length ? [
       { heading: "Recently closed" },
       ...closedTabs.map((tab, index) => ({ label: tab.title || tab.url, icon: "undo" as const, onSelect: () => reopen(1, index) })),
+      { label: "Clear recently closed", icon: "trash" as const, onSelect: () => clearClosedWithUndo() },
     ] : []),
     ...otherTabs.flatMap((device) => [
       { heading: `On ${device.name}` },
@@ -1575,7 +1584,12 @@ export function Browser({
             </div>
             {!tabQuery && closedTabs.length > 0 && (
               <section className="browser-grid-closed" aria-labelledby="grid-closed">
-                <h3 id="grid-closed">Recently closed</h3>
+                <header className="browser-grid-closed-head">
+                  <h3 id="grid-closed">Recently closed</h3>
+                  <button type="button" className="start-more" onClick={() => clearClosedWithUndo()}>
+                    Clear <Icon name="chevronRight" size={16} />
+                  </button>
+                </header>
                 <ClosedList closed={closedTabs} onReopen={(index) => reopen(1, index)} />
               </section>
             )}

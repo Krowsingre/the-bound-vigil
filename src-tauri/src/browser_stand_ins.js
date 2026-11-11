@@ -66,6 +66,34 @@
     Object.defineProperty(wrapped, '__tbv', { value: true });
     return wrapped;
   };
+  // Any other kind: a link to another site whose click the page took over
+  // (to count it first) and then never followed. If nothing happened after a
+  // moment (no new page, no pop-up, no change of address), TBV follows it.
+  const LINK_WAIT = 1500;
+  let opened = 0;
+  const open = window.open;
+  window.open = function () { opened++; return open.apply(this, arguments); };
+  let leaving = 0;
+  window.addEventListener('beforeunload', () => { leaving++; }, true);
+  window.addEventListener('pagehide', () => { leaving++; }, true);
+  document.addEventListener('click', (event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+    if (!link || link.hasAttribute('download') || link.getAttribute('aria-haspopup') || link.hasAttribute('aria-expanded')) return;
+    if (link.target && link.target !== '_self' && link.target !== '_top') return;
+    let to;
+    try { to = new URL(link.href, location.href); } catch (_) { return; }
+    if (!/^https?:$/.test(to.protocol) || to.origin === location.origin) return;
+    const before = { href: location.href, opened, leaving };
+    // Seen after the page's own handlers have had their turn.
+    setTimeout(() => {
+      if (!event.defaultPrevented) return;
+      setTimeout(() => {
+        if (location.href !== before.href || opened !== before.opened || leaving !== before.leaving || !link.isConnected) return;
+        location.assign(to.href);
+      }, LINK_WAIT);
+    }, 0);
+  }, true);
   let ga = watchGa(window.ga);
   try {
     Object.defineProperty(window, 'ga', {
