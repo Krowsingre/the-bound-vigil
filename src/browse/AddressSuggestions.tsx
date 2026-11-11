@@ -88,7 +88,8 @@ export function AddressSuggestions({ typed, current, onGo, onOpen, onTab, showPa
     }));
   }, [suggest, typed, current, marks, links, history]);
 
-  const choose = (s: Suggestion) => s.tab ? onTab(s.tab) : s.kind === "search" ? onGo(s.url) : onOpen(s.url);
+  // Always in the tab typed in; a site open in another tab has its own Switch button.
+  const choose = (s: Suggestion) => (s.kind === "search" ? onGo(s.url) : onOpen(s.url));
   useEffect(() => {
     const input = document.getElementById("global-search");
     const key = (event: KeyboardEvent) => {
@@ -138,10 +139,11 @@ export function AddressSuggestions({ typed, current, onGo, onOpen, onTab, showPa
           </span>
           <span className="address-suggestion-text">
             <b>{s.title}</b>
-            <span className="muted">{s.kind === "tab" ? "Switch to tab" : s.kind === "search" ? "Previous search" : `Open in new tab · ${s.kind === "bookmark" ? "Bookmarked · " : ""}${readableAddress(s.url)}`}</span>
+            <span className="muted">{s.kind === "tab" ? `Open in another tab · ${readableAddress(s.url)}` : s.kind === "search" ? "Previous search" : `${s.kind === "bookmark" ? "Bookmarked · " : ""}${readableAddress(s.url)}`}</span>
           </span>
           <Icon name={ICONS[s.kind]} size={14} className="address-suggestion-kind" />
         </button>
+        {s.tab && <button type="button" className="btn btn-quiet btn-small address-suggestion-switch" title="Go to the tab it's open in" onClick={() => onTab(s.tab!)}>Switch to tab</button>}
         {!!s.historyIds?.length && <button type="button" className="icon-btn" aria-label={`Remove ${s.title} from history`} title="Remove from history (Shift+Delete)" onClick={() => { removeFromHistory(s.historyIds ?? []); setSelected(-1); }}><Icon name="close" size={14} /></button>}
         </div>
       ))}
