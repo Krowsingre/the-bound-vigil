@@ -4,13 +4,14 @@ import type { BookPreview, ReadStatus } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 
-type Request = { book: BookPreview; onRemoved?: () => void };
+type Request = { book: BookPreview; onRemoved?: () => void; onDismiss?: () => void };
 const event = "tbv:remove-finished-download";
 
 /** Offer cleanup after a status change has succeeded, using the normal cloud-copy safeguard. */
-export function offerFinishedDownloadRemoval(book: BookPreview, status: ReadStatus, onRemoved?: () => void) {
-  if (book.availability !== "local" || book.status === status || (status !== "read" && status !== "dropped")) return;
-  window.dispatchEvent(new CustomEvent<Request>(event, { detail: { book, onRemoved } }));
+export function offerFinishedDownloadRemoval(book: BookPreview, status: ReadStatus, onRemoved?: () => void, onDismiss?: () => void) {
+  if (book.availability !== "local" || book.status === status || (status !== "read" && status !== "dropped")) return false;
+  window.dispatchEvent(new CustomEvent<Request>(event, { detail: { book, onRemoved, onDismiss } }));
+  return true;
 }
 
 export function FinishedDownloadPrompt() {
@@ -28,7 +29,10 @@ export function FinishedDownloadPrompt() {
 
   const request = queue[0];
   if (!request) return null;
-  const dismiss = () => setQueue((pending) => pending.slice(1));
+  const dismiss = () => {
+    setQueue((pending) => pending.slice(1));
+    request.onDismiss?.();
+  };
   return <ConfirmDialog key={request.book.id}
     title={`Remove “${request.book.title}” from this device?`}
     body={request.book.inCloud

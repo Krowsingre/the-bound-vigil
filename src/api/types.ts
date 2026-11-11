@@ -548,6 +548,7 @@ export interface ShelfCounts {
 export interface LibraryPage {
   books: BookPreview[];
   seriesCounts?: Record<string, number>;
+  seriesPublished?: Record<string, number>;
   seriesCovers?: Record<string, BookPreview>;
   seriesNames?: string[];
   total: number;

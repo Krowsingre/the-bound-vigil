@@ -21,6 +21,7 @@ type Props = {
   actions: BookActions;
   selection?: Selection | null;
   seriesCounts?: Record<string, number>;
+  seriesPublished?: Record<string, number>;
   showStatus?: boolean;
   seriesCovers?: Record<string, BookPreview>;
   seriesMenu?: (name: string) => import("../components/Menu").MenuEntry[];
@@ -87,7 +88,7 @@ function Progress({ book }: { book: BookPreview }) {
   );
 }
 
-export function BookGrid({ books, actions, selection, seriesCounts, seriesCovers, onOpenSeries, seriesMenu, showStatus }: Props) {
+export function BookGrid({ books, actions, selection, seriesCounts, seriesPublished, seriesCovers, onOpenSeries, seriesMenu, showStatus }: Props) {
   return (
     <ul className={`book-grid${selection ? " is-selecting" : ""}`}>
       {books.map((book) => {
@@ -98,7 +99,7 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesCovers
           return (
             <li key={book.id} className="grid-card series-stack">
               <button type="button" className="grid-open" aria-label={"Open series " + name} onClick={() => onOpenSeries(name)}>
-                <BookCover key={cover.id} book={cover} seriesCount={count} />
+                <BookCover key={cover.id} book={cover} seriesCount={count} seriesPublished={seriesPublished?.[book.id]} />
               </button>
               <div className="grid-caption">
                 <div className="grid-text">
@@ -145,7 +146,7 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesCovers
   );
 }
 
-export function BookList({ books, actions, selection, seriesCounts, seriesCovers, onOpenSeries, seriesMenu }: Props) {
+export function BookList({ books, actions, selection, seriesCounts, seriesPublished, seriesCovers, onOpenSeries, seriesMenu }: Props) {
   return (
     <ul className="book-list">
       {books.map((book) => {
@@ -155,7 +156,7 @@ export function BookList({ books, actions, selection, seriesCounts, seriesCovers
           const cover = seriesCovers?.[book.id] ?? book;
           return <li key={book.id} className="list-row series-list-row">
             <button type="button" className="list-open" aria-label={`Open series ${name}`} onClick={() => onOpenSeries(name)}>
-              <BookCover key={cover.id} book={cover} size="s" seriesCount={count} />
+              <BookCover key={cover.id} book={cover} size="s" seriesCount={count} seriesPublished={seriesPublished?.[book.id]} />
               <span className="list-text">
                 <span className="book-title">{name}</span>
               </span>
@@ -197,7 +198,7 @@ export function BookList({ books, actions, selection, seriesCounts, seriesCovers
   );
 }
 
-export function BookTable({ books, actions, selection, seriesCounts, seriesCovers, onOpenSeries, seriesMenu }: Props) {
+export function BookTable({ books, actions, selection, seriesCounts, seriesPublished, seriesCovers, onOpenSeries, seriesMenu }: Props) {
   return (
     <table className="book-table">
       <thead>
@@ -221,7 +222,7 @@ export function BookTable({ books, actions, selection, seriesCounts, seriesCover
           if (count && name && onOpenSeries) return <tr key={book.id} className="series-table-row">
             <td colSpan={7}>
               <button type="button" aria-label={`Open series ${name}`} className="table-title series-table-open" onClick={() => onOpenSeries(name)}>
-                <BookCover book={seriesCovers?.[book.id] ?? book} size="s" seriesCount={count} />
+                <BookCover book={seriesCovers?.[book.id] ?? book} size="s" seriesCount={count} seriesPublished={seriesPublished?.[book.id]} />
                 {name}
               </button>
             </td>

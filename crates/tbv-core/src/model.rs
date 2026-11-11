@@ -404,6 +404,8 @@ pub struct LibraryPage {
     pub books: Vec<BookPreview>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub series_counts: std::collections::BTreeMap<BookId, u32>,
+    #[serde(default)]
+    pub series_published: std::collections::BTreeMap<BookId, u32>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub series_covers: std::collections::BTreeMap<BookId, BookPreview>,
     #[serde(default)]

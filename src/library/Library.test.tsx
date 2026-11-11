@@ -1,11 +1,16 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { BookPreview, LibraryPage, LibraryQuery } from "../api/types";
 import { ToastProvider } from "../components/Toast";
+import { queryBooks } from "../lib/queryBooks";
 import { Library } from "./Library";
+import { FinishedDownloadPrompt } from "./FinishedDownloadPrompt";
 import type { LibraryView } from "./libraryView";
 
 const getLibrary = vi.fn<(q: LibraryQuery) => Promise<LibraryPage>>();
 const setFavorite = vi.fn(async () => {});
+const downloadBook = vi.fn<(id: string) => Promise<void>>();
+const getCollection = vi.fn();
+const setBookStatus = vi.fn<(id: string, status: string) => Promise<void>>(async () => {});
 vi.mock("../api", () => ({
   isApp: false,
   isWeb: false,
@@ -14,10 +19,14 @@ vi.mock("../api", () => ({
     kind: "app",
     getLibrary: (q: LibraryQuery) => getLibrary(q),
     getCollections: async () => [],
+    getCollection: (...args: unknown[]) => getCollection(...args),
+    downloadBook: (id: string) => downloadBook(id),
+    removeDownload: vi.fn(async () => {}),
+    seriesReview: async () => null,
     timeSpent: async () => [],
     setFavorite: (...a: unknown[]) => setFavorite(...(a as [])),
     setWantToRead: vi.fn(),
-    setBookStatus: vi.fn(),
+    setBookStatus: (id: string, status: string) => setBookStatus(id, status),
     coverUrl: () => "",
   },
 }));
@@ -67,6 +76,7 @@ function renderLibrary(props: Partial<React.ComponentProps<typeof Library>> = {}
         onOpenCollection={() => {}}
         {...props}
       />
+      <FinishedDownloadPrompt />
     </ToastProvider>,
   );
   return onChange;
@@ -167,4 +177,57 @@ test("the book menu can add a favourite", async () => {
   fireEvent.click(screen.getByRole("menuitem", { name: "Organize" }));
   fireEvent.click(screen.getByRole("menuitem", { name: /Add to favourites/ }));
   expect(setFavorite).toHaveBeenCalledWith("sha256:7", true);
+});
+
+test("series stacks count the whole series and apply combined filters to the same book", () => {
+  const books = [
+    book(1, { series: "Shared series", status: "read" }),
+    book(2, { series: "Shared series", availability: "cloud" }),
+    book(3, { series: "Shared series", status: "dropped" }),
+  ];
+  const query: LibraryQuery = { kind: "books", shelf: "all", sort: "title", search: null, formats: [], location: null, hideRead: true, groupSeries: true, page: 0, pageSize: 24 };
+  const page = queryBooks(books, query, 0);
+  expect(page.books.map(({ id }) => id)).toEqual([books[1].id]);
+  expect(page.seriesCounts?.[books[1].id]).toBe(3);
+  expect(queryBooks(books, { ...query, location: "on_device" }, 0).total).toBe(0);
+});
+
+test("series details report the filtered count and offer to show the rest", async () => {
+  const showAll = vi.fn();
+  getLibrary.mockImplementation(async (query) => ({
+    books: [book(1, { series: "Shared series" })], total: query.hideRead ? 1 : 5,
+    page: 0, pageSize: 24, counts, formats: ["epub"], tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  renderLibrary({ view: { ...view, series: ["Shared series"], hideRead: true }, seriesBack: () => {}, onShowAllSeries: showAll });
+  expect(await screen.findByText("1 of 5 books shown")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Show all books in this series" }));
+  expect(showAll).toHaveBeenCalledOnce();
+});
+
+test("series download skips local files and retries only the failed title", async () => {
+  const local = book(1, { series: "Shared series" });
+  const remote = book(2, { availability: "cloud" });
+  const failed = book(3, { availability: "cloud" });
+  getLibrary.mockResolvedValue({ books: [local], total: 3, page: 0, pageSize: 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] });
+  getCollection.mockResolvedValue({ books: [local, remote, failed] });
+  downloadBook.mockReset().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("Offline")).mockResolvedValueOnce(undefined);
+  renderLibrary({ view: { ...view, series: ["Shared series"] }, seriesBack: () => {} });
+  fireEvent.click(await screen.findByRole("button", { name: "Download to this device" }));
+  expect(await screen.findByRole("region", { name: "Failed downloads" })).toHaveTextContent("Book 3");
+  fireEvent.click(screen.getByRole("button", { name: "Retry failed" }));
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Failed downloads" })).toBeNull());
+  expect(downloadBook.mock.calls).toEqual([[remote.id], [failed.id], [failed.id]]);
+});
+
+test("Undo restores reading status after dismissing the download prompt", async () => {
+  const reading = book(4, { status: "in_progress", inCloud: true });
+  getLibrary.mockResolvedValue({ books: [reading], total: 1, page: 0, pageSize: 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] });
+  setBookStatus.mockClear();
+  renderLibrary();
+  fireEvent.click(await screen.findByRole("button", { name: "More for Book 4" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Reading status" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Mark as read" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Keep on device" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+  expect(setBookStatus.mock.calls).toEqual([[reading.id, "read"], [reading.id, "in_progress"]]);
 });

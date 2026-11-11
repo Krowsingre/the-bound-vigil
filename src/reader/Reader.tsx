@@ -539,8 +539,14 @@ export function Reader({
     api.setBookStatus(info.book.id, status).then(
       () => {
         setInfo((i) => (i ? { ...i, book: { ...i.book, status } } : i));
-        toast(done);
-        offerFinishedDownloadRemoval(info.book, status, onClose);
+        const finished = status !== info.book.status && (status === "read" || status === "dropped");
+        const notify = () => toast(done, finished ? {
+          label: "Undo",
+          run: () => void api.setBookStatus(info.book.id, info.book.status).then(() => {
+            setInfo((i) => (i ? { ...i, book: { ...i.book, status: info.book.status } } : i));
+          }, (error: unknown) => toast(String(error))),
+        } : undefined);
+        if (!offerFinishedDownloadRemoval(info.book, status, onClose, notify)) notify();
       },
       (e: unknown) => toast(String(e)),
     );

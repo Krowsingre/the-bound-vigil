@@ -555,6 +555,8 @@
   animation: toast-in 160ms ease-out;
 }
 
+.toast-action { margin-inline-start: 12px; pointer-events: auto; color: inherit; text-decoration: underline; }
+
 @keyframes toast-in {
   from {
     opacity: 0;

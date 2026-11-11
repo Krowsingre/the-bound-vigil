@@ -93,14 +93,14 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const drawingCovers = useRef(false);
   const wasRunning = useRef(false);
   const [libraryView, setLibraryView] = useState<LibraryView>(() => initialView("books"));
-  type SeriesPlace = { route: "library" | "audiobooks"; name: string; parentScroll: number };
+  type SeriesPlace = { route: "library" | "audiobooks"; name: string; parentScroll: number; showAll?: boolean };
   const [seriesPlace, setSeriesPlace] = useState<SeriesPlace | null>(null);
   const [seriesScroll, setSeriesScroll] = useState<number | null>(null);
   const [seriesSearch, setSeriesSearch] = useState("");
   const [seriesPage, setSeriesPage] = useState(0);
-  const openSeries = (route: SeriesPlace["route"], name: string) => {
-    setSeriesPlace({ route, name, parentScroll: document.querySelector(".content")?.scrollTop ?? 0 });
-    setSeriesSearch("");
+  const openSeries = (destination: SeriesPlace["route"], name: string) => {
+    setSeriesPlace({ route: destination, name, showAll: route !== destination, parentScroll: document.querySelector(".content")?.scrollTop ?? 0 });
+    setSeriesSearch(route === destination ? searchText : "");
     setSeriesPage(0);
   };
   const [documentsView, setDocumentsView] = useState<LibraryView>(() => initialView("documents"));
@@ -464,7 +464,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     return () => window.removeEventListener("tbv:workspace-navigate", open);
   }, [navigate]);
   const seriesView = (base: LibraryView): LibraryView => showingSeries
-    ? { ...base, ...NO_FILTERS, tab: "all", series: [showingSeries.name], sort: "series", seriesGrouping: "individual", page: seriesPage }
+    ? { ...base, ...(showingSeries.showAll ? { ...NO_FILTERS, tab: "all" as const } : {}), series: [showingSeries.name], sort: "series", seriesGrouping: "individual", page: seriesPage }
     : base;
   useNavigationShortcuts({ back, forward, reading: !!reading, discover: route === "catalogs", webpage: navigateBrowserHistory });
 
@@ -739,6 +739,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
               onClearSearch={() => showingSeries ? setSeriesSearch("") : changeSearch("")}
               onOpenSeries={(name) => openSeries("library", name)}
               seriesBack={showingSeries ? leaveSeries : undefined}
+              onShowAllSeries={showingSeries && !showingSeries.showAll ? () => { setSeriesPlace({ ...showingSeries, showAll: true }); setSeriesSearch(""); setSeriesPage(0); } : undefined}
               restoreScroll={seriesScroll}
               onScrollRestored={() => setSeriesScroll(null)}
               onImportBooks={importBooks}
@@ -795,6 +796,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
               onClearSearch={() => showingSeries ? setSeriesSearch("") : changeSearch("")}
               onOpenSeries={(name) => openSeries("audiobooks", name)}
               seriesBack={showingSeries ? leaveSeries : undefined}
+              onShowAllSeries={showingSeries && !showingSeries.showAll ? () => { setSeriesPlace({ ...showingSeries, showAll: true }); setSeriesSearch(""); setSeriesPage(0); } : undefined}
               restoreScroll={seriesScroll}
               onScrollRestored={() => setSeriesScroll(null)}
               onImportBooks={importBooks}

@@ -8,6 +8,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { useToast } from "../components/Toast";
 import { bookContextMenu, clickBook, makeBookActions } from "../home/bookActions";
 import { BookGrid, BookList } from "../library/BookViews";
+import { downloadable, useBatchDownloads } from "../library/BatchDownloads";
 import { PageSwitch } from "../library/Library";
 import { authorLine, percent } from "../lib/format";
 import { Badge } from "./badges";
@@ -65,6 +66,7 @@ export function CollectionView({
     setReload((n) => n + 1);
     onChanged();
   };
+  const downloads = useBatchDownloads(changed);
   const actions = useMemo(
     () => ({
       ...makeBookActions(api, toast, changed, onOpenBook),
@@ -118,7 +120,10 @@ export function CollectionView({
   const readSwitch = collection.kind === "smart" && collection.smart === "read";
   const books = readSwitch ? detail.books.filter((b) => b.status === ended) : detail.books;
   const covers = detail.books.slice(0, 3).map(({ id, title, authors, coverPath }) => ({ id, title, authors, coverPath }));
-  const menu = menuFor(detail);
+  const menu: MenuEntry[] = [
+    { label: "Download to this device", icon: "download", disabled: !!downloads.progress || !detail.books.some(downloadable), onSelect: () => void downloads.download(async () => detail.books) },
+    ...menuFor(detail),
+  ];
   const move = (book: BookPreview, to: number) =>
     own && api.moveInCollection(own.id, book.id, to).then(() => setReload((n) => n + 1), (e: unknown) => toast(String(e)));
 
@@ -151,6 +156,7 @@ export function CollectionView({
         </div>
       </header>
 
+      {downloads.feedback}
       <div className="collection-view-tools">
         <p className="muted">
           {own?.kind === "reading_list"

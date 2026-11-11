@@ -13,6 +13,8 @@ pub(crate) const UP_NEXT_LIMIT: u32 = 15;
 
 const TITLE: &str = "COALESCE(o_title.value, f_title.value, b.title)";
 const AUTHORS: &str = "COALESCE(o_authors.value, f_authors.value, b.authors)";
+type StackDetails = (std::collections::BTreeMap<BookId, BookPreview>, std::collections::BTreeMap<BookId, u32>);
+
 const FIRST_AUTHOR: &str = "json_extract(COALESCE(o_authors.value, f_authors.value, b.authors), '$[0]')";
 const SERIES: &str = "COALESCE(o_series.value, f_series.value, b.series)";
 const SERIES_INDEX: &str =
@@ -288,14 +290,14 @@ impl Library {
             } else { order.clone() };
             let sql = format!(
                 "WITH ranked AS (
-                    SELECT b.id, {pin_rank} AS pin_rank, {rank} AS series_rank, {group} AS stack, COUNT(*) OVER (PARTITION BY {group}) AS matches,
+                    SELECT b.id, {pin_rank} AS pin_rank, {rank} AS series_rank, {group} AS stack,
                            ROW_NUMBER() OVER (PARTITION BY {group} ORDER BY {order}) AS pick,
                            ROW_NUMBER() OVER (ORDER BY {position_order}) AS position
                     {BOOK_FROM} {filter}
                 ), page AS (
-                    SELECT id, stack, matches, position, pin_rank, series_rank FROM ranked WHERE pick = 1 ORDER BY pin_rank, series_rank, position {limit}
+                    SELECT id, stack, position, pin_rank, series_rank FROM ranked WHERE pick = 1 ORDER BY pin_rank, series_rank, position {limit}
                 )
-                {BOOK_COLUMNS}, (SELECT matches FROM page WHERE page.id = b.id AND stack LIKE 'series:%') AS series_matches
+                {BOOK_COLUMNS}, (SELECT 1 FROM page WHERE page.id = b.id AND stack LIKE 'series:%') AS series_marker
                 {BOOK_FROM} AND b.id IN (SELECT id FROM page)
                 ORDER BY (SELECT pin_rank FROM page WHERE page.id = b.id),
                          (SELECT series_rank FROM page WHERE page.id = b.id),
@@ -303,7 +305,7 @@ impl Library {
             );
             let mut statement = self.conn.prepare(&sql)?;
             let rows = statement.query_map(params_from_iter(values.iter()), |row| {
-                Ok((book_from_row(row)?, row.get::<_, Option<u32>>("series_matches")?))
+                Ok((book_from_row(row)?, row.get::<_, Option<u32>>("series_marker")?))
             })?;
             let mut books = Vec::new();
             for row in rows {
@@ -320,11 +322,12 @@ impl Library {
             rows.collect::<std::result::Result<_, _>>()?
         };
 
-        let series_covers = self.stack_covers(query, &books, &series_counts)?;
+        let (series_covers, series_published) = self.stack_details(query, &books, &mut series_counts)?;
         Ok(LibraryPage {
             books,
             series_counts,
             series_covers,
+            series_published,
             series_names: if query.omit_facets { Vec::new() } else { self.series_names(query.kind)? },
             total,
             page,
@@ -340,12 +343,12 @@ impl Library {
         })
     }
 
-    fn stack_covers(
+    fn stack_details(
         &self,
         query: &LibraryQuery,
         books: &[BookPreview],
-        counts: &std::collections::BTreeMap<BookId, u32>,
-    ) -> Result<std::collections::BTreeMap<BookId, BookPreview>> {
+        counts: &mut std::collections::BTreeMap<BookId, u32>,
+    ) -> Result<StackDetails> {
         let names: std::collections::BTreeMap<_, _> = books.iter()
             .filter(|book| counts.contains_key(&book.id))
             .filter_map(|book| Some((book.series.as_deref()?.trim().to_lowercase(), book.id.clone())))
@@ -360,25 +363,36 @@ impl Library {
         let order = sort_title();
         let sql = format!(
             "WITH candidates AS (
-               SELECT b.id, ROW_NUMBER() OVER (
+               SELECT b.id, COUNT(*) OVER (PARTITION BY {series}) AS owned, ROW_NUMBER() OVER (
                  PARTITION BY {series}
                  ORDER BY (b.id IS NOT COALESCE((SELECT value FROM json_each(?2) WHERE key = {series}), '')),
                           b.status IN ('read', 'dropped'), {SERIES_INDEX} IS NULL, {SERIES_INDEX}, {order}, b.id
                ) AS pick
                {BOOK_FROM}{kind} AND {series} IN (SELECT value FROM json_each(?1))
              )
-             {BOOK_COLUMNS} {BOOK_FROM} AND b.id IN (SELECT id FROM candidates WHERE pick = 1)"
+             {BOOK_COLUMNS}, (SELECT owned FROM candidates WHERE id = b.id) AS owned_count,
+             (SELECT COUNT(*) FROM series_lists sl, json_each(sl.books) entry
+              WHERE sl.id = lower(trim({SERIES})) AND sl.checked_at IS NOT NULL
+                AND json_extract(entry.value, '$.source') NOT IN ('you', '')) AS published_count
+             {BOOK_FROM} AND b.id IN (SELECT id FROM candidates WHERE pick = 1)"
         );
         let mut stmt = self.conn.prepare(&sql)?;
-        let books = stmt.query_map(params![keys, choices], book_from_row)?;
+        let books = stmt.query_map(params![keys, choices], |row| {
+            Ok((book_from_row(row)?, row.get::<_, u32>("owned_count")?, row.get::<_, Option<u32>>("published_count")?))
+        })?;
         let mut result = std::collections::BTreeMap::new();
+        let mut published = std::collections::BTreeMap::new();
         for book in books {
-            let book = book?;
+            let (book, owned, listed) = book?;
             if let Some(id) = book.series.as_deref().and_then(|name| names.get(&name.trim().to_lowercase())) {
+                counts.insert(id.clone(), owned);
+                if let Some(listed) = listed.filter(|listed| *listed > owned) {
+                    published.insert(id.clone(), listed);
+                }
                 result.insert(id.clone(), book);
             }
         }
-        Ok(result)
+        Ok((result, published))
     }
 
     fn series_names(&self, kind: Option<ItemKind>) -> Result<Vec<String>> {
@@ -851,7 +865,7 @@ mod tests {
         assert_eq!(stack(&library, 1).books[0].title, "B");
         library.set_pinned(&c, true).unwrap();
         assert_eq!(stack(&library, 0).books[0].id, c);
-        assert_eq!(stack(&library, 1).series_counts.get(&a), Some(&1));
+        assert_eq!(stack(&library, 1).series_counts.get(&a), Some(&2));
     }
 
     #[test]
@@ -875,6 +889,39 @@ mod tests {
     }
 
     #[test]
+    fn a_filtered_stack_counts_owned_books_and_uses_checked_catalogue_evidence() {
+        let (dir, mut library) = open_temp_library();
+        let series = r#"<meta name="calibre:series" content="Shared Series"/>"#;
+        let first = add_with(&mut library, dir.path(), "First", "Writer", series);
+        let second = add_with(&mut library, dir.path(), "Second", "Writer", series);
+        library.set_status(&first, ReadStatus::Read).unwrap();
+        let q = query(|q| {
+            q.group_series = true;
+            q.hide_read = true;
+        });
+        let page = library.library_page(&q).unwrap();
+        assert_eq!(page.books[0].id, second);
+        assert_eq!(page.series_counts[&second], 2);
+        assert!(page.series_published.is_empty());
+
+        let listed = ["First", "Second", "Third"]
+            .into_iter()
+            .map(|title| crate::series::SeriesEntry {
+                title: title.into(),
+                source: "hardcover".into(),
+                ..Default::default()
+            })
+            .collect();
+        library.save_series_found("Shared Series", listed).unwrap();
+        let page = library.library_page(&q).unwrap();
+        assert_eq!(page.series_counts[&second], 2);
+        assert_eq!(page.series_published[&second], 3);
+
+        library.set_status(&second, ReadStatus::Dropped).unwrap();
+        assert!(library.library_page(&q).unwrap().books.is_empty());
+    }
+
+    #[test]
     fn stack_cover_uses_reading_order_and_respects_an_owned_manual_choice() {
         let (dir, mut library) = open_temp_library();
         let volume = |number| format!(
@@ -894,7 +941,7 @@ mod tests {
         let cover = |library: &Library, q: &LibraryQuery| {
             let page = library.library_page(q).unwrap();
             assert_eq!(page.books[0].id, three);
-            assert_eq!(page.series_counts[&three], 1);
+            assert_eq!(page.series_counts[&three], 3);
             assert!(page.series_names.is_empty());
             page.series_covers[&three].id.clone()
         };

@@ -57,7 +57,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     if (q.shelf === "send_to_device" && !b.phoneWanted) return false;
     if ((q.shelf === "in_progress" || q.shelf === "read" || q.shelf === "unread") && b.status !== q.shelf) return false;
     if (q.formats.length && !q.formats.includes(b.format)) return false;
-    if (q.location === "on_device" && b.availability === "cloud") return false;
+    if (q.location === "on_device" && b.availability !== "local") return false;
     if (q.location === "cloud_only" && b.availability !== "cloud") return false;
     if (q.tags?.length && !b.tags.some((t) => q.tags!.some((w) => w.toLowerCase() === t.toLowerCase()))) return false;
     if (q.languages?.length && !q.languages.includes(b.language ?? "")) return false;
@@ -97,7 +97,6 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
       if (!name || (q.pinnedFirst && book.pinnedAt)) return true;
       const first = stacks.get(name);
       if (first) {
-        seriesCounts[first.id] += 1;
         return false;
       }
       stacks.set(name, book);
@@ -120,6 +119,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     const name = seriesKey(book);
     const chosen = name && q.seriesCoverChoices?.[name];
     const candidates = all.filter((b) => seriesKey(b) === name);
+    seriesCounts[book.id] = candidates.length;
     const cover = seriesCover(candidates, chosen || undefined);
     if (cover) seriesCovers[book.id] = cover;
   }

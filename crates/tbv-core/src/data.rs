@@ -165,20 +165,19 @@ impl Library {
                 for line in n.excerpt.lines() {
                     out.push_str(&format!("> {line}\n"));
                 }
-                let place: Vec<String> = n
-                    .locator
-                    .iter()
-                    .flat_map(|l| {
-                        [
-                            l.chapter.clone(),
-                            l.page_index.map(|p| format!("p. {}", p + 1)),
-                        ]
-                    })
-                    .flatten()
-                    .collect();
-                if !place.is_empty() {
+            }
+            let place: Vec<String> = n.locator.iter().flat_map(|l| {
+                [l.chapter.clone(), l.page_index.map(|p| format!("p. {}", p + 1))]
+                    .into_iter().flatten()
+            }).collect();
+            if !place.is_empty() {
+                if n.excerpt.is_empty() {
+                    out.push_str(&format!("*{}*\n", place.join(", ")));
+                } else {
                     out.push_str(&format!(">\n> — {}\n", place.join(", ")));
                 }
+            }
+            if !n.excerpt.is_empty() || !place.is_empty() {
                 out.push('\n');
             }
             if let Some(note) = &n.note {
@@ -525,18 +524,32 @@ mod tests {
         };
         library.save_book_note(&id, None, "A quiet book.").unwrap();
         library.save_personal_note(None, Some("Plan"), "Read more").unwrap();
+        library.save_annotation(&crate::model::AnnotationInput {
+            id: None,
+            book_id: id,
+            kind: crate::model::AnnotationKind::Note,
+            excerpt: String::new(),
+            note: Some("Check this chapter.".into()),
+            color: None,
+            locator: crate::model::ReaderLocator {
+                chapter: Some("The Lantern".into()),
+                page_index: Some(2),
+                ..Default::default()
+            },
+        }).unwrap();
 
         let json = dir.path().join("export.json");
         library.export_library(&json).unwrap();
         let value: serde_json::Value = serde_json::from_slice(&fs::read(&json).unwrap()).unwrap();
         assert_eq!(value["books"][0]["title"], "Lamps");
-        assert_eq!(value["notes"].as_array().unwrap().len(), 2);
+        assert_eq!(value["notes"].as_array().unwrap().len(), 3);
 
         let md = dir.path().join("notes.md");
         library.export_notes_markdown(&md).unwrap();
         let text = fs::read_to_string(&md).unwrap();
         assert!(text.contains("## Lamps — Wren Hale"));
         assert!(text.contains("A quiet book."));
+        assert!(text.contains("*The Lantern, p. 3*\n\nCheck this chapter."));
         assert!(text.contains("## Personal notes"));
         assert!(text.contains("### Plan"));
     }

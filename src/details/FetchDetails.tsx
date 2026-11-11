@@ -8,7 +8,7 @@ import type { BookDetails, BookPreview, DetailFieldName } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
-import { AUDIO_ONLY, DETAIL_FIELDS, detailLabel, effective, isList, listOf } from "../lib/details";
+import { AUDIO_ONLY, DETAIL_FIELDS, cleanValue, detailLabel, effective, isList, listOf } from "../lib/details";
 import { foundValues, openLibraryDescription, searchOnline, SOURCE_NAME, type Found } from "../lib/onlineDetails";
 import { isAudio } from "../lib/queryBooks";
 
@@ -26,6 +26,7 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
   const [error, setError] = useState<string | null>(null);
   const [chosen, setChosen] = useState<Found | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [edits, setEdits] = useState<Partial<Record<DetailFieldName, string>>>({});
   const [keep, setKeep] = useState<Set<string>>(new Set());
   const [cover, setCover] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -69,6 +70,8 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
 
   const choose = async (f: Found) => {
     setChosen(f);
+    setEdits({});
+    setError(null);
     let found = f;
     // Open Library keeps descriptions on the work's own page.
     if (f.source === "openlibrary" && f.workKey && !f.synopsis) {
@@ -101,8 +104,15 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
   const save = async () => {
     if (!chosen) return;
     setSaving(true);
-    const picked = Object.fromEntries(Object.entries(values).filter(([field]) => keep.has(field)));
+    setError(null);
     try {
+      const picked = Object.fromEntries(DETAIL_FIELDS.filter(({ field }) => keep.has(field) && values[field] !== undefined).map(({ field }) => {
+        const edit = edits[field];
+        const value = edit === undefined ? values[field] : isList(field) ? JSON.stringify(edit.split("\n")) : edit;
+        const cleaned = cleanValue(field, value);
+        if (!cleaned || cleaned === "[]") throw new Error(`Enter a value for ${detailLabel(field)} or uncheck it.`);
+        return [field, cleaned];
+      }));
       if (Object.keys(picked).length) await api.saveFetched(book.id, chosen.source, picked);
       if (cover && chosen.coverUrl) await api.fetchCover(book.id, chosen.coverUrl);
       toast(`Kept ${Object.keys(picked).length + (cover ? 1 : 0)} details from ${SOURCE_NAME[chosen.source]}.`);
@@ -213,21 +223,28 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
                 <span role="columnheader">Now</span>
                 <span role="columnheader">Found</span>
               </div>
-              {DETAIL_FIELDS.filter((f) => values[f.field] && (isAudio(book.format) || !AUDIO_ONLY.includes(f.field))).map(({ field }) => {
+              {DETAIL_FIELDS.filter((f) => values[f.field] && (isAudio(book.format) || !AUDIO_ONLY.includes(f.field))).map(({ field, long }) => {
                 const current = details?.fields.find((x) => x.field === field);
                 return (
-                  <label key={field} className="fetch-row" role="row">
-                    <span role="cell" className="fetch-field">
+                  <div key={field} className="fetch-row" role="row">
+                    <label role="cell" className="fetch-field">
                       <input type="checkbox" checked={keep.has(field)} onChange={() => toggle(field)} />
                       {detailLabel(field)}
-                    </span>
+                    </label>
                     <span role="cell" className="fetch-now">
                       {shown(field, current ? effective(current) : null) || <em className="muted">Empty</em>}
                     </span>
                     <span role="cell" className="fetch-found">
-                      {shown(field, values[field])}
+                      {long || isList(field) ? (
+                        <textarea aria-label={`Found ${detailLabel(field)}`} rows={long ? 4 : 2}
+                          value={edits[field] ?? (isList(field) ? listOf(values[field]).join("\n") : values[field])}
+                          onChange={(event) => setEdits({ ...edits, [field]: event.target.value })} />
+                      ) : (
+                        <input aria-label={`Found ${detailLabel(field)}`} value={edits[field] ?? values[field]}
+                          onChange={(event) => setEdits({ ...edits, [field]: event.target.value })} />
+                      )}
                     </span>
-                  </label>
+                  </div>
                 );
               })}
               {chosen.coverUrl && isApp && (

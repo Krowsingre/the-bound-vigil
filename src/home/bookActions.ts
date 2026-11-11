@@ -1,3 +1,4 @@
+import type { ShowToast } from "../components/Toast";
 import { offerFinishedDownloadRemoval } from "../library/FinishedDownloadPrompt";
 import { createElement } from "react";
 import type { AudioType, BookPreview } from "../api/types";
@@ -198,7 +199,7 @@ export function cannotOpen(book: BookPreview): string | null {
 export function makeBookActions(
   api: Pick<import("../api").Api, "setBookStatus" | "setFavorite" | "setWantToRead" | "setRating"> &
     Partial<Pick<import("../api").Api, "downloadBook" | "removeDownload" | "saveCopies" | "setPhoneWanted" | "setPinned" | "setAudioType">>,
-  toast: (text: string) => void,
+  toast: ShowToast,
   refresh: () => void,
   openBook: (bookId: string) => void,
 ): BookActions {
@@ -226,18 +227,28 @@ export function makeBookActions(
       else openBook(book.id);
     },
     setStatus: (book, status) => void run(book, api.setBookStatus(book.id, status).then(() => {
-      if (api.removeDownload) offerFinishedDownloadRemoval(book, status, refresh);
+      if (status !== book.status && (status === "read" || status === "dropped")) {
+        const undo = () => toast(status === "read" ? "Marked as Read." : "Marked as Dropped.", {
+          label: "Undo",
+          run: () => void run(book, api.setBookStatus(book.id, book.status)),
+        });
+        if (!api.removeDownload || !offerFinishedDownloadRemoval(book, status, refresh, undo)) undo();
+      }
     })),
     setFavorite: (book, favorite) => void run(book, api.setFavorite(book.id, favorite)),
     setWantToRead: (book, want) => {
-      void run(book, api.setWantToRead(book.id, want).catch((error: unknown) => {
+      void run(book, api.setWantToRead(book.id, want).then(() => {
+        if (!want && book.wantToRead) toast("Removed from Up Next.", { label: "Undo", run: () => void run(book, api.setWantToRead(book.id, true)) });
+      }).catch((error: unknown) => {
         if (!want || !String(error).includes(UP_NEXT_FULL)) throw error;
         askUpNextReplacement(book);
       }));
     },
     setAudioType: api.setAudioType && ((book, kind) => void run(book, api.setAudioType!(book.id, kind))),
     setRating: (book, rating) => void run(book, api.setRating(book.id, rating)),
-    setPinned: api.setPinned && ((book, pinned) => void run(book, api.setPinned!(book.id, pinned))),
+    setPinned: api.setPinned && ((book, pinned) => void run(book, api.setPinned!(book.id, pinned).then(() => {
+      if (!pinned && book.pinnedAt) toast("Unpinned from Archive.", { label: "Undo", run: () => void run(book, api.setPinned!(book.id, true)) });
+    }))),
     download: api.downloadBook && ((book) => {
       toast(`Downloading “${book.title}”…`);
       void run(book, api.downloadBook!(book.id).then(() => toast(`“${book.title}” is on this device.`)));

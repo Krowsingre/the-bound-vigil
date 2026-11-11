@@ -65,6 +65,7 @@ export function Audiobooks({
   onReadAlong,
   onOpenSeries,
   seriesBack,
+  onShowAllSeries,
   restoreScroll,
   onScrollRestored,
 }: {
@@ -80,6 +81,7 @@ export function Audiobooks({
   onReadAlong: (ebookId: string) => void;
   onOpenSeries?: (name: string) => void;
   seriesBack?: () => void;
+  onShowAllSeries?: () => void;
   restoreScroll?: number | null;
   onScrollRestored?: () => void;
 }) {
@@ -160,6 +162,7 @@ export function Audiobooks({
           kind="audiobooks"
           onOpenSeries={onOpenSeries}
           seriesBack={seriesBack}
+          onShowAllSeries={onShowAllSeries}
           restoreScroll={restoreScroll}
           onScrollRestored={onScrollRestored}
           paired={pairing === "all" ? null : pairing === "paired"}

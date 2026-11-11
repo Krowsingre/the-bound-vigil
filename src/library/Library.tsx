@@ -1,3 +1,5 @@
+import { downloadable, useBatchDownloads } from "./BatchDownloads";
+import { ofKind } from "../lib/queryBooks";
 import { SeriesCoverPicker } from "./SeriesCoverPicker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, isHome, isWeb } from "../api";
@@ -71,6 +73,7 @@ export function Library({
   onPairing,
   onOpenSeries,
   seriesBack,
+  onShowAllSeries,
   restoreScroll,
   onScrollRestored,
 }: {
@@ -94,6 +97,7 @@ export function Library({
   onPairing?: (value: boolean | null) => void;
   onOpenSeries?: (name: string) => void;
   seriesBack?: () => void;
+  onShowAllSeries?: () => void;
   restoreScroll?: number | null;
   onScrollRestored?: () => void;
 }) {
@@ -108,7 +112,13 @@ export function Library({
   const lastPicked = useRef<string | null>(null);
   const [tagging, setTagging] = useState(false);
   const [asking, setAsking] = useState<"remove" | "delete" | "download" | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [bulkBusy, setBusy] = useState<string | null>(null);
+  const downloads = useBatchDownloads(() => setReload((n) => n + 1));
+  const busy = bulkBusy || downloads.progress || null;
+  const downloadSeries = (name: string) => downloads.download(async () => {
+    const detail = await api.getCollection({ kind: "series", name });
+    return detail.books.filter((book) => ofKind(book, kind));
+  });
   /** The search and filters everything was last chosen for. */
   const toast = useToast();
   const words = WORDS[kind];
@@ -138,12 +148,16 @@ export function Library({
     try { localStorage.setItem(coverKey, JSON.stringify(next)); } catch { /* Keep this session's choice. */ }
   };
   const toggleSeriesPin = (name: string, pinned: boolean) => {
-    void api.setArchiveSeriesPin(name, pinned).then(() => setReload((n) => n + 1), (error: unknown) => toast(String(error)));
+    void api.setArchiveSeriesPin(name, pinned).then(() => {
+      setReload((n) => n + 1);
+      if (!pinned) toast("Series unpinned.", { label: "Undo", run: () => toggleSeriesPin(name, true) });
+    }, (error: unknown) => toast(String(error)));
   };
   const seriesMenu = (name: string): import("../components/Menu").MenuEntry[] => {
     const key = name.trim().toLowerCase();
     const pinned = pinnedSeries.some((value) => value.trim().toLowerCase() === key);
     return [
+      { label: "Download to this device", icon: "download", disabled: !!busy, onSelect: () => void downloadSeries(name) },
       { label: "Choose stack cover", onSelect: () => setCoverPicker(name) },
       ...(coverChoices[key] ? [{ label: "Reset to automatic", onSelect: () => changeCover(name) }] : []),
       ...(kind === "books" ? [{ label: pinned ? "Unpin series" : "Pin series", onSelect: () => toggleSeriesPin(name, !pinned) }] : []),
@@ -173,6 +187,15 @@ export function Library({
   const Layout = { grid: BookGrid, list: BookList, compact: BookTable }[view.layout];
   const groupSeries = kind !== "documents" && view.seriesGrouping !== "individual" && !seriesBack && selected === null;
   const inSeries = !!seriesBack;
+  const seriesName = inSeries ? view.series[0] : undefined;
+  const [seriesTotal, setSeriesTotal] = useState<{ name: string; count: number } | null>(null);
+  useEffect(() => {
+    if (!seriesName) return;
+    let current = true;
+    void api.getLibrary({ kind, shelf: "all", sort: "series", search: null, formats: [], location: null, series: [seriesName], page: 0, pageSize: 1, omitFacets: true })
+      .then((data) => { if (current) setSeriesTotal({ name: seriesName, count: data.total }); }, () => { if (current) setSeriesTotal(null); });
+    return () => { current = false; };
+  }, [seriesName, kind, refreshKey, reload]);
   const separatePins = kind === "books" && !inSeries;
   const pinnedFirst = !inSeries;
   const pinned = separatePins ? false : undefined;
@@ -384,6 +407,7 @@ export function Library({
       ...first,
       books: [...first.books, ...later.flatMap((p) => p.books)],
       seriesCounts: Object.assign({}, first.seriesCounts, ...later.map((p) => p.seriesCounts)),
+      seriesPublished: Object.assign({}, first.seriesPublished, ...later.map((p) => p.seriesPublished)),
       seriesCovers: Object.assign({}, first.seriesCovers, ...later.map((p) => p.seriesCovers)),
     } : first),
     [first, endless, later],
@@ -492,7 +516,7 @@ export function Library({
       label: "Download to this device",
       icon: "download",
       disabled: !chosen.some(downloadable) || busy !== null,
-      onSelect: () => void downloadChosen(),
+      onSelect: () => void downloads.download(async () => chosen),
     },
     {
       label: "Remove download",
@@ -506,24 +530,6 @@ export function Library({
     { label: "Remove from library", icon: "close", disabled: none || busy !== null, onSelect: () => setAsking("remove") },
     { label: "Delete", icon: "trash", danger: true, disabled: none || busy !== null, onSelect: () => setAsking("delete") },
   ];
-
-  /** Downloads the chosen books that aren't on this device, one at a time. */
-  const downloadChosen = async () => {
-    const list = chosen.filter(downloadable);
-    let failed = 0;
-    for (let i = 0; i < list.length; i++) {
-      setBusy(`Downloading: ${i + 1} of ${list.length}…`);
-      try {
-        await api.downloadBook(list[i].id);
-      } catch {
-        failed++;
-      }
-    }
-    setBusy(null);
-    setReload((n) => n + 1);
-    const count = (n: number) => (n === 1 ? `1 ${words.one}` : `${n} ${words.many}`);
-    toast(failed ? `Downloaded ${count(list.length - failed)}. ${count(failed)} couldn't be downloaded.` : `Downloaded ${count(list.length)} to this device.`);
-  };
 
   /** Removes downloads, removes from the library, or deletes, one book at a time. */
   const changeChosen = async (what: "remove" | "delete" | "download") => {
@@ -637,7 +643,7 @@ export function Library({
       onClearSearch();
       onChange({ ...NO_FILTERS, tab: "all", series: [name], sort: "series", page: 0 });
     });
-    const items = <Layout books={page.books} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} seriesCovers={page.seriesCovers} seriesMenu={seriesMenu} showStatus={inSeries} onOpenSeries={openSeries} />;
+    const items = <Layout books={page.books} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} seriesCovers={page.seriesCovers} seriesPublished={page.seriesPublished} seriesMenu={seriesMenu} showStatus={inSeries} onOpenSeries={openSeries} />;
     body = endless ? (
       <>
         {items}
@@ -662,6 +668,13 @@ export function Library({
           <h1 className="library-title">{inSeries ? view.series[0] : words.title}</h1>
           {switcher}
         </div>
+        {seriesName && <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => void downloadSeries(seriesName)}>Download to this device</button>}
+        {seriesName && seriesTotal?.name === seriesName && page && page.total < seriesTotal.count && (
+          <div className="search-note">
+            <span>{page.total} of {seriesTotal.count} books shown</span>
+            {onShowAllSeries && <button type="button" className="view-all" onClick={onShowAllSeries}>Show all books in this series</button>}
+          </div>
+        )}
         {counts && (
           <div className="stats stats-5 library-stats">
             <Stat icon="circleProgress" value={counts.inProgress} label="In progress" />
@@ -820,6 +833,7 @@ export function Library({
       {searching && <p className="muted library-searching" role="status">Searching…</p>}
       {coverPicker && <SeriesCoverPicker name={coverPicker} kind={kind} chosen={coverChoices[coverPicker.trim().toLowerCase()]}
         onChoose={(id) => { changeCover(coverPicker, id); setCoverPicker(null); }} onClose={() => setCoverPicker(null)} />}
+      {downloads.feedback}
       <div className="library-body">
         {separatePins && (pins.length > 0 || (pinnedStacks?.books.length ?? 0) > 0) && view.tab !== "collections" && (
           <details className="library-pins" open={pinsExpanded} onToggle={(event) => togglePins(event.currentTarget.open)}>
@@ -827,7 +841,7 @@ export function Library({
             <Layout books={pins} actions={actions} selection={selection} />
             {pinnedStacks && pinnedStacks.books.length > 0 && (
               <Layout books={pinnedStacks.books} actions={actions} seriesCounts={pinnedStacks.seriesCounts}
-                seriesCovers={pinnedStacks.seriesCovers} onOpenSeries={onOpenSeries} seriesMenu={seriesMenu} />
+                seriesCovers={pinnedStacks.seriesCovers} seriesPublished={pinnedStacks.seriesPublished} onOpenSeries={onOpenSeries} seriesMenu={seriesMenu} />
             )}
           </details>
         )}
@@ -838,7 +852,7 @@ export function Library({
 }
 
 /** A book that can be downloaded here: only in the cloud, or its file gone from here. */
-const downloadable = (b: BookPreview) => !b.fileUnavailable && (b.availability === "cloud" || b.availability === "missing");
+
 
 const KNOWN_LISTS = ["formats", "tags", "genres", "languages"] as const;
 
