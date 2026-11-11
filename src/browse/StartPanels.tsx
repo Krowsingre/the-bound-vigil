@@ -1,16 +1,17 @@
 // The start page's Bookmarks and Reading List tiles open these, in the same
 // kind of panel as History and Downloads.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { Bookmark } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { siteOf } from "./browserPrefs";
 import { onReadingList, readReadingList, removeFromReadingList } from "./readingList";
+import { readBookmarkHtml, writeBookmarkHtml } from "./bookmarkHtml";
 import { SiteBadge } from "./SiteBadge";
 
-function Panel({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Panel({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="dialog browser-history" role="dialog" aria-label={title} onKeyDown={(e) => e.key === "Escape" && onClose()}>
@@ -36,6 +37,7 @@ export function BookmarksPanel({ onGo, onClose, onChanged, page }: {
   const [marks, setMarks] = useState<Bookmark[]>([]);
   const [draft, setDraft] = useState<Bookmark | null>(page ?? null);
   const [busy, setBusy] = useState(false);
+  const importFile = useRef<HTMLInputElement>(null);
   useEffect(() => { void api.bookmarks().then(setMarks, (e) => toast(String(e))); }, [toast]);
 
   const change = async (work: () => Promise<unknown>, after?: () => void) => {
@@ -47,6 +49,53 @@ export function BookmarksPanel({ onGo, onClose, onChanged, page }: {
       onChanged();
     } catch (e) {
       toast(String(e).replace(/^Error: /, ""));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const importBookmarks = (file: File) => void change(async () => {
+    const entries = readBookmarkHtml(await file.text());
+    if (!entries.length) {
+      toast("No web bookmarks found in that file.");
+      return;
+    }
+    const existing = new Set((await api.bookmarks()).map((mark) => mark.url));
+    let added = 0;
+    let failed = 0;
+    let skipped = 0;
+    for (const entry of entries) {
+      if (existing.has(entry.url)) {
+        skipped += 1;
+        continue;
+      }
+      try {
+        await api.addBookmark(entry.title, entry.url, entry.folder);
+        existing.add(entry.url);
+        added += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    toast([added + " imported", skipped + " duplicates skipped", ...(failed ? [failed + " failed"] : [])].join(" · "));
+  });
+  const exportBookmarks = async () => {
+    setBusy(true);
+    try {
+      const name = "TBV Bookmarks.html";
+      const bytes = new TextEncoder().encode(writeBookmarkHtml(await api.bookmarks()));
+      if (api.kind === "app") {
+        const path = await api.pickExportPath(name, "html");
+        if (path) await api.saveExportFile(bytes, name, path);
+      } else {
+        const url = URL.createObjectURL(new Blob([bytes], { type: "text/html;charset=utf-8" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = name;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+    } catch (error) {
+      toast(String(error).replace(/^Error: /, ""));
     } finally {
       setBusy(false);
     }
@@ -81,7 +130,16 @@ export function BookmarksPanel({ onGo, onClose, onChanged, page }: {
           </div>
         </form>
       ) : (
-        <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => setDraft({ id: "", title: "", url: "" })}>Add bookmark</button>
+        <div className="bookmark-editor-actions">
+          <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => setDraft({ id: "", title: "", url: "" })}>Add bookmark</button>
+          <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => importFile.current?.click()}>Import HTML</button>
+          <button type="button" className="btn btn-quiet btn-small" disabled={busy || !marks.length} onClick={() => void exportBookmarks()}>Export HTML</button>
+          <input ref={importFile} type="file" accept=".html,.htm,text/html" hidden onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file) importBookmarks(file);
+          }} />
+        </div>
       )}
       {!page && <ul className="browser-download-list browser-history-list">
         {[...folders].flatMap(([name, group]) => [

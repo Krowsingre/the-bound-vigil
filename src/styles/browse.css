@@ -2050,3 +2050,26 @@
 .menu-row-action { display: flex; align-items: center; }
 .menu-row-action > .menu-item:first-child { flex: 1; min-width: 0; }
 .menu-row-action > .menu-row-close { flex: 0 0 auto; width: auto; padding: 6px; }
+
+.browser-tab-search {
+  box-sizing: border-box;
+  width: 100%;
+  margin-block: 4px 8px;
+}
+.browser-session-tabs {
+  max-height: 52vh;
+  overflow: auto;
+  margin: 0;
+  padding-inline-start: 24px;
+}
+.browser-session-tabs .bookmark-editor-actions {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.browser-session-tabs .bookmark-editor-actions label {
+  display: flex;
+  align-items: center;
+}
+.browser-session-tabs li + li {
+  margin-block-start: 12px;
+}

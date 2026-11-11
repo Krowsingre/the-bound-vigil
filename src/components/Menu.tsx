@@ -46,6 +46,7 @@ export function Menu({
   className = "icon-btn",
   menuClassName = "",
   closeOnScroll = true,
+  searchLabel,
 }: {
   trigger: ReactNode;
   label: string;
@@ -55,8 +56,11 @@ export function Menu({
   /** Extra classes for the dropdown itself. */
   menuClassName?: string;
   closeOnScroll?: boolean;
+  searchLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const search = useRef<HTMLInputElement>(null);
   const [section, setSection] = useState<number | null>(null);
   const hasSubmenus = items.some((item) => typeof item === "object" && "submenu" in item && item.submenu?.length);
   const group = section === null ? undefined : items[section];
@@ -66,7 +70,11 @@ export function Menu({
     "divider",
     ...submenu,
   ] : items;
-  const closeMenu = () => { setOpen(false); setSection(null); };
+  const term = query.trim().toLowerCase();
+  const results = term ? visible.filter((item): item is MenuItem =>
+    typeof item === "object" && "label" in item && !!item.id &&
+    [item.label, item.hint, item.description].some((text) => text?.toLowerCase().includes(term))) : visible;
+  const closeMenu = () => { setOpen(false); setSection(null); setQuery(""); };
   const [place, setPlace] = useState<CSSProperties>({ visibility: "hidden" });
   const root = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -134,9 +142,7 @@ export function Menu({
     document.addEventListener("keydown", close);
     if (closeOnScroll) document.addEventListener("scroll", away, true);
     window.addEventListener("resize", shut);
-    menu.current
-      ?.querySelector<HTMLButtonElement>(".menu-item:not(:disabled)")
-      ?.focus({ preventScroll: true });
+    (search.current ?? menu.current?.querySelector<HTMLButtonElement>(".menu-item:not(:disabled)"))?.focus({ preventScroll: true });
     return () => {
       document.removeEventListener("pointerdown", close);
       document.removeEventListener("keydown", close);
@@ -167,7 +173,15 @@ export function Menu({
           <MenuList
             ref={menu}
             label={label}
-            items={visible}
+            items={results}
+            before={searchLabel && <input ref={search} type="search" className="browser-tab-search" aria-label={searchLabel} placeholder={searchLabel}
+              value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
+                if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                const first = results.find((item): item is MenuItem => typeof item === "object" && "label" in item && !!item.id && !item.disabled);
+                if (first) { closeMenu(); first.onSelect?.(); }
+              }} />}
+            empty={term && results.length === 0 ? "No matching open tabs." : undefined}
             className={menuClassName}
             style={place}
             onClose={closeMenu}
@@ -191,8 +205,10 @@ export const MenuList = forwardRef<
     onClose: () => void;
     onSubmenu?: (index: number) => void;
     back?: boolean;
+    before?: ReactNode;
+    empty?: string;
   }
->(function MenuList({ label, items, className = "", style, onClose, onSubmenu, back }, ref) {
+>(function MenuList({ label, items, className = "", style, onClose, onSubmenu, back, before, empty }, ref) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
     e.preventDefault();
@@ -202,7 +218,7 @@ export const MenuList = forwardRef<
       ),
     ];
     const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    const next =
+    const next = at < 0 ? (e.key === "ArrowDown" ? 0 : buttons.length - 1) :
       (at + (e.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
     buttons[next]?.focus({ preventScroll: true });
   };
@@ -215,6 +231,8 @@ export const MenuList = forwardRef<
       style={style}
       onKeyDown={onKeyDown}
     >
+      {before}
+      {empty && <p className="menu-heading">{empty}</p>}
       {items.map((item, i) => {
         if (item !== "divider" && "label" in item) {
           const row = (

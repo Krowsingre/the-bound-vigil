@@ -69,6 +69,7 @@ import { onBrowserAsk, type BrowserAsk } from "./browserAsk";
 import { addToReadingList, bookIdOf } from "./readingList";
 import { ClosedList } from "./ClosedList";
 import { SiteInfo } from "./SiteInfo";
+import { SessionsPanel, restoreSession } from "./SessionsPanel";
 import { BookmarksPanel, ReadingListPanel } from "./StartPanels";
 import { StartPage, type StartPanel } from "./StartPage";
 import { useTabDrag } from "./useTabDrag";
@@ -196,6 +197,7 @@ export function BrowserNav({ compact = false }: { compact?: boolean } = {}) {
       {button(state.busy ? "Stop" : "Reload", state.busy ? "close" : "sync", state.busy ? "stop" : "reload")}
       {!compact && button("Home page", "home", "home")}
       {!compact && <BrowserBookmarks state={state} className="header-action" />}
+      {!compact && button("Sessions", "list", "sessions")}
       {!compact && button("Reader view", "bookOpen", "reader", { disabled: !state.web && !state.reader, "aria-pressed": state.reader, className: `header-action${state.reader ? " is-on" : ""}` })}
     </div>
   );
@@ -350,7 +352,9 @@ export function Browser({
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [marks, setMarks] = useState<Bookmark[]>([]);
   const fetched = useDownloads();
-  const [panel, setPanel] = useState<null | "tabs" | "site" | "bookmark-page" | StartPanel>(null);
+  const [panel, setPanel] = useState<null | "tabs" | "site" | "bookmark-page" | "sessions" | StartPanel>(null);
+  const [tabSearch, setTabSearch] = useState("");
+  useEffect(() => { if (panel !== "tabs") setTabSearch(""); }, [panel]);
   /** Pages that couldn't open, by tab: TBV's own page says why. */
   const [failed, setFailed] = useState<Record<string, { url: string; reason: string }>>({});
   const failedRef = useRef(failed);
@@ -781,6 +785,11 @@ export function Browser({
     setTabs((s) => ({ ...s, active: id }));
   };
   activate.current = switchTo;
+  const tabQuery = tabSearch.trim().toLowerCase();
+  const matchingTabs = tabs.tabs.filter((tab) =>
+    !tabQuery || [titleOf(tab.title, tab.url, tab.private), siteOf(tab.url), tab.url]
+      .some((value) => value?.toLowerCase().includes(tabQuery)),
+  );
   const splitWithTab = (id: string) => {
     if (id === tabsRef.current.active) return;
     setPair((current) => ({ other: id, activeLeft: current?.activeLeft ?? true }));
@@ -852,6 +861,7 @@ export function Browser({
     const list = tabsRef.current.tabs;
     const at = list.findIndex((t) => t.id === tabsRef.current.active);
     if (key === "focusAddress") document.getElementById(companionRef.current ? "discover-split-search" : "global-search")?.focus();
+    else if (key === "refreshApp") void workspaceHost.tbvWorkspace?.refresh?.();
     else if (key === "newTab") newTab();
     else if (key === "closeTab") close(tabsRef.current.active);
     else if (key === "reopenTab") reopen();
@@ -935,6 +945,7 @@ export function Browser({
     else if (what === "home") goHome();
     else if (what === "site") setPanel("site");
     else if (what === "mark") void toggleMark();
+    else if (what === "sessions") setPanel("sessions");
     else if (what === "bookmarks") setPanel("bookmarks");
     else if (what.startsWith("bookmark:")) go(what.slice("bookmark:".length));
     else if (what === "reader") void (article ? setArticle(null) : openReader());
@@ -1133,6 +1144,7 @@ export function Browser({
       { label: "Open in your normal browser", icon: "link", onSelect: () => void openExternal(url) },
     ] },
     { label: "Bookmarks", icon: "bookmark", onSelect: () => setPanel("bookmarks") },
+    { label: "Sessions", icon: "list", onSelect: () => setPanel("sessions") },
     { label: "Reading List", icon: "bookOpen", submenu: [
       { label: "Save this page", icon: "notes", disabled: !web || saving, onSelect: () => void saveToReadingList() },
       { label: "Open Reading List", icon: "bookOpen", onSelect: () => setPanel("reading") },
@@ -1150,7 +1162,6 @@ export function Browser({
   ];
 
   const splitItems: MenuEntry[] = [
-    ...(other ? [{ label: "Close tab split", onSelect: () => setPair(null) }] : []),
     ...tabs.tabs.filter((tab) => allowSplit && tab.id !== tabs.active).map((tab) => ({
       label: `Beside ${titleOf(tab.title, tab.url, tab.private)}`, onSelect: () => splitWithTab(tab.id),
     })),
@@ -1233,7 +1244,8 @@ export function Browser({
   return (
     <div className="browser">
       {(allowSplit || onSplitWith) && !companion && <div className="browser-split-tools">
-        <Menu label="Split screen" className="toolbar-button" trigger={<><Icon name="layers" size={16} /> Split screen</>} items={splitItems} />
+        {other ? <button type="button" className="toolbar-button" onClick={() => setPair(null)}>Close tab split</button> :
+          <Menu label="Split screen" className="toolbar-button" trigger={<><Icon name="layers" size={16} /> Split screen</>} items={splitItems} />}
       </div>}
       {!narrow && (
         <div className="browser-strip">
@@ -1245,7 +1257,7 @@ export function Browser({
             </button>
           </div>
           <div className="browser-strip-tools">
-            <Menu label="Every tab" closeOnScroll={false} className="toolbar-button" trigger={<Icon name="chevronDown" size={16} />} items={tabList} />
+            <Menu label="Every tab" closeOnScroll={false} className="toolbar-button" trigger={<Icon name="chevronDown" size={16} />} items={tabList} searchLabel="Search open tabs" />
             <span className="browser-bar-divider" aria-hidden />
             {button("Add a catalogue", "globePlus", onOpenCatalogues)}
             {downloadsButton}
@@ -1260,6 +1272,7 @@ export function Browser({
           {button("Forward", "arrowRight", () => act("forward"), "", forwardTravel)}
           {button(busy ? "Stop" : "Reload", busy ? "close" : "sync", () => act(busy ? "stop" : "reload"))}
           <BrowserBookmarks state={{ busy, web, marked: !!marked, bookmarks: marks, reader: !!article }} className="toolbar-button" />
+          {button("Sessions", "list", () => setPanel("sessions"))}
           <button type="button" className={`toolbar-button browser-count${panel === "tabs" ? " is-on" : ""}`} aria-label={`Tabs: ${tabs.tabs.length} open`} title="Tabs" onClick={() => setPanel(panel === "tabs" ? null : "tabs")}>
             <span>{tabs.tabs.length}</span>
           </button>
@@ -1383,7 +1396,7 @@ export function Browser({
           </article>
         )}
         {panel === "tabs" && (
-          <div className="browser-grid" role="dialog" aria-label="Tabs">
+          <div className="browser-grid" role="dialog" aria-label="Tabs" onKeyDown={(event) => { if (event.key === "Escape") setPanel(null); }}>
             <div className="browser-grid-head">
               <h2>
                 {tabs.tabs.length} {tabs.tabs.length === 1 ? "tab" : "tabs"}
@@ -1399,8 +1412,16 @@ export function Browser({
                 Done
               </button>
             </div>
+            <input className="browser-tab-search" type="search" aria-label="Search open tabs" placeholder="Search open tabs"
+              value={tabSearch} onChange={(event) => setTabSearch(event.target.value)} onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing && matchingTabs[0]) {
+                  event.preventDefault();
+                  switchTo(matchingTabs[0].id);
+                }
+              }} />
+            {matchingTabs.length === 0 && <p className="muted">No matching open tabs.</p>}
             <div className="browser-grid-tabs">
-              {tabs.tabs.map((t) => (
+              {matchingTabs.map((t) => (
                 <div key={t.id} data-item-menu className={`browser-grid-tab${t.id === tabs.active ? " is-active" : ""}${t.id === tabs.active && loading[t.id] ? " is-loading" : ""}${t.private ? " is-private" : ""}`} {...drag(t.id)}>
                   <button type="button" className="browser-grid-open" onClick={() => switchTo(t.id)}>
                     <Icon name={t.private ? "eyeOff" : "globe"} size={22} />
@@ -1416,7 +1437,7 @@ export function Browser({
                 </div>
               ))}
             </div>
-            {closedTabs.length > 0 && (
+            {!tabQuery && closedTabs.length > 0 && (
               <section className="browser-grid-closed" aria-labelledby="grid-closed">
                 <h3 id="grid-closed">Recently closed</h3>
                 <ClosedList closed={closedTabs} onReopen={(index) => reopen(1, index)} />
@@ -1439,6 +1460,16 @@ export function Browser({
         </section>
       </>}
       </div>
+      {panel === "sessions" && <SessionsPanel current={tabs} onClose={() => setPanel(null)} onLoad={(session) => {
+        const next = restoreSession(session);
+        forget(tabsRef.current.tabs.map((tab) => tab.id));
+        setPair(null);
+        setArticle(null);
+        onSearchChange("");
+        tabsRef.current = next;
+        setTabs(next);
+        setPanel(null);
+      }} />}
       {(panel === "bookmarks" || panel === "bookmark-page") && (
         <BookmarksPanel
           key={panel}

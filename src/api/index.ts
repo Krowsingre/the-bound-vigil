@@ -624,7 +624,7 @@ export interface Api {
   /** Saves a finished EPUB at `path` (desktop), downloads it (phone), and/or adds it to the library. */
   saveWritingEpub(bytes: Uint8Array, fileName: string, path: string | null, addToLibrary: boolean): Promise<void>;
   /** Where to save a PDF, Word file or text file made from a book; null when cancelled. */
-  pickExportPath(fileName: string, format: "pdf" | "docx" | "txt" | "tbv"): Promise<string | null>;
+  pickExportPath(fileName: string, format: "pdf" | "docx" | "txt" | "tbv" | "html"): Promise<string | null>;
   /** Saves a file made from a book at `path` (desktop), or downloads it (web). */
   saveExportFile(bytes: Uint8Array, fileName: string, path: string | null): Promise<void>;
   /**
@@ -1334,9 +1334,9 @@ function appApi(): Api {
       }),
     pickExportPath: async (fileName, format) =>
       (await savePicker({
-        title: format === "pdf" ? "Save the PDF" : format === "docx" ? "Save the Word file" : format === "tbv" ? "Save the Scribe book file" : "Save the text file",
+        title: format === "html" ? "Export bookmarks" : format === "pdf" ? "Save the PDF" : format === "docx" ? "Save the Word file" : format === "tbv" ? "Save the Scribe book file" : "Save the text file",
         defaultPath: fileName,
-        filters: [{ name: format === "pdf" ? "PDF" : format === "docx" ? "Word document" : format === "tbv" ? "Scribe book file" : "Text", extensions: [format] }],
+        filters: [{ name: format === "html" ? "Bookmarks HTML" : format === "pdf" ? "PDF" : format === "docx" ? "Word document" : format === "tbv" ? "Scribe book file" : "Text", extensions: [format] }],
       })) ?? null,
     saveExportFile: async (bytes, fileName, path) =>
       (await core).invoke("save_writing_epub", bytes, { headers: { path: encodeURIComponent(path ?? ""), add: "0", "file-name": encodeURIComponent(fileName) } }),

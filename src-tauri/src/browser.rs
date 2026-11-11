@@ -903,6 +903,7 @@ mod windows {
                 } else {
                     match (key, shift) {
                         (0x4B, false) => "focusAddress",
+                        (0x52, true) => "refreshApp",
                         (0x44, false) => "bookmarkPage",
                         (0x54, false) => "newTab",
                         (0x54, true) => "reopenTab",

@@ -862,7 +862,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
             onOpenCatalogues={() => setCatalogues(true)} onCloseCatalogues={() => setCatalogues(false)}
             search={browserDraft} onSearchChange={setBrowserDraft}
             allowTabSplit={!workspaceSplit && !workspaceFrame}
-            onSplitWith={onSplit} />
+            onSplitWith={workspaceSplit ? undefined : onSplit} />
         </main>}
         </div>
       </div>

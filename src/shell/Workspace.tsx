@@ -11,6 +11,9 @@ import { workspaceFrame, workspaceHost } from "./workspaceFrame";
 const routes = [...navFor({ web: isWeb, home: isHome, android: isAndroid }).map(({ route }) => route), "imports", "lining"];
 const canSplit = !isHome && !isWeb && !isAndroid && (api.kind === "app" || api.kind === "preview");
 const isAppBrowser = () => api.kind === "app" && !isAndroid;
+function isRefreshShortcut(event: KeyboardEvent) {
+  return (event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "r";
+}
 const narrowSplit = "(max-width: 760px), (max-aspect-ratio: 1/1) and (pointer: coarse)";
 
 function requestedRoute() {
@@ -40,7 +43,16 @@ export function Workspace() {
     if (workspaceFrame) {
       const host = workspaceHost.tbvWorkspace;
       if (host) host.flush = () => runBeforeQuit();
-      return () => { if (host) delete host.flush; };
+      const shortcut = (event: KeyboardEvent) => {
+        if (!isRefreshShortcut(event)) return;
+        event.preventDefault();
+        void host?.refresh?.();
+      };
+      window.addEventListener("keydown", shortcut);
+      return () => {
+        window.removeEventListener("keydown", shortcut);
+        if (host) delete host.flush;
+      };
     }
     let refreshing = false;
     const refresh = async () => {
@@ -58,7 +70,7 @@ export function Workspace() {
     } };
     workspaceHost.tbvWorkspace = host;
     const shortcut = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.altKey || event.key.toLowerCase() !== "r") return;
+      if (!isRefreshShortcut(event)) return;
       event.preventDefault();
       void refresh();
     };
