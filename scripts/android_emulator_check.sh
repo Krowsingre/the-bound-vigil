@@ -82,7 +82,9 @@ fi
 adb logcat -d > "$out/logcat.txt"
 echo "--- What TBV and Android said ---"
 grep -E "RustStdoutStderr|AndroidRuntime|Tauri|tbv|chromium.*Console" "$out/logcat.txt" | tail -n 150
-if grep -q "FATAL EXCEPTION" "$out/logcat.txt"; then
+# Only TBV's own crashes count: Android's screen reader for this check
+# (uiautomator) sometimes crashes on its own while reading the screen.
+if grep -A2 "FATAL EXCEPTION" "$out/logcat.txt" | grep -q "Process: $app"; then
   echo "::error::The app crashed."
   exit 1
 fi
