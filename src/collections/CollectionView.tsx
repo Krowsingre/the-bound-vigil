@@ -121,7 +121,7 @@ export function CollectionView({
   const books = readSwitch ? detail.books.filter((b) => b.status === ended) : detail.books;
   const covers = detail.books.slice(0, 3).map(({ id, title, authors, coverPath }) => ({ id, title, authors, coverPath }));
   const menu: MenuEntry[] = [
-    { label: "Download to this device", icon: "download", disabled: !!downloads.progress || !detail.books.some(downloadable), onSelect: () => void downloads.download(async () => detail.books) },
+    { label: "Download", icon: "download", disabled: !!downloads.progress || !detail.books.some(downloadable), onSelect: () => void downloads.download(async () => detail.books) },
     ...menuFor(detail),
   ];
   const move = (book: BookPreview, to: number) =>

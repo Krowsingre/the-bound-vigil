@@ -9,6 +9,7 @@ import type { LibraryView } from "./libraryView";
 const getLibrary = vi.fn<(q: LibraryQuery) => Promise<LibraryPage>>();
 const setFavorite = vi.fn(async () => {});
 const downloadBook = vi.fn<(id: string) => Promise<void>>();
+const removeDownload = vi.fn<(id: string) => Promise<void>>(async () => {});
 const getCollection = vi.fn();
 const setBookStatus = vi.fn<(id: string, status: string) => Promise<void>>(async () => {});
 vi.mock("../api", () => ({
@@ -21,7 +22,7 @@ vi.mock("../api", () => ({
     getCollections: async () => [],
     getCollection: (...args: unknown[]) => getCollection(...args),
     downloadBook: (id: string) => downloadBook(id),
-    removeDownload: vi.fn(async () => {}),
+    removeDownload: (id: string) => removeDownload(id),
     seriesReview: async () => null,
     timeSpent: async () => [],
     setFavorite: (...a: unknown[]) => setFavorite(...(a as [])),
@@ -212,7 +213,7 @@ test("series download skips local files and retries only the failed title", asyn
   getCollection.mockResolvedValue({ books: [local, remote, failed] });
   downloadBook.mockReset().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("Offline")).mockResolvedValueOnce(undefined);
   renderLibrary({ view: { ...view, series: ["Shared series"] }, seriesBack: () => {} });
-  fireEvent.click(await screen.findByRole("button", { name: "Download to this device" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Download" }));
   expect(await screen.findByRole("region", { name: "Failed downloads" })).toHaveTextContent("Book 3");
   fireEvent.click(screen.getByRole("button", { name: "Retry failed" }));
   await waitFor(() => expect(screen.queryByRole("region", { name: "Failed downloads" })).toBeNull());
@@ -230,4 +231,25 @@ test("Undo restores reading status after dismissing the download prompt", async 
   fireEvent.click(await screen.findByRole("button", { name: "Keep on device" }));
   fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
   expect(setBookStatus.mock.calls).toEqual([[reading.id, "read"], [reading.id, "in_progress"]]);
+});
+
+test("removing downloads from a stack keeps cloud-only and local-only books untouched", async () => {
+  const backedUp = book(1, { series: "Shared series", inCloud: true });
+  const onlyCopy = book(2, { series: "Shared series" });
+  const cloudOnly = book(3, { series: "Shared series", availability: "cloud", inCloud: true });
+  getLibrary.mockResolvedValue({
+    books: [backedUp], seriesCounts: { [backedUp.id]: 3 }, total: 1, page: 0, pageSize: 24,
+    counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [],
+  });
+  getCollection.mockResolvedValue({ books: [backedUp, onlyCopy, cloudOnly] });
+  removeDownload.mockClear();
+  renderLibrary({ view: { ...view, seriesGrouping: "mixed" } });
+  fireEvent.click(await screen.findByRole("button", { name: "More for Shared series" }));
+  expect(screen.getByRole("menuitem", { name: "Download" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove download" }));
+  const confirm = await screen.findByRole("button", { name: "Remove downloads" });
+  expect(removeDownload).not.toHaveBeenCalled();
+  fireEvent.click(confirm);
+  await waitFor(() => expect(screen.getByText(/was kept here/)).toBeInTheDocument());
+  expect(removeDownload.mock.calls).toEqual([[backedUp.id]]);
 });

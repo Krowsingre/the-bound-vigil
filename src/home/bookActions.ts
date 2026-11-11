@@ -176,9 +176,9 @@ export function bookContextMenu(book: BookPreview, actions: BookActions) {
 }
 
 function downloadItem(book: BookPreview, actions: BookActions): MenuEntry {
-  if (book.fileUnavailable) return { label: "Download to this device", icon: "download", hint: "File not in the cloud", disabled: true };
+  if (book.fileUnavailable) return { label: "Download", icon: "download", hint: "File not in the cloud", disabled: true };
   if (book.availability === "cloud")
-    return { label: "Download to this device", icon: "download", disabled: !actions.download, onSelect: () => actions.download?.(book) };
+    return { label: "Download", icon: "download", disabled: !actions.download, onSelect: () => actions.download?.(book) };
   // Gone from this device, but the cloud may still have it.
   if (book.availability === "missing")
     return { label: "Download again", icon: "download", hint: "File missing here", disabled: !actions.download, onSelect: () => actions.download?.(book) };

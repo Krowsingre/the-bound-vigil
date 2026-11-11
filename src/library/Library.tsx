@@ -112,15 +112,33 @@ export function Library({
   const lastPicked = useRef<string | null>(null);
   const [tagging, setTagging] = useState(false);
   const [asking, setAsking] = useState<"remove" | "delete" | "download" | null>(null);
+  const [seriesRemoval, setSeriesRemoval] = useState<{ name: string; books: BookPreview[] } | null>(null);
   const [bulkBusy, setBusy] = useState<string | null>(null);
   const downloads = useBatchDownloads(() => setReload((n) => n + 1));
   const busy = bulkBusy || downloads.progress || null;
-  const downloadSeries = (name: string) => downloads.download(async () => {
+  const seriesBooks = async (name: string) => {
     const detail = await api.getCollection({ kind: "series", name });
     return detail.books.filter((book) => ofKind(book, kind));
-  });
+  };
+  const downloadSeries = (name: string) => downloads.download(() => seriesBooks(name));
   /** The search and filters everything was last chosen for. */
   const toast = useToast();
+  const askRemoveSeriesDownloads = async (name: string) => {
+    setBusy("Checking downloads…");
+    try {
+      const books = (await seriesBooks(name)).filter((book) => book.availability === "local");
+      if (!books.some((book) => book.inCloud)) {
+        toast(books.length ? "The downloaded files are the only copies and will stay on this device." : "This series has no downloads on this device.");
+        return;
+      }
+      setSeriesRemoval({ name, books });
+      setAsking("download");
+    } catch (error) {
+      toast(String(error));
+    } finally {
+      setBusy(null);
+    }
+  };
   const words = WORDS[kind];
   // On a phone there are no pages: more books load as the list nears its end.
   // A computer can ask for the same in Settings.
@@ -157,7 +175,8 @@ export function Library({
     const key = name.trim().toLowerCase();
     const pinned = pinnedSeries.some((value) => value.trim().toLowerCase() === key);
     return [
-      { label: "Download to this device", icon: "download", disabled: !!busy, onSelect: () => void downloadSeries(name) },
+      { label: "Download", icon: "download", disabled: !!busy, onSelect: () => void downloadSeries(name) },
+      { label: "Remove download", icon: "cloudOff", disabled: !!busy, onSelect: () => void askRemoveSeriesDownloads(name) },
       { label: "Choose stack cover", onSelect: () => setCoverPicker(name) },
       ...(coverChoices[key] ? [{ label: "Reset to automatic", onSelect: () => changeCover(name) }] : []),
       ...(kind === "books" ? [{ label: pinned ? "Unpin series" : "Pin series", onSelect: () => toggleSeriesPin(name, !pinned) }] : []),
@@ -513,7 +532,7 @@ export function Library({
       : []),
     { label: "Save copies", icon: "copy", disabled: none || busy !== null, onSelect: () => void saveChosen() },
     {
-      label: "Download to this device",
+      label: "Download",
       icon: "download",
       disabled: !chosen.some(downloadable) || busy !== null,
       onSelect: () => void downloads.download(async () => chosen),
@@ -533,8 +552,11 @@ export function Library({
 
   /** Removes downloads, removes from the library, or deletes, one book at a time. */
   const changeChosen = async (what: "remove" | "delete" | "download") => {
+    const targets = seriesRemoval?.books ?? chosen;
     setAsking(null);
-    const list = what === "download" ? chosen.filter((b) => b.availability === "local" && b.inCloud) : chosen;
+    setSeriesRemoval(null);
+    const local = what === "download" ? targets.filter((book) => book.availability === "local") : targets;
+    const list = what === "download" ? local.filter((book) => book.inCloud) : targets;
     const verb = { remove: "Removing", delete: "Deleting", download: "Removing downloads" }[what];
     const work = { remove: api.removeFromLibrary, delete: api.deleteBook, download: api.removeDownload }[what];
     let failed = 0;
@@ -551,11 +573,12 @@ export function Library({
     setReload((n) => n + 1);
     const done = list.length - failed;
     const count = (n: number) => (n === 1 ? `1 ${words.one}` : `${n} ${words.many}`);
-    const skipped = chosen.length - list.length;
+    const skipped = local.length - list.length;
     toast(
       what === "download"
         ? `Removed the downloads of ${count(done)}. They're still in the cloud.` +
-            (skipped ? ` ${count(skipped)} ${skipped === 1 ? "isn't" : "aren't"} in the cloud yet, so ${skipped === 1 ? "it was" : "they were"} kept here.` : "")
+            (skipped ? ` ${count(skipped)} ${skipped === 1 ? "isn't" : "aren't"} in the cloud yet, so ${skipped === 1 ? "it was" : "they were"} kept here.` : "") +
+            (failed ? ` ${count(failed)} couldn't be removed.` : "")
         : failed
           ? `${what === "remove" ? "Removed" : "Deleted"} ${done} of ${list.length}. ${failed} couldn't be changed.`
           : `${what === "remove" ? "Removed" : "Deleted"} ${count(done)}.`,
@@ -668,7 +691,12 @@ export function Library({
           <h1 className="library-title">{inSeries ? view.series[0] : words.title}</h1>
           {switcher}
         </div>
-        {seriesName && <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => void downloadSeries(seriesName)}>Download to this device</button>}
+        {seriesName && (
+          <div className="settings-actions">
+            <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => void downloadSeries(seriesName)}>Download</button>
+            <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => void askRemoveSeriesDownloads(seriesName)}>Remove download</button>
+          </div>
+        )}
         {seriesName && seriesTotal?.name === seriesName && page && page.total < seriesTotal.count && (
           <div className="search-note">
             <span>{page.total} of {seriesTotal.count} books shown</span>
@@ -784,7 +812,8 @@ export function Library({
         <ConfirmDialog
           title={
             {
-              download: `Remove the downloads of ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`}?`,
+              download: seriesRemoval ? `Remove downloads for “${seriesRemoval.name}”?` :
+                `Remove the downloads of ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`}?`,
               remove: `Remove ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`} from your library?`,
               delete: `Delete ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`} for good?`,
             }[asking]
@@ -796,7 +825,7 @@ export function Library({
           }
           confirm={{ download: "Remove downloads", remove: "Remove from library", delete: "Delete for good" }[asking]}
           danger={asking !== "download"}
-          onCancel={() => setAsking(null)}
+          onCancel={() => { setAsking(null); setSeriesRemoval(null); }}
           onConfirm={() => void changeChosen(asking)}
         />
       )}
