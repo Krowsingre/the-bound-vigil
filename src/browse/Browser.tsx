@@ -1,4 +1,4 @@
-import { workspaceHost } from "../shell/workspaceFrame";
+import { workspaceFrame, workspaceHost } from "../shell/workspaceFrame";
 import { placeWorkspaceBrowser, workspaceOffset } from "./workspaceBrowser";
 // Discover: a web browser inside TBV. Each tab's page shows in a view of its
 // own laid over the space below the tab row (see src-tauri/src/browser.rs);
@@ -8,7 +8,7 @@ import { placeWorkspaceBrowser, workspaceOffset } from "./workspaceBrowser";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, isIOS, openExternal } from "../api";
-import type { Bookmark, BrowserEvent, BrowserFrame, BrowserPane, ReaderArticle } from "../api/types";
+import type { Bookmark, BrowserEvent, BrowserFrame, BrowserPane, DeviceTabs, OpenTab, ReaderArticle } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { openContextMenu, openContextMenuAt } from "../components/ContextMenu";
 import { Icon } from "../components/Icon";
@@ -61,7 +61,7 @@ import {
   type TabsState,
 } from "./browserTabs";
 import { answerDownload, BOOK_FILE, downloadSource, downloadState, hasActiveTransfer, isActiveDownload, rememberDownloadSource, removeDownloads, setDownloads, useDownloads, type Fetched } from "./browserDownloads";
-import { HAS_PIP, INSTALL_YOUTUBE_PIP, isYouTube, READ_SELECTION } from "./pageTools";
+import { HAS_PIP, INSTALL_YOUTUBE_PIP, isYouTube, READ_SELECTION, REMOVE_FROM_PAGE } from "./pageTools";
 import { requestAppHistory } from "../shell/navigationKeys";
 import { addToHistory } from "./browserHistory";
 import { HistoryPanel } from "./HistoryPanel";
@@ -115,9 +115,15 @@ interface BarState {
   reader: boolean;
   /** A web page (not the start page), which can be bookmarked or read in reader view. */
   web: boolean;
+  /** Split screen: what Discover can be split with (its other tabs, TBV's pages), and whether it is now; null where it can't. */
+  split: { on: boolean; choices: { id: string; label: string }[] } | null;
 }
-const BAR_START: BarState = { busy: false, marked: false, bookmarks: [], reader: false, web: false };
+const BAR_START: BarState = { busy: false, marked: false, bookmarks: [], reader: false, web: false, split: null };
 let barNow = BAR_START;
+
+/** TBV's pages Discover can sit beside. */
+const SPLIT_ROUTES = [{ label: "Sanctum", route: "home" }, { label: "Archive", route: "library" }, { label: "Resonance", route: "audiobooks" },
+  { label: "Scribe", route: "writing" }, { label: "Compendium", route: "collections" }, { label: "Preferences", route: "settings" }] as const;
 
 const ask = (what: string) => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: what }));
 /** Webpage Back/Forward when a control in TBV, rather than the native page, has focus. */
@@ -206,6 +212,10 @@ export function BrowserNav({ compact = false }: { compact?: boolean } = {}) {
       {!compact && button("Home page", "home", "home")}
       {!compact && <BrowserBookmarks state={state} className="header-action" />}
       {!compact && button("Sessions", "list", "sessions")}
+      {!compact && state.split && (state.split.on
+        ? button("Close split screen", "layers", "unsplit", { "aria-pressed": true, className: "header-action is-on" })
+        : <Menu label="Split screen" className="header-action" trigger={<Icon name="layers" size={20} />}
+            items={state.split.choices.length ? state.split.choices.map((c) => (c.id === "divider" ? "divider" as const : { label: c.label, onSelect: () => ask(`split:${c.id}`) })) : [{ label: "Open another tab to split with", disabled: true, onSelect: () => undefined }]} />)}
       {!compact && button("Reader view", "bookOpen", "reader", { disabled: !state.web && !state.reader, "aria-pressed": state.reader, className: `header-action${state.reader ? " is-on" : ""}` })}
     </div>
   );
@@ -391,7 +401,36 @@ export function Browser({
   const refit = useRef<() => void>(() => undefined);
   const heardAsk = useRef<(ask: BrowserAsk) => void>(() => undefined);
   /** A tab shortcut, pressed in TBV or (on Windows) while a page had the keyboard. */
+  // The tabs open here go to the other devices (when Discover history syncs),
+  // never private ones; theirs show under Every tab and in the tab grid.
+  const [otherTabs, setOtherTabs] = useState<DeviceTabs[]>([]);
+  const sharedTabs = JSON.stringify(companion || workspaceFrame ? null
+    : tabs.tabs.filter((t) => !t.private && /^https?:\/\//i.test(t.url)).map((t) => ({ url: t.url, title: t.title })));
+  useEffect(() => {
+    const list = JSON.parse(sharedTabs) as OpenTab[] | null;
+    if (!list) return;
+    const wait = window.setTimeout(() => void api.setBrowserOpenTabs(list).catch(() => undefined), 2000);
+    return () => window.clearTimeout(wait);
+  }, [sharedTabs]);
+  useEffect(() => {
+    const look = () => void api.browserOtherTabs().then(setOtherTabs, () => undefined);
+    look();
+    const every = window.setInterval(look, 60_000);
+    window.addEventListener("focus", look);
+    return () => {
+      window.clearInterval(every);
+      window.removeEventListener("focus", look);
+    };
+  }, []);
   const shortcut = useRef<(key: string) => void>(() => undefined);
+  // A private tab in front: TBV's top bar takes the private look too (browse.css).
+  const privateInFront = !companion && !!tabs.tabs.find((t) => t.id === tabs.active)?.private;
+  useEffect(() => {
+    const root = document.documentElement;
+    if (privateInFront) root.dataset.discoverPrivate = "";
+    else delete root.dataset.discoverPrivate;
+    return () => void delete root.dataset.discoverPrivate;
+  }, [privateInFront]);
   const toast = useToast();
 
   const active = tabs.tabs.find((t) => t.id === tabs.active) ?? tabs.tabs[0];
@@ -584,7 +623,7 @@ export function Browser({
         case "key":
           if (ev.key === "appBack" || ev.key === "appForward") requestAppHistory(ev.key === "appBack" ? "back" : "forward");
           else if (ev.key === "pageBack" || ev.key === "pageForward")
-            void api.browserAct(ev.tab, ev.key === "pageBack" ? "back" : "forward").catch(() => undefined);
+            travelRef.current(ev.key === "pageBack" ? "back" : "forward", ev.tab);
           else {
             if (otherRef.current?.id === ev.tab && !covered()) activate.current(ev.tab);
             shortcut.current(ev.key);
@@ -689,6 +728,7 @@ export function Browser({
   useEffect(() => refit.current(), [tabs.active, url, article, panel, !!failure, other, ratio, companion]);
 
   const act = (action: "back" | "forward" | "reload" | "stop") => {
+    if (action === "back" || action === "forward") return travelRef.current(action, active.id);
     if (action === "stop") setLoading((loading) => ({ ...loading, [active.id]: false }));
     void api.browserAct(active.id, action).catch(() => undefined);
   };
@@ -725,12 +765,52 @@ export function Browser({
     if (prefsNow.historyOn && prefsNow.historySearches && !isAddress(text) && !tabsRef.current.tabs.find((t) => t.id === tabsRef.current.active)?.private)
       addToHistory({ kind: "search", url: to, title: text.trim() }, prefsNow.historyKeep);
     setArticle(null);
+    const from = tabsRef.current.tabs.find((t) => t.id === tabsRef.current.active);
+    if (from && isStartPage(from.url)) {
+      startBehind.current.add(from.id);
+      aheadOfStart.current.delete(from.id);
+    }
     setTabs((s) => updateTab(s, s.active, { url: to, title: null }));
     if (made.current.has(tabsRef.current.active)) void api.browserAct(tabsRef.current.active, "go", to).catch((e: unknown) => toast(String(e)));
     else refit.current();
   };
   const goRef = useRef(go);
   goRef.current = go;
+  /**
+   * The start page counts as a page in a tab's history: Back from the first
+   * website after it shows the start page again, and Forward from there goes
+   * back to that website (as it was, not loaded again).
+   */
+  const startBehind = useRef(new Set<string>());
+  const aheadOfStart = useRef(new Map<string, { url: string; title: string | null }>());
+  const travelRef = useRef<(way: "back" | "forward", id: string) => void>(() => undefined);
+  travelRef.current = (way, id) => {
+    const tab = tabsRef.current.tabs.find((t) => t.id === id);
+    if (!tab) return;
+    const native = () => void api.browserAct(id, way).catch(() => undefined);
+    if (way === "forward") {
+      const ahead = aheadOfStart.current.get(id);
+      if (!isStartPage(tab.url) || !ahead) return native();
+      aheadOfStart.current.delete(id);
+      setTabs((s) => updateTab(s, id, { url: ahead.url, title: ahead.title }));
+      return;
+    }
+    if (isStartPage(tab.url) || !startBehind.current.has(id) || !made.current.has(id)) return native();
+    void api.browserTravelled(id).then(
+      (pages) => {
+        if (pages.back.length) return native();
+        aheadOfStart.current.set(id, { url: tab.url, title: tab.title });
+        void api.browserAct(id, "stop").catch(() => undefined);
+        void api.browserRead(id, PAUSE_ALL).catch(() => undefined);
+        if (id === tabsRef.current.active) {
+          setArticle(null);
+          setPanel(null);
+        }
+        setTabs((s) => updateTab(s, id, { url: START_PAGE, title: null }));
+      },
+      native,
+    );
+  };
   useEffect(() => {
     const fromHeader = (e: Event) => goRef.current((e as CustomEvent<string>).detail);
     window.addEventListener(BROWSER_GO, fromHeader);
@@ -749,15 +829,20 @@ export function Browser({
       delete input.dataset.blankTab;
     }
   };
-  /** A page in a tab of its own, from the start page's ⋮ menus. */
-  const openInNewTab = (to: string, background = true) => {
+  /**
+   * A page in a tab of its own, from the start page's ⋮ menus. Opened from a
+   * private tab, it's private too (`fromOutside`: asked by another TBV page, never private).
+   */
+  const openInNewTab = (to: string, background = true, fromOutside = false) => {
     if (!background) {
       setArticle(null);
       setPanel(null);
     }
+    const now = tabsRef.current;
+    const privately = !fromOutside && !!now.tabs.find((t) => t.id === now.active)?.private;
     const id = newTabId();
-    setTabs((s) => openTab(s, { id, url: to, title: null }, background));
-    if (background) void prepareTab(id, to, false)?.catch(() => undefined);
+    setTabs((s) => openTab(s, { id, url: to, title: null, private: privately || undefined }, background));
+    if (background) void prepareTab(id, to, privately)?.catch(() => undefined);
   };
   const openInNewTabRef = useRef(openInNewTab);
   openInNewTabRef.current = openInNewTab;
@@ -777,13 +862,13 @@ export function Browser({
   const openNewRef = useRef(openInNewTab);
   openNewRef.current = openInNewTab;
   useEffect(() => {
-    const open = (e: Event) => openNewRef.current((e as CustomEvent<string>).detail, false);
+    const open = (e: Event) => openNewRef.current((e as CustomEvent<string>).detail, false, true);
     window.addEventListener(BROWSER_NEW, open);
     return () => window.removeEventListener(BROWSER_NEW, open);
   }, []);
   useEffect(() => {
     const drain = () => {
-      for (let url = waiting.shift(); url; url = waiting.shift()) openNewRef.current(url, false);
+      for (let url = waiting.shift(); url; url = waiting.shift()) openNewRef.current(url, false, true);
     };
     drain();
     window.addEventListener(WAITING, drain);
@@ -879,6 +964,7 @@ export function Browser({
     if (key === "focusAddress") document.getElementById(companionRef.current ? "discover-split-search" : "global-search")?.focus();
     else if (key === "refreshApp") void workspaceHost.tbvWorkspace?.refresh?.();
     else if (key === "newTab") newTab();
+    else if (key === "newPrivateTab") newTab(true);
     else if (key === "closeTab") close(tabsRef.current.active);
     else if (key === "reopenTab") reopen();
     else if (key === "bookmarkPage") {
@@ -886,7 +972,7 @@ export function Browser({
     }
     else if (list.length > 1 && (key === "nextTab" || key === "previousTab")) switchTo(list[(at + (key === "nextTab" ? 1 : list.length - 1)) % list.length].id);
   };
-  // Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab and Ctrl+Shift+T, as in other browsers.
+  // Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+Shift+T and Ctrl+Alt+T, as in other browsers.
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (document.querySelector(".dialog-backdrop, dialog[open], [role=alertdialog]")) return;
@@ -894,7 +980,13 @@ export function Browser({
       if (companionRef.current && !inCompanion) return;
       if (inCompanion && e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
         e.preventDefault();
-        void api.browserAct(tabsRef.current.active, e.key === "ArrowLeft" ? "back" : "forward").catch(() => undefined);
+        travelRef.current(e.key === "ArrowLeft" ? "back" : "forward", tabsRef.current.active);
+        return;
+      }
+      // Ctrl+Alt+T (Cmd+Option+T on a Mac): a new private tab. (e.code, since Option changes the letter on a Mac.)
+      if ((e.ctrlKey || e.metaKey) && e.altKey && !e.shiftKey && e.code === "KeyT") {
+        e.preventDefault();
+        shortcut.current("newPrivateTab");
         return;
       }
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
@@ -950,10 +1042,22 @@ export function Browser({
   const coming = fetched.filter(isActiveDownload).length;
   const asking = fetched.filter((d) => d.asking && d.media !== "other");
   const web = url.startsWith("http") && !failure;
+  const splitRoutes = onSplitWith ? SPLIT_ROUTES : [];
+  const splitTabs = allowSplit ? tabs.tabs.filter((tab) => tab.id !== tabs.active) : [];
+  const splitKey = JSON.stringify([!!other, splitTabs.map((t) => [t.id, titleOf(t.title, t.url, t.private)]), splitRoutes.length]);
+  const canSplit = (allowSplit || !!onSplitWith) && !companion;
   useEffect(() => {
-    barNow = { busy: busy && !onStart, marked: !!marked, bookmarks: marks, reader: !!article, web };
+    const split = canSplit ? {
+      on: !!other,
+      choices: [
+        ...splitTabs.map((tab) => ({ id: `tab:${tab.id}`, label: `Beside ${titleOf(tab.title, tab.url, tab.private)}` })),
+        ...(splitTabs.length && splitRoutes.length ? [{ id: "divider", label: "" }] : []),
+        ...splitRoutes.map(({ label, route }) => ({ id: `route:${route}`, label: `Beside ${label}` })),
+      ],
+    } : null;
+    barNow = { busy: busy && !onStart, marked: !!marked, bookmarks: marks, reader: !!article, web, split };
     window.dispatchEvent(new CustomEvent(BROWSER_STATE, { detail: barNow }));
-  }, [busy, onStart, marked, marks, article, web]);
+  }, [busy, onStart, marked, marks, article, web, canSplit, splitKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const fromTop = useRef<(what: string) => void>(() => undefined);
   fromTop.current = (what) => {
     const travel = /^travel:(back|forward):(-?[\d.]+):(-?[\d.]+)$/.exec(what);
@@ -966,6 +1070,12 @@ export function Browser({
     else if (what.startsWith("bookmark:")) go(what.slice("bookmark:".length));
     else if (what === "reader") void (article ? setArticle(null) : openReader());
     else if (what === "back" || what === "forward" || what === "stop") act(what);
+    else if (what === "unsplit") setPair(null);
+    else if (what.startsWith("split:tab:")) splitWithTab(what.slice("split:tab:".length));
+    else if (what.startsWith("split:route:") && onSplitWith) {
+      setPair(null);
+      onSplitWith(what.slice("split:route:".length) as Route);
+    }
     else act("reload");
   };
   // Sanctum's Quick Links: a website, or one of the panels.
@@ -977,10 +1087,10 @@ export function Browser({
     else if ("start" in ask) {
       const start = tabsRef.current.tabs.find((tab) => isStartPage(tab.url) && !tab.private);
       if (start) switchTo(start.id);
-      else openInNewTabRef.current(START_PAGE, false);
+      else openInNewTabRef.current(START_PAGE, false, true);
     }
     else if (!("url" in ask)) fromTop.current("home");
-    else if (readBrowserPrefs().linksOpen === "newTab" && !isStartPage(tabsRef.current.tabs.find((t) => t.id === tabsRef.current.active)?.url ?? "")) openInNewTabRef.current(ask.url, false);
+    else if (readBrowserPrefs().linksOpen === "newTab" && !isStartPage(tabsRef.current.tabs.find((t) => t.id === tabsRef.current.active)?.url ?? "")) openInNewTabRef.current(ask.url, false, true);
     else goRef.current(ask.url);
   };
   const switchRef = useRef<(id: string) => void>(() => undefined);
@@ -1168,6 +1278,10 @@ export function Browser({
     { label: "Save selection as Scribe note", icon: "notes", disabled: !web || !!article, onSelect: () => void saveSelection() },
     { label: "History", icon: "clock", onSelect: () => setPanel("history") },
     { label: "Find on page", icon: "search", onSelect: () => setFinding("") },
+    // Also on a page's right-click menu (Windows), for one thing at a time.
+    { label: "Remove things from this page", icon: "eyeOff", disabled: !web || !!article, onSelect: () => void api.browserRead(active.id, REMOVE_FROM_PAGE).then((on) => {
+      if (!on) toast("This page doesn't allow it.");
+    }, () => toast("This page doesn't allow it.")) },
     { label: "New tab", icon: "plus", onSelect: () => newTab() },
     { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) },
     { label: "Reopen closed tab", icon: "undo", disabled: !closedTabs.length, onSelect: () => reopen() },
@@ -1182,8 +1296,7 @@ export function Browser({
       label: `Beside ${titleOf(tab.title, tab.url, tab.private)}`, onSelect: () => splitWithTab(tab.id),
     })),
     "divider",
-    ...(onSplitWith ? ([{ label: "Sanctum", route: "home" }, { label: "Archive", route: "library" }, { label: "Resonance", route: "audiobooks" },
-      { label: "Scribe", route: "writing" }, { label: "Compendium", route: "collections" }, { label: "Preferences", route: "settings" }] as const)
+    ...(onSplitWith ? SPLIT_ROUTES
       .map(({ label, route }) => ({ label: `Beside ${label}`, onSelect: () => { setPair(null); onSplitWith(route); } })) : []),
   ];
 
@@ -1216,6 +1329,11 @@ export function Browser({
       { heading: "Recently closed" },
       ...closedTabs.map((tab, index) => ({ label: tab.title || tab.url, icon: "undo" as const, onSelect: () => reopen(1, index) })),
     ] : []),
+    ...otherTabs.flatMap((device) => [
+      { heading: `On ${device.name}` },
+      ...device.tabs.map((t) => ({ label: t.title?.trim() || siteOf(t.url) || t.url, icon: (device.kind === "phone" ? "phone" : "computer") as Parameters<typeof Icon>[0]["name"],
+        hint: siteOf(t.url) ?? undefined, onSelect: () => openInNewTab(t.url, false) })),
+    ]),
   ];
 
   const tabRow = (t: TabsState["tabs"][number]) => (
@@ -1258,8 +1376,9 @@ export function Browser({
   }, [tabs, narrow]);
 
   return (
-    <div className="browser">
-      {(allowSplit || onSplitWith) && !companion && <div className="browser-split-tools">
+    <div className={`browser${active.private ? " is-private-tab" : ""}`}>
+      {/* On a computer, Split screen is a button in the top bar (BrowserNav). */}
+      {narrow && (allowSplit || onSplitWith) && !companion && <div className="browser-split-tools">
         {other ? <button type="button" className="toolbar-button" onClick={() => setPair(null)}>Close tab split</button> :
           <Menu label="Split screen" className="toolbar-button" trigger={<><Icon name="layers" size={16} /> Split screen</>} items={splitItems} />}
       </div>}
@@ -1268,7 +1387,7 @@ export function Browser({
           <div ref={strip} className="browser-tabs" role="tablist" aria-label="Tabs">
             <div className="browser-pinned-tabs">{tabs.tabs.filter((tab) => tab.pinned).map(tabRow)}</div>
             {tabs.tabs.filter((tab) => !tab.pinned).map(tabRow)}
-            <button type="button" className="browser-tab-new" aria-label="New tab" title="New tab (Ctrl+T; right-click for a private one)" onClick={() => newTab()} onContextMenu={(e) => openContextMenu(e, "New tab", [{ label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) }])}>
+            <button type="button" className="browser-tab-new" aria-label="New tab" title="New tab (Ctrl+T). Private tab: Ctrl+Alt+T, or right-click" onClick={() => newTab()} onContextMenu={(e) => openContextMenu(e, "New tab", [{ label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) }])}>
               <Icon name="plus" size={15} />
             </button>
           </div>
@@ -1287,7 +1406,7 @@ export function Browser({
           {button("Back", "arrowLeft", () => act("back"), "", backTravel)}
           {button("Forward", "arrowRight", () => act("forward"), "", forwardTravel)}
           {button(busy ? "Stop" : "Reload", busy ? "close" : "sync", () => act(busy ? "stop" : "reload"))}
-          <BrowserBookmarks state={{ busy, web, marked: !!marked, bookmarks: marks, reader: !!article }} className="toolbar-button" />
+          <BrowserBookmarks state={{ busy, web, marked: !!marked, bookmarks: marks, reader: !!article, split: null }} className="toolbar-button" />
           {button("Sessions", "list", () => setPanel("sessions"))}
           <button type="button" className={`toolbar-button browser-count${panel === "tabs" ? " is-on" : ""}`} aria-label={`Tabs: ${tabs.tabs.length} open`} title="Tabs" onClick={() => setPanel(panel === "tabs" ? null : "tabs")}>
             <span>{tabs.tabs.length}</span>
@@ -1459,6 +1578,24 @@ export function Browser({
                 <ClosedList closed={closedTabs} onReopen={(index) => reopen(1, index)} />
               </section>
             )}
+            {!tabQuery && otherTabs.map((device) => (
+              <section key={device.deviceId} className="browser-grid-closed" aria-label={`Tabs open on ${device.name}`}>
+                <h3>On {device.name}</h3>
+                <ul className="browser-download-list">
+                  {device.tabs.map((t, i) => (
+                    <li key={i}>
+                      <button type="button" className="browser-history-open" title={t.url} onClick={() => { setPanel(null); openInNewTab(t.url, false); }}>
+                        <Icon name={device.kind === "phone" ? "phone" : "computer"} size={16} />
+                        <span className="browser-download-name">
+                          <b>{t.title?.trim() || siteOf(t.url) || t.url}</b>
+                          <span className="muted">{siteOf(t.url) ?? t.url}</span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
           </div>
         )}
         </div>

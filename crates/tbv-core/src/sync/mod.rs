@@ -353,7 +353,15 @@ pub(crate) const KINDS: &[Kind] = &[
         name: "browser_history",
         table: "browser_history",
         keys: &["id"],
-        cols: &["kind", "url", "title", "at", "updated_at", "deleted_at"],
+        cols: &["kind", "url", "title", "at", "updated_at", "deleted_at", "device_id"],
+        category: Category::History,
+        creates: true,
+    },
+    Kind {
+        name: "browser_device_tabs",
+        table: "browser_device_tabs",
+        keys: &["device_id"],
+        cols: &["tabs", "updated_at"],
         category: Category::History,
         creates: true,
     },
@@ -1557,6 +1565,7 @@ impl Library {
             "reading_history" => named(if gone { "Taken off reading history" } else { "Reading history" }, text("title")),
             "bookmark" => named("Discover bookmark", text("title")),
             "browser_history" => "Discover history".into(),
+            "browser_device_tabs" => "Discover tabs open on another device".into(),
             "quick_link" => named("Quick link", text("title")),
             "sanctum_link" => named("Sanctum link", text("title")),
             "custom_theme" => named(if gone { "Theme removed" } else { "Theme" }, text("name")),
@@ -1809,6 +1818,7 @@ impl Library {
             "sanctum_link" => format!("The Sanctum link {}", field("title").unwrap_or_default()),
             "custom_theme" => format!("The theme {}", field("name").unwrap_or_default()),
             "browser_history" => format!("A page in Discover's history: {}", field("title").filter(|t| !t.is_empty()).or_else(|| field("url")).unwrap_or_default()),
+            "browser_device_tabs" => "The Discover tabs open on a device".into(),
             "series" => format!("The missing books of {}", field("name").unwrap_or_default()),
             "read_along" => format!("Read-along timing{}", book(key.first())?),
             "read_along_piece" => format!("A piece of read-along timing{}", book(key.first())?),
@@ -2350,6 +2360,10 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "sanctum_link" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Sanctum link removed".into() } else { short(text("target")) },
         "custom_theme" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Theme removed".into() } else { short(text("name")) },
         "browser_history" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Taken off Discover's history".into() } else { short(text("url")) },
+        "browser_device_tabs" => {
+            let open = serde_json::from_str::<Vec<Value>>(&text("tabs")).map(|t| t.len()).unwrap_or(0);
+            format!("{open} {} open", if open == 1 { "tab" } else { "tabs" })
+        }
         "series" => short(text("name")),
         "writing_draft" => format!("Draft {}", data.get("number").and_then(Value::as_i64).unwrap_or(1)),
         "kindle_purchase" => if text("dismissed_at").is_empty() { short(text("title")) } else { "Taken off the Kindle list".into() },

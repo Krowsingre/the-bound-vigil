@@ -41,7 +41,7 @@ export function CollectionSeries({
   if (series.length === 0) return null;
   if (series.length === 1 || collection.kind === "series") {
     const one = collection.kind === "series" ? { name: collection.name, author: series[0]?.author ?? "" } : series[0];
-    return <SeriesPanel name={one.name} author={one.author} refreshKey={refreshKey} onChanged={onChanged} />;
+    return <SeriesPanel name={one.name} author={one.author} refreshKey={refreshKey} onChanged={onChanged} withFind />;
   }
 
   const checkAll = async () => {

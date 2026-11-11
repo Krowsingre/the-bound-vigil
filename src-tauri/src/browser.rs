@@ -290,7 +290,7 @@ mod view {
         let _ = app;
     }
 
-    fn label(tab: &str) -> String {
+    pub(super) fn label(tab: &str) -> String {
         format!("{PREFIX}{tab}")
     }
 
@@ -365,6 +365,10 @@ mod view {
         true
     }
 
+    /// Run first on every page: stands in for blocked trackers' answers, and
+    /// lets parts of a page be removed (browser_stand_ins.js, browser_page_tools.js).
+    const STAND_INS: &str = super::PAGE_SCRIPTS;
+
     pub fn show(app: &tauri::AppHandle, tab: &str, url: Option<tauri::Url>, frame: Frame, protection: Option<Protection>, private: bool, background: bool) -> CommandResult<()> {
         if let Some(p) = protection {
             set_protection(app, p);
@@ -409,6 +413,8 @@ mod view {
             .data_directory(data)
             // A private tab keeps nothing once it's closed.
             .incognito(private)
+            // Buttons that wait on a blocked tracker still work.
+            .initialization_script(STAND_INS)
             .on_page_load(move |_, payload| {
                 if matches!(payload.event(), PageLoadEvent::Started) {
                     set_site(&page_tab, payload.url());
@@ -448,6 +454,7 @@ mod view {
                     )
                     .window_features(features)
                     .incognito(private)
+                    .initialization_script(STAND_INS)
                     .on_download(move |_, event| track_download(&downloads, &download_tab, &saves, event))
                     .title(url.host_str().unwrap_or("Sign in"))
                     .on_document_title_changed(|window, title| {
@@ -889,10 +896,18 @@ mod windows {
                 let meta = GetKeyState(VK_LWIN.0 as i32) < 0 || GetKeyState(VK_RWIN.0 as i32) < 0;
                 let mut key = 0u32;
                 args.VirtualKey(&mut key)?;
-                if meta || ctrl == alt {
+                if meta {
                     return Ok(());
                 }
-                let what = if alt {
+                let what = if ctrl && alt {
+                    // Ctrl+Alt+T: a new private tab.
+                    match (key, shift) {
+                        (0x54, false) => "newPrivateTab",
+                        _ => return Ok(()),
+                    }
+                } else if !ctrl && !alt {
+                    return Ok(());
+                } else if alt {
                     match (key, shift) {
                         (k, true) if k == VK_LEFT.0 as u32 => "appBack",
                         (k, true) if k == VK_RIGHT.0 as u32 => "appForward",
@@ -914,7 +929,7 @@ mod windows {
                     }
                 };
                 args.SetHandled(true)?;
-                if matches!(what, "focusAddress" | "newTab" | "bookmarkPage") {
+                if matches!(what, "focusAddress" | "newTab" | "newPrivateTab" | "bookmarkPage") {
                     let (app, tab) = (app.clone(), tab.clone());
                     let dispatcher = app.clone();
                     let _ = dispatcher.run_on_main_thread(move || {
@@ -941,6 +956,30 @@ mod windows {
             &ContextMenuRequestedEventHandler::create(Box::new(move |_, args| {
                 let Some(args) = args else { return Ok(()) };
                 let target = args.ContextMenuTarget()?;
+                let items = args.MenuItems()?;
+                // Any part of a page can be taken off it (an advert, a sign-up box).
+                {
+                    let mut count = 0u32;
+                    items.Count(&mut count)?;
+                    let remove = environment.CreateContextMenuItem(windows_core::w!("Remove from page"), None::<&windows::Win32::System::Com::IStream>, COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_COMMAND)?;
+                    let (app, tab) = (app.clone(), tab.clone());
+                    let mut chosen = 0i64;
+                    remove.add_CustomItemSelected(
+                        &CustomItemSelectedEventHandler::create(Box::new(move |_, _| {
+                            if let Some(view) = app.get_webview(&view::label(&tab)) {
+                                let _ = view.eval("window.__tbvRemoveLast && window.__tbvRemoveLast()");
+                            }
+                            Ok(())
+                        })),
+                        &mut chosen,
+                    )?;
+                    if count > 0 {
+                        let separator = environment.CreateContextMenuItem(windows_core::w!(""), None::<&windows::Win32::System::Com::IStream>, COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_SEPARATOR)?;
+                        items.InsertValueAtIndex(count, &separator)?;
+                    }
+                    items.Count(&mut count)?;
+                    items.InsertValueAtIndex(count, &remove)?;
+                }
                 let mut has = BOOL::default();
                 target.HasLinkUri(&mut has)?;
                 if !has.as_bool() {
@@ -952,7 +991,6 @@ mod windows {
                 if !(link.starts_with("https://") || link.starts_with("http://")) {
                     return Ok(());
                 }
-                let items = args.MenuItems()?;
                 // WebView2's own "Open link in new window" would open a tab anyway; TBV's says so.
                 let mut count = 0u32;
                 items.Count(&mut count)?;
@@ -1173,7 +1211,7 @@ mod view {
     }
 
     pub fn show(_app: &tauri::AppHandle, tab: &str, url: Option<tauri::Url>, frame: Frame, protection: Option<Protection>, private: bool, background: bool) -> CommandResult<()> {
-        let mut args = serde_json::json!({ "action": if background { "prepare" } else { "show" }, "tab": tab, "url": url.map(|u| u.to_string()), "frame": frame_of(frame), "incognito": private });
+        let mut args = serde_json::json!({ "action": if background { "prepare" } else { "show" }, "tab": tab, "url": url.map(|u| u.to_string()), "frame": frame_of(frame), "incognito": private, "standIns": super::PAGE_SCRIPTS });
         if let Some(p) = protection {
             args["protection"] = rules(&p);
         }
@@ -1245,6 +1283,9 @@ mod view {
         Ok(serde_json::from_value(answer).unwrap_or_default())
     }
 }
+
+/// Run first on every page in Discover (see the two files).
+const PAGE_SCRIPTS: &str = concat!(include_str!("browser_stand_ins.js"), "\n", include_str!("browser_page_tools.js"));
 
 /// A link for another app that TBV may open: never the computer's own files or a page's script.
 fn app_link(url: &str) -> bool {
@@ -1731,6 +1772,18 @@ pub async fn remove_browser_history(state: State<'_, AppLibrary>, ids: Vec<Strin
 #[tauri::command]
 pub async fn clear_browser_history(state: State<'_, AppLibrary>, since: Option<i64>, kind: Option<String>) -> CommandResult<()> {
     with_library(state, move |library| library.clear_browser_history(since, kind.as_deref())).await
+}
+
+/// The tabs open in Discover here, for the other devices (never private ones).
+#[tauri::command]
+pub async fn set_browser_open_tabs(state: State<'_, AppLibrary>, tabs: Vec<tbv_core::browser_history::OpenTab>) -> CommandResult<()> {
+    with_library(state, move |library| library.set_open_tabs(&tabs)).await
+}
+
+/// The tabs open in Discover on the other devices.
+#[tauri::command]
+pub async fn browser_other_tabs(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::browser_history::DeviceTabs>> {
+    with_library(state, |library| library.other_devices_tabs()).await
 }
 
 /// Lets go of what's older than `before` on this device only.

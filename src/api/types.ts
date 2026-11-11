@@ -1615,7 +1615,7 @@ export type BrowserEvent =
   | { kind: "menu"; tab: string; action: "newTab" | "addBook"; url: string }
   /** A tab shortcut pressed while a page had the keyboard (Windows). */
   | { kind: "focus"; tab: string }
-  | { kind: "key"; tab: string; key: "focusAddress" | "bookmarkPage" | "newTab" | "closeTab" | "nextTab" | "previousTab" | "reopenTab" | "appBack" | "appForward" | "pageBack" | "pageForward" };
+  | { kind: "key"; tab: string; key: "focusAddress" | "bookmarkPage" | "newTab" | "newPrivateTab" | "closeTab" | "nextTab" | "previousTab" | "reopenTab" | "appBack" | "appForward" | "pageBack" | "pageForward" };
 
 /** An article found on a page by reader mode (Mozilla's Readability). */
 export interface ReaderArticle {
@@ -1639,6 +1639,24 @@ export interface HistoryEntry {
   title: string | null;
   /** When, as milliseconds since 1970. */
   at: number;
+  /** The other device it was visited on; none for this device. */
+  device?: string;
+}
+
+/** A tab open in Discover on a device. */
+export interface OpenTab {
+  url: string;
+  title: string | null;
+}
+
+/** The Discover tabs open on another device. */
+export interface DeviceTabs {
+  deviceId: string;
+  name: string;
+  /** "phone", "tablet", "computer" and so on. */
+  kind: string;
+  updatedAt: string;
+  tabs: OpenTab[];
 }
 
 /** A library book that shares passages, word for word, with a book being written (see the copy check). */

@@ -217,8 +217,10 @@ export class Scroller extends HTMLElement {
     #afterLoad(doc, index) {
         if (doc.head) {
             const $styleBefore = doc.createElement('style')
+            $styleBefore.id = 'tbv-reader-style-before'
             doc.head.prepend($styleBefore)
             const $style = doc.createElement('style')
+            $style.id = 'tbv-reader-style'
             doc.head.append($style)
             this.#styleMap.set(doc, [$styleBefore, $style])
             this.#applyStyles(doc)

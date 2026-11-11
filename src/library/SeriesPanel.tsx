@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { MissingBook, OwnedBook, SeriesMatch, SeriesReview } from "../api/types";
+import type { MissingBook, SeriesMatch, SeriesReview } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
@@ -8,31 +8,23 @@ import { authorLine } from "../lib/format";
 
 const number = (n: number | null) => (n === null ? null : `Book ${n}`);
 
-/**
- * Shown above a series (Show series): finds its other books online, shows
- * the ones missing here, and offers books in the library that probably
- * belong to it for Approve or Deny.
- */
-export function SeriesPanel({
-  name,
-  author,
-  refreshKey,
-  onChanged,
-}: {
-  name: string;
-  /** Narrows the online search. */
-  author: string;
-  refreshKey: number;
-  /** Books' details changed, so the books shown need loading again. */
-  onChanged: () => void;
-}) {
+export interface SeriesState {
+  review: SeriesReview | null;
+  busy: boolean;
+  /** Looks the series up online for the books missing here. */
+  find: () => void;
+  run: (work: () => Promise<SeriesReview>, changed?: boolean) => Promise<void>;
+}
+
+/** A series' check for missing books, shared by its Find button and its panel. */
+export function useSeriesReview(name: string | null, author: string, refreshKey: number, onChanged: () => void): SeriesState {
   const toast = useToast();
   const [review, setReview] = useState<SeriesReview | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showHidden, setShowHidden] = useState(false);
-  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
+    setReview(null);
+    if (!name) return;
     let current = true;
     api.seriesReview(name).then(
       (r) => current && setReview(r),
@@ -54,8 +46,51 @@ export function SeriesPanel({
       setBusy(false);
     }
   };
+  return { review, busy, run, find: () => void (name && run(() => api.findSeriesBooks(name, author))) };
+}
+
+/** The series' Find missing books button. */
+export function FindMissingButton({ state }: { state: SeriesState }) {
+  if (!state.review) return null;
+  return (
+    <button type="button" className="btn btn-quiet" disabled={state.busy} onClick={state.find}>
+      <Icon name="search" size={16} /> {state.busy ? "Looking…" : state.review.checkedAt ? "Check again" : "Find missing books"}
+    </button>
+  );
+}
+
+/**
+ * Shown under a series: the books of it that aren't in the library (found
+ * online, or added by hand), and books in the library that probably belong
+ * to it, for Approve or Deny. Books already here aren't listed again.
+ * Its Find button sits with the series' other buttons, unless `withFind`.
+ */
+export function SeriesPanel({
+  name,
+  author,
+  refreshKey,
+  onChanged,
+  state: given,
+  withFind = false,
+}: {
+  name: string;
+  /** Narrows the online search. */
+  author: string;
+  refreshKey: number;
+  /** Books' details changed, so the books shown need loading again. */
+  onChanged: () => void;
+  /** The check, when the page holds it (its Find button is elsewhere). */
+  state?: SeriesState;
+  withFind?: boolean;
+}) {
+  const own = useSeriesReview(given ? null : name, author, refreshKey, onChanged);
+  const { review, busy, run } = given ?? own;
+  const [showHidden, setShowHidden] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   if (!review) return null;
+  // Nothing to show until it has looked, or found a book that may belong.
+  if (!withFind && !review.checkedAt && review.missing.length === 0 && review.matches.length === 0) return null;
   const visible = review.missing.filter((m) => showHidden || !m.hidden);
   const hiddenCount = review.missing.filter((m) => m.hidden).length;
   const readCount = review.missing.filter((m) => m.read && !m.hidden).length;
@@ -84,17 +119,12 @@ export function SeriesPanel({
           <span className="muted">
             {review.checkedAt
               ? `You have ${review.owned} of the ${review.listed} books listed online${readCount ? ` · ${readCount} more read elsewhere` : ""}`
-              : `${review.owned} ${review.owned === 1 ? "book" : "books"} here. Find out which ones you're missing.`}
+              : review.missing.length || review.matches.length
+                ? "Books of this series that aren't in your library yet."
+                : `${review.owned} ${review.owned === 1 ? "book" : "books"} here. Find out which ones you're missing.`}
           </span>
         </div>
-        <button
-          type="button"
-          className="btn btn-quiet"
-          disabled={busy}
-          onClick={() => void run(() => api.findSeriesBooks(name, author))}
-        >
-          <Icon name="search" size={16} /> {busy ? "Looking…" : review.checkedAt ? "Check again" : "Find missing books"}
-        </button>
+        {withFind && <FindMissingButton state={given ?? own} />}
       </header>
 
       {review.matches.length > 0 && (
@@ -129,19 +159,6 @@ export function SeriesPanel({
                   Approve
                 </button>
               </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {review.ownedBooks.length > 0 && (
-        <div className="series-owned">
-          <div className="series-sub">
-            <strong>In your library</strong>
-          </div>
-          <ul className="owned-row">
-            {review.ownedBooks.map((o) => (
-              <OwnedChip key={o.book.id} owned={o} />
             ))}
           </ul>
         </div>
@@ -188,21 +205,6 @@ export function SeriesPanel({
         </div>
       )}
     </section>
-  );
-}
-
-/** A book of the series that's here, with its number. */
-function OwnedChip({ owned }: { owned: OwnedBook }) {
-  return (
-    <li className="owned-chip">
-      <BookCover book={owned.book} size="s" />
-      <span className="owned-text">
-        <strong>{number(owned.position) ?? "No number"}</strong>
-        <span className="muted" title={owned.book.title}>
-          {owned.book.title}
-        </span>
-      </span>
-    </li>
   );
 }
 

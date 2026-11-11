@@ -95,11 +95,31 @@ function windowRect(doc: Document, range: Range): DOMRect {
 
 const isDarkPage = (colors: PageColors) => luminance(hexToRgb(colors.background)) < 0.2;
 
-/** Make the publisher's base-size keyword follow the reader's size in this frame. */
-function applyPublisherBaseSize(doc: Document) {
+/** A book's own size in pixels for an absolute font size ("12pt", "18px"), or null. */
+export function absoluteSize(value: string): number | null {
+  const m = /^\s*(\d*\.?\d+)\s*(px|pt)\s*$/i.exec(value);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return m[2].toLowerCase() === "pt" ? (n * 4) / 3 : n;
+}
+
+/**
+ * Lets the reader's own choices win over what the book fixed in place, in
+ * this open copy only (the book file is never changed): the size follows the
+ * reader's (a book's 18px heading stays larger than its text, in proportion),
+ * and the book can't lock its line spacing or font with "!important".
+ */
+export function applyReaderOverrides(doc: Document) {
   const apply = (style: CSSStyleDeclaration) => {
-    if (style.getPropertyValue("font-size").trim().toLowerCase() === "medium") {
+    const size = style.getPropertyValue("font-size").trim().toLowerCase();
+    if (size === "medium") {
       style.setProperty("font-size", "var(--tbv-reading-size)", style.getPropertyPriority("font-size"));
+    } else {
+      const px = absoluteSize(size);
+      if (px !== null) style.setProperty("font-size", `calc(var(--tbv-reading-size) * ${+(px / 16).toFixed(4)})`, "");
+    }
+    for (const name of ["line-height", "font-family", "font-size"]) {
+      if (style.getPropertyPriority(name)) style.setProperty(name, style.getPropertyValue(name), "");
     }
   };
   const visit = (rules: CSSRuleList) => {
@@ -116,8 +136,32 @@ function applyPublisherBaseSize(doc: Document) {
       // A cross-origin sheet can be applied by the browser but cannot be edited.
     }
   };
-  for (const sheet of Array.from(doc.styleSheets)) read(sheet);
+  for (const sheet of Array.from(doc.styleSheets)) {
+    // TBV's own sheet stays as it is.
+    if ((sheet.ownerNode as Element | null)?.id?.startsWith("tbv-reader-style")) continue;
+    read(sheet);
+  }
   for (const element of doc.querySelectorAll<HTMLElement>("[style]")) apply(element.style);
+  keepPicturesInShape(doc);
+}
+
+/**
+ * Covers made as a picture inside an SVG (as Calibre makes them) often say
+ * to stretch the picture to fill the page; the reader shows it whole and in
+ * its own shape instead.
+ */
+export function keepPicturesInShape(doc: Document) {
+  for (const svg of Array.from(doc.querySelectorAll("svg"))) {
+    if (!svg.querySelector("image")) continue;
+    if ((svg.getAttribute("preserveAspectRatio") ?? "").trim().toLowerCase().startsWith("none")) {
+      svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    }
+    for (const image of Array.from(svg.querySelectorAll("image"))) {
+      if ((image.getAttribute("preserveAspectRatio") ?? "").trim().toLowerCase().startsWith("none")) {
+        image.setAttribute("preserveAspectRatio", "xMidYMid meet");
+      }
+    }
+  }
 }
 
 /** Styles inside the pages, and page layout around them. */
@@ -258,7 +302,7 @@ export function useReaderEngine({
 
         v.addEventListener("load", (e) => {
           const { doc, index } = (e as CustomEvent<{ doc: Document; index: number }>).detail;
-          if (!v.isFixedLayout) applyPublisherBaseSize(doc);
+          if (!v.isFixedLayout) applyReaderOverrides(doc);
           if (supportsStructuredContent) doc.addEventListener("load", inspect, true);
           inspect();
           // After the book's own styles have applied, so their colours are what's read.

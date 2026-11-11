@@ -6,6 +6,8 @@ import { homeAudioUrl, homeCore, homeEvents } from "./homeCore";
 import type { Found } from "../lib/onlineDetails";
 import type {
   HistoryEntry,
+  OpenTab,
+  DeviceTabs,
   BookFile,
   BookLocation,
   Bookmark,
@@ -599,6 +601,10 @@ export interface Api {
   clearBrowserHistory(since: number | null, kind?: HistoryEntry["kind"]): Promise<void>;
   /** Lets go of what's older than `before` on this device only. */
   trimBrowserHistory(before: number): Promise<void>;
+  /** The tabs open in Discover here (never private ones), for the other devices. */
+  setBrowserOpenTabs(tabs: OpenTab[]): Promise<void>;
+  /** The tabs open in Discover on the other devices. */
+  browserOtherTabs(): Promise<DeviceTabs[]>;
   /** Moves a download to the Downloads folder; resolves to where it went. */
   browserKeepDownload(path: string, folder: string | null): Promise<string>;
   browserDownloadKind(path: string): Promise<"ebook" | "audio" | "document" | "other">;
@@ -1304,6 +1310,8 @@ function appApi(): Api {
     removeBrowserHistory: async (ids) => (await core).invoke("remove_browser_history", { ids }),
     clearBrowserHistory: async (since, kind) => (await core).invoke("clear_browser_history", { since, kind: kind ?? null }),
     trimBrowserHistory: async (before) => (await core).invoke("trim_browser_history", { before: Math.round(before) }),
+    setBrowserOpenTabs: async (tabs) => (await core).invoke("set_browser_open_tabs", { tabs }),
+    browserOtherTabs: async () => (await core).invoke<DeviceTabs[]>("browser_other_tabs"),
     browserKeepDownload: async (path, folder) => (await core).invoke<string>("browser_keep_download", { path, folder }),
     browserDownloadKind: async (path) => (await core).invoke("browser_download_kind", { path }),
     browserTemporaryDownloads: async (active, remove) => (await core).invoke("browser_temporary_downloads", { active, remove }),
