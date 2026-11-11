@@ -15,10 +15,18 @@
     if (!el || el === document.body || el === document.documentElement) return null;
     return el;
   };
+  // Noted in the page report, so a removal that didn't work can be traced.
+  const note = (text) => window.__tbvNote && window.__tbvNote(text);
+  const describe = (el) => (window.__tbvDescribe ? window.__tbvDescribe(el) : el && el.tagName);
   const take = (el) => {
+    const asked = el;
     el = box(el);
-    if (!el) return false;
+    if (!el) {
+      note('remove from page: nothing to remove at ' + (asked ? describe(asked) : 'that spot'));
+      return false;
+    }
     el.style.setProperty('display', 'none', 'important');
+    note('remove from page: hid ' + describe(el) + (el.tagName === 'IFRAME' ? ' (a page inside the page)' : ''));
     return true;
   };
   window.__tbvRemoveLast = () => take(last);
@@ -27,6 +35,7 @@
   window.__tbvPickToRemove = (on) => {
     if (!on && picking) return picking(), false;
     if (!on || picking) return !!picking;
+    note('remove from page: picking started');
     const outline = document.createElement('div');
     outline.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;border:2px solid #d26a5c;background:rgb(210 106 92 / 0.15);border-radius:3px;display:none';
     const hint = document.createElement('div');
@@ -64,6 +73,7 @@
       outline.remove();
       hint.remove();
       picking = null;
+      note('remove from page: picking ended');
     };
     return true;
   };
