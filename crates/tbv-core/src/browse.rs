@@ -374,7 +374,7 @@ impl Library {
              (SELECT COUNT(*) FROM (
                SELECT json_extract(entry.value, '$.published') AS release_date
                FROM series_lists sl, json_each(sl.books) entry
-               WHERE sl.id = lower(trim({SERIES})) AND sl.checked_at IS NOT NULL
+               WHERE sl.id = tbv_fold(trim({SERIES})) AND sl.checked_at IS NOT NULL
              ) WHERE CASE length(release_date)
                WHEN 4 THEN date(release_date || '-12-31')
                WHEN 7 THEN date(release_date || '-01', '+1 month', '-1 day')
