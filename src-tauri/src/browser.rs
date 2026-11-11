@@ -1337,9 +1337,11 @@ fn sent_behind() -> bool {
     use ::windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MBUTTON};
     unsafe { GetKeyState(VK_CONTROL.0 as i32) < 0 || GetKeyState(VK_MBUTTON.0 as i32) < 0 }
 }
+/// The Mac's web view doesn't say which keys were held, so a new window
+/// opens behind there as it always has.
 #[cfg(all(desktop, not(windows)))]
 fn sent_behind() -> bool {
-    false
+    true
 }
 
 /// Run first on every page in Discover (see the two files).
