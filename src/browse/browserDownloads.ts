@@ -22,6 +22,7 @@ export interface Fetched {
   path?: string;
   /** Where it came from, for Retry. */
   url?: string;
+  sourceUrl?: string;
   /** The tab it came down in. */
   tab?: string;
   /** Once added: the id its book has in the library. */
@@ -65,17 +66,34 @@ interface DownloadStore {
   downloads?: Fetched[];
   listeners: Set<() => void>;
   answering: Set<string>;
+  sources: Map<string, string>;
+  classifying: Set<string>;
 }
 const host = workspaceHost as Window & { tbvDownloadStore?: DownloadStore };
-const store = (workspaceFrame ? host.tbvDownloadStore : undefined) ?? { listeners: new Set(), answering: new Set() } as DownloadStore;
+const store = (workspaceFrame ? host.tbvDownloadStore : undefined) ?? {
+  listeners: new Set(), answering: new Set(), sources: new Map(), classifying: new Set(),
+} as DownloadStore;
 if (!workspaceFrame) host.tbvDownloadStore = store;
 const { listeners, answering } = store;
+
+export function rememberDownloadSource(tab: string, url: string | undefined) {
+  if (url && /^https?:\/\//i.test(url) && !BOOK_FILE.test(url)) store.sources.set(tab, url);
+  else if (!url) store.sources.delete(tab);
+}
+
+export function downloadSource(tab: string, file?: string) {
+  const source = store.sources.get(tab);
+  return source === file ? undefined : source;
+}
+
+export function hasActiveTransfer(tab: string) {
+  return snapshot().some((row) => row.tab === tab && row.state === "coming");
+}
 
 // Switching screens
 // leaves this store and its native event subscription in place.
 function snapshot(): Fetched[] {
   return store.downloads ??= readDownloads().map((d) => {
-    if (d.state === "checking") return { ...d, state: "done", asking: !!d.path };
     if (d.state === "importing") return { ...d, state: "importFailed", asking: !!d.path, error: "The app closed during import." };
     return d;
   });
@@ -159,13 +177,18 @@ export async function temporaryDownloads(remove: boolean) {
 }
 
 async function finishDownload(row: Fetched, toast: (message: string) => void) {
+  if (!row.path || store.classifying.has(row.id)) return;
+  store.classifying.add(row.id);
   try {
-    const media = await api.browserDownloadKind(row.path!);
+    const media = await api.browserDownloadKind(row.path);
     updateDownload(row.id, { state: "done", media, asking: true });
     if (media === "other") await answerDownload(row, "keep", toast);
     else if (media === "ebook" && readBrowserPrefs().addWithoutAsking) await answerDownload(row, "add", toast);
   } catch (error) {
-    updateDownload(row.id, { state: "done", media: "other", asking: true, error: String(error) });
+    // Keep a completed file available for manual import if classification failed.
+    updateDownload(row.id, { state: "done", asking: true, error: String(error) });
+  } finally {
+    store.classifying.delete(row.id);
   }
 }
 
@@ -173,7 +196,10 @@ function receiveDownload(event: BrowserEvent, toast: (message: string) => void) 
   if (event.kind === "downloadStart" || event.kind === "directDownloadStart") {
     const row: Fetched = {
       id: event.id, name: event.name, url: event.url, at: Date.now(), state: "coming",
-      ...(event.kind === "directDownloadStart" ? { direct: true } : { tab: event.tab }),
+      ...(event.kind === "directDownloadStart" ? { direct: true, sourceUrl: event.sourceUrl ?? undefined } : {
+        tab: event.tab,
+        sourceUrl: downloadSource(event.tab, event.url),
+      }),
     };
     setDownloads((rows) => [row, ...rows.filter((d) => d.id !== row.id)]);
   } else if (event.kind === "download") {
@@ -183,7 +209,7 @@ function receiveDownload(event: BrowserEvent, toast: (message: string) => void) 
     const row: Fetched = {
       ...before, direct, id: event.id, name: event.name, tab: event.tab,
       path: event.path || undefined, at: before?.at ?? Date.now(),
-      state: event.ok ? direct ? "importing" : "checking" : "failed",
+      state: event.ok && event.path ? direct ? "importing" : "checking" : "failed",
       asking: false,
       error: event.error ?? undefined,
       securityBlocked: event.securityBlocked,
@@ -204,6 +230,12 @@ function receiveDownload(event: BrowserEvent, toast: (message: string) => void) 
 
 export function listenForDownloads(toast: (message: string) => void) {
   const stop = api.onBrowserEvent((event) => receiveDownload(event, toast));
+  for (const row of snapshot()) {
+    if (row.state === "checking") {
+      if (row.path) void finishDownload(row, toast);
+      else updateDownload(row.id, { state: "failed", error: "The downloaded file is missing." });
+    }
+  }
   const missing = new Set<string>();
   let disposed = false;
   let checking = false;

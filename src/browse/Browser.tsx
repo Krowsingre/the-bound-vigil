@@ -60,7 +60,8 @@ import {
   type ClosedTab,
   type TabsState,
 } from "./browserTabs";
-import { answerDownload, BOOK_FILE, downloadState, isActiveDownload, removeDownloads, setDownloads, useDownloads, type Fetched } from "./browserDownloads";
+import { answerDownload, BOOK_FILE, downloadSource, downloadState, hasActiveTransfer, isActiveDownload, rememberDownloadSource, removeDownloads, setDownloads, useDownloads, type Fetched } from "./browserDownloads";
+import { HAS_PIP, INSTALL_YOUTUBE_PIP, isYouTube, READ_SELECTION } from "./pageTools";
 import { requestAppHistory } from "../shell/navigationKeys";
 import { addToHistory } from "./browserHistory";
 import { HistoryPanel } from "./HistoryPanel";
@@ -262,6 +263,29 @@ let openedThisRun = false;
  * is left (unless Preferences says to start afresh), so this outlives the
  * page: coming back shows them as they were instead of loading them again. */
 const madeViews = new Set<string>();
+const releasingViews = new Set<string>();
+
+function releaseView(id: string) {
+  if (releasingViews.has(id)) return;
+  releasingViews.add(id);
+  const tryClose = async () => {
+    const pip = await api.browserRead(id, HAS_PIP).catch(() => false);
+    if (pip === true || hasActiveTransfer(id)) {
+      window.setTimeout(() => void tryClose(), 1500);
+      return;
+    }
+    madeViews.delete(id);
+    rememberDownloadSource(id, undefined);
+    try {
+      await api.browserAct(id, "close");
+    } catch {
+      // The native view may have closed itself.
+    } finally {
+      releasingViews.delete(id);
+    }
+  };
+  void tryClose();
+}
 
 /** The tabs Discover opens with, as chosen in Preferences › Discover. */
 function startingTabs(): TabsState {
@@ -274,8 +298,7 @@ function startingTabs(): TabsState {
   // otherwise go on without a tab to close them by.
   if (!first)
     for (const t of readTabs(home).tabs) {
-      madeViews.delete(t.id);
-      void api.browserAct(t.id, "close").catch(() => undefined);
+      releaseView(t.id);
     }
   return freshTabs(home);
 }
@@ -284,7 +307,11 @@ const titleOf = (title: string | null, url: string, privately = false) => (isSta
 
 /** Pauses every video and sound on a page, for leaving Discover. */
 const PAUSE_ALL = `(function () {
-  document.querySelectorAll("video, audio").forEach(function (m) { try { m.pause(); } catch (e) {} });
+  document.querySelectorAll("video, audio").forEach(function (m) {
+    if (m !== document.pictureInPictureElement && m.webkitPresentationMode !== "picture-in-picture") {
+      try { m.pause(); } catch (e) {}
+    }
+  });
   return JSON.stringify(null);
 })()`;
 
@@ -482,6 +509,8 @@ export function Browser({
           // Chosen in Preferences › Discover: each page visited goes in History (not from a private tab).
           const keep = readBrowserPrefs();
           const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.tab)?.private;
+          if (!ev.loading && !privately) rememberDownloadSource(ev.tab, ev.url);
+          if (!ev.loading && isYouTube(ev.url)) void api.browserRead(ev.tab, INSTALL_YOUTUBE_PIP).catch(() => undefined);
           if (!ev.loading && !privately && keep.historyOn && /^https?:/i.test(ev.url)) addToHistory({ kind: "page", url: ev.url, title: ev.title ?? null }, keep.historyKeep);
           if (/^https?:/i.test(ev.url)) {
             setTabs((s) => {
@@ -500,6 +529,7 @@ export function Browser({
           if (ev.tab) made.current.add(id);
           // Opened from a private tab, it's private too.
           const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.from)?.private;
+          if (!privately) rememberDownloadSource(id, downloadSource(ev.from));
           setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null, private: privately || undefined }, !ev.foreground, ev.from));
           if (!ev.tab && !ev.foreground) void prepareTab(id, ev.url, privately)?.catch(() => undefined);
           break;
@@ -522,10 +552,11 @@ export function Browser({
           if (ev.action === "newTab") {
             const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.tab)?.private;
             const id = newTabId();
+            if (!privately) rememberDownloadSource(id, downloadSource(ev.tab));
             setTabs((s) => openTab(s, { id, url: ev.url, title: null, private: privately || undefined }, true, ev.tab));
             void prepareTab(id, ev.url, privately)?.catch(() => undefined);
           } else {
-            void api.downloadWebBook(ev.url, fileTitle(ev.url)).then(
+            void api.downloadWebBook(ev.url, fileTitle(ev.url), downloadSource(ev.tab, ev.url)).then(
               () => toast("It's being added to your library."),
               (e: unknown) => toast(clean(e)),
             );
@@ -544,8 +575,7 @@ export function Browser({
           }
           break;
         case "closed":
-          made.current.delete(ev.tab);
-          void api.browserAct(ev.tab, "close");
+          releaseView(ev.tab);
           setTabs((s) => closeTab(s, ev.tab, homeOf()));
           break;
       }
@@ -633,8 +663,7 @@ export function Browser({
       window.visualViewport?.removeEventListener("resize", schedule);
       void placeWorkspaceBrowser([], "").catch(() => undefined);
       if (readBrowserPrefs().comeBack === "leave") {
-        for (const id of made.current) void api.browserAct(id, "close").catch(() => undefined);
-        made.current.clear();
+        for (const id of made.current) releaseView(id);
       } else if (!readBrowserPrefs().keepPlaying) {
         for (const id of made.current) void api.browserRead(id, PAUSE_ALL).catch(() => undefined);
       }
@@ -754,9 +783,13 @@ export function Browser({
   const forget = (ids: string[]) => {
     const remembered = rememberClosed(tabsRef.current, ids);
     for (const id of ids) {
-      made.current.delete(id);
       delete zoomed.current[id];
-      void api.browserAct(id, "close");
+      if (hasActiveTransfer(id)) releaseView(id);
+      else {
+        made.current.delete(id);
+        rememberDownloadSource(id, undefined);
+        void api.browserAct(id, "close");
+      }
     }
     setFailed((f) => Object.fromEntries(Object.entries(f).filter(([t]) => !ids.includes(t))));
     setUndo(remembered);
@@ -947,7 +980,7 @@ export function Browser({
   const retry = (d: Fetched) => {
     if (!d.url || !/^https?:/i.test(d.url) || d.securityBlocked) return;
     if (d.direct) {
-      void api.downloadWebBook(d.url, d.name).catch((e: unknown) => toast(clean(e)));
+      void api.downloadWebBook(d.url, d.name, d.sourceUrl).catch((e: unknown) => toast(clean(e)));
       return;
     }
     const tab = d.tab && made.current.has(d.tab) ? d.tab : made.current.has(active.id) && !onStart ? active.id : null;
@@ -1022,10 +1055,25 @@ export function Browser({
 
   const addThisFile = async () => {
     try {
-      await api.downloadWebBook(url, fileTitle(url));
+      await api.downloadWebBook(url, fileTitle(url), downloadSource(active.id, url));
       toast("It's being added to your library.");
     } catch (e) {
       toast(String(e));
+    }
+  };
+
+  const saveSelection = async () => {
+    try {
+      const clip = await api.browserRead(active.id, READ_SELECTION) as { text?: string; title?: string; url?: string } | null;
+      if (typeof clip?.text !== "string" || !clip.text.trim()) return toast("Select text on the page first.");
+      if (typeof clip.url !== "string" || !/^https?:\/\//i.test(clip.url)) return toast("This selection has no web address.");
+      const address = new URL(clip.url).href.replace(/[<>]/g, (character) => encodeURIComponent(character));
+      const quote = clip.text.split(/\r?\n/).map((line) => "> " + line.replace(/[\\`*_~\[\]<>]/g, "\\$&")).join("\n");
+      const title = typeof clip.title === "string" && clip.title.trim() ? clip.title.trim() : titleOf(active.title, url);
+      await api.savePersonalNote(null, title, `${quote}\n\nSource: <${address}>`);
+      toast("Saved the selection to Scribe.");
+    } catch (error) {
+      toast(clean(error));
     }
   };
 
@@ -1082,6 +1130,7 @@ export function Browser({
       { label: "Save this page", icon: "notes", disabled: !web || saving, onSelect: () => void saveToReadingList() },
       { label: "Open Reading List", icon: "bookOpen", onSelect: () => setPanel("reading") },
     ] },
+    { label: "Save selection as Scribe note", icon: "notes", disabled: !web || !!article, onSelect: () => void saveSelection() },
     { label: "History", icon: "clock", onSelect: () => setPanel("history") },
     { label: "Find on page", icon: "search", onSelect: () => setFinding("") },
     { label: "New tab", icon: "plus", onSelect: () => newTab() },
@@ -1258,7 +1307,7 @@ export function Browser({
           <button type="button" className="btn btn-quiet btn-small" onClick={(e) => void removeDownloadRows([d.id], e.currentTarget)}>Remove</button>
         </div>
       ))}
-      {isFile && !narrow && (
+      {isFile && !narrow && !fetched.some((d) => d.url === url && (isActiveDownload(d) || d.asking)) && (
         <div className="browser-offer" role="status">
           <span>This page is a {formatLabel(url.match(BOOK_FILE)![1].toLowerCase())} file.</span>
           <button type="button" className="btn btn-primary btn-small" onClick={() => void addThisFile()}>
@@ -1423,6 +1472,14 @@ export function Browser({
                         {d.at > 0 && d.state !== "coming" && ` · ${new Date(d.at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`}
                       </span>
                     </span>
+                    {d.sourceUrl && /^https?:\/\//i.test(d.sourceUrl) && (
+                      <button type="button" className="btn btn-quiet btn-small" onClick={() => openInNewTab(d.sourceUrl!, false)}>Open source page</button>
+                    )}
+                    {d.state === "failed" && !d.securityBlocked && !d.direct && d.url && /^https?:\/\//i.test(d.url) && BOOK_FILE.test(d.url) && (
+                      <button type="button" className="btn btn-quiet btn-small" onClick={() => void api.downloadWebBook(d.url!, d.name, d.sourceUrl).catch((error: unknown) => toast(clean(error)))}>
+                        Download and add to library
+                      </button>
+                    )}
                     {d.state === "coming" && !d.direct && (
                       <button
                         type="button"

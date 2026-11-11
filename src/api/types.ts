@@ -1598,7 +1598,7 @@ export type BrowserEvent =
   | { kind: "page"; tab: string; url: string; title?: string | null; loading: boolean }
   /** A file started coming down. */
   | { kind: "downloadStart"; tab: string; id: string; name: string; url: string }
-  | { kind: "directDownloadStart"; id: string; name: string; url: string }
+  | { kind: "directDownloadStart"; id: string; name: string; url: string; sourceUrl?: string | null }
   | { kind: "downloadImport"; id: string; bookId: BookId | null; error: string | null }
   /** A file finished coming down (`ok`), or failed. */
   | { kind: "download"; tab: string; id: string; path: string; name: string; ok: boolean; error?: string | null; securityBlocked?: boolean }

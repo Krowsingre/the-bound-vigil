@@ -59,6 +59,7 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
   /// Downloads under way: their id, where each is saved, its tab and address.
   var activeDownloads: [String] { saving.values.map { $0.id } }
   private var saving = [ObjectIdentifier: (id: String, target: URL, tab: String, url: String)]()
+  private var closingAfterDownload = Set<String>()
   private var downloads = [String: AnyObject]()
   /// When each address last started coming down, so a page asking again and
   /// again (as one waiting for a sign-in can) brings it down once.
@@ -141,6 +142,7 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
       config.websiteDataStore = store
     }
     config.allowsInlineMediaPlayback = true
+    config.allowsPictureInPictureMediaPlayback = true
     if let rules = rules { config.userContentController.add(rules) }
     let made = WKWebView(frame: frame, configuration: config)
     made.navigationDelegate = self
@@ -175,6 +177,12 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
   }
 
   private func close(_ tab: String) {
+    if saving.values.contains(where: { $0.tab == tab }) {
+      closingAfterDownload.insert(tab)
+      views[tab]?.isHidden = true
+      return
+    }
+    closingAfterDownload.remove(tab)
     guard let view = views.removeValue(forKey: tab) else { return }
     view.stopLoading()
     view.removeFromSuperview()
@@ -298,7 +306,12 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
       case "cancel":
         if let id = args.id, let download = self.downloads.removeValue(forKey: id) {
           if #available(iOS 14.5, *), let download = download as? WKDownload {
-            download.cancel { _ in }
+            download.cancel { _ in
+              guard let saved = self.saving.removeValue(forKey: ObjectIdentifier(download)) else { return }
+              self.recent.removeValue(forKey: saved.url)
+              try? FileManager.default.removeItem(at: saved.target.deletingLastPathComponent())
+              if self.closingAfterDownload.contains(saved.tab) { self.close(saved.tab) }
+            }
           }
         }
         invoke.resolve(["ok": true])
@@ -622,12 +635,14 @@ extension TbvBrowser: WKDownloadDelegate {
 
   func downloadDidFinish(_ download: WKDownload) {
     guard let saved = saving.removeValue(forKey: ObjectIdentifier(download)) else { return }
+    defer { if closingAfterDownload.contains(saved.tab) { close(saved.tab) } }
     downloads.removeValue(forKey: saved.id)
     tell(["kind": "download", "tab": saved.tab, "id": saved.id, "path": saved.target.path, "name": saved.target.lastPathComponent, "ok": true])
   }
 
   func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
     guard let saved = saving.removeValue(forKey: ObjectIdentifier(download)) else { return }
+    defer { if closingAfterDownload.contains(saved.tab) { close(saved.tab) } }
     // A failed one may be tried again straight away.
     recent.removeValue(forKey: saved.url)
     // Cancelled from TBV: nothing to tell, and nothing kept.

@@ -519,7 +519,7 @@ export interface Api {
   /** Brings a book down and adds it through the import queue. */
   downloadFromCatalog(id: string, file: OpdsFile, title: string): Promise<void>;
   /** Brings a book down from a web address (a Bible, or a browser page's file) and adds it through the import queue. */
-  downloadWebBook(url: string, title: string): Promise<void>;
+  downloadWebBook(url: string, title: string, sourceUrl?: string): Promise<void>;
   /** Websites saved in the browser, in order. */
   bookmarks(): Promise<Bookmark[]>;
   /** Saves a page; one saved already is only renamed. */
@@ -1248,7 +1248,7 @@ function appApi(): Api {
     catalogFeed: async (id, url) => (await core).invoke<OpdsFeed>("catalog_feed", { id, url }),
     catalogSearch: async (id, search, words) => (await core).invoke<OpdsFeed>("catalog_search", { id, search, words }),
     downloadFromCatalog: async (id, file, title) => (await core).invoke("download_from_catalog", { id, file, title }),
-    downloadWebBook: async (url, title) => (await core).invoke("download_web_book", { url, title }),
+    downloadWebBook: async (url, title, sourceUrl) => (await core).invoke("download_web_book", { url, title, sourceUrl }),
     bookmarks: async () => (await core).invoke<Bookmark[]>("bookmarks"),
     addBookmark: async (title, url, folder) => (await core).invoke<Bookmark>("add_bookmark", { title, url, folder }),
     editBookmark: async (id, title, url, folder) => (await core).invoke("edit_bookmark", { id, title, url, folder }),

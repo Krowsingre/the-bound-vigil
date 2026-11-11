@@ -117,7 +117,7 @@ pub(crate) enum Event {
     #[serde(rename_all = "camelCase")]
     DownloadStart { tab: String, id: String, name: String, url: String },
     #[serde(rename_all = "camelCase")]
-    DirectDownloadStart { id: String, name: String, url: String },
+    DirectDownloadStart { id: String, name: String, url: String, source_url: Option<String> },
     #[serde(rename_all = "camelCase")]
     DownloadImport { id: String, book_id: Option<String>, error: Option<String> },
     /// A file finished coming down (or failed, or was cancelled).
@@ -333,7 +333,7 @@ mod view {
                     let by_path = path.as_ref().and_then(|path| items.iter().find(|(_, (_, saved, _, _))| saved == path).map(|(key, _)| key.clone()));
                     items.remove(by_path.as_ref().unwrap_or(&key))
                 });
-                if let Some((id, saved, tab, _hold)) = kept {
+                if let Some((id, saved, tab, hold)) = kept {
                     let folder = saved.parent().map(std::path::Path::to_path_buf);
                     let path = path.filter(|path| path.parent() == saved.parent()).unwrap_or(saved);
                     #[cfg(windows)]
@@ -355,6 +355,8 @@ mod view {
                         }
                     }
                     let path = if ok { path.to_string_lossy().into_owned() } else { String::new() };
+                    // The receiver can classify and import immediately after this event.
+                    drop(hold);
                     tell(downloads, Event::Download { tab, id, path, name, ok, error, security_blocked });
                 }
             }
@@ -1608,8 +1610,10 @@ pub async fn download_web_book(
     imports: State<'_, Arc<imports::Imports>>,
     url: String,
     title: String,
+    source_url: Option<String>,
 ) -> CommandResult<()> {
     let url = web_url(&url)?.to_string();
+    let source_url = source_url.and_then(|source| web_url(&source).ok()).map(|source| source.to_string());
     let downloads = downloads_dir(&app)?;
     #[cfg(target_os = "ios")]
     let downloads = tauri_plugin_tbv_ios::browser_downloads_dir().unwrap_or(downloads);
@@ -1619,7 +1623,7 @@ pub async fn download_web_book(
         let hold = DownloadHold::new(&id)?;
         let folder = downloads.join(&id);
         std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
-        tell(&app, Event::DirectDownloadStart { id: id.clone(), name: title.clone(), url: url.clone() });
+        tell(&app, Event::DirectDownloadStart { id: id.clone(), name: title.clone(), url: url.clone(), source_url });
         match tbv_core::opds::download_book(&url, &title, &folder) {
             Ok(path) => {
                 tell(&app, Event::Download { tab: String::new(), id: id.clone(), path: path.to_string_lossy().into_owned(), name: title, ok: true, error: None, security_blocked: false });
