@@ -1,3 +1,5 @@
+import { workspaceFrame } from "../shell/workspaceFrame";
+
 // Discover's tabs: what each shows, which is in front, kept on this device
 // so they come back next time.
 
@@ -16,11 +18,11 @@ export interface TabsState {
   active: string;
 }
 
-const KEY = "tbv.browser.tabs";
+const KEY = workspaceFrame ? "tbv.browser.tabs.secondary" : "tbv.browser.tabs";
 /** Where the one page was kept before there were tabs. */
 const LAST_KEY = "tbv.browser.last";
-/** Enough for anyone; the oldest go first past this. */
-export const MOST_TABS = 30;
+
+const pinnedFirst = (tabs: BrowserTab[]) => [...tabs.filter((t) => t.pinned), ...tabs.filter((t) => !t.pinned)];
 
 /** A new tab's name: letters and digits, as the browser accepts. */
 export function newTabId(): string {
@@ -37,13 +39,13 @@ export function readTabs(home: string): TabsState {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<TabsState> | null;
     const tabs = (saved?.tabs ?? []).filter((t): t is BrowserTab => !!t && /^[a-z0-9-]{1,40}$/i.test(t.id) && (/^https?:\/\//i.test(t.url) || t.url === "tbv:start"));
-    if (tabs.length) return { tabs, active: tabs.some((t) => t.id === saved?.active) ? saved!.active! : tabs[0].id };
+    if (tabs.length) return { tabs: pinnedFirst(tabs), active: tabs.some((t) => t.id === saved?.active) ? saved!.active! : tabs[0].id };
   } catch {
     // Start afresh.
   }
   let last: string | null = null;
   try {
-    last = localStorage.getItem(LAST_KEY);
+    last = workspaceFrame ? null : localStorage.getItem(LAST_KEY);
   } catch {
     // Home, then.
   }
@@ -62,12 +64,16 @@ export function writeTabs(state: TabsState): void {
   }
 }
 
-/** Opens a tab after the one in front and brings it forward. */
-export function openTab(state: TabsState, tab: BrowserTab): TabsState {
-  const at = state.tabs.findIndex((t) => t.id === state.active);
-  const tabs = [...state.tabs.slice(0, at + 1), tab, ...state.tabs.slice(at + 1)];
-  const oldest = tabs.find((x) => x.id !== tab.id && !x.pinned);
-  return { tabs: tabs.length > MOST_TABS && oldest ? tabs.filter((t) => t.id !== oldest.id) : tabs, active: tab.id };
+/** Append unless a contextual action names the tab to open beside. */
+export function openTab(state: TabsState, tab: BrowserTab, background = false, beside?: string): TabsState {
+  const active = background ? state.active : tab.id;
+  const tabs = pinnedFirst(state.tabs);
+  const source = tabs.findIndex((item) => item.id === beside);
+  const firstUnpinned = tabs.findIndex((item) => !item.pinned);
+  const boundary = firstUnpinned < 0 ? tabs.length : firstUnpinned;
+  const position = tab.pinned ? boundary : source < 0 ? tabs.length : Math.max(source + 1, boundary);
+  tabs.splice(position, 0, tab);
+  return { tabs, active };
 }
 
 /** Closes a tab; the one beside it comes forward. The last one closed leaves a fresh tab at `home`. */
@@ -93,17 +99,17 @@ export function updateTab(state: TabsState, id: string, change: Partial<Omit<Bro
 export function moveTab(state: TabsState, id: string, onto: string): TabsState {
   const tab = state.tabs.find((t) => t.id === id);
   const to = state.tabs.findIndex((t) => t.id === onto);
-  if (!tab || to < 0 || id === onto) return state;
+  if (!tab || to < 0 || id === onto || !!tab.pinned !== !!state.tabs[to].pinned) return state;
   const tabs = state.tabs.filter((t) => t.id !== id);
   tabs.splice(to, 0, tab);
   return { ...state, tabs };
 }
 
-/** A copy of a tab, opened beside it and brought forward. */
+/** A copy of a tab, opened at the end and brought forward. */
 export function duplicateTab(state: TabsState, id: string): TabsState {
   const tab = state.tabs.find((t) => t.id === id);
   if (!tab) return state;
-  return openTab({ ...state, active: id }, { id: newTabId(), url: tab.url, title: tab.title, private: tab.private });
+  return openTab(state, { id: newTabId(), url: tab.url, title: tab.title, private: tab.private });
 }
 
 /** The tabs Close other tabs would close: every one but `id` and the pinned ones. */
@@ -147,9 +153,11 @@ export interface ClosedTab {
   /** Where it was in the row. */
   at: number;
   closed: number;
+  id?: string;
+  pinned?: boolean;
 }
 
-const CLOSED_KEY = "tbv.browser.closed";
+const CLOSED_KEY = workspaceFrame ? "tbv.browser.closed.secondary" : "tbv.browser.closed";
 const CLOSED_CHANGED = "tbv:browser-closed";
 /** How many closed tabs are remembered, newest first. */
 export const MOST_CLOSED = 10;
@@ -179,13 +187,14 @@ export function onClosedTabs(listener: () => void): () => void {
 }
 
 /** Remembers tabs as they close. The start page isn't worth reopening, and private tabs leave nothing behind. */
-export function rememberClosed(state: TabsState, ids: string[], now = Date.now()): void {
+export function rememberClosed(state: TabsState, ids: string[], now = Date.now()): ClosedTab[] {
   const gone = state.tabs
     .map((t, at) => ({ t, at }))
     .filter(({ t }) => ids.includes(t.id) && !t.private && /^https?:\/\//i.test(t.url))
-    .map(({ t, at }) => ({ url: t.url, title: t.title, at, closed: now }))
+    .map(({ t, at }) => ({ url: t.url, title: t.title, at, closed: now, id: t.id, pinned: t.pinned }))
     .reverse();
   if (gone.length) writeClosed([...gone, ...readClosedTabs()]);
+  return gone;
 }
 
 /** Takes a closed tab off the list (the newest, without `index`) to open it again. */
@@ -196,11 +205,18 @@ export function takeClosed(index = 0): ClosedTab | null {
   return taken;
 }
 
+/** Removes only the entries this Undo is restoring. Older saved entries have no ID. */
+export function removeClosedBatch(batch: ClosedTab[]) {
+  const ids = new Set(batch.map((tab) => tab.id));
+  writeClosed(readClosedTabs().filter((tab) => !tab.id || !ids.has(tab.id)));
+}
+
 /** Opens a closed tab again, back where it was in the row. */
 export function reopenTab(state: TabsState, closed: ClosedTab): TabsState {
-  const tab = { id: newTabId(), url: closed.url, title: closed.title };
+  const tab = { id: newTabId(), url: closed.url, title: closed.title, pinned: closed.pinned };
   const tabs = [...state.tabs];
-  tabs.splice(Math.min(closed.at, tabs.length), 0, tab);
-  const oldest = tabs.find((x) => x.id !== tab.id && !x.pinned);
-  return { tabs: tabs.length > MOST_TABS && oldest ? tabs.filter((t) => t.id !== oldest.id) : tabs, active: tab.id };
+  const pinned = tabs.filter((t) => t.pinned).length;
+  const position = tab.pinned ? Math.min(closed.at, pinned) : Math.max(pinned, Math.min(closed.at, tabs.length));
+  tabs.splice(position, 0, tab);
+  return { tabs, active: tab.id };
 }

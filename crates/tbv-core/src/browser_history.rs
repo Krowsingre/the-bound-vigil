@@ -78,11 +78,11 @@ impl Library {
     }
 
     /// Clears what's from `since` (milliseconds since 1970) on, or everything.
-    pub fn clear_browser_history(&self, since: Option<i64>) -> Result<()> {
+    pub fn clear_browser_history(&self, since: Option<i64>, kind: Option<&str>) -> Result<()> {
         let now = now_utc();
         self.conn.execute(
-            "UPDATE browser_history SET deleted_at = ?1, updated_at = ?1 WHERE deleted_at IS NULL AND at >= ?2",
-            params![now, since.unwrap_or(i64::MIN)],
+            "UPDATE browser_history SET deleted_at = ?1, updated_at = ?1 WHERE deleted_at IS NULL AND at >= ?2 AND (?3 IS NULL OR kind = ?3)",
+            params![now, since.unwrap_or(i64::MIN), kind],
         )?;
         Ok(())
     }
@@ -135,7 +135,7 @@ mod tests {
         assert_eq!(library.browser_history().unwrap()[0].title.as_deref(), Some("Titled"));
         library.remove_browser_history(&["b".into()]).unwrap();
         assert_eq!(ids(&library), ["a", "c"]);
-        library.clear_browser_history(Some(3)).unwrap();
+        library.clear_browser_history(Some(3), None).unwrap();
         assert_eq!(ids(&library), ["c"]);
         library.trim_browser_history(3).unwrap();
         assert!(ids(&library).is_empty());

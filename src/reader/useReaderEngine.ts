@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import type { Annotation } from "../api/types";
 import type { Relocation, SearchResult, TocItem, View } from "../vendor/foliate-js/view.js";
 import { fitTextToPage, hexToRgb, luminance } from "./darkText";
+import { describeStructuredContent, type StructuredContent, type StructuredTarget } from "./structuredContent";
 import type { ReaderSource } from "./formats";
 import { DEFAULT_SETTINGS, highlightHex, readerCss, WIDTHS, type PageColors, type ReaderSettings } from "./settings";
 
@@ -23,6 +24,7 @@ export interface EngineEvents {
   onAnnotationClick?: (cfi: string, rect: DOMRect) => void;
   /** Key presses inside the book's frames, which the window never sees. */
   onKey?: (event: KeyboardEvent) => void;
+  onKeyUp?: (event: KeyboardEvent) => void;
   /** PDFs and comics: zoomed with Ctrl+wheel or two fingers, to this scale. */
   onZoom?: (zoom: number) => void;
 }
@@ -31,6 +33,7 @@ export interface ReaderEngine {
   ready: boolean;
   error: string | null;
   relocation: Relocation | null;
+  structuredTargets: StructuredTarget[];
   toc: TocItem[];
   /** Where each section (file) of the book starts, as a fraction of the whole. */
   sectionStarts: number[];
@@ -50,6 +53,7 @@ export interface ReaderEngine {
   scale: number;
   /** Fixed pages: scrolls a little up or down (arrow keys). */
   scrollStep: (direction: 1 | -1) => void;
+  scrollByPixels: (distance: number) => void;
 }
 
 const drawable = (a: Annotation) => a.kind !== "bookmark" && !!a.locator.cfi;
@@ -62,6 +66,31 @@ function windowRect(doc: Document, range: Range): DOMRect {
 }
 
 const isDarkPage = (colors: PageColors) => luminance(hexToRgb(colors.background)) < 0.2;
+
+/** Make the publisher's base-size keyword follow the reader's size in this frame. */
+function applyPublisherBaseSize(doc: Document) {
+  const apply = (style: CSSStyleDeclaration) => {
+    if (style.getPropertyValue("font-size").trim().toLowerCase() === "medium") {
+      style.setProperty("font-size", "var(--tbv-reading-size)", style.getPropertyPriority("font-size"));
+    }
+  };
+  const visit = (rules: CSSRuleList) => {
+    for (const rule of Array.from(rules)) {
+      if ("style" in rule) apply((rule as CSSStyleRule).style);
+      if ("cssRules" in rule) visit((rule as CSSGroupingRule).cssRules);
+      if ("styleSheet" in rule) read((rule as CSSImportRule).styleSheet);
+    }
+  };
+  const read = (sheet: CSSStyleSheet | null) => {
+    try {
+      if (sheet) visit(sheet.cssRules);
+    } catch {
+      // A cross-origin sheet can be applied by the browser but cannot be edited.
+    }
+  };
+  for (const sheet of Array.from(doc.styleSheets)) read(sheet);
+  for (const element of doc.querySelectorAll<HTMLElement>("[style]")) apply(element.style);
+}
 
 /** Styles inside the pages, and page layout around them. */
 async function applyLayout(view: View, settings: ReaderSettings, colors: PageColors) {
@@ -106,6 +135,7 @@ export function useReaderEngine({
 }): ReaderEngine {
   const viewRef = useRef<View | null>(null);
   const [ready, setReady] = useState(false);
+  const [structuredTargets, setStructuredTargets] = useState<StructuredTarget[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [relocation, setRelocation] = useState<Relocation | null>(null);
   const [toc, setToc] = useState<TocItem[]>([]);
@@ -129,6 +159,7 @@ export function useReaderEngine({
     let cancelled = false;
     let view: View | null = null;
     setReady(false);
+    setStructuredTargets([]);
     setError(null);
 
     void (async () => {
@@ -142,6 +173,44 @@ export function useReaderEngine({
         if (cancelled) return;
         viewRef.current = view;
         const v = view;
+        const supportsStructuredContent = file instanceof File && /\.(epub|kepub|mobi|azw3)$/i.test(file.name);
+        const snapshots = new WeakMap<Element, StructuredContent | null>();
+        let inspectFrame = 0;
+        const inspect = () => {
+          if (!supportsStructuredContent) return;
+          cancelAnimationFrame(inspectFrame);
+          inspectFrame = requestAnimationFrame(() => {
+            if (cancelled || v.isFixedLayout || !host.current) return;
+            const area = host.current.getBoundingClientRect();
+            const visible: StructuredTarget[] = [];
+            for (const { doc, index } of v.renderer.getContents()) {
+              const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
+              if (!frame) continue;
+              const elements = doc.querySelectorAll("table, pre, figure");
+              for (let i = 0; i < Math.min(elements.length, 200); i++) {
+                const element = elements[i];
+                if (element.parentElement?.closest("table, pre, figure")) continue;
+                const intersects = Array.from(element.getClientRects()).some((rect) =>
+                  rect.width > 0 && rect.height > 0 &&
+                  rect.left + frame.left < Math.min(area.right, frame.right) &&
+                  rect.right + frame.left > Math.max(area.left, frame.left) &&
+                  rect.top + frame.top < Math.min(area.bottom, frame.bottom) &&
+                  rect.bottom + frame.top > Math.max(area.top, frame.top));
+                if (!intersects) continue;
+                if (!snapshots.has(element)) {
+                  const snapshot = describeStructuredContent(element);
+                  if (snapshot || element.localName !== "figure") snapshots.set(element, snapshot);
+                }
+                const content = snapshots.get(element);
+                if (content) visible.push({ id: `${index}:${i}`, content });
+                if (visible.length >= 8) break;
+              }
+              if (visible.length >= 8) break;
+            }
+            setStructuredTargets((before) => before.length === visible.length &&
+              before.every((item, i) => item.id === visible[i].id && item.content === visible[i].content) ? before : visible);
+          });
+        };
 
         v.addEventListener("relocate", (e) => {
           const detail = (e as CustomEvent<Relocation>).detail;
@@ -155,11 +224,15 @@ export function useReaderEngine({
             detail.fraction = total ? (current + 1) / total : 0;
           }
           setRelocation(detail);
+          inspect();
           eventsRef.current.onRelocate?.(detail);
         });
 
         v.addEventListener("load", (e) => {
           const { doc, index } = (e as CustomEvent<{ doc: Document; index: number }>).detail;
+          if (!v.isFixedLayout) applyPublisherBaseSize(doc);
+          if (supportsStructuredContent) doc.addEventListener("load", inspect, true);
+          inspect();
           // After the book's own styles have applied, so their colours are what's read.
           requestAnimationFrame(() => {
             const { colors } = styleRef.current;
@@ -181,6 +254,7 @@ export function useReaderEngine({
           doc.addEventListener("pointerup", () => setTimeout(check, 0));
           doc.addEventListener("keyup", (k) => k.shiftKey && check());
           doc.addEventListener("keydown", (k) => eventsRef.current.onKey?.(k));
+          doc.addEventListener("keyup", (k) => eventsRef.current.onKeyUp?.(k));
         });
 
         v.addEventListener("create-overlay", (e) => {
@@ -282,6 +356,7 @@ export function useReaderEngine({
     ready,
     error,
     relocation,
+    structuredTargets,
     toc,
     sectionStarts,
     sectionOf,
@@ -322,6 +397,7 @@ export function useReaderEngine({
     getView: useCallback(() => viewRef.current, []),
     fixed,
     scale,
+    scrollByPixels: useCallback((distance: number) => viewRef.current?.renderer.scrollByPixels?.(distance), []),
     scrollStep: useCallback((direction: 1 | -1) => {
       viewRef.current?.renderer.scrollStep?.(direction);
     }, []),

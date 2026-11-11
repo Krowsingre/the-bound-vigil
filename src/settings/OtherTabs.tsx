@@ -1,3 +1,4 @@
+import { RememberedDetails } from "../components/RememberedDetails";
 import { useEffect, useRef, useState } from "react";
 import { api, isAndroid, isApp, isIOS, openExternal } from "../api";
 import type { DuplicateGroup, GoodreadsImport, LibraryInfo, SortOrder, TagCount } from "../api/types";
@@ -276,7 +277,7 @@ export function LibraryTab({
             onChange={(s) => onChange({ sort: s })}
           />
         </Row>
-        <Row label="Pages" hint="On a phone the Archive always scrolls on without pages.">
+        <Row label="Pages" hint="Applies to Archive and Resonance on desktop. Phones always scroll continuously.">
           <Toggle
             label="Scroll on without page numbers"
             hint="More books load as you reach the end."
@@ -475,6 +476,7 @@ function GoodreadsReport({ report, onClose }: { report: GoodreadsImport; onClose
   const lines = [
     report.ratings > 0 && `Ratings added to ${books(report.ratings)}.`,
     report.statuses > 0 && `Reading status brought in for ${books(report.statuses)}.`,
+    !!report.upNextSkipped && `${books(report.upNextSkipped)} left out because Up Next is full.`,
     report.upNext > 0 && `${books(report.upNext)} put in Up next.`,
     report.favourites > 0 && `${books(report.favourites)} marked as favourites.`,
     report.collectionsCreated.length > 0 &&
@@ -498,7 +500,7 @@ function GoodreadsReport({ report, onClose }: { report: GoodreadsImport; onClose
           <p>TBV already had everything the export holds, so nothing changed.</p>
         )}
         {report.notFound.length > 0 && (
-          <details>
+          <RememberedDetails disclosure="preferences.goodreadsReport">
             <summary>
               {books(report.notFound.length)} from Goodreads aren't in your library
             </summary>
@@ -507,7 +509,7 @@ function GoodreadsReport({ report, onClose }: { report: GoodreadsImport; onClose
                 <li key={b}>{b}</li>
               ))}
             </ul>
-          </details>
+          </RememberedDetails>
         )}
         <div className="dialog-actions">
           <button ref={close} type="button" className="btn btn-primary" onClick={onClose}>
@@ -708,6 +710,8 @@ export function AccessibilityTab() {
 }
 
 const EVERYWHERE: [string, string][] = [
+  ["Alt + Shift + ← / →", "Back / Forward through app screens"],
+  ["Alt + ← / → in Discover", "Back / Forward through webpages"],
   ["Ctrl + 1 to 7", "Go to Sanctum, Archive, Resonance, Compendium, Scribe, Discover or Preferences"],
   ["Ctrl + F  or  Ctrl + K", "Search"],
   ["Ctrl + O", "Import books"],
@@ -716,6 +720,7 @@ const EVERYWHERE: [string, string][] = [
 ];
 
 const READER: [string, string][] = [
+  ["Alt + Shift + ←", "Return from a book jump, or leave the book"],
   ["→  or  Page Down  or  Space", "Next page"],
   ["←  or  Page Up  or  Shift + Space", "Previous page"],
   ["Ctrl + F", "Search in the book"],
@@ -1065,7 +1070,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.81.0");
+  const [version, setVersion] = useState("0.82.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

@@ -1,8 +1,9 @@
+import { workspaceFrame, workspaceHost } from "./shell/workspaceFrame";
 // First, so the splash is up before anything else is drawn.
 import "./splash/startup";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./App";
+import { Workspace } from "./shell/Workspace";
 import { ToastProvider } from "./components/Toast";
 import { AppSettingsProvider } from "./settings/AppSettingsProvider";
 // Bundled so titles look the same on machines without Georgia.
@@ -45,10 +46,10 @@ restorePrivacy();
 
 // Closing the window another way (Alt+F4, the taskbar) asks the page to
 // finish saving, then quit.
-if (isApp) {
+if (isApp && !workspaceFrame) {
   void import("@tauri-apps/api/event").then(({ listen }) =>
     listen("tbv://quit-requested", async () => {
-      await runBeforeQuit();
+      await Promise.allSettled([runBeforeQuit(), workspaceHost.tbvWorkspace?.flush?.()]);
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("quit_app");
     }),
@@ -82,23 +83,28 @@ if (isWeb && import.meta.env.PROD && "serviceWorker" in navigator) {
     .catch(() => undefined);
 }
 
-createRoot(document.getElementById("root")!).render(
+const root = createRoot(document.getElementById("root")!);
+if (workspaceFrame && workspaceHost.tbvWorkspace) workspaceHost.tbvWorkspace.dispose = () => {
+  root.unmount();
+  if (workspaceHost.tbvWorkspace) delete workspaceHost.tbvWorkspace.dispose;
+};
+root.render(
   <StrictMode>
     <ToastProvider>
       <AppSettingsProvider>
         <PlayerProvider>
           {isWeb ? (
             <WebGate>
-              <App />
+              <Workspace />
             </WebGate>
           ) : isHome ? (
             <HomePair>
-              <App />
+              <Workspace />
             </HomePair>
           ) : (
             <LicenseProvider>
               <PublisherProvider>
-                <App />
+                <Workspace />
               </PublisherProvider>
             </LicenseProvider>
           )}

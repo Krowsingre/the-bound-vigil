@@ -4,7 +4,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { MenuList, type MenuEntry } from "./Menu";
+import { itemMenus, MenuList, type MenuEntry } from "./Menu";
 
 interface Request {
   x: number;
@@ -79,13 +79,16 @@ export function holdForMenu(label: string, items: () => MenuEntry[]) {
 }
 
 export function ContextMenuHost() {
+  const [section, setSection] = useState<number | null>(null);
   const [request, setRequest] = useState<Request | null>(null);
   const [place, setPlace] = useState<CSSProperties>({ visibility: "hidden" });
   const menu = useRef<HTMLDivElement>(null);
+  const sizedRequest = useRef<Request | null>(null);
 
   useEffect(() => {
     listener = (r) => {
       setPlace({ visibility: "hidden" });
+      setSection(null);
       setRequest(r);
     };
     return () => {
@@ -93,14 +96,43 @@ export function ContextMenuHost() {
     };
   }, []);
 
+  useEffect(() => {
+    const ownerSelector = "[data-item-menu], li, tr, article";
+    const fromItem = (event: MouseEvent) => {
+      if (event.defaultPrevented || !(event.target instanceof Element)) return;
+      if (event.target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false]), [role=menu]")) return;
+      const owner = event.target.closest(ownerSelector);
+      if (!owner) return;
+      const roots = [...owner.querySelectorAll(".menu-root")].filter((root) => root.closest(ownerSelector) === owner);
+      const target = event.target.closest(".menu-root");
+      const root = target && roots.includes(target) ? target : roots.length === 1 ? roots[0] : null;
+      const request = root && itemMenus.get(root);
+      if (!request?.items.length) return;
+      event.preventDefault();
+      letGo();
+      const bounds = owner.getBoundingClientRect();
+      const keyboard = event.clientX === 0 && event.clientY === 0;
+      openContextMenuAt(keyboard ? bounds.left : event.clientX, keyboard ? bounds.bottom : event.clientY, request.label, request.items);
+    };
+    document.addEventListener("contextmenu", fromItem);
+    return () => document.removeEventListener("contextmenu", fromItem);
+  }, []);
+
   useLayoutEffect(() => {
-    const box = menu.current?.getBoundingClientRect();
-    if (!request || !box) return;
+    const element = menu.current;
+    if (!request || !element) return;
+    if (sizedRequest.current === request) {
+      element.scrollTop = 0;
+      return;
+    }
+    const box = element.getBoundingClientRect();
     const margin = 8;
     const left = request.x + box.width > window.innerWidth - margin ? Math.max(margin, request.x - box.width) : request.x;
     const top = request.y + box.height > window.innerHeight - margin ? Math.max(margin, window.innerHeight - margin - box.height) : request.y;
-    setPlace({ top, left });
-  }, [request]);
+    const stable = request.items.some((item) => typeof item === "object" && "submenu" in item && item.submenu?.length);
+    sizedRequest.current = stable ? request : null;
+    setPlace({ top, left, ...(stable ? { width: box.width, height: box.height } : {}) });
+  }, [request, section]);
 
   useEffect(() => {
     if (!request) return;
@@ -114,7 +146,7 @@ export function ContextMenuHost() {
     document.addEventListener("keydown", key);
     window.addEventListener("resize", shut);
     window.addEventListener("blur", shut);
-    menu.current?.querySelector<HTMLButtonElement>(".menu-item:not(:disabled)")?.focus();
+    menu.current?.querySelector<HTMLButtonElement>(".menu-item:not(:disabled)")?.focus({ preventScroll: true });
     return () => {
       document.removeEventListener("pointerdown", away);
       document.removeEventListener("scroll", away, true);
@@ -122,11 +154,16 @@ export function ContextMenuHost() {
       window.removeEventListener("resize", shut);
       window.removeEventListener("blur", shut);
     };
-  }, [request]);
+  }, [request, section]);
 
   if (!request) return null;
+  const group = section === null ? undefined : request.items[section];
+  const submenu = group && typeof group === "object" && "label" in group ? group.submenu : undefined;
+  const items: MenuEntry[] = submenu
+    ? [{ label: "Back to book menu", icon: "arrowLeft", onSelect: () => setSection(null) }, "divider", ...submenu]
+    : request.items;
   return createPortal(
-    <MenuList ref={menu} label={request.label} items={request.items} style={place} onClose={() => setRequest(null)} />,
+    <MenuList ref={menu} label={request.label} items={items} back={!!submenu} onSubmenu={submenu ? undefined : setSection} style={place} onClose={() => setRequest(null)} />,
     document.body,
   );
 }

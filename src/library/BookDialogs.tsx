@@ -111,7 +111,9 @@ export function TagsDialog({ books, onClose }: { books: BookPreview[]; onClose: 
   };
   const remove = (t: string) => setTags(tags.filter((x) => x !== t));
   const q = typed.trim().toLowerCase();
-  const suggestions = all.filter((t) => !has(t.name) && (!q || t.name.toLowerCase().includes(q))).slice(0, 12);
+  const suggestions = all.filter((t) => !has(t.name) && (!q || t.name.toLowerCase().includes(q)))
+    .sort((a, b) => Number(b.name.toLowerCase().startsWith(q)) - Number(a.name.toLowerCase().startsWith(q)))
+    .slice(0, 12);
 
   const save = async () => {
     const clean = cleanTag(typed);
@@ -164,8 +166,13 @@ export function TagsDialog({ books, onClose }: { books: BookPreview[]; onClose: 
             maxLength={40}
             placeholder={tags.length ? "Add another" : "Type a tag and press Enter"}
             aria-label="New tag"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             onChange={(e) => setTyped(e.target.value)}
             onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
               if (e.key === "Enter" || e.key === ",") {
                 e.preventDefault();
                 if (typed.trim()) add(typed);
@@ -180,7 +187,7 @@ export function TagsDialog({ books, onClose }: { books: BookPreview[]; onClose: 
           <div className="tag-suggestions">
             <span className="muted">Your tags</span>
             {suggestions.map((t) => (
-              <button key={t.name} type="button" className="tag-chip tag-chip-add" onClick={() => add(t.name)}>
+              <button key={t.name} type="button" className="tag-chip tag-chip-add" onMouseDown={(e) => e.preventDefault()} onClick={() => { add(t.name); input.current?.focus(); }}>
                 <Icon name="plus" size={12} /> {t.name}
               </button>
             ))}

@@ -3,6 +3,7 @@
 // It is lighter than the desktop app: no importing, backups, folder sync or
 // Hardcover, and books open from the cloud.
 
+import { PIN_LIMIT, PIN_LIMIT_MESSAGE, upNextChanges } from "../library/shelfLimits";
 import { printInBrowser } from "../print/inBrowser";
 import { browseStub } from "../preview/browse";
 import type { Api } from "../api";
@@ -232,6 +233,7 @@ export async function webApi(): Promise<Api> {
       phoneWanted: !!b.phone_wanted,
       phoneHas: !!b.phone_has,
       pinnedAt: b.pinned_at ?? null,
+      audioType: b.audio_type ?? null,
     };
   };
 
@@ -410,7 +412,7 @@ export async function webApi(): Promise<Api> {
     if (ref.kind === "collection") return membersOf(collectionRow(ref.id));
     if (ref.kind === "series")
       return books()
-        .filter((b) => b.series === ref.name)
+        .filter((b) => b.series?.trim().toLowerCase() === ref.name.trim().toLowerCase())
         .sort((a, b) => (a.seriesIndex ?? 1e9) - (b.seriesIndex ?? 1e9) || byTitle(a, b));
     const members = books()
       .filter(smartBooks[ref.smart])
@@ -555,6 +557,7 @@ export async function webApi(): Promise<Api> {
       throw new Error(DESKTOP_ONLY);
     },
     writingDrafts: async () => [],
+    restoreWritingDraft: async () => { throw new Error(DESKTOP_ONLY); },
     deleteWritingDraft: async () => {
       throw new Error(DESKTOP_ONLY);
     },
@@ -686,11 +689,25 @@ export async function webApi(): Promise<Api> {
     getLibrary: async (query) => queryBooks(books(), query, previews().length),
     getCollections: async () => previews(),
     setFavorite: async (bookId, favorite) => writeShelves(bookId, { favorite: favorite ? 1 : 0 }),
+    archiveSeriesPins: async () => library.rows("archive_series_pins").filter((row) => row.pinned_at).map((row) => String(row.label)),
+    setArchiveSeriesPin: async (label, pinned) => {
+      const name = label.trim().toLowerCase();
+      const pins = library.rows("archive_series_pins").filter((row) => row.pinned_at);
+      if (pins.some((row) => row.name === name) === pinned) return;
+      if (pinned && pins.length + books().filter((book) => book.pinnedAt).length >= PIN_LIMIT) throw new Error(PIN_LIMIT_MESSAGE);
+      await library.write("archive_series_pin", { name, label, pinned_at: pinned ? now() : null });
+    },
+    setAudioType: async (bookId, audio_type) => library.write("book_audio_type", { ...find(bookId), audio_type }),
     setPinned: async (bookId, pinned) => {
       const b = find(bookId);
-      if (!!b.pinned_at !== pinned) await library.write("book_pin", { ...b, pinned_at: pinned ? new Date().toISOString().replace(/\.\d+Z$/, "Z") : null });
+      if (!!b.pinned_at === pinned) return;
+      if (pinned && library.rows("archive_series_pins").filter((row) => row.pinned_at).length + books().filter((book) => book.pinnedAt).length >= PIN_LIMIT) throw new Error(PIN_LIMIT_MESSAGE);
+      await library.write("book_pin", { ...b, pinned_at: pinned ? new Date().toISOString().replace(/\.\d+Z$/, "Z") : null });
     },
-    setWantToRead: async (bookId, want) => writeShelves(bookId, { want_to_read: want ? 1 : 0 }),
+    setWantToRead: async (bookId, want, replace) => {
+      const ids = upNextChanges(books(), bookId, want, replace);
+      if (ids.length) await library.writeAll(ids.map((id) => ["book_shelves", { ...find(id), want_to_read: id === bookId && want ? 1 : 0 }]));
+    },
     setPhoneWanted: async (bookIds, wanted) => {
       const changes: [string, Row][] = [];
       for (const id of bookIds) {
@@ -713,6 +730,7 @@ export async function webApi(): Promise<Api> {
     applyKindle: async () => ({ tagged: 0, markedRead: 0, missing: 0 }),
     kindleSummary: async () => ({ total: 0, inLibrary: 0, missing: 0, removed: 0, waiting: 0, lastAdded: null, covers: [] }),
     kindleMissing: async () => [],
+    matchKindleManually: async () => { throw new Error(DESKTOP_ONLY); },
     setKindleRemoved: async () => {},
     hardcoverStatus: async () => ({ available: false, username: null, sendRatings: false }),
     hardcoverSignIn: async () => {
@@ -783,7 +801,10 @@ export async function webApi(): Promise<Api> {
     coverUrl: (path) => (/^(blob|data|https?):/.test(path) ? path : ""),
     openBook: async (bookId) => {
       const before = find(bookId);
-      await writeProgress(bookId, { last_opened_at: now(), status: before.status === "unread" ? "in_progress" : before.status });
+      const progress: Row = { ...before, last_opened_at: now(), status: before.status === "unread" ? "in_progress" : before.status };
+      await library.writeAll(before.want_to_read
+        ? [["book_progress", progress], ["book_shelves", { ...before, want_to_read: 0 }]]
+        : [["book_progress", progress]]);
       return {
         book: bookPreview(bookId),
         publisher: before.publisher,
@@ -1121,7 +1142,10 @@ export async function webApi(): Promise<Api> {
       });
       return note(fresh);
     },
-    savePersonalNote: async (id, title, body) => {
+    savePersonalNote: async (id, title, body, tags) => {
+      const write = (row: Row) => library.writeAll(tags === undefined
+        ? [["personal_note", row]]
+        : [["personal_note", row], ["personal_note_mark", { ...row, tags: JSON.stringify(cleanTags(tags)) }]]);
       const t = clean(title, MAX_TITLE);
       const b = clean(body);
       if (!t && !b) throw new Error("the note is empty");
@@ -1129,11 +1153,11 @@ export async function webApi(): Promise<Api> {
       if (id) {
         const p = library.row("personal_notes", [id]);
         if (!p || p.deleted_at) throw new Error("that note no longer exists");
-        await library.write("personal_note", { ...p, title: t, body: b ?? "", updated_at: at });
+        await write({ ...p, title: t, body: b ?? "", updated_at: at });
         return note(id);
       }
       const fresh = crypto.randomUUID();
-      await library.write("personal_note", { id: fresh, title: t, body: b ?? "", created_at: at, updated_at: at, deleted_at: null });
+      await write({ id: fresh, title: t, body: b ?? "", created_at: at, updated_at: at, deleted_at: null });
       return note(fresh);
     },
     setAnnotationNote: async (id, text) => {
@@ -1395,7 +1419,7 @@ export async function webApi(): Promise<Api> {
         const v = cleanValue(field as DetailField["field"], value);
         if (v && v !== "[]") writes.push(["fetched", { book_id: bookId, field, value: v, source, updated_at: at }]);
       }
-      await library.writeAll(writes);
+      await library.writeAll(writes, writes.flatMap(([, row]) => library.row("metadata_overrides", [bookId, row.field]) ? [["override", [bookId, row.field]]] : []));
     },
     dismissDuplicates: async () => undefined,
     shareBestCover: async () => {

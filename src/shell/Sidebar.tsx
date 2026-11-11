@@ -1,4 +1,5 @@
 import emblem from "../assets/emblem.svg?raw";
+import { holdForMenu } from "../components/ContextMenu";
 import { Icon } from "../components/Icon";
 import { navFor, navRouteOf, type Route } from "./routes";
 import { isAndroid, isHome, isWeb } from "../api";
@@ -12,9 +13,11 @@ const INNER_ARCH = "M16 42V22.5a8 8 0 0 1 16 0V42";
 export function Sidebar({
   route,
   collapsed,
+  lockedCollapsed = false,
   drawerOpen = false,
   onCloseDrawer,
   onNavigate,
+  onSplit,
   onToggle,
   preview,
   imports,
@@ -23,14 +26,19 @@ export function Sidebar({
   imports: { done: number; total: number; running: boolean } | null;
   route: Route;
   collapsed: boolean;
+  lockedCollapsed?: boolean;
   /** On a phone: the menu is open over the page. */
   drawerOpen?: boolean;
   onCloseDrawer?: () => void;
   onNavigate: (route: Route) => void;
+  onSplit?: (route: Route) => void;
   onToggle: () => void;
   preview: boolean;
 }) {
   const active = navRouteOf(route);
+  const split = (target: Route, name: string) => onSplit && holdForMenu(name, () => [
+    { label: "Split screen", icon: "layers", onSelect: () => onSplit(target) },
+  ]);
   // A book and its audiobook being lined up word by word, in the background.
   const [lining, setLining] = useState<LiningUp | null>(liningUpNow());
   useEffect(() => onLiningUp(setLining), []);
@@ -52,7 +60,7 @@ export function Sidebar({
         <div className="sidebar-top" data-tauri-drag-region />
 
         <div className="brand" data-tauri-drag-region>
-          {drawerOpen ? (
+          {drawerOpen || lockedCollapsed ? (
             <span className="brand-emblem" aria-hidden dangerouslySetInnerHTML={{ __html: emblem }} />
           ) : (
             // The emblem folds the sidebar away and back: closing turns the inner arch left, opening turns the outer arch right.
@@ -96,7 +104,9 @@ export function Sidebar({
                 <button
                   type="button"
                   className={`nav-item${active === item.route ? " is-active" : ""}`}
+                  aria-label={collapsed ? item.label : undefined}
                   aria-current={active === item.route ? "page" : undefined}
+                  {...split(item.route, item.label)}
                   onClick={() => onNavigate(item.route)}
                   title={collapsed ? `${item.label} (Ctrl+${i + 1})` : undefined}
                 >
@@ -114,6 +124,7 @@ export function Sidebar({
                   type="button"
                   className={`nav-item nav-imports${active === "imports" ? " is-active" : ""}`}
                   aria-current={active === "imports" ? "page" : undefined}
+                  {...split("imports", "Imports")}
                   onClick={() => onNavigate("imports")}
                   title={collapsed ? `Imports: ${imports.done} of ${imports.total}` : undefined}
                 >
@@ -133,6 +144,7 @@ export function Sidebar({
                 <button
                   type="button"
                   className="nav-item nav-imports nav-lining"
+                  {...split("lining", "Converging")}
                   onClick={() => onNavigate("lining")}
                   title={`${lining.title || "A book"} is converging with its audiobook: ${liningPercent}%`}
                 >

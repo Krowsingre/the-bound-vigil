@@ -1,6 +1,6 @@
 [package]
 name = "the-bound-vigil"
-version = "0.81.0"
+version = "0.82.0"
 edition.workspace = true
 license.workspace = true
 
@@ -52,7 +52,9 @@ security-framework = "3"
 
 # Keeping the way into folders chosen on the Mac (folder_access.rs).
 [target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
 objc2 = "0.6"
+objc2-web-kit = { version = "0.3", default-features = false, features = ["block2", "objc2-app-kit", "WKFrameInfo", "WKNavigation", "WKNavigationAction", "WKNavigationDelegate", "WKNavigationResponse", "WKWebView"] }
 objc2-foundation = { version = "0.3", features = ["NSArray", "NSData", "NSError", "NSString", "NSURL"] }
 
 [target.'cfg(target_os = "ios")'.dependencies]

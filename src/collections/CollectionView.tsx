@@ -8,6 +8,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { useToast } from "../components/Toast";
 import { bookContextMenu, clickBook, makeBookActions } from "../home/bookActions";
 import { BookGrid, BookList } from "../library/BookViews";
+import { downloadable, useBatchDownloads } from "../library/BatchDownloads";
 import { PageSwitch } from "../library/Library";
 import { authorLine, percent } from "../lib/format";
 import { Badge } from "./badges";
@@ -41,8 +42,8 @@ export function CollectionView({
   const [reload, setReload] = useState(0);
   const [layout, setLayout] = useState<"grid" | "list">("grid");
   const [adding, setAdding] = useState(false);
-  /** The Read compendium's switch: every book, only those finished, or only those dropped. */
-  const [ended, setEnded] = useState<"all" | "read" | "dropped">("all");
+  /** The Read compendium separates finished and dropped books. */
+  const [ended, setEnded] = useState<"read" | "dropped">("read");
   const toast = useToast();
   const key = JSON.stringify(collection);
 
@@ -65,6 +66,7 @@ export function CollectionView({
     setReload((n) => n + 1);
     onChanged();
   };
+  const downloads = useBatchDownloads(changed);
   const actions = useMemo(
     () => ({
       ...makeBookActions(api, toast, changed, onOpenBook),
@@ -116,9 +118,12 @@ export function CollectionView({
           ? "Filled by rules"
           : c && KIND_LABEL[c.kind];
   const readSwitch = collection.kind === "smart" && collection.smart === "read";
-  const books = readSwitch && ended !== "all" ? detail.books.filter((b) => b.status === ended) : detail.books;
+  const books = readSwitch ? detail.books.filter((b) => b.status === ended) : detail.books;
   const covers = detail.books.slice(0, 3).map(({ id, title, authors, coverPath }) => ({ id, title, authors, coverPath }));
-  const menu = menuFor(detail);
+  const menu: MenuEntry[] = [
+    { label: "Download", icon: "download", disabled: !!downloads.progress || !detail.books.some(downloadable), onSelect: () => void downloads.download(async () => detail.books) },
+    ...menuFor(detail),
+  ];
   const move = (book: BookPreview, to: number) =>
     own && api.moveInCollection(own.id, book.id, to).then(() => setReload((n) => n + 1), (e: unknown) => toast(String(e)));
 
@@ -141,7 +146,7 @@ export function CollectionView({
           </p>
           {description && <p className="collection-hero-description">{description}</p>}
         </div>
-        <div className="collection-hero-actions">
+        <div className="collection-hero-actions" data-item-menu>
           {own && (
             <button type="button" className="btn btn-primary" onClick={() => setAdding(true)}>
               <span aria-hidden>+</span> Add books
@@ -151,6 +156,7 @@ export function CollectionView({
         </div>
       </header>
 
+      {downloads.feedback}
       <div className="collection-view-tools">
         <p className="muted">
           {own?.kind === "reading_list"
@@ -168,8 +174,7 @@ export function CollectionView({
             label="Which books"
             value={ended}
             options={[
-              { value: "all", label: "All" },
-              { value: "read", label: "Finished" },
+              { value: "read", label: "Read" },
               { value: "dropped", label: "Dropped" },
             ]}
             onChange={setEnded}

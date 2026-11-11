@@ -29,6 +29,15 @@ describe("Discover's history", () => {
     expect(readHistory()).toEqual([]);
   });
 
+  it("can clear searches separately from visited pages", () => {
+    addToHistory({ kind: "page", url: "https://a.org/", title: null }, "forever", 1000);
+    addToHistory({ kind: "search", url: "https://duckduckgo.com/?q=b", title: "b" }, "forever", 2000);
+    clearHistory(null, 3000, "search");
+    expect(readHistory().map((entry) => entry.kind)).toEqual(["page"]);
+    clearHistory(null, 3000, "page");
+    expect(readHistory()).toEqual([]);
+  });
+
   it("names days", () => {
     const now = new Date(2026, 9, 23, 15).getTime();
     expect(dayLabel(now - 3_600_000, now)).toBe("Today");

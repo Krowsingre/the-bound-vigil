@@ -107,6 +107,8 @@ pub struct RemotePosition {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BookPreview {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_type: Option<String>,
     pub id: BookId,
     pub title: String,
     pub authors: Vec<String>,
@@ -309,6 +311,8 @@ pub enum Location {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct LibraryQuery {
+    #[serde(default)]
+    pub audio_type: Option<String>,
     pub shelf: Shelf,
     pub sort: SortOrder,
     /// Matches title, author or series, ignoring case.
@@ -354,6 +358,14 @@ pub struct LibraryQuery {
     /// Pinned books first (the Archive's own list).
     #[serde(default)]
     pub pinned_first: bool,
+    #[serde(default)]
+    pub group_series: bool,
+    pub mix_series: bool,
+    pub omit_facets: bool,
+    pub series_cover_choices: std::collections::BTreeMap<String, String>,
+    /// Restrict the page to pinned or unpinned books.
+    #[serde(default)]
+    pub pinned: Option<bool>,
     /// Zero-based.
     pub page: u32,
     pub page_size: u32,
@@ -390,7 +402,15 @@ pub struct LibraryExclude {
 #[serde(rename_all = "camelCase")]
 pub struct LibraryPage {
     pub books: Vec<BookPreview>,
-    /// Books matching the query across all pages.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub series_counts: std::collections::BTreeMap<BookId, u32>,
+    #[serde(default)]
+    pub series_published: std::collections::BTreeMap<BookId, u32>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub series_covers: std::collections::BTreeMap<BookId, BookPreview>,
+    #[serde(default)]
+    pub series_names: Vec<String>,
+    /// Items matching the query across all pages, counting each series stack once.
     pub total: u32,
     pub page: u32,
     pub page_size: u32,

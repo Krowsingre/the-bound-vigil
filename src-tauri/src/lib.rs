@@ -31,6 +31,8 @@ mod servers;
 #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
 mod shared;
 mod splash;
+#[cfg(windows)]
+mod windows_quit;
 mod sync;
 mod updates;
 mod writing;
@@ -178,6 +180,21 @@ async fn get_library(
 #[tauri::command]
 async fn get_collections(state: State<'_, AppLibrary>) -> CommandResult<Vec<CollectionPreview>> {
     with_library(state, |library| library.collections(u32::MAX)).await
+}
+
+#[tauri::command]
+async fn archive_series_pins(state: State<'_, AppLibrary>) -> CommandResult<Vec<String>> {
+    with_library(state, |library| library.archive_series_pins()).await
+}
+
+#[tauri::command]
+async fn set_archive_series_pin(state: State<'_, AppLibrary>, name: String, pinned: bool) -> CommandResult<()> {
+    with_library(state, move |library| library.set_archive_series_pin(&name, pinned)).await
+}
+
+#[tauri::command]
+async fn set_audio_type(state: State<'_, AppLibrary>, book_id: String, kind: Option<String>) -> CommandResult<()> {
+    with_library(state, move |library| library.set_audio_type(&book_id, kind.as_deref())).await
 }
 
 #[tauri::command]
@@ -523,6 +540,11 @@ async fn kindle_summary(state: State<'_, AppLibrary>) -> CommandResult<tbv_core:
 }
 
 #[tauri::command]
+async fn match_kindle_manually(state: State<'_, AppLibrary>, asin: String, book_ids: Vec<String>, mark_read: bool) -> CommandResult<tbv_core::kindle::KindleApplied> {
+    with_library(state, move |library| library.match_kindle_manually(&asin, &book_ids, mark_read)).await
+}
+
+#[tauri::command]
 async fn kindle_missing(state: State<'_, AppLibrary>, removed: bool) -> CommandResult<Vec<tbv_core::kindle::KindlePurchase>> {
     with_library(state, move |library| library.kindle_missing(removed)).await
 }
@@ -537,9 +559,14 @@ async fn set_want_to_read(
     state: State<'_, AppLibrary>,
     book_id: String,
     want: bool,
+    replace: Option<String>,
 ) -> CommandResult<()> {
     with_library(state, move |library| {
-        library.set_want_to_read(&book_id, want)
+        if replace.is_some() {
+            library.update_up_next(&book_id, want, replace.as_deref())
+        } else {
+            library.set_want_to_read(&book_id, want)
+        }
     })
     .await
 }
@@ -595,6 +622,14 @@ fn supported_formats() -> Vec<&'static str> {
     SUPPORTED_FORMATS.to_vec()
 }
 
+#[cfg(windows)]
+#[tauri::command]
+async fn quit_app(app: tauri::AppHandle) -> CommandResult<()> {
+    windows_quit::finish(app);
+    Ok(())
+}
+
+#[cfg(not(windows))]
 /// Ends the whole app, not just the window. The close button uses this so
 /// nothing is left running in the background after the window goes away.
 /// A last sync gets a moment to finish first, if the user wants one.
@@ -867,9 +902,10 @@ async fn save_personal_note(
     id: Option<String>,
     title: Option<String>,
     body: String,
+    tags: Option<Vec<String>>,
 ) -> CommandResult<NoteItem> {
     with_library(state, move |library| {
-        library.save_personal_note(id.as_deref(), title.as_deref(), &body)
+        library.save_personal_note_with_tags(id.as_deref(), title.as_deref(), &body, tags.as_deref())
     })
     .await
 }
@@ -2100,6 +2136,7 @@ pub fn run() {
             keep_picked_file,
             browser::browser_show,
             browser::browser_place,
+            browser::browser_layout,
             browser::browser_hide,
             browser::browser_act,
             browser::browser_clear,
@@ -2107,6 +2144,7 @@ pub fn run() {
             browser::browser_protect,
             browser::browser_read,
             browser::browser_cancel_download,
+            browser::browser_download_status,
             browser::browser_fetch_picture,
             browser::browser_zoom,
             browser::browser_desktop_sites,
@@ -2121,6 +2159,8 @@ pub fn run() {
             browser::trim_browser_history,
             browser::browser_add_download,
             browser::browser_keep_download,
+            browser::browser_download_kind,
+            browser::browser_temporary_downloads,
             browser::browser_discard_download,
             browser::download_web_book,
             browser::bookmarks,
@@ -2132,6 +2172,8 @@ pub fn run() {
             browser::move_quick_link,
             browser::site_icon,
             browser::rename_bookmark,
+            browser::edit_bookmark,
+            browser::move_bookmark,
             browser::remove_bookmark,
             writing::catalogs,
             writing::save_catalog,
@@ -2166,6 +2208,7 @@ pub fn run() {
             writing::save_writing_draft,
             writing::writing_drafts,
             writing::delete_writing_draft,
+            writing::restore_writing_draft,
             writing::set_writing_cover_page,
             writing::set_writing_chapter_part,
             writing::add_writing_section,
@@ -2282,6 +2325,9 @@ pub fn run() {
             get_collections,
             set_favorite,
             set_pinned,
+            set_audio_type,
+            archive_series_pins,
+            set_archive_series_pin,
             set_want_to_read,
             set_phone_wanted,
             set_rating,
@@ -2291,6 +2337,7 @@ pub fn run() {
             apply_kindle,
             kindle_summary,
             kindle_missing,
+            match_kindle_manually,
             set_kindle_removed,
             get_profile,
             set_avatar,
@@ -2411,25 +2458,30 @@ pub fn run() {
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                let _ = window.emit("tbv://quit-requested", ());
-                let app = window.app_handle().clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_secs(2));
-                    for window in app.webview_windows().values() {
-                        let _ = window.hide();
-                    }
-                    let sends = app.try_state::<Arc<hardcover::Sends>>().map(|s| s.inner().clone());
-                    let ratings = std::thread::spawn(move || {
-                        if let Some(sends) = sends {
-                            sends.finish(Duration::from_secs(5));
+                #[cfg(windows)]
+                windows_quit::request(window);
+                #[cfg(not(windows))]
+                {
+                    let _ = window.emit("tbv://quit-requested", ());
+                    let app = window.app_handle().clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_secs(2));
+                        for window in app.webview_windows().values() {
+                            let _ = window.hide();
                         }
+                        let sends = app.try_state::<Arc<hardcover::Sends>>().map(|s| s.inner().clone());
+                        let ratings = std::thread::spawn(move || {
+                            if let Some(sends) = sends {
+                                sends.finish(Duration::from_secs(5));
+                            }
+                        });
+                        if let Some(worker) = app.try_state::<Arc<sync::SyncWorker>>() {
+                            worker.finish(Duration::from_secs(8));
+                        }
+                        let _ = ratings.join();
+                        app.exit(0);
                     });
-                    if let Some(worker) = app.try_state::<Arc<sync::SyncWorker>>() {
-                        worker.finish(Duration::from_secs(8));
-                    }
-                    let _ = ratings.join();
-                    app.exit(0);
-                });
+                }
             }
         })
         .build(tauri::generate_context!())

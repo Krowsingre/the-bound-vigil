@@ -4,7 +4,7 @@
 
 import { useMemo, useState } from "react";
 import { Icon } from "../components/Icon";
-import { emptySource, FIELD_LABELS, SOURCE_TYPES, STYLES, citationLabel, type CitationStyle, type Source, type SourceType } from "./sources";
+import { emptySource, FIELD_LABELS, SOURCE_TYPES, citationFormats, citationLabel, type CitationStyle, type Source, type SourceType } from "./sources";
 
 const newId = () => `src-${crypto.randomUUID()}`;
 
@@ -16,7 +16,7 @@ const HINTS: Partial<Record<keyof Source, string>> = {
   pages: "e.g. 45-67",
 };
 
-function SourceForm({ source, onSave, onCancel }: { source: Source; onSave: (s: Source) => void; onCancel: () => void }) {
+export function SourceForm({ source, onSave, onCancel }: { source: Source; onSave: (s: Source) => void; onCancel: () => void }) {
   const [draft, setDraft] = useState(source);
   const type = SOURCE_TYPES.find((t) => t.value === draft.type) ?? SOURCE_TYPES[0];
   const set = (change: Partial<Source>) => setDraft((d) => ({ ...d, ...change }));
@@ -105,9 +105,9 @@ export function SourcesDialog({
         ) : (
           <>
             <label className="field">
-              <span>Citation style</span>
+              <span>Citation format</span>
               <select value={style} onChange={(e) => onChange(sources, e.target.value as CitationStyle)}>
-                {STYLES.map((s) => (
+                {citationFormats(style).map((s) => (
                   <option key={s.value} value={s.value}>
                     {s.label} · {s.hint}
                   </option>

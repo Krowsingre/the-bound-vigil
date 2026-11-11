@@ -8,12 +8,13 @@ import type { WritingChapter, WritingProject } from "../api/types";
 import { Icon } from "../components/Icon";
 import { usePublisher } from "../license/Publisher";
 import { BOOK_STYLES, chooseStyle } from "./bookStyles";
-import { bookOrder, copyrightHtml, madeSectionHtml, previewHtml, type ExportSettings } from "./epub";
+import { bookOrder, copyrightHtml, inlineXhtml, madeSectionHtml, previewHtml, type ExportSettings } from "./epub";
 import { imageMime, loadBookFonts } from "./fonts";
 import { EditionFields } from "./EditionFields";
 import { editionName, firstEdition, type EditionInfo } from "./bookEditions";
 import { IsbnGuide } from "./IsbnGuide";
-import { makeCiter, type Citer } from "./sources";
+import { citationFormats, citedIds, emptySource, makeCiter, type CitationStyle, type Citer, type Source } from "./sources";
+import { SourceForm } from "./SourcesDialog";
 import { DEFAULT_RIGHTS, KINDS, readPage, type CopyrightDetails } from "./pages";
 
 const WIDTHS = [
@@ -74,7 +75,7 @@ export function BookPreview({
     const timer = window.setTimeout(async () => {
       const [fonts, citer] = await Promise.all([
         loadBookFonts(settings, chapters).catch(() => ({ font: null, passageFonts: [] })),
-        makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters)).catch(() => null),
+        makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters), settings.customSourceFormat).catch(() => null),
       ]);
       if (!current) return;
       made = URL.createObjectURL(new Blob([previewHtml({ project, chapters, settings, cover, citer, ...fonts })], { type: "text/html" }));
@@ -162,6 +163,38 @@ const field = (label: string, value: string, onChange: (v: string) => void, plac
  * A page Scribe makes (half title, title page, copyright, contents): what it
  * will say, the details it's made from, and a way to write it yourself.
  */
+function BibliographyEntries({ citer, chapters, sources, onEdit }: {
+  citer: Citer | null;
+  chapters: WritingChapter[];
+  sources: Source[];
+  onEdit: (source: Source) => void;
+}) {
+  const cited = new Set(citedIds(chapters));
+  const entries = citer?.bibliography() ?? [];
+  if (!entries.length) return <p className="muted">Sources you cite or add here will appear in the bibliography.</p>;
+  return (
+    <ul className="writing-bibliography">
+      {entries.map(({ sourceId, html }) => {
+        const source = sources.find((entry) => entry.id === sourceId);
+        if (!source) return null;
+        const additional = source.includeInBibliography && !cited.has(source.id);
+        const text = inlineXhtml(html.replace(/^<div[^>]*>|<\/div>$/g, "")).replace(/ href="[^"]*"/g, "");
+        return (
+          <li key={source.id} className={additional ? "is-additional" : undefined}>
+            <div>
+              <span dangerouslySetInnerHTML={{ __html: text }} />
+              {additional && <small>Added here · uncited</small>}
+            </div>
+            <button type="button" className="icon-btn" aria-label={`Edit ${source.title}`} onClick={() => onEdit(source)}>
+              <Icon name="edit" size={16} />
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export function MadePage({
   chapter,
   project,
@@ -173,6 +206,12 @@ export function MadePage({
   onWriteMyself,
   onOpenDetails,
   onOpenSources,
+  onSourcesChange,
+  onFormatChange,
+  canUndoSources,
+  canRedoSources,
+  onUndoSources,
+  onRedoSources,
 }: {
   chapter: WritingChapter;
   project: WritingProject;
@@ -185,19 +224,28 @@ export function MadePage({
   onWriteMyself: (html: string) => void;
   onOpenDetails: () => void;
   onOpenSources: () => void;
+  onSourcesChange: (sources: Source[]) => void;
+  onFormatChange: (style: CitationStyle, customFormat: string) => void;
+  canUndoSources: boolean;
+  canRedoSources: boolean;
+  onUndoSources: () => void;
+  onRedoSources: () => void;
 }) {
   const page = readPage(chapter.page, chapter.role);
   const [title, setTitle] = useState(chapter.title);
   const [copyright, setCopyright] = useState(settings.copyright);
   const [citer, setCiter] = useState<Citer | null>(null);
+  const [editingSource, setEditingSource] = useState<Source | null>(null);
+  const [customFormat, setCustomFormat] = useState(settings.customSourceFormat);
+  useEffect(() => setCustomFormat(settings.customSourceFormat), [settings.customSourceFormat]);
   useEffect(() => {
     if (page.kind !== "sources") return;
     let current = true;
-    void makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters)).then((c) => current && setCiter(c), () => current && setCiter(null));
+    void makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters), settings.customSourceFormat).then((c) => current && setCiter(c), () => current && setCiter(null));
     return () => {
       current = false;
     };
-  }, [page.kind, settings.citationStyle, settings.sources, chapters]);
+  }, [page.kind, settings.citationStyle, settings.customSourceFormat, settings.sources, chapters]);
   useEffect(() => setTitle(chapter.title), [chapter.id, chapter.title]);
   useEffect(() => setCopyright(settings.copyright), [settings.copyright]);
   // Until the writer sets one, a first edition, named as their old Edition box had it.
@@ -210,7 +258,7 @@ export function MadePage({
     onEdition(kept);
   };
   const html =
-    page.kind === "copyright" ? copyrightHtml(project, copyright, new Date(), edition) : madeSectionHtml({ project, chapters, settings, citer }, chapter.id);
+    page.kind === "sources" ? "" : page.kind === "copyright" ? copyrightHtml(project, copyright, new Date(), edition) : madeSectionHtml({ project, chapters, settings, citer }, chapter.id);
   // Links between pages only work in the book itself.
   const shown = html.replace(/ href="[^"]*"/g, "");
   const change = (c: Partial<CopyrightDetails>) => {
@@ -223,7 +271,7 @@ export function MadePage({
     title_page: "Made from the book's title, author and series. Change them in Book details.",
     copyright: "Made from the details below and the book's author. Leave a box empty to leave it out.",
     contents: "Lists the sections shown in the contents, and stays up to date as you add, rename and move them.",
-    sources: "Lists every source you cite, in the book's citation style, and stays up to date as you cite more. Choose the style in Sources.",
+    sources: "Cited sources appear here automatically. You can edit their details or add sources directly to the bibliography.",
   }[page.kind as "half_title" | "title_page" | "copyright" | "contents" | "sources"];
   return (
     <div className="writing-sheet made-page">
@@ -257,7 +305,58 @@ export function MadePage({
           <IsbnGuide />
         </div>
       )}
-      <div className={`made-page-preview made-${page.kind}`} aria-label="What the page will say" dangerouslySetInnerHTML={{ __html: shown }} />
+      {page.kind === "sources" ? (
+        <div className="made-page-preview made-sources" aria-label="Bibliography entries" onKeyDown={(event) => {
+          if (editingSource || !(event.ctrlKey || event.metaKey) || event.altKey || (event.target as HTMLElement).closest("input, textarea, select, [contenteditable=true]")) return;
+          const key = event.key.toLowerCase();
+          if (key !== "z" && key !== "y") return;
+          event.preventDefault();
+          if (key === "y" || event.shiftKey) onRedoSources();
+          else onUndoSources();
+        }}>
+          {editingSource ? (
+            <SourceForm
+              key={editingSource.id}
+              source={editingSource}
+              onCancel={() => setEditingSource(null)}
+              onSave={(source) => {
+                const existing = settings.sources.some((entry) => entry.id === source.id);
+                onSourcesChange(existing ? settings.sources.map((entry) => entry.id === source.id ? source : entry) : [...settings.sources, source]);
+                setEditingSource(null);
+              }}
+            />
+          ) : (
+            <>
+              <div className="settings-actions">
+                <label className="field">
+                  <span>Format</span>
+                  <select value={settings.citationStyle} onChange={(event) => onFormatChange(event.target.value as CitationStyle, settings.customSourceFormat)}>
+                    {citationFormats(settings.citationStyle).map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </label>
+                <button type="button" className="btn btn-quiet" disabled={!canUndoSources} onClick={onUndoSources}><Icon name="undo" size={16} /> Undo</button>
+                <button type="button" className="btn btn-quiet" disabled={!canRedoSources} onClick={onRedoSources}><Icon name="redo" size={16} /> Redo</button>
+              </div>
+              {settings.citationStyle === "custom" && (
+                <div className="settings-actions">
+                  <label className="field">
+                    <span>Custom entry format</span>
+                    <input value={customFormat} maxLength={500} placeholder="{author}. {title}. {date}" onChange={(event) => setCustomFormat(event.target.value)} />
+                    <small>Fields: {"{author}, {title}, {publication}, {publisher}, {date}, {url}, {doi}"}. Leave blank for the default numbered layout.</small>
+                  </label>
+                  <button type="button" className="btn btn-quiet" disabled={customFormat === settings.customSourceFormat} onClick={() => onFormatChange("custom", customFormat)}>Apply format</button>
+                </div>
+              )}
+              <BibliographyEntries citer={citer} chapters={chapters} sources={settings.sources} onEdit={setEditingSource} />
+              <button type="button" className="btn btn-quiet" onClick={() => setEditingSource({ ...emptySource(crypto.randomUUID()), includeInBibliography: true })}>
+                <Icon name="plus" size={16} /> Add a source
+              </button>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className={`made-page-preview made-${page.kind}`} aria-label="What the page will say" dangerouslySetInnerHTML={{ __html: shown }} />
+      )}
       <div className="settings-actions">
         {page.kind === "title_page" || page.kind === "half_title" ? (
           <button type="button" className="btn btn-quiet" onClick={onOpenDetails}>
@@ -269,9 +368,11 @@ export function MadePage({
             <Icon name="bookClosed" size={16} /> Sources and citation style
           </button>
         )}
-        <button type="button" className="btn btn-quiet" onClick={() => onWriteMyself(html)}>
-          <Icon name="edit" size={16} /> Write it myself
-        </button>
+        {page.kind !== "sources" && (
+          <button type="button" className="btn btn-quiet" onClick={() => onWriteMyself(html)}>
+            <Icon name="edit" size={16} /> Write it myself
+          </button>
+        )}
       </div>
     </div>
   );

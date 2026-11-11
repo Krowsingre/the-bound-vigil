@@ -5,35 +5,28 @@ import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { authorLine } from "../lib/format";
 
-/** Writing a personal note, or a note about a whole book. */
+/** Writing a note about a whole book. */
 export function NewNoteDialog({
-  kind,
   book: initialBook = null,
   onSaved,
   onCancel,
 }: {
-  kind: "personal" | "book_note";
   /** The book, when already known. */
   book?: Pick<BookPreview, "id" | "title" | "authors" | "coverPath"> | null;
   onSaved: (note: NoteItem) => void;
   onCancel: () => void;
 }) {
   const [book, setBook] = useState(initialBook);
-  const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
-    if (!text.trim() && !(kind === "personal" && title.trim())) return setError("Write something first.");
-    if (kind === "book_note" && !book) return setError("Pick the book this note is about.");
+    if (!text.trim()) return setError("Write something first.");
+    if (!book) return setError("Pick the book this note is about.");
     setBusy(true);
     try {
-      onSaved(
-        kind === "personal"
-          ? await api.savePersonalNote(null, title.trim() || null, text)
-          : await api.saveBookNote(book!.id, null, text),
-      );
+      onSaved(await api.saveBookNote(book.id, null, text));
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -45,7 +38,7 @@ export function NewNoteDialog({
       <form
         className="dialog new-note-dialog"
         role="dialog"
-        aria-label={kind === "personal" ? "New personal note" : "New book note"}
+        aria-label="New book note"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
@@ -55,10 +48,8 @@ export function NewNoteDialog({
           if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void save();
         }}
       >
-        <h2>{kind === "personal" ? "New personal note" : "New note about a book"}</h2>
-        {kind === "personal" ? (
-          <p className="muted dialog-lede">A note of your own, not tied to any book: a reading plan, an idea, a list.</p>
-        ) : book ? (
+        <h2>New note about a book</h2>
+        {book ? (
           <div className="picked-book">
             <BookCover book={book} size="s" />
             <span>
@@ -74,16 +65,10 @@ export function NewNoteDialog({
         ) : (
           <BookPicker onPick={setBook} />
         )}
-        {kind === "personal" && (
+        {book && (
           <label className="field">
-            <span>Title</span>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Optional" maxLength={120} autoFocus />
-          </label>
-        )}
-        {(kind === "personal" || book) && (
-          <label className="field">
-            <span>{kind === "personal" ? "Note" : "Your thoughts on the whole book"}</span>
-            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} autoFocus={kind === "book_note"} placeholder="Write freely…" />
+            <span>Your thoughts on the whole book</span>
+            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} autoFocus placeholder="Write freely…" />
           </label>
         )}
         {error && (

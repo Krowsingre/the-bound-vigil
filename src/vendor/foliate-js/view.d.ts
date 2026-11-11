@@ -51,6 +51,8 @@ export interface Paginator extends HTMLElement {
   nextSection?(): Promise<void>;
   /** Fixed-layout pages only: scrolls a little, for the arrow keys. */
   scrollStep?(direction: number): void;
+  scrollByPixels?(distance: number): void;
+  reportPosition?(): void;
   /** Shows a section, at a fraction of the way through it or at a range. */
   goTo(target: { index: number; anchor?: number | ((doc: Document) => Range) }): Promise<void>;
 }

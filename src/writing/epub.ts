@@ -9,8 +9,8 @@ import { blurbHtml, hasFormatting } from "./blurb";
 import { readCanva, type CanvaDesigns } from "./canvaDesigns";
 import { zipSync, strToU8 } from "fflate";
 import type { WritingChapter, WritingProject } from "../api/types";
-import { DEFAULT_COPYRIGHT, DEFAULT_RIGHTS, firstLine, isMade, isPoem, KINDS, numberInWords, readPage, writePage, type CopyrightDetails, type PageKind, type PageSettings } from "./pages";
-import { readSources, readStyle, type CitationStyle, type Cited, type Citer, type Source } from "./sources";
+import { DEFAULT_COPYRIGHT, DEFAULT_RIGHTS, firstLine, isMade, isPoem, KINDS, numberInWords, readPage, type CopyrightDetails, type PageKind, type PageSettings } from "./pages";
+import { isNumberedStyle, readSources, readStyle, type CitationStyle, type Cited, type Citer, type Source } from "./sources";
 import { styleById, styleCss } from "./bookStyles";
 import { DEFAULT_PRINT, readPrint, type PrintSettings } from "./printSettings";
 import { readStoreBooks, retarget, type Store, type StoreBook } from "./editions";
@@ -58,6 +58,7 @@ export interface ExportSettings {
   /** Research sources, cited in the text. */
   sources: Source[];
   citationStyle: CitationStyle;
+  customSourceFormat: string;
   manuscript: ManuscriptSettings;
   /** A matched set of headings, ornaments and fonts (bookStyles.ts), or null for the settings alone. */
   bookStyle: string | null;
@@ -92,6 +93,7 @@ export const DEFAULT_EXPORT: ExportSettings = {
   copyright: DEFAULT_COPYRIGHT,
   sources: [],
   citationStyle: "chicago-notes",
+  customSourceFormat: "",
   manuscript: DEFAULT_MANUSCRIPT,
   bookStyle: null,
   print: DEFAULT_PRINT,
@@ -137,6 +139,7 @@ export function readExport(json: string | null | undefined): ExportSettings {
       })(),
       sources: readSources(saved.sources),
       citationStyle: readStyle(saved.citationStyle),
+      customSourceFormat: typeof saved.customSourceFormat === "string" ? saved.customSourceFormat.slice(0, 500) : "",
       manuscript: (() => {
         const m = (saved.manuscript && typeof saved.manuscript === "object" ? saved.manuscript : {}) as Partial<ManuscriptSettings>;
         const d = DEFAULT_MANUSCRIPT;
@@ -442,6 +445,7 @@ export function chapterXhtml(
   sceneBreak: SceneBreak,
   idPrefix: string,
   cite?: (id: string, locator: string) => Cited,
+  referencesFile?: string,
 ): { body: string; headings: Heading[]; pictures: Picture[]; notes: string } {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
   const headings: Heading[] = [];
@@ -492,7 +496,9 @@ export function chapterXhtml(
         const mark = `<sup><a epub:type="noteref" href="#${note}" id="${ref}">${n}</a></sup>`;
         out.push(inBlock ? mark : `<p>${mark}</p>`);
       } else if (cited.text) {
-        const words = inlineXhtml(cited.text);
+        const text = inlineXhtml(cited.text);
+        const label = cited.reference && referencesFile ? `<a href="${referencesFile}#tbv-reference-${cited.reference}">${text}</a>` : text;
+        const words = label + (cited.locator ? `, p. ${escapeXml(cited.locator)}` : "");
         out.push(inBlock ? words : `<p>${words}</p>`);
       }
     } else if (tag === "sup" && el.hasAttribute("data-footnote")) {
@@ -548,7 +554,7 @@ export function chapterXhtml(
       if (!inBlock) out.push("</p>");
     } else if (BLOCK[tag]) {
       const t = BLOCK[tag];
-      const empty = t === "p" && !(el.textContent ?? "").trim() && !el.querySelector("br,img");
+      const empty = t === "p" && !(el.textContent ?? "").trim() && !el.querySelector("br,img,cite[data-source]");
       if (empty) {
         out.push(`<p class="blank"> </p>`);
         return;
@@ -682,13 +688,8 @@ export interface Built {
 }
 
 /** Every file of the EPUB, before zipping (tests read these). */
-export function epubFiles({ project, chapters: own, settings, cover, font, passageFonts: passage = [], citer, now = new Date(), edition, sounds }: EpubInput): Built {
+export function epubFiles({ project, chapters, settings, cover, font, passageFonts: passage = [], citer, now = new Date(), edition, sounds }: EpubInput): Built {
   citer?.restart();
-  // A book that cites sources gets a Sources page at the back, unless it has one already.
-  const chapters =
-    citer && !own.some((c) => readPage(c.page, c.role).kind === "sources")
-      ? [...own, { ...own[0], id: "sources", title: "", body: "", role: "back" as const, part: null, page: writePage({ ...readPage("{}"), kind: "sources", inContents: true, showTitle: true }), words: 0 }]
-      : own;
   const fontFiles = carried(font, passage).flatMap((f) => f.files);
   const lang = project.language?.trim() || "en";
   const title = project.title.trim() || "Untitled";
@@ -720,7 +721,7 @@ export function epubFiles({ project, chapters: own, settings, cover, font, passa
   let partCount = 0;
   let inPart: string | null = null;
   let file = "";
-  const parts = ordered.map((c, i) => {
+  const layout = ordered.map((c, i) => {
     const n = i + 1;
     const role = c.role ?? "chapter";
     const settingsOf: PageSettings = pageOf[i];
@@ -731,9 +732,6 @@ export function epubFiles({ project, chapters: own, settings, cover, font, passa
     } else if (!c.part && inPart) inPart = null;
     const made = isMade(settingsOf);
     const poem = isPoem(settingsOf);
-    const { body, headings, pictures, notes } = made
-      ? { body: "", headings: [] as Heading[], pictures: [] as Picture[], notes: "" }
-      : chapterXhtml(poem ? poemHtml(c.body) : c.body, settings.sceneBreak, `c${n}`, citer ? (id, locator) => citer.cite(id, locator) : undefined);
     // A poem's sound plays inside the book where readers can play it; elsewhere it's a link.
     const sound = poem && !made ? settingsOf.sound : null;
     const playable = sound?.file && PLAYS_SOUND(edition) ? sounds?.get(sound.file) : undefined;
@@ -763,10 +761,7 @@ export function epubFiles({ project, chapters: own, settings, cover, font, passa
       n,
       heading,
       label,
-      body: heard ? `${body}\n${heard}` : body,
-      notes,
-      headings,
-      pictures,
+      heard,
       role,
       kind: settingsOf.kind,
       centred: poem && settingsOf.centred,
@@ -780,6 +775,16 @@ export function epubFiles({ project, chapters: own, settings, cover, font, passa
       id: c.id,
     };
   });
+
+  const references = layout.find((p) => p.kind === "sources" && p.made);
+  const referencesFile = citer && isNumberedStyle(citer.style) ? references?.file : undefined;
+  const parts = layout.map(({ heard, ...part }, i) => {
+    const c = ordered[i];
+    const { body, ...content } = part.made
+      ? { body: "", headings: [] as Heading[], pictures: [] as Picture[], notes: "" }
+      : chapterXhtml(isPoem(pageOf[i]) ? poemHtml(c.body) : c.body, settings.sceneBreak, `c${part.n}`, citer?.cite, referencesFile);
+    return { ...part, ...content, body: heard ? `${body}\n${heard}` : body };
+  }).filter((p) => !referencesFile || p.kind !== "sources" || !p.made || p.n === references?.n);
 
   // The table of contents: chapters, and their headings as deep as asked.
   type Point = { label: string; href: string; children: Point[] };
@@ -822,13 +827,13 @@ export function epubFiles({ project, chapters: own, settings, cover, font, passa
           : kind === "contents"
             ? navList(points, "contents")
             : kind === "sources"
-              ? (citer?.bibliography() ?? []).map((entry) => `<p class="source">${inlineXhtml(entry.replace(/^<div[^>]*>|<\/div>$/g, ""))}</p>`).join("\n") ||
+              ? (citer?.bibliography() ?? []).map((entry, i) => `<p class="source"${referencesFile ? ` id="tbv-reference-${i + 1}"` : ""}>${inlineXhtml(entry.html.replace(/^<div[^>]*>|<\/div>$/g, ""))}</p>`).join("\n") ||
                 `<p class="source">Sources you cite will be listed here.</p>`
               : "";
   const sectionHtml = (p: (typeof parts)[number]) => {
     const type = { chapter: "chapter", front: "frontmatter", back: "backmatter", part: "part" }[p.role];
     const semantic = SEMANTIC[p.kind] ?? type;
-    const classes = [type, p.kind === "chapter" || p.kind === "custom" ? "" : `page-${p.kind.replace(/_/g, "-")}`, p.first ? "" : "follows", p.kind === "title_page" ? "titlepage" : "", p.centred ? "poem-centred" : ""].filter(Boolean).join(" ");
+    const classes = [type, p.kind === "chapter" || p.kind === "custom" ? "" : `page-${p.kind.replace(/_/g, "-")}`, p.first ? "" : "follows", p.kind === "title_page" ? "titlepage" : "", p.centred ? "poem-centred" : "", p.part && p.role !== "part" ? "in-part" : ""].filter(Boolean).join(" ");
     const top = `${p.label ? `<p class="chapter-label">${escapeXml(p.label)}</p>\n` : ""}${p.showTitle ? `<h1>${escapeXml(p.heading)}</h1>\n` : ""}`;
     return `<section class="${classes}" epub:type="${semantic}" id="c${p.n}">\n${top}${p.made ? madeBody(p.kind) : p.body}\n${p.notes}</section>`;
   };

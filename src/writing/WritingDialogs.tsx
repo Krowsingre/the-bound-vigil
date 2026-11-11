@@ -1,3 +1,4 @@
+import { RememberedDetails } from "../components/RememberedDetails";
 import { FormattedText } from "./FormattedText";
 import { useEffect, useRef, useState } from "react";
 import { api, isApp, isWeb, isWindows } from "../api";
@@ -12,7 +13,7 @@ import { usePublisher } from "../license/Publisher";
 import { useToast } from "../components/Toast";
 import { bookOrder, buildEpub, epubFileName, exportProblems, readExport, type EpubInput, type ExportSettings } from "./epub";
 import { imageMime, loadBookFonts } from "./fonts";
-import { makeCiter } from "./sources";
+import { citationProblems, makeCiter } from "./sources";
 import { AuthorLabel } from "./AuthorInfo";
 import { CoverMaker } from "./CoverMaker";
 import { coverSeries, SERIES_NUMBERS, SERIES_WORDS, titlePageSeries, type SeriesStyle } from "./seriesLabel";
@@ -26,9 +27,11 @@ import { readPage, startingTitle, TEMPLATES, templateSections, type Template } f
 
 /** Everything an export is made from: the book, its cover, its sources and the fonts chosen. */
 export async function bookInput(project: WritingProject, chapters: WritingChapter[], settings: ExportSettings, withSounds = false): Promise<EpubInput> {
+  const problems = citationProblems(settings.sources, chapters);
+  if (problems.length) throw new Error(problems.join("\n"));
   const coverBytes = project.cover ? await api.writingCover(project.id) : new Uint8Array();
   const mime = coverBytes.length ? imageMime(coverBytes) : null;
-  const citer = await makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters));
+  const citer = await makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters), settings.customSourceFormat);
   return {
     project,
     chapters,
@@ -96,7 +99,7 @@ export function NewBookDialog({
         if (s.role === "part" && first) await api.setWritingChapterPart(first.id, added.id);
       }
       // Remembered for the book's card ("Novel · 12 chapters").
-      await api.setWritingExport(made.project.id, JSON.stringify({ ...readExport(made.project.export), kind: template }));
+      await api.setWritingExport(made.project.id, JSON.stringify({ ...readExport(made.project.export), kind: template, citationStyle: "custom" }));
       onCreated(made.project.id);
     } catch (e) {
       setError(String(e));
@@ -462,7 +465,7 @@ export function ExportDialog({
       // Remembered for this time only.
     }
   };
-  const problems = exportProblems(chapters);
+  const problems = [...exportProblems(chapters), ...citationProblems(settings.sources, chapters)];
   const hasParts = chapters.some((c) => c.role === "part");
   const lede = FORMATS.find((f) => f.value === format)!.lede;
 
@@ -583,7 +586,7 @@ export function ExportDialog({
         )}
 
         {styled && (
-          <details className="writing-export-more" open={!settings.bookStyle}>
+          <RememberedDetails disclosure="writing.exportOptions" className="writing-export-more">
             <summary>Fonts, headings and paragraphs</summary>
             {select("Font", settings.font, FONTS, (font) => set({ font }), true)}
             {select("Scene breaks", settings.sceneBreak, BREAKS, (sceneBreak) => set({ sceneBreak }))}
@@ -619,7 +622,7 @@ export function ExportDialog({
             </div>
             {check("A large first letter at the start of each chapter", settings.dropCap, (dropCap) => set({ dropCap }))}
             {check("The first line of each chapter in small capitals", settings.smallCaps, (smallCaps) => set({ smallCaps }))}
-          </details>
+          </RememberedDetails>
         )}
 
         {format === "pdf" && (
@@ -741,6 +744,7 @@ export function DraftsDialog({
   onFlush,
   onOpen,
   onImport,
+  onRestore,
   onClose,
 }: {
   project: WritingProject;
@@ -749,6 +753,7 @@ export function DraftsDialog({
   onOpen: (bookId: string) => void;
   /** Brings a file in as another draft of this book. */
   onImport?: () => void;
+  onRestore: (draft: WritingDraft) => void;
   onClose: () => void;
 }) {
   const [drafts, setDrafts] = useState<WritingDraft[] | null>(null);
@@ -821,6 +826,7 @@ export function DraftsDialog({
                   trigger={<Icon name="more" size={16} />}
                   items={[
                     { label: "Open", icon: "bookOpen", onSelect: () => onOpen(d.bookId) },
+                    { label: "Un-draft…", icon: "edit", onSelect: () => onRestore(d) },
                     "divider",
                     { label: "Delete draft…", icon: "trash", danger: true, onSelect: () => setDeleting(d) },
                   ]}

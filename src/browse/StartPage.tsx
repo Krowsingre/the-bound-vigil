@@ -1,3 +1,4 @@
+import { useRememberedDisclosure } from "../components/RememberedDetails";
 // Discover's start page, drawn by TBV (so it opens at once, and offline):
 // a search box that hands over to the address box, tiles for Bookmarks,
 // History, Downloads and the Reading List, Quick Links on gallery paintings,
@@ -99,7 +100,7 @@ export function StartPage({
   const [editing, setEditing] = useState(false);
   const [recent, setRecent] = useState(recentSites);
   const [clearing, setClearing] = useState(false);
-  const [showClosed, setShowClosed] = useState(false);
+  const [showClosed, setShowClosed] = useRememberedDisclosure("discover.closedTabs");
   const [prefs, setPrefs] = useState(readBrowserPrefs);
   useEffect(() => onBrowserPrefs(() => setPrefs(readBrowserPrefs())), []);
   const showRecent = prefs.showRecent && prefs.historyOn;

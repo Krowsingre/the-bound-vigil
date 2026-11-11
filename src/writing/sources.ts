@@ -8,6 +8,7 @@
 // with the book.
 
 import type { WritingChapter } from "../api/types";
+import { isMade, readPage } from "./pages";
 
 export type SourceType = "book" | "chapter" | "article-journal" | "article-magazine" | "article-newspaper" | "webpage" | "report" | "thesis" | "legal_case";
 
@@ -32,11 +33,15 @@ export interface Source {
   doi: string;
   /** When a web page was read, as a date. */
   accessed: string;
+  /** Added directly to the bibliography, so it may appear without a citation. */
+  includeInBibliography?: boolean;
 }
 
-export type CitationStyle = "apa" | "mla" | "chicago-notes" | "chicago-author-date" | "harvard" | "ieee" | "bluebook" | "cse" | "ap" | "ama";
+export type CitationStyle = "custom" | "numbered" | "apa" | "mla" | "chicago-notes" | "chicago-author-date" | "harvard" | "ieee" | "bluebook" | "cse" | "ap" | "ama";
 
 export const STYLES: { value: CitationStyle; label: string; hint: string; heading: string }[] = [
+  { value: "custom", label: "Custom", hint: "Numbered citations with your own bibliography format", heading: "Bibliography" },
+  { value: "numbered", label: "Numbered", hint: "Numbered in order of first citation", heading: "References" },
   { value: "apa", label: "APA", hint: "7th edition · psychology, education, social sciences", heading: "References" },
   { value: "mla", label: "MLA", hint: "9th edition · literature and the humanities", heading: "Works Cited" },
   { value: "chicago-notes", label: "Chicago (notes)", hint: "17th edition · footnotes and a bibliography", heading: "Bibliography" },
@@ -49,7 +54,7 @@ export const STYLES: { value: CitationStyle; label: string; hint: string; headin
   { value: "ap", label: "AP", hint: "News writing: sources named in the text, a plain list at the end", heading: "Sources" },
 ];
 
-const STYLE_FILES: Record<Exclude<CitationStyle, "ap">, () => Promise<{ default: string }>> = {
+const STYLE_FILES: Record<Exclude<CitationStyle, "ap" | "numbered" | "custom">, () => Promise<{ default: string }>> = {
   apa: () => import("./csl/apa.csl?raw"),
   mla: () => import("./csl/modern-language-association.csl?raw"),
   "chicago-notes": () => import("./csl/chicago-note-bibliography.csl?raw"),
@@ -61,7 +66,9 @@ const STYLE_FILES: Record<Exclude<CitationStyle, "ap">, () => Promise<{ default:
   ama: () => import("./csl/american-medical-association.csl?raw"),
 };
 
-export const SOURCE_TYPES: { value: SourceType; label: string; container?: string; fields: (keyof Source)[] }[] = [
+type SourceField = Exclude<keyof Source, "includeInBibliography">;
+
+export const SOURCE_TYPES: { value: SourceType; label: string; container?: string; fields: SourceField[] }[] = [
   { value: "book", label: "Book", fields: ["authors", "editors", "title", "edition", "publisher", "place", "date", "url", "doi"] },
   { value: "chapter", label: "Chapter in a book", container: "Book title", fields: ["authors", "title", "editors", "container", "edition", "publisher", "place", "date", "pages", "doi"] },
   { value: "article-journal", label: "Journal article", container: "Journal", fields: ["authors", "title", "container", "volume", "issue", "pages", "date", "doi", "url"] },
@@ -73,7 +80,7 @@ export const SOURCE_TYPES: { value: SourceType; label: string; container?: strin
   { value: "legal_case", label: "Court case", container: "Court", fields: ["title", "container", "volume", "pages", "date", "url"] },
 ];
 
-export const FIELD_LABELS: Record<keyof Source, string> = {
+export const FIELD_LABELS: Record<SourceField, string> = {
   id: "",
   type: "Kind",
   title: "Title",
@@ -92,7 +99,7 @@ export const FIELD_LABELS: Record<keyof Source, string> = {
   accessed: "Read on",
 };
 
-const TEXT_FIELDS: (keyof Source)[] = ["title", "authors", "editors", "container", "publisher", "place", "date", "volume", "issue", "pages", "edition", "url", "doi", "accessed"];
+const TEXT_FIELDS: SourceField[] = ["title", "authors", "editors", "container", "publisher", "place", "date", "volume", "issue", "pages", "edition", "url", "doi", "accessed"];
 
 export function emptySource(id: string, type: SourceType = "book"): Source {
   return { id, type, title: "", authors: "", editors: "", container: "", publisher: "", place: "", date: "", volume: "", issue: "", pages: "", edition: "", url: "", doi: "", accessed: "" };
@@ -108,9 +115,14 @@ export function readSources(value: unknown): Source[] {
     .map((s) => {
       const out = emptySource(String(s.id).slice(0, 80), types.includes(s.type as SourceType) ? (s.type as SourceType) : "book");
       for (const key of TEXT_FIELDS) if (typeof s[key] === "string") (out[key] as string) = (s[key] as string).slice(0, 2000);
+      if (s.includeInBibliography === true) out.includeInBibliography = true;
       return out;
     });
 }
+
+export const isNumberedStyle = (style: CitationStyle) => style === "numbered" || style === "custom";
+
+export const citationFormats = (current: CitationStyle) => STYLES.filter(({ value }) => value === current || value === "mla" || value === "apa" || value === "custom");
 
 export const readStyle = (value: unknown): CitationStyle => (STYLES.some((s) => s.value === value) ? (value as CitationStyle) : "chicago-notes");
 
@@ -172,15 +184,15 @@ export function citationLabel(s: Source | undefined, locator: string): string {
 /** Every citation in the chapters given (in the book's order), in the order they appear. */
 export function citations(chapters: WritingChapter[]): { id: string; locator: string }[] {
   const found: { id: string; locator: string }[] = [];
-  for (const c of chapters)
-    for (const m of c.body.matchAll(/<cite\b[^>]*>/g)) {
-      const id = /data-source="([^"]+)"/.exec(m[0])?.[1];
-      if (id) found.push({ id, locator: unescapeAttr(/data-locator="([^"]*)"/.exec(m[0])?.[1] ?? "") });
+  for (const c of chapters) {
+    if (isMade(readPage(c.page, c.role)) || !/<cite\b/i.test(c.body)) continue;
+    const doc = new DOMParser().parseFromString(c.body, "text/html");
+    for (const cite of doc.body.querySelectorAll("cite[data-source]")) {
+      found.push({ id: cite.getAttribute("data-source")!, locator: cite.getAttribute("data-locator") ?? "" });
     }
+  }
   return found;
 }
-
-const unescapeAttr = (v: string) => v.replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 
 /** Each source cited in the book, in the order the citations first appear. */
 export function citedIds(chapters: WritingChapter[]): string[] {
@@ -191,6 +203,8 @@ export function citedIds(chapters: WritingChapter[]): string[] {
 export interface Cited {
   text?: string;
   note?: string;
+  reference?: number;
+  locator?: string;
 }
 
 /** Writes citations and the Sources list for one book, in one style. */
@@ -202,15 +216,22 @@ export interface Citer {
   /** Back to the book's first citation, for writing it again. */
   restart(): void;
   /** The list for the Sources page, one HTML entry per source. */
-  bibliography(): string[];
+  bibliography(): { sourceId: string; html: string }[];
 }
 
 /** The engine set up for this book, loaded only when a book has citations. */
-export async function makeCiter(style: CitationStyle, sources: Source[], chapters: WritingChapter[]): Promise<Citer | null> {
-  const ids = citedIds(chapters).filter((id) => sources.some((s) => s.id === id));
+export async function makeCiter(style: CitationStyle, sources: Source[], chapters: WritingChapter[], customFormat = ""): Promise<Citer | null> {
+  const byId = new Map(sources.map((s) => [s.id, s]));
+  const cited = citedIds(chapters).filter((id) => byId.has(id));
+  const hasBibliography = chapters.some((chapter) => {
+    const page = readPage(chapter.page, chapter.role);
+    return page.kind === "sources" && isMade(page);
+  });
+  const additional = hasBibliography ? sources.filter((s) => s.includeInBibliography && !cited.includes(s.id)).map((s) => s.id) : [];
+  const ids = [...cited, ...additional];
   if (!ids.length) return null;
   const heading = STYLES.find((s) => s.value === style)!.heading;
-  const byId = new Map(sources.map((s) => [s.id, s]));
+  if (style === "numbered" || style === "custom") return numberedCiter(ids, byId, heading, style, customFormat);
   if (style === "ap") return apCiter(ids, byId, heading);
   const [{ default: CSL }, { default: xml }, { default: locale }] = await Promise.all([import("citeproc"), STYLE_FILES[style](), import("./csl/locales-en-US.xml?raw")]);
   const items = Object.fromEntries(ids.map((id) => [id, toCsl(byId.get(id)!)]));
@@ -231,6 +252,7 @@ export async function makeCiter(style: CitationStyle, sources: Source[], chapter
     for (const [, html, citationId] of changed) written.set(citationId, html);
     order.push(citation.citationID!);
   });
+  if (additional.length) engine.updateUncitedItems(additional);
   let next = 0;
   return {
     style,
@@ -247,12 +269,62 @@ export async function makeCiter(style: CitationStyle, sources: Source[], chapter
     },
     bibliography() {
       const made = engine.makeBibliography();
-      return made ? made[1].map((entry) => entry.trim()) : [];
+      if (made) return made[1].map((entry, index) => ({ sourceId: made[0].entry_ids[index][0], html: entry.trim() }));
+      // Some note styles have no bibliography format. An explicitly added page still lists its sources.
+      return hasBibliography ? apCiter(ids, byId, heading).bibliography() : [];
     },
   };
 }
 
 const escape = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+export function citationProblems(sources: Source[], chapters: WritingChapter[]): string[] {
+  const ids = new Set<string>();
+  const problems = new Set<string>();
+  for (const source of sources) {
+    if (!source.id.trim() || ids.has(source.id)) problems.add("Sources contain a missing or duplicate internal ID.");
+    ids.add(source.id);
+  }
+  for (const chapter of chapters) {
+    if (citedIds([chapter]).some((id) => !ids.has(id))) {
+      problems.add(`Restore or replace the missing source cited in “${chapter.title.trim() || "Untitled"}”.`);
+    }
+  }
+  return [...problems];
+}
+
+function numberedCiter(ids: string[], byId: Map<string, Source>, heading: string, style: "numbered" | "custom", customFormat: string): Citer {
+  const numbers = new Map(ids.map((id, index) => [id, index + 1]));
+  return {
+    style,
+    heading,
+    cite(id, locator) {
+      const reference = numbers.get(id);
+      return reference ? { text: `[${reference}]`, reference, locator: locator.trim() } : {};
+    },
+    restart() {},
+    bibliography() {
+      return ids.map((id, index) => {
+        const source = byId.get(id)!;
+        const details = [source.authors.trim().replace(/\s*\n\s*/g, "; "), source.title, source.container, source.publisher, source.date]
+          .map((value) => value.trim()).filter(Boolean);
+        const links = [source.url.trim(), source.doi.trim()].filter(Boolean);
+        if (links[1] && links[1] === links[0]) links.pop();
+        const locatorHtml = (value: string) => {
+          const target = /^10\.\d+\//.test(value) ? `https://doi.org/${value}` : value;
+          return /^https?:\/\//i.test(target)
+            ? `<a href="${escape(target).replace(/"/g, "&quot;")}">${escape(value)}</a>`
+            : escape(value);
+        };
+        const values: Record<string, string> = { author: escape(source.authors.trim().replace(/\s*\n\s*/g, ", ")), title: escape(source.title), publication: escape(source.container || source.publisher), publisher: escape(source.publisher), date: escape(source.date), url: locatorHtml(source.url.trim()), doi: locatorHtml(source.doi.trim()) };
+        const formatted = style === "custom" && customFormat.trim()
+          ? escape(customFormat.trim()).replace(/\{([a-z]+)\}/g, (token, field: string) => Object.hasOwn(values, field) ? values[field] : token)
+          : [details.map(escape).join(". "), ...links.map(locatorHtml)].filter(Boolean).join(" ");
+        return { sourceId: id, html: `[${index + 1}] ${formatted}` };
+      });
+    },
+  };
+}
 
 /** AP style: the source named in the text, and a plain list. */
 function apCiter(ids: string[], byId: Map<string, Source>, heading: string): Citer {
@@ -277,7 +349,7 @@ function apCiter(ids: string[], byId: Map<string, Source>, heading: string): Cit
             .map((p) => ("family" in p ? `${p.given} ${p.family}`.trim() : p.literal))
             .join(", ");
           const parts = [escape(who), `<i>${escape(s.title.trim() || "Untitled")}</i>`, ...[s.container, s.publisher, s.date].map((p) => escape(p.trim()))].filter(Boolean);
-          return `<div class="csl-entry">${parts.join(". ")}.${s.url ? ` ${escape(s.url)}` : ""}</div>`;
+          return { sourceId: s.id, html: `<div class="csl-entry">${parts.join(". ")}.${s.url ? ` ${escape(s.url)}` : ""}</div>` };
         });
     },
   };

@@ -4,14 +4,14 @@
 
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { isApp } from "../api";
 import type { WritingChapter } from "../api/types";
 import { Icon, type IconName } from "../components/Icon";
 import { onBeforeQuit } from "../lib/beforeQuit";
 import { countWords } from "./records";
 import { poemWarnings } from "./pages";
-import { citationLabel, type CitationStyle, type Source } from "./sources";
+import { citationLabel, citedIds, isNumberedStyle, type CitationStyle, type Source } from "./sources";
 import { SourcesDialog } from "./SourcesDialog";
 import { CanvaPictureDialog, useCanvaStatus } from "./CanvaLink";
 import { canvaHere } from "../settings/CanvaSection";
@@ -400,6 +400,7 @@ function PictureLook({ editor, look }: { editor: Editor; look: { caption: string
 
 export function ChapterEditor({
   chapter,
+  citationChapters,
   onSave,
   onSaveState,
   flushRef,
@@ -410,6 +411,7 @@ export function ChapterEditor({
   onSources,
 }: {
   chapter: WritingChapter;
+  citationChapters?: WritingChapter[];
   /** A poem or haiku: lines kept as written, set from the left or centred. */
   poem?: "left" | "centred" | null;
   /** The book's research sources, for citing; without them there's no Cite tool. */
@@ -466,6 +468,17 @@ export function ChapterEditor({
     timer.current = setTimeout(() => void flush(), SAVE_AFTER_MS);
   };
 
+  const numbering = useMemo(() => {
+    if (!isNumberedStyle(citationStyle)) return null;
+    const ordered = citationChapters ?? [];
+    const index = ordered.findIndex((c) => c.id === chapter.id);
+    const known = new Set(sources?.map((source) => source.id));
+    const previous = citedIds(index < 0 ? [] : ordered.slice(0, index)).filter((id) => known.has(id));
+    return { previous, known };
+  }, [chapter.id, citationChapters, citationStyle, sources]);
+  const numberingRef = useRef(numbering);
+  numberingRef.current = numbering;
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -482,7 +495,7 @@ export function ChapterEditor({
       Subscript,
       TextLookMark,
       BlockLookExtension,
-      Citation,
+      Citation.configure({ numbering: () => numberingRef.current }),
       ...(poem ? [PoemLines] : []),
     ],
     content: chapter.body || "<p></p>",
@@ -493,6 +506,9 @@ export function ChapterEditor({
       if (poem) setWarnings(poemWarnings(body));
     },
   });
+  useEffect(() => {
+    if (editor) editor.view.dispatch(editor.state.tr);
+  }, [editor, numbering]);
   if (insertRef) insertRef.current = editor ? (html) => void editor.chain().focus().insertContent(html).run() : null;
 
   // Leaving the chapter saves what's waiting. Quitting the app waits for it;

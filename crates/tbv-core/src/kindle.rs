@@ -94,6 +94,7 @@ pub struct KindlePurchase {
     pub cover_url: String,
     /// Taken off the list by hand.
     pub removed: bool,
+    pub book_ids: Vec<BookId>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -225,8 +226,26 @@ impl Matcher {
 }
 
 /// A purchase that is on the "Kindle, not in library" list (as `k`).
-const MISSING: &str = "k.borrowed = 0 AND NOT (k.match_state IN ('auto', 'confirmed')
-     AND EXISTS (SELECT 1 FROM books b WHERE b.id = k.book_id AND b.deleted_at IS NULL))";
+const BOOK_IDS: &str = "CASE WHEN json_valid(k.matched_books) THEN
+    CASE WHEN json_extract(k.matched_books, '$[0]') = k.book_id THEN k.matched_books ELSE json_array(k.book_id) END
+    ELSE json_array(k.book_id) END";
+/// The Archive book a matched id stands for (as `b`): itself, or the kept
+/// book when it's a duplicate copy that was folded into another. Scribe
+/// drafts (`same_as` = 'draft:…') stand for nothing.
+const KEPT_BOOK: &str = "JOIN books c ON c.id = j.value AND c.deleted_at IS NULL
+    JOIN books b ON b.id = COALESCE(c.same_as, c.id) AND b.deleted_at IS NULL AND b.same_as IS NULL";
+fn in_library_clause() -> String {
+    format!("k.book_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM json_each({BOOK_IDS}) j
+        WHERE NOT EXISTS (
+            SELECT 1 FROM books c JOIN books b ON b.id = COALESCE(c.same_as, c.id) AND b.deleted_at IS NULL AND b.same_as IS NULL
+            WHERE c.id = j.value AND c.deleted_at IS NULL
+        )
+    )")
+}
+fn missing_clause() -> String {
+    format!("k.borrowed = 0 AND NOT (COALESCE(k.match_state, '') IN ('auto', 'confirmed') AND {})", in_library_clause())
+}
 
 impl Library {
     pub fn import_kindle(&self, file: &Path) -> Result<KindleImport> {
@@ -306,7 +325,14 @@ impl Library {
         if open.is_empty() {
             return Ok(());
         }
-        let matcher = Matcher::new(self.books_for_matching()?);
+        // Scribe drafts are kept out of the Archive, so a purchase never matches one.
+        let drafts: HashSet<String> = self
+            .conn
+            .prepare("SELECT id FROM books WHERE same_as LIKE 'draft:%'")?
+            .query_map([], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        let known: Vec<_> = self.books_for_matching()?.into_iter().filter(|b| !drafts.contains(&b.id)).collect();
+        let matcher = Matcher::new(known);
         let now = now_utc();
         let mut sure = Vec::new();
         let tx = self.conn.unchecked_transaction()?;
@@ -344,10 +370,10 @@ impl Library {
     fn settle_kindle(&self, asins: &[String], mark_read: bool) -> Result<(u32, u32)> {
         let mut tag = Vec::new();
         let mut read = Vec::new();
-        let mut of = self.conn.prepare(
-            "SELECT k.book_id, k.borrowed, k.read FROM kindle_purchases k JOIN books b ON b.id = k.book_id
-             WHERE k.asin = ?1 AND b.deleted_at IS NULL",
-        )?;
+        let mut of = self.conn.prepare(&format!(
+            "SELECT b.id, k.borrowed, k.read FROM kindle_purchases k, json_each({BOOK_IDS}) j
+             {KEPT_BOOK} WHERE k.asin = ?1",
+        ))?;
         for asin in asins {
             let rows = of.query_map(params![asin], |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?, r.get::<_, bool>(2)?)))?;
             for row in rows {
@@ -457,10 +483,12 @@ impl Library {
     }
 
     pub fn kindle_summary(&self) -> Result<KindleSummary> {
+        let in_library = in_library_clause();
+        let missing = missing_clause();
         let covers = self
             .conn
             .prepare(&format!(
-                "SELECT k.title, NULLIF(k.cover_url, '') FROM kindle_purchases k WHERE {MISSING} AND k.dismissed_at IS NULL
+                "SELECT k.title, NULLIF(k.cover_url, '') FROM kindle_purchases k WHERE {missing} AND k.dismissed_at IS NULL
                  ORDER BY k.acquired_at DESC, k.title COLLATE NOCASE LIMIT 3"
             ))?
             .query_map([], |r| Ok(KindleCover { title: r.get(0)?, cover_url: r.get(1)? }))?
@@ -468,9 +496,9 @@ impl Library {
         Ok(self.conn.query_row(
             &format!(
                 "SELECT COUNT(*),
-                        COALESCE(SUM(k.match_state = 'confirmed' AND EXISTS (SELECT 1 FROM books b WHERE b.id = k.book_id AND b.deleted_at IS NULL)), 0),
-                        COALESCE(SUM({MISSING} AND k.dismissed_at IS NULL), 0),
-                        COALESCE(SUM({MISSING} AND k.dismissed_at IS NOT NULL), 0),
+                        COALESCE(SUM(k.match_state = 'confirmed' AND {in_library}), 0),
+                        COALESCE(SUM({missing} AND k.dismissed_at IS NULL), 0),
+                        COALESCE(SUM({missing} AND k.dismissed_at IS NOT NULL), 0),
                         COALESCE(SUM(k.match_state IN ('auto', 'probable')), 0),
                         MAX(k.added_at)
                  FROM kindle_purchases k"
@@ -495,10 +523,12 @@ impl Library {
     /// matched first, so they leave the list.
     pub fn kindle_missing(&self, removed: bool) -> Result<Vec<KindlePurchase>> {
         self.match_kindle(true)?;
+        let missing = missing_clause();
         let mut statement = self.conn.prepare(&format!(
-            "SELECT k.asin, k.title, k.author, k.acquired_at, k.read, k.link, k.cover_url, k.dismissed_at IS NOT NULL
+            "SELECT k.asin, k.title, k.author, k.acquired_at, k.read, k.link, k.cover_url, k.dismissed_at IS NOT NULL,
+                    CASE WHEN k.match_state = 'confirmed' THEN {BOOK_IDS} ELSE '[]' END
              FROM kindle_purchases k
-             WHERE {MISSING} AND (k.dismissed_at IS NOT NULL) = ?1
+             WHERE {missing} AND (k.dismissed_at IS NOT NULL) = ?1
              ORDER BY k.acquired_at DESC, k.title COLLATE NOCASE"
         ))?;
         let rows = statement.query_map(params![removed], |r| {
@@ -511,9 +541,40 @@ impl Library {
                 link: r.get(5)?,
                 cover_url: r.get(6)?,
                 removed: r.get(7)?,
+                book_ids: serde_json::from_str::<Vec<Option<String>>>(&r.get::<_, String>(8)?).unwrap_or_default().into_iter().flatten().collect(),
             })
         })?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Confirms a purchase against one Archive book or all members of its box set.
+    pub fn match_kindle_manually(&self, asin: &str, book_ids: &[BookId], mark_read: bool) -> Result<KindleApplied> {
+        let mut seen = HashSet::new();
+        let ids: Vec<&str> = book_ids.iter().map(String::as_str).filter(|id| seen.insert(*id)).collect();
+        let Some(primary) = ids.first() else {
+            return Err(Error::Unsuitable("Choose at least one Archive book.".into()));
+        };
+        for id in &ids {
+            let exists: bool = self.conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM books WHERE id = ?1 AND deleted_at IS NULL AND same_as IS NULL)",
+                params![id],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                return Err(Error::Unsuitable("One of those books is no longer in the Archive.".into()));
+            }
+        }
+        let matched_books = if ids.len() > 1 { Some(serde_json::to_string(&ids)?) } else { None };
+        let changed = self.conn.execute(
+            "UPDATE kindle_purchases SET book_id = ?2, matched_books = ?3, match_state = 'confirmed',
+                    dismissed_at = NULL, updated_at = ?4 WHERE asin = ?1 AND borrowed = 0",
+            params![asin, primary, matched_books, now_utc()],
+        )?;
+        if changed == 0 {
+            return Err(Error::Unsuitable("That Kindle purchase is no longer available.".into()));
+        }
+        let (tagged, marked_read) = self.settle_kindle(&[asin.to_string()], mark_read)?;
+        Ok(KindleApplied { tagged, marked_read, missing: self.kindle_summary()?.missing })
     }
 
     /// Takes a book off the list, or puts it back. Remembered, so a newer
@@ -571,6 +632,49 @@ mod tests {
         assert_eq!(acquired_date("October 17, 2026").as_deref(), Some("2026-10-17T12:00:00.000Z"));
         assert_eq!(acquired_date("Borrowed on April 1, 2025").as_deref(), Some("2025-04-01T12:00:00.000Z"));
         assert_eq!(acquired_date("sometime"), None);
+    }
+
+    #[test]
+    fn a_match_to_a_folded_duplicate_copy_still_counts_as_in_the_library() {
+        let (dir, mut library) = open_temp_library();
+        let kept = add(&mut library, dir.path(), "Emma", "Jane Austen");
+        let copy = add(&mut library, dir.path(), "Emma second file", "Jane Austen");
+        let file = export(dir.path(), &[book("BDUP", "Emma second file", "Jane Austen", "October 17, 2026", false)].join(","));
+        library.import_kindle(&file).unwrap();
+        library.match_kindle_manually("BDUP", std::slice::from_ref(&copy), false).unwrap();
+        assert!(library.kindle_missing(false).unwrap().is_empty());
+        library.conn.execute("UPDATE books SET same_as = ?2 WHERE id = ?1", params![copy, kept]).unwrap();
+        assert!(library.kindle_missing(false).unwrap().is_empty());
+        assert_eq!(library.kindle_summary().unwrap().in_library, 1);
+        // A Scribe draft is never a match.
+        library.conn.execute("UPDATE books SET same_as = 'draft:p1' WHERE id = ?1", params![copy]).unwrap();
+        library.conn.execute("UPDATE kindle_purchases SET match_state = NULL, book_id = NULL", []).unwrap();
+        library.conn.execute("UPDATE books SET deleted_at = ?2 WHERE id = ?1", params![kept, now_utc()]).unwrap();
+        assert_eq!(library.kindle_missing(false).unwrap().len(), 1);
+        let book_id: Option<String> = library.conn.query_row("SELECT book_id FROM kindle_purchases WHERE asin = 'BDUP'", [], |r| r.get(0)).unwrap();
+        assert_eq!(book_id, None);
+    }
+
+    #[test]
+    fn manual_matches_accept_box_sets_and_reopen_when_a_member_is_missing() {
+        let (dir, mut library) = open_temp_library();
+        let first = add(&mut library, dir.path(), "First book", "Writer");
+        let second = add(&mut library, dir.path(), "Second book", "Writer");
+        let file = export(dir.path(), &[
+            book("BBOX", "Collected set", "Writer", "October 17, 2026", true),
+            book("BONE", "Kindle edition one", "Writer", "October 16, 2026", false),
+        ].join(","));
+        library.import_kindle(&file).unwrap();
+        library.conn.execute("UPDATE kindle_purchases SET match_state = 'rejected', book_id = ?1 WHERE asin = 'BBOX'", params![first]).unwrap();
+        let result = library.match_kindle_manually("BBOX", &[first.clone(), second.clone(), first.clone()], true).unwrap();
+        assert_eq!((result.tagged, result.marked_read, result.missing), (2, 2, 1));
+        library.match_kindle_manually("BONE", std::slice::from_ref(&first), false).unwrap();
+        assert_eq!(library.kindle_summary().unwrap().in_library, 2);
+        library.conn.execute("UPDATE books SET deleted_at = ?2 WHERE id = ?1", params![second, now_utc()]).unwrap();
+        let missing = library.kindle_missing(false).unwrap();
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].asin, "BBOX");
+        assert_eq!(missing[0].book_ids, [first, second]);
     }
 
     #[test]

@@ -319,8 +319,20 @@ impl Library {
         title: Option<&str>,
         body: &str,
     ) -> Result<NoteItem> {
+        self.save_personal_note_with_tags(id, title, body, None)
+    }
+
+    /// Saves the note and its optional tag changes in one statement.
+    pub fn save_personal_note_with_tags(
+        &self,
+        id: Option<&str>,
+        title: Option<&str>,
+        body: &str,
+        tags: Option<&[String]>,
+    ) -> Result<NoteItem> {
         let title = clean(title).map(|t| t.chars().take(MAX_TITLE_CHARS).collect::<String>());
         let body = clean(Some(body));
+        let tags = tags.map(|tags| serde_json::to_string(&clean_tags(tags))).transpose()?;
         if title.is_none() && body.is_none() {
             return Err(Error::Unsuitable("the note is empty".into()));
         }
@@ -328,9 +340,9 @@ impl Library {
         let id = match id {
             Some(id) => {
                 let changed = self.conn.execute(
-                    "UPDATE personal_notes SET title = ?2, body = ?3, updated_at = ?4
+                    "UPDATE personal_notes SET title = ?2, body = ?3, updated_at = ?4, tags = COALESCE(?5, tags)
                      WHERE id = ?1 AND deleted_at IS NULL",
-                    params![id, title, body.unwrap_or_default(), now],
+                    params![id, title, body.unwrap_or_default(), now, tags],
                 )?;
                 if changed == 0 {
                     return Err(Error::Unsuitable("that note no longer exists".into()));
@@ -340,9 +352,9 @@ impl Library {
             None => {
                 let id = new_record_id();
                 self.conn.execute(
-                    "INSERT INTO personal_notes (id, title, body, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?4)",
-                    params![id, title, body.unwrap_or_default(), now],
+                    "INSERT INTO personal_notes (id, title, body, created_at, updated_at, tags)
+                     VALUES (?1, ?2, ?3, ?4, ?4, COALESCE(?5, '[]'))",
+                    params![id, title, body.unwrap_or_default(), now, tags],
                 )?;
                 id
             }
@@ -440,6 +452,19 @@ mod tests {
             })
             .unwrap()
             .id
+    }
+
+    #[test]
+    fn personal_note_editor_saves_tags_with_content() {
+        let (_dir, library) = open_temp_library();
+        let note = library.save_personal_note_with_tags(
+            None, Some("Plan"), "**Read**", Some(&["Study".into(), "study".into()]),
+        ).unwrap();
+        assert_eq!(note.tags, ["Study"]);
+        let note = library.save_personal_note(Some(&note.id), None, "Updated").unwrap();
+        assert_eq!(note.tags, ["Study"]);
+        let note = library.save_personal_note_with_tags(Some(&note.id), None, "Updated", Some(&[])).unwrap();
+        assert!(note.tags.is_empty());
     }
 
     #[test]

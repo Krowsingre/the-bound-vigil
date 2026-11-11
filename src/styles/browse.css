@@ -623,13 +623,25 @@
 }
 
 /* Downloads. */
-.dialog.browser-downloads {
-  width: min(520px, calc(100vw - 32px));
-  max-height: min(640px, calc(100vh - 48px));
-  overflow: auto;
+.browser-downloads-backdrop {
+  align-items: start;
+  padding-top: 78px;
 }
 
+.dialog.browser-downloads {
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(640px, calc(100dvh - 100px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.browser-downloads .catalogues-head { flex-shrink: 0; }
+.browser-downloads .catalogues-head h2 { margin-inline-end: auto; }
+
 .browser-download-list {
+  overflow-y: auto;
+  min-height: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -898,6 +910,17 @@
   cursor: pointer;
 }
 
+.address-suggestion-row {
+  display: flex;
+  align-items: center;
+}
+
+.address-suggestion-row .address-suggestion {
+  flex: 1;
+  min-width: 0;
+}
+
+.address-suggestion[aria-selected="true"],
 .address-suggestion:hover,
 .address-suggestion:focus-visible {
   background: var(--surface-sunk);
@@ -1459,16 +1482,19 @@
   overflow: auto;
 }
 
-.bookmark-rename {
-  display: flex;
-  flex: 1;
-  gap: 6px;
-  align-items: center;
+.bookmark-editor {
+  display: grid;
+  gap: 8px;
 }
 
-.bookmark-rename input {
-  flex: 1;
-  min-width: 0;
+.bookmark-editor label {
+  display: grid;
+  gap: 4px;
+}
+
+.bookmark-editor-actions {
+  display: flex;
+  gap: 6px;
 }
 
 @media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
@@ -1779,6 +1805,16 @@
    beside the address, and the tabs run edge to edge under it with no frame:
    the open tab marked by the accent along its foot, the strip's own buttons
    (every tab, bookmarks, add a catalogue, downloads, •••) at its right end. */
+.browser-nav .header-action.browser-bookmark-saved,
+.browser-bar .toolbar-button.browser-bookmark-saved {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.browser-bookmark-saved svg {
+  fill: currentColor;
+}
+
 .browser-nav {
   display: flex;
   align-items: center;
@@ -1840,6 +1876,35 @@
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
+.browser-strip .browser-tab.is-active.is-loading {
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.browser-strip .browser-tab.is-active.is-loading::after {
+  content: "";
+  position: absolute;
+  inset: auto auto 0 0;
+  width: 45%;
+  height: 2px;
+  background: var(--accent);
+  animation: tbv-tab-loading 1.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes tbv-tab-loading {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(225%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .browser-strip .browser-tab.is-active.is-loading::after {
+    animation: none;
+    left: 27.5%;
+  }
+}
+
 .browser-strip .browser-tab-name {
   height: 42px;
   padding-left: 14px;
@@ -1875,4 +1940,136 @@
 
 .browser-strip ~ .browser-offer {
   border-width: 0 0 1px;
+}
+
+.workspace-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.workspace-content > .content { min-width: 0; }
+.discover-workspace-pane { overflow: hidden; }
+.workspace-content.is-split > .content { grid-row: 1; }
+.workspace-content.is-split > .discover-workspace-pane {
+  grid-column: 3;
+  container-type: inline-size;
+}
+.discover-companion-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding-block: 4px;
+}
+.discover-companion-bar form {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+}
+.discover-companion-bar input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: var(--radius-s);
+}
+.browser-split-tools { display: flex; justify-content: end; }
+.browser-panes {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.browser-panes.is-split { display: grid; }
+.browser-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  grid-row: 1;
+}
+.browser-pane-title {
+  flex-shrink: 0;
+  display: block;
+  padding: 5px 8px;
+  overflow: hidden;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--surface-sunk);
+}
+.browser-pane-title[aria-current] { color: var(--accent); }
+.split-divider {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  justify-items: center;
+  cursor: col-resize;
+  touch-action: none;
+}
+.split-divider::before {
+  content: "";
+  height: 100%;
+  width: 2px;
+  background: var(--border);
+}
+.split-divider:hover::before, .split-divider:focus-visible::before { background: var(--accent); }
+.workspace-content.is-split .discover-workspace-pane .browse-browser { min-width: 0; padding-inline: 8px; }
+.workspace-content.is-split .discover-workspace-pane .browser-view { min-height: 0; }
+.browser-strip .browser-pinned-tabs {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 2;
+  display: flex;
+  flex: 0 0 auto;
+  max-width: 45%;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--chrome-strip);
+}
+.browser-pinned-tabs:empty { display: none; }
+.browser-close-undo {
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-end: 10px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 20px);
+  padding: 2px 6px 2px 10px;
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.menu-row-action { display: flex; align-items: center; }
+.menu-row-action > .menu-item:first-child { flex: 1; min-width: 0; }
+.menu-row-action > .menu-row-close { flex: 0 0 auto; width: auto; padding: 6px; }
+
+.browser-tab-search {
+  box-sizing: border-box;
+  width: 100%;
+  margin-block: 4px 8px;
+}
+.browser-session-tabs {
+  max-height: 52vh;
+  overflow: auto;
+  margin: 0;
+  padding-inline-start: 24px;
+}
+.browser-session-tabs .bookmark-editor-actions {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.browser-session-tabs .bookmark-editor-actions label {
+  display: flex;
+  align-items: center;
+}
+.browser-session-tabs li + li {
+  margin-block-start: 12px;
 }

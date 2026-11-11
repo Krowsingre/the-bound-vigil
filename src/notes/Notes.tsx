@@ -1,3 +1,4 @@
+import { useRememberedDisclosure } from "../components/RememberedDetails";
 // Scribe's notes: everything you've noted (All), your own notes (Notes), and
 // what you noted from books, highlights included (Book notes). A row of
 // filters, the notes pinned above the rest, then the rest. Opening a note
@@ -13,6 +14,7 @@ import { useToast } from "../components/Toast";
 import { HIGHLIGHT_COLORS } from "../reader/settings";
 import { NoteToBookDialog } from "../writing/NoteToBookDialog";
 import { NewNoteDialog } from "./NewNoteDialog";
+import { PersonalNoteEditor } from "./PersonalNoteEditor";
 import { KIND_LABEL } from "./noteInfo";
 import { NotePanel } from "./NotePanel";
 import { NoteCards, NoteList, NoteTable, type NotesLayout } from "./NoteViews";
@@ -85,7 +87,7 @@ function readPrefs(): { sort: NotesSort; layout: NotesLayout } {
 }
 
 export type NewNoteKind = "personal" | "book_note";
-type Writing = { kind: NewNoteKind } | null;
+type Writing = { kind: NewNoteKind; note?: NoteItem } | null;
 
 /** A filter's dropdown: its words, and a chevron. */
 function FilterButton({ label, on, items }: { label: string; on: boolean; items: MenuEntry[] }) {
@@ -136,7 +138,7 @@ export function Notes({
   const [reload, setReload] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [chosen, setChosen] = useState<Set<string> | null>(null);
-  const [allPinned, setAllPinned] = useState(false);
+  const [allPinned, setAllPinned] = useRememberedDisclosure("notes.allPinned");
   const [writing, setWriting] = useState<Writing>(null);
   const [deleting, setDeleting] = useState<NoteItem[] | null>(null);
   const [tagging, setTagging] = useState<NoteItem | null>(null);
@@ -301,7 +303,9 @@ export function Notes({
       ? [{ label: n.locator?.cfi ? "Open in Reader" : "Open the book", icon: "arrowRight" as const, onSelect: () => openInReader(n) }]
       : []),
     { label: n.pinnedAt ? "Unpin" : "Pin", icon: "pin", onSelect: () => void pin([n], !n.pinnedAt) },
-    { label: "Tags…", icon: "tag", onSelect: () => setTagging(n) },
+    ...(n.kind === "personal"
+      ? [{ label: "Edit note…", icon: "edit" as const, onSelect: () => setWriting({ kind: "personal", note: n }) }]
+      : [{ label: "Tags…", icon: "tag" as const, onSelect: () => setTagging(n) }]),
     { label: "Copy", icon: "copy", onSelect: () => copy([n]) },
     ...(onGoToBooks ? [{ label: "Add to a book I'm writing…", icon: "pen" as const, onSelect: () => setToBook(n) }] : []),
     ...(n.kind === "personal" && projects.length
@@ -332,7 +336,13 @@ export function Notes({
 
   // Choosing several, or opening one.
   const onCard = (n: NoteItem) => {
-    if (!chosen) return setSelectedId((id) => (id === n.id ? null : n.id));
+    if (!chosen) {
+      if (n.kind === "personal") {
+        setSelectedId(null);
+        setWriting({ kind: "personal", note: n });
+      } else setSelectedId((id) => (id === n.id ? null : n.id));
+      return;
+    }
     setChosen((c) => {
       const next = new Set(c);
       if (next.has(n.id)) next.delete(n.id);
@@ -461,7 +471,7 @@ export function Notes({
                   <Icon name="pin" size={17} /> Pinned
                 </h2>
                 {pinned.length > PINNED_SHOWN && (
-                  <button type="button" className="link-btn notes-show-all" aria-expanded={allPinned} onClick={() => setAllPinned((a) => !a)}>
+                  <button type="button" className="link-btn notes-show-all" aria-expanded={allPinned} onClick={() => setAllPinned(!allPinned)}>
                     {allPinned ? "Show fewer" : `Show all (${pinned.length})`} <Icon name={allPinned ? "chevronUp" : "chevronDown"} size={13} />
                   </button>
                 )}
@@ -607,9 +617,13 @@ export function Notes({
 
       <div className="library-body">{body}</div>
 
-      {writing && (
+      {writing?.kind === "personal" && (
+        <PersonalNoteEditor initial={writing.note} refreshKey={refreshKey}
+          onClose={() => setWriting(null)}
+          onSaved={() => { setWriting(null); changed(); }} />
+      )}
+      {writing?.kind === "book_note" && (
         <NewNoteDialog
-          kind={writing.kind}
           onCancel={() => setWriting(null)}
           onSaved={(n) => {
             setWriting(null);

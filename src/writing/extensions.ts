@@ -3,6 +3,8 @@
 // sync with it and the EPUB export finds them there (see epub.ts).
 
 import { Extension, Mark, mergeAttributes, Node } from "@tiptap/react";
+import { Plugin } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 declare module "@tiptap/react" {
   interface Commands<ReturnType> {
@@ -382,8 +384,47 @@ export const PoemLines = Extension.create({
  * editor shows a short label; the EPUB writes it in the book's citation
  * style (see sources.ts).
  */
-export const Citation = Node.create({
+export const Citation = Node.create<{ numbering: () => { previous: readonly string[]; known: ReadonlySet<string> } | null }>({
   name: "citation",
+  addOptions() {
+    return { numbering: () => null };
+  },
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      props: {
+        decorations: ({ doc }) => {
+          const numbering = this.options.numbering();
+          if (!numbering) return null;
+          const numbers = new Map(numbering.previous.map((id, index) => [id, index + 1]));
+          const decorations: Decoration[] = [];
+          doc.descendants((node, pos) => {
+            if (node.type.name !== this.name) return;
+            const source = String(node.attrs.source);
+            if (numbering.known.has(source) && !numbers.has(source)) numbers.set(source, numbers.size + 1);
+            decorations.push(Decoration.node(pos, pos + node.nodeSize, {}, { number: numbers.get(source) ?? null }));
+          });
+          return DecorationSet.create(doc, decorations);
+        },
+      },
+    })];
+  },
+  addNodeView() {
+    return ({ node, decorations }) => {
+      const dom = document.createElement("cite");
+      dom.className = "writing-citation";
+      const update = (next: typeof node, marks: typeof decorations) => {
+        if (next.type !== node.type) return false;
+        const number = marks.find((mark) => mark.spec.number !== undefined)?.spec.number;
+        dom.dataset.source = next.attrs.source;
+        dom.dataset.locator = next.attrs.locator;
+        const locator = next.attrs.locator.trim();
+        dom.textContent = number === null ? "(source removed)" : number === undefined ? next.attrs.label || "(source)" : `[${number}]${locator ? `, p. ${locator}` : ""}`;
+        return true;
+      };
+      update(node, decorations);
+      return { dom, update };
+    };
+  },
   group: "inline",
   inline: true,
   atom: true,

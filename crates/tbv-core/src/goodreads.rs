@@ -32,6 +32,8 @@ pub struct GoodreadsImport {
     /// Books marked read or in progress.
     pub statuses: u32,
     pub up_next: u32,
+    #[serde(default)]
+    pub up_next_skipped: u32,
     pub favourites: u32,
     /// Your own Goodreads shelves that became new collections.
     pub collections_created: Vec<String>,
@@ -207,8 +209,19 @@ impl Library {
                     self.conn.execute("UPDATE books SET status = 'in_progress' WHERE id = ?1 AND status = 'unread'", params![id])? > 0
                 }
                 "to-read" => {
-                    if self.conn.execute("UPDATE books SET want_to_read = 1 WHERE id = ?1 AND want_to_read = 0", params![id])? > 0 {
-                        report.up_next += 1;
+                    let already: bool = self.conn.query_row("SELECT want_to_read FROM books WHERE id = ?1", params![id], |row| row.get(0))?;
+                    if !already {
+                        let added = self.conn.execute(
+                            "UPDATE books SET want_to_read = 1 WHERE id = ?1 AND (
+                                SELECT COUNT(*) FROM books WHERE want_to_read = 1 AND deleted_at IS NULL AND same_as IS NULL
+                            ) < ?2",
+                            params![id, crate::browse::UP_NEXT_LIMIT],
+                        )?;
+                        if added == 0 {
+                            report.up_next_skipped += 1;
+                        } else {
+                            report.up_next += 1;
+                        }
                     }
                     false
                 }

@@ -16,6 +16,7 @@ interface Kind {
 export type Table =
   | "books"
   | "audiobooks"
+  | "archive_series_pins"
   | "metadata_overrides"
   | "metadata_fetched"
   | "collections"
@@ -44,6 +45,8 @@ export const KINDS: Kind[] = [
   { name: "read_along_piece", table: "read_along_pieces", keys: ["ebook_id", "audiobook_id", "piece"], cols: ["anchors", "updated_at"] },
   { name: "book_phone", table: "books", keys: ["id"], cols: ["phone_wanted", "phone_has", "from_phone"] },
   { name: "book_same", table: "books", keys: ["id"], cols: ["same_as"] },
+  { name: "book_audio_type", table: "books", keys: ["id"], cols: ["audio_type"] },
+  { name: "archive_series_pin", table: "archive_series_pins", keys: ["name"], cols: ["label", "pinned_at"] },
   { name: "book_pin", table: "books", keys: ["id"], cols: ["pinned_at"] },
   { name: "book_progress", table: "books", keys: ["id"], cols: ["status", "total_progression", "resume_locator", "last_opened_at", "finished_at"] },
   { name: "book_shelves", table: "books", keys: ["id"], cols: ["favorite", "want_to_read", "rating"] },
@@ -112,6 +115,7 @@ export interface BookRow {
   same_as?: string | null;
   /** When it was pinned to the top of the Archive. */
   pinned_at?: string | null;
+  audio_type?: import("../api/types").AudioType | null;
 }
 
 /** The built-in Up next shelf, as every device starts with it. */
@@ -225,7 +229,7 @@ export class WebLibrary {
     await this.writeAll([[kindName, row]]);
   }
 
-  async writeAll(changes: [kind: string, row: Row][]): Promise<void> {
+  async writeAll(changes: [kind: string, row: Row][], removes: [kind: string, keys: unknown[]][] = []): Promise<void> {
     const out: Stored[] = [];
     for (const [kindName, row] of changes) {
       const kind = kindNamed.get(kindName)!;
@@ -235,6 +239,11 @@ export class WebLibrary {
       for (const c of [...kind.keys, ...kind.cols]) data[c] = row[c] ?? null;
       const previous = this.db.records.get(recordId(kind.name, key));
       out.push({ kind: kind.name, key, data, changed_at: stampAfter(previous?.changed_at), pushed: false });
+    }
+    for (const [kindName, keys] of removes) {
+      const key = JSON.stringify(keys);
+      const previous = this.db.records.get(recordId(kindName, key));
+      out.push({ kind: kindName, key, data: null, changed_at: stampAfter(previous?.changed_at), pushed: false });
     }
     await this.db.putRecords(out);
     this.changed();

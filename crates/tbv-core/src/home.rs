@@ -53,7 +53,7 @@ pub(crate) const BOOK_COLUMNS: &str = r#"
              WHERE ab.book_id = b.id AND e.deleted_at IS NULL)
             OR EXISTS (SELECT 1 FROM audiobooks ab JOIN books a ON a.id = ab.book_id
              WHERE ab.ebook_id = b.id AND a.deleted_at IS NULL)),
-           b.phone_wanted, b.phone_has, b.pinned_at
+           b.phone_wanted, b.phone_has, b.pinned_at, b.audio_type
 "#;
 
 /// Whether an audiobook has its ebook, or an ebook its audiobook: the same
@@ -377,6 +377,7 @@ pub(crate) fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
         phone_wanted: r.get(25)?,
         phone_has: r.get(26)?,
         pinned_at: r.get(27)?,
+        audio_type: r.get(28)?,
     })
 }
 

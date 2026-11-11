@@ -1206,3 +1206,17 @@
   white-space: nowrap;
 }
 .section-head-tools > .btn { margin-left: auto; }
+
+.kindle-archive-picker {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+
+.kindle-picker-results {
+  max-height: min(42vh, 24rem);
+  overflow-y: auto;
+}
+
+.kindle-picker-results label {
+  min-width: 0;
+}

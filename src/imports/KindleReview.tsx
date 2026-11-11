@@ -1,3 +1,4 @@
+import { RememberedDetails } from "../components/RememberedDetails";
 // The review after choosing a list of Kindle books in Import books (a .json
 // file): the books found in the library, the close ones to tick, and how
 // many aren't in it. Nothing changes until Tag is pressed: then the books
@@ -66,7 +67,7 @@ export function KindleReviewDialog({ review, imported, onClose }: { review: Kind
         ) : (
           <>
             {review.matched.length > 0 && (
-              <details className="kindle-group">
+              <RememberedDetails disclosure="kindle.inLibrary" className="kindle-group">
                 <summary>
                   <Icon name="check" size={15} /> <strong>In your library</strong> {books(review.matched.length)}, same title and author
                 </summary>
@@ -75,7 +76,7 @@ export function KindleReviewDialog({ review, imported, onClose }: { review: Kind
                     <li key={m.asin}>{byLine(m.bookTitle, m.bookAuthors)}</li>
                   ))}
                 </ul>
-              </details>
+              </RememberedDetails>
             )}
             {review.probable.length > 0 && (
               <div className="kindle-group">

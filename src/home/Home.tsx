@@ -23,6 +23,7 @@ export function Home({
   refreshKey,
   onNavigate,
   onOpenLibrary,
+  onOpenSeries,
   onImportBooks,
   onImportFolder,
   onLoaded,
@@ -32,6 +33,7 @@ export function Home({
 }: {
   refreshKey: number;
   onNavigate: (route: Route) => void;
+  onOpenSeries?: (name: string) => void;
   onOpenLibrary: (view?: Partial<LibraryView>) => void;
   onImportBooks: () => void;
   onImportFolder: () => void;
@@ -119,7 +121,7 @@ export function Home({
       <div className="home home-desk">
         <ResumeHero book={home.resumeBook} actions={actions} onOpenLibrary={openLibrary} />
         <ReadingActivity finished={home.libraryCounts.read} finishedDates={home.finishedDates} refreshKey={refreshKey} wide />
-        <RecentlyAdded books={home.recentlyAdded} actions={actions} onViewAll={() => onOpenCompendium("recently_added")} menus />
+        <RecentlyAdded books={home.recentlyAdded} actions={actions} onOpenSeries={onOpenSeries ?? openLibrary} onViewAll={() => onOpenCompendium("recently_added")} menus />
         <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenCompendium("in_progress")} list />
         <QuickLinks refreshKey={refreshKey} onNavigate={onNavigate} onOpenBook={onOpenBook} onOpenCollection={onOpenCollection} />
         <SuggestedReading shelves={home.suggested ?? []} readAuthors={home.readAuthors ?? []} actions={actions} onNavigate={onNavigate} />
@@ -138,6 +140,7 @@ export function Home({
         <RecentlyAdded
           books={home.recentlyAdded}
           actions={actions}
+          onOpenSeries={onOpenSeries ?? openLibrary}
           onViewAll={() => onOpenCompendium("recently_added")}
         />
       </div>

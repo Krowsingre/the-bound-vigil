@@ -11,12 +11,16 @@ import { BookDetailsPage } from "./details/BookDetailsPage";
 import { DetailsHost } from "./details/DetailsHost";
 import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
-import { Writing } from "./writing/Writing";
+import { Writing, type WritingSection } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
-import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton } from "./browse/Browser";
+import { UpNextReplacementHost } from "./library/UpNextReplacement";
+import { workspaceFrame } from "./shell/workspaceFrame";
+import { BROWSER_GO, BROWSER_NEW, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory } from "./browse/Browser";
 import { AddressSuggestions } from "./browse/AddressSuggestions";
 import { readBrowserPrefs, shortAddress } from "./browse/browserPrefs";
 import { loadHistory } from "./browse/browserHistory";
+import { askBrowser } from "./browse/browserAsk";
+import { isActiveDownload, listenForDownloads, useDownloads } from "./browse/browserDownloads";
 import { Audiobooks } from "./audio/Audiobooks";
 import { PlayerBar } from "./audio/PlayerBar";
 import { usePlayer } from "./audio/player";
@@ -36,18 +40,20 @@ import { BookPlacesPage } from "./sync/BookPlaces";
 import { importSummary } from "./lib/importSummary";
 import { Library, PageSwitch } from "./library/Library";
 import { Reader } from "./reader/Reader";
-import { initialView, rememberView, type LibraryView } from "./library/libraryView";
+import { initialView, NO_FILTERS, rememberView, type LibraryView } from "./library/libraryView";
 import { useAppSettings } from "./settings/appSettings";
 import { Settings } from "./settings/Settings";
 import type { SettingsTab } from "./settings/settingsIndex";
 import { Header } from "./shell/Header";
-import { navFor, type Route } from "./shell/routes";
+import { navFor, navRouteOf, type Route } from "./shell/routes";
 import { Sidebar } from "./shell/Sidebar";
 import { Icon } from "./components/Icon";
 import { PairHost } from "./audio/LinkEbook";
 import { useNarrow } from "./lib/useNarrow";
 import { useSwipes } from "./shell/useSwipes";
 import { drawImportedCovers } from "./reader/formats";
+import { useNavigationHistory } from "./shell/useNavigationHistory";
+import { useNavigationShortcuts } from "./shell/useNavigationShortcuts";
 
 const COLLAPSE_KEY = "tbv.sidebarCollapsed";
 const NO_IMPORTS = isHome
@@ -62,12 +68,19 @@ function readCollapsed(): boolean {
   }
 }
 
-export function App() {
-  const [route, setRoute] = useState<Route>("home");
+export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onSplit, workspaceSplit = false, compactReader = false }: {
+  initialRoute?: Route;
+  requestedRoute?: Route;
+  onRouteHandled?: () => void;
+  onSplit?: (route: Route) => void;
+  workspaceSplit?: boolean;
+  compactReader?: boolean;
+} = {}) {
+  const [route, setRoute] = useState<Route>(initialRoute);
   const [collapsedWide, setCollapsed] = useState(readCollapsed);
   // On a phone the sidebar is a menu opened from the header, always with names.
   const narrow = useNarrow();
-  const collapsed = collapsedWide && !narrow;
+  const collapsed = workspaceSplit || (collapsedWide && !narrow);
   const [menuOpen, setMenuOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [sync, setSync] = useState<SyncStatus | null>(null);
@@ -80,14 +93,30 @@ export function App() {
   const drawingCovers = useRef(false);
   const wasRunning = useRef(false);
   const [libraryView, setLibraryView] = useState<LibraryView>(() => initialView("books"));
+  type SeriesPlace = { route: "library" | "audiobooks"; name: string; parentScroll: number; showAll?: boolean };
+  const [seriesPlace, setSeriesPlace] = useState<SeriesPlace | null>(null);
+  const [unfilteredSeries, setUnfilteredSeries] = useState<SeriesPlace | null>(null);
+  const [seriesScroll, setSeriesScroll] = useState<number | null>(null);
+  const [seriesSearch, setSeriesSearch] = useState("");
+  const [seriesPage, setSeriesPage] = useState(0);
+  const openSeries = (destination: SeriesPlace["route"], name: string) => {
+    setSeriesPlace({ route: destination, name, showAll: route !== destination, parentScroll: document.querySelector(".content")?.scrollTop ?? 0 });
+    setSeriesSearch(route === destination ? searchText : "");
+    setSeriesPage(0);
+  };
   const [documentsView, setDocumentsView] = useState<LibraryView>(() => initialView("documents"));
   const [audiobooksView, setAudiobooksView] = useState<LibraryView>(() => initialView("audiobooks"));
   const player = usePlayer();
   // The book the details page shows, and the page to go back to.
   const [details, setDetails] = useState<{ bookId: string; from: Route } | null>(null);
   const [searchText, setSearchText] = useState("");
+  const [kindleSearch, setKindleSearch] = useState("");
+  const [kindleOpen, setKindleOpen] = useState(false);
+  const [browserDraft, setBrowserDraft] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [reading, setReading] = useState<{ bookId: string; at?: string; fileId?: string } | null>(null);
+  const [writingSection, setWritingSection] = useState<WritingSection>("notes");
+  const [writingBook, setWritingBook] = useState<string | null>(null);
   const [openCollection, setOpenCollection] = useState<CollectionRef | null>(null);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   /** A section of Preferences to show once it opens. */
@@ -95,11 +124,15 @@ export function App() {
   const [activitySide, setActivitySide] = useState<ActivitySide>("imports");
   const search = useRef<HTMLInputElement>(null);
   const toast = useToast();
+  const activeDownloads = useDownloads().filter(isActiveDownload).length;
+  useEffect(() => workspaceFrame ? undefined : listenForDownloads(toast), [toast]);
   const { refreshAdaptive, togglePrivacy } = useAppSettings();
-  useStartupUpdateCheck();
+  useStartupUpdateCheck(!workspaceFrame);
 
   const navigate = useCallback((r: Route) => {
     setMenuOpen(false);
+    setSeriesPlace(null);
+    setSeriesScroll(null);
     // The sidebar's Collections always starts at the overview.
     if (r === "collections") setOpenCollection(null);
     // Sync & Accounts is a page inside Settings.
@@ -117,6 +150,62 @@ export function App() {
     }
     setRoute(r);
   }, []);
+
+  type SidebarPlace = {
+    route: Route;
+    details: typeof details;
+    series: typeof seriesPlace;
+    seriesSearch: string;
+    seriesPage: number;
+    scroll: number;
+    collection: typeof openCollection;
+    kindle: boolean;
+    settings: typeof settingsTab;
+    activity: ActivitySide;
+    writingSection: WritingSection;
+    writingBook: string | null;
+  };
+  const sidebarPlaces = useRef(new Map<Route, SidebarPlace>());
+  const section = navRouteOf(route === "book" ? details?.from ?? "library" : route);
+  const selectSidebar = (target: Route) => {
+    if (!navFor({ web: isWeb, home: isHome, android: isAndroid }).some(({ route }) => route === target)) {
+      navigate(target);
+      return;
+    }
+    const content = document.querySelector<HTMLElement>(".workspace-content > .content");
+    const same = target === section;
+    if (!same) {
+      sidebarPlaces.current.set(section, {
+        route, details, series: seriesPlace, seriesSearch, seriesPage,
+        scroll: content?.scrollTop ?? 0, collection: openCollection, kindle: kindleOpen,
+        settings: settingsTab, activity: activitySide, writingSection, writingBook,
+      });
+    }
+    const place = same ? undefined : sidebarPlaces.current.get(target);
+    setMenuOpen(false);
+    setReading(null);
+    setDetails(place?.details ?? null);
+    setSeriesPlace(place?.series ?? null);
+    setSeriesSearch(place?.seriesSearch ?? "");
+    setSeriesPage(place?.seriesPage ?? 0);
+    setOpenCollection(place?.collection ?? null);
+    setKindleOpen(place?.kindle ?? false);
+    setSettingsTab(place?.settings ?? null);
+    setSettingsJump(null);
+    setActivitySide(place?.activity ?? "imports");
+    setWritingSection(place?.writingSection ?? "notes");
+    setWritingBook(place?.writingBook ?? null);
+    setRoute(place?.route ?? target);
+    if (target === "library" || target === "audiobooks") setSeriesScroll(place?.scroll ?? 0);
+    else if (same && content) content.scrollTop = 0;
+    if (same && target === "catalogs") {
+      setBrowserDraft("");
+      setCatalogues(false);
+      askBrowser({ start: true });
+    }
+  };
+  const sidebarAction = useRef(selectSidebar);
+  sidebarAction.current = selectSidebar;
 
   const toggleSidebar = useCallback(() => {
     setCollapsed((c) => {
@@ -171,6 +260,8 @@ export function App() {
   useEffect(
     () =>
       onShowInLibrary((kind, change) => {
+        setSeriesPlace(null);
+        setSeriesScroll(null);
         setSearchText("");
         if (kind === "documents") changeDocumentsView(change);
         else if (kind === "audiobooks") changeAudiobooksView(change);
@@ -182,6 +273,8 @@ export function App() {
 
   const openLibrary = useCallback(
     (change: Partial<LibraryView> = {}) => {
+      setSeriesPlace(null);
+      setSeriesScroll(null);
       changeLibraryView(change);
       setRoute("library");
     },
@@ -208,7 +301,7 @@ export function App() {
 
   // Chosen in Preferences › Discover: every site's cookies and data go each time TBV starts.
   useEffect(() => {
-    if (api.kind === "app" && readBrowserPrefs().clearOnStart) void api.browserClear().catch(() => undefined);
+    if (!workspaceFrame && api.kind === "app" && readBrowserPrefs().clearOnStart) void api.browserClear().catch(() => undefined);
   }, []);
 
   // Discover's history comes from the library, and again when sync brings some from another device.
@@ -315,12 +408,12 @@ export function App() {
 
   // Lining up paired books and audiobooks word by word, in the background.
   useEffect(() => {
-    if (isApp) startLiningUp();
+    if (isApp && !workspaceFrame) startLiningUp();
   }, []);
 
   // Dropping files or folders anywhere on the window imports them.
   useEffect(() => {
-    if (!isApp) return;
+    if (!isApp || workspaceFrame) return;
     let unlisten: (() => void) | undefined;
     void import("@tauri-apps/api/webview").then(async ({ getCurrentWebview }) => {
       unlisten = await getCurrentWebview().onDragDropEvent(({ payload }) => {
@@ -335,48 +428,50 @@ export function App() {
     return () => unlisten?.();
   }, [runImport]);
 
-  // Back (Alt + Left, or the mouse's back button): the page before, as it was.
-  type Place = { route: Route; collection: CollectionRef | null; details: typeof details };
-  const past = useRef<Place[]>([]);
-  const here = useRef<Place>({ route, collection: openCollection, details });
-  const goingBack = useRef(false);
+  // App Back/Forward (Alt+Shift+Left/Right), independent of webpage history.
+  type Place = { route: Route; collection: CollectionRef | null; details: typeof details; series: SeriesPlace | null };
+  const { back, forward } = useNavigationHistory<Place>(
+    { route, collection: openCollection, details, series: seriesPlace },
+    (place) => {
+      if (seriesPlace && !place.series && seriesPlace.route === place.route) setSeriesScroll(seriesPlace.parentScroll);
+      if (place.series !== seriesPlace) {
+        setSeriesSearch("");
+        setSeriesPage(0);
+      }
+      setSeriesPlace(place.series);
+      setDetails(place.details);
+      setOpenCollection(place.collection);
+      setRoute(place.route);
+    },
+    (a, b) => a.route === b.route && JSON.stringify(a.collection) === JSON.stringify(b.collection) &&
+      a.details?.bookId === b.details?.bookId && a.details?.from === b.details?.from && a.series === b.series,
+  );
+  const showingSeries = seriesPlace?.route === route ? seriesPlace : null;
+  const showAllSeries = !!showingSeries && (showingSeries.showAll || unfilteredSeries === showingSeries);
+  const searchingKindle = route === "collections" && kindleOpen && !openCollection;
+
   useEffect(() => {
-    const now = { route, collection: openCollection, details };
-    const was = here.current;
-    const same =
-      was.route === now.route &&
-      JSON.stringify(was.collection) === JSON.stringify(now.collection) &&
-      was.details?.bookId === now.details?.bookId;
-    if (same) return;
-    if (!goingBack.current) past.current = [...past.current.slice(-49), was];
-    goingBack.current = false;
-    here.current = now;
-  }, [route, openCollection, details]);
-  const back = useCallback(() => {
-    const was = past.current.pop();
-    if (!was) return;
-    goingBack.current = true;
-    setDetails(was.details);
-    setOpenCollection(was.collection);
-    setRoute(was.route);
-  }, []);
+    if (!requestedRoute) return;
+    setReading(null);
+    navigate(requestedRoute);
+    onRouteHandled?.();
+  }, [requestedRoute, onRouteHandled, navigate]);
   useEffect(() => {
-    const onMouse = (e: MouseEvent) => {
-      if (e.button !== 3 || reading) return;
-      e.preventDefault();
-      back();
+    const open = (event: Event) => {
+      setReading(null);
+      navigate((event as CustomEvent<Route>).detail);
     };
-    window.addEventListener("mouseup", onMouse);
-    return () => window.removeEventListener("mouseup", onMouse);
-  }, [back, reading]);
+    if (!workspaceFrame) return;
+    window.addEventListener("tbv:workspace-navigate", open);
+    return () => window.removeEventListener("tbv:workspace-navigate", open);
+  }, [navigate]);
+  const seriesView = (base: LibraryView): LibraryView => showingSeries
+    ? { ...base, ...(showAllSeries ? { ...NO_FILTERS, tab: "all" as const } : {}), series: [showingSeries.name], sort: "series", seriesGrouping: "individual", page: seriesPage }
+    : base;
+  useNavigationShortcuts({ back, forward, reading: !!reading, discover: route === "catalogs", webpage: navigateBrowserHistory });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === "ArrowLeft" && !reading) {
-        e.preventDefault();
-        back();
-        return;
-      }
       // Privacy mode works everywhere, the reader included.
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "h") {
         e.preventDefault();
@@ -385,16 +480,18 @@ export function App() {
       }
       if (!(e.ctrlKey || e.metaKey) || e.altKey || reading) return;
       const n = Number(e.key);
-      if (e.key === "\\") toggleSidebar();
+      if (e.key === "\\") { if (!workspaceSplit) toggleSidebar(); }
       else if (e.key.toLowerCase() === "o" && !e.shiftKey) importBooks();
-      else if (e.key.toLowerCase() === "f" || e.key.toLowerCase() === "k") search.current?.focus();
-      else if (n >= 1 && n <= navFor({ web: isWeb, home: isHome, android: isAndroid }).length) navigate(navFor({ web: isWeb, home: isHome, android: isAndroid })[n - 1].route);
+      else if (e.key.toLowerCase() === "f" || e.key.toLowerCase() === "k") {
+        search.current?.focus();
+      }
+      else if (n >= 1 && n <= navFor({ web: isWeb, home: isHome, android: isAndroid }).length) sidebarAction.current(navFor({ web: isWeb, home: isHome, android: isAndroid })[n - 1].route);
       else return;
       e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleSidebar, importBooks, reading, navigate, togglePrivacy, back]);
+  }, [toggleSidebar, importBooks, reading, navigate, togglePrivacy, workspaceSplit]);
 
   const onHomeLoaded = useCallback((home: HomeViewModel) => setSync(home.sync), []);
   const openBook = useCallback((bookId: string, at?: string, fileId?: string) => setReading({ bookId, at, fileId }), []);
@@ -480,7 +577,7 @@ export function App() {
     />
   );
   const toHome = useCallback(() => navigate("home"), [navigate]);
-  useSwipes(appRoot, pullHome, narrow && !menuOpen && !reading, {
+  useSwipes(appRoot, pullHome, narrow && !workspaceSplit && !menuOpen && !reading, {
     // Left goes to the library from any other page; right opens the menu of pages.
     onLeft: route !== "library" ? toLibrary : undefined,
     onRight: openMenu,
@@ -488,48 +585,74 @@ export function App() {
   });
   // With the menu of pages open, a swipe left closes it, back to the page underneath.
   const closeMenu = useCallback(() => setMenuOpen(false), []);
-  useSwipes(appRoot, pullHome, narrow && menuOpen && !reading, { onLeft: closeMenu, overMenu: true });
+  useSwipes(appRoot, pullHome, narrow && !workspaceSplit && menuOpen && !reading, { onLeft: closeMenu, overMenu: true });
 
-  if (reading) return <Reader key={`${reading.bookId}/${reading.fileId ?? ""}`} bookId={reading.bookId} fileId={reading.fileId} openAt={reading.at} shell={shell} onClose={closeBook} />;
+  const leaveSeries = () => {
+    if (seriesPlace) setSeriesScroll(seriesPlace.parentScroll);
+    setSeriesPlace(null);
+    setSeriesSearch("");
+    setSeriesPage(0);
+  };
+  const closeDetails = () => {
+    const destination = details?.from;
+    setDetails(null);
+    setRoute(destination && destination !== "book" ? destination : "library");
+  };
+  const sidebar = (
+    <Sidebar
+      route={route === "book" && details ? details.from : route}
+      collapsed={collapsed}
+      lockedCollapsed={workspaceSplit}
+      drawerOpen={!workspaceSplit && narrow && menuOpen}
+      onCloseDrawer={() => setMenuOpen(false)}
+      onNavigate={selectSidebar}
+      onSplit={onSplit && ((target) => {
+        setMenuOpen(false);
+        onSplit(target);
+      })}
+      onToggle={toggleSidebar}
+      preview={api.kind === "preview"}
+      imports={
+        imports.total
+          ? importCounts(imports)
+          : serverCounts.total
+            ? { done: serverCounts.done, total: serverCounts.total, running: serverCounts.done + serverCounts.failed < serverCounts.total }
+            : sent.length
+              ? {
+                  done: sent.filter((f) => f.state !== "waiting" && f.state !== "arriving").length,
+                  total: sent.length,
+                  running: sent.some((f) => f.state === "waiting" || f.state === "arriving"),
+                }
+              : null
+      }
+    />
+  );
+  if (reading) {
+    const reader = <Reader key={`${reading.bookId}/${reading.fileId ?? ""}`} bookId={reading.bookId}
+      fileId={reading.fileId} openAt={reading.at} compact={compactReader || workspaceSplit} shell={shell} onClose={closeBook} />;
+    return <>
+      {workspaceSplit ? <div className="app sidebar-collapsed workspace-rail">{sidebar}<div className="main">{reader}</div></div> : reader}
+      {workspaceSplit && <ContextMenuHost />}
+    </>;
+  }
 
   return (
-    <div ref={appRoot} className={`app${collapsed ? " sidebar-collapsed" : ""}${player.book ? " has-player" : ""}`}>
-      {narrow && route !== "home" && (
+    <div ref={appRoot} className={`app${collapsed ? " sidebar-collapsed" : ""}${workspaceSplit ? " workspace-rail" : ""}${player.book ? " has-player" : ""}`}>
+      {narrow && !workspaceSplit && route !== "home" && (
         <div ref={pullHome} className="pull-home" aria-hidden>
           <Icon name="home" size={16} /> <span className="pull-home-far">Keep pulling for Home</span>
           <span className="pull-home-ready">Let go for Home</span>
         </div>
       )}
-      <Sidebar
-        route={route === "book" && details ? details.from : route}
-        collapsed={collapsed}
-        drawerOpen={narrow && menuOpen}
-        onCloseDrawer={() => setMenuOpen(false)}
-        onNavigate={navigate}
-        onToggle={toggleSidebar}
-        preview={api.kind === "preview"}
-        imports={
-          imports.total
-            ? importCounts(imports)
-            : serverCounts.total
-              ? { done: serverCounts.done, total: serverCounts.total, running: serverCounts.done + serverCounts.failed < serverCounts.total }
-              : sent.length
-                ? {
-                    done: sent.filter((f) => f.state !== "waiting" && f.state !== "arriving").length,
-                    total: sent.length,
-                    running: sent.some((f) => f.state === "waiting" || f.state === "arriving"),
-                  }
-                : null
-        }
-      />
+      {sidebar}
       <div className="main">
         <Header
           ref={search}
-          onOpenMenu={() => setMenuOpen(true)}
+          onOpenMenu={workspaceSplit ? undefined : () => setMenuOpen(true)}
           sync={sync}
           profile={profile}
-          search={searchText}
-          onSearchChange={changeSearch}
+          search={route === "catalogs" ? browserDraft : searchingKindle ? kindleSearch : showingSeries ? seriesSearch : searchText}
+          onSearchChange={route === "catalogs" ? setBrowserDraft : searchingKindle ? setKindleSearch : showingSeries ? (value) => { setSeriesSearch(value); setSeriesPage(0); } : changeSearch}
           placeholder={
             route === "notes" || route === "writing"
               ? "Search notes, books, authors or words…"
@@ -538,7 +661,7 @@ export function App() {
                 : route === "catalogs"
                   ? "Search or enter a website…"
                   : route === "collections"
-                    ? "Search the Compendium…"
+                    ? searchingKindle ? "Find a Kindle title or author…" : "Search the Compendium…"
                     : route === "settings"
                       ? "Search preferences…"
                   : undefined
@@ -546,10 +669,15 @@ export function App() {
           onSearchSubmit={() => {
             // On Discover the top search box is the browser's address bar.
             if (route === "catalogs") {
-              window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: searchText }));
-              changeSearch("");
-            } else if (route !== "notes" && route !== "writing" && route !== "documents" && route !== "audiobooks" && route !== "collections" && route !== "settings") setRoute("library");
+              window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: browserDraft }));
+              setBrowserDraft("");
+            } else if (route === "library" || route === "audiobooks" || route === "documents") {
+              window.dispatchEvent(new Event("tbv:submit-library-search"));
+            } else if (route !== "notes" && route !== "writing" && route !== "collections" && route !== "settings") setRoute("library");
           }}
+          onPasteAndGo={route === "catalogs" && !narrow ? (text) => {
+            window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: text }));
+          } : undefined}
           address={route === "catalogs" ? browserAddress : undefined}
           pageAction={route === "catalogs" ? <BrowserNav /> : undefined}
           searchStart={route === "catalogs" ? <BrowserSiteButton url={browserAddress} /> : undefined}
@@ -558,10 +686,15 @@ export function App() {
             route === "catalogs"
               ? (typed, done) => (
                   <AddressSuggestions
+                    showPaste={narrow}
                     typed={typed}
                     current={browserAddress}
                     onGo={(text) => {
                       window.dispatchEvent(new CustomEvent(BROWSER_GO, { detail: text }));
+                      done();
+                    }}
+                    onOpen={(url) => {
+                      window.dispatchEvent(new CustomEvent(BROWSER_NEW, { detail: url }));
                       done();
                     }}
                     onTab={(id) => {
@@ -580,12 +713,17 @@ export function App() {
           onOpenActivity={shell.onOpenActivity}
           onOpenPlaces={shell.onOpenPlaces}
         />
-        <main className="content">
+        <div className="workspace-content">
+        {route !== "catalogs" && <main className="content">
           {route === "home" ? (
             <Home
               refreshKey={refreshKey}
               onNavigate={navigate}
               onOpenLibrary={openLibrary}
+              onOpenSeries={(name) => {
+                setRoute("library");
+                openSeries("library", name);
+              }}
               onImportBooks={importBooks}
               onImportFolder={importFolder}
               onLoaded={onHomeLoaded}
@@ -596,11 +734,16 @@ export function App() {
           ) : route === "library" ? (
             <Library
               switcher={archiveSwitch}
-              view={libraryView}
-              search={searchText}
+              view={seriesView(libraryView)}
+              search={showingSeries ? seriesSearch : searchText}
               refreshKey={refreshKey}
-              onChange={changeLibraryView}
-              onClearSearch={() => changeSearch("")}
+              onChange={showingSeries ? (change) => setSeriesPage(change.page ?? 0) : changeLibraryView}
+              onClearSearch={() => showingSeries ? setSeriesSearch("") : changeSearch("")}
+              onOpenSeries={(name) => openSeries("library", name)}
+              seriesBack={showingSeries ? leaveSeries : undefined}
+              onShowAllSeries={showingSeries && !showAllSeries ? () => { setUnfilteredSeries(showingSeries); setSeriesSearch(""); setSeriesPage(0); } : undefined}
+              restoreScroll={seriesScroll}
+              onScrollRestored={() => setSeriesScroll(null)}
               onImportBooks={importBooks}
               onImportFolder={importFolder}
               onOpenBook={openBook}
@@ -624,7 +767,7 @@ export function App() {
             <BookDetailsPage
               bookId={details.bookId}
               refreshKey={refreshKey}
-              onBack={() => setRoute(details.from)}
+              onBack={closeDetails}
               onOpenBook={openBook}
               onOpenCollection={showCollection}
               onOpenLibrary={(genre, documents) => {
@@ -638,19 +781,26 @@ export function App() {
           ) : route === "collections" ? (
             <Collections
               open={openCollection}
+              kindleOpen={kindleOpen} setKindleOpen={setKindleOpen} kindleSearch={kindleSearch}
               refreshKey={refreshKey}
               onOpen={setOpenCollection}
+              onDiscover={navFor({ web: isWeb, home: isHome, android: isAndroid }).some((item) => item.route === "catalogs") ? () => navigate("catalogs") : undefined}
               onOpenBook={openBook}
               onChanged={refresh}
               search={searchText}
             />
           ) : route === "audiobooks" ? (
             <Audiobooks
-              view={audiobooksView}
-              search={searchText}
+              view={seriesView(audiobooksView)}
+              search={showingSeries ? seriesSearch : searchText}
               refreshKey={refreshKey}
-              onChange={changeAudiobooksView}
-              onClearSearch={() => changeSearch("")}
+              onChange={showingSeries ? (change) => setSeriesPage(change.page ?? 0) : changeAudiobooksView}
+              onClearSearch={() => showingSeries ? setSeriesSearch("") : changeSearch("")}
+              onOpenSeries={(name) => openSeries("audiobooks", name)}
+              seriesBack={showingSeries ? leaveSeries : undefined}
+              onShowAllSeries={showingSeries && !showAllSeries ? () => { setUnfilteredSeries(showingSeries); setSeriesSearch(""); setSeriesPage(0); } : undefined}
+              restoreScroll={seriesScroll}
+              onScrollRestored={() => setSeriesScroll(null)}
               onImportBooks={importBooks}
               onImportFolder={importFolder}
               onOpenCollection={showCollection}
@@ -660,14 +810,14 @@ export function App() {
             <BookPlacesPage onOpenSyncSettings={() => navigate("sync")} />
           ) : route === "notes" || route === "writing" ? (
             <Writing
+              chip={writingSection} setChip={setWritingSection}
+              openId={writingBook} setOpenId={setWritingBook}
               booksShown={!isHome}
               search={searchText}
               refreshKey={refreshKey}
               onClearSearch={() => changeSearch("")}
               onOpenBook={openBook}
             />
-          ) : route === "catalogs" ? (
-            <Browse refreshKey={refreshKey} onOpenBook={openBook} catalogues={catalogues} onOpenCatalogues={() => setCatalogues(true)} onCloseCatalogues={() => setCatalogues(false)} search={searchText} onSearchChange={changeSearch} />
           ) : (
             <Settings
               tab={settingsTab}
@@ -706,14 +856,26 @@ export function App() {
               }}
             />
           )}
-        </main>
+        </main>}
+        {route === "catalogs" && <main className="content discover-workspace-pane" key="discover-workspace">
+          <Browse refreshKey={refreshKey} onOpenBook={openBook} catalogues={catalogues}
+            onOpenCatalogues={() => setCatalogues(true)} onCloseCatalogues={() => setCatalogues(false)}
+            search={browserDraft} onSearchChange={setBrowserDraft}
+            allowTabSplit={!workspaceSplit && !workspaceFrame}
+            onSplitWith={workspaceSplit ? undefined : onSplit} />
+        </main>}
+        </div>
       </div>
       {dropping && (
         <div className="drop-overlay" aria-hidden>
           <p>Drop to add to your library</p>
         </div>
       )}
-      {!(route === "settings" && settingsTab === "activity" && activitySide === "imports") && importCounts(imports).running && (
+      {route !== "catalogs" && activeDownloads > 0 ? (
+        <button type="button" className="import-progress" onClick={() => { askBrowser({ panel: "downloads" }); navigate("catalogs"); }}>
+          {activeDownloads} {activeDownloads === 1 ? "download" : "downloads"} in progress <span className="import-progress-link">View</span>
+        </button>
+      ) : !(route === "settings" && settingsTab === "activity" && activitySide === "imports") && importCounts(imports).running && (
         <button type="button" className="import-progress" onClick={() => navigate("imports")}>
           Imported {importCounts(imports).done} of {importCounts(imports).total} books <span className="import-progress-link">View</span>
         </button>
@@ -734,6 +896,7 @@ export function App() {
       <PlayerBar onShowAudiobooks={() => navigate("audiobooks")} />
       <AddToCollectionHost onChanged={refresh} />
       <BookDialogsHost onChanged={refresh} />
+      <UpNextReplacementHost onChanged={refresh} />
       <DetailsHost onChanged={refresh} />
       <SendToEreaderHost
         onSetUp={() => {

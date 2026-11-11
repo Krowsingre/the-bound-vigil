@@ -10,9 +10,10 @@ interface Props {
   onChange: (value: string) => void;
   rows?: number;
   placeholder?: string;
+  label?: string;
 }
 
-export function FormattedText({ value, onChange, rows = 5, placeholder }: Props) {
+export function FormattedText({ value, onChange, rows = 5, placeholder, label }: Props) {
   const box = useRef<HTMLTextAreaElement>(null);
   const [preview, setPreview] = useState(false);
 
@@ -89,6 +90,7 @@ export function FormattedText({ value, onChange, rows = 5, placeholder }: Props)
       ) : (
         <textarea
           ref={box}
+          aria-label={label}
           rows={rows}
           value={value}
           placeholder={placeholder}

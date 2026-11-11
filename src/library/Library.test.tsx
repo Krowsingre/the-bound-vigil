@@ -1,11 +1,17 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { BookPreview, LibraryPage, LibraryQuery } from "../api/types";
 import { ToastProvider } from "../components/Toast";
+import { queryBooks } from "../lib/queryBooks";
 import { Library } from "./Library";
+import { FinishedDownloadPrompt } from "./FinishedDownloadPrompt";
 import type { LibraryView } from "./libraryView";
 
 const getLibrary = vi.fn<(q: LibraryQuery) => Promise<LibraryPage>>();
 const setFavorite = vi.fn(async () => {});
+const downloadBook = vi.fn<(id: string) => Promise<void>>();
+const removeDownload = vi.fn<(id: string) => Promise<void>>(async () => {});
+const getCollection = vi.fn();
+const setBookStatus = vi.fn<(id: string, status: string) => Promise<void>>(async () => {});
 vi.mock("../api", () => ({
   isApp: false,
   isWeb: false,
@@ -14,10 +20,14 @@ vi.mock("../api", () => ({
     kind: "app",
     getLibrary: (q: LibraryQuery) => getLibrary(q),
     getCollections: async () => [],
+    getCollection: (...args: unknown[]) => getCollection(...args),
+    downloadBook: (id: string) => downloadBook(id),
+    removeDownload: (id: string) => removeDownload(id),
+    seriesReview: async () => null,
     timeSpent: async () => [],
     setFavorite: (...a: unknown[]) => setFavorite(...(a as [])),
     setWantToRead: vi.fn(),
-    setBookStatus: vi.fn(),
+    setBookStatus: (id: string, status: string) => setBookStatus(id, status),
     coverUrl: () => "",
   },
 }));
@@ -49,7 +59,7 @@ const book = (n: number, extra: Partial<BookPreview> = {}): BookPreview => ({
 });
 
 const counts = { all: 30, favorites: 1, wantToRead: 0, sendToDevice: 0, inProgress: 2, read: 3, unread: 25, collections: 0 };
-const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], series: [], narrators: [], hideRead: false, exclude: { formats: [], tags: [], genres: [], authors: [], narrators: [], series: [], languages: [] }, page: 0, layout: "grid" };
+const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], series: [], narrators: [], hideRead: false, exclude: { formats: [], tags: [], genres: [], authors: [], narrators: [], series: [], languages: [] }, page: 0, layout: "grid", seriesGrouping: "individual" };
 
 function renderLibrary(props: Partial<React.ComponentProps<typeof Library>> = {}) {
   const onChange = vi.fn();
@@ -67,6 +77,7 @@ function renderLibrary(props: Partial<React.ComponentProps<typeof Library>> = {}
         onOpenCollection={() => {}}
         {...props}
       />
+      <FinishedDownloadPrompt />
     </ToastProvider>,
   );
   return onChange;
@@ -76,7 +87,7 @@ beforeEach(() => getLibrary.mockReset());
 
 function openShelves() {
   fireEvent.click(screen.getByRole("button", { name: "Filter" }));
-  const fold = screen.getByRole("button", { name: /Collections/ });
+  const fold = screen.getByRole("button", { name: /Shelf/ });
   if (fold.getAttribute("aria-expanded") !== "true") fireEvent.click(fold);
 }
 
@@ -98,7 +109,7 @@ test("shows the shelf counts, the page of books and where it is in the list", as
   expect((await screen.findAllByText("Book 1")).length).toBeGreaterThan(0);
   expect(screen.getByText("56%")).toBeInTheDocument();
   expect(screen.getByText("Showing 1–24 of 30 books")).toBeInTheDocument();
-  // The shelves, with their counts, are in Filter under Collections.
+  // The shelves, with their counts, are in Filter under Shelf.
   openShelves();
   expect(screen.getByRole("menuitemcheckbox", { name: /Read\s*3/ })).toBeInTheDocument();
   expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ shelf: "all", page: 0, pageSize: 24, search: null }));
@@ -113,6 +124,21 @@ test("choosing a shelf and a page reports the change", async () => {
   expect(onChange).toHaveBeenCalledWith({ tab: "favorites" });
   fireEvent.click(screen.getAllByRole("button", { name: "Page 2" })[0]);
   expect(onChange).toHaveBeenCalledWith({ page: 1 });
+});
+
+test("pinned books stay above the second page of Archive results", async () => {
+  getLibrary.mockImplementation(async (query) => ({
+    books: query?.pinned ? [book(1, { pinnedAt: "2026-01-01" })] : [book(25)],
+    total: query?.pinned ? 1 : 30,
+    page: query?.page ?? 0, pageSize: query?.pageSize ?? 24, counts, formats: ["epub"],
+    tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  renderLibrary({ view: { ...view, page: 1 } });
+  const heading = await screen.findByText("Pinned books");
+  expect(heading.closest("details")).not.toHaveAttribute("open");
+  expect(await screen.findByRole("button", { name: "More for Book 25" })).toBeInTheDocument();
+  expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ pinned: true, page: 0 }));
+  expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ pinned: false, page: 1 }));
 });
 
 test("search with no results says so and offers a way back", async () => {
@@ -149,6 +175,81 @@ test("the book menu can add a favourite", async () => {
   renderLibrary();
   await screen.findAllByText("Book 7");
   fireEvent.click(screen.getByRole("button", { name: "More for Book 7" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Organize" }));
   fireEvent.click(screen.getByRole("menuitem", { name: /Add to favourites/ }));
   expect(setFavorite).toHaveBeenCalledWith("sha256:7", true);
+});
+
+test("series stacks count the whole series and apply combined filters to the same book", () => {
+  const books = [
+    book(1, { series: "Shared series", status: "read" }),
+    book(2, { series: "Shared series", availability: "cloud" }),
+    book(3, { series: "Shared series", status: "dropped" }),
+  ];
+  const query: LibraryQuery = { kind: "books", shelf: "all", sort: "title", search: null, formats: [], location: null, hideRead: true, groupSeries: true, page: 0, pageSize: 24 };
+  const page = queryBooks(books, query, 0);
+  expect(page.books.map(({ id }) => id)).toEqual([books[1].id]);
+  expect(page.seriesCounts?.[books[1].id]).toBe(3);
+  expect(queryBooks(books, { ...query, location: "on_device" }, 0).total).toBe(0);
+});
+
+test("series details report the filtered count and offer to show the rest", async () => {
+  const showAll = vi.fn();
+  getLibrary.mockImplementation(async (query) => ({
+    books: [book(1, { series: "Shared series" })], total: query?.hideRead ? 1 : 5,
+    page: 0, pageSize: 24, counts, formats: ["epub"], tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  renderLibrary({ view: { ...view, series: ["Shared series"], hideRead: true }, seriesBack: () => {}, onShowAllSeries: showAll });
+  expect(await screen.findByText("1 of 5 books shown")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Show all books in this series" }));
+  expect(showAll).toHaveBeenCalledOnce();
+});
+
+test("series download skips local files and retries only the failed title", async () => {
+  const local = book(1, { series: "Shared series" });
+  const remote = book(2, { availability: "cloud" });
+  const failed = book(3, { availability: "cloud" });
+  getLibrary.mockResolvedValue({ books: [local], total: 3, page: 0, pageSize: 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] });
+  getCollection.mockResolvedValue({ books: [local, remote, failed] });
+  downloadBook.mockReset().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("Offline")).mockResolvedValueOnce(undefined);
+  renderLibrary({ view: { ...view, series: ["Shared series"] }, seriesBack: () => {} });
+  fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+  expect(await screen.findByRole("region", { name: "Failed downloads" })).toHaveTextContent("Book 3");
+  fireEvent.click(screen.getByRole("button", { name: "Retry failed" }));
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Failed downloads" })).toBeNull());
+  expect(downloadBook.mock.calls).toEqual([[remote.id], [failed.id], [failed.id]]);
+});
+
+test("Undo restores reading status after dismissing the download prompt", async () => {
+  const reading = book(4, { status: "in_progress", inCloud: true });
+  getLibrary.mockResolvedValue({ books: [reading], total: 1, page: 0, pageSize: 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] });
+  setBookStatus.mockClear();
+  renderLibrary();
+  fireEvent.click(await screen.findByRole("button", { name: "More for Book 4" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Reading status" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Mark as read" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Keep on device" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+  expect(setBookStatus.mock.calls).toEqual([[reading.id, "read"], [reading.id, "in_progress"]]);
+});
+
+test("removing downloads from a stack keeps cloud-only and local-only books untouched", async () => {
+  const backedUp = book(1, { series: "Shared series", inCloud: true });
+  const onlyCopy = book(2, { series: "Shared series" });
+  const cloudOnly = book(3, { series: "Shared series", availability: "cloud", inCloud: true });
+  getLibrary.mockResolvedValue({
+    books: [backedUp], seriesCounts: { [backedUp.id]: 3 }, total: 1, page: 0, pageSize: 24,
+    counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [],
+  });
+  getCollection.mockResolvedValue({ books: [backedUp, onlyCopy, cloudOnly] });
+  removeDownload.mockClear();
+  renderLibrary({ view: { ...view, seriesGrouping: "mixed" } });
+  fireEvent.click(await screen.findByRole("button", { name: "More for Shared series" }));
+  expect(screen.getByRole("menuitem", { name: "Download" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove download" }));
+  const confirm = await screen.findByRole("button", { name: "Remove downloads" });
+  expect(removeDownload).not.toHaveBeenCalled();
+  fireEvent.click(confirm);
+  await waitFor(() => expect(screen.getByText(/was kept here/)).toBeInTheDocument());
+  expect(removeDownload.mock.calls).toEqual([[backedUp.id]]);
 });

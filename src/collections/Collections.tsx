@@ -110,15 +110,20 @@ export function Collections({
   onOpen,
   onOpenBook,
   onChanged,
-  search,
+  onDiscover,
+  search, kindleOpen, setKindleOpen, kindleSearch,
 }: {
   /** What's typed in the top bar's search box: the collections are filtered by it. */
   search: string;
+  kindleOpen: boolean;
+  setKindleOpen: (open: boolean) => void;
+  kindleSearch: string;
   /** The collection shown full page, or null for the overview. */
   open: CollectionRef | null;
   refreshKey: number;
   onOpen: (collection: CollectionRef | null) => void;
   onOpenBook: (bookId: string) => void;
+  onDiscover?: () => void;
   /** Something changed that other pages show (counts, Home's collections). */
   onChanged: () => void;
 }) {
@@ -128,7 +133,7 @@ export function Collections({
   const [selected, setSelected] = useState<CollectionRef | null>(null);
   const [tab, setTab] = useState<Tab>("all");
   const [side, setSide] = useState<Side>(() => (readStored(SIDE_KEY) === "series" ? "series" : "compendiums"));
-  const [smartFolded, setSmartFolded] = useState(() => readStored(SMART_FOLDED_KEY) === "1");
+  const [smartFolded, setSmartFolded] = useState(() => readStored(SMART_FOLDED_KEY) !== "0");
   const changeSide = (next: Side) => {
     setSide(next);
     store(SIDE_KEY, next);
@@ -146,7 +151,6 @@ export function Collections({
   const toast = useToast();
   const { settings } = useAppSettings();
   const [kindle, setKindle] = useState<KindleSummary | null>(null);
-  const [kindleOpen, setKindleOpen] = useState(false);
 
   useEffect(() => {
     let current = true;
@@ -366,6 +370,8 @@ export function Collections({
   if (kindleOpen && !open)
     return (
       <KindleView
+        filter={kindleSearch}
+        onDiscover={onDiscover}
         onBack={() => setKindleOpen(false)}
         onChanged={() => {
           setReload((n) => n + 1);

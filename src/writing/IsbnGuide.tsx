@@ -1,3 +1,4 @@
+import { RememberedDetails } from "../components/RememberedDetails";
 // What a writer needs to know about ISBNs before publishing: which versions
 // need one, that each version needs its own, and where to get them. TBV
 // doesn't give them out, and says so plainly. Prices and rules as the
@@ -5,7 +6,7 @@
 
 export function IsbnGuide({ open = false }: { open?: boolean }) {
   return (
-    <details className="isbn-guide" open={open}>
+    <RememberedDetails disclosure="writing.isbn" className="isbn-guide" initiallyOpen={open}>
       <summary>About ISBNs: The Bound Vigil doesn't provide them</summary>
       <p>
         An ISBN is the number that tells shops and libraries which book, and which version of it, they have. The Bound Vigil doesn't give them out: you get them yourself, from
@@ -52,6 +53,6 @@ export function IsbnGuide({ open = false }: { open?: boolean }) {
         </li>
       </ul>
       <p className="muted">A free ISBN from a store ties that version to the store. If you want to sell it everywhere under your own name, buy your own.</p>
-    </details>
+    </RememberedDetails>
   );
 }

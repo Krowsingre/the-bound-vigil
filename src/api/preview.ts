@@ -2,6 +2,7 @@
 // It is never used inside the desktop app (see api/index.ts), and the shell
 // shows a "Preview" badge whenever it is active.
 
+import { PIN_LIMIT, PIN_LIMIT_MESSAGE, upNextChanges } from "../library/shelfLimits";
 import type { Api } from "./index";
 import { previewCollections } from "../preview/collections";
 import { previewNotes, sampleAnnotations } from "../preview/notes";
@@ -431,6 +432,8 @@ function home(): HomeViewModel {
   };
 }
 
+const seriesPins = new Map<string, string>();
+
 const update = (bookId: string, change: Partial<BookPreview>) => {
   books = books.map((b) => (b.id === bookId ? { ...b, ...change } : b));
 };
@@ -568,10 +571,11 @@ export function previewApi(): Api {
   };
   const HOLMES = ["A Study in Scarlet", "The Sign of the Four", "The Adventures of Sherlock Holmes", "The Memoirs of Sherlock Holmes", "The Hound of the Baskervilles", "The Return of Sherlock Holmes", "The Valley of Fear", "His Last Bow", "The Case-Book of Sherlock Holmes"];
 
+  const { readDraftFile, ...writing } = previewWriting();
   return {
     kind: "preview",
     ...previewMove(params),
-    ...previewWriting(),
+    ...writing,
     ...browseStub(),
     findSeriesBooks: async (name, author) => {
       await new Promise((r) => setTimeout(r, 600));
@@ -708,8 +712,23 @@ export function previewApi(): Api {
     getLibrary: async (query) => queryBooks(library(), query, collections.previews().length),
     getCollections: async () => collections.previews(),
     setFavorite: async (bookId, favorite) => update(bookId, { favorite }),
-    setPinned: async (bookId, pinned) => update(bookId, { pinnedAt: pinned ? new Date().toISOString() : null }),
-    setWantToRead: async (bookId, wantToRead) => update(bookId, { wantToRead }),
+    archiveSeriesPins: async () => [...seriesPins.values()],
+    setArchiveSeriesPin: async (label, pinned) => {
+      const key = label.trim().toLowerCase();
+      if (seriesPins.has(key) === pinned) return;
+      if (pinned && seriesPins.size + books.filter((book) => book.pinnedAt).length >= PIN_LIMIT) throw new Error(PIN_LIMIT_MESSAGE);
+      if (pinned) seriesPins.set(key, label);
+      else seriesPins.delete(key);
+    },
+    setAudioType: async (bookId, audioType) => update(bookId, { audioType }),
+    setPinned: async (bookId, pinned) => {
+      if (!!find(bookId).pinnedAt === pinned) return;
+      if (pinned && seriesPins.size + books.filter((book) => book.pinnedAt).length >= PIN_LIMIT) throw new Error(PIN_LIMIT_MESSAGE);
+      update(bookId, { pinnedAt: pinned ? new Date().toISOString() : null });
+    },
+    setWantToRead: async (bookId, want, replace) => {
+      for (const id of upNextChanges(books, bookId, want, replace)) update(id, { wantToRead: id === bookId && want });
+    },
     setPhoneWanted: async (bookIds, phoneWanted) => bookIds.forEach((id) => update(id, { phoneWanted })),
     setRating: async (bookId, rating) => update(bookId, { rating }),
     // The preview has no files to read, so it shows what an import reports.
@@ -881,10 +900,12 @@ export function previewApi(): Api {
     coverUrl: (path) => (path.startsWith("data:") ? path : ""),
     openBook: async (bookId) => {
       const before = find(bookId);
-      update(bookId, { lastOpenedAt: new Date().toISOString(), status: before.status === "unread" ? "in_progress" : before.status });
+      update(bookId, { lastOpenedAt: new Date().toISOString(), status: before.status === "unread" ? "in_progress" : before.status, wantToRead: false });
       return { book: find(bookId), publisher: "Sample Press", language: "en", fileSize: 48_000, previouslyOpenedAt: before.lastOpenedAt };
     },
     readBookFile: async (bookId) => {
+      const draft = readDraftFile(bookId);
+      if (draft) return draft;
       const b = find(bookId);
       const author = b.authors.join(", ");
       const { sampleComic, sampleDocx, sampleFb2, samplePdf, sampleText } = await import("../preview/sampleFiles");
@@ -995,7 +1016,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.81.0", version: "0.82.0", notes: "The Bound Vigil 0.82.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.82.0", version: "0.83.0", notes: "The Bound Vigil 0.83.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
@@ -1118,11 +1139,16 @@ export function previewApi(): Api {
     saveFetched: async (bookId, source, values) => {
       ownOf(bookId);
       const found = { ...fetched.get(bookId) };
+      const mine = { ...edited.get(bookId) };
       for (const [field, value] of Object.entries(values)) {
-        const v = cleanValue(field as DetailFieldName, value);
-        if (v && v !== "[]") found[field] = { value: v, source };
+        const name = field as DetailFieldName;
+        const v = cleanValue(name, value);
+        if (!v || v === "[]") continue;
+        found[name] = { value: v, source };
+        delete mine[name];
       }
       fetched.set(bookId, found);
+      edited.set(bookId, mine);
       relayer(bookId);
     },
     listEreaders: async () => sampleReaders,

@@ -327,16 +327,36 @@
     font-size: 15px;
   }
 
-  /* PDFs and comics: page, slider, zoom and page turns in one row. */
-  .reader-bottom.has-zoom {
-    grid-template-columns: auto minmax(48px, 1fr) auto auto;
+  .reader-bottom {
+    grid-template-columns: auto minmax(48px, 1fr) auto minmax(0, max-content) auto;
     gap: 8px;
-    margin: 0 10px;
+    margin-inline: 10px;
   }
 
-  .reader-bottom.has-zoom .reader-bottom-percent,
-  .reader-bottom.has-zoom .reader-bottom-chapter {
+  .reader-bottom-focus {
+    grid-template-columns: auto minmax(48px, 1fr) auto minmax(0, max-content);
+  }
+
+  .reader-bottom-chapter {
+    max-width: 26vw;
+    min-height: 44px;
+  }
+
+  /* PDFs and comics keep zoom and page turns together; Contents stays reachable. */
+  .reader-bottom.has-zoom {
+    grid-template-columns: auto minmax(48px, 1fr) auto auto;
+    height: auto;
+    row-gap: 0;
+  }
+
+  .reader-bottom.has-zoom .reader-bottom-percent {
     display: none;
+  }
+
+  .reader-bottom.has-zoom .reader-bottom-chapter {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    max-width: 100%;
   }
 
   .reader-bottom .zoom-controls.is-compact .zoom-value {
@@ -473,4 +493,19 @@
     background: none;
     color: var(--sidebar-text);
   }
+}
+
+/* Split panes always keep their navigation rail beside the page or Reader. */
+.app.workspace-rail.sidebar-collapsed {
+  grid-template-columns: var(--sidebar-rail) minmax(0, 1fr);
+}
+.app.workspace-rail > .sidebar.is-collapsed {
+  position: relative;
+  inset: auto;
+  width: auto;
+  transform: none;
+  box-shadow: none;
+}
+.app.workspace-rail > .sidebar.is-collapsed .brand-emblem {
+  flex: none;
 }

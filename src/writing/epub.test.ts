@@ -9,7 +9,52 @@ import { bookOrder, buildEpub, chapterXhtml, copyrightHtml, epubFileName, epubFi
 import { toTitleCase } from "./extensions";
 import { DEFAULT_COPYRIGHT, firstLine, poemWarnings } from "./pages";
 import { emptySource, makeCiter } from "./sources";
+import { printHtml } from "./printBook";
 import { countWords } from "./records";
+
+it("links each numbered citation to one EPUB reference and keeps the same numbers in print", async () => {
+  const source = { ...emptySource("web", "webpage"), title: "Example & source", url: "https://example.org/a?x=1&y=2" };
+  const other = { ...emptySource("book"), title: "Other source" };
+  const chapters = [
+    chapter(1, "One", '<p>[12] <cite data-source="web">old</cite> and <cite data-source="book">old</cite>.</p>'),
+    chapter(2, "Two", '<p>Again <cite data-source="web" data-locator="7">old</cite>.</p>'),
+    { ...chapter(3, "", ""), role: "back" as const, page: '{"kind":"sources"}' },
+  ];
+  const settings = { ...readExport("{}"), citationStyle: "numbered" as const, sources: [other, source] };
+  const citer = await makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters));
+  const input = { project, chapters, settings, citer };
+  for (const newPage of [true, false]) {
+    const files = epubFiles({ ...input, settings: { ...settings, newPage } }).files;
+    const referencePage = files.find(([, body]) => String(body).includes('id="tbv-reference-1"'))!;
+    const referenceFile = referencePage[0].split("/").pop();
+    const html = files.filter(([name]) => name.endsWith(".xhtml")).map(([, body]) => String(body)).join("\n");
+    expect(html.match(new RegExp(`href="${referenceFile}#tbv-reference-1"`, "g"))).toHaveLength(2);
+    expect(html.match(/id="tbv-reference-1"/g)).toHaveLength(1);
+    expect(html).toContain('href="https://example.org/a?x=1&amp;y=2"');
+    expect(html).toContain("[12]");
+    expect(html).toContain("[1]</a>, p. 7");
+  }
+  const print = new DOMParser().parseFromString(printHtml(input, settings.print), "text/html").body.textContent;
+  expect(print).toContain("[12] [1] and [2].");
+  expect(print).toContain("[1] Example & source");
+  expect(print).toContain("[2] Other source");
+});
+
+it("exports an optional, editable bibliography with regular styling for additional entries", async () => {
+  const source = { ...emptySource("cited"), title: "Updated title" };
+  const additional = { ...emptySource("added"), title: "Additional title", includeInBibliography: true };
+  const cited = chapter(1, "One", '<p><cite data-source="cited">Original title</cite></p>');
+  const bibliography = { ...chapter(2, "Bibliography", ""), role: "back" as const, page: '{"kind":"sources"}' };
+  const settings = { ...readExport('{"automaticBibliography":true}'), citationStyle: "numbered" as const, sources: [source, additional] };
+  const citer = await makeCiter("numbered", settings.sources, [cited, bibliography]);
+  const html = epubFiles({ project, chapters: [cited, bibliography], settings, citer }).files.map(([, body]) => String(body)).join("\n");
+  expect(html).toContain('class="source" id="tbv-reference-1">[1] Updated title');
+  expect(html).toContain('class="source" id="tbv-reference-2">[2] Additional title');
+  expect(html).not.toContain("is-additional");
+  const withoutPage = epubFiles({ project, chapters: [cited], settings, citer }).files.map(([, body]) => String(body)).join("\n");
+  expect(withoutPage).toContain("<p>[1]</p>");
+  expect(withoutPage).not.toContain("tbv-reference-");
+});
 
 const project: WritingProject = {
   id: "0192f0a4-7e3b-7c1d-9a52-1f3e5b7d9c01",
@@ -141,7 +186,8 @@ describe("citations", () => {
     const cited = { ...chapters[0], body: '<p>As she wrote <cite data-source="s1" data-locator="12">(Morrison 1987, p. 12)</cite>, it holds.</p>' };
     const settings = { ...readExport(""), sources: [source], citationStyle: "chicago-notes" as const };
     const citer = await makeCiter(settings.citationStyle, settings.sources, [cited]);
-    const { files } = epubFiles({ project, chapters: [cited], settings, citer });
+    const bibliography = { ...chapter(2, "", ""), role: "back" as const, page: '{"kind":"sources"}' };
+    const { files } = epubFiles({ project, chapters: [cited, bibliography], settings, citer });
     const all = files.map(([, body]) => String(body)).join("\n");
     expect(all).toContain('As she wrote <sup><a epub:type="noteref"');
     expect(all).toContain("Morrison, <em>Beloved</em>, 12.");
@@ -149,7 +195,7 @@ describe("citations", () => {
     expect(all).toContain("<h1>Bibliography</h1>");
     // In APA, the citation sits in the text.
     const apa = await makeCiter("apa", settings.sources, [cited]);
-    const apaBook = epubFiles({ project, chapters: [cited], settings: { ...settings, citationStyle: "apa" }, citer: apa }).files.map(([, b]) => String(b)).join("\n");
+    const apaBook = epubFiles({ project, chapters: [cited, bibliography], settings: { ...settings, citationStyle: "apa" }, citer: apa }).files.map(([, b]) => String(b)).join("\n");
     expect(apaBook).toContain("As she wrote (Morrison, 1987, p. 12), it holds.");
     expect(apaBook).toContain("<h1>References</h1>");
   });
@@ -395,7 +441,7 @@ describe("ready-made pages, numbering and headings", () => {
     const joined = [...book.slice(0, 5), page({ ...chapter(6, "Between", "<p>A pause.</p>"), part: "c4" }, "chapter", { kind: "interlude", newPage: false })];
     const f = epubFiles({ project, chapters: joined, settings: settings() }).files;
     expect(f.map(([n]) => n)).not.toContain("OEBPS/chapter-6.xhtml");
-    expect(text(f, "OEBPS/chapter-5.xhtml")).toContain(`<section class="chapter page-interlude follows"`);
+    expect(text(f, "OEBPS/chapter-5.xhtml")).toContain(`<section class="chapter page-interlude follows in-part"`);
   });
 });
 

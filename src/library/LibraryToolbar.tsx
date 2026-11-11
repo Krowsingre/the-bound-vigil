@@ -1,10 +1,11 @@
 import { useState } from "react";
-import type { Location, ShelfCounts } from "../api/types";
+import { phoneChoiceShown } from "../home/bookActions";
+import type { ShelfCounts } from "../api/types";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { formatLabel } from "../lib/queryBooks";
 import { languageName } from "../lib/language";
-import { excludeCount, NO_FILTERS, SORTS, TABS, type Layout, type LibraryTab, type LibraryView } from "./libraryView";
+import { excludeCount, NO_FILTERS, SORTS, TABS, type Layout, type SeriesGrouping, type LibraryTab, type LibraryView } from "./libraryView";
 
 type FilterList = "formats" | "tags" | "genres" | "languages" | "authors" | "series" | "narrators";
 
@@ -25,11 +26,18 @@ const LAYOUTS: { layout: Layout; label: string; icon: "grid" | "list" | "rows" }
   { layout: "compact", label: "Compact list", icon: "rows" },
 ];
 
+const GROUPING: { value: SeriesGrouping; label: string }[] = [
+  { value: "individual", label: "Individual books" },
+  { value: "mixed", label: "Stacked and mixed" },
+  { value: "seriesFirst", label: "Stacked, series first" },
+];
+
 const OPENED_KEY = "tbv.filters.opened";
 
 function readOpened(): Set<string> {
   try {
-    return new Set(JSON.parse(localStorage.getItem(OPENED_KEY) ?? "[]") as string[]);
+    const names = JSON.parse(localStorage.getItem(OPENED_KEY) ?? "[]") as string[];
+    return new Set(names.map((name) => name === "Collections" ? "Shelf" : name));
   } catch {
     return new Set();
   }
@@ -45,6 +53,12 @@ export function LibraryToolbar({
   authors = [],
   narrators = [],
   allLabel,
+  allowSeries = false,
+  seriesNames = [],
+  paired = null,
+  onPairing,
+  continuous = false,
+  onContinuous,
   selecting,
   onSelecting,
   onSelectAll,
@@ -62,6 +76,12 @@ export function LibraryToolbar({
   narrators?: string[];
   /** The first tab's name, when it isn't "All books". */
   allLabel?: string;
+  allowSeries?: boolean;
+  seriesNames?: string[];
+  paired?: boolean | null;
+  onPairing?: (value: boolean | null) => void;
+  continuous?: boolean;
+  onContinuous?: (enabled: boolean) => void;
   selecting: boolean;
   onSelecting: (on: boolean) => void;
   /** Starts choosing with every book the page shows already chosen. */
@@ -73,6 +93,8 @@ export function LibraryToolbar({
   const tabName = (tab: LibraryTab) => (tab === "all" && allLabel ? allLabel : (TABS.find((t) => t.tab === tab)?.label ?? ""));
   // Filter's groups start folded; the ones opened stay open next time.
   const [opened, setOpened] = useState(readOpened);
+  const [mode, setMode] = useState<"include" | "exclude">("include");
+  const [find, setFind] = useState({ series: "", tags: "" });
   const fold = (name: string) => {
     const next = new Set(opened);
     if (next.has(name)) next.delete(name);
@@ -112,15 +134,15 @@ export function LibraryToolbar({
     view.series.length +
     view.narrators.length +
     (view.hideRead ? 1 : 0) +
+    (paired === null ? 0 : 1) +
     excludeCount(view.exclude);
-  // Each click moves a filter on: show only these, then leave these out, then off.
-  const cycle = (list: FilterList, value: string) => {
-    const shown = view[list].includes(value);
-    const hidden = view.exclude[list].includes(value);
-    const without = (l: string[]) => l.filter((x) => x !== value);
+  const toggleValue = (list: FilterList, value: string) => {
+    const included = view[list];
+    const excluded = view.exclude[list];
+    const without = (values: string[]) => values.filter((item) => item !== value);
     onChange({
-      [list]: shown ? without(view[list]) : hidden ? view[list] : [...view[list], value],
-      exclude: { ...view.exclude, [list]: shown ? [...view.exclude[list], value] : without(view.exclude[list]) },
+      [list]: mode === "include" && !included.includes(value) ? [...included, value] : without(included),
+      exclude: { ...view.exclude, [list]: mode === "exclude" && !excluded.includes(value) ? [...excluded, value] : without(excluded) },
       page: 0,
     });
   };
@@ -128,68 +150,75 @@ export function LibraryToolbar({
     label,
     checked: view[list].includes(value),
     excluded: view.exclude[list].includes(value),
-    onSelect: () => cycle(list, value),
+    onSelect: () => toggleValue(list, value),
   });
   const all = (list: FilterList, known: string[]) => [...new Set([...known, ...view[list], ...view.exclude[list]])];
-  const names = (list: "authors" | "series" | "narrators", heading: string, known: string[]): MenuEntry[] =>
-    group(
-      heading,
-      onIn(list),
-      all(list, known).map((n) => item(list, n, n)),
-    );
+  const names = (list: "authors" | "narrators", heading: string, known: string[]): MenuEntry[] =>
+    group(heading, onIn(list), all(list, known).map((name) => item(list, name, name)));
+  const searchable = (list: "series" | "tags", heading: string, known: string[]): MenuEntry[] => {
+    const values = all(list, known);
+    if (!values.length) return [];
+    return group(heading, onIn(list), [
+      { heading: <input type="search" aria-label={`Find ${heading.toLowerCase()}`} placeholder={`Find ${heading.toLowerCase()}…`}
+        value={find[list]} onChange={(event) => setFind({ ...find, [list]: event.target.value })} /> },
+      ...values.filter((value) => value.toLowerCase().includes(find[list].trim().toLowerCase()))
+        .map((value) => item(list, value, value)),
+    ]);
+  };
   // A shelf is chosen in Filter, so it counts there too.
   const filterBadge = filterCount + (view.tab !== "all" ? 1 : 0);
-  const setLocation = (l: Location) => onChange({ location: view.location === l ? null : l });
 
-  // Clear filters, then where the file is, the shelves, genre and
-  // language, then the rest.
+
+  const clearFilters = () => {
+    onPairing?.(null);
+    onChange({ ...NO_FILTERS, audioType: view.audioType, tab: "all", page: 0 });
+  };
+
+  // Put quick filters first, then shelves and metadata filters.
   const filterItems: MenuEntry[] = [
-    ...(filterCount ? ([{ label: "Clear filters", icon: "close", onSelect: () => onChange(NO_FILTERS) }] as MenuEntry[]) : []),
-    { heading: <span className="menu-tip">Click once to show only those, twice to hide them.</span> },
-    ...group("Location", view.location ? 1 : 0, [
-      { label: "Downloaded", checked: view.location === "on_device", onSelect: () => setLocation("on_device") },
-      { label: "Not downloaded", checked: view.location === "cloud_only", onSelect: () => setLocation("cloud_only") },
-    ]),
+    { label: "Hide finished books", checked: view.hideRead, onSelect: () => onChange({ hideRead: !view.hideRead, page: 0 }) },
+    { label: "On this device", checked: view.location === "on_device", onSelect: () => onChange({ location: view.location === "on_device" ? null : "on_device" }) },
+    ...(onPairing ? ([
+      { label: "Pairing", hint: paired === null ? "All" : paired ? "Paired" : "Unpaired", submenu: [
+        { label: "All", checked: paired === null, onSelect: () => onPairing(null) },
+        { label: "Paired", checked: paired === true, onSelect: () => onPairing(true) },
+        { label: "Unpaired", checked: paired === false, onSelect: () => onPairing(false) },
+      ] },
+    ] as MenuEntry[]) : []),
+    "divider",
+    ...(filterBadge ? [{ label: "Clear filters", icon: "close", onSelect: clearFilters } as MenuEntry] : []),
+    ...(filterBadge ? [{ heading: <span className="menu-tip">
+      {[view.tab !== "all" ? tabName(view.tab) : "", view.hideRead ? "Hide finished" : "",
+        view.location ? "On this device" : "", paired !== null ? paired ? "Paired" : "Unpaired" : "",
+        ...(["series", "tags", "genres", "formats", "languages", "authors", "narrators"] as const)
+          .flatMap((key) => [...view[key], ...view.exclude[key].map((value) => `Exclude ${value}`)])].filter(Boolean).join(" · ")}
+    </span> } as MenuEntry] : []),
     ...group(
-      "Collections",
+      "Shelf",
       view.tab === "all" ? 0 : 1,
-      TABS.map(({ tab }) => ({
+      TABS.filter(({ tab }) => tab !== "send_to_device" || phoneChoiceShown()).map(({ tab }) => ({
         label: tabName(tab),
         hint: counts?.[COUNT_OF[tab]] !== undefined ? String(counts[COUNT_OF[tab]]) : undefined,
         checked: view.tab === tab,
         onSelect: () => onChange({ tab }),
       })),
     ),
-    ...group(
-      "Genres",
-      onIn("genres"),
-      all("genres", genres).map((g) => item("genres", g, g)),
-    ),
-    ...(languages.length > 1 || view.languages.length || view.exclude.languages.length
-      ? group(
-          "Language",
-          onIn("languages"),
-          all("languages", languages)
-            .map((l) => ({ code: l, name: languageName(l) }))
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map(({ code, name }) => item("languages", code, name)),
-        )
-      : []),
-    ...group(
-      "Format",
-      onIn("formats"),
-      all("formats", formats).map((f) => item("formats", f, formatLabel(f))),
-    ),
-    ...group(
-      "Tags",
-      onIn("tags"),
-      all("tags", tags).map((t) => item("tags", t, t)),
-    ),
-    ...names("authors", "Authors", authors),
-    ...names("series", "Series", []),
-    ...names("narrators", "Narrators", narrators),
     "divider",
-    { label: "Hide finished books", checked: view.hideRead, onSelect: () => onChange({ hideRead: !view.hideRead, page: 0 }) },
+    { heading: <div className="menu-tip" role="group" aria-label="Filter selection">
+      <button type="button" className="btn btn-quiet btn-small" aria-pressed={mode === "include"} onClick={() => setMode("include")}>Include</button>
+      <button type="button" className="btn btn-quiet btn-small" aria-pressed={mode === "exclude"} onClick={() => setMode("exclude")}>Exclude</button>
+    </div> },
+    ...searchable("series", "Series", seriesNames),
+    ...searchable("tags", "Tags", tags),
+    ...group("More filters", onIn("genres") + onIn("languages") + onIn("formats") + onIn("authors") + onIn("narrators"), [
+      ...group("Genres", onIn("genres"), all("genres", genres).map((g) => item("genres", g, g))),
+      ...group("Language", onIn("languages"), all("languages", languages)
+        .map((code) => ({ code, name: languageName(code) })).sort((a, b) => a.name.localeCompare(b.name))
+        .map(({ code, name }) => item("languages", code, name))),
+      ...group("Format", onIn("formats"), all("formats", formats).map((f) => item("formats", f, formatLabel(f)))),
+      ...names("authors", "Authors", authors),
+      ...names("narrators", "Narrators", narrators),
+    ]),
   ];
 
   return (
@@ -205,11 +234,15 @@ export function LibraryToolbar({
                 <Icon name="chevronDown" size={12} className="toolbar-chevron" />
               </>
             }
-            items={SORTS.map((s) => ({
-              label: s.label,
-              checked: s.sort === view.sort,
-              onSelect: () => onChange({ sort: s.sort }),
-            }))}
+            items={[
+              ...SORTS.slice(0, 5).map((entry) => ({
+                label: entry.label, checked: entry.sort === view.sort, onSelect: () => onChange({ sort: entry.sort }),
+              })),
+              { label: "More sort options", hint: SORTS.slice(5).some((entry) => entry.sort === view.sort) ? sortLabel : undefined,
+                submenu: SORTS.slice(5).map((entry) => ({
+                  label: entry.label, checked: entry.sort === view.sort, onSelect: () => onChange({ sort: entry.sort }),
+                })) },
+            ]}
           />
         )}
         <Menu
@@ -251,6 +284,24 @@ export function LibraryToolbar({
                 {view.location === "on_device" && " · Downloaded"}
               </span>
             )}
+            {onContinuous && (
+              <Menu
+                label={continuous ? "Browsing mode: Continuous scroll" : "Browsing mode: Paged"}
+                className="toolbar-button"
+                trigger={<><Icon name="rows" size={16} /><Icon name="chevronDown" size={12} className="toolbar-chevron" /></>}
+                items={[
+                  { label: "Paged", checked: !continuous, onSelect: () => onContinuous(false) },
+                  { label: "Continuous scroll", checked: continuous, onSelect: () => onContinuous(true) },
+                ]}
+              />
+            )}
+            {allowSeries && <Menu
+              label={`Series: ${GROUPING.find((item) => item.value === view.seriesGrouping)?.label}`}
+              className="toolbar-button"
+              trigger={<><Icon name="bookOpen" size={16} /> Series <Icon name="chevronDown" size={12} className="toolbar-chevron" /></>}
+              items={GROUPING.map(({ value, label }) => ({ label, checked: view.seriesGrouping === value,
+                onSelect: () => onChange({ seriesGrouping: value, page: 0 }) }))}
+            />}
             <div className="layout-switch" role="radiogroup" aria-label="Layout">
               {LAYOUTS.map((l) => (
                 <button
@@ -262,7 +313,7 @@ export function LibraryToolbar({
                   aria-label={l.label}
                   title={l.label}
                   className={view.layout === l.layout ? "is-active" : undefined}
-                  onClick={() => onChange({ layout: l.layout })}
+                  onClick={() => onChange({ layout: l.layout, page: 0 })}
                 >
                   <Icon name={l.icon} size={18} />
                 </button>

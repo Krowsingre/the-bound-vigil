@@ -1,3 +1,4 @@
+import { RememberedDetails } from "../components/RememberedDetails";
 // Preferences › Sync › What's in Supabase: every file TBV keeps there, by type,
 // and removing any of them. Tidy up Supabase does the usual clear-out; this
 // is for choosing exactly what goes.
@@ -131,7 +132,7 @@ export function ContentsSection({ overview }: { overview: SyncOverview }) {
             const all = g.files.every((f) => chosen.has(f.path));
             const limit = shown[g.kind] ?? PAGE;
             return (
-              <details key={g.kind} className="contents-group">
+              <RememberedDetails disclosure={`preferences.contents.${g.kind}`} key={g.kind} className="contents-group">
                 <summary>
                   <input
                     type="checkbox"
@@ -164,7 +165,7 @@ export function ContentsSection({ overview }: { overview: SyncOverview }) {
                     Show more ({(g.files.length - limit).toLocaleString()} left)
                   </button>
                 )}
-              </details>
+              </RememberedDetails>
             );
           })}
           <div className="dialog-actions">

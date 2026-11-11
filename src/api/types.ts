@@ -48,7 +48,10 @@ export interface RemotePosition {
   at: IsoUtc;
 }
 
+export type AudioType = "audiobook" | "podcast" | "music";
+
 export interface BookPreview {
+  audioType?: AudioType | null;
   id: BookId;
   title: string;
   authors: string[];
@@ -478,6 +481,9 @@ export type ItemKind = "books" | "documents" | "audiobooks";
 export type Location = "on_device" | "cloud_only";
 
 export interface LibraryQuery {
+  omitFacets?: boolean;
+  seriesCoverChoices?: Record<string, string>;
+  audioType?: AudioType | null;
   shelf: Shelf;
   sort: SortOrder;
   search: string | null;
@@ -509,6 +515,9 @@ export interface LibraryQuery {
   ids?: string[];
   /** Pinned books first: the Archive's own list. */
   pinnedFirst?: boolean;
+  groupSeries?: boolean;
+  mixSeries?: boolean;
+  pinned?: boolean;
   /** Zero-based. */
   page: number;
   pageSize: number;
@@ -538,6 +547,10 @@ export interface ShelfCounts {
 
 export interface LibraryPage {
   books: BookPreview[];
+  seriesCounts?: Record<string, number>;
+  seriesPublished?: Record<string, number>;
+  seriesCovers?: Record<string, BookPreview>;
+  seriesNames?: string[];
   total: number;
   page: number;
   pageSize: number;
@@ -826,6 +839,7 @@ export interface GoodreadsImport {
   ratings: number;
   statuses: number;
   upNext: number;
+  upNextSkipped?: number;
   favourites: number;
   collectionsCreated: string[];
   collectionBooks: number;
@@ -875,6 +889,7 @@ export interface KindleApplied {
 
 /** A book bought on Kindle that isn't in the library. */
 export interface KindlePurchase {
+  bookIds?: string[];
   asin: string;
   title: string;
   author: string;
@@ -1532,6 +1547,7 @@ export interface Bookmark {
   id: string;
   title: string;
   url: string;
+  folder?: string | null;
 }
 
 /** A favourite website on Discover's start page, on one of the gallery paintings. */
@@ -1559,6 +1575,8 @@ export interface SanctumLink {
 }
 
 /** The space the Browser tab keeps for web pages, in the window's points. */
+export interface BrowserPane { tab: string; frame: BrowserFrame }
+
 export interface BrowserFrame {
   x: number;
   y: number;
@@ -1568,6 +1586,8 @@ export interface BrowserFrame {
 
 /** Discover's protection: the level chosen, and the sites (hosts) it's lowered for. */
 export interface BrowserProtection {
+  redirects?: "allow" | "block" | "ask";
+  redirectAllowlist?: string[];
   level: "strict" | "balanced" | "off";
   lowered: string[];
 }
@@ -1578,20 +1598,24 @@ export type BrowserEvent =
   | { kind: "page"; tab: string; url: string; title?: string | null; loading: boolean }
   /** A file started coming down. */
   | { kind: "downloadStart"; tab: string; id: string; name: string; url: string }
+  | { kind: "directDownloadStart"; id: string; name: string; url: string; sourceUrl?: string | null }
+  | { kind: "downloadImport"; id: string; bookId: BookId | null; error: string | null }
   /** A file finished coming down (`ok`), or failed. */
-  | { kind: "download"; tab: string; id: string; path: string; name: string; ok: boolean }
+  | { kind: "download"; tab: string; id: string; path: string; name: string; ok: boolean; error?: string | null; securityBlocked?: boolean }
   /** A link that wants a new window. With `tab`, the tab is made already (a pop-up on iPhone). */
-  | { kind: "newTab"; url: string; from: string; tab?: string }
+  | { kind: "newTab"; url: string; from: string; tab?: string; foreground?: boolean }
   /** A page that closed itself. */
   | { kind: "closed"; tab: string }
   /** A page that couldn't open, and why, in plain words. */
   | { kind: "failed"; tab: string; url: string; reason: string }
   /** A link for another app (mail, a phone number), not opened yet. */
+  | { kind: "redirect"; tab: string; from: string; url: string; ask: boolean }
   | { kind: "external"; tab: string; url: string }
   /** Chosen from a link's own menu: open it in a new tab, or bring its book into the library. */
   | { kind: "menu"; tab: string; action: "newTab" | "addBook"; url: string }
   /** A tab shortcut pressed while a page had the keyboard (Windows). */
-  | { kind: "key"; tab: string; key: "newTab" | "closeTab" | "nextTab" | "previousTab" | "reopenTab" };
+  | { kind: "focus"; tab: string }
+  | { kind: "key"; tab: string; key: "focusAddress" | "bookmarkPage" | "newTab" | "closeTab" | "nextTab" | "previousTab" | "reopenTab" | "appBack" | "appForward" | "pageBack" | "pageForward" };
 
 /** An article found on a page by reader mode (Mozilla's Readability). */
 export interface ReaderArticle {

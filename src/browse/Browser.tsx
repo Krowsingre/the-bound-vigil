@@ -1,12 +1,14 @@
+import { workspaceHost } from "../shell/workspaceFrame";
+import { placeWorkspaceBrowser, workspaceOffset } from "./workspaceBrowser";
 // Discover: a web browser inside TBV. Each tab's page shows in a view of its
 // own laid over the space below the tab row (see src-tauri/src/browser.rs);
 // this draws the tabs, the Downloads list and reader mode, and keeps the
 // page's view in place. The top bar's search box is the address bar, with the
 // page's buttons (back, forward, reload, home, bookmark, reader) beside it.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, isIOS, openExternal } from "../api";
-import type { Bookmark, BrowserEvent, BrowserFrame, ReaderArticle } from "../api/types";
+import type { Bookmark, BrowserEvent, BrowserFrame, BrowserPane, ReaderArticle } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { openContextMenu, openContextMenuAt } from "../components/ContextMenu";
 import { Icon } from "../components/Icon";
@@ -15,6 +17,8 @@ import { useToast } from "../components/Toast";
 import { askSendWithLocalSend } from "../localsend/SendWithLocalSend";
 import { formatLabel } from "../lib/queryBooks";
 import { useNarrow } from "../lib/useNarrow";
+import type { Route } from "../shell/routes";
+import { SplitDivider } from "./SplitDivider";
 import {
   addressFor,
   desktopHosts,
@@ -47,6 +51,7 @@ import {
   readClosedTabs,
   readTabs,
   rememberClosed,
+  removeClosedBatch,
   reopenTab,
   rightOf,
   takeClosed,
@@ -55,19 +60,23 @@ import {
   type ClosedTab,
   type TabsState,
 } from "./browserTabs";
-import { downloadState, readDownloads, writeDownloads, type Fetched } from "./browserDownloads";
+import { answerDownload, BOOK_FILE, downloadSource, downloadState, hasActiveTransfer, isActiveDownload, rememberDownloadSource, removeDownloads, setDownloads, useDownloads, type Fetched } from "./browserDownloads";
+import { HAS_PIP, INSTALL_YOUTUBE_PIP, isYouTube, READ_SELECTION } from "./pageTools";
+import { requestAppHistory } from "../shell/navigationKeys";
 import { addToHistory } from "./browserHistory";
 import { HistoryPanel } from "./HistoryPanel";
 import { onBrowserAsk, type BrowserAsk } from "./browserAsk";
 import { addToReadingList, bookIdOf } from "./readingList";
 import { ClosedList } from "./ClosedList";
 import { SiteInfo } from "./SiteInfo";
+import { SessionsPanel, restoreSession } from "./SessionsPanel";
 import { BookmarksPanel, ReadingListPanel } from "./StartPanels";
 import { StartPage, type StartPanel } from "./StartPage";
 import { useTabDrag } from "./useTabDrag";
 import { articleByline, articleEpub, articleFrom, cleanArticle, readerScript } from "./readerArticle";
 
 /** The header's search box, on Discover, sends what's typed here. */
+export const BROWSER_NEW = "tbv:browser-new";
 export const BROWSER_GO = "tbv:browser-go";
 /** The page in front, told to the header so its search box can show the address. */
 export const BROWSER_PAGE = "tbv:browser-page";
@@ -89,21 +98,22 @@ export const SUGGESTED_SITES: { title: string; url: string }[] = [
   { title: "LibriVox (audiobooks)", url: "https://librivox.org/" },
 ];
 
-/** Files TBV can bring in, by the end of their name. */
-const BOOK_FILE = /\.(epub|kepub|pdf|mobi|azw3?|fb2|cbz|cbr|djvu|txt|docx?|rtf|m4b|mp3|m4a)(\?|#|$)/i;
 
 /** What the top bar's buttons show about the page in front. */
 interface BarState {
   busy: boolean;
   marked: boolean;
+  bookmarks: Bookmark[];
   reader: boolean;
   /** A web page (not the start page), which can be bookmarked or read in reader view. */
   web: boolean;
 }
-const BAR_START: BarState = { busy: false, marked: false, reader: false, web: false };
+const BAR_START: BarState = { busy: false, marked: false, bookmarks: [], reader: false, web: false };
 let barNow = BAR_START;
 
 const ask = (what: string) => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: what }));
+/** Webpage Back/Forward when a control in TBV, rather than the native page, has focus. */
+export const navigateBrowserHistory = (direction: "back" | "forward") => ask(direction);
 
 /** Holding Back or Forward (or right-clicking it) lists the pages that way. */
 function useTravel(way: "back" | "forward") {
@@ -139,12 +149,32 @@ function useTravel(way: "back" | "forward") {
   };
 }
 
+function BrowserBookmarks({ state, className }: { state: BarState; className: string }) {
+  const sites = state.bookmarks.length ? state.bookmarks : SUGGESTED_SITES;
+  const items: MenuEntry[] = [
+    { label: state.marked ? "Remove bookmark" : "Bookmark this page", icon: "bookmark", disabled: !state.web, onSelect: () => ask("mark") },
+    { label: "Manage bookmarks", icon: "edit", onSelect: () => ask("bookmarks") },
+    "divider",
+    { heading: <strong>{state.bookmarks.length ? "Saved sites" : "Book sites to start with"}</strong> },
+    ...sites.map((site) => ({ label: site.title, icon: "globe" as const, onSelect: () => ask("bookmark:" + site.url) })),
+  ];
+  return (
+    <Menu
+      label={state.marked ? "Bookmarks (page saved)" : "Bookmarks"}
+      className={className + (state.marked ? " browser-bookmark-saved" : "")}
+      align="start"
+      trigger={<Icon name="bookmark" size={20} />}
+      items={items}
+    />
+  );
+}
+
 /**
  * The top bar's buttons on Discover, before the address: Back, Forward,
  * Reload, Home, Bookmark and Reader view. A phone has Home here and the rest
  * in the row under the bar.
  */
-export function BrowserNav() {
+export function BrowserNav({ compact = false }: { compact?: boolean } = {}) {
   const narrow = useNarrow();
   const [state, setState] = useState(barNow);
   useEffect(() => {
@@ -165,9 +195,10 @@ export function BrowserNav() {
       {button("Back", "arrowLeft", "back", back)}
       {button("Forward", "arrowRight", "forward", forward)}
       {button(state.busy ? "Stop" : "Reload", state.busy ? "close" : "sync", state.busy ? "stop" : "reload")}
-      {button("Home page", "home", "home")}
-      {button(state.marked ? "Remove bookmark" : "Bookmark this page", "bookmark", "mark", { disabled: !state.web, "aria-pressed": state.marked, className: `header-action${state.marked ? " is-on" : ""}` })}
-      {button("Reader view", "bookOpen", "reader", { disabled: !state.web && !state.reader, "aria-pressed": state.reader, className: `header-action${state.reader ? " is-on" : ""}` })}
+      {!compact && button("Home page", "home", "home")}
+      {!compact && <BrowserBookmarks state={state} className="header-action" />}
+      {!compact && button("Sessions", "list", "sessions")}
+      {!compact && button("Reader view", "bookOpen", "reader", { disabled: !state.web && !state.reader, "aria-pressed": state.reader, className: `header-action${state.reader ? " is-on" : ""}` })}
     </div>
   );
 }
@@ -234,6 +265,29 @@ let openedThisRun = false;
  * is left (unless Preferences says to start afresh), so this outlives the
  * page: coming back shows them as they were instead of loading them again. */
 const madeViews = new Set<string>();
+const releasingViews = new Set<string>();
+
+function releaseView(id: string) {
+  if (releasingViews.has(id)) return;
+  releasingViews.add(id);
+  const tryClose = async () => {
+    const pip = await api.browserRead(id, HAS_PIP).catch(() => false);
+    if (pip === true || hasActiveTransfer(id)) {
+      window.setTimeout(() => void tryClose(), 1500);
+      return;
+    }
+    madeViews.delete(id);
+    rememberDownloadSource(id, undefined);
+    try {
+      await api.browserAct(id, "close");
+    } catch {
+      // The native view may have closed itself.
+    } finally {
+      releasingViews.delete(id);
+    }
+  };
+  void tryClose();
+}
 
 /** The tabs Discover opens with, as chosen in Preferences › Discover. */
 function startingTabs(): TabsState {
@@ -246,8 +300,7 @@ function startingTabs(): TabsState {
   // otherwise go on without a tab to close them by.
   if (!first)
     for (const t of readTabs(home).tabs) {
-      madeViews.delete(t.id);
-      void api.browserAct(t.id, "close").catch(() => undefined);
+      releaseView(t.id);
     }
   return freshTabs(home);
 }
@@ -256,12 +309,16 @@ const titleOf = (title: string | null, url: string, privately = false) => (isSta
 
 /** Pauses every video and sound on a page, for leaving Discover. */
 const PAUSE_ALL = `(function () {
-  document.querySelectorAll("video, audio").forEach(function (m) { try { m.pause(); } catch (e) {} });
+  document.querySelectorAll("video, audio").forEach(function (m) {
+    if (m !== document.pictureInPictureElement && m.webkitPresentationMode !== "picture-in-picture") {
+      try { m.pause(); } catch (e) {}
+    }
+  });
   return JSON.stringify(null);
 })()`;
 
 /** Something on top (a menu, a dialog, the phone's menu of pages) would be hidden under the page, so the page steps aside. */
-const covered = () => !!document.querySelector(".dialog-backdrop, [role=menu], [role=alertdialog], .sidebar-backdrop, .address-suggestions");
+const covered = () => !!document.querySelector(".dialog-backdrop, [role=menu], [role=alertdialog], .sidebar-backdrop, .address-suggestions, dialog[open], .split-resizing");
 
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
 const clean = (e: unknown) => String(e).replace(/^Error: /, "");
@@ -271,25 +328,42 @@ export function Browser({
   onOpenBook,
   search,
   onSearchChange,
+  allowSplit,
+  companion,
+  onSplitWith,
 }: {
   onOpenCatalogues: () => void;
   onOpenBook: (bookId: string) => void;
   /** The top search box's typing, which the start page's box shares. */
   search: string;
   onSearchChange: (text: string) => void;
+  allowSplit: boolean;
+  companion: boolean;
+  onSplitWith?: (route: Route) => void;
 }) {
   const narrow = useNarrow();
   const [tabs, setTabs] = useState<TabsState>(startingTabs);
+  const [pair, setPair] = useState<{ other: string; activeLeft: boolean } | null>(null);
+  const [ratio, setRatio] = useState(50);
+  const companionRef = useRef(companion);
+  companionRef.current = companion;
+  const secondary = useRef<HTMLDivElement>(null);
+  const activate = useRef<(id: string) => void>(() => undefined);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [marks, setMarks] = useState<Bookmark[]>([]);
-  const [fetched, setFetched] = useState<Fetched[]>(readDownloads);
-  const [panel, setPanel] = useState<null | "tabs" | "site" | StartPanel>(null);
+  const fetched = useDownloads();
+  const [panel, setPanel] = useState<null | "tabs" | "site" | "bookmark-page" | "sessions" | StartPanel>(null);
+  const [tabSearch, setTabSearch] = useState("");
+  useEffect(() => { if (panel !== "tabs") setTabSearch(""); }, [panel]);
   /** Pages that couldn't open, by tab: TBV's own page says why. */
   const [failed, setFailed] = useState<Record<string, { url: string; reason: string }>>({});
+  const failedRef = useRef(failed);
+  failedRef.current = failed;
   /** Tabs just closed, for the Undo line. */
-  const [undo, setUndo] = useState<{ count: number; at: number } | null>(null);
+  const [undo, setUndo] = useState<ClosedTab[]>([]);
   const [closedTabs, setClosedTabs] = useState(readClosedTabs);
   /** A link for another app, waiting for an answer. */
+  const [redirects, setRedirects] = useState<Extract<BrowserEvent, { kind: "redirect" }>[]>([]);
   const [appLink, setAppLink] = useState<string | null>(null);
   const [finding, setFinding] = useState<string | null>(null);
   const [article, setArticle] = useState<ReaderArticle | null>(null);
@@ -298,7 +372,7 @@ export function Browser({
   const [problem, setProblem] = useState<string | null>(null);
   const area = useRef<HTMLDivElement>(null);
   const made = useRef(madeViews);
-  const shown = useRef(false);
+  const preparing = useRef(new Map<string, Promise<void>>());
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -306,8 +380,6 @@ export function Browser({
   }, []);
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
-  const fetchedRef = useRef(fetched);
-  fetchedRef.current = fetched;
   const refit = useRef<() => void>(() => undefined);
   const heardAsk = useRef<(ask: BrowserAsk) => void>(() => undefined);
   /** A tab shortcut, pressed in TBV or (on Windows) while a page had the keyboard. */
@@ -316,6 +388,13 @@ export function Browser({
 
   const active = tabs.tabs.find((t) => t.id === tabs.active) ?? tabs.tabs[0];
   const url = active?.url ?? "";
+  const other = allowSplit && !companion && pair?.other !== active.id
+    ? tabs.tabs.find((tab) => tab.id === pair?.other) : undefined;
+  const otherRef = useRef(other);
+  otherRef.current = other;
+  useEffect(() => {
+    if (pair && (pair.other === active.id || !tabs.tabs.some((tab) => tab.id === pair.other))) setPair(null);
+  }, [pair, active.id, tabs.tabs]);
   const onStart = isStartPage(url);
   const failure = onStart ? null : failed[active.id] ?? null;
   /** Reader mode, the tab grid, the start page and the error page cover the page, so the page's view steps aside. */
@@ -323,11 +402,10 @@ export function Browser({
   aside.current = !!article || panel === "tabs" || onStart || !!failure;
 
   useEffect(() => writeTabs(tabs), [tabs]);
-  useEffect(() => writeDownloads(fetched), [fetched]);
   useEffect(() => onClosedTabs(() => setClosedTabs(readClosedTabs())), []);
   useEffect(() => {
-    if (!undo) return;
-    const gone = window.setTimeout(() => setUndo(null), 7000);
+    if (!undo.length) return;
+    const gone = window.setTimeout(() => setUndo([]), 7000);
     return () => window.clearTimeout(gone);
   }, [undo]);
   // A tab that's gone (the oldest, past the most kept) has its page closed too.
@@ -365,57 +443,67 @@ export function Browser({
   }, [url]);
   useEffect(() => () => void window.dispatchEvent(new CustomEvent(BROWSER_PAGE, { detail: "" })), []);
 
-  const frame = (): BrowserFrame | null => {
-    const r = area.current?.getBoundingClientRect();
-    return r && r.width > 0 && r.height > 0 ? { x: r.left, y: r.top, width: r.width, height: r.height } : null;
+  const frame = (element = area.current): BrowserFrame | null => {
+    const r = element?.getBoundingClientRect();
+    const offset = workspaceOffset();
+    return r && r.width > 0 && r.height > 0 ? { x: r.left + offset.x, y: r.top + offset.y, width: r.width, height: r.height } : null;
   };
 
-  /** Shows the tab in front, making its view first if it's new. */
-  const showActive = useCallback(async (at: BrowserFrame) => {
-    const { tabs: list, active: id } = tabsRef.current;
-    const tab = list.find((t) => t.id === id) ?? list[0];
-    // TBV's own start page: no web page to show.
-    if (isStartPage(tab.url)) return api.browserHide();
-    const fresh = !made.current.has(tab.id);
-    await api.browserShow(tab.id, fresh ? tab.url : null, at, protectionOf(readBrowserPrefs()), !!tab.private);
-    made.current.add(tab.id);
-    if (fresh) fitZoom(tab.id, tab.url);
-    // A new tab's page can take a moment to come up (iPhone readies its
-    // protection first). Left Discover, or covered, in that moment: the page
-    // would show over whatever's there now, so it goes away again.
-    if (!mounted.current || covered() || aside.current) await api.browserHide();
+  const prepareTab = useCallback((id: string, url: string, privately: boolean, at = frame()) => {
+    if (!at || !/^https?:/i.test(url)) return;
+    const waiting = preparing.current.get(id);
+    if (waiting) return waiting;
+    if (made.current.has(id)) return;
+    const task = new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      .then(() => {
+        if (mounted.current && tabsRef.current.tabs.some((tab) => tab.id === id)) {
+          return api.browserShow(id, url, at, protectionOf(readBrowserPrefs()), privately, true);
+        }
+      })
+      .then(() => {
+        if (mounted.current && tabsRef.current.tabs.some((tab) => tab.id === id)) {
+          made.current.add(id);
+          fitZoom(id, url);
+        } else void api.browserAct(id, "close").catch(() => undefined);
+      })
+      .finally(() => preparing.current.delete(id));
+    preparing.current.set(id, task);
+    return task;
   }, [fitZoom]);
 
   const reloadMarks = useCallback(() => api.bookmarks().then(setMarks, () => undefined), []);
   useEffect(() => void reloadMarks(), [reloadMarks]);
 
-  const answer = useCallback(
-    async (d: Fetched, how: "add" | "keep" | "drop") => {
-      if (!d.path) return;
-      let bookId: string | undefined;
-      try {
-        if (how === "add") {
-          bookId = await api.browserAddDownload(d.path);
-          toast(`${d.name} is being added to your library.`);
-        } else if (how === "keep") {
-          const where = await api.browserKeepDownload(d.path);
-          toast(`Saved to ${where}`);
-        } else await api.browserDiscardDownload(d.path);
-      } catch (e) {
-        // Left as it was, so it can be tried again.
-        toast(String(e));
-        return;
-      }
-      setFetched((list) =>
-        how === "drop" ? list.filter((x) => x.id !== d.id) : list.map((x) => (x.id === d.id ? { ...x, asking: false, state: how === "add" ? "added" : "kept", bookId: bookId ?? x.bookId } : x)),
-      );
-    },
-    [toast],
-  );
+  const downloadTrigger = useRef<HTMLButtonElement>(null);
+  const downloadClose = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (panel !== "downloads") return;
+    const previous = document.activeElement;
+    downloadClose.current?.focus();
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+      else downloadTrigger.current?.focus();
+    };
+  }, [panel]);
+  const removeDownloadRows = async (ids: string[], from: HTMLElement) => {
+    const dialog = from.closest(".browser-downloads");
+    const previous = Array.from(dialog?.querySelectorAll<HTMLButtonElement>("[data-remove-download]") ?? []);
+    const index = previous.indexOf(from as HTMLButtonElement);
+    await removeDownloads(ids, toast);
+    requestAnimationFrame(() => {
+      if (!dialog?.isConnected || (from.isConnected && !from.matches(":disabled"))) return;
+      if (document.activeElement !== document.body && document.activeElement !== from) return;
+      const buttons = dialog.querySelectorAll<HTMLButtonElement>("[data-remove-download]");
+      (buttons[Math.min(Math.max(index, 0), buttons.length - 1)] ?? downloadClose.current)?.focus();
+    });
+  };
+  const answer = (d: Fetched, how: "add" | "keep") => answerDownload(d, how, toast);
 
   // What the tabs did.
   useEffect(() => {
     const heard = (ev: BrowserEvent) => {
+      const owner = ev.kind === "newTab" ? ev.from : "tab" in ev ? ev.tab : null;
+      if (!owner || !tabsRef.current.tabs.some((tab) => tab.id === owner)) return;
       switch (ev.kind) {
         case "page": {
           setLoading((l) => ({ ...l, [ev.tab]: ev.loading }));
@@ -425,6 +513,8 @@ export function Browser({
           // Chosen in Preferences › Discover: each page visited goes in History (not from a private tab).
           const keep = readBrowserPrefs();
           const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.tab)?.private;
+          if (!ev.loading && !privately) rememberDownloadSource(ev.tab, ev.url);
+          if (!ev.loading && isYouTube(ev.url)) void api.browserRead(ev.tab, INSTALL_YOUTUBE_PIP).catch(() => undefined);
           if (!ev.loading && !privately && keep.historyOn && /^https?:/i.test(ev.url)) addToHistory({ kind: "page", url: ev.url, title: ev.title ?? null }, keep.historyKeep);
           if (/^https?:/i.test(ev.url)) {
             setTabs((s) => {
@@ -443,12 +533,23 @@ export function Browser({
           if (ev.tab) made.current.add(id);
           // Opened from a private tab, it's private too.
           const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.from)?.private;
-          setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null, private: privately || undefined }));
+          if (!privately) rememberDownloadSource(id, downloadSource(ev.from));
+          setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null, private: privately || undefined }, !ev.foreground, ev.from));
+          if (!ev.tab && !ev.foreground) void prepareTab(id, ev.url, privately)?.catch(() => undefined);
           break;
         }
+        case "downloadStart":
+          setLoading((loading) => ({ ...loading, [ev.tab]: false }));
+          break;
         case "failed":
+          setLoading((loading) => ({ ...loading, [ev.tab]: false }));
           setFailed((f) => ({ ...f, [ev.tab]: { url: ev.url, reason: ev.reason } }));
           if (/^https?:/i.test(ev.url)) setTabs((s) => updateTab(s, ev.tab, { url: ev.url }));
+          break;
+        case "redirect":
+          setLoading((loading) => ({ ...loading, [ev.tab]: false }));
+          if (ev.ask) setRedirects((pending) => [...pending.filter((item) => item.tab !== ev.tab), ev]);
+          else toast("Redirect blocked from " + (siteOf(ev.from) ?? "this site") + ".");
           break;
         case "external":
           if (readBrowserPrefs().askApps) setAppLink(ev.url);
@@ -458,113 +559,131 @@ export function Browser({
           if (!/^https?:/i.test(ev.url)) break;
           if (ev.action === "newTab") {
             const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.tab)?.private;
-            setTabs((s) => openTab(s, { id: newTabId(), url: ev.url, title: null, private: privately || undefined }));
+            const id = newTabId();
+            if (!privately) rememberDownloadSource(id, downloadSource(ev.tab));
+            setTabs((s) => openTab(s, { id, url: ev.url, title: null, private: privately || undefined }, true, ev.tab));
+            void prepareTab(id, ev.url, privately)?.catch(() => undefined);
           } else {
-            void api.downloadWebBook(ev.url, fileTitle(ev.url)).then(
+            void api.downloadWebBook(ev.url, fileTitle(ev.url), downloadSource(ev.tab, ev.url)).then(
               () => toast("It's being added to your library."),
               (e: unknown) => toast(clean(e)),
             );
           }
           break;
+        case "focus":
+          if (otherRef.current?.id === ev.tab && !covered()) activate.current(ev.tab);
+          break;
         case "key":
-          shortcut.current(ev.key);
+          if (ev.key === "appBack" || ev.key === "appForward") requestAppHistory(ev.key === "appBack" ? "back" : "forward");
+          else if (ev.key === "pageBack" || ev.key === "pageForward")
+            void api.browserAct(ev.tab, ev.key === "pageBack" ? "back" : "forward").catch(() => undefined);
+          else {
+            if (otherRef.current?.id === ev.tab && !covered()) activate.current(ev.tab);
+            shortcut.current(ev.key);
+          }
           break;
         case "closed":
-          made.current.delete(ev.tab);
-          void api.browserAct(ev.tab, "close");
+          releaseView(ev.tab);
           setTabs((s) => closeTab(s, ev.tab, homeOf()));
           break;
-        case "downloadStart":
-          setFetched((list) => [{ id: ev.id, name: ev.name, state: "coming" as const, url: ev.url, tab: ev.tab, at: Date.now() }, ...list.filter((x) => x.id !== ev.id)]);
-          break;
-        case "download": {
-          const before = fetchedRef.current.find((x) => x.id === ev.id);
-          const done: Fetched = { ...before, id: ev.id, name: ev.name, path: ev.path, state: ev.ok ? "done" : "failed", asking: ev.ok, tab: ev.tab, at: before?.at ?? Date.now() };
-          // Chosen in Preferences › Discover: ebooks go straight in.
-          const straightIn = ev.ok && BOOK_FILE.test(ev.name) && readBrowserPrefs().addWithoutAsking;
-          setFetched((list) => [done, ...list.filter((x) => x.id !== ev.id)]);
-          if (straightIn) void answer(done, "add");
-          break;
-        }
       }
     };
     return api.onBrowserEvent(heard);
-  }, [answer, fitZoom, toast]);
+  }, [fitZoom, toast]);
 
-  // The page shows over the space below the row, follows it as it moves,
-  // and steps aside for menus, dialogs and reader mode. Hidden on leaving.
+  // Apply one visible set at a time. Late preparations never put a page over a dialog.
   useEffect(() => {
     let live = true;
-    let hidden = false;
+    let frameRequest = 0;
+    let running = false;
+    let pending = false;
     let placed = "";
-    let stopAsks = () => undefined as void;
-    const fit = () => {
-      if (!shown.current) return;
-      const now = frame();
-      const hide = covered() || aside.current || !now;
-      if (hide !== hidden) {
-        hidden = hide;
-        placed = hide ? "" : JSON.stringify(now);
-        void (hide ? api.browserHide() : showActive(now!));
-      } else if (!hide && now && JSON.stringify(now) !== placed) {
-        placed = JSON.stringify(now);
-        void api.browserPlace(now);
+    const stopAsks = onBrowserAsk((ask) => heardAsk.current(ask));
+    const visible = (): BrowserPane[] => {
+      if (covered() || workspaceOffset().resizing) return [];
+      const state = tabsRef.current;
+      const front = state.tabs.find((tab) => tab.id === state.active);
+      const panes: BrowserPane[] = [];
+      const main = frame();
+      if (front && main && !aside.current && /^https?:/i.test(front.url)) panes.push({ tab: front.id, frame: main });
+      const back = otherRef.current;
+      const second = frame(secondary.current);
+      if (back && second && back.id !== front?.id && !failedRef.current[back.id] && /^https?:/i.test(back.url)) {
+        panes.push({ tab: back.id, frame: second });
+      }
+      return panes;
+    };
+    const fit = async () => {
+      if (!live) return;
+      if (running) { pending = true; return; }
+      running = true;
+      try {
+        const panes = visible();
+        const id = tabsRef.current.active;
+        const key = JSON.stringify([id, panes]);
+        if (key === placed) return;
+        const needed = panes.filter((pane) => !made.current.has(pane.tab));
+        if (needed.length) {
+          await placeWorkspaceBrowser(panes.filter((pane) => made.current.has(pane.tab)), id);
+          await Promise.all(needed.map((pane) => {
+            const tab = tabsRef.current.tabs.find((item) => item.id === pane.tab);
+            return tab && prepareTab(tab.id, tab.url, !!tab.private, pane.frame);
+          }));
+        }
+        if (!live) return;
+        const current = visible().filter((pane) => made.current.has(pane.tab));
+        const activeTab = tabsRef.current.active;
+        placed = JSON.stringify([activeTab, current]);
+        await placeWorkspaceBrowser(current, activeTab);
+      } catch (error) {
+        if (live) setProblem(clean(error));
+      } finally {
+        running = false;
+        if (!live) void placeWorkspaceBrowser([], "").catch(() => undefined);
+        else if (pending) { pending = false; schedule(); }
       }
     };
-    refit.current = () => {
-      // A different tab in front, or the page stepping aside: shown or hidden
-      // again, whatever was done before.
-      hidden = !(covered() || aside.current || !frame());
-      fit();
+    const schedule = () => {
+      cancelAnimationFrame(frameRequest);
+      frameRequest = requestAnimationFrame(() => void fit());
     };
-    // Once laid out, so the space has its size.
-    const starting = requestAnimationFrame(() => {
-      const start = frame();
-      if (!start) return;
-      placed = JSON.stringify(start);
-      showActive(start).then(
-        () => {
-          shown.current = true;
-          if (!live) void api.browserHide();
-          else {
-            fit();
-            stopAsks = onBrowserAsk((ask) => heardAsk.current(ask));
-          }
-        },
-        (e: unknown) => live && setProblem(String(e).replace(/^Error: /, "")),
-      );
-    });
-    const resized = new ResizeObserver(fit);
+    refit.current = schedule;
+    const resized = new ResizeObserver(schedule);
     if (area.current) resized.observe(area.current);
-    const watching = new MutationObserver(fit);
-    watching.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener("resize", fit);
+    if (document.documentElement.classList.contains("tbv-workspace-frame") && window.frameElement) resized.observe(window.frameElement);
+    const watching = new MutationObserver(schedule);
+    watching.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["open", "class"] });
+    workspaceHost.addEventListener("tbv:workspace-layout", schedule);
+    window.addEventListener("resize", schedule);
+    window.addEventListener("scroll", schedule, true);
+    window.visualViewport?.addEventListener("resize", schedule);
+    schedule();
     return () => {
       live = false;
       stopAsks();
-      shown.current = false;
       refit.current = () => undefined;
-      cancelAnimationFrame(starting);
+      cancelAnimationFrame(frameRequest);
       resized.disconnect();
       watching.disconnect();
-      window.removeEventListener("resize", fit);
-      void api.browserHide();
-      // Chosen in Preferences › Discover: back to the home page next time, so
-      // every tab's page is closed now.
+      workspaceHost.removeEventListener("tbv:workspace-layout", schedule);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("scroll", schedule, true);
+      window.visualViewport?.removeEventListener("resize", schedule);
+      void placeWorkspaceBrowser([], "").catch(() => undefined);
       if (readBrowserPrefs().comeBack === "leave") {
-        for (const id of made.current) void api.browserAct(id, "close").catch(() => undefined);
-        made.current.clear();
-        return;
+        for (const id of made.current) releaseView(id);
+      } else if (!readBrowserPrefs().keepPlaying) {
+        for (const id of made.current) void api.browserRead(id, PAUSE_ALL).catch(() => undefined);
       }
-      // Chosen in Preferences › Discover: whatever was playing stops on leaving.
-      if (!readBrowserPrefs().keepPlaying) for (const id of made.current) void api.browserRead(id, PAUSE_ALL).catch(() => undefined);
     };
-  }, [showActive]);
+  }, [prepareTab]);
 
-  // Another tab came forward, reader mode opened or closed, or a page failed or came back.
-  useEffect(() => refit.current(), [tabs.active, article, panel, !!failure]);
+  useEffect(() => refit.current(), [tabs.active, url, article, panel, !!failure, other, ratio, companion]);
 
-  const act = (action: "back" | "forward" | "reload" | "stop") => void api.browserAct(active.id, action).catch(() => undefined);
+  const act = (action: "back" | "forward" | "reload" | "stop") => {
+    if (action === "stop") setLoading((loading) => ({ ...loading, [active.id]: false }));
+    void api.browserAct(active.id, action).catch(() => undefined);
+  };
 
   /** The pages behind or ahead, listed to jump to one. */
   const showTravel = (way: "back" | "forward", x: number, y: number) => {
@@ -610,16 +729,27 @@ export function Browser({
     return () => window.removeEventListener(BROWSER_GO, fromHeader);
   }, []);
 
-  const newTab = (privately = false) => {
+  const newTab = (privately = false, beside?: string) => {
     setArticle(null);
     setPanel(null);
-    setTabs((s) => openTab(s, { id: newTabId(), url: homeOf(), title: null, private: privately || undefined }));
+    setTabs((s) => openTab(s, { id: newTabId(), url: "tbv:start", title: null, private: privately || undefined }, false, beside));
+    onSearchChange("");
+    const input = document.getElementById(companionRef.current ? "discover-split-search" : "global-search");
+    if (input) {
+      input.dataset.blankTab = "";
+      input.focus();
+      delete input.dataset.blankTab;
+    }
   };
   /** A page in a tab of its own, from the start page's ⋮ menus. */
-  const openInNewTab = (to: string) => {
-    setArticle(null);
-    setPanel(null);
-    setTabs((s) => openTab(s, { id: newTabId(), url: to, title: null }));
+  const openInNewTab = (to: string, background = true) => {
+    if (!background) {
+      setArticle(null);
+      setPanel(null);
+    }
+    const id = newTabId();
+    setTabs((s) => openTab(s, { id, url: to, title: null }, background));
+    if (background) void prepareTab(id, to, false)?.catch(() => undefined);
   };
   const openInNewTabRef = useRef(openInNewTab);
   openInNewTabRef.current = openInNewTab;
@@ -636,23 +766,49 @@ export function Browser({
     }
     setTabs((s) => updateTab(s, s.active, { url: START_PAGE, title: null }));
   };
+  const openNewRef = useRef(openInNewTab);
+  openNewRef.current = openInNewTab;
+  useEffect(() => {
+    const open = (e: Event) => openNewRef.current((e as CustomEvent<string>).detail, false);
+    window.addEventListener(BROWSER_NEW, open);
+    return () => window.removeEventListener(BROWSER_NEW, open);
+  }, []);
   const switchTo = (id: string) => {
+    const previous = tabsRef.current.active;
+    if (id !== previous && otherRef.current?.id === id) {
+      setPair((current) => current && { other: previous, activeLeft: !current.activeLeft });
+    }
     setArticle(null);
     setPanel(null);
+    onSearchChange("");
+    tabsRef.current = { ...tabsRef.current, active: id };
     setTabs((s) => ({ ...s, active: id }));
+  };
+  activate.current = switchTo;
+  const tabQuery = tabSearch.trim().toLowerCase();
+  const matchingTabs = tabs.tabs.filter((tab) =>
+    !tabQuery || [titleOf(tab.title, tab.url, tab.private), siteOf(tab.url), tab.url]
+      .some((value) => value?.toLowerCase().includes(tabQuery)),
+  );
+  const splitWithTab = (id: string) => {
+    if (id === tabsRef.current.active) return;
+    setPair((current) => ({ other: id, activeLeft: current?.activeLeft ?? true }));
   };
   const drag = useTabDrag((id, onto) => setTabs((s) => moveTab(s, id, onto)));
   /** Closes tabs' pages; the tabs are remembered for Reopen closed tab and Undo. */
   const forget = (ids: string[]) => {
-    const remembered = tabsRef.current.tabs.filter((t) => ids.includes(t.id) && /^https?:/i.test(t.url)).length;
-    rememberClosed(tabsRef.current, ids);
+    const remembered = rememberClosed(tabsRef.current, ids);
     for (const id of ids) {
-      made.current.delete(id);
       delete zoomed.current[id];
-      void api.browserAct(id, "close");
+      if (hasActiveTransfer(id)) releaseView(id);
+      else {
+        made.current.delete(id);
+        rememberDownloadSource(id, undefined);
+        void api.browserAct(id, "close");
+      }
     }
     setFailed((f) => Object.fromEntries(Object.entries(f).filter(([t]) => !ids.includes(t))));
-    setUndo(remembered ? { count: remembered, at: Date.now() } : null);
+    setUndo(remembered);
   };
   const close = (id: string) => {
     forget([id]);
@@ -668,10 +824,6 @@ export function Browser({
     forget(ids);
     setTabs((s) => closeTabs(s, ids, id));
   };
-  const reloadTab = (id: string) => {
-    if (made.current.has(id)) void api.browserAct(id, "reload").catch(() => undefined);
-  };
-  const copyLink = (to: string) => void navigator.clipboard?.writeText(to).then(() => toast("Link copied."));
   const duplicate = (id: string) => {
     setArticle(null);
     setPanel(null);
@@ -687,43 +839,51 @@ export function Browser({
     if (!back.length) return;
     setArticle(null);
     setPanel(null);
-    setUndo(null);
+    setUndo([]);
     setTabs((s) => back.sort((a, b) => a.at - b.at).reduce(reopenTab, s));
   };
   const tabMenu = (id: string): MenuEntry[] => {
     const tab = tabsRef.current.tabs.find((t) => t.id === id);
     const web = /^https?:/i.test(tab?.url ?? "");
     return [
-      { label: "New tab", icon: "plus", onSelect: () => newTab() },
-      { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) },
-      { label: "Reload tab", icon: "sync", disabled: !web || !made.current.has(id), onSelect: () => reloadTab(id) },
-      { label: "Duplicate tab", icon: "copy", disabled: !web, onSelect: () => duplicate(id) },
-      { label: "Copy link", icon: "link", disabled: !web, onSelect: () => copyLink(tab!.url) },
       // Private tabs aren't kept, so they can't stay pinned through a restart.
       tab?.pinned
         ? { label: "Unpin tab", icon: "pin", onSelect: () => setTabs((s) => pinTab(s, id, false)) }
         : { label: "Pin tab", icon: "pin", disabled: !!tab?.private, onSelect: () => setTabs((s) => pinTab(s, id, true)) },
-      { label: "Reopen closed tab", icon: "undo", disabled: !closedTabs.length, onSelect: () => reopen() },
+      { label: "Close tab", icon: "close", onSelect: () => close(id) },
+      { label: "Duplicate tab", icon: "copy", disabled: !web, onSelect: () => duplicate(id) },
       "divider",
       { label: "Close tabs to the right", icon: "close", disabled: !rightOf(tabsRef.current, id).length, onSelect: () => closeRight(id) },
       { label: "Close other tabs", icon: "layers", disabled: !othersOf(tabsRef.current, id).length, onSelect: () => closeOthers(id) },
-      { label: "Close tab", icon: "close", onSelect: () => close(id) },
     ];
   };
   shortcut.current = (key) => {
     const list = tabsRef.current.tabs;
     const at = list.findIndex((t) => t.id === tabsRef.current.active);
-    if (key === "newTab") newTab();
+    if (key === "focusAddress") document.getElementById(companionRef.current ? "discover-split-search" : "global-search")?.focus();
+    else if (key === "refreshApp") void workspaceHost.tbvWorkspace?.refresh?.();
+    else if (key === "newTab") newTab();
     else if (key === "closeTab") close(tabsRef.current.active);
     else if (key === "reopenTab") reopen();
+    else if (key === "bookmarkPage") {
+      if (!covered() && /^https?:/i.test(list[at]?.url ?? "")) setPanel("bookmark-page");
+    }
     else if (list.length > 1 && (key === "nextTab" || key === "previousTab")) switchTo(list[(at + (key === "nextTab" ? 1 : list.length - 1)) % list.length].id);
   };
   // Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab and Ctrl+Shift+T, as in other browsers.
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || document.querySelector(".dialog-backdrop")) return;
+      if (document.querySelector(".dialog-backdrop, dialog[open], [role=alertdialog]")) return;
+      const inCompanion = companionRef.current && e.target instanceof Element && e.target.closest(".discover-workspace-pane");
+      if (companionRef.current && !inCompanion) return;
+      if (inCompanion && e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        void api.browserAct(tabsRef.current.active, e.key === "ArrowLeft" ? "back" : "forward").catch(() => undefined);
+        return;
+      }
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
       const k = e.key.toLowerCase();
-      const what = k === "t" ? (e.shiftKey ? "reopenTab" : "newTab") : k === "w" && !e.shiftKey ? "closeTab" : e.key === "Tab" ? (e.shiftKey ? "previousTab" : "nextTab") : null;
+      const what = k === "t" ? (e.shiftKey ? "reopenTab" : "newTab") : k === "w" && !e.shiftKey ? "closeTab" : k === "d" && !e.shiftKey ? "bookmarkPage" : e.key === "Tab" ? (e.shiftKey ? "previousTab" : "nextTab") : null;
       if (!what) return;
       e.preventDefault();
       shortcut.current(what);
@@ -771,13 +931,13 @@ export function Browser({
   const isFile = BOOK_FILE.test(url);
   const site = siteOf(url);
   const busy = !!loading[active.id];
-  const coming = fetched.filter((d) => d.state === "coming").length;
-  const asking = fetched.filter((d) => d.asking);
+  const coming = fetched.filter(isActiveDownload).length;
+  const asking = fetched.filter((d) => d.asking && d.media !== "other");
   const web = url.startsWith("http") && !failure;
   useEffect(() => {
-    barNow = { busy: busy && !onStart, marked: !!marked, reader: !!article, web };
+    barNow = { busy: busy && !onStart, marked: !!marked, bookmarks: marks, reader: !!article, web };
     window.dispatchEvent(new CustomEvent(BROWSER_STATE, { detail: barNow }));
-  }, [busy, onStart, marked, article, web]);
+  }, [busy, onStart, marked, marks, article, web]);
   const fromTop = useRef<(what: string) => void>(() => undefined);
   fromTop.current = (what) => {
     const travel = /^travel:(back|forward):(-?[\d.]+):(-?[\d.]+)$/.exec(what);
@@ -785,6 +945,9 @@ export function Browser({
     else if (what === "home") goHome();
     else if (what === "site") setPanel("site");
     else if (what === "mark") void toggleMark();
+    else if (what === "sessions") setPanel("sessions");
+    else if (what === "bookmarks") setPanel("bookmarks");
+    else if (what.startsWith("bookmark:")) go(what.slice("bookmark:".length));
     else if (what === "reader") void (article ? setArticle(null) : openReader());
     else if (what === "back" || what === "forward" || what === "stop") act(what);
     else act("reload");
@@ -795,8 +958,13 @@ export function Browser({
   // as chosen in Preferences › Discover.
   heardAsk.current = (ask) => {
     if ("panel" in ask) setPanel(ask.panel);
+    else if ("start" in ask) {
+      const start = tabsRef.current.tabs.find((tab) => isStartPage(tab.url) && !tab.private);
+      if (start) switchTo(start.id);
+      else openInNewTabRef.current(START_PAGE, false);
+    }
     else if (!("url" in ask)) fromTop.current("home");
-    else if (readBrowserPrefs().linksOpen === "newTab" && !isStartPage(tabsRef.current.tabs.find((t) => t.id === tabsRef.current.active)?.url ?? "")) openInNewTabRef.current(ask.url);
+    else if (readBrowserPrefs().linksOpen === "newTab" && !isStartPage(tabsRef.current.tabs.find((t) => t.id === tabsRef.current.active)?.url ?? "")) openInNewTabRef.current(ask.url, false);
     else goRef.current(ask.url);
   };
   const switchRef = useRef<(id: string) => void>(() => undefined);
@@ -828,8 +996,11 @@ export function Browser({
 
   /** Downloads › Retry: the same address again, in its tab if that's still open. */
   const retry = (d: Fetched) => {
-    if (!d.url) return;
-    setFetched((list) => list.filter((x) => x.id !== d.id));
+    if (!d.url || !/^https?:/i.test(d.url) || d.securityBlocked) return;
+    if (d.direct) {
+      void api.downloadWebBook(d.url, d.name, d.sourceUrl).catch((e: unknown) => toast(clean(e)));
+      return;
+    }
     const tab = d.tab && made.current.has(d.tab) ? d.tab : made.current.has(active.id) && !onStart ? active.id : null;
     if (tab) void api.browserAct(tab, "go", d.url).catch((e: unknown) => toast(clean(e)));
     else go(d.url);
@@ -902,10 +1073,25 @@ export function Browser({
 
   const addThisFile = async () => {
     try {
-      await api.downloadWebBook(url, fileTitle(url));
+      await api.downloadWebBook(url, fileTitle(url), downloadSource(active.id, url));
       toast("It's being added to your library.");
     } catch (e) {
       toast(String(e));
+    }
+  };
+
+  const saveSelection = async () => {
+    try {
+      const clip = await api.browserRead(active.id, READ_SELECTION) as { text?: string; title?: string; url?: string } | null;
+      if (typeof clip?.text !== "string" || !clip.text.trim()) return toast("Select text on the page first.");
+      if (typeof clip.url !== "string" || !/^https?:\/\//i.test(clip.url)) return toast("This selection has no web address.");
+      const address = new URL(clip.url).href.replace(/[<>]/g, (character) => encodeURIComponent(character));
+      const quote = clip.text.split(/\r?\n/).map((line) => "> " + line.replace(/[\\`*_~\[\]<>]/g, "\\$&")).join("\n");
+      const title = typeof clip.title === "string" && clip.title.trim() ? clip.title.trim() : titleOf(active.title, url);
+      await api.savePersonalNote(null, title, `${quote}\n\nSource: <${address}>`);
+      toast("Saved the selection to Scribe.");
+    } catch (error) {
+      toast(clean(error));
     }
   };
 
@@ -946,29 +1132,43 @@ export function Browser({
     }
   };
 
-  const sites = marks.length ? marks : SUGGESTED_SITES.map((s, i) => ({ id: `suggested-${i}`, ...s }));
-  const bookmarkItems: MenuEntry[] = [
-    { heading: <strong>{marks.length ? "Bookmarks" : "Book sites to start with"}</strong> },
-    ...sites.map((m) => ({ label: m.title, icon: "globe" as const, onSelect: () => go(m.url) })),
-  ];
   const moreItems: MenuEntry[] = [
-    { label: "Copy link", icon: "copy", disabled: !url.startsWith("http"), onSelect: () => void navigator.clipboard?.writeText(url).then(() => toast("Link copied.")) },
-    { label: "Share…", icon: "share", disabled: !url.startsWith("http"), onSelect: () => share(url, titleOf(active.title, url)) },
-    { label: "Open in your normal browser", icon: "link", disabled: !url.startsWith("http"), onSelect: () => void openExternal(url) },
-    { label: "Save to Reading List", icon: "notes", disabled: !url.startsWith("http") || saving, onSelect: () => void saveToReadingList() },
+    ...(companion && !narrow ? [
+      { label: "Home page", icon: "home" as const, onSelect: goHome },
+      { label: marked ? "Remove bookmark" : "Bookmark this page", icon: "bookmark" as const, disabled: !web, onSelect: () => void toggleMark() },
+      { label: article ? "Exit Reader view" : "Reader view", icon: "bookOpen" as const, disabled: !web && !article, onSelect: () => void (article ? setArticle(null) : openReader()) },
+    ] : []),
+    { label: "Share and open", icon: "share", disabled: !web, submenu: [
+      { label: "Copy link", icon: "copy", onSelect: () => void navigator.clipboard?.writeText(url).then(() => toast("Link copied.")) },
+      { label: "Share...", icon: "share", onSelect: () => share(url, titleOf(active.title, url)) },
+      { label: "Open in your normal browser", icon: "link", onSelect: () => void openExternal(url) },
+    ] },
     { label: "Bookmarks", icon: "bookmark", onSelect: () => setPanel("bookmarks") },
-    { label: "Reading List", icon: "bookOpen", onSelect: () => setPanel("reading") },
+    { label: "Sessions", icon: "list", onSelect: () => setPanel("sessions") },
+    { label: "Reading List", icon: "bookOpen", submenu: [
+      { label: "Save this page", icon: "notes", disabled: !web || saving, onSelect: () => void saveToReadingList() },
+      { label: "Open Reading List", icon: "bookOpen", onSelect: () => setPanel("reading") },
+    ] },
+    { label: "Save selection as Scribe note", icon: "notes", disabled: !web || !!article, onSelect: () => void saveSelection() },
     { label: "History", icon: "clock", onSelect: () => setPanel("history") },
     { label: "Find on page", icon: "search", onSelect: () => setFinding("") },
+    { label: "New tab", icon: "plus", onSelect: () => newTab() },
     { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) },
     { label: "Reopen closed tab", icon: "undo", disabled: !closedTabs.length, onSelect: () => reopen() },
-    { label: "Make this your home page", icon: "home", disabled: !url.startsWith("http"), onSelect: () => (writeBrowserPrefs({ home: url }), toast("This is your home page now.")) },
-    { label: "Site information", icon: "info", disabled: !site, onSelect: () => setPanel("site") },
-    { label: "Clear cookies and site data", icon: "trash", onSelect: () => void api.browserClear().then(() => toast("Every site's cookies and data are cleared.")) },
+    { label: "Make this your home page", icon: "home", disabled: !web, onSelect: () => (writeBrowserPrefs({ home: url }), toast("This is your home page now.")) },
+    ...(narrow ? [{ label: "Site information", icon: "info" as const, disabled: !site, onSelect: () => setPanel("site") }] : []),
+    { label: "Clear all cookies and site data", icon: "trash", onSelect: () => void api.browserClear().then(() => toast("Every site's cookies and data are cleared.")) },
+    ...(!narrow ? [] : ["divider" as const, { label: "Add a catalogue", icon: "globePlus" as const, onSelect: onOpenCatalogues }]),
+  ];
+
+  const splitItems: MenuEntry[] = [
+    ...tabs.tabs.filter((tab) => allowSplit && tab.id !== tabs.active).map((tab) => ({
+      label: `Beside ${titleOf(tab.title, tab.url, tab.private)}`, onSelect: () => splitWithTab(tab.id),
+    })),
     "divider",
-    { label: "Add a catalogue", icon: "globePlus", onSelect: onOpenCatalogues },
-    "divider",
-    ...bookmarkItems,
+    ...(onSplitWith ? ([{ label: "Sanctum", route: "home" }, { label: "Archive", route: "library" }, { label: "Resonance", route: "audiobooks" },
+      { label: "Scribe", route: "writing" }, { label: "Compendium", route: "collections" }, { label: "Preferences", route: "settings" }] as const)
+      .map(({ label, route }) => ({ label: `Beside ${label}`, onSelect: () => { setPair(null); onSplitWith(route); } })) : []),
   ];
 
   const button = (label: string, icon: Parameters<typeof Icon>[0]["name"], onClick: () => void, extra = "", more: React.ButtonHTMLAttributes<HTMLButtonElement> = {}) => (
@@ -980,7 +1180,7 @@ export function Browser({
   const backTravel = useTravel("back");
   const forwardTravel = useTravel("forward");
   const downloadsButton = (
-    <button type="button" className="toolbar-button browser-downloads-button" aria-label={coming ? `Downloads, ${coming} coming down` : "Downloads"} title="Downloads" onClick={() => setPanel("downloads")}>
+    <button type="button" ref={downloadTrigger} className="toolbar-button browser-downloads-button" aria-label={coming ? `Downloads, ${coming} in progress` : "Downloads"} title="Downloads" onClick={() => setPanel("downloads")}>
       <Icon name="download" size={17} />
       {(coming > 0 || asking.length > 0) && <span className="browser-badge">{coming || asking.length}</span>}
     </button>
@@ -988,60 +1188,91 @@ export function Browser({
   const tabList: MenuEntry[] = [
     { heading: <strong>{tabs.tabs.length === 1 ? "1 tab" : `${tabs.tabs.length} tabs`}</strong> },
     ...tabs.tabs.map((t) => ({
+      id: t.id,
       label: titleOf(t.title, t.url, t.private),
+      closeAction: { label: `Close ${titleOf(t.title, t.url, t.private)}`, run: () => close(t.id) },
       icon: (t.pinned ? "pin" : t.private ? "eyeOff" : "globe") as Parameters<typeof Icon>[0]["name"],
       checked: t.id === tabs.active,
       hint: siteOf(t.url) ?? undefined,
       onSelect: () => switchTo(t.id),
     })),
+    ...(closedTabs.length ? [
+      { heading: "Recently closed" },
+      ...closedTabs.map((tab, index) => ({ label: tab.title || tab.url, icon: "undo" as const, onSelect: () => reopen(1, index) })),
+    ] : []),
   ];
+
+  const tabRow = (t: TabsState["tabs"][number]) => (
+    <div
+      key={t.id}
+      className={`browser-tab${t.id === tabs.active ? " is-active" : ""}${t.id === tabs.active && loading[t.id] ? " is-loading" : ""}${t.private ? " is-private" : ""}${t.pinned ? " is-pinned" : ""}`}
+      {...drag(t.id)}
+      onContextMenu={(e) => openContextMenu(e, `${titleOf(t.title, t.url, t.private)}: tab`, tabMenu(t.id))}
+    >
+      <button type="button" role="tab" aria-selected={t.id === tabs.active} aria-busy={!!loading[t.id]} className="browser-tab-name" title={t.pinned ? `${titleOf(t.title, t.url)} (pinned)` : t.url} onClick={() => switchTo(t.id)}>
+        {loading[t.id] ? <span className="browser-tab-busy" aria-hidden /> : <Icon name={t.private ? "eyeOff" : isStartPage(t.url) ? "compass" : "globe"} size={14} />}
+        {!t.pinned && <span>{titleOf(t.title, t.url, t.private)}</span>}
+      </button>
+      {!t.pinned && (
+        <button type="button" className="browser-tab-close" aria-label={`Close ${titleOf(t.title, t.url, t.private)}`} onClick={() => close(t.id)}>
+          <Icon name="close" size={12} />
+        </button>
+      )}
+    </div>
+  );
+  const strip = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const list = strip.current;
+    if (!list) return;
+    const reveal = () => {
+      const selected = list.querySelector<HTMLElement>(".browser-tab.is-active");
+      if (!selected) return;
+      const pins = list.querySelector<HTMLElement>(".browser-pinned-tabs");
+      const scroller = selected.parentElement === pins && pins ? pins : list;
+      const bounds = scroller.getBoundingClientRect();
+      const tab = selected.getBoundingClientRect();
+      const left = bounds.left + (scroller === list ? pins?.offsetWidth ?? 0 : 0);
+      if (tab.right > bounds.right) scroller.scrollLeft += tab.right - bounds.right;
+      else if (tab.left < left) scroller.scrollLeft += tab.left - left;
+    };
+    const resize = new ResizeObserver(reveal);
+    resize.observe(list);
+    reveal();
+    return () => resize.disconnect();
+  }, [tabs, narrow]);
 
   return (
     <div className="browser">
+      {(allowSplit || onSplitWith) && !companion && <div className="browser-split-tools">
+        {other ? <button type="button" className="toolbar-button" onClick={() => setPair(null)}>Close tab split</button> :
+          <Menu label="Split screen" className="toolbar-button" trigger={<><Icon name="layers" size={16} /> Split screen</>} items={splitItems} />}
+      </div>}
       {!narrow && (
         <div className="browser-strip">
-          <div className="browser-tabs" role="tablist" aria-label="Tabs">
-            {tabs.tabs.map((t) => (
-              <div
-                key={t.id}
-                className={`browser-tab${t.id === tabs.active ? " is-active" : ""}${t.private ? " is-private" : ""}${t.pinned ? " is-pinned" : ""}`}
-                {...drag(t.id)}
-                onContextMenu={(e) => openContextMenu(e, `${titleOf(t.title, t.url, t.private)}: tab`, tabMenu(t.id))}
-              >
-                <button type="button" role="tab" aria-selected={t.id === tabs.active} className="browser-tab-name" title={t.pinned ? `${titleOf(t.title, t.url)} (pinned)` : t.url} onClick={() => switchTo(t.id)}>
-                  {loading[t.id] ? <span className="browser-tab-busy" aria-hidden /> : <Icon name={t.private ? "eyeOff" : isStartPage(t.url) ? "compass" : "globe"} size={14} />}
-                  {!t.pinned && <span>{titleOf(t.title, t.url, t.private)}</span>}
-                </button>
-                {!t.pinned && (
-                  <button type="button" className="browser-tab-close" aria-label={`Close ${titleOf(t.title, t.url, t.private)}`} onClick={() => close(t.id)}>
-                    <Icon name="close" size={12} />
-                  </button>
-                )}
-              </div>
-            ))}
+          <div ref={strip} className="browser-tabs" role="tablist" aria-label="Tabs">
+            <div className="browser-pinned-tabs">{tabs.tabs.filter((tab) => tab.pinned).map(tabRow)}</div>
+            {tabs.tabs.filter((tab) => !tab.pinned).map(tabRow)}
             <button type="button" className="browser-tab-new" aria-label="New tab" title="New tab (Ctrl+T; right-click for a private one)" onClick={() => newTab()} onContextMenu={(e) => openContextMenu(e, "New tab", [{ label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) }])}>
               <Icon name="plus" size={15} />
             </button>
           </div>
           <div className="browser-strip-tools">
-            <Menu label="Every tab" className="toolbar-button" trigger={<Icon name="chevronDown" size={16} />} items={tabList} />
+            <Menu label="Every tab" closeOnScroll={false} className="toolbar-button" trigger={<Icon name="chevronDown" size={16} />} items={tabList} searchLabel="Search open tabs" />
             <span className="browser-bar-divider" aria-hidden />
-            <Menu label="Bookmarks" className="toolbar-button" trigger={<Icon name="bookmark" size={17} />} items={bookmarkItems} />
             {button("Add a catalogue", "globePlus", onOpenCatalogues)}
             {downloadsButton}
             <Menu label="More" className="toolbar-button" trigger={<Icon name="more" size={17} />} items={moreItems} />
           </div>
         </div>
       )}
-      {busy && !onStart && <span className="browser-loading" role="progressbar" aria-label="Loading" />}
+      {narrow && busy && !onStart && <span className="browser-loading" role="progressbar" aria-label="Loading" />}
       {narrow && (
         <div className="browser-bar">
           {button("Back", "arrowLeft", () => act("back"), "", backTravel)}
           {button("Forward", "arrowRight", () => act("forward"), "", forwardTravel)}
           {button(busy ? "Stop" : "Reload", busy ? "close" : "sync", () => act(busy ? "stop" : "reload"))}
-          <button type="button" className={`toolbar-button${marked ? " is-on" : ""}`} aria-pressed={!!marked} aria-label={marked ? "Remove bookmark" : "Bookmark this page"} title={marked ? "Remove bookmark" : "Bookmark this page"} onClick={() => void toggleMark()}>
-            <Icon name="bookmark" size={17} />
-          </button>
+          <BrowserBookmarks state={{ busy, web, marked: !!marked, bookmarks: marks, reader: !!article }} className="toolbar-button" />
+          {button("Sessions", "list", () => setPanel("sessions"))}
           <button type="button" className={`toolbar-button browser-count${panel === "tabs" ? " is-on" : ""}`} aria-label={`Tabs: ${tabs.tabs.length} open`} title="Tabs" onClick={() => setPanel(panel === "tabs" ? null : "tabs")}>
             <span>{tabs.tabs.length}</span>
           </button>
@@ -1067,13 +1298,17 @@ export function Browser({
           {button("Close find", "close", () => setFinding(null))}
         </form>
       )}
-      {undo && (
-        <div className="browser-offer" role="status">
-          <span>{undo.count === 1 ? "Tab closed." : `${undo.count} tabs closed.`}</span>
-          <button type="button" className="btn btn-primary btn-small" onClick={() => reopen(undo.count)}>
+      {undo.length > 0 && (
+        <div className="browser-close-undo" role="status">
+          <span>{undo.length === 1 ? "Tab closed." : `${undo.length} tabs closed.`}</span>
+          <button type="button" className="btn btn-primary btn-small" onClick={() => {
+            removeClosedBatch(undo);
+            setTabs((state) => [...undo].reverse().reduce(reopenTab, state));
+            setUndo([]);
+          }}>
             <Icon name="undo" size={14} /> Undo
           </button>
-          <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setUndo(null)}>
+          <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setUndo([])}>
             <Icon name="close" size={14} />
           </button>
         </div>
@@ -1081,22 +1316,18 @@ export function Browser({
       {asking.map((d) => (
         <div key={d.id} className="browser-offer" role="status">
           <span>
-            Downloaded <b>{d.name}</b>. Add it to your library?
+            Downloaded <b title={d.name}>{d.name}</b>.
           </span>
-          <button type="button" className="btn btn-primary btn-small" onClick={() => void answer(d, "add")}>
-            Add to library
-          </button>
-          {!isIOS && (
-            <button type="button" className="btn btn-quiet btn-small" onClick={() => void answer(d, "keep")}>
-              Keep in Downloads
+          {d.media !== "other" && (
+            <button type="button" className="btn btn-primary btn-small" onClick={() => void answer(d, "add")}>
+              {d.media === "audio" ? "Add to Resonance" : "Add to Archive"}
             </button>
           )}
-          <button type="button" className="btn btn-quiet btn-small" onClick={() => void answer(d, "drop")}>
-            No thanks
-          </button>
+          <button type="button" className="btn btn-quiet btn-small" onClick={() => void answer(d, "keep")}>Save</button>
+          <button type="button" className="btn btn-quiet btn-small" onClick={(e) => void removeDownloadRows([d.id], e.currentTarget)}>Remove</button>
         </div>
       ))}
-      {isFile && !narrow && (
+      {isFile && !narrow && !fetched.some((d) => d.url === url && (isActiveDownload(d) || d.asking)) && (
         <div className="browser-offer" role="status">
           <span>This page is a {formatLabel(url.match(BOOK_FILE)![1].toLowerCase())} file.</span>
           <button type="button" className="btn btn-primary btn-small" onClick={() => void addThisFile()}>
@@ -1104,7 +1335,11 @@ export function Browser({
           </button>
         </div>
       )}
-      <div className="browser-view" ref={area}>
+      <div className={`browser-panes${other ? " is-split" : ""}`}
+        style={other ? { gridTemplateColumns: `minmax(180px, ${ratio}fr) 12px minmax(180px, ${100 - ratio}fr)` } : undefined}>
+      <section className="browser-pane" style={other ? { gridColumn: pair?.activeLeft ? 1 : 3 } : undefined} aria-label="Active browser pane">
+        {other && <div className="browser-pane-title" aria-current="true">{titleOf(active.title, url, active.private)}</div>}
+        <div className="browser-view" ref={area}>
         {onStart && !article && (
           <StartPage
             onGo={go}
@@ -1161,7 +1396,7 @@ export function Browser({
           </article>
         )}
         {panel === "tabs" && (
-          <div className="browser-grid" role="dialog" aria-label="Tabs">
+          <div className="browser-grid" role="dialog" aria-label="Tabs" onKeyDown={(event) => { if (event.key === "Escape") setPanel(null); }}>
             <div className="browser-grid-head">
               <h2>
                 {tabs.tabs.length} {tabs.tabs.length === 1 ? "tab" : "tabs"}
@@ -1177,9 +1412,17 @@ export function Browser({
                 Done
               </button>
             </div>
+            <input className="browser-tab-search" type="search" aria-label="Search open tabs" placeholder="Search open tabs"
+              value={tabSearch} onChange={(event) => setTabSearch(event.target.value)} onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing && matchingTabs[0]) {
+                  event.preventDefault();
+                  switchTo(matchingTabs[0].id);
+                }
+              }} />
+            {matchingTabs.length === 0 && <p className="muted">No matching open tabs.</p>}
             <div className="browser-grid-tabs">
-              {tabs.tabs.map((t) => (
-                <div key={t.id} className={`browser-grid-tab${t.id === tabs.active ? " is-active" : ""}${t.private ? " is-private" : ""}`} {...drag(t.id)}>
+              {matchingTabs.map((t) => (
+                <div key={t.id} data-item-menu className={`browser-grid-tab${t.id === tabs.active ? " is-active" : ""}${t.id === tabs.active && loading[t.id] ? " is-loading" : ""}${t.private ? " is-private" : ""}`} {...drag(t.id)}>
                   <button type="button" className="browser-grid-open" onClick={() => switchTo(t.id)}>
                     <Icon name={t.private ? "eyeOff" : "globe"} size={22} />
                     <strong>{titleOf(t.title, t.url, t.private)}</strong>
@@ -1194,7 +1437,7 @@ export function Browser({
                 </div>
               ))}
             </div>
-            {closedTabs.length > 0 && (
+            {!tabQuery && closedTabs.length > 0 && (
               <section className="browser-grid-closed" aria-labelledby="grid-closed">
                 <h3 id="grid-closed">Recently closed</h3>
                 <ClosedList closed={closedTabs} onReopen={(index) => reopen(1, index)} />
@@ -1202,30 +1445,53 @@ export function Browser({
             )}
           </div>
         )}
+        </div>
+      </section>
+      {other && <>
+        <SplitDivider value={ratio} onChange={setRatio} label="Resize Discover tabs" minimum={186} />
+        <section className="browser-pane" style={{ gridColumn: pair?.activeLeft ? 3 : 1 }} aria-label="Other browser pane">
+          <button type="button" className="browser-pane-title" onClick={() => switchTo(other.id)}>
+            Focus {titleOf(other.title, other.url, other.private)}
+          </button>
+          <div className="browser-view" ref={secondary}>
+            {isStartPage(other.url) && <button type="button" className="btn btn-quiet" onClick={() => switchTo(other.id)}>Use this start page</button>}
+            {failed[other.id] && <p className="muted">{failed[other.id].reason}</p>}
+          </div>
+        </section>
+      </>}
       </div>
-      {panel === "bookmarks" && <BookmarksPanel onGo={(to) => (setPanel(null), go(to))} onClose={() => setPanel(null)} />}
-      {panel === "reading" && <ReadingListPanel onOpenBook={onOpenBook} onClose={() => setPanel(null)} />}
-      {panel === "site" && site && <SiteInfo url={url} actions={siteActions} />}
-      {appLink && (
-        <ConfirmDialog
-          title="Open another app?"
-          body={appLinkAsk(appLink)}
-          confirm="Open"
-          onCancel={() => setAppLink(null)}
-          onConfirm={() => {
-            const to = appLink;
-            setAppLink(null);
-            void api.browserOpenApp(to).catch((e: unknown) => toast(clean(e)));
-          }}
+      {panel === "sessions" && <SessionsPanel current={tabs} onClose={() => setPanel(null)} onLoad={(session) => {
+        const next = restoreSession(session);
+        forget(tabsRef.current.tabs.map((tab) => tab.id));
+        setPair(null);
+        setArticle(null);
+        onSearchChange("");
+        tabsRef.current = next;
+        setTabs(next);
+        setPanel(null);
+      }} />}
+      {(panel === "bookmarks" || panel === "bookmark-page") && (
+        <BookmarksPanel
+          key={panel}
+          page={panel === "bookmark-page" ? marked ?? { id: "", title: titleOf(active.title, url), url } : undefined}
+          onGo={(to) => (setPanel(null), go(to))}
+          onClose={() => setPanel(null)}
+          onChanged={reloadMarks}
         />
       )}
+      {panel === "reading" && <ReadingListPanel onOpenBook={onOpenBook} onClose={() => setPanel(null)} />}
+      {panel === "site" && site && <SiteInfo url={url} actions={siteActions} />}
       {panel === "history" && <HistoryPanel onGo={(to) => (setPanel(null), go(to))} onClose={() => setPanel(null)} />}
       {panel === "downloads" && (
-        <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && setPanel(null)}>
+        <div className="dialog-backdrop browser-downloads-backdrop" onPointerDown={(e) => e.target === e.currentTarget && setPanel(null)}>
           <div className="dialog browser-downloads" role="dialog" aria-label="Downloads" onKeyDown={(e) => e.key === "Escape" && setPanel(null)}>
             <header className="catalogues-head">
               <h2>Downloads</h2>
-              <button type="button" className="icon-btn" aria-label="Close" onClick={() => setPanel(null)}>
+              <button type="button" className="btn btn-quiet btn-small" disabled={!fetched.some((d) => !isActiveDownload(d))}
+                onClick={(e) => void removeDownloadRows(fetched.map((d) => d.id), e.currentTarget)}>
+                Remove all
+              </button>
+              <button ref={downloadClose} type="button" className="icon-btn" aria-label="Close" onClick={() => setPanel(null)}>
                 <Icon name="close" size={18} />
               </button>
             </header>
@@ -1237,28 +1503,47 @@ export function Browser({
                   <li key={d.id}>
                     <Icon name="file" size={18} />
                     <span className="browser-download-name">
-                      <b>{d.name}</b>
+                      <b title={d.name}>{d.name}</b>
                       <span className="muted">
-                        {downloadState(d)}
+                        {downloadState(d)}{d.error && ` · ${d.error}`}
+                        {d.state === "failed" && d.url && !/^https?:/i.test(d.url) && !d.securityBlocked && " · Try the download again from the webpage"}
                         {d.at > 0 && d.state !== "coming" && ` · ${new Date(d.at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`}
                       </span>
                     </span>
-                    {d.state === "coming" && (
+                    {d.sourceUrl && /^https?:\/\//i.test(d.sourceUrl) && (
+                      <button type="button" className="btn btn-quiet btn-small" onClick={() => openInNewTab(d.sourceUrl!, false)}>Open source page</button>
+                    )}
+                    {d.state === "failed" && !d.securityBlocked && !d.direct && d.url && /^https?:\/\//i.test(d.url) && BOOK_FILE.test(d.url) && (
+                      <button type="button" className="btn btn-quiet btn-small" onClick={() => void api.downloadWebBook(d.url!, d.name, d.sourceUrl).catch((error: unknown) => toast(clean(error)))}>
+                        Download and add to library
+                      </button>
+                    )}
+                    {d.state === "coming" && !d.direct && (
                       <button
                         type="button"
                         className="btn btn-quiet btn-small"
-                        onClick={() => {
-                          void api.browserCancelDownload(d.id);
-                          setFetched((list) => list.filter((x) => x.id !== d.id));
+                        onClick={(event) => {
+                          const button = event.currentTarget;
+                          void api.browserCancelDownload(d.id).then(
+                            () => {
+                              setDownloads((list) => list.filter((x) => x.id !== d.id || x.state !== "coming"));
+                              if (document.activeElement === button || document.activeElement === document.body) downloadClose.current?.focus({ preventScroll: true });
+                            },
+                            (e: unknown) => toast(clean(e)),
+                          );
                         }}
                       >
                         Cancel
                       </button>
                     )}
-                    {d.state === "failed" && d.url && (
-                      <button type="button" className="btn btn-quiet btn-small" onClick={() => retry(d)}>
-                        Retry
-                      </button>
+                    {d.state === "failed" && d.url && /^https?:/i.test(d.url) && !d.securityBlocked && (
+                      <>
+                        <button type="button" className="btn btn-quiet btn-small" onClick={() => retry(d)}>Retry</button>
+                        {/^https?:/i.test(d.url) && <Menu label={"Download options for " + d.name} trigger={<Icon name="more" size={16} />} items={[
+                          { label: "Copy download link", icon: "copy", onSelect: () => void navigator.clipboard.writeText(d.url!).then(() => toast("Copied download link."), () => toast("Couldn't copy the download link.")) },
+                          { label: "Open in your normal browser", icon: "link", onSelect: () => void openExternal(d.url!) },
+                        ]} />}
+                      </>
                     )}
                     {d.state === "added" && d.bookId && (
                       <>
@@ -1275,18 +1560,19 @@ export function Browser({
                     )}
                     {d.asking && (
                       <>
-                        <button type="button" className="btn btn-primary btn-small" onClick={() => void answer(d, "add")}>
-                          Add
-                        </button>
-                        {!isIOS && (
-                          <button type="button" className="btn btn-quiet btn-small" onClick={() => void answer(d, "keep")}>
-                            Keep
+                        {d.media !== "other" && (
+                          <button type="button" className="btn btn-primary btn-small" onClick={() => void answer(d, "add")}>
+                            {d.state === "importFailed" ? "Retry import" : d.media === "audio" ? "Add to Resonance" : "Add to Archive"}
                           </button>
                         )}
+                        <button type="button" className="btn btn-quiet btn-small" onClick={() => void answer(d, "keep")}>
+                          Save
+                        </button>
                       </>
                     )}
-                    {d.state !== "coming" && (
-                      <button type="button" className="icon-btn" aria-label={`Remove ${d.name} from the list`} onClick={() => (d.asking ? void answer(d, "drop") : setFetched((list) => list.filter((x) => x.id !== d.id)))}>
+                    {!isActiveDownload(d) && (
+                      <button type="button" className="icon-btn" data-remove-download aria-label={`Remove ${d.name} from the list`}
+                        title="Remove from history" onClick={(e) => void removeDownloadRows([d.id], e.currentTarget)}>
                         <Icon name="close" size={14} />
                       </button>
                     )}
@@ -1297,7 +1583,32 @@ export function Browser({
           </div>
         </div>
       )}
+      {redirects.length > 0 && (
+        <ConfirmDialog
+          title="Allow this redirect?"
+          body={(siteOf(redirects[0].from) ?? "This site") + " wants to send you to " + (siteOf(redirects[0].url) ?? "another page") + "."}
+          confirm="Allow once"
+          onCancel={() => setRedirects((pending) => pending.slice(1))}
+          onConfirm={() => {
+            const target = redirects[0];
+            setRedirects((pending) => pending.slice(1));
+            void api.browserAct(target.tab, "go", target.url).catch((failure: unknown) => toast(clean(failure)));
+          }}
+        />
+      )}
+      {appLink && (
+        <ConfirmDialog
+          title="Open another app?"
+          body={appLinkAsk(appLink)}
+          confirm="Open"
+          onCancel={() => setAppLink(null)}
+          onConfirm={() => {
+            const to = appLink;
+            setAppLink(null);
+            void api.browserOpenApp(to).catch((e: unknown) => toast(clean(e)));
+          }}
+        />
+      )}
     </div>
   );
 }
-

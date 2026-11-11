@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { WritingChapter, WritingProject } from "../api/types";
 import { buildDocx } from "./docx";
 import { readExport } from "./epub";
-import { bestSplit, markdownToHtml, readDocumentBytes, rtfToHtml, splitChapters, textToHtml } from "./importDoc";
+import { bestSplit, markdownToHtml, readDocumentBytes, readDraftEpub, rtfToHtml, splitChapters, textToHtml } from "./importDoc";
 import { isbnValid, preflight } from "./preflightChecks";
 import { jpegPdf, spineWidth, wrapFor } from "./paperbackWrap";
 
@@ -118,4 +118,58 @@ describe("Paperback cover", () => {
     const xref = Number(/startxref\n(\d+)/.exec(pdf)![1]);
     expect(pdf.slice(xref, xref + 4)).toBe("xref");
   });
+});
+
+it("restores an EPUB draft with editable title and copyright pages and preserves their text", async () => {
+  const { buildEpub, readExport } = await import("./epub");
+  const { buildManuscript } = await import("./manuscript");
+  const project = { id: "p", title: "Ash", author: "Ada", coverPage: "title" } as WritingProject;
+  const section = (n: number, title: string, body: string, role: WritingChapter["role"], kind: string): WritingChapter =>
+    ({ id: "c" + n, projectId: "p", title, body, position: n, words: 4, updatedAt: "", role, part: null, page: JSON.stringify({ kind, byHand: true }) });
+  const chapters = [
+    section(1, "Publisher title", "<p>Ash</p><p>Ada</p>", "front", "title_page"),
+    section(2, "Rights statement", "<p>© 2026</p>", "front", "copyright"),
+    section(3, "Dedication", "<p>For Ada</p>", "front", "dedication"),
+    section(4, "Arrival", "<p>The first chapter remains.</p>", "chapter", "chapter"),
+  ];
+  const bytes = buildEpub({ project, chapters, settings: { ...readExport("{}"), newPage: false } });
+  const restored = buildManuscript(readDraftEpub(bytes), "spine").sections;
+  expect(restored.map(({kind, area, include}) => [kind, area, include])).toEqual([
+    ["title_page", "front", true],
+    ["copyright", "front", true],
+    ["dedication", "front", true],
+    ["chapter", "chapter", true],
+  ]);
+  expect(restored[0]).toMatchObject({ byHand: true, body: expect.stringContaining("Ash") });
+  expect(restored[1]).toMatchObject({ byHand: true, body: expect.stringContaining("2026") });
+  expect(restored[2].body).toContain("For Ada");
+  expect(restored[3].body).toContain("The first chapter remains.");
+});
+
+it("restores an anthology draft with its parts, without the generated chapter numbers", async () => {
+  const { buildEpub, readExport } = await import("./epub");
+  const { buildManuscript } = await import("./manuscript");
+  const project = { id: "p", title: "Two", author: "Ada", coverPage: "none" } as WritingProject;
+  const section = (n: number, title: string, body: string, role: WritingChapter["role"], part: string | null, kind = "chapter"): WritingChapter =>
+    ({ id: "c" + n, projectId: "p", title, body, position: n, words: 4, updatedAt: "", role, part, page: JSON.stringify({ kind }) });
+  const chapters = [
+    section(1, "First book", "", "part", null, "custom"),
+    section(2, "Arrival", "<p>The first story begins.</p>", "chapter", "c1"),
+    section(3, "Notes on the first", "<p>Written in spring.</p>", "back", "c1", "custom"),
+    section(4, "Second book", "", "part", null, "custom"),
+    section(5, "Leaving", "<p>The second story begins.</p>", "chapter", "c4"),
+    section(6, "About the author", "<p>Ada writes.</p>", "back", null, "about_author"),
+  ];
+  const bytes = buildEpub({ project, chapters, settings: { ...readExport("{}"), newPage: false, chapterHeading: "number" } });
+  const restored = buildManuscript(readDraftEpub(bytes), "spine").sections;
+  expect(restored.map((s) => [s.title, s.isPart ?? false, s.partOf ?? null])).toEqual([
+    ["First book", true, null],
+    ["Arrival", false, 0],
+    ["Notes on the first", false, 0],
+    ["Second book", true, null],
+    ["Leaving", false, 3],
+    ["About the author", false, null],
+  ]);
+  expect(restored[1].body).not.toContain("Chapter 1");
+  expect(restored[4].body).not.toContain("Chapter");
 });

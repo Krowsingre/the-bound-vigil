@@ -236,7 +236,7 @@ export function previewNotes(
       }
       return one(id);
     },
-    savePersonalNote: async (id, title, body) => {
+    savePersonalNote: async (id, title, body, tags) => {
       if (!title?.trim() && !body.trim()) throw new Error("the note is empty");
       const t = title?.trim() || null;
       if (id) personal = personal.map((p) => (p.id === id ? { ...p, title: t, body: body.trim(), updatedAt: stamp() } : p));
@@ -244,6 +244,7 @@ export function previewNotes(
         id = `p-${Math.random().toString(36).slice(2)}`;
         personal = [...personal, { id, title: t, body: body.trim(), createdAt: stamp(), updatedAt: stamp() }];
       }
+      if (tags !== undefined) marks.set(id, { ...markOf(id), tags: cleanTags(tags) });
       return one(id);
     },
     setAnnotationNote: async (id, note) => {

@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { BookPreview, DetailChange, DetailField, DetailFieldName } from "../api/types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 import { AUDIO_ONLY, cleanValue, DETAIL_FIELDS, effective, isList, listOf } from "../lib/details";
 import { isAudio } from "../lib/queryBooks";
@@ -13,6 +14,8 @@ import { AddOrReplace, joined, type ListMode } from "../components/AddOrReplace"
 
 /** The details that make sense to set on many books at once. */
 const MASS_FIELDS: DetailFieldName[] = ["authors", "series", "genres", "publisher", "published", "language"];
+
+type EditGroup = { ids: string[]; list: DetailChange[] };
 
 type Values = Partial<Record<DetailFieldName, string | string[]>>;
 
@@ -32,6 +35,7 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
   const modeOf = (field: DetailFieldName): ListMode => modes[field] ?? (many ? "add" : "replace");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirmation, setConfirmation] = useState<{ groups: EditGroup[]; fields: string[]; count: number } | null>(null);
   const close = useRef(onClose);
   close.current = onClose;
 
@@ -86,9 +90,9 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
     return out;
   };
 
-  const save = () => {
+  const save = async () => {
     // Books whose changes come out the same are saved together.
-    const groups = new Map<string, { ids: string[]; list: DetailChange[] }>();
+    const groups = new Map<string, EditGroup>();
     try {
       for (const book of books) {
         const list = changes(book);
@@ -103,8 +107,38 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
     }
     if (!groups.size) return onClose(false);
     setSaving(true);
-    [...groups.values()]
-      .reduce<Promise<void>>((done, g) => done.then(() => api.editDetails(g.ids, g.list)), Promise.resolve())
+    try {
+      const touched = new Set<DetailFieldName>();
+      let count = 0;
+      for (const group of groups.values()) {
+        for (const id of group.ids) {
+          const current = (await api.bookDetails(id)).fields;
+          const conflicts = group.list.filter((change) => current.some((field) =>
+            field.field === change.field && field.fetched !== null && field.fetchedFrom && field.fetchedFrom !== "file" &&
+            (field.edited === null || field.edited === field.fetched) && change.value !== null && change.value !== field.fetched
+          ));
+          if (conflicts.length) {
+            count++;
+            conflicts.forEach((change) => touched.add(change.field));
+          }
+        }
+      }
+      if (count) {
+        setSaving(false);
+        setConfirmation({ groups: [...groups.values()], fields: DETAIL_FIELDS.filter((entry) => touched.has(entry.field)).map((entry) => entry.label), count });
+        return;
+      }
+      apply([...groups.values()]);
+    } catch (failure) {
+      setSaving(false);
+      setError(String(failure));
+    }
+  };
+
+  const apply = (groups: EditGroup[]) => {
+    setConfirmation(null);
+    setSaving(true);
+    groups.reduce<Promise<void>>((done, g) => done.then(() => api.editDetails(g.ids, g.list)), Promise.resolve())
       .then(
         () => {
           toast(many ? `Updated ${books.length} books.` : `Saved the details of “${books[0].title}”.`);
@@ -138,6 +172,7 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
   };
 
   return (
+    <>
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose(false)}>
       <div
         className="dialog details-dialog"
@@ -243,5 +278,15 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
         </div>
       </div>
     </div>
+    {confirmation && (
+      <ConfirmDialog
+        title="Replace details found online?"
+        body={confirmation.fields.join(", ") + (confirmation.count === 1 ? " on one book" : " on " + confirmation.count + " books") + " will use your edits."}
+        confirm="Apply my edits"
+        onConfirm={() => apply(confirmation.groups)}
+        onCancel={() => setConfirmation(null)}
+      />
+    )}
+    </>
   );
 }

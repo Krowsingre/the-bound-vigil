@@ -7,6 +7,7 @@ import { Catalogs } from "../catalogs/Catalogs";
 import { Icon } from "../components/Icon";
 import { askBrowser } from "./browserAsk";
 import { Browser } from "./Browser";
+import type { Route } from "../shell/routes";
 
 export function Browse({
   refreshKey,
@@ -16,6 +17,8 @@ export function Browse({
   onCloseCatalogues,
   search,
   onSearchChange,
+  allowTabSplit,
+  onSplitWith,
 }: {
   refreshKey: number;
   onOpenBook: (bookId: string, at?: string) => void;
@@ -26,10 +29,13 @@ export function Browse({
   /** The top search box, which the start page's own box mirrors. */
   search: string;
   onSearchChange: (text: string) => void;
+  allowTabSplit: boolean;
+  onSplitWith?: (route: Route) => void;
 }) {
   return (
     <div className="library browse-page browse-browser">
-      <Browser onOpenCatalogues={onOpenCatalogues} onOpenBook={onOpenBook} search={search} onSearchChange={onSearchChange} />
+      <Browser onOpenCatalogues={onOpenCatalogues} onOpenBook={onOpenBook} search={search} onSearchChange={onSearchChange}
+        allowSplit={allowTabSplit} companion={false} onSplitWith={onSplitWith} />
       {catalogues && (
         <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onCloseCatalogues()}>
           <div className="dialog catalogues-panel" role="dialog" aria-label="Catalogues" onKeyDown={(e) => e.key === "Escape" && onCloseCatalogues()}>
@@ -56,4 +62,3 @@ export function Browse({
     </div>
   );
 }
-

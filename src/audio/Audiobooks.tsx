@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api, isServerBook } from "../api";
-import type { Audiobook, BookDetails, BookPreview } from "../api/types";
+import type { AudioType, Audiobook, BookDetails, BookPreview } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
@@ -12,7 +12,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { showBookDetails } from "../details/openDetails";
 import { bookContextMenu, makeBookActions } from "../home/bookActions";
 import { useToast } from "../components/Toast";
-import { Library, PageSwitch } from "../library/Library";
+import { Library } from "../library/Library";
 import type { LibraryView } from "../library/libraryView";
 import { formatLength } from "../lib/queryBooks";
 import { formatBytes } from "../settings/controls";
@@ -34,6 +34,12 @@ function timeLeft(book: BookPreview): string | null {
   const left = book.durationMs - (book.resumeLocator?.audioMs ?? 0);
   return left > 0 ? `${formatLength(left)} left` : null;
 }
+
+const AUDIO_VIEWS: { type: AudioType; label: string }[] = [
+  { type: "audiobook", label: "Audiobooks" },
+  { type: "podcast", label: "Podcasts" },
+  { type: "music", label: "Music" },
+];
 
 type Pairing = "all" | "paired" | "alone";
 const PAIRING_KEY = "tbv.audiobooks.pairing";
@@ -57,6 +63,11 @@ export function Audiobooks({
   onImportFolder,
   onOpenCollection,
   onReadAlong,
+  onOpenSeries,
+  seriesBack,
+  onShowAllSeries,
+  restoreScroll,
+  onScrollRestored,
 }: {
   view: LibraryView;
   search: string;
@@ -68,6 +79,11 @@ export function Audiobooks({
   onOpenCollection: (id: string) => void;
   /** Opens the linked ebook to read along with the audiobook. */
   onReadAlong: (ebookId: string) => void;
+  onOpenSeries?: (name: string) => void;
+  seriesBack?: () => void;
+  onShowAllSeries?: () => void;
+  restoreScroll?: number | null;
+  onScrollRestored?: () => void;
 }) {
   const player = usePlayer();
   const [chosen, setChosen] = useState<string | null>(null);
@@ -102,7 +118,8 @@ export function Audiobooks({
         paired: pairing === "all" ? null : pairing === "paired",
         search: null,
         formats: [],
-        location: null,
+        location: view.location,
+        audioType: view.audioType,
         page: 0,
         pageSize: 10,
       })
@@ -113,13 +130,13 @@ export function Audiobooks({
     return () => {
       current = false;
     };
-  }, [refreshKey, reload, player.playing, pairing]);
+  }, [refreshKey, reload, player.playing, pairing, view.location, view.audioType]);
 
   // The panel shows the book chosen, else the one playing (if it's in the
   // library, not played from a server), else the last listened to.
   const playingHere = player.book && !isServerBook(player.book.book.id) ? player.book.book.id : null;
   const shown = chosen ?? playingHere ?? listening?.[0]?.id ?? null;
-  const showContinue = view.tab === "all" && !search.trim() && listening !== null && listening.length > 0;
+  const showContinue = !seriesBack && view.tab === "all" && !search.trim() && listening !== null && listening.length > 0;
 
   // Tapping a cover shows the audiobook in the panel (and the player bar);
   // playing stays on the Listen and Play buttons. On a phone the panel opens
@@ -143,19 +160,28 @@ export function Audiobooks({
       <div className="audiobooks-main">
         <Library
           kind="audiobooks"
-          paired={pairing === "all" ? null : pairing === "paired"}
-          switcher={
-            <PageSwitch<Pairing>
-              label="Which audiobooks"
-              value={pairing}
-              options={[
-                { value: "all", label: "All" },
-                { value: "paired", label: "Paired" },
-                { value: "alone", label: "Audiobooks only" },
-              ]}
-              onChange={choosePairing}
-            />
-          }
+          onOpenSeries={onOpenSeries}
+          seriesBack={seriesBack}
+          onShowAllSeries={onShowAllSeries}
+          restoreScroll={restoreScroll}
+          onScrollRestored={onScrollRestored}
+          paired={(seriesBack && !onShowAllSeries) || pairing === "all" ? null : pairing === "paired"}
+          onPairing={(value) => choosePairing(value === null ? "all" : value ? "paired" : "alone")}
+          switcher={!seriesBack && (
+            <div className="segmented page-switch" role="group" aria-label="Audio type">
+              {AUDIO_VIEWS.map(({ type, label }) => (
+                <button
+                  key={type}
+                  type="button"
+                  aria-pressed={view.audioType === type}
+                  title={view.audioType === type ? "Show all audio" : undefined}
+                  onClick={() => onChange({ audioType: view.audioType === type ? null : type, page: 0 })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           view={view}
           search={search}
           refreshKey={refreshKey + reload}

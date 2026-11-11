@@ -1,7 +1,8 @@
-import type { ItemKind, LibraryExclude, Location, Shelf, SortOrder } from "../api/types";
+import type { AudioType, ItemKind, LibraryExclude, Location, Shelf, SortOrder } from "../api/types";
 
 export type LibraryTab = Shelf | "collections";
 export type Layout = "grid" | "list" | "compact";
+export type SeriesGrouping = "individual" | "mixed" | "seriesFirst";
 
 /** What the Library page is showing. Search lives in the header, so it is kept apart. */
 export interface LibraryView {
@@ -25,10 +26,12 @@ export interface LibraryView {
   narrators: string[];
   /** Leaves out books marked read. Remembered, like sort and layout. */
   hideRead: boolean;
+  audioType?: AudioType | null;
   /** Filters turned round (a second click): books with any of these are left out. */
   exclude: LibraryExclude;
   page: number;
   layout: Layout;
+  seriesGrouping: SeriesGrouping;
 }
 
 export const PAGE_SIZE = 24;
@@ -50,6 +53,7 @@ export const NO_FILTERS: Partial<LibraryView> = {
   series: [],
   narrators: [],
   hideRead: false,
+  audioType: null,
   exclude: NO_EXCLUDE,
 };
 
@@ -80,11 +84,15 @@ const keyOf = (kind: ItemKind) => (kind === "books" ? KEY : `tbv.${kind}View`);
 
 /** Sort and layout are remembered on this device, for each page of books; the rest starts fresh. */
 export function initialView(kind: ItemKind = "books"): LibraryView {
-  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], series: [], narrators: [], hideRead: false, exclude: NO_EXCLUDE, page: 0, layout: "grid" };
+  const view: LibraryView = { tab: "all", sort: "recently_added", formats: [], location: null, tags: [], genres: [], languages: [], downloadable: false, authors: [], series: [], narrators: [], hideRead: false, exclude: NO_EXCLUDE, page: 0, layout: "grid", seriesGrouping: "individual" };
   try {
-    const saved = JSON.parse(localStorage.getItem(keyOf(kind)) ?? "{}") as Partial<LibraryView>;
+    const saved = JSON.parse(localStorage.getItem(keyOf(kind)) ?? "{}") as Partial<Omit<LibraryView, "layout">> & { layout?: Layout | "series" };
     if (SORTS.some((s) => s.sort === saved.sort)) view.sort = saved.sort!;
     if (saved.layout === "grid" || saved.layout === "list" || saved.layout === "compact") view.layout = saved.layout;
+    if (kind !== "documents") {
+      if (saved.layout === "series") view.seriesGrouping = "seriesFirst";
+      else if (saved.seriesGrouping === "mixed" || saved.seriesGrouping === "seriesFirst") view.seriesGrouping = saved.seriesGrouping;
+    }
     view.hideRead = saved.hideRead === true;
   } catch {
     /* fall back to defaults */
@@ -94,7 +102,7 @@ export function initialView(kind: ItemKind = "books"): LibraryView {
 
 export function rememberView(view: LibraryView, kind: ItemKind = "books") {
   try {
-    localStorage.setItem(keyOf(kind), JSON.stringify({ sort: view.sort, layout: view.layout, hideRead: view.hideRead }));
+    localStorage.setItem(keyOf(kind), JSON.stringify({ sort: view.sort, layout: view.layout, seriesGrouping: view.seriesGrouping, hideRead: view.hideRead }));
   } catch {
     /* the choice just won't be remembered */
   }

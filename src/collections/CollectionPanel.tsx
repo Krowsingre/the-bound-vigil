@@ -69,7 +69,7 @@ export function CollectionPanel({
         className="panel-picture"
         shape="square"
       />
-      <div className="panel-title">
+      <div className="panel-title" data-item-menu>
         <Badge name={badge} size={22} />
         <h2>{name}</h2>
         {menu.length > 0 && <Menu label={`More for ${name}`} trigger={<Icon name="more" />} items={menu} />}

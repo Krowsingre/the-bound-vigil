@@ -702,6 +702,9 @@ export class FixedLayout extends HTMLElement {
         if (top < box.top + 40 || top + r.height > box.bottom - 40)
             this.scrollBy({ top: top - box.top - this.clientHeight / 3 })
     }
+    scrollByPixels(distance) {
+        if (this.#flow === 'scrolled') this.scrollBy({ top: distance, behavior: 'instant' })
+    }
     /** TBV: scrolls a little, for the arrow keys. */
     scrollStep(direction) {
         if (this.#flow === 'scrolled' || this.scrollHeight > this.clientHeight)

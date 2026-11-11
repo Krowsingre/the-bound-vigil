@@ -1,5 +1,7 @@
+import type { ShowToast } from "../components/Toast";
+import { offerFinishedDownloadRemoval } from "../library/FinishedDownloadPrompt";
 import { createElement } from "react";
-import type { BookPreview } from "../api/types";
+import type { AudioType, BookPreview } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
 import { holdForMenu } from "../components/ContextMenu";
 import type { MenuEntry } from "../components/Menu";
@@ -11,17 +13,20 @@ import { askDeleteBook, askEditTags, askRemoveBook } from "../library/BookDialog
 import { cueAudiobook, playAudiobook } from "../audio/player";
 import { askPair } from "../audio/LinkEbook";
 import { isAudio, kindOf } from "../lib/queryBooks";
+import { UP_NEXT_FULL } from "../library/shelfLimits";
+import { askUpNextReplacement } from "../library/UpNextReplacement";
 import { NO_FILTERS } from "../library/libraryView";
-import { isApp, isHome, isWeb } from "../api";
+import { isWeb } from "../api";
 
-/** Where choosing books for the phone shows: on a computer (the Sent to device shelf), and on the phone. */
-export const phoneChoiceShown = () => (isApp && !isHome) || isWeb;
+/** The PWA transfer controls are hidden while the PWA is disabled. */
+export const phoneChoiceShown = () => false;
 
 export interface BookActions {
   open: (book: BookPreview) => void;
   setStatus: (book: BookPreview, status: BookPreview["status"]) => void;
   setFavorite: (book: BookPreview, favorite: boolean) => void;
   setWantToRead: (book: BookPreview, want: boolean) => void;
+  setAudioType?: (book: BookPreview, kind: AudioType | null) => void;
   setRating: (book: BookPreview, rating: number | null) => void;
   /** Pins it to the top of the Archive, or unpins it. */
   setPinned?: (book: BookPreview, pinned: boolean) => void;
@@ -39,12 +44,60 @@ export interface BookActions {
 
 /** The "…" menu for a book, and its right-click menu. */
 export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
+  const audio = isAudio(book.format);
+  const types: [AudioType, string][] = [["audiobook", "Audiobook"], ["podcast", "Podcast"], ["music", "Music"]];
   return [
     isAudio(book.format)
       ? { label: "Listen", icon: "play" as const, onSelect: () => playAudiobook(book.id) }
       : { label: "Open", icon: "bookOpen" as const, onSelect: () => actions.open(book) },
     { label: "Book details", icon: "info", onSelect: () => showBookDetails(book.id) },
     { label: "Edit details…", icon: "edit", onSelect: () => askEditDetails([book]) },
+    {
+      heading: createElement(
+        "span",
+        { className: "menu-rating" },
+        "Your rating",
+        createElement(StarRating, { value: book.rating, size: 18, onChange: (r) => actions.setRating(book, r) }),
+      ),
+    },
+    "divider",
+    { label: "Organize", icon: "collections", submenu: [
+    book.favorite
+      ? { label: "Remove from favourites", icon: "heart", onSelect: () => actions.setFavorite(book, false) }
+      : { label: "Add to favourites", icon: "heart", onSelect: () => actions.setFavorite(book, true) },
+    book.wantToRead
+      ? { label: "Remove from Up next", icon: "bookmark", onSelect: () => actions.setWantToRead(book, false) }
+      : { label: "Add to Up next", icon: "bookmark", onSelect: () => actions.setWantToRead(book, true) },
+    ...(actions.setPinned
+      ? [
+          book.pinnedAt
+            ? { label: "Unpin from the Archive", icon: "pin" as const, onSelect: () => actions.setPinned?.(book, false) }
+            : { label: "Pin to the top of the Archive", icon: "pin" as const, onSelect: () => actions.setPinned?.(book, true) },
+        ]
+      : []),
+    { label: "Add to collection…", icon: "collections", onSelect: () => askAddToCollection(book) },
+    { label: book.tags.length ? "Edit tags…" : "Add tags…", icon: "tag", onSelect: () => askEditTags(book) },
+    ...(actions.removeFromCollection
+      ? [{ label: `Remove from ${actions.removeFromCollection.name}`, onSelect: () => actions.removeFromCollection?.remove(book) }]
+      : []),
+      ...(audio && actions.setAudioType ? [
+        "divider" as const,
+        { heading: "Audio type" },
+        ...types.map(([kind, label]) => ({ label, checked: (book.audioType ?? "audiobook") === kind, onSelect: () => actions.setAudioType?.(book, kind) })),
+      ] : []),
+    ] },
+    { label: audio ? "Listening status" : "Reading status", icon: "checkCircle", submenu: [
+    book.status === "read"
+      ? { label: audio ? "Mark as unplayed" : "Mark as unread", onSelect: () => actions.setStatus(book, "unread") }
+      : { label: audio ? "Mark as listened" : "Mark as read", onSelect: () => actions.setStatus(book, "read") },
+    book.status === "dropped"
+      ? { label: "Not dropped after all", hint: "Marks it unread", onSelect: () => actions.setStatus(book, "unread") }
+      : { label: "Mark as dropped", hint: "Stopped, not going back", onSelect: () => actions.setStatus(book, "dropped") },
+    ...(book.status === "in_progress"
+      ? [{ label: "Stop reading (mark unread)", onSelect: () => actions.setStatus(book, "unread") }]
+      : []),
+    ] },
+    { label: "Find related", icon: "search", submenu: [
     {
       label: isAudio(book.format) ? "Pair with an ebook or document…" : "Pair with an audiobook…",
       icon: "headphones",
@@ -68,52 +121,18 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
           },
         ]
       : []),
-    {
-      heading: createElement(
-        "span",
-        { className: "menu-rating" },
-        "Your rating",
-        createElement(StarRating, { value: book.rating, size: 18, onChange: (r) => actions.setRating(book, r) }),
-      ),
-    },
-    "divider",
-    book.favorite
-      ? { label: "Remove from favourites", icon: "heart", onSelect: () => actions.setFavorite(book, false) }
-      : { label: "Add to favourites", icon: "heart", onSelect: () => actions.setFavorite(book, true) },
-    book.wantToRead
-      ? { label: "Remove from Up next", icon: "bookmark", onSelect: () => actions.setWantToRead(book, false) }
-      : { label: "Add to Up next", icon: "bookmark", onSelect: () => actions.setWantToRead(book, true) },
-    ...(actions.setPinned
-      ? [
-          book.pinnedAt
-            ? { label: "Unpin from the Archive", icon: "pin" as const, onSelect: () => actions.setPinned?.(book, false) }
-            : { label: "Pin to the top of the Archive", icon: "pin" as const, onSelect: () => actions.setPinned?.(book, true) },
-        ]
-      : []),
-    { label: "Add to collection…", icon: "collections", onSelect: () => askAddToCollection(book) },
-    { label: book.tags.length ? "Edit tags…" : "Add tags…", icon: "tag", onSelect: () => askEditTags(book) },
-    ...(actions.removeFromCollection
-      ? [{ label: `Remove from ${actions.removeFromCollection.name}`, onSelect: () => actions.removeFromCollection?.remove(book) }]
-      : []),
-    "divider",
-    book.status === "read"
-      ? { label: "Mark as unread", onSelect: () => actions.setStatus(book, "unread") }
-      : { label: "Mark as read", onSelect: () => actions.setStatus(book, "read") },
-    book.status === "dropped"
-      ? { label: "Not dropped after all", hint: "Marks it unread", onSelect: () => actions.setStatus(book, "unread") }
-      : { label: "Mark as dropped", hint: "Stopped, not going back", onSelect: () => actions.setStatus(book, "dropped") },
-    ...(book.status === "in_progress"
-      ? [{ label: "Stop reading (mark unread)", onSelect: () => actions.setStatus(book, "unread") }]
-      : []),
-    "divider",
+    ] },
+    { label: "Download & send", icon: "download", submenu: [
     ...(isAudio(book.format) ? [] : [{ label: "Send to e-reader…", icon: "ereader" as const, onSelect: () => askSendToEreader([book]) }]),
     ...(canSendWithLocalSend ? [{ label: "Send with Grimoire…", icon: "upload" as const, onSelect: () => askSendWithLocalSend([book]) }] : []),
     ...(actions.saveCopy ? [{ label: "Save a copy…", icon: "copy" as const, onSelect: () => actions.saveCopy?.(book) }] : []),
     downloadItem(book, actions),
-    ...phoneItem(book, actions),
+    ] },
     "divider",
+    { label: "Removal options", icon: "trash", submenu: [
     { label: "Remove from library…", icon: "close", onSelect: () => askRemoveBook(book) },
     { label: "Delete for good…", icon: "trash", danger: true, onSelect: () => askDeleteBook(book) },
+    ] },
   ];
 }
 
@@ -157,9 +176,9 @@ export function bookContextMenu(book: BookPreview, actions: BookActions) {
 }
 
 function downloadItem(book: BookPreview, actions: BookActions): MenuEntry {
-  if (book.fileUnavailable) return { label: "Download to this device", icon: "download", hint: "File not in the cloud", disabled: true };
+  if (book.fileUnavailable) return { label: "Download", icon: "download", hint: "File not in the cloud", disabled: true };
   if (book.availability === "cloud")
-    return { label: "Download to this device", icon: "download", disabled: !actions.download, onSelect: () => actions.download?.(book) };
+    return { label: "Download", icon: "download", disabled: !actions.download, onSelect: () => actions.download?.(book) };
   // Gone from this device, but the cloud may still have it.
   if (book.availability === "missing")
     return { label: "Download again", icon: "download", hint: "File missing here", disabled: !actions.download, onSelect: () => actions.download?.(book) };
@@ -167,19 +186,7 @@ function downloadItem(book: BookPreview, actions: BookActions): MenuEntry {
   return { label: "Remove download (keep in cloud)", icon: "cloudOff", disabled: !actions.removeDownload, onSelect: () => actions.removeDownload?.(book) };
 }
 
-function phoneItem(book: BookPreview, actions: BookActions): MenuEntry[] {
-  const set = actions.setPhoneWanted;
-  if (!set || !phoneChoiceShown()) return [];
-  if (isWeb) {
-    // Only a book whose file isn't in Supabase needs asking for.
-    if (!book.fileUnavailable) return [];
-    return book.phoneWanted
-      ? [{ label: "Don't ask the computer for it", icon: "close", hint: "Asked for", onSelect: () => set([book], false) }]
-      : [{ label: "Ask the computer to send it", icon: "download", onSelect: () => set([book], true) }];
-  }
-  if (book.phoneWanted) return [{ label: "Stop sending to device", icon: "cloudOff", hint: book.phoneHas ? "On the phone" : undefined, onSelect: () => set([book], false) }];
-  return [{ label: "Send to device", icon: "upload", hint: book.phoneHas ? "On the phone" : undefined, onSelect: () => set([book], true) }];
-}
+
 
 /** Why a book can't be opened here, or null when it can. */
 export function cannotOpen(book: BookPreview): string | null {
@@ -191,8 +198,8 @@ export function cannotOpen(book: BookPreview): string | null {
 /** The shared actions, refreshing the current view after each change. */
 export function makeBookActions(
   api: Pick<import("../api").Api, "setBookStatus" | "setFavorite" | "setWantToRead" | "setRating"> &
-    Partial<Pick<import("../api").Api, "downloadBook" | "removeDownload" | "saveCopies" | "setPhoneWanted" | "setPinned">>,
-  toast: (text: string) => void,
+    Partial<Pick<import("../api").Api, "downloadBook" | "removeDownload" | "saveCopies" | "setPhoneWanted" | "setPinned" | "setAudioType">>,
+  toast: ShowToast,
   refresh: () => void,
   openBook: (bookId: string) => void,
 ): BookActions {
@@ -219,11 +226,29 @@ export function makeBookActions(
       if (reason) toast(reason);
       else openBook(book.id);
     },
-    setStatus: (book, status) => void run(book, api.setBookStatus(book.id, status)),
+    setStatus: (book, status) => void run(book, api.setBookStatus(book.id, status).then(() => {
+      if (status !== book.status && (status === "read" || status === "dropped")) {
+        const undo = () => toast(status === "read" ? "Marked as Read." : "Marked as Dropped.", {
+          label: "Undo",
+          run: () => void run(book, api.setBookStatus(book.id, book.status)),
+        });
+        if (!api.removeDownload || !offerFinishedDownloadRemoval(book, status, refresh, undo)) undo();
+      }
+    })),
     setFavorite: (book, favorite) => void run(book, api.setFavorite(book.id, favorite)),
-    setWantToRead: (book, want) => void run(book, api.setWantToRead(book.id, want)),
+    setWantToRead: (book, want) => {
+      void run(book, api.setWantToRead(book.id, want).then(() => {
+        if (!want && book.wantToRead) toast("Removed from Up Next.", { label: "Undo", run: () => void run(book, api.setWantToRead(book.id, true)) });
+      }).catch((error: unknown) => {
+        if (!want || !String(error).includes(UP_NEXT_FULL)) throw error;
+        askUpNextReplacement(book);
+      }));
+    },
+    setAudioType: api.setAudioType && ((book, kind) => void run(book, api.setAudioType!(book.id, kind))),
     setRating: (book, rating) => void run(book, api.setRating(book.id, rating)),
-    setPinned: api.setPinned && ((book, pinned) => void run(book, api.setPinned!(book.id, pinned))),
+    setPinned: api.setPinned && ((book, pinned) => void run(book, api.setPinned!(book.id, pinned).then(() => {
+      if (!pinned && book.pinnedAt) toast("Unpinned from Archive.", { label: "Undo", run: () => void run(book, api.setPinned!(book.id, true)) });
+    }))),
     download: api.downloadBook && ((book) => {
       toast(`Downloading “${book.title}”…`);
       void run(book, api.downloadBook!(book.id).then(() => toast(`“${book.title}” is on this device.`)));

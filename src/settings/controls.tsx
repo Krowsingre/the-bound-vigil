@@ -78,6 +78,7 @@ export function Section({
   title,
   lede,
   aside,
+  collapsible = false,
   children,
 }: {
   id: string;
@@ -85,6 +86,7 @@ export function Section({
   lede?: string;
   /** A second column, e.g. a preview. */
   aside?: React.ReactNode;
+  collapsible?: boolean;
   children: React.ReactNode;
 }) {
   return useContext(InGroup) ? (
@@ -92,7 +94,7 @@ export function Section({
       {children}
     </SectionPart>
   ) : (
-    <FoldingSection id={id} title={title} lede={lede} aside={aside}>
+    <FoldingSection id={id} title={title} lede={lede} aside={aside} collapsible={collapsible}>
       {children}
     </FoldingSection>
   );
@@ -112,11 +114,11 @@ function SectionPart({ id, title, lede, aside, children }: { id: string; title: 
   );
 }
 
-function FoldingSection({ id, title, lede, aside, children }: { id: string; title: string; lede?: string; aside?: React.ReactNode; children: React.ReactNode }) {
+function FoldingSection({ id, title, lede, aside, collapsible, children }: { id: string; title: string; lede?: string; aside?: React.ReactNode; collapsible: boolean; children: React.ReactNode }) {
   const narrow = useNarrow();
   const [shut, setFolded] = useState(() => !readOpened().has(id));
-  // A computer's cards are always open.
-  const folded = narrow && shut;
+  const canFold = narrow || collapsible;
+  const folded = canFold && shut;
   useEffect(() => {
     const open = (e: Event) => (e as CustomEvent<string>).detail === id && setFolded(false);
     window.addEventListener("tbv:unfold-section", open);
@@ -126,7 +128,7 @@ function FoldingSection({ id, title, lede, aside, children }: { id: string; titl
     saveOpened(id, folded);
     setFolded(!folded);
   };
-  const heading = narrow ? (
+  const heading = canFold ? (
     <button type="button" className="settings-section-toggle" aria-expanded={!folded} onClick={toggle}>
       {title}
       <Icon name="chevronDown" size={18} />

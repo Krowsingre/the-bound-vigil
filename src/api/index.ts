@@ -130,8 +130,11 @@ export interface Api {
   getCollections(): Promise<CollectionPreview[]>;
   setFavorite(bookId: string, favorite: boolean): Promise<void>;
   /** Pins a book to the top of the Archive, or unpins it. */
+  archiveSeriesPins(): Promise<string[]>;
+  setArchiveSeriesPin(name: string, pinned: boolean): Promise<void>;
+  setAudioType(bookId: string, kind: import("./types").AudioType | null): Promise<void>;
   setPinned(bookId: string, pinned: boolean): Promise<void>;
-  setWantToRead(bookId: string, want: boolean): Promise<void>;
+  setWantToRead(bookId: string, want: boolean, replace?: string): Promise<void>;
   /** Chooses books to go to the phone (when only chosen ones do), or stops. On the phone: asks a computer to send them. */
   setPhoneWanted(bookIds: string[], wanted: boolean): Promise<void>;
   /** 1 to 5 stars, or null to clear. */
@@ -146,6 +149,7 @@ export interface Api {
   /** Accepts the matched books and the probable ones listed; tags them Kindle. */
   applyKindle(confirmed: string[], markRead: boolean): Promise<KindleApplied>;
   kindleSummary(): Promise<KindleSummary>;
+  matchKindleManually(asin: string, bookIds: string[], markRead: boolean): Promise<KindleApplied>;
   /** Kindle books not in the library, or (removed) the ones taken off that list. */
   kindleMissing(removed: boolean): Promise<KindlePurchase[]>;
   setKindleRemoved(asins: string[], removed: boolean): Promise<void>;
@@ -291,7 +295,7 @@ export interface Api {
   getNotes(query: NotesQuery): Promise<NotesPage>;
   /** Writes a note about a whole book; with an id, rewrites that one. */
   saveBookNote(bookId: string, id: string | null, text: string): Promise<NoteItem>;
-  savePersonalNote(id: string | null, title: string | null, body: string): Promise<NoteItem>;
+  savePersonalNote(id: string | null, title: string | null, body: string, tags?: string[]): Promise<NoteItem>;
   /** Changes the words on a highlight. Empty words make it a plain highlight. */
   setAnnotationNote(id: string, note: string | null): Promise<NoteItem>;
   deleteNote(id: string, kind: NoteKind): Promise<void>;
@@ -515,11 +519,13 @@ export interface Api {
   /** Brings a book down and adds it through the import queue. */
   downloadFromCatalog(id: string, file: OpdsFile, title: string): Promise<void>;
   /** Brings a book down from a web address (a Bible, or a browser page's file) and adds it through the import queue. */
-  downloadWebBook(url: string, title: string): Promise<void>;
+  downloadWebBook(url: string, title: string, sourceUrl?: string): Promise<void>;
   /** Websites saved in the browser, in order. */
   bookmarks(): Promise<Bookmark[]>;
   /** Saves a page; one saved already is only renamed. */
-  addBookmark(title: string, url: string): Promise<Bookmark>;
+  addBookmark(title: string, url: string, folder?: string | null): Promise<Bookmark>;
+  editBookmark(id: string, title: string, url: string, folder: string | null): Promise<void>;
+  moveBookmark(id: string, direction: -1 | 1): Promise<void>;
   renameBookmark(id: string, title: string): Promise<void>;
   removeBookmark(id: string): Promise<void>;
   /** Quick Links on Discover's start page, synced like bookmarks. */
@@ -548,8 +554,9 @@ export interface Api {
   siteIcon(url: string): Promise<string>;
   /** Shows tab `tab` over `frame` (made at `url` if it's new), with the others hidden. App only. */
   /** Shows a tab, making it at `url` first if it's new; a new `privately` tab keeps nothing. */
-  browserShow(tab: string, url: string | null, frame: BrowserFrame, protection?: BrowserProtection, privately?: boolean): Promise<void>;
+  browserShow(tab: string, url: string | null, frame: BrowserFrame, protection?: BrowserProtection, privately?: boolean, background?: boolean): Promise<void>;
   browserPlace(frame: BrowserFrame): Promise<void>;
+  browserLayout(panes: import("./types").BrowserPane[], active: string): Promise<void>;
   /** Hides every tab; they keep their pages. */
   browserHide(): Promise<void>;
   browserAct(tab: string, action: "go" | "back" | "forward" | "reload" | "stop" | "close", url?: string): Promise<void>;
@@ -560,11 +567,12 @@ export interface Api {
   /** Runs reader mode's article finder in the tab; null when the page has no article. */
   browserRead(tab: string, script: string): Promise<unknown>;
   browserCancelDownload(id: string): Promise<void>;
+  browserDownloadStatus?(ids: string[]): Promise<{ active: string[]; finished: Extract<BrowserEvent, { kind: "download" | "downloadImport" }>[] }>;
   /** A picture from the web, for an article saved to the library. */
   browserFetchPicture(url: string): Promise<Uint8Array>;
   onBrowserEvent(listener: (event: BrowserEvent) => void): () => void;
   /** Adds a file the browser brought down to the library; resolves to the id the book will have. */
-  browserAddDownload(path: string): Promise<string>;
+  browserAddDownload(path: string, id: string): Promise<void>;
   /** How large the tab's page is drawn (1 is the site's own size). */
   browserZoom(tab: string, zoom: number): Promise<void>;
   /** iPhone and iPad: the sites shown in their computer version. */
@@ -582,11 +590,13 @@ export interface Api {
   putBrowserHistory(entries: HistoryEntry[]): Promise<void>;
   removeBrowserHistory(ids: string[]): Promise<void>;
   /** Clears what's from `since` (milliseconds since 1970) on, or everything. */
-  clearBrowserHistory(since: number | null): Promise<void>;
+  clearBrowserHistory(since: number | null, kind?: HistoryEntry["kind"]): Promise<void>;
   /** Lets go of what's older than `before` on this device only. */
   trimBrowserHistory(before: number): Promise<void>;
   /** Moves a download to the Downloads folder; resolves to where it went. */
-  browserKeepDownload(path: string): Promise<string>;
+  browserKeepDownload(path: string, folder: string | null): Promise<string>;
+  browserDownloadKind(path: string): Promise<"ebook" | "audio" | "document" | "other">;
+  browserTemporaryDownloads(active: string[], remove: boolean): Promise<{ files: number; bytes: number; removed: string[]; failed: number }>;
   browserDiscardDownload(path: string): Promise<void>;
   /** Books being written, most recently changed first. */
   writingProjects(): Promise<WritingProject[]>;
@@ -614,7 +624,7 @@ export interface Api {
   /** Saves a finished EPUB at `path` (desktop), downloads it (phone), and/or adds it to the library. */
   saveWritingEpub(bytes: Uint8Array, fileName: string, path: string | null, addToLibrary: boolean): Promise<void>;
   /** Where to save a PDF, Word file or text file made from a book; null when cancelled. */
-  pickExportPath(fileName: string, format: "pdf" | "docx" | "txt" | "tbv"): Promise<string | null>;
+  pickExportPath(fileName: string, format: "pdf" | "docx" | "txt" | "tbv" | "html"): Promise<string | null>;
   /** Saves a file made from a book at `path` (desktop), or downloads it (web). */
   saveExportFile(bytes: Uint8Array, fileName: string, path: string | null): Promise<void>;
   /**
@@ -637,6 +647,7 @@ export interface Api {
   /** A book's drafts, oldest first. */
   writingDrafts(projectId: string): Promise<WritingDraft[]>;
   deleteWritingDraft(id: string): Promise<void>;
+  restoreWritingDraft(projectId: string, draftId: string, revision: string, sections: { section: NewWritingSection; partIndex?: number }[]): Promise<void>;
   setWritingCoverPage(id: string, page: WritingProject["coverPage"]): Promise<WritingProject>;
   /** Puts a section into a part of an anthology, or back into the book's own (null). */
   setWritingChapterPart(id: string, part: string | null): Promise<WritingChapter>;
@@ -849,8 +860,11 @@ function appApi(): Api {
     getLibrary: async (query) => (await core).invoke<LibraryPage>("get_library", { query }),
     getCollections: async () => (await core).invoke<CollectionPreview[]>("get_collections"),
     setFavorite: async (bookId, favorite) => (await core).invoke("set_favorite", { bookId, favorite }),
+    archiveSeriesPins: async () => (await core).invoke<string[]>("archive_series_pins"),
+    setArchiveSeriesPin: async (name, pinned) => (await core).invoke("set_archive_series_pin", { name, pinned }),
+    setAudioType: async (bookId, kind) => (await core).invoke("set_audio_type", { bookId, kind }),
     setPinned: async (bookId, pinned) => (await core).invoke("set_pinned", { bookId, pinned }),
-    setWantToRead: async (bookId, want) => (await core).invoke("set_want_to_read", { bookId, want }),
+    setWantToRead: async (bookId, want, replace) => (await core).invoke("set_want_to_read", { bookId, want, replace }),
     setPhoneWanted: async (bookIds, wanted) => (await core).invoke("set_phone_wanted", { bookIds, wanted }),
     setRating: async (bookId, rating) => (await core).invoke("set_rating", { bookId, rating }),
     importGoodreads: async () => {
@@ -865,6 +879,7 @@ function appApi(): Api {
     kindleReview: async () => (await core).invoke<KindleReview>("kindle_review"),
     applyKindle: async (confirmed, markRead) => (await core).invoke<KindleApplied>("apply_kindle", { confirmed, markRead }),
     kindleSummary: async () => (await core).invoke<KindleSummary>("kindle_summary"),
+    matchKindleManually: async (asin, bookIds, markRead) => (await core).invoke<KindleApplied>("match_kindle_manually", { asin, bookIds, markRead }),
     kindleMissing: async (removed) => (await core).invoke<KindlePurchase[]>("kindle_missing", { removed }),
     setKindleRemoved: async (asins, removed) => (await core).invoke("set_kindle_removed", { asins, removed }),
     exportGoodreads: async () => {
@@ -1047,7 +1062,7 @@ function appApi(): Api {
     collectionsForBook: async (bookId) => (await core).invoke<string[]>("collections_for_book", { bookId }),
     getNotes: async (query) => (await core).invoke<NotesPage>("get_notes", { query }),
     saveBookNote: async (bookId, id, text) => (await core).invoke<NoteItem>("save_book_note", { bookId, id, text }),
-    savePersonalNote: async (id, title, body) => (await core).invoke<NoteItem>("save_personal_note", { id, title, body }),
+    savePersonalNote: async (id, title, body, tags) => (await core).invoke<NoteItem>("save_personal_note", { id, title, body, tags }),
     setAnnotationNote: async (id, note) => (await core).invoke<NoteItem>("set_annotation_note", { id, note }),
     deleteNote: async (id, kind) => (await core).invoke("delete_note", { id, kind }),
     setNotePinned: async (id, pinned) => (await core).invoke("set_note_pinned", { id, pinned }),
@@ -1233,9 +1248,11 @@ function appApi(): Api {
     catalogFeed: async (id, url) => (await core).invoke<OpdsFeed>("catalog_feed", { id, url }),
     catalogSearch: async (id, search, words) => (await core).invoke<OpdsFeed>("catalog_search", { id, search, words }),
     downloadFromCatalog: async (id, file, title) => (await core).invoke("download_from_catalog", { id, file, title }),
-    downloadWebBook: async (url, title) => (await core).invoke("download_web_book", { url, title }),
+    downloadWebBook: async (url, title, sourceUrl) => (await core).invoke("download_web_book", { url, title, sourceUrl }),
     bookmarks: async () => (await core).invoke<Bookmark[]>("bookmarks"),
-    addBookmark: async (title, url) => (await core).invoke<Bookmark>("add_bookmark", { title, url }),
+    addBookmark: async (title, url, folder) => (await core).invoke<Bookmark>("add_bookmark", { title, url, folder }),
+    editBookmark: async (id, title, url, folder) => (await core).invoke("edit_bookmark", { id, title, url, folder }),
+    moveBookmark: async (id, direction) => (await core).invoke("move_bookmark", { id, direction }),
     renameBookmark: async (id, title) => (await core).invoke("rename_bookmark", { id, title }),
     removeBookmark: async (id) => (await core).invoke("remove_bookmark", { id }),
     quickLinks: async () => (await core).invoke<QuickLink[]>("quick_links"),
@@ -1254,18 +1271,20 @@ function appApi(): Api {
     moveSanctumLink: async (id, to) => (await core).invoke("move_sanctum_link", { id, to }),
     ownedTitles: async (titles) => (await core).invoke<boolean[]>("owned_titles", { titles }),
     siteIcon: async (url) => (await core).invoke<string>("site_icon", { url }),
-    browserShow: async (tab, url, frame, protection, privately) => (await core).invoke("browser_show", { tab, url, frame, protection: protection ?? null, private: privately ?? false }),
+    browserShow: async (tab, url, frame, protection, privately, background) => (await core).invoke("browser_show", { tab, url, frame, protection: protection ?? null, private: privately ?? false, background: background ?? false }),
     browserPlace: async (frame) => (await core).invoke("browser_place", { frame }),
+    browserLayout: async (panes, active) => (await core).invoke("browser_layout", { panes, active }),
     browserHide: async () => (await core).invoke("browser_hide"),
     browserAct: async (tab, action, url) => (await core).invoke("browser_act", { tab, action, url: url ?? null }),
     browserClear: async () => (await core).invoke("browser_clear"),
     browserFind: async (tab, text, backwards) => (await core).invoke("browser_find", { tab, text, backwards }),
     browserProtect: async (protection) => (await core).invoke("browser_protect", { protection }),
     browserRead: async (tab, script) => (await core).invoke<unknown>("browser_read", { tab, script }),
+    browserDownloadStatus: async (ids) => (await core).invoke("browser_download_status", { ids }),
     browserCancelDownload: async (id) => (await core).invoke("browser_cancel_download", { id }),
     browserFetchPicture: async (url) => new Uint8Array(await (await core).invoke<ArrayBuffer>("browser_fetch_picture", { url })),
     onBrowserEvent: (listener) => onEvent<BrowserEvent>("browser-event", listener),
-    browserAddDownload: async (path) => (await core).invoke<string>("browser_add_download", { path }),
+    browserAddDownload: async (path, id) => (await core).invoke("browser_add_download", { path, id }),
     browserZoom: async (tab, zoom) => (await core).invoke("browser_zoom", { tab, zoom }),
     browserDesktopSites: async (hosts) => (await core).invoke("browser_desktop_sites", { hosts }),
     browserClearSite: async (site) => (await core).invoke("browser_clear_site", { site }),
@@ -1275,9 +1294,11 @@ function appApi(): Api {
     browserHistory: async () => (await core).invoke<HistoryEntry[]>("browser_history"),
     putBrowserHistory: async (entries) => (await core).invoke("put_browser_history", { entries }),
     removeBrowserHistory: async (ids) => (await core).invoke("remove_browser_history", { ids }),
-    clearBrowserHistory: async (since) => (await core).invoke("clear_browser_history", { since }),
+    clearBrowserHistory: async (since, kind) => (await core).invoke("clear_browser_history", { since, kind: kind ?? null }),
     trimBrowserHistory: async (before) => (await core).invoke("trim_browser_history", { before: Math.round(before) }),
-    browserKeepDownload: async (path) => (await core).invoke<string>("browser_keep_download", { path }),
+    browserKeepDownload: async (path, folder) => (await core).invoke<string>("browser_keep_download", { path, folder }),
+    browserDownloadKind: async (path) => (await core).invoke("browser_download_kind", { path }),
+    browserTemporaryDownloads: async (active, remove) => (await core).invoke("browser_temporary_downloads", { active, remove }),
     browserDiscardDownload: async (path) => (await core).invoke("browser_discard_download", { path }),
     writingProjects: async () => (await core).invoke<WritingProject[]>("writing_projects"),
     writingProject: async (id) => (await core).invoke<WritingProjectView>("writing_project", { id }),
@@ -1313,9 +1334,9 @@ function appApi(): Api {
       }),
     pickExportPath: async (fileName, format) =>
       (await savePicker({
-        title: format === "pdf" ? "Save the PDF" : format === "docx" ? "Save the Word file" : format === "tbv" ? "Save the Scribe book file" : "Save the text file",
+        title: format === "html" ? "Export bookmarks" : format === "pdf" ? "Save the PDF" : format === "docx" ? "Save the Word file" : format === "tbv" ? "Save the Scribe book file" : "Save the text file",
         defaultPath: fileName,
-        filters: [{ name: format === "pdf" ? "PDF" : format === "docx" ? "Word document" : format === "tbv" ? "Scribe book file" : "Text", extensions: [format] }],
+        filters: [{ name: format === "html" ? "Bookmarks HTML" : format === "pdf" ? "PDF" : format === "docx" ? "Word document" : format === "tbv" ? "Scribe book file" : "Text", extensions: [format] }],
       })) ?? null,
     saveExportFile: async (bytes, fileName, path) =>
       (await core).invoke("save_writing_epub", bytes, { headers: { path: encodeURIComponent(path ?? ""), add: "0", "file-name": encodeURIComponent(fileName) } }),
@@ -1325,6 +1346,7 @@ function appApi(): Api {
     onCopyCheckProgress: (listener) => listenFor("copy-check-progress", listener),
     saveWritingDraft: async (projectId, bytes) => (await core).invoke<WritingDraft>("save_writing_draft", bytes, { headers: { "project-id": projectId } }),
     writingDrafts: async (projectId) => (await core).invoke<WritingDraft[]>("writing_drafts", { projectId }),
+    restoreWritingDraft: async (projectId, draftId, revision, sections) => (await core).invoke("restore_writing_draft", { projectId, draftId, revision, sections }),
     deleteWritingDraft: async (id) => (await core).invoke("delete_writing_draft", { id }),
     setWritingCoverPage: async (id, page) => (await core).invoke<WritingProject>("set_writing_cover_page", { id, page }),
     setWritingChapterPart: async (id, part) => (await core).invoke<WritingChapter>("set_writing_chapter_part", { id, part }),

@@ -1,3 +1,4 @@
+import { RememberedDetails } from "../components/RememberedDetails";
 // Bringing a manuscript written elsewhere into Scribe, in stages:
 // 1. choose the file, which is only looked at (nothing is made yet);
 // 2. confirm you own it or may publish it, a box that is never ticked for
@@ -12,7 +13,7 @@
 // book instead: kept as a locked draft to read, or made the version being
 // written (the words there now are kept as a draft first).
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { Icon } from "../components/Icon";
 import { formatBytes } from "../settings/controls";
@@ -20,15 +21,16 @@ import { ACK_CONFIRMATION, ACK_PARAGRAPHS, ACK_TITLE, POLICY_VERSION, sha256Hex,
 import { AuthorLabel } from "./AuthorInfo";
 import { exportProblems, readExport } from "./epub";
 import { pictureAddress } from "./extensions";
-import { bestSplit, readDocumentBytes, type ImportedDocument, type SplitAt } from "./importDoc";
+import { bestSplit, readDocumentBytes, readDraftEpub, type ImportedDocument, type SplitAt } from "./importDoc";
 import { buildManuscript, inspect, MANUSCRIPT_ACCEPT, MARK_HELP, type Inspection, type Manuscript, type ManuscriptSection } from "./manuscript";
 import { ADD_MENUS, KINDS, writePage, readPage, type Area, type PageKind } from "./pages";
 import { bookFromTbv } from "./openTbv";
 import { readTbv, type TbvBook } from "./tbvFile";
-import type { WritingProject } from "../api/types";
+import type { NewWritingSection, WritingDraft, WritingProject } from "../api/types";
 import { makeEpub } from "./WritingDialogs";
 
 const SPLITS: { value: SplitAt; label: string }[] = [
+  { value: "spine", label: "Keep the draft pages" },
   { value: "marks", label: "At its page marks (===)" },
   { value: "headings", label: "At its headings" },
   { value: "lines", label: "At lines like \"Chapter 1\"" },
@@ -97,14 +99,16 @@ export function ImportBookDialog({
   onCancel,
   into,
   onIntoDone,
+  restoreDraft,
 }: {
   onCreated: (id: string) => void;
   onCancel: () => void;
   /** The book the file becomes another draft of. */
   into?: WritingProject;
   onIntoDone?: (how: IntoBook) => void;
+  restoreDraft?: WritingDraft;
 }) {
-  const [how, setHow] = useState<IntoBook>("draft");
+  const [how, setHow] = useState<IntoBook>(restoreDraft ? "current" : "draft");
   const picking = useRef<HTMLInputElement>(null);
   const [stage, setStage] = useState<"choose" | "confirm" | "review">("choose");
   const [picked, setPicked] = useState<Picked | null>(null);
@@ -119,6 +123,30 @@ export function ImportBookDialog({
   const [marked, setMarked] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!restoreDraft) return;
+    let current = true;
+    setBusy("Opening the draft…");
+    void (async () => {
+      try {
+        const file = await api.readBookFile(restoreDraft.bookId);
+        const d = readDraftEpub(new Uint8Array(await file.arrayBuffer()));
+        if (!current) return;
+        const at = "spine";
+        setMarked(false);
+        setDoc(d);
+        setSplit(at);
+        setManuscript(buildManuscript(d, at));
+        setStage("review");
+      } catch (failure) {
+        if (current) setError(String(failure).replace(/^Error: /, ""));
+      } finally {
+        if (current) setBusy(null);
+      }
+    })();
+    return () => { current = false; };
+  }, [restoreDraft]);
 
   const open = async (file: File | undefined) => {
     if (!file) return;
@@ -298,6 +326,46 @@ export function ImportBookDialog({
   };
 
   const make = async () => {
+    if (restoreDraft && into && manuscript) {
+      if (busy) return;
+      const chosen = manuscript.sections.filter((section) => section.include);
+      if (!chosen.length) return setError("Keep at least one section.");
+      setError(null);
+      setBusy("Preparing editable sections…");
+      try {
+        const parts = new Map<number, number>();
+        const sections: { section: NewWritingSection; partIndex?: number }[] = [];
+        for (const section of chosen) {
+          if (section.isPart) {
+            parts.set(manuscript.sections.indexOf(section), sections.length);
+            sections.push({ section: { title: section.title, role: "part", page: "{}" } });
+          } else {
+            const page = { ...readPage(JSON.stringify({ kind: section.kind }), section.area), byHand: !!section.byHand };
+            sections.push({
+              section: { title: section.title, body: await shrinkPictures(section.body), role: section.area, page: writePage(page) },
+              partIndex: section.partOf === undefined ? undefined : parts.get(section.partOf),
+            });
+          }
+        }
+        const before = await api.writingProject(into.id);
+        const hasWork = before.chapters.some((chapter) => chapter.role !== "chapter" ||
+          (chapter.body.trim() !== "" && chapter.body.trim() !== "<p></p>"));
+        if (hasWork) {
+          setBusy("Keeping the current manuscript as a draft…");
+          if (!(await keepAsDraft(into.id))) throw new Error("The current manuscript couldn't be backed up.");
+        }
+        const latest = await api.writingProject(into.id);
+        const chapters = (view: typeof before) => JSON.stringify(view.chapters.map((chapter) => [chapter.id, chapter.updatedAt]));
+        if (chapters(before) !== chapters(latest)) throw new Error("The manuscript changed. Reopen the draft and try again.");
+        setBusy("Restoring the draft for editing…");
+        await api.restoreWritingDraft(into.id, restoreDraft.id, latest.project.updatedAt, sections);
+        onIntoDone?.("current");
+      } catch (failure) {
+        setError(String(failure).replace(/^Error: /, ""));
+        setBusy(null);
+      }
+      return;
+    }
     if (into) return makeInto(into);
     if (tbv) return makeFromTbv(tbv);
     if (!picked || !manuscript || !agreed) return;
@@ -340,7 +408,7 @@ export function ImportBookDialog({
       <form
         className="dialog writing-dialog import-book"
         role="dialog"
-        aria-label={into ? "Import a new draft" : "Import a manuscript"}
+        aria-label={restoreDraft ? "Un-draft book" : into ? "Import a new draft" : "Import a manuscript"}
         onSubmit={(e) => {
           e.preventDefault();
           if (stage === "confirm") void rebuild();
@@ -348,9 +416,13 @@ export function ImportBookDialog({
         }}
         onKeyDown={(e) => e.key === "Escape" && !busy && onCancel()}
       >
-        <h2>{into ? `A new draft of ${into.title}` : "Import a manuscript"}</h2>
+        <h2>{restoreDraft ? `Un-draft Draft ${restoreDraft.number}` : into ? `A new draft of ${into.title}` : "Import a manuscript"}</h2>
+        {restoreDraft && <p className="dialog-lede">
+          Restore this draft as the editable manuscript. The saved draft stays available, and any current writing is backed up first.
+        </p>}
+        {restoreDraft && busy && stage === "choose" && <p role="status">{busy}</p>}
 
-        {stage === "choose" && (
+        {stage === "choose" && !restoreDraft && (
           <>
             {into && (
               <p className="dialog-lede">
@@ -367,14 +439,14 @@ export function ImportBookDialog({
               </button>
               {picked && <span className="muted">{picked.name}</span>}
             </div>
-            <details className="import-marks">
+            <RememberedDetails disclosure="writing.importMarks" className="import-marks">
               <summary>Writing in another app? Mark your pages</summary>
               <p>
                 In any app, put a line like these where each page starts. Scribe then knows what every page is, with nothing guessed. The words after the colon are the page's title.
               </p>
               <pre>{["=== title page", "=== copyright", "=== dedication", "=== contents", "=== part: Book One", "=== chapter: Arrival", "=== poem: Ash on the road", "=== end part", "=== acknowledgments", "=== about the author"].join("\n")}</pre>
               <p className="muted">Every kind of page works: {MARK_HELP.join(", ")}.</p>
-            </details>
+            </RememberedDetails>
             {picked && !picked.inspection.supported && (
               <div className="import-unsupported" role="alert">
                 <Icon name="info" size={16} />
@@ -419,7 +491,7 @@ export function ImportBookDialog({
           </>
         )}
 
-        {stage === "review" && into && (
+        {stage === "review" && into && !restoreDraft && (
           <fieldset className="import-into" aria-label="How it comes in">
             <label className="check-row">
               <input type="radio" name="import-into" checked={how === "draft"} onChange={() => setHow("draft")} />
@@ -484,7 +556,7 @@ export function ImportBookDialog({
                     setManuscript(buildManuscript(doc, at));
                   }}
                 >
-                  {SPLITS.filter((s) => s.value !== "marks" || marked).map((s) => (
+                  {SPLITS.filter((s) => (s.value !== "marks" || marked) && (s.value !== "spine" || restoreDraft)).map((s) => (
                     <option key={s.value} value={s.value}>
                       {s.label}
                     </option>
@@ -510,7 +582,7 @@ export function ImportBookDialog({
                     ))}
                   </ul>
                 )}
-                <p className="muted">The list is also kept in the book's notes, so you can work through it after the import.</p>
+                {!restoreDraft && <p className="muted">The list is also kept in the book's notes, so you can work through it after the import.</p>}
               </div>
             )}
             <div className="import-areas">
@@ -541,7 +613,7 @@ export function ImportBookDialog({
                                   value={`${s.area}:${s.kind}`}
                                   onChange={(e) => {
                                     const [a, k] = e.target.value.split(":") as [Area, PageKind];
-                                    change(i, { area: a, kind: k });
+                                    change(i, { area: a, kind: k, ...(restoreDraft && KINDS[k].made ? { byHand: true } : {}) });
                                   }}
                                 >
                                   {AREAS.map((g) => (
@@ -583,7 +655,7 @@ export function ImportBookDialog({
           </p>
         )}
         <div className="dialog-actions">
-          {stage !== "choose" && (
+          {stage !== "choose" && !restoreDraft && (
             <button
               type="button"
               className="btn btn-quiet"
@@ -599,7 +671,7 @@ export function ImportBookDialog({
           <button type="button" className="btn btn-quiet" onClick={onCancel} disabled={!!busy}>
             Cancel
           </button>
-          {stage === "choose" && (
+          {stage === "choose" && !restoreDraft && (
             <button type="button" className="btn btn-primary" disabled={!!busy || !picked?.inspection.supported} onClick={() => setStage("confirm")}>
               {busy ?? "Continue"}
             </button>
@@ -611,7 +683,7 @@ export function ImportBookDialog({
           )}
           {stage === "review" && (
             <button type="submit" className="btn btn-primary" disabled={!!busy || (!tbv && !kept.length)}>
-              {busy ?? (into ? (how === "current" ? "Write from it" : "Keep as a draft") : "Make the book")}
+              {busy ?? (restoreDraft ? "Un-draft" : into ? (how === "current" ? "Write from it" : "Keep as a draft") : "Make the book")}
             </button>
           )}
         </div>

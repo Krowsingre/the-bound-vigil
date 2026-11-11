@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNarrow } from "../lib/useNarrow";
 import { api, isWeb } from "../api";
-import type { WritingChapter, WritingProject, WritingProjectView } from "../api/types";
+import type { WritingChapter, WritingDraft, WritingProject, WritingProjectView } from "../api/types";
 import { editionName, editionsOf } from "./bookEditions";
 import { LinkBookDialog } from "./LinkBooks";
 import { isSample } from "./sampleBook";
@@ -19,7 +19,7 @@ import { ChapterEditor, type SaveState } from "./ChapterEditor";
 import { quoteHtml } from "./fromNotes";
 import { QuoteDrawer } from "./QuoteDrawer";
 import { BookPreview, MadePage } from "./BookPreview";
-import { bookOrder, escapeXml, readExport, type ExportSettings } from "./epub";
+import { bookOrder, escapeXml, madeSectionHtml, readExport, type ExportSettings } from "./epub";
 import { ScribeBooks, type Projects } from "./ScribeBooks";
 import { ADD_MENUS, firstLine, isMade, isNumbered, isPoem, KINDS, numberInWords, readPage, romanOf, startingTitle, writePage, type PageKind, type PageSettings, type Template } from "./pages";
 import { DetailsDialog, DraftsDialog, ExportDialog, NewBookDialog } from "./WritingDialogs";
@@ -35,10 +35,13 @@ import { PreviewsDialog } from "./Previews";
 import { usePublisher } from "../license/Publisher";
 import { addSampleBook, addSampleOnce, SAMPLE_AUTHOR, SAMPLE_TITLE } from "./sampleBook";
 
+type BibliographySettings = Pick<ExportSettings, "sources" | "citationStyle" | "customSourceFormat">;
+
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
 
 /** Scribe's tabs: your own notes, what you noted from books, or the books you write (embre, 31 October: no All tab). */
-type Chip = "notes" | "book_notes" | "books";
+export type WritingSection = "notes" | "book_notes" | "books";
+type Chip = WritingSection;
 /** What the tab of notes from books is called. */
 export const BOOK_NOTES_LABEL = "Reading notes";
 const CHIPS: { chip: Chip; label: string }[] = [
@@ -55,8 +58,13 @@ export function Writing({
   onClearSearch,
   onOpenBook,
   booksShown = true,
+  chip, setChip, openId, setOpenId,
 }: {
   refreshKey: number;
+  chip: WritingSection;
+  setChip: (section: WritingSection) => void;
+  openId: string | null;
+  setOpenId: (id: string | null) => void;
   /** The header's search box, which searches notes, and your books on the Books tab. */
   search: string;
   onClearSearch: () => void;
@@ -64,14 +72,12 @@ export function Writing({
   /** False where your own books aren't kept (the phone web app): only notes show. */
   booksShown?: boolean;
 }) {
-  const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState<Template | null>(null);
   const [importing, setImporting] = useState(false);
   const [boxing, setBoxing] = useState(false);
   const publisher = usePublisher();
   const [ask, setAsk] = useState<{ kind: NewNoteKind; n: number } | null>(null);
   const [reload, setReload] = useState(0);
-  const [chip, setChip] = useState<Chip>("notes");
   const showing: Chip = booksShown || chip !== "books" ? chip : "notes";
   const projects = useProjects(booksShown, refreshKey, reload);
   const toast = useToast();
@@ -298,9 +304,11 @@ function ProjectView({
   onDeleted: () => void;
 }) {
   const [view, setView] = useState<WritingProjectView | null>(null);
+  const [sourceHistory, setSourceHistory] = useState<{ undo: BibliographySettings[]; redo: BibliographySettings[] }>({ undo: [], redo: [] });
   const [error, setError] = useState<string | null>(null);
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [save, setSave] = useState<{ state: SaveState; words: number }>({ state: "saved", words: 0 });
+  const [restoreDraft, setRestoreDraft] = useState<WritingDraft>();
   const [dialog, setDialog] = useState<"details" | "export" | "drafts" | "delete" | "sources" | "cover" | "preflight" | "copies" | "editions" | "previews" | "importDraft" | "link" | null>(null);
   const publisher = usePublisher();
   const [deletingChapter, setDeletingChapter] = useState<WritingChapter | null>(null);
@@ -411,7 +419,30 @@ function ProjectView({
   const saveSettings = (next: ExportSettings) => {
     const json = JSON.stringify(next);
     setView((v) => v && { ...v, project: { ...v.project, export: json } });
-    void api.setWritingExport(id, json).catch((e) => toast(String(e)));
+    saving.current = saving.current.then(() => api.setWritingExport(id, json)).then(() => undefined, (e) => toast(String(e)));
+  };
+
+  const sourceSnapshot = (): BibliographySettings => ({
+    sources: settings.sources, citationStyle: settings.citationStyle, customSourceFormat: settings.customSourceFormat,
+  });
+  const changeSources = (change: Partial<BibliographySettings>) => {
+    const previous = sourceSnapshot();
+    const next = { ...previous, ...change };
+    if (JSON.stringify(next) === JSON.stringify(previous)) return;
+    setSourceHistory((history) => ({ undo: [...history.undo, previous].slice(-100), redo: [] }));
+    saveSettings({ ...settings, ...next });
+  };
+  const restoreSources = (direction: "undo" | "redo") => {
+    const snapshot = sourceHistory[direction].at(-1);
+    if (!snapshot) return;
+    const opposite = direction === "undo" ? "redo" : "undo";
+    const previous = sourceSnapshot();
+    setSourceHistory((history) => ({
+      ...history,
+      [direction]: history[direction].slice(0, -1),
+      [opposite]: [...history[opposite], previous],
+    }));
+    saveSettings({ ...settings, ...snapshot });
   };
 
   const saveChapter = (cid: string) => async (title: string, body: string) => {
@@ -466,6 +497,22 @@ function ProjectView({
       setView((v) => v && { ...v, chapters: v.chapters.map((x) => (x.id === c.id ? { ...x, page: saved.page } : x)) });
     } catch (e) {
       toast(String(e));
+    }
+  };
+
+  const changeFrontPageType = async (c: WritingChapter, kind: PageKind) => {
+    const before = readPage(c.page, c.role);
+    if (before.kind === kind || !view) return;
+    try {
+      await saving.current;
+      if (isMade(before)) {
+        const body = madeSectionHtml({ project: view.project, chapters, settings }, c.id);
+        await api.saveWritingChapter(c.id, c.title, body);
+      }
+      await setPage(c, { kind, byHand: kind !== "sources" && !!KINDS[kind].made });
+      if (isMade(before)) await load();
+    } catch (error) {
+      toast(String(error));
     }
   };
 
@@ -574,6 +621,14 @@ function ProjectView({
       { label: "Move down", icon: "chevronDown", disabled: !neighbour(c, 1), onSelect: () => nudge(c, 1) },
       "divider",
       { heading: <span className="menu-tip">This page</span> },
+      ...(c.role === "front" ? ([{
+        label: "Change page type",
+        submenu: ADD_MENUS.front.map((kind) => ({
+          label: KINDS[kind].label,
+          checked: page.kind === kind,
+          onSelect: () => void changeFrontPageType(c, kind),
+        })),
+      }] as MenuEntry[]) : []),
       { label: "Show in the contents", checked: page.inContents, onSelect: () => void setPage(c, { inContents: !page.inContents }) },
       { label: "Show its title", checked: page.showTitle, onSelect: () => void setPage(c, { showTitle: !page.showTitle }) },
       {
@@ -781,7 +836,13 @@ function ProjectView({
                 onEdition={(edition) => saveSettings({ ...settings, edition })}
                 onWriteMyself={(html) => void writeMyself(chapter, html)}
                 onOpenDetails={() => setDialog("details")}
-              onOpenSources={() => setDialog("sources")}
+                onOpenSources={() => setDialog("sources")}
+                onSourcesChange={(sources) => changeSources({ sources })}
+                onFormatChange={(citationStyle, customSourceFormat) => changeSources({ citationStyle, customSourceFormat })}
+                canUndoSources={sourceHistory.undo.length > 0}
+                canRedoSources={sourceHistory.redo.length > 0}
+                onUndoSources={() => restoreSources("undo")}
+                onRedoSources={() => restoreSources("redo")}
               />
             ) : (
               chapter && (
@@ -796,8 +857,9 @@ function ProjectView({
                   insertRef={insertInEditor}
                   poem={current && isPoem(current) ? (current.centred ? "centred" : "left") : null}
                   sources={settings.sources}
+                  citationChapters={chapters}
                   citationStyle={settings.citationStyle}
-                  onSources={(sources, citationStyle) => saveSettings({ ...settings, sources, citationStyle })}
+                  onSources={(sources, citationStyle) => changeSources({ sources, citationStyle })}
                 />
                 </>
               )
@@ -815,7 +877,7 @@ function ProjectView({
         <SourcesDialog
           sources={settings.sources}
           style={settings.citationStyle}
-          onChange={(sources, citationStyle) => saveSettings({ ...settings, sources, citationStyle })}
+          onChange={(sources, citationStyle) => changeSources({ sources, citationStyle })}
           onClose={() => setDialog(null)}
         />
       )}
@@ -881,10 +943,21 @@ function ProjectView({
             return (await load())?.chapters ?? chapters;
           }}
           onOpen={(bookId) => void saving.current.then(() => onOpenBook(bookId))}
+          onRestore={(draft) => {
+            void (async () => {
+              try {
+                await flushEditor.current?.();
+                await saving.current;
+                setRestoreDraft(draft);
+                setDialog("importDraft");
+              } catch (error) { toast(String(error)); }
+            })();
+          }}
           onImport={async () => {
             // Saved first, so "Write from it" keeps today's last words in the draft it makes.
             await flushEditor.current?.();
             await saving.current;
+            setRestoreDraft(undefined);
             setDialog("importDraft");
           }}
           onClose={() => setDialog(null)}
@@ -906,13 +979,14 @@ function ProjectView({
       {dialog === "importDraft" && (
         <ImportBookDialog
           into={project}
+          restoreDraft={restoreDraft}
           onCancel={() => setDialog("drafts")}
           onCreated={() => setDialog("drafts")}
           onIntoDone={(how) => {
             void load();
             if (how === "current") {
               setDialog(null);
-              toast("The new version is in. What was there before is kept as a draft.");
+              toast(restoreDraft ? "The draft is now editable in Scribe." : "The new version is in. What was there before is kept as a draft.");
             } else {
               setDialog("drafts");
               toast("Kept as a new draft.");

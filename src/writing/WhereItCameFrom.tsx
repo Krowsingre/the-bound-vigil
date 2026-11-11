@@ -1,3 +1,4 @@
+import { RememberedDetails } from "../components/RememberedDetails";
 // Book details' "Where it came from", for a book imported into Scribe or
 // duplicated from one: the signed record of the person confirming they may
 // publish it, checked each time it's shown, the original file when this
@@ -84,7 +85,7 @@ function RecordRow({ record, own }: { record: ProvenanceRecord; own: boolean }) 
           </ul>
         </div>
       )}
-      <details className="provenance-more">
+      <RememberedDetails disclosure="writing.provenance" className="provenance-more">
         <summary>The record</summary>
         <dl>
           {record.event === "import" && (
@@ -104,7 +105,7 @@ function RecordRow({ record, own }: { record: ProvenanceRecord; own: boolean }) 
             {String(record.record.algorithm ?? "Ed25519")} key {record.keyId}
           </dd>
         </dl>
-      </details>
+      </RememberedDetails>
     </li>
   );
 }
@@ -149,7 +150,7 @@ export function WhereItCameFrom({ projectId }: { projectId: string }) {
       {imported && !seen.sources.length && <p className="muted provenance-note">The original file isn't on this device. A computer copies it down from your cloud when notes sync; its fingerprint stays in the record either way.</p>}
       <p className="muted provenance-note">This record is your own confirmation, kept with the book. It isn't a check of who wrote it, and it's never put into a book you export.</p>
       {seen.history.length > 0 && (
-        <details className="provenance-more">
+        <RememberedDetails disclosure="writing.source" className="provenance-more">
           <summary>This device's history</summary>
           <ul className="provenance-history">
             {seen.history.map((h, i) => (
@@ -158,7 +159,7 @@ export function WhereItCameFrom({ projectId }: { projectId: string }) {
               </li>
             ))}
           </ul>
-        </details>
+        </RememberedDetails>
       )}
       {deleting && (
         <ConfirmDialog

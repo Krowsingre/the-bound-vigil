@@ -105,7 +105,7 @@ impl Library {
                 }
             },
             CollectionRef::Series { name } => Members {
-                condition: format!("{SERIES} = ?1"),
+                condition: format!("tbv_fold(trim({SERIES})) = tbv_fold(trim(?1))"),
                 order: format!("b.series_index IS NULL, b.series_index, {TITLE}"),
                 values: vec![Value::Text(name.clone())],
             },

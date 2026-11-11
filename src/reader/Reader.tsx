@@ -1,3 +1,4 @@
+import { offerFinishedDownloadRemoval } from "../library/FinishedDownloadPrompt";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, isApp } from "../api";
 import { isNarrow, useNarrow } from "../lib/useNarrow";
@@ -10,19 +11,23 @@ import { noteReading, recordReading } from "../lib/recordTime";
 import { SyncMenu } from "../shell/SyncMenu";
 import type { TocItem } from "../vendor/foliate-js/view.js";
 import { isBookmark, isNote } from "./annotations";
-import { isDocument } from "../lib/queryBooks";
+import { formatLabel, isDocument } from "../lib/queryBooks";
 import { drawPdfCover, readerSource, type ReaderSource } from "./formats";
 import { contentsEntries, currentEntry, pageOf, pushJump, type Jump } from "./pages";
 import { parseBibleTarget } from "../browse/bibleBooks";
 import { openChapter } from "../browse/openChapter";
 import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars";
-import { LeftPanel, RightPanel, type AnnotationHandlers, type RightTab } from "./ReaderPanels";
+import { LeftPanel, RightPanel, type AnnotationHandlers, type LeftTab, type RightTab } from "./ReaderPanels";
+import { navigationDirection } from "../shell/navigationKeys";
 import { ListenAlongPanel, NoteDialog, PageSettings, ReadAloudPlayer, SelectionToolbar, TextSettings, ZoomControls } from "./ReaderPopovers";
 import { ReaderSearch } from "./ReaderSearch";
 import { BOOK_OPENED, useAppDark } from "../settings/appSettings";
 import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, resolveTheme, SETTINGS_KEY, zoomStep, type ReaderSettings } from "./settings";
+import { useKeyboardScroll } from "./useKeyboardScroll";
 import { useReadAloud } from "./useReadAloud";
 import { useReadAlong } from "./useReadAlong";
+import { StructuredViewer } from "./StructuredViewer";
+import type { StructuredContent } from "./structuredContent";
 import { useReaderEngine, type TextSelection } from "./useReaderEngine";
 
 export interface ReaderShellProps {
@@ -58,14 +63,17 @@ async function setWindowFullscreen(on: boolean) {
   else if (document.fullscreenElement) await document.exitFullscreen();
 }
 
-const isTyping = (target: EventTarget | null) =>
-  target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+const isTyping = (target: EventTarget | null) => {
+  const element = target as HTMLElement | null;
+  return !!(element?.isContentEditable || element?.matches?.("input, textarea, select"));
+};
 
 /** The reading screen. It replaces the sidebar and header while a book is open. */
 export function Reader({
   bookId,
   fileId,
   openAt,
+  compact = false,
   shell,
   onClose,
 }: {
@@ -74,6 +82,7 @@ export function Reader({
   fileId?: string;
   /** A place to go to once the book is open (a highlight from Notes). */
   openAt?: string;
+  compact?: boolean;
   shell: ReaderShellProps;
   onClose: () => void;
 }) {
@@ -82,11 +91,17 @@ export function Reader({
   const [file, setFile] = useState<ReaderSource | null>(null);
   // The format of the file open now, when it isn't the book's own.
   const [fileFormat, setFileFormat] = useState<string | null>(null);
+  const [openedFile, setOpenedFile] = useState<{ id: string; format: string } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
-  const [panels, setPanels] = useState(readPanels);
+  const [widePanels, setWidePanels] = useState(readPanels);
+  const [compactPanels, setCompactPanels] = useState({ left: false, right: false });
+  const panels = compact ? compactPanels : widePanels;
+  const setPanels = compact ? setCompactPanels : setWidePanels;
   const [rightTab, setRightTab] = useState<RightTab>("notes");
+  const [leftTab, setLeftTab] = useState<LeftTab>("contents");
+  const [contentsRequest, setContentsRequest] = useState(0);
   const [focus, setFocus] = useState(false);
   // Phones: the search box is hidden in the top bar and opened from the menu.
   const [phoneSearch, setPhoneSearch] = useState(false);
@@ -97,9 +112,12 @@ export function Reader({
   const [noteEdit, setNoteEdit] = useState<{ a?: Annotation; selection?: TextSelection } | null>(null);
   const [lastColor, setLastColor] = useState<HighlightColor>("rose");
   const host = useRef<HTMLDivElement>(null);
+  const [expandedContent, setExpandedContent] = useState<{ content: StructuredContent; cfi?: string; width: number; height: number } | null>(null);
+  useEffect(() => setExpandedContent(null), [file]);
   const searchInput = useRef<HTMLInputElement>(null);
   const prefersDark = useAppDark();
-  const narrow = useNarrow();
+  const narrowViewport = useNarrow();
+  const narrow = compact || narrowViewport;
 
   // Load the book, its highlights and the reading settings, then the file.
   useEffect(() => {
@@ -134,7 +152,10 @@ export function Reader({
         const opensAs = format === "cbr" ? "cbz" : format;
         const named = new File([blob], `book.${opensAs}`, { type: blob.type });
         const source = await readerSource(named, opensAs, reading.id, { title, author: authors.join(", "), language: opened.language });
-        if (!cancelled) setFile(source);
+        if (!cancelled) {
+          setFile(source);
+          setOpenedFile(reading);
+        }
         // A PDF imported elsewhere, or whose cover couldn't be drawn then.
         if (format === "pdf" && !coverPath && reading.id === bookId) {
           void drawPdfCover(blob)
@@ -161,6 +182,7 @@ export function Reader({
 
   // Positions are saved shortly after the reader stops moving, and on leaving.
   const pending = useRef<ReaderLocator | null>(null);
+  const reportPosition = useRef<() => void>(() => undefined);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const flush = useCallback(() => {
     clearTimeout(timer.current);
@@ -170,7 +192,10 @@ export function Reader({
     return Promise.resolve();
   }, [bookId]);
   useEffect(() => {
-    const unregister = onBeforeQuit(flush);
+    const unregister = onBeforeQuit(() => {
+      reportPosition.current();
+      return flush();
+    });
     return () => {
       unregister();
       void flush();
@@ -217,7 +242,8 @@ export function Reader({
           setActive({ a, rect });
         }
       },
-      onKey: (e) => onKeyRef.current(e, true),
+      onKey: (e) => onKeyRef.current(e),
+      onKeyUp: (e) => keyScrollRef.current(e),
       onZoom: (pageZoom) => changeSettingsRef.current({ pageZoom }),
     },
   });
@@ -229,13 +255,13 @@ export function Reader({
     lang: bookLang,
     voices: settings.voices,
     rate: settings.rate,
-    dark: theme === "dark",
+    dark: theme === "dark" || theme === "vesper",
   });
   const readAlong = useReadAlong({
     getView: engine.getView,
     ready: engine.ready,
     bookId,
-    dark: theme === "dark",
+    dark: theme === "dark" || theme === "vesper",
     manual: !!info && isDocument(info.book.format),
     format: info?.book.format,
     onStart: readAloud.stop,
@@ -327,7 +353,7 @@ export function Reader({
   const pagePanels = (change: Partial<typeof panels>) =>
     setPanels((p) => {
       const next = { ...p, ...change };
-      if (narrow) return next;
+      if (narrow) return { left: change.right ? false : next.left, right: change.left ? false : next.right };
       try {
         localStorage.setItem(PANELS_KEY, JSON.stringify(next));
       } catch {
@@ -430,17 +456,54 @@ export function Reader({
 
   const leave = useCallback(() => {
     if (fullscreen) void setWindowFullscreen(false);
+    reportPosition.current();
     void flush().then(onClose);
   }, [flush, onClose, fullscreen]);
 
+  const [autoScrolling, setAutoScrolling] = useState(false);
+  const scrolling = (engine.fixed ? settings.pageFlow : settings.flow) === "scrolled";
+  const { scrollByPixels } = engine;
+  reportPosition.current = () => engine.getView()?.renderer.reportPosition?.();
+  useEffect(() => {
+    if (!autoScrolling || !scrolling || !engine.ready || expandedContent || noteEdit) return;
+    let frame = 0;
+    let previous = performance.now();
+    let remainder = 0;
+    const tick = (now: number) => {
+      if (!document.hidden) {
+        remainder += Math.min(50, Math.max(0, now - previous)) * settings.autoScrollSpeed * 0.004;
+        const pixels = Math.floor(remainder);
+        if (pixels) scrollByPixels(pixels);
+        remainder -= pixels;
+      }
+      previous = now;
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [autoScrolling, scrolling, engine.ready, scrollByPixels, expandedContent, noteEdit, settings.autoScrollSpeed]);
+  const keyboardScroll = useKeyboardScroll(scrollByPixels, settings.keyboardScrollSpeed, engine.ready && scrolling && !expandedContent && !noteEdit);
+  const keyScrollRef = useRef(keyboardScroll.release);
+  keyScrollRef.current = keyboardScroll.release;
+
   // Keyboard: the window's keys, plus keys pressed inside the book's pages.
-  const onKeyRef = useRef<(e: KeyboardEvent, fromBook: boolean) => void>(() => {});
-  onKeyRef.current = (e, fromBook) => {
-    if (noteEdit) return;
-    if (!fromBook && isTyping(e.target) && e.key !== "Escape") return;
+  const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  onKeyRef.current = (e) => {
+    if (noteEdit || expandedContent || e.defaultPrevented) return;
+    const backKey = navigationDirection(e, true) === "back";
+    if (isTyping(e.target) && e.key !== "Escape" && !backKey) return;
     const ctrl = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
-    if (ctrl && engine.fixed && (key === "=" || key === "+" || key === "-" || key === "0")) {
+    if (ctrl && (e.code === "Space" || key === " ") && !e.altKey && !e.shiftKey) {
+      if (!e.repeat && engine.ready) {
+        if (!autoScrolling && !scrolling) changeSettings(engine.fixed ? { pageFlow: "scrolled" } : { flow: "scrolled" });
+        setAutoScrolling(!autoScrolling);
+        if (autoScrolling) {
+          reportPosition.current();
+          void flush();
+        }
+      }
+    } else if (ctrl && engine.fixed && (key === "=" || key === "+" || key === "-" || key === "0")) {
       // Zoom for PDFs and comics, in place of the window's own zoom.
       changeSettings({ pageZoom: key === "0" ? "fit-page" : zoomStep(engine.scale, key === "-" ? -1 : 1) });
     } else if (ctrl && (key === "k" || key === "f")) {
@@ -456,7 +519,7 @@ export function Reader({
       } else if (fullscreen) toggleFullscreen();
       else if (focus) setFocus(false);
       else return;
-    } else if (e.altKey && !ctrl && e.key === "ArrowLeft") {
+    } else if (backKey) {
       // Back: to where a link jumped from, else out of the book.
       if (jumps.length) goBack();
       else leave();
@@ -468,7 +531,11 @@ export function Reader({
     }
     else if (e.key === "ArrowLeft") turn(false);
     else if (e.key === "ArrowRight") turn(true);
-    else if ((engine.fixed || settings.flow === "scrolled") && (e.key === "ArrowUp" || e.key === "ArrowDown")) engine.scrollStep(e.key === "ArrowUp" ? -1 : 1);
+    else if (!e.shiftKey && (engine.fixed || settings.flow === "scrolled") && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      const direction = e.key === "ArrowUp" ? -1 : 1;
+      if (engine.fixed && !scrolling) engine.scrollStep(direction);
+      else keyboardScroll.press(direction, e.repeat);
+    }
     // In scroll mode these move the long page on by a screen.
     else if (e.key === "PageUp" || (e.key === " " && e.shiftKey)) turn(false);
     else if (e.key === "PageDown" || e.key === " ") turn(true);
@@ -476,9 +543,14 @@ export function Reader({
     e.preventDefault();
   };
   useEffect(() => {
-    const on = (e: KeyboardEvent) => onKeyRef.current(e, false);
+    const on = (e: KeyboardEvent) => onKeyRef.current(e);
     window.addEventListener("keydown", on);
-    return () => window.removeEventListener("keydown", on);
+    const up = (e: KeyboardEvent) => keyScrollRef.current(e);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", on);
+      window.removeEventListener("keyup", up);
+    };
   }, []);
 
   if (loadError) {
@@ -503,7 +575,14 @@ export function Reader({
     api.setBookStatus(info.book.id, status).then(
       () => {
         setInfo((i) => (i ? { ...i, book: { ...i.book, status } } : i));
-        toast(done);
+        const finished = status !== info.book.status && (status === "read" || status === "dropped");
+        const notify = () => toast(done, finished ? {
+          label: "Undo",
+          run: () => void api.setBookStatus(info.book.id, info.book.status).then(() => {
+            setInfo((i) => (i ? { ...i, book: { ...i.book, status: info.book.status } } : i));
+          }, (error: unknown) => toast(String(error))),
+        } : undefined);
+        if (!offerFinishedDownloadRemoval(info.book, status, onClose, notify)) notify();
       },
       (e: unknown) => toast(String(e)),
     );
@@ -528,6 +607,14 @@ export function Reader({
       ? { label: "Not dropped after all", onSelect: () => void markStatus("in_progress", "Marked as in progress.") }
       : { label: "Mark as dropped", icon: "close", onSelect: () => void markStatus("dropped", "Marked as dropped.") },
     "divider",
+    ...(openedFile && engine.ready ? [{
+      label: `Save a copy (${formatLabel(openedFile.format)})`,
+      icon: "download" as const,
+      onSelect: () => void api.saveCopies([openedFile.id]).then(
+        (done) => done && toast(`Saved a copy to ${done.folder}.`),
+        (e: unknown) => toast(`Couldn't save a copy: ${String(e)}`),
+      ),
+    }] : []),
     { label: "Close book", icon: "close", onSelect: leave },
   ];
 
@@ -537,7 +624,7 @@ export function Reader({
 
   return (
     <div
-      className={`reader theme-${theme}${focus ? " is-focus" : ""}${showLeft ? " has-left" : ""}${showRight ? " has-right" : ""}`}
+      className={`reader theme-${theme}${compact ? " is-compact" : ""}${focus ? " is-focus" : ""}${showLeft ? " has-left" : ""}${showRight ? " has-right" : ""}`}
       style={{ ["--page-bg" as string]: colors.background, ["--page-text" as string]: colors.text, ["--page-muted" as string]: colors.muted }}
     >
       <ReaderTopBar
@@ -605,12 +692,16 @@ export function Reader({
       <div className="reader-body">
         {showLeft && info && (
           <LeftPanel
+            key={info.book.id}
             book={info.book}
             fraction={r?.fraction ?? info.book.totalProgression}
             position={position}
             previouslyOpenedAt={info.previouslyOpenedAt}
             entries={entries}
             currentId={current?.id ?? null}
+            tab={leftTab}
+            onTab={setLeftTab}
+            revealRequest={contentsRequest}
             annotations={annotations}
             onGoHref={(href) => {
               void jumpTo(href);
@@ -630,6 +721,19 @@ export function Reader({
           )}
           {jumps.length > 0 && !focus && <ReturnPill jump={jumps.at(-1)!} onReturn={goBack} onDismiss={() => setJumps([])} />}
           <div className="reader-host" ref={host} aria-busy={!engine.ready} />
+          {engine.ready && !selection && !active && engine.structuredTargets.length > 0 &&
+            <div className="structured-reader-tools" aria-label="Expandable content on this page">
+              {engine.structuredTargets.map(({ id, content }) =>
+                <button key={id} type="button" className="btn btn-quiet" title={content.label}
+                  onClick={() => setExpandedContent({ content, cfi: r?.cfi, width: host.current?.clientWidth ?? 0, height: host.current?.clientHeight ?? 0 })}>Expand {content.label}</button>)}
+            </div>}
+          {expandedContent && <StructuredViewer content={expandedContent.content} onClose={() => {
+            const { cfi, width, height } = expandedContent;
+            setExpandedContent(null);
+            if (cfi && host.current && (width !== host.current.clientWidth || height !== host.current.clientHeight)) {
+              void engine.goTo(cfi);
+            }
+          }} />}
           {!engine.ready && !engine.error && <p className="reader-loading">Opening the book…</p>}
           {engine.error && (
             <div className="reader-message-body">
@@ -642,6 +746,12 @@ export function Reader({
             position={position}
             fraction={r?.fraction ?? 0}
             chapter={r?.tocItem?.label?.trim() ?? null}
+            onContents={() => {
+              setFocus(false);
+              setLeftTab("contents");
+              setContentsRequest((n) => n + 1);
+              pagePanels({ left: true, ...(narrow ? { right: false } : {}) });
+            }}
             onSeek={(f) => {
               remember();
               void engine.goToFraction(f);

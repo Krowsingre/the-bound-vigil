@@ -1,3 +1,4 @@
+import { RememberedDetails } from "../components/RememberedDetails";
 // Designing in Canva (embre, 3 November 2026). With Canva connected (a
 // Scribe Publisher feature, on computers), "Design in Canva" makes a design
 // of exactly the right size, or opens the one made before, and "Bring it
@@ -198,10 +199,10 @@ export function CanvaLink({ what, size, extra, canva }: { what: string; size: st
             </button>
           )}
         </span>
-        <details className="canva-link-hand">
+        <RememberedDetails disclosure="writing.canvaManual" className="canva-link-hand">
           <summary>Or make it by hand</summary>
           {byHand}
-        </details>
+        </RememberedDetails>
       </div>
     );
 

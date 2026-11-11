@@ -84,6 +84,13 @@ pub struct NewWritingSection {
     pub after: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoredWritingSection {
+    pub section: NewWritingSection,
+    pub part_index: Option<usize>,
+}
+
 /// Where a section of a written book goes.
 pub const CHAPTER_ROLES: &[&str] = &["chapter", "front", "back", "part"];
 
@@ -468,6 +475,45 @@ impl Library {
             .ok_or_else(|| Error::Unsuitable("the draft couldn't be kept".into()))
     }
 
+    /// Restores editable sections without changing the locked source snapshot.
+    pub fn restore_writing_draft(
+        &self,
+        project_id: &str,
+        draft_id: &str,
+        revision: &str,
+        sections: Vec<RestoredWritingSection>,
+    ) -> Result<()> {
+        if sections.is_empty() {
+            return Err(Error::Unsuitable("keep at least one section".into()));
+        }
+        let tx = self.conn.unchecked_transaction()?;
+        let project = self.writing_project_row(project_id)?;
+        if project.updated_at != revision {
+            return Err(Error::Unsuitable("the manuscript changed; reopen the draft and try again".into()));
+        }
+        let exists: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM writing_drafts WHERE id = ?1 AND project_id = ?2 AND deleted_at IS NULL)",
+            params![draft_id, project_id], |row| row.get(0),
+        )?;
+        if !exists {
+            return Err(Error::Unsuitable("that draft no longer exists".into()));
+        }
+        tx.execute(
+            "UPDATE writing_chapters SET deleted_at = ?2, updated_at = ?2 WHERE project_id = ?1 AND deleted_at IS NULL",
+            params![project_id, now_utc()],
+        )?;
+        let mut added: Vec<String> = Vec::with_capacity(sections.len());
+        for item in sections {
+            let mut section = item.section;
+            section.after = added.last().cloned();
+            section.part = item.part_index.map(|index| added.get(index).cloned()
+                .ok_or_else(|| Error::Unsuitable("a restored section refers to a missing part".into()))).transpose()?;
+            added.push(self.add_writing_section(project_id, &section)?.id);
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Deletes a draft, its file and its highlights, on every device.
     pub fn delete_writing_draft(&self, id: &str) -> Result<()> {
         let book_id: Option<String> = self
@@ -733,6 +779,28 @@ mod tests {
         assert!(library.book(&draft.book_id).unwrap().is_none());
         library.delete_writing_project(&view.project.id).unwrap();
         assert!(library.writing_drafts(&view.project.id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn restoring_a_draft_atomically_replaces_editable_sections_and_keeps_the_snapshot() {
+        let (dir, mut library) = open_temp_library();
+        let project = library.create_writing_project("Restore test", None).unwrap().project;
+        let epub = dir.path().join("draft.epub");
+        crate::epub::tests::write_test_epub_with(&epub, "Restore test", "Embre", false, "");
+        let draft = library.save_writing_draft(&project.id, &epub).unwrap();
+        let before = library.writing_project(&project.id).unwrap();
+        let section = |role: &str| RestoredWritingSection {
+            section: NewWritingSection { title: "Restored".into(), body: "<p>Words</p>".into(), role: role.into(), ..Default::default() },
+            part_index: None,
+        };
+        assert!(library.restore_writing_draft(&project.id, &draft.id, &before.project.updated_at,
+            vec![section("chapter"), section("invalid")]).is_err());
+        assert_eq!(library.writing_project(&project.id).unwrap().chapters, before.chapters);
+        library.restore_writing_draft(&project.id, &draft.id, &before.project.updated_at, vec![section("chapter")]).unwrap();
+        let restored = library.writing_project(&project.id).unwrap();
+        assert_eq!(restored.chapters.len(), 1);
+        assert_eq!(restored.chapters[0].body, "<p>Words</p>");
+        assert!(library.open_book(&draft.book_id).is_ok());
     }
 
     #[test]

@@ -4,7 +4,7 @@
 
 import type { StartPanel } from "./StartPage";
 
-export type BrowserAsk = { panel: StartPanel } | { url: string } | { home: true };
+export type BrowserAsk = { panel: StartPanel } | { url: string } | { home: true } | { start: true };
 
 const ASKED = "tbv:browser-ask";
 let waiting: BrowserAsk | null = null;

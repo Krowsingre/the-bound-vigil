@@ -19,7 +19,7 @@ import { RATE_RANGE } from "./readAloud";
 
 export type ReadingFont = "lora" | "georgia" | "sans" | "echolume" | "publisher";
 export type ReadingFlow = "paginated" | "scrolled";
-export type ReadingTheme = "auto" | "light" | "paper" | "dark";
+export type ReadingTheme = "auto" | "light" | "paper" | "dark" | "vesper";
 export type ReadingWidth = "narrow" | "medium" | "wide";
 /** PDFs and comics: fit to the screen, or a set size (1 = the page's own size). */
 export type PageZoom = "fit-page" | "fit-width" | number;
@@ -35,6 +35,8 @@ export interface ReaderSettings {
   lineHeight: number;
   width: ReadingWidth;
   flow: ReadingFlow;
+  keyboardScrollSpeed: number;
+  autoScrollSpeed: number;
   /** With `flow` "paginated": two pages side by side when there's room. */
   textSpread: TextSpread;
   theme: ReadingTheme;
@@ -57,6 +59,8 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   lineHeight: 1.6,
   width: "medium",
   flow: "paginated",
+  keyboardScrollSpeed: 420,
+  autoScrollSpeed: 10,
   textSpread: "one",
   theme: "auto",
   justify: false,
@@ -116,8 +120,12 @@ export function parseSettings(json: string | null): ReaderSettings {
     lineHeight: typeof raw.lineHeight === "number" ? clamp(raw.lineHeight, 1.2, 2.2) : d.lineHeight,
     width: oneOf(raw.width, ["narrow", "medium", "wide"], d.width),
     flow: oneOf(raw.flow, ["paginated", "scrolled"], d.flow),
+    keyboardScrollSpeed: typeof raw.keyboardScrollSpeed === "number" && Number.isFinite(raw.keyboardScrollSpeed)
+      ? Math.max(120, Math.min(1_200, raw.keyboardScrollSpeed)) : d.keyboardScrollSpeed,
+    autoScrollSpeed: typeof raw.autoScrollSpeed === "number" && Number.isFinite(raw.autoScrollSpeed)
+      ? clamp(Math.round(raw.autoScrollSpeed), 1, 100) : d.autoScrollSpeed,
     textSpread: oneOf(raw.textSpread, ["one", "auto"], d.textSpread),
-    theme: oneOf(raw.theme, ["auto", "light", "paper", "dark"], d.theme),
+    theme: oneOf(raw.theme, ["auto", "light", "paper", "dark", "vesper"], d.theme),
     justify: typeof raw.justify === "boolean" ? raw.justify : d.justify,
     voices: parseVoices(raw.voices),
     rate: typeof raw.rate === "number" && Number.isFinite(raw.rate) ? clamp(Math.round(raw.rate * 100) / 100, RATE_RANGE.min, RATE_RANGE.max) : d.rate,
@@ -144,6 +152,7 @@ export const PAGE_COLORS: Record<Exclude<ReadingTheme, "auto">, PageColors> = {
   light: { background: "#faf9f6", text: "#1a1c1e", muted: "#5e6368", link: "#2f3a44" },
   paper: { background: "#f1ebdf", text: "#2a2621", muted: "#6b6358", link: "#4a3f33" },
   dark: { background: "#1a1c1e", text: "#d9d5ce", muted: "#9a9ea3", link: "#8fa3b5" },
+  vesper: { background: "#141310", text: "#E2DDD3", muted: "#A59E92", link: "#BBAA8C" },
 };
 
 export function resolveTheme(theme: ReadingTheme, prefersDark: boolean): Exclude<ReadingTheme, "auto"> {
@@ -204,10 +213,11 @@ export function readerCss(settings: ReaderSettings, colors: PageColors): string 
 ${fontFaces()}
 @namespace epub "http://www.idpf.org/2007/ops";
 html {
-  color-scheme: ${colors.background === PAGE_COLORS.dark.background ? "dark" : "light"};
+  color-scheme: ${(colors.background === PAGE_COLORS.dark.background || colors.background === PAGE_COLORS.vesper.background) ? "dark" : "light"};
   background: ${colors.background} !important;
   color: ${colors.text} !important;
-  font-size: ${settings.size}px !important;
+  --tbv-reading-size: ${settings.size}px;
+  font-size: var(--tbv-reading-size) !important;
 }
 body { background: transparent !important; color: inherit !important; }
 ${fontRule}

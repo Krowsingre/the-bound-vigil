@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Annotation, BookPreview, HighlightColor, ReaderBook } from "../api/types";
 import { api } from "../api";
 import { BookCover } from "../components/BookCover";
@@ -109,7 +109,7 @@ function EmptyList({ children }: { children: React.ReactNode }) {
   return <p className="panel-empty">{children}</p>;
 }
 
-type LeftTab = "contents" | "highlights" | "notes";
+export type LeftTab = "contents" | "highlights" | "notes";
 
 /** Book, progress and contents, on the left. */
 export function LeftPanel({
@@ -119,6 +119,9 @@ export function LeftPanel({
   previouslyOpenedAt,
   entries,
   currentId,
+  tab,
+  onTab,
+  revealRequest,
   annotations,
   onGoHref,
   handlers,
@@ -129,26 +132,68 @@ export function LeftPanel({
   previouslyOpenedAt: string | null;
   entries: ContentsEntry[];
   currentId: string | null;
+  tab: LeftTab;
+  onTab: (tab: LeftTab) => void;
+  /** Repeated requests to show Contents reveal its current entry again. */
+  revealRequest: number;
   annotations: Annotation[];
   onGoHref: (href: string) => void;
   handlers: AnnotationHandlers;
 }) {
-  const [tab, setTab] = useState<LeftTab>("contents");
   const current = entries.find((e) => e.id === currentId);
-  const [open, setOpen] = useState<Set<string>>(() => new Set(current?.parents ?? []));
-  // Follow the reader: keep the current chapter's part unfolded.
+  const disclosureKey = `tbv.contents.expanded.${book.id}`;
+  const [remembered, setRemembered] = useState<Set<string>>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(disclosureKey) ?? "[]");
+      return new Set(Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : []);
+    } catch { return new Set(); }
+  });
+  const [open, setOpen] = useState<Set<string>>(() => new Set([...remembered, ...(current?.parents ?? [])]));
+  const body = useRef<HTMLDivElement>(null);
+  const activeRow = useRef<HTMLLIElement>(null);
+  const pendingReveal = useRef(false);
+  const parentsKey = JSON.stringify(current?.parents ?? []);
+  const reveal = useCallback(() => {
+    const container = body.current;
+    const row = activeRow.current;
+    if (!container || !row) return false;
+    // Move only this list. scrollIntoView can also move the book/window.
+    const bounds = container.getBoundingClientRect();
+    const item = row.getBoundingClientRect();
+    const top = bounds.top + container.clientTop;
+    const bottom = top + container.clientHeight;
+    if (item.top < top) container.scrollTop += item.top - top;
+    else if (item.bottom > bottom) container.scrollTop += item.bottom - bottom;
+    return true;
+  }, []);
+  // Opening Contents or entering another chapter follows the reader. Ordinary
+  // progress updates and manually browsing the list don't pull it back.
+  useLayoutEffect(() => {
+    if (tab !== "contents") return;
+    pendingReveal.current = true;
+    const parents = current?.parents ?? [];
+    setOpen((o) => parents.every((p) => o.has(p)) ? o : new Set([...o, ...parents]));
+  }, [currentId, parentsKey, tab, revealRequest]);
+  useLayoutEffect(() => {
+    if (tab === "contents" && pendingReveal.current && reveal()) pendingReveal.current = false;
+  }, [currentId, parentsKey, tab, revealRequest, open, reveal]);
   useEffect(() => {
-    if (current) setOpen((o) => (current.parents.every((p) => o.has(p)) ? o : new Set([...o, ...current.parents])));
-  }, [current]);
+    if (!body.current || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => reveal());
+    observer.observe(body.current);
+    return () => observer.disconnect();
+  }, [reveal]);
 
   const visible = entries.filter((e) => e.parents.every((p) => open.has(p)));
-  const toggle = (id: string) =>
-    setOpen((o) => {
-      const n = new Set(o);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
-    });
+  const toggle = (id: string) => {
+    const next = new Set(open);
+    const saved = new Set(remembered);
+    if (next.delete(id)) saved.delete(id);
+    else { next.add(id); saved.add(id); }
+    setOpen(next);
+    setRemembered(saved);
+    try { localStorage.setItem(disclosureKey, JSON.stringify([...saved])); } catch { /* Keep the current view. */ }
+  };
   const highlights = annotations.filter(isHighlight);
   const notes = annotations.filter(isNote);
   const total = position?.total ?? 0;
@@ -188,18 +233,18 @@ export function LeftPanel({
             role="tab"
             aria-selected={tab === value}
             className={`tab${tab === value ? " is-active" : ""}`}
-            onClick={() => setTab(value)}
+            onClick={() => onTab(value)}
           >
             {label}
           </button>
         ))}
       </div>
-      <div className="reader-left-body">
+      <div className="reader-left-body" ref={body}>
         {tab === "contents" &&
           (visible.length ? (
             <ul className="toc">
               {visible.map((e) => (
-                <li key={e.id} className={e.id === currentId ? "toc-current" : undefined} style={{ ["--depth" as string]: e.depth }}>
+                <li key={e.id} ref={e.id === currentId ? activeRow : undefined} className={e.id === currentId ? "toc-current" : undefined} style={{ ["--depth" as string]: e.depth }}>
                   {e.hasChildren ? (
                     <button
                       type="button"

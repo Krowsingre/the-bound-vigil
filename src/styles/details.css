@@ -314,6 +314,8 @@
 }
 
 .fetch-now,
+.fetch-found input,
+.fetch-found textarea { width: 100%; }
 .fetch-found {
   display: -webkit-box;
   -webkit-line-clamp: 5;

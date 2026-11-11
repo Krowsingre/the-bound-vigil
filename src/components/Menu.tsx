@@ -12,6 +12,8 @@ import { Icon, type IconName } from "./Icon";
 
 export interface MenuItem {
   label: string;
+  id?: string;
+  closeAction?: { label: string; run: () => void };
   icon?: IconName;
   hint?: string;
   /** A second, smaller line under the label, with a larger icon beside both. */
@@ -23,9 +25,12 @@ export interface MenuItem {
   /** With `checked`: turned round, so it's left out (shown as a cross). */
   excluded?: boolean;
   onSelect?: () => void;
+  submenu?: MenuEntry[];
 }
 
 export type MenuEntry = MenuItem | "divider" | { heading: ReactNode };
+
+export const itemMenus = new WeakMap<Element, { label: string; items: MenuEntry[] }>();
 
 /**
  * A button that opens a small dropdown. Closes on outside click or Escape.
@@ -40,6 +45,8 @@ export function Menu({
   align = "end",
   className = "icon-btn",
   menuClassName = "",
+  closeOnScroll = true,
+  searchLabel,
 }: {
   trigger: ReactNode;
   label: string;
@@ -48,17 +55,51 @@ export function Menu({
   className?: string;
   /** Extra classes for the dropdown itself. */
   menuClassName?: string;
+  closeOnScroll?: boolean;
+  searchLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const search = useRef<HTMLInputElement>(null);
+  const [section, setSection] = useState<number | null>(null);
+  const hasSubmenus = items.some((item) => typeof item === "object" && "submenu" in item && item.submenu?.length);
+  const group = section === null ? undefined : items[section];
+  const submenu = group && typeof group === "object" && "label" in group ? group.submenu : undefined;
+  const visible: MenuEntry[] = submenu ? [
+    { label: "Back to " + label, icon: "arrowLeft", onSelect: () => setSection(null) },
+    "divider",
+    ...submenu,
+  ] : items;
+  const term = query.trim().toLowerCase();
+  const results = term ? visible.filter((item): item is MenuItem =>
+    typeof item === "object" && "label" in item && !!item.id &&
+    [item.label, item.hint, item.description].some((text) => text?.toLowerCase().includes(term))) : visible;
+  const closeMenu = () => { setOpen(false); setSection(null); setQuery(""); };
   const [place, setPlace] = useState<CSSProperties>({ visibility: "hidden" });
   const root = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
+  const stableSize = useRef<CSSProperties | null>(null);
+  useLayoutEffect(() => {
+    const element = root.current;
+    if (!element) return;
+    itemMenus.set(element, { label, items });
+    return () => { itemMenus.delete(element); };
+  }, [label, items]);
 
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open) {
+      stableSize.current = null;
+      return;
+    }
     const button = root.current?.getBoundingClientRect();
-    const box = menu.current?.getBoundingClientRect();
-    if (!button || !box) return;
+    const element = menu.current;
+    if (!button || !element) return;
+    if (stableSize.current) {
+      element.scrollTop = 0;
+      return;
+    }
+    const box = element.getBoundingClientRect();
+    const naturalHeight = element.scrollHeight + element.offsetHeight - element.clientHeight;
     const gap = 6;
     const margin = 8;
     const below = button.bottom + gap;
@@ -66,16 +107,21 @@ export function Menu({
     const roomAbove = button.top - gap - margin;
     // Below when it fits, or when there's more room there; a long menu (a big
     // library's genres) then scrolls inside the room it has.
-    const goBelow = box.height <= roomBelow || roomBelow >= roomAbove;
-    const height = Math.min(box.height, goBelow ? roomBelow : roomAbove);
+    const goBelow = naturalHeight <= roomBelow || roomBelow >= roomAbove;
+    const available = Math.max(0, goBelow ? roomBelow : roomAbove);
+    const height = Math.min(naturalHeight, available);
     const top = goBelow ? below : button.top - gap - height;
     const preferred = align === "end" ? button.right - box.width : button.left;
     const left = Math.max(
       margin,
       Math.min(preferred, window.innerWidth - margin - box.width),
     );
-    setPlace({ top: Math.max(margin, top), left, maxHeight: Math.max(120, height) });
-  }, [open, align, items.length]);
+    const position = { top: Math.max(margin, top), left, maxHeight: available };
+    if (hasSubmenus) {
+      stableSize.current = { ...position, width: box.width, height };
+    }
+    setPlace(stableSize.current ?? position);
+  }, [open, align, hasSubmenus, visible.length, section]);
 
   useEffect(() => {
     if (!open) return;
@@ -84,28 +130,26 @@ export function Menu({
       menu.current?.contains(target as Node);
     const close = (e: Event) => {
       if (e instanceof KeyboardEvent ? e.key === "Escape" : !inside(e.target))
-        setOpen(false);
+        closeMenu();
     };
     // The dropdown is pinned to the window, so it closes rather than drift
     // away from its button when the page scrolls or the window changes size.
     const away = (e: Event) => {
-      if (!inside(e.target)) setOpen(false);
+      if (!inside(e.target)) closeMenu();
     };
-    const shut = () => setOpen(false);
+    const shut = closeMenu;
     document.addEventListener("pointerdown", close);
     document.addEventListener("keydown", close);
-    document.addEventListener("scroll", away, true);
+    if (closeOnScroll) document.addEventListener("scroll", away, true);
     window.addEventListener("resize", shut);
-    menu.current
-      ?.querySelector<HTMLButtonElement>(".menu-item:not(:disabled)")
-      ?.focus();
+    (search.current ?? menu.current?.querySelector<HTMLButtonElement>(".menu-item:not(:disabled)"))?.focus({ preventScroll: true });
     return () => {
       document.removeEventListener("pointerdown", close);
       document.removeEventListener("keydown", close);
       document.removeEventListener("scroll", away, true);
       window.removeEventListener("resize", shut);
     };
-  }, [open]);
+  }, [open, section, closeOnScroll]);
 
   useEffect(() => {
     if (!open) setPlace({ visibility: "hidden" });
@@ -120,7 +164,7 @@ export function Menu({
         title={label}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => open ? closeMenu() : setOpen(true)}
       >
         {trigger}
       </button>
@@ -129,10 +173,20 @@ export function Menu({
           <MenuList
             ref={menu}
             label={label}
-            items={items}
+            items={results}
+            before={searchLabel && <input ref={search} type="search" className="browser-tab-search" aria-label={searchLabel} placeholder={searchLabel}
+              value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
+                if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                const first = results.find((item): item is MenuItem => typeof item === "object" && "label" in item && !!item.id && !item.disabled);
+                if (first) { closeMenu(); first.onSelect?.(); }
+              }} />}
+            empty={term && results.length === 0 ? "No matching open tabs." : undefined}
             className={menuClassName}
             style={place}
-            onClose={() => setOpen(false)}
+            onClose={closeMenu}
+            onSubmenu={submenu ? undefined : setSection}
+            back={!!submenu}
           />,
           document.body,
         )}
@@ -149,8 +203,12 @@ export const MenuList = forwardRef<
     className?: string;
     style: CSSProperties;
     onClose: () => void;
+    onSubmenu?: (index: number) => void;
+    back?: boolean;
+    before?: ReactNode;
+    empty?: string;
   }
->(function MenuList({ label, items, className = "", style, onClose }, ref) {
+>(function MenuList({ label, items, className = "", style, onClose, onSubmenu, back, before, empty }, ref) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
     e.preventDefault();
@@ -160,9 +218,9 @@ export const MenuList = forwardRef<
       ),
     ];
     const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    const next =
+    const next = at < 0 ? (e.key === "ArrowDown" ? 0 : buttons.length - 1) :
       (at + (e.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
-    buttons[next]?.focus();
+    buttons[next]?.focus({ preventScroll: true });
   };
   return (
     <div
@@ -173,45 +231,66 @@ export const MenuList = forwardRef<
       style={style}
       onKeyDown={onKeyDown}
     >
-      {items.map((item, i) =>
-        item === "divider" ? (
-          <div key={i} className="menu-divider" role="separator" />
-        ) : "heading" in item ? (
-          <div key={i} className="menu-heading">
-            {item.heading}
-          </div>
-        ) : (
-          <button
-            key={i}
-            type="button"
-            role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
-            aria-checked={item.excluded ? "mixed" : item.checked}
-            className={`menu-item${item.danger ? " menu-item-danger" : ""}${item.excluded ? " menu-item-excluded" : ""}${item.description ? " has-description" : ""}`}
-            disabled={item.disabled}
-            onClick={() => {
-              if (item.checked === undefined) onClose();
-              item.onSelect?.();
-            }}
-          >
-            {item.checked !== undefined ? (
-              <span className="menu-check">
-                {item.excluded ? <Icon name="close" size={16} /> : item.checked && <Icon name="check" size={16} />}
-              </span>
-            ) : (
-              item.icon && <Icon name={item.icon} size={item.description ? 24 : 16} />
-            )}
-            {item.description ? (
-              <span className="menu-label">
-                {item.label}
-                <span className="menu-description">{item.description}</span>
-              </span>
-            ) : (
-              <span className="menu-label">{item.label}</span>
-            )}
-            {(item.excluded ? "Hidden" : item.hint) && <span className="menu-hint">{item.excluded ? "Hidden" : item.hint}</span>}
-          </button>
-        ),
-      )}
+      {before}
+      {empty && <p className="menu-heading">{empty}</p>}
+      {items.map((item, i) => {
+        if (item !== "divider" && "label" in item) {
+          const row = (
+            <button
+              key={item.id ?? i}
+              type="button"
+              role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+              aria-haspopup={item.submenu ? "menu" : undefined}
+              aria-checked={item.excluded ? "mixed" : item.checked}
+              className={`menu-item${item.danger ? " menu-item-danger" : ""}${item.excluded ? " menu-item-excluded" : ""}${item.description ? " has-description" : ""}`}
+              disabled={item.disabled}
+              onClick={() => {
+                if (item.submenu && onSubmenu) {
+                  onSubmenu(i);
+                  return;
+                }
+                if (item.checked === undefined && !(back && i === 0)) onClose();
+                item.onSelect?.();
+              }}
+            >
+              {item.checked !== undefined ? (
+                <span className="menu-check">
+                  {item.excluded ? <Icon name="close" size={16} /> : item.checked && <Icon name="check" size={16} />}
+                </span>
+              ) : (
+                item.icon && <Icon name={item.icon} size={item.description ? 24 : 16} />
+              )}
+              {item.description ? (
+                <span className="menu-label">
+                  {item.label}
+                  <span className="menu-description">{item.description}</span>
+                </span>
+              ) : (
+                <span className="menu-label">{item.label}</span>
+              )}
+              {item.submenu && <Icon name="chevronRight" size={14} />}
+              {(item.excluded ? "Hidden" : item.hint) && <span className="menu-hint">{item.excluded ? "Hidden" : item.hint}</span>}
+            </button>
+          );
+          if (!item.closeAction) return row;
+          const action = item.closeAction;
+          return <div className="menu-row-action" key={item.id ?? i}>
+            {row}
+            <button type="button" role="menuitem" className="menu-item menu-row-close" aria-label={action.label} title={action.label}
+              onClick={(event) => {
+                const row = event.currentTarget.parentElement;
+                const next = row?.nextElementSibling ?? row?.previousElementSibling;
+                action.run();
+                requestAnimationFrame(() => next?.querySelector<HTMLButtonElement>(".menu-row-close, .menu-item")?.focus());
+              }}>
+              <Icon name="close" size={14} />
+            </button>
+          </div>;
+        }
+        return item === "divider"
+          ? <div key={i} className="menu-divider" role="separator" />
+          : <div key={i} className="menu-heading">{item.heading}</div>;
+      })}
     </div>
   );
 });

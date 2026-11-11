@@ -88,6 +88,7 @@ struct Queue {
     /// What the waiting books need kept (a folder of downloads, say), let go
     /// as each is done.
     holds: HashMap<u64, Hold>,
+    browser_downloads: HashMap<u64, String>,
     /// Goes up at each cancel, so books being read when it came stop too.
     cancels: u64,
 }
@@ -187,12 +188,24 @@ impl Imports {
     /// Queues each source as it is (a file, an audiobook's folder or a group
     /// within one), each keeping its own hold until it's done.
     pub fn queue_sources(self: &Arc<Self>, app: &AppHandle, library: &Arc<Mutex<Library>>, sources: Vec<(PathBuf, Option<Hold>)>) -> usize {
+        self.enqueue_sources(app, library, sources, None)
+    }
+
+    /// The browser retains the file until the library has a successful import.
+    pub(crate) fn queue_browser_download(self: &Arc<Self>, app: &AppHandle, library: &Arc<Mutex<Library>>, path: PathBuf, download: String, hold: crate::browser::DownloadHold) -> bool {
+        self.enqueue_sources(app, library, vec![(path, Some(Arc::new(hold)))], Some(download)) == 1
+    }
+
+    fn enqueue_sources(self: &Arc<Self>, app: &AppHandle, library: &Arc<Mutex<Library>>, sources: Vec<(PathBuf, Option<Hold>)>, download: Option<String>) -> usize {
         let added = sources.len();
         let start = {
             let Ok(mut queue) = self.queue.lock() else { return 0 };
             for (file, hold) in sources {
                 queue.next_id += 1;
                 let id = queue.next_id;
+                if let Some(download) = &download {
+                    queue.browser_downloads.insert(id, download.clone());
+                }
                 if let Some(hold) = hold {
                     queue.holds.insert(id, hold);
                 }
@@ -224,16 +237,25 @@ impl Imports {
     /// copy is left behind.
     pub fn cancel(&self, app: &AppHandle) {
         // Holds are let go with the queue unlocked: letting go can tell others.
+        let mut downloads = Vec::new();
         let _released: Vec<Hold> = match self.queue.lock() {
             Ok(mut queue) => {
                 queue.cancels += 1;
                 queue.items.retain(|i| i.stage == Stage::Done || i.stage == Stage::Adding);
                 let left: Vec<u64> = queue.items.iter().map(|i| i.id).collect();
+                queue.browser_downloads.retain(|id, download| {
+                    if left.contains(id) { return true; }
+                    downloads.push(download.clone());
+                    false
+                });
                 let gone: Vec<u64> = queue.holds.keys().copied().filter(|id| !left.contains(id)).collect();
                 gone.iter().filter_map(|id| queue.holds.remove(id)).collect()
             }
             Err(_) => Vec::new(),
         };
+        for id in downloads {
+            crate::browser::tell(app, crate::browser::Event::DownloadImport { id, book_id: None, error: Some("Import cancelled.".into()) });
+        }
         self.tell(app, true);
     }
 
@@ -265,6 +287,20 @@ impl Imports {
                 continue;
             }
             let added = matches!(result, ImportResult::Imported { .. } | ImportResult::AlreadyInLibrary { .. });
+            let download = self.queue.lock().ok().and_then(|mut queue| queue.browser_downloads.remove(&id));
+            if let Some(id) = download {
+                let (book_id, error) = match &result {
+                    ImportResult::Imported { book_id, .. } | ImportResult::AlreadyInLibrary { book_id, .. } => {
+                        let error = path.parent().and_then(|folder| std::fs::remove_dir_all(folder).err())
+                            .map(|e| format!("The temporary download could not be removed: {e}"));
+                        (Some(book_id.to_string()), error)
+                    }
+                    ImportResult::Failed { reason, .. } => (None, Some(reason.clone())),
+                    ImportResult::Unsupported { .. } => (None, Some("That file format isn't supported.".into())),
+                    ImportResult::SkippedDeleted { .. } => (None, Some("This book was previously deleted.".into())),
+                };
+                crate::browser::tell(app, crate::browser::Event::DownloadImport { id, book_id, error });
+            }
             if let ImportResult::Imported { book_id, path, .. } = &result {
                 if path.to_ascii_lowercase().ends_with(".pdf") {
                     if let Ok(mut queue) = self.queue.lock() {

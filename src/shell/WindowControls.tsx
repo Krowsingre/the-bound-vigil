@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { isAndroid, isApp, isHome, isIOS, isMac, isWeb } from "../api";
 import type { Window as AppWindow } from "@tauri-apps/api/window";
 import { Icon } from "../components/Icon";
-import { runBeforeQuit } from "../lib/beforeQuit";
 
 /** Real minimize / maximize / close buttons, since the window has no system title bar. */
 export function WindowControls() {
@@ -21,12 +20,9 @@ export function WindowControls() {
     return () => unlisten?.();
   }, []);
 
-  // Quit the whole app rather than only closing the window, so no process is left behind.
+  // The native close handler hides the window and lets the page save before exit.
   const quit = () => {
-    void runBeforeQuit()
-      .then(() => import("@tauri-apps/api/core"))
-      .then(({ invoke }) => invoke("quit_app"))
-      .catch(() => win?.close());
+    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => (win ?? getCurrentWindow()).close());
   };
 
   // A browser tab and the Mac have their own, and an iPhone app has no window to manage.
