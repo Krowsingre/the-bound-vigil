@@ -2028,7 +2028,10 @@ pub fn run() {
     tauri_plugin_tbv_ios::register_background_tasks();
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init());
+        // Its own click catcher is off: it ran in Discover's pages too, where the
+        // opener isn't allowed, so every link that opens a new tab did nothing.
+        // TBV's own screens send outside links on themselves (src/lib/outsideLinks.ts).
+        .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build());
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build()).manage(updates::Found::default());
     #[cfg(target_os = "ios")]

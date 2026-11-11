@@ -102,6 +102,7 @@ export function StartPage({
   const [clearing, setClearing] = useState(false);
   const [clearingClosed, setClearingClosed] = useState(false);
   const [showClosed, setShowClosed] = useRememberedDisclosure("discover.closedTabs");
+  const [showRecentList, setShowRecentList] = useRememberedDisclosure("discover.recentSites", true);
   const [prefs, setPrefs] = useState(readBrowserPrefs);
   useEffect(() => onBrowserPrefs(() => setPrefs(readBrowserPrefs())), []);
   const showRecent = prefs.showRecent && prefs.historyOn;
@@ -232,11 +233,16 @@ export function StartPage({
             <section className="start-section" aria-labelledby="start-recent">
               <header>
                 <h2 id="start-recent">Recent Sites</h2>
-                <button type="button" className="start-more" onClick={() => setClearing(true)}>
-                  Clear <Icon name="chevronRight" size={16} />
-                </button>
+                <span className="start-more-row">
+                  <button type="button" className="start-more" aria-expanded={showRecentList} onClick={() => setShowRecentList(!showRecentList)}>
+                    {showRecentList ? "Hide" : `Show ${recent.length}`} <Icon name={showRecentList ? "chevronUp" : "chevronDown"} size={16} />
+                  </button>
+                  <button type="button" className="start-more" onClick={() => setClearing(true)}>
+                    Clear <Icon name="chevronRight" size={16} />
+                  </button>
+                </span>
               </header>
-              <ul className="recent-sites">
+              {showRecentList && <ul className="recent-sites">
                 {recent.map((r) => (
                   <li key={r.site}>
                     <button type="button" className="recent-site" onClick={() => onGo(r.url)} title={r.url}>
@@ -265,7 +271,7 @@ export function StartPage({
                     />
                   </li>
                 ))}
-              </ul>
+              </ul>}
             </section>
           </>
         )}

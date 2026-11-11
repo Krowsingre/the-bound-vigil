@@ -51,7 +51,6 @@ import {
   readClosedTabs,
   readTabs,
   rememberClosed,
-  removeClosedBatch,
   reopenTab,
   rightOf,
   takeClosed,
@@ -380,7 +379,6 @@ export function Browser({
   const failedRef = useRef(failed);
   failedRef.current = failed;
   /** Tabs just closed, for the Undo line. */
-  const [undo, setUndo] = useState<ClosedTab[]>([]);
   const [closedTabs, setClosedTabs] = useState(readClosedTabs);
   /** A link for another app, waiting for an answer. */
   const [redirects, setRedirects] = useState<Extract<BrowserEvent, { kind: "redirect" }>[]>([]);
@@ -452,11 +450,6 @@ export function Browser({
 
   useEffect(() => writeTabs(tabs), [tabs]);
   useEffect(() => onClosedTabs(() => setClosedTabs(readClosedTabs())), []);
-  useEffect(() => {
-    if (!undo.length) return;
-    const gone = window.setTimeout(() => setUndo([]), 7000);
-    return () => window.clearTimeout(gone);
-  }, [undo]);
   // A tab that's gone (the oldest, past the most kept) has its page closed too.
   useEffect(() => {
     for (const id of [...made.current]) {
@@ -899,9 +892,9 @@ export function Browser({
     setPair((current) => ({ other: id, activeLeft: current?.activeLeft ?? true }));
   };
   const drag = useTabDrag((id, onto) => setTabs((s) => moveTab(s, id, onto)));
-  /** Closes tabs' pages; the tabs are remembered for Reopen closed tab and Undo. */
+  /** Closes tabs' pages; the tabs are remembered for Reopen closed tab. */
   const forget = (ids: string[]) => {
-    const remembered = rememberClosed(tabsRef.current, ids);
+    rememberClosed(tabsRef.current, ids);
     for (const id of ids) {
       delete zoomed.current[id];
       if (hasActiveTransfer(id)) releaseView(id);
@@ -912,7 +905,6 @@ export function Browser({
       }
     }
     setFailed((f) => Object.fromEntries(Object.entries(f).filter(([t]) => !ids.includes(t))));
-    setUndo(remembered);
   };
   const close = (id: string) => {
     forget([id]);
@@ -975,7 +967,6 @@ export function Browser({
     if (!back.length) return;
     setArticle(null);
     setPanel(null);
-    setUndo([]);
     setTabs((s) => back.sort((a, b) => a.at - b.at).reduce(reopenTab, s));
   };
   const tabMenu = (id: string): MenuEntry[] => {
@@ -1469,21 +1460,6 @@ export function Browser({
           {button("Next", "chevronDown", () => finding && void api.browserFind(active.id, finding, false))}
           {button("Close find", "close", () => setFinding(null))}
         </form>
-      )}
-      {undo.length > 0 && (
-        <div className="browser-close-undo" role="status">
-          <span>{undo.length === 1 ? "Tab closed." : `${undo.length} tabs closed.`}</span>
-          <button type="button" className="btn btn-primary btn-small" onClick={() => {
-            removeClosedBatch(undo);
-            setTabs((state) => [...undo].reverse().reduce(reopenTab, state));
-            setUndo([]);
-          }}>
-            <Icon name="undo" size={14} /> Undo
-          </button>
-          <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setUndo([])}>
-            <Icon name="close" size={14} />
-          </button>
-        </div>
       )}
       {asking.map((d) => (
         <div key={d.id} className="browser-offer" role="status">
