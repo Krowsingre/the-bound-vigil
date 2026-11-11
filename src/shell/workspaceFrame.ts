@@ -8,6 +8,7 @@ type WorkspaceWindow = Window & {
   __TAURI_EVENT_PLUGIN_INTERNALS__?: object;
   tbvWorkspace?: {
     open: (route: string) => void;
+    refresh?: () => Promise<void>;
     flush?: () => Promise<void>;
     dispose?: () => void;
   };

@@ -33,6 +33,7 @@ export class Scroller extends HTMLElement {
     #expected = null
     #anchoredAt = null
     #lastInput = 0
+    #lastPosition = 0
     #touching = false
     #locked = false
     #filling = false
@@ -326,6 +327,7 @@ export class Scroller extends HTMLElement {
         }
         const fraction = entry.height ? Math.min(1, Math.max(0, (c.scrollTop - top) / entry.height)) : 0
         this.#background.style.background = getBackground(doc)
+        this.#lastPosition = performance.now()
         this.dispatchEvent(new CustomEvent('relocate', {
             detail: { reason, range, index: entry.index, fraction },
         }))
@@ -399,6 +401,11 @@ export class Scroller extends HTMLElement {
     scrollByPixels(distance) {
         this.#lastInput = performance.now()
         this.#container.scrollBy({ top: distance, behavior: 'instant' })
+        if (performance.now() - this.#lastPosition >= 1000) this.reportPosition()
+    }
+    reportPosition() {
+        this.#cur = this.#find()
+        this.#afterScroll('scroll')
     }
     scrollStep(direction) {
         this.#scrollBy(direction * Math.round(this.#container.clientHeight / 10))

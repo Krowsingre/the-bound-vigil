@@ -2,6 +2,7 @@ import { FinishedDownloadPrompt } from "../library/FinishedDownloadPrompt";
 import { useEffect, useRef, useState } from "react";
 import { App } from "../App";
 import { SplitDivider } from "../browse/SplitDivider";
+import { clearWorkspaceBrowser } from "../browse/workspaceBrowser";
 import { api, isAndroid, isHome, isIOS, isWeb } from "../api";
 import { runBeforeQuit } from "../lib/beforeQuit";
 import { navFor, type Route } from "./routes";
@@ -9,6 +10,7 @@ import { workspaceFrame, workspaceHost } from "./workspaceFrame";
 
 const routes = [...navFor({ web: isWeb, home: isHome, android: isAndroid }).map(({ route }) => route), "imports", "lining"];
 const canSplit = !isHome && !isWeb && !isAndroid && (api.kind === "app" || api.kind === "preview");
+const isAppBrowser = () => api.kind === "app" && !isAndroid;
 const narrowSplit = "(max-width: 760px), (max-aspect-ratio: 1/1) and (pointer: coarse)";
 
 function requestedRoute() {
@@ -40,12 +42,31 @@ export function Workspace() {
       if (host) host.flush = () => runBeforeQuit();
       return () => { if (host) delete host.flush; };
     }
-    const host = { open: (next: string) => {
+    let refreshing = false;
+    const refresh = async () => {
+      if (refreshing) return;
+      refreshing = true;
+      frame.current?.setAttribute("data-tbv-closing", "");
+      await Promise.allSettled([runBeforeQuit(), workspaceHost.tbvWorkspace?.flush?.()]);
+      workspaceHost.tbvWorkspace?.dispose?.();
+      if (isAppBrowser()) await clearWorkspaceBrowser(false).catch(() => undefined);
+      window.location.reload();
+    };
+    const host = { refresh, open: (next: string) => {
       const found = routes.find((entry) => entry === next) as Route | undefined;
       if (found) setPrimaryRoute(found);
     } };
     workspaceHost.tbvWorkspace = host;
-    return () => { delete workspaceHost.tbvWorkspace; };
+    const shortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.altKey || event.key.toLowerCase() !== "r") return;
+      event.preventDefault();
+      void refresh();
+    };
+    window.addEventListener("keydown", shortcut);
+    return () => {
+      window.removeEventListener("keydown", shortcut);
+      delete workspaceHost.tbvWorkspace;
+    };
   }, []);
 
   useEffect(() => {
@@ -82,8 +103,10 @@ export function Workspace() {
     else setSecondaryRoute(next);
   };
   const close = async () => {
-    await workspaceHost.tbvWorkspace?.flush?.();
+    frame.current?.setAttribute("data-tbv-closing", "");
+    await workspaceHost.tbvWorkspace?.flush?.().catch(() => undefined);
     workspaceHost.tbvWorkspace?.dispose?.();
+    if (isAppBrowser()) void clearWorkspaceBrowser(true).catch(() => undefined);
     setRoute(null);
     primary.current?.focus();
   };

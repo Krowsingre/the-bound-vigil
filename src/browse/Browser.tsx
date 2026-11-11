@@ -1187,11 +1187,11 @@ export function Browser({
   const tabRow = (t: TabsState["tabs"][number]) => (
     <div
       key={t.id}
-      className={`browser-tab${t.id === tabs.active ? " is-active" : ""}${t.private ? " is-private" : ""}${t.pinned ? " is-pinned" : ""}`}
+      className={`browser-tab${t.id === tabs.active ? " is-active" : ""}${t.id === tabs.active && loading[t.id] ? " is-loading" : ""}${t.private ? " is-private" : ""}${t.pinned ? " is-pinned" : ""}`}
       {...drag(t.id)}
       onContextMenu={(e) => openContextMenu(e, `${titleOf(t.title, t.url, t.private)}: tab`, tabMenu(t.id))}
     >
-      <button type="button" role="tab" aria-selected={t.id === tabs.active} className="browser-tab-name" title={t.pinned ? `${titleOf(t.title, t.url)} (pinned)` : t.url} onClick={() => switchTo(t.id)}>
+      <button type="button" role="tab" aria-selected={t.id === tabs.active} aria-busy={!!loading[t.id]} className="browser-tab-name" title={t.pinned ? `${titleOf(t.title, t.url)} (pinned)` : t.url} onClick={() => switchTo(t.id)}>
         {loading[t.id] ? <span className="browser-tab-busy" aria-hidden /> : <Icon name={t.private ? "eyeOff" : isStartPage(t.url) ? "compass" : "globe"} size={14} />}
         {!t.pinned && <span>{titleOf(t.title, t.url, t.private)}</span>}
       </button>
@@ -1246,7 +1246,7 @@ export function Browser({
           </div>
         </div>
       )}
-      {busy && !onStart && <span className="browser-loading" role="progressbar" aria-label="Loading" />}
+      {narrow && busy && !onStart && <span className="browser-loading" role="progressbar" aria-label="Loading" />}
       {narrow && (
         <div className="browser-bar">
           {button("Back", "arrowLeft", () => act("back"), "", backTravel)}
@@ -1394,7 +1394,7 @@ export function Browser({
             </div>
             <div className="browser-grid-tabs">
               {tabs.tabs.map((t) => (
-                <div key={t.id} data-item-menu className={`browser-grid-tab${t.id === tabs.active ? " is-active" : ""}${t.private ? " is-private" : ""}`} {...drag(t.id)}>
+                <div key={t.id} data-item-menu className={`browser-grid-tab${t.id === tabs.active ? " is-active" : ""}${t.id === tabs.active && loading[t.id] ? " is-loading" : ""}${t.private ? " is-private" : ""}`} {...drag(t.id)}>
                   <button type="button" className="browser-grid-open" onClick={() => switchTo(t.id)}>
                     <Icon name={t.private ? "eyeOff" : "globe"} size={22} />
                     <strong>{titleOf(t.title, t.url, t.private)}</strong>

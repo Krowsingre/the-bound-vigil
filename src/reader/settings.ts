@@ -60,7 +60,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   width: "medium",
   flow: "paginated",
   keyboardScrollSpeed: 420,
-  autoScrollSpeed: 15,
+  autoScrollSpeed: 10,
   textSpread: "one",
   theme: "auto",
   justify: false,

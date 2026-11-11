@@ -182,6 +182,7 @@ export function Reader({
 
   // Positions are saved shortly after the reader stops moving, and on leaving.
   const pending = useRef<ReaderLocator | null>(null);
+  const reportPosition = useRef<() => void>(() => undefined);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const flush = useCallback(() => {
     clearTimeout(timer.current);
@@ -191,7 +192,10 @@ export function Reader({
     return Promise.resolve();
   }, [bookId]);
   useEffect(() => {
-    const unregister = onBeforeQuit(flush);
+    const unregister = onBeforeQuit(() => {
+      reportPosition.current();
+      return flush();
+    });
     return () => {
       unregister();
       void flush();
@@ -452,12 +456,14 @@ export function Reader({
 
   const leave = useCallback(() => {
     if (fullscreen) void setWindowFullscreen(false);
+    reportPosition.current();
     void flush().then(onClose);
   }, [flush, onClose, fullscreen]);
 
   const [autoScrolling, setAutoScrolling] = useState(false);
   const scrolling = (engine.fixed ? settings.pageFlow : settings.flow) === "scrolled";
   const { scrollByPixels } = engine;
+  reportPosition.current = () => engine.getView()?.renderer.reportPosition?.();
   useEffect(() => {
     if (!autoScrolling || !scrolling || !engine.ready || expandedContent || noteEdit) return;
     let frame = 0;
@@ -492,6 +498,10 @@ export function Reader({
       if (!e.repeat && engine.ready) {
         if (!autoScrolling && !scrolling) changeSettings(engine.fixed ? { pageFlow: "scrolled" } : { flow: "scrolled" });
         setAutoScrolling(!autoScrolling);
+        if (autoScrolling) {
+          reportPosition.current();
+          void flush();
+        }
       }
     } else if (ctrl && engine.fixed && (key === "=" || key === "+" || key === "-" || key === "0")) {
       // Zoom for PDFs and comics, in place of the window's own zoom.

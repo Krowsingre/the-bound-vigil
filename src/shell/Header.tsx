@@ -3,6 +3,7 @@ import type { Profile, SyncStatus } from "../api/types";
 import { Icon } from "../components/Icon";
 import { SyncMenu } from "./SyncMenu";
 import { WindowControls } from "./WindowControls";
+import { workspaceFrame, workspaceHost } from "./workspaceFrame";
 
 export const Header = forwardRef<
   HTMLInputElement,
@@ -163,6 +164,11 @@ export const Header = forwardRef<
       </form>
       <div className="header-spacer" data-tauri-drag-region />
       <SyncMenu sync={sync} profile={profile} {...menu} />
+      {!workspaceFrame && (
+        <button type="button" className="header-action" aria-label="Refresh TBV" title="Refresh TBV (Ctrl+Shift+R)" onClick={() => void workspaceHost.tbvWorkspace?.refresh?.()}>
+          <Icon name="sync" size={16} />
+        </button>
+      )}
       <WindowControls />
     </header>
   );
