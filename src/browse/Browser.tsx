@@ -62,7 +62,7 @@ import {
   restoreClosedTabs,
 } from "./browserTabs";
 import { answerDownload, BOOK_FILE, downloadSource, downloadState, hasActiveTransfer, isActiveDownload, rememberDownloadSource, removeDownloads, setDownloads, useDownloads, type Fetched } from "./browserDownloads";
-import { HAS_PIP, INSTALL_YOUTUBE_PIP, isYouTube, PAGE_REPORT, READ_SELECTION, REMOVE_FROM_PAGE } from "./pageTools";
+import { HAS_PIP, INSTALL_YOUTUBE_PIP, isYouTube, BRING_BACK, PAGE_REPORT, READ_SELECTION, REMOVE_FROM_PAGE } from "./pageTools";
 import { requestAppHistory } from "../shell/navigationKeys";
 import { addToHistory } from "./browserHistory";
 import { HistoryPanel } from "./HistoryPanel";
@@ -580,7 +580,7 @@ export function Browser({
           // Opened from a private tab, it's private too.
           const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.from)?.private;
           if (!privately) rememberDownloadSource(id, downloadSource(ev.from));
-          setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null, private: privately || undefined }, !ev.foreground, ev.from));
+          setTabs((s) => openTab(s, { id, url: /^https?:/i.test(ev.url) ? ev.url : homeOf(), title: null, private: privately || undefined, opener: ev.from }, !ev.foreground, ev.from));
           if (!ev.tab && !ev.foreground) void prepareTab(id, ev.url, privately)?.catch(() => undefined);
           break;
         }
@@ -1321,6 +1321,9 @@ export function Browser({
     { label: "Remove things from this page", icon: "eyeOff", disabled: !web || !!article, onSelect: () => void api.browserRead(active.id, REMOVE_FROM_PAGE).then((on) => {
       if (!on) toast("This page doesn't allow it.");
     }, () => toast("This page doesn't allow it.")) },
+    { label: "Bring back removed things", icon: "undo", disabled: !web || !!article, onSelect: () => void api.browserRead(active.id, BRING_BACK).then((had) => {
+      if (!had) toast("Nothing was removed from this site.");
+    }, () => toast("Nothing was removed from this site.")) },
     { label: "Copy page report", icon: "copy", disabled: !web || !!article, onSelect: () => void copyPageReport(active.id) },
     { label: "New tab", icon: "plus", onSelect: () => newTab() },
     { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) },
