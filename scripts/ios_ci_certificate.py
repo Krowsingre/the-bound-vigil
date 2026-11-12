@@ -57,6 +57,13 @@ def token() -> str:
     return f"{signing}.{b64url(der_to_raw(der))}"
 
 
+class AppleError(SystemExit):
+    def __init__(self, code: int, message: str):
+        super().__init__(message)
+        self.status = code
+        self.message = message
+
+
 def call(method: str, path: str, body=None):
     request = urllib.request.Request(
         API + path,
@@ -69,7 +76,7 @@ def call(method: str, path: str, body=None):
             text = response.read()
             return json.loads(text) if text else None
     except urllib.error.HTTPError as error:
-        raise SystemExit(f"App Store Connect said {error.code} to {method} {path}: {error.read().decode(errors='replace')}")
+        raise AppleError(error.code, f"App Store Connect said {error.code} to {method} {path}: {error.read().decode(errors='replace')}")
 
 
 def create(out_dir: str) -> None:
@@ -88,7 +95,14 @@ def create(out_dir: str) -> None:
 
 
 def revoke(certificate_id: str) -> None:
-    call("DELETE", f"/certificates/{certificate_id}")
+    try:
+        call("DELETE", f"/certificates/{certificate_id}")
+    except AppleError as error:
+        # Already revoked (another build's clean-up got there first): nothing left to do.
+        if error.status == 404 or (error.status == 409 and "not in an" in error.message):
+            print(f"{certificate_id} was already revoked", file=sys.stderr)
+            return
+        raise
     print(f"Revoked {certificate_id}", file=sys.stderr)
 
 
