@@ -7,6 +7,8 @@ import type { Bookmark, BrowserSession, BrowserEvent, CustomTheme, QuickLink, Sa
 const browserListeners = new Set<(event: BrowserEvent) => void>();
 
 /** The ones a library starts with (the same as crates/tbv-core/src/quick_links.rs). */
+let previewMedia: import("../api/types").MediaServerView[] = [{ id: "m1", name: "Home server", kind: "jellyfin", url: "http://192.168.1.20:8096", username: "reader" }];
+
 export const STARTER_LINKS: QuickLink[] = [
   { id: "ql:gutenberg", title: "Project Gutenberg", url: "https://www.gutenberg.org/", picture: "vintage-herbarium" },
   { id: "ql:archive", title: "Internet Archive", url: "https://archive.org/", picture: "ancient-halls" },
@@ -62,6 +64,13 @@ type Calls = Pick<
   | "browserRead"
   | "browserPip"
   | "browserVideo"
+  | "mediaServers"
+  | "mediaSignIn"
+  | "mediaPlexStart"
+  | "mediaPlexFinish"
+  | "mediaRemove"
+  | "mediaList"
+  | "mediaPlay"
   | "browserReport"
   | "browserCancelDownload"
   | "browserFetchPicture"
@@ -241,6 +250,35 @@ export function browseStub(): Calls {
     },
     browserPip: async () => "none" as const,
     browserVideo: async () => null,
+    // A pretend Jellyfin server, so the screens can be seen in the preview.
+    mediaServers: async () => previewMedia,
+    mediaSignIn: async (kind, url, username) => {
+      const added = { id: `m${previewMedia.length + 1}`, name: kind === "webdav" ? "Files" : "Home server", kind, url, username };
+      previewMedia = [...previewMedia, added];
+      return [added];
+    },
+    mediaPlexStart: async () => {
+      throw new Error(APP_ONLY);
+    },
+    mediaPlexFinish: async () => null,
+    mediaRemove: async (id) => {
+      previewMedia = previewMedia.filter((s) => s.id !== id);
+    },
+    mediaList: async (_id, folder) => (folder
+      ? [
+        { id: "f1", title: "Nosferatu", kind: "video" as const, detail: "1922" },
+        { id: "f2", title: "Metropolis", kind: "video" as const, detail: "1927" },
+        { id: "f3", title: "The Cabinet of Dr. Caligari", kind: "video" as const, detail: "1920" },
+        { id: "a1", title: "Night on Bald Mountain", kind: "audio" as const, detail: "Mussorgsky" },
+      ]
+      : [
+        { id: "films", title: "Films", kind: "folder" as const },
+        { id: "shows", title: "Shows", kind: "folder" as const },
+        { id: "music", title: "Music", kind: "folder" as const },
+      ]),
+    mediaPlay: async () => {
+      throw new Error(APP_ONLY);
+    },
     browserReport: async () => [],
     browserCancelDownload: async () => undefined,
     siteIcon: async () => {

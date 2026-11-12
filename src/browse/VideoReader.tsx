@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PageVideo } from "../api/types";
 import { Icon } from "../components/Icon";
 
-export function VideoReader({ video, onClose }: { video: PageVideo; onClose: () => void }) {
+export function VideoReader({ video, onClose, backLabel = "Back to the page" }: { video: PageVideo; onClose: () => void; backLabel?: string }) {
   const player = useRef<HTMLVideoElement>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
 
@@ -64,7 +64,7 @@ export function VideoReader({ video, onClose }: { video: PageVideo; onClose: () 
     <section className="browser-video" aria-label="Video reader view" onKeyDown={(e) => e.key === "Escape" && onClose()}>
       <div className="browser-reader-bar">
         <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
-          <Icon name="arrowLeft" size={14} /> Back to the page
+          <Icon name="arrowLeft" size={14} /> {backLabel}
         </button>
         <button type="button" className="btn btn-quiet btn-small" onClick={popOut}>
           <Icon name="pictureInPicture" size={14} /> Picture in picture
