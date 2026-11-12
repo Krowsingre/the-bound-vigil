@@ -44,6 +44,20 @@ class BrowserArgs: Decodable {
   let incognito: Bool?
   /// Runs first on every page (src-tauri/src/browser_stand_ins.js).
   let standIns: String?
+  /// Picture in picture, run in every frame (src-tauri/src/browser_pip.js).
+  let pip: String?
+}
+
+/// Hears a frame inside a page say a video started playing in it, so the
+/// Picture in picture button can reach that frame too. Holds the browser
+/// weakly: the web view's configuration keeps its handlers.
+private class PipFrames: NSObject, WKScriptMessageHandler {
+  weak var browser: TbvBrowser?
+  init(_ browser: TbvBrowser) { self.browser = browser }
+  func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+    guard let view = message.webView, !message.frameInfo.isMainFrame else { return }
+    browser?.videoPlaying(in: message.frameInfo, of: view)
+  }
 }
 
 /// Discover's browser on iPhone and iPad: a tab is one of Apple's web views,
@@ -73,6 +87,37 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
   /// The protection level's rules, once compiled.
   private var rules: WKContentRuleList?
   private var standIns: String?
+  private var pipScript: String?
+  /// Frames inside each tab's page where a video last played, newest last.
+  private var videoFrames = [String: [WKFrameInfo]]()
+
+  fileprivate func videoPlaying(in frame: WKFrameInfo, of view: WKWebView) {
+    guard let tab = nameOf(view) else { return }
+    var frames = (videoFrames[tab] ?? []).filter { $0 != frame }
+    frames.append(frame)
+    videoFrames[tab] = Array(frames.suffix(8))
+  }
+
+  /// Pops out the video playing in a tab (the page itself first, then the
+  /// frames where a video last played), or brings back one popped out.
+  /// WebKit counts a script TBV runs as the person's own tap, which Picture
+  /// in picture needs. Answers "popped", "exited", "refused" or "none".
+  private func pip(_ view: WKWebView, tab: String, done: @escaping (String) -> Void) {
+    let ask = "return window.__tbvPipNow ? await window.__tbvPipNow() : 'none';"
+    var frames: [WKFrameInfo?] = [nil]
+    frames += (videoFrames[tab] ?? []).reversed().map { Optional($0) }
+    func next(_ index: Int) {
+      guard index < frames.count else { return done("none") }
+      view.callAsyncJavaScript(ask, arguments: [:], in: frames[index], in: .page) { result in
+        if case .success(let answer) = result, let answer = answer as? String, answer != "none" {
+          done(answer)
+        } else {
+          next(index + 1)
+        }
+      }
+    }
+    next(0)
+  }
   private var redirectMode = "allow"
   private var redirectAllowlist = Set<String>()
   private var requested = [String: URL]()
@@ -155,6 +200,11 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
     if configuration == nil, let script = standIns {
       config.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
+    // A pop-up's configuration already has these, from the tab that opened it.
+    if configuration == nil, let script = pipScript {
+      config.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+      config.userContentController.add(PipFrames(self), name: "tbvPipFrame")
+    }
     let made = WKWebView(frame: frame, configuration: config)
     made.navigationDelegate = self
     made.uiDelegate = self
@@ -194,6 +244,7 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
       return
     }
     closingAfterDownload.remove(tab)
+    videoFrames[tab] = nil
     guard let view = views.removeValue(forKey: tab) else { return }
     view.stopLoading()
     view.removeFromSuperview()
@@ -369,6 +420,7 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
       }
       let show = {
         if let script = args.standIns { self.standIns = script }
+        if let script = args.pip { self.pipScript = script }
         guard let view = self.made(tab, incognito: args.incognito ?? false) else {
           invoke.reject("TBV couldn't show the browser.")
           return
@@ -403,6 +455,9 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
         case "find":
           let text = (try? JSONEncoder().encode(args.text ?? "")).flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
           view.evaluateJavaScript("window.find(\(text), false, \(args.backwards ?? false), true)") { _, _ in }
+        case "pip":
+          self.pip(view, tab: tab) { answer in invoke.resolve(["result": answer]) }
+          return
         case "run":
           // TBV's script answers with JSON text (the article, for reader mode).
           view.evaluateJavaScript(args.script ?? "null") { result, _ in
