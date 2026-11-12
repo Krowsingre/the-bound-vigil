@@ -574,6 +574,8 @@ export interface Api {
   browserProtect(protection: BrowserProtection): Promise<void>;
   /** Runs reader mode's article finder in the tab; null when the page has no article. */
   browserRead(tab: string, script: string): Promise<unknown>;
+  /** Discover's Picture in picture button: pops out the playing video, even in an embedded player. */
+  browserPip(tab: string): Promise<"popped" | "exited" | "refused" | "none">;
   /** What TBV saw a tab's page do lately, for "Copy page report". */
   browserReport(tab: string): Promise<string[]>;
   browserCancelDownload(id: string): Promise<void>;
@@ -1296,6 +1298,7 @@ function appApi(): Api {
     browserFind: async (tab, text, backwards) => (await core).invoke("browser_find", { tab, text, backwards }),
     browserProtect: async (protection) => (await core).invoke("browser_protect", { protection }),
     browserRead: async (tab, script) => (await core).invoke<unknown>("browser_read", { tab, script }),
+    browserPip: async (tab) => (await core).invoke<"popped" | "exited" | "refused" | "none">("browser_pip", { tab }),
     browserReport: async (tab) => (await core).invoke<string[]>("browser_report", { tab }),
     browserDownloadStatus: async (ids) => (await core).invoke("browser_download_status", { ids }),
     browserCancelDownload: async (id) => (await core).invoke("browser_cancel_download", { id }),
