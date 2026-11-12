@@ -50,6 +50,19 @@
   // ends it. A clear sheet over the page takes the clicks, so frames laid
   // over the site (which would swallow them) can be picked too.
   let picking = null;
+  // While picking, a press on the sheet is TBV's alone: these listeners are
+  // set before the page's own scripts run, so they come first, and the page's
+  // click catchers (pop-unders) never hear it.
+  let onSheet = null;
+  for (const kind of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'auxclick', 'dblclick', 'contextmenu', 'touchstart', 'touchend']) {
+    addEventListener(kind, (e) => {
+      if (!onSheet || e.target !== onSheet.sheet) return;
+      e.stopImmediatePropagation();
+      if (kind === 'contextmenu') return onSheet.stop(e);
+      if (kind !== 'touchstart' && kind !== 'pointerdown') e.preventDefault();
+      if (kind === 'click') onSheet.click(e);
+    }, { capture: true, passive: false });
+  }
   window.__tbvPickToRemove = (on) => {
     if (!on && picking) return picking(), false;
     if (!on || picking) return !!picking;
@@ -78,8 +91,6 @@
     };
     const move = (e) => show((aimed = under(e.clientX, e.clientY)));
     const click = (e) => {
-      e.preventDefault();
-      e.stopImmediatePropagation();
       const el = under(e.clientX, e.clientY) || aimed;
       if (el) take(el);
       else note('remove from page: nothing to remove at that spot');
@@ -91,11 +102,11 @@
       picking();
     };
     sheet.addEventListener('mousemove', move);
-    sheet.addEventListener('click', click);
-    sheet.addEventListener('contextmenu', stop);
+    onSheet = { sheet, click, stop };
     addEventListener('keydown', stop, true);
     picking = () => {
       removeEventListener('keydown', stop, true);
+      onSheet = null;
       sheet.remove();
       outline.remove();
       hint.remove();
