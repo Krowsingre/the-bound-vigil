@@ -20,6 +20,10 @@ struct BrowserProtectionArgs: Decodable {
   let level: String
   /// WKContentRuleList JSON, made by TBV from its lists.
   let rules: String
+  /// The shared block lists instead: a name for this version of them, and
+  /// the file holding their rules (read only when not compiled already).
+  let rulesId: String?
+  let rulesFile: String?
   let redirects: String?
   let redirectAllowlist: [String]?
 }
@@ -216,8 +220,36 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
       apply(nil)
       return
     }
-    WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "tbv-protection", encodedContentRuleList: protection.rules) { list, _ in
-      DispatchQueue.main.async { apply(list) }
+    guard let id = protection.rulesId, let file = protection.rulesFile else {
+      WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "tbv-protection", encodedContentRuleList: protection.rules) { list, _ in
+        DispatchQueue.main.async { apply(list) }
+      }
+      return
+    }
+    // The shared lists: compiled once per version, then kept by WebKit.
+    let store = WKContentRuleListStore.default()!
+    let name = "tbv-lists-" + id
+    store.lookUpContentRuleList(forIdentifier: name) { found, _ in
+      if let found = found {
+        DispatchQueue.main.async { apply(found) }
+        return
+      }
+      DispatchQueue.global(qos: .utility).async {
+        guard let text = try? String(contentsOfFile: file, encoding: .utf8) else {
+          DispatchQueue.main.async { apply(self.rules) }
+          return
+        }
+        store.compileContentRuleList(forIdentifier: name, encodedContentRuleList: text) { list, _ in
+          DispatchQueue.main.async { apply(list ?? self.rules) }
+          guard list != nil else { return }
+          // Older versions of the lists aren't needed any more.
+          store.getAvailableContentRuleListIdentifiers { names in
+            for old in names ?? [] where old.hasPrefix("tbv-lists-") && old != name {
+              store.removeContentRuleList(forIdentifier: old) { _ in }
+            }
+          }
+        }
+      }
     }
   }
 

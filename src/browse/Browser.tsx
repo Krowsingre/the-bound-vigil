@@ -214,8 +214,8 @@ export function BrowserNav({ compact = false }: { compact?: boolean } = {}) {
       {!compact && <BrowserBookmarks state={state} className="header-action" />}
       {!compact && button("Sessions", "list", "sessions")}
       {!compact && state.split && (state.split.on
-        ? button("Close split screen", "layers", "unsplit", { "aria-pressed": true, className: "header-action is-on" })
-        : <Menu label="Split screen" className="header-action" trigger={<Icon name="layers" size={20} />}
+        ? button("Close split screen", "splitScreen", "unsplit", { "aria-pressed": true, className: "header-action is-on" })
+        : <Menu label="Split screen" className="header-action" trigger={<Icon name="splitScreen" size={20} />}
             items={state.split.choices.length ? state.split.choices.map((c) => (c.id === "divider" ? "divider" as const : { label: c.label, onSelect: () => ask(`split:${c.id}`) })) : [{ label: "Open another tab to split with", disabled: true, onSelect: () => undefined }]} />)}
       {!compact && button("Reader view", "bookOpen", "reader", { disabled: !state.web && !state.reader, "aria-pressed": state.reader, className: `header-action${state.reader ? " is-on" : ""}` })}
     </div>
@@ -593,6 +593,13 @@ export function Browser({
           if (ev.ask) setRedirects((pending) => [...pending.filter((item) => item.tab !== ev.tab), ev]);
           else toast("Redirect blocked from " + (siteOf(ev.from) ?? "this site") + ".");
           break;
+        case "popupBlocked": {
+          const from = siteOf(tabsRef.current.tabs.find((t) => t.id === ev.tab)?.url ?? "") ?? "this site";
+          // A site on the block lists stays shut; one opened without a click can still be opened by hand.
+          if (ev.listed) toast(`Blocked a pop-up from ${from} to a site on the block lists.`);
+          else toast(`Blocked a pop-up from ${from}.`, /^https?:/i.test(ev.url) ? { label: "Open it", run: () => openInNewTabRef.current(ev.url, false) } : undefined);
+          break;
+        }
         case "external":
           if (readBrowserPrefs().askApps) setAppLink(ev.url);
           else void api.browserOpenApp(ev.url).catch((e: unknown) => toast(clean(e)));
@@ -1408,7 +1415,7 @@ export function Browser({
       {/* On a computer, Split screen is a button in the top bar (BrowserNav). */}
       {narrow && (allowSplit || onSplitWith) && !companion && <div className="browser-split-tools">
         {other ? <button type="button" className="toolbar-button" onClick={() => setPair(null)}>Close tab split</button> :
-          <Menu label="Split screen" className="toolbar-button" trigger={<><Icon name="layers" size={16} /> Split screen</>} items={splitItems} />}
+          <Menu label="Split screen" className="toolbar-button" trigger={<><Icon name="splitScreen" size={16} /> Split screen</>} items={splitItems} />}
       </div>}
       {!narrow && (
         <div className="browser-strip">

@@ -1610,6 +1610,8 @@ export type BrowserEvent =
   | { kind: "failed"; tab: string; url: string; reason: string }
   /** A link for another app (mail, a phone number), not opened yet. */
   | { kind: "redirect"; tab: string; from: string; url: string; ask: boolean }
+  /** A page tried to open a window without a click, or to a site on the block lists (`listed`). */
+  | { kind: "popupBlocked"; tab: string; url: string; listed: boolean }
   | { kind: "external"; tab: string; url: string }
   /** Chosen from a link's own menu: open it in a new tab, or bring its book into the library. */
   | { kind: "menu"; tab: string; action: "newTab" | "addBook"; url: string }

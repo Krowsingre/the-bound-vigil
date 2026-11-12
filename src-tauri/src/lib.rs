@@ -6,6 +6,7 @@ mod activity;
 mod audio;
 #[cfg(target_os = "ios")]
 mod background_sync;
+mod blocklists;
 mod browser;
 mod canva;
 mod cloud;
@@ -2057,6 +2058,9 @@ pub fn run() {
             });
             let data_dir = app.path().app_data_dir()?;
             let cache_dir = app.path().app_cache_dir()?;
+            // Discover's shared block lists, kept fresh in the background (Android has no browser yet).
+            #[cfg(not(target_os = "android"))]
+            blocklists::start(cache_dir.join("Block lists"));
             let library = Arc::new(Mutex::new(Library::open(LibraryPaths::new(&data_dir, &cache_dir))?));
             // TBV installed again: the same place in sync, name and sign-ins as before.
             if let Ok(l) = library.lock() {

@@ -36,8 +36,8 @@ export function redirectHost(value: string): string | null {
 export type ProtectionLevel = "strict" | "balanced" | "off";
 
 export const PROTECTION_LEVELS: { value: ProtectionLevel; label: string; hint: string }[] = [
-  { value: "strict", label: "Strict", hint: "Blocks trackers, advertising, cryptocurrency miners and fingerprinting, and cookies from other sites." },
-  { value: "balanced", label: "Balanced", hint: "Blocks trackers and miners, and lets advertising and sign-in cookies through." },
+  { value: "strict", label: "Strict", hint: "Blocks trackers, advertising, harmful sites, cryptocurrency miners and fingerprinting, and cookies from other sites. Uses the EasyList, EasyPrivacy and Malicious URL lists, updated daily." },
+  { value: "balanced", label: "Balanced", hint: "Blocks trackers, harmful sites and miners, and lets advertising and sign-in cookies through. Uses the EasyPrivacy and Malicious URL lists, updated daily." },
   { value: "off", label: "Off", hint: "Blocks nothing." },
 ];
 
