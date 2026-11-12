@@ -158,3 +158,19 @@ test("pinned tabs sit first, are kept, and are left open by the bulk closes", ()
   expect(pinTab(pinned, "c", false).tabs.map((t) => t.id)).toEqual(["c", "a", "b"]);
   expect(pinTab(pinned, "c", false).tabs[0].pinned).toBeUndefined();
 });
+
+describe("closing a tab a page opened", () => {
+  it("goes back to the tab that opened it", () => {
+    const state = {
+      tabs: [
+        { id: "a", url: "https://a.example/", title: null },
+        { id: "b", url: "https://b.example/", title: null },
+        { id: "c", url: "https://c.example/", title: null, opener: "a" },
+      ],
+      active: "c",
+    };
+    expect(closeTab(state, "c", "tbv:start").active).toBe("a");
+    // Once the opener is gone, the tab beside it comes forward as before.
+    expect(closeTab({ ...state, tabs: state.tabs.filter((t) => t.id !== "a") }, "c", "tbv:start").active).toBe("b");
+  });
+});

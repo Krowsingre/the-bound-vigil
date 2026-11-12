@@ -11,6 +11,8 @@ export interface BrowserTab {
   private?: boolean;
   /** Pinned: kept small at the start of the row, and left open by Close other tabs. */
   pinned?: boolean;
+  /** The tab whose page opened this one (a pop-up, a link opening a new tab): closing this one goes back there. */
+  opener?: string;
 }
 
 export interface TabsState {
@@ -85,7 +87,10 @@ export function closeTab(state: TabsState, id: string, home: string): TabsState 
     const fresh = { id: newTabId(), url: home, title: null };
     return { tabs: [fresh], active: fresh.id };
   }
-  const active = state.active === id ? tabs[Math.min(at, tabs.length - 1)].id : state.active;
+  // A tab a page opened (a pop-up you were sent to) goes back to the page you were on.
+  const opener = state.tabs[at].opener;
+  const back = opener && tabs.some((t) => t.id === opener) ? opener : null;
+  const active = state.active === id ? back ?? tabs[Math.min(at, tabs.length - 1)].id : state.active;
   return { tabs, active };
 }
 
