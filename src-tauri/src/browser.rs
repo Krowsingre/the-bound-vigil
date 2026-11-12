@@ -1007,10 +1007,22 @@ mod windows {
                     let mut count = 0u32;
                     items.Count(&mut count)?;
                     let remove = environment.CreateContextMenuItem(windows_core::w!("Remove from page"), None::<&windows::Win32::System::Com::IStream>, COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_COMMAND)?;
+                    // Where the right-click was: a part of the page that comes
+                    // from another site (most adverts) is a page of its own.
+                    let mut main_frame = BOOL::default();
+                    target.IsRequestedForMainFrame(&mut main_frame)?;
+                    let mut frame_uri = PWSTR::null();
+                    target.FrameUri(&mut frame_uri)?;
+                    let frame_uri = take_pwstr(frame_uri);
                     let (app, tab) = (app.clone(), tab.clone());
                     let mut chosen = 0i64;
                     remove.add_CustomItemSelected(
                         &CustomItemSelectedEventHandler::create(Box::new(move |_, _| {
+                            if main_frame.as_bool() {
+                                crate::browser::note(&tab, "remove from page chosen on the page itself");
+                            } else {
+                                crate::browser::note(&tab, format!("remove from page chosen inside a page within the page: {frame_uri}"));
+                            }
                             if let Some(view) = app.get_webview(&view::label(&tab)) {
                                 let _ = view.eval("window.__tbvRemoveLast && window.__tbvRemoveLast()");
                             }

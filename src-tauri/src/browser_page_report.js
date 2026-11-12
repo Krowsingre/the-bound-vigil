@@ -24,6 +24,9 @@
     return bits.join(' ');
   };
   window.__tbvReport = () => JSON.stringify({ address: location.href, lines });
+  // Other page helpers (Remove from page) note what they did here too.
+  window.__tbvNote = note;
+  window.__tbvDescribe = describe;
   note('page started ' + location.href);
   document.addEventListener('click', (event) => {
     if (!event.isTrusted) return;

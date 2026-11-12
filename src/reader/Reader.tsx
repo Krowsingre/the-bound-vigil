@@ -515,8 +515,11 @@ export function Reader({
   const scrolling = (engine.fixed ? settings.pageFlow : settings.flow) === "scrolled";
   const { scrollByPixels } = engine;
   reportPosition.current = () => engine.getView()?.renderer.reportPosition?.();
+  // While a voice is being followed (a paired audiobook or Read aloud), the
+  // voice moves the page; auto-scroll waits and carries on when it stops.
+  const voiceLeads = (readAlong.following && readAlong.playing) || readAloud.status === "playing";
   useEffect(() => {
-    if (!autoScrolling || !scrolling || !engine.ready || expandedContent || noteEdit) return;
+    if (!autoScrolling || !scrolling || !engine.ready || expandedContent || noteEdit || voiceLeads) return;
     let frame = 0;
     let previous = performance.now();
     let remainder = 0;
@@ -532,7 +535,7 @@ export function Reader({
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [autoScrolling, scrolling, engine.ready, scrollByPixels, expandedContent, noteEdit, settings.autoScrollSpeed]);
+  }, [autoScrolling, scrolling, engine.ready, scrollByPixels, expandedContent, noteEdit, settings.autoScrollSpeed, voiceLeads]);
   const keyboardScroll = useKeyboardScroll(scrollByPixels, settings.keyboardScrollSpeed, engine.ready && scrolling && !expandedContent && !noteEdit);
   const keyScrollRef = useRef(keyboardScroll.release);
   keyScrollRef.current = keyboardScroll.release;
