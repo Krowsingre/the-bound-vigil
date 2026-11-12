@@ -500,8 +500,9 @@ mod view {
             .incognito(private)
             // Buttons that wait on a blocked tracker still work.
             .initialization_script(STAND_INS)
-            // A Picture in picture button on videos, in embedded players too.
-            .initialization_script_for_all_frames(super::PIP_SCRIPT)
+            // A Picture in picture button on videos, and keeping them playing
+            // in the background when chosen, in embedded players too.
+            .initialization_script_for_all_frames(super::all_frames_script())
             .on_page_load(move |page_view, payload| {
                 #[cfg(not(windows))]
                 let _ = &page_view;
@@ -725,6 +726,24 @@ mod view {
         }
     }
 
+    /// Changes the background choice on every page open now (Windows: in
+    /// every frame of each; elsewhere the page itself, and frames as they load).
+    pub fn keep_playing(app: &tauri::AppHandle, on: bool) -> CommandResult<()> {
+        let script = super::keep_playing_now(on);
+        for view in tabs(app) {
+            #[cfg(windows)]
+            {
+                let tab = view.label().trim_start_matches(PREFIX).to_owned();
+                super::windows::everywhere(&view, &tab, &script);
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = view.eval(&script);
+            }
+        }
+        Ok(())
+    }
+
     /// Runs `script` in the tab and answers what it returned (as JSON).
     pub fn run(app: &tauri::AppHandle, tab: &str, script: &str) -> CommandResult<serde_json::Value> {
         let view = app.get_webview(&label(tab)).ok_or("That tab isn't open.")?;
@@ -892,6 +911,24 @@ mod windows {
     /// Discover's Picture in picture button: asks the page, then each frame
     /// in it, to pop out its playing video (or bring back one popped out),
     /// as if it had been clicked there. Answers popped, exited, refused or none.
+    /// Runs a script in a tab's page and every frame in it, not waiting for answers.
+    pub fn everywhere(view: &tauri::Webview, tab: &str, script: &str) {
+        let frames = FRAME_SESSIONS.lock().ok().and_then(|all| all.as_ref()?.get(tab).cloned()).unwrap_or_default();
+        let params = serde_json::json!({ "expression": script }).to_string();
+        let _ = view.with_webview(move |platform| unsafe {
+            let Ok(core) = platform.controller().CoreWebView2() else { return };
+            let method = windows_core::w!("Runtime.evaluate");
+            let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
+            let _ = core.CallDevToolsProtocolMethod(method, &HSTRING::from(params.as_str()), &done);
+            if let Ok(core) = core.cast::<ICoreWebView2_11>() {
+                for id in frames {
+                    let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
+                    let _ = core.CallDevToolsProtocolMethodForSession(&HSTRING::from(id.as_str()), method, &HSTRING::from(params.as_str()), &done);
+                }
+            }
+        });
+    }
+
     pub fn pip(view: &tauri::Webview, tab: &str) -> Result<String, String> {
         let frames = FRAME_SESSIONS.lock().ok().and_then(|all| all.as_ref()?.get(tab).cloned()).unwrap_or_default();
         let params = serde_json::json!({ "expression": "window.__tbvPipNow ? window.__tbvPipNow() : 'none'", "userGesture": true, "awaitPromise": true, "returnByValue": true }).to_string();
@@ -1562,7 +1599,7 @@ mod view {
     }
 
     pub fn show(_app: &tauri::AppHandle, tab: &str, url: Option<tauri::Url>, frame: Frame, protection: Option<Protection>, private: bool, background: bool) -> CommandResult<()> {
-        let mut args = serde_json::json!({ "action": if background { "prepare" } else { "show" }, "tab": tab, "url": url.map(|u| u.to_string()), "frame": frame_of(frame), "incognito": private, "standIns": super::PAGE_SCRIPTS, "pip": super::PIP_SCRIPT });
+        let mut args = serde_json::json!({ "action": if background { "prepare" } else { "show" }, "tab": tab, "url": url.map(|u| u.to_string()), "frame": frame_of(frame), "incognito": private, "standIns": super::PAGE_SCRIPTS, "pip": super::all_frames_script() });
         if let Some(p) = protection {
             args["protection"] = rules(&p);
         }
@@ -1601,6 +1638,10 @@ mod view {
     pub fn pip(_app: &tauri::AppHandle, tab: &str) -> CommandResult<String> {
         let answer = ask(serde_json::json!({ "action": "pip", "tab": tab }))?;
         Ok(answer.get("result").and_then(|r| r.as_str()).unwrap_or("none").to_owned())
+    }
+
+    pub fn keep_playing(_app: &tauri::AppHandle, on: bool) -> CommandResult<()> {
+        ask(serde_json::json!({ "action": "keepPlaying", "on": on, "pip": super::all_frames_script(), "script": super::keep_playing_now(on) })).map(|_| ())
     }
 
     pub fn run(_app: &tauri::AppHandle, tab: &str, script: &str) -> CommandResult<serde_json::Value> {
@@ -1657,6 +1698,22 @@ fn sent_behind() -> bool {
 /// Run first on every page in Discover (see the two files).
 /// Picture in picture on any video; runs in every frame (browser_pip.js).
 const PIP_SCRIPT: &str = include_str!("browser_pip.js");
+/// Keeps videos playing in the background, when chosen (browser_keep_playing.js).
+const KEEP_PLAYING_SCRIPT: &str = include_str!("browser_keep_playing.js");
+/// Preferences › Discover › Keep videos playing in the background.
+static KEEP_PLAYING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// What runs first in every frame of a page, with the background choice in it.
+fn all_frames_script() -> String {
+    let on = KEEP_PLAYING.load(std::sync::atomic::Ordering::Relaxed);
+    let keep = KEEP_PLAYING_SCRIPT.replacen("const ON = false;", if on { "const ON = true;" } else { "const ON = false;" }, 1);
+    format!("{keep}\n{PIP_SCRIPT}")
+}
+
+/// The script that changes the background choice on a page already open.
+fn keep_playing_now(on: bool) -> String {
+    format!("window.__tbvKeepPlaying ? window.__tbvKeepPlaying({on}) : 'null'")
+}
 
 const PAGE_SCRIPTS: &str = concat!(include_str!("browser_stand_ins.js"), "\n", include_str!("browser_page_tools.js"), "\n", include_str!("browser_page_report.js"));
 
@@ -1757,6 +1814,14 @@ pub async fn browser_protect(app: tauri::AppHandle, protection: Protection) -> C
 pub async fn browser_read(app: tauri::AppHandle, tab: String, script: String) -> CommandResult<serde_json::Value> {
     let tab = tab_name(&tab)?;
     tauri::async_runtime::spawn_blocking(move || view::run(&app, &tab, &script)).await.map_err(|e| e.to_string())?
+}
+
+/// Preferences › Discover › Keep videos playing in the background: for the
+/// tabs opened from now on, and the pages open now.
+#[tauri::command]
+pub async fn browser_keep_playing(app: tauri::AppHandle, on: bool) -> CommandResult<()> {
+    KEEP_PLAYING.store(on, std::sync::atomic::Ordering::Relaxed);
+    tauri::async_runtime::spawn_blocking(move || view::keep_playing(&app, on)).await.map_err(|e| e.to_string())?
 }
 
 /// Discover's Picture in picture button: popped, exited, refused or none.

@@ -46,6 +46,8 @@ class BrowserArgs: Decodable {
   let standIns: String?
   /// Picture in picture, run in every frame (src-tauri/src/browser_pip.js).
   let pip: String?
+  /// Keep videos playing in the background (Preferences › Discover).
+  let on: Bool?
 }
 
 /// Hears a frame inside a page say a video started playing in it, so the
@@ -90,6 +92,63 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
   private var pipScript: String?
   /// Frames inside each tab's page where a video last played, newest last.
   private var videoFrames = [String: [WKFrameInfo]]()
+
+  /// Preferences › Discover › Keep videos playing in the background.
+  private var keepPlaying = false
+  private var watchingLeave = false
+
+  /// Changes the background choice: the script new pages get (every tab's
+  /// scripts are put back with the new one) and the pages open now.
+  private func setKeepPlaying(_ on: Bool, script: String?, now: String?) {
+    keepPlaying = on
+    if let script = script { pipScript = script }
+    if on && !watchingLeave {
+      watchingLeave = true
+      NotificationCenter.default.addObserver(self, selector: #selector(leavingApp), name: UIApplication.willResignActiveNotification, object: nil)
+    }
+    var done = Set<ObjectIdentifier>()
+    for (tab, view) in views {
+      let controller = view.configuration.userContentController
+      if done.insert(ObjectIdentifier(controller)).inserted {
+        controller.removeAllUserScripts()
+        if let standIns = standIns {
+          controller.addUserScript(WKUserScript(source: standIns, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
+        if let script = pipScript {
+          controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        }
+      }
+      guard let now = now else { continue }
+      view.evaluateJavaScript(now) { _, _ in }
+      for frame in videoFrames[tab] ?? [] {
+        view.evaluateJavaScript(now, in: frame, in: .page) { _ in }
+      }
+    }
+  }
+
+  /// Leaving the app with a video playing: it's popped out, so it goes on
+  /// showing (WebKit stops a video's picture once the app is out of sight).
+  @objc private func leavingApp() {
+    guard keepPlaying else { return }
+    let ask = "return window.__tbvPipNow ? await window.__tbvPipNow(true) : 'none';"
+    var targets = [(WKWebView, WKFrameInfo?)]()
+    // The tab in front first.
+    let order = views.sorted { a, _ in a.key == front }.map { $0.value }
+    for view in order {
+      guard let tab = nameOf(view) else { continue }
+      targets.append((view, nil))
+      targets += (videoFrames[tab] ?? []).reversed().map { (view, Optional($0)) }
+    }
+    func next(_ index: Int) {
+      guard index < targets.count else { return }
+      let (view, frame) = targets[index]
+      view.callAsyncJavaScript(ask, arguments: [:], in: frame, in: .page) { result in
+        if case .success(let answer) = result, let answer = answer as? String, answer == "popped" || answer == "already" { return }
+        next(index + 1)
+      }
+    }
+    next(0)
+  }
 
   fileprivate func videoPlaying(in frame: WKFrameInfo, of view: WKWebView) {
     guard let tab = nameOf(view) else { return }
@@ -408,6 +467,11 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
         return
       default:
         break
+      }
+      if args.action == "keepPlaying" {
+        self.setKeepPlaying(args.on ?? false, script: args.pip, now: args.script)
+        invoke.resolve(["ok": true])
+        return
       }
       guard let tab = args.tab else {
         invoke.reject("That isn't one of the browser's tabs.")

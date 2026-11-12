@@ -83,6 +83,7 @@ type Calls = Pick<
   | "trimBrowserHistory"
   | "setBrowserOpenTabs"
   | "browserOtherTabs"
+  | "browserKeepPlaying"
   | "browserSessions"
   | "putBrowserSession"
   | "removeBrowserSession"
@@ -294,6 +295,7 @@ export function browseStub(): Calls {
         { url: "https://en.wikipedia.org/wiki/Gothic_fiction", title: "Gothic fiction - Wikipedia" },
       ] },
     ],
+    browserKeepPlaying: async () => undefined,
     browserSessions: async () => previewSessions,
     putBrowserSession: async (session) => {
       const at = previewSessions.findIndex((s) => s.id === session.id);
