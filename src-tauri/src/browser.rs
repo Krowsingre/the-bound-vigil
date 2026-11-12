@@ -719,7 +719,8 @@ mod view {
         }
         #[cfg(not(windows))]
         {
-            let found = run(app, tab, "(() => { const v = Array.from(document.querySelectorAll('video')).some((v) => !v.paused); if (v && window.__tbvPipNow) window.__tbvPipNow(); return JSON.stringify(v ? 'popped' : 'none'); })()")?;
+            // The page's answer can't be waited for here: what it will do is told from what's there.
+            let found = run(app, tab, "(() => { const vs = Array.from(document.querySelectorAll('video')); const out = document.pictureInPictureElement || vs.some((v) => v.webkitPresentationMode === 'picture-in-picture'); const playing = vs.some((v) => !v.paused); if (window.__tbvPipNow) window.__tbvPipNow(); return JSON.stringify(out ? 'exited' : playing ? 'popped' : 'none'); })()")?;
             Ok(found.as_str().unwrap_or("none").to_owned())
         }
     }

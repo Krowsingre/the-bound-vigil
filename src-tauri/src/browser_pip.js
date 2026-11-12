@@ -57,6 +57,7 @@
       const video = videoAt(e.clientX, e.clientY);
       if (video) {
         clearTimeout(hideTimer);
+        hideTimer = 0;
         aimed = video;
         place(video);
       } else if (aimed && !hideTimer) {
@@ -99,7 +100,18 @@
       const video = Array.from(document.querySelectorAll('video'))
         .filter((v) => !v.paused && v.readyState >= 2 && v.videoWidth && area(v) > 0)
         .sort((a, b) => area(b) - area(a))[0];
-      if (!video) return 'none';
+      if (!video) {
+        // Frames from the same site share this page's click, so ask them too
+        // (frames from other sites are asked by TBV itself).
+        for (const frame of document.querySelectorAll('iframe, frame')) {
+          try {
+            const inner = frame.contentWindow && frame.contentWindow.__tbvPipNow;
+            const done = inner ? await inner() : 'none';
+            if (done !== 'none') return done;
+          } catch (_) {}
+        }
+        return 'none';
+      }
       video.disablePictureInPicture = false;
       video.removeAttribute('disablepictureinpicture');
       if (video.requestPictureInPicture) await video.requestPictureInPicture();
