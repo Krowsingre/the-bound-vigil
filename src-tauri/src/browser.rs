@@ -500,6 +500,8 @@ mod view {
             .incognito(private)
             // Buttons that wait on a blocked tracker still work.
             .initialization_script(STAND_INS)
+            // A Picture in picture button on videos, in embedded players too.
+            .initialization_script_for_all_frames(super::PIP_SCRIPT)
             .on_page_load(move |page_view, payload| {
                 #[cfg(not(windows))]
                 let _ = &page_view;
@@ -708,6 +710,21 @@ mod view {
         follow_front(app);
     }
 
+    /// Pops out the video playing in the tab (see browser_pip.js).
+    pub fn pip(app: &tauri::AppHandle, tab: &str) -> CommandResult<String> {
+        #[cfg(windows)]
+        {
+            let view = app.get_webview(&label(tab)).ok_or("That tab isn't open.")?;
+            super::windows::pip(&view, tab)
+        }
+        #[cfg(not(windows))]
+        {
+            // The page's answer can't be waited for here: what it will do is told from what's there.
+            let found = run(app, tab, "(() => { const vs = Array.from(document.querySelectorAll('video')); const out = document.pictureInPictureElement || vs.some((v) => v.webkitPresentationMode === 'picture-in-picture'); const playing = vs.some((v) => !v.paused); if (window.__tbvPipNow) window.__tbvPipNow(); return JSON.stringify(out ? 'exited' : playing ? 'popped' : 'none'); })()")?;
+            Ok(found.as_str().unwrap_or("none").to_owned())
+        }
+    }
+
     /// Runs `script` in the tab and answers what it returned (as JSON).
     pub fn run(app: &tauri::AppHandle, tab: &str, script: &str) -> CommandResult<serde_json::Value> {
         let view = app.get_webview(&label(tab)).ok_or("That tab isn't open.")?;
@@ -815,7 +832,7 @@ mod windows {
 
     use webview2_com::Microsoft::Web::WebView2::Win32::*;
     use webview2_com::{
-        take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler, CustomItemSelectedEventHandler, DownloadStartingEventHandler, FocusChangedEventHandler,
+        take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler, CustomItemSelectedEventHandler, DevToolsProtocolEventReceivedEventHandler, DownloadStartingEventHandler, FocusChangedEventHandler,
         NavigationCompletedEventHandler, NavigationStartingEventHandler, NewWindowRequestedEventHandler, WebResourceRequestedEventHandler, WindowCloseRequestedEventHandler,
     };
     use windows_core::{Interface, BOOL, HSTRING, PWSTR};
@@ -837,6 +854,76 @@ mod windows {
 
     fn main_navigation(tab: &str) -> Option<String> {
         MAIN_NAVIGATIONS.with(|m| m.borrow().get(tab).cloned())
+    }
+
+    /// The embedded pages (frames from other sites) in each tab, by their
+    /// DevTools session, so Picture in picture can reach a video in one.
+    static FRAME_SESSIONS: std::sync::Mutex<Option<HashMap<String, Vec<String>>>> = std::sync::Mutex::new(None);
+
+    /// Keeps track of each tab's frames from other sites, as they come and go.
+    unsafe fn watch_frames(core: &ICoreWebView2, tab: String) -> windows_core::Result<()> {
+        let mut token = 0i64;
+        for (event, joined) in [(windows_core::w!("Target.attachedToTarget"), true), (windows_core::w!("Target.detachedFromTarget"), false)] {
+            let tab = tab.clone();
+            core.GetDevToolsProtocolEventReceiver(event)?.add_DevToolsProtocolEventReceived(
+                &DevToolsProtocolEventReceivedEventHandler::create(Box::new(move |_, args| {
+                    let Some(args) = args else { return Ok(()) };
+                    let mut json = PWSTR::null();
+                    args.ParameterObjectAsJson(&mut json)?;
+                    let found: serde_json::Value = serde_json::from_str(&take_pwstr(json)).unwrap_or_default();
+                    let Some(session) = found["sessionId"].as_str() else { return Ok(()) };
+                    if let Ok(mut all) = FRAME_SESSIONS.lock() {
+                        let list = all.get_or_insert_with(HashMap::new).entry(tab.clone()).or_default();
+                        if joined && found["targetInfo"]["type"] == "iframe" {
+                            list.push(session.to_owned());
+                        } else if !joined {
+                            list.retain(|s| s != session);
+                        }
+                    }
+                    Ok(())
+                })),
+                &mut token,
+            )?;
+        }
+        let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
+        core.CallDevToolsProtocolMethod(windows_core::w!("Target.setAutoAttach"), windows_core::w!(r#"{"autoAttach":true,"waitForDebuggerOnStart":false,"flatten":true}"#), &done)
+    }
+
+    /// Discover's Picture in picture button: asks the page, then each frame
+    /// in it, to pop out its playing video (or bring back one popped out),
+    /// as if it had been clicked there. Answers popped, exited, refused or none.
+    pub fn pip(view: &tauri::Webview, tab: &str) -> Result<String, String> {
+        let frames = FRAME_SESSIONS.lock().ok().and_then(|all| all.as_ref()?.get(tab).cloned()).unwrap_or_default();
+        let params = serde_json::json!({ "expression": "window.__tbvPipNow ? window.__tbvPipNow() : 'none'", "userGesture": true, "awaitPromise": true, "returnByValue": true }).to_string();
+        let mut refused = false;
+        for session in std::iter::once(None).chain(frames.into_iter().map(Some)) {
+            let (send, receive) = std::sync::mpsc::channel::<String>();
+            let params = params.clone();
+            view.with_webview(move |platform| unsafe {
+                let Ok(core) = platform.controller().CoreWebView2() else { return };
+                let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move |_, answer| {
+                    let _ = send.send(answer);
+                    Ok(())
+                }));
+                let method = windows_core::w!("Runtime.evaluate");
+                let _ = match &session {
+                    None => core.CallDevToolsProtocolMethod(method, &HSTRING::from(params), &done),
+                    Some(id) => match core.cast::<ICoreWebView2_11>() {
+                        Ok(core) => core.CallDevToolsProtocolMethodForSession(&HSTRING::from(id.as_str()), method, &HSTRING::from(params), &done),
+                        Err(e) => Err(e),
+                    },
+                };
+            })
+            .map_err(|e| e.to_string())?;
+            let Ok(answer) = receive.recv_timeout(std::time::Duration::from_secs(4)) else { continue };
+            let answer: serde_json::Value = serde_json::from_str(&answer).unwrap_or_default();
+            match answer["result"]["value"].as_str() {
+                Some(done @ ("popped" | "exited")) => return Ok(done.to_owned()),
+                Some("refused") => refused = true,
+                _ => {}
+            }
+        }
+        Ok(if refused { "refused" } else { "none" }.to_owned())
     }
 
     thread_local! {
@@ -940,6 +1027,7 @@ mod windows {
             &mut token,
         );
         let _ = redirects(&core, app.clone(), tab.clone());
+        let _ = watch_frames(&core, tab.clone());
         // Whether a new window came from a click (see unless_clicked).
         let clicked_tab = tab.clone();
         core.add_NewWindowRequested(
@@ -1510,6 +1598,10 @@ mod view {
         let _ = ask(serde_json::json!({ "action": "protect", "protection": rules(&protection) }));
     }
 
+    pub fn pip(_app: &tauri::AppHandle, _tab: &str) -> CommandResult<String> {
+        Err("On iPhone, start the video full screen and use its own Picture in picture button.".into())
+    }
+
     pub fn run(_app: &tauri::AppHandle, tab: &str, script: &str) -> CommandResult<serde_json::Value> {
         let answer = ask(serde_json::json!({ "action": "run", "tab": tab, "script": script }))?;
         let text = answer.get("result").and_then(|r| r.as_str()).unwrap_or("null");
@@ -1562,6 +1654,10 @@ fn sent_behind() -> bool {
 }
 
 /// Run first on every page in Discover (see the two files).
+/// Picture in picture on any video; runs in every frame (browser_pip.js).
+#[cfg_attr(mobile, allow(dead_code))]
+const PIP_SCRIPT: &str = include_str!("browser_pip.js");
+
 const PAGE_SCRIPTS: &str = concat!(include_str!("browser_stand_ins.js"), "\n", include_str!("browser_page_tools.js"), "\n", include_str!("browser_page_report.js"));
 
 /// A link for another app that TBV may open: never the computer's own files or a page's script.
@@ -1661,6 +1757,13 @@ pub async fn browser_protect(app: tauri::AppHandle, protection: Protection) -> C
 pub async fn browser_read(app: tauri::AppHandle, tab: String, script: String) -> CommandResult<serde_json::Value> {
     let tab = tab_name(&tab)?;
     tauri::async_runtime::spawn_blocking(move || view::run(&app, &tab, &script)).await.map_err(|e| e.to_string())?
+}
+
+/// Discover's Picture in picture button: popped, exited, refused or none.
+#[tauri::command]
+pub async fn browser_pip(app: tauri::AppHandle, tab: String) -> CommandResult<String> {
+    let tab = tab_name(&tab)?;
+    tauri::async_runtime::spawn_blocking(move || view::pip(&app, &tab)).await.map_err(|e| e.to_string())?
 }
 
 /// Stops a download that's coming down; nothing of it is kept.

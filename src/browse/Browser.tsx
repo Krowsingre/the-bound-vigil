@@ -1340,6 +1340,18 @@ export function Browser({
     </button>
   );
 
+  /** Pops out the video playing in this tab, or brings it back. */
+  const popOut = async () => {
+    if (!web) return toast("Open a page with a video first.");
+    try {
+      const done = await api.browserPip(active.id);
+      if (done === "none") toast("No video is playing on this page. Start it, then try again.");
+      else if (done === "refused") toast("This video can't be popped out. Try pointing at the video and using the button on it.");
+    } catch (e) {
+      toast(clean(e));
+    }
+  };
+
   const backTravel = useTravel("back");
   const forwardTravel = useTravel("forward");
   const downloadsButton = (
@@ -1430,6 +1442,7 @@ export function Browser({
             <Menu label="Every tab" closeOnScroll={false} className="toolbar-button" trigger={<Icon name="chevronDown" size={16} />} items={tabList} searchLabel="Search open tabs" />
             <span className="browser-bar-divider" aria-hidden />
             {button("Add a catalogue", "globePlus", onOpenCatalogues)}
+            {button("Picture in picture", "pictureInPicture", () => void popOut())}
             {downloadsButton}
             <Menu label="More" className="toolbar-button" trigger={<Icon name="more" size={17} />} items={moreItems} />
           </div>

@@ -2153,6 +2153,7 @@ pub fn run() {
             browser::browser_find,
             browser::browser_protect,
             browser::browser_read,
+            browser::browser_pip,
             browser::browser_cancel_download,
             browser::browser_download_status,
             browser::browser_fetch_picture,
