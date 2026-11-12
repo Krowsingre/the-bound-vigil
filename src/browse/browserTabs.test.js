@@ -1,0 +1,145 @@
+import { closeOtherTabs, closeTab, closeTabs, pinTab, rightOf, duplicateTab, freshTabs, moveTab, openTab, readClosedTabs, readTabs, rememberClosed, reopenTab, takeClosed, updateTab, writeTabs } from "./browserTabs";
+const HOME = "https://www.gutenberg.org/";
+beforeEach(() => localStorage.clear());
+test("the first visit opens one tab at the last page, or home", () => {
+    expect(readTabs(HOME).tabs.map((t) => t.url)).toEqual([HOME]);
+    localStorage.setItem("tbv.browser.last", "https://standardebooks.org/");
+    expect(readTabs(HOME).tabs.map((t) => t.url)).toEqual(["https://standardebooks.org/"]);
+});
+test("tabs come back as they were left", () => {
+    const state = openTab(readTabs(HOME), { id: "tb", url: "https://openlibrary.org/", title: "Open Library" });
+    writeTabs(state);
+    const back = readTabs(HOME);
+    expect(back.tabs.map((t) => t.id)).toEqual([state.tabs[0].id, "tb"]);
+    expect(back.active).toBe("tb");
+});
+test("a new tab opens at the end", () => {
+    let state = { tabs: [{ id: "a", url: HOME, title: null }, { id: "c", url: HOME, title: null }], active: "a" };
+    state = openTab(state, { id: "b", url: HOME, title: null });
+    expect(state.tabs.map((t) => t.id)).toEqual(["a", "c", "b"]);
+});
+test("background tabs append without disturbing pinned tabs or focus", () => {
+    const state = {
+        tabs: [
+            { id: "a", url: HOME, title: null, pinned: true },
+            { id: "b", url: HOME, title: null, pinned: true },
+            { id: "c", url: HOME, title: null },
+        ],
+        active: "a",
+    };
+    const opened = openTab(state, { id: "d", url: HOME, title: null }, true);
+    expect(opened.tabs.map((tab) => tab.id)).toEqual(["a", "b", "c", "d"]);
+    expect(opened.active).toBe("a");
+    expect(moveTab(opened, "d", "b")).toBe(opened);
+});
+test("contextual tabs open beside their source without splitting pinned tabs", () => {
+    const state = {
+        tabs: ["pin-a", "pin-b", "first", "last"].map((id) => ({ id, url: HOME, title: null, pinned: id.startsWith("pin") })),
+        active: "last",
+    };
+    const tab = { id: "new", url: HOME, title: null };
+    const opened = openTab(state, tab, false, "first");
+    expect(opened.tabs.map((entry) => entry.id)).toEqual(["pin-a", "pin-b", "first", "new", "last"]);
+    expect(opened.active).toBe("new");
+    for (const pin of ["pin-a", "pin-b"]) {
+        const linked = openTab(state, tab, true, pin);
+        expect(linked.tabs.map((entry) => entry.id)).toEqual(["pin-a", "pin-b", "new", "first", "last"]);
+        expect(linked.active).toBe("last");
+    }
+    expect(openTab(state, tab, false, "closed").tabs.at(-1)?.id).toBe("new");
+});
+test("closing the tab in front brings its neighbour forward, and the last leaves a fresh one", () => {
+    let state = { tabs: [{ id: "a", url: HOME, title: null }, { id: "b", url: HOME, title: null }], active: "b" };
+    state = closeTab(state, "b", HOME);
+    expect(state).toEqual({ tabs: [{ id: "a", url: HOME, title: null }], active: "a" });
+    state = closeTab(state, "a", HOME);
+    expect(state.tabs).toHaveLength(1);
+    expect(state.tabs[0].id).not.toBe("a");
+    expect(state.tabs[0].url).toBe(HOME);
+});
+test("a page change updates only its tab", () => {
+    const state = { tabs: [{ id: "a", url: HOME, title: null }], active: "a" };
+    expect(updateTab(state, "a", { title: "Gutenberg" }).tabs[0].title).toBe("Gutenberg");
+    expect(updateTab(state, "zz", { title: "x" })).toBe(state);
+});
+describe("starting afresh", () => {
+    it("is one tab at the home page", () => {
+        const fresh = freshTabs("https://example.org/");
+        expect(fresh.tabs).toEqual([{ id: fresh.active, url: "https://example.org/", title: null }]);
+    });
+});
+describe("moving tabs", () => {
+    const three = {
+        tabs: ["a", "b", "c"].map((id) => ({ id, url: `https://${id}.org/`, title: null })),
+        active: "b",
+    };
+    const order = (s) => s.tabs.map((t) => t.id).join("");
+    it("takes the place of the tab it's dropped on, either way", () => {
+        expect(order(moveTab(three, "a", "c"))).toBe("bca");
+        expect(order(moveTab(three, "c", "a"))).toBe("cab");
+        expect(order(moveTab(three, "a", "b"))).toBe("bac");
+        expect(moveTab(three, "a", "c").active).toBe("b");
+        expect(moveTab(three, "a", "a")).toBe(three);
+    });
+});
+test("a duplicate opens at the end, and close others keeps one", () => {
+    const state = { tabs: [{ id: "a", url: "https://a.org/", title: "A" }, { id: "b", url: "https://b.org/", title: "B" }], active: "b" };
+    const copied = duplicateTab(state, "a");
+    expect(copied.tabs.map((t) => t.url)).toEqual(["https://a.org/", "https://b.org/", "https://a.org/"]);
+    expect(copied.active).toBe(copied.tabs[2].id);
+    expect(closeOtherTabs(copied, "b")).toEqual({ tabs: [state.tabs[1]], active: "b" });
+});
+test("closed tabs reopen where they were, newest first, start pages left out", () => {
+    const state = {
+        tabs: [
+            { id: "a", url: "https://a.org/", title: "A" },
+            { id: "s", url: "tbv:start", title: null },
+            { id: "c", url: "https://c.org/", title: "C" },
+        ],
+        active: "a",
+    };
+    rememberClosed(state, ["a"], 1);
+    rememberClosed(state, ["s", "c"], 2);
+    expect(readClosedTabs().map((t) => t.url)).toEqual(["https://c.org/", "https://a.org/"]);
+    const back = takeClosed();
+    expect(back.url).toBe("https://c.org/");
+    const reopened = reopenTab({ tabs: [state.tabs[0]], active: "a" }, back);
+    expect(reopened.tabs.map((t) => t.url)).toEqual(["https://a.org/", "https://c.org/"]);
+    expect(reopened.active).toBe(reopened.tabs[1].id);
+    expect(readClosedTabs()).toHaveLength(1);
+});
+test("private tabs are never kept or remembered", () => {
+    const state = {
+        tabs: [
+            { id: "a", url: "https://a.org/", title: "A" },
+            { id: "p", url: "https://secret.org/", title: "Secret", private: true },
+        ],
+        active: "p",
+    };
+    writeTabs(state);
+    const back = readTabs(HOME);
+    expect(back.tabs.map((t) => t.id)).toEqual(["a"]);
+    expect(back.active).toBe("a");
+    rememberClosed(state, ["p"]);
+    expect(readClosedTabs()).toEqual([]);
+    expect(duplicateTab(state, "p").tabs[2].private).toBe(true);
+});
+test("pinned tabs sit first, are kept, and are left open by the bulk closes", () => {
+    const s = {
+        tabs: [
+            { id: "a", url: "https://a.example/", title: "A" },
+            { id: "b", url: "https://b.example/", title: "B" },
+            { id: "c", url: "https://c.example/", title: "C" },
+        ],
+        active: "a",
+    };
+    const pinned = pinTab(s, "c", true);
+    expect(pinned.tabs.map((t) => t.id)).toEqual(["c", "a", "b"]);
+    expect(closeOtherTabs(pinned, "b").tabs.map((t) => t.id)).toEqual(["c", "b"]);
+    expect(rightOf(pinned, "c")).toEqual(["a", "b"]);
+    expect(closeTabs(pinned, rightOf(pinned, "a"), "a").tabs.map((t) => t.id)).toEqual(["c", "a"]);
+    writeTabs(pinned);
+    expect(readTabs("https://home.example/").tabs[0]).toEqual({ id: "c", url: "https://c.example/", title: "C", pinned: true });
+    expect(pinTab(pinned, "c", false).tabs.map((t) => t.id)).toEqual(["c", "a", "b"]);
+    expect(pinTab(pinned, "c", false).tabs[0].pinned).toBeUndefined();
+});

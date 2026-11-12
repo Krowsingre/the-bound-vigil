@@ -1341,6 +1341,16 @@ export function Browser({
   );
 
   /** Pops out the video playing in this tab, or brings it back. */
+  /** Closes every tab for a session's (or a fresh one at the home page). */
+  const replaceAllTabs = (next: TabsState) => {
+    forget(tabsRef.current.tabs.map((tab) => tab.id));
+    setPair(null);
+    setArticle(null);
+    onSearchChange("");
+    tabsRef.current = next;
+    setTabs(next);
+    setPanel(null);
+  };
   const popOut = async () => {
     if (!web) return toast("Open a page with a video first.");
     try {
@@ -1651,16 +1661,8 @@ export function Browser({
         </section>
       </>}
       </div>
-      {panel === "sessions" && <SessionsPanel current={tabs} onClose={() => setPanel(null)} onLoad={(session) => {
-        const next = restoreSession(session);
-        forget(tabsRef.current.tabs.map((tab) => tab.id));
-        setPair(null);
-        setArticle(null);
-        onSearchChange("");
-        tabsRef.current = next;
-        setTabs(next);
-        setPanel(null);
-      }} />}
+      {panel === "sessions" && <SessionsPanel current={tabs} onClose={() => setPanel(null)} onLoad={(session) => replaceAllTabs(restoreSession(session))}
+        onNew={() => replaceAllTabs(freshTabs(homeOf()))} />}
       {(panel === "bookmarks" || panel === "bookmark-page") && (
         <BookmarksPanel
           key={panel}

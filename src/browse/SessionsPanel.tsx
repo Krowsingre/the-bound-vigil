@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { api } from "../api";
+import type { BrowserSession } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { newTabId, type BrowserTab, type TabsState } from "./browserTabs";
 import { Panel } from "./StartPanels";
 
 type SessionTab = Pick<BrowserTab, "url" | "title" | "pinned">;
-export interface SavedSession { id: string; name: string; tabs: SessionTab[]; active: number }
+export type SavedSession = BrowserSession;
 
+/** Where sessions were kept before the library kept (and synced) them. */
 const key = "tbv.browser.sessions";
 function validUrl(url: unknown): url is string {
   if (url === "tbv:start") return true;
@@ -32,7 +35,8 @@ export function restoreSession(session: SavedSession): TabsState {
   return { tabs: [...tabs.filter((tab) => tab.pinned), ...tabs.filter((tab) => !tab.pinned)], active: tabs[session.active]?.id ?? tabs[0].id };
 }
 
-function readSessions(): SavedSession[] {
+/** Sessions kept on this device before 0.92, to move into the library once. */
+function readOldSessions(): SavedSession[] {
   try {
     const saved = JSON.parse(localStorage.getItem(key) ?? "[]") as SavedSession[];
     return saved.filter((session) => session && typeof session.id === "string" && typeof session.name === "string" &&
@@ -42,29 +46,75 @@ function readSessions(): SavedSession[] {
   }
 }
 
-export function SessionsPanel({ current, onLoad, onClose }: { current: TabsState; onLoad: (session: SavedSession) => void; onClose: () => void }) {
-  const [sessions, setSessions] = useState(readSessions);
+let moving: Promise<void> | null = null;
+/** Moves the sessions kept here before into the library, so they sync too. */
+function moveOldSessions(): Promise<void> {
+  moving ??= (async () => {
+    const old = readOldSessions();
+    for (const session of old) await api.putBrowserSession(session);
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Moved again next time; the same sessions just update.
+    }
+  })().catch(() => {
+    moving = null;
+  });
+  return moving;
+}
+
+/** This device's sessions first, then each other device's, by the device they were saved on. */
+function byDevice(sessions: SavedSession[]): { key: string; label: string; sessions: SavedSession[] }[] {
+  const groups = new Map<string, { key: string; label: string; sessions: SavedSession[] }>();
+  groups.set("here", { key: "here", label: "This device", sessions: [] });
+  for (const session of sessions) {
+    const id = session.device ? session.deviceId ?? session.device : "here";
+    const group = groups.get(id) ?? { key: id, label: session.device ?? "Another device", sessions: [] };
+    group.sessions.push(session);
+    groups.set(id, group);
+  }
+  return [...groups.values()].filter((group) => group.sessions.length);
+}
+
+const tabCount = (n: number) => `${n} ${n === 1 ? "tab" : "tabs"}`;
+
+type Pending =
+  | { action: "load" | "delete" | "overwrite"; session: SavedSession }
+  | { action: "same-name"; session: SavedSession; saving: SavedSession }
+  | { action: "new" };
+
+export function SessionsPanel({ current, onLoad, onNew, onClose }: {
+  current: TabsState;
+  onLoad: (session: SavedSession) => void;
+  /** Closes every tab and opens one at the home page. */
+  onNew: () => void;
+  onClose: () => void;
+}) {
+  const [sessions, setSessions] = useState<SavedSession[]>([]);
   const [draft, setDraft] = useState<SavedSession | null>(null);
-  const [pending, setPending] = useState<{ session: SavedSession; action: "load" | "delete" } | null>(null);
+  /** Starting a new session once the draft is saved. */
+  const [thenNew, setThenNew] = useState(false);
+  const [pending, setPending] = useState<Pending | null>(null);
   const toast = useToast();
   const snapshot = snapshotSession(current);
-  useEffect(() => {
-    const refresh = (event: StorageEvent) => {
-      if (event.key === key) setSessions(readSessions());
-    };
-    window.addEventListener("storage", refresh);
-    return () => window.removeEventListener("storage", refresh);
+  const reload = useCallback(() => {
+    void moveOldSessions().then(() => api.browserSessions()).then(setSessions, () => undefined);
   }, []);
+  // Sessions saved on other devices arrive with sync.
+  useEffect(() => {
+    reload();
+    return api.onSync({ libraryChanged: reload });
+  }, [reload]);
 
-  const store = (update: (saved: SavedSession[]) => SavedSession[]) => {
+  const store = async (change: () => Promise<void>, after?: () => void) => {
     try {
-      const next = update(readSessions());
-      localStorage.setItem(key, JSON.stringify(next));
-      setSessions(next);
+      await change();
+      setSessions(await api.browserSessions());
       setDraft(null);
       setPending(null);
-    } catch {
-      toast("Could not save Discover sessions on this device.");
+      after?.();
+    } catch (e) {
+      toast(`Could not save the session: ${String(e)}`);
     }
   };
   const changeTab = (index: number, change: Partial<SessionTab>) => {
@@ -84,10 +134,51 @@ export function SessionsPanel({ current, onLoad, onClose }: { current: TabsState
     const active = draft.active > index ? draft.active - 1 : Math.min(draft.active, tabs.length - 1);
     setDraft({ ...draft, tabs, active });
   };
+  const confirmation = (p: Pending): { text: string; buttons: { label: string; primary?: boolean; act: () => void }[] } => {
+    switch (p.action) {
+      case "load":
+        return { text: `Open “${p.session.name}”? Your open tabs will close.`, buttons: [{ label: "Open", primary: true, act: () => onLoad(p.session) }] };
+      case "delete":
+        return { text: `Delete “${p.session.name}”?`, buttons: [{ label: "Delete", primary: true, act: () => void store(() => api.removeBrowserSession(p.session.id)) }] };
+      case "overwrite":
+        return {
+          text: `Replace “${p.session.name}” with your ${tabCount(snapshot.tabs.length)} open now?`,
+          buttons: [{ label: "Replace", primary: true, act: () => void store(() => api.putBrowserSession({ ...p.session, ...snapshot }), () => toast(`Saved over “${p.session.name}”.`)) }],
+        };
+      case "same-name":
+        return {
+          text: `“${p.session.name}” already exists. Replace it?`,
+          buttons: [{ label: "Replace", primary: true, act: () => void store(() => api.putBrowserSession({ ...p.saving, id: p.session.id }), thenNew ? onNew : undefined) }],
+        };
+      case "new":
+        return snapshot.tabs.length
+          ? {
+            text: "Save your open tabs first?",
+            buttons: [
+              { label: "Save", primary: true, act: () => (setPending(null), setThenNew(true), setDraft({ id: newTabId(), name: "", ...snapshot })) },
+              { label: "Don't save", act: onNew },
+            ],
+          }
+          : { text: "Close all tabs and start a new session?", buttons: [{ label: "New session", primary: true, act: onNew }] };
+    }
+  };
 
   return (
     <Panel title="Sessions" onClose={onClose}>
-      {draft ? (
+      {pending ? (() => {
+        const ask = confirmation(pending);
+        return (
+          <div className="bookmark-editor">
+            <p>{ask.text}</p>
+            <div className="bookmark-editor-actions">
+              {ask.buttons.map((b) => (
+                <button key={b.label} type="button" className={`btn btn-small ${b.primary ? "btn-primary" : "btn-quiet"}`} onClick={b.act}>{b.label}</button>
+              ))}
+              <button type="button" className="btn btn-quiet btn-small" onClick={() => setPending(null)}>Cancel</button>
+            </div>
+          </div>
+        );
+      })() : draft ? (
         <form className="bookmark-editor" onSubmit={(event) => {
           event.preventDefault();
           const updated = { ...draft, name: draft.name.trim(), tabs: draft.tabs.map((tab) => ({ ...tab, url: tab.url.trim() })) };
@@ -95,7 +186,10 @@ export function SessionsPanel({ current, onLoad, onClose }: { current: TabsState
             toast("Enter a session name and use web addresses or tbv:start for its tabs.");
             return;
           }
-          store((saved) => saved.some((session) => session.id === draft.id) ? saved.map((session) => session.id === draft.id ? updated : session) : [...saved, updated]);
+          // Saving under a name that's taken saves over that session, once agreed.
+          const same = sessions.find((session) => session.id !== draft.id && session.name.trim().toLocaleLowerCase() === updated.name.toLocaleLowerCase());
+          if (same) setPending({ action: "same-name", session: same, saving: updated });
+          else void store(() => api.putBrowserSession(updated), thenNew ? onNew : undefined);
         }}>
           <label>Session name <input autoFocus required maxLength={120} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
           <ol className="browser-session-tabs">
@@ -114,32 +208,36 @@ export function SessionsPanel({ current, onLoad, onClose }: { current: TabsState
           <div className="bookmark-editor-actions">
             <button type="button" className="btn btn-quiet btn-small" onClick={() => setDraft({ ...draft, tabs: [...draft.tabs, { url: "", title: null }] })}>Add tab</button>
             <button type="submit" className="btn btn-primary btn-small">Save session</button>
-            <button type="button" className="btn btn-quiet btn-small" onClick={() => setDraft(null)}>Cancel</button>
+            <button type="button" className="btn btn-quiet btn-small" onClick={() => (setDraft(null), setThenNew(false))}>Cancel</button>
           </div>
         </form>
-      ) : pending ? (
-        <div className="bookmark-editor">
-          <p>{pending.action === "load" ? `Replace the open tabs in this pane with “${pending.session.name}”?` : `Delete “${pending.session.name}”?`}</p>
-          <div className="bookmark-editor-actions">
-            <button type="button" className="btn btn-primary btn-small" onClick={() => pending.action === "load" ? onLoad(pending.session) : store((saved) => saved.filter((session) => session.id !== pending.session.id))}>{pending.action === "load" ? "Load session" : "Delete session"}</button>
-            <button type="button" className="btn btn-quiet btn-small" onClick={() => setPending(null)}>Cancel</button>
-          </div>
-        </div>
       ) : (
         <>
-          <p className="muted">Sessions save regular tab addresses on this device. Addresses may contain site-specific tokens.</p>
-          <button type="button" className="btn btn-quiet btn-small" disabled={!snapshot.tabs.length} onClick={() => setDraft({ id: newTabId(), name: "", ...snapshot })}>Save open tabs</button>
-          <ul className="browser-download-list browser-history-list">
-            {sessions.map((session) => (
-              <li key={session.id}>
-                <button type="button" className="browser-history-open" onClick={() => setPending({ session, action: "load" })}>
-                  <span className="browser-download-name"><b>{session.name}</b><span className="muted">{session.tabs.length} {session.tabs.length === 1 ? "tab" : "tabs"}</span></span>
-                </button>
-                <button type="button" className="icon-btn" aria-label={`Edit ${session.name}`} onClick={() => setDraft(session)}><Icon name="edit" size={15} /></button>
-                <button type="button" className="icon-btn" aria-label={`Delete ${session.name}`} onClick={() => setPending({ session, action: "delete" })}><Icon name="close" size={15} /></button>
-              </li>
+          <p className="muted">Sessions sync to all your devices. Addresses may contain site-specific tokens.</p>
+          <div className="bookmark-editor-actions">
+            <button type="button" className="btn btn-quiet btn-small" disabled={!snapshot.tabs.length} onClick={() => (setThenNew(false), setDraft({ id: newTabId(), name: "", ...snapshot }))}>Save open tabs</button>
+            <button type="button" className="btn btn-quiet btn-small" onClick={() => setPending({ action: "new" })}>New session</button>
+          </div>
+          <div className="browser-history-list">
+            {!sessions.length && <p className="muted">No sessions saved yet.</p>}
+            {byDevice(sessions).map((group) => (
+              <section key={group.key}>
+                <h3>{group.label}</h3>
+                <ul className="browser-download-list">
+                  {group.sessions.map((session) => (
+                    <li key={session.id}>
+                      <button type="button" className="browser-history-open" onClick={() => setPending({ session, action: "load" })}>
+                        <span className="browser-download-name"><b>{session.name}</b><span className="muted">{tabCount(session.tabs.length)}</span></span>
+                      </button>
+                      <button type="button" className="btn btn-quiet btn-small" disabled={!snapshot.tabs.length} title="Replace this session with the tabs open now" onClick={() => setPending({ session, action: "overwrite" })}>Save over</button>
+                      <button type="button" className="icon-btn" aria-label={`Edit ${session.name}`} onClick={() => (setThenNew(false), setDraft(session))}><Icon name="edit" size={15} /></button>
+                      <button type="button" className="icon-btn" aria-label={`Delete ${session.name}`} onClick={() => setPending({ session, action: "delete" })}><Icon name="close" size={15} /></button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             ))}
-          </ul>
+          </div>
         </>
       )}
     </Panel>

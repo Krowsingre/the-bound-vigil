@@ -2,7 +2,7 @@
 // browser that only works in the app.
 
 import type { Api } from "../api";
-import type { Bookmark, BrowserEvent, CustomTheme, QuickLink, SanctumLink, WordDefinition, WordSense } from "../api/types";
+import type { Bookmark, BrowserSession, BrowserEvent, CustomTheme, QuickLink, SanctumLink, WordDefinition, WordSense } from "../api/types";
 
 const browserListeners = new Set<(event: BrowserEvent) => void>();
 
@@ -83,9 +83,23 @@ type Calls = Pick<
   | "trimBrowserHistory"
   | "setBrowserOpenTabs"
   | "browserOtherTabs"
+  | "browserSessions"
+  | "putBrowserSession"
+  | "removeBrowserSession"
 >;
 
 const APP_ONLY = "The browser works in the TBV app.";
+
+/** Sample sessions for design previews: one saved here, one on a phone. */
+let previewSessions: BrowserSession[] = [
+  { id: "sReading", name: "Reading list", active: 0, deviceId: "here", tabs: [
+    { url: "https://www.gutenberg.org/ebooks/84", title: "Frankenstein" },
+    { url: "https://standardebooks.org/", title: "Standard Ebooks" },
+  ] },
+  { id: "sPhone", name: "Gothic research", active: 0, deviceId: "phone", device: "Phone", tabs: [
+    { url: "https://en.wikipedia.org/wiki/Gothic_fiction", title: "Gothic fiction - Wikipedia" },
+  ] },
+];
 
 const lookSenses: WordSense[] = [
   { part: "noun", definition: "the feelings expressed on a person's face", example: "a sad expression" },
@@ -280,5 +294,15 @@ export function browseStub(): Calls {
         { url: "https://en.wikipedia.org/wiki/Gothic_fiction", title: "Gothic fiction - Wikipedia" },
       ] },
     ],
+    browserSessions: async () => previewSessions,
+    putBrowserSession: async (session) => {
+      const at = previewSessions.findIndex((s) => s.id === session.id);
+      const kept = { ...session, deviceId: previewSessions[at]?.deviceId ?? "here", device: previewSessions[at]?.device };
+      if (at >= 0) previewSessions[at] = kept;
+      else previewSessions.push(kept);
+    },
+    removeBrowserSession: async (id) => {
+      previewSessions = previewSessions.filter((s) => s.id !== id);
+    },
   };
 }

@@ -366,6 +366,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "browser_session",
+        table: "browser_sessions",
+        keys: &["id"],
+        cols: &["name", "tabs", "active", "device_id", "created_at", "updated_at", "deleted_at"],
+        category: Category::Library,
+        creates: true,
+    },
+    Kind {
         name: "quick_link",
         table: "quick_links",
         keys: &["id"],
@@ -520,7 +528,7 @@ impl Default for SyncOptions {
             also_book_files: true,
             also_audio_files: false,
             phone_chosen_only: false,
-            browser_history: false,
+            browser_history: true,
             split_big_files: false,
             phone_keep_days: 14,
         }
@@ -1566,6 +1574,7 @@ impl Library {
             "bookmark" => named("Discover bookmark", text("title")),
             "browser_history" => "Discover history".into(),
             "browser_device_tabs" => "Discover tabs open on another device".into(),
+            "browser_session" => named(if gone { "Discover session removed" } else { "Discover session" }, text("name")),
             "quick_link" => named("Quick link", text("title")),
             "sanctum_link" => named("Sanctum link", text("title")),
             "custom_theme" => named(if gone { "Theme removed" } else { "Theme" }, text("name")),
@@ -1819,6 +1828,7 @@ impl Library {
             "custom_theme" => format!("The theme {}", field("name").unwrap_or_default()),
             "browser_history" => format!("A page in Discover's history: {}", field("title").filter(|t| !t.is_empty()).or_else(|| field("url")).unwrap_or_default()),
             "browser_device_tabs" => "The Discover tabs open on a device".into(),
+            "browser_session" => format!("The Discover session {}", field("name").unwrap_or_default()),
             "series" => format!("The missing books of {}", field("name").unwrap_or_default()),
             "read_along" => format!("Read-along timing{}", book(key.first())?),
             "read_along_piece" => format!("A piece of read-along timing{}", book(key.first())?),
@@ -2360,6 +2370,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "sanctum_link" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Sanctum link removed".into() } else { short(text("target")) },
         "custom_theme" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Theme removed".into() } else { short(text("name")) },
         "browser_history" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Taken off Discover's history".into() } else { short(text("url")) },
+        "browser_session" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Session removed".into() } else { short(text("name")) },
         "browser_device_tabs" => {
             let open = serde_json::from_str::<Vec<Value>>(&text("tabs")).map(|t| t.len()).unwrap_or(0);
             format!("{open} {} open", if open == 1 { "tab" } else { "tabs" })

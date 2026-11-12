@@ -1651,6 +1651,26 @@ export interface OpenTab {
   title: string | null;
 }
 
+/** A tab in a saved Discover session. */
+export interface SessionTab {
+  url: string;
+  title: string | null;
+  pinned?: boolean;
+}
+
+/** A Discover session: tabs saved under a name, synced to every device. */
+export interface BrowserSession {
+  id: string;
+  name: string;
+  tabs: SessionTab[];
+  active: number;
+  /** The device it was first saved on, set by the library. */
+  deviceId?: string;
+  /** That device's name, when it isn't this one. */
+  device?: string;
+  updatedAt?: string;
+}
+
 /** The Discover tabs open on another device. */
 export interface DeviceTabs {
   deviceId: string;
