@@ -21,6 +21,7 @@ mod home;
 mod imports;
 mod license;
 mod lining;
+mod media;
 mod look_up;
 mod localsend;
 mod moving;
@@ -2157,6 +2158,13 @@ pub fn run() {
             browser::browser_read,
             browser::browser_pip,
             browser::browser_video,
+            media::media_servers,
+            media::media_sign_in,
+            media::media_plex_start,
+            media::media_plex_finish,
+            media::media_remove,
+            media::media_list,
+            media::media_play,
             browser::browser_keep_playing,
             browser::browser_cancel_download,
             browser::browser_download_status,

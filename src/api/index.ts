@@ -6,6 +6,9 @@ import { homeAudioUrl, homeCore, homeEvents } from "./homeCore";
 import type { Found } from "../lib/onlineDetails";
 import type {
   PageVideo,
+  MediaItem,
+  MediaKind,
+  MediaServerView,
   HistoryEntry,
   OpenTab,
   BrowserSession,
@@ -581,6 +584,15 @@ export interface Api {
   browserPip(tab: string): Promise<"popped" | "exited" | "refused" | "none">;
   /** Video reader view: the video on the tab's page (paused there), or null. */
   browserVideo(tab: string): Promise<PageVideo | null>;
+  /** Discover › Media servers (kept on this device only). */
+  mediaServers(): Promise<MediaServerView[]>;
+  mediaSignIn(kind: MediaKind, url: string, username: string, password: string, name?: string): Promise<MediaServerView[]>;
+  mediaPlexStart(): Promise<{ id: string; url: string }>;
+  /** Null until the sign-in is approved on plex.tv. */
+  mediaPlexFinish(pin: string): Promise<MediaServerView[] | null>;
+  mediaRemove(id: string): Promise<void>;
+  mediaList(id: string, folder?: string): Promise<MediaItem[]>;
+  mediaPlay(id: string, item: string, title: string, audio: boolean): Promise<PageVideo>;
   /** What TBV saw a tab's page do lately, for "Copy page report". */
   browserReport(tab: string): Promise<string[]>;
   browserCancelDownload(id: string): Promise<void>;
@@ -1309,6 +1321,13 @@ function appApi(): Api {
     browserKeepPlaying: async (on) => (await core).invoke("browser_keep_playing", { on }),
     browserPip: async (tab) => (await core).invoke<"popped" | "exited" | "refused" | "none">("browser_pip", { tab }),
     browserVideo: async (tab) => (await core).invoke<PageVideo | null>("browser_video", { tab }),
+    mediaServers: async () => (await core).invoke<MediaServerView[]>("media_servers"),
+    mediaSignIn: async (kind, url, username, password, name) => (await core).invoke<MediaServerView[]>("media_sign_in", { kind, url, username, password, name: name ?? null }),
+    mediaPlexStart: async () => (await core).invoke<{ id: string; url: string }>("media_plex_start"),
+    mediaPlexFinish: async (pin) => (await core).invoke<MediaServerView[] | null>("media_plex_finish", { pin }),
+    mediaRemove: async (id) => (await core).invoke("media_remove", { id }),
+    mediaList: async (id, folder) => (await core).invoke<MediaItem[]>("media_list", { id, folder: folder ?? null }),
+    mediaPlay: async (id, item, title, audio) => (await core).invoke<PageVideo>("media_play", { id, item, title, audio }),
     browserReport: async (tab) => (await core).invoke<string[]>("browser_report", { tab }),
     browserDownloadStatus: async (ids) => (await core).invoke("browser_download_status", { ids }),
     browserCancelDownload: async (id) => (await core).invoke("browser_cancel_download", { id }),

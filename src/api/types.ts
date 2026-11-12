@@ -1632,6 +1632,25 @@ export interface PageVideo {
   time: number;
 }
 
+/** Discover › Media servers. */
+export type MediaKind = "plex" | "jellyfin" | "emby" | "webdav";
+
+export interface MediaServerView {
+  id: string;
+  name: string;
+  kind: MediaKind;
+  url: string;
+  username: string;
+}
+
+export interface MediaItem {
+  id: string;
+  title: string;
+  kind: "folder" | "video" | "audio";
+  detail?: string;
+  image?: string;
+}
+
 export interface ReaderArticle {
   title: string;
   byline: string | null;

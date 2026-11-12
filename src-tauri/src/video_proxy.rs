@@ -74,7 +74,16 @@ fn answer(request: &Request<Vec<u8>>) -> Result<Response<Vec<u8>>, Failure> {
     if key.as_deref() != Some(KEY.as_str()) {
         return Err(refused());
     }
-    let target = target.and_then(|t| Url::parse(&t).ok()).filter(|u| matches!(u.scheme(), "http" | "https")).ok_or_else(refused)?;
+    let mut target = target.and_then(|t| Url::parse(&t).ok()).filter(|u| matches!(u.scheme(), "http" | "https")).ok_or_else(refused)?;
+    // A media server's login (WebDAV) travels in the address; the server gets it as a header.
+    let login = (!target.username().is_empty()).then(|| {
+        use base64::Engine;
+        let decode = |t: &str| url_decode(t);
+        let pair = format!("{}:{}", decode(target.username()), decode(target.password().unwrap_or_default()));
+        format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(pair))
+    });
+    let _ = target.set_username("");
+    let _ = target.set_password(None);
     if !page.starts_with("http://") && !page.starts_with("https://") {
         page.clear();
     }
@@ -89,6 +98,9 @@ fn answer(request: &Request<Vec<u8>>) -> Result<Response<Vec<u8>>, Failure> {
         .build()
         .into();
     let mut ask = agent.get(target.as_str()).header("Accept", "*/*");
+    if let Some(login) = &login {
+        ask = ask.header("Authorization", login);
+    }
     if !page.is_empty() {
         ask = ask.header("Referer", &page);
         if let Ok(from) = Url::parse(&page) {
@@ -218,6 +230,25 @@ fn rewrite(text: &str, from: &Url, page: &str) -> String {
     out
 }
 
+/// %XX back to bytes (a "+" stays a "+").
+fn url_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Some(n) = std::str::from_utf8(&bytes[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                out.push(n);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 fn encode(text: &str) -> String {
     let mut out = String::with_capacity(text.len() * 3);
     for b in text.bytes() {
@@ -253,6 +284,12 @@ mod tests {
         assert_eq!(lines[2], "#EXTINF:4,");
         assert_eq!(lines[3], address("https://cdn.example/a/seg1.ts", "https://site.example/watch"));
         assert_eq!(lines[5], address("https://other.example/seg2.ts", "https://site.example/watch"));
+    }
+
+    #[test]
+    fn logins_come_back_whole() {
+        assert_eq!(url_decode("p%20w+x%2B"), "p w+x+");
+        assert_eq!(url_decode("bad%zz"), "bad%zz");
     }
 
     #[test]
