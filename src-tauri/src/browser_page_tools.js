@@ -30,46 +30,84 @@
     return true;
   };
   window.__tbvRemoveLast = () => take(last);
-  // Picking: a box shows what a click takes away; Escape or a right-click ends it.
+  // A right-click inside a page within the page (a frame: often an invisible
+  // layer laid over the site to catch clicks) never reaches this page, so
+  // TBV says where it was. The frame itself is what goes. `zoom` is the
+  // tab's zoom, which turns the window's measure into the page's.
+  window.__tbvRemoveAt = (x, y, zoom) => {
+    const frame = /^(IFRAME|FRAME|EMBED|OBJECT)$/;
+    const spots = [[x / (zoom || 1), y / (zoom || 1)], [x / devicePixelRatio, y / devicePixelRatio]];
+    let found = null;
+    for (const [px, py] of spots) {
+      const el = document.elementFromPoint(px, py);
+      if (el && frame.test(el.tagName)) { found = el; break; }
+      if (!found) found = el;
+    }
+    note('remove from page: the right-click was inside a page within the page');
+    return take(found);
+  };
+  // Picking: a box shows what a click takes away; Escape or a right-click
+  // ends it. A clear sheet over the page takes the clicks, so frames laid
+  // over the site (which would swallow them) can be picked too.
   let picking = null;
+  // While picking, a press on the sheet is TBV's alone: these listeners are
+  // set before the page's own scripts run, so they come first, and the page's
+  // click catchers (pop-unders) never hear it.
+  let onSheet = null;
+  for (const kind of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'auxclick', 'dblclick', 'contextmenu', 'touchstart', 'touchend']) {
+    addEventListener(kind, (e) => {
+      if (!onSheet || e.target !== onSheet.sheet) return;
+      e.stopImmediatePropagation();
+      if (kind === 'contextmenu') return onSheet.stop(e);
+      if (kind !== 'touchstart' && kind !== 'pointerdown') e.preventDefault();
+      if (kind === 'click') onSheet.click(e);
+    }, { capture: true, passive: false });
+  }
   window.__tbvPickToRemove = (on) => {
     if (!on && picking) return picking(), false;
     if (!on || picking) return !!picking;
     note('remove from page: picking started');
+    const top = 'position:fixed;z-index:2147483647;';
+    const sheet = document.createElement('div');
+    sheet.style.cssText = top + 'inset:0;cursor:crosshair;background:transparent';
     const outline = document.createElement('div');
-    outline.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;border:2px solid #d26a5c;background:rgb(210 106 92 / 0.15);border-radius:3px;display:none';
+    outline.style.cssText = top + 'pointer-events:none;border:2px solid #d26a5c;background:rgb(210 106 92 / 0.15);border-radius:3px;display:none';
     const hint = document.createElement('div');
     hint.textContent = matchMedia('(pointer: coarse)').matches ? 'Tap something to remove it.' : 'Click something to remove it. Press Esc when done.';
-    hint.style.cssText = 'position:fixed;z-index:2147483647;left:50%;top:12px;transform:translateX(-50%);padding:8px 14px;border-radius:18px;background:#202020;color:#fff;font:13px system-ui,sans-serif;pointer-events:none';
-    document.documentElement.append(outline, hint);
-    let under = null;
-    const move = (e) => {
-      under = box(document.elementFromPoint(e.clientX, e.clientY));
-      if (!under) return void (outline.style.display = 'none');
-      const r = under.getBoundingClientRect();
+    hint.style.cssText = top + 'left:50%;top:12px;transform:translateX(-50%);padding:8px 14px;border-radius:18px;background:#202020;color:#fff;font:13px system-ui,sans-serif;pointer-events:none';
+    document.documentElement.append(sheet, outline, hint);
+    // What's under the sheet at a spot.
+    const under = (x, y) => {
+      sheet.style.pointerEvents = 'none';
+      const el = document.elementFromPoint(x, y);
+      sheet.style.pointerEvents = '';
+      return box(el);
+    };
+    let aimed = null;
+    const show = (el) => {
+      if (!el) return void (outline.style.display = 'none');
+      const r = el.getBoundingClientRect();
       Object.assign(outline.style, { display: 'block', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
     };
+    const move = (e) => show((aimed = under(e.clientX, e.clientY)));
     const click = (e) => {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      under = box(document.elementFromPoint(e.clientX, e.clientY)) || under;
-      if (under) take(under);
-      outline.style.display = 'none';
+      const el = under(e.clientX, e.clientY) || aimed;
+      if (el) take(el);
+      else note('remove from page: nothing to remove at that spot');
+      show((aimed = under(e.clientX, e.clientY)));
     };
     const stop = (e) => {
       if (e.type === 'keydown' && e.key !== 'Escape') return;
       e.preventDefault();
       picking();
     };
-    addEventListener('mousemove', move, true);
-    addEventListener('click', click, true);
+    sheet.addEventListener('mousemove', move);
+    onSheet = { sheet, click, stop };
     addEventListener('keydown', stop, true);
-    addEventListener('contextmenu', stop, true);
     picking = () => {
-      removeEventListener('mousemove', move, true);
-      removeEventListener('click', click, true);
       removeEventListener('keydown', stop, true);
-      removeEventListener('contextmenu', stop, true);
+      onSheet = null;
+      sheet.remove();
       outline.remove();
       hint.remove();
       picking = null;

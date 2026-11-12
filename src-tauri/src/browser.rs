@@ -152,6 +152,10 @@ pub(crate) enum Event {
     #[serde(rename_all = "camelCase")]
     #[cfg_attr(not(windows), allow(dead_code))]
     Key { tab: String, key: String },
+    /// A page tried to open a new window or tab without a click, or to a
+    /// site on the block lists (`listed`): it didn't open.
+    #[serde(rename_all = "camelCase")]
+    PopupBlocked { tab: String, url: String, listed: bool },
 }
 
 /// A page the tab went through, for the Back and Forward buttons' menus.
@@ -269,6 +273,12 @@ mod view {
         PROTECTION.lock().ok().and_then(|p| p.clone()).unwrap_or_default()
     }
 
+    /// A page address for a site, for the block lists (which only need its host).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(super) fn page_of(site: &str) -> String {
+        if site.is_empty() { String::new() } else { format!("https://{site}/") }
+    }
+
     #[cfg_attr(not(windows), allow(dead_code))]
     pub(super) fn site_of(tab: &str) -> String {
         SITES.lock().ok().and_then(|s| s.as_ref().and_then(|s| s.get(tab).cloned())).unwrap_or_default()
@@ -297,6 +307,53 @@ mod view {
             }
         }
         result
+    }
+
+    /// Hides the parts of a page the block lists name (advert boxes and the
+    /// like): the page's own rules, then the general ones that match its
+    /// classes and ids. Once more a few seconds on, for parts that came late.
+    #[cfg(windows)]
+    fn hide_listed(view: &tauri::Webview, url: tauri::Url, again: bool) {
+        if !matches!(url.scheme(), "http" | "https") {
+            return;
+        }
+        let site = url.host_str().unwrap_or_default().to_ascii_lowercase();
+        let level = protection().level_for(&site);
+        if level == crate::protection::Level::Off {
+            return;
+        }
+        let Some((css, general, exceptions)) = crate::blocklists::page_hiding(level, url.as_str()) else { return };
+        let hide = |view: &tauri::Webview, css: &str| {
+            if css.is_empty() {
+                return;
+            }
+            let css = serde_json::to_string(css).unwrap_or_default();
+            // A sheet of its own, which pages' content rules don't stop.
+            let _ = view.eval(format!("(()=>{{try{{const s=new CSSStyleSheet();s.replaceSync({css});document.adoptedStyleSheets=[...document.adoptedStyleSheets,s]}}catch(e){{}}}})()"));
+        };
+        if again {
+            hide(view, &css);
+        }
+        if general {
+            let later = view.clone();
+            let collect = "(()=>{const c=new Set(),i=new Set();for(const el of document.querySelectorAll('[class],[id]')){if(el.id)i.add(el.id);for(const k of el.classList)c.add(k);if(c.size>5000)break}return JSON.stringify({c:[...c],i:[...i]})})()";
+            let _ = view.eval_with_callback(collect, move |answer| {
+                let text = serde_json::from_str::<String>(&answer).unwrap_or_default();
+                let found: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+                let list = |key: &str| -> Vec<String> { found[key].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default() };
+                let css = crate::blocklists::general_hiding(level, &list("c"), &list("i"), &exceptions);
+                hide(&later, &css);
+            });
+        }
+        if again {
+            let view = view.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(3));
+                if view.url().ok().as_ref() == Some(&url) {
+                    hide_listed(&view, url, false);
+                }
+            });
+        }
     }
 
     fn set_site(tab: &str, url: &tauri::Url) {
@@ -443,11 +500,17 @@ mod view {
             .incognito(private)
             // Buttons that wait on a blocked tracker still work.
             .initialization_script(STAND_INS)
-            .on_page_load(move |_, payload| {
+            .on_page_load(move |page_view, payload| {
+                #[cfg(not(windows))]
+                let _ = &page_view;
                 super::note(&page_tab, format!("page {} {}", if matches!(payload.event(), PageLoadEvent::Started) { "started" } else { "finished" }, payload.url()));
                 if matches!(payload.event(), PageLoadEvent::Started) {
                     set_site(&page_tab, payload.url());
                     follow_front(&pages);
+                }
+                #[cfg(windows)]
+                if matches!(payload.event(), PageLoadEvent::Finished) {
+                    hide_listed(&page_view, payload.url().clone(), true);
                 }
                 tell(
                     &pages,
@@ -470,6 +533,13 @@ mod view {
             })
             .on_new_window(move |url, features| {
                 super::note(&window_tab, format!("page asked for a new window: {url} (sized: {})", features.size().is_some()));
+                // A pop-up to a site on the block lists never opens.
+                let site = site_of(&window_tab);
+                if self::protection().blocks(url.as_str(), &site, &page_of(&site), "popup") {
+                    super::note(&window_tab, "  blocked: it goes to a site on the block lists");
+                    tell(&windows, Event::PopupBlocked { tab: window_tab.clone(), url: url.to_string(), listed: true });
+                    return NewWindowResponse::Deny;
+                }
                 // A window the page sized itself is a pop-up (usually a sign-in): it opens
                 // as a small window of its own, still joined to the page, and closes when done.
                 // A blob address also needs its opener; a fresh tab cannot recreate it.
@@ -499,7 +569,11 @@ mod view {
                         Ok(window) => {
                             super::note(&window_tab, "  opened it as a pop-up window");
                             #[cfg(windows)]
-                            super::windows::popup(&window, popup_tab);
+                            {
+                                let label = window.label().to_string();
+                                super::windows::popup(&window, popup_tab);
+                                super::windows::unless_clicked(&windows, window_tab.clone(), url.to_string(), super::windows::Opening::Popup { label });
+                            }
                             return NewWindowResponse::Create { window };
                         }
                         Err(e) => super::note(&window_tab, format!("  couldn't make the pop-up window: {e}")),
@@ -509,6 +583,10 @@ mod view {
                 // Like other browsers, it comes to the front, unless Ctrl or the middle button sent it behind.
                 let foreground = !super::sent_behind();
                 super::note(&window_tab, format!("  opening it as a new tab ({})", if foreground { "in front" } else { "behind" }));
+                // Only once it's clear you clicked something (Windows says so just after this).
+                #[cfg(windows)]
+                super::windows::unless_clicked(&windows, window_tab.clone(), url.to_string(), super::windows::Opening::Tab { foreground });
+                #[cfg(not(windows))]
                 tell(&windows, Event::NewTab { url: url.to_string(), from: window_tab.clone(), foreground });
                 NewWindowResponse::Deny
             })
@@ -623,6 +701,7 @@ mod view {
     }
 
     pub fn set_protection(app: &tauri::AppHandle, protection: Protection) {
+        crate::blocklists::want(protection.level);
         if let Ok(mut p) = PROTECTION.lock() {
             *p = Some(protection);
         }
@@ -666,7 +745,19 @@ mod view {
     /// How large the tab's page is drawn: 1 is the site's own size.
     pub fn zoom(app: &tauri::AppHandle, tab: &str, zoom: f64) -> CommandResult<()> {
         let view = app.get_webview(&label(tab)).ok_or("That tab isn't open.")?;
-        view.set_zoom(zoom).map_err(|e| e.to_string())
+        view.set_zoom(zoom).map_err(|e| e.to_string())?;
+        if let Ok(mut zooms) = ZOOMS.lock() {
+            zooms.get_or_insert_with(HashMap::new).insert(tab.to_owned(), zoom);
+        }
+        Ok(())
+    }
+
+    /// How large each tab is drawn (1 unless changed).
+    static ZOOMS: Mutex<Option<HashMap<String, f64>>> = Mutex::new(None);
+
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(super) fn zoom_of(tab: &str) -> f64 {
+        ZOOMS.lock().ok().and_then(|z| z.as_ref()?.get(tab).copied()).unwrap_or(1.0)
     }
 
     /// Computers are always given a site's desktop version.
@@ -725,7 +816,7 @@ mod windows {
     use webview2_com::Microsoft::Web::WebView2::Win32::*;
     use webview2_com::{
         take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler, CustomItemSelectedEventHandler, DownloadStartingEventHandler, FocusChangedEventHandler,
-        NavigationCompletedEventHandler, NavigationStartingEventHandler, WebResourceRequestedEventHandler, WindowCloseRequestedEventHandler,
+        NavigationCompletedEventHandler, NavigationStartingEventHandler, NewWindowRequestedEventHandler, WebResourceRequestedEventHandler, WindowCloseRequestedEventHandler,
     };
     use windows_core::{Interface, BOOL, HSTRING, PWSTR};
 
@@ -736,6 +827,68 @@ mod windows {
         /// Downloads under way, by address, so one can be cancelled. Kept on
         /// the window's own thread, where the web view lives.
         static OPERATIONS: RefCell<HashMap<(String, String), ICoreWebView2DownloadOperation>> = RefCell::new(HashMap::new());
+    }
+
+    thread_local! {
+        /// The address each tab's page is going to (its main frame), so its
+        /// own document isn't mistaken for a frame inside it.
+        static MAIN_NAVIGATIONS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+    }
+
+    fn main_navigation(tab: &str) -> Option<String> {
+        MAIN_NAVIGATIONS.with(|m| m.borrow().get(tab).cloned())
+    }
+
+    thread_local! {
+        /// Whether each tab's latest new-window request came from a click,
+        /// as Windows reports it (read straight after TBV decides how to open it).
+        static CLICKED: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
+    }
+
+    /// How a new window was going to open.
+    pub(super) enum Opening {
+        Tab { foreground: bool },
+        Popup { label: String },
+    }
+
+    /// Opens a page's new window only if you clicked something: other
+    /// browsers block windows a page opens on its own, and so does TBV.
+    /// Runs once the window request is fully answered, when Windows has said
+    /// whether it came from a click.
+    pub(super) fn unless_clicked(app: &tauri::AppHandle, tab: String, url: String, opening: Opening) {
+        let later = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let clicked = CLICKED.with(|c| c.borrow_mut().remove(&tab)).unwrap_or(true);
+            if clicked {
+                if let Opening::Tab { foreground } = opening {
+                    tell(&later, Event::NewTab { url, from: tab, foreground });
+                }
+                return;
+            }
+            crate::browser::note(&tab, "  blocked: the page opened it without a click");
+            if let Opening::Popup { label } = opening {
+                if let Some(window) = later.get_webview_window(&label) {
+                    let _ = window.close();
+                }
+            }
+            tell(&later, Event::PopupBlocked { tab, url, listed: false });
+        });
+    }
+
+    /// A request's kind, in the block lists' own words.
+    fn kind_of(context: COREWEBVIEW2_WEB_RESOURCE_CONTEXT) -> &'static str {
+        match context {
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT_DOCUMENT => "subdocument",
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET => "stylesheet",
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE => "image",
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA => "media",
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT => "font",
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT => "script",
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST | COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH | COREWEBVIEW2_WEB_RESOURCE_CONTEXT_EVENT_SOURCE => "xmlhttprequest",
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT_WEBSOCKET => "websocket",
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT_PING => "ping",
+            _ => "other",
+        }
     }
 
     fn level(level: Level) -> COREWEBVIEW2_TRACKING_PREVENTION_LEVEL {
@@ -787,6 +940,18 @@ mod windows {
             &mut token,
         );
         let _ = redirects(&core, app.clone(), tab.clone());
+        // Whether a new window came from a click (see unless_clicked).
+        let clicked_tab = tab.clone();
+        core.add_NewWindowRequested(
+            &NewWindowRequestedEventHandler::create(Box::new(move |_, args| {
+                let Some(args) = args else { return Ok(()) };
+                let mut user = BOOL::default();
+                args.IsUserInitiated(&mut user)?;
+                CLICKED.with(|c| c.borrow_mut().insert(clicked_tab.clone(), user.as_bool()));
+                Ok(())
+            })),
+            &mut token,
+        )?;
         let (failed_app, failing) = (app.clone(), tab.clone());
         // A page that couldn't open: TBV says why on a page of its own.
         core.add_NavigationCompleted(
@@ -830,7 +995,16 @@ mod windows {
                 let mut uri = PWSTR::null();
                 args.Request()?.Uri(&mut uri)?;
                 let uri = take_pwstr(uri);
-                if view::protection().blocks(&uri, &view::site_of(&tab)) {
+                let mut context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
+                args.ResourceContext(&mut context)?;
+                // The page itself loads (what you open is yours to open; pop-ups
+                // and redirects to listed sites are stopped before they get here).
+                let top = context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_DOCUMENT && main_navigation(&tab).as_deref() == Some(uri.as_str());
+                if top {
+                    return Ok(());
+                }
+                let site = view::site_of(&tab);
+                if view::protection().blocks(&uri, &site, &view::page_of(&site), kind_of(context)) {
                     crate::browser::note(&tab, format!("blocked by protection: {}", uri.chars().take(200).collect::<String>()));
                     let refused = environment.CreateWebResourceResponse(None, 403, &HSTRING::from("Blocked"), &HSTRING::new())?;
                     args.SetResponse(&refused)?;
@@ -900,6 +1074,17 @@ mod windows {
                         })
                     } else { None };
                     previous.replace(Some((nav, url.clone())));
+                    MAIN_NAVIGATIONS.with(|m| m.borrow_mut().insert(tab.clone(), url.clone()));
+                    // A page sending you on, without a click, to a site on the block lists.
+                    if !user.as_bool() && !explicit {
+                        let site = view::site_of(&tab);
+                        if view::protection().blocks(&url, &site, &view::page_of(&site), "document") {
+                            crate::browser::note(&tab, "  stopped: the page tried to send you to a site on the block lists");
+                            args.SetCancel(true)?;
+                            tell(&app, Event::Redirect { tab: tab.clone(), from: view::page_of(&site), url, ask: false });
+                            return Ok(());
+                        }
+                    }
                     if let Some(from) = from {
                         let Ok(mut source) = super::web_url(&from) else { return Ok(()) };
                         source.set_fragment(None);
@@ -1014,6 +1199,8 @@ mod windows {
                     let mut frame_uri = PWSTR::null();
                     target.FrameUri(&mut frame_uri)?;
                     let frame_uri = take_pwstr(frame_uri);
+                    let mut spot = windows::Win32::Foundation::POINT::default();
+                    args.Location(&mut spot)?;
                     let (app, tab) = (app.clone(), tab.clone());
                     let mut chosen = 0i64;
                     remove.add_CustomItemSelected(
@@ -1024,7 +1211,12 @@ mod windows {
                                 crate::browser::note(&tab, format!("remove from page chosen inside a page within the page: {frame_uri}"));
                             }
                             if let Some(view) = app.get_webview(&view::label(&tab)) {
-                                let _ = view.eval("window.__tbvRemoveLast && window.__tbvRemoveLast()");
+                                // Inside a frame, the page can't see the click: TBV says where it was.
+                                let _ = if main_frame.as_bool() {
+                                    view.eval("window.__tbvRemoveLast && window.__tbvRemoveLast()")
+                                } else {
+                                    view.eval(format!("window.__tbvRemoveAt && window.__tbvRemoveAt({}, {}, {})", spot.x, spot.y, view::zoom_of(&tab)))
+                                };
                             }
                             Ok(())
                         })),
@@ -1265,7 +1457,20 @@ mod view {
     }
 
     fn rules(protection: &Protection) -> serde_json::Value {
-        serde_json::json!({ "level": protection.level_name(), "rules": protection.apple_rules(), "redirects": protection.redirects, "redirectAllowlist": protection.redirect_allowlist })
+        use crate::protection::Level;
+        crate::blocklists::want(protection.level);
+        let mut args = serde_json::json!({ "level": protection.level_name(), "redirects": protection.redirects, "redirectAllowlist": protection.redirect_allowlist });
+        // The shared lists, once they're on the phone: a file the phone
+        // compiles once per version. Until then, TBV's own list.
+        match (protection.level != Level::Off).then(|| crate::blocklists::apple_rules(protection.level, &protection.lowered, protection.level == Level::Strict)).flatten() {
+            Some((id, path)) => {
+                args["rules"] = serde_json::Value::String(String::new());
+                args["rulesId"] = id.into();
+                args["rulesFile"] = path.to_string_lossy().to_string().into();
+            }
+            None => args["rules"] = protection.apple_rules().into(),
+        }
+        args
     }
 
     pub fn show(_app: &tauri::AppHandle, tab: &str, url: Option<tauri::Url>, frame: Frame, protection: Option<Protection>, private: bool, background: bool) -> CommandResult<()> {

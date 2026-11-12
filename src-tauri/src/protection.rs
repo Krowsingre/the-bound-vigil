@@ -5,9 +5,12 @@
 //! trackers and miners but lets advertising load. Off blocks nothing. A site
 //! whose protection was lowered loads everything, whatever the level.
 //!
-//! The lists are TBV's own: well-known tracking, advertising and mining
-//! hosts. A host matches when it is one of these or ends in "." and one of
-//! these, so "stats.g.doubleclick.net" counts as "doubleclick.net".
+//! The shared public lists (blocklists.rs) do most of the blocking once
+//! they're on the device. TBV's own short list below is always part of it,
+//! and works alone until the lists first come down: well-known tracking,
+//! advertising and mining hosts. A host matches when it is one of these or
+//! ends in "." and one of these, so "stats.g.doubleclick.net" counts as
+//! "doubleclick.net".
 
 use serde::Deserialize;
 
@@ -215,6 +218,18 @@ fn lists(level: Level) -> Vec<&'static [&'static str]> {
     }
 }
 
+/// TBV's own list for a level, in the shared lists' own rule format.
+pub fn own_rules(level: Level) -> Vec<String> {
+    lists(level)
+        .iter()
+        .flat_map(|l| l.iter())
+        .map(|entry| match entry.split_once('/') {
+            Some((domain, prefix)) => format!("||{domain}/{prefix}$third-party"),
+            None => format!("||{entry}^$third-party"),
+        })
+        .collect()
+}
+
 /// Whether `host` is `domain` or one of its subdomains.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn under(host: &str, domain: &str) -> bool {
@@ -249,12 +264,23 @@ impl Protection {
         }
     }
 
-    /// Whether a request to `url`, made by a page on `site`, is refused.
+    /// Whether a request to `url`, made by a page on `site` (at `page`), is
+    /// refused. `kind` is what it is, in the lists' words: script, image,
+    /// subdocument, popup, document, …
     #[cfg_attr(not(windows), allow(dead_code))]
-    pub fn blocks(&self, url: &str, site: &str) -> bool {
+    pub fn blocks(&self, url: &str, site: &str, page: &str, kind: &str) -> bool {
         if self.level == Level::Off || self.lowered_for(site) {
             return false;
         }
+        if let Some(listed) = crate::blocklists::blocks(self.level, url, page, kind) {
+            return listed;
+        }
+        self.blocks_by_own_list(url, site)
+    }
+
+    /// TBV's own list alone, for while the shared lists aren't ready.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    fn blocks_by_own_list(&self, url: &str, site: &str) -> bool {
         let Ok(parsed) = tauri::Url::parse(url) else { return false };
         if !matches!(parsed.scheme(), "http" | "https" | "ws" | "wss") {
             return false;
@@ -328,31 +354,31 @@ mod tests {
     #[test]
     fn trackers_and_their_subdomains_are_blocked() {
         let p = strict();
-        assert!(p.blocks("https://www.google-analytics.com/analytics.js", "example.org"));
-        assert!(p.blocks("https://stats.g.doubleclick.net/x", "example.org"));
-        assert!(!p.blocks("https://notdoubleclick.net/x", "example.org"));
-        assert!(p.blocks("https://mc.yandex.ru/watch", "example.org"));
+        assert!(p.blocks("https://www.google-analytics.com/analytics.js", "example.org", "", "script"));
+        assert!(p.blocks("https://stats.g.doubleclick.net/x", "example.org", "", "script"));
+        assert!(!p.blocks("https://notdoubleclick.net/x", "example.org", "", "script"));
+        assert!(p.blocks("https://mc.yandex.ru/watch", "example.org", "", "script"));
     }
 
     #[test]
     fn balanced_lets_advertising_through() {
         let p = Protection { level: Level::Balanced, lowered: vec![], ..Default::default() };
-        assert!(!p.blocks("https://cdn.taboola.com/x.js", "example.org"));
-        assert!(p.blocks("https://www.googletagmanager.com/gtm.js", "example.org"));
-        assert!(p.blocks("https://coinhive.com/lib.js", "example.org"));
+        assert!(!p.blocks("https://cdn.taboola.com/x.js", "example.org", "", "script"));
+        assert!(p.blocks("https://www.googletagmanager.com/gtm.js", "example.org", "", "script"));
+        assert!(p.blocks("https://coinhive.com/lib.js", "example.org", "", "script"));
     }
 
     #[test]
     fn off_and_lowered_sites_block_nothing() {
-        assert!(!Protection { level: Level::Off, lowered: vec![], ..Default::default() }.blocks("https://doubleclick.net/", "example.org"));
+        assert!(!Protection { level: Level::Off, lowered: vec![], ..Default::default() }.blocks("https://doubleclick.net/", "example.org", "", "script"));
         let p = Protection { level: Level::Strict, lowered: vec!["example.org".into()], ..Default::default() };
-        assert!(!p.blocks("https://doubleclick.net/", "www.example.org"));
-        assert!(p.blocks("https://doubleclick.net/", "other.org"));
+        assert!(!p.blocks("https://doubleclick.net/", "www.example.org", "", "script"));
+        assert!(p.blocks("https://doubleclick.net/", "other.org", "", "script"));
     }
 
     #[test]
     fn a_site_on_a_list_still_loads_its_own_pages() {
-        assert!(!strict().blocks("https://www.criteo.com/careers", "www.criteo.com"));
+        assert!(!strict().blocks("https://www.criteo.com/careers", "www.criteo.com", "", "script"));
     }
 
     #[test]

@@ -865,6 +865,24 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
     url: "https://github.com/mozilla/readability",
   },
   {
+    name: "adblock-rust",
+    what: "Discover's blocking engine, by Brave",
+    licence: "MPL 2.0",
+    url: "https://github.com/brave/adblock-rust",
+  },
+  {
+    name: "EasyList and EasyPrivacy",
+    what: "Discover's advert and tracker lists, by the EasyList authors (downloaded to your device)",
+    licence: "GPLv3 or CC BY-SA 3.0",
+    url: "https://easylist.to/",
+  },
+  {
+    name: "Malicious URL Blocklist",
+    what: "Discover's list of harmful sites, by curbengh, from abuse.ch's URLhaus (downloaded to your device)",
+    licence: "CC0 or MIT",
+    url: "https://gitlab.com/malware-filter/urlhaus-filter",
+  },
+  {
     name: "Mammoth",
     what: "Reading Word documents",
     licence: "BSD 2-Clause",
@@ -1076,7 +1094,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.89.0");
+  const [version, setVersion] = useState("0.90.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

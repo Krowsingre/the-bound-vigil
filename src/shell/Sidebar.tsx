@@ -37,7 +37,7 @@ export function Sidebar({
 }) {
   const active = navRouteOf(route);
   const split = (target: Route, name: string) => onSplit && holdForMenu(name, () => [
-    { label: "Split screen", icon: "layers", onSelect: () => onSplit(target) },
+    { label: "Split screen", icon: "splitScreen", onSelect: () => onSplit(target) },
   ]);
   // A book and its audiobook being lined up word by word, in the background.
   const [lining, setLining] = useState<LiningUp | null>(liningUpNow());
