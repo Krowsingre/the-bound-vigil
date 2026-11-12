@@ -1,5 +1,5 @@
 // Picture in picture for any video: pointing at a video shows a small button
-// on it that pops the video out. It runs in every frame of a page, so a video
+// on it that pops the video out (on a touch screen, tapping a video shows it). It runs in every frame of a page, so a video
 // inside an embedded player (a page from another site within the page) gets
 // one too, and it finds the video even under a player's own layers. Browsers
 // only pop a video out right after a click on its own page, which is why the
@@ -65,7 +65,25 @@
       }
     });
   }, { capture: true, passive: true });
+  // A touch screen has no pointing: a tap on a video shows the button for a while.
+  addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' || (host && e.composedPath().includes(host))) return;
+    const video = videoAt(e.clientX, e.clientY);
+    if (!video) return;
+    aimed = video;
+    place(video);
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => { hideTimer = 0; hide(); }, 4000);
+  }, { capture: true, passive: true });
   addEventListener('scroll', () => aimed && place(aimed), { capture: true, passive: true });
+  // On iPhone and iPad, a frame inside the page tells TBV a video started
+  // playing in it, so TBV's own button can reach that frame too.
+  addEventListener('play', () => {
+    try {
+      const to = window !== window.top && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tbvPipFrame;
+      if (to) to.postMessage(1);
+    } catch (_) {}
+  }, { capture: true, passive: true });
   const toggle = async () => {
     const video = aimed;
     if (!video) return;

@@ -1562,7 +1562,7 @@ mod view {
     }
 
     pub fn show(_app: &tauri::AppHandle, tab: &str, url: Option<tauri::Url>, frame: Frame, protection: Option<Protection>, private: bool, background: bool) -> CommandResult<()> {
-        let mut args = serde_json::json!({ "action": if background { "prepare" } else { "show" }, "tab": tab, "url": url.map(|u| u.to_string()), "frame": frame_of(frame), "incognito": private, "standIns": super::PAGE_SCRIPTS });
+        let mut args = serde_json::json!({ "action": if background { "prepare" } else { "show" }, "tab": tab, "url": url.map(|u| u.to_string()), "frame": frame_of(frame), "incognito": private, "standIns": super::PAGE_SCRIPTS, "pip": super::PIP_SCRIPT });
         if let Some(p) = protection {
             args["protection"] = rules(&p);
         }
@@ -1598,8 +1598,9 @@ mod view {
         let _ = ask(serde_json::json!({ "action": "protect", "protection": rules(&protection) }));
     }
 
-    pub fn pip(_app: &tauri::AppHandle, _tab: &str) -> CommandResult<String> {
-        Err("On iPhone, start the video full screen and use its own Picture in picture button.".into())
+    pub fn pip(_app: &tauri::AppHandle, tab: &str) -> CommandResult<String> {
+        let answer = ask(serde_json::json!({ "action": "pip", "tab": tab }))?;
+        Ok(answer.get("result").and_then(|r| r.as_str()).unwrap_or("none").to_owned())
     }
 
     pub fn run(_app: &tauri::AppHandle, tab: &str, script: &str) -> CommandResult<serde_json::Value> {
@@ -1655,7 +1656,6 @@ fn sent_behind() -> bool {
 
 /// Run first on every page in Discover (see the two files).
 /// Picture in picture on any video; runs in every frame (browser_pip.js).
-#[cfg_attr(mobile, allow(dead_code))]
 const PIP_SCRIPT: &str = include_str!("browser_pip.js");
 
 const PAGE_SCRIPTS: &str = concat!(include_str!("browser_stand_ins.js"), "\n", include_str!("browser_page_tools.js"), "\n", include_str!("browser_page_report.js"));

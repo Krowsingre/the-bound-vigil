@@ -550,6 +550,8 @@
 .browser-grid {
   position: absolute;
   inset: 0;
+  /* Above the start page under it, whose background button would cover Done. */
+  z-index: 5;
   display: flex;
   flex-direction: column;
   overflow: auto;

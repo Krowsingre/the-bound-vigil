@@ -1292,6 +1292,8 @@ export function Browser({
   };
 
   const moreItems: MenuEntry[] = [
+    // On a computer it's a button by Downloads; on a phone or iPad, here. A video popped out keeps playing over the reader.
+    ...(narrow ? [{ label: "Picture in picture", icon: "pictureInPicture" as const, disabled: !web, onSelect: () => void popOut() }] : []),
     ...(companion && !narrow ? [
       { label: "Home page", icon: "home" as const, onSelect: goHome },
       { label: marked ? "Remove bookmark" : "Bookmark this page", icon: "bookmark" as const, disabled: !web, onSelect: () => void toggleMark() },
@@ -1356,7 +1358,7 @@ export function Browser({
     try {
       const done = await api.browserPip(active.id);
       if (done === "none") toast("No video is playing on this page. Start it, then try again.");
-      else if (done === "refused") toast("This video can't be popped out. Try pointing at the video and using the button on it.");
+      else if (done === "refused") toast(narrow ? "This video can't be popped out from here. Tap the video and use the button on it." : "This video can't be popped out. Try pointing at the video and using the button on it.");
     } catch (e) {
       toast(clean(e));
     }
@@ -1434,11 +1436,6 @@ export function Browser({
 
   return (
     <div className={`browser${active.private ? " is-private-tab" : ""}`}>
-      {/* On a computer, Split screen is a button in the top bar (BrowserNav). */}
-      {narrow && (allowSplit || onSplitWith) && !companion && <div className="browser-split-tools">
-        {other ? <button type="button" className="toolbar-button" onClick={() => setPair(null)}>Close tab split</button> :
-          <Menu label="Split screen" className="toolbar-button" trigger={<><Icon name="splitScreen" size={16} /> Split screen</>} items={splitItems} />}
-      </div>}
       {!narrow && (
         <div className="browser-strip">
           <div ref={strip} className="browser-tabs" role="tablist" aria-label="Tabs">
@@ -1466,6 +1463,10 @@ export function Browser({
           {button(busy ? "Stop" : "Reload", busy ? "close" : "sync", () => act(busy ? "stop" : "reload"))}
           <BrowserBookmarks state={{ busy, web, marked: !!marked, bookmarks: marks, reader: !!article, split: null }} className="toolbar-button" />
           {button("Sessions", "list", () => setPanel("sessions"))}
+          {/* Split screen sits between Sessions and Reader view, as in the computer's top bar (BrowserNav). */}
+          {(allowSplit || onSplitWith) && !companion && (other
+            ? button("Close split screen", "splitScreen", () => setPair(null), " is-on")
+            : <Menu label="Split screen" className="toolbar-button" trigger={<Icon name="splitScreen" size={17} />} items={splitItems} />)}
           <button type="button" className={`toolbar-button browser-count${panel === "tabs" ? " is-on" : ""}`} aria-label={`Tabs: ${tabs.tabs.length} open`} title="Tabs" onClick={() => setPanel(panel === "tabs" ? null : "tabs")}>
             <span>{tabs.tabs.length}</span>
           </button>
