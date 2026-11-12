@@ -308,6 +308,10 @@ function releaseView(id: string) {
   void tryClose();
 }
 
+// Chosen in Preferences › Discover: videos go on playing in the background.
+// Told once, before Discover opens any page, since each page starts with it.
+if (api.kind === "app" && readBrowserPrefs().backgroundPlay) void api.browserKeepPlaying(true).catch(() => undefined);
+
 /** The tabs Discover opens with, as chosen in Preferences › Discover. */
 function startingTabs(): TabsState {
   const prefs = readBrowserPrefs();

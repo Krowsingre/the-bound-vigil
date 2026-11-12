@@ -114,6 +114,17 @@ export function BrowserTab() {
             checked={prefs.keepPlaying}
             onChange={(keepPlaying) => writeBrowserPrefs({ keepPlaying })}
           />
+          <Toggle
+            label="Keep videos playing in the background"
+            hint={isIOS
+              ? "When TBV goes to the background, a playing video pops out into Picture in picture. With the screen locked, its sound goes on. Some sites still stop."
+              : "When TBV is minimized or the screen locks, videos go on playing. Some sites still stop."}
+            checked={prefs.backgroundPlay}
+            onChange={(backgroundPlay) => {
+              writeBrowserPrefs({ backgroundPlay });
+              void api.browserKeepPlaying(backgroundPlay).catch(() => undefined);
+            }}
+          />
         </Section>
       </SectionGroup>
       <Section id="apps" title="Links for other apps" lede="Links that open another app, such as an email address or a phone number.">

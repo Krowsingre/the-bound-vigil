@@ -104,11 +104,13 @@
     }
   };
   // Discover's Picture in picture button: pops out the video playing here (the
-  // largest, if several), or brings back one already popped out. TBV calls it
+  // largest, if several), or brings back one already popped out (unless
+  // onlyPop, when TBV pops a video out as the iPhone leaves the app). TBV calls it
   // in each frame of the page in turn, as if clicked.
-  window.__tbvPipNow = async () => {
+  window.__tbvPipNow = async (onlyPop) => {
     const out = popped();
     try {
+      if (out && onlyPop) return 'already';
       if (out) {
         if (document.pictureInPictureElement) await document.exitPictureInPicture();
         else out.webkitSetPresentationMode('inline');
@@ -124,7 +126,7 @@
         for (const frame of document.querySelectorAll('iframe, frame')) {
           try {
             const inner = frame.contentWindow && frame.contentWindow.__tbvPipNow;
-            const done = inner ? await inner() : 'none';
+            const done = inner ? await inner(onlyPop) : 'none';
             if (done !== 'none') return done;
           } catch (_) {}
         }
