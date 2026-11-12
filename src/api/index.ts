@@ -5,6 +5,7 @@
 import { homeAudioUrl, homeCore, homeEvents } from "./homeCore";
 import type { Found } from "../lib/onlineDetails";
 import type {
+  PageVideo,
   HistoryEntry,
   OpenTab,
   BrowserSession,
@@ -578,6 +579,8 @@ export interface Api {
   /** Discover's Picture in picture button: pops out the playing video, even in an embedded player. */
   browserKeepPlaying(on: boolean): Promise<void>;
   browserPip(tab: string): Promise<"popped" | "exited" | "refused" | "none">;
+  /** Video reader view: the video on the tab's page (paused there), or null. */
+  browserVideo(tab: string): Promise<PageVideo | null>;
   /** What TBV saw a tab's page do lately, for "Copy page report". */
   browserReport(tab: string): Promise<string[]>;
   browserCancelDownload(id: string): Promise<void>;
@@ -1305,6 +1308,7 @@ function appApi(): Api {
     browserRead: async (tab, script) => (await core).invoke<unknown>("browser_read", { tab, script }),
     browserKeepPlaying: async (on) => (await core).invoke("browser_keep_playing", { on }),
     browserPip: async (tab) => (await core).invoke<"popped" | "exited" | "refused" | "none">("browser_pip", { tab }),
+    browserVideo: async (tab) => (await core).invoke<PageVideo | null>("browser_video", { tab }),
     browserReport: async (tab) => (await core).invoke<string[]>("browser_report", { tab }),
     browserDownloadStatus: async (ids) => (await core).invoke("browser_download_status", { ids }),
     browserCancelDownload: async (id) => (await core).invoke("browser_cancel_download", { id }),

@@ -2139,3 +2139,55 @@
 .browser-session-tabs li + li {
   margin-block-start: 12px;
 }
+
+/* Video reader view: the page's video in TBV's own player. */
+.browser-video {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.browser-video .browser-reader-bar {
+  margin: 0;
+}
+
+.browser-video-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  background: #000;
+}
+
+.browser-video-stage video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.browser-video-trouble {
+  position: absolute;
+  inset: auto 16px 24px;
+  margin: 0 auto;
+  max-width: 480px;
+  padding: 10px 14px;
+  border-radius: var(--radius-s);
+  background: rgb(0 0 0 / 0.75);
+  color: #fff;
+  text-align: center;
+}
+
+.browser-video-title {
+  margin: 0;
+  padding: 10px 24px 14px;
+  font: 600 16px/1.3 var(--font-sans, system-ui);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

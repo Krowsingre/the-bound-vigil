@@ -1614,12 +1614,24 @@ export type BrowserEvent =
   | { kind: "popupBlocked"; tab: string; url: string; listed: boolean }
   | { kind: "external"; tab: string; url: string }
   /** Chosen from a link's own menu: open it in a new tab, or bring its book into the library. */
-  | { kind: "menu"; tab: string; action: "newTab" | "addBook"; url: string }
+  | { kind: "menu"; tab: string; action: "newTab" | "addBook" | "videoReader"; url: string }
   /** A tab shortcut pressed while a page had the keyboard (Windows). */
   | { kind: "focus"; tab: string }
   | { kind: "key"; tab: string; key: "focusAddress" | "bookmarkPage" | "newTab" | "newPrivateTab" | "closeTab" | "nextTab" | "previousTab" | "reopenTab" | "appBack" | "appForward" | "pageBack" | "pageForward" };
 
 /** An article found on a page by reader mode (Mozilla's Readability). */
+/** Video reader view: the video on a Discover page, and where TBV's player plays it from. */
+export interface PageVideo {
+  /** Empty when TBV can't play it. */
+  src: string;
+  kind: "hls" | "file" | "dash" | "none";
+  title: string;
+  /** The page it's on. */
+  page: string;
+  /** Where the page had got to, in seconds. */
+  time: number;
+}
+
 export interface ReaderArticle {
   title: string;
   byline: string | null;

@@ -1354,6 +1354,32 @@ mod windows {
                     items.Count(&mut count)?;
                     items.InsertValueAtIndex(count, &remove)?;
                 }
+                // A video's menu gets Video reader view, just below Picture in picture.
+                let mut kind = COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND::default();
+                target.Kind(&mut kind)?;
+                if kind == COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND_VIDEO {
+                    let item = environment.CreateContextMenuItem(windows_core::w!("Video reader view"), None::<&windows::Win32::System::Com::IStream>, COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_COMMAND)?;
+                    let (app, tab) = (app.clone(), tab.clone());
+                    let mut chosen = 0i64;
+                    item.add_CustomItemSelected(
+                        &CustomItemSelectedEventHandler::create(Box::new(move |_, _| {
+                            tell(&app, Event::Menu { tab: tab.clone(), action: "videoReader".into(), url: String::new() });
+                            Ok(())
+                        })),
+                        &mut chosen,
+                    )?;
+                    let mut count = 0u32;
+                    items.Count(&mut count)?;
+                    let mut at = 0u32;
+                    for i in 0..count {
+                        let mut name = PWSTR::null();
+                        items.GetValueAtIndex(i)?.Name(&mut name)?;
+                        if take_pwstr(name).to_ascii_lowercase().contains("pictureinpicture") {
+                            at = i + 1;
+                        }
+                    }
+                    items.InsertValueAtIndex(at, &item)?;
+                }
                 let mut has = BOOL::default();
                 target.HasLinkUri(&mut has)?;
                 if !has.as_bool() {
@@ -1829,6 +1855,31 @@ pub async fn browser_keep_playing(app: tauri::AppHandle, on: bool) -> CommandRes
 pub async fn browser_pip(app: tauri::AppHandle, tab: String) -> CommandResult<String> {
     let tab = tab_name(&tab)?;
     tauri::async_runtime::spawn_blocking(move || view::pip(&app, &tab)).await.map_err(|e| e.to_string())?
+}
+
+/// Video reader view: the video playing in the tab (or in a page within
+/// it), with an address TBV's own player can play it from; the page's own
+/// copy is paused. None when there's no video, and kind "dash" or "none" when
+/// TBV can't play the one there.
+#[tauri::command]
+pub async fn browser_video(app: tauri::AppHandle, tab: String) -> CommandResult<Option<serde_json::Value>> {
+    let tab = tab_name(&tab)?;
+    let found = tauri::async_runtime::spawn_blocking(move || {
+        view::run(&app, &tab, "window.__tbvVideoNow ? window.__tbvVideoNow(true) : 'none'")
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let Some(found) = found.as_object() else { return Ok(None) };
+    let text = |name: &str| found.get(name).and_then(|v| v.as_str()).unwrap_or_default().to_owned();
+    let (src, kind, page) = (text("src"), text("kind"), text("page"));
+    let playable = (kind == "hls" || kind == "file") && (src.starts_with("https://") || src.starts_with("http://"));
+    Ok(Some(serde_json::json!({
+        "src": if playable { crate::video_proxy::address(&src, &page) } else { String::new() },
+        "kind": if playable || kind == "dash" { kind } else { "none".into() },
+        "title": text("title"),
+        "page": text("top"),
+        "time": found.get("time").and_then(|v| v.as_f64()).unwrap_or(0.0),
+    })))
 }
 
 /// Stops a download that's coming down; nothing of it is kept.

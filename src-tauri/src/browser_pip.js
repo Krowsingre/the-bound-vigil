@@ -7,6 +7,7 @@
 (() => {
   if (window.__tbvPip) return;
   window.__tbvPip = true;
+  videoReader();
   const supported = () => document.pictureInPictureEnabled !== undefined || 'webkitSetPresentationMode' in HTMLVideoElement.prototype;
   if (typeof HTMLVideoElement === 'undefined' || !supported()) return;
   let host = null;
@@ -151,5 +152,76 @@
       if (kind !== 'touchstart' && kind !== 'pointerdown') e.preventDefault();
       if (kind === 'click') void toggle();
     }, { capture: true, passive: false });
+  }
+  // Video reader view: finds the video playing on the page (or in a page from
+  // another site within it) and where it really comes from, so TBV can play it
+  // on its own, away from the page's adverts and redirects. A video put
+  // together by the page (a "blob:" address) is traced to the stream the page
+  // fetched. Frames tell the top page about their videos, since it can't look in.
+  function videoReader() {
+    if (typeof HTMLVideoElement === 'undefined') return;
+    try { performance.setResourceTimingBufferSize(3000); } catch (_) {}
+    const STREAM = /\.m3u8(\?|#|$)/i;
+    const FILE = /\.(mp4|m4v|webm|mov|ogv)(\?|#|$)/i;
+    const DASH = /\.mpd(\?|#|$)/i;
+    const area = (v) => { const r = v.getBoundingClientRect(); return Math.round(r.width * r.height); };
+    const fetched = () => { try { return performance.getEntriesByType('resource').map((e) => e.name); } catch (_) { return []; } };
+    const describe = (v) => {
+      let src = v.currentSrc || v.src || (v.querySelector('source[src]') || {}).src || '';
+      let kind = STREAM.test(src) ? 'hls' : DASH.test(src) ? 'dash' : 'file';
+      if (!/^https?:/i.test(src)) {
+        const names = fetched();
+        const hls = names.find((n) => STREAM.test(n) && /^https?:/i.test(n));
+        const file = names.filter((n) => FILE.test(n) && /^https?:/i.test(n)).pop();
+        const dash = names.find((n) => DASH.test(n));
+        src = hls || file || '';
+        kind = hls ? 'hls' : file ? 'file' : dash ? 'dash' : 'none';
+      }
+      return { src, kind, title: document.title || '', poster: v.poster || '', page: location.href, playing: !v.paused, area: area(v), time: Math.floor(v.currentTime || 0) };
+    };
+    const best = () => Array.from(document.querySelectorAll('video'))
+      .filter((v) => v.currentSrc || v.src || v.querySelector('source[src]'))
+      .sort((a, b) => (b.paused ? 0 : 1) - (a.paused ? 0 : 1) || area(b) - area(a))[0];
+    if (window === window.top) {
+      const heard = [];
+      addEventListener('message', (e) => {
+        const info = e.data && e.data.__tbvVideo;
+        if (!info || typeof info.src !== 'string' || typeof info.page !== 'string') return;
+        const at = heard.findIndex((h) => h.page === info.page);
+        if (at >= 0) heard.splice(at, 1);
+        heard.push({ src: info.src.slice(0, 4000), kind: String(info.kind), title: String(info.title || '').slice(0, 300), poster: String(info.poster || '').slice(0, 2000), page: info.page.slice(0, 2000), playing: !!info.playing, area: +info.area || 0, time: +info.time || 0, frame: true });
+        if (heard.length > 12) heard.shift();
+      });
+      // The video to show (pausing the page's own when asked), as JSON, or 'none'.
+      window.__tbvVideoNow = (pause) => {
+        const here = best();
+        const all = (here ? [describe(here)] : []).concat(heard);
+        const chosen = all.filter((v) => v.kind !== 'none').sort((a, b) => (b.playing ? 1 : 0) - (a.playing ? 1 : 0) || b.area - a.area)[0] || all[0];
+        if (!chosen) return 'none';
+        if (pause) {
+          if (here) here.pause();
+          const tell = (w) => { for (let i = 0; i < w.frames.length; i += 1) { try { w.frames[i].postMessage({ __tbvVideoPause: 1 }, '*'); } catch (_) {} } };
+          tell(window);
+        }
+        chosen.title = chosen.frame ? document.title || chosen.title : chosen.title;
+        chosen.top = location.href;
+        return JSON.stringify(chosen);
+      };
+    } else {
+      let last = 0;
+      const report = () => {
+        const v = best();
+        if (!v) return;
+        last = Date.now();
+        try { window.top.postMessage({ __tbvVideo: describe(v) }, '*'); } catch (_) {}
+      };
+      for (const kind of ['play', 'pause', 'loadedmetadata']) addEventListener(kind, report, { capture: true, passive: true });
+      addEventListener('timeupdate', () => { if (Date.now() - last > 5000) report(); }, { capture: true, passive: true });
+      addEventListener('message', (e) => {
+        if (!e.data || !e.data.__tbvVideoPause) return;
+        document.querySelectorAll('video').forEach((v) => v.pause());
+        for (let i = 0; i < window.frames.length; i += 1) { try { window.frames[i].postMessage({ __tbvVideoPause: 1 }, '*'); } catch (_) {} }
+      });
+    }
   }
 })();
