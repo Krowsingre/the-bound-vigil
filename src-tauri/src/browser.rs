@@ -2166,6 +2166,23 @@ pub async fn browser_other_tabs(state: State<'_, AppLibrary>) -> CommandResult<V
     with_library(state, |library| library.other_devices_tabs()).await
 }
 
+/// Discover's saved sessions, from every device.
+#[tauri::command]
+pub async fn browser_sessions(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::browser_sessions::BrowserSession>> {
+    with_library(state, |library| library.browser_sessions()).await
+}
+
+/// Saves a session, or saves over one.
+#[tauri::command]
+pub async fn put_browser_session(state: State<'_, AppLibrary>, session: tbv_core::browser_sessions::BrowserSession) -> CommandResult<()> {
+    with_library(state, move |library| library.put_browser_session(&session)).await
+}
+
+#[tauri::command]
+pub async fn remove_browser_session(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.remove_browser_session(&id)).await
+}
+
 /// Lets go of what's older than `before` on this device only.
 #[tauri::command]
 pub async fn trim_browser_history(state: State<'_, AppLibrary>, before: i64) -> CommandResult<()> {

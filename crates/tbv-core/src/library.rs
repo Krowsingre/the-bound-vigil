@@ -732,6 +732,19 @@ const MIGRATIONS: &[&str] = &[
         updated_at TEXT NOT NULL
     );
     "#,
+    // v42: Discover's saved sessions, synced, each noting the device it was first saved on.
+    r#"
+    CREATE TABLE browser_sessions (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        tabs TEXT NOT NULL DEFAULT '[]',
+        active INTEGER NOT NULL DEFAULT 0,
+        device_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
@@ -804,8 +817,28 @@ impl Library {
         crate::sync::install_triggers(&library.conn)?;
         library.conn.execute_batch(RETIRED_SHELVES)?;
         library.adopt_device_avatar()?;
+        library.sync_discover_history_once()?;
         library.follow_moved_folders()?;
         Ok(library)
+    }
+
+    /// Discover's history syncs like any browser's (0.92). Libraries from
+    /// before had it off unless someone turned it on, so it's turned on once.
+    fn sync_discover_history_once(&self) -> Result<()> {
+        const DONE: &str = "once.discoverHistorySync";
+        if self.setting(DONE)?.is_some() {
+            return Ok(());
+        }
+        if let Some(saved) = self.setting(crate::sync::APP_SETTINGS)? {
+            if let Ok(serde_json::Value::Object(mut app)) = serde_json::from_str::<serde_json::Value>(&saved) {
+                let sync = app.entry("sync").or_insert_with(|| serde_json::json!({}));
+                if let Some(sync) = sync.as_object_mut() {
+                    sync.insert("browserHistory".into(), serde_json::Value::Bool(true));
+                    self.set_setting(crate::sync::APP_SETTINGS, &serde_json::Value::Object(app).to_string())?;
+                }
+            }
+        }
+        self.set_setting(DONE, "1")
     }
 
     /// The iPhone gives an app a new folder path whenever it's updated, so

@@ -5,6 +5,7 @@ pub mod audio;
 pub mod audiobookshelf;
 pub mod bookmarks;
 pub mod browser_history;
+pub mod browser_sessions;
 pub mod quick_links;
 pub mod sanctum_links;
 pub mod site_icon;

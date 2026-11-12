@@ -1,0 +1,100 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { createElement, useLayoutEffect, useRef, useState } from "react";
+function renderTable(node, key = "table") {
+    return createElement(node.tag, {
+        key, id: node.id ? `tbv-expanded-${node.id}` : undefined,
+        headers: node.headers?.split(" ").map((id) => `tbv-expanded-${id}`).join(" "),
+        scope: node.scope, rowSpan: node.rowSpan, colSpan: node.colSpan,
+    }, node.text ?? node.children.map((child, i) => renderTable(child, `${key}-${i}`)));
+}
+export function StructuredViewer({ content, onClose }) {
+    const dialog = useRef(null);
+    const close = useRef(null);
+    const viewport = useRef(null);
+    const surface = useRef(null);
+    const gesture = useRef(null);
+    const touchPoints = useRef(new Map());
+    const pinch = useRef(null);
+    const [angle, setAngle] = useState(0);
+    const [zoom, setZoom] = useState(1);
+    const [size, setSize] = useState({ width: 1, height: 1, areaWidth: 1, areaHeight: 1 });
+    useLayoutEffect(() => {
+        const element = dialog.current;
+        const opener = document.activeElement;
+        element?.showModal();
+        close.current?.focus({ preventScroll: true });
+        return () => {
+            element?.close();
+            if (opener instanceof HTMLElement && opener.isConnected)
+                opener.focus({ preventScroll: true });
+        };
+    }, []);
+    useLayoutEffect(() => {
+        const view = viewport.current;
+        const item = surface.current;
+        if (!view || !item)
+            return;
+        const update = () => setSize({
+            width: item.offsetWidth || 1, height: item.offsetHeight || 1,
+            areaWidth: Math.max(1, view.clientWidth - 24), areaHeight: Math.max(1, view.clientHeight - 24),
+        });
+        const observer = new ResizeObserver(update);
+        observer.observe(view);
+        observer.observe(item);
+        update();
+        return () => observer.disconnect();
+    }, []);
+    const updateTouch = (id, x, y) => {
+        touchPoints.current.set(id, { x, y });
+        const [first, second] = touchPoints.current.values();
+        if (!second)
+            return;
+        const distance = Math.hypot(first.x - second.x, first.y - second.y);
+        if (gesture.current)
+            gesture.current.moved = true;
+        if (!pinch.current)
+            pinch.current = { distance: Math.max(1, distance), zoom };
+        else
+            setZoom(Math.max(1, Math.min(8, pinch.current.zoom * distance / pinch.current.distance)));
+    };
+    const endTouch = (id) => {
+        touchPoints.current.delete(id);
+        if (touchPoints.current.size < 2)
+            pinch.current = null;
+    };
+    const sideways = angle % 180 !== 0;
+    const width = sideways ? size.height : size.width;
+    const height = sideways ? size.width : size.height;
+    const fit = Math.max(0.5, Math.min(1, size.areaWidth / width, size.areaHeight / height));
+    const scale = fit * zoom;
+    return _jsxs("dialog", { ref: dialog, className: "dialog structured-viewer", "aria-label": `Expanded ${content.label}`, onCancel: (event) => { event.preventDefault(); onClose(); }, onKeyDown: (event) => {
+            if (event.altKey && event.shiftKey && event.key === "ArrowLeft") {
+                event.preventDefault();
+                onClose();
+            }
+            event.stopPropagation();
+        }, children: [_jsxs("header", { className: "structured-viewer-toolbar", children: [_jsx("strong", { children: content.label }), _jsx("button", { type: "button", className: "btn btn-quiet", onClick: () => setZoom(Math.max(1, zoom / 1.25)), disabled: zoom <= 1, children: "Zoom out" }), _jsx("button", { type: "button", className: "btn btn-quiet", onClick: () => setZoom(Math.min(8, zoom * 1.25)), disabled: zoom >= 8, children: "Zoom in" }), _jsx("button", { type: "button", className: "btn btn-quiet", onClick: () => setAngle((angle + 90) % 360), children: "Rotate" }), _jsx("button", { type: "button", className: "btn btn-quiet", onClick: () => { setAngle(0); setZoom(1); }, children: "Reset view" }), _jsx("button", { ref: close, type: "button", className: "btn btn-primary", onClick: onClose, children: "Close" })] }), _jsx("div", { ref: viewport, className: "structured-viewer-viewport", tabIndex: 0, "aria-label": "Expanded content, scroll to pan", onPointerDown: (event) => {
+                    if (event.pointerType === "touch")
+                        updateTouch(event.pointerId, event.clientX, event.clientY);
+                }, onPointerMove: (event) => {
+                    const last = touchPoints.current.get(event.pointerId);
+                    if (!last)
+                        return;
+                    if (touchPoints.current.size === 1 && gesture.current?.moved) {
+                        event.currentTarget.scrollLeft += last.x - event.clientX;
+                        event.currentTarget.scrollTop += last.y - event.clientY;
+                    }
+                    updateTouch(event.pointerId, event.clientX, event.clientY);
+                }, onPointerUp: (event) => endTouch(event.pointerId), onPointerCancel: (event) => endTouch(event.pointerId), children: _jsx("div", { className: "structured-viewer-stage", style: { width: width * scale, height: height * scale }, children: _jsx("div", { ref: surface, className: "structured-viewer-surface", style: { transform: `translate(-50%, -50%) rotate(${angle}deg) scale(${scale})` }, onPointerDown: (event) => { gesture.current = { x: event.clientX, y: event.clientY, moved: !event.isPrimary }; }, onPointerMove: (event) => {
+                            const start = gesture.current;
+                            if (start && Math.hypot(start.x - event.clientX, start.y - event.clientY) > 6)
+                                start.moved = true;
+                        }, onPointerCancel: () => { if (gesture.current)
+                            gesture.current.moved = true; }, onClick: () => {
+                            const tap = gesture.current;
+                            gesture.current = null;
+                            if (tap && !tap.moved && !window.getSelection()?.toString())
+                                onClose();
+                        }, children: content.kind === "table" ? renderTable(content.table) : content.kind === "pre" ? _jsx("pre", { children: content.text }) :
+                            _jsxs("figure", { children: [_jsx("img", { src: content.image, alt: content.alt }), content.caption && _jsx("figcaption", { children: content.caption })] }) }) }) })] });
+}

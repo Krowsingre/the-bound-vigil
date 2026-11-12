@@ -137,7 +137,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     alsoBookFiles: true,
     alsoAudioFiles: false,
     phoneChosenOnly: false,
-    browserHistory: false,
+    browserHistory: true,
     splitBigFiles: false,
     phoneKeepDays: 14,
     streamAudio: true,
