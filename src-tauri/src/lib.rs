@@ -37,6 +37,7 @@ mod splash;
 mod windows_quit;
 mod sync;
 mod updates;
+mod video_proxy;
 mod writing;
 
 use std::path::PathBuf;
@@ -2039,6 +2040,7 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_tbv_ios::init());
     builder
         .register_asynchronous_uri_scheme_protocol("tbvaudio", audio::serve)
+        .register_asynchronous_uri_scheme_protocol("tbvvideo", video_proxy::serve)
         .setup(|app| {
             // The main window (on a computer hidden behind the splash card until its first screen is drawn).
             splash::open(app)?;
@@ -2154,6 +2156,7 @@ pub fn run() {
             browser::browser_protect,
             browser::browser_read,
             browser::browser_pip,
+            browser::browser_video,
             browser::browser_keep_playing,
             browser::browser_cancel_download,
             browser::browser_download_status,

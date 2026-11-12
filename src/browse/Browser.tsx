@@ -8,7 +8,8 @@ import { placeWorkspaceBrowser, workspaceOffset } from "./workspaceBrowser";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, isIOS, openExternal } from "../api";
-import type { Bookmark, BrowserEvent, BrowserFrame, BrowserPane, DeviceTabs, OpenTab, ReaderArticle } from "../api/types";
+import type { Bookmark, BrowserEvent, BrowserFrame, BrowserPane, DeviceTabs, OpenTab, PageVideo, ReaderArticle } from "../api/types";
+import { VideoReader } from "./VideoReader";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { openContextMenu, openContextMenuAt } from "../components/ContextMenu";
 import { Icon } from "../components/Icon";
@@ -389,6 +390,8 @@ export function Browser({
   const [appLink, setAppLink] = useState<string | null>(null);
   const [finding, setFinding] = useState<string | null>(null);
   const [article, setArticle] = useState<ReaderArticle | null>(null);
+  /** Video reader view: the page's video, playing in TBV's own player. */
+  const [film, setFilm] = useState<PageVideo | null>(null);
   const [saving, setSaving] = useState(false);
   const [prefs, setPrefs] = useState(readBrowserPrefs);
   const [problem, setProblem] = useState<string | null>(null);
@@ -450,7 +453,10 @@ export function Browser({
   const failure = onStart ? null : failed[active.id] ?? null;
   /** Reader mode, the tab grid, the start page and the error page cover the page, so the page's view steps aside. */
   const aside = useRef(false);
-  aside.current = !!article || panel === "tabs" || onStart || !!failure;
+  aside.current = !!article || !!film || panel === "tabs" || onStart || !!failure;
+  // Another tab, or another page, ends video reader view.
+  const pageOnly = url.split("#")[0];
+  useEffect(() => setFilm(null), [active.id, pageOnly]);
 
   useEffect(() => writeTabs(tabs), [tabs]);
   useEffect(() => onClosedTabs(() => setClosedTabs(readClosedTabs())), []);
@@ -609,6 +615,10 @@ export function Browser({
           else void api.browserOpenApp(ev.url).catch((e: unknown) => toast(clean(e)));
           break;
         case "menu":
+          if (ev.action === "videoReader") {
+            void openVideoRef.current(ev.tab);
+            break;
+          }
           if (!/^https?:/i.test(ev.url)) break;
           if (ev.action === "newTab") {
             const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.tab)?.private;
@@ -1269,6 +1279,26 @@ export function Browser({
     }
   };
 
+  /** Video reader view (the button, More, or a video's right-click menu). */
+  const openVideo = async (tab: string = active.id) => {
+    if (film) return setFilm(null);
+    if (!web) return toast("Open a page with a video first.");
+    try {
+      const found = await api.browserVideo(tab);
+      if (!found) toast("No video found on this page. Start it playing, then try again.");
+      else if (found.kind === "dash") toast("This site's video comes in a form TBV can't play on its own yet.");
+      else if (!found.src) toast("TBV can't tell where this video comes from, so it can't play it on its own.");
+      else {
+        setArticle(null);
+        setFilm(found);
+      }
+    } catch (e) {
+      toast(clean(e));
+    }
+  };
+  const openVideoRef = useRef(openVideo);
+  openVideoRef.current = openVideo;
+
   const openReader = async () => {
     try {
       const found = articleFrom(await api.browserRead(active.id, readerScript()));
@@ -1297,7 +1327,10 @@ export function Browser({
 
   const moreItems: MenuEntry[] = [
     // On a computer it's a button by Downloads; on a phone or iPad, here. A video popped out keeps playing over the reader.
-    ...(narrow ? [{ label: "Picture in picture", icon: "pictureInPicture" as const, disabled: !web, onSelect: () => void popOut() }] : []),
+    ...(narrow ? [
+      { label: "Picture in picture", icon: "pictureInPicture" as const, disabled: !web, onSelect: () => void popOut() },
+      { label: film ? "Exit Video reader view" : "Video reader view", icon: "videoReader" as const, disabled: !web && !film, onSelect: () => void openVideo() },
+    ] : []),
     ...(companion && !narrow ? [
       { label: "Home page", icon: "home" as const, onSelect: goHome },
       { label: marked ? "Remove bookmark" : "Bookmark this page", icon: "bookmark" as const, disabled: !web, onSelect: () => void toggleMark() },
@@ -1456,6 +1489,7 @@ export function Browser({
             <Menu label="Every tab" closeOnScroll={false} className="toolbar-button" trigger={<Icon name="chevronDown" size={16} />} items={tabList} searchLabel="Search open tabs" />
             <span className="browser-bar-divider" aria-hidden />
             {button("Add a catalogue", "globePlus", onOpenCatalogues)}
+            {button("Video reader view", "videoReader", () => void openVideo(), film ? " is-on" : "")}
             {button("Picture in picture", "pictureInPicture", () => void popOut())}
             {downloadsButton}
             <Menu label="More" className="toolbar-button" trigger={<Icon name="more" size={17} />} items={moreItems} />
@@ -1564,6 +1598,7 @@ export function Browser({
             <p className="muted">{problem}</p>
           </div>
         )}
+        {film && <VideoReader video={film} onClose={() => setFilm(null)} />}
         {article && (
           <article className="browser-reader" lang={article.lang ?? undefined}>
             <div className="browser-reader-bar">

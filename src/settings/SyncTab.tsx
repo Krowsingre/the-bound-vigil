@@ -360,6 +360,12 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
                 onChange={(splitBigFiles) => changeSync({ splitBigFiles })}
               />
             )}
+            <Toggle
+              label={`Stream audiobooks that aren't on this ${isIOS || isAndroid ? "device" : "computer"}`}
+              hint="Play them straight from the cloud without downloading. Turn off to download each one before it plays."
+              checked={sync.streamAudio}
+              onChange={(streamAudio) => changeSync({ streamAudio })}
+            />
           </div>
           {(isIOS || isAndroid) && (
             <Row
