@@ -201,6 +201,8 @@ export function Reader({
   // Positions are saved shortly after the reader stops moving, and on leaving.
   const pending = useRef<ReaderLocator | null>(null);
   const reportPosition = useRef<() => void>(() => undefined);
+  /** Starts or stops auto-scroll (Ctrl+Space, or three taps on the page). */
+  const toggleAutoScroll = useRef<() => void>(() => undefined);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const flush = useCallback(() => {
     clearTimeout(timer.current);
@@ -236,6 +238,7 @@ export function Reader({
     colors,
     annotations: drawn,
     events: {
+      onTripleTap: () => toggleAutoScroll.current(),
       onRelocate: (r) => {
         noteReading();
         const page = pageOf(r.location);
@@ -515,6 +518,15 @@ export function Reader({
   const scrolling = (engine.fixed ? settings.pageFlow : settings.flow) === "scrolled";
   const { scrollByPixels } = engine;
   reportPosition.current = () => engine.getView()?.renderer.reportPosition?.();
+  toggleAutoScroll.current = () => {
+    if (!engine.ready) return;
+    if (!autoScrolling && !scrolling) changeSettings(engine.fixed ? { pageFlow: "scrolled" } : { flow: "scrolled" });
+    setAutoScrolling(!autoScrolling);
+    if (autoScrolling) {
+      reportPosition.current();
+      void flush();
+    }
+  };
   // While a voice is being followed (a paired audiobook or Read aloud), the
   // voice moves the page; auto-scroll waits and carries on when it stops.
   const voiceLeads = (readAlong.following && readAlong.playing) || readAloud.status === "playing";
@@ -549,14 +561,7 @@ export function Reader({
     const ctrl = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
     if (ctrl && (e.code === "Space" || key === " ") && !e.altKey && !e.shiftKey) {
-      if (!e.repeat && engine.ready) {
-        if (!autoScrolling && !scrolling) changeSettings(engine.fixed ? { pageFlow: "scrolled" } : { flow: "scrolled" });
-        setAutoScrolling(!autoScrolling);
-        if (autoScrolling) {
-          reportPosition.current();
-          void flush();
-        }
-      }
+      if (!e.repeat) toggleAutoScroll.current();
     } else if (ctrl && engine.fixed && (key === "=" || key === "+" || key === "-" || key === "0")) {
       // Zoom for PDFs and comics, in place of the window's own zoom.
       changeSettings({ pageZoom: key === "0" ? "fit-page" : zoomStep(engine.scale, key === "-" ? -1 : 1) });

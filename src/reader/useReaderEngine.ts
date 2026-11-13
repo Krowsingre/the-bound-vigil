@@ -13,6 +13,9 @@ import type { ReaderSource } from "./formats";
 import { DEFAULT_SETTINGS, highlightHex, readerCss, WIDTHS, type PageColors, type ReaderSettings } from "./settings";
 
 /** Phones and tablets, which select a word by pressing and holding it. */
+/** Longest wait between the taps of a triple tap, and how far apart they may land. */
+const TAP_GAP_MS = 400;
+const TAP_SLOP_PX = 30;
 const touchOnly = typeof window !== "undefined" && (isIOS || isAndroid || window.matchMedia?.("(hover: none)").matches === true);
 
 /** Selects the word at a point in the page, if there's one there. */
@@ -55,6 +58,8 @@ export interface EngineEvents {
   onKeyUp?: (event: KeyboardEvent) => void;
   /** PDFs and comics: zoomed with Ctrl+wheel or two fingers, to this scale. */
   onZoom?: (zoom: number) => void;
+  /** Three quick taps (or clicks) in one spot on the page. */
+  onTripleTap?: () => void;
 }
 
 export interface ReaderEngine {
@@ -322,6 +327,20 @@ export function useReaderEngine({
             // The page is in a frame of its own, so a tap on it never reaches the
             // reader's menus. Passed on, it closes whichever is open.
             document.dispatchEvent(new Event("pointerdown"));
+          });
+          // Three quick taps in one spot (auto-scroll on and off). The browser's own
+          // triple tap selects a paragraph, so that selection is let go.
+          const taps: { at: number; x: number; y: number }[] = [];
+          doc.addEventListener("pointerup", (p) => {
+            const tap = { at: p.timeStamp, x: p.clientX, y: p.clientY };
+            const last = taps[taps.length - 1];
+            if (last && (tap.at - last.at > TAP_GAP_MS || Math.hypot(tap.x - last.x, tap.y - last.y) > TAP_SLOP_PX)) taps.length = 0;
+            taps.push(tap);
+            if (taps.length < 3) return;
+            taps.length = 0;
+            doc.getSelection()?.removeAllRanges();
+            eventsRef.current.onSelect?.(null);
+            eventsRef.current.onTripleTap?.();
           });
           doc.addEventListener("pointerup", () => setTimeout(check, 0));
           // Right-click (computers): the word under the pointer is selected, and its
