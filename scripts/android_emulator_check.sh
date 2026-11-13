@@ -53,6 +53,11 @@ for _ in $(seq 1 12); do
 done
 shot 1-opened
 echo "Device code on screen: ${code:-none}"
+if [ -z "$code" ]; then
+  # Say what was on the screen instead, so a failure can be read from the log.
+  echo "--- What the screen showed ---"
+  grep -oE '(text|content-desc)="[^"]+"' "$out/1-opened.xml" | head -n 60 || echo "(the screen couldn't be read)"
+fi
 
 if [ -n "$code" ] && [ -n "${ACTIVATION_KEY_PEM:-}" ]; then
   key=$(node scripts/android_activation_key.mjs "$code")
