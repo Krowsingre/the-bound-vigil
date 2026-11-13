@@ -15,6 +15,7 @@ import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { Notes, type NewNoteKind } from "../notes/Notes";
+import type { ScribeAsk } from "../widgets";
 import { ChapterEditor, type SaveState } from "./ChapterEditor";
 import { quoteHtml } from "./fromNotes";
 import { QuoteDrawer } from "./QuoteDrawer";
@@ -59,6 +60,7 @@ export function Writing({
   onOpenBook,
   booksShown = true,
   chip, setChip, openId, setOpenId,
+  widgetAsk = null,
 }: {
   refreshKey: number;
   chip: WritingSection;
@@ -69,6 +71,8 @@ export function Writing({
   search: string;
   onClearSearch: () => void;
   onOpenBook: (bookId: string, cfi?: string) => void;
+  /** An iPhone widget asking for a new note, or to show one. */
+  widgetAsk?: ScribeAsk | null;
   /** False where your own books aren't kept (the phone web app): only notes show. */
   booksShown?: boolean;
 }) {
@@ -78,6 +82,13 @@ export function Writing({
   const publisher = usePublisher();
   const [ask, setAsk] = useState<{ kind: NewNoteKind; n: number } | null>(null);
   const [reload, setReload] = useState(0);
+  // A widget's New note, or one of its notes.
+  const [showNote, setShowNote] = useState<{ id: string; n: number } | null>(null);
+  useEffect(() => {
+    if (!widgetAsk) return;
+    if (widgetAsk.open === "new") setAsk((a) => ({ kind: "personal", n: (a?.n ?? 0) + 1 }));
+    else if (widgetAsk.id) setShowNote({ id: widgetAsk.id, n: widgetAsk.n });
+  }, [widgetAsk]);
   const showing: Chip = booksShown || chip !== "books" ? chip : "notes";
   const projects = useProjects(booksShown, refreshKey, reload);
   const toast = useToast();
@@ -217,6 +228,7 @@ export function Writing({
         <Notes
           kindTab={NOTES_TAB[showing]}
           ask={ask}
+          show={showNote}
           search={search}
           refreshKey={refreshKey}
           onClearSearch={onClearSearch}

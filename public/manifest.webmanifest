@@ -1,6 +1,6 @@
 {
   "name": "The Bound Vigil",
-  "short_name": "The Bound Vigil",
+  "short_name": "TBV",
   "description": "Read your TBV library on your phone.",
   "start_url": "./",
   "scope": "./",

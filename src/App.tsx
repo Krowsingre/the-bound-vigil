@@ -26,7 +26,7 @@ import { isActiveDownload, listenForDownloads, useDownloads } from "./browse/bro
 import { Audiobooks } from "./audio/Audiobooks";
 import { PlayerBar } from "./audio/PlayerBar";
 import { usePlayer } from "./audio/player";
-import { useWidgetLinks, useWidgetRefresh, type WidgetLink } from "./widgets";
+import { useWidgetLinks, useWidgetRefresh, type ScribeAsk, type WidgetLink } from "./widgets";
 import { followLink } from "./home/QuickLinks";
 import { useToast } from "./components/Toast";
 import { useStartupUpdateCheck } from "./settings/updates";
@@ -121,6 +121,8 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const [reading, setReading] = useState<{ bookId: string; at?: string; fileId?: string } | null>(null);
   const [writingSection, setWritingSection] = useState<WritingSection>("notes");
   const [writingBook, setWritingBook] = useState<string | null>(null);
+  /** A widget asking Scribe for a new note, or to show one. */
+  const [scribeAsk, setScribeAsk] = useState<ScribeAsk | null>(null);
   const [openCollection, setOpenCollection] = useState<CollectionRef | null>(null);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   /** A section of Preferences to show once it opens. */
@@ -514,8 +516,22 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const followWidget = useCallback(
     (link: WidgetLink) => {
       const p = playerNow.current;
+      // Somewhere other than a book: leave the book that's open.
+      if (link.kind !== "book" && link.kind !== "audio") setReading(null);
       if (link.kind === "book") openBook(link.id);
       else if (link.kind === "home") navigate("home");
+      else if (link.kind === "page") navigate(link.route);
+      else if (link.kind === "scribe") {
+        navigate("writing");
+        if (link.open === "book" && link.id) {
+          setWritingSection("books");
+          setWritingBook(link.id);
+        } else {
+          setWritingBook(null);
+          setWritingSection("notes");
+          setScribeAsk((a) => ({ open: link.open === "note" ? "note" : "new", id: link.id, n: (a?.n ?? 0) + 1 }));
+        }
+      }
       else if (link.kind === "sigil")
         void api.sanctumLinks().then(
           (links) => {
@@ -529,9 +545,9 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
         const want = link.bookId ?? loaded;
         if (!want) return;
         if (want !== loaded) {
-          void p.load(want, link.action === "toggle").then(() => link.action === "back" && playerNow.current.skip(-30_000));
-        } else if (link.action === "toggle") p.toggle();
-        else p.skip(-30_000);
+          void p.load(want, link.action !== "back").then(() => link.action === "back" && playerNow.current.skip(-30_000));
+        } else if (link.action === "toggle" || (link.action === "play" && !p.playing)) p.toggle();
+        else if (link.action === "back") p.skip(-30_000);
       }
     },
     [openBook, navigate, showCollection],
@@ -863,6 +879,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
             <Writing
               chip={writingSection} setChip={setWritingSection}
               openId={writingBook} setOpenId={setWritingBook}
+              widgetAsk={scribeAsk}
               booksShown={!isHome}
               search={searchText}
               refreshKey={refreshKey}

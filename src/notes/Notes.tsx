@@ -112,6 +112,7 @@ export function Notes({
   onClearSearch,
   onOpenBook,
   ask = null,
+  show = null,
   onGoToBooks,
   kindTab,
 }: {
@@ -122,6 +123,8 @@ export function Notes({
   onOpenBook: (bookId: string, cfi?: string) => void;
   /** Scribe's New button asking for a note; a new `n` asks again. */
   ask?: { kind: NewNoteKind; n: number } | null;
+  /** A note to open (from an iPhone widget); a new `n` asks again. */
+  show?: { id: string; n: number } | null;
   /** Where "Add to a book I'm writing" sends you when there's no book yet. Left out, notes aren't offered to books. */
   onGoToBooks?: () => void;
   /** Which of Scribe's tabs is showing. */
@@ -156,6 +159,11 @@ export function Notes({
     setSelectedId(null);
     setChosen(null);
   }, [kindTab]);
+
+  // Declared after the tab change above, so a note asked for on arrival stays open.
+  useEffect(() => {
+    if (show) setSelectedId(show.id);
+  }, [show]);
 
   const query: NotesQuery = useMemo(
     () => ({
