@@ -1,5 +1,5 @@
 //! Importing books from a server: a seedbox, a NAS or another computer,
-//! over FTP, FTPS (FTP with TLS) or SFTP. The servers are saved on this
+//! over FTP, FTPS (FTP with TLS), SFTP or WebDAV. The servers are saved on this
 //! device only, passwords included, and kept out of backups.
 //!
 //! Everything that talks to a server goes through `Connection`, so the rest
@@ -11,6 +11,7 @@
 mod ftp;
 pub mod queue;
 mod sftp;
+mod webdav;
 
 use std::collections::HashSet;
 use std::fs;
@@ -42,6 +43,10 @@ pub enum Protocol {
     /// FTP that switches to TLS before signing in (explicit FTPS).
     Ftps,
     Sftp,
+    /// A folder shared over the web (http).
+    Webdav,
+    /// WebDAV over https.
+    Webdavs,
 }
 
 impl Protocol {
@@ -49,6 +54,8 @@ impl Protocol {
         match self {
             Protocol::Ftp | Protocol::Ftps => 21,
             Protocol::Sftp => 22,
+            Protocol::Webdav => 80,
+            Protocol::Webdavs => 443,
         }
     }
 }
@@ -152,13 +159,14 @@ fn check(s: &Server) -> Result<()> {
     if s.port == 0 {
         return problem("Type the server's port. FTP usually uses 21 and SFTP 22; your seedbox's welcome email often says which.");
     }
-    if s.username.is_empty() {
+    let web = matches!(s.protocol, Protocol::Webdav | Protocol::Webdavs);
+    if s.username.is_empty() && !web {
         return problem("Type the username for this server.");
     }
     match s.login {
         Login::Key if s.protocol != Protocol::Sftp => return problem("Signing in with a key file works with SFTP only."),
         Login::Key if s.key_file.as_deref().is_none_or(|k| k.trim().is_empty()) => return problem("Choose your private key file."),
-        Login::Password if s.password.is_empty() && !s.username.eq_ignore_ascii_case("anonymous") => {
+        Login::Password if s.password.is_empty() && !s.username.is_empty() && !s.username.eq_ignore_ascii_case("anonymous") => {
             return problem("Type the password for this server.")
         }
         _ => {}
@@ -284,6 +292,7 @@ pub fn connect(server: &Server) -> Result<Box<dyn Connection>> {
     match server.protocol {
         Protocol::Ftp | Protocol::Ftps => Ok(Box::new(ftp::FtpConnection::open(server)?)),
         Protocol::Sftp => Ok(Box::new(sftp::SftpConnection::open(server)?)),
+        Protocol::Webdav | Protocol::Webdavs => Ok(Box::new(webdav::WebdavConnection::open(server)?)),
     }
 }
 
@@ -771,6 +780,8 @@ pub(crate) fn label(protocol: Protocol) -> &'static str {
         Protocol::Ftp => "FTP",
         Protocol::Ftps => "FTPS",
         Protocol::Sftp => "SFTP",
+        Protocol::Webdav => "WebDAV",
+        Protocol::Webdavs => "WebDAVS",
     }
 }
 

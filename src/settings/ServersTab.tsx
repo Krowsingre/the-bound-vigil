@@ -1,5 +1,5 @@
-// Preferences › Servers: seedboxes, NAS drives and other computers to bring
-// books and audiobooks in from, over FTP, FTPS or SFTP.
+// Discover › Geas › Servers: seedboxes, NAS drives and other computers to bring
+// books and audiobooks in from, over FTP, FTPS, SFTP or WebDAV.
 
 import { useCallback, useEffect, useState } from "react";
 import { api, isApp } from "../api";
@@ -7,17 +7,29 @@ import { NO_SERVER_QUEUE, SERVERS_DESKTOP_ONLY } from "../api/serverStub";
 import type { RemoteEntry, ServerInput, ServerQueueView, ServerListing, ServerProtocol, ServerView } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
-import { Columns, formatBytes, Section, Segmented } from "./controls";
-import { AudiobookshelfSection } from "./AudiobookshelfSection";
-import { LocalSendSection } from "./LocalSendSection";
+import { DiscoverCard } from "../browse/DiscoverPage";
+import { formatBytes, Segmented } from "./controls";
 
 const PROTOCOLS: { value: ServerProtocol; label: string }[] = [
   { value: "sftp", label: "SFTP (SSH)" },
   { value: "ftps", label: "FTPS" },
   { value: "ftp", label: "FTP" },
+  { value: "webdavs", label: "WebDAV" },
 ];
 
-const usualPort = (p: ServerProtocol) => (p === "sftp" ? 22 : 21);
+const web = (p: ServerProtocol) => p === "webdav" || p === "webdavs";
+const usualPort = (p: ServerProtocol) => (p === "sftp" ? 22 : p === "webdavs" ? 443 : p === "webdav" ? 80 : 21);
+const LABEL: Record<ServerProtocol, string> = { sftp: "SFTP", ftps: "FTPS", ftp: "FTP", webdavs: "WebDAV", webdav: "WebDAV (http)" };
+
+/** A WebDAV address pasted whole (https://nas.local:5006/books) is split into
+ * its parts: http or https, the address, the port and the folder. */
+export function splitAddress(text: string): Partial<ServerInput> | null {
+  const m = /^(https?):\/\/([^/:?#\s]+)(?::(\d{1,5}))?(\/[^?#]*)?/i.exec(text.trim());
+  if (!m) return null;
+  const protocol: ServerProtocol = m[1].toLowerCase() === "https" ? "webdavs" : "webdav";
+  const folder = m[4] && m[4] !== "/" ? decodeURIComponent(m[4]).replace(/\/+$/, "") : undefined;
+  return { protocol, host: m[2], port: m[3] ? Number(m[3]) : usualPort(protocol), ...(folder ? { folder } : {}) };
+}
 
 const EMPTY: ServerInput = {
   id: null,
@@ -44,7 +56,7 @@ interface KeyQuestion {
   cancel: () => void;
 }
 
-export function ServersTab() {
+export function ServersCard() {
   const toast = useToast();
   const [servers, setServers] = useState<ServerView[] | null>(null);
   const [editing, setEditing] = useState<ServerInput | null>(null);
@@ -80,10 +92,12 @@ export function ServersTab() {
   );
 
   return (
-    <Columns side={<LocalSendSection />}>
-      <Section
+    <>
+      <DiscoverCard
         id="servers"
+        icon="database"
         title="Servers"
+        className="geas-servers"
         lede="Bring in books, documents and audiobooks from a seedbox, a NAS or another computer. Files are copied into TBV; nothing on the server is changed."
       >
         {!isApp && <p className="settings-row-hint">{SERVERS_DESKTOP_ONLY}</p>}
@@ -98,7 +112,7 @@ export function ServersTab() {
                 <span>
                   <span className="settings-row-label">{s.name}</span>
                   <span className="settings-row-hint">
-                    {s.protocol.toUpperCase()} · {s.username ? `${s.username}@` : ""}
+                    {LABEL[s.protocol]} · {s.username ? `${s.username}@` : ""}
                     {s.host}
                     {s.port !== usualPort(s.protocol) ? `:${s.port}` : ""}
                     {s.folder ? ` · starts in ${s.folder}` : ""}
@@ -144,9 +158,7 @@ export function ServersTab() {
           </div>
         )}
         <DownloadStatus />
-      </Section>
-
-      <AudiobookshelfSection />
+      </DiscoverCard>
 
       {browsing && (
         <BrowseDialog
@@ -238,7 +250,7 @@ export function ServersTab() {
           </div>
         </div>
       )}
-    </Columns>
+    </>
   );
 }
 
@@ -314,9 +326,10 @@ function ServerForm({
         <span>Type</span>
         <Segmented
           label="Type"
-          value={draft.protocol}
+          value={web(draft.protocol) ? "webdavs" : draft.protocol}
           options={PROTOCOLS}
           onChange={(protocol) =>
+            protocol !== (web(draft.protocol) ? "webdavs" : draft.protocol) &&
             change({ protocol, port: draft.port === usualPort(draft.protocol) || !draft.port ? usualPort(protocol) : draft.port })
           }
         />
@@ -326,15 +339,20 @@ function ServerForm({
           ? "SFTP works over SSH. Most seedboxes and NAS drives offer it, and it keeps your password and files private."
           : draft.protocol === "ftps"
             ? "FTP with encryption. Use it when your server offers FTPS (sometimes called FTP over TLS or FTPES)."
-            : "Plain FTP sends your password and files unencrypted. Use it only on your own network, or when nothing else is offered."}
+            : web(draft.protocol)
+              ? "A folder shared over the web, such as a NAS, Nextcloud or ownCloud. You can paste the whole address, like https://nas.local:5006/books."
+              : "Plain FTP sends your password and files unencrypted. Use it only on your own network, or when nothing else is offered."}
       </p>
       <div className="kindle-form-pair">
         <label className="field">
           <span>Address</span>
           <input
             value={draft.host}
-            onChange={(e) => change({ host: e.target.value })}
-            placeholder="seedbox.example.net or 192.168.1.20"
+            onChange={(e) => {
+              const whole = web(draft.protocol) ? splitAddress(e.target.value) : null;
+              change(whole ?? { host: e.target.value });
+            }}
+            placeholder={web(draft.protocol) ? "nas.local or https://nas.local/books" : "seedbox.example.net or 192.168.1.20"}
             spellCheck={false}
             autoComplete="off"
           />
@@ -348,8 +366,21 @@ function ServerForm({
           />
         </label>
       </div>
+      {web(draft.protocol) && (
+        <label className="server-secure">
+          <input
+            type="checkbox"
+            checked={draft.protocol === "webdavs"}
+            onChange={(e) => {
+              const protocol: ServerProtocol = e.target.checked ? "webdavs" : "webdav";
+              change({ protocol, port: draft.port === usualPort(draft.protocol) || !draft.port ? usualPort(protocol) : draft.port });
+            }}
+          />
+          <span>Secure connection (https). Turn it off only for a server on your own network that has no https.</span>
+        </label>
+      )}
       <label className="field">
-        <span>Username</span>
+        <span>{web(draft.protocol) ? "Username (if it asks for one)" : "Username"}</span>
         <input value={draft.username} onChange={(e) => change({ username: e.target.value })} spellCheck={false} autoComplete="off" />
       </label>
       {sftp && (
@@ -577,6 +608,7 @@ function DownloadStatus() {
   return (
     <div className="server-download">
       <div className="settings-row">
+        <Icon name="connections" size={26} className="server-download-mark" />
         <div className="settings-row-text">
           <p className="settings-row-label">Connections</p>
           <p className="settings-row-hint">

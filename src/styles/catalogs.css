@@ -292,3 +292,442 @@
 .catalog-kinds {
   flex-wrap: wrap;
 }
+
+/* Discover's own pages, Geas and Libram (embre's pictures, 13 November). */
+.discover-page {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-height: 100%;
+  padding: 28px 36px 40px;
+}
+
+.discover-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 30px;
+  row-gap: 10px;
+}
+
+.discover-head-name {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.discover-head-mark {
+  flex: none;
+  stroke-width: 1.4;
+}
+
+.discover-head h1 {
+  margin: 0;
+  font: 400 44px/1.05 var(--font-serif);
+}
+
+.discover-head-caption {
+  display: block;
+  margin-top: 8px;
+  font: 500 13px var(--font-sans);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.discover-head-about {
+  margin: 0;
+  padding-left: 30px;
+  border-left: 1px solid var(--border);
+  font: italic 400 17px/1.5 var(--font-serif);
+  color: var(--text-muted);
+}
+
+.discover-head.is-stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.discover-head.is-stacked h1 {
+  font-size: 56px;
+}
+
+.discover-head.is-stacked .discover-head-about {
+  padding-left: 26px;
+  border-left: 0;
+}
+
+.discover-head-rule {
+  grid-column: 1 / -1;
+  margin: 14px 0 0;
+}
+
+.discover-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px 56px;
+}
+
+.discover-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 170px;
+  justify-content: center;
+  padding: 11px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  color: var(--text);
+  font: 500 16px var(--font-serif);
+  cursor: pointer;
+}
+
+.discover-tab:hover {
+  border-color: var(--text-muted);
+}
+
+.discover-tab.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.discover-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 26px 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  scroll-margin: 16px;
+  transition: box-shadow 0.3s;
+}
+
+.discover-card.is-found {
+  animation: discover-found 1.6s ease-out;
+}
+
+@keyframes discover-found {
+  0%,
+  40% {
+    box-shadow: 0 0 0 2px var(--focus);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
+.discover-card-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.discover-card-head svg {
+  flex: none;
+}
+
+.discover-card-head h2 {
+  margin: 0;
+  font: 400 30px/1.15 var(--font-serif);
+}
+
+.discover-card-lede {
+  margin: 0;
+  color: var(--text-muted);
+  font: 400 16px/1.5 var(--font-serif);
+}
+
+/* Geas: the servers beside Grimoire, Audiobookshelf along the bottom. */
+.geas-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr);
+  gap: 26px;
+  align-items: start;
+}
+
+.geas-abs {
+  grid-column: 1 / -1;
+}
+
+.geas-abs-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px 36px;
+}
+
+.geas-abs-row .discover-card-lede {
+  padding-left: 36px;
+  border-left: 1px solid var(--border);
+}
+
+.geas-servers .server-download {
+  margin-top: 6px;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+}
+
+.geas-servers .server-download .settings-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 18px;
+  padding: 0;
+  border-top: 0;
+}
+
+@media (max-width: 720px) {
+  .geas-servers .server-download .settings-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .geas-servers .server-download .settings-row > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+.server-download-mark {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.server-secure {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.server-secure input {
+  margin-top: 3px;
+}
+
+/* Libram: the catalogues as cards. */
+.libram-landing {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.libram-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 30px;
+  border-bottom: 1px solid var(--border);
+}
+
+.libram-actions .btn {
+  min-height: 50px;
+  padding: 0 28px;
+  font-size: 18px;
+}
+
+.libram-catalogues h2 {
+  margin: 0;
+  font: 400 34px/1.2 var(--font-serif);
+}
+
+.libram-catalogues > p {
+  margin: 6px 0 0;
+  font: 400 17px/1.5 var(--font-serif);
+}
+
+.libram-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr));
+  gap: 26px;
+  margin: 26px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.libram-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 160px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+}
+
+.libram-card.is-add {
+  border-style: dashed;
+  background: none;
+}
+
+.libram-card-mark {
+  align-self: stretch;
+  box-sizing: content-box;
+  padding: 0 30px;
+  height: 100%;
+  max-height: 90px;
+  margin: auto 0;
+  border-right: 1px solid var(--border);
+  stroke-width: 1.4;
+}
+
+.libram-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 20px 20px 20px 32px;
+  min-width: 0;
+}
+
+.libram-card-text strong {
+  font: 600 24px/1.2 var(--font-serif);
+}
+
+.libram-card-line {
+  font: 400 17px/1.3 var(--font-serif);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.libram-card-about {
+  margin-top: 4px;
+  font: 400 16px/1.45 var(--font-serif);
+  color: var(--text-muted);
+}
+
+.libram-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 24px;
+}
+
+.libram-card-actions .btn-primary {
+  min-height: 46px;
+  padding: 0 22px;
+  font-size: 17px;
+}
+
+.libram-card-more,
+.libram-card-plus {
+  min-width: 46px;
+  min-height: 46px;
+  justify-content: center;
+  padding: 0;
+}
+
+.libram-help {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 30px 0 0;
+  padding: 24px 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+}
+
+.libram-help li {
+  display: flex;
+  gap: 22px;
+  padding: 4px 32px;
+  color: var(--text-muted);
+  font: 400 16px/1.5 var(--font-serif);
+}
+
+.libram-help li + li {
+  border-left: 1px solid var(--border);
+}
+
+.libram-help svg {
+  flex: none;
+  margin-top: 4px;
+  color: var(--text);
+}
+
+.libram-help strong {
+  display: block;
+  color: var(--text);
+  font: 600 19px/1.3 var(--font-serif);
+}
+
+.libram-back {
+  align-self: flex-start;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 1100px) {
+  .geas-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .geas-abs-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .geas-abs-row .discover-card-lede {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .libram-help {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+  .libram-help li + li {
+    border-left: 0;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 720px) {
+  .discover-page {
+    padding: 18px 16px 32px;
+  }
+  .discover-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .discover-head h1,
+  .discover-head.is-stacked h1 {
+    font-size: 36px;
+  }
+  .discover-head-about,
+  .discover-head.is-stacked .discover-head-about {
+    padding-left: 0;
+    border-left: 0;
+    font-size: 15px;
+  }
+  .discover-tabs {
+    gap: 8px;
+  }
+  .discover-tab {
+    min-width: 0;
+    flex: 1;
+    padding: 9px 6px;
+    font-size: 14px;
+  }
+  .discover-tab svg {
+    display: none;
+  }
+  .discover-card {
+    padding: 20px;
+  }
+  .libram-actions .btn {
+    flex: 1;
+    justify-content: center;
+  }
+  .libram-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    min-height: 0;
+  }
+  .libram-card-mark {
+    padding: 0 18px;
+  }
+  .libram-card-text {
+    padding: 16px;
+  }
+  .libram-card-actions {
+    grid-column: 1 / -1;
+    padding: 0 16px 16px;
+    justify-content: flex-end;
+  }
+}

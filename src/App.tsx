@@ -13,9 +13,8 @@ import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Writing, type WritingSection } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
-import { Scry } from "./browse/Scry";
 import { Libram } from "./catalogs/Libram";
-import { ServersTab } from "./settings/ServersTab";
+import { Geas } from "./browse/Geas";
 import { UpNextReplacementHost } from "./library/UpNextReplacement";
 import { workspaceFrame } from "./shell/workspaceFrame";
 import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory, openInDiscover } from "./browse/Browser";
@@ -814,18 +813,8 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
               onOpenCollection={showCollection}
               onReadAlong={(ebookId) => openBook(ebookId)}
             />
-          ) : route === "scry" ? (
-            <Scry />
           ) : route === "geas" ? (
-            <div className="settings-page is-landing geas-page">
-              <div className="settings-body">
-                <header className="settings-head">
-                  <h1>Geas</h1>
-                  <p className="muted">Bring books, documents and audiobooks in from your servers. What TBV can open is added to your Archive or Resonance.</p>
-                </header>
-                <ServersTab />
-              </div>
-            </div>
+            <Geas />
           ) : route === "libram" ? (
             <Libram
               refreshKey={refreshKey}
