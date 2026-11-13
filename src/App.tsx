@@ -26,6 +26,8 @@ import { isActiveDownload, listenForDownloads, useDownloads } from "./browse/bro
 import { Audiobooks } from "./audio/Audiobooks";
 import { PlayerBar } from "./audio/PlayerBar";
 import { usePlayer } from "./audio/player";
+import { useWidgetLinks, useWidgetRefresh, type WidgetLink } from "./widgets";
+import { followLink } from "./home/QuickLinks";
 import { useToast } from "./components/Toast";
 import { useStartupUpdateCheck } from "./settings/updates";
 import { Home } from "./home/Home";
@@ -505,6 +507,37 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     setRoute("collections");
   }, []);
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  // Taps on the iPhone's widgets.
+  const playerNow = useRef(player);
+  playerNow.current = player;
+  const followWidget = useCallback(
+    (link: WidgetLink) => {
+      const p = playerNow.current;
+      if (link.kind === "book") openBook(link.id);
+      else if (link.kind === "home") navigate("home");
+      else if (link.kind === "sigil")
+        void api.sanctumLinks().then(
+          (links) => {
+            const sigil = links.find((l) => l.id === link.id);
+            if (sigil) followLink(sigil.target, { onNavigate: navigate, onOpenBook: (id) => openBook(id), onOpenCollection: showCollection });
+          },
+          () => undefined,
+        );
+      else {
+        const loaded = p.book?.book.id;
+        const want = link.bookId ?? loaded;
+        if (!want) return;
+        if (want !== loaded) {
+          void p.load(want, link.action === "toggle").then(() => link.action === "back" && playerNow.current.skip(-30_000));
+        } else if (link.action === "toggle") p.toggle();
+        else p.skip(-30_000);
+      }
+    },
+    [openBook, navigate, showCollection],
+  );
+  useWidgetLinks(followWidget);
+  useWidgetRefresh();
 
   // Sync runs in the background; show its state, and what it brings in.
   useEffect(() => {

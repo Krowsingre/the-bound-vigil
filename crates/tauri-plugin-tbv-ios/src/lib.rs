@@ -131,6 +131,28 @@ pub fn browser_downloads_dir() -> Option<std::path::PathBuf> {
     None
 }
 
+/// The App Group folder TBV's widgets read from.
+pub fn widget_folder() -> Result<std::path::PathBuf, String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get().ok_or("The iOS bridge isn't ready.")?;
+        let answer: serde_json::Value = swift.run_mobile_plugin("widgetFolder", ()).map_err(|e| e.to_string())?;
+        answer.get("path").and_then(|v| v.as_str()).map(std::path::PathBuf::from).ok_or_else(|| "No widget folder.".to_string())
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        Err("Widgets are only on iPhone and iPad.".to_string())
+    }
+}
+
+/// Asks the widgets to read what TBV just wrote.
+pub fn reload_widgets() {
+    #[cfg(target_os = "ios")]
+    if let Some(swift) = SWIFT.get() {
+        let _: Result<serde_json::Value, _> = swift.run_mobile_plugin("reloadWidgets", ());
+    }
+}
+
 /// Published, complete batches in the Share Extension's App Group inbox.
 pub fn pending_shares() -> Result<Vec<std::path::PathBuf>, String> {
     #[cfg(target_os = "ios")]

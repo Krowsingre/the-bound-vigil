@@ -38,6 +38,7 @@ mod windows_quit;
 mod sync;
 mod updates;
 mod video_proxy;
+mod widgets;
 mod writing;
 
 use std::path::PathBuf;
@@ -2139,6 +2140,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            widgets::widget_links,
+            widgets::widget_refresh,
             look_up::look_up_word,
             look_up::translate_text,
             ios_pick_folder,
@@ -2511,6 +2514,7 @@ pub fn run() {
             // A book shared to TBV from another app, on iPhone and iPad.
             #[cfg(target_os = "ios")]
             if let tauri::RunEvent::Opened { urls } = &_event {
+                widgets::opened(_app, urls);
                 shared::opened(_app, urls);
             }
         });

@@ -9,6 +9,7 @@ import StoreKit
 import UIKit
 import UniformTypeIdentifiers
 import WebKit
+import WidgetKit
 
 class PathArgs: Decodable {
   let path: String
@@ -290,6 +291,26 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
     let paths = batches.filter { $0.hasDirectoryPath && UUID(uuidString: $0.lastPathComponent) != nil }
       .map(\.path)
     invoke.resolve(["paths": paths])
+  }
+
+  /// The folder TBV's widgets read from, inside the App Group it shares
+  /// with them.
+  @objc public func widgetFolder(_ invoke: Invoke) throws {
+    guard let root = FileManager.default.containerURL(
+      forSecurityApplicationGroupIdentifier: "group.com.krowsingre.theboundvigil"
+    ) else {
+      invoke.reject("TBV's shared storage is unavailable.")
+      return
+    }
+    invoke.resolve(["path": root.appendingPathComponent("Widget", isDirectory: true).path])
+  }
+
+  /// Tells the Home Screen and Lock Screen widgets to read again.
+  @objc public func reloadWidgets(_ invoke: Invoke) throws {
+    if #available(iOS 14.0, *) {
+      WidgetCenter.shared.reloadAllTimelines()
+    }
+    invoke.resolve()
   }
 
   /// What kind of device this is: "iPhone" or "iPad".

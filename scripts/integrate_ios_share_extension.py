@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Add TBV's Share Extension to the actual Tauri-generated XcodeGen project.
+"""Add TBV's Share Extension and Home Screen widgets to the actual
+Tauri-generated XcodeGen project.
 
 Run after 'tauri ios init --ci', before 'tauri ios build'.
 Does not touch the checked-in Tauri configuration.
@@ -16,6 +17,9 @@ project = apple / "project.yml"
 host_entitlements = apple / "the-bound-vigil_iOS/the-bound-vigil_iOS.entitlements"
 source = root / "ios-share-extension"
 target_dir = apple / "TBVShareExtension"
+widget_source = root / "ios-widgets"
+widget_dir = apple / "TBVWidgets"
+GROUP = ["group.com.krowsingre.theboundvigil"]
 
 spec = project.read_text()
 host_target = "  the-bound-vigil_iOS:\n"
@@ -28,9 +32,13 @@ if "  TBVShareExtension:\n" in spec:
 target_dir.mkdir(parents=True, exist_ok=True)
 for name in ("ShareViewController.swift", "Info.plist", "ShareExtension.entitlements"):
     shutil.copy2(source / name, target_dir / name)
+widget_dir.mkdir(parents=True, exist_ok=True)
+for name in ("TBVWidgets.swift", "Info.plist", "Widgets.entitlements"):
+    shutil.copy2(widget_source / name, widget_dir / name)
 
 spec = spec.replace(host_dependencies,
     "    dependencies:\n      - target: TBVShareExtension\n        embed: true\n"
+    "      - target: TBVWidgets\n        embed: true\n"
     "      - framework: libapp.a\n        embed: false\n", 1)
 team = os.environ.get("APPLE_DEVELOPMENT_TEAM", "").strip()
 if not team or not team.isalnum():
@@ -65,6 +73,31 @@ spec += f"""
         DEVELOPMENT_TEAM: {team}
         SKIP_INSTALL: true
         APPLICATION_EXTENSION_API_ONLY: true
+
+  TBVWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: TBVWidgets/TBVWidgets.swift
+    info:
+      path: TBVWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Bound Vigil
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: TBVWidgets/Widgets.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.krowsingre.theboundvigil.Widgets
+        PRODUCT_NAME: TBVWidgets
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: TBVWidgets/Widgets.entitlements
+        DEVELOPMENT_TEAM: {team}
+        SKIP_INSTALL: true
+        APPLICATION_EXTENSION_API_ONLY: true
 """
 project.write_text(spec)
 # XcodeGen regenerates the host entitlement file, so write the App Group
@@ -91,10 +124,21 @@ with extension_entitlements.open("rb") as f:
 if extension_verified.get("com.apple.security.application-groups") != ["group.com.krowsingre.theboundvigil"]:
     raise SystemExit("Share Extension App Group entitlement file verification failed")
 
+# The widgets read what TBV writes into the same App Group.
+widget_entitlements = widget_dir / "Widgets.entitlements"
+with widget_entitlements.open("rb") as f:
+    widget_data = plistlib.load(f)
+widget_data["com.apple.security.application-groups"] = GROUP
+with widget_entitlements.open("wb") as f:
+    plistlib.dump(widget_data, f)
+with widget_entitlements.open("rb") as f:
+    if plistlib.load(f).get("com.apple.security.application-groups") != GROUP:
+        raise SystemExit("Widgets App Group entitlement file verification failed")
+
 with host_entitlements.open("rb") as f:
     verified = plistlib.load(f)
 if verified.get("com.apple.security.application-groups") != ["group.com.krowsingre.theboundvigil"]:
     raise SystemExit("Host App Group entitlement verification failed")
 if verified.get("aps-environment") != "production":
     raise SystemExit("Host push entitlement verification failed")
-print("Share Extension target generated and host App Group entitlement verified")
+print("Share Extension and widget targets generated and App Group entitlements verified")

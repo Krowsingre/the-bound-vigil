@@ -126,9 +126,8 @@ jobs:
               raise SystemExit("The Build Rust Code step has an unexpected shape")
           p.write_text(source[:found[0].start(2)] + body + source[found[0].end(2):])
           PY
-          # Apple wants the add-on's version and build number to match the app's.
+          # Apple wants the add-ons' version and build number to match the app's.
           host=the-bound-vigil_iOS/Info.plist
-          ext=TBVShareExtension/Info.plist
           settings=$(xcodebuild -project the-bound-vigil.xcodeproj -target the-bound-vigil_iOS -configuration release -showBuildSettings 2>/dev/null)
           for key in CFBundleShortVersionString CFBundleVersion; do
             value=$(/usr/libexec/PlistBuddy -c "Print :$key" "$host")
@@ -137,7 +136,9 @@ jobs:
               value=$(echo "$settings" | awk -v n="$name" '$1 == n && $2 == "=" { print $3; exit }')
             fi
             test -n "$value"
-            /usr/libexec/PlistBuddy -c "Set :$key $value" "$ext" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :$key string $value" "$ext"
+            for ext in TBVShareExtension/Info.plist TBVWidgets/Info.plist; do
+              /usr/libexec/PlistBuddy -c "Set :$key $value" "$ext" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :$key string $value" "$ext"
+            done
             echo "$key: $value"
           done
           auth=(-allowProvisioningUpdates -authenticationKeyID "$APPLE_API_KEY_ID" -authenticationKeyIssuerID "$APPLE_API_ISSUER" -authenticationKeyPath "$HOME/private_keys/AuthKey_$APPLE_API_KEY_ID.p8")
@@ -155,7 +156,7 @@ jobs:
           PLIST
           rm -f build/arm64/*.ipa
           xcodebuild -exportArchive -archivePath "$archive" -exportPath "$PWD/build/arm64" -exportOptionsPlist /tmp/export-options.plist "${auth[@]}"
-      - name: Check the add-on is in the app and signed
+      - name: Check the add-ons are in the app and signed
         run: |
           set -euo pipefail
           ipa=$(ls src-tauri/gen/apple/build/arm64/*.ipa | head -1)
@@ -163,19 +164,27 @@ jobs:
           unzip -q "$ipa" -d "$work"
           app=$(find "$work/Payload" -maxdepth 1 -name '*.app' | head -1)
           ext="$app/PlugIns/TBVShareExtension.appex"
+          widgets="$app/PlugIns/TBVWidgets.appex"
           codesign --verify --strict "$app"
           codesign --verify --strict "$ext"
-          for part in "$app" "$ext"; do
+          codesign --verify --strict "$widgets"
+          for part in "$app" "$ext" "$widgets"; do
             codesign -d --entitlements :- "$part" 2>/dev/null > "$work/ent.plist"
             /usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$work/ent.plist" | grep -Fx 'group.com.krowsingre.theboundvigil'
           done
           /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$ext/Info.plist" | grep -Fx 'com.apple.share-services'
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$widgets/Info.plist" | grep -Fx 'com.apple.widgetkit-extension'
+          # Widget taps open TBV through its own link scheme.
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$app/Info.plist" | grep -Fx 'theboundvigil'
           # Silent pushes need the push entitlement in the signed app.
           codesign -d --entitlements :- "$app" 2>/dev/null > "$work/app-ent.plist"
           /usr/libexec/PlistBuddy -c 'Print :aps-environment' "$work/app-ent.plist" | grep -Fx 'production'
           for key in CFBundleShortVersionString CFBundleVersion; do
-            a=$(/usr/libexec/PlistBuddy -c "Print :$key" "$app/Info.plist"); b=$(/usr/libexec/PlistBuddy -c "Print :$key" "$ext/Info.plist")
-            [ "$a" = "$b" ] || { echo "::error::$key is $a in the app but $b in the add-on."; exit 1; }
+            a=$(/usr/libexec/PlistBuddy -c "Print :$key" "$app/Info.plist")
+            for part in "$ext" "$widgets"; do
+              b=$(/usr/libexec/PlistBuddy -c "Print :$key" "$part/Info.plist")
+              [ "$a" = "$b" ] || { echo "::error::$key is $a in the app but $b in $(basename "$part")."; exit 1; }
+            done
           done
       - name: Keep the app file
         uses: actions/upload-artifact@v4
