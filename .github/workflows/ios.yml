@@ -96,8 +96,13 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           export APPLE_API_KEY_PATH=~/private_keys/AuthKey_$APPLE_API_KEY.p8
+          # Only the Rust library from this step is used: the next step signs
+          # and exports the app itself. Tauri's own export can fail on a new
+          # add-on whose ID Apple hasn't seen yet, so that's not fatal here;
+          # the next step stops if the library wasn't built.
           npx tauri ios build --export-method app-store-connect \
-            --config '{"bundle":{"iOS":{"bundleVersion":"${{ github.run_number }}"}}}'
+            --config '{"bundle":{"iOS":{"bundleVersion":"${{ github.run_number }}"}}}' \
+            || echo "::warning::Tauri's own export failed; the next step signs and exports the app."
       # Tauri archives without signing, which would leave the add-on out of
       # the App Group. So the app is archived again with Xcode signing each
       # part, reusing the Rust library the build above made.
