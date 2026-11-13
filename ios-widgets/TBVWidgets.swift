@@ -1,4 +1,4 @@
-// TBV's Home Screen and Lock Screen widgets. The app writes what they show
+// TBV's Home Screen widgets. The app writes what they show
 // (Widget/snapshot.json and small covers) into the App Group it shares with
 // them, and asks iOS to redraw them (src-tauri/src/widgets.rs). A tap opens
 // TBV with a theboundvigil:// link, which the app follows (src/widgets.ts).
@@ -6,7 +6,7 @@
 // embre's ten (13 November): small Continue Reading, Continue Listening,
 // Reading Today, Reading Activity and Quick Access; medium Continue Reading
 // & Listening, Reading Shelf, Quick Access, Scribe Workspace and Reading
-// Activity. The large and Lock Screen ones from 0.101 stay as they were.
+// Activity. Large and Lock Screen widgets are left out for now.
 import AppIntents
 import SwiftUI
 import UIKit
@@ -274,7 +274,7 @@ struct Empty: View {
   }
 }
 
-// MARK: - 1. Continue Reading (small; also the Lock Screen ring)
+// MARK: - 1. Continue Reading (small)
 
 struct SmallBook: View {
   let title: String
@@ -301,32 +301,18 @@ struct SmallBook: View {
 }
 
 struct ContinueReadingView: View {
-  @Environment(\.widgetFamily) var family
   let entry: Entry
 
   var body: some View {
-    content.widgetBackground(family == .accessoryCircular ? Color.clear : Palette.ink)
-  }
-
-  @ViewBuilder var content: some View {
-    if family == .accessoryCircular {
+    Group {
       if let book = entry.snapshot.current {
-        Gauge(value: min(max(book.progress, 0), 1)) {
-          Image(systemName: "book")
-        } currentValueLabel: {
-          Text("\(Int((book.progress * 100).rounded()))")
-        }
-        .gaugeStyle(.accessoryCircularCapacity)
-        .widgetURL(Links.book(book.id))
+        SmallBook(title: book.title, cover: book.cover, progress: book.progress, caption: "Reading", symbol: "book")
+          .widgetURL(Links.book(book.id))
       } else {
-        Image(systemName: "book.closed").widgetURL(Links.home)
+        Empty(symbol: "book.closed", text: "Nothing in progress").widgetURL(Links.page("library"))
       }
-    } else if let book = entry.snapshot.current {
-      SmallBook(title: book.title, cover: book.cover, progress: book.progress, caption: "Reading", symbol: "book")
-        .widgetURL(Links.book(book.id))
-    } else {
-      Empty(symbol: "book.closed", text: "Nothing in progress").widgetURL(Links.page("library"))
     }
+    .widgetBackground(Palette.ink)
   }
 }
 
@@ -337,7 +323,7 @@ struct ContinueReadingWidget: Widget {
     }
     .configurationDisplayName("Continue Reading")
     .description("Your current book. Tap to open it where you left off.")
-    .supportedFamilies([.systemSmall, .accessoryCircular])
+    .supportedFamilies([.systemSmall])
   }
 }
 
@@ -371,45 +357,29 @@ struct ContinueListeningWidget: Widget {
   }
 }
 
-// MARK: - 3. Reading Today (small; also on the Lock Screen)
+// MARK: - 3. Reading Today (small)
 
 struct TodayView: View {
-  @Environment(\.widgetFamily) var family
   let entry: Entry
 
   var body: some View {
-    Group {
-      switch family {
-      case .accessoryInline:
-        Text("\(Image(systemName: "book")) \(entry.readMinutes) min · \(Image(systemName: "headphones")) \(entry.listenMinutes) min")
-      case .accessoryRectangular:
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Today").font(.headline)
-          Label("\(entry.readMinutes) min read", systemImage: "book")
-          Label("\(entry.listenMinutes) min listened", systemImage: "headphones")
-        }
-        .font(.caption)
-        .frame(maxWidth: .infinity, alignment: .leading)
-      default:
-        VStack(alignment: .leading, spacing: 6) {
-          Caption(text: "Today", symbol: "sun.max")
-          Spacer(minLength: 0)
-          Text(duration(entry.readMinutes + entry.listenMinutes))
-            .font(.system(.title2, design: .serif).weight(.semibold)).foregroundColor(Palette.ash)
-            .minimumScaleFactor(0.7).lineLimit(1)
-          Spacer(minLength: 0)
-          Label(duration(entry.readMinutes) + " read", systemImage: "book")
-            .foregroundColor(Palette.slate)
-          Label(duration(entry.listenMinutes) + " listened", systemImage: "headphones")
-            .foregroundColor(Palette.listen)
-        }
-        .font(.caption)
-        .lineLimit(1)
-        .frame(maxWidth: .infinity, alignment: .leading)
-      }
+    VStack(alignment: .leading, spacing: 6) {
+      Caption(text: "Today", symbol: "sun.max")
+      Spacer(minLength: 0)
+      Text(duration(entry.readMinutes + entry.listenMinutes))
+        .font(.system(.title2, design: .serif).weight(.semibold)).foregroundColor(Palette.ash)
+        .minimumScaleFactor(0.7).lineLimit(1)
+      Spacer(minLength: 0)
+      Label(duration(entry.readMinutes) + " read", systemImage: "book")
+        .foregroundColor(Palette.slate)
+      Label(duration(entry.listenMinutes) + " listened", systemImage: "headphones")
+        .foregroundColor(Palette.listen)
     }
+    .font(.caption)
+    .lineLimit(1)
+    .frame(maxWidth: .infinity, alignment: .leading)
     .widgetURL(Links.home)
-    .widgetBackground(family == .systemSmall ? Palette.ink : Color.clear)
+    .widgetBackground(Palette.ink)
   }
 }
 
@@ -420,7 +390,7 @@ struct TodayWidget: Widget {
     }
     .configurationDisplayName("Reading Today")
     .description("Minutes read and listened today, and both together.")
-    .supportedFamilies([.systemSmall, .accessoryRectangular, .accessoryInline])
+    .supportedFamilies([.systemSmall])
   }
 }
 
@@ -880,53 +850,7 @@ struct ScribeWidget: Widget {
   }
 }
 
-// MARK: - In progress (large, from 0.101)
-
-struct InProgressView: View {
-  let entry: Entry
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text("In progress").font(.system(.headline, design: .serif)).foregroundColor(Palette.ash)
-      if entry.snapshot.inProgress.isEmpty {
-        Empty(symbol: "book.closed", text: "Nothing in progress")
-      } else {
-        ForEach(Array(entry.snapshot.inProgress.prefix(4).enumerated()), id: \.offset) { _, book in
-          Link(destination: Links.book(book.id)) {
-            HStack(spacing: 10) {
-              Cover(name: book.cover, title: book.title)
-                .frame(width: 40, height: 60).clipShape(RoundedRectangle(cornerRadius: 4))
-              VStack(alignment: .leading, spacing: 3) {
-                Text(book.title).font(.system(.subheadline, design: .serif).weight(.semibold))
-                  .foregroundColor(Palette.ash).lineLimit(1)
-                Text(book.author).font(.caption2).foregroundColor(Palette.ash.opacity(0.7)).lineLimit(1)
-                HStack(spacing: 6) {
-                  ProgressLine(value: book.progress)
-                  Text(percent(book.progress)).font(.caption2).foregroundColor(Palette.ash.opacity(0.7))
-                }
-              }
-            }
-          }
-        }
-        Spacer(minLength: 0)
-      }
-    }
-    .widgetBackground(Palette.ink)
-  }
-}
-
-struct InProgressWidget: Widget {
-  var body: some WidgetConfiguration {
-    StaticConfiguration(kind: "InProgress", provider: Provider()) { entry in
-      InProgressView(entry: entry)
-    }
-    .configurationDisplayName("In progress")
-    .description("The books you're reading, to pick one up.")
-    .supportedFamilies([.systemLarge])
-  }
-}
-
-// MARK: - Sigils (large, from 0.101)
+// MARK: - Icons
 
 /// TBV's icon names, as the nearest of Apple's symbols.
 func symbol(_ icon: String) -> String {
@@ -945,48 +869,7 @@ func symbol(_ icon: String) -> String {
   }
 }
 
-struct SigilsView: View {
-  let entry: Entry
-  private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text("Sigils").font(.system(.headline, design: .serif)).foregroundColor(Palette.ash)
-      LazyVGrid(columns: columns, spacing: 10) {
-        ForEach(Array(entry.snapshot.sigils.prefix(8).enumerated()), id: \.offset) { _, sigil in
-          Link(destination: Links.sigil(sigil.id)) {
-            ShortcutTile(shortcut: ShortcutEntity(id: sigil.id, title: sigil.title, symbol: symbol(sigil.icon),
-                                                  cover: sigil.cover, link: ""))
-              .frame(height: 54)
-          }
-        }
-      }
-      Spacer(minLength: 0)
-    }
-    .widgetBackground(Palette.ink)
-  }
-}
-
-struct SigilsWidget: Widget {
-  var body: some WidgetConfiguration {
-    StaticConfiguration(kind: "Sigils", provider: Provider()) { entry in
-      SigilsView(entry: entry)
-    }
-    .configurationDisplayName("Sigils")
-    .description("Your Sigils from Sanctum, one tap away.")
-    .supportedFamilies([.systemLarge])
-  }
-}
-
 // MARK: - The bundle
-
-/// A bundle lists at most ten widgets, so the 0.101 large ones sit in their own.
-struct LargeWidgets: WidgetBundle {
-  var body: some Widget {
-    InProgressWidget()
-    SigilsWidget()
-  }
-}
 
 @main
 struct TBVWidgetBundle: WidgetBundle {
@@ -1000,6 +883,5 @@ struct TBVWidgetBundle: WidgetBundle {
     ShelfWidget()
     QuickAccessSetWidget()
     ScribeWidget()
-    LargeWidgets().body
   }
 }
