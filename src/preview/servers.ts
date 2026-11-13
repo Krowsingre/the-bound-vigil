@@ -119,12 +119,12 @@ export function previewServers(): ServerApi {
     },
     testServer: async (id) => {
       const s = find(id);
-      if (s.protocol !== "ftp" && !s.hostKey) throw new Error(`new-host-key:${PRETEND_FINGERPRINT[s.protocol]}`);
+      if ((s.protocol === "sftp" || s.protocol === "ftps") && !s.hostKey) throw new Error(`new-host-key:${PRETEND_FINGERPRINT[s.protocol]}`);
       return `Connected to ${s.name}. /home/wren has 2 folders and 1 file TBV can import.`;
     },
     browseServer: async (id, path) => {
       const s = find(id);
-      if (s.protocol !== "ftp" && !s.hostKey) throw new Error(`new-host-key:${PRETEND_FINGERPRINT[s.protocol]}`);
+      if ((s.protocol === "sftp" || s.protocol === "ftps") && !s.hostKey) throw new Error(`new-host-key:${PRETEND_FINGERPRINT[s.protocol]}`);
       const at = path ?? (s.folder || "/home/wren");
       return { path: at, entries: TREE[at] ?? [], hidden: at === "/home/wren" ? 2 : 0 };
     },

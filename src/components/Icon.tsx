@@ -95,6 +95,12 @@ const paths = {
   globePlus:
     "M20.6 10.6A9 9 0 1 0 10.6 20.6M3 12h12.5M12 3c2.5 2.5 3.5 5.5 3.5 9M12 3c-2.5 2.5-3.5 5.5-3.5 9s1 6.5 3.5 9M18 14.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM18 16.3v3.4M16.3 18h3.4",
   bookOpen: "M12 6.5C10 5 7 4.5 3.5 5v13c3.5-.5 6.5 0 8.5 1.5 2-1.5 5-2 8.5-1.5V5C17 4.5 14 5 12 6.5zM12 6.5v13",
+  /** Libram: TBV's arch, with a cross above it. */
+  chapel: "M5 21V11a7 7 0 0 1 14 0v10M8.5 21v-9.5a3.5 3.5 0 0 1 7 0V21M12 1v3.2M10.4 2.4h3.2",
+  /** Grimoire: sending between nearby devices. */
+  broadcast: "M12 11a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM12 14v6.5M8.5 9a5 5 0 0 0 0 7M15.5 9a5 5 0 0 1 0 7M5.5 6a9 9 0 0 0 0 13M18.5 6a9 9 0 0 1 0 13",
+  /** Geas › Connections: several lines at once. */
+  connections: "M12 4a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5.5 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM18.5 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM11 7.8 6.5 16.2M13 7.8l4.5 8.4M7.5 18h9",
   bookClosed: "M6 3.5h12.5v17H6a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 6 3.5zM4.5 17.5a1.5 1.5 0 0 1 1.5-1.5h12.5",
   // A page with lines: a note.
   noteLines: "M6 3.5h12a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1zM8.5 8h7M8.5 12h7M8.5 16h4",

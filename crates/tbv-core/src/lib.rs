@@ -35,7 +35,6 @@ pub mod lookup;
 pub mod details;
 pub mod dictionary;
 pub mod manage;
-pub mod media;
 pub mod model;
 pub mod notes;
 pub mod oauth;

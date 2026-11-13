@@ -1,23 +1,22 @@
 import type { IconName } from "../components/Icon";
 
-export type Route = "home" | "library" | "documents" | "collections" | "audiobooks" | "notes" | "settings" | "sync" | "imports" | "activity" | "lining" | "places" | "book" | "writing" | "catalogs" | "scry" | "geas" | "libram";
+export type Route = "home" | "library" | "documents" | "collections" | "audiobooks" | "notes" | "settings" | "sync" | "imports" | "activity" | "lining" | "places" | "book" | "writing" | "catalogs" | "geas" | "libram";
 
-/** Each page's name, and the few words under it in the sidebar. */
+/** Each page's name, and the few words under it in the sidebar (Discover has none: its submenu says it). */
 export const PAGE: Record<"home" | "library" | "collections" | "audiobooks" | "writing" | "catalogs" | "settings", { label: string; caption: string }> = {
   home: { label: "Sanctum", caption: "Your home" },
   library: { label: "Archive", caption: "Books & documents" },
   audiobooks: { label: "Resonance", caption: "Audiobooks" },
   collections: { label: "Compendium", caption: "Your collections" },
   writing: { label: "Scribe", caption: "Notes & manuscripts" },
-  catalogs: { label: "Discover", caption: "Find new books" },
+  catalogs: { label: "Discover", caption: "" },
   settings: { label: "Preferences", caption: "Settings & sync" },
 };
 
-/** Discover's submenu in the sidebar: the browser, streaming from your
- * servers, bringing things in from servers, and the catalogues (embre, 13 November). */
+/** Discover's submenu in the sidebar: the browser (Scry), bringing things in
+ * from servers (Geas), and the catalogues (Libram) (embre, 13 November). */
 export const DISCOVER_MENU: { route: Route; label: string; caption: string; icon: IconName }[] = [
-  { route: "catalogs", label: "Locus", caption: "The web", icon: "globe" },
-  { route: "scry", label: "Scry", caption: "Streaming", icon: "mediaServer" },
+  { route: "catalogs", label: "Scry", caption: "The web", icon: "globe" },
   { route: "geas", label: "Geas", caption: "Transfers", icon: "database" },
   { route: "libram", label: "Libram", caption: "Catalogues & Bibles", icon: "bookClosed" },
 ];

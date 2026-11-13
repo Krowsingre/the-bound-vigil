@@ -1,13 +1,12 @@
-// Preferences › Servers › Audiobookshelf: signing in to and out of your
+// Discover › Geas › Audiobookshelf: signing in to and out of your
 // Audiobookshelf servers (embre, 29 October). Browsing and listening stay in
-// Discover's catalogues, where each signed-in server shows.
+// Libram, where each signed-in server shows as a catalogue.
 
 import { useCallback, useEffect, useState } from "react";
 import { api, isApp } from "../api";
 import type { CatalogView } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
-import { Section } from "./controls";
 
 interface Form {
   id: string | null;
@@ -58,11 +57,22 @@ export function AudiobookshelfSection() {
   };
 
   return (
-    <Section
-      id="audiobookshelf"
-      title="Audiobookshelf"
-      lede="Sign in to your Audiobookshelf server here. Its libraries then show in Discover › Libram, where you can listen straight from the server or bring books into TBV."
-    >
+    <section className="discover-card geas-abs" id="discover-audiobookshelf" aria-labelledby="discover-audiobookshelf-title">
+      <div className="geas-abs-row">
+        <span className="discover-card-head">
+          <Icon name="headphones" size={30} />
+          <h2 id="discover-audiobookshelf-title">Audiobookshelf</h2>
+        </span>
+        <p className="discover-card-lede">
+          Sign in to your Audiobookshelf server here. Its libraries then show in Discover › Libram, where you can listen straight from the server or bring books
+          into TBV.
+        </p>
+        {!form && (
+          <button type="button" className="btn btn-quiet" disabled={!isApp} onClick={() => (setError(null), setForm({ id: null, name: "", url: "", username: "", password: "" }))}>
+            <Icon name="plus" size={16} /> Add an Audiobookshelf server
+          </button>
+        )}
+      </div>
       {!isApp && <p className="settings-row-hint">Audiobookshelf works in the TBV app.</p>}
       {servers && servers.length > 0 && (
         <ul className="ereader-list server-list">
@@ -132,18 +142,12 @@ export function AudiobookshelfSection() {
             </button>
           </div>
         </form>
-      ) : (
-        <div className="connection-actions">
-          <button type="button" className="btn btn-quiet" disabled={!isApp} onClick={() => (setError(null), setForm({ id: null, name: "", url: "", username: "", password: "" }))}>
-            <Icon name="plus" size={16} /> Add an Audiobookshelf server
-          </button>
-        </div>
-      )}
+      ) : null}
       {error && !form && (
         <p className="form-error" role="alert">
           {error}
         </p>
       )}
-    </Section>
+    </section>
   );
 }

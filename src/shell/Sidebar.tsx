@@ -45,7 +45,7 @@ export function Sidebar({
   useEffect(() => onLiningUp(setLining), []);
   const liningPercent = lining ? Math.floor(lining.fraction * 100) : 0;
   const [spin, setSpin] = useState<"inner" | "outer" | null>(null);
-  // Discover opens and closes its submenu (Locus, Scry, Geas, Libram), and remembers which.
+  // Discover opens and closes its submenu (Scry, Geas, Libram), and remembers which.
   const [discoverOpen, setDiscoverOpen] = useState(() => {
     try {
       return localStorage.getItem(DISCOVER_OPEN_KEY) !== "0";
@@ -129,10 +129,7 @@ export function Sidebar({
                   title={collapsed ? `${item.label}: ${discoverOpen ? "hide" : "show"} its pages` : undefined}
                 >
                   <Icon name={item.icon} size={22} />
-                  <span className="nav-label">
-                    {item.label}
-                    <span className="nav-caption">{item.caption}</span>
-                  </span>
+                  <span className="nav-label">{item.label}</span>
                   {!collapsed && <Icon name={discoverOpen ? "chevronUp" : "chevronDown"} size={15} className="nav-chevron" />}
                 </button>
                 {discoverOpen && (

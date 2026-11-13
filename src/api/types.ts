@@ -1128,7 +1128,7 @@ export interface Audiobook {
   ebook: { id: string; name: string } | null;
 }
 
-export type ServerProtocol = "ftp" | "ftps" | "sftp";
+export type ServerProtocol = "ftp" | "ftps" | "sftp" | "webdav" | "webdavs";
 export type ServerLogin = "password" | "key";
 
 /** A server saved on this device, as Settings shows it: never the password. */
@@ -1630,25 +1630,6 @@ export interface PageVideo {
   page: string;
   /** Where the page had got to, in seconds. */
   time: number;
-}
-
-/** Discover › Media servers. */
-export type MediaKind = "plex" | "jellyfin" | "emby" | "webdav";
-
-export interface MediaServerView {
-  id: string;
-  name: string;
-  kind: MediaKind;
-  url: string;
-  username: string;
-}
-
-export interface MediaItem {
-  id: string;
-  title: string;
-  kind: "folder" | "video" | "audio";
-  detail?: string;
-  image?: string;
 }
 
 export interface ReaderArticle {

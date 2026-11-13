@@ -1,10 +1,11 @@
-// Preferences › Servers › LocalSend: TBV shows up in the LocalSend app on phones
+// Discover › Geas › Grimoire (LocalSend): TBV shows up in the LocalSend app on phones
 // and computers on the same Wi-Fi, and asks before taking anything.
 
 import { useEffect, useState } from "react";
 import { api, isApp } from "../api";
 import type { LocalSendStatus } from "../api/types";
-import { Section, Toggle } from "./controls";
+import { DiscoverCard } from "../browse/DiscoverPage";
+import { Toggle } from "./controls";
 
 export function LocalSendSection() {
   const [status, setStatus] = useState<LocalSendStatus | null>(null);
@@ -17,9 +18,11 @@ export function LocalSendSection() {
     api.setLocalSend(on).then(setStatus, (e: unknown) => setError(String(e).replace(/^Error: /, "")));
   };
   return (
-    <Section
-      id="localsend"
+    <DiscoverCard
+      id="grimoire"
+      icon="broadcast"
       title="Grimoire"
+      className="geas-grimoire"
       lede="Grimoire passes books, documents and audiobooks between your devices on the same Wi-Fi: TBV on another phone, iPad or computer, or the free LocalSend app on a device without TBV."
     >
       <Toggle
@@ -40,6 +43,6 @@ export function LocalSendSection() {
           The first time, Windows may ask whether TBV can use your network. Allow it on private networks, or other devices won't find this one.
         </p>
       )}
-    </Section>
+    </DiscoverCard>
   );
 }

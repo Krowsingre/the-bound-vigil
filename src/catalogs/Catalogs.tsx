@@ -8,7 +8,7 @@ import { api, isApp, serverBookId } from "../api";
 import { playAudiobook } from "../audio/player";
 import type { CatalogInput, CatalogView, OpdsEntry, OpdsFeed, OpdsFile } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { Icon } from "../components/Icon";
+import { Icon, type IconName } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { formatLabel } from "../lib/queryBooks";
@@ -33,8 +33,14 @@ function CatalogDialog({
   onSaved,
   onCancel,
   onOpenSite,
+  sourcesOnly = false,
+  onAddBibles,
 }: {
   catalog: CatalogView | null;
+  /** More Catalogue Sources: only the suggestions. */
+  sourcesOnly?: boolean;
+  /** Puts the Bibles in Libram; none once they're there. */
+  onAddBibles?: () => void;
   /** Opens a suggested website in Discover's browser. */
   onOpenSite?: (url: string) => void;
   /** Addresses already added, so suggestions leave them out. */
@@ -90,87 +96,108 @@ function CatalogDialog({
       <form
         className="dialog writing-dialog catalog-dialog"
         role="dialog"
-        aria-label={catalog ? "Edit catalogue" : "Add a catalogue"}
+        aria-label={catalog ? "Edit catalogue" : sourcesOnly ? "Catalogue sources" : "Add a catalogue"}
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
         onKeyDown={(e) => e.key === "Escape" && !busy && onCancel()}
       >
-        <h2>{catalog ? "Edit catalogue" : "Add a catalogue"}</h2>
-        {!catalog && <p className="muted dialog-lede">An Audiobookshelf server is signed in to in Discover › Geas, and then shows here.</p>}
-        {abs ? (
-          <p className="muted dialog-lede">
-            Sign in with the username and password you use for Audiobookshelf. You can look through its libraries here and bring audiobooks and ebooks
-            into TBV, and where you are in an audiobook stays the same in both.
-          </p>
-        ) : (
-          <p className="muted dialog-lede">
-            Any OPDS catalogue works. For your own Calibre library, start Calibre's content server (Connect/share › Start Content server) and enter its
-            address with /opds at the end, like http://192.168.1.20:8080/opds.
-          </p>
+        <h2>{catalog ? "Edit catalogue" : sourcesOnly ? "Catalogue sources" : "Add a catalogue"}</h2>
+        {!sourcesOnly && (
+          <>
+            {!catalog && <p className="muted dialog-lede">An Audiobookshelf server is signed in to in Discover › Geas, and then shows here.</p>}
+            {abs ? (
+              <p className="muted dialog-lede">
+                Sign in with the username and password you use for Audiobookshelf. You can look through its libraries here and bring audiobooks and ebooks
+                into TBV, and where you are in an audiobook stays the same in both.
+              </p>
+            ) : (
+              <p className="muted dialog-lede">
+                Any OPDS catalogue works. For your own Calibre library, start Calibre's content server (Connect/share › Start Content server) and enter its
+                address with /opds at the end, like http://192.168.1.20:8080/opds.
+              </p>
+            )}
+            <label className="field">
+              <span>Address</span>
+              <input
+                value={form.url}
+                onChange={(e) => setForm({ ...form, url: e.target.value })}
+                placeholder={abs ? "http://192.168.1.20:13378" : "https://…"}
+                autoFocus={!!catalog}
+                inputMode="url"
+              />
+            </label>
+            <label className="field">
+              <span>Name</span>
+              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Optional" />
+            </label>
+            <div className="writing-details-row">
+              <label className="field">
+                <span>User name</span>
+                <input
+                  value={form.username ?? ""}
+                  onChange={(e) => setForm({ ...form, username: e.target.value })}
+                  placeholder={abs ? "" : "Only if it asks"}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={form.password ?? ""}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  placeholder={catalog?.hasPassword ? (abs ? "Signed in" : "Saved") : ""}
+                  autoComplete="new-password"
+                />
+              </label>
+            </div>
+            <p className="muted writing-hint">
+              {abs
+                ? "TBV keeps only the server's sign-in, never the password, on this device."
+                : "The password stays on this computer and is never put in a backup."}
+            </p>
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="dialog-actions">
+              <button type="button" className="btn btn-quiet" onClick={onCancel} disabled={busy}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={busy || !form.url.trim() || (abs && (!form.username?.trim() || (!catalog?.hasPassword && !form.password)))}
+              >
+                {busy && abs ? "Signing in…" : abs && form.password ? "Sign in" : "Save"}
+              </button>
+            </div>
+          </>
         )}
-        <label className="field">
-          <span>Address</span>
-          <input
-            value={form.url}
-            onChange={(e) => setForm({ ...form, url: e.target.value })}
-            placeholder={abs ? "http://192.168.1.20:13378" : "https://…"}
-            autoFocus={!!catalog}
-            inputMode="url"
-          />
-        </label>
-        <label className="field">
-          <span>Name</span>
-          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Optional" />
-        </label>
-        <div className="writing-details-row">
-          <label className="field">
-            <span>User name</span>
-            <input
-              value={form.username ?? ""}
-              onChange={(e) => setForm({ ...form, username: e.target.value })}
-              placeholder={abs ? "" : "Only if it asks"}
-              autoComplete="off"
-            />
-          </label>
-          <label className="field">
-            <span>Password</span>
-            <input
-              type="password"
-              value={form.password ?? ""}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              placeholder={catalog?.hasPassword ? (abs ? "Signed in" : "Saved") : ""}
-              autoComplete="new-password"
-            />
-          </label>
-        </div>
-        <p className="muted writing-hint">
-          {abs
-            ? "TBV keeps only the server's sign-in, never the password, on this device."
-            : "The password stays on this computer and is never put in a backup."}
-        </p>
-        {error && (
-          <p className="form-error" role="alert">
-            {error}
-          </p>
-        )}
-        <div className="dialog-actions">
-          <button type="button" className="btn btn-quiet" onClick={onCancel} disabled={busy}>
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={busy || !form.url.trim() || (abs && (!form.username?.trim() || (!catalog?.hasPassword && !form.password)))}
-          >
-            {busy && abs ? "Signing in…" : abs && form.password ? "Sign in" : "Save"}
-          </button>
-        </div>
         {!catalog && (
           <>
-            <strong className="catalog-own">Or start with a free source</strong>
+            {!sourcesOnly && <strong className="catalog-own">Or start with a free source</strong>}
             <p className="muted dialog-lede">Suggestions only: all free and legal, and nothing is added until you choose it.</p>
+            {onAddBibles && (
+              <section className="catalog-suggested" aria-label="Bibles">
+                <strong>Bibles</strong>
+                <span className="muted">The King James, World English and American Standard versions, opened at any book and chapter.</span>
+                <ul>
+                  <li>
+                    <span>
+                      <b>Bibles</b>
+                      <span className="muted">KJV • WEB • ASV. Public domain Bible translations.</span>
+                    </span>
+                    <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={onAddBibles}>
+                      <Icon name="plus" size={14} /> Add
+                    </button>
+                  </li>
+                </ul>
+              </section>
+            )}
             {SUGGESTED_GROUPS.map((group) => {
               const items = group.items.filter((s) => s.kind === "site" || !existing.some((u) => sameAddress(u, s.url)));
               if (!items.length) return null;
@@ -215,6 +242,13 @@ function CatalogDialog({
               );
             })}
           </>
+        )}
+        {sourcesOnly && (
+          <div className="dialog-actions">
+            <button type="button" className="btn btn-quiet" onClick={onCancel}>
+              Close
+            </button>
+          </div>
         )}
       </form>
     </div>
@@ -287,6 +321,41 @@ function EntryCard({
   );
 }
 
+/** Bibles show in Libram only once added (embre, 13 November): kept in the library's settings. */
+const BIBLES_SETTING = "libram.bibles";
+
+/** What a catalogue's card says under its name. */
+function aboutOf(c: CatalogView): { line: string; about: string } {
+  let host = c.url;
+  try {
+    host = new URL(c.url).host;
+  } catch {
+    // Shown as typed.
+  }
+  if (c.kind === "audiobookshelf") return { line: `Audiobookshelf · ${host}`, about: "Your audiobooks, to listen to here or bring in." };
+  const known = SUGGESTED_GROUPS.flatMap((g) => g.items).find((s) => sameAddress(s.url, c.url));
+  return { line: host, about: known?.about ?? "A catalogue to browse, search and bring books in from." };
+}
+
+function CatalogCard({ icon, name, line, about, onBrowse, menu }: { icon: IconName; name: string; line: string; about: string; onBrowse: () => void; menu: MenuEntry[] }) {
+  return (
+    <li className="libram-card" data-item-menu>
+      <Icon name={icon} size={40} className="libram-card-mark" />
+      <span className="libram-card-text">
+        <strong>{name}</strong>
+        <span className="libram-card-line">{line}</span>
+        <span className="libram-card-about">{about}</span>
+      </span>
+      <span className="libram-card-actions">
+        <button type="button" className="btn btn-primary" onClick={onBrowse}>
+          <Icon name="download" size={16} /> Browse
+        </button>
+        <Menu label={`More for ${name}`} className="btn btn-quiet libram-card-more" trigger={<Icon name="more" size={18} />} items={menu} />
+      </span>
+    </li>
+  );
+}
+
 export function Catalogs({
   refreshKey = 0,
   onOpenBook,
@@ -298,26 +367,34 @@ export function Catalogs({
   onOpenSite?: (url: string) => void;
 }) {
   const [catalogs, setCatalogs] = useState<CatalogView[] | null>(null);
+  /** The catalogue being browsed; none shows Libram's cards. */
   const [current, setCurrent] = useState<string | null>(null);
   const [trail, setTrail] = useState<Step[]>([]);
   const [feed, setFeed] = useState<OpdsFeed | null>(null);
   const [loading, setLoading] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [words, setWords] = useState("");
-  const [editing, setEditing] = useState<CatalogView | "new" | null>(null);
+  const [editing, setEditing] = useState<CatalogView | "new" | "sources" | null>(null);
   const [removing, setRemoving] = useState<CatalogView | null>(null);
   const [downloads, setDownloads] = useState<Record<string, "busy" | "done">>({});
+  const [biblesAdded, setBiblesAdded] = useState(false);
   const toast = useToast();
-  const bibles = !!onOpenBook;
+  const canBible = !!onOpenBook;
 
   const reloadCatalogs = useCallback(async () => {
     const list = await api.catalogs();
     setCatalogs(list);
-    setCurrent((c) => (c && (c === BIBLES || list.some((x) => x.id === c)) ? c : bibles ? BIBLES : (list[0]?.id ?? null)));
-  }, [bibles]);
+    setCurrent((c) => (c && (c === BIBLES || list.some((x) => x.id === c)) ? c : null));
+  }, []);
   useEffect(() => {
     void reloadCatalogs().catch((e) => setProblem(String(e)));
+    void api.getSetting(BIBLES_SETTING).then((v) => setBiblesAdded(v === "1"), () => undefined);
   }, [reloadCatalogs]);
+
+  const keepBibles = (on: boolean) => {
+    setBiblesAdded(on);
+    void api.setSetting(BIBLES_SETTING, on ? "1" : "0").catch((e: unknown) => toast(String(e)));
+  };
 
   const step = trail[trail.length - 1] ?? null;
   useEffect(() => {
@@ -339,9 +416,10 @@ export function Catalogs({
 
   // A new catalog starts at its first page.
   useEffect(() => {
-    if (current) setTrail([{ title: catalogs?.find((c) => c.id === current)?.name ?? "Catalogue", url: null }]);
+    setTrail(current ? [{ title: catalogs?.find((c) => c.id === current)?.name ?? "Catalogue", url: null }] : []);
     setFeed(null);
     setWords("");
+    setProblem(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current]);
 
@@ -371,42 +449,99 @@ export function Catalogs({
   const catalog = catalogs?.find((c) => c.id === current) ?? null;
   const shelves = feed?.entries.filter((e) => !e.files.length && e.navigation && !e.authors.length && !e.summary) ?? [];
   const books = feed?.entries.filter((e) => !shelves.includes(e)) ?? [];
+  const showBibles = canBible && biblesAdded;
+
+  const landing = (
+    <div className="libram-landing">
+      <div className="libram-actions">
+        <button type="button" className="btn btn-primary libram-add" onClick={() => setEditing("new")}>
+          <Icon name="plus" size={18} /> Add a Catalogue
+        </button>
+        <button type="button" className="btn btn-quiet libram-sources" onClick={() => setEditing("sources")}>
+          <Icon name="external" size={17} /> More Catalogue Sources
+        </button>
+      </div>
+      <section className="libram-catalogues" aria-labelledby="libram-catalogues-title">
+        <h2 id="libram-catalogues-title">Catalogues</h2>
+        <p className="muted">Your available catalogues. Add a catalogue to find books, including Bibles.</p>
+        <ul className="libram-cards">
+          {showBibles && (
+            <CatalogCard
+              icon="bookOpen"
+              name="Bibles"
+              line="KJV • WEB • ASV"
+              about="Public domain Bible translations."
+              onBrowse={() => setCurrent(BIBLES)}
+              menu={[{ label: "Remove from Libram", icon: "trash", danger: true, onSelect: () => keepBibles(false) }]}
+            />
+          )}
+          {(catalogs ?? []).map((c) => (
+            <CatalogCard
+              key={c.id}
+              icon={c.kind === "audiobookshelf" ? "headphones" : "layers"}
+              name={c.name}
+              {...aboutOf(c)}
+              onBrowse={() => setCurrent(c.id)}
+              menu={[
+                { label: "Edit…", icon: "edit", onSelect: () => setEditing(c) },
+                { label: "Remove…", icon: "trash", danger: true, onSelect: () => setRemoving(c) },
+              ]}
+            />
+          ))}
+          <li className="libram-card is-add">
+            <Icon name="layers" size={40} className="libram-card-mark" />
+            <span className="libram-card-text">
+              <strong>Add a Catalogue</strong>
+              <span className="libram-card-about">Connect to a public domain library or other supported catalogue.</span>
+            </span>
+            <span className="libram-card-actions">
+              <button type="button" className="btn btn-quiet libram-card-plus" aria-label="Add a catalogue" onClick={() => setEditing("new")}>
+                <Icon name="plus" size={20} />
+              </button>
+            </span>
+          </li>
+        </ul>
+        {problem && !current && (
+          <p className="form-error" role="alert">
+            {problem}
+          </p>
+        )}
+      </section>
+      <ul className="libram-help">
+        <li>
+          <Icon name="info" size={28} />
+          <span>
+            <strong>About Libram</strong>
+            Use catalogues to discover books and add them to your Archive.
+          </span>
+        </li>
+        <li>
+          <Icon name="layers" size={28} />
+          <span>
+            <strong>Finding Catalogues</strong>
+            Explore public domain and open catalogue sources you can add to Libram.
+          </span>
+        </li>
+        <li>
+          <Icon name="bookOpen" size={28} />
+          <span>
+            <strong>Adding a Bible</strong>
+            Use the Bibles catalogue to add a translation, then open it at any book and chapter.
+          </span>
+        </li>
+      </ul>
+    </div>
+  );
 
   return (
     <div className="catalogs-page">
-      <div className="catalogs-layout">
-        <nav className="catalogs-list" aria-label="Your catalogues">
-          <button type="button" className="btn btn-primary btn-small catalogs-add" onClick={() => setEditing("new")}>
-            <span aria-hidden>+</span> Add a catalogue
-          </button>
-          {bibles && (
-            <div className={`catalogs-item${current === BIBLES ? " is-current" : ""}`}>
-              <button type="button" onClick={() => setCurrent(BIBLES)} aria-current={current === BIBLES ? "true" : undefined}>
-                <Icon name="bookOpen" size={16} />
-                <span>Bibles</span>
-              </button>
-            </div>
-          )}
-          {(catalogs ?? []).map((c) => (
-            <div key={c.id} data-item-menu className={`catalogs-item${c.id === current ? " is-current" : ""}`}>
-              <button type="button" onClick={() => setCurrent(c.id)} aria-current={c.id === current ? "true" : undefined}>
-                <Icon name={c.kind === "audiobookshelf" ? "headphones" : "globe"} size={16} />
-                <span>{c.name}</span>
-              </button>
-              <Menu
-                label={`More for ${c.name}`}
-                className="writing-chapter-more"
-                trigger={<Icon name="more" size={16} />}
-                items={[
-                  { label: "Edit…", icon: "edit", onSelect: () => setEditing(c) },
-                  { label: "Remove…", icon: "trash", danger: true, onSelect: () => setRemoving(c) },
-                ]}
-              />
-            </div>
-          ))}
-          {catalogs?.length === 0 && <p className="muted writing-hint">No catalogues yet. Add one to start.</p>}
-        </nav>
+      {!current ? (
+        landing
+      ) : (
         <section className="catalogs-main" aria-busy={loading}>
+          <button type="button" className="btn btn-quiet btn-small libram-back" onClick={() => setCurrent(null)}>
+            <Icon name="arrowLeft" size={14} /> Libram
+          </button>
           {current === BIBLES && onOpenBook && <Bible refreshKey={refreshKey} onOpenBook={onOpenBook} onOpenSite={onOpenSite} />}
           {catalog && (
             <>
@@ -512,10 +647,12 @@ export function Catalogs({
             </>
           )}
         </section>
-      </div>
+      )}
       {editing && (
         <CatalogDialog
-          catalog={editing === "new" ? null : editing}
+          catalog={editing === "new" || editing === "sources" ? null : editing}
+          sourcesOnly={editing === "sources"}
+          onAddBibles={canBible && !biblesAdded ? () => (keepBibles(true), setEditing(null)) : undefined}
           existing={catalogs?.map((c) => c.url) ?? []}
           onOpenSite={onOpenSite}
           onCancel={() => setEditing(null)}
