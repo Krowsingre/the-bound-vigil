@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { HighlightColor, WordDefinition, WordSense } from "../api/types";
 import { Icon } from "../components/Icon";
-import { isApp, isIOS } from "../api";
+import { isAndroid, isApp, isIOS } from "../api";
 import { formatRate, groupVoices, primaryLang, RATE_RANGE } from "./readAloud";
 import {
   FONTS,
@@ -82,6 +82,7 @@ function ScrollSpeeds({ settings, onChange }: { settings: ReaderSettings; onChan
         <input type="range" aria-label="Auto-scroll speed" min={1} max={100} value={settings.autoScrollSpeed}
           onChange={(event) => onChange({ autoScrollSpeed: Number(event.target.value) })} />
       </label>
+      <p className="settings-row-hint">Tap the page three times to start or stop auto-scroll{isApp && !isIOS && !isAndroid ? " (or press Ctrl+Space)" : ""}.</p>
     </div>
   );
 }
