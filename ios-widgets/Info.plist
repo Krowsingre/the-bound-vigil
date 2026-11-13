@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>Bound Vigil</string>
+  <string>The Bound Vigil</string>
   <key>NSExtension</key>
   <dict>
     <key>NSExtensionPointIdentifier</key>

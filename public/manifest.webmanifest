@@ -1,7 +1,7 @@
 {
   "name": "The Bound Vigil",
-  "short_name": "Bound Vigil",
-  "description": "Read your Bound Vigil library on your phone.",
+  "short_name": "The Bound Vigil",
+  "description": "Read your TBV library on your phone.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -4,7 +4,7 @@
 <dict>
 	<!-- The name under the icon on the home screen. -->
 	<key>CFBundleDisplayName</key>
-	<string>Bound Vigil</string>
+	<string>The Bound Vigil</string>
 	<!-- Audiobooks and read aloud keep playing with the screen locked. -->
 	<key>UIBackgroundModes</key>
 	<array>

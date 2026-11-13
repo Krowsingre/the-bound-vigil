@@ -53,7 +53,7 @@ spec += f"""
     info:
       path: TBVShareExtension/Info.plist
       properties:
-        CFBundleDisplayName: Bound Vigil
+        CFBundleDisplayName: The Bound Vigil
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
@@ -83,7 +83,7 @@ spec += f"""
     info:
       path: TBVWidgets/Info.plist
       properties:
-        CFBundleDisplayName: Bound Vigil
+        CFBundleDisplayName: The Bound Vigil
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
