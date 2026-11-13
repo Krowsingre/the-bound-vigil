@@ -10,6 +10,7 @@ import { useToast } from "../components/Toast";
 import { recordTime } from "../lib/recordTime";
 import { onBeforeQuit } from "../lib/beforeQuit";
 import { useAppSettings } from "../settings/appSettings";
+import { refreshWidgets } from "../widgets";
 
 export const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 const SAVE_EVERY_MS = 15_000;
@@ -488,5 +489,19 @@ export function PlayerProvider({ children, onChanged }: { children: React.ReactN
     close,
     refresh,
   };
+  // The iPhone widgets show the audiobook and whether it's playing.
+  const widgetBook = state.book?.book.id;
+  useEffect(() => {
+    const { book, positionMs, playing } = now.current;
+    if (!book) return;
+    refreshWidgets({
+      bookId: book.book.id,
+      title: book.book.title,
+      author: book.book.authors.join(", "),
+      playing,
+      progress: book.durationMs > 0 ? Math.min(1, positionMs / book.durationMs) : 0,
+    });
+  }, [widgetBook, state.playing]);
+
   return <PlayerContext.Provider value={player}>{children}</PlayerContext.Provider>;
 }

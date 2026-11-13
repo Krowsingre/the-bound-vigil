@@ -25,6 +25,19 @@
 	<!-- Only standard encryption (HTTPS), so TestFlight doesn't ask each time. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Taps on TBV's Home Screen and Lock Screen widgets open links such as
+	     theboundvigil://book/<id> (see src-tauri/src/widgets.rs). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.krowsingre.theboundvigil.widgets</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>theboundvigil</string>
+			</array>
+		</dict>
+	</array>
 	<!-- Books shared from other apps ("Open in", and TBV in the share sheet).
 	     iOS hands over a copy, which TBV imports like any other book. -->
 	<key>CFBundleDocumentTypes</key>
