@@ -31,6 +31,9 @@ pub struct LocalSendStatus {
     /// How TBV shows in LocalSend's list.
     pub alias: String,
     pub problem: Option<String>,
+    /// The port Grimoire listens on while running (a backup one when another
+    /// app has LocalSend's usual port).
+    pub port: Option<u16>,
 }
 
 /// The most rows the Imports page keeps for LocalSend.
@@ -157,6 +160,7 @@ impl LocalSend {
             running: self.receiver.lock().is_ok_and(|r| r.is_some()),
             alias: alias(library),
             problem: self.problem.lock().ok().and_then(|p| p.clone()),
+            port: self.receiver.lock().ok().and_then(|r| r.as_ref().map(Receiver::port)),
         }
     }
 

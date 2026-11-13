@@ -1189,6 +1189,8 @@ export interface LocalSendStatus {
   /** How TBV shows in LocalSend's list of nearby devices. */
   alias: string;
   problem: string | null;
+  /** The port it listens on while running: 53317, or a backup one when another app (often LocalSend) has that. */
+  port?: number | null;
 }
 
 /** Files someone wants to send with LocalSend, waiting for an answer. */

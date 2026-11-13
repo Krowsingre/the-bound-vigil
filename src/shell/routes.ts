@@ -18,7 +18,7 @@ export const PAGE: Record<"home" | "library" | "collections" | "audiobooks" | "w
 export const DISCOVER_MENU: { route: Route; label: string; caption: string; icon: IconName }[] = [
   { route: "catalogs", label: "Scry", caption: "The web", icon: "globe" },
   { route: "geas", label: "Geas", caption: "Transfers", icon: "database" },
-  { route: "libram", label: "Libram", caption: "Catalogues & Bibles", icon: "bookClosed" },
+  { route: "libram", label: "Libram", caption: "Catalogues", icon: "bookClosed" },
 ];
 
 export const NAV: { route: Route; label: string; caption: string; icon: IconName }[] = [
