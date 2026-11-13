@@ -53,7 +53,7 @@ spec += f"""
     info:
       path: TBVShareExtension/Info.plist
       properties:
-        CFBundleDisplayName: Bound Vigil
+        CFBundleDisplayName: TBV
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
@@ -77,13 +77,13 @@ spec += f"""
   TBVWidgets:
     type: app-extension
     platform: iOS
-    deploymentTarget: "16.0"
+    deploymentTarget: "17.0"
     sources:
       - path: TBVWidgets/TBVWidgets.swift
     info:
       path: TBVWidgets/Info.plist
       properties:
-        CFBundleDisplayName: Bound Vigil
+        CFBundleDisplayName: TBV
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:

@@ -5,6 +5,7 @@
 import { useEffect } from "react";
 import { isIOS } from "./api";
 import { dayOf } from "./lib/timeSpent";
+import type { Route } from "./shell/routes";
 
 /** What the player tells the widgets. */
 export interface WidgetAudio {
@@ -18,9 +19,21 @@ export interface WidgetAudio {
 /** What a widget tap asks for. */
 export type WidgetLink =
   | { kind: "book"; id: string }
-  | { kind: "audio"; action: "toggle" | "back"; bookId: string | null }
+  | { kind: "audio"; action: "toggle" | "back" | "play"; bookId: string | null }
   | { kind: "sigil"; id: string }
+  | { kind: "page"; route: Route }
+  | { kind: "scribe"; open: "new" | "note" | "book"; id: string | null }
   | { kind: "home" };
+
+/** A widget asking Scribe for a new note (`n` counts asks), or to show one. */
+export interface ScribeAsk {
+  open: "new" | "note";
+  id: string | null;
+  n: number;
+}
+
+/** Pages a Quick Access widget can open. */
+const PAGES: Route[] = ["home", "library", "documents", "collections", "audiobooks", "writing", "catalogs", "geas", "libram", "settings"];
 
 const core = () => import("@tauri-apps/api/core");
 
@@ -46,7 +59,11 @@ export function readWidgetLink(text: string): WidgetLink | null {
   const [kind, rest] = [parts[0], parts.slice(1).join("/")];
   if (kind === "book" && rest) return { kind: "book", id: rest };
   if (kind === "sigil" && rest) return { kind: "sigil", id: rest };
-  if (kind === "audio" && (rest === "toggle" || rest === "back")) return { kind: "audio", action: rest, bookId: url.searchParams.get("book") };
+  if (kind === "audio" && (rest === "toggle" || rest === "back" || rest === "play")) return { kind: "audio", action: rest, bookId: url.searchParams.get("book") };
+  if (kind === "page" && (PAGES as string[]).includes(rest)) return { kind: "page", route: rest as Route };
+  if (kind === "scribe" && rest === "new") return { kind: "scribe", open: "new", id: null };
+  if (kind === "scribe" && (rest.startsWith("note/") || rest.startsWith("book/")) && rest.length > 5)
+    return { kind: "scribe", open: rest.startsWith("note/") ? "note" : "book", id: rest.slice(5) };
   if (kind === "home") return { kind: "home" };
   return null;
 }

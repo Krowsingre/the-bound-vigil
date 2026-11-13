@@ -2,9 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- The name under the icon on the home screen. -->
+	<!-- The name under the icon on the home screen: "The Bound Vigil" is cut off there, so TBV (embre, 13 November). -->
 	<key>CFBundleDisplayName</key>
-	<string>Bound Vigil</string>
+	<string>TBV</string>
 	<!-- Audiobooks and read aloud keep playing with the screen locked. -->
 	<key>UIBackgroundModes</key>
 	<array>

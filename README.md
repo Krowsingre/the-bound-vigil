@@ -2,7 +2,7 @@
 
 A calm eBook reader for your own books. It keeps your library, reading
 progress, notes and collections in step across your devices through a cloud
-service you choose, without a Bound Vigil account. Windows desktop comes first.
+service you choose, without a TBV account. Windows desktop comes first.
 
 > **Not free software.** The Bound Vigil is proprietary. The code is public
 > to read, but you may not use, run, copy, modify or distribute any part of

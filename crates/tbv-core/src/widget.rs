@@ -12,7 +12,8 @@ use crate::model::BookPreview;
 
 /// How many books the large widget lists, and how many Sigils it shows.
 pub const IN_PROGRESS_MAX: usize = 4;
-pub const SIGILS_MAX: usize = 8;
+pub const SIGILS_MAX: usize = 24;
+pub const NOTES_MAX: usize = 3;
 /// Longest side of a widget cover, in pixels. Widgets are small, and iOS
 /// turns away widgets whose pictures are too big.
 const COVER_SIDE: u32 = 300;
@@ -36,6 +37,36 @@ pub struct WidgetSigil {
     pub title: String,
     pub icon: String,
     pub cover: Option<String>,
+}
+
+/// One day of the week chart.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetDay {
+    /// `YYYY-MM-DD`.
+    pub day: String,
+    pub read_minutes: u64,
+    pub listen_minutes: u64,
+}
+
+/// A book being written in Scribe.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetProject {
+    pub id: String,
+    pub title: String,
+    pub chapters: u32,
+    pub cover: Option<String>,
+}
+
+/// A personal note in Scribe.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetNote {
+    pub id: String,
+    pub title: String,
+    /// The start of what it says, as plain text.
+    pub preview: String,
 }
 
 /// The audiobook the app is playing, or last played, as the app tells it.
@@ -64,6 +95,15 @@ pub struct WidgetSnapshot {
     pub today_read_minutes: u64,
     pub today_listen_minutes: u64,
     pub audio: Option<WidgetAudio>,
+    /// The seven days ending today, oldest first.
+    #[serde(default)]
+    pub week: Vec<WidgetDay>,
+    /// The book most recently changed in Scribe.
+    #[serde(default)]
+    pub project: Option<WidgetProject>,
+    /// The personal notes most recently changed.
+    #[serde(default)]
+    pub notes: Vec<WidgetNote>,
     /// `YYYY-MM-DD`, the day the minutes are for, so a widget can show 0 the
     /// next morning before TBV has been opened.
     pub day: String,
@@ -93,12 +133,33 @@ impl Library {
             .take(SIGILS_MAX)
             .map(|s| WidgetSigil { id: s.id, title: s.title, icon: s.icon, cover: s.picture_path })
             .collect();
-        let (read, listen) = self
-            .time_spent()?
+        let spent = self.time_spent()?;
+        let (read, listen) = spent.iter().find(|t| t.day == today).map(|t| (t.read, t.listen)).unwrap_or((0, 0));
+        let week = week_ending(today)
             .into_iter()
-            .find(|t| t.day == today)
-            .map(|t| (t.read, t.listen))
-            .unwrap_or((0, 0));
+            .map(|day| {
+                let t = spent.iter().find(|t| t.day == day);
+                WidgetDay { read_minutes: t.map_or(0, |t| t.read / 60), listen_minutes: t.map_or(0, |t| t.listen / 60), day }
+            })
+            .collect();
+        let project = self.writing_projects()?.into_iter().next().map(|p| WidgetProject {
+            id: p.id,
+            title: p.title,
+            chapters: p.chapters,
+            cover: p.cover_small_path.or(p.cover_path),
+        });
+        let query = crate::model::NotesQuery { tab: crate::model::NotesTab::Personal, sort: crate::model::NotesSort::Updated, ..Default::default() };
+        let notes = self
+            .notes_page(&query)?
+            .notes
+            .into_iter()
+            .take(NOTES_MAX)
+            .map(|n| {
+                let text = plain(n.note.as_deref().unwrap_or(&n.excerpt));
+                let title = n.title.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| text.chars().take(40).collect());
+                WidgetNote { id: n.id, title, preview: text.chars().take(120).collect() }
+            })
+            .collect();
         let audio = match audio {
             Some(mut a) if !a.book_id.is_empty() => {
                 if a.cover.is_none() {
@@ -115,6 +176,9 @@ impl Library {
             today_read_minutes: read / 60,
             today_listen_minutes: listen / 60,
             audio,
+            week,
+            project,
+            notes,
             day: today.to_string(),
         })
     }
@@ -142,6 +206,9 @@ pub fn write_widget_snapshot(folder: &Path, mut snapshot: WidgetSnapshot) -> Res
     for s in snapshot.sigils.iter_mut() {
         shrink(&mut s.cover, &format!("sigil-{}", s.id));
     }
+    if let Some(p) = snapshot.project.as_mut() {
+        shrink(&mut p.cover, &format!("project-{}", p.id));
+    }
     if let Some(a) = snapshot.audio.as_mut() {
         shrink(&mut a.cover, &a.book_id.clone());
     }
@@ -158,6 +225,31 @@ pub fn write_widget_snapshot(folder: &Path, mut snapshot: WidgetSnapshot) -> Res
         }
     }
     Ok(())
+}
+
+/// The seven dates ending with `today`, oldest first.
+fn week_ending(today: &str) -> Vec<String> {
+    let Ok(end) = chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d") else { return Vec::new() };
+    (0..7).rev().filter_map(|back| end.checked_sub_days(chrono::Days::new(back))).map(|d| d.format("%Y-%m-%d").to_string()).collect()
+}
+
+/// A note's words without markup, on one line.
+fn plain(text: &str) -> String {
+    let mut out = String::new();
+    let mut in_tag = false;
+    for c in text.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' if in_tag => {
+                in_tag = false;
+                out.push(' ');
+            }
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    let out = out.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'");
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// A file name that is safe and stays the same for the same book.
@@ -209,5 +301,12 @@ mod tests {
         assert!(small.width() <= COVER_SIDE && small.height() <= COVER_SIDE);
         assert!(!out.join("old.jpg").exists());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_week_ends_today_and_notes_lose_their_markup() {
+        assert_eq!(week_ending("2026-03-02"), ["2026-02-24", "2026-02-25", "2026-02-26", "2026-02-27", "2026-02-28", "2026-03-01", "2026-03-02"]);
+        assert!(week_ending("not a day").is_empty());
+        assert_eq!(plain("<p>Tea &amp; <b>toast</b></p><p>later</p>"), "Tea & toast later");
     }
 }
