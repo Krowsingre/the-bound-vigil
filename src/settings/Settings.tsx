@@ -8,7 +8,6 @@ import { AboutTab, AccessibilityTab, PlanTab, AdvancedTab, CollectionsTab, Files
 import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex";
 import { SyncTab } from "./SyncTab";
 import { EreadersTab } from "./EreadersTab";
-import { ServersTab } from "./ServersTab";
 import { isHome, isWeb } from "../api";
 import { WebSyncTab } from "../web/WebConnect";
 import { unfoldSection } from "./controls";
@@ -26,7 +25,7 @@ const GROUPS: SettingsTab[][] = [
   // About is its own page, straight under Your plan (embre, 31 October).
   ["plan", "about"],
   ["appearance", "reading", "library", "collections", "notes", "browser", "files", "ereaders"],
-  ["sync", "activity", "servers"],
+  ["sync", "activity"],
   ["accessibility", "shortcuts", "advanced"],
 ];
 const GROUPED = GROUPS.map((group) => group.flatMap((tab) => TABS.filter((t) => t.tab === tab))).filter((g) => g.length > 0);
@@ -138,8 +137,6 @@ export function Settings({
         return <FilesTab />;
       case "ereaders":
         return <EreadersTab />;
-      case "servers":
-        return <ServersTab />;
       case "accessibility":
         return <AccessibilityTab />;
       case "shortcuts":

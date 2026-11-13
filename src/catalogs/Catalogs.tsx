@@ -98,7 +98,7 @@ function CatalogDialog({
         onKeyDown={(e) => e.key === "Escape" && !busy && onCancel()}
       >
         <h2>{catalog ? "Edit catalogue" : "Add a catalogue"}</h2>
-        {!catalog && <p className="muted dialog-lede">An Audiobookshelf server is signed in to in Preferences › Servers, and then shows here.</p>}
+        {!catalog && <p className="muted dialog-lede">An Audiobookshelf server is signed in to in Discover › Geas, and then shows here.</p>}
         {abs ? (
           <p className="muted dialog-lede">
             Sign in with the username and password you use for Audiobookshelf. You can look through its libraries here and bring audiobooks and ebooks

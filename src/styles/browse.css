@@ -2332,3 +2332,15 @@
 .browser-media-kind {
   opacity: 0.7;
 }
+
+.browser-media-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scry-page {
+  position: relative;
+  height: 100%;
+  min-height: 480px;
+}

@@ -586,10 +586,10 @@ export interface Api {
   browserVideo(tab: string): Promise<PageVideo | null>;
   /** Discover › Media servers (kept on this device only). */
   mediaServers(): Promise<MediaServerView[]>;
-  mediaSignIn(kind: MediaKind, url: string, username: string, password: string, name?: string): Promise<MediaServerView[]>;
+  mediaSignIn(kind: MediaKind, url: string, username: string, password: string, name: string | undefined, remember: boolean): Promise<MediaServerView[]>;
   mediaPlexStart(): Promise<{ id: string; url: string }>;
   /** Null until the sign-in is approved on plex.tv. */
-  mediaPlexFinish(pin: string): Promise<MediaServerView[] | null>;
+  mediaPlexFinish(pin: string, remember: boolean): Promise<MediaServerView[] | null>;
   mediaRemove(id: string): Promise<void>;
   mediaList(id: string, folder?: string): Promise<MediaItem[]>;
   mediaPlay(id: string, item: string, title: string, audio: boolean): Promise<PageVideo>;
@@ -1322,9 +1322,9 @@ function appApi(): Api {
     browserPip: async (tab) => (await core).invoke<"popped" | "exited" | "refused" | "none">("browser_pip", { tab }),
     browserVideo: async (tab) => (await core).invoke<PageVideo | null>("browser_video", { tab }),
     mediaServers: async () => (await core).invoke<MediaServerView[]>("media_servers"),
-    mediaSignIn: async (kind, url, username, password, name) => (await core).invoke<MediaServerView[]>("media_sign_in", { kind, url, username, password, name: name ?? null }),
+    mediaSignIn: async (kind, url, username, password, name, remember) => (await core).invoke<MediaServerView[]>("media_sign_in", { kind, url, username, password, name: name ?? null, remember }),
     mediaPlexStart: async () => (await core).invoke<{ id: string; url: string }>("media_plex_start"),
-    mediaPlexFinish: async (pin) => (await core).invoke<MediaServerView[] | null>("media_plex_finish", { pin }),
+    mediaPlexFinish: async (pin, remember) => (await core).invoke<MediaServerView[] | null>("media_plex_finish", { pin, remember }),
     mediaRemove: async (id) => (await core).invoke("media_remove", { id }),
     mediaList: async (id, folder) => (await core).invoke<MediaItem[]>("media_list", { id, folder: folder ?? null }),
     mediaPlay: async (id, item, title, audio) => (await core).invoke<PageVideo>("media_play", { id, item, title, audio }),

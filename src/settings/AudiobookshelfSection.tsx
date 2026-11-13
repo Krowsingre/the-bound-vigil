@@ -61,7 +61,7 @@ export function AudiobookshelfSection() {
     <Section
       id="audiobookshelf"
       title="Audiobookshelf"
-      lede="Sign in to your Audiobookshelf server here. Its libraries then show in Discover's catalogues, where you can listen straight from the server or bring books into TBV."
+      lede="Sign in to your Audiobookshelf server here. Its libraries then show in Discover › Libram, where you can listen straight from the server or bring books into TBV."
     >
       {!isApp && <p className="settings-row-hint">Audiobookshelf works in the TBV app.</p>}
       {servers && servers.length > 0 && (

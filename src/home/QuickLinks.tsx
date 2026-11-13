@@ -13,7 +13,8 @@ import { holdForMenu } from "../components/ContextMenu";
 import { Icon, type IconName } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { hashOf } from "../lib/format";
-import { NAV, type Route } from "../shell/routes";
+import { askScry, parseStream } from "../browse/scryAsk";
+import { DISCOVER_MENU, NAV, type Route } from "../shell/routes";
 import { Section } from "./Section";
 
 const PANELS: { target: string; panel: StartPanel | null; label: string; icon: IconName }[] = [
@@ -25,14 +26,16 @@ const PANELS: { target: string; panel: StartPanel | null; label: string; icon: I
 ];
 
 /** The pages a link can open, besides Discover's panels. */
-const PAGES = NAV.filter((n) => n.route !== "home" && n.route !== "catalogs");
+const PAGES = [...NAV.filter((n) => n.route !== "home" && n.route !== "catalogs"), ...DISCOVER_MENU.filter((d) => d.route !== "catalogs")];
 
-type Kind = "page" | "book" | "collection" | "site";
+/** A stream (from Scry) is made in Scry, not picked here. */
+type Kind = "page" | "book" | "collection" | "site" | "stream";
 
 function kindOf(target: string): Kind {
   if (target.startsWith("tbv:") || target.startsWith("page:")) return "page";
   if (target.startsWith("book:")) return "book";
   if (target.startsWith("collection:")) return "collection";
+  if (target.startsWith("stream:")) return "stream";
   return "site";
 }
 
@@ -44,7 +47,7 @@ function iconOf(link: SanctumLink): IconName {
   const nav = PAGES.find((p) => `page:${p.route}` === link.target);
   if (nav) return nav.icon;
   const kind = kindOf(link.target);
-  return kind === "book" ? "bookOpen" : kind === "collection" ? "layers" : "globe";
+  return kind === "book" ? "bookOpen" : kind === "collection" ? "layers" : kind === "stream" ? "videoReader" : "globe";
 }
 
 export interface LinkGo {
@@ -54,7 +57,12 @@ export interface LinkGo {
 }
 
 /** Goes where a link points. */
-export function followLink(target: string, go: LinkGo) {
+export function followLink(target: string, go: LinkGo, title = "") {
+  const stream = parseStream(target, title);
+  if (stream) {
+    askScry(stream);
+    return go.onNavigate("scry");
+  }
   const panel = PANELS.find((p) => p.target === target);
   if (panel) {
     if (panel.panel) askBrowser({ panel: panel.panel });
@@ -73,10 +81,10 @@ export function QuickLinks({ refreshKey, ...go }: LinkGo & { refreshKey: number 
   const toast = useToast();
   const reload = useCallback(() => api.sanctumLinks().then(setLinks, () => setLinks([])), []);
   useEffect(() => void reload(), [reload, refreshKey]);
-  if (!links) return <Section title="Quick links" className="sanctum-links">{null}</Section>;
+  if (!links) return <Section title="Sigils" className="sanctum-links">{null}</Section>;
   return (
     <Section
-      title="Quick links"
+      title="Sigils"
       className="sanctum-links"
       action={
         <button type="button" className="view-all" onClick={() => setEditing({ mode: "list" })}>
@@ -91,7 +99,7 @@ export function QuickLinks({ refreshKey, ...go }: LinkGo & { refreshKey: number 
             <li
               key={l.id}
               {...holdForMenu(`More for ${l.title}`, () => [
-                { label: "Open", icon: "external", onSelect: () => followLink(l.target, go) },
+                { label: "Open", icon: "external", onSelect: () => followLink(l.target, go, l.title) },
                 { label: "Edit…", icon: "edit", onSelect: () => setEditing({ mode: "edit", link: l }) },
                 {
                   label: "Remove",
@@ -105,7 +113,7 @@ export function QuickLinks({ refreshKey, ...go }: LinkGo & { refreshKey: number 
                 type="button"
                 className={`link-tile${picture ? " has-picture" : ""}`}
                 data-tone={hashOf(l.title) % 4}
-                onClick={() => followLink(l.target, go)}
+                onClick={() => followLink(l.target, go, l.title)}
                 title={l.title}
               >
                 {picture && <img className={l.picture?.startsWith("gallery:") ? undefined : "private-picture"} src={picture} alt="" draggable={false} />}
@@ -213,9 +221,9 @@ function LinksEditor({ links, start, onChanged, onClose }: { links: SanctumLink[
 
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog quick-links-editor" role="dialog" aria-label="Edit Quick links" onKeyDown={(e) => e.key === "Escape" && (draft && !adding ? setDraft(null) : onClose())}>
+      <div className="dialog quick-links-editor" role="dialog" aria-label="Edit Sigils" onKeyDown={(e) => e.key === "Escape" && (draft && !adding ? setDraft(null) : onClose())}>
         <header className="catalogues-head">
-          <h2>{draft ? (draft.id ? "Change link" : "Add a link") : "Quick links"}</h2>
+          <h2>{draft ? (draft.id ? "Change sigil" : "Add a sigil") : "Sigils"}</h2>
           <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
             <Icon name="close" size={18} />
           </button>
@@ -298,6 +306,7 @@ function describe(target: string): string {
   if (page) return page.label;
   if (target.startsWith("book:")) return "A book";
   if (target.startsWith("collection:")) return "A collection";
+  if (target.startsWith("stream:")) return "A stream, in Scry";
   return readableAddress(target);
 }
 
@@ -341,6 +350,7 @@ function TargetPicker({ draft, onChange }: { draft: Draft; onChange: (d: Draft) 
         </select>
       </label>
     );
+  if (draft.kind === "stream") return <p className="muted">Plays in Scry, from your server.</p>;
   if (draft.kind === "collection") return <CollectionPicker value={draft.target} onPick={(c) => pick(`collection:${c.id}`, c.name)} />;
   return <BookPicker value={draft.target} onPick={(b) => pick(`book:${b.id}`, b.title)} />;
 }

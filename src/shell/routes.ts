@@ -1,6 +1,6 @@
 import type { IconName } from "../components/Icon";
 
-export type Route = "home" | "library" | "documents" | "collections" | "audiobooks" | "notes" | "settings" | "sync" | "imports" | "activity" | "lining" | "places" | "book" | "writing" | "catalogs";
+export type Route = "home" | "library" | "documents" | "collections" | "audiobooks" | "notes" | "settings" | "sync" | "imports" | "activity" | "lining" | "places" | "book" | "writing" | "catalogs" | "scry" | "geas" | "libram";
 
 /** Each page's name, and the few words under it in the sidebar. */
 export const PAGE: Record<"home" | "library" | "collections" | "audiobooks" | "writing" | "catalogs" | "settings", { label: string; caption: string }> = {
@@ -12,6 +12,15 @@ export const PAGE: Record<"home" | "library" | "collections" | "audiobooks" | "w
   catalogs: { label: "Discover", caption: "Find new books" },
   settings: { label: "Preferences", caption: "Settings & sync" },
 };
+
+/** Discover's submenu in the sidebar: the browser, streaming from your
+ * servers, bringing things in from servers, and the catalogues (embre, 13 November). */
+export const DISCOVER_MENU: { route: Route; label: string; caption: string; icon: IconName }[] = [
+  { route: "catalogs", label: "Locus", caption: "The web", icon: "globe" },
+  { route: "scry", label: "Scry", caption: "Streaming", icon: "mediaServer" },
+  { route: "geas", label: "Geas", caption: "Transfers", icon: "database" },
+  { route: "libram", label: "Libram", caption: "Catalogues & Bibles", icon: "bookClosed" },
+];
 
 export const NAV: { route: Route; label: string; caption: string; icon: IconName }[] = [
   { route: "home", ...PAGE.home, icon: "home" },
@@ -32,6 +41,11 @@ export function navFor({ web, home, android = false }: { web: boolean; home: boo
   return NAV.filter((n) => !(n.route === "catalogs" && (web || home || android))).map((n) =>
     n.route === "writing" && home ? { ...n, caption: "Your notes" } : n,
   );
+}
+
+/** Every page there is a button for: the sidebar's, with Discover's submenu. */
+export function routesFor(flags: { web: boolean; home: boolean; android?: boolean }): Route[] {
+  return navFor(flags).flatMap((n) => (n.route === "catalogs" ? DISCOVER_MENU.map((d) => d.route) : [n.route]));
 }
 
 /** Sync & Accounts lives inside Preferences, so Preferences stays highlighted;

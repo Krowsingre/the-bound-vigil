@@ -10,7 +10,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { api, isIOS, openExternal } from "../api";
 import type { Bookmark, BrowserEvent, BrowserFrame, BrowserPane, DeviceTabs, OpenTab, PageVideo, ReaderArticle } from "../api/types";
 import { VideoReader } from "./VideoReader";
-import { MediaPanel } from "./MediaPanel";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { openContextMenu, openContextMenuAt } from "../components/ContextMenu";
 import { Icon } from "../components/Icon";
@@ -349,7 +348,6 @@ const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
 const clean = (e: unknown) => String(e).replace(/^Error: /, "");
 
 export function Browser({
-  onOpenCatalogues,
   onOpenBook,
   search,
   onSearchChange,
@@ -357,7 +355,6 @@ export function Browser({
   companion,
   onSplitWith,
 }: {
-  onOpenCatalogues: () => void;
   onOpenBook: (bookId: string) => void;
   /** The top search box's typing, which the start page's box shares. */
   search: string;
@@ -393,8 +390,6 @@ export function Browser({
   const [article, setArticle] = useState<ReaderArticle | null>(null);
   /** Video reader view: the page's video, playing in TBV's own player. */
   const [film, setFilm] = useState<PageVideo | null>(null);
-  /** Media servers (Plex, Jellyfin, Emby, WebDAV), over the page. */
-  const [media, setMedia] = useState(false);
   const [saving, setSaving] = useState(false);
   const [prefs, setPrefs] = useState(readBrowserPrefs);
   const [problem, setProblem] = useState<string | null>(null);
@@ -456,13 +451,10 @@ export function Browser({
   const failure = onStart ? null : failed[active.id] ?? null;
   /** Reader mode, the tab grid, the start page and the error page cover the page, so the page's view steps aside. */
   const aside = useRef(false);
-  aside.current = !!article || !!film || media || panel === "tabs" || onStart || !!failure;
+  aside.current = !!article || !!film || panel === "tabs" || onStart || !!failure;
   // Another tab, or another page, ends video reader view.
   const pageOnly = url.split("#")[0];
-  useEffect(() => {
-    setFilm(null);
-    setMedia(false);
-  }, [active.id, pageOnly]);
+  useEffect(() => setFilm(null), [active.id, pageOnly]);
 
   useEffect(() => writeTabs(tabs), [tabs]);
   useEffect(() => onClosedTabs(() => setClosedTabs(readClosedTabs())), []);
@@ -1302,12 +1294,6 @@ export function Browser({
       toast(clean(e));
     }
   };
-  /** Media servers: films, shows and music from Plex, Jellyfin, Emby or a shared folder. */
-  const openMedia = () => {
-    setFilm(null);
-    setArticle(null);
-    setMedia((on) => !on);
-  };
   const openVideoRef = useRef(openVideo);
   openVideoRef.current = openVideo;
 
@@ -1342,7 +1328,6 @@ export function Browser({
     ...(narrow ? [
       { label: "Picture in picture", icon: "pictureInPicture" as const, disabled: !web, onSelect: () => void popOut() },
       { label: film ? "Exit Video reader view" : "Video reader view", icon: "videoReader" as const, disabled: !web && !film, onSelect: () => void openVideo() },
-      { label: "Media servers", icon: "mediaServer" as const, onSelect: () => openMedia() },
     ] : []),
     ...(companion && !narrow ? [
       { label: "Home page", icon: "home" as const, onSelect: goHome },
@@ -1377,7 +1362,6 @@ export function Browser({
     { label: "Make this your home page", icon: "home", disabled: !web, onSelect: () => (writeBrowserPrefs({ home: url }), toast("This is your home page now.")) },
     ...(narrow ? [{ label: "Site information", icon: "info" as const, disabled: !site, onSelect: () => setPanel("site") }] : []),
     { label: "Clear all cookies and site data", icon: "trash", onSelect: () => void api.browserClear().then(() => toast("Every site's cookies and data are cleared.")) },
-    ...(!narrow ? [] : ["divider" as const, { label: "Add a catalogue", icon: "globePlus" as const, onSelect: onOpenCatalogues }]),
   ];
 
   const splitItems: MenuEntry[] = [
@@ -1501,10 +1485,8 @@ export function Browser({
           <div className="browser-strip-tools">
             <Menu label="Every tab" closeOnScroll={false} className="toolbar-button" trigger={<Icon name="chevronDown" size={16} />} items={tabList} searchLabel="Search open tabs" />
             <span className="browser-bar-divider" aria-hidden />
-            {button("Add a catalogue", "globePlus", onOpenCatalogues)}
             {button("Video reader view", "videoReader", () => void openVideo(), film ? " is-on" : "")}
             {button("Picture in picture", "pictureInPicture", () => void popOut())}
-            {button("Media servers", "mediaServer", () => openMedia(), media ? " is-on" : "")}
             {downloadsButton}
             <Menu label="More" className="toolbar-button" trigger={<Icon name="more" size={17} />} items={moreItems} />
           </div>
@@ -1574,7 +1556,7 @@ export function Browser({
       <section className="browser-pane" style={other ? { gridColumn: pair?.activeLeft ? 1 : 3 } : undefined} aria-label="Active browser pane">
         {other && <div className="browser-pane-title" aria-current="true">{titleOf(active.title, url, active.private)}</div>}
         <div className="browser-view" ref={area}>
-        {onStart && !article && !media && !film && (
+        {onStart && !article && !film && (
           <StartPage
             onGo={go}
             onNewTab={openInNewTab}
@@ -1590,7 +1572,7 @@ export function Browser({
             privately={!!active.private}
           />
         )}
-        {failure && !article && !media && !film && (
+        {failure && !article && !film && (
           <div className="browser-failed" role="alert">
             <Icon name="cloudOff" size={44} />
             <h2>This page didn't open</h2>
@@ -1612,8 +1594,7 @@ export function Browser({
             <p className="muted">{problem}</p>
           </div>
         )}
-        {media && <MediaPanel onClose={() => setMedia(false)} onPlay={setFilm} />}
-        {film && <VideoReader video={film} onClose={() => setFilm(null)} backLabel={media ? "Back to media" : undefined} />}
+        {film && <VideoReader video={film} onClose={() => setFilm(null)} />}
         {article && (
           <article className="browser-reader" lang={article.lang ?? undefined}>
             <div className="browser-reader-bar">

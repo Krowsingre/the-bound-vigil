@@ -165,7 +165,7 @@ export function BrowserTab() {
         <Section id="search" title="Searching" lede="Words typed into Discover's address box that aren't a web address are searched for.">
           <Toggle
             label="Suggest from history and bookmarks while typing"
-            hint="Also your Quick Links and open tabs. Everything comes from this device, so nothing you type is sent anywhere."
+            hint="Also your sigils and open tabs. Everything comes from this device, so nothing you type is sent anywhere."
             checked={prefs.suggest}
             onChange={(suggest) => writeBrowserPrefs({ suggest })}
           />
@@ -237,9 +237,9 @@ export function BrowserTab() {
               onChange={(comeBack) => writeBrowserPrefs({ comeBack })}
             />
           </Row>
-          <Row label="Websites from Sanctum's Quick links" hint="Opened in Discover.">
+          <Row label="Websites from Sanctum's sigils" hint="Opened in Discover.">
             <Select<LinksOpen>
-              label="Websites from Sanctum's Quick links"
+              label="Websites from Sanctum's sigils"
               value={prefs.linksOpen}
               options={LINKS_OPEN}
               onChange={(linksOpen) => writeBrowserPrefs({ linksOpen })}

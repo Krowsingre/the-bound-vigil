@@ -67,7 +67,7 @@ export function ServerRows({ queue }: { queue: ServerQueue }) {
         <>
           <ProgressBar value={c.bytesTotal ? c.bytesDone / c.bytesTotal : 0} label="Downloaded from servers" />
           <p className="settings-row-hint">
-            {formatBytes(c.bytesDone)} of {formatBytes(c.bytesTotal)} · up to {view.connections} at once (Preferences › Servers)
+            {formatBytes(c.bytesDone)} of {formatBytes(c.bytesTotal)} · up to {view.connections} at once (Discover › Geas)
           </p>
         </>
       )}

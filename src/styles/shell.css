@@ -204,6 +204,38 @@
   padding: 0 10px;
 }
 
+/* Discover's submenu: a line above its first page and below its last. */
+.nav-chevron {
+  margin-left: auto;
+  flex: none;
+  opacity: 0.7;
+}
+
+.nav-sub {
+  list-style: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  margin: 4px 0 0;
+  padding: 6px 0 6px 12px;
+  border-top: 1px solid var(--weathered-iron);
+  border-bottom: 1px solid var(--weathered-iron);
+}
+
+.nav-item > svg {
+  flex: none;
+}
+
+.nav-sub .nav-item {
+  height: 40px;
+  gap: 14px;
+  font-size: 14px;
+}
+
+.sidebar-collapsed .nav-sub {
+  padding-left: 0;
+}
+
 .sidebar-collapsed .nav-item {
   justify-content: center;
   padding: 0;
