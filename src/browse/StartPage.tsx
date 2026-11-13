@@ -132,7 +132,7 @@ export function StartPage({
     try {
       await api.addQuickLink(title, originOf(url) + "/", freePainting(used));
       await reload();
-      toast(`${title} is in your Quick Links.`);
+      toast(`${title} is in your Sigils.`);
     } catch (e) {
       toast(String(e).replace(/^Error: /, ""));
     }
@@ -195,7 +195,7 @@ export function StartPage({
         <span className="start-rule start-rule-wide" aria-hidden />
         <section className="start-section" aria-labelledby="start-quick">
           <header>
-            <h2 id="start-quick">Quick Links</h2>
+            <h2 id="start-quick">Sigils</h2>
             <button type="button" className="start-more" onClick={() => setEditing(true)}>
               Edit <Icon name="chevronRight" size={16} />
             </button>
@@ -261,7 +261,7 @@ export function StartPage({
                       items={[
                         { label: "Open in new tab", icon: "plus", onSelect: () => onNewTab(r.url) },
                         { label: "Copy link", icon: "copy", onSelect: () => void navigator.clipboard?.writeText(r.url).then(() => toast("Link copied.")) },
-                        { label: "Add to Quick Links", icon: "link", onSelect: () => void addQuick(r.title, r.url) },
+                        { label: "Add to Sigils", icon: "link", onSelect: () => void addQuick(r.title, r.url) },
                         {
                           label: "Remove from history",
                           icon: "trash",
@@ -327,7 +327,7 @@ export function StartPage({
       {clearing && (
         <ConfirmDialog
           title="Clear Recent Sites?"
-          body="This clears Discover's history, so these sites go from History too. Bookmarks, Quick Links, tabs and site sign-ins stay."
+          body="This clears Discover's history, so these sites go from History too. Bookmarks, sigils, tabs and site sign-ins stay."
           confirm="Clear"
           danger
           onCancel={() => setClearing(false)}

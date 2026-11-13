@@ -1,4 +1,4 @@
-//! Importing from a server (Preferences › Servers, shown on the Imports page).
+//! Importing from a server (Discover › Geas, shown on the Imports page).
 //! Every file chosen gets its own row, kept on disk (see
 //! `tbv_core::servers::queue`), and a few come down at once, each over its
 //! own connection: the "Connections" setting says how many. Browsing keeps
@@ -35,7 +35,7 @@ const TELL_EVERY: Duration = Duration::from_millis(250);
 const RECONNECT_WAITS: [Duration; 5] =
     [Duration::ZERO, Duration::ZERO, Duration::from_secs(3), Duration::from_secs(10), Duration::from_secs(30)];
 
-/// How the server list stands, for the Imports page and Preferences › Servers.
+/// How the server list stands, for the Imports page and Discover › Geas.
 /// The rows themselves come a page at a time (`page`): a big folder can be
 /// thousands of files.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -303,7 +303,7 @@ impl ServerImports {
         file: &QueuedFile,
         target: &Path,
     ) -> Result<u64, String> {
-        let server = saved(library, &file.server_id).map_err(|_| "That server is no longer saved in Preferences › Servers.".to_string())?;
+        let server = saved(library, &file.server_id).map_err(|_| "That server is no longer saved in Discover › Geas.".to_string())?;
         for (attempt, wait) in RECONNECT_WAITS.iter().enumerate() {
             let last = attempt + 1 == RECONNECT_WAITS.len();
             if !wait.is_zero() {

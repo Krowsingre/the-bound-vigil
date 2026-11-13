@@ -7,6 +7,8 @@
 //! - `page:<route>`: one of TBV's pages, such as `page:collections`;
 //! - `book:<id>`: a book or audiobook, opened at your place;
 //! - `collection:<id>`: a Compendium collection;
+//! - `stream:<server address>|<item>|<video or audio>`: something on a media
+//!   server, played in Discover › Scry;
 //! - an http or https address: a website, opened in Discover.
 
 use rusqlite::{params, OptionalExtension};
@@ -52,7 +54,7 @@ fn link_target(target: &str) -> Result<String> {
     if PANELS.contains(&target) {
         return Ok(target.to_string());
     }
-    for prefix in ["page:", "book:", "collection:"] {
+    for prefix in ["page:", "book:", "collection:", "stream:"] {
         if let Some(rest) = target.strip_prefix(prefix) {
             if !rest.trim().is_empty() {
                 return Ok(target.to_string());

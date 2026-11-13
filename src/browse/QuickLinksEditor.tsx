@@ -58,9 +58,9 @@ export function QuickLinksEditor({ links, onChanged, onClose }: { links: QuickLi
 
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog quick-links-editor" role="dialog" aria-label="Edit Quick Links" onKeyDown={(e) => e.key === "Escape" && (draft ? setDraft(null) : onClose())}>
+      <div className="dialog quick-links-editor" role="dialog" aria-label="Edit Sigils" onKeyDown={(e) => e.key === "Escape" && (draft ? setDraft(null) : onClose())}>
         <header className="catalogues-head">
-          <h2>{draft ? (draft.id ? "Change Quick Link" : "Add a Quick Link") : "Quick Links"}</h2>
+          <h2>{draft ? (draft.id ? "Change sigil" : "Add a sigil") : "Sigils"}</h2>
           <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
             <Icon name="close" size={18} />
           </button>
@@ -128,10 +128,10 @@ export function QuickLinksEditor({ links, onChanged, onClose }: { links: QuickLi
                 </li>
               ))}
             </ul>
-            {links.length === 0 && <p className="muted">No Quick Links yet.</p>}
+            {links.length === 0 && <p className="muted">No sigils yet.</p>}
             <div className="dialog-actions">
               <button type="button" className="btn btn-primary" onClick={() => setDraft({ id: null, title: "", url: "", picture: freePainting(links.map((l) => l.picture)) })}>
-                <Icon name="plus" size={15} /> Add a Quick Link
+                <Icon name="plus" size={15} /> Add a sigil
               </button>
             </div>
           </>

@@ -13,6 +13,9 @@ import { onShowBookDetails, onShowInLibrary } from "./details/openDetails";
 import { Collections } from "./collections/Collections";
 import { Writing, type WritingSection } from "./writing/Writing";
 import { Browse } from "./browse/Browse";
+import { Scry } from "./browse/Scry";
+import { Libram } from "./catalogs/Libram";
+import { ServersTab } from "./settings/ServersTab";
 import { UpNextReplacementHost } from "./library/UpNextReplacement";
 import { workspaceFrame } from "./shell/workspaceFrame";
 import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory, openInDiscover } from "./browse/Browser";
@@ -45,7 +48,7 @@ import { useAppSettings } from "./settings/appSettings";
 import { Settings } from "./settings/Settings";
 import type { SettingsTab } from "./settings/settingsIndex";
 import { Header } from "./shell/Header";
-import { navFor, navRouteOf, type Route } from "./shell/routes";
+import { navFor, navRouteOf, routesFor, type Route } from "./shell/routes";
 import { Sidebar } from "./shell/Sidebar";
 import { Icon } from "./components/Icon";
 import { PairHost } from "./audio/LinkEbook";
@@ -168,7 +171,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const sidebarPlaces = useRef(new Map<Route, SidebarPlace>());
   const section = navRouteOf(route === "book" ? details?.from ?? "library" : route);
   const selectSidebar = (target: Route) => {
-    if (!navFor({ web: isWeb, home: isHome, android: isAndroid }).some(({ route }) => route === target)) {
+    if (!routesFor({ web: isWeb, home: isHome, android: isAndroid }).some((route) => route === target)) {
       navigate(target);
       return;
     }
@@ -200,7 +203,6 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     else if (same && content) content.scrollTop = 0;
     if (same && target === "catalogs") {
       setBrowserDraft("");
-      setCatalogues(false);
       askBrowser({ start: true });
     }
   };
@@ -535,7 +537,6 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     // The reader's Search (and Translate where Apple's isn't there): a new Discover tab.
     onOpenWeb: (url: string) => {
       closeBook();
-      setCatalogues(false);
       navigate("catalogs");
       openInDiscover(url);
     },
@@ -563,7 +564,6 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const pullHome = useRef<HTMLDivElement>(null);
   const toLibrary = useCallback(() => navigate("library"), [navigate]);
   const openMenu = useCallback(() => setMenuOpen(true), []);
-  const [catalogues, setCatalogues] = useState(false);
   // On Discover the top search box shows the address of the page in front.
   const [browserAddress, setBrowserAddress] = useState("");
   useEffect(() => {
@@ -814,6 +814,27 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
               onOpenCollection={showCollection}
               onReadAlong={(ebookId) => openBook(ebookId)}
             />
+          ) : route === "scry" ? (
+            <Scry />
+          ) : route === "geas" ? (
+            <div className="settings-page is-landing geas-page">
+              <div className="settings-body">
+                <header className="settings-head">
+                  <h1>Geas</h1>
+                  <p className="muted">Bring books, documents and audiobooks in from your servers. What TBV can open is added to your Archive or Resonance.</p>
+                </header>
+                <ServersTab />
+              </div>
+            </div>
+          ) : route === "libram" ? (
+            <Libram
+              refreshKey={refreshKey}
+              onOpenBook={openBook}
+              onOpenSite={(url) => {
+                navigate("catalogs");
+                askBrowser({ url });
+              }}
+            />
           ) : route === "places" ? (
             <BookPlacesPage onOpenSyncSettings={() => navigate("sync")} />
           ) : route === "notes" || route === "writing" ? (
@@ -866,8 +887,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
           )}
         </main>}
         {route === "catalogs" && <main className="content discover-workspace-pane" key="discover-workspace">
-          <Browse refreshKey={refreshKey} onOpenBook={openBook} catalogues={catalogues}
-            onOpenCatalogues={() => setCatalogues(true)} onCloseCatalogues={() => setCatalogues(false)}
+          <Browse onOpenBook={openBook}
             search={browserDraft} onSearchChange={setBrowserDraft}
             allowTabSplit={!workspaceSplit && !workspaceFrame}
             onSplitWith={workspaceSplit ? undefined : onSplit} />

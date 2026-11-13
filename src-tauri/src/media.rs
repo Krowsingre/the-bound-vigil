@@ -8,8 +8,31 @@ use tbv_core::media::{self, MediaItem, MediaKind, MediaServer, MediaServerView, 
 
 use crate::{with_library, AppLibrary, CommandResult};
 
+/// Servers signed in to without "Remember my sign-in": kept only until TBV closes.
+static FOR_NOW: std::sync::Mutex<Vec<MediaServer>> = std::sync::Mutex::new(Vec::new());
+
+fn for_now() -> Vec<MediaServer> {
+    FOR_NOW.lock().map(|s| s.clone()).unwrap_or_default()
+}
+
+/// Keeps servers on this device, or only until TBV closes.
+async fn keep(state: State<'_, AppLibrary>, servers: Vec<MediaServer>, remember: bool) -> CommandResult<Vec<MediaServerView>> {
+    if remember {
+        return with_library(state, move |library| library.save_media_servers(servers)).await;
+    }
+    let mut kept = FOR_NOW.lock().map_err(|_| "TBV is busy".to_string())?;
+    let mut views = Vec::new();
+    for server in servers {
+        kept.retain(|s| !(s.kind == server.kind && s.url == server.url && s.username == server.username));
+        views.push(MediaServerView::from(&server));
+        kept.push(server);
+    }
+    Ok(views)
+}
+
 async fn server_and_device(state: State<'_, AppLibrary>, id: String) -> CommandResult<(MediaServer, String)> {
-    with_library(state, move |library| Ok((library.media_server(&id)?, library.device_id()?))).await
+    let found = for_now().into_iter().find(|s| s.id == id);
+    with_library(state, move |library| Ok((match found { Some(s) => s, None => library.media_server(&id)? }, library.device_id()?))).await
 }
 
 async fn device(state: State<'_, AppLibrary>) -> CommandResult<String> {
@@ -22,12 +45,22 @@ async fn off_thread<T: Send + 'static>(work: impl FnOnce() -> tbv_core::Result<T
 
 #[tauri::command]
 pub async fn media_servers(state: State<'_, AppLibrary>) -> CommandResult<Vec<MediaServerView>> {
-    with_library(state, |library| library.media_servers()).await
+    let mut all = with_library(state, |library| library.media_servers()).await?;
+    all.extend(for_now().iter().map(MediaServerView::from));
+    Ok(all)
 }
 
 /// Jellyfin or Emby (username and password), or a WebDAV folder.
 #[tauri::command]
-pub async fn media_sign_in(state: State<'_, AppLibrary>, kind: MediaKind, url: String, username: String, password: String, name: Option<String>) -> CommandResult<Vec<MediaServerView>> {
+pub async fn media_sign_in(
+    state: State<'_, AppLibrary>,
+    kind: MediaKind,
+    url: String,
+    username: String,
+    password: String,
+    name: Option<String>,
+    remember: bool,
+) -> CommandResult<Vec<MediaServerView>> {
     let device = device(state.clone()).await?;
     let server = off_thread(move || match kind {
         MediaKind::Jellyfin | MediaKind::Emby => media::sign_in_jellyfin(kind, &url, username.trim(), &password, &device),
@@ -35,7 +68,7 @@ pub async fn media_sign_in(state: State<'_, AppLibrary>, kind: MediaKind, url: S
         MediaKind::Plex => Err(tbv_core::Error::Unsuitable("Plex signs in through plex.tv.".into())),
     })
     .await?;
-    with_library(state, move |library| library.save_media_servers(vec![server])).await
+    keep(state, vec![server], remember).await
 }
 
 #[tauri::command]
@@ -46,14 +79,17 @@ pub async fn media_plex_start(state: State<'_, AppLibrary>) -> CommandResult<Ple
 
 /// None until the sign-in is approved on plex.tv.
 #[tauri::command]
-pub async fn media_plex_finish(state: State<'_, AppLibrary>, pin: String) -> CommandResult<Option<Vec<MediaServerView>>> {
+pub async fn media_plex_finish(state: State<'_, AppLibrary>, pin: String, remember: bool) -> CommandResult<Option<Vec<MediaServerView>>> {
     let device = device(state.clone()).await?;
     let Some(servers) = off_thread(move || media::plex_finish(&pin, &device)).await? else { return Ok(None) };
-    with_library(state, move |library| library.save_media_servers(servers)).await.map(Some)
+    keep(state, servers, remember).await.map(Some)
 }
 
 #[tauri::command]
 pub async fn media_remove(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
+    if let Ok(mut kept) = FOR_NOW.lock() {
+        kept.retain(|s| s.id != id);
+    }
     with_library(state, move |library| library.remove_media_server(&id)).await
 }
 

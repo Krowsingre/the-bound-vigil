@@ -14,7 +14,6 @@ export type SettingsTab =
   | "activity"
   | "files"
   | "ereaders"
-  | "servers"
   | "accessibility"
   | "shortcuts"
   | "advanced"
@@ -99,12 +98,6 @@ export const SETTINGS_TABS: {
     lede: "Send books to your Kindle, Kobo or other e-reader.",
   },
   {
-    tab: "servers",
-    label: "Servers",
-    icon: "database",
-    lede: "Bring in books and audiobooks from a seedbox, a NAS or another computer.",
-  },
-  {
     tab: "accessibility",
     label: "Accessibility",
     icon: "accessibility",
@@ -145,18 +138,6 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     section: "read-along",
     label: "Read-along",
     words: "read along listen along confluence converging lining up align alignment audiobook narrator speech model whisper accuracy background charging processor",
-  },
-  {
-    tab: "servers",
-    section: "servers",
-    label: "Servers",
-    words: "ftp ftps sftp ssh seedbox nas server remote computer import download audiobooks books key fingerprint",
-  },
-  {
-    tab: "servers",
-    section: "audiobookshelf",
-    label: "Audiobookshelf",
-    words: "audiobookshelf abs sign in sign out log in password server audiobooks podcasts stream listen",
   },
   {
     tab: "appearance",
@@ -294,7 +275,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "browser",
     section: "home",
     label: "Discover home page",
-    words: "discover browser home page start page startpage quick links recent sites gutenberg website address coming back tabs close reset last page",
+    words: "discover browser home page start page startpage quick links sigils recent sites gutenberg website address coming back tabs close reset last page",
   },
   {
     tab: "browser",

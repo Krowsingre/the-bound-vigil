@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PageVideo } from "../api/types";
 import { Icon } from "../components/Icon";
 
-export function VideoReader({ video, onClose, backLabel = "Back to the page" }: { video: PageVideo; onClose: () => void; backLabel?: string }) {
+export function VideoReader({ video, onClose, backLabel = "Back to the page", onSigil }: { video: PageVideo; onClose: () => void; backLabel?: string; /** Scry: keep this stream as a sigil on Sanctum. */ onSigil?: () => void }) {
   const player = useRef<HTMLVideoElement>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
 
@@ -66,9 +66,16 @@ export function VideoReader({ video, onClose, backLabel = "Back to the page" }: 
         <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
           <Icon name="arrowLeft" size={14} /> {backLabel}
         </button>
-        <button type="button" className="btn btn-quiet btn-small" onClick={popOut}>
-          <Icon name="pictureInPicture" size={14} /> Picture in picture
-        </button>
+        <span className="browser-video-actions">
+          {onSigil && (
+            <button type="button" className="btn btn-quiet btn-small" onClick={onSigil}>
+              <Icon name="link" size={14} /> Make a sigil
+            </button>
+          )}
+          <button type="button" className="btn btn-quiet btn-small" onClick={popOut}>
+            <Icon name="pictureInPicture" size={14} /> Picture in picture
+          </button>
+        </span>
       </div>
       <div className="browser-video-stage">
         <video ref={player} controls playsInline autoPlay aria-label={video.title || "Video"} />

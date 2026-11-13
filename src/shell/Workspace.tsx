@@ -5,10 +5,10 @@ import { SplitDivider } from "../browse/SplitDivider";
 import { clearWorkspaceBrowser } from "../browse/workspaceBrowser";
 import { api, isAndroid, isHome, isIOS, isWeb } from "../api";
 import { runBeforeQuit } from "../lib/beforeQuit";
-import { navFor, type Route } from "./routes";
+import { routesFor, type Route } from "./routes";
 import { workspaceFrame, workspaceHost } from "./workspaceFrame";
 
-const routes = [...navFor({ web: isWeb, home: isHome, android: isAndroid }).map(({ route }) => route), "imports", "lining"];
+const routes = [...routesFor({ web: isWeb, home: isHome, android: isAndroid }), "imports", "lining"];
 const canSplit = !isHome && !isWeb && !isAndroid && (api.kind === "app" || api.kind === "preview");
 const isAppBrowser = () => api.kind === "app" && !isAndroid;
 function isRefreshShortcut(event: KeyboardEvent) {

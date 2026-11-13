@@ -92,7 +92,7 @@ export function previewServers(): ServerApi {
   setInterval(() => files.some((f) => f.state === "waiting" || f.state === "downloading") && step(), 500);
   const find = (id: string) => {
     const s = servers.find((x) => x.id === id);
-    if (!s) throw new Error("That server isn't saved any more. Add it again in Preferences › Servers.");
+    if (!s) throw new Error("That server isn't saved any more. Add it again in Discover › Geas.");
     return s;
   };
   return {

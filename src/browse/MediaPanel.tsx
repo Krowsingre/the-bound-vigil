@@ -18,7 +18,12 @@ const clean = (e: unknown) => String(e).replace(/^Error: /, "");
 
 type Step = { id: string; title: string };
 
-export function MediaPanel({ onClose, onPlay }: { onClose: () => void; onPlay: (video: PageVideo) => void }) {
+export function MediaPanel({ title = "Media servers", onClose, onPlay }: {
+  title?: string;
+  /** Over the browser: back to the page. As its own page (Scry): none. */
+  onClose?: () => void;
+  onPlay: (video: PageVideo, from?: { server: MediaServerView; item: MediaItem }) => void;
+}) {
   const [servers, setServers] = useState<MediaServerView[] | null>(null);
   const [current, setCurrent] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -60,7 +65,8 @@ export function MediaPanel({ onClose, onPlay }: { onClose: () => void; onPlay: (
     if (!current) return;
     if (item.kind === "folder") return setTrail((t) => [...t, { id: item.id, title: item.title }]);
     try {
-      onPlay(await api.mediaPlay(current, item.id, item.title, item.kind === "audio"));
+      const playing = await api.mediaPlay(current, item.id, item.title, item.kind === "audio");
+      onPlay(playing, server ? { server, item } : undefined);
     } catch (e) {
       setTrouble(clean(e));
     }
@@ -78,11 +84,13 @@ export function MediaPanel({ onClose, onPlay }: { onClose: () => void; onPlay: (
   };
 
   return (
-    <section className="browser-media" aria-label="Media servers" onKeyDown={(e) => e.key === "Escape" && onClose()}>
+    <section className="browser-media" aria-label={title} onKeyDown={(e) => e.key === "Escape" && onClose?.()}>
       <div className="browser-reader-bar">
-        <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
-          <Icon name="arrowLeft" size={14} /> Back to the page
-        </button>
+        {onClose ? (
+          <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
+            <Icon name="arrowLeft" size={14} /> Back to the page
+          </button>
+        ) : <span />}
         {!!servers?.length && !adding && (
           <button type="button" className="btn btn-quiet btn-small" onClick={() => setAdding(true)}>
             <Icon name="plus" size={14} /> Add a server
@@ -90,7 +98,7 @@ export function MediaPanel({ onClose, onPlay }: { onClose: () => void; onPlay: (
         )}
       </div>
       <div className="browser-media-body">
-        <h1>Media servers</h1>
+        <h1>{title}</h1>
         {!!servers?.length && !adding && (
           <div className="browser-media-servers" role="tablist" aria-label="Your servers">
             {servers.map((s) => (
@@ -161,6 +169,7 @@ function AddServer({ onAdded, onCancel }: { onAdded: (servers: MediaServerView[]
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [note, setNote] = useState<string | null>(null);
   const waiting = useRef(0);
 
@@ -176,7 +185,7 @@ function AddServer({ onAdded, onCancel }: { onAdded: (servers: MediaServerView[]
       const until = Date.now() + 5 * 60_000;
       const check = async () => {
         try {
-          const found = await api.mediaPlexFinish(pin.id);
+          const found = await api.mediaPlexFinish(pin.id, remember);
           if (found) return onAdded(found);
           if (Date.now() > until) {
             setBusy(false);
@@ -199,7 +208,7 @@ function AddServer({ onAdded, onCancel }: { onAdded: (servers: MediaServerView[]
     setBusy(true);
     setNote(null);
     try {
-      onAdded(await api.mediaSignIn(kind, url, username, password, name || undefined));
+      onAdded(await api.mediaSignIn(kind, url, username, password, name || undefined, remember));
     } catch (e) {
       setNote(clean(e));
     } finally {
@@ -248,6 +257,10 @@ function AddServer({ onAdded, onCancel }: { onAdded: (servers: MediaServerView[]
           </label>
         </>
       )}
+      <label className="browser-media-remember">
+        <input type="checkbox" checked={remember} disabled={busy} onChange={(e) => setRemember(e.target.checked)} />
+        <span>Remember my sign-in on this device</span>
+      </label>
       {note && <p className="browser-media-trouble" role="status">{note}</p>}
       <div className="dialog-actions">
         {onCancel && (

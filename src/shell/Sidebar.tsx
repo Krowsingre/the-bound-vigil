@@ -1,12 +1,13 @@
 import emblem from "../assets/emblem.svg?raw";
 import { holdForMenu } from "../components/ContextMenu";
 import { Icon } from "../components/Icon";
-import { navFor, navRouteOf, type Route } from "./routes";
+import { DISCOVER_MENU, navFor, navRouteOf, type Route } from "./routes";
 import { isAndroid, isHome, isWeb } from "../api";
 import { useEffect, useState } from "react";
 import { liningUp as liningUpNow, onLiningUp, type LiningUp } from "../readAlong/lineUp";
 
 // The emblem's two arches (assets/emblem.svg), drawn apart so each can turn on its own.
+const DISCOVER_OPEN_KEY = "tbv.discoverMenuOpen";
 const OUTER_ARCH = "M10 42V22a14 14 0 0 1 28 0v20";
 const INNER_ARCH = "M16 42V22.5a8 8 0 0 1 16 0V42";
 
@@ -44,6 +45,23 @@ export function Sidebar({
   useEffect(() => onLiningUp(setLining), []);
   const liningPercent = lining ? Math.floor(lining.fraction * 100) : 0;
   const [spin, setSpin] = useState<"inner" | "outer" | null>(null);
+  // Discover opens and closes its submenu (Locus, Scry, Geas, Libram), and remembers which.
+  const [discoverOpen, setDiscoverOpen] = useState(() => {
+    try {
+      return localStorage.getItem(DISCOVER_OPEN_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const toggleDiscover = () => setDiscoverOpen((open) => {
+    try {
+      localStorage.setItem(DISCOVER_OPEN_KEY, open ? "0" : "1");
+    } catch {
+      /* it just won't be remembered */
+    }
+    return !open;
+  });
+  const inDiscover = DISCOVER_MENU.some((d) => d.route === active);
   const fold = () => {
     setSpin(collapsed ? "outer" : "inner");
     onToggle();
@@ -99,7 +117,49 @@ export function Sidebar({
 
         <nav aria-label="Main">
           <ul className="nav">
-            {navFor({ web: isWeb, home: isHome, android: isAndroid }).map((item, i) => (
+            {navFor({ web: isWeb, home: isHome, android: isAndroid }).map((item, i) => item.route === "catalogs" ? (
+              <li key={item.route} className="nav-group">
+                <button
+                  type="button"
+                  className={`nav-item nav-parent${inDiscover && !discoverOpen ? " is-active" : ""}`}
+                  aria-label={collapsed ? item.label : undefined}
+                  aria-expanded={discoverOpen}
+                  aria-controls="nav-discover"
+                  onClick={toggleDiscover}
+                  title={collapsed ? `${item.label}: ${discoverOpen ? "hide" : "show"} its pages` : undefined}
+                >
+                  <Icon name={item.icon} size={22} />
+                  <span className="nav-label">
+                    {item.label}
+                    <span className="nav-caption">{item.caption}</span>
+                  </span>
+                  {!collapsed && <Icon name={discoverOpen ? "chevronUp" : "chevronDown"} size={15} className="nav-chevron" />}
+                </button>
+                {discoverOpen && (
+                  <ul id="nav-discover" className="nav-sub" aria-label={item.label}>
+                    {DISCOVER_MENU.map((sub) => (
+                      <li key={sub.route}>
+                        <button
+                          type="button"
+                          className={`nav-item${active === sub.route ? " is-active" : ""}`}
+                          aria-label={collapsed ? sub.label : undefined}
+                          aria-current={active === sub.route ? "page" : undefined}
+                          {...split(sub.route, sub.label)}
+                          onClick={() => onNavigate(sub.route)}
+                          title={collapsed ? (sub.route === "catalogs" ? `${sub.label} (Ctrl+${i + 1})` : sub.label) : undefined}
+                        >
+                          <Icon name={sub.icon} size={20} />
+                          <span className="nav-label">
+                            {sub.label}
+                            <span className="nav-caption">{sub.caption}</span>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ) : (
               <li key={item.route}>
                 <button
                   type="button"
