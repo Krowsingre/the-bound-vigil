@@ -17,8 +17,8 @@ export interface SuggestedCatalog {
   url: string;
   /** What it holds, in a few words. */
   about: string;
-  /** An OPDS catalogue to add, or a website to open in Discover. */
-  kind: "opds" | "site";
+  /** An OPDS catalogue to add, a website to open in Discover, or TBV's own Bibles catalogue. */
+  kind: "opds" | "site" | "bibles";
 }
 
 export interface SuggestedGroup {
@@ -37,9 +37,10 @@ export const SUGGESTED_GROUPS: SuggestedGroup[] = [
     about: "Browse and search them here, and bring a book in with one tap.",
     items: [
       opds("Project Gutenberg", "https://www.gutenberg.org/ebooks.opds/", "Over 70,000 free classics, in English and many other languages."),
-      site("eBible.org", "https://ebible.org/download.php", "Over 1,000 Bible translations, free to share. Opens in Discover; an EPUB you download comes into your library."),
       opds("Internet Archive", "https://archive.org/services/opds", "Millions of open-access and public-domain books, and audiobooks."),
       opds("Open Library", "https://openlibrary.org/opds/", "English and more. Many books are borrow-only on its website."),
+      { name: "Bibles", url: "tbv:bibles", about: "KJV • WEB • ASV. Public domain Bible translations, opened at any book and chapter.", kind: "bibles" },
+      site("eBible.org", "https://ebible.org/download.php", "Over 1,000 Bible translations, free to share. Opens in Discover; an EPUB you download comes into your library."),
       opds("Unglue.it", "https://unglue.it/api/opds/", "Books their authors and publishers made free, under Creative Commons and other open licences."),
       opds("Ebooks libres et gratuits", "https://www.ebooksgratuits.com/opds/", "French classics"),
       opds("textos.info", "https://textos.info/opds", "Spanish classics"),

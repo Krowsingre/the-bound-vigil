@@ -181,25 +181,10 @@ function CatalogDialog({
           <>
             {!sourcesOnly && <strong className="catalog-own">Or start with a free source</strong>}
             <p className="muted dialog-lede">Suggestions only: all free and legal, and nothing is added until you choose it.</p>
-            {onAddBibles && (
-              <section className="catalog-suggested" aria-label="Bibles">
-                <strong>Bibles</strong>
-                <span className="muted">The King James, World English and American Standard versions, opened at any book and chapter.</span>
-                <ul>
-                  <li>
-                    <span>
-                      <b>Bibles</b>
-                      <span className="muted">KJV • WEB • ASV. Public domain Bible translations.</span>
-                    </span>
-                    <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={onAddBibles}>
-                      <Icon name="plus" size={14} /> Add
-                    </button>
-                  </li>
-                </ul>
-              </section>
-            )}
             {SUGGESTED_GROUPS.map((group) => {
-              const items = group.items.filter((s) => s.kind === "site" || !existing.some((u) => sameAddress(u, s.url)));
+              const items = group.items.filter((s) =>
+                s.kind === "bibles" ? !!onAddBibles : s.kind === "site" || !existing.some((u) => sameAddress(u, s.url)),
+              );
               if (!items.length) return null;
               return (
                 <section key={group.title} className="catalog-suggested" aria-label={group.title}>
@@ -212,7 +197,11 @@ function CatalogDialog({
                           <b>{s.name}</b>
                           <span className="muted">{s.about}</span>
                         </span>
-                        {s.kind === "opds" ? (
+                        {s.kind === "bibles" ? (
+                          <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={onAddBibles}>
+                            <Icon name="plus" size={14} /> Add
+                          </button>
+                        ) : s.kind === "opds" ? (
                           <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => void addSuggested(s.name, s.url)}>
                             <Icon name="plus" size={14} /> Add
                           </button>
@@ -465,16 +454,6 @@ export function Catalogs({
         <h2 id="libram-catalogues-title">Catalogues</h2>
         <p className="muted">Your available catalogues. Add a catalogue to find books, including Bibles.</p>
         <ul className="libram-cards">
-          {showBibles && (
-            <CatalogCard
-              icon="bookOpen"
-              name="Bibles"
-              line="KJV • WEB • ASV"
-              about="Public domain Bible translations."
-              onBrowse={() => setCurrent(BIBLES)}
-              menu={[{ label: "Remove from Libram", icon: "trash", danger: true, onSelect: () => keepBibles(false) }]}
-            />
-          )}
           {(catalogs ?? []).map((c) => (
             <CatalogCard
               key={c.id}
@@ -488,6 +467,16 @@ export function Catalogs({
               ]}
             />
           ))}
+          {showBibles && (
+            <CatalogCard
+              icon="bookOpen"
+              name="Bibles"
+              line="KJV • WEB • ASV"
+              about="Public domain Bible translations."
+              onBrowse={() => setCurrent(BIBLES)}
+              menu={[{ label: "Remove from Libram", icon: "trash", danger: true, onSelect: () => keepBibles(false) }]}
+            />
+          )}
           <li className="libram-card is-add">
             <Icon name="layers" size={40} className="libram-card-mark" />
             <span className="libram-card-text">

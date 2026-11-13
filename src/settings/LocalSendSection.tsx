@@ -36,6 +36,12 @@ export function LocalSendSection() {
         disabled={!isApp && status === null}
         onChange={set}
       />
+      {status?.running && status.port && status.port !== 53317 && (
+        <p className="settings-row-hint">
+          Another app on this computer (often LocalSend) is using Grimoire's usual port, so Grimoire is using port {status.port} instead. Nearby devices still
+          find it.
+        </p>
+      )}
       {status?.enabled && !status.running && status.problem && <p className="form-error">{status.problem}</p>}
       {error && <p className="form-error">{error}</p>}
       {status?.running && (

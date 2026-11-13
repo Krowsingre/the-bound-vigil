@@ -28,6 +28,11 @@ use crate::error::{Error, Result};
 use crate::http::{body_reader, read_head, Request};
 
 pub const PORT: u16 = 53317;
+/// Where Grimoire listens when another app (often LocalSend itself) already
+/// has the usual port (embre, 13 November). 53318 is left out: TBV's "Stream
+/// to your phone at home" uses it. Devices still find TBV, because its
+/// announcements say which port it's on.
+pub const BACKUP_PORTS: [u16; 3] = [53319, 53320, 53321];
 const MULTICAST: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 167);
 /// How long a sender is kept waiting for the person to answer.
 const ANSWER_WITHIN: Duration = Duration::from_secs(120);
@@ -217,12 +222,7 @@ struct State {
 /// nearby devices TBV is here. Files land in folders under `inbox`.
 /// `announce` false leaves out the network announcements (for tests).
 pub fn start(identity: Identity, inbox: &Path, host: Arc<dyn Host>, announce: bool) -> Result<Receiver> {
-    let listener = TcpListener::bind(("0.0.0.0", identity.port)).map_err(|e| {
-        Error::Unsuitable(format!(
-            "TBV couldn't listen for Grimoire on port {} ({e}). If the LocalSend app is open on this computer, close it and try again.",
-            identity.port
-        ))
-    })?;
+    let listener = bind_first(identity.port)?;
     let port = listener.local_addr()?.port();
     let identity = Identity { port, ..identity };
     fs::create_dir_all(inbox)?;
@@ -262,8 +262,15 @@ pub fn start(identity: Identity, inbox: &Path, host: Arc<dyn Host>, announce: bo
 /// Says TBV is here, and answers devices that announce themselves (a phone
 /// opening LocalSend's Send screen, say), as the protocol asks.
 fn discovery(state: &State) {
-    let Ok(socket) = listening(state.me.port, Duration::from_secs(1)) else { return };
-    let to = SocketAddrV4::new(MULTICAST, state.me.port);
+    // Announcements always go to LocalSend's own port, shared with any other
+    // app listening there; TBV's own port is inside them.
+    let socket = listening(PORT, Duration::from_secs(1)).or_else(|_| {
+        let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
+        socket.set_read_timeout(Some(Duration::from_secs(1)))?;
+        Ok::<_, std::io::Error>(socket)
+    });
+    let Ok(socket) = socket else { return };
+    let to = SocketAddrV4::new(MULTICAST, PORT);
     let message = |announce: bool| {
         let mut info = state.me.info();
         info["announce"] = json!(announce);
@@ -616,9 +623,35 @@ fn unique_in(folder: &Path, name: &str) -> PathBuf {
     path
 }
 
-/// A UDP socket on `port` that hears LocalSend's announcements.
+/// Grimoire's listener: on `wanted`, or, when that's LocalSend's usual port
+/// and something else has it, on the first backup port that's free.
+fn bind_first(wanted: u16) -> Result<TcpListener> {
+    let tries: Vec<u16> = if wanted == PORT { std::iter::once(PORT).chain(BACKUP_PORTS).collect() } else { vec![wanted] };
+    let mut last = None;
+    for port in &tries {
+        match TcpListener::bind(("0.0.0.0", *port)) {
+            Ok(listener) => return Ok(listener),
+            Err(e) => last = Some(e),
+        }
+    }
+    let e = last.map(|e| e.to_string()).unwrap_or_default();
+    Err(Error::Unsuitable(if tries.len() > 1 {
+        format!("TBV couldn't listen for Grimoire: ports {PORT} and {}–{} are all in use on this computer ({e}). Close another app that's using them, then try again.", BACKUP_PORTS[0], BACKUP_PORTS[BACKUP_PORTS.len() - 1])
+    } else {
+        format!("TBV couldn't listen for Grimoire on port {wanted} ({e}). Close another app that's using it, then try again.")
+    }))
+}
+
+/// A UDP socket on `port` that hears LocalSend's announcements. The port is
+/// shared, so LocalSend and TBV can both be open and both hear them.
 fn listening(port: u16, wait: Duration) -> std::io::Result<UdpSocket> {
-    let socket = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port))?;
+    use socket2::{Domain, Protocol, Socket, Type};
+    let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+    socket.set_reuse_address(true)?;
+    #[cfg(all(unix, not(any(target_os = "solaris", target_os = "illumos"))))]
+    socket.set_reuse_port(true)?;
+    socket.bind(&SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port).into())?;
+    let socket: UdpSocket = socket.into();
     socket.join_multicast_v4(&MULTICAST, &Ipv4Addr::UNSPECIFIED)?;
     socket.set_read_timeout(Some(wait))?;
     Ok(socket)
@@ -688,8 +721,10 @@ pub fn find_nearby(me: &Identity, wait: Duration) -> Vec<Nearby> {
     // Phones and iPads can't always announce themselves (an iPhone app needs
     // Apple's leave to), so every address on this Wi-Fi is also asked.
     let scanning = {
-        let (done, port) = (done.clone(), me.port);
-        thread::spawn(move || ask_every_address(port, &done))
+        // Others listen on LocalSend's usual port; a TBV on a backup port is
+        // heard announcing itself instead.
+        let done = done.clone();
+        thread::spawn(move || ask_every_address(PORT, &done))
     };
     let mut buffer = [0u8; 8192];
     while started.elapsed() < wait {
@@ -991,6 +1026,25 @@ fn respond(out: &mut TcpStream, status: u16, body: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grimoire_moves_to_a_backup_port_when_the_usual_one_is_taken() {
+        // Whatever holds the usual port (LocalSend, or this test).
+        let held = TcpListener::bind(("0.0.0.0", PORT)).ok();
+        let listener = bind_first(PORT).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        if held.is_some() {
+            assert!(BACKUP_PORTS.contains(&port));
+        }
+        // A port asked for by name isn't swapped for another.
+        let taken = TcpListener::bind("0.0.0.0:0").unwrap();
+        let err = bind_first(taken.local_addr().unwrap().port()).unwrap_err().to_string();
+        assert!(err.contains("Close another app"), "{err}");
+        // Two apps can both hear the announcements.
+        let one = listening(PORT, Duration::from_millis(10)).unwrap();
+        let two = listening(PORT, Duration::from_millis(10)).unwrap();
+        drop((one, two));
+    }
 
     #[derive(Default)]
     struct Fake {
