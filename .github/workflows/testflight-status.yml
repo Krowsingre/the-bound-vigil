@@ -1,0 +1,35 @@
+# One-off look at TestFlight: the latest builds and where each one stands.
+name: TestFlight status
+on:
+  push:
+    branches: [claude/testflight-status]
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List the latest builds
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          python3 -m pip install -q pyjwt cryptography requests
+          python3 - <<'PY'
+          import os, time, jwt, requests
+          token = jwt.encode({"iss": os.environ["APPLE_API_ISSUER"], "iat": int(time.time()), "exp": int(time.time()) + 600, "aud": "appstoreconnect-v1"},
+                             os.environ["APPLE_API_KEY_P8"], algorithm="ES256", headers={"kid": os.environ["APPLE_API_KEY_ID"], "typ": "JWT"})
+          h = {"Authorization": f"Bearer {token}"}
+          base = "https://api.appstoreconnect.apple.com/v1"
+          app = requests.get(f"{base}/apps", headers=h, params={"filter[bundleId]": "com.krowsingre.theboundvigil"}).json()["data"][0]["id"]
+          r = requests.get(f"{base}/builds", headers=h, params={"filter[app]": app, "sort": "-uploadedDate", "limit": 8,
+                           "include": "preReleaseVersion,buildBetaDetail",
+                           "fields[builds]": "version,uploadedDate,processingState,expired,minOsVersion,preReleaseVersion,buildBetaDetail",
+                           "fields[preReleaseVersions]": "version", "fields[buildBetaDetails]": "internalBuildState,externalBuildState"}).json()
+          inc = {(i["type"], i["id"]): i["attributes"] for i in r.get("included", [])}
+          for b in r["data"]:
+              a = b["attributes"]; rel = b["relationships"]
+              ver = inc.get(("preReleaseVersions", (rel["preReleaseVersion"]["data"] or {}).get("id")), {}).get("version")
+              beta = inc.get(("buildBetaDetails", (rel["buildBetaDetail"]["data"] or {}).get("id")), {})
+              print(f"version {ver} build {a['version']} uploaded {a['uploadedDate']} processing {a['processingState']} expired {a['expired']} minOS {a.get('minOsVersion')} internal {beta.get('internalBuildState')} external {beta.get('externalBuildState')}")
+          if "errors" in r: print(r["errors"])
+          PY
