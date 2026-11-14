@@ -23,7 +23,7 @@ pub mod gdrive;
 pub mod onedrive;
 
 use std::thread;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -768,6 +768,12 @@ impl Remote for Cloud {
     fn shorten_book_names(&mut self) -> Result<u32> {
         self.remote().shorten_book_names()
     }
+    fn note_missing(&mut self, path: &str, missing: bool) -> Result<()> {
+        self.remote().note_missing(path, missing)
+    }
+    fn missing_elsewhere(&mut self) -> Result<Vec<String>> {
+        self.remote().missing_elsewhere()
+    }
 }
 
 /// Opens a folder or WebDAV library and makes sure it's one TBV can use.
@@ -930,6 +936,16 @@ pub trait Remote: Send {
     /// that synced lately can read short names. How many were renamed.
     fn shorten_book_names(&mut self) -> Result<u32> {
         Ok(0)
+    }
+    /// Notes in the place that this device couldn't find the book file at
+    /// `path` (`missing` true), or has found it again (false), so a computer
+    /// can send it again. Only a folder place keeps these notes.
+    fn note_missing(&mut self, _path: &str, _missing: bool) -> Result<()> {
+        Ok(())
+    }
+    /// Book files other devices said they couldn't find, lately.
+    fn missing_elsewhere(&mut self) -> Result<Vec<String>> {
+        Ok(Vec::new())
     }
 }
 
@@ -2281,6 +2297,22 @@ impl Library {
         path.to_string()
     }
 
+    /// This device's own file of the book a cloud path is for, if it has it.
+    pub(crate) fn book_file_for_cloud(&self, path: &str) -> Result<Option<PathBuf>> {
+        let key = cloud_file_key(path);
+        let Some((stem, _)) = key.rsplit_once('.') else { return Ok(None) };
+        let found: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT lf.path FROM books b JOIN local_files lf ON lf.book_id = b.id
+                 WHERE b.deleted_at IS NULL AND substr(b.id, 8, 16) = ?1 AND lf.path IS NOT NULL",
+                params![stem],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(found.map(PathBuf::from).filter(|p| p.is_file()))
+    }
+
     /// Where a book's file is kept in the cloud, if this device knows the book.
     pub fn cloud_book_path(&self, book_id: &str) -> Result<Option<String>> {
         let format: Option<String> = self
@@ -2874,7 +2906,58 @@ fn push(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, 
     // Book files named before 0.107 get their short names, once it's safe.
     // Not a reason to fail the sync either: it's tried again next time.
     let _ = remote.shorten_book_names();
+    if !cfg!(any(target_os = "ios", target_os = "android")) {
+        let _ = resend_missing(lock, remote, lane);
+    }
     Ok(())
+}
+
+/// How long before a book file another device can't find is sent again.
+const RESEND_AFTER_HOURS: i64 = 24;
+
+/// Sends again the book files other devices said they can't find, from this
+/// computer's own copy (or the place's), so the cloud app treats each as new
+/// and brings it to them. The file is the same, byte for byte. Each goes at
+/// most once a day. How many were sent.
+fn resend_missing(lock: Lock, remote: &mut dyn Remote, lane: Lane) -> Result<u32> {
+    let missing = remote.missing_elsewhere()?;
+    if missing.is_empty() {
+        return Ok(0);
+    }
+    let key = format!("sync.resent.{}", lane.files_table());
+    let mut resent: BTreeMap<String, String> = lock()?.setting(&key)?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    let since = (Utc::now() - Duration::hours(RESEND_AFTER_HOURS)).to_rfc3339_opts(SecondsFormat::Millis, true);
+    resent.retain(|_, at| *at >= since);
+    let mut sent = 0;
+    for path in missing {
+        if resent.contains_key(&cloud_file_key(&path)) {
+            continue;
+        }
+        let local = lock()?.book_file_for_cloud(&path)?;
+        // Under whatever name it has there now (short, or from before 0.107).
+        let there = find_book_file(remote, &path)?.unwrap_or_else(|| path.clone());
+        // This computer's own copy is only read; a copy fetched for this is removed after.
+        let (file, fetched) = match local {
+            Some(file) => (file, false),
+            None => {
+                let temp = std::env::temp_dir().join(format!("tbv-resend-{}", there.trim_start_matches("books/")));
+                if !fetch(remote, &there, &temp)? {
+                    continue;
+                }
+                (temp, true)
+            }
+        };
+        let outcome = remote.upload(&there, &file);
+        if fetched {
+            let _ = fs::remove_file(&file);
+        }
+        resent.insert(cloud_file_key(&path), now_utc());
+        if outcome.is_ok() {
+            sent += 1;
+        }
+    }
+    lock()?.put_setting(&key, Some(&serde_json::to_string(&resent)?))?;
+    Ok(sent)
 }
 
 /// Fetches the books added on a phone that this computer hasn't got yet,
@@ -3251,9 +3334,14 @@ pub fn download_book_from(library: &Mutex<Library>, remote: &mut dyn Remote, boo
         // look for any file named for it, the same format first.
         match find_book_file(remote, &path)? {
             Some(other) if other != path && fetch(remote, &other, &target)? => other,
-            _ => return Ok(false),
+            _ => {
+                // Said in the place, so a computer that has it sends it again.
+                let _ = remote.note_missing(&path, true);
+                return Ok(false);
+            }
         }
     };
+    let _ = remote.note_missing(&path, false);
     let format = found.rsplit('.').next().unwrap_or("epub").to_string();
     let result = lock()?.adopt_download(book_id, &target, &format);
     let _ = fs::remove_file(&target);

@@ -1929,6 +1929,26 @@ fn a_book_still_named_by_its_whole_hash_is_found() {
 }
 
 #[test]
+fn a_computer_sends_again_a_book_a_phone_cant_find() {
+    let pc = Device::new();
+    let book = pc.import("Lost on the phone");
+    let folder = tempfile::tempdir().unwrap();
+    let open = |device: &str| files::FileRemote::new(files::FolderStore::open(folder.path()).unwrap(), device.into());
+    let (mut phone, mut computer) = (open("device-p"), open("device-c"));
+    phone.prepare().unwrap();
+    let path = pc.lib().cloud_book_path(&book).unwrap().unwrap();
+    let original = fs::read(pc.lib().book_file(&book).unwrap()).unwrap();
+    phone.note_missing(&path, true).unwrap();
+    let lock = || pc.library.lock().map_err(|_| Error::Unsuitable("locked".into()));
+    assert_eq!(resend_missing(&lock, &mut computer, Lane::Main).unwrap(), 1);
+    let sent = folder.path().join(files::LIBRARY_FOLDER).join(&path);
+    assert_eq!(fs::read(&sent).unwrap(), original, "the same file, byte for byte");
+    assert_eq!(fs::read(pc.lib().book_file(&book).unwrap()).unwrap(), original, "this computer's copy stays");
+    // Not again the same day.
+    assert_eq!(resend_missing(&lock, &mut computer, Lane::Main).unwrap(), 0);
+}
+
+#[test]
 fn looking_at_a_book_records_nothing_until_it_opens() {
     let a = Device::new();
     let cloud = FakeRemote::default();

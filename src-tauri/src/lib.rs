@@ -1980,6 +1980,16 @@ fn localsend_stop_sending(localsend: State<'_, Arc<localsend::LocalSend>>) {
     localsend.stop_sending();
 }
 
+/// Where a book's file is on this computer, for "Find on device".
+#[tauri::command]
+async fn book_file_places(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<sync::BookFilePlaces> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || sync::book_file_places(&library, &book_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 /// Opens File Explorer at a file or folder TBV keeps.
 #[tauri::command]
 fn show_folder(path: String) -> CommandResult<()> {
@@ -2399,6 +2409,7 @@ pub fn run() {
             open_book,
             reader_book,
             check_book_file,
+            book_file_places,
             read_book_file,
             save_position,
             get_annotations,

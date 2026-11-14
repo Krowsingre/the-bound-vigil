@@ -2,14 +2,14 @@
 // layers (your edits, fetched online, the book's own) and ways to change them.
 
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../api";
+import { api, isAndroid, isApp, isIOS } from "../api";
 import type { BookDetails, BookFile, DetailField, DetailFieldName } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
 import { useAppSettings } from "../settings/appSettings";
 import { BookCover } from "../components/BookCover";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
-import { Menu } from "../components/Menu";
+import { Menu, type MenuEntry } from "../components/Menu";
 import { ProgressBar } from "../components/ProgressBar";
 import { StarRating } from "../components/StarRating";
 import { useToast } from "../components/Toast";
@@ -62,6 +62,27 @@ export function BookDetailsPage({
   const toast = useToast();
   const refresh = () => setReload((n) => n + 1);
   const actions = useMemo(() => makeBookActions(api, toast, () => setReload((n) => n + 1), onOpenBook), [toast, onOpenBook]);
+
+  // "Find on device" (computers only): where this book's file is here.
+  const onComputer = !isIOS && !isAndroid;
+  const [places, setPlaces] = useState<{ here: string | null; cloud: string | null; service: string | null } | null>(null);
+  useEffect(() => {
+    if (!onComputer) return;
+    let current = true;
+    setPlaces(null);
+    api.bookFilePlaces(bookId).then((p) => current && setPlaces(p), () => current && setPlaces(null));
+    return () => {
+      current = false;
+    };
+  }, [bookId, reload, onComputer]);
+  const reveal = (path: string) =>
+    isApp ? api.showFolder(path).catch((e: unknown) => toast(String(e))) : toast("This opens File Explorer in the desktop app.");
+  const serviceName = (service: string | null) =>
+    ({ icloud: "iCloud Drive", dropbox: "Dropbox", onedrive: "OneDrive", gdrive: "Google Drive", mega: "MEGA" } as Record<string, string>)[service ?? ""] ?? "the synced folder";
+  const findItems: MenuEntry[] = [
+    ...(places?.here ? [{ label: "Find on device", icon: "folder" as const, onSelect: () => void reveal(places.here!) }] : []),
+    ...(places?.cloud ? [{ label: `Find in ${serviceName(places.service)}`, icon: "folder" as const, onSelect: () => void reveal(places.cloud!) }] : []),
+  ];
 
   const [files, setFiles] = useState<BookFile[]>([]);
   useEffect(() => {
@@ -210,9 +231,12 @@ export function BookDetailsPage({
               label={`More for ${book.title}`}
               className="icon-btn"
               trigger={<Icon name="more" size={18} />}
-              items={bookMenu(book, actions).filter(
-                (e) => typeof e === "string" || !("label" in e) || e.label !== "Book details",
-              )}
+              items={[
+                ...bookMenu(book, actions).filter(
+                  (e) => typeof e === "string" || !("label" in e) || e.label !== "Book details",
+                ),
+                ...(findItems.length ? ["divider" as const, ...findItems] : []),
+              ]}
             />
           </header>
 

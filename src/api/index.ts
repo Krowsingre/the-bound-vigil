@@ -272,6 +272,8 @@ export interface Api {
   readerBook(bookId: string): Promise<ReaderBook>;
   /** What each sync place shows of a book's file, as text to copy and send. */
   checkBookFile(bookId: string): Promise<string>;
+  /** Where a book's file is on this computer: TBV's copy and its synced folder's copy. */
+  bookFilePlaces(bookId: string): Promise<{ here: string | null; cloud: string | null; service: string | null }>;
   /** The book file itself, for the reader's page engine. */
   readBookFile(bookId: string): Promise<Blob>;
   savePosition(bookId: string, locator: ReaderLocator): Promise<void>;
@@ -1059,6 +1061,8 @@ function appApi(): Api {
     openBook: async (bookId) => (await core).invoke<ReaderBook>("open_book", { bookId }),
     readerBook: async (bookId) => (await core).invoke<ReaderBook>("reader_book", { bookId }),
     checkBookFile: async (bookId) => (await core).invoke<string>("check_book_file", { bookId }),
+    bookFilePlaces: async (bookId) =>
+      (await core).invoke<{ here: string | null; cloud: string | null; service: string | null }>("book_file_places", { bookId }),
     readBookFile: async (bookId) => {
       // Raw bytes normally arrive as an ArrayBuffer, but if Tauri has to fall
       // back to its slower message channel they come as a list of numbers.

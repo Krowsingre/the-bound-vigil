@@ -834,3 +834,42 @@ pub fn check_book_file(library: &Arc<Mutex<Library>>, book_id: &str) -> tbv_core
     }
     Ok(lines.join("\n"))
 }
+
+/// Where a book's file is on this computer: TBV's own copy, and its copy in
+/// a synced folder (iCloud Drive and the like), with that folder's service.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BookFilePlaces {
+    pub here: Option<String>,
+    pub cloud: Option<String>,
+    pub service: Option<String>,
+}
+
+pub fn book_file_places(library: &Arc<Mutex<Library>>, book_id: &str) -> tbv_core::Result<BookFilePlaces> {
+    let l = library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))?;
+    let here = l.book_file(book_id).ok().filter(|p| p.is_file()).map(|p| p.display().to_string());
+    let path = l.cloud_book_path(book_id)?;
+    let places = [Some(l.sync_provider()?), l.sync_also()?];
+    drop(l);
+    let mut found = BookFilePlaces { here, cloud: None, service: None };
+    let Some(path) = path else { return Ok(found) };
+    let key = core_sync::cloud_file_key(&path);
+    for provider in places.into_iter().flatten() {
+        let Provider::Folder { service, path: chosen } = provider else { continue };
+        let Some(root) = tbv_core::sync::files::library_root(std::path::Path::new(&chosen)) else { continue };
+        let books = root.join("books");
+        // Its short name, or its name from before 0.107.
+        let named = std::fs::read_dir(&books).ok().and_then(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .find(|n| core_sync::cloud_file_key(n) == key)
+        });
+        if let Some(name) = named {
+            found.cloud = Some(books.join(name).display().to_string());
+            found.service = Some(service);
+            break;
+        }
+    }
+    Ok(found)
+}

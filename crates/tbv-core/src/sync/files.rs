@@ -29,6 +29,10 @@ pub const LIBRARY_FOLDER: &str = "The Bound Vigil";
 const MARKER: &str = "library.json";
 const CHANGES: &str = "changes/";
 const DEVICES: &str = "devices/";
+/// Each device's note of book files it couldn't find: `missing/<device>.json`.
+const MISSING: &str = "missing/";
+/// How long a device's note of a missing file counts.
+const MISSING_DAYS: i64 = 14;
 
 /// Brings down a file the cloud app hasn't kept here yet, waiting until it
 /// arrives (true once it has). On iPhone, iCloud leaves a small
@@ -58,7 +62,7 @@ fn refresh(path: &Path) {
 /// Whether a path is sync bookkeeping that must be read fresh: the change
 /// folders and the devices' notes.
 fn kept_fresh(path: &str) -> bool {
-    path.starts_with(CHANGES) || path.starts_with(DEVICES)
+    path.starts_with(CHANGES) || path.starts_with(DEVICES) || path.starts_with(MISSING)
 }
 
 /// iCloud's stand-in for a file it hasn't brought down.
@@ -432,6 +436,44 @@ impl<S: Store + Send> Remote for FileRemote<S> {
         self.store.write(&path, &serde_json::to_vec(&note)?)
     }
 
+    fn note_missing(&mut self, path: &str, missing: bool) -> Result<()> {
+        let note = format!("{MISSING}{}.json", self.device);
+        let mut list: BTreeMap<String, String> = self.store.read(&note)?.and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        let lately = (chrono::Utc::now() - chrono::Duration::days(MISSING_DAYS)).to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let before = list.clone();
+        list.retain(|_, at| *at >= lately);
+        if missing {
+            list.insert(path.to_string(), crate::time::now_utc());
+        } else {
+            list.remove(path);
+        }
+        if list == before {
+            return Ok(());
+        }
+        if list.is_empty() {
+            return self.store.remove(&note);
+        }
+        self.store.write(&note, &serde_json::to_vec(&list)?)
+    }
+
+    fn missing_elsewhere(&mut self) -> Result<Vec<String>> {
+        let lately = (chrono::Utc::now() - chrono::Duration::days(MISSING_DAYS)).to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let mut out = Vec::new();
+        for name in self.store.list(MISSING)? {
+            let Some(device) = name.strip_suffix(".json") else { continue };
+            if device == self.device || !is_device(device) {
+                continue;
+            }
+            let Some(list) = self.store.read(&format!("{MISSING}{name}"))?.and_then(|b| serde_json::from_slice::<BTreeMap<String, String>>(&b).ok()) else {
+                continue;
+            };
+            out.extend(list.into_iter().filter(|(path, at)| *at >= lately && path.starts_with("books/")).map(|(path, _)| path));
+        }
+        out.sort();
+        out.dedup();
+        Ok(out)
+    }
+
     fn shorten_book_names(&mut self) -> Result<u32> {
         // A computer does this: a phone's iCloud may not have every file yet.
         if cfg!(any(target_os = "ios", target_os = "android")) {
@@ -675,6 +717,23 @@ pub(crate) mod tests {
 
     fn record(n: u32) -> Record {
         Record { kind: "book".into(), key: format!("[\"sha256:{n}\"]"), data: None, changed_at: IsoUtc::from(format!("2026-10-17T00:00:{n:02}.000Z")) }
+    }
+
+    #[test]
+    fn a_book_file_a_device_cant_find_is_noted_for_the_others() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut phone = FileRemote::new(FolderStore::open(dir.path()).unwrap(), "device-p".into());
+        let mut pc = FileRemote::new(FolderStore::open(dir.path()).unwrap(), "device-c".into());
+        phone.prepare().unwrap();
+        assert!(pc.missing_elsewhere().unwrap().is_empty());
+        phone.note_missing("books/a9fba4e049529071.epub", true).unwrap();
+        phone.note_missing("books/a9fba4e049529071.epub", true).unwrap();
+        assert_eq!(pc.missing_elsewhere().unwrap(), vec!["books/a9fba4e049529071.epub".to_string()]);
+        assert!(phone.missing_elsewhere().unwrap().is_empty(), "a device doesn't answer its own note");
+        // Found again: the note goes.
+        phone.note_missing("books/a9fba4e049529071.epub", false).unwrap();
+        assert!(pc.missing_elsewhere().unwrap().is_empty());
+        assert!(!dir.path().join(LIBRARY_FOLDER).join("missing/device-p.json").exists());
     }
 
     #[test]

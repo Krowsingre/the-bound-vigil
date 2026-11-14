@@ -799,6 +799,7 @@ export async function webApi(): Promise<Api> {
     pickBooks: () => phoneImports.pick(false),
     pickFolder: () => phoneImports.pick(true),
     coverUrl: (path) => (/^(blob|data|https?):/.test(path) ? path : ""),
+    bookFilePlaces: async () => ({ here: "C:\\Users\\you\\The Bound Vigil\\books\\sample.epub", cloud: null, service: null }),
     checkBookFile: async () => "Looking for: books/sample.epub\nFirst sync place: a folder (icloud)\n  File here: yes",
     readerBook: async (bookId) => {
       const before = find(bookId);
