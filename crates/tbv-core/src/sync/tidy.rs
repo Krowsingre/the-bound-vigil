@@ -22,7 +22,6 @@ use serde::Serialize;
 use super::moving::carry;
 use super::{Lane, Remote};
 use crate::error::{Error, Result};
-use crate::ids::book_id_hex;
 use crate::library::Library;
 
 /// What tidying would do.
@@ -79,7 +78,7 @@ impl Library {
             .prepare("SELECT book_id, path FROM local_files WHERE path IS NOT NULL")?
             .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(rows.into_iter().filter(|(_, path)| Path::new(path).exists()).map(|(id, _)| book_id_hex(&id).to_string()).collect())
+        Ok(rows.into_iter().filter(|(_, path)| Path::new(path).exists()).map(|(id, _)| crate::ids::cloud_name(&id).to_string()).collect())
     }
 
     /// The hashes of books whose copy in the phone's place stays.
@@ -88,7 +87,7 @@ impl Library {
             .conn
             .prepare("SELECT id FROM books WHERE deleted_at IS NULL AND (phone_wanted OR phone_has OR from_phone)")?
             .query_map([], |r| r.get::<_, String>(0))?
-            .map(|id| id.map(|id| book_id_hex(&id).to_string()))
+            .map(|id| id.map(|id| crate::ids::cloud_name(&id).to_string()))
             .collect::<rusqlite::Result<_>>()?;
         // What a phone has downloaded stays, whatever was chosen.
         for_phone.extend(self.books_on_phones()?);
@@ -110,8 +109,10 @@ impl Library {
     }
 }
 
+/// The book a file in the cloud is for: the start of its hash, so names
+/// from before 0.107 (the whole hash) match too.
 fn hex_of(name: &str) -> &str {
-    name.split('.').next().unwrap_or_default()
+    crate::ids::book_key(name.split('.').next().unwrap_or_default())
 }
 
 fn lock(library: &Mutex<Library>) -> Result<std::sync::MutexGuard<'_, Library>> {

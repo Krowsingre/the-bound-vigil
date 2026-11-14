@@ -37,7 +37,16 @@ fn stream(library: &Arc<Mutex<tbv_core::Library>>, book_id: &str) -> tbv_core::R
         (path, format)
     };
     let mut trouble = None;
-    for cloud in crate::sync::stream_places(library) {
+    for mut cloud in crate::sync::stream_places(library) {
+        // Still under its name from before 0.107 here, perhaps.
+        let path = match cloud.read_range(&path, 0, 0) {
+            Ok(None) => tbv_core::sync::find_book_file(&mut cloud, &path)
+                .ok()
+                .flatten()
+                .filter(|other| other.rsplit_once('.').is_some_and(|(_, ext)| ext.eq_ignore_ascii_case(&format)))
+                .unwrap_or_else(|| path.clone()),
+            _ => path.clone(),
+        };
         match tbv_core::audio::Stream::open(cloud, &path, &format) {
             Ok(Some(found)) => {
                 let found = Arc::new(Mutex::new(found));

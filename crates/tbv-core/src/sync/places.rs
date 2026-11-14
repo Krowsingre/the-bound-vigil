@@ -10,7 +10,6 @@ use serde::Serialize;
 
 use super::{ProviderView, Remote};
 use crate::error::{Error, Result};
-use crate::ids::book_id_hex;
 use crate::library::Library;
 
 /// One book and where its file is. A place that isn't set up, or couldn't
@@ -50,7 +49,7 @@ pub fn held(place: &mut dyn Remote) -> Result<HashSet<String>> {
         // Some places list what's inside folders too ("<hash>/part 1.mp3").
         let name = name.split('/').next().unwrap_or_default();
         if !name.is_empty() && !name.starts_with('.') {
-            out.insert(name.split('.').next().unwrap_or_default().to_string());
+            out.insert(crate::ids::book_key(name.split('.').next().unwrap_or_default()).to_string());
         }
     }
     Ok(out)
@@ -73,7 +72,7 @@ pub fn book_places(library: &Mutex<Library>, main: Option<&HashSet<String>>, als
     Ok(rows
         .into_iter()
         .map(|(id, title, authors, format, path)| {
-            let hex = book_id_hex(&id).to_string();
+            let hex = crate::ids::cloud_name(&id).to_string();
             BookPlaces {
                 here: path.as_deref().is_some_and(|p| Path::new(p).exists()),
                 main: main.map(|m| m.contains(&hex)),

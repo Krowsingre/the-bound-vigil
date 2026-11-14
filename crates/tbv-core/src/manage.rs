@@ -357,7 +357,7 @@ impl Library {
         let in_cloud: bool = self.conn.query_row(
             "SELECT EXISTS (SELECT 1 FROM books b JOIN (SELECT path, uploaded_at FROM sync_files
                   UNION ALL SELECT path, uploaded_at FROM sync_files_also) sf
-                ON sf.path = 'books/' || substr(b.id, 8) || '.' || b.format AND sf.uploaded_at IS NOT NULL
+                ON sf.path = 'books/' || substr(b.id, 8, 16) || '.' || b.format AND sf.uploaded_at IS NOT NULL
               WHERE b.id = ?1)",
             params![book_id],
             |r| r.get(0),
@@ -932,7 +932,7 @@ mod tests {
         let (dir, mut library) = open_temp_library();
         let a = add(&mut library, dir.path(), "a", "Carmilla", "Le Fanu", "");
         assert!(library.remove_download(&a).is_err());
-        let hex = crate::ids::book_id_hex(&a).to_string();
+        let hex = crate::ids::cloud_name(&a).to_string();
         library
             .conn
             .execute("INSERT INTO sync_files (path, uploaded_at) VALUES (?1, '2026-10-17T00:00:00.000Z')", params![format!("books/{hex}.epub")])

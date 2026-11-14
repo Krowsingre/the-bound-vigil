@@ -745,6 +745,20 @@ const MIGRATIONS: &[&str] = &[
         deleted_at TEXT
     );
     "#,
+    // From 0.107 a book's file in the cloud is named by the
+    // first 16 characters of its hash. What was sent is noted under that name.
+    r#"
+    INSERT OR IGNORE INTO sync_files (path, uploaded_at, failed_at, error)
+        SELECT 'books/' || substr(path, 7, 16) || substr(path, 71), uploaded_at, failed_at, error FROM sync_files
+        WHERE path LIKE 'books/%' AND substr(path, 71, 1) = '.' AND instr(substr(path, 7, 64), '.') = 0;
+    DELETE FROM sync_files
+        WHERE path LIKE 'books/%' AND substr(path, 71, 1) = '.' AND instr(substr(path, 7, 64), '.') = 0;
+    INSERT OR IGNORE INTO sync_files_also (path, uploaded_at, failed_at, error)
+        SELECT 'books/' || substr(path, 7, 16) || substr(path, 71), uploaded_at, failed_at, error FROM sync_files_also
+        WHERE path LIKE 'books/%' AND substr(path, 71, 1) = '.' AND instr(substr(path, 7, 64), '.') = 0;
+    DELETE FROM sync_files_also
+        WHERE path LIKE 'books/%' AND substr(path, 71, 1) = '.' AND instr(substr(path, 7, 64), '.') = 0;
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

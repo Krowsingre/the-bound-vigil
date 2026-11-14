@@ -12,7 +12,6 @@ use serde::Serialize;
 use super::Remote;
 use crate::error::{Error, Result};
 use crate::home::DOCUMENT_FORMATS;
-use crate::ids::book_id_hex;
 use crate::library::Library;
 
 /// The folders TBV keeps files in.
@@ -55,8 +54,10 @@ fn lock(library: &Mutex<Library>) -> Result<std::sync::MutexGuard<'_, Library>> 
     library.lock().map_err(|_| Error::Unsuitable("the library is unavailable".into()))
 }
 
+/// The book a file in the cloud is for: the start of its hash, so names
+/// from before 0.107 (the whole hash) and covers' whole-hash names match.
 fn hex_of(name: &str) -> &str {
-    name.split('.').next().unwrap_or_default()
+    crate::ids::book_key(name.split('.').next().unwrap_or_default())
 }
 
 impl Library {
@@ -77,7 +78,7 @@ impl Library {
             .into_iter()
             .map(|(id, title, format, path, cover)| {
                 let known = Known { title, format, file_here: exists(&path), cover_here: exists(&cover) };
-                (book_id_hex(&id).to_string(), (id, known))
+                (crate::ids::cloud_name(&id).to_string(), (id, known))
             })
             .collect())
     }
