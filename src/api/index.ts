@@ -580,6 +580,8 @@ export interface Api {
   browserRead(tab: string, script: string): Promise<unknown>;
   /** Discover's Picture in picture button: pops out the playing video, even in an embedded player. */
   browserKeepPlaying(on: boolean): Promise<void>;
+  /** Keeps Tab out of sites' text boxes, so their suggestions don't take it. */
+  browserTabKeys(on: boolean): Promise<void>;
   browserPip(tab: string): Promise<"popped" | "exited" | "refused" | "none">;
   /** Video reader view: the video on the tab's page (paused there), or null. */
   browserVideo(tab: string): Promise<PageVideo | null>;
@@ -1310,6 +1312,7 @@ function appApi(): Api {
     browserProtect: async (protection) => (await core).invoke("browser_protect", { protection }),
     browserRead: async (tab, script) => (await core).invoke<unknown>("browser_read", { tab, script }),
     browserKeepPlaying: async (on) => (await core).invoke("browser_keep_playing", { on }),
+    browserTabKeys: async (on) => (await core).invoke("browser_tab_keys", { on }),
     browserPip: async (tab) => (await core).invoke<"popped" | "exited" | "refused" | "none">("browser_pip", { tab }),
     browserVideo: async (tab) => (await core).invoke<PageVideo | null>("browser_video", { tab }),
     browserReport: async (tab) => (await core).invoke<string[]>("browser_report", { tab }),

@@ -729,7 +729,12 @@ mod view {
     /// Changes the background choice on every page open now (Windows: in
     /// every frame of each; elsewhere the page itself, and frames as they load).
     pub fn keep_playing(app: &tauri::AppHandle, on: bool) -> CommandResult<()> {
-        let script = super::keep_playing_now(on);
+        everywhere(app, &super::keep_playing_now(on))
+    }
+
+    /// Runs a script on every page open now (Windows: in every frame of each).
+    pub fn everywhere(app: &tauri::AppHandle, script: &str) -> CommandResult<()> {
+        let script = script.to_owned();
         for view in tabs(app) {
             #[cfg(windows)]
             {
@@ -1670,6 +1675,13 @@ mod view {
         ask(serde_json::json!({ "action": "keepPlaying", "on": on, "pip": super::all_frames_script(), "script": super::keep_playing_now(on) })).map(|_| ())
     }
 
+    /// Runs a script on every page open now, and gives new pages the latest
+    /// first-run script (Apple's views keep their choices there).
+    pub fn everywhere(_app: &tauri::AppHandle, script: &str) -> CommandResult<()> {
+        let on = super::KEEP_PLAYING.load(std::sync::atomic::Ordering::Relaxed);
+        ask(serde_json::json!({ "action": "keepPlaying", "on": on, "pip": super::all_frames_script(), "script": script })).map(|_| ())
+    }
+
     pub fn run(_app: &tauri::AppHandle, tab: &str, script: &str) -> CommandResult<serde_json::Value> {
         let answer = ask(serde_json::json!({ "action": "run", "tab": tab, "script": script }))?;
         let text = answer.get("result").and_then(|r| r.as_str()).unwrap_or("null");
@@ -1729,11 +1741,20 @@ const KEEP_PLAYING_SCRIPT: &str = include_str!("browser_keep_playing.js");
 /// Preferences › Discover › Keep videos playing in the background.
 static KEEP_PLAYING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// What runs first in every frame of a page, with the background choice in it.
+/// Keeps Tab out of sites' text boxes, when chosen (browser_tab_keys.js).
+const TAB_KEYS_SCRIPT: &str = include_str!("browser_tab_keys.js");
+/// Preferences › Discover › Tab doesn't fill in sites' suggestions.
+static TAB_KEYS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// What runs first in every frame of a page, with the choices in it.
 fn all_frames_script() -> String {
-    let on = KEEP_PLAYING.load(std::sync::atomic::Ordering::Relaxed);
-    let keep = KEEP_PLAYING_SCRIPT.replacen("const ON = false;", if on { "const ON = true;" } else { "const ON = false;" }, 1);
-    format!("{keep}\n{PIP_SCRIPT}")
+    let start = |script: &str, on: &std::sync::atomic::AtomicBool| {
+        let on = on.load(std::sync::atomic::Ordering::Relaxed);
+        script.replacen("const ON = false;", if on { "const ON = true;" } else { "const ON = false;" }, 1)
+    };
+    let keep = start(KEEP_PLAYING_SCRIPT, &KEEP_PLAYING);
+    let tab = start(TAB_KEYS_SCRIPT, &TAB_KEYS);
+    format!("{keep}\n{tab}\n{PIP_SCRIPT}")
 }
 
 /// The script that changes the background choice on a page already open.
@@ -1842,8 +1863,16 @@ pub async fn browser_read(app: tauri::AppHandle, tab: String, script: String) ->
     tauri::async_runtime::spawn_blocking(move || view::run(&app, &tab, &script)).await.map_err(|e| e.to_string())?
 }
 
-/// Preferences › Discover › Keep videos playing in the background: for the
+/// Preferences › Discover › Tab doesn't take sites' suggestions: for the
 /// tabs opened from now on, and the pages open now.
+#[tauri::command]
+pub async fn browser_tab_keys(app: tauri::AppHandle, on: bool) -> CommandResult<()> {
+    TAB_KEYS.store(on, std::sync::atomic::Ordering::Relaxed);
+    let script = format!("window.__tbvTabKeys ? window.__tbvTabKeys({on}) : 'null'");
+    tauri::async_runtime::spawn_blocking(move || view::everywhere(&app, &script)).await.map_err(|e| e.to_string())?
+}
+
+/// Preferences › Discover › Keep videos playing in the background.
 #[tauri::command]
 pub async fn browser_keep_playing(app: tauri::AppHandle, on: bool) -> CommandResult<()> {
     KEEP_PLAYING.store(on, std::sync::atomic::Ordering::Relaxed);
