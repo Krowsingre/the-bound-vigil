@@ -71,6 +71,8 @@ export interface BrowserPrefs {
   keepPlaying: boolean;
   /** Videos go on playing when TBV is minimized or the screen locks (pages aren't told they're out of sight). */
   backgroundPlay: boolean;
+  /** Sites' text boxes don't hear Tab, so their suggestions can't take the word on Tab. */
+  quietTab: boolean;
   /** Where Discover is when you come back: as you left it, or at the home
    * page with the other tabs closed after leaving Discover or after closing TBV. */
   comeBack: ComeBack;
@@ -148,6 +150,7 @@ export function readBrowserPrefs(): BrowserPrefs {
       .flatMap((host) => typeof host === "string" ? redirectHost(host) ?? [] : []))],
     keepPlaying: saved.keepPlaying === true,
     backgroundPlay: saved.backgroundPlay === true,
+    quietTab: saved.quietTab === true,
     historyOn: saved.historyOn !== false,
     historySearches: saved.historySearches !== false,
     historyKeep: HISTORY_KEEPS.some((k) => k.value === saved.historyKeep) ? (saved.historyKeep as HistoryKeep) : "quarter",

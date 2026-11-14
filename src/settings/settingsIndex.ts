@@ -297,6 +297,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   },
   {
     tab: "browser",
+    section: "typing",
+    label: "Tab in sites' search boxes",
+    words: "discover scry browser tab key autocomplete autofill suggestions fill in search box typing",
+  },
+  {
+    tab: "browser",
     section: "protection",
     label: "Discover protection",
     words: "discover browser protection trackers ads advertising block blocking strict balanced off privacy cookies lowered sites easylist easyprivacy malware scam pop-ups popups block lists",

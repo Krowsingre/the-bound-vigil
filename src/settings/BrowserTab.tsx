@@ -127,6 +127,17 @@ export function BrowserTab() {
           />
         </Section>
       </SectionGroup>
+      <Section id="typing" title="Typing on sites" lede="How Tab works in a site's own search boxes and text boxes.">
+        <Toggle
+          label="Tab doesn't fill in a site's suggestions"
+          hint="On: a site's search box never hears Tab, so Tab just moves to the next thing on the page. Pick a suggestion with the arrow keys or by tapping it."
+          checked={prefs.quietTab}
+          onChange={(quietTab) => {
+            writeBrowserPrefs({ quietTab });
+            void api.browserTabKeys(quietTab).catch(() => undefined);
+          }}
+        />
+      </Section>
       <Section id="apps" title="Links for other apps" lede="Links that open another app, such as an email address or a phone number.">
         <Toggle
           label="Ask before opening other apps"

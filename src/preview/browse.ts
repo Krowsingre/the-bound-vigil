@@ -86,6 +86,7 @@ type Calls = Pick<
   | "setBrowserOpenTabs"
   | "browserOtherTabs"
   | "browserKeepPlaying"
+  | "browserTabKeys"
   | "browserSessions"
   | "putBrowserSession"
   | "removeBrowserSession"
@@ -299,6 +300,7 @@ export function browseStub(): Calls {
       ] },
     ],
     browserKeepPlaying: async () => undefined,
+    browserTabKeys: async () => undefined,
     browserSessions: async () => previewSessions,
     putBrowserSession: async (session) => {
       const at = previewSessions.findIndex((s) => s.id === session.id);
