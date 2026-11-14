@@ -664,6 +664,25 @@
   min-width: 0;
 }
 
+/* Downloads: the name and its state take the whole line; the buttons go
+   under them, lined up with the name. */
+.browser-downloads .browser-download-list li {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.browser-downloads .browser-download-name {
+  flex: 1 1 calc(100% - 28px);
+}
+
+.browser-downloads .browser-download-name + * {
+  margin-inline-start: 28px;
+}
+
+.browser-downloads .browser-download-name .muted {
+  overflow-wrap: anywhere;
+}
+
 .browser-download-name b {
   overflow: hidden;
   text-overflow: ellipsis;

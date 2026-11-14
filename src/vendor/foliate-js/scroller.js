@@ -330,8 +330,13 @@ export class Scroller extends HTMLElement {
         const fraction = entry.height ? Math.min(1, Math.max(0, (c.scrollTop - top) / entry.height)) : 0
         this.#background.style.background = getBackground(doc)
         this.#lastPosition = performance.now()
+        // TBV: the book's last words are on screen (its place is measured at
+        // the top of the screen, so the fraction alone never reaches 1)
+        const last = this.#entries.at(-1)
+        const atEnd = !!last && this.#adjacent(last.index, 1) == null
+            && last.view.element.offsetTop + last.height <= c.scrollTop + c.clientHeight + 2
         this.dispatchEvent(new CustomEvent('relocate', {
-            detail: { reason, range, index: entry.index, fraction },
+            detail: { reason, range, index: entry.index, fraction, atEnd },
         }))
     }
     #scrollToAnchor(anchor, reason = 'anchor', inEntry) {

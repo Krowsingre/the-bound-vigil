@@ -1,4 +1,5 @@
 import { offerFinishedDownloadRemoval } from "../library/FinishedDownloadPrompt";
+import { END_OF_BOOK, EndOfBook } from "./EndOfBook";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, isApp, isIOS, isMac } from "../api";
 import { isNarrow, useNarrow } from "../lib/useNarrow";
@@ -216,9 +217,18 @@ export function Reader({
       reportPosition.current();
       return flush();
     });
+    // Leaving TBV (another app, the Home Screen, a locked phone) saves the
+    // place at once and sends it, rather than waiting for the next sync.
+    const hidden = () => {
+      if (document.visibilityState !== "hidden") return;
+      reportPosition.current();
+      void flush().then(() => api.syncSoon()).catch(() => undefined);
+    };
+    document.addEventListener("visibilitychange", hidden);
     return () => {
       unregister();
-      void flush();
+      document.removeEventListener("visibilitychange", hidden);
+      void flush().then(() => api.syncSoon()).catch(() => undefined);
     };
   }, [flush]);
 
@@ -508,10 +518,20 @@ export function Reader({
     void setWindowFullscreen(next).catch(() => setFullscreen(!next));
   }, [fullscreen]);
 
+  // A book marked read or dropped while open offers to remove its download
+  // once you leave it, not while you're still reading.
+  const [endDismissed, setEndDismissed] = useState(false);
+  /** The end panel stays up after "Mark as read" to ask about the download. */
+  const [endOpen, setEndOpen] = useState(false);
+  const finishedOnLeave = useRef<{ book: ReaderBook["book"]; status: ReadStatus } | null>(null);
   const leave = useCallback(() => {
     if (fullscreen) void setWindowFullscreen(false);
     reportPosition.current();
-    void flush().then(onClose);
+    const finished = finishedOnLeave.current;
+    void flush().then(() => {
+      onClose();
+      if (finished) offerFinishedDownloadRemoval(finished.book, finished.status);
+    });
   }, [flush, onClose, fullscreen]);
 
   const [autoScrolling, setAutoScrolling] = useState(false);
@@ -638,10 +658,13 @@ export function Reader({
         const notify = () => toast(done, finished ? {
           label: "Undo",
           run: () => void api.setBookStatus(info.book.id, info.book.status).then(() => {
+            finishedOnLeave.current = null;
             setInfo((i) => (i ? { ...i, book: { ...i.book, status: info.book.status } } : i));
           }, (error: unknown) => toast(String(error))),
         } : undefined);
-        if (!offerFinishedDownloadRemoval(info.book, status, onClose, notify)) notify();
+        const before = finishedOnLeave.current?.book ?? info.book;
+        finishedOnLeave.current = status === "read" || status === "dropped" ? { book: before, status } : null;
+        notify();
       },
       (e: unknown) => toast(String(e)),
     );
@@ -676,6 +699,33 @@ export function Reader({
     }] : []),
     { label: "Close book", icon: "close", onSelect: leave },
   ];
+
+  // About 97% on, the end-of-book panel: rate, mark read, remove the download.
+  const nearEnd = (r?.fraction ?? 0) >= END_OF_BOOK;
+  const showEnd = !!info && engine.ready && nearEnd && !endDismissed && (info.book.status !== "read" || endOpen);
+  const markReadAtEnd = async () => {
+    if (!info) return;
+    await api.setBookStatus(info.book.id, "read").then(
+      () => {
+        setInfo((i) => (i ? { ...i, book: { ...i.book, status: "read" } } : i));
+        setEndOpen(true);
+        void api.syncSoon();
+      },
+      (e: unknown) => toast(String(e)),
+    );
+  };
+  const removeAtEnd = () => {
+    if (!info) return;
+    const id = info.book.id;
+    reportPosition.current();
+    void flush().then(() => {
+      onClose();
+      void api.removeDownload(id).then(
+        () => toast("Removed the download from this device."),
+        (e: unknown) => toast(String(e)),
+      );
+    });
+  };
 
   const showLeft = !focus && panels.left && !!info;
   const showRight = !focus && panels.right && !!info;
@@ -745,7 +795,7 @@ export function Reader({
         menu={menu}
         avatar={<SyncMenu {...shell} />}
         fullscreen={fullscreen}
-        onToggleFullscreen={toggleFullscreen}
+        onToggleFullscreen={narrow ? undefined : toggleFullscreen}
         onExitFocus={() => setFocus(false)}
       />
       <div className="reader-body">
@@ -877,6 +927,15 @@ export function Reader({
         />
       )}
       {translating && <TranslatePanel words={translating} url={googleTranslate(translating)} onClose={closeTranslating} />}
+      {showEnd && info && (
+        <EndOfBook
+          book={info.book}
+          onRated={(rating) => setInfo((i) => (i ? { ...i, book: { ...i.book, rating } } : i))}
+          onMarkRead={markReadAtEnd}
+          onRemove={removeAtEnd}
+          onDismiss={() => setEndDismissed(true)}
+        />
+      )}
       {noteEdit && (
         <NoteDialog
           excerpt={noteEdit.a?.excerpt ?? noteEdit.selection?.text ?? ""}

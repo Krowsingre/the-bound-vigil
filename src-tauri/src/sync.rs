@@ -135,8 +135,12 @@ impl SyncWorker {
     }
 }
 
+/// How long reading places and time read wait on their own before
+/// automatic sync sends them. Closing the book or leaving TBV sends at once.
+const READING_HOLD: Duration = Duration::from_secs(5 * 60);
+
 fn has_changes(library: &Mutex<Library>) -> bool {
-    library.lock().ok().and_then(|l| l.sync_overview().ok()).is_some_and(|o| o.waiting_to_send > 0)
+    library.lock().ok().and_then(|l| l.sync_due_to_send(READING_HOLD).ok()).unwrap_or(false)
 }
 
 /// Saves a renewed Supabase sign-in, or forgets one that was withdrawn.
@@ -483,6 +487,8 @@ pub fn stream_places(library: &Arc<Mutex<Library>>) -> Vec<Cloud> {
 /// shown one after another don't each list it again.
 static COVER_LISTS: Mutex<Vec<(Lane, Instant, Vec<String>)>> = Mutex::new(Vec::new());
 const COVER_LIST_FOR: Duration = Duration::from_secs(10 * 60);
+/// How old a list may be before a cover missing from it is looked for again.
+const COVER_RECHECK: Duration = Duration::from_secs(60);
 
 /// A phone: fetches a book's cover because it's being shown, from the first
 /// place that has it. None if neither has one.
@@ -503,9 +509,18 @@ pub fn cover_on_view(library: &Arc<Mutex<Library>>, book_id: &str) -> tbv_core::
     })();
     for (cloud, lane) in [(first, Lane::Main), (connect_second(library), Lane::Also)] {
         let Some(mut cloud) = cloud else { continue };
+        let hex = tbv_core::ids::book_id_hex(book_id);
         let listed = {
             let lists = COVER_LISTS.lock().map_err(|_| Error::Unsuitable("covers are unavailable".into()))?;
-            lists.iter().find(|(l, at, _)| *l == lane && at.elapsed() < COVER_LIST_FOR).map(|(_, _, names)| names.clone())
+            lists
+                .iter()
+                .find(|(l, at, names)| {
+                    // A cover the list hasn't got may have arrived since: a
+                    // list over a minute old is read again for it.
+                    let has = names.iter().any(|n| std::path::Path::new(n).file_stem().is_some_and(|s| s == hex));
+                    *l == lane && at.elapsed() < COVER_LIST_FOR && (has || at.elapsed() < COVER_RECHECK)
+                })
+                .map(|(_, _, names)| names.clone())
         };
         let names = match listed {
             Some(names) => names,
@@ -543,7 +558,10 @@ fn fetch_book(library: &Arc<Mutex<Library>>, book_id: &str, client: Option<Cloud
             Err(e) => trouble = trouble.or(Some(e)),
         }
     }
-    Err(trouble.unwrap_or_else(core_sync::not_in_cloud))
+    Err(trouble.unwrap_or_else(|| {
+        let path = library.lock().ok().and_then(|l| l.cloud_book_path(book_id).ok().flatten());
+        core_sync::not_in_cloud_at(path.as_deref())
+    }))
 }
 
 /// Where each cloud app usually keeps its folder on Windows. Only a folder

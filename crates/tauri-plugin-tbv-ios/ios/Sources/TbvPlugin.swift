@@ -406,8 +406,51 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
         done.signal()
       }
       _ = done.wait(timeout: .now() + 20)
+      // A file iCloud on this phone hasn't listed yet (no file and no
+      // stand-in): ask iCloud's own index for it by name, and bring it down.
+      let files = FileManager.default
+      let standIn = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).icloud")
+      if !url.hasDirectoryPath && !files.fileExists(atPath: url.path) && !files.fileExists(atPath: standIn.path),
+        let found = TbvPlugin.findInCloud(url, waiting: 20) {
+        try? files.startDownloadingUbiquitousItem(at: found)
+      }
       invoke.resolve(["ok": true])
     }
+  }
+
+  /// Looks for a file in iCloud's index (folders chosen in Files) by its
+  /// name, waiting up to `waiting` seconds. The file's address if iCloud
+  /// knows it at that same place.
+  static func findInCloud(_ url: URL, waiting: TimeInterval) -> URL? {
+    let found = DispatchSemaphore(value: 0)
+    var answer: URL?
+    var observer: NSObjectProtocol?
+    let query = NSMetadataQuery()
+    DispatchQueue.main.async {
+      query.searchScopes = [NSMetadataQueryAccessibleUbiquitousExternalDocumentsScope]
+      query.predicate = NSPredicate(format: "%K == %@", NSMetadataItemFSNameKey, url.lastPathComponent)
+      observer = NotificationCenter.default.addObserver(
+        forName: .NSMetadataQueryDidFinishGathering, object: query, queue: .main
+      ) { _ in
+        query.disableUpdates()
+        let want = url.standardizedFileURL.resolvingSymlinksInPath().path
+        for case let item as NSMetadataItem in query.results {
+          guard let itemURL = item.value(forAttribute: NSMetadataItemURLKey) as? URL else { continue }
+          if itemURL.standardizedFileURL.resolvingSymlinksInPath().path == want {
+            answer = itemURL
+            break
+          }
+        }
+        found.signal()
+      }
+      query.start()
+    }
+    _ = found.wait(timeout: .now() + waiting)
+    DispatchQueue.main.async {
+      query.stop()
+      if let observer = observer { NotificationCenter.default.removeObserver(observer) }
+    }
+    return answer
   }
 
   /// Shows a sign-in page over TBV. Its answer goes to TBV's own listener on

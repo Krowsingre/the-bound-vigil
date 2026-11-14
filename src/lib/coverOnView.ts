@@ -1,7 +1,7 @@
 // The iPhone app fetches a cover from the cloud only when it's shown, rather
 // than every cover at each sync. A few come down at a time, each book's is
 // asked for once while TBV is open, and one the cloud hasn't got isn't asked
-// for again until next time.
+// for again for a couple of minutes.
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
@@ -15,6 +15,8 @@ const onIPhone =
 const fromServer = (bookId: string) => bookId.startsWith("abs~");
 
 const AT_ONCE = 3;
+/** How long a cover the cloud didn't have waits before it's asked for again. */
+const RETRY_MS = 2 * 60 * 1000;
 const asked = new Map<string, Promise<string | null>>();
 const waiting: (() => void)[] = [];
 let running = 0;
@@ -35,7 +37,11 @@ export function coverOnView(bookId: string): Promise<string | null> {
         api.coverOnView(bookId).then(
           (path) => resolve(path),
           () => resolve(null),
-        ).finally(() => {
+        ).then(() => found!.then((path) => {
+          // Not there yet (iCloud may not have brought it): ask again when
+          // the book is next shown, a little later.
+          if (path === null) setTimeout(() => asked.get(bookId) === found && asked.delete(bookId), RETRY_MS);
+        })).finally(() => {
           running--;
           next();
         }),

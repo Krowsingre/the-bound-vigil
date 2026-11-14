@@ -360,8 +360,10 @@ export class View extends HTMLElement {
     #emit(name, detail, cancelable) {
         return this.dispatchEvent(new CustomEvent(name, { detail, cancelable }))
     }
-    #onRelocate({ reason, range, index, fraction, size }) {
+    #onRelocate({ reason, range, index, fraction, size, atEnd }) {
         const progress = this.#sectionProgress?.getProgress(index, fraction, size) ?? {}
+        // TBV: the last screen of the book counts as the whole book read
+        if (atEnd) progress.fraction = 1
         const tocItem = this.#tocProgress?.getProgress(index, range)
         const pageItem = this.#pageProgress?.getProgress(index, range)
         const cfi = this.getCFI(index, range)

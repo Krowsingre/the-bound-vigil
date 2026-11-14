@@ -407,6 +407,9 @@ pub(crate) const KINDS: &[Kind] = &[
     },
 ];
 
+/// Kinds that change at every page turn while reading.
+const HELD_WHILE_READING: [&str; 2] = ["book_progress", "time_log"];
+
 fn kind_named(name: &str) -> Option<&'static Kind> {
     KINDS.iter().find(|k| k.name == name)
 }
@@ -1318,6 +1321,39 @@ impl Library {
 
     /// Changes one place doesn't have yet. Only what would actually be sent:
     /// kinds switched off keep their stamps for later, but aren't waiting now.
+    /// Whether automatic sync has something to send now. Reading places and
+    /// time read change at every page turn, so on their own they wait up to
+    /// `hold` (other changes, closing the book or leaving TBV send them at
+    /// once) and a long read doesn't become hundreds of changes.
+    pub fn sync_due_to_send(&self, hold: std::time::Duration) -> Result<bool> {
+        let options = self.sync_options()?;
+        let cutoff = (chrono::Utc::now() - chrono::Duration::from_std(hold).unwrap_or_default())
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let mut lanes = vec![Lane::Main];
+        if self.sync_also()?.is_some() {
+            lanes.push(Lane::Also);
+        }
+        for lane in lanes {
+            for kind in KINDS.iter().filter(|k| options.includes(k.category)) {
+                let reading = HELD_WHILE_READING.contains(&kind.name);
+                let due: i64 = self.conn.query_row(
+                    &format!(
+                        "SELECT EXISTS (SELECT 1 FROM sync_clock c WHERE c.kind = ?1 AND {}
+                           AND (?2 = 0 OR c.changed_at <= ?3)
+                           AND NOT EXISTS (SELECT 1 FROM sync_conflicts x WHERE x.kind = c.kind AND x.key = c.key))",
+                        unsent(lane)
+                    ),
+                    params![kind.name, reading as i64, cutoff],
+                    |r| r.get(0),
+                )?;
+                if due != 0 {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+
     fn waiting_count(&self, options: &SyncOptions, lane: Lane) -> Result<u32> {
         let mut waiting: i64 = 0;
         for kind in KINDS.iter().filter(|k| options.includes(k.category)) {
@@ -3155,15 +3191,22 @@ pub fn download_book(library: &Mutex<Library>, remote: &mut dyn Remote, book_id:
     if download_book_from(library, remote, book_id, Lane::Main)? {
         Ok(())
     } else {
-        Err(not_in_cloud())
+        let path = library.lock().ok().and_then(|l| l.cloud_book_path(book_id).ok().flatten());
+        Err(not_in_cloud_at(path.as_deref()))
     }
 }
 
 /// The answer when no place has a book's file.
 pub fn not_in_cloud() -> Error {
-    Error::Unsuitable(
-        "TBV couldn't find this book's file in the cloud. If it's syncing from another device, the cloud may not have brought it here yet: try again in a minute. If not, turn on Sync book files on the device that has it.".into(),
-    )
+    not_in_cloud_at(None)
+}
+
+/// As `not_in_cloud`, saying which file was looked for.
+pub fn not_in_cloud_at(path: Option<&str>) -> Error {
+    let looked = path.map(|p| format!(" TBV looked for “{p}” and for any other kind of file of this book.")).unwrap_or_default();
+    Error::Unsuitable(format!(
+        "TBV couldn't find this book's file in the cloud.{looked} If it's syncing from another device, the cloud may not have brought it here yet: try again in a minute. If not, turn on Sync book files on the device that has it."
+    ))
 }
 
 /// As `download_book`, from either place. False if that place hasn't got the file.
@@ -3176,9 +3219,23 @@ pub fn download_book_from(library: &Mutex<Library>, remote: &mut dyn Remote, boo
             .ok_or_else(|| Error::Unsuitable("that book isn't in your library any more".into()))?;
         (path, library.download_target(book_id))
     };
-    if !fetch(remote, &path, &target)? {
-        return Ok(false);
-    }
+    let path = if fetch(remote, &path, &target)? {
+        path
+    } else {
+        // The same book as another kind of file (another device's copy of it
+        // may be a different format): look for any file named for it.
+        let stem = path.rsplit_once('.').map(|(s, _)| s.trim_start_matches("books/").to_string()).unwrap_or_default();
+        let other = remote
+            .list("books/")?
+            .into_iter()
+            .map(|n| n.trim_start_matches("books/").to_string())
+            .find(|n| n.rsplit_once('.').is_some_and(|(s, ext)| s == stem && !ext.eq_ignore_ascii_case("partial")))
+            .map(|n| format!("books/{n}"));
+        match other {
+            Some(other) if other != path && fetch(remote, &other, &target)? => other,
+            _ => return Ok(false),
+        }
+    };
     let format = path.rsplit('.').next().unwrap_or("epub").to_string();
     let result = lock()?.adopt_download(book_id, &target, &format);
     let _ = fs::remove_file(&target);

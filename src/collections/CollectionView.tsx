@@ -11,6 +11,7 @@ import { BookGrid, BookList } from "../library/BookViews";
 import { downloadable, useBatchDownloads } from "../library/BatchDownloads";
 import { PageSwitch } from "../library/Library";
 import { authorLine, percent } from "../lib/format";
+import { useNarrow } from "../lib/useNarrow";
 import { Badge } from "./badges";
 import { CollectionSeries } from "./CollectionSeries";
 import { CollectionPicture } from "./CollectionCards";
@@ -60,6 +61,7 @@ export function CollectionView({
   }, [key, refreshKey, reload]);
 
   const c = detail?.collection ?? null;
+  const narrow = useNarrow();
   // Books are added to `own` by hand; a collection with rules fills itself.
   const own = c && c.kind !== "shelf" && !c.rules ? c : null;
   const changed = () => {
@@ -118,6 +120,7 @@ export function CollectionView({
           ? "Filled by rules"
           : c && KIND_LABEL[c.kind];
   const readSwitch = collection.kind === "smart" && collection.smart === "read";
+  const plainHero = narrow && collection.kind === "smart" && !c?.picture && !c?.picturePath;
   const books = readSwitch ? detail.books.filter((b) => b.status === ended) : detail.books;
   const covers = detail.books.slice(0, 3).map(({ id, title, authors, coverPath }) => ({ id, title, authors, coverPath }));
   const menu: MenuEntry[] = [
@@ -129,11 +132,15 @@ export function CollectionView({
 
   return (
     <div className="collection-view">
-      <header className="collection-hero">
-        <CollectionPicture
-          collection={{ id: c?.id ?? name, picture: c?.picture ?? null, picturePath: c?.picturePath ?? null, covers }}
-          className="hero-picture"
-        />
+      {/* On phones a smart compendium's header is plain: covers made into a
+          picture don't fit there. */}
+      <header className={`collection-hero${plainHero ? " is-plain" : ""}`}>
+        {!plainHero && (
+          <CollectionPicture
+            collection={{ id: c?.id ?? name, picture: c?.picture ?? null, picturePath: c?.picturePath ?? null, covers }}
+            className="hero-picture"
+          />
+        )}
         <div className="collection-hero-text">
           <BackLink onBack={onBack} />
           <h1>

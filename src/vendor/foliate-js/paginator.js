@@ -1023,6 +1023,8 @@ export class Paginator extends HTMLElement {
             detail.fraction = (page - 1) / (pages - 2)
             detail.size = 1 / (pages - 2)
         }
+        // TBV: the book's last page is showing
+        detail.atEnd = this.atEnd
         this.dispatchEvent(new CustomEvent('relocate', { detail }))
     }
     async #display(promise) {

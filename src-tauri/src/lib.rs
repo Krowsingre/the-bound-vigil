@@ -1018,6 +1018,13 @@ fn sync_now(worker: State<'_, Arc<sync::SyncWorker>>) {
     worker.sync_now();
 }
 
+/// Sends what's waiting soon, when sync runs by itself: on closing a book or
+/// leaving TBV, so the reading place goes out without waiting.
+#[tauri::command(async)]
+fn sync_soon(worker: State<'_, Arc<sync::SyncWorker>>) {
+    worker.nudge();
+}
+
 /// Signs in (or makes an account). False means Supabase emailed a link to
 /// confirm the address first.
 #[tauri::command]
@@ -2408,6 +2415,7 @@ pub fn run() {
             show_folder,
             sync_overview,
             sync_now,
+            sync_soon,
             splash::startup_progress,
             splash::startup_done,
             splash::startup_painted,

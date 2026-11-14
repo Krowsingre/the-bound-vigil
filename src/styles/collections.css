@@ -566,6 +566,15 @@
   color: var(--ash-pale-soft);
 }
 
+/* A phone's smart compendium: the page's own colours, no picture. */
+.collection-hero.is-plain {
+  min-height: 0;
+  margin: 8px 0 12px;
+  padding: 8px 0;
+  border-radius: 0;
+  color: var(--text);
+}
+
 .hero-picture {
   position: absolute;
   inset: 0;
