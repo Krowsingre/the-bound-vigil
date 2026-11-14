@@ -1907,3 +1907,16 @@ fn a_book_is_found_as_another_kind_of_file() {
     }
     assert_eq!(b.lib().book(&book).unwrap().unwrap().availability, Availability::Local);
 }
+
+#[test]
+fn looking_at_a_book_records_nothing_until_it_opens() {
+    let a = Device::new();
+    let cloud = FakeRemote::default();
+    let book = a.import("Unopened");
+    a.sync(&cloud);
+    let before = a.lib().book(&book).unwrap().unwrap();
+    a.lib().reader_book(&book).unwrap();
+    let after = a.lib().book(&book).unwrap().unwrap();
+    assert_eq!(before.last_opened_at, after.last_opened_at);
+    assert_eq!(a.lib().sync_overview().unwrap().waiting_to_send, 0, "nothing to sync");
+}

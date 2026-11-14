@@ -751,6 +751,7 @@
 .reader-message .reader-message-body,
 .reader-main .reader-message-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   justify-items: center;
   align-content: center;
   gap: 12px;
@@ -767,6 +768,29 @@
 .reader-message-body h1 {
   font-size: 24px;
   color: var(--text);
+}
+
+/* Long file names in a message wrap instead of pushing the page sideways. */
+.reader-message-body h1,
+.reader-message-body p {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* What "Check this book's file" found, to read and copy. */
+.reader-file-check {
+  max-width: min(100%, 640px);
+  max-height: 40vh;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--surface-sunk);
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
 }
 
 .return-pill {

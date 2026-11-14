@@ -86,6 +86,19 @@ impl Library {
                 "This book is no longer in your library.".into(),
             ));
         }
+        let mut opened = self.reader_book(book_id)?;
+        opened.previously_opened_at = previously_opened_at;
+        Ok(opened)
+    }
+
+    /// A book as the reader shows it, without recording that it was opened
+    /// (that waits until its file has opened: see `open_book`).
+    pub fn reader_book(&self, book_id: &str) -> Result<ReaderBook> {
+        let previously_opened_at: Option<String> = self
+            .conn
+            .query_row("SELECT last_opened_at FROM books WHERE id = ?1", params![book_id], |r| r.get(0))
+            .optional()?
+            .flatten();
         let book = self
             .book(book_id)?
             .ok_or_else(|| Error::Unsuitable("This book is no longer in your library.".into()))?;

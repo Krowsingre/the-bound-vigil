@@ -664,6 +664,13 @@ async fn open_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResu
     with_library(state, move |library| library.open_book(&book_id)).await
 }
 
+/// A book as the reader shows it, before its file has opened: nothing is
+/// recorded (or synced) until it has.
+#[tauri::command]
+async fn reader_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<ReaderBook> {
+    with_library(state, move |library| library.reader_book(&book_id)).await
+}
+
 /// The book's bytes, sent as raw binary rather than JSON so large books load quickly.
 #[tauri::command]
 async fn read_book_file(
@@ -1016,6 +1023,17 @@ fn clear_sync_changes() {
 #[tauri::command(async)]
 fn sync_now(worker: State<'_, Arc<sync::SyncWorker>>) {
     worker.sync_now();
+}
+
+/// "Check this book's file": what each sync place shows of it, as text to
+/// copy and send.
+#[tauri::command]
+async fn check_book_file(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<String> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || sync::check_book_file(&library, &book_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 /// Sends what's waiting soon, when sync runs by itself: on closing a book or
@@ -2379,6 +2397,8 @@ pub fn run() {
             supported_formats,
             quit_app,
             open_book,
+            reader_book,
+            check_book_file,
             read_book_file,
             save_position,
             get_annotations,

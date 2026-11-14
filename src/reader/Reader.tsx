@@ -107,6 +107,9 @@ export function Reader({
   const [fileFormat, setFileFormat] = useState<string | null>(null);
   const [openedFile, setOpenedFile] = useState<{ id: string; format: string } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // "Check this book's file": what each sync place shows of it.
+  const [fileCheck, setFileCheck] = useState<string | null>(null);
+  const [checkingFile, setCheckingFile] = useState(false);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
   const [widePanels, setWidePanels] = useState(readPanels);
@@ -144,7 +147,8 @@ export function Reader({
     (async () => {
       try {
         const [opened, list, saved] = await Promise.all([
-          api.openBook(bookId),
+          // Nothing is recorded (or synced) until the book's file has opened.
+          api.readerBook(bookId),
           api.getAnnotations(bookId),
           api.getSetting(SETTINGS_KEY).catch(() => null),
         ]);
@@ -174,6 +178,11 @@ export function Reader({
         if (!cancelled) {
           setFile(source);
           setOpenedFile(reading);
+          // Now it counts as opened: when, and Unread becomes In progress.
+          void api.openBook(bookId).then(
+            (now) => !cancelled && setInfo((i) => (i ? { ...i, book: { ...i.book, status: now.book.status, lastOpenedAt: now.book.lastOpenedAt, wantToRead: now.book.wantToRead } } : i)),
+            () => undefined,
+          );
         }
         // A PDF imported elsewhere, or whose cover couldn't be drawn then.
         if (format === "pdf" && !coverPath && reading.id === bookId) {
@@ -643,6 +652,30 @@ export function Reader({
           <button type="button" className="btn btn-primary" onClick={onClose}>
             Back to Sanctum
           </button>
+          {fileCheck ? (
+            <>
+              <pre className="reader-file-check">{fileCheck}</pre>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void navigator.clipboard?.writeText(fileCheck).then(() => toast("Copied"), () => toast("Couldn't copy"))}
+              >
+                Copy what was found
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              disabled={checkingFile}
+              onClick={() => {
+                setCheckingFile(true);
+                api.checkBookFile(bookId).then(setFileCheck, (e: unknown) => setFileCheck(String(e))).finally(() => setCheckingFile(false));
+              }}
+            >
+              {checkingFile ? "Checking… (up to a minute)" : "Check this book's file"}
+            </button>
+          )}
         </div>
       </div>
     );
