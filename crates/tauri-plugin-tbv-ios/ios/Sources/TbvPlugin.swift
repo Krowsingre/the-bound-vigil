@@ -418,6 +418,62 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
     }
   }
 
+  /// What this phone can see of one file: whether it's here, its iCloud
+  /// stand-in, what iCloud says about it, its folder's listing, and iCloud's
+  /// own index. For "Check this book's file", so a missing file can be
+  /// explained from evidence rather than guessed at.
+  @objc public func inspectItem(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(PathArgs.self)
+    let url = URL(fileURLWithPath: args.path)
+    DispatchQueue.global(qos: .userInitiated).async {
+      let files = FileManager.default
+      let folder = url.deletingLastPathComponent()
+      let name = url.lastPathComponent
+      let standIn = folder.appendingPathComponent(".\(name).icloud")
+      var answer: [String: Any] = [
+        "here": files.fileExists(atPath: url.path),
+        "standIn": files.fileExists(atPath: standIn.path),
+        "folderHere": files.fileExists(atPath: folder.path),
+      ]
+      let keys: Set<URLResourceKey> = [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey, .ubiquitousItemDownloadingErrorKey]
+      if let values = try? url.resourceValues(forKeys: keys) {
+        answer["ubiquitous"] = values.isUbiquitousItem ?? false
+        if let status = values.ubiquitousItemDownloadingStatus { answer["status"] = status.rawValue }
+        if let error = values.ubiquitousItemDownloadingError { answer["downloadError"] = error.localizedDescription }
+      }
+      if let folderValues = try? folder.resourceValues(forKeys: [.isUbiquitousItemKey]) {
+        answer["folderUbiquitous"] = folderValues.isUbiquitousItem ?? false
+      }
+      do {
+        let names = try files.contentsOfDirectory(atPath: folder.path)
+        answer["listed"] = names.count
+        answer["standIns"] = names.filter { $0.hasPrefix(".") && $0.hasSuffix(".icloud") }.count
+        answer["listedHas"] = names.contains(name) || names.contains(".\(name).icloud")
+        let stem = (name as NSString).deletingPathExtension
+        answer["sameBook"] = names.filter { $0.hasPrefix(stem) || $0.hasPrefix(".\(stem)") }
+      } catch {
+        answer["listError"] = error.localizedDescription
+      }
+      if let found = TbvPlugin.findInCloud(url, waiting: 20) {
+        answer["index"] = found.path
+      } else {
+        answer["index"] = NSNull()
+      }
+      // Ask once, then look again, so the answer says whether asking helps.
+      try? files.startDownloadingUbiquitousItem(at: url)
+      var failed: NSError?
+      let done = DispatchSemaphore(value: 0)
+      DispatchQueue.global(qos: .userInitiated).async {
+        NSFileCoordinator(filePresenter: nil).coordinate(readingItemAt: url, options: [], error: &failed) { _ in }
+        done.signal()
+      }
+      _ = done.wait(timeout: .now() + 20)
+      if let failed = failed { answer["readError"] = failed.localizedDescription }
+      answer["hereAfter"] = files.fileExists(atPath: url.path)
+      invoke.resolve(answer)
+    }
+  }
+
   /// Looks for a file in iCloud's index (folders chosen in Files) by its
   /// name, waiting up to `waiting` seconds. The file's address if iCloud
   /// knows it at that same place.

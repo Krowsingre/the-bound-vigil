@@ -777,6 +777,22 @@
   overflow-wrap: anywhere;
 }
 
+/* What "Check this book's file" found, to read and copy. */
+.reader-file-check {
+  max-width: min(100%, 640px);
+  max-height: 40vh;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--surface-sunk);
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 .return-pill {
   position: absolute;
   top: 16px;

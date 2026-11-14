@@ -734,3 +734,103 @@ pub fn book_places(library: &Arc<Mutex<Library>>) -> tbv_core::Result<core_sync:
         books,
     })
 }
+
+/// "Check this book's file": what each sync place shows of the book's file,
+/// in plain lines the person can copy and send. Looks only; changes nothing
+/// except asking iCloud on a phone to bring the file down.
+pub fn check_book_file(library: &Arc<Mutex<Library>>, book_id: &str) -> tbv_core::Result<String> {
+    let unavailable = || Error::Unsuitable("the library is unavailable".into());
+    let (path, places, device) = {
+        let l = library.lock().map_err(|_| unavailable())?;
+        let path = l.cloud_book_path(book_id)?;
+        let places = [Some((l.sync_provider()?, "First sync place")), l.sync_also()?.map(|p| (p, "Second sync place"))];
+        (path, places, l.device_id()?)
+    };
+    let mut lines = vec![format!("TBV {} on {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS)];
+    let Some(path) = path else {
+        lines.push("This book has no file name in the library, so no device has said it sent the file.".into());
+        return Ok(lines.join("\n"));
+    };
+    lines.push(format!("Looking for: {path}"));
+    let name = path.trim_start_matches("books/").to_string();
+    let stem = name.rsplit_once('.').map(|(s, _)| s.to_string()).unwrap_or_else(|| name.clone());
+    for (provider, label) in places.into_iter().flatten() {
+        match &provider {
+            Provider::Off => continue,
+            Provider::Folder { service, path: chosen } => {
+                lines.push(format!("{label}: a folder ({service})"));
+                let chosen = std::path::Path::new(chosen);
+                lines.push(format!("  Chosen folder: {} ({})", chosen.display(), if chosen.is_dir() { "found" } else { "not found" }));
+                let Some(root) = tbv_core::sync::files::library_root(chosen) else {
+                    lines.push("  No library folder in it.".into());
+                    continue;
+                };
+                lines.push(format!("  Library folder: {}", root.display()));
+                let books = root.join("books");
+                match std::fs::read_dir(&books) {
+                    Ok(entries) => {
+                        let names: Vec<String> = entries.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+                        let stand_ins = names.iter().filter(|n| n.starts_with('.') && n.ends_with(".icloud")).count();
+                        lines.push(format!("  books folder lists {} items ({stand_ins} not downloaded yet)", names.len()));
+                        let same: Vec<&String> = names.iter().filter(|n| n.trim_start_matches('.').starts_with(&stem)).collect();
+                        if same.is_empty() {
+                            lines.push("  Nothing for this book is listed there.".into());
+                        } else {
+                            lines.push(format!("  Listed for this book: {}", same.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")));
+                        }
+                    }
+                    Err(e) => lines.push(format!("  books folder can't be read: {e}")),
+                }
+                let file = books.join(&name);
+                #[cfg(target_os = "ios")]
+                let seen = tauri_plugin_tbv_ios::inspect(&file);
+                #[cfg(not(target_os = "ios"))]
+                let seen: Option<serde_json::Value> = None;
+                if let Some(seen) = seen {
+                    let flag = |k: &str| seen.get(k).and_then(|v| v.as_bool()).map(|b| if b { "yes" } else { "no" }).unwrap_or("?");
+                    let text = |k: &str| seen.get(k).and_then(|v| v.as_str().map(str::to_string).or_else(|| v.as_u64().map(|n| n.to_string())));
+                    lines.push(format!("  iPhone: file here {}, stand-in {}, folder is iCloud {}", flag("here"), flag("standIn"), flag("folderUbiquitous")));
+                    lines.push(format!("  iPhone: folder lists {} items, has this file {}", text("listed").unwrap_or_else(|| "?".into()), flag("listedHas")));
+                    if let Some(status) = text("status") {
+                        lines.push(format!("  iCloud says: {status}"));
+                    }
+                    for key in ["downloadError", "listError", "readError"] {
+                        if let Some(e) = text(key) {
+                            lines.push(format!("  {key}: {e}"));
+                        }
+                    }
+                    match text("index") {
+                        Some(found) => lines.push(format!("  iCloud's index has it at: {found}")),
+                        None => lines.push("  iCloud's index doesn't have it".into()),
+                    }
+                    lines.push(format!("  After asking iCloud for it: here {}", flag("hereAfter")));
+                } else {
+                    lines.push(format!("  File here: {}", if file.is_file() { "yes" } else { "no" }));
+                }
+            }
+            other => {
+                let view = other.view();
+                lines.push(format!("{label}: {}", view.service.unwrap_or_else(|| view.kind.to_string())));
+                let opened = match other {
+                    Provider::Supabase => {
+                        let l = library.lock().map_err(|_| unavailable())?;
+                        if label.starts_with("First") { connect(library, &l) } else { connect_also(library, &l) }
+                            .and_then(|c| c.ok_or_else(|| Error::Unsuitable("not signed in".into())))
+                    }
+                    _ => core_sync::open_files(other, device.clone()).map(|(files, _)| Cloud::Files(files)),
+                };
+                match opened {
+                    Ok(mut files) => match core_sync::Remote::list(&mut files, "books/") {
+                        Ok(names) => {
+                            let has = names.iter().any(|n| n.trim_start_matches("books/").starts_with(&stem));
+                            lines.push(format!("  books lists {} files, this book {}", names.len(), if has { "listed" } else { "not listed" }));
+                        }
+                        Err(e) => lines.push(format!("  Couldn't list books: {e}")),
+                    },
+                    Err(e) => lines.push(format!("  Couldn't open it: {e}")),
+                }
+            }
+        }
+    }
+    Ok(lines.join("\n"))
+}

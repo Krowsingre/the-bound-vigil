@@ -107,6 +107,9 @@ export function Reader({
   const [fileFormat, setFileFormat] = useState<string | null>(null);
   const [openedFile, setOpenedFile] = useState<{ id: string; format: string } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // "Check this book's file": what each sync place shows of it.
+  const [fileCheck, setFileCheck] = useState<string | null>(null);
+  const [checkingFile, setCheckingFile] = useState(false);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
   const [widePanels, setWidePanels] = useState(readPanels);
@@ -649,6 +652,30 @@ export function Reader({
           <button type="button" className="btn btn-primary" onClick={onClose}>
             Back to Sanctum
           </button>
+          {fileCheck ? (
+            <>
+              <pre className="reader-file-check">{fileCheck}</pre>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void navigator.clipboard?.writeText(fileCheck).then(() => toast("Copied"), () => toast("Couldn't copy"))}
+              >
+                Copy what was found
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              disabled={checkingFile}
+              onClick={() => {
+                setCheckingFile(true);
+                api.checkBookFile(bookId).then(setFileCheck, (e: unknown) => setFileCheck(String(e))).finally(() => setCheckingFile(false));
+              }}
+            >
+              {checkingFile ? "Checking… (up to a minute)" : "Check this book's file"}
+            </button>
+          )}
         </div>
       </div>
     );

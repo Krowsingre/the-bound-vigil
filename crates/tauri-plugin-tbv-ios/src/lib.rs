@@ -404,6 +404,22 @@ pub fn refresh(path: &Path) {
     let _ = path;
 }
 
+/// What the phone can see of one file in iCloud (see the Swift
+/// `inspectItem`). None off the iPhone.
+pub fn inspect(path: &Path) -> Option<serde_json::Value> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get()?;
+        let path = path.to_string_lossy();
+        swift.run_mobile_plugin::<serde_json::Value>("inspectItem", PathArgs { path: &path }).ok()
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = path;
+        None
+    }
+}
+
 /// Brings down a file iCloud hasn't kept on the phone, waiting until it
 /// arrives. True once it's here.
 pub fn fetch(path: &Path) -> bool {

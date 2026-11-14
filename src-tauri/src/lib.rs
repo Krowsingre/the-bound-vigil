@@ -1025,6 +1025,17 @@ fn sync_now(worker: State<'_, Arc<sync::SyncWorker>>) {
     worker.sync_now();
 }
 
+/// "Check this book's file": what each sync place shows of it, as text to
+/// copy and send.
+#[tauri::command]
+async fn check_book_file(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<String> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || sync::check_book_file(&library, &book_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 /// Sends what's waiting soon, when sync runs by itself: on closing a book or
 /// leaving TBV, so the reading place goes out without waiting.
 #[tauri::command(async)]
@@ -2387,6 +2398,7 @@ pub fn run() {
             quit_app,
             open_book,
             reader_book,
+            check_book_file,
             read_book_file,
             save_position,
             get_annotations,

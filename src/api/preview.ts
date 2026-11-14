@@ -898,6 +898,7 @@ export function previewApi(): Api {
     pickBooks: async () => (params.has("kindle") ? ["Kindle books.json"] : []),
     pickFolder: async () => [],
     coverUrl: (path) => (path.startsWith("data:") ? path : ""),
+    checkBookFile: async () => "Looking for: books/sample.epub\nFirst sync place: a folder (icloud)\n  File here: yes",
     readerBook: async (bookId) => {
       const b = find(bookId);
       return { book: b, publisher: "Sample Press", language: "en", fileSize: 48_000, previouslyOpenedAt: b.lastOpenedAt };
