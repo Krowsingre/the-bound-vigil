@@ -898,6 +898,7 @@ export function previewApi(): Api {
     pickBooks: async () => (params.has("kindle") ? ["Kindle books.json"] : []),
     pickFolder: async () => [],
     coverUrl: (path) => (path.startsWith("data:") ? path : ""),
+    bookFilePlaces: async () => ({ here: "C:\\Users\\you\\The Bound Vigil\\books\\sample.epub", cloud: null, service: null }),
     checkBookFile: async () => "Looking for: books/sample.epub\nFirst sync place: a folder (icloud)\n  File here: yes",
     readerBook: async (bookId) => {
       const b = find(bookId);
@@ -1022,7 +1023,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.107.0", version: "0.107.0", notes: "The Bound Vigil 0.107.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.108.0", version: "0.108.0", notes: "The Bound Vigil 0.108.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
