@@ -268,6 +268,8 @@ export interface Api {
   coverUrl(path: string): string;
   /** Opens a book for reading (records when, and moves Unread to In progress). */
   openBook(bookId: string): Promise<ReaderBook>;
+  /** The book as the reader shows it, without recording that it was opened (openBook does, once its file has opened). */
+  readerBook(bookId: string): Promise<ReaderBook>;
   /** The book file itself, for the reader's page engine. */
   readBookFile(bookId: string): Promise<Blob>;
   savePosition(bookId: string, locator: ReaderLocator): Promise<void>;
@@ -1053,6 +1055,7 @@ function appApi(): Api {
         : keepAccess(asList(await folderPicker({ directory: true, multiple: false, title: "Import a folder of books" }))),
     coverUrl: (path) => (convert ? convert(path) : ""),
     openBook: async (bookId) => (await core).invoke<ReaderBook>("open_book", { bookId }),
+    readerBook: async (bookId) => (await core).invoke<ReaderBook>("reader_book", { bookId }),
     readBookFile: async (bookId) => {
       // Raw bytes normally arrive as an ArrayBuffer, but if Tauri has to fall
       // back to its slower message channel they come as a list of numbers.

@@ -799,6 +799,16 @@ export async function webApi(): Promise<Api> {
     pickBooks: () => phoneImports.pick(false),
     pickFolder: () => phoneImports.pick(true),
     coverUrl: (path) => (/^(blob|data|https?):/.test(path) ? path : ""),
+    readerBook: async (bookId) => {
+      const before = find(bookId);
+      return {
+        book: bookPreview(bookId),
+        publisher: before.publisher,
+        language: before.language,
+        fileSize: before.file_size ?? 0,
+        previouslyOpenedAt: before.last_opened_at,
+      };
+    },
     openBook: async (bookId) => {
       const before = find(bookId);
       const progress: Row = { ...before, last_opened_at: now(), status: before.status === "unread" ? "in_progress" : before.status };

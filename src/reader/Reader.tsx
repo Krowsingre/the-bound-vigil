@@ -144,7 +144,8 @@ export function Reader({
     (async () => {
       try {
         const [opened, list, saved] = await Promise.all([
-          api.openBook(bookId),
+          // Nothing is recorded (or synced) until the book's file has opened.
+          api.readerBook(bookId),
           api.getAnnotations(bookId),
           api.getSetting(SETTINGS_KEY).catch(() => null),
         ]);
@@ -174,6 +175,11 @@ export function Reader({
         if (!cancelled) {
           setFile(source);
           setOpenedFile(reading);
+          // Now it counts as opened: when, and Unread becomes In progress.
+          void api.openBook(bookId).then(
+            (now) => !cancelled && setInfo((i) => (i ? { ...i, book: { ...i.book, status: now.book.status, lastOpenedAt: now.book.lastOpenedAt, wantToRead: now.book.wantToRead } } : i)),
+            () => undefined,
+          );
         }
         // A PDF imported elsewhere, or whose cover couldn't be drawn then.
         if (format === "pdf" && !coverPath && reading.id === bookId) {

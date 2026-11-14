@@ -664,6 +664,13 @@ async fn open_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResu
     with_library(state, move |library| library.open_book(&book_id)).await
 }
 
+/// A book as the reader shows it, before its file has opened: nothing is
+/// recorded (or synced) until it has.
+#[tauri::command]
+async fn reader_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<ReaderBook> {
+    with_library(state, move |library| library.reader_book(&book_id)).await
+}
+
 /// The book's bytes, sent as raw binary rather than JSON so large books load quickly.
 #[tauri::command]
 async fn read_book_file(
@@ -2379,6 +2386,7 @@ pub fn run() {
             supported_formats,
             quit_app,
             open_book,
+            reader_book,
             read_book_file,
             save_position,
             get_annotations,

@@ -898,6 +898,10 @@ export function previewApi(): Api {
     pickBooks: async () => (params.has("kindle") ? ["Kindle books.json"] : []),
     pickFolder: async () => [],
     coverUrl: (path) => (path.startsWith("data:") ? path : ""),
+    readerBook: async (bookId) => {
+      const b = find(bookId);
+      return { book: b, publisher: "Sample Press", language: "en", fileSize: 48_000, previouslyOpenedAt: b.lastOpenedAt };
+    },
     openBook: async (bookId) => {
       const before = find(bookId);
       update(bookId, { lastOpenedAt: new Date().toISOString(), status: before.status === "unread" ? "in_progress" : before.status, wantToRead: false });
@@ -1017,7 +1021,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.105.0", version: "0.105.0", notes: "The Bound Vigil 0.105.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.106.0", version: "0.106.0", notes: "The Bound Vigil 0.106.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
