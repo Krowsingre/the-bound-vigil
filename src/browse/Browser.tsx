@@ -437,6 +437,22 @@ export function Browser({
     return () => void delete root.dataset.discoverPrivate;
   }, [privateInFront]);
   const toast = useToast();
+  // A book file the page's own download couldn't finish (the browser
+  // interrupted it) is fetched once by TBV itself and added to the library,
+  // as "Download and add to library" does by hand.
+  const fellBack = useRef(new Set<string>());
+  useEffect(() => {
+    for (const d of fetched) {
+      if (d.state !== "failed" || d.securityBlocked || d.direct || !d.url || !/^https?:\/\//i.test(d.url) || !BOOK_FILE.test(d.url)) continue;
+      // Only one that has just failed, not old ones in the list.
+      if (fellBack.current.has(d.id) || !(d.at > Date.now() - 30 * 60 * 1000)) continue;
+      fellBack.current.add(d.id);
+      void api.downloadWebBook(d.url, d.name, d.sourceUrl).then(
+        () => toast(`“${d.name}” didn't finish in the page, so TBV downloaded it itself.`),
+        () => undefined,
+      );
+    }
+  }, [fetched, toast]);
 
   const active = tabs.tabs.find((t) => t.id === tabs.active) ?? tabs.tabs[0];
   const url = active?.url ?? "";

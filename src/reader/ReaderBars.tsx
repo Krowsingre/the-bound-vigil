@@ -40,7 +40,8 @@ export function ReaderTopBar({
   menu: MenuEntry[];
   avatar: ReactNode;
   fullscreen: boolean;
-  onToggleFullscreen: () => void;
+  /** Left out on phones, which have no full screen of their own. */
+  onToggleFullscreen?: () => void;
   onExitFocus: () => void;
 }) {
   return (
@@ -66,15 +67,17 @@ export function ReaderTopBar({
           <button type="button" className="icon-btn" aria-label="Leave focus mode (Esc)" title="Leave focus mode (Esc)" onClick={onExitFocus}>
             <Icon name="focus" size={20} />
           </button>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label={fullscreen ? "Leave full screen (F11)" : "Full screen (F11)"}
-            title={fullscreen ? "Leave full screen (F11)" : "Full screen (F11)"}
-            onClick={onToggleFullscreen}
-          >
-            <Icon name={fullscreen ? "exitFullscreen" : "fullscreen"} size={20} />
-          </button>
+          {onToggleFullscreen && (
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label={fullscreen ? "Leave full screen (F11)" : "Full screen (F11)"}
+              title={fullscreen ? "Leave full screen (F11)" : "Full screen (F11)"}
+              onClick={onToggleFullscreen}
+            >
+              <Icon name={fullscreen ? "exitFullscreen" : "fullscreen"} size={20} />
+            </button>
+          )}
         </>
       ) : (
         <>

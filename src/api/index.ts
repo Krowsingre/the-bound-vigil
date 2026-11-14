@@ -326,6 +326,8 @@ export interface Api {
   syncOverview(): Promise<SyncOverview>;
   /** Asks for a sync now. Progress arrives through `onSync`. */
   syncNow(): Promise<void>;
+  /** Sends what's waiting soon (when sync runs by itself): on closing a book or leaving TBV. */
+  syncSoon(): Promise<void>;
   /** Signs in, or makes an account. False means Supabase emailed a link to confirm first. */
   syncSignIn(email: string, password: string, create: boolean): Promise<boolean>;
   syncSignOut(): Promise<void>;
@@ -1110,6 +1112,7 @@ function appApi(): Api {
     showFolder: async (path) => (await core).invoke("show_folder", { path }),
     syncOverview: async () => (await core).invoke<SyncOverview>("sync_overview"),
     syncNow: async () => (await core).invoke("sync_now"),
+    syncSoon: async () => (await core).invoke("sync_soon"),
     syncSignIn: async (email, password, create) => (await core).invoke<boolean>("sync_sign_in", { email, password, create }),
     syncSignOut: async () => (await core).invoke("sync_sign_out"),
     setSupabaseProject: async (project) => (await core).invoke("set_supabase_project", { project }),

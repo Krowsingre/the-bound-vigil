@@ -1870,3 +1870,40 @@ fn a_replaced_cover_reaches_a_device_that_already_had_one() {
     // Once fetched, it isn't fetched again.
     assert_eq!(b.sync(&cloud).files_received, 0);
 }
+
+#[test]
+fn reading_places_wait_a_while_on_their_own() {
+    let cloud = FakeRemote::default();
+    let a = Device::new();
+    let book = a.import("Wuthering Heights");
+    a.sync(&cloud);
+    let hold = StdDuration::from_secs(300);
+    assert!(!a.lib().sync_due_to_send(hold).unwrap());
+
+    tick();
+    a.lib().save_position(&book, &locator(0.2)).unwrap();
+    assert!(!a.lib().sync_due_to_send(hold).unwrap(), "a page turn alone waits");
+    assert!(a.lib().sync_due_to_send(StdDuration::ZERO).unwrap(), "until the wait is over");
+
+    a.lib().set_favorite(&book, true).unwrap();
+    assert!(a.lib().sync_due_to_send(hold).unwrap(), "any other change goes at once");
+}
+
+#[test]
+fn a_book_is_found_as_another_kind_of_file() {
+    let a = Device::new();
+    let b = Device::new();
+    let cloud = FakeRemote::default();
+    let book = a.import("Shapes");
+    a.sync(&cloud);
+    b.sync(&cloud);
+    let path = b.lib().cloud_book_path(&book).unwrap().unwrap();
+    // The same file, labelled as another kind on the other device.
+    let epub = a.lib().book_file(&book).unwrap();
+    let other = path.replace(".epub", ".EPUB");
+    cloud.clone().upload(&other, &epub).unwrap();
+    if let Err(e) = download_book(&b.library, &mut cloud.clone(), &book) {
+        panic!("{e}");
+    }
+    assert_eq!(b.lib().book(&book).unwrap().unwrap().availability, Availability::Local);
+}
