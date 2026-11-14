@@ -153,6 +153,11 @@ pub trait Store {
     }
     /// Erases a file. Fine if there's no such file.
     fn remove(&mut self, path: &str) -> Result<()>;
+    /// Renames a file where that's cheap (a folder on this computer). False
+    /// where this store can't, so the file keeps its name.
+    fn rename(&mut self, _from: &str, _to: &str) -> Result<bool> {
+        Ok(false)
+    }
     /// Part of a file and its whole size, for streaming. None if there's no such file.
     fn read_range(&mut self, _path: &str, _start: u64, _end: u64) -> Result<Option<(Vec<u8>, u64)>> {
         Err(Error::Unsuitable("This place can't play a file without downloading it.".into()))
@@ -208,6 +213,9 @@ impl<T: Store + ?Sized> Store for Box<T> {
     fn remove(&mut self, path: &str) -> Result<()> {
         (**self).remove(path)
     }
+    fn rename(&mut self, from: &str, to: &str) -> Result<bool> {
+        (**self).rename(from, to)
+    }
     fn read_range(&mut self, path: &str, start: u64, end: u64) -> Result<Option<(Vec<u8>, u64)>> {
         (**self).read_range(path, start, end)
     }
@@ -243,6 +251,20 @@ struct DeviceNote {
     #[serde(default)]
     label: String,
     at: String,
+    /// TBV's version on that device (empty before 0.107).
+    #[serde(default)]
+    version: String,
+}
+
+/// A device that hasn't synced for this many days doesn't hold up renaming
+/// book files to their short names.
+const OLD_DEVICE_DAYS: i64 = 30;
+
+/// Whether TBV `version` names book files by the start of their hash (0.107 on).
+fn reads_short_names(version: &str) -> bool {
+    let mut parts = version.split('.').map(|p| p.parse::<u64>().unwrap_or(0));
+    let (major, minor) = (parts.next().unwrap_or(0), parts.next().unwrap_or(0));
+    major >= 1 || minor >= 107
 }
 
 /// Change file names: numbers padded so they sort as text too.
@@ -402,11 +424,50 @@ impl<S: Store + Send> Remote for FileRemote<S> {
         let written = self.next_number()? - 1;
         let path = format!("{DEVICES}{}.json", self.device);
         let before = self.store.read(&path)?.and_then(|b| serde_json::from_slice::<DeviceNote>(&b).ok());
-        if before.is_some_and(|b| b.written == written && b.books == books && b.label == label) {
+        let version = env!("CARGO_PKG_VERSION");
+        if before.is_some_and(|b| b.written == written && b.books == books && b.label == label && b.version == version) {
             return Ok(());
         }
-        let note = DeviceNote { written, books, label: label.into(), at: crate::time::now_utc() };
+        let note = DeviceNote { written, books, label: label.into(), at: crate::time::now_utc(), version: version.into() };
         self.store.write(&path, &serde_json::to_vec(&note)?)
+    }
+
+    fn shorten_book_names(&mut self) -> Result<u32> {
+        // A computer does this: a phone's iCloud may not have every file yet.
+        if cfg!(any(target_os = "ios", target_os = "android")) {
+            return Ok(0);
+        }
+        // Devices that synced lately must all read short names (0.107 on),
+        // or they'd lose sight of the renamed files.
+        let lately = (chrono::Utc::now() - chrono::Duration::days(OLD_DEVICE_DAYS)).to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        for name in self.store.list(DEVICES)? {
+            let Some(device) = name.strip_suffix(".json") else { continue };
+            if device == self.device || !is_device(device) {
+                continue;
+            }
+            let Some(note) = self.store.read(&format!("{DEVICES}{name}"))?.and_then(|b| serde_json::from_slice::<DeviceNote>(&b).ok()) else {
+                continue;
+            };
+            if note.at >= lately && !reads_short_names(&note.version) {
+                return Ok(0);
+            }
+        }
+        let mut renamed = 0;
+        for name in self.store.list("books/")? {
+            let Some((stem, ext)) = name.rsplit_once('.') else { continue };
+            if stem.len() != 64 || !stem.bytes().all(|b| b.is_ascii_hexdigit()) {
+                continue;
+            }
+            let to = format!("books/{}.{ext}", crate::ids::book_key(stem));
+            match self.store.rename(&format!("books/{name}"), &to) {
+                Ok(true) => renamed += 1,
+                // This place can't rename: the files keep their names.
+                Ok(false) => break,
+                // Open elsewhere just now, say: tried again next sync.
+                Err(_) => {}
+            }
+        }
+        Ok(renamed)
     }
 
     fn behind(&mut self, cursor: &str) -> Result<Vec<super::Behind>> {
@@ -530,6 +591,17 @@ impl Store for FolderStore {
         Ok(true)
     }
 
+    fn rename(&mut self, from: &str, to: &str) -> Result<bool> {
+        let (from, to) = (self.at(from), self.at(to));
+        if to.exists() {
+            // Already there under its new name: both are the same book.
+            fs::remove_file(&from)?;
+        } else {
+            fs::rename(&from, &to)?;
+        }
+        Ok(true)
+    }
+
     fn list(&mut self, folder: &str) -> Result<Vec<String>> {
         if kept_fresh(folder) {
             refresh(&self.at(folder));
@@ -603,6 +675,37 @@ pub(crate) mod tests {
 
     fn record(n: u32) -> Record {
         Record { kind: "book".into(), key: format!("[\"sha256:{n}\"]"), data: None, changed_at: IsoUtc::from(format!("2026-10-17T00:00:{n:02}.000Z")) }
+    }
+
+    #[test]
+    fn old_book_names_are_shortened_once_every_device_can_read_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut a = FileRemote::new(FolderStore::open(dir.path()).unwrap(), "device-a".into());
+        a.prepare().unwrap();
+        let root = dir.path().join(LIBRARY_FOLDER);
+        let hex = "ab".repeat(32);
+        fs::create_dir_all(root.join("books")).unwrap();
+        fs::write(root.join(format!("books/{hex}.epub")), b"book").unwrap();
+        fs::write(root.join("books/notes.txt"), b"not a book").unwrap();
+        // Another device still on 0.106, seen today.
+        fs::create_dir_all(root.join("devices")).unwrap();
+        let note = |version: &str, at: &str| {
+            let note = DeviceNote { written: 1, books: 1, label: "iPhone".into(), at: at.into(), version: version.into() };
+            fs::write(root.join("devices/device-b.json"), serde_json::to_vec(&note).unwrap()).unwrap();
+        };
+        note("", &crate::time::now_utc());
+        assert_eq!(a.shorten_book_names().unwrap(), 0);
+        assert!(root.join(format!("books/{hex}.epub")).exists(), "kept for the older device");
+        // Long unseen: it doesn't hold things up.
+        note("0.106.0", "2026-01-01T00:00:00.000Z");
+        assert_eq!(a.shorten_book_names().unwrap(), 1);
+        assert!(root.join(format!("books/{}.epub", &hex[..16])).exists());
+        assert!(!root.join(format!("books/{hex}.epub")).exists());
+        assert!(root.join("books/notes.txt").exists());
+        // Once updated, nothing is left to rename.
+        note("0.107.0", &crate::time::now_utc());
+        assert_eq!(a.shorten_book_names().unwrap(), 0);
+        assert!(reads_short_names("1.0.0") && reads_short_names("0.107.0") && !reads_short_names("0.106.3") && !reads_short_names(""));
     }
 
     #[test]

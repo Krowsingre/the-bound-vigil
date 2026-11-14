@@ -9,7 +9,7 @@
 //! place is read back to check nothing was missed. A migration only switches
 //! sync over once that check passes.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -313,7 +313,8 @@ pub(super) fn carry(from: &mut dyn Remote, to: &mut dyn Remote, path: &str, temp
         }
         if path.starts_with("books/") {
             let stem = Path::new(&name).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-            if book_id_hex(&book_id_for_file(&file)?) != stem {
+            // Named by the whole hash before 0.107, by its start since.
+            if stem.len() < crate::ids::CLOUD_NAME_LEN || !book_id_hex(&book_id_for_file(&file)?).starts_with(&stem) {
                 return Err(Error::Unsuitable("the copy in the old place is damaged".into()));
             }
         }
@@ -391,7 +392,13 @@ pub fn copy_library(library: &Mutex<Library>, run: MoveRun<'_>) -> Result<MoveRe
                 records.insert(id, record);
             }
         }
+        // A book this device sends under its short name isn't sent again
+        // under its name from before 0.107.
+        let local_books: HashSet<String> = files.keys().filter(|p| p.starts_with("books/")).map(|p| super::cloud_file_key(p)).collect();
         for (path, size) in files_in(from)? {
+            if path.starts_with("books/") && !files.contains_key(&path) && local_books.contains(&super::cloud_file_key(&path)) {
+                continue;
+            }
             let wanted = files.entry(path).or_insert(Wanted { local: None, in_old: false, size });
             wanted.in_old = true;
         }
@@ -400,10 +407,10 @@ pub fn copy_library(library: &Mutex<Library>, run: MoveRun<'_>) -> Result<MoveRe
     // Only the books asked for.
     let format_of = |id: &str| books.get(id).map(|b| b.format.as_str());
     records.retain(|_, r| book_of(r).is_none_or(|id| scope.includes(format_of(&id))));
-    let by_hex: HashMap<&str, &BookInfo> = books.iter().map(|(id, b)| (book_id_hex(id), b)).collect();
+    let by_hex: HashMap<&str, &BookInfo> = books.iter().map(|(id, b)| (crate::ids::cloud_name(id), b)).collect();
     let book_for = |path: &str| -> Option<&BookInfo> {
         let name = path.rsplit('/').next()?;
-        by_hex.get(Path::new(name).file_stem()?.to_str()?).copied()
+        by_hex.get(crate::ids::book_key(Path::new(name).file_stem()?.to_str()?)).copied()
     };
     files.retain(|path, _| {
         if path.starts_with("pictures/") {

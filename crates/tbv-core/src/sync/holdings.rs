@@ -149,7 +149,7 @@ impl Library {
                     "INSERT INTO book_holders (device_id, book_id, held, updated_at)
                      SELECT ?1, b.id, 1, ?2 FROM books b
                      WHERE b.deleted_at IS NULL AND EXISTS (SELECT 1 FROM {} sf WHERE sf.uploaded_at IS NOT NULL
-                       AND sf.path = 'books/' || substr(b.id, 8) || '.' || b.format)
+                       AND sf.path = 'books/' || substr(b.id, 8, 16) || '.' || b.format)
                      ON CONFLICT (device_id, book_id) DO UPDATE SET held = 1, updated_at = excluded.updated_at WHERE held != 1",
                     lane.files_table()
                 ),
@@ -171,14 +171,14 @@ impl Library {
         for path in paths.iter().filter(|p| p.starts_with("books/")) {
             self.conn.execute(
                 "UPDATE book_holders SET held = 0, updated_at = ?3 WHERE device_id = ?1 AND held = 1
-                 AND book_id IN (SELECT id FROM books WHERE 'books/' || substr(id, 8) || '.' || format = ?2)",
-                params![id, path, now],
+                 AND book_id IN (SELECT id FROM books WHERE 'books/' || substr(id, 8, 16) || '.' || format = ?2)",
+                params![id, format!("books/{}", super::cloud_file_key(path)), now],
             )?;
         }
         Ok(())
     }
 
-    /// The hashes of books a phone has downloaded.
+    /// The books a phone has downloaded, by their names in the cloud.
     pub(crate) fn books_on_phones(&self) -> Result<HashSet<String>> {
         Ok(self
             .conn
@@ -187,7 +187,7 @@ impl Library {
                  WHERE h.held = 1 AND d.kind = 'phone'",
             )?
             .query_map([], |r| r.get::<_, String>(0))?
-            .map(|id| id.map(|id| book_id_hex(&id).to_string()))
+            .map(|id| id.map(|id| crate::ids::cloud_name(&id).to_string()))
             .collect::<rusqlite::Result<_>>()?)
     }
 

@@ -648,7 +648,7 @@ fn moving_copies_records_and_files_then_switches_over() {
     let mut files: Vec<_> = new.0.lock().unwrap().files.keys().cloned().collect();
     files.sort();
     let hex = book_id_hex(&book).to_string();
-    assert!(files[0] == format!("books/{hex}.epub") && files[1].starts_with(&format!("covers/{hex}.")), "{files:?}");
+    assert!(files[0] == format!("books/{}.epub", &hex[..16]) && files[1].starts_with(&format!("covers/{hex}.")), "{files:?}");
     assert_eq!(progress.last().unwrap().stage, moving::MoveStage::Checking);
     assert!(progress.iter().any(|p| p.total > 0 && p.done == p.total));
 
@@ -678,7 +678,7 @@ fn books_only_in_the_cloud_are_carried_across() {
 
     let report = copy(&b, Some(&old), &mut new.clone(), MoveScope::All);
     assert!(report.check.as_ref().unwrap().passed(), "{report:?}");
-    let path = format!("books/{}.epub", book_id_hex(&book));
+    let path = format!("books/{}.epub", crate::ids::cloud_name(&book));
     assert!(new.0.lock().unwrap().files.contains_key(&path));
     assert_eq!(new.0.lock().unwrap().files.get(&path), old.0.lock().unwrap().files.get(&path), "the same bytes");
     assert_eq!(b.lib().book(&book).unwrap().unwrap().availability, Availability::Cloud, "still not kept on this device");
@@ -781,8 +781,8 @@ fn text_only_leaves_audiobooks_behind() {
         assert!(!about(&audio), "nothing about the audiobook went");
         assert!(cloud.records.values().any(|(_, r)| r.kind == "personal_note"), "notes not about a book still go");
         let files: Vec<_> = cloud.files.keys().collect();
-        assert!(files.iter().all(|f| !f.contains(book_id_hex(&audio))), "{files:?}");
-        assert!(files.iter().any(|f| f.contains(book_id_hex(&book))));
+        assert!(files.iter().all(|f| !f.contains(crate::ids::cloud_name(&audio))), "{files:?}");
+        assert!(files.iter().any(|f| f.contains(crate::ids::cloud_name(&book))));
     }
 
     // Moving there turns off sending audiobook files, so the first sync doesn't send them anyway.
@@ -888,7 +888,7 @@ fn moves_to_supabase() {
     assert!(check.passed(), "{report:?}");
     assert_eq!(check.files, 4, "two books and two covers");
     let mut back = Supabase::new(project.clone(), session.clone(), "c".into());
-    assert!(back.list("books/").unwrap().contains(&format!("{}.epub", book_id_hex(&cloud_only))));
+    assert!(back.list("books/").unwrap().contains(&format!("{}.epub", crate::ids::cloud_name(&cloud_only))));
     let again = copy(&b, Some(&old), &mut to, MoveScope::All);
     assert_eq!((again.records_copied, again.files_copied), (0, 0), "{again:?}");
     b.lib().adopt_move(&Destination::Supabase { project, session }, &check, MoveScope::All).unwrap();
@@ -906,7 +906,7 @@ fn removing_keeps_the_cloud_file_and_deleting_erases_it() {
     let kept = a.import("Carmilla");
     let gone = a.import("Dracula");
     a.sync(&cloud);
-    let has = |book: &str| cloud.0.lock().unwrap().files.keys().any(|p| p.contains(book_id_hex(book)));
+    let has = |book: &str| cloud.0.lock().unwrap().files.keys().any(|p| p.contains(crate::ids::cloud_name(book)));
     assert!(has(&kept) && has(&gone));
 
     a.lib().remove_from_library(&kept).unwrap();
@@ -1107,7 +1107,7 @@ fn deleting_erases_from_both_places() {
     pc.set_options(json!({ "bookFiles": true }));
     let book = pc.import("Gone");
     pc.sync_both(&icloud, &supabase);
-    let has = |cloud: &FakeRemote| cloud.0.lock().unwrap().files.keys().any(|p| p.contains(book_id_hex(&book)));
+    let has = |cloud: &FakeRemote| cloud.0.lock().unwrap().files.keys().any(|p| p.contains(crate::ids::cloud_name(&book)));
     assert!(has(&icloud) && has(&supabase));
     pc.lib().delete_book(&book).unwrap();
     pc.sync_both(&icloud, &supabase);
@@ -1390,7 +1390,7 @@ mod tidying {
     }
 
     fn book_path(id: &str) -> String {
-        format!("books/{}.epub", crate::ids::book_id_hex(id))
+        format!("books/{}.epub", crate::ids::cloud_name(id))
     }
 
     #[test]
@@ -1902,6 +1902,26 @@ fn a_book_is_found_as_another_kind_of_file() {
     let epub = a.lib().book_file(&book).unwrap();
     let other = path.replace(".epub", ".EPUB");
     cloud.clone().upload(&other, &epub).unwrap();
+    if let Err(e) = download_book(&b.library, &mut cloud.clone(), &book) {
+        panic!("{e}");
+    }
+    assert_eq!(b.lib().book(&book).unwrap().unwrap().availability, Availability::Local);
+}
+
+#[test]
+fn a_book_still_named_by_its_whole_hash_is_found() {
+    let a = Device::new();
+    let b = Device::new();
+    let cloud = FakeRemote::default();
+    let book = a.import("Old name");
+    a.sync(&cloud);
+    b.sync(&cloud);
+    let path = b.lib().cloud_book_path(&book).unwrap().unwrap();
+    assert_eq!(path, format!("books/{}.epub", &crate::ids::book_id_hex(&book)[..16]), "named by the start of its hash");
+    // As a device before 0.107 sent it.
+    let epub = a.lib().book_file(&book).unwrap();
+    cloud.clone().remove(&path).unwrap();
+    cloud.clone().upload(&format!("books/{}.epub", crate::ids::book_id_hex(&book)), &epub).unwrap();
     if let Err(e) = download_book(&b.library, &mut cloud.clone(), &book) {
         panic!("{e}");
     }

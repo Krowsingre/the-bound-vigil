@@ -51,6 +51,27 @@ pub fn book_id_hex(id: &str) -> &str {
     id.strip_prefix(BOOK_ID_PREFIX).unwrap_or(id)
 }
 
+/// How many characters of a book's hex its file in the cloud is named by:
+/// `books/<16 characters>.epub`. Plenty to keep any library's books apart,
+/// and short enough to read and to stay inside Windows' path limits.
+pub const CLOUD_NAME_LEN: usize = 16;
+
+/// A book's name in the cloud's books folder (before its format).
+pub fn cloud_name(id: &str) -> &str {
+    book_key(book_id_hex(id))
+}
+
+/// What a book is known by when matching cloud names: the start of its hex.
+/// Files named before 0.107 used the whole hex, and still match.
+pub fn book_key(hex: &str) -> &str {
+    hex.get(..CLOUD_NAME_LEN).unwrap_or(hex)
+}
+
+/// Where a book's file is kept in the cloud.
+pub fn cloud_book_path(id: &str, format: &str) -> String {
+    format!("books/{}.{format}", cloud_name(id))
+}
+
 pub fn new_record_id() -> String {
     uuid::Uuid::now_v7().to_string()
 }

@@ -765,6 +765,9 @@ impl Remote for Cloud {
     fn wake_key(&mut self) -> Result<Option<String>> {
         self.remote().wake_key()
     }
+    fn shorten_book_names(&mut self) -> Result<u32> {
+        self.remote().shorten_book_names()
+    }
 }
 
 /// Opens a folder or WebDAV library and makes sure it's one TBV can use.
@@ -921,6 +924,12 @@ pub trait Remote: Send {
     /// other devices when this one has sent something. None where there isn't one.
     fn wake_key(&mut self) -> Result<Option<String>> {
         Ok(None)
+    }
+    /// Renames book files still under their names from before 0.107 (the
+    /// whole hash) to their short names, where that's cheap and every device
+    /// that synced lately can read short names. How many were renamed.
+    fn shorten_book_names(&mut self) -> Result<u32> {
+        Ok(0)
     }
 }
 
@@ -1914,7 +1923,7 @@ impl Library {
             }
             if wanted_here {
                 if let Some(path) = path {
-                    wanted.push((format!("books/{hex}.{format}"), PathBuf::from(path)));
+                    wanted.push((crate::ids::cloud_book_path(&id, &format), PathBuf::from(path)));
                 }
             }
         }
@@ -2006,7 +2015,7 @@ impl Library {
         let mut out = Vec::new();
         for (book_id, format, cover) in rows {
             let hex = book_id_hex(&book_id);
-            let path = format!("books/{hex}.{format}");
+            let path = crate::ids::cloud_book_path(&book_id, &format);
             let Some(send_book) = state(&path)? else { continue };
             let cover = cover.map(PathBuf::from).map(|c| {
                 let extension = c.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default();
@@ -2045,7 +2054,7 @@ impl Library {
             if !wanted {
                 continue;
             }
-            let path = format!("books/{}.{format}", book_id_hex(&book_id));
+            let path = crate::ids::cloud_book_path(&book_id, &format);
             let done: Option<(Option<String>, Option<String>)> = self.conn.query_row(&sql, params![path], |r| Ok((r.get(0)?, r.get(1)?))).optional()?;
             let due = match done {
                 None => true,
@@ -2129,7 +2138,8 @@ impl Library {
             .optional()?;
         let Some((format, cover)) = found else { return Ok(()) };
         let hex = book_id_hex(book_id);
-        let mut gone = vec![format!("books/{hex}.{format}")];
+        // Under its name from before 0.107 too, in case it hasn't been renamed.
+        let mut gone = vec![crate::ids::cloud_book_path(book_id, &format), format!("books/{hex}.{format}")];
         // The cover's name in the cloud follows the picture's own type.
         match cover.as_deref().and_then(|c| Path::new(c).extension()) {
             Some(extension) => gone.push(format!("covers/{hex}.{}", extension.to_string_lossy())),
@@ -2242,10 +2252,10 @@ impl Library {
     /// A cloud file in words, for the Sync activity page: "Dracula", "The
     /// cover of Dracula", "A collection picture".
     pub fn file_named(&self, path: &str) -> String {
-        let hex = |rest: &str| rest.split('.').next().unwrap_or_default().to_string();
+        let hex = |rest: &str| crate::ids::book_key(rest.split('.').next().unwrap_or_default()).to_string();
         let title = |hex: String| -> Option<String> {
             self.conn
-                .query_row("SELECT title FROM books WHERE id = ?1", params![format!("sha256:{hex}")], |r| r.get(0))
+                .query_row("SELECT title FROM books WHERE substr(id, 1, ?2) = ?1", params![format!("sha256:{hex}"), 7 + hex.len()], |r| r.get(0))
                 .optional()
                 .ok()
                 .flatten()
@@ -2277,7 +2287,7 @@ impl Library {
             .conn
             .query_row("SELECT format FROM books WHERE id = ?1 AND deleted_at IS NULL", params![book_id], |r| r.get(0))
             .optional()?;
-        Ok(format.map(|f| format!("books/{}.{f}", book_id_hex(book_id))))
+        Ok(format.map(|f| crate::ids::cloud_book_path(book_id, &f)))
     }
 
     /// Books added on a phone whose file isn't on this computer yet. Ones
@@ -2702,19 +2712,22 @@ fn fill_folder(lock: Lock, tell: Tell, source: &mut dyn Remote, target: &mut dyn
     if gaps.is_empty() {
         return Ok(());
     }
-    let there: HashSet<String> = target.list("books/")?.into_iter().map(|n| format!("books/{n}")).collect();
+    // Files are matched by book, so ones still under their names from before
+    // 0.107 count too.
+    let keyed = |names: Vec<String>| -> HashSet<String> { names.iter().map(|n| cloud_file_key(n)).collect() };
+    let there = keyed(target.list("books/")?);
     let mut elsewhere: Option<HashSet<String>> = None;
     let mut wanted = Vec::new();
     for gap in gaps {
-        if there.contains(&gap.path) {
+        if there.contains(&cloud_file_key(&gap.path)) {
             lock()?.lane_file_sent(&gap.path, None, lane)?;
             continue;
         }
         // Only listed once something is missing from the folder.
         if elsewhere.is_none() {
-            elsewhere = Some(source.list("books/")?.into_iter().map(|n| format!("books/{n}")).collect());
+            elsewhere = Some(keyed(source.list("books/")?));
         }
-        if elsewhere.as_ref().is_some_and(|e| e.contains(&gap.path)) {
+        if elsewhere.as_ref().is_some_and(|e| e.contains(&cloud_file_key(&gap.path))) {
             wanted.push(gap);
         } else {
             lock()?.lane_file_sent(&gap.path, Some("not in either sync place"), lane)?;
@@ -2858,6 +2871,9 @@ fn push(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, 
     };
     // Only a help to other devices, so a failure here doesn't fail the sync.
     let _ = remote.note_this_device(books, &label);
+    // Book files named before 0.107 get their short names, once it's safe.
+    // Not a reason to fail the sync either: it's tried again next time.
+    let _ = remote.shorten_book_names();
     Ok(())
 }
 
@@ -2880,7 +2896,15 @@ fn collect_from_phone(lock: Lock, tell: Tell, remote: &mut dyn Remote, _: &SyncO
             tell(SyncEvent::File { lane, direction: Direction::Down, path: path.clone(), what: what.clone(), bytes: 0, done, problem })
         };
         file(false, None);
-        let got = fetch(remote, &path, &target);
+        // A phone on a version before 0.107 sends it under the whole hash.
+        let got = match fetch(remote, &path, &target) {
+            Ok(false) => match find_book_file(remote, &path) {
+                Ok(Some(other)) if cloud_file_key(&other) == cloud_file_key(&path) => fetch(remote, &other, &target),
+                Ok(_) => Ok(false),
+                Err(e) => Err(e),
+            },
+            other => other,
+        };
         let kept = match got {
             Ok(true) => {
                 let format = path.rsplit('.').next().unwrap_or("epub").to_string();
@@ -3219,30 +3243,55 @@ pub fn download_book_from(library: &Mutex<Library>, remote: &mut dyn Remote, boo
             .ok_or_else(|| Error::Unsuitable("that book isn't in your library any more".into()))?;
         (path, library.download_target(book_id))
     };
-    let path = if fetch(remote, &path, &target)? {
-        path
+    let found = if fetch(remote, &path, &target)? {
+        path.clone()
     } else {
-        // The same book as another kind of file (another device's copy of it
-        // may be a different format): look for any file named for it.
-        let stem = path.rsplit_once('.').map(|(s, _)| s.trim_start_matches("books/").to_string()).unwrap_or_default();
-        let other = remote
-            .list("books/")?
-            .into_iter()
-            .map(|n| n.trim_start_matches("books/").to_string())
-            .find(|n| n.rsplit_once('.').is_some_and(|(s, ext)| s == stem && !ext.eq_ignore_ascii_case("partial")))
-            .map(|n| format!("books/{n}"));
-        match other {
+        // Under its name from before 0.107, or the same book as another kind
+        // of file (another device's copy of it may be a different format):
+        // look for any file named for it, the same format first.
+        match find_book_file(remote, &path)? {
             Some(other) if other != path && fetch(remote, &other, &target)? => other,
             _ => return Ok(false),
         }
     };
-    let format = path.rsplit('.').next().unwrap_or("epub").to_string();
+    let format = found.rsplit('.').next().unwrap_or("epub").to_string();
     let result = lock()?.adopt_download(book_id, &target, &format);
     let _ = fs::remove_file(&target);
     result?;
     // The cloud has it, so this copy can be removed again later, and it isn't sent back up.
-    lock()?.lane_file_sent(&path, None, lane)?;
+    lock()?.lane_file_sent(&found, None, lane)?;
+    if found != path && found.ends_with(&format!(".{format}")) && cloud_file_key(&found) == cloud_file_key(&path) {
+        lock()?.lane_file_sent(&path, None, lane)?;
+    }
     Ok(true)
+}
+
+/// Which book (and format) a file in the cloud's books folder is, whatever
+/// its name's length: `books/<hex>.epub` and `books/<start of hex>.epub` match.
+pub fn cloud_file_key(name: &str) -> String {
+    let name = name.trim_start_matches("books/");
+    match name.rsplit_once('.') {
+        Some((stem, ext)) => format!("{}.{}", crate::ids::book_key(stem), ext.to_ascii_lowercase()),
+        None => crate::ids::book_key(name).to_string(),
+    }
+}
+
+/// A file in the cloud's books folder for the same book as `path`: under a
+/// name from before 0.107, or in another format. The same format first.
+pub fn find_book_file(remote: &mut dyn Remote, path: &str) -> Result<Option<String>> {
+    let Some((stem, ext)) = path.trim_start_matches("books/").rsplit_once('.') else { return Ok(None) };
+    let key = crate::ids::book_key(stem);
+    let mut found: Vec<String> = remote
+        .list("books/")?
+        .into_iter()
+        .map(|n| n.trim_start_matches("books/").to_string())
+        .filter(|n| {
+            n.rsplit_once('.')
+                .is_some_and(|(s, e)| crate::ids::book_key(s) == key && s.starts_with(key) && !e.eq_ignore_ascii_case("partial"))
+        })
+        .collect();
+    found.sort_by_key(|n| !n.rsplit_once('.').is_some_and(|(_, e)| e.eq_ignore_ascii_case(ext)));
+    Ok(found.into_iter().next().map(|n| format!("books/{n}")))
 }
 
 #[cfg(test)]
