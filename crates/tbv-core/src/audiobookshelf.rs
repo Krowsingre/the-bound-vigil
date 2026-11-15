@@ -652,6 +652,7 @@ fn remote_book_from(id: &str, item: &str, body: &Value, seconds: f64) -> Result<
         narrators: narrators.clone(),
         language: field("language").and_then(Value::as_str).map(str::to_string),
         paired: false,
+        pair_in_step: None,
         phone_wanted: false,
         phone_has: false,
         pinned_at: None,

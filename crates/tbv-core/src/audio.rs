@@ -1312,6 +1312,21 @@ pub(crate) mod tests {
         library.link_ebook(&audio_id, Some(&ebook_id)).unwrap();
         assert_eq!(library.audiobook_for_ebook(&ebook_id).unwrap(), Some(audio_id.clone()));
         assert_eq!(library.audiobook(&audio_id).unwrap().ebook.map(|e| e.name), Some("Persuasion".into()));
+        // Paired badges: no colour until both are started, then green at the same place, yellow apart.
+        assert_eq!(page(ItemKind::Books).books[0].pair_in_step, None);
+        let read_to = |fraction: f64| {
+            let locator = crate::model::ReaderLocator { cfi: Some("epubcfi(/6/2)".into()), total_progression: Some(fraction), ..Default::default() };
+            library.save_position(&ebook_id, &locator).unwrap();
+        };
+        read_to(0.51);
+        assert_eq!(page(ItemKind::Books).books[0].pair_in_step, Some(true));
+        assert_eq!(page(ItemKind::Audiobooks).books[0].pair_in_step, Some(true));
+        read_to(0.7);
+        assert_eq!(page(ItemKind::Audiobooks).books[0].pair_in_step, Some(false));
+        // Both in progress: one book in the In progress compendium, the ebook.
+        library.set_status(&ebook_id, ReadStatus::InProgress).unwrap();
+        let in_progress = library.collection_detail(&crate::model::CollectionRef::Smart { smart: crate::model::SmartKind::InProgress }).unwrap();
+        assert_eq!(in_progress.books.iter().map(|b| b.id.clone()).collect::<Vec<_>>(), vec![ebook_id.clone()]);
         // Paired with both files here, so this device can line them up.
         library.save_read_along_piece(&ebook_id, &audio_id, 0, "[]").unwrap();
         let pairs = library.read_along_pairs().unwrap();

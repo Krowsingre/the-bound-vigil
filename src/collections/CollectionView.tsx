@@ -16,6 +16,7 @@ import { Badge } from "./badges";
 import { CollectionSeries } from "./CollectionSeries";
 import { CollectionPicture } from "./CollectionCards";
 import { bookCount, KIND_LABEL, SMART_INFO } from "./collectionInfo";
+import { saveSort, savedSort, SHOW_OPTIONS, SORT_OPTIONS, viewCompendium, type CompendiumShow, type CompendiumSort } from "./compendiumView";
 import { describeRules } from "./rules";
 
 const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
@@ -47,6 +48,15 @@ export function CollectionView({
   const [ended, setEnded] = useState<"read" | "dropped">("read");
   const toast = useToast();
   const key = JSON.stringify(collection);
+  // Narrowing and ordering what's shown, without changing the compendium.
+  const [words, setWords] = useState("");
+  const [show, setShow] = useState<CompendiumShow>("all");
+  const [sort, setSort] = useState<CompendiumSort>(() => savedSort(key));
+  useEffect(() => {
+    setWords("");
+    setShow("all");
+    setSort(savedSort(key));
+  }, [key]);
 
   useEffect(() => {
     let current = true;
@@ -121,7 +131,9 @@ export function CollectionView({
           : c && KIND_LABEL[c.kind];
   const readSwitch = collection.kind === "smart" && collection.smart === "read";
   const plainHero = narrow && collection.kind === "smart" && !c?.picture && !c?.picturePath;
-  const books = readSwitch ? detail.books.filter((b) => b.status === ended) : detail.books;
+  const books = viewCompendium(readSwitch ? detail.books.filter((b) => b.status === ended) : detail.books, words, readSwitch ? "all" : show, sort);
+  const narrowed = words.trim() !== "" || (!readSwitch && show !== "all");
+  const tools = own?.kind !== "reading_list" && detail.books.length > 1;
   const covers = detail.books.slice(0, 3).map(({ id, title, authors, coverPath }) => ({ id, title, authors, coverPath }));
   const menu: MenuEntry[] = [
     { label: "Download", icon: "download", disabled: !!downloads.progress || !detail.books.some(downloadable), onSelect: () => void downloads.download(async () => detail.books) },
@@ -187,6 +199,30 @@ export function CollectionView({
             onChange={setEnded}
           />
         )}
+        {tools && (
+          <div className="compendium-tools">
+            <label className="search compendium-search">
+              <Icon name="search" size={16} />
+              <input type="search" placeholder={`Search ${name}…`} aria-label={`Search ${name}`} value={words} onChange={(e) => setWords(e.target.value)} />
+            </label>
+            {!readSwitch && (
+              <select aria-label="Show" value={show} onChange={(e) => setShow(e.target.value as CompendiumShow)}>
+                {SHOW_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            )}
+            <select
+              aria-label="Sort"
+              value={sort}
+              onChange={(e) => {
+                const next = e.target.value as CompendiumSort;
+                setSort(next);
+                saveSort(key, next);
+              }}
+            >
+              {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.value === "own" && collection.kind === "series" ? "Series order" : o.label}</option>)}
+            </select>
+          </div>
+        )}
         {own?.kind !== "reading_list" && detail.books.length > 0 && (
           <div className="layout-switch" role="radiogroup" aria-label="Layout">
             {(
@@ -216,7 +252,14 @@ export function CollectionView({
 
       {books.length === 0 && detail.books.length > 0 ? (
         <div className="library-empty">
-          <h2>{ended === "dropped" ? "No dropped books" : "No finished books yet"}</h2>
+          {narrowed ? (
+            <>
+              <h2>No books match</h2>
+              <button type="button" className="btn" onClick={() => (setWords(""), setShow("all"))}>Show every book</button>
+            </>
+          ) : (
+            <h2>{ended === "dropped" ? "No dropped books" : "No finished books yet"}</h2>
+          )}
         </div>
       ) : detail.books.length === 0 ? (
         <div className="library-empty">

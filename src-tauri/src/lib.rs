@@ -2287,6 +2287,7 @@ pub fn run() {
             writing::remove_custom_theme,
             writing::reading_history,
             writing::forget_reading,
+            writing::rate_in_history,
             writing::mark_suggestion,
             get_home,
             owned_titles,

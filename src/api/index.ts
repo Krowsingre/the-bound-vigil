@@ -721,6 +721,8 @@ export interface Api {
   readingHistory(): Promise<ReadingHistoryEntry[]>;
   /** Takes a book off Reading history for good. */
   forgetReading(bookId: string): Promise<void>;
+  /** Rates a book from the reading history: the book itself while it's in the library, else its entry. */
+  rateInHistory(bookId: string, stars: number | null): Promise<void>;
   /** Marks a book from Suggested reading read or dropped, and rates it, in Reading history. Neither takes it off. */
   markSuggestion(key: string, title: string, authors: string[], status: "read" | "dropped" | null, stars: number | null): Promise<void>;
 }
@@ -1445,6 +1447,7 @@ function appApi(): Api {
     duplicateWritingProject: async (id) => (await core).invoke<WritingProjectView>("duplicate_writing_project", { id }),
     readingHistory: async () => (await core).invoke<ReadingHistoryEntry[]>("reading_history"),
     forgetReading: async (bookId) => (await core).invoke("forget_reading", { bookId }),
+    rateInHistory: async (bookId, stars) => (await core).invoke("rate_in_history", { bookId, stars }),
     markSuggestion: async (key, title, authors, status, stars) => (await core).invoke("mark_suggestion", { key, title, authors, status, stars }),
     pickKeyFile: async () => {
       const [picked] = await openFiles({ multiple: false, title: "Choose your private key file", keep: true });

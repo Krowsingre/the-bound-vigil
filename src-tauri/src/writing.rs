@@ -317,6 +317,11 @@ pub async fn forget_reading(state: State<'_, AppLibrary>, book_id: String) -> Co
 }
 
 #[tauri::command]
+pub async fn rate_in_history(state: State<'_, AppLibrary>, book_id: String, stars: Option<f64>) -> CommandResult<()> {
+    with_library(state, move |library| library.rate_in_history(&book_id, stars)).await
+}
+
+#[tauri::command]
 pub async fn mark_suggestion(
     state: State<'_, AppLibrary>,
     key: String,

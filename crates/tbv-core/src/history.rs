@@ -135,6 +135,38 @@ impl Library {
         Ok(rows)
     }
 
+    /// Rates a book from the reading history. A book still in the library
+    /// gets the rating itself; one that has left keeps it in its entry. A
+    /// rating cleared from an entry with nothing else in it takes it off.
+    pub fn rate_in_history(&self, book_id: &str, stars: Option<f64>) -> Result<()> {
+        if stars.is_some_and(|s| !(0.25..=5.0).contains(&s) || (s * 4.0).fract() != 0.0) {
+            return Err(Error::Unsuitable("a rating is a quarter star to 5 stars".into()));
+        }
+        let in_library: bool = self.conn.query_row(
+            "SELECT EXISTS (SELECT 1 FROM books WHERE id = ?1 AND deleted_at IS NULL)",
+            params![book_id],
+            |r| r.get(0),
+        )?;
+        if in_library {
+            return self.set_rating(book_id, stars);
+        }
+        let status: Option<Option<String>> = self
+            .conn
+            .query_row("SELECT status FROM reading_history WHERE book_id = ?1 AND deleted_at IS NULL", params![book_id], |r| r.get(0))
+            .ok();
+        match status {
+            None => Ok(()),
+            Some(None) if stars.is_none() => self.forget_reading(book_id),
+            Some(_) => {
+                self.conn.execute(
+                    "UPDATE reading_history SET stars = ?2, updated_at = ?3 WHERE book_id = ?1 AND deleted_at IS NULL AND stars IS NOT ?2",
+                    params![book_id, stars, now_utc()],
+                )?;
+                Ok(())
+            }
+        }
+    }
+
     /// Takes an entry off for good: its title and authors are wiped too, on
     /// every device. A book still in the library keeps its status and rating.
     pub fn forget_reading(&self, book_id: &str) -> Result<()> {
@@ -171,9 +203,17 @@ mod tests {
         assert!(entry.finished_at.is_some());
         assert!(library.set_rating(&book_id, Some(3.3)).is_err());
 
+        // Rated from the history while the book is here: the book itself.
+        library.rate_in_history(&book_id, Some(4.0)).unwrap();
+        assert_eq!(library.book(&book_id).unwrap().unwrap().rating, Some(4.0));
+
         library.delete_book(&book_id).unwrap();
         let entry = library.reading_history().unwrap().remove(0);
         assert_eq!((entry.title.as_str(), entry.in_library), ("Carmilla", false));
+        // And after it has left: the entry keeps it.
+        library.rate_in_history(&book_id, Some(2.5)).unwrap();
+        assert_eq!(library.reading_history().unwrap()[0].stars, Some(2.5));
+        assert!(library.rate_in_history(&book_id, Some(9.0)).is_err());
 
         library.forget_reading(&book_id).unwrap();
         assert!(library.reading_history().unwrap().is_empty());
@@ -199,6 +239,11 @@ mod tests {
 
         assert!(library.mark_suggestion("x|y", "X", &[], Some("unread"), None).is_err());
         assert!(library.mark_suggestion("x|y", "X", &[], None, Some(4.1)).is_err());
+
+        // Only rated, then the rating cleared: nothing left, so it goes.
+        library.mark_suggestion("x|z", "Z", &[], None, Some(3.0)).unwrap();
+        library.rate_in_history("suggested:x|z", None).unwrap();
+        assert!(library.reading_history().unwrap().iter().all(|e| e.book_id != "suggested:x|z"));
 
         library.mark_suggestion("the dispossessed|ursula k. le guin", "The Dispossessed", &authors, None, None).unwrap();
         assert!(library.reading_history().unwrap().is_empty());
