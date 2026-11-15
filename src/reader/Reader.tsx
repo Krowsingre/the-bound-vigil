@@ -126,8 +126,6 @@ export function Reader({
   const [rightTab, setRightTab] = useState<RightTab>("notes");
   const [leftTab, setLeftTab] = useState<LeftTab>("contents");
   const [contentsRequest, setContentsRequest] = useState(0);
-  // Books open in focus: just the page. On a phone a tap brings the bars back.
-  const [focus, setFocus] = useState(true);
   // Search in the book: a row under the top bar, opened from ••• (or Ctrl+F).
   const [phoneSearch, setPhoneSearch] = useState(false);
   // Aa: the Reading Appearance sheet.
@@ -156,6 +154,9 @@ export function Reader({
   const narrow = compact || narrowViewport;
   // Phones (and a narrow pane): the bars lie over the page and slide away while reading.
   const overlay = narrow;
+  // On a phone books open in focus, just the page, and a tap brings the bars
+  // back. On a computer they open in the normal view; a click goes into focus.
+  const [focus, setFocus] = useState(overlay);
   /** Moves made by the reader's own controls (seeking, jumping) don't hide the bars. */
   const quietUntil = useRef(0);
   const tapTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
