@@ -1549,7 +1549,33 @@ export interface Bookmark {
   id: string;
   title: string;
   url: string;
+  /** The folder's name, for showing. */
   folder?: string | null;
+  folderId?: string | null;
+  createdAt?: string;
+}
+
+/** A folder of bookmarks; folders can hold folders. */
+export interface BookmarkFolder {
+  id: string;
+  name: string;
+  /** The folder it's in; none means the top level. */
+  parentId: string | null;
+  createdAt?: string;
+}
+
+export interface BookmarkPlace {
+  id: string;
+  folder: boolean;
+  parentId: string | null;
+  position: number;
+}
+
+/** What a bookmark change did, so Undo can put it back. */
+export interface BookmarkUndo {
+  places: BookmarkPlace[];
+  removedBookmarks: string[];
+  removedFolders: string[];
 }
 
 /** A favourite website on Discover's start page, on one of the gallery paintings. */

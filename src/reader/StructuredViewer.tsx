@@ -67,7 +67,7 @@ export function StructuredViewer({ content, onClose }: { content: StructuredCont
   return <dialog ref={dialog} className="dialog structured-viewer" aria-label={`Expanded ${content.label}`}
     onCancel={(event) => { event.preventDefault(); onClose(); }}
     onKeyDown={(event) => {
-      if (event.altKey && event.shiftKey && event.key === "ArrowLeft") {
+      if (event.altKey && !event.shiftKey && event.key === "ArrowLeft") {
         event.preventDefault();
         onClose();
       }

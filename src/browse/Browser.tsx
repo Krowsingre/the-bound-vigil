@@ -1250,10 +1250,12 @@ export function Browser({
 
   const toggleMark = async () => {
     if (!url.startsWith("http")) return;
+    // A new one asks which folder (the last one used is picked already).
+    if (!marked) return setPanel("bookmark-page");
     try {
-      if (marked) await api.removeBookmark(marked.id);
-      else await api.addBookmark(titleOf(active.title, url), url);
+      const undo = await api.removeBookmarks([marked.id]);
       await reloadMarks();
+      toast("Bookmark removed.", { label: "Undo", run: () => void api.undoBookmarks(undo).then(reloadMarks) });
     } catch (e) {
       toast(String(e));
     }
@@ -1726,6 +1728,7 @@ export function Browser({
           onGo={(to) => (setPanel(null), go(to))}
           onClose={() => setPanel(null)}
           onChanged={reloadMarks}
+          onOpenAll={(urls) => urls.forEach((to) => openInNewTab(to, true))}
         />
       )}
       {panel === "reading" && <ReadingListPanel onOpenBook={onOpenBook} onClose={() => setPanel(null)} />}

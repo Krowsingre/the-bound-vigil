@@ -2,7 +2,7 @@
 // browser that only works in the app.
 
 import type { Api } from "../api";
-import type { Bookmark, BrowserSession, BrowserEvent, CustomTheme, QuickLink, SanctumLink, WordDefinition, WordSense } from "../api/types";
+import type { Bookmark, BookmarkFolder, BookmarkUndo, BrowserSession, BrowserEvent, CustomTheme, QuickLink, SanctumLink, WordDefinition, WordSense } from "../api/types";
 
 const browserListeners = new Set<(event: BrowserEvent) => void>();
 
@@ -35,6 +35,15 @@ type Calls = Pick<
   | "editBookmark"
   | "moveBookmark"
   | "removeBookmark"
+  | "bookmarkFolders"
+  | "createBookmarkFolder"
+  | "renameBookmarkFolder"
+  | "deleteBookmarkFolder"
+  | "moveBookmarks"
+  | "moveBookmarkFolder"
+  | "sortBookmarkFolder"
+  | "removeBookmarks"
+  | "undoBookmarks"
   | "quickLinks"
   | "addQuickLink"
   | "updateQuickLink"
@@ -138,6 +147,20 @@ const PREVIEW_WORDS: Record<string, WordDefinition[]> = {
 
 export function browseStub(): Calls {
   let marks: Bookmark[] = [];
+  let folders: BookmarkFolder[] = [];
+  const gone = new Set<string>();
+  const live = () => marks.filter((m) => !gone.has(m.id));
+  const name = (id?: string | null) => (id ? folders.find((f) => f.id === id && !gone.has(f.id))?.name ?? null : null);
+  const place = (mark: Bookmark, folderId: string | null) => {
+    marks = [...marks.filter((m) => m !== mark), mark];
+    mark.folderId = folderId;
+  };
+  // Undo here puts the whole list back in its old order (the app only notes what moved).
+  const snapshot = (): BookmarkUndo => ({
+    places: [...marks.map((m, i) => ({ id: m.id, folder: false, parentId: m.folderId ?? null, position: i })), ...folders.map((f, i) => ({ id: f.id, folder: true, parentId: f.parentId, position: i }))],
+    removedBookmarks: [],
+    removedFolders: [],
+  });
   let links: QuickLink[] = [...STARTER_LINKS];
   let sanctum: SanctumLink[] = [...STARTER_SANCTUM_LINKS];
   let themes: CustomTheme[] = [];
@@ -156,30 +179,112 @@ export function browseStub(): Calls {
     downloadWebBook: async () => {
       throw new Error("Books come down from the web in the TBV app.");
     },
-    bookmarks: async () => marks,
-    addBookmark: async (title, url, folder) => {
-      const found = marks.find((m) => m.url === url);
-      if (found) return Object.assign(found, { title: title || url });
-      const made = { id: crypto.randomUUID(), title: title || url, url, folder };
+    bookmarks: async () => marks.filter((m) => !gone.has(m.id)).map((m) => ({ ...m, folder: name(m.folderId) })),
+    bookmarkFolders: async () => folders.filter((f) => !gone.has(f.id)),
+    addBookmark: async (title, url, folderId) => {
+      const found = live().find((m) => m.url === url);
+      if (found) {
+        found.title = title || url;
+        if (folderId) place(found, folderId);
+        return { ...found };
+      }
+      const made: Bookmark = { id: crypto.randomUUID(), title: title || url, url, folderId: folderId ?? null, folder: name(folderId), createdAt: new Date().toISOString() };
       marks = [...marks, made];
       return made;
     },
     renameBookmark: async (id, title) => {
       marks = marks.map((m) => (m.id === id ? { ...m, title } : m));
     },
-    editBookmark: async (id, title, url, folder) => {
-      if (marks.some((m) => m.id !== id && m.url === url)) throw new Error("That address is already bookmarked.");
-      marks = marks.map((m) => (m.id === id ? { ...m, title, url, folder } : m));
+    editBookmark: async (id, title, url, folderId) => {
+      if (live().some((m) => m.id !== id && m.url === url)) throw new Error("That address is already bookmarked.");
+      const mark = marks.find((m) => m.id === id);
+      if (!mark) return;
+      Object.assign(mark, { title, url });
+      if ((mark.folderId ?? null) !== (folderId ?? null)) place(mark, folderId ?? null);
     },
     moveBookmark: async (id, direction) => {
       const index = marks.findIndex((m) => m.id === id);
       if (index < 0) return;
       let next = index + direction;
-      while (marks[next] && (marks[next].folder ?? null) !== (marks[index].folder ?? null)) next += direction;
+      while (marks[next] && ((marks[next].folderId ?? null) !== (marks[index].folderId ?? null) || gone.has(marks[next].id))) next += direction;
       if (marks[next]) [marks[index], marks[next]] = [marks[next], marks[index]];
     },
     removeBookmark: async (id) => {
-      marks = marks.filter((m) => m.id !== id);
+      gone.add(id);
+    },
+    createBookmarkFolder: async (folderName, parentId) => {
+      if (!folderName.trim()) throw new Error("A folder needs a name.");
+      const made = { id: crypto.randomUUID(), name: folderName.trim(), parentId, createdAt: new Date().toISOString() };
+      folders = [...folders, made];
+      return made;
+    },
+    renameBookmarkFolder: async (id, folderName) => {
+      if (!folderName.trim()) throw new Error("A folder needs a name.");
+      folders = folders.map((f) => (f.id === id ? { ...f, name: folderName.trim() } : f));
+    },
+    deleteBookmarkFolder: async (id, keepContents) => {
+      const undo = snapshot();
+      const folder = folders.find((f) => f.id === id);
+      if (!folder) return undo;
+      if (keepContents) {
+        for (const m of live().filter((m) => m.folderId === id)) { marks = [...marks.filter((x) => x !== m), m]; m.folderId = folder.parentId; }
+        for (const f of folders.filter((f) => f.parentId === id)) { folders = [...folders.filter((x) => x !== f), f]; f.parentId = folder.parentId; }
+        gone.add(id);
+        undo.removedFolders = [id];
+      } else {
+        const inside = [id];
+        for (let i = 0; i < inside.length; i++) inside.push(...folders.filter((f) => f.parentId === inside[i] && !gone.has(f.id)).map((f) => f.id));
+        undo.removedFolders = inside;
+        undo.removedBookmarks = live().filter((m) => m.folderId && inside.includes(m.folderId)).map((m) => m.id);
+        [...inside, ...undo.removedBookmarks].forEach((x) => gone.add(x));
+      }
+      return undo;
+    },
+    moveBookmarks: async (ids, folderId, before) => {
+      const undo = snapshot();
+      const moving = marks.filter((m) => ids.includes(m.id));
+      marks = marks.filter((m) => !ids.includes(m.id));
+      const at = before ? marks.findIndex((m) => m.id === before) : -1;
+      moving.forEach((m) => (m.folderId = folderId));
+      marks.splice(at < 0 ? marks.length : at, 0, ...moving);
+      return undo;
+    },
+    moveBookmarkFolder: async (id, parentId, before) => {
+      for (let at: string | null = parentId; at; at = folders.find((f) => f.id === at)?.parentId ?? null) {
+        if (at === id) throw new Error("A folder can't go inside itself.");
+      }
+      const undo = snapshot();
+      const folder = folders.find((f) => f.id === id);
+      if (!folder) return undo;
+      folders = folders.filter((f) => f.id !== id);
+      const at = before ? folders.findIndex((f) => f.id === before) : -1;
+      folder.parentId = parentId;
+      folders.splice(at < 0 ? folders.length : at, 0, folder);
+      return undo;
+    },
+    sortBookmarkFolder: async (folderId, by) => {
+      const undo = snapshot();
+      const key = (a: { title?: string; name?: string; createdAt?: string }) => (by === "name" ? (a.title ?? a.name ?? "").toLowerCase() : "");
+      const order = <T extends { createdAt?: string; title?: string; name?: string }>(list: T[], inside: (x: T) => boolean) => {
+        const picked = list.filter(inside).sort((a, b) => (by === "name" ? key(a).localeCompare(key(b)) : (b.createdAt ?? "").localeCompare(a.createdAt ?? "")));
+        return [...list.filter((x) => !inside(x)), ...picked];
+      };
+      marks = order(marks, (m) => (m.folderId ?? null) === folderId);
+      folders = order(folders, (f) => f.parentId === folderId);
+      return undo;
+    },
+    removeBookmarks: async (ids) => {
+      ids.forEach((id) => gone.add(id));
+      return { places: [], removedBookmarks: ids, removedFolders: [] };
+    },
+    undoBookmarks: async (undo) => {
+      [...undo.removedBookmarks, ...undo.removedFolders].forEach((id) => gone.delete(id));
+      if (undo.places.length) {
+        const where = new Map(undo.places.map((p) => [p.id, p]));
+        const back = <T extends { id: string }>(list: T[]) => [...list].sort((a, b) => (where.get(a.id)?.position ?? 0) - (where.get(b.id)?.position ?? 0));
+        marks = back(marks).map((m) => (where.has(m.id) ? { ...m, folderId: where.get(m.id)!.parentId } : m));
+        folders = back(folders).map((f) => (where.has(f.id) ? { ...f, parentId: where.get(f.id)!.parentId } : f));
+      }
     },
     quickLinks: async () => links,
     addQuickLink: async (title, url, picture) => {
