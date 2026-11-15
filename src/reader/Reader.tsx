@@ -20,7 +20,7 @@ import { openChapter } from "../browse/openChapter";
 import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars";
 import { LeftPanel, RightPanel, type AnnotationHandlers, type LeftTab, type RightTab } from "./ReaderPanels";
 import { navigationDirection } from "../shell/navigationKeys";
-import { DefineCard, ListenAlongPanel, NoteDialog, PageSettings, ReadAloudPlayer, SelectionToolbar, TextSettings, ZoomControls } from "./ReaderPopovers";
+import { DefineCard, ListenAlongPanel, NoteDialog, PageSettings, ReadAloudPlayer, ReadingAppearance, SelectionToolbar, ZoomControls } from "./ReaderPopovers";
 import { addressFor, readBrowserPrefs } from "../browse/browserPrefs";
 import { ReaderSearch } from "./ReaderSearch";
 import { canTranslateInReader, TranslatePanel } from "./TranslatePanel";
@@ -82,6 +82,11 @@ const isTyping = (target: EventTarget | null) => {
   return !!(element?.isContentEditable || element?.matches?.("input, textarea, select"));
 };
 
+/** How long a tap waits to be sure it isn't the first of three. */
+const TAP_WAIT_MS = 300;
+/** After seeking or jumping with the reader's own controls, the bars stay a moment. */
+const QUIET_MS = 1500;
+
 /** The reading screen. It replaces the sidebar and header while a book is open. */
 export function Reader({
   bookId,
@@ -119,9 +124,12 @@ export function Reader({
   const [rightTab, setRightTab] = useState<RightTab>("notes");
   const [leftTab, setLeftTab] = useState<LeftTab>("contents");
   const [contentsRequest, setContentsRequest] = useState(0);
-  const [focus, setFocus] = useState(false);
-  // Phones: the search box is hidden in the top bar and opened from the menu.
+  // Books open in focus: just the page. On a phone a tap brings the bars back.
+  const [focus, setFocus] = useState(true);
+  // Search in the book: a row under the top bar, opened from ••• (or Ctrl+F).
   const [phoneSearch, setPhoneSearch] = useState(false);
+  // Aa: the Reading Appearance sheet.
+  const [lookOpen, setLookOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [jumps, setJumps] = useState<Jump[]>([]);
   const [selection, setSelection] = useState<TextSelection | null>(null);
@@ -140,6 +148,13 @@ export function Reader({
   const prefersDark = useAppDark();
   const narrowViewport = useNarrow();
   const narrow = compact || narrowViewport;
+  // Phones (and a narrow pane): the bars lie over the page and slide away while reading.
+  const overlay = narrow;
+  /** Moves made by the reader's own controls (seeking, jumping) don't hide the bars. */
+  const quietUntil = useRef(0);
+  const tapTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  /** What the tap and page-turn handlers need to know now, set each render. */
+  const now = useRef({ busy: false, overlay, focus, panels: false });
 
   // Load the book, its highlights and the reading settings, then the file.
   useEffect(() => {
@@ -257,9 +272,24 @@ export function Reader({
     colors,
     annotations: drawn,
     events: {
-      onTripleTap: () => toggleAutoScroll.current(),
+      onTripleTap: () => {
+        clearTimeout(tapTimer.current);
+        toggleAutoScroll.current();
+      },
+      // One tap shows or hides the bars (waiting a moment, in case it's three taps).
+      onTap: (pointerType) => {
+        clearTimeout(tapTimer.current);
+        if (pointerType === "mouse" && !now.current.overlay) return;
+        tapTimer.current = setTimeout(() => {
+          if (now.current.busy) return;
+          setFocus((f) => !f);
+        }, TAP_WAIT_MS);
+      },
       onRelocate: (r) => {
         noteReading();
+        // Swiping to the next page, or scrolling, hides the bars.
+        const n = now.current;
+        if (n.overlay && !n.focus && !n.panels && !n.busy && performance.now() > quietUntil.current) setFocus(true);
         const page = pageOf(r.location);
         pending.current = {
           cfi: r.cfi,
@@ -333,6 +363,7 @@ export function Reader({
   }, [r, position]);
   const jumpTo = useCallback(
     (target: string) => {
+      quietUntil.current = performance.now() + QUIET_MS;
       remember();
       setSelection(null);
       setActive(null);
@@ -378,6 +409,7 @@ export function Reader({
     const last = jumps.at(-1);
     if (!last) return;
     setJumps((j) => j.slice(0, -1));
+    quietUntil.current = performance.now() + QUIET_MS;
     void engine.goTo(last.cfi);
   };
 
@@ -595,7 +627,8 @@ export function Reader({
       // Zoom for PDFs and comics, in place of the window's own zoom.
       changeSettings({ pageZoom: key === "0" ? "fit-page" : zoomStep(engine.scale, key === "-" ? -1 : 1) });
     } else if (ctrl && (key === "k" || key === "f")) {
-      if (focus) setFocus(false);
+      setFocus(false);
+      setPhoneSearch(true);
       setTimeout(() => searchInput.current?.focus(), 0);
     } else if (ctrl && key === "b") toggleBookmark();
     else if (e.key === "F11") toggleFullscreen();
@@ -703,34 +736,36 @@ export function Reader({
     );
 
   const menu: MenuEntry[] = [
-    ...(narrow ? [{ label: "Search in this book", icon: "search" as const, onSelect: () => setPhoneSearch(true) }] : []),
-    { label: "Focus mode", icon: "focus", hint: "F", onSelect: () => setFocus(true) },
-    { label: panels.left ? "Hide contents panel" : "Show contents panel", icon: "panelLeft", onSelect: () => pagePanels({ left: !panels.left }) },
+    { label: "Search this book", icon: "search", hint: narrow ? undefined : "Ctrl+F", onSelect: () => (setFocus(false), setPhoneSearch(true)) },
     {
       label: "Book info",
       icon: "info",
       onSelect: () => {
+        setFocus(false);
         setRightTab("info");
         pagePanels({ right: true });
       },
     },
-    "divider",
     info?.book.status === "read"
-      ? { label: "Mark as not finished", onSelect: () => void markStatus("in_progress", "Marked as in progress.") }
-      : { label: "Mark as read", icon: "check", onSelect: () => void markStatus("read", "Marked as read.") },
+      ? { label: "Mark as not finished", icon: "circle", onSelect: () => void markStatus("in_progress", "Marked as in progress.") }
+      : { label: "Mark as read", icon: "checkCircle", onSelect: () => void markStatus("read", "Marked as read.") },
     info?.book.status === "dropped"
-      ? { label: "Not dropped after all", onSelect: () => void markStatus("in_progress", "Marked as in progress.") }
+      ? { label: "Not dropped after all", icon: "circle", onSelect: () => void markStatus("in_progress", "Marked as in progress.") }
       : { label: "Mark as dropped", icon: "close", onSelect: () => void markStatus("dropped", "Marked as dropped.") },
-    "divider",
     ...(openedFile && engine.ready ? [{
-      label: `Save a copy (${formatLabel(openedFile.format)})`,
-      icon: "download" as const,
+      label: "Share (save a copy)",
+      hint: formatLabel(openedFile.format),
+      icon: "share" as const,
       onSelect: () => void api.saveCopies([openedFile.id]).then(
         (done) => done && toast(`Saved a copy to ${done.folder}.`),
         (e: unknown) => toast(`Couldn't save a copy: ${String(e)}`),
       ),
     }] : []),
-    { label: "Close book", icon: "close", onSelect: leave },
+    ...(narrow ? [] : [
+      "divider" as const,
+      { label: focus ? "Leave focus mode" : "Focus mode", icon: "focus" as const, hint: "F", onSelect: () => setFocus((f) => !f) },
+      { label: fullscreen ? "Leave full screen" : "Full screen", icon: (fullscreen ? "exitFullscreen" : "fullscreen") as "fullscreen", hint: "F11", onSelect: toggleFullscreen },
+    ]),
   ];
 
   // About 97% on, the end-of-book panel: rate, mark read, remove the download.
@@ -763,27 +798,35 @@ export function Reader({
   const showLeft = !focus && panels.left && !!info;
   const showRight = !focus && panels.right && !!info;
   const noteCount = annotations.filter((a) => !isBookmark(a)).length;
+  now.current = { busy: !!(selection || active || noteEdit || lookOpen || expandedContent || phoneSearch), overlay, focus, panels: showLeft || showRight };
+  const openContents = () => {
+    setFocus(false);
+    setLeftTab("contents");
+    setContentsRequest((n) => n + 1);
+    pagePanels({ left: true, ...(narrow ? { right: false } : {}) });
+  };
 
   return (
     <div
-      className={`reader theme-${theme}${compact ? " is-compact" : ""}${focus ? " is-focus" : ""}${showLeft ? " has-left" : ""}${showRight ? " has-right" : ""}`}
+      className={`reader theme-${theme}${overlay ? " is-overlay" : ""}${compact ? " is-compact" : ""}${focus ? " is-focus" : ""}${showLeft ? " has-left" : ""}${showRight ? " has-right" : ""}`}
       style={{ ["--page-bg" as string]: colors.background, ["--page-text" as string]: colors.text, ["--page-muted" as string]: colors.muted }}
     >
       <ReaderTopBar
         title={info?.book.title ?? ""}
-        authors={info?.book.authors ?? []}
         focus={focus}
+        overlay={overlay}
         onHome={leave}
-        search={<ReaderSearch ref={searchInput} run={engine.search} clear={engine.clearSearch} onGo={jumpTo} />}
+        contentsOpen={showLeft && leftTab === "contents"}
+        onToggleContents={() => (showLeft && leftTab === "contents" ? pagePanels({ left: false }) : openContents())}
         textSettings={
           engine.fixed ? (
             <Popover label="Page settings" trigger={<Icon name="sliders" size={20} />} className="text-settings-popover">
               <PageSettings settings={settings} scale={engine.scale} onChange={changeSettings} />
             </Popover>
           ) : (
-            <Popover label="Text settings" trigger={<span className="aa">Aa</span>} className="text-settings-popover">
-              <TextSettings settings={settings} onChange={changeSettings} />
-            </Popover>
+            <button type="button" className={`icon-btn${lookOpen ? " is-on" : ""}`} aria-label="Reading appearance" title="Reading appearance" aria-haspopup="dialog" aria-expanded={lookOpen} onClick={() => setLookOpen((o) => !o)}>
+              <span className="aa">Aa</span>
+            </button>
           )
         }
         readAloud={
@@ -819,17 +862,16 @@ export function Reader({
         }
         bookmarked={!!bookmarkHere}
         onToggleBookmark={toggleBookmark}
-        notesOpen={showRight}
+        notesOpen={showRight && rightTab === "notes"}
         noteCount={noteCount}
         onToggleNotes={() => {
+          const open = panels.right && rightTab === "notes" && !focus;
+          if (!open) setFocus(false);
           setRightTab("notes");
-          pagePanels({ right: !(panels.right && rightTab === "notes") });
+          pagePanels({ right: !open });
         }}
         menu={menu}
-        avatar={<SyncMenu {...shell} />}
-        fullscreen={fullscreen}
-        onToggleFullscreen={narrow ? undefined : toggleFullscreen}
-        onExitFocus={() => setFocus(false)}
+        avatar={narrow ? undefined : <SyncMenu {...shell} />}
       />
       <div className="reader-body">
         {showLeft && info && (
@@ -853,7 +895,7 @@ export function Reader({
           />
         )}
         <main className="reader-main">
-          {narrow && phoneSearch && !focus && (
+          {phoneSearch && !(overlay && focus) && (
             <div className="reader-phone-search">
               <ReaderSearch run={engine.search} clear={engine.clearSearch} onGo={jumpTo} autoFocus />
               <button type="button" className="icon-btn" aria-label="Close search" onClick={() => { engine.clearSearch(); setPhoneSearch(false); }}>
@@ -888,19 +930,17 @@ export function Reader({
             position={position}
             fraction={r?.fraction ?? 0}
             chapter={r?.tocItem?.label?.trim() ?? null}
-            onContents={() => {
-              setFocus(false);
-              setLeftTab("contents");
-              setContentsRequest((n) => n + 1);
-              pagePanels({ left: true, ...(narrow ? { right: false } : {}) });
-            }}
+            onContents={openContents}
             onSeek={(f) => {
+              quietUntil.current = performance.now() + QUIET_MS;
               remember();
               void engine.goToFraction(f);
             }}
-            onPrev={() => turn(false)}
-            onNext={() => turn(true)}
+            onPrev={() => ((quietUntil.current = performance.now() + QUIET_MS), turn(false))}
+            onNext={() => ((quietUntil.current = performance.now() + QUIET_MS), turn(true))}
             focus={focus}
+            overlay={overlay}
+            arrows={!scrolling}
             zoom={
               engine.fixed && engine.ready ? (
                 <ZoomControls compact zoom={settings.pageZoom} scale={engine.scale} onChange={(pageZoom) => changeSettings({ pageZoom })} />
@@ -969,6 +1009,7 @@ export function Reader({
           onDismiss={() => setEndDismissed(true)}
         />
       )}
+      {lookOpen && !engine.fixed && <ReadingAppearance settings={settings} onChange={changeSettings} onClose={() => setLookOpen(false)} />}
       {noteEdit && (
         <NoteDialog
           excerpt={noteEdit.a?.excerpt ?? noteEdit.selection?.text ?? ""}
@@ -988,10 +1029,12 @@ export function Reader({
 function ReaderTopBarFallback({ onHome }: { onHome: () => void }) {
   return (
     <header className="reader-top" data-tauri-drag-region>
-      <button type="button" className="icon-btn" aria-label="Back to Sanctum" title="Back to Sanctum" onClick={onHome}>
-        <Icon name="home" size={20} />
-      </button>
-      <span className="reader-top-spacer" data-tauri-drag-region />
+      <div className="reader-top-row" data-tauri-drag-region>
+        <button type="button" className="icon-btn reader-home" aria-label="Back to Sanctum" title="Back to Sanctum" onClick={onHome}>
+          <Icon name="home" size={22} filled />
+        </button>
+        <span className="reader-top-spacer" data-tauri-drag-region />
+      </div>
     </header>
   );
 }

@@ -99,12 +99,23 @@ test("an already-visible current row does not scroll, and resizing can reveal it
 
 test("footer chapter is an accessible Contents action, with a fallback for books without a chapter label", () => {
   const onContents = vi.fn();
-  const props = { position: { page: 59, total: 100 }, fraction: 0.59, onSeek: vi.fn(), onPrev: vi.fn(), onNext: vi.fn(), onContents, focus: false };
+  const props = { position: { page: 59, total: 100 }, fraction: 0.59, onSeek: vi.fn(), onPrev: vi.fn(), onNext: vi.fn(), onContents, focus: false, overlay: false, arrows: true };
   const { rerender } = render(<ReaderBottomBar {...props} chapter="Chapter 59" />);
   fireEvent.click(screen.getByRole("button", { name: "Show contents: Chapter 59" }));
   expect(onContents).toHaveBeenCalledTimes(1);
   expect(props.onSeek).not.toHaveBeenCalled();
+  expect(screen.getByText("Page 59 of 100")).toBeTruthy();
   rerender(<ReaderBottomBar {...props} chapter={null} focus />);
   fireEvent.click(screen.getByRole("button", { name: "Show contents" }));
   expect(onContents).toHaveBeenCalledTimes(2);
+});
+
+test("scrolling books have no page-turn arrows, and on a phone the bar hides while reading", () => {
+  const props = { position: { page: 3, total: 10 }, fraction: 0.3, chapter: "One", onSeek: vi.fn(), onPrev: vi.fn(), onNext: vi.fn(), onContents: vi.fn(), focus: false, overlay: true };
+  const { rerender, container } = render(<ReaderBottomBar {...props} arrows />);
+  expect(screen.queryByRole("button", { name: "Next page" })).toBeTruthy();
+  rerender(<ReaderBottomBar {...props} arrows={false} />);
+  expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
+  rerender(<ReaderBottomBar {...props} arrows={false} focus />);
+  expect(container.querySelector("footer")?.classList.contains("is-hidden")).toBe(true);
 });

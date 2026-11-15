@@ -13,6 +13,8 @@ import type { ReaderSource } from "./formats";
 import { DEFAULT_SETTINGS, highlightHex, readerCss, WIDTHS, type PageColors, type ReaderSettings } from "./settings";
 
 /** Phones and tablets, which select a word by pressing and holding it. */
+/** How long a finger may stay down for it to count as a tap. */
+const TAP_HOLD_MS = 350;
 /** Longest wait between the taps of a triple tap, and how far apart they may land. */
 const TAP_GAP_MS = 400;
 const TAP_SLOP_PX = 30;
@@ -60,6 +62,8 @@ export interface EngineEvents {
   onZoom?: (zoom: number) => void;
   /** Three quick taps (or clicks) in one spot on the page. */
   onTripleTap?: () => void;
+  /** A quick tap (or click) that isn't on a link, with what made it. */
+  onTap?: (pointerType: string) => void;
 }
 
 export interface ReaderEngine {
@@ -322,7 +326,9 @@ export function useReaderEngine({
             const range = selection.getRangeAt(0);
             eventsRef.current.onSelect?.({ cfi: v.getCFI(index, range), text, rect: windowRect(doc, range) });
           };
-          doc.addEventListener("pointerdown", () => {
+          let down: { at: number; x: number; y: number } | null = null;
+          doc.addEventListener("pointerdown", (p) => {
+            down = { at: p.timeStamp, x: p.clientX, y: p.clientY };
             eventsRef.current.onSelect?.(null);
             // The page is in a frame of its own, so a tap on it never reaches the
             // reader's menus. Passed on, it closes whichever is open.
@@ -333,6 +339,10 @@ export function useReaderEngine({
           const taps: { at: number; x: number; y: number }[] = [];
           doc.addEventListener("pointerup", (p) => {
             const tap = { at: p.timeStamp, x: p.clientX, y: p.clientY };
+            // A quick tap, not a press, a drag or a swipe, and not on a link.
+            const quick = down && tap.at - down.at < TAP_HOLD_MS && Math.hypot(tap.x - down.x, tap.y - down.y) <= TAP_SLOP_PX;
+            down = null;
+            if (quick && !(p.target as Element | null)?.closest?.("a[href]")) eventsRef.current.onTap?.(p.pointerType);
             const last = taps[taps.length - 1];
             if (last && (tap.at - last.at > TAP_GAP_MS || Math.hypot(tap.x - last.x, tap.y - last.y) > TAP_SLOP_PX)) taps.length = 0;
             taps.push(tap);

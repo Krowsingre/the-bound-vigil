@@ -757,7 +757,7 @@ export function ShortcutsTab() {
   return (
     <Columns
       side={
-        <Section id="reader" title="While reading" lede="Page keys turn pages when Turn pages is chosen; with Scroll they scroll.">
+        <Section id="reader" title="While reading" lede="Page keys turn pages when Swipe is chosen; with Scroll they scroll.">
           <KeyTable rows={READER} />
         </Section>
       }
@@ -1094,7 +1094,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.109.0");
+  const [version, setVersion] = useState("0.110.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));
