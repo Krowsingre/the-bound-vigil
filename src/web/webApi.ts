@@ -34,7 +34,7 @@ import type {
 } from "../api/types";
 import { matches, usable } from "../collections/rules";
 import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
-import { cleanValue, DETAIL_FIELDS, listOf } from "../lib/details";
+import { cleanValue, DETAIL_FIELDS, listOf, suggestionsFrom } from "../lib/details";
 import { copyName } from "../lib/format";
 import { DESKTOP_ONLY as SENDING_DESKTOP_ONLY } from "../ereaders/ereaders";
 import { cleanTags, notesPageOf } from "../notes/noteQuery";
@@ -1258,6 +1258,7 @@ export async function webApi(): Promise<Api> {
     keepDownload: async () => undefined,
     coverOnView: async () => null,
     allTags: async (): Promise<TagCount[]> => tagCounts(books()),
+    detailSuggestions: async (field) => suggestionsFrom(books(), field),
     addTag: async (bookIds, tag) => {
       const typed = cleanTag(tag);
       if (!typed) throw new Error("Type a tag first.");

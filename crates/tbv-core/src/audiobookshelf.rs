@@ -634,6 +634,7 @@ fn remote_book_from(id: &str, item: &str, body: &Value, seconds: f64) -> Result<
         synopsis: field("description").and_then(Value::as_str).map(str::to_string),
         series,
         series_index: None,
+        series_places: Vec::new(),
         added_at: crate::time::now_utc(),
         last_opened_at: None,
         status: if position_ms > 0 { crate::model::ReadStatus::InProgress } else { crate::model::ReadStatus::Unread },

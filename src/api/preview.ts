@@ -12,7 +12,7 @@ import { previewServers } from "../preview/servers";
 import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
 import { sampleTime } from "../lib/timeSpent";
 import { duplicateGroups } from "../lib/duplicates";
-import { cleanValue, DETAIL_FIELDS, previewFields } from "../lib/details";
+import { cleanValue, DETAIL_FIELDS, previewFields, suggestionsFrom } from "../lib/details";
 import { DESKTOP_ONLY } from "../ereaders/ereaders";
 import { importsViewOf } from "../imports/view";
 import { previewWriting } from "../preview/writing";
@@ -1023,7 +1023,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.113.0", version: "0.113.0", notes: "The Bound Vigil 0.113.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.114.0", version: "0.114.0", notes: "The Bound Vigil 0.114.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
@@ -1067,6 +1067,7 @@ export function previewApi(): Api {
     keepDownload: async () => undefined,
     coverOnView: async () => null,
     allTags: async () => tagCounts(library()),
+    detailSuggestions: async (field) => suggestionsFrom(library(), field),
     addTag: async (bookIds, tag) => {
       const clean = cleanTag(tag);
       if (!clean) throw new Error("Type a tag first.");

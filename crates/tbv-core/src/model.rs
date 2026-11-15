@@ -119,6 +119,11 @@ pub struct BookPreview {
     pub synopsis: Option<String>,
     pub series: Option<String>,
     pub series_index: Option<f64>,
+    /// Its places in every series it's in, main first, when it's in more
+    /// than one or is an omnibus or side story. Empty otherwise: then its
+    /// series and number say it all.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub series_places: Vec<crate::series::SeriesPlace>,
     pub added_at: IsoUtc,
     pub last_opened_at: Option<IsoUtc>,
     pub status: ReadStatus,
@@ -410,6 +415,9 @@ pub struct LibraryPage {
     pub series_counts: std::collections::BTreeMap<BookId, u32>,
     #[serde(default)]
     pub series_published: std::collections::BTreeMap<BookId, u32>,
+    /// Each stack's main author.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub series_authors: std::collections::BTreeMap<BookId, String>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub series_covers: std::collections::BTreeMap<BookId, BookPreview>,
     #[serde(default)]

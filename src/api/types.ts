@@ -60,6 +60,9 @@ export interface BookPreview {
   synopsis: string | null;
   series: string | null;
   seriesIndex: number | null;
+  /** Its places in every series it's in, main first, when it's in more than
+   *  one or is an omnibus or side story. Missing otherwise. */
+  seriesPlaces?: SeriesPlace[];
   addedAt: IsoUtc;
   lastOpenedAt: IsoUtc | null;
   status: ReadStatus;
@@ -547,10 +550,21 @@ export interface ShelfCounts {
   collections: number;
 }
 
+/** A book's place in one series: a number, a range (an omnibus of books 1 to
+ *  3), or no number, as a side story read after book `after`. */
+export interface SeriesPlace {
+  name: string;
+  number?: number | null;
+  end?: number | null;
+  after?: number | null;
+}
+
 export interface LibraryPage {
   books: BookPreview[];
   seriesCounts?: Record<string, number>;
   seriesPublished?: Record<string, number>;
+  /** Each stack's main author. */
+  seriesAuthors?: Record<string, string>;
   seriesCovers?: Record<string, BookPreview>;
   seriesNames?: string[];
   total: number;
@@ -580,7 +594,8 @@ export type DetailFieldName =
   | "published"
   | "language"
   | "isbn"
-  | "narrators";
+  | "narrators"
+  | "series_list";
 
 /** One detail in its layers. Lists (authors, genres) are JSON arrays. */
 export interface DetailField {
@@ -645,6 +660,8 @@ export interface MissingBook extends SeriesEntry {
 export interface OwnedBook {
   book: BookPreview;
   position: number | null;
+  /** Its place in this series: a range or a side story. Older cores leave it out. */
+  place?: SeriesPlace;
 }
 
 /** A book in the library that is probably in the series. */

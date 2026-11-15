@@ -26,6 +26,8 @@ pub const PREVIOUSLY_DELETED: &str = "collection:previously_deleted";
 
 const TITLE: &str = "COALESCE(o_title.value, f_title.value, b.title) COLLATE NOCASE";
 const SERIES: &str = "COALESCE(o_series.value, f_series.value, b.series)";
+const SERIES_INDEX: &str =
+    "COALESCE(CAST(NULLIF(o_series_index.value, '') AS REAL), CAST(NULLIF(f_series_index.value, '') AS REAL), b.series_index)";
 
 /// The books on a built-in shelf, from each book's own flags.
 fn shelf_condition(id: &str) -> Option<(&'static str, &'static str)> {
@@ -104,11 +106,14 @@ impl Library {
                     }
                 }
             },
-            CollectionRef::Series { name } => Members {
-                condition: format!("tbv_fold(trim({SERIES})) = tbv_fold(trim(?1))"),
-                order: format!("b.series_index IS NULL, b.series_index, {TITLE}"),
-                values: vec![Value::Text(name.clone())],
-            },
+            CollectionRef::Series { name } => {
+                let place = crate::series::order_sql("?1");
+                Members {
+                    condition: crate::series::in_series_sql("?1"),
+                    order: format!("{place} IS NULL, {place}, {TITLE}"),
+                    values: vec![Value::Text(name.clone())],
+                }
+            }
             CollectionRef::Smart { smart } => {
                 let (condition, order, values) = match smart {
                     SmartKind::RecentlyAdded => {
@@ -303,48 +308,91 @@ impl Library {
 
     /// Every series, with its first covers and authors, in one pass over the
     /// library: a query per series made the Collections page take minutes
-    /// with tens of thousands of books.
+    /// with tens of thousands of books. A book in several series is in each.
     fn series_summaries(&self) -> Result<Vec<SeriesSummary>> {
         let mut statement = self.conn.prepare(&format!(
             "SELECT {SERIES} AS s, b.id, COALESCE(o_title.value, f_title.value, b.title),
-                    COALESCE(o_authors.value, f_authors.value, b.authors), lf.cover_path,
-                    COALESCE(CAST(NULLIF(o_series_index.value, '') AS REAL), CAST(NULLIF(f_series_index.value, '') AS REAL), b.series_index)
-             {BOOK_FROM} AND {SERIES} IS NOT NULL AND trim({SERIES}) != ''
-             ORDER BY s COLLATE NOCASE, s, b.series_index IS NULL, b.series_index, {TITLE}"
+                    COALESCE(o_authors.value, f_authors.value, b.authors), lf.cover_path, {SERIES_INDEX}, o_series_list.value
+             {BOOK_FROM} AND ((s IS NOT NULL AND trim(s) != '') OR o_series_list.value IS NOT NULL)"
         ))?;
         let rows = statement.query_map([], |r| {
             Ok((
-                r.get::<_, String>(0)?,
+                r.get::<_, Option<String>>(0)?,
                 r.get::<_, String>(1)?,
                 r.get::<_, String>(2)?,
                 r.get::<_, String>(3)?,
                 r.get::<_, Option<String>>(4)?,
                 r.get::<_, Option<f64>>(5)?,
+                r.get::<_, Option<String>>(6)?,
             ))
         })?;
-        let mut out: Vec<SeriesSummary> = Vec::new();
-        // For each series: the numbers and titles here, to tell what's missing.
-        let mut owned: Vec<(Vec<f64>, Vec<String>)> = Vec::new();
+        // One row per book and series it's in.
+        struct Row {
+            name: String,
+            id: String,
+            title: String,
+            authors: Vec<String>,
+            cover_path: Option<String>,
+            place: crate::series::SeriesPlace,
+        }
+        let mut all: Vec<Row> = Vec::new();
         for row in rows {
-            let (name, id, title, authors, cover_path, index) = row?;
+            let (series, id, title, authors, cover_path, index, list) = row?;
             let authors: Vec<String> = serde_json::from_str(&authors).unwrap_or_default();
+            let series = series.filter(|s| !s.trim().is_empty());
+            let mut places = crate::series::places_of(series.as_deref(), index, list.as_deref());
+            if places.is_empty() {
+                let Some(name) = series else { continue };
+                places.push(crate::series::SeriesPlace { name, number: index, end: None, after: None });
+            }
+            for place in places {
+                all.push(Row { name: place.name.clone(), id: id.clone(), title: title.clone(), authors: authors.clone(), cover_path: cover_path.clone(), place });
+            }
+        }
+        let title_order = |t: &str| t.to_lowercase();
+        all.sort_by(|a, b| {
+            a.name.to_lowercase().cmp(&b.name.to_lowercase())
+                .then_with(|| a.name.cmp(&b.name))
+                .then_with(|| match (a.place.order(), b.place.order()) {
+                    (Some(x), Some(y)) => x.total_cmp(&y),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => std::cmp::Ordering::Equal,
+                })
+                .then_with(|| title_order(&a.title).cmp(&title_order(&b.title)))
+        });
+        let mut out: Vec<SeriesSummary> = Vec::new();
+        // For each series: the numbers and titles here, to tell what's missing,
+        // and how many of its books each author wrote.
+        let mut owned: Vec<(Vec<f64>, Vec<String>)> = Vec::new();
+        let mut written: Vec<Vec<(String, u32)>> = Vec::new();
+        for Row { name, id, title, authors, cover_path, place } in all {
             if out.last().is_none_or(|last| last.name != name) {
                 out.push(SeriesSummary { name, count: 0, authors: Vec::new(), covers: Vec::new(), missing: Vec::new() });
                 owned.push(Default::default());
+                written.push(Vec::new());
             }
             let series = out.last_mut().expect("just pushed");
             let (numbers, titles) = owned.last_mut().expect("pushed with it");
-            numbers.extend(index);
+            numbers.extend(place.numbers());
             titles.push(crate::manage::title_key(&title));
             series.count += 1;
             if let Some(first) = authors.first() {
-                if !series.authors.contains(first) {
-                    series.authors.push(first.clone());
+                let counts = written.last_mut().expect("pushed with it");
+                match counts.iter_mut().find(|(a, _)| a == first) {
+                    Some((_, n)) => *n += 1,
+                    None => counts.push((first.clone(), 1)),
                 }
             }
             if series.covers.len() < COVER_STRIP as usize {
                 series.covers.push(CoverRef { id, title, authors, cover_path });
             }
+        }
+        // The series' main author first: who wrote the most of it, and on a
+        // tie whoever wrote the earliest book (the counts are in series order).
+        for (series, mut counts) in out.iter_mut().zip(written) {
+            counts.sort_by_key(|c| std::cmp::Reverse(c.1));
+            series.authors = counts.into_iter().map(|(a, _)| a).collect();
         }
         self.fill_with_missing(&mut out, &owned)?;
         Ok(out)

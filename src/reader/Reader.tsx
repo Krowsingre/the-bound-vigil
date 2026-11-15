@@ -84,7 +84,8 @@ const isTyping = (target: EventTarget | null) => {
 };
 
 /** How long a tap waits to be sure it isn't the first of three. */
-const TAP_WAIT_MS = 300;
+// Long enough for a triple click to be told from one click.
+const TAP_WAIT_MS = 420;
 /** After seeking or jumping with the reader's own controls, the bars stay a moment. */
 const QUIET_MS = 1500;
 
@@ -160,6 +161,13 @@ export function Reader({
   const tapTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   /** What the tap and page-turn handlers need to know now, set each render. */
   const now = useRef({ busy: false, overlay, focus, panels: false });
+  // Focus on a computer is one uninterrupted page: the book scrolls, fading
+  // in at one edge and out at the other, whatever paging is chosen otherwise.
+  const flowing = focus && !overlay;
+  const viewSettings = useMemo<ReaderSettings>(
+    () => (flowing ? { ...settings, flow: "scrolled", pageFlow: "scrolled" } : settings),
+    [flowing, settings],
+  );
 
   // Load the book, its highlights and the reading settings, then the file.
   useEffect(() => {
@@ -273,7 +281,7 @@ export function Reader({
     host,
     file,
     startCfi: usable(info?.book.resumeLocator) ? info!.book.resumeLocator!.cfi! : null,
-    settings,
+    settings: viewSettings,
     colors,
     annotations: drawn,
     events: {
@@ -281,10 +289,10 @@ export function Reader({
         clearTimeout(tapTimer.current);
         toggleAutoScroll.current();
       },
-      // One tap shows or hides the bars (waiting a moment, in case it's three taps).
-      onTap: (pointerType) => {
+      // One tap or click goes in or out of focus (on a phone, hides or shows
+      // the bars), waiting a moment in case it's three.
+      onTap: () => {
         clearTimeout(tapTimer.current);
-        if (pointerType === "mouse" && !now.current.overlay) return;
         tapTimer.current = setTimeout(() => {
           if (now.current.busy) return;
           setFocus((f) => !f);
@@ -622,7 +630,7 @@ export function Reader({
   }, [flush, onClose, fullscreen]);
 
   const [autoScrolling, setAutoScrolling] = useState(false);
-  const scrolling = (engine.fixed ? settings.pageFlow : settings.flow) === "scrolled";
+  const scrolling = (engine.fixed ? viewSettings.pageFlow : viewSettings.flow) === "scrolled";
   const { scrollByPixels } = engine;
   reportPosition.current = () => engine.getView()?.renderer.reportPosition?.();
   toggleAutoScroll.current = () => {
@@ -698,7 +706,7 @@ export function Reader({
     }
     else if (e.key === "ArrowLeft") turn(false);
     else if (e.key === "ArrowRight") turn(true);
-    else if (!e.shiftKey && (engine.fixed || settings.flow === "scrolled") && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+    else if (!e.shiftKey && (engine.fixed || viewSettings.flow === "scrolled") && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       const direction = e.key === "ArrowUp" ? -1 : 1;
       if (engine.fixed && !scrolling) engine.scrollStep(direction);
       else keyboardScroll.press(direction, e.repeat);
@@ -854,7 +862,7 @@ export function Reader({
 
   return (
     <div
-      className={`reader theme-${theme}${overlay ? " is-overlay" : ""}${compact ? " is-compact" : ""}${focus ? " is-focus" : ""}${showLeft ? " has-left" : ""}${showRight ? " has-right" : ""}`}
+      className={`reader theme-${theme}${overlay ? " is-overlay" : ""}${compact ? " is-compact" : ""}${focus ? " is-focus" : ""}${flowing ? " is-flowing" : ""}${showLeft ? " has-left" : ""}${showRight ? " has-right" : ""}`}
       style={{ ["--page-bg" as string]: colors.background, ["--page-text" as string]: colors.text, ["--page-muted" as string]: colors.muted }}
     >
       <ReaderTopBar

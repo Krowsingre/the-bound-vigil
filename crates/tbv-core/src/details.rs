@@ -51,7 +51,7 @@ pub fn download_cover(url: &str) -> Result<Vec<u8>> {
 /// Every detail that can be edited or fetched, in the order the page shows them.
 pub const FIELDS: &[&str] = &[
     "title", "authors", "series", "series_index", "synopsis", "genres", "publisher", "published", "language", "isbn",
-    "narrators",
+    "narrators", "series_list",
 ];
 
 /// Fields held as a JSON list of names.
@@ -111,6 +111,7 @@ type Layer = BTreeMap<String, (Option<String>, Option<String>)>;
 fn label(field: &str) -> &str {
     match field {
         "series_index" => "number in series",
+        "series_list" => "series",
         "isbn" => "ISBN",
         other => other,
     }
@@ -123,6 +124,9 @@ pub(crate) fn clean_value(field: &str, value: &str) -> Result<String> {
         return Err(Error::Unsuitable(format!("TBV doesn't keep a detail called {field}")));
     }
     let collapse = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+    if field == "series_list" {
+        return crate::series::clean_series_list(value);
+    }
     if LISTS.contains(&field) {
         let items: Vec<String> = serde_json::from_str(value)
             .map_err(|_| Error::Unsuitable(format!("the {} should be a list of names", label(field))))?;

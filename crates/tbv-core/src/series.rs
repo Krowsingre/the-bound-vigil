@@ -45,6 +45,152 @@ impl SeriesEntry {
     }
 }
 
+/// One of a book's places in a series: a number, a range of numbers (an
+/// omnibus of books 1 to 3), or no number, as a side story read after book
+/// `after`. A book's first place is its main series, kept as its series and
+/// number so older TBVs still show it; the whole list is kept as the
+/// `series_list` detail.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SeriesPlace {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub number: Option<f64>,
+    /// The last number an omnibus holds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end: Option<f64>,
+    /// A side story: the number it's read after (0: before the first).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<f64>,
+}
+
+impl SeriesPlace {
+    /// Where it sorts in its series: its number, or just after the book it
+    /// follows. None: at the end.
+    pub fn order(&self) -> Option<f64> {
+        self.number.or(self.after.map(|a| a + 0.001))
+    }
+
+    /// Whether it stands for this number of the series.
+    pub fn holds(&self, n: f64) -> bool {
+        match (self.number, self.end) {
+            (Some(start), Some(end)) => n >= start - 1e-6 && n <= end + 1e-6,
+            (Some(start), None) => (start - n).abs() < 1e-6,
+            _ => false,
+        }
+    }
+
+    /// The numbers it stands for, for telling what's missing: each whole
+    /// number of a range, and its own.
+    pub fn numbers(&self) -> Vec<f64> {
+        let Some(start) = self.number else { return Vec::new() };
+        let mut out = vec![start];
+        if let Some(end) = self.end {
+            let mut n = start.floor() + 1.0;
+            while n <= end + 1e-6 && out.len() < 200 {
+                out.push(n);
+                n += 1.0;
+            }
+            if !out.iter().any(|x| (x - end).abs() < 1e-6) {
+                out.push(end);
+            }
+        }
+        out
+    }
+}
+
+fn place_number(v: &Value) -> Option<f64> {
+    number(v).filter(|n| n.is_finite() && *n >= 0.0 && *n < 100_000.0)
+}
+
+/// The `series_list` detail as it's kept, or what's wrong with it.
+pub(crate) fn clean_series_list(value: &str) -> Result<String> {
+    let items: Vec<Value> =
+        serde_json::from_str(value).map_err(|_| Error::Unsuitable("the series should be a list".into()))?;
+    let mut kept: Vec<SeriesPlace> = Vec::new();
+    for item in &items {
+        let name = item["name"].as_str().unwrap_or("").split_whitespace().collect::<Vec<_>>().join(" ");
+        let name: String = name.chars().take(500).collect();
+        if name.is_empty() || kept.iter().any(|k| series_id(&k.name) == series_id(&name)) || kept.len() >= 20 {
+            continue;
+        }
+        let number = place_number(&item["number"]);
+        let end = place_number(&item["end"]).filter(|e| number.is_some_and(|n| *e > n));
+        let after = if number.is_some() { None } else { place_number(&item["after"]) };
+        kept.push(SeriesPlace { name, number, end, after });
+    }
+    Ok(serde_json::to_string(&kept)?)
+}
+
+/// A book's places in its series, main first: its series and number as
+/// shown, with the range or side story the list keeps for it, then the
+/// others the list names. Empty when there's nothing beyond the series and
+/// number themselves.
+pub(crate) fn places_of(series: Option<&str>, index: Option<f64>, list: Option<&str>) -> Vec<SeriesPlace> {
+    let Some(list) = list else { return Vec::new() };
+    let listed: Vec<SeriesPlace> = serde_json::from_str(list).unwrap_or_default();
+    let main = series.map(str::trim).filter(|s| !s.is_empty());
+    let mut out = Vec::new();
+    if let Some(name) = main {
+        let kept = listed.iter().find(|p| series_id(&p.name) == series_id(name));
+        let end = kept.and_then(|p| p.end).filter(|e| index.is_some_and(|n| *e > n));
+        let after = if index.is_some() { None } else { kept.and_then(|p| p.after) };
+        out.push(SeriesPlace { name: name.to_string(), number: index, end, after });
+    }
+    for place in listed {
+        let name = place.name.trim();
+        if name.is_empty() || out.iter().any(|p: &SeriesPlace| series_id(&p.name) == series_id(name)) {
+            continue;
+        }
+        out.push(SeriesPlace { name: name.to_string(), ..place });
+    }
+    if out.len() == 1 && out[0].end.is_none() && out[0].after.is_none() {
+        return Vec::new();
+    }
+    out
+}
+
+const SERIES: &str = "COALESCE(o_series.value, f_series.value, b.series)";
+const SERIES_INDEX: &str =
+    "COALESCE(CAST(NULLIF(o_series_index.value, '') AS REAL), CAST(NULLIF(f_series_index.value, '') AS REAL), b.series_index)";
+/// A book's places in series (see [`SeriesPlace`]), as rows, for queries on `BOOK_FROM`.
+const PLACES: &str = "json_each(CASE WHEN json_valid(o_series_list.value) THEN o_series_list.value ELSE '[]' END)";
+
+fn listed_sql(name: &str) -> String {
+    format!("FROM {PLACES} j WHERE tbv_fold(trim(json_extract(j.value, '$.name'))) = tbv_fold(trim({name}))")
+}
+
+/// SQL for "the book is in the series `name`" (a parameter or a quoted
+/// name): its main series, or one of its other places.
+pub(crate) fn in_series_sql(name: &str) -> String {
+    format!("(tbv_fold(trim({SERIES})) = tbv_fold(trim({name})) OR EXISTS (SELECT 1 {}))", listed_sql(name))
+}
+
+/// SQL for where the book sorts in the series `name`: its number there, or
+/// just after the book a side story follows. NULL: at the end.
+pub(crate) fn order_sql(name: &str) -> String {
+    format!(
+        "COALESCE(CASE WHEN tbv_fold(trim({SERIES})) = tbv_fold(trim({name})) THEN {SERIES_INDEX} END,
+          (SELECT COALESCE(json_extract(j.value, '$.number'), json_extract(j.value, '$.after') + 0.001) {} LIMIT 1))",
+        listed_sql(name)
+    )
+}
+
+/// A name as an SQL string.
+pub(crate) fn quoted(name: &str) -> String {
+    format!("'{}'", name.replace('\'', "''"))
+}
+
+/// A book's place in this series, if it has one.
+pub fn place_in(book: &BookPreview, name: &str) -> Option<SeriesPlace> {
+    let id = series_id(name);
+    if let Some(place) = book.series_places.iter().find(|p| series_id(&p.name) == id) {
+        return Some(place.clone());
+    }
+    let main = book.series.as_deref().filter(|s| series_id(s) == id)?;
+    Some(SeriesPlace { name: main.trim().to_string(), number: book.series_index, end: None, after: None })
+}
+
 /// A book of the series the library doesn't have.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,6 +211,8 @@ pub struct MissingBook {
 pub struct OwnedBook {
     pub book: BookPreview,
     pub position: Option<f64>,
+    /// Its place in this series: a range ("Books 1–3") or a side story.
+    pub place: SeriesPlace,
 }
 
 /// A book in the library that is probably in the series.
@@ -459,11 +607,11 @@ impl Library {
         let id = series_id(name);
         let mut statement = self.conn.prepare(&format!("{BOOK_COLUMNS} {BOOK_FROM}"))?;
         let books = statement.query_map([], book_from_row)?.collect::<std::result::Result<Vec<_>, _>>()?;
-        let (inside, outside): (Vec<BookPreview>, Vec<BookPreview>) =
-            books.into_iter().partition(|b| b.series.as_deref().is_some_and(|s| series_id(s) == id));
+        let (inside, outside): (Vec<BookPreview>, Vec<BookPreview>) = books.into_iter().partition(|b| place_in(b, &id).is_some());
+        let place = |b: &BookPreview| place_in(b, &id).unwrap_or_default();
 
         let Some(saved) = saved else {
-            let owned_books = owned_in_order(&inside, &[]);
+            let owned_books = owned_in_order(&inside, &[], &id);
             return Ok(SeriesReview {
                 name: name.trim().to_string(),
                 checked_at: None,
@@ -485,14 +633,16 @@ impl Library {
         // Each book here stands for one book of the list: first those whose
         // number says which, then those whose title does.
         let mut used: HashSet<&str> = HashSet::new();
+        // An omnibus stands for each book it holds, so it isn't used up by one.
+        let ranged: HashSet<&str> = inside.iter().filter(|b| place(b).end.is_some()).map(|b| b.id.as_str()).collect();
         // Which book of the list each book here is.
         let mut places: Vec<(&str, Option<f64>)> = Vec::new();
         let numbered: Vec<bool> = saved
             .books
             .iter()
             .map(|entry| {
-                let by_number = entry.position.and_then(|p| inside.iter().find(|b| !used.contains(b.id.as_str()) && b.series_index.is_some_and(|i| (i - p).abs() < 1e-6)));
-                by_number.map(|b| used.insert(b.id.as_str())).is_some()
+                let by_number = entry.position.and_then(|p| inside.iter().find(|b| !used.contains(b.id.as_str()) && place(b).holds(p)));
+                by_number.map(|b| ranged.contains(b.id.as_str()) || used.insert(b.id.as_str())).is_some()
             })
             .collect();
         for (entry, numbered) in saved.books.iter().zip(numbered) {
@@ -504,7 +654,7 @@ impl Library {
                 used.insert(book.id.as_str());
                 places.push((book.id.as_str(), entry.position));
                 // In the series already, but without its number.
-                if book.series_index.is_none() && entry.position.is_some() && !denied.contains(book.id.as_str()) && offered.insert(book.id.to_string()) {
+                if place(book).order().is_none() && entry.position.is_some() && !denied.contains(book.id.as_str()) && offered.insert(book.id.to_string()) {
                     matches.push(SeriesMatch { book: book.clone(), position: entry.position, reason: "In the series, but without its number".into() });
                 }
                 continue;
@@ -531,7 +681,7 @@ impl Library {
                 }
             }
         }
-        let owned_books = owned_in_order(&inside, &places);
+        let owned_books = owned_in_order(&inside, &places, &id);
         Ok(SeriesReview {
             name: saved.name.clone(),
             checked_at: saved.checked_at.clone(),
@@ -546,12 +696,13 @@ impl Library {
 
 /// The library's books of a series in order, each with its number: its own,
 /// or the one the list gives its title (`places`).
-fn owned_in_order(inside: &[BookPreview], places: &[(&str, Option<f64>)]) -> Vec<OwnedBook> {
+fn owned_in_order(inside: &[BookPreview], places: &[(&str, Option<f64>)], series: &str) -> Vec<OwnedBook> {
     let mut owned: Vec<OwnedBook> = inside
         .iter()
         .map(|b| {
             let listed = places.iter().find(|(id, _)| *id == b.id.as_str()).and_then(|(_, p)| *p);
-            OwnedBook { book: b.clone(), position: b.series_index.or(listed) }
+            let place = place_in(b, series).unwrap_or_default();
+            OwnedBook { book: b.clone(), position: place.order().or(listed), place }
         })
         .collect();
     owned.sort_by(|a, b| a.position.unwrap_or(f64::MAX).total_cmp(&b.position.unwrap_or(f64::MAX)));
@@ -687,4 +838,76 @@ mod tests {
         assert_eq!(number_text(2.5), "2.5");
         assert_eq!(number_text(3.0), "3");
     }
+
+    fn set(library: &Library, id: &str, changes: &[(&str, Option<&str>)]) {
+        let changes: Vec<DetailChange> = changes.iter().map(|(f, v)| DetailChange { field: (*f).into(), value: v.map(str::to_string) }).collect();
+        library.edit_details(&[id.to_string()], &changes).unwrap();
+    }
+
+    #[test]
+    fn books_in_several_series_ranges_and_side_stories() {
+        let (dir, mut library) = open_temp_library();
+        let one = add(&mut library, dir.path(), "Dawn", Some(("Sovereign", 1)));
+        let omnibus = add(&mut library, dir.path(), "The First Three", Some(("Sovereign", 2)));
+        let turncoat = add(&mut library, dir.path(), "Turncoat", Some(("Turncoat's Truth", 1)));
+        // An omnibus of books 2 to 4.
+        set(&library, &omnibus, &[("series_list", Some(r#"[{"name":"Sovereign","number":2,"end":4}]"#))]);
+        // Its own series, and a side story of Sovereign read after book 1.
+        set(&library, &turncoat, &[("series_list", Some(r#"[{"name":"Turncoat's Truth","number":1},{"name":"Sovereign","after":1}]"#))]);
+
+        let book = library.book(&turncoat).unwrap().unwrap();
+        assert_eq!(book.series.as_deref(), Some("Turncoat's Truth"));
+        assert_eq!(book.series_places.len(), 2);
+        assert_eq!(place_in(&book, "sovereign").unwrap().after, Some(1.0));
+
+        // Sovereign holds all three, the side story after book 1.
+        let detail = library.collection_detail(&crate::model::CollectionRef::Series { name: "Sovereign".into() }).unwrap();
+        let titles: Vec<&str> = detail.books.iter().map(|b| b.title.as_str()).collect();
+        assert_eq!(titles, ["Dawn", "Turncoat", "The First Three"]);
+        let overview = library.collections_overview().unwrap();
+        let sovereign = overview.series.iter().find(|s| s.name == "Sovereign").unwrap();
+        assert_eq!(sovereign.count, 3);
+        assert!(overview.series.iter().any(|s| s.name == "Turncoat's Truth" && s.count == 1));
+
+        // The Archive's series filter finds it too, in that series' order.
+        let page = library
+            .library_page(&crate::model::LibraryQuery { series: vec!["Sovereign".into()], sort: crate::model::SortOrder::Series, ..Default::default() })
+            .unwrap();
+        assert_eq!(page.books.iter().map(|b| b.title.as_str()).collect::<Vec<_>>(), ["Dawn", "Turncoat", "The First Three"]);
+
+        // Books 3 and 4 aren't missing: the omnibus holds them. The side story isn't a gap.
+        library
+            .save_series_found("Sovereign", vec![entry("Dawn", 1.0), entry("Second", 2.0), entry("Third", 3.0), entry("Fourth", 4.0), entry("Fifth", 5.0)])
+            .unwrap();
+        let review = library.series_review("Sovereign").unwrap();
+        assert_eq!(review.missing.iter().map(|m| m.entry.title.as_str()).collect::<Vec<_>>(), ["Fifth"]);
+        assert_eq!(review.owned, 3);
+        let side = review.owned_books.iter().find(|o| o.book.id == turncoat).unwrap();
+        assert_eq!(side.place.after, Some(1.0));
+        let overview = library.collections_overview().unwrap();
+        let sovereign = overview.series.iter().find(|s| s.name == "Sovereign").unwrap();
+        assert!(sovereign.missing.iter().all(|m| m.title == "Fifth"));
+
+        // Suggestions name every series, its other ones too.
+        let names = library.detail_suggestions("series").unwrap();
+        assert_eq!(names, ["Sovereign", "Turncoat's Truth"]);
+        let _ = one;
+    }
+
+    #[test]
+    fn series_lists_are_cleaned() {
+        let kept = clean_series_list(r#"[{"name":" A  B ","number":"2","end":1},{"name":"a b","number":3},{"name":"C","number":1,"after":4},{"name":"D","after":2},{"name":""}]"#).unwrap();
+        let places: Vec<SeriesPlace> = serde_json::from_str(&kept).unwrap();
+        assert_eq!(places.len(), 3);
+        assert_eq!(places[0], SeriesPlace { name: "A B".into(), number: Some(2.0), end: None, after: None });
+        assert_eq!(places[1].after, None, "a numbered book is no side story");
+        assert_eq!(places[2].after, Some(2.0));
+        assert!(clean_series_list("not a list").is_err());
+        // Nothing beyond the series and number needs no list.
+        assert!(places_of(Some("A"), Some(1.0), Some(r#"[{"name":"A","number":1}]"#)).is_empty());
+        let range = SeriesPlace { name: "A".into(), number: Some(1.0), end: Some(3.0), after: None };
+        assert_eq!(range.numbers(), [1.0, 2.0, 3.0]);
+        assert!(range.holds(2.0) && !range.holds(4.0));
+    }
+
 }

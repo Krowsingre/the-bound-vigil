@@ -211,7 +211,7 @@ export function SeriesCard({
         {layout === "grid" ? (
           <CoverStrip covers={series.covers} count={series.count} missing={series.missing} />
         ) : (
-          <span className="collection-card-desc">{series.authors.join(", ")}</span>
+          <span className="collection-card-desc">{series.authors[0] ?? ""}</span>
         )}
       </button>
     </li>

@@ -1253,6 +1253,13 @@
   background: var(--page-bg);
 }
 
+/* On a computer, focus is one uninterrupted page: the text fades in at one
+   edge and out at the other as it scrolls. */
+.reader.is-flowing .reader-host {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%);
+}
+
 /* Read aloud */
 .icon-btn.is-muted {
   opacity: 0.45;

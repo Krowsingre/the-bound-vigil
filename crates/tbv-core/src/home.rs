@@ -57,7 +57,8 @@ pub(crate) const BOOK_COLUMNS: &str = r#"
            COALESCE((SELECT e.total_progression FROM audiobooks ab JOIN books e ON e.id = ab.ebook_id
                       WHERE ab.book_id = b.id AND e.deleted_at IS NULL),
                     (SELECT a.total_progression FROM audiobooks ab JOIN books a ON a.id = ab.book_id
-                      WHERE ab.ebook_id = b.id AND a.deleted_at IS NULL LIMIT 1))
+                      WHERE ab.ebook_id = b.id AND a.deleted_at IS NULL LIMIT 1)),
+           o_series_list.value
 "#;
 
 /// Whether an audiobook has its ebook, or an ebook its audiobook: the same
@@ -98,6 +99,7 @@ pub(crate) const BOOK_FROM: &str = r#"
     LEFT JOIN metadata_overrides o_synopsis ON o_synopsis.book_id = b.id AND o_synopsis.field = 'synopsis'
     LEFT JOIN metadata_overrides o_series ON o_series.book_id = b.id AND o_series.field = 'series'
     LEFT JOIN metadata_overrides o_series_index ON o_series_index.book_id = b.id AND o_series_index.field = 'series_index'
+    LEFT JOIN metadata_overrides o_series_list ON o_series_list.book_id = b.id AND o_series_list.field = 'series_list'
     LEFT JOIN metadata_overrides o_publisher ON o_publisher.book_id = b.id AND o_publisher.field = 'publisher'
     LEFT JOIN metadata_overrides o_language ON o_language.book_id = b.id AND o_language.field = 'language'
     LEFT JOIN metadata_overrides o_genres ON o_genres.book_id = b.id AND o_genres.field = 'genres'
@@ -349,6 +351,9 @@ pub(crate) fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
     let status: String = r.get(7)?;
     let locator: Option<String> = r.get(9)?;
     let local_path: Option<String> = r.get(10)?;
+    let series: Option<String> = r.get::<_, Option<String>>(12)?.filter(|s| !s.trim().is_empty());
+    let series_index: Option<f64> = r.get(13)?;
+    let series_places = crate::series::places_of(series.as_deref(), series_index, r.get::<_, Option<String>>(30)?.as_deref());
     let availability = match &local_path {
         None => Availability::Cloud,
         Some(p) if Path::new(p).exists() => Availability::Local,
@@ -370,8 +375,9 @@ pub(crate) fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
         // Filled in once sync records other devices' positions.
         remote_positions: Vec::new(),
         // An edit that empties the series takes the book out of it.
-        series: r.get::<_, Option<String>>(12)?.filter(|s| !s.trim().is_empty()),
-        series_index: r.get(13)?,
+        series,
+        series_index,
+        series_places,
         favorite: r.get(14)?,
         want_to_read: r.get(15)?,
         rating: r.get(16)?,

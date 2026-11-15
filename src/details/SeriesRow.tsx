@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { api, isHome, isWeb } from "../api";
 import type { MissingBook, OwnedBook, SeriesReview } from "../api/types";
+import { placeWords } from "../lib/details";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
@@ -18,11 +19,14 @@ export function SeriesRow({
   author,
   bookId,
   refreshKey,
+  titled = false,
 }: {
   name: string;
   author: string;
   bookId: string;
   refreshKey: number;
+  /** In several series: each row says which. */
+  titled?: boolean;
 }) {
   const toast = useToast();
   const [review, setReview] = useState<SeriesReview | null>(null);
@@ -58,7 +62,7 @@ export function SeriesRow({
   return (
     <section className="details-section">
       <h2>
-        In this series
+        {titled ? name : "In this series"}
         {review.checkedAt && (
           <span className="details-origin">
             You have {review.owned} of {review.listed}
@@ -79,7 +83,9 @@ export function SeriesRow({
                 <span className="series-strip-title" title={item.owned.book.title}>
                   {item.owned.book.title}
                 </span>
-                <span className="muted">{item.owned.position !== null ? `Book ${item.owned.position}` : "No number"}</span>
+                <span className="muted">
+                  {item.owned.place ? placeWords(item.owned.place) : item.owned.position !== null ? `Book ${item.owned.position}` : "No number"}
+                </span>
               </button>
             </li>
           ) : (

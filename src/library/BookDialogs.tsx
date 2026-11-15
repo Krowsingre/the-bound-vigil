@@ -173,7 +173,11 @@ export function TagsDialog({ books, onClose }: { books: BookPreview[]; onClose: 
             onChange={(e) => setTyped(e.target.value)}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return;
-              if (e.key === "Enter" || e.key === ",") {
+              // Tab finishes the tag from one you already have.
+              if (e.key === "Tab" && !e.shiftKey && q && suggestions.length) {
+                e.preventDefault();
+                add(suggestions[0].name);
+              } else if (e.key === "Enter" || e.key === ",") {
                 e.preventDefault();
                 if (typed.trim()) add(typed);
                 else if (e.key === "Enter") void save();

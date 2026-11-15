@@ -13,7 +13,11 @@ pub(crate) const UP_NEXT_LIMIT: u32 = 15;
 
 const TITLE: &str = "COALESCE(o_title.value, f_title.value, b.title)";
 const AUTHORS: &str = "COALESCE(o_authors.value, f_authors.value, b.authors)";
-type StackDetails = (std::collections::BTreeMap<BookId, BookPreview>, std::collections::BTreeMap<BookId, u32>);
+type StackDetails = (
+    std::collections::BTreeMap<BookId, BookPreview>,
+    std::collections::BTreeMap<BookId, u32>,
+    std::collections::BTreeMap<BookId, String>,
+);
 
 const FIRST_AUTHOR: &str = "json_extract(COALESCE(o_authors.value, f_authors.value, b.authors), '$[0]')";
 const SERIES: &str = "COALESCE(o_series.value, f_series.value, b.series)";
@@ -159,7 +163,11 @@ impl Filters<'_> {
         }
         if !self.series.is_empty() {
             let s = slots(values, self.series.iter().map(|x| x.trim().to_lowercase()).collect());
-            conditions.push(format!("(tbv_fold(trim(COALESCE({SERIES}, ''))) IN ({s}))"));
+            // Its main series, or one of the others it's in.
+            conditions.push(format!(
+                "(tbv_fold(trim(COALESCE({SERIES}, ''))) IN ({s}) OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(o_series_list.value) \
+                  THEN o_series_list.value ELSE '[]' END) j WHERE tbv_fold(trim(json_extract(j.value, '$.name'))) IN ({s})))"
+            ));
         }
         if !self.languages.is_empty() {
             let s = slots(values, self.languages.iter().map(|l| language_code(l).unwrap_or_default()).collect());
@@ -262,7 +270,15 @@ impl Library {
 
         // Pins remain individual cards, and the first matching book in the chosen order represents each stack.
         let pins = if query.pinned_first { "b.pinned_at IS NULL, " } else { "" };
-        let order = format!("{pins}{}, b.id", order_by(query.sort));
+        // One series in series order: each book where it is in that series.
+        let by_series = match (query.sort, query.series.as_slice()) {
+            (SortOrder::Series, [name]) => {
+                let place = crate::series::order_sql(&crate::series::quoted(name));
+                format!("{place} IS NULL, {place}, {}", sort_title())
+            }
+            _ => order_by(query.sort),
+        };
+        let order = format!("{pins}{by_series}, b.id");
         let group = format!(
             "CASE WHEN {}NULLIF(trim({SERIES}), '') IS NOT NULL THEN 'series:' || tbv_fold(trim({SERIES})) ELSE 'book:' || b.id END",
             if query.pinned_first { "b.pinned_at IS NULL AND " } else { "" },
@@ -322,12 +338,13 @@ impl Library {
             rows.collect::<std::result::Result<_, _>>()?
         };
 
-        let (series_covers, series_published) = self.stack_details(query, &books, &mut series_counts)?;
+        let (series_covers, series_published, series_authors) = self.stack_details(query, &books, &mut series_counts)?;
         Ok(LibraryPage {
             books,
             series_counts,
             series_covers,
             series_published,
+            series_authors,
             series_names: if query.omit_facets { Vec::new() } else { self.series_names(query.kind)? },
             total,
             page,
@@ -398,7 +415,42 @@ impl Library {
                 result.insert(id.clone(), book);
             }
         }
-        Ok((result, published))
+        Ok((result, published, self.stack_authors(&names, &kind)?))
+    }
+
+    /// Each stack's main author: who wrote the most books of the series, and
+    /// on a tie whoever wrote the earliest one.
+    fn stack_authors(
+        &self,
+        names: &std::collections::BTreeMap<String, BookId>,
+        kind: &str,
+    ) -> Result<std::collections::BTreeMap<BookId, String>> {
+        let keys = serde_json::to_string(&names.keys().collect::<Vec<_>>()).unwrap_or_else(|_| "[]".into());
+        let series = format!("tbv_fold(trim({SERIES}))");
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT trim({SERIES}), {FIRST_AUTHOR} AS author {BOOK_FROM}{kind}
+               AND {series} IN (SELECT value FROM json_each(?1)) AND author IS NOT NULL AND trim(author) != ''
+             ORDER BY {SERIES_INDEX} IS NULL, {SERIES_INDEX}, b.added_at"
+        ))?;
+        let rows = statement.query_map(params![keys], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        // Per series, each author and their count, in series order.
+        let mut counts: std::collections::BTreeMap<String, Vec<(String, u32)>> = Default::default();
+        for row in rows {
+            let (name, author) = row?;
+            let list = counts.entry(name.to_lowercase()).or_default();
+            match list.iter_mut().find(|(a, _)| *a == author) {
+                Some((_, n)) => *n += 1,
+                None => list.push((author, 1)),
+            }
+        }
+        Ok(names
+            .iter()
+            .filter_map(|(name, id)| {
+                let list = counts.get(name)?;
+                let most = list.iter().map(|(_, n)| *n).max()?;
+                list.iter().find(|(_, n)| *n == most).map(|(a, _)| (id.clone(), a.clone()))
+            })
+            .collect())
     }
 
     fn series_names(&self, kind: Option<ItemKind>) -> Result<Vec<String>> {
@@ -466,6 +518,46 @@ impl Library {
         ))?;
         let rows = statement.query_map([], |r| r.get(0))?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// What the library already has for a detail, one spelling each, A to Z,
+    /// so typing it can be finished from them: series, authors, genres,
+    /// narrators, publishers or languages.
+    pub fn detail_suggestions(&self, field: &str) -> Result<Vec<String>> {
+        let text = |value: &str| -> Result<Vec<String>> {
+            let mut statement = self.conn.prepare(&format!(
+                "SELECT MIN(trim(v)) FROM (SELECT {value} AS v {BOOK_FROM}) WHERE v IS NOT NULL AND trim(v) != ''
+                 GROUP BY tbv_fold(trim(v)) ORDER BY tbv_fold(trim(v))"
+            ))?;
+            let rows = statement.query_map([], |r| r.get(0))?;
+            Ok(rows.collect::<std::result::Result<_, _>>()?)
+        };
+        match field {
+            "series" => {
+                let mut names = text(SERIES)?;
+                // And the series books are in besides their main one.
+                let mut statement = self.conn.prepare(
+                    "SELECT DISTINCT trim(json_extract(j.value, '$.name')) FROM metadata_overrides o, json_each(CASE WHEN json_valid(o.value) THEN o.value ELSE '[]' END) j
+                     JOIN books b ON b.id = o.book_id AND b.deleted_at IS NULL
+                     WHERE o.field = 'series_list'",
+                )?;
+                for name in statement.query_map([], |r| r.get::<_, Option<String>>(0))? {
+                    if let Some(name) = name?.filter(|n| !n.is_empty()) {
+                        if !names.iter().any(|n| n.to_lowercase() == name.to_lowercase()) {
+                            names.push(name);
+                        }
+                    }
+                }
+                names.sort_by_key(|n| n.to_lowercase());
+                Ok(names)
+            }
+            "publisher" => text(crate::home::PUBLISHER),
+            "language" => self.languages_in_library(None),
+            "authors" => self.names_in_library(AUTHORS, None),
+            "genres" => self.names_in_library(GENRES, None),
+            "narrators" => self.names_in_library(NARRATORS, None),
+            other => Err(Error::Unsuitable(format!("TBV doesn't suggest {other}"))),
+        }
     }
 
     /// Every name in a list column (genres, authors, narrators) on books of
