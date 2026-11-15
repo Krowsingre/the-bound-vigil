@@ -54,9 +54,10 @@ pub(crate) const BOOK_COLUMNS: &str = r#"
             OR EXISTS (SELECT 1 FROM audiobooks ab JOIN books a ON a.id = ab.book_id
              WHERE ab.ebook_id = b.id AND a.deleted_at IS NULL)),
            b.phone_wanted, b.phone_has, b.pinned_at, b.audio_type,
-           (SELECT p.total_progression FROM audiobooks ab JOIN books p ON p.deleted_at IS NULL
-             AND ((ab.book_id = b.id AND p.id = ab.ebook_id) OR (ab.ebook_id = b.id AND p.id = ab.book_id))
-             LIMIT 1)
+           COALESCE((SELECT e.total_progression FROM audiobooks ab JOIN books e ON e.id = ab.ebook_id
+                      WHERE ab.book_id = b.id AND e.deleted_at IS NULL),
+                    (SELECT a.total_progression FROM audiobooks ab JOIN books a ON a.id = ab.book_id
+                      WHERE ab.ebook_id = b.id AND a.deleted_at IS NULL LIMIT 1))
 "#;
 
 /// Whether an audiobook has its ebook, or an ebook its audiobook: the same
@@ -538,5 +539,46 @@ mod tests {
         assert_eq!(after.availability, Availability::Local);
         assert!(after.cover_path.is_some());
         assert_eq!(after.cover_path, before.cover_path);
+    }
+}
+
+#[cfg(test)]
+mod speed_check {
+    use crate::library::tests::open_temp_library;
+    use crate::model::LibraryQuery;
+    use rusqlite::params;
+
+    #[test]
+    #[ignore]
+    fn big_library_page_is_quick() {
+        let (_dir, library) = open_temp_library();
+        let tx = library.conn.unchecked_transaction().unwrap();
+        for i in 0..9000 {
+            let format = if i % 10 == 0 { "m4b" } else { "epub" };
+            tx.execute(
+                "INSERT INTO books (id, title, authors, format, file_size, added_at, status, total_progression) VALUES (?1, ?2, '[]', ?3, 1, '2026-01-01T00:00:00Z', 'in_progress', 0.5)",
+                params![format!("sha256:{i:064}"), format!("Book {i}"), format],
+            ).unwrap();
+            if i % 10 == 0 {
+                tx.execute("INSERT INTO audiobooks (book_id, ebook_id, updated_at) VALUES (?1, ?2, 'x')", params![format!("sha256:{i:064}"), format!("sha256:{:064}", i + 1)]).unwrap();
+            }
+        }
+        tx.commit().unwrap();
+        let start = std::time::Instant::now();
+        let page = library.library_page(&LibraryQuery::default()).unwrap();
+        eprintln!("library_page: {} books in {:?}", page.total, start.elapsed());
+        let time = |name: &str, f: &dyn Fn()| {
+            let start = std::time::Instant::now();
+            f();
+            eprintln!("{name}: {:?}", start.elapsed());
+        };
+        time("home", &|| drop(library.home().unwrap()));
+        time("collections_overview", &|| drop(library.collections_overview().unwrap()));
+        time("in progress compendium", &|| {
+            drop(library.collection_detail(&crate::model::CollectionRef::Smart { smart: crate::model::SmartKind::InProgress }).unwrap())
+        });
+        time("audiobooks page", &|| {
+            drop(library.library_page(&LibraryQuery { kind: Some(crate::model::ItemKind::Audiobooks), paired: Some(true), ..Default::default() }).unwrap())
+        });
     }
 }
