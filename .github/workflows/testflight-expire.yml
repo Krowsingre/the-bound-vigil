@@ -1,0 +1,36 @@
+name: Expire old TestFlight builds
+
+# Run by hand from the Actions tab. Apple doesn't let builds be deleted,
+# so this expires them: they can't be installed and leave TestFlight's list.
+on:
+  workflow_dispatch:
+    inputs:
+      prefix:
+        description: "Versions starting with"
+        required: true
+        default: "1."
+      dry_run:
+        description: "Only list them"
+        type: boolean
+        default: false
+
+jobs:
+  expire:
+    name: Expire TestFlight builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Put the App Store Connect key in place
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          mkdir -p ~/private_keys
+          printf '%s\n' "$APPLE_API_KEY_P8" > ~/private_keys/AuthKey_$APPLE_API_KEY_ID.p8
+      - name: Expire them
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          PREFIX: ${{ inputs.prefix }}
+          DRY: ${{ inputs.dry_run }}
+        run: python3 scripts/testflight_expire.py "$PREFIX" $([ "$DRY" = "true" ] && echo --dry-run)
