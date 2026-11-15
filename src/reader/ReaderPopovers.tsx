@@ -169,7 +169,7 @@ export function TextSettings({ settings, onChange }: { settings: ReaderSettings;
         label="Moving through the book"
         value={settings.flow}
         options={[
-          { value: "paginated", label: "Turn pages" },
+          { value: "paginated", label: "Swipe" },
           { value: "scrolled", label: "Scroll" },
         ]}
         onChange={(flow) => onChange({ flow })}
@@ -191,6 +191,156 @@ export function TextSettings({ settings, onChange }: { settings: ReaderSettings;
         <input type="checkbox" checked={settings.justify} onChange={(e) => onChange({ justify: e.target.checked })} />
         Justify text (even right edge)
       </label>
+    </div>
+  );
+}
+
+const FONT_FACE: Record<string, string | undefined> = {
+  lora: '"Lora", serif',
+  georgia: "var(--font-serif)",
+  sans: "var(--font-sans)",
+  echolume: '"Echolume", sans-serif',
+};
+
+/** One row of choices drawn as cards (typeface, page width) or a two-way switch (reading mode). */
+function Cards<T extends string>({ label, value, options, onChange, className = "" }: {
+  label: string;
+  value: T;
+  options: { value: T; label: string; face?: React.ReactNode; style?: React.CSSProperties }[];
+  onChange: (value: T) => void;
+  className?: string;
+}) {
+  return (
+    <fieldset className="look-section">
+      <legend>{label}</legend>
+      <div className={`look-cards ${className}`} role="radiogroup" aria-label={label}>
+        {options.map((o) => (
+          <button key={o.value} type="button" role="radio" aria-checked={value === o.value} className={value === o.value ? "is-active" : undefined} onClick={() => onChange(o.value)}>
+            {o.face && <span className="look-face" style={o.style} aria-hidden>{o.face}</span>}
+            <span className="look-card-label">{o.label}</span>
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function Slider({ label, value, min, max, step, shown, low, high, onChange }: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  shown: string;
+  low: React.ReactNode;
+  high: React.ReactNode;
+  onChange: (value: number) => void;
+}) {
+  const fill = ((value - min) / (max - min)) * 100;
+  return (
+    <fieldset className="look-section">
+      <legend>{label}</legend>
+      <div className="look-slider">
+        <span className="look-end" aria-hidden>{low}</span>
+        <span className="look-track">
+          <output className="look-value" style={{ left: `${fill}%` }}>{shown}</output>
+          <input type="range" min={min} max={max} step={step} value={value} aria-label={label} aria-valuetext={shown}
+            style={{ ["--fill" as string]: `${fill}%` }} onChange={(e) => onChange(Number(e.target.value))} />
+        </span>
+        <span className="look-end" aria-hidden>{high}</span>
+      </div>
+    </fieldset>
+  );
+}
+
+const widthLines = (n: number) => <span className={`look-lines look-lines-${n}`}><i /><i /><i /><i /></span>;
+
+/**
+ * Aa: Reading Appearance, a sheet from the bottom. Typeface, text size,
+ * line spacing, page width, swipe or scroll, page colour and justified text.
+ */
+export function ReadingAppearance({ settings, onChange, onClose }: { settings: ReaderSettings; onChange: (s: Partial<ReaderSettings>) => void; onClose: () => void }) {
+  const sheet = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    sheet.current?.focus();
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [onClose]);
+  return (
+    <div className="look-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div ref={sheet} className="look-sheet" role="dialog" aria-label="Reading appearance" tabIndex={-1}>
+        <span className="look-handle" aria-hidden />
+        <header className="look-head">
+          <span className="look-head-aa" aria-hidden>Aa</span>
+          <h2>Reading Appearance</h2>
+          <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
+            <Icon name="close" size={20} />
+          </button>
+        </header>
+        <Cards
+          label="Typeface"
+          className="look-fonts"
+          value={settings.font}
+          options={FONTS.map((f) => ({ ...f, face: "Aa", style: { fontFamily: FONT_FACE[f.value] } }))}
+          onChange={(font) => onChange({ font })}
+        />
+        <Slider label="Text size" value={settings.size} min={SIZE_RANGE.min} max={SIZE_RANGE.max} step={SIZE_RANGE.step} shown={String(settings.size)}
+          low={<span className="size-a size-a-small">A</span>} high={<span className="size-a size-a-large">A</span>} onChange={(size) => onChange({ size })} />
+        <Slider label="Line spacing" value={settings.lineHeight} min={LINE_HEIGHT_RANGE.min} max={LINE_HEIGHT_RANGE.max} step={LINE_HEIGHT_RANGE.step}
+          shown={settings.lineHeight.toFixed(1)} low={<Icon name="menu" size={18} />} high={<Icon name="menu" size={24} />}
+          onChange={(v) => onChange({ lineHeight: Math.round(v * 10) / 10 })} />
+        <Cards<ReadingWidth>
+          label="Page width"
+          className="look-widths"
+          value={settings.width}
+          options={[
+            { value: "narrow", label: "Narrow", face: widthLines(1) },
+            { value: "medium", label: "Medium", face: widthLines(2) },
+            { value: "wide", label: "Wide", face: widthLines(3) },
+          ]}
+          onChange={(width) => onChange({ width })}
+        />
+        <Cards<ReadingFlow>
+          label="Reading mode"
+          className="look-mode"
+          value={settings.flow}
+          options={[
+            { value: "paginated", label: "Swipe", face: <Icon name="bookOpen" size={20} /> },
+            { value: "scrolled", label: "Scroll", face: <Icon name="file" size={20} /> },
+          ]}
+          onChange={(flow) => onChange({ flow })}
+        />
+        {settings.flow === "paginated" ? (
+          <Choice<TextSpread>
+            label="Pages at a time"
+            value={settings.textSpread}
+            options={[
+              { value: "one", label: "One" },
+              { value: "auto", label: "Two when there's room" },
+            ]}
+            onChange={(textSpread) => onChange({ textSpread })}
+          />
+        ) : <ScrollSpeeds settings={settings} onChange={onChange} />}
+        <fieldset className="look-section">
+          <legend>Page colour</legend>
+          <div className="look-colours" role="radiogroup" aria-label="Page colour">
+            {THEME_OPTIONS.map((o) => (
+              <button key={o.value} type="button" role="radio" aria-checked={settings.theme === o.value} className={settings.theme === o.value ? "is-active" : undefined}
+                onClick={() => onChange({ theme: o.value })}>
+                <span className={`look-swatch look-swatch-${o.value}`} style={o.value === "auto" ? undefined : { background: o.style?.background }} aria-hidden />
+                <span>{o.label}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        <div className="look-section look-justify">
+          <span id="look-justify">Justify text</span>
+          <button type="button" role="switch" className="switch" aria-labelledby="look-justify" aria-checked={settings.justify} onClick={() => onChange({ justify: !settings.justify })}>
+            <span className="switch-knob" aria-hidden />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -291,7 +441,7 @@ export function PageSettings({
         label="Moving through the book"
         value={settings.pageFlow}
         options={[
-          { value: "paginated", label: "Turn pages" },
+          { value: "paginated", label: "Swipe" },
           { value: "scrolled", label: "Scroll" },
         ]}
         onChange={(pageFlow) => onChange({ pageFlow })}

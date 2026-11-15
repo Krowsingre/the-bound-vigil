@@ -310,53 +310,14 @@
     background: rgb(18 20 22 / 0.35);
   }
 
-  .reader-top {
+  .reader-top-row {
     gap: 2px;
-    padding: 0 4px;
+    padding: 0 6px;
   }
 
-  .reader-top-app,
-  .reader-top-author,
   .reader-top-rule,
-  .reader-top .reader-search,
   .reader-top .sync-circle {
     display: none;
-  }
-
-  .reader-top-title strong {
-    font-size: 15px;
-  }
-
-  .reader-bottom {
-    grid-template-columns: auto minmax(48px, 1fr) auto minmax(0, max-content) auto;
-    gap: 8px;
-    margin-inline: 10px;
-  }
-
-  .reader-bottom-focus {
-    grid-template-columns: auto minmax(48px, 1fr) auto minmax(0, max-content);
-  }
-
-  .reader-bottom-chapter {
-    max-width: 26vw;
-    min-height: 44px;
-  }
-
-  /* PDFs and comics keep zoom and page turns together; Contents stays reachable. */
-  .reader-bottom.has-zoom {
-    grid-template-columns: auto minmax(48px, 1fr) auto auto;
-    height: auto;
-    row-gap: 0;
-  }
-
-  .reader-bottom.has-zoom .reader-bottom-percent {
-    display: none;
-  }
-
-  .reader-bottom.has-zoom .reader-bottom-chapter {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    max-width: 100%;
   }
 
   .reader-bottom .zoom-controls.is-compact .zoom-value {
@@ -366,11 +327,11 @@
 
   .reader-top .popover {
     position: fixed;
-    top: calc(var(--header-h) + 4px);
+    top: calc(var(--header-h) + 34px);
     left: 8px;
     right: 8px;
     width: auto;
-    max-height: calc(100% - var(--header-h) - 16px);
+    max-height: calc(100% - var(--header-h) - 46px);
     overflow-y: auto;
   }
 }
