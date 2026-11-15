@@ -30,6 +30,7 @@ test("totals add every day, and the week runs Monday to Sunday", () => {
 test("activity counts from the start of the chosen period", () => {
   // Wednesday 21 October 2026.
   const today = new Date(2026, 9, 21, 15);
+  expect(periodStart("today", today)).toBe("2026-10-21");
   expect(periodStart("week", today)).toBe("2026-10-19");
   expect(periodStart("month", today)).toBe("2026-10-01");
   expect(periodStart("year", today)).toBe("2026-01-01");

@@ -9,7 +9,7 @@ import { Icon } from "./Icon";
 // Muted cloth tones for books that ship without cover art.
 const CLOTH = ["#2f3a44", "#3d3a33", "#33403a", "#41323a", "#2e3540", "#463c2e"];
 
-type CoverBook = Pick<BookPreview, "id" | "title" | "authors" | "coverPath"> & Partial<Pick<BookPreview, "availability" | "format" | "paired">>;
+type CoverBook = Pick<BookPreview, "id" | "title" | "authors" | "coverPath"> & Partial<Pick<BookPreview, "availability" | "format" | "paired" | "pairInStep">>;
 
 export function BookCover({ book, size = "m", onExpand, seriesCount, seriesPublished }: { book: CoverBook; size?: "s" | "m" | "l"; onExpand?: (url: string) => void; seriesCount?: number; seriesPublished?: number }) {
   const [failed, setFailed] = useState(false);
@@ -38,8 +38,11 @@ export function BookCover({ book, size = "m", onExpand, seriesCount, seriesPubli
       {src && onExpand && <button type="button" className="cover-expand" aria-label={"Expand cover for " + book.title} onClick={() => onExpand(src)} />}
       {book.paired && book.format && (
         <span
-          className="cover-pair"
-          title={isAudio(book.format) ? "Its ebook is in your library" : "Its audiobook is in your library"}
+          className={`cover-pair${book.pairInStep === true ? " is-in-step" : book.pairInStep === false ? " is-apart" : ""}`}
+          title={
+            (isAudio(book.format) ? "Its ebook is in your library" : "Its audiobook is in your library") +
+            (book.pairInStep === true ? ". Both are at the same place." : book.pairInStep === false ? ". They're at different places." : "")
+          }
         >
           <Icon name={isAudio(book.format) ? "library" : "headphones"} size={12} label={isAudio(book.format) ? "Has its ebook" : "Has its audiobook"} />
         </span>

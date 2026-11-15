@@ -120,8 +120,10 @@ impl Library {
                         "b.last_opened_at IS NULL, b.last_opened_at DESC",
                         vec![],
                     ),
+                    // An ebook and its audiobook both in progress show as one book: the ebook.
                     SmartKind::InProgress => (
-                        "b.status = 'in_progress'",
+                        "b.status = 'in_progress' AND NOT EXISTS (SELECT 1 FROM audiobooks ab JOIN books e ON e.id = ab.ebook_id
+                          WHERE ab.book_id = b.id AND e.deleted_at IS NULL AND e.status = 'in_progress')",
                         "b.last_opened_at IS NULL, b.last_opened_at DESC",
                         vec![],
                     ),

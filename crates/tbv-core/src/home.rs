@@ -53,7 +53,10 @@ pub(crate) const BOOK_COLUMNS: &str = r#"
              WHERE ab.book_id = b.id AND e.deleted_at IS NULL)
             OR EXISTS (SELECT 1 FROM audiobooks ab JOIN books a ON a.id = ab.book_id
              WHERE ab.ebook_id = b.id AND a.deleted_at IS NULL)),
-           b.phone_wanted, b.phone_has, b.pinned_at, b.audio_type
+           b.phone_wanted, b.phone_has, b.pinned_at, b.audio_type,
+           (SELECT p.total_progression FROM audiobooks ab JOIN books p ON p.deleted_at IS NULL
+             AND ((ab.book_id = b.id AND p.id = ab.ebook_id) OR (ab.ebook_id = b.id AND p.id = ab.book_id))
+             LIMIT 1)
 "#;
 
 /// Whether an audiobook has its ebook, or an ebook its audiobook: the same
@@ -326,6 +329,20 @@ impl Library {
     }
 }
 
+/// How far apart an ebook and its audiobook can be and still count as at
+/// the same place: about a chapter's worth of a long book. Their places are
+/// measured differently (text against time), so they rarely match exactly.
+pub(crate) const PAIR_IN_STEP: f64 = 0.02;
+
+/// For a paired book both sides of which have been started: whether the
+/// ebook and the audiobook are at the same place.
+fn pair_in_step(own: Option<f64>, partner: Option<f64>) -> Option<bool> {
+    match (own, partner) {
+        (Some(a), Some(b)) if a > 0.0 && b > 0.0 => Some((a - b).abs() <= PAIR_IN_STEP),
+        _ => None,
+    }
+}
+
 pub(crate) fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
     let authors: String = r.get(2)?;
     let status: String = r.get(7)?;
@@ -378,6 +395,7 @@ pub(crate) fn book_from_row(r: &Row) -> rusqlite::Result<BookPreview> {
         phone_has: r.get(26)?,
         pinned_at: r.get(27)?,
         audio_type: r.get(28)?,
+        pair_in_step: pair_in_step(r.get(8)?, r.get(29)?),
     })
 }
 

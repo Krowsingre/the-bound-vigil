@@ -59,6 +59,7 @@ type Calls = Pick<
   | "duplicateWritingProject"
   | "readingHistory"
   | "forgetReading"
+  | "rateInHistory"
   | "markSuggestion"
 >;
 
@@ -274,6 +275,9 @@ export function previewWriting(): Calls & { readDraftFile: (id: string) => Blob 
     readingHistory: async () => history,
     forgetReading: async (bookId) => {
       history = history.filter((h) => h.bookId !== bookId);
+    },
+    rateInHistory: async (bookId, stars) => {
+      history = history.flatMap((h) => (h.bookId !== bookId ? [h] : !h.status && stars == null ? [] : [{ ...h, stars }]));
     },
     markSuggestion: async (key, title, authors, status, stars) => {
       const bookId = `suggested:${key}`;

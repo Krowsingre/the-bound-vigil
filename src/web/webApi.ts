@@ -582,6 +582,9 @@ export async function webApi(): Promise<Api> {
     forgetReading: async () => {
       throw new Error(DESKTOP_ONLY);
     },
+    rateInHistory: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
     markSuggestion: async () => {
       throw new Error(DESKTOP_ONLY);
     },

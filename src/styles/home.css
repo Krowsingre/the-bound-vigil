@@ -617,6 +617,17 @@
   color: var(--ash-pale);
 }
 
+/* Green: the ebook and the audiobook are at the same place. Yellow: they aren't. */
+.cover-pair.is-in-step {
+  background: #3f8a46;
+  color: #fff;
+}
+
+.cover-pair.is-apart {
+  background: #e0b12e;
+  color: #1a1c1e;
+}
+
 .cover-s .cover-pair {
   top: 2px;
   right: 2px;

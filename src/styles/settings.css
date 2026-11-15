@@ -1702,6 +1702,10 @@ kbd {
   border-top: 1px solid var(--border);
 }
 
+.history-stars {
+  flex: none;
+}
+
 .history-row:first-child {
   border-top: 0;
 }

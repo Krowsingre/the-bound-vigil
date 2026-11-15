@@ -89,6 +89,8 @@ export interface BookPreview {
   narrators?: string[];
   /** An ebook linked to an audiobook in the library, or an audiobook linked to an ebook. */
   paired?: boolean;
+  /** A paired book with both sides started: true when the ebook and the audiobook are at the same place, false when they aren't. */
+  pairInStep?: boolean | null;
   /** Chosen to go to the phone (when only chosen books do), or asked for from the phone. */
   phoneWanted?: boolean;
   /** Downloaded on a phone, so tidying Supabase keeps it. */

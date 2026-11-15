@@ -39,9 +39,10 @@ export interface TimeTotals {
   days: TimeSpent[];
 }
 
-export type Period = "week" | "month" | "year" | "all";
+export type Period = "today" | "week" | "month" | "year" | "all";
 
 export const PERIODS: { value: Period; label: string }[] = [
+  { value: "today", label: "Today" },
   { value: "week", label: "This week" },
   { value: "month", label: "This month" },
   { value: "year", label: "This year" },
@@ -51,6 +52,7 @@ export const PERIODS: { value: Period; label: string }[] = [
 /** The first day of the period (`YYYY-MM-DD`, weeks starting Monday), or null for all time. */
 export function periodStart(period: Period, today = new Date()): string | null {
   const [y, m, d] = [today.getFullYear(), today.getMonth(), today.getDate()];
+  if (period === "today") return dayOf(today);
   if (period === "week") return dayOf(new Date(y, m, d - ((today.getDay() + 6) % 7)));
   if (period === "month") return dayOf(new Date(y, m, 1));
   if (period === "year") return dayOf(new Date(y, 0, 1));

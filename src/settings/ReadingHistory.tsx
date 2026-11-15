@@ -6,7 +6,7 @@ import { api } from "../api";
 import type { ReadingHistoryEntry } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
-import { Stars } from "../components/StarRating";
+import { StarRating } from "../components/StarRating";
 import { useToast } from "../components/Toast";
 import { authorLine } from "../lib/format";
 import { Section } from "./controls";
@@ -34,6 +34,19 @@ export function ReadingHistorySection() {
   const words = search.trim().toLowerCase();
   const found = (entries ?? []).filter((e) => !words || `${e.title} ${e.authors.join(" ")}`.toLowerCase().includes(words));
   const shown = all || words ? found : found.slice(0, FIRST);
+
+  const rate = async (entry: ReadingHistoryEntry, stars: number | null) => {
+    const before = entries;
+    // Cleared on a book that was only rated: nothing is left to keep.
+    const goes = !entry.status && stars === null;
+    setEntries((list) => (list ?? []).flatMap((e) => (e.bookId !== entry.bookId ? [e] : goes ? [] : [{ ...e, stars }])));
+    try {
+      await api.rateInHistory(entry.bookId, stars);
+    } catch (e) {
+      setEntries(before);
+      toast(`That didn't work: ${String(e)}`);
+    }
+  };
 
   const forget = async (entry: ReadingHistoryEntry) => {
     setForgetting(null);
@@ -80,7 +93,9 @@ export function ReadingHistorySection() {
                       .join(" · ")}
                   </span>
                 </span>
-                <Stars value={e.stars} size={13} />
+                <span className="history-stars">
+                  <StarRating value={e.stars} size={16} onChange={(stars) => void rate(e, stars)} />
+                </span>
                 <button
                   type="button"
                   className="icon-btn icon-btn-s"

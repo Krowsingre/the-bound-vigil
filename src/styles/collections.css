@@ -668,6 +668,38 @@
   font-size: 13px;
 }
 
+/* Searching and sorting inside a compendium */
+.compendium-tools {
+  display: flex;
+  flex: 1 1 420px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.collection-view-tools:has(.compendium-tools) {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.compendium-search {
+  flex: 1 1 220px;
+  max-width: 360px;
+}
+
+.compendium-tools select {
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
 /* Reading lists */
 .reading-list {
   display: flex;
