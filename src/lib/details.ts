@@ -148,10 +148,63 @@ export function placesOf(book: Pick<BookPreview, "series" | "seriesIndex" | "ser
   return book.series?.trim() ? [{ name: book.series.trim(), number: book.seriesIndex }] : [];
 }
 
-/** Its place in one series, if it's in it. */
-export function placeIn(book: Pick<BookPreview, "series" | "seriesIndex" | "seriesPlaces">, name: string): SeriesPlace | null {
+const nearly = (a: number | null | undefined, b: number | null | undefined) => (a == null ? b == null : b != null && Math.abs(a - b) < 1e-6);
+
+/** The same series and the same place in it (same_as in series.rs). */
+export const samePlace = (a: SeriesPlace, b: SeriesPlace) =>
+  a.name.trim().toLowerCase() === b.name.trim().toLowerCase() && nearly(a.number, b.number) && nearly(a.end, b.end) && nearly(a.after, b.after);
+
+/** Where a place sorts in its series: its number, or just after the book it follows. */
+export const placeOrder = (p: SeriesPlace): number | null => p.number ?? (p.after != null ? p.after + 0.001 : null);
+
+/** Its places in one series: usually one, several for a collection of books
+ *  that aren't one after another in it (10, 12 and 14). Earliest first. */
+export function placesIn(book: Pick<BookPreview, "series" | "seriesIndex" | "seriesPlaces">, name: string): SeriesPlace[] {
   const key = name.trim().toLowerCase();
-  return placesOf(book).find((p) => p.name.trim().toLowerCase() === key) ?? null;
+  const order = (p: SeriesPlace) => placeOrder(p) ?? Number.MAX_VALUE;
+  return placesOf(book)
+    .filter((p) => p.name.trim().toLowerCase() === key)
+    .sort((a, b) => order(a) - order(b));
+}
+
+/** Its first place in one series, if it's in it. */
+export function placeIn(book: Pick<BookPreview, "series" | "seriesIndex" | "seriesPlaces">, name: string): SeriesPlace | null {
+  return placesIn(book, name)[0] ?? null;
+}
+
+/** Places by series, each series once, in the order first listed. */
+export function groupPlaces(places: SeriesPlace[]): { name: string; places: SeriesPlace[] }[] {
+  const out: { name: string; places: SeriesPlace[] }[] = [];
+  for (const p of places) {
+    const group = out.find((g) => g.name.toLowerCase() === p.name.trim().toLowerCase());
+    if (group) group.places.push(p);
+    else out.push({ name: p.name.trim(), places: [p] });
+  }
+  return out;
+}
+
+/** The numbers typed for a series row: "10, 12, 14" or "1–3, 5". */
+export function numbersText(places: SeriesPlace[]): string {
+  return places
+    .filter((p) => p.number != null)
+    .map((p) => (p.end != null ? `${num(p.number!)}–${num(p.end)}` : num(p.number!)))
+    .join(", ");
+}
+
+/** One series' places in words: "Book 3", "Books 10, 12, 14", "Books 1–3, 5". */
+export function placesWords(places: SeriesPlace[]): string {
+  if (places.length === 1) return placeWords(places[0]);
+  const numbered = places.filter((p) => p.number != null);
+  const parts = numbered.length ? [`Books ${numbersText(numbered)}`] : [];
+  for (const p of places) if (p.number == null && p.after != null) parts.push(parts.length ? placeWords(p).toLowerCase() : placeWords(p));
+  return parts.join("; ") || "No number";
+}
+
+/** One series' places, short: "#3", "#10, 12, 14". */
+export function placesMark(places: SeriesPlace[]): string {
+  if (places.length === 1) return placeMark(places[0]);
+  const text = numbersText(places);
+  return text ? `#${text}` : placeMark(places[0]);
 }
 
 /** A place in words, short: "#3", "#1–3", "Side story", or "" with no number. */
@@ -191,16 +244,23 @@ export function placesFromFields(fields: DetailField[]): SeriesPlace[] {
   const number = index?.trim() && Number.isFinite(Number(index)) ? Number(index) : null;
   if (!list) return main ? [{ name: main, number }] : [];
   const out: SeriesPlace[] = [];
+  // Which listed place is the main one: the same series and number, or
+  // (when an older TBV changed the number) the first place in that series.
+  let mainAt = -1;
   if (main) {
-    const kept = list.find((p) => p.name?.trim().toLowerCase() === main.toLowerCase());
+    const same = (p: SeriesPlace) => p.name?.trim().toLowerCase() === main.toLowerCase();
+    mainAt = list.findIndex((p) => same(p) && nearly(p.number, number));
+    if (mainAt < 0) mainAt = list.findIndex(same);
+    const kept = mainAt >= 0 ? list[mainAt] : undefined;
     const end = number != null && kept?.end != null && kept.end > number ? kept.end : null;
     const after = number == null ? (kept?.after ?? null) : null;
     out.push({ name: main, number, ...(end != null ? { end } : {}), ...(after != null ? { after } : {}) });
   }
-  for (const p of list) {
+  list.forEach((p, i) => {
     const name = p.name?.trim();
-    if (name && !out.some((o) => o.name.toLowerCase() === name.toLowerCase())) out.push({ ...p, name });
-  }
+    const place = { ...p, name };
+    if (name && i !== mainAt && !out.some((o) => samePlace(o, place))) out.push(place);
+  });
   return out;
 }
 
@@ -218,11 +278,13 @@ function cleanSeriesList(value: string): string {
   const kept: SeriesPlace[] = [];
   for (const item of items as Record<string, unknown>[]) {
     const name = [...collapse(String(item?.name ?? ""))].slice(0, 500).join("");
-    if (!name || kept.length >= 20 || kept.some((k) => k.name.toLowerCase() === name.toLowerCase())) continue;
+    if (!name || kept.length >= 20) continue;
     const number = ok(item.number);
     const end = number !== null && ok(item.end) !== null && ok(item.end)! > number ? ok(item.end) : null;
     const after = number === null ? ok(item.after) : null;
-    kept.push({ name, ...(number !== null ? { number } : {}), ...(end !== null ? { end } : {}), ...(after !== null ? { after } : {}) });
+    const place: SeriesPlace = { name, ...(number !== null ? { number } : {}), ...(end !== null ? { end } : {}), ...(after !== null ? { after } : {}) };
+    // In a series several times (10, 12 and 14), but each place once.
+    if (!kept.some((k) => samePlace(k, place))) kept.push(place);
   }
   return JSON.stringify(kept);
 }

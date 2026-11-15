@@ -935,8 +935,41 @@ mod tests {
     }
 
     #[test]
+    fn one_book_several_times_in_a_series() {
+        let (dir, mut library) = open_temp_library();
+        let omnibus = add(&mut library, dir.path(), "Wild Wastes Omnibus", Some(("Wild Wastes", 1)));
+        for (n, title) in [(11, "Eleven"), (13, "Thirteen")] {
+            add(&mut library, dir.path(), title, Some(("Sovereign", n)));
+        }
+        set(
+            &library,
+            &omnibus,
+            &[(
+                "series_list",
+                Some(r#"[{"name":"Wild Wastes","number":1,"end":3},{"name":"Sovereign","number":10},{"name":"Sovereign","number":12},{"name":"Sovereign","number":14}]"#),
+            )],
+        );
+        let book = library.book(&omnibus).unwrap().unwrap();
+        assert_eq!(book.series_places.len(), 4);
+        assert_eq!(places_in(&book, "sovereign").iter().map(|p| p.number.unwrap()).collect::<Vec<_>>(), [10.0, 12.0, 14.0]);
+
+        // Listed once, at its first place, and counted once.
+        let detail = library.collection_detail(&crate::model::CollectionRef::Series { name: "Sovereign".into() }).unwrap();
+        assert_eq!(detail.books.iter().map(|b| b.title.as_str()).collect::<Vec<_>>(), ["Wild Wastes Omnibus", "Eleven", "Thirteen"]);
+        let overview = library.collections_overview().unwrap();
+        assert_eq!(overview.series.iter().find(|s| s.name == "Sovereign").unwrap().count, 3);
+
+        // It stands for 10, 12 and 14 in the series' list.
+        let found = (10..=14).map(|n| entry(&format!("Book {n}"), n as f64)).collect();
+        library.save_series_found("Sovereign", found).unwrap();
+        let review = library.series_review("Sovereign").unwrap();
+        assert!(review.missing.is_empty(), "{:?}", review.missing.iter().map(|m| &m.entry.title).collect::<Vec<_>>());
+        assert_eq!(review.owned_books.iter().filter(|o| o.book.id == omnibus).count(), 1);
+    }
+
+    #[test]
     fn series_lists_are_cleaned() {
-        let kept = clean_series_list(r#"[{"name":" A  B ","number":"2","end":1},{"name":"a b","number":3},{"name":"C","number":1,"after":4},{"name":"D","after":2},{"name":""}]"#).unwrap();
+        let kept = clean_series_list(r#"[{"name":" A  B ","number":"2","end":1},{"name":"a b","number":2},{"name":"C","number":1,"after":4},{"name":"D","after":2},{"name":""}]"#).unwrap();
         let places: Vec<SeriesPlace> = serde_json::from_str(&kept).unwrap();
         assert_eq!(places.len(), 3);
         assert_eq!(places[0], SeriesPlace { name: "A B".into(), number: Some(2.0), end: None, after: None });

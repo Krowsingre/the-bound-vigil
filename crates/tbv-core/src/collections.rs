@@ -366,15 +366,22 @@ impl Library {
         // and how many of its books each author wrote.
         let mut owned: Vec<(Vec<f64>, Vec<String>)> = Vec::new();
         let mut written: Vec<Vec<(String, u32)>> = Vec::new();
+        // The books already in this series: one in it several times (10, 12
+        // and 14) counts and shows once, at its first place.
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         for Row { name, id, title, authors, cover_path, place } in all {
             if out.last().is_none_or(|last| last.name != name) {
                 out.push(SeriesSummary { name, count: 0, authors: Vec::new(), covers: Vec::new(), missing: Vec::new() });
                 owned.push(Default::default());
                 written.push(Vec::new());
+                seen.clear();
             }
             let series = out.last_mut().expect("just pushed");
             let (numbers, titles) = owned.last_mut().expect("pushed with it");
             numbers.extend(place.numbers());
+            if !seen.insert(id.clone()) {
+                continue;
+            }
             titles.push(crate::manage::title_key(&title));
             series.count += 1;
             if let Some(first) = authors.first() {
