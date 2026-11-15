@@ -1,61 +1,91 @@
-// The series a book is in, as rows: each with its number, a range of
-// numbers for an omnibus ("Books 1–3"), or no number for a side story read
-// after a given book. The first row is the main series; drag a row up, or
-// press Make main, to change it. Older TBVs see only the main series.
+// The series a book is in, as rows: each series once, with the numbers the
+// book is in it ("3", a range "1–3" for an omnibus, or a list "10, 12, 14"
+// for one that collects books that aren't one after another), or no number
+// for a side story read after a given book. The first row is the main
+// series; drag a row up, or press Make main, to change it. Older TBVs see
+// only the main series.
 
 import { useState } from "react";
 import type { BookPreview, DetailChange, SeriesPlace } from "../api/types";
 import { Icon } from "../components/Icon";
-import { placesOf } from "../lib/details";
+import { groupPlaces, numbersText, placesOf, samePlace } from "../lib/details";
 export { placesFromFields } from "../lib/details";
 import { SuggestInput } from "./Suggest";
 
-export type PlaceKind = "number" | "range" | "side";
+export type PlaceKind = "number" | "side";
 
 /** One row as typed. */
 export interface PlaceRow {
   key: number;
   name: string;
   kind: PlaceKind;
+  /** "3", "1–3" or "10, 12, 14". */
   number: string;
-  end: string;
   after: string;
 }
 
 let nextKey = 1;
 const text = (n: number | null | undefined) => (n == null ? "" : String(n));
 
-export function rowOf(place: SeriesPlace): PlaceRow {
-  const kind: PlaceKind = place.number != null && place.end != null ? "range" : place.number == null && place.after != null ? "side" : "number";
-  return { key: nextKey++, name: place.name, kind, number: text(place.number), end: text(place.end), after: text(place.after) };
+/** The rows for a book's places: a series' numbers share one row, a side story has its own. */
+export function rowsOf(places: SeriesPlace[]): PlaceRow[] {
+  const rows: PlaceRow[] = [];
+  for (const { name, places: here } of groupPlaces(places)) {
+    const sides = here.filter((p) => p.number == null && p.after != null);
+    const numbered = here.filter((p) => p.number != null);
+    if (numbered.length || !sides.length) rows.push({ key: nextKey++, name, kind: "number", number: numbersText(numbered), after: "" });
+    for (const p of sides) rows.push({ key: nextKey++, name, kind: "side", number: "", after: text(p.after) });
+  }
+  return rows;
 }
 
-export const emptyRow = (): PlaceRow => ({ key: nextKey++, name: "", kind: "number", number: "", end: "", after: "" });
+export const emptyRow = (): PlaceRow => ({ key: nextKey++, name: "", kind: "number", number: "", after: "" });
 
 /** A number typed, or null for none; throws when it isn't one. */
 function numberOf(typed: string, what: string): number | null {
-  const t = typed.trim().replace(",", ".");
+  const t = typed.trim();
   if (!t) return null;
   const n = Number(t);
   if (!Number.isFinite(n) || n < 0 || n >= 100_000) throw new Error(`The ${what} should be a number, like 2 or 2.5.`);
   return n;
 }
 
+/** The numbers typed in a row, as places: "3", "1–3", "10, 12, 14", "1-3, 5". */
+function numbersIn(name: string, typed: string): SeriesPlace[] {
+  const out: SeriesPlace[] = [];
+  for (const part of typed.split(/[,;]/)) {
+    const item = part.trim();
+    if (!item) continue;
+    const range = /^(.+?)\s*(?:[-–—]|\bto\b)\s*(.+)$/i.exec(item);
+    if (!range) {
+      out.push({ name, number: numberOf(item, "number in series") });
+      continue;
+    }
+    const number = numberOf(range[1], "number in series");
+    const end = numberOf(range[2], "last number");
+    if (number == null || end == null || end <= number) throw new Error(`For ${name}, write a range as the first and last numbers, like 1–3.`);
+    out.push({ name, number, end });
+  }
+  return out;
+}
+
 /** The rows as places, main first; empty names are left out. Throws on a bad number. */
 export function placesFromRows(rows: PlaceRow[]): SeriesPlace[] {
   const out: SeriesPlace[] = [];
+  const add = (place: SeriesPlace) => {
+    if (!out.some((p) => samePlace(p, place))) out.push(place);
+  };
   for (const row of rows) {
     const name = row.name.split(/\s+/).filter(Boolean).join(" ");
-    if (!name || out.some((p) => p.name.toLowerCase() === name.toLowerCase())) continue;
+    if (!name) continue;
     if (row.kind === "side") {
-      out.push({ name, after: numberOf(row.after, "book a side story follows") ?? 0 });
+      add({ name, after: numberOf(row.after.replace(",", "."), "book a side story follows") ?? 0 });
       continue;
     }
-    const number = numberOf(row.number, "number in series");
-    const end = row.kind === "range" ? numberOf(row.end, "last number") : null;
-    if (row.kind === "range" && (number == null || end == null || end <= number))
-      throw new Error(`For ${name}, give the first and last numbers the book holds, like 1 to 3.`);
-    out.push(end != null ? { name, number, end } : { name, number });
+    const numbers = numbersIn(name, row.number);
+    if (numbers.length) numbers.forEach(add);
+    // No number: only where the book isn't in that series already.
+    else if (!out.some((p) => p.name.toLowerCase() === name.toLowerCase())) add({ name, number: null });
   }
   return out;
 }
@@ -141,7 +171,6 @@ export function SeriesEditor({ rows, onChange, all }: { rows: PlaceRow[]; onChan
             onChange={(e) => update(row.key, { kind: e.target.value as PlaceKind })}
           >
             <option value="number">Book</option>
-            <option value="range">Books</option>
             <option value="side">Side story</option>
           </select>
           {row.kind === "side" ? (
@@ -152,19 +181,14 @@ export function SeriesEditor({ rows, onChange, all }: { rows: PlaceRow[]; onChan
           ) : (
             <span className="series-edit-numbers">
               <input
-                inputMode="decimal"
+                className="series-edit-list"
                 autoComplete="off"
                 value={row.number}
-                placeholder={row.kind === "range" ? "1" : "No."}
-                aria-label={row.kind === "range" ? "First number" : "Number in series"}
+                placeholder="3, 1–3, or 10, 12"
+                title="One number, a range like 1–3, or several like 10, 12, 14"
+                aria-label="Number in series"
                 onChange={(e) => update(row.key, { number: e.target.value })}
               />
-              {row.kind === "range" && (
-                <>
-                  <span className="muted">to</span>
-                  <input inputMode="decimal" autoComplete="off" value={row.end} placeholder="3" aria-label="Last number" onChange={(e) => update(row.key, { end: e.target.value })} />
-                </>
-              )}
             </span>
           )}
           <span className="series-edit-tools">

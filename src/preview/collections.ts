@@ -1,7 +1,7 @@
 // Collections for the browser preview, mirroring the core closely enough to
 // look at the Collections page while designing. Never used in the app.
 
-import { placeIn, placesOf } from "../lib/details";
+import { groupPlaces, placeIn, placesOf } from "../lib/details";
 
 /** Where a book sorts in a series: its number, or just after the book a side story follows. */
 const order = (b: BookPreview, name: string) => {
@@ -213,7 +213,7 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
   const api: CollectionsApi = {
     getCollectionsOverview: async () => {
       const series = new Map<string, BookPreview[]>();
-      for (const b of books()) for (const { name } of placesOf(b)) series.set(name, [...(series.get(name) ?? []), b]);
+      for (const b of books()) for (const { name } of groupPlaces(placesOf(b))) series.set(name, [...(series.get(name) ?? []), b]);
       return {
         pinned: stored.filter((c) => c.pinned && c.kind !== "shelf").map(summary),
         smart: SMART.map((kind) => {

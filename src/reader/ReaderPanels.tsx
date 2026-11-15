@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { placesOf, placeWords } from "../lib/details";
+import { groupPlaces, placesOf, placesWords } from "../lib/details";
 import { useAppSettings } from "../settings/appSettings";
 import type { Annotation, BookPreview, HighlightColor, ReaderBook } from "../api/types";
 import { api } from "../api";
@@ -424,7 +424,7 @@ function BookInfo({ info, totalPages }: { info: ReaderBook; totalPages: number }
   const rows: [string, string | null][] = [
     ["Title", b.title],
     ["Author", b.authors.length ? b.authors.join(", ") : null],
-    ["Series", placesOf(b).map((p) => (p.number != null || p.after != null ? `${p.name}, ${placeWords(p).toLowerCase()}` : p.name)).join("; ") || null],
+    ["Series", groupPlaces(placesOf(b)).map(({ name, places }) => (places.some((p) => p.number != null || p.after != null) ? `${name}, ${placesWords(places).toLowerCase()}` : name)).join("; ") || null],
     ["Publisher", info.publisher],
     ["Language", info.language],
     ["Format", b.format.toUpperCase()],

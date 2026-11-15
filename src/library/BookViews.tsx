@@ -5,7 +5,7 @@ import { Menu } from "../components/Menu";
 import { ProgressBar } from "../components/ProgressBar";
 import { Stars } from "../components/StarRating";
 import { authorLine, percent } from "../lib/format";
-import { placeLine, placesOf, placeWords } from "../lib/details";
+import { groupPlaces, placeLine, placesIn, placesMark, placesOf, placesWords } from "../lib/details";
 import { formatLabel } from "../lib/queryBooks";
 import { bookContextMenu, bookMenu, clickBook, type BookActions } from "../home/bookActions";
 
@@ -73,11 +73,12 @@ const STATUS = { unread: "Unread", in_progress: "In progress", read: "Read", dro
 /** "Series #3", "Series #1–3" or "Series, side story": its main series, or
  *  in a series' own view (`inSeries`), its place there. */
 function seriesLine(book: BookPreview, inSeries?: string) {
-  const places = placesOf(book);
-  const here = inSeries && places.find((p) => p.name.toLowerCase() === inSeries.trim().toLowerCase());
+  const here = inSeries ? placesIn(book, inSeries) : [];
   // In the series' own view its name goes without saying.
-  if (here) return here.number != null || here.after != null ? placeWords(here) : null;
-  return places[0] ? placeLine(places[0]) : null;
+  if (here.length) return here.some((p) => p.number != null || p.after != null) ? placesWords(here) : null;
+  const main = groupPlaces(placesOf(book))[0];
+  if (!main) return null;
+  return main.places.length > 1 ? `${main.name} ${placesMark(main.places)}` : placeLine(main.places[0]);
 }
 
 function Marks({ book }: { book: BookPreview }) {

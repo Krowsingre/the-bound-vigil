@@ -10,7 +10,7 @@ import { useToast } from "../components/Toast";
 import { AUDIO_ONLY, cleanValue, DETAIL_FIELDS, effective, isList, listOf } from "../lib/details";
 import { isAudio } from "../lib/queryBooks";
 import { ChipInput } from "./ChipInput";
-import { bulkPlaces, emptyRow, placeChanges, placesFromFields, placesFromRows, rowOf, SeriesEditor, type PlaceRow } from "./SeriesEditor";
+import { bulkPlaces, emptyRow, placeChanges, placesFromFields, placesFromRows, rowsOf, SeriesEditor, type PlaceRow } from "./SeriesEditor";
 import { SuggestInput, useSuggestions } from "./Suggest";
 import { AddOrReplace, joined, type ListMode } from "../components/AddOrReplace";
 
@@ -73,7 +73,7 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
         setValues(Object.fromEntries(d.fields.map((f) => [f.field, toForm(f.field, effective(f))])));
         const places = placesFromFields(d.fields);
         setStartedPlaces(JSON.stringify(places));
-        setSeriesRows(places.length ? places.map(rowOf) : [emptyRow()]);
+        setSeriesRows(places.length ? rowsOf(places) : [emptyRow()]);
       },
       (e: unknown) => {
         toast(`Couldn't open the details: ${String(e)}`);

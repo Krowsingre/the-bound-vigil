@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BookPreview, DetailField } from "../api/types";
-import { bulkPlaces, placeChanges, placesFromRows, rowOf } from "../details/SeriesEditor";
-import { bestMatches, cleanValue, placeLine, placesFromFields, placeWords } from "./details";
+import { bulkPlaces, placeChanges, placesFromRows, rowsOf } from "../details/SeriesEditor";
+import { bestMatches, cleanValue, placeLine, placesFromFields, placesWords, placeWords } from "./details";
 import { stackAuthor } from "./queryBooks";
 
 const field = (name: string, own: string | null, edited: string | null = null): DetailField =>
@@ -23,7 +23,8 @@ describe("series places", () => {
   });
 
   it("turns rows into places and details changes", () => {
-    const rows = [rowOf({ name: "Saga", number: 1, end: 3 }), rowOf({ name: "Verse", after: 2 }), rowOf({ name: "  ", number: 4 })];
+    const rows = [...rowsOf([{ name: "Saga", number: 1, end: 3 }, { name: "Verse", after: 2 }]), { ...rowsOf([{ name: "x", number: 4 }])[0], name: "  " }];
+    expect(rows.map((r) => r.number)).toEqual(["1–3", "", "4"]);
     const places = placesFromRows(rows);
     expect(places).toEqual([{ name: "Saga", number: 1, end: 3 }, { name: "Verse", after: 2 }]);
     expect(placeWords(places[0])).toBe("Books 1–3");
@@ -33,7 +34,26 @@ describe("series places", () => {
     expect(JSON.parse(cleanValue("series_list", changes.find((c) => c.field === "series_list")!.value!))).toEqual(places);
     // One plain series needs no list.
     expect(placeChanges([{ name: "Saga", number: 2 }]).find((c) => c.field === "series_list")?.value).toBeNull();
-    expect(() => placesFromRows([{ ...rowOf({ name: "Saga", number: 3 }), kind: "range", end: "2" }])).toThrow();
+    expect(() => placesFromRows([{ ...rowsOf([{ name: "Saga", number: 3 }])[0], number: "3-2" }])).toThrow();
+  });
+
+  it("keeps a book that's in one series several times", () => {
+    // Wild Wastes Omnibus: Wild Wastes 1–3, and Sovereign-Verse 10, 12 and 14.
+    const omnibus = [{ name: "Wild Wastes", number: 1, end: 3 }, ...[10, 12, 14].map((number) => ({ name: "Sovereign-Verse", number }))];
+    const rows = rowsOf(omnibus);
+    expect(rows.map((r) => [r.name, r.number])).toEqual([["Wild Wastes", "1–3"], ["Sovereign-Verse", "10, 12, 14"]]);
+    expect(placesFromRows(rows)).toEqual(omnibus);
+    // Typed as separate rows, or with a range and a dash, it's the same.
+    const typed = rowsOf([{ name: "Sovereign-Verse", number: 1 }])[0];
+    expect(placesFromRows([{ ...typed, number: "1-3; 5" }, { ...typed, key: -1, number: "5" }])).toEqual([
+      { name: "Sovereign-Verse", number: 1, end: 3 },
+      { name: "Sovereign-Verse", number: 5 },
+    ]);
+    const saved = JSON.parse(cleanValue("series_list", JSON.stringify(omnibus))!);
+    expect(saved).toEqual(omnibus);
+    const fields = [field("series", "Wild Wastes"), field("series_index", "1"), field("series_list", null, JSON.stringify(omnibus))];
+    expect(placesFromFields(fields)).toEqual(omnibus);
+    expect(placesWords(omnibus.slice(1))).toBe("Books 10, 12, 14");
   });
 
   it("adds books to a series with numbers, keeping the series they're in", () => {

@@ -15,7 +15,7 @@ import { StarRating } from "../components/StarRating";
 import { useToast } from "../components/Toast";
 import { bookMenu, makeBookActions } from "../home/bookActions";
 import { askEditTags } from "../library/BookDialogs";
-import { effective, listOf, placesOf, placeWords } from "../lib/details";
+import { effective, groupPlaces, listOf, placesOf, placesWords } from "../lib/details";
 import { formatLength, formatLabel, isAudio, isDocument } from "../lib/queryBooks";
 import { formatBytes } from "../settings/controls";
 import { askEditDetails, askFetchDetails } from "./openDetails";
@@ -220,10 +220,10 @@ export function BookDetailsPage({
                 {book.title}
               </h1>
               <p className="details-authors">{book.authors.join(", ") || "Unknown author"}</p>
-              {placesOf(book).map((place) => (
-                <p key={place.name} className="muted">
-                  {place.name}
-                  {place.number != null || place.after != null ? `, ${placeWords(place).toLowerCase()}` : ""}
+              {groupPlaces(placesOf(book)).map(({ name, places }) => (
+                <p key={name} className="muted">
+                  {name}
+                  {places.some((p) => p.number != null || p.after != null) ? `, ${placesWords(places).toLowerCase()}` : ""}
                 </p>
               ))}
             </div>
@@ -307,8 +307,8 @@ export function BookDetailsPage({
             </dl>
           </section>
 
-          {placesOf(book).map((place) => (
-            <SeriesRow key={place.name} name={place.name} author={book.authors[0] ?? ""} bookId={book.id} refreshKey={refreshKey + reload} titled={placesOf(book).length > 1} />
+          {groupPlaces(placesOf(book)).map(({ name }, _, all) => (
+            <SeriesRow key={name} name={name} author={book.authors[0] ?? ""} bookId={book.id} refreshKey={refreshKey + reload} titled={all.length > 1} />
           ))}
 
           <section className="details-section">

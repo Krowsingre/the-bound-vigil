@@ -1,12 +1,13 @@
 /* The Book details page, the details editor and the online search. */
 /* On a computer the page fills the window: the cover, the back button and
    the buttons stay still while only the details beside them scroll. */
+/* The page reaches the window's right edge, so the details' scroll bar sits
+   there; the details themselves keep their width (padding below). */
 .book-details {
-  max-width: 1144px;
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 20px 32px 0;
+  padding: 20px 0 0 32px;
   overflow: hidden;
 }
 
@@ -45,6 +46,7 @@
   height: 100%;
   overflow-y: auto;
   padding-bottom: 40px;
+  padding-right: max(32px, calc(100% - 790px));
   overscroll-behavior: contain;
 }
 
@@ -457,6 +459,7 @@
     height: auto;
     overflow: visible;
     padding-bottom: 0;
+    padding-right: 0;
   }
 
   .details-side {
@@ -568,11 +571,15 @@
   width: 64px;
 }
 
+.series-edit-numbers input.series-edit-list {
+  width: 150px;
+}
+
 .series-edit-tools {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-width: 96px;
+  min-width: 112px;
   justify-content: flex-end;
 }
 

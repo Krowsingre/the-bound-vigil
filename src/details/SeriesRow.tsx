@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { api, isHome, isWeb } from "../api";
 import type { MissingBook, OwnedBook, SeriesReview } from "../api/types";
-import { placeWords } from "../lib/details";
+import { placesIn, placesWords, placeWords } from "../lib/details";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
@@ -84,7 +84,11 @@ export function SeriesRow({
                   {item.owned.book.title}
                 </span>
                 <span className="muted">
-                  {item.owned.place ? placeWords(item.owned.place) : item.owned.position !== null ? `Book ${item.owned.position}` : "No number"}
+                  {placesIn(item.owned.book, name).length > 1
+                    ? placesWords(placesIn(item.owned.book, name))
+                    : item.owned.place
+                      ? placeWords(item.owned.place)
+                      : item.owned.position !== null ? `Book ${item.owned.position}` : "No number"}
                 </span>
               </button>
             </li>

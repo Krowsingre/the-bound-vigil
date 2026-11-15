@@ -65,6 +65,16 @@ pub struct SeriesPlace {
 }
 
 impl SeriesPlace {
+    /// The same series and the same place in it.
+    pub fn same_as(&self, other: &SeriesPlace) -> bool {
+        let close = |a: Option<f64>, b: Option<f64>| match (a, b) {
+            (Some(a), Some(b)) => (a - b).abs() < 1e-6,
+            (None, None) => true,
+            _ => false,
+        };
+        series_id(&self.name) == series_id(&other.name) && close(self.number, other.number) && close(self.end, other.end) && close(self.after, other.after)
+    }
+
     /// Where it sorts in its series: its number, or just after the book it
     /// follows. None: at the end.
     pub fn order(&self) -> Option<f64> {
@@ -111,13 +121,18 @@ pub(crate) fn clean_series_list(value: &str) -> Result<String> {
     for item in &items {
         let name = item["name"].as_str().unwrap_or("").split_whitespace().collect::<Vec<_>>().join(" ");
         let name: String = name.chars().take(500).collect();
-        if name.is_empty() || kept.iter().any(|k| series_id(&k.name) == series_id(&name)) || kept.len() >= 20 {
+        if name.is_empty() || kept.len() >= 20 {
             continue;
         }
         let number = place_number(&item["number"]);
         let end = place_number(&item["end"]).filter(|e| number.is_some_and(|n| *e > n));
         let after = if number.is_some() { None } else { place_number(&item["after"]) };
-        kept.push(SeriesPlace { name, number, end, after });
+        let place = SeriesPlace { name, number, end, after };
+        // A collection of books that aren't one after another in a series
+        // (10, 12 and 14) is in it several times; the same place only once.
+        if !kept.iter().any(|k| k.same_as(&place)) {
+            kept.push(place);
+        }
     }
     Ok(serde_json::to_string(&kept)?)
 }
@@ -131,18 +146,32 @@ pub(crate) fn places_of(series: Option<&str>, index: Option<f64>, list: Option<&
     let listed: Vec<SeriesPlace> = serde_json::from_str(list).unwrap_or_default();
     let main = series.map(str::trim).filter(|s| !s.is_empty());
     let mut out = Vec::new();
+    // Which listed place is the main one: the same series and number.
+    let mut main_at = None;
     if let Some(name) = main {
-        let kept = listed.iter().find(|p| series_id(&p.name) == series_id(name));
+        let same = |p: &SeriesPlace| series_id(&p.name) == series_id(name);
+        let at = listed
+            .iter()
+            .position(|p| same(p) && match (p.number, index) {
+                (Some(a), Some(b)) => (a - b).abs() < 1e-6,
+                (None, None) => true,
+                _ => false,
+            })
+            // An older TBV changed the number: the first place in it stands for it.
+            .or_else(|| listed.iter().position(same));
+        let kept = at.map(|i| &listed[i]);
         let end = kept.and_then(|p| p.end).filter(|e| index.is_some_and(|n| *e > n));
         let after = if index.is_some() { None } else { kept.and_then(|p| p.after) };
         out.push(SeriesPlace { name: name.to_string(), number: index, end, after });
+        main_at = at;
     }
-    for place in listed {
-        let name = place.name.trim();
-        if name.is_empty() || out.iter().any(|p: &SeriesPlace| series_id(&p.name) == series_id(name)) {
+    for (i, place) in listed.into_iter().enumerate() {
+        let name = place.name.trim().to_string();
+        let place = SeriesPlace { name, ..place };
+        if place.name.is_empty() || Some(i) == main_at || out.iter().any(|p: &SeriesPlace| p.same_as(&place)) {
             continue;
         }
-        out.push(SeriesPlace { name: name.to_string(), ..place });
+        out.push(place);
     }
     if out.len() == 1 && out[0].end.is_none() && out[0].after.is_none() {
         return Vec::new();
@@ -170,8 +199,9 @@ pub(crate) fn in_series_sql(name: &str) -> String {
 /// just after the book a side story follows. NULL: at the end.
 pub(crate) fn order_sql(name: &str) -> String {
     format!(
-        "COALESCE(CASE WHEN tbv_fold(trim({SERIES})) = tbv_fold(trim({name})) THEN {SERIES_INDEX} END,
-          (SELECT COALESCE(json_extract(j.value, '$.number'), json_extract(j.value, '$.after') + 0.001) {} LIMIT 1))",
+        "(SELECT MIN(v) FROM (
+            SELECT CASE WHEN tbv_fold(trim({SERIES})) = tbv_fold(trim({name})) THEN {SERIES_INDEX} END AS v
+            UNION ALL SELECT COALESCE(json_extract(j.value, '$.number'), json_extract(j.value, '$.after') + 0.001) {}))",
         listed_sql(name)
     )
 }
@@ -181,14 +211,23 @@ pub(crate) fn quoted(name: &str) -> String {
     format!("'{}'", name.replace('\'', "''"))
 }
 
-/// A book's place in this series, if it has one.
-pub fn place_in(book: &BookPreview, name: &str) -> Option<SeriesPlace> {
+/// A book's places in this series: usually one, several for a collection of
+/// books that aren't one after another in it. Earliest first.
+pub fn places_in(book: &BookPreview, name: &str) -> Vec<SeriesPlace> {
     let id = series_id(name);
-    if let Some(place) = book.series_places.iter().find(|p| series_id(&p.name) == id) {
-        return Some(place.clone());
+    let mut found: Vec<SeriesPlace> = book.series_places.iter().filter(|p| series_id(&p.name) == id).cloned().collect();
+    if book.series_places.is_empty() {
+        if let Some(main) = book.series.as_deref().filter(|s| series_id(s) == id) {
+            found.push(SeriesPlace { name: main.trim().to_string(), number: book.series_index, end: None, after: None });
+        }
     }
-    let main = book.series.as_deref().filter(|s| series_id(s) == id)?;
-    Some(SeriesPlace { name: main.trim().to_string(), number: book.series_index, end: None, after: None })
+    found.sort_by(|a, b| a.order().unwrap_or(f64::MAX).total_cmp(&b.order().unwrap_or(f64::MAX)));
+    found
+}
+
+/// A book's first place in this series, if it has one.
+pub fn place_in(book: &BookPreview, name: &str) -> Option<SeriesPlace> {
+    places_in(book, name).into_iter().next()
 }
 
 /// A book of the series the library doesn't have.
@@ -609,6 +648,7 @@ impl Library {
         let books = statement.query_map([], book_from_row)?.collect::<std::result::Result<Vec<_>, _>>()?;
         let (inside, outside): (Vec<BookPreview>, Vec<BookPreview>) = books.into_iter().partition(|b| place_in(b, &id).is_some());
         let place = |b: &BookPreview| place_in(b, &id).unwrap_or_default();
+        let holds = |b: &BookPreview, n: f64| places_in(b, &id).iter().any(|p| p.holds(n));
 
         let Some(saved) = saved else {
             let owned_books = owned_in_order(&inside, &[], &id);
@@ -634,14 +674,14 @@ impl Library {
         // number says which, then those whose title does.
         let mut used: HashSet<&str> = HashSet::new();
         // An omnibus stands for each book it holds, so it isn't used up by one.
-        let ranged: HashSet<&str> = inside.iter().filter(|b| place(b).end.is_some()).map(|b| b.id.as_str()).collect();
+        let ranged: HashSet<&str> = inside.iter().filter(|b| places_in(b, &id).iter().any(|p| p.end.is_some()) || places_in(b, &id).len() > 1).map(|b| b.id.as_str()).collect();
         // Which book of the list each book here is.
         let mut places: Vec<(&str, Option<f64>)> = Vec::new();
         let numbered: Vec<bool> = saved
             .books
             .iter()
             .map(|entry| {
-                let by_number = entry.position.and_then(|p| inside.iter().find(|b| !used.contains(b.id.as_str()) && place(b).holds(p)));
+                let by_number = entry.position.and_then(|p| inside.iter().find(|b| !used.contains(b.id.as_str()) && holds(b, p)));
                 by_number.map(|b| ranged.contains(b.id.as_str()) || used.insert(b.id.as_str())).is_some()
             })
             .collect();
@@ -895,8 +935,41 @@ mod tests {
     }
 
     #[test]
+    fn one_book_several_times_in_a_series() {
+        let (dir, mut library) = open_temp_library();
+        let omnibus = add(&mut library, dir.path(), "Wild Wastes Omnibus", Some(("Wild Wastes", 1)));
+        for (n, title) in [(11, "Eleven"), (13, "Thirteen")] {
+            add(&mut library, dir.path(), title, Some(("Sovereign", n)));
+        }
+        set(
+            &library,
+            &omnibus,
+            &[(
+                "series_list",
+                Some(r#"[{"name":"Wild Wastes","number":1,"end":3},{"name":"Sovereign","number":10},{"name":"Sovereign","number":12},{"name":"Sovereign","number":14}]"#),
+            )],
+        );
+        let book = library.book(&omnibus).unwrap().unwrap();
+        assert_eq!(book.series_places.len(), 4);
+        assert_eq!(places_in(&book, "sovereign").iter().map(|p| p.number.unwrap()).collect::<Vec<_>>(), [10.0, 12.0, 14.0]);
+
+        // Listed once, at its first place, and counted once.
+        let detail = library.collection_detail(&crate::model::CollectionRef::Series { name: "Sovereign".into() }).unwrap();
+        assert_eq!(detail.books.iter().map(|b| b.title.as_str()).collect::<Vec<_>>(), ["Wild Wastes Omnibus", "Eleven", "Thirteen"]);
+        let overview = library.collections_overview().unwrap();
+        assert_eq!(overview.series.iter().find(|s| s.name == "Sovereign").unwrap().count, 3);
+
+        // It stands for 10, 12 and 14 in the series' list.
+        let found = (10..=14).map(|n| entry(&format!("Book {n}"), n as f64)).collect();
+        library.save_series_found("Sovereign", found).unwrap();
+        let review = library.series_review("Sovereign").unwrap();
+        assert!(review.missing.is_empty(), "{:?}", review.missing.iter().map(|m| &m.entry.title).collect::<Vec<_>>());
+        assert_eq!(review.owned_books.iter().filter(|o| o.book.id == omnibus).count(), 1);
+    }
+
+    #[test]
     fn series_lists_are_cleaned() {
-        let kept = clean_series_list(r#"[{"name":" A  B ","number":"2","end":1},{"name":"a b","number":3},{"name":"C","number":1,"after":4},{"name":"D","after":2},{"name":""}]"#).unwrap();
+        let kept = clean_series_list(r#"[{"name":" A  B ","number":"2","end":1},{"name":"a b","number":2},{"name":"C","number":1,"after":4},{"name":"D","after":2},{"name":""}]"#).unwrap();
         let places: Vec<SeriesPlace> = serde_json::from_str(&kept).unwrap();
         assert_eq!(places.len(), 3);
         assert_eq!(places[0], SeriesPlace { name: "A B".into(), number: Some(2.0), end: None, after: None });
