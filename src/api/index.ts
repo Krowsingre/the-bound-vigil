@@ -71,6 +71,7 @@ import type {
   BookDetails,
   CollectionsOverview,
   DetailChange,
+  DetailFieldName,
   DuplicateGroup,
   SeriesReview,
   HomeStatus,
@@ -405,6 +406,8 @@ export interface Api {
   onMove(listener: (status: MoveStatus) => void): () => void;
   /** Your tags, A to Z, with how many books carry each. */
   allTags(): Promise<TagCount[]>;
+  /** What the library already has for a detail, A to Z, to finish typing from. */
+  detailSuggestions(field: DetailFieldName): Promise<string[]>;
   /** Puts a tag on books. Returns the tag as kept (an existing tag keeps its spelling). */
   addTag(bookIds: string[], tag: string): Promise<string>;
   removeTag(bookIds: string[], tag: string): Promise<void>;
@@ -1215,6 +1218,7 @@ function appApi(): Api {
       };
     },
     allTags: async () => (await core).invoke<TagCount[]>("all_tags"),
+    detailSuggestions: async (field) => (await core).invoke<string[]>("detail_suggestions", { field }),
     addTag: async (bookIds, tag) => (await core).invoke<string>("add_tag", { bookIds, tag }),
     removeTag: async (bookIds, tag) => (await core).invoke("remove_tag", { bookIds, tag }),
     setBookTags: async (bookId, tags) => (await core).invoke("set_book_tags", { bookId, tags }),

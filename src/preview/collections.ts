@@ -1,6 +1,13 @@
 // Collections for the browser preview, mirroring the core closely enough to
 // look at the Collections page while designing. Never used in the app.
 
+import { placeIn, placesOf } from "../lib/details";
+
+/** Where a book sorts in a series: its number, or just after the book a side story follows. */
+const order = (b: BookPreview, name: string) => {
+  const p = placeIn(b, name);
+  return p?.number ?? (p?.after != null ? p.after + 0.001 : 1e9);
+};
 import type { Api } from "../api";
 import { matches } from "../collections/rules";
 import type {
@@ -198,15 +205,15 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
     if (ref.kind === "collection") return membersOf(find(ref.id));
     if (ref.kind === "series")
       return books()
-        .filter((b) => b.series?.trim().toLowerCase() === ref.name.trim().toLowerCase())
-        .sort((a, b) => (a.seriesIndex ?? 1e9) - (b.seriesIndex ?? 1e9));
+        .filter((b) => placeIn(b, ref.name))
+        .sort((a, b) => order(a, ref.name) - order(b, ref.name));
     return books().filter(smartBooks[ref.smart]);
   }
 
   const api: CollectionsApi = {
     getCollectionsOverview: async () => {
       const series = new Map<string, BookPreview[]>();
-      for (const b of books()) if (b.series) series.set(b.series, [...(series.get(b.series) ?? []), b]);
+      for (const b of books()) for (const { name } of placesOf(b)) series.set(name, [...(series.get(name) ?? []), b]);
       return {
         pinned: stored.filter((c) => c.pinned && c.kind !== "shelf").map(summary),
         smart: SMART.map((kind) => {

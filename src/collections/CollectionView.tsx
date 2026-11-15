@@ -323,9 +323,9 @@ export function CollectionView({
           ))}
         </ol>
       ) : layout === "grid" ? (
-        <BookGrid books={books} actions={actions} />
+        <BookGrid books={books} actions={actions} showStatus={collection.kind === "series"} inSeries={collection.kind === "series" ? collection.name : undefined} />
       ) : (
-        <BookList books={books} actions={actions} />
+        <BookList books={books} actions={actions} inSeries={collection.kind === "series" ? collection.name : undefined} />
       )}
 
       {adding && own && (

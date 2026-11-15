@@ -1,6 +1,24 @@
 // The Library page's filtering, sorting and paging, done in the page itself.
 
 import type { BookPreview, ItemKind, LibraryExclude, LibraryPage, LibraryQuery, TagCount } from "../api/types";
+import { placeIn, placesOf } from "./details";
+
+/** Where a place sorts: its number, or just after the book a side story follows. */
+const placeOrder = (book: BookPreview, name: string) => {
+  const p = placeIn(book, name);
+  return p?.number ?? (p?.after != null ? p.after + 0.001 : null);
+};
+
+/** A series stack's main author: who wrote the most of it, and on a tie the
+ *  earliest book's author (stack_authors in browse.rs). */
+export function stackAuthor(books: BookPreview[]): string | null {
+  const ordered = [...books].sort((a, b) => nullsLast(a.seriesIndex, b.seriesIndex, (x, y) => x - y));
+  const counts = new Map<string, number>();
+  for (const b of ordered) if (b.authors[0]?.trim()) counts.set(b.authors[0], (counts.get(b.authors[0]) ?? 0) + 1);
+  let best: string | null = null;
+  for (const [name, n] of counts) if (best === null || n > counts.get(best)!) best = name;
+  return best;
+}
 
 /** The kinds of file the Documents page holds (DOCUMENT_FORMATS in the core). */
 export const DOCUMENT_FORMATS = ["pdf", "doc", "docx", "txt"];
@@ -67,7 +85,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     if (q.audioType && (b.audioType ?? "audiobook") !== q.audioType) return false;
     if (q.paired != null && !!b.paired !== q.paired) return false;
     if (!hasAny(b.genres, q.genres) || !hasAny(b.authors, q.authors) || !hasAny(b.narrators, q.narrators)) return false;
-    if (q.series?.length && !q.series.some((s) => s.trim().toLowerCase() === (b.series ?? "").trim().toLowerCase())) return false;
+    if (q.series?.length && !q.series.some((s) => placesOf(b).some((p) => p.name.trim().toLowerCase() === s.trim().toLowerCase()))) return false;
     if (q.exclude && excluded(b, q.exclude)) return false;
     if (search && ![b.title, ...b.authors, b.series ?? ""].some((t) => t.toLowerCase().includes(search))) return false;
     return true;
@@ -79,6 +97,8 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     title: byTitle,
     author: (a, b) => (a.authors[0] ?? "").localeCompare(b.authors[0] ?? "") || byTitle(a, b),
     series: (a, b) =>
+      // One series: each book where it is in that series.
+      (q.series?.length === 1 ? nullsLast(placeOrder(a, q.series[0]), placeOrder(b, q.series[0]), (x, y) => x - y) || byTitle(a, b) : 0) ||
       nullsLast(a.series, b.series, (x, y) => x.localeCompare(y)) ||
       nullsLast(a.seriesIndex, b.seriesIndex, (x, y) => x - y) ||
       byTitle(a, b),
@@ -113,6 +133,7 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
   const page = Math.min(q.page, Math.max(0, Math.ceil(list.length / pageSize) - 1));
   const books = list.slice(page * pageSize, (page + 1) * pageSize);
   const seriesCovers: Record<string, BookPreview> = {};
+  const seriesAuthors: Record<string, string> = {};
   const seriesKey = (b: BookPreview) => b.series?.trim().toLowerCase();
   for (const book of books) {
     if (!seriesCounts[book.id]) continue;
@@ -122,10 +143,13 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
     seriesCounts[book.id] = candidates.length;
     const cover = seriesCover(candidates, chosen || undefined);
     if (cover) seriesCovers[book.id] = cover;
+    const author = stackAuthor(candidates);
+    if (author) seriesAuthors[book.id] = author;
   }
   return {
     books,
     seriesCovers,
+    seriesAuthors,
     seriesNames: q.omitFacets ? [] : namesIn(all, (book) => book.series ? [book.series] : []),
     seriesCounts: Object.fromEntries(books.flatMap((book) => seriesCounts[book.id] ? [[book.id, seriesCounts[book.id]]] : [])),
     total: list.length,

@@ -431,6 +431,7 @@ export function Library({
       ...first,
       books: [...first.books, ...later.flatMap((p) => p.books)],
       seriesCounts: Object.assign({}, first.seriesCounts, ...later.map((p) => p.seriesCounts)),
+      seriesAuthors: Object.assign({}, first.seriesAuthors, ...later.map((p) => p.seriesAuthors)),
       seriesPublished: Object.assign({}, first.seriesPublished, ...later.map((p) => p.seriesPublished)),
       seriesCovers: Object.assign({}, first.seriesCovers, ...later.map((p) => p.seriesCovers)),
     } : first),
@@ -748,7 +749,7 @@ export function Library({
       onClearSearch();
       onChange({ ...NO_FILTERS, tab: "all", series: [name], sort: "series", page: 0 });
     });
-    const items = <Layout books={page.books} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} seriesCovers={page.seriesCovers} seriesPublished={page.seriesPublished} seriesMenu={seriesMenu} showStatus={inSeries} onOpenSeries={(name) => openStack(name, openSeries)} />;
+    const items = <Layout books={page.books} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} seriesCovers={page.seriesCovers} seriesPublished={page.seriesPublished} seriesAuthors={page.seriesAuthors} seriesMenu={seriesMenu} showStatus={inSeries} inSeries={seriesName} onOpenSeries={(name) => openStack(name, openSeries)} />;
     body = endless ? (
       <>
         {items}
@@ -951,7 +952,7 @@ export function Library({
             <Layout books={pins} actions={actions} selection={selection} />
             {pinnedStacks && pinnedStacks.books.length > 0 && (
               <Layout books={pinnedStacks.books} actions={actions} seriesCounts={pinnedStacks.seriesCounts}
-                seriesCovers={pinnedStacks.seriesCovers} seriesPublished={pinnedStacks.seriesPublished} onOpenSeries={onOpenSeries && ((name) => openStack(name, onOpenSeries))} seriesMenu={seriesMenu} />
+                seriesCovers={pinnedStacks.seriesCovers} seriesPublished={pinnedStacks.seriesPublished} seriesAuthors={pinnedStacks.seriesAuthors} onOpenSeries={onOpenSeries && ((name) => openStack(name, onOpenSeries))} seriesMenu={seriesMenu} />
             )}
           </details>
         )}

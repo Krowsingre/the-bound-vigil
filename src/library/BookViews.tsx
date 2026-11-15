@@ -5,6 +5,7 @@ import { Menu } from "../components/Menu";
 import { ProgressBar } from "../components/ProgressBar";
 import { Stars } from "../components/StarRating";
 import { authorLine, percent } from "../lib/format";
+import { placeLine, placesOf, placeWords } from "../lib/details";
 import { formatLabel } from "../lib/queryBooks";
 import { bookContextMenu, bookMenu, clickBook, type BookActions } from "../home/bookActions";
 
@@ -40,10 +41,14 @@ type Props = {
   selection?: Selection | null;
   seriesCounts?: Record<string, number>;
   seriesPublished?: Record<string, number>;
+  /** Each stack's main author. */
+  seriesAuthors?: Record<string, string>;
   showStatus?: boolean;
   seriesCovers?: Record<string, BookPreview>;
   seriesMenu?: (name: string) => import("../components/Menu").MenuEntry[];
   onOpenSeries?: (name: string) => void;
+  /** Showing one series: each book's place in it. */
+  inSeries?: string;
 };
 
 const press = (book: BookPreview, actions: BookActions, selection: Selection | null | undefined, books: BookPreview[], shift: boolean) =>
@@ -65,9 +70,14 @@ function picked(book: BookPreview, selection?: Selection | null) {
 
 const STATUS = { unread: "Unread", in_progress: "In progress", read: "Read", dropped: "Dropped" } as const;
 
-function seriesLine(book: BookPreview) {
-  if (!book.series) return null;
-  return book.seriesIndex != null ? `${book.series} #${book.seriesIndex}` : book.series;
+/** "Series #3", "Series #1–3" or "Series, side story": its main series, or
+ *  in a series' own view (`inSeries`), its place there. */
+function seriesLine(book: BookPreview, inSeries?: string) {
+  const places = placesOf(book);
+  const here = inSeries && places.find((p) => p.name.toLowerCase() === inSeries.trim().toLowerCase());
+  // In the series' own view its name goes without saying.
+  if (here) return here.number != null || here.after != null ? placeWords(here) : null;
+  return places[0] ? placeLine(places[0]) : null;
 }
 
 function Marks({ book }: { book: BookPreview }) {
@@ -106,7 +116,7 @@ function Progress({ book }: { book: BookPreview }) {
   );
 }
 
-export function BookGrid({ books, actions, selection, seriesCounts, seriesPublished, seriesCovers, onOpenSeries, seriesMenu, showStatus }: Props) {
+export function BookGrid({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, showStatus, inSeries }: Props) {
   return (
     <ul className={`book-grid${selection ? " is-selecting" : ""}`}>
       {books.map((book) => {
@@ -130,6 +140,7 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesPublis
               <div className="grid-caption">
                 <div className="grid-text">
                   <span className="book-title">{name}</span>
+                  {seriesAuthors?.[book.id] && <span className="book-author">{seriesAuthors[book.id]}</span>}
                 </div>
                 {seriesMenu && <Menu label={"More for " + name} trigger={<Icon name="more" />} items={seriesMenu(name)} />}
               </div>
@@ -160,7 +171,7 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesPublis
                   {authorLine(book.authors)}
                   <Marks book={book} />
                 </span>
-                {showStatus && <span className="book-author">{[seriesLine(book), STATUS[book.status]].filter(Boolean).join(" · ")}</span>}
+                {showStatus && <span className="book-author">{[seriesLine(book, inSeries), STATUS[book.status]].filter(Boolean).join(" · ")}</span>}
               </div>
               <MoreMenu book={book} actions={actions} />
             </div>
@@ -172,7 +183,7 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesPublis
   );
 }
 
-export function BookList({ books, actions, selection, seriesCounts, seriesPublished, seriesCovers, onOpenSeries, seriesMenu }: Props) {
+export function BookList({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, inSeries }: Props) {
   return (
     <ul className="book-list">
       {books.map((book) => {
@@ -188,6 +199,7 @@ export function BookList({ books, actions, selection, seriesCounts, seriesPublis
               <BookCover key={cover.id} book={cover} size="s" seriesCount={count} seriesPublished={seriesPublished?.[book.id]} />
               <span className="list-text">
                 <span className="book-title">{name}</span>
+                {seriesAuthors?.[book.id] && <span className="book-author">{seriesAuthors[book.id]}</span>}
               </span>
             </button>
             {seriesMenu && <Menu label={`More for ${name}`} trigger={<Icon name="more" />} items={seriesMenu(name)} />}
@@ -209,7 +221,7 @@ export function BookList({ books, actions, selection, seriesCounts, seriesPublis
                   {authorLine(book.authors)}
                   <Marks book={book} />
                 </span>
-                {seriesLine(book) && <span className="book-author">{seriesLine(book)}</span>}
+                {seriesLine(book, inSeries) && <span className="book-author">{seriesLine(book, inSeries)}</span>}
                 {book.tags.length > 0 && <span className="book-tags">{book.tags.join(" · ")}</span>}
                 <Stars value={book.rating} size={13} />
               </span>
@@ -227,7 +239,7 @@ export function BookList({ books, actions, selection, seriesCounts, seriesPublis
   );
 }
 
-export function BookTable({ books, actions, selection, seriesCounts, seriesPublished, seriesCovers, onOpenSeries, seriesMenu }: Props) {
+export function BookTable({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, inSeries }: Props) {
   return (
     <table className="book-table">
       <thead>
@@ -256,6 +268,7 @@ export function BookTable({ books, actions, selection, seriesCounts, seriesPubli
                 {pick?.mark}
                 <BookCover book={seriesCovers?.[book.id] ?? book} size="s" seriesCount={count} seriesPublished={seriesPublished?.[book.id]} />
                 {name}
+                {seriesAuthors?.[book.id] && <span className="muted series-table-author">{seriesAuthors[book.id]}</span>}
               </button>
             </td>
             <td>{seriesMenu && <Menu label={`More for ${name}`} trigger={<Icon name="more" />} items={seriesMenu(name)} />}</td>
@@ -276,7 +289,7 @@ export function BookTable({ books, actions, selection, seriesCounts, seriesPubli
                 )}
               </td>
               <td>{authorLine(book.authors)}</td>
-              <td className="muted">{seriesLine(book) ?? ""}</td>
+              <td className="muted">{seriesLine(book, inSeries) ?? ""}</td>
               <td className="num">{book.status === "in_progress" ? percent(book.totalProgression) : STATUS[book.status]}</td>
               <td>
                 <Stars value={book.rating} size={12} />

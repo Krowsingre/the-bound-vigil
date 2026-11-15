@@ -4,12 +4,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import type { BookPreview, DetailChange, DetailField, DetailFieldName } from "../api/types";
+import type { BookPreview, DetailChange, DetailField, DetailFieldName, SeriesPlace } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 import { AUDIO_ONLY, cleanValue, DETAIL_FIELDS, effective, isList, listOf } from "../lib/details";
 import { isAudio } from "../lib/queryBooks";
 import { ChipInput } from "./ChipInput";
+import { bulkPlaces, emptyRow, placeChanges, placesFromFields, placesFromRows, rowOf, SeriesEditor, type PlaceRow } from "./SeriesEditor";
+import { SuggestInput, useSuggestions } from "./Suggest";
 import { AddOrReplace, joined, type ListMode } from "../components/AddOrReplace";
 
 /** The details that make sense to set on many books at once. */
@@ -18,6 +20,16 @@ const MASS_FIELDS: DetailFieldName[] = ["authors", "series", "genres", "publishe
 type EditGroup = { ids: string[]; list: DetailChange[] };
 
 type Values = Partial<Record<DetailFieldName, string | string[]>>;
+
+/** Places as text that's the same whenever they mean the same. */
+const samePlaces = (json: string | null | undefined) => {
+  try {
+    const list = JSON.parse(json ?? "[]") as SeriesPlace[] | null;
+    return JSON.stringify((list ?? []).map((p) => [p.name, p.number ?? null, p.end ?? null, p.after ?? null]));
+  } catch {
+    return json ?? "";
+  }
+};
 
 const toForm = (field: DetailFieldName, value: string | null) => (isList(field) ? listOf(value) : (value ?? ""));
 const fromForm = (value: string | string[]) => (Array.isArray(value) ? JSON.stringify(value) : value);
@@ -38,6 +50,20 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
   const [confirmation, setConfirmation] = useState<{ groups: EditGroup[]; fields: string[]; count: number } | null>(null);
   const close = useRef(onClose);
   close.current = onClose;
+  // One book: its series as rows. Many: one series to put them all in.
+  const [seriesRows, setSeriesRows] = useState<PlaceRow[] | null>(null);
+  const [startedPlaces, setStartedPlaces] = useState("[]");
+  const [bulkName, setBulkName] = useState("");
+  const [bulkStart, setBulkStart] = useState("");
+  // What the library has, to finish typing from.
+  const suggested = {
+    series: useSuggestions("series"),
+    authors: useSuggestions("authors"),
+    genres: useSuggestions("genres"),
+    narrators: useSuggestions("narrators"),
+    publisher: useSuggestions("publisher"),
+    language: useSuggestions("language"),
+  } as Partial<Record<DetailFieldName, string[]>>;
 
   useEffect(() => {
     if (many) return;
@@ -45,6 +71,9 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
       (d) => {
         setFields(d.fields);
         setValues(Object.fromEntries(d.fields.map((f) => [f.field, toForm(f.field, effective(f))])));
+        const places = placesFromFields(d.fields);
+        setStartedPlaces(JSON.stringify(places));
+        setSeriesRows(places.length ? places.map(rowOf) : [emptyRow()]);
       },
       (e: unknown) => {
         toast(`Couldn't open the details: ${String(e)}`);
@@ -71,13 +100,35 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
   const changes = (book: BookPreview): DetailChange[] => {
     if (many)
       return [...chosen].flatMap((field) => {
+        if (field === "series") {
+          const name = bulkName.split(/\s+/).filter(Boolean).join(" ");
+          // An empty name takes them out of every series.
+          if (!name) return modeOf("series") === "replace" ? placeChanges([]) : [];
+          const typed = bulkStart.trim().replace(",", ".");
+          const start = typed ? Number(typed) : null;
+          if (start !== null && (!Number.isFinite(start) || start < 0 || start >= 100_000))
+            throw new Error("The starting number should be a number, like 1.");
+          const number = start === null ? null : start + books.indexOf(book);
+          return placeChanges(bulkPlaces(book, name, number, modeOf("series") === "add"));
+        }
         const v = values[field] ?? (isList(field) ? [] : "");
         // Adding nothing changes nothing.
         if (Array.isArray(v) && !v.length && modeOf(field) === "add") return [];
         return [{ field, value: cleanValue(field, fromForm(typedFor(book, field, v))) }];
       });
     const out: DetailChange[] = [];
+    const places = placesFromRows(seriesRows ?? []);
+    const placesChanged = samePlaces(JSON.stringify(places)) !== samePlaces(startedPlaces);
     for (const f of fields ?? []) {
+      if (f.field === "series" || f.field === "series_index" || f.field === "series_list") {
+        if (!placesChanged) continue;
+        const value = placeChanges(places).find((c) => c.field === f.field)!.value;
+        const shown = effective(f);
+        if (f.field === "series_list" ? samePlaces(value) === samePlaces(shown) : (value ?? "") === (shown ?? "")) continue;
+        const beneath = f.fetched ?? f.own;
+        out.push({ field: f.field, value: value !== null && beneath !== null && value === beneath ? null : value });
+        continue;
+      }
       const typed = values[f.field];
       if (typed === undefined) continue;
       const value = cleanValue(f.field, fromForm(typedFor(book, f.field, typed)));
@@ -154,7 +205,11 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
   // Narrators belong to audiobooks only.
   const audio = books.every((b) => isAudio(b.format));
   const shownFields = DETAIL_FIELDS.filter(
-    (f) => (!many || MASS_FIELDS.includes(f.field) || (audio && f.field === "narrators")) && (audio || !AUDIO_ONLY.includes(f.field)),
+    (f) =>
+      f.field !== "series_index" &&
+      f.field !== "series_list" &&
+      (!many || MASS_FIELDS.includes(f.field) || (audio && f.field === "narrators")) &&
+      (audio || !AUDIO_ONLY.includes(f.field)),
   );
   const undoEdit = (f: DetailField) => {
     setModes((m) => ({ ...m, [f.field]: "replace" }));
@@ -216,31 +271,77 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
                     ) : (
                       <label htmlFor={`detail-${field}`}>{label}</label>
                     )}
-                    {f?.edited !== null && f?.edited !== undefined && (
+                    {field !== "series" && f?.edited !== null && f?.edited !== undefined && (
                       <button type="button" className="view-all" onClick={() => undoEdit(f)}>
                         Undo my edit
                       </button>
                     )}
                   </span>
-                  {Array.isArray(value) && (
+                  {field === "series" ? (
+                    many ? (
+                      <>
+                        <AddOrReplace mode={modeOf("series")} onChange={(m) => setModes((ms) => ({ ...ms, series: m }))} label="Add to their series or replace them" />
+                        <div className="series-bulk">
+                          <SuggestInput
+                            value={bulkName}
+                            onChange={(v) => { set("series", v); setBulkName(v); }}
+                            all={suggested.series ?? []}
+                            label="Series"
+                            placeholder="Series name"
+                          />
+                          <input
+                            inputMode="decimal"
+                            autoComplete="off"
+                            value={bulkStart}
+                            placeholder="Starting number"
+                            aria-label="Starting number"
+                            onChange={(e) => {
+                              set("series", bulkName);
+                              setBulkStart(e.target.value);
+                            }}
+                          />
+                        </div>
+                        <span className="details-origin">
+                          {modeOf("series") === "add"
+                            ? "Joins the series each book is in; a book with none gets it as its main series."
+                            : "Becomes each book's only series."}
+                          {bulkStart.trim() ? " Numbered in the order you chose them." : ""}
+                        </span>
+                      </>
+                    ) : (
+                      <SeriesEditor rows={seriesRows ?? []} onChange={setSeriesRows} all={suggested.series ?? []} />
+                    )
+                  ) : null}
+                  {field !== "series" && Array.isArray(value) && (
                     <AddOrReplace mode={modeOf(field)} onChange={(m) => chooseMode(field, m)} label={`Add to or replace ${label.toLowerCase()}`} />
                   )}
                   {Array.isArray(value) && modeOf(field) === "add" && !many && listNow(books[0], field).length > 0 && (
                     <span className="details-origin">Joins {listNow(books[0], field).join(", ")}.</span>
                   )}
-                  {Array.isArray(value) ? (
+                  {field === "series" ? null : Array.isArray(value) ? (
                     <ChipInput
                       value={value}
                       onChange={(v) => set(field, v)}
+                      suggestions={suggested[field]}
                       label={label}
                       placeholder={field === "genres" ? "Type a genre and press Enter" : "Type a name and press Enter"}
                     />
                   ) : long ? (
                     <textarea id={`detail-${field}`} rows={6} value={value} onChange={(e) => set(field, e.target.value)} />
+                  ) : suggested[field] ? (
+                    <SuggestInput
+                      id={`detail-${field}`}
+                      value={value}
+                      onChange={(v) => set(field, v)}
+                      all={suggested[field] ?? []}
+                      label={many ? label : undefined}
+                      placeholder={field === "language" ? "Like en or English" : undefined}
+                    />
                   ) : (
                     <input
                       id={`detail-${field}`}
                       value={value}
+                      autoComplete="off"
                       inputMode={field === "series_index" ? "decimal" : undefined}
                       placeholder={
                         field === "published"

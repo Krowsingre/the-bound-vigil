@@ -1361,6 +1361,11 @@ async fn all_tags(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::m
 }
 
 #[tauri::command]
+async fn detail_suggestions(state: State<'_, AppLibrary>, field: String) -> CommandResult<Vec<String>> {
+    with_library(state, move |library| library.detail_suggestions(&field)).await
+}
+
+#[tauri::command]
 async fn add_tag(
     state: State<'_, AppLibrary>,
     book_ids: Vec<String>,
@@ -2298,6 +2303,7 @@ pub fn run() {
             remove_sanctum_link,
             move_sanctum_link,
             all_tags,
+            detail_suggestions,
             add_tag,
             remove_tag,
             set_book_tags,
