@@ -773,6 +773,9 @@ const MIGRATIONS: &[&str] = &[
     );
     ALTER TABLE bookmarks ADD COLUMN folder_id TEXT;
     "#,
+    // v45: finds an ebook's audiobook without reading every audiobook, for
+    // the paired marks on every book in a list.
+    "CREATE INDEX IF NOT EXISTS audiobooks_ebook ON audiobooks(ebook_id);",
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
