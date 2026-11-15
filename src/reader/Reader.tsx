@@ -20,13 +20,14 @@ import { openChapter } from "../browse/openChapter";
 import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars";
 import { LeftPanel, RightPanel, type AnnotationHandlers, type LeftTab, type RightTab } from "./ReaderPanels";
 import { navigationDirection } from "../shell/navigationKeys";
-import { DefineCard, ListenAlongPanel, NoteDialog, PageSettings, ReadAloudPlayer, ReadingAppearance, SelectionToolbar, ZoomControls } from "./ReaderPopovers";
+import { DefineCard, NoteDialog, PageSettings, ReadingAppearance, SelectionToolbar, ZoomControls } from "./ReaderPopovers";
 import { addressFor, readBrowserPrefs } from "../browse/browserPrefs";
 import { ReaderSearch } from "./ReaderSearch";
 import { canTranslateInReader, TranslatePanel } from "./TranslatePanel";
 import { BOOK_OPENED, useAppDark } from "../settings/appSettings";
 import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, resolveTheme, SETTINGS_KEY, zoomStep, type ReaderSettings } from "./settings";
 import { useKeyboardScroll } from "./useKeyboardScroll";
+import { ListeningDock, ListeningSheet, MS_PER_PAGE, type ListenMode, type ListenTimer, type NarrationPlace } from "./ListeningSheet";
 import { useReadAloud } from "./useReadAloud";
 import { useReadAlong } from "./useReadAlong";
 import { StructuredViewer } from "./StructuredViewer";
@@ -130,6 +131,10 @@ export function Reader({
   const [phoneSearch, setPhoneSearch] = useState(false);
   // Aa: the Reading Appearance sheet.
   const [lookOpen, setLookOpen] = useState(false);
+  const [listenOpen, setListenOpen] = useState(false);
+  // Until one is picked, Immersion when the book has its audiobook.
+  const [listenChoice, setListenChoice] = useState<ListenMode | null>(null);
+  const [listenTimer, setListenTimer] = useState<ListenTimer>({ kind: "off" });
   const [fullscreen, setFullscreen] = useState(false);
   const [jumps, setJumps] = useState<Jump[]>([]);
   const [selection, setSelection] = useState<TextSelection | null>(null);
@@ -337,6 +342,23 @@ export function Reader({
     onStart: readAloud.stop,
   });
 
+  const listenMode: ListenMode = listenChoice ?? (readAlong.audiobookId ? "immersion" : "narration");
+  // Reading aloud stops the audiobook, as starting the audiobook stops reading aloud.
+  const narrate = useMemo(
+    () => ({
+      ...readAloud,
+      play: () => {
+        if (readAlong.playing) readAlong.playPause();
+        readAloud.play();
+      },
+      toggle: () => {
+        if (readAloud.status !== "playing" && readAlong.playing) readAlong.playPause();
+        readAloud.toggle();
+      },
+    }),
+    [readAloud, readAlong],
+  );
+
   const r = engine.relocation;
   const position = pageOf(r?.location);
   const totalPages = position?.total ?? 0;
@@ -356,6 +378,30 @@ export function Reader({
     [engine.toc, engine.sectionOf, engine.sectionStarts, totalPages],
   );
   const current = currentEntry(entries, r?.tocItem?.href);
+
+  // Narration's estimated place: the chapter's pages, at about a page a minute.
+  const narration = useMemo<NarrationPlace>(() => {
+    const at = current ? entries.indexOf(current) : -1;
+    const start = current?.page ?? 1;
+    const next = entries.slice(at + 1).find((e) => e.page !== null && e.page > start);
+    const end = Math.max(start + 1, next?.page ?? totalPages + 1);
+    const page = Math.min(end - 1, Math.max(start, position?.page ?? start));
+    return {
+      chapters: entries.map((e) => ({ label: "\u00a0\u00a0".repeat(e.depth) + e.label, href: e.href, page: e.page })),
+      current: Math.max(0, at),
+      elapsedMs: (page - start) * MS_PER_PAGE,
+      totalMs: (end - start) * MS_PER_PAGE,
+      seek: (f) => {
+        if (!totalPages) return;
+        quietUntil.current = performance.now() + QUIET_MS;
+        void engine.goToFraction(Math.min(1, (start - 1 + f * (end - start)) / totalPages));
+      },
+      goChapter: (href) => {
+        quietUntil.current = performance.now() + QUIET_MS;
+        void engine.goTo(href);
+      },
+    };
+  }, [entries, current, position?.page, totalPages, engine]);
 
   // Jumps remember where you were, for "Return to previous location".
   const remember = useCallback(() => {
@@ -648,7 +694,7 @@ export function Reader({
     else if (key === "f") setFocus((f) => !f);
     else if (key === "r") {
       if (readAloud.unavailable) toast(readAloud.unavailable);
-      else readAloud.toggle();
+      else narrate.toggle();
     }
     else if (e.key === "ArrowLeft") turn(false);
     else if (e.key === "ArrowRight") turn(true);
@@ -798,7 +844,7 @@ export function Reader({
   const showLeft = !focus && panels.left && !!info;
   const showRight = !focus && panels.right && !!info;
   const noteCount = annotations.filter((a) => !isBookmark(a)).length;
-  now.current = { busy: !!(selection || active || noteEdit || lookOpen || expandedContent || phoneSearch), overlay, focus, panels: showLeft || showRight };
+  now.current = { busy: !!(selection || active || noteEdit || lookOpen || listenOpen || expandedContent || phoneSearch), overlay, focus, panels: showLeft || showRight };
   const openContents = () => {
     setFocus(false);
     setLeftTab("contents");
@@ -830,35 +876,17 @@ export function Reader({
           )
         }
         readAloud={
-          <>
-          {readAlong.audiobookId && (
-            <Popover
-              label="Listen along"
-              title={
-                readAlong.manual
-                  ? "Listen along: play the audiobook and turn the pages yourself"
-                  : readAlong.following
-                    ? "Following the audiobook"
-                    : "Listen along: play the audiobook and follow it here"
-              }
-              trigger={<Icon name="headphones" size={20} />}
-              className="read-aloud-popover"
-              on={readAlong.following || (readAlong.manual && readAlong.playing)}
-            >
-              <ListenAlongPanel readAlong={readAlong} ebookId={bookId} />
-            </Popover>
-          )}
-          <Popover
-            label="Read aloud"
-            title={readAloud.unavailable ?? (readAloud.status === "playing" ? "Read aloud: reading (R to pause)" : "Read aloud (R)")}
-            trigger={<Icon name="readAloud" size={20} />}
-            className="read-aloud-popover"
-            on={readAloud.status !== "stopped"}
-            muted={!!readAloud.unavailable}
+          <button
+            type="button"
+            className={`icon-btn${listenOpen || readAloud.status !== "stopped" || readAlong.playing ? " is-on" : ""}`}
+            aria-label="Listening"
+            title={readAlong.audiobookId ? "Listening: read aloud, or the audiobook (R reads aloud)" : "Listening: read aloud (R)"}
+            aria-haspopup="dialog"
+            aria-expanded={listenOpen}
+            onClick={() => setListenOpen((o) => !o)}
           >
-            <ReadAloudPlayer readAloud={readAloud} lang={bookLang} settings={settings} onChange={changeSettings} />
-          </Popover>
-          </>
+            <Icon name={readAlong.audiobookId ? "headphones" : "readAloud"} size={20} />
+          </button>
         }
         bookmarked={!!bookmarkHere}
         onToggleBookmark={toggleBookmark}
@@ -926,6 +954,19 @@ export function Reader({
               <p>{engine.error}</p>
             </div>
           )}
+          <ListeningDock
+            sheetOpen={listenOpen}
+            onOpen={() => setListenOpen(true)}
+            title={info?.book.title ?? ""}
+            readAloud={narrate}
+            readAlong={readAlong}
+            narration={narration}
+            bookLeftMs={Math.max(0, totalPages - (position?.page ?? 1)) * MS_PER_PAGE}
+            settings={settings}
+            timer={listenTimer}
+            onTimer={setListenTimer}
+            raised={overlay && !focus}
+          />
           <ReaderBottomBar
             position={position}
             fraction={r?.fraction ?? 0}
@@ -1007,6 +1048,22 @@ export function Reader({
           onMarkRead={markReadAtEnd}
           onRemove={removeAtEnd}
           onDismiss={() => setEndDismissed(true)}
+        />
+      )}
+      {listenOpen && (
+        <ListeningSheet
+          mode={listenMode}
+          onMode={setListenChoice}
+          onClose={() => setListenOpen(false)}
+          readAloud={narrate}
+          readAlong={readAlong}
+          ebookId={bookId}
+          narration={narration}
+          settings={settings}
+          onSettings={changeSettings}
+          lang={bookLang}
+          timer={listenTimer}
+          onTimer={setListenTimer}
         />
       )}
       {lookOpen && !engine.fixed && <ReadingAppearance settings={settings} onChange={changeSettings} onClose={() => setLookOpen(false)} />}

@@ -1765,7 +1765,8 @@
   padding-top: 26px;
 }
 
-.look-track input {
+.look-track input,
+.listen-progress input {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
@@ -1774,25 +1775,29 @@
   cursor: pointer;
 }
 
-.look-track input::-webkit-slider-runnable-track {
+.look-track input::-webkit-slider-runnable-track,
+.listen-progress input::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 2px;
   background: linear-gradient(to right, var(--accent) var(--fill), var(--border) var(--fill));
 }
 
-.look-track input::-moz-range-track {
+.look-track input::-moz-range-track,
+.listen-progress input::-moz-range-track {
   height: 4px;
   border-radius: 2px;
   background: var(--border);
 }
 
-.look-track input::-moz-range-progress {
+.look-track input::-moz-range-progress,
+.listen-progress input::-moz-range-progress {
   height: 4px;
   border-radius: 2px;
   background: var(--accent);
 }
 
-.look-track input::-webkit-slider-thumb {
+.look-track input::-webkit-slider-thumb,
+.listen-progress input::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 20px;
   height: 20px;
@@ -1802,7 +1807,8 @@
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.3), inset 0 0 0 1px var(--border);
 }
 
-.look-track input::-moz-range-thumb {
+.look-track input::-moz-range-thumb,
+.listen-progress input::-moz-range-thumb {
   width: 18px;
   height: 18px;
   border: 0;
@@ -1867,4 +1873,257 @@
 .look-sheet .choice,
 .look-sheet .field {
   padding-top: 10px;
+}
+
+/* Listening: Narration and Immersion share one sheet. */
+.listen-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 12px 0 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.listen-modes button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: 400 16px var(--font-serif);
+  cursor: pointer;
+}
+
+.listen-modes button.is-active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.listen-modes button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.listen-title {
+  margin: 8px 0 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.listen-progress {
+  display: grid;
+  gap: 2px;
+  margin-top: 10px;
+}
+
+.listen-progress-head,
+.listen-progress-times {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.listen-progress-head span:first-child {
+  color: var(--text);
+}
+
+.listen-progress-times {
+  font-variant-numeric: tabular-nums;
+}
+
+.listen-controls {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: center;
+  justify-items: center;
+  margin: 10px 0 6px;
+}
+
+.listen-ctl {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: 400 12px var(--font-sans);
+  text-align: center;
+  cursor: pointer;
+}
+
+.listen-ctl:disabled,
+.listen-play:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.listen-play {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+.listen-play-small {
+  width: 44px;
+  height: 44px;
+  flex: none;
+}
+
+.listen-rows {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.listen-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 4px 6px 4px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.listen-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.listen-row select {
+  min-width: 0;
+  max-width: 62%;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+}
+
+.listen-rate {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.listen-rate output {
+  min-width: 52px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.listen-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.listen-sheet .read-aloud-note {
+  margin: 8px 0 0;
+}
+
+/* The slim bar while listening with the sheet closed. */
+.listen-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  width: min(560px, calc(100% - 24px));
+  margin: 0 auto 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 4px 18px rgb(0 0 0 / 0.16);
+  flex: none;
+  z-index: 21;
+}
+
+.reader.is-overlay .listen-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  width: auto;
+  margin: 0;
+  transition: bottom 0.22s ease;
+}
+
+.reader.is-overlay .listen-bar.is-raised {
+  bottom: calc(104px + env(safe-area-inset-bottom));
+}
+
+.listen-bar-rule {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+
+.listen-bar-what {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.listen-bar-what strong,
+.listen-bar-what span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.listen-bar-what strong {
+  font: 400 16px var(--font-serif);
+}
+
+.listen-bar-what span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.listen-bar-rate {
+  flex: none;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 17px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: inherit;
+  font: 500 14px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader.is-overlay .listen-bar {
+    transition: none;
+  }
 }

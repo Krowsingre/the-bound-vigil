@@ -25,6 +25,8 @@ export interface ReadAloud {
   stop: () => void;
   prevSentence: () => void;
   nextSentence: () => void;
+  /** Moves several sentences back (-1) or on (1), then carries on reading there. */
+  skipSentences: (dir: 1 | -1, count: number) => Promise<void>;
 }
 
 const synth: SpeechSynthesis | null = typeof window !== "undefined" && "speechSynthesis" in window ? window.speechSynthesis : null;
@@ -394,9 +396,9 @@ export function useReadAloud({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const step = useCallback(async (dir: 1 | -1) => {
+  const step = useCallback(async (dir: 1 | -1, speak = true) => {
     if (s.status === "stopped" || !s.sentences.length) return;
-    const playing = s.status === "playing";
+    const playing = s.status === "playing" && speak;
     let target = s.at + dir;
     if (target < 0) {
       // The paragraph before, from its last sentence; at a section's start, this sentence again.
@@ -481,5 +483,9 @@ export function useReadAloud({
     stop: useCallback(finish, []), // eslint-disable-line react-hooks/exhaustive-deps
     prevSentence: useCallback(() => void step(-1), [step]),
     nextSentence: useCallback(() => void step(1), [step]),
+    skipSentences: useCallback(async (dir: 1 | -1, count: number) => {
+      for (let i = 1; i < count; i++) await step(dir, false);
+      await step(dir);
+    }, [step]),
   };
 }
