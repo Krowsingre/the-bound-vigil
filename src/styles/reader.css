@@ -1260,6 +1260,38 @@
   mask-image: linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%);
 }
 
+/* Nothing else on screen but the book's name at the top and "Page X of Y"
+   at the bottom (embre's picture). The tools keep their places, unseen, so
+   shortcuts still open them where they belong; a click brings them back. */
+.reader.is-flowing .reader-top {
+  position: relative;
+}
+
+.reader.is-flowing .reader-top-row > :not(.window-controls, .reader-top-spacer),
+.reader.is-flowing .reader-slider,
+.reader.is-flowing .reader-bottom .icon-btn {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.reader.is-flowing .reader-top-name {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  max-width: 50%;
+  padding: 0;
+  margin: 0;
+  transform: translateX(-50%);
+  line-height: var(--header-h);
+  font-size: 15px;
+  color: var(--page-muted);
+  pointer-events: none;
+}
+
+.reader.is-flowing .reader-bottom-chapter {
+  display: none;
+}
+
 /* Read aloud */
 .icon-btn.is-muted {
   opacity: 0.45;
