@@ -77,7 +77,7 @@ impl Drop for DownloadHold {
 
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, EventTarget, Manager, State};
-use tbv_core::bookmarks::Bookmark;
+use tbv_core::bookmarks::{Bookmark, BookmarkFolder, BookmarkUndo};
 use tbv_core::browser_history::HistoryEntry;
 use tbv_core::quick_links::QuickLink;
 
@@ -2219,18 +2219,63 @@ pub async fn bookmarks(state: State<'_, AppLibrary>) -> CommandResult<Vec<Bookma
 }
 
 #[tauri::command]
-pub async fn add_bookmark(state: State<'_, AppLibrary>, title: String, url: String, folder: Option<String>) -> CommandResult<Bookmark> {
-    with_library(state, move |library| library.add_bookmark_in(&title, &url, folder.as_deref())).await
+pub async fn add_bookmark(state: State<'_, AppLibrary>, title: String, url: String, folder_id: Option<String>) -> CommandResult<Bookmark> {
+    with_library(state, move |library| library.add_bookmark_to(&title, &url, folder_id.as_deref())).await
 }
 
 #[tauri::command]
-pub async fn edit_bookmark(state: State<'_, AppLibrary>, id: String, title: String, url: String, folder: Option<String>) -> CommandResult<()> {
-    with_library(state, move |library| library.edit_bookmark(&id, &title, &url, folder.as_deref())).await
+pub async fn edit_bookmark(state: State<'_, AppLibrary>, id: String, title: String, url: String, folder_id: Option<String>) -> CommandResult<()> {
+    with_library(state, move |library| library.edit_bookmark(&id, &title, &url, folder_id.as_deref())).await
 }
 
 #[tauri::command]
 pub async fn move_bookmark(state: State<'_, AppLibrary>, id: String, direction: i32) -> CommandResult<()> {
     with_library(state, move |library| library.move_bookmark(&id, direction)).await
+}
+
+#[tauri::command]
+pub async fn bookmark_folders(state: State<'_, AppLibrary>) -> CommandResult<Vec<BookmarkFolder>> {
+    with_library(state, |library| library.bookmark_folders()).await
+}
+
+#[tauri::command]
+pub async fn create_bookmark_folder(state: State<'_, AppLibrary>, name: String, parent_id: Option<String>) -> CommandResult<BookmarkFolder> {
+    with_library(state, move |library| library.create_bookmark_folder(&name, parent_id.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn rename_bookmark_folder(state: State<'_, AppLibrary>, id: String, name: String) -> CommandResult<()> {
+    with_library(state, move |library| library.rename_bookmark_folder(&id, &name)).await
+}
+
+#[tauri::command]
+pub async fn delete_bookmark_folder(state: State<'_, AppLibrary>, id: String, keep_contents: bool) -> CommandResult<BookmarkUndo> {
+    with_library(state, move |library| library.delete_bookmark_folder(&id, keep_contents)).await
+}
+
+#[tauri::command]
+pub async fn move_bookmarks(state: State<'_, AppLibrary>, ids: Vec<String>, folder_id: Option<String>, before: Option<String>) -> CommandResult<BookmarkUndo> {
+    with_library(state, move |library| library.move_bookmarks(&ids, folder_id.as_deref(), before.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn move_bookmark_folder(state: State<'_, AppLibrary>, id: String, parent_id: Option<String>, before: Option<String>) -> CommandResult<BookmarkUndo> {
+    with_library(state, move |library| library.move_bookmark_folder(&id, parent_id.as_deref(), before.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn sort_bookmark_folder(state: State<'_, AppLibrary>, folder_id: Option<String>, by: String) -> CommandResult<BookmarkUndo> {
+    with_library(state, move |library| library.sort_bookmark_folder(folder_id.as_deref(), &by)).await
+}
+
+#[tauri::command]
+pub async fn remove_bookmarks(state: State<'_, AppLibrary>, ids: Vec<String>) -> CommandResult<BookmarkUndo> {
+    with_library(state, move |library| library.remove_bookmarks(&ids)).await
+}
+
+#[tauri::command]
+pub async fn undo_bookmarks(state: State<'_, AppLibrary>, undo: BookmarkUndo) -> CommandResult<()> {
+    with_library(state, move |library| library.undo_bookmarks(&undo)).await
 }
 
 #[tauri::command]

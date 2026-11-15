@@ -585,7 +585,7 @@ export function Reader({
   const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   onKeyRef.current = (e) => {
     if (noteEdit || expandedContent || e.defaultPrevented) return;
-    const backKey = navigationDirection(e, true) === "back";
+    const backKey = navigationDirection(e, false) === "back";
     if (isTyping(e.target) && e.key !== "Escape" && !backKey) return;
     const ctrl = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();

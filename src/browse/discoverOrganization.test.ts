@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { expect, it } from "vitest";
-import { readBookmarkHtml, writeBookmarkHtml } from "./bookmarkHtml";
+import { readBookmarkHtml, writeBookmarkHtml, writeBookmarkTree } from "./bookmarkHtml";
 import { restoreSession, snapshotSession } from "./SessionsPanel";
 
 it("round trips root and nested bookmarks while escaping HTML", () => {
@@ -12,10 +12,24 @@ it("round trips root and nested bookmarks while escaping HTML", () => {
   ];
   const html = writeBookmarkHtml(marks);
   expect(html).toContain("&lt;this&gt;");
-  expect(readBookmarkHtml(html)).toEqual(marks);
+  expect(readBookmarkHtml(html).map(({ path: _, ...entry }) => entry)).toEqual(marks);
+  expect(readBookmarkHtml(html)[1].path).toEqual(["Books", "Reference"]);
   expect(readBookmarkHtml('<DL><DT><A HREF="javascript:alert(1)">Ignore</A><DT><A HREF="https://valid.test/">Keep</A></DL>')).toEqual([
-    { title: "Keep", url: "https://valid.test/", folder: null },
+    { title: "Keep", url: "https://valid.test/", folder: null, path: [] },
   ]);
+});
+
+it("writes nested folders in order and reads them back with their names intact", () => {
+  const folders = [
+    { id: "a", name: "Poems / Verse", parentId: null },
+    { id: "b", name: "Inner", parentId: "a" },
+  ];
+  const marks = [
+    { id: "1", title: "Top", url: "https://top.test/", folderId: null },
+    { id: "2", title: "Deep", url: "https://deep.test/", folderId: "b" },
+  ];
+  const back = readBookmarkHtml(writeBookmarkTree(folders, marks));
+  expect(back.map((m) => [m.title, m.path])).toEqual([["Deep", ["Poems / Verse", "Inner"]], ["Top", []]]);
 });
 
 it("saves and restores URL, order, pinned state and selection without private tabs or URL passwords", () => {

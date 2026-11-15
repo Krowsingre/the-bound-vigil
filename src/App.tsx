@@ -433,7 +433,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     return () => unlisten?.();
   }, [runImport]);
 
-  // App Back/Forward (Alt+Shift+Left/Right), independent of webpage history.
+  // App Back/Forward (Alt+Left/Right; Alt+Shift in Scry), independent of webpage history.
   type Place = { route: Route; collection: CollectionRef | null; details: typeof details; series: SeriesPlace | null };
   const { back, forward } = useNavigationHistory<Place>(
     { route, collection: openCollection, details, series: seriesPlace },

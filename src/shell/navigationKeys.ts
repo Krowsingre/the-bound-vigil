@@ -6,7 +6,7 @@ export function requestAppHistory(direction: "back" | "forward") {
   window.dispatchEvent(new CustomEvent(APP_HISTORY_NAVIGATION, { detail: direction }));
 }
 
-/** Shift distinguishes app/reader navigation from Discover's webpage history. */
+/** Alt+arrow is app/reader navigation everywhere but Scry, where it is webpage history and Alt+Shift is the app's. */
 export function navigationDirection(e: NavigationKey, shifted: boolean): "back" | "forward" | null {
   if (!e.altKey || e.shiftKey !== shifted || e.ctrlKey || e.metaKey) return null;
   return e.key === "ArrowLeft" ? "back" : e.key === "ArrowRight" ? "forward" : null;

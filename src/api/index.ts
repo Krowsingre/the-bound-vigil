@@ -13,6 +13,8 @@ import type {
   BookFile,
   BookLocation,
   Bookmark,
+  BookmarkFolder,
+  BookmarkUndo,
   LookedUp,
   ScreenSpot,
   QuickLink,
@@ -536,12 +538,24 @@ export interface Api {
   downloadWebBook(url: string, title: string, sourceUrl?: string): Promise<void>;
   /** Websites saved in the browser, in order. */
   bookmarks(): Promise<Bookmark[]>;
-  /** Saves a page; one saved already is only renamed. */
-  addBookmark(title: string, url: string, folder?: string | null): Promise<Bookmark>;
-  editBookmark(id: string, title: string, url: string, folder: string | null): Promise<void>;
+  /** Saves a page at the end of a folder (none = the top level); one saved already is renamed and moved there. */
+  addBookmark(title: string, url: string, folderId?: string | null): Promise<Bookmark>;
+  editBookmark(id: string, title: string, url: string, folderId: string | null): Promise<void>;
   moveBookmark(id: string, direction: -1 | 1): Promise<void>;
   renameBookmark(id: string, title: string): Promise<void>;
   removeBookmark(id: string): Promise<void>;
+  bookmarkFolders(): Promise<BookmarkFolder[]>;
+  createBookmarkFolder(name: string, parentId: string | null): Promise<BookmarkFolder>;
+  renameBookmarkFolder(id: string, name: string): Promise<void>;
+  /** Takes a folder away with its contents, or moves them up a level. */
+  deleteBookmarkFolder(id: string, keepContents: boolean): Promise<BookmarkUndo>;
+  /** Moves bookmarks into a folder, before another bookmark there or at the end. */
+  moveBookmarks(ids: string[], folderId: string | null, before: string | null): Promise<BookmarkUndo>;
+  moveBookmarkFolder(id: string, parentId: string | null, before: string | null): Promise<BookmarkUndo>;
+  /** One-off: by name, or newest first. */
+  sortBookmarkFolder(folderId: string | null, by: "name" | "added"): Promise<BookmarkUndo>;
+  removeBookmarks(ids: string[]): Promise<BookmarkUndo>;
+  undoBookmarks(undo: BookmarkUndo): Promise<void>;
   /** Quick Links on Discover's start page, synced like bookmarks. */
   quickLinks(): Promise<QuickLink[]>;
   addQuickLink(title: string, url: string, picture: string): Promise<QuickLink>;
@@ -1289,11 +1303,20 @@ function appApi(): Api {
     downloadFromCatalog: async (id, file, title) => (await core).invoke("download_from_catalog", { id, file, title }),
     downloadWebBook: async (url, title, sourceUrl) => (await core).invoke("download_web_book", { url, title, sourceUrl }),
     bookmarks: async () => (await core).invoke<Bookmark[]>("bookmarks"),
-    addBookmark: async (title, url, folder) => (await core).invoke<Bookmark>("add_bookmark", { title, url, folder }),
-    editBookmark: async (id, title, url, folder) => (await core).invoke("edit_bookmark", { id, title, url, folder }),
+    addBookmark: async (title, url, folderId) => (await core).invoke<Bookmark>("add_bookmark", { title, url, folderId: folderId ?? null }),
+    editBookmark: async (id, title, url, folderId) => (await core).invoke("edit_bookmark", { id, title, url, folderId }),
     moveBookmark: async (id, direction) => (await core).invoke("move_bookmark", { id, direction }),
     renameBookmark: async (id, title) => (await core).invoke("rename_bookmark", { id, title }),
     removeBookmark: async (id) => (await core).invoke("remove_bookmark", { id }),
+    bookmarkFolders: async () => (await core).invoke<BookmarkFolder[]>("bookmark_folders"),
+    createBookmarkFolder: async (name, parentId) => (await core).invoke<BookmarkFolder>("create_bookmark_folder", { name, parentId }),
+    renameBookmarkFolder: async (id, name) => (await core).invoke("rename_bookmark_folder", { id, name }),
+    deleteBookmarkFolder: async (id, keepContents) => (await core).invoke<BookmarkUndo>("delete_bookmark_folder", { id, keepContents }),
+    moveBookmarks: async (ids, folderId, before) => (await core).invoke<BookmarkUndo>("move_bookmarks", { ids, folderId, before }),
+    moveBookmarkFolder: async (id, parentId, before) => (await core).invoke<BookmarkUndo>("move_bookmark_folder", { id, parentId, before }),
+    sortBookmarkFolder: async (folderId, by) => (await core).invoke<BookmarkUndo>("sort_bookmark_folder", { folderId, by }),
+    removeBookmarks: async (ids) => (await core).invoke<BookmarkUndo>("remove_bookmarks", { ids }),
+    undoBookmarks: async (undo) => (await core).invoke("undo_bookmarks", { undo }),
     quickLinks: async () => (await core).invoke<QuickLink[]>("quick_links"),
     addQuickLink: async (title, url, picture) => (await core).invoke<QuickLink>("add_quick_link", { title, url, picture }),
     updateQuickLink: async (id, title, url, picture) => (await core).invoke("update_quick_link", { id, title, url, picture }),

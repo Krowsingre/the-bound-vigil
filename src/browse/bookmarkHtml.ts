@@ -1,6 +1,7 @@
-import type { Bookmark } from "../api/types";
+import type { Bookmark, BookmarkFolder } from "../api/types";
 
-type BookmarkFileEntry = Pick<Bookmark, "title" | "url" | "folder">;
+/** A bookmark from a file: `path` is the folders it's in, outermost first; `folder` the same joined up. */
+type BookmarkFileEntry = Pick<Bookmark, "title" | "url" | "folder"> & { path?: string[] };
 
 export function readBookmarkHtml(html: string): BookmarkFileEntry[] {
   const template = document.createElement("template");
@@ -23,7 +24,7 @@ export function readBookmarkHtml(html: string): BookmarkFileEntry[] {
         case "A": {
           const url = element.getAttribute("href")?.trim() ?? "";
           if (isWebBookmark(url)) {
-            entries.push({ url, title: element.textContent?.trim() || url, folder: folders.join(" / ") || null });
+            entries.push({ url, title: element.textContent?.trim() || url, folder: folders.join(" / ") || null, path: folders });
           }
           break;
         }
@@ -80,4 +81,15 @@ export function writeBookmarkHtml(bookmarks: BookmarkFileEntry[]): string {
     "</DL><p>",
   ].join("\n");
   return ["<!DOCTYPE NETSCAPE-Bookmark-file-1>", '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">', "<TITLE>Bookmarks</TITLE>", "<H1>Bookmarks</H1>", list(root)].join("\n");
+}
+
+/** The standard bookmarks file from TBV's folders, nested and in their order (folders first, as TBV shows them). */
+export function writeBookmarkTree(folders: BookmarkFolder[], marks: Bookmark[]): string {
+  const list = (parent: string | null): string => [
+    "<DL><p>",
+    ...folders.filter((f) => f.parentId === parent).map((f) => `<DT><H3>${escapeHtml(f.name)}</H3>\n${list(f.id)}`),
+    ...marks.filter((m) => (m.folderId ?? null) === parent).map(({ url, title }) => `<DT><A HREF="${escapeHtml(url)}">${escapeHtml(title)}</A>`),
+    "</DL><p>",
+  ].join("\n");
+  return ["<!DOCTYPE NETSCAPE-Bookmark-file-1>", '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">', "<TITLE>Bookmarks</TITLE>", "<H1>Bookmarks</H1>", list(null)].join("\n");
 }

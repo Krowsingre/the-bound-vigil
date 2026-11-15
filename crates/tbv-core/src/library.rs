@@ -759,6 +759,20 @@ const MIGRATIONS: &[&str] = &[
     DELETE FROM sync_files_also
         WHERE path LIKE 'books/%' AND substr(path, 71, 1) = '.' AND instr(substr(path, 7, 64), '.') = 0;
     "#,
+    // v44: real folders for Discover bookmarks, which can hold folders too.
+    // `bookmarks.folder` stays as the folder's name for older TBVs.
+    r#"
+    CREATE TABLE bookmark_folders (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        parent_id TEXT,
+        position REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    ALTER TABLE bookmarks ADD COLUMN folder_id TEXT;
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
