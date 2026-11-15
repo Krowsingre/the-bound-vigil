@@ -35,6 +35,10 @@ export interface ReadAlong {
   manual: boolean;
   /** The linked audiobook is playing. */
   playing: boolean;
+  /** Turns following the narrator on or off, without pausing the audiobook. */
+  follow: (on: boolean) => void;
+  /** Plays or pauses the audiobook, following it when it can be followed. */
+  playPause: () => void;
 }
 
 function flatten(items: TocItem[] | undefined, view: View, out: TocEntry[] = []): TocEntry[] {
@@ -304,10 +308,33 @@ export function useReadAlong({
     void player.load(audiobookId, true);
   }, [audiobookId, following, player, onStart, s, manual, format, lineUp]);
 
+  const canFollow = !manual && !(linesUp(format) && !lineUp?.done && !lineUp?.failed);
+  const ours = !!audiobookId && player.book?.book.id === audiobookId;
+  const follow = useCallback((on: boolean) => {
+    if (!audiobookId) return;
+    if (!on) return setFollowing(false);
+    if (!canFollow) return;
+    onStart();
+    s.heldUntil = 0;
+    setFollowing(true);
+    if (!ours) void player.load(audiobookId, true);
+    else if (!player.playing) player.toggle();
+  }, [audiobookId, canFollow, onStart, s, ours, player]);
+  const playPause = useCallback(() => {
+    if (!audiobookId) return;
+    if (ours && player.playing) return player.toggle();
+    if (canFollow) return follow(true);
+    onStart();
+    if (ours) player.toggle();
+    else void player.load(audiobookId, true);
+  }, [audiobookId, ours, player, canFollow, follow, onStart]);
+
   return {
     audiobookId,
     following,
     toggle,
+    follow,
+    playPause,
     lineUp,
     linesUp: linesUp(format),
     manual,

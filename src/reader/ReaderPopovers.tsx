@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { HighlightColor, WordDefinition, WordSense } from "../api/types";
 import { Icon } from "../components/Icon";
 import { isAndroid, isApp, isIOS } from "../api";
-import { formatRate, groupVoices, primaryLang, RATE_RANGE } from "./readAloud";
 import {
   FONTS,
   HIGHLIGHT_COLORS,
@@ -20,7 +19,6 @@ import {
   type ReadingTheme,
   type ReadingWidth,
 } from "./settings";
-import type { ReadAloud } from "./useReadAloud";
 import type { ReadAlong } from "./useReadAlong";
 import { liningUp, onLiningUp, type LiningUp } from "../readAlong/lineUp";
 import { PauseLiningUpButton, pausedUntilText, usePause } from "../readAlong/PauseLiningUp";
@@ -452,107 +450,6 @@ export function PageSettings({
   );
 }
 
-/** The read aloud player: play and pause, sentence by sentence, voice and speed. */
-export function ReadAloudPlayer({
-  readAloud: ra,
-  lang,
-  settings,
-  onChange,
-}: {
-  readAloud: ReadAloud;
-  /** The book's language, whose voices are listed first. */
-  lang: string | null;
-  settings: ReaderSettings;
-  onChange: (s: Partial<ReaderSettings>) => void;
-}) {
-  if (ra.unavailable) return <p className="read-aloud-note">{ra.unavailable}</p>;
-  const playing = ra.status === "playing";
-  const stopped = ra.status === "stopped";
-  const noVoices = ra.voices.length === 0;
-  const { matching, other } = groupVoices(ra.voices, lang);
-  const key = primaryLang(lang);
-  const chosen = settings.voices[key] ?? "";
-  const option = (v: SpeechSynthesisVoice) => (
-    <option key={v.voiceURI} value={v.voiceURI}>
-      {v.name}
-      {v.lang ? ` (${v.lang})` : ""}
-    </option>
-  );
-  return (
-    <div className="read-aloud">
-      <div className="read-aloud-controls" role="group" aria-label="Read aloud">
-        <button type="button" className="icon-btn" aria-label="Previous sentence" title="Previous sentence" disabled={stopped} onClick={ra.prevSentence}>
-          <Icon name="skipBack" size={20} />
-        </button>
-        <button
-          type="button"
-          className="read-aloud-play"
-          aria-label={playing ? "Pause (R)" : "Read aloud (R)"}
-          title={playing ? "Pause (R)" : "Read aloud (R)"}
-          onClick={ra.toggle}
-        >
-          <Icon name={playing ? "pause" : "play"} size={22} filled={!playing} />
-        </button>
-        <button type="button" className="icon-btn" aria-label="Next sentence" title="Next sentence" disabled={stopped} onClick={ra.nextSentence}>
-          <Icon name="skipForward" size={20} />
-        </button>
-        <button type="button" className="icon-btn" aria-label="Stop" title="Stop" disabled={stopped} onClick={ra.stop}>
-          <Icon name="stop" size={18} />
-        </button>
-      </div>
-      <p className="read-aloud-note" role="status">
-        {ra.error ??
-          (noVoices && stopped
-            ? isApp
-              ? "No voices were listed yet. If nothing is heard, add voices in Windows Settings › Time & language › Speech."
-              : "Uses this device's own voice. Others can be chosen here once the device lists them."
-            : playing
-              ? "Reading. The pages turn as it goes."
-              : ra.status === "paused"
-                ? "Paused."
-                : "Starts from the first sentence on this page.")}
-      </p>
-      <fieldset className="choice">
-        <legend>Voice</legend>
-        <select
-          className="settings-select read-aloud-voice"
-          aria-label="Voice"
-          value={chosen}
-          disabled={noVoices}
-          onChange={(e) => {
-            const voices = { ...settings.voices };
-            if (e.target.value) voices[key] = e.target.value;
-            else delete voices[key];
-            onChange({ voices });
-          }}
-        >
-          <option value="">{ra.voice && !chosen ? `Automatic: ${ra.voice.name}` : "Automatic"}</option>
-          {matching.length > 0 && <optgroup label="For this book's language">{matching.map(option)}</optgroup>}
-          {other.length > 0 && (matching.length > 0 ? <optgroup label="Other languages">{other.map(option)}</optgroup> : other.map(option))}
-        </select>
-      </fieldset>
-      <fieldset className="choice">
-        <legend>Speed</legend>
-        <div className="size-row">
-          <input
-            type="range"
-            min={RATE_RANGE.min}
-            max={RATE_RANGE.max}
-            step={RATE_RANGE.step}
-            value={settings.rate}
-            aria-label="Speed"
-            aria-valuetext={formatRate(settings.rate)}
-            onChange={(e) => onChange({ rate: Math.round(Number(e.target.value) * 10) / 10 })}
-          />
-          <button type="button" className="read-aloud-rate" title="Back to normal speed" onClick={() => onChange({ rate: 1 })}>
-            {formatRate(settings.rate)}
-          </button>
-        </div>
-      </fieldset>
-    </div>
-  );
-}
-
 /** Keeps a floating toolbar inside the window, above (or below) a rectangle. */
 function useFloating(rect: DOMRect) {
   const ref = useRef<HTMLDivElement>(null);
@@ -691,8 +588,8 @@ export function NoteDialog({
   );
 }
 
-/** Listening along with the linked audiobook, and how far the pair is lined up. */
-export function ListenAlongPanel({ readAlong, ebookId }: { readAlong: ReadAlong; ebookId: string }) {
+/** How far the book and its audiobook are lined up, word by word, for following the narrator. */
+export function LiningUpStatus({ readAlong, ebookId }: { readAlong: ReadAlong; ebookId: string }) {
   const [work, setWork] = useState<LiningUp | null>(liningUp());
   const { paused, until } = usePause();
   useEffect(() => onLiningUp(setWork), []);
@@ -704,51 +601,41 @@ export function ListenAlongPanel({ readAlong, ebookId }: { readAlong: ReadAlong;
   const mb = (n: number) => `${Math.round(n / 1024 / 1024)} MB`;
   if (readAlong.manual)
     return (
-      <div className="read-aloud listen-along">
-        <button type="button" className="btn btn-primary" onClick={readAlong.toggle}>
-          <Icon name={readAlong.playing ? "pause" : "play"} size={16} /> {readAlong.playing ? "Pause the audiobook" : "Play the audiobook"}
-        </button>
-        <p className="read-aloud-note" role="status">
-          This is a document, so TBV can't follow the narrator through it. Turn the pages yourself as it plays.
-        </p>
-      </div>
+      <p className="read-aloud-note" role="status">
+        This is a document, so TBV can't follow the narrator through it. Turn the pages yourself as it plays.
+      </p>
+    );
+  if (!waiting)
+    return (
+      <p className="read-aloud-note" role="status">
+        {lineUp?.failed
+          ? `TBV couldn't line this book up with the audiobook word by word (${lineUp.failed}), so it follows by chapter. The highlight can be a sentence or two out.`
+          : lineUp?.done
+            ? "Follows the narrator word by word."
+            : "Follows by chapter, so the highlight can be a sentence or two out."}
+      </p>
     );
   return (
-    <div className="read-aloud listen-along">
-      <button type="button" className="btn btn-primary" disabled={waiting} onClick={readAlong.toggle}>
-        <Icon name={readAlong.following ? "pause" : "headphones"} size={16} /> {readAlong.following ? "Stop following" : "Play and follow"}
-      </button>
-      {!waiting ? (
-        <p className="read-aloud-note" role="status">
-          {lineUp?.failed
-            ? `TBV couldn't line this book up with the audiobook word by word (${lineUp.failed}), so it follows by chapter. The highlight can be a sentence or two out.`
-            : lineUp?.done
-              ? "Follows the narrator word by word."
-              : "Follows by chapter, so the highlight can be a sentence or two out."}
-        </p>
-      ) : (
-        <div className="listen-along-timing" role="status">
-          <p className="read-aloud-note">
-            <strong>Converging… {percent}%</strong>
-            {ours?.stage === "model" && ours.modelTotal ? ` Getting the speech model: ${mb(ours.modelLoaded)} of ${mb(ours.modelTotal)}.` : ""}
-          </p>
-          <p className="read-aloud-note">
-            {paused
-              ? `Confluence is paused on this device ${pausedUntilText(until)}.`
-              : ours?.stage === "cooling"
-                ? "Confluence is paused while the phone cools down. It carries on by itself."
-                : ours
-                ? "TBV is listening through the audiobook and matching every word to the book, in the background."
-                : isApp
-                  ? isIOS
-                  ? "TBV lines up every word in the background on a computer with TBV open, or on this phone if you turn it on in Preferences › Reading › Read-along."
-                  : "TBV lines up every word in the background, one pair at a time, on each device that has both the book and the audiobook downloaded."
-                  : "TBV lines up every word in the app on your computer or phone."}{" "}
-            Until it's done you can read the book or listen to the audiobook, but not both together.
-          </p>
-          {isApp && <PauseLiningUpButton pauseLabel="Pause Confluence" resumeLabel="Carry on with Confluence" />}
-        </div>
-      )}
+    <div className="listen-along-timing" role="status">
+      <p className="read-aloud-note">
+        <strong>Converging… {percent}%</strong>
+        {ours?.stage === "model" && ours.modelTotal ? ` Getting the speech model: ${mb(ours.modelLoaded)} of ${mb(ours.modelTotal)}.` : ""}
+      </p>
+      <p className="read-aloud-note">
+        {paused
+          ? `Confluence is paused on this device ${pausedUntilText(until)}.`
+          : ours?.stage === "cooling"
+            ? "Confluence is paused while the phone cools down. It carries on by itself."
+            : ours
+            ? "TBV is listening through the audiobook and matching every word to the book, in the background."
+            : isApp
+              ? isIOS
+              ? "TBV lines up every word in the background on a computer with TBV open, or on this phone if you turn it on in Preferences › Reading › Read-along."
+              : "TBV lines up every word in the background, one pair at a time, on each device that has both the book and the audiobook downloaded."
+              : "TBV lines up every word in the app on your computer or phone."}{" "}
+        Until it's done you can read the book or listen to the audiobook, but not both together.
+      </p>
+      {isApp && <PauseLiningUpButton pauseLabel="Pause Confluence" resumeLabel="Carry on with Confluence" />}
     </div>
   );
 }
