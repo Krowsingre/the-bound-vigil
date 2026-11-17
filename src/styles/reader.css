@@ -307,6 +307,7 @@
 
 .size-row input[type="range"] {
   flex: 1;
+  min-width: 0;
   accent-color: var(--accent);
 }
 
@@ -1253,11 +1254,16 @@
   background: var(--page-bg);
 }
 
-/* On a computer, focus is one uninterrupted page: the text fades in at one
-   edge and out at the other as it scrolls. */
-.reader.is-flowing .reader-host {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%);
+/* Focus mode: the text fades in at one edge and out at the other as it
+   scrolls. Switched on and off, and made fainter or deeper, in Aa. */
+.reader.has-fade .reader-host {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade, 16%), #000 calc(100% - var(--fade, 16%)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade, 16%), #000 calc(100% - var(--fade, 16%)), transparent 100%);
+}
+
+.fade-end {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 /* Nothing else on screen but the book's name at the top and "Page X of Y"
@@ -1299,6 +1305,19 @@
 
 .read-aloud-popover {
   width: 320px;
+}
+
+/* Computers: Aa and Listening drop down under their buttons. */
+.reader-top .text-settings-popover,
+.reader-top .listen-popover {
+  max-height: calc(100vh - var(--header-h) - 24px);
+  overflow-y: auto;
+}
+
+.listen-popover {
+  display: grid;
+  gap: 12px;
+  width: 340px;
 }
 
 .read-aloud {

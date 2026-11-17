@@ -41,6 +41,10 @@ export interface ReaderSettings {
   textSpread: TextSpread;
   theme: ReadingTheme;
   justify: boolean;
+  /** Focus mode: the text fades out at the top and bottom edges. */
+  edgeFade: boolean;
+  /** How much of the page height each fade covers, in percent. */
+  fadeStrength: number;
   /** Read aloud: the voice chosen for each language ("en" → voiceURI). */
   voices: Record<string, string>;
   /** Read aloud speed, 1 being the voice's normal pace. */
@@ -64,6 +68,8 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   textSpread: "one",
   theme: "auto",
   justify: false,
+  edgeFade: true,
+  fadeStrength: 16,
   voices: {},
   rate: 1,
   pageZoom: "fit-page",
@@ -86,6 +92,9 @@ export function parseZoom(raw: unknown): PageZoom {
   if (typeof raw === "number" && Number.isFinite(raw)) return clamp(Math.round(raw * 100) / 100, ZOOM_RANGE.min, ZOOM_RANGE.max);
   return DEFAULT_SETTINGS.pageZoom;
 }
+
+/** The edge fade: from a faint band to a deep one, as a percent of the page height. */
+export const FADE_RANGE = { min: 4, max: 32, step: 1 } as const;
 
 export const SIZE_RANGE = { min: 14, max: 30, step: 1 } as const;
 /** Line spacing: a slider from 1 to 2.5, in steps of 0.1, with notches on the whole and half steps. */
@@ -130,6 +139,9 @@ export function parseSettings(json: string | null): ReaderSettings {
     textSpread: oneOf(raw.textSpread, ["one", "auto"], d.textSpread),
     theme: oneOf(raw.theme, ["auto", "light", "paper", "dark", "vesper"], d.theme),
     justify: typeof raw.justify === "boolean" ? raw.justify : d.justify,
+    edgeFade: typeof raw.edgeFade === "boolean" ? raw.edgeFade : d.edgeFade,
+    fadeStrength: typeof raw.fadeStrength === "number" && Number.isFinite(raw.fadeStrength)
+      ? clamp(Math.round(raw.fadeStrength), FADE_RANGE.min, FADE_RANGE.max) : d.fadeStrength,
     voices: parseVoices(raw.voices),
     rate: typeof raw.rate === "number" && Number.isFinite(raw.rate) ? clamp(Math.round(raw.rate * 100) / 100, RATE_RANGE.min, RATE_RANGE.max) : d.rate,
     pageZoom: parseZoom(raw.pageZoom),

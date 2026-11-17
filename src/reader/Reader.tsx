@@ -20,7 +20,7 @@ import { openChapter } from "../browse/openChapter";
 import { ReaderBottomBar, ReaderTopBar, ReturnPill, Popover } from "./ReaderBars";
 import { LeftPanel, RightPanel, type AnnotationHandlers, type LeftTab, type RightTab } from "./ReaderPanels";
 import { navigationDirection } from "../shell/navigationKeys";
-import { DefineCard, NoteDialog, PageSettings, ReadingAppearance, SelectionToolbar, ZoomControls } from "./ReaderPopovers";
+import { TextSettings, DefineCard, NoteDialog, PageSettings, ReadingAppearance, SelectionToolbar, ZoomControls } from "./ReaderPopovers";
 import { addressFor, readBrowserPrefs } from "../browse/browserPrefs";
 import { ReaderSearch } from "./ReaderSearch";
 import { canTranslateInReader, TranslatePanel } from "./TranslatePanel";
@@ -632,6 +632,9 @@ export function Reader({
 
   const [autoScrolling, setAutoScrolling] = useState(false);
   const scrolling = (engine.fixed ? viewSettings.pageFlow : viewSettings.flow) === "scrolled";
+  // The edge fade: on computers in focus mode; on phones while the bars are away and the book scrolls
+  // (turned pages would lose their first and last lines to it).
+  const fading = settings.edgeFade && (flowing || (overlay && focus && scrolling));
   const { scrollByPixels } = engine;
   reportPosition.current = () => engine.getView()?.renderer.reportPosition?.();
   toggleAutoScroll.current = () => {
@@ -861,10 +864,29 @@ export function Reader({
     pagePanels({ left: true, ...(narrow ? { right: false } : {}) });
   };
 
+  // Listening: a sheet from the bottom on phones, a drop-down under its button on computers.
+  const listening = (docked: boolean) => (
+        <ListeningSheet
+          docked={docked}
+          mode={listenMode}
+          onMode={setListenChoice}
+          onClose={() => setListenOpen(false)}
+          readAloud={narrate}
+          readAlong={readAlong}
+          ebookId={bookId}
+          narration={narration}
+          settings={settings}
+          onSettings={changeSettings}
+          lang={bookLang}
+          timer={listenTimer}
+          onTimer={setListenTimer}
+        />
+  );
+
   return (
     <div
-      className={`reader theme-${theme}${overlay ? " is-overlay" : ""}${compact ? " is-compact" : ""}${focus ? " is-focus" : ""}${flowing ? " is-flowing" : ""}${showLeft ? " has-left" : ""}${showRight ? " has-right" : ""}`}
-      style={{ ["--page-bg" as string]: colors.background, ["--page-text" as string]: colors.text, ["--page-muted" as string]: colors.muted }}
+      className={`reader theme-${theme}${overlay ? " is-overlay" : ""}${compact ? " is-compact" : ""}${focus ? " is-focus" : ""}${flowing ? " is-flowing" : ""}${fading ? " has-fade" : ""}${showLeft ? " has-left" : ""}${showRight ? " has-right" : ""}`}
+      style={{ ["--fade" as string]: `${settings.fadeStrength}%`, ["--page-bg" as string]: colors.background, ["--page-text" as string]: colors.text, ["--page-muted" as string]: colors.muted }}
     >
       <ReaderTopBar
         title={info?.book.title ?? ""}
@@ -878,13 +900,19 @@ export function Reader({
             <Popover label="Page settings" trigger={<Icon name="sliders" size={20} />} className="text-settings-popover">
               <PageSettings settings={settings} scale={engine.scale} onChange={changeSettings} />
             </Popover>
-          ) : (
+          ) : overlay ? (
             <button type="button" className={`icon-btn${lookOpen ? " is-on" : ""}`} aria-label="Reading appearance" title="Reading appearance" aria-haspopup="dialog" aria-expanded={lookOpen} onClick={() => setLookOpen((o) => !o)}>
               <span className="aa">Aa</span>
             </button>
+          ) : (
+            // Computers keep the small drop-down from before the phone redesign.
+            <Popover label="Text settings" trigger={<span className="aa">Aa</span>} className="text-settings-popover">
+              <TextSettings settings={settings} onChange={changeSettings} />
+            </Popover>
           )
         }
         readAloud={
+          <div className="menu-root">
           <button
             type="button"
             className={`icon-btn${listenOpen || readAloud.status !== "stopped" || readAlong.playing ? " is-on" : ""}`}
@@ -896,6 +924,8 @@ export function Reader({
           >
             <Icon name={readAlong.audiobookId ? "headphones" : "readAloud"} size={20} />
           </button>
+          {listenOpen && !overlay && listening(true)}
+          </div>
         }
         bookmarked={!!bookmarkHere}
         onToggleBookmark={toggleBookmark}
@@ -1059,22 +1089,7 @@ export function Reader({
           onDismiss={() => setEndDismissed(true)}
         />
       )}
-      {listenOpen && (
-        <ListeningSheet
-          mode={listenMode}
-          onMode={setListenChoice}
-          onClose={() => setListenOpen(false)}
-          readAloud={narrate}
-          readAlong={readAlong}
-          ebookId={bookId}
-          narration={narration}
-          settings={settings}
-          onSettings={changeSettings}
-          lang={bookLang}
-          timer={listenTimer}
-          onTimer={setListenTimer}
-        />
-      )}
+{listenOpen && overlay && listening(false)}
       {lookOpen && !engine.fixed && <ReadingAppearance settings={settings} onChange={changeSettings} onClose={() => setLookOpen(false)} />}
       {noteEdit && (
         <NoteDialog

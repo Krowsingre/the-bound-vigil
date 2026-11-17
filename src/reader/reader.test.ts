@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Annotation } from "../api/types";
 import { annotationPage, counts, filterAnnotations, isHighlight, isNote } from "./annotations";
 import { contentsEntries, currentEntry, pageAtFraction, pageOf, pushJump } from "./pages";
-import { DEFAULT_SETTINGS, PAGE_COLORS, parseSettings, readerCss, resolveTheme, SIZE_RANGE, zoomStep } from "./settings";
+import { DEFAULT_SETTINGS, FADE_RANGE, PAGE_COLORS, parseSettings, readerCss, resolveTheme, SIZE_RANGE, zoomStep } from "./settings";
 
 describe("fixed pages", () => {
   it("numbers pages from one and never past the end", () => {
@@ -52,6 +52,13 @@ describe("reading settings", () => {
     expect(parseSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(parseSettings("not json")).toEqual(DEFAULT_SETTINGS);
     expect(parseSettings('{"font":"comic","flow":"sideways"}')).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it("keeps the edge fade switch and pulls its strength into range", () => {
+    expect(parseSettings(null)).toMatchObject({ edgeFade: true, fadeStrength: 16 });
+    expect(parseSettings('{"edgeFade":false,"fadeStrength":24}')).toMatchObject({ edgeFade: false, fadeStrength: 24 });
+    expect(parseSettings('{"fadeStrength":90}').fadeStrength).toBe(FADE_RANGE.max);
+    expect(parseSettings('{"fadeStrength":0}').fadeStrength).toBe(FADE_RANGE.min);
   });
 
   it("keeps good values and pulls sizes into range", () => {
