@@ -995,7 +995,11 @@ export function Reader({
           )}
           <ListeningDock
             sheetOpen={listenOpen}
-            onOpen={() => setListenOpen(true)}
+            onOpen={() => {
+              // On a computer it drops down from the top bar, which focus mode hides.
+              if (!overlay) setFocus(false);
+              setListenOpen(true);
+            }}
             title={info?.book.title ?? ""}
             readAloud={narrate}
             readAlong={readAlong}
