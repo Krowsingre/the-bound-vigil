@@ -250,7 +250,6 @@ export async function drawCover(target: HTMLCanvasElement, design: CoverDesign, 
     ctx.fillStyle = titleStyle.colour ?? autoColour;
     const ruleX = titleAlign === "left" ? titleX : titleAlign === "right" ? titleX - 180 : titleX - 90;
     ctx.fillRect(ruleX, ruleY, 180, 6);
-    if (subtitleFollows && subtitle) subtitle.height += ruleGap + 6;
   }
   // Left alone, the author sits under the title (or its line), and the series above it.
   const author = smallBlock("author", design.author, 0.42, () => (rule ? ruleY + 6 : above) + 64);

@@ -129,6 +129,22 @@ async function fromKindleCreate(bytes: Uint8Array, fallback: string): Promise<Im
 
 // ---- Word ----
 
+/**
+ * The book's subtitle from paragraphs in a Subtitle style. Word files made by
+ * Scribe (and many others) put the author's byline in that style too, so a
+ * line that is the author's name, or starts with "by", isn't a subtitle.
+ */
+export function subtitleOf(paragraphs: Element[], author: string | null): string | null {
+  const key = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const byline = author ? key(author) : null;
+  for (const p of paragraphs) {
+    const text = p.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    if (!text || /^by\s/i.test(text) || (byline && key(text) === byline)) continue;
+    return text;
+  }
+  return null;
+}
+
 async function fromDocx(bytes: Uint8Array, fallback: string): Promise<ImportedDocument> {
   const mammoth = (await import("mammoth")).default;
   const { value } = await mammoth.convertToHtml(
@@ -157,7 +173,7 @@ async function fromDocx(bytes: Uint8Array, fallback: string): Promise<ImportedDo
     docTitle.remove();
   }
   const subtitles = [...doc.querySelectorAll("p.doc-subtitle")];
-  const subtitle = subtitles[0]?.textContent?.replace(/\s+/g, " ").trim() || null;
+  const subtitle = subtitleOf(subtitles, author);
   subtitles.forEach((p) => p.remove());
   foldNotes([{ path: "", doc }], (_, href) => href);
   return { title: title || fallback, author, description, subtitle, html: doc.body.innerHTML };
@@ -268,7 +284,8 @@ function fromOdt(bytes: Uint8Array, fallback: string): ImportedDocument {
   const title = meta?.getElementsByTagName("dc:title")[0]?.textContent?.trim() || docTitle?.textContent?.trim() || fallback;
   docTitle?.remove();
   const subtitles = [...doc.querySelectorAll("p.doc-subtitle")];
-  const subtitle = subtitles[0]?.textContent?.replace(/\s+/g, " ").trim() || null;
+  const creator = meta?.getElementsByTagName("dc:creator")[0]?.textContent?.trim() || null;
+  const subtitle = subtitleOf(subtitles, creator);
   subtitles.forEach((p) => p.remove());
   return {
     title,
