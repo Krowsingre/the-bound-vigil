@@ -4,6 +4,7 @@ import { Icon } from "../components/Icon";
 import { isAndroid, isApp, isIOS } from "../api";
 import {
   FONTS,
+  FADE_RANGE,
   HIGHLIGHT_COLORS,
   LINE_HEIGHT_NOTCHES,
   LINE_HEIGHT_RANGE,
@@ -167,7 +168,7 @@ export function TextSettings({ settings, onChange }: { settings: ReaderSettings;
         label="Moving through the book"
         value={settings.flow}
         options={[
-          { value: "paginated", label: "Swipe" },
+          { value: "paginated", label: "Turn pages" },
           { value: "scrolled", label: "Scroll" },
         ]}
         onChange={(flow) => onChange({ flow })}
@@ -189,6 +190,21 @@ export function TextSettings({ settings, onChange }: { settings: ReaderSettings;
         <input type="checkbox" checked={settings.justify} onChange={(e) => onChange({ justify: e.target.checked })} />
         Justify text (even right edge)
       </label>
+      <label className="check-row">
+        <input type="checkbox" checked={settings.edgeFade} onChange={(e) => onChange({ edgeFade: e.target.checked })} />
+        Fade the edges in focus mode
+      </label>
+      {settings.edgeFade && (
+        <fieldset className="choice">
+          <legend>Fade strength</legend>
+          <div className="size-row">
+            <span className="fade-end" aria-hidden>Faint</span>
+            <input type="range" min={FADE_RANGE.min} max={FADE_RANGE.max} step={FADE_RANGE.step} value={settings.fadeStrength}
+              aria-label="Fade strength" onChange={(e) => onChange({ fadeStrength: Number(e.target.value) })} />
+            <span className="fade-end" aria-hidden>Deep</span>
+          </div>
+        </fieldset>
+      )}
     </div>
   );
 }
@@ -338,6 +354,17 @@ export function ReadingAppearance({ settings, onChange, onClose }: { settings: R
             <span className="switch-knob" aria-hidden />
           </button>
         </div>
+        <div className="look-section look-justify">
+          <span id="look-fade">Fade the edges in focus mode</span>
+          <button type="button" role="switch" className="switch" aria-labelledby="look-fade" aria-checked={settings.edgeFade} onClick={() => onChange({ edgeFade: !settings.edgeFade })}>
+            <span className="switch-knob" aria-hidden />
+          </button>
+        </div>
+        {settings.edgeFade && (
+          <Slider label="Fade strength" value={settings.fadeStrength} min={FADE_RANGE.min} max={FADE_RANGE.max} step={FADE_RANGE.step}
+            shown={`${settings.fadeStrength}%`} low={<span className="fade-end">Faint</span>} high={<span className="fade-end">Deep</span>}
+            onChange={(fadeStrength) => onChange({ fadeStrength })} />
+        )}
       </div>
     </div>
   );

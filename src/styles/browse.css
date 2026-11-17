@@ -291,9 +291,13 @@
   color: var(--text-muted);
 }
 
-.browser-tab:hover {
-  background: color-mix(in srgb, var(--chrome-bar) 45%, var(--chrome-strip));
-  color: var(--text);
+/* Only where there's a pointer to hover with: on a touch screen the hover
+   look sticks to the last tab touched and makes it look open. */
+@media (hover: hover) {
+  .browser-tab:not(.is-active):hover {
+    background: color-mix(in srgb, var(--chrome-bar) 45%, var(--chrome-strip));
+    color: var(--text);
+  }
 }
 
 /* The open tab is the row's colour, with the accent along its top. */
@@ -587,7 +591,8 @@
 
 .browser-grid-tab.is-active {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 .browser-grid-open {
@@ -1957,8 +1962,24 @@
 
 .browser-strip .browser-tab.is-active {
   border: 0;
-  background: color-mix(in srgb, var(--text) 5%, transparent);
-  box-shadow: inset 0 -2px 0 var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--text);
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+
+.browser-strip .browser-tab.is-active .browser-tab-name {
+  font-weight: 600;
+}
+
+/* Tabs not in front step back, so the open one is plain to see. */
+.browser-strip .browser-tab:not(.is-active) {
+  color: color-mix(in srgb, var(--text-muted) 80%, transparent);
+}
+
+@media (hover: hover) {
+  .browser-strip .browser-tab:not(.is-active):hover {
+    background: color-mix(in srgb, var(--text) 5%, transparent);
+  }
 }
 
 .browser-strip .browser-tab.is-active.is-loading {

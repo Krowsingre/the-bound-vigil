@@ -111,7 +111,9 @@ function TimerPick({ timer, onTimer }: { timer: ListenTimer; onTimer: (timer: Li
   );
 }
 
-export function ListeningSheet({ mode, onMode, onClose, readAloud: ra, readAlong, ebookId, narration, settings, onSettings, lang, timer, onTimer }: {
+export function ListeningSheet({ docked = false, mode, onMode, onClose, readAloud: ra, readAlong, ebookId, narration, settings, onSettings, lang, timer, onTimer }: {
+  /** Computers: a drop-down under its button instead of a sheet from the bottom. */
+  docked?: boolean;
   mode: ListenMode;
   onMode: (mode: ListenMode) => void;
   onClose: () => void;
@@ -128,11 +130,20 @@ export function ListeningSheet({ mode, onMode, onClose, readAloud: ra, readAlong
   const player = usePlayer();
   const sheet = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    sheet.current?.focus();
+    if (!docked) sheet.current?.focus();
     const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // Docked: a click anywhere but the drop-down or its button closes it, like the other drop-downs.
+    const away = (e: Event) => {
+      const root = sheet.current?.closest(".menu-root");
+      if (!root?.contains(e.target as Node)) onClose();
+    };
     document.addEventListener("keydown", key);
-    return () => document.removeEventListener("keydown", key);
-  }, [onClose]);
+    if (docked) document.addEventListener("pointerdown", away);
+    return () => {
+      document.removeEventListener("keydown", key);
+      document.removeEventListener("pointerdown", away);
+    };
+  }, [onClose, docked]);
   const paired = !!readAlong.audiobookId;
   const immersion = mode === "immersion" && paired;
   const audiobook = player.book && player.book.book.id === readAlong.audiobookId ? player.book : null;
@@ -250,6 +261,15 @@ export function ListeningSheet({ mode, onMode, onClose, readAloud: ra, readAlong
           </div>
         </div>
       </>
+    );
+  }
+
+  if (docked) {
+    return (
+      <div ref={sheet} className="menu menu-end popover listen-popover" role="dialog" aria-label="Listening">
+        {switcher}
+        {body}
+      </div>
     );
   }
 
