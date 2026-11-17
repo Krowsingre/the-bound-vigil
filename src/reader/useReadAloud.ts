@@ -148,6 +148,9 @@ export function useReadAloud({
     /** Gliding with the voice: the frame under way, and how the voice has been keeping time. */
     glideFrame: 0,
     glideStart: 0,
+    /** The page is gliding, or settling after a glide: its moves aren't the reader's. */
+    gliding: false,
+    glideSettle: undefined as ReturnType<typeof setTimeout> | undefined,
     lastStart: 0,
     lastChars: 0,
     /** Milliseconds per letter at normal speed, learned from the voice as it reads. */
@@ -208,7 +211,16 @@ export function useReadAloud({
     cancelAnimationFrame(s.glideFrame);
     s.glideFrame = 0;
     // The engine reports where it is a moment after scrolling stops: still this hook's move.
-    setTimeout(() => s.moving--, 1200);
+    clearTimeout(s.glideSettle);
+    s.glideSettle = setTimeout(() => (s.gliding = false), 1200);
+  };
+
+  /** The reader scrolled for themselves: the glide gives way at once. */
+  const dropGlide = () => {
+    if (s.glideFrame) cancelAnimationFrame(s.glideFrame);
+    s.glideFrame = 0;
+    clearTimeout(s.glideSettle);
+    s.gliding = false;
   };
 
   /**
@@ -246,7 +258,8 @@ export function useReadAloud({
     }
     stopGlide();
     const duration = Math.max(400, (chars * s.msPerChar) / rate);
-    s.moving++;
+    clearTimeout(s.glideSettle);
+    s.gliding = true;
     let previous = now;
     let done = 0;
     let remainder = 0;
@@ -533,7 +546,7 @@ export function useReadAloud({
     if (!v) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const onRelocate = () => {
-      if (s.moving > 0 || s.status === "stopped") return;
+      if (s.moving > 0 || s.gliding || s.status === "stopped") return;
       s.held = true;
       clearTimeout(timer);
       timer = setTimeout(() => {
@@ -542,9 +555,18 @@ export function useReadAloud({
         if (s.status === "playing") void startFromPage();
       }, SETTLE_MS);
     };
+    // Scrolling by hand while the page glides with the voice stops the glide,
+    // and then counts like any page turned by hand.
+    const onInput = () => {
+      if (!s.gliding) return;
+      dropGlide();
+      onRelocate();
+    };
     v.addEventListener("relocate", onRelocate);
+    v.renderer.addEventListener?.("userinput", onInput);
     return () => {
       clearTimeout(timer);
+      v.renderer.removeEventListener?.("userinput", onInput);
       s.held = false;
       v.removeEventListener("relocate", onRelocate);
       // Another book, or the reader closing.

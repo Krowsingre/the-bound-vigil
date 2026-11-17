@@ -689,7 +689,7 @@ function ProjectView({
     if (!other) return;
     // A body page moved past a section lands beside it, not inside it.
     if (c.role !== "part" && other.role === "part") void moveBeside(c, other, by);
-    else void moveTo(c.id, { section: other });
+    else void moveTo(c.id, { section: other, where: by < 0 ? "above" : "below" });
   };
   /** Moves a body page just past a whole section, keeping it out of the section. */
   const moveBeside = async (c: WritingChapter, section: WritingChapter, by: -1 | 1) => {
