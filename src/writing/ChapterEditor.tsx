@@ -60,7 +60,6 @@ function Tool({
 
 /** Fonts a passage can be set in: ones TBV can put inside the book, and the reader's own kinds. */
 const FONTS: { label: string; value: string | null }[] = [
-  { label: "The book's font", value: null },
   { label: "Lora", value: "Lora, serif" },
   { label: "Echolume", value: "Echolume, serif" },
   { label: "Serif", value: "serif" },
@@ -87,13 +86,11 @@ const WORDS: { label: string; value: string | null }[] = [
   { label: "Wider", value: "0.5em" },
 ];
 const LINES: { label: string; value: string | null }[] = [
-  { label: "The book's own", value: null },
   { label: "Single", value: "1.2" },
   { label: "1.5 lines", value: "1.5" },
   { label: "Double", value: "2" },
 ];
 const ALIGNS: { label: string; value: BlockLook["textAlign"] }[] = [
-  { label: "The book's own", value: null },
   { label: "Left", value: "left" },
   { label: "Centre", value: "center" },
   { label: "Right", value: "right" },
@@ -124,7 +121,20 @@ interface SourcesProps {
   onSources: (sources: Source[], style: CitationStyle) => void;
 }
 
-function Toolbar({ editor, poem, cites, chapter }: { editor: Editor; poem: boolean; cites?: SourcesProps; chapter?: WritingChapter }) {
+/**
+ * What a page looks like when nothing is set on it: the font, line spacing and
+ * alignment the whole book uses. The menus tick these, so they always show the
+ * setting actually in use.
+ */
+export interface BookLook {
+  /** As in FONTS, or null when readers' own font is used. */
+  font: string | null;
+  lineHeight: string;
+  align: NonNullable<BlockLook["textAlign"]>;
+}
+const PLAIN_BOOK: BookLook = { font: null, lineHeight: "1.5", align: "justify" };
+
+function Toolbar({ editor, poem, cites, chapter, book = PLAIN_BOOK }: { editor: Editor; poem: boolean; cites?: SourcesProps; chapter?: WritingChapter; book?: BookLook }) {
   const [canva] = useCanvaStatus();
   const canvaOn = canvaHere && !!canva?.available && !!canva.name;
   const [canvaPicture, setCanvaPicture] = useState(false);
@@ -183,6 +193,17 @@ function Toolbar({ editor, poem, cites, chapter }: { editor: Editor; poem: boole
   const look = (change: Partial<TextLook>) => run().setTextLook(change).run();
   const choose = <T,>(list: { label: string; value: T }[], current: T | undefined, pick: (value: T) => void): MenuEntry[] =>
     list.map((o) => ({ label: o.label, checked: (current ?? null) === o.value, onSelect: () => pick(o.value) }));
+  // Font, line spacing and alignment: the one in use is ticked, the book's own when the page sets none.
+  // Picking the book's own setting keeps nothing on the page, so it follows the book if that changes.
+  const chooseOr = <T,>(list: { label: string; value: T }[], current: T | null | undefined, inUse: T, pick: (value: T | null) => void): MenuEntry[] =>
+    list.map((o) => ({ label: o.label, checked: (current ?? inUse) === o.value, onSelect: () => pick(o.value === inUse ? null : o.value) }));
+  const fonts = book.font ? FONTS : [{ label: "Reader's choice", value: null }, ...FONTS];
+  const clearFormatting = () =>
+    run()
+      .unsetAllMarks()
+      .clearNodes()
+      .setBlockLook({ lineHeight: null, textAlign: null })
+      .run();
   const caps = state.look.textTransform === "uppercase" ? "all" : state.look.fontVariant === "small-caps" ? "small" : null;
   const saveLink = () => {
     const url = (linking ?? "").trim();
@@ -217,7 +238,7 @@ function Toolbar({ editor, poem, cites, chapter }: { editor: Editor; poem: boole
         icon="readingA"
         active={!!state.look.fontFamily}
         items={[
-          ...choose(FONTS, state.look.fontFamily, (fontFamily) => look({ fontFamily })),
+          ...chooseOr(fonts, state.look.fontFamily, book.font, (fontFamily) => look({ fontFamily })),
           "divider",
           { heading: <span className="writing-tool-note">Many e-readers let readers choose their own font, which can replace this.</span> },
         ]}
@@ -233,15 +254,16 @@ function Toolbar({ editor, poem, cites, chapter }: { editor: Editor; poem: boole
           { heading: "Between words" },
           ...choose(WORDS, state.look.wordSpacing, (wordSpacing) => look({ wordSpacing })),
           { heading: "Between lines" },
-          ...choose(LINES, state.block.lineHeight, (lineHeight) => run().setBlockLook({ lineHeight }).run()),
+          ...chooseOr(LINES, state.block.lineHeight, book.lineHeight, (lineHeight) => run().setBlockLook({ lineHeight }).run()),
         ]}
       />
       <ToolMenu
         label="Alignment"
-        text={{ left: "⇤", center: "↔", right: "⇥", justify: "☰" }[state.block.textAlign ?? "left"] ?? "⇤"}
+        text={{ left: "⇤", center: "↔", right: "⇥", justify: "☰" }[state.block.textAlign ?? book.align] ?? "⇤"}
         active={!!state.block.textAlign}
-        items={choose(ALIGNS, state.block.textAlign, (textAlign) => run().setBlockLook({ textAlign }).run())}
+        items={chooseOr(ALIGNS, state.block.textAlign, book.align, (textAlign) => run().setBlockLook({ textAlign }).run())}
       />
+      <Tool label="Clear formatting" text="T̸" onClick={clearFormatting} />
       <span className="writing-tool-gap" />
       {!poem && (
         <>
@@ -406,6 +428,7 @@ export function ChapterEditor({
   flushRef,
   insertRef,
   poem = null,
+  book,
   sources,
   citationStyle = "chicago-notes",
   onSources,
@@ -414,6 +437,8 @@ export function ChapterEditor({
   citationChapters?: WritingChapter[];
   /** A poem or haiku: lines kept as written, set from the left or centred. */
   poem?: "left" | "centred" | null;
+  /** The book's own font, line spacing and alignment, ticked in the menus while a page sets none. */
+  book?: BookLook;
   /** The book's research sources, for citing; without them there's no Cite tool. */
   sources?: Source[];
   citationStyle?: CitationStyle;
@@ -532,7 +557,7 @@ export function ChapterEditor({
 
   return (
     <div className="writing-editor">
-      {editor && <Toolbar editor={editor} poem={!!poem} chapter={chapter} cites={sources && onSources ? { sources, citationStyle, onSources } : undefined} />}
+      {editor && <Toolbar editor={editor} poem={!!poem} chapter={chapter} book={book} cites={sources && onSources ? { sources, citationStyle, onSources } : undefined} />}
       <div className={`writing-sheet${poem ? ` is-poem${poem === "centred" ? " is-centred" : ""}` : ""}`} onClick={(e) => e.target === e.currentTarget && editor?.commands.focus("end")}>
         <input
           className="writing-chapter-title"

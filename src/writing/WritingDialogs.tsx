@@ -31,7 +31,7 @@ export async function bookInput(project: WritingProject, chapters: WritingChapte
   if (problems.length) throw new Error(problems.join("\n"));
   const coverBytes = project.cover ? await api.writingCover(project.id) : new Uint8Array();
   const mime = coverBytes.length ? imageMime(coverBytes) : null;
-  const citer = await makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters), settings.customSourceFormat);
+  const citer = await makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters, settings.freeOrder), settings.customSourceFormat);
   return {
     project,
     chapters,

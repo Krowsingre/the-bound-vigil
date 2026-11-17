@@ -61,6 +61,12 @@ describe("reading settings", () => {
     expect(parseSettings('{"fadeStrength":0}').fadeStrength).toBe(FADE_RANGE.min);
   });
 
+  it("keeps scrolling with the voice off unless it was turned on", () => {
+    expect(parseSettings(null).followVoice).toBe(false);
+    expect(parseSettings('{"followVoice":true}').followVoice).toBe(true);
+    expect(parseSettings('{"followVoice":"yes"}').followVoice).toBe(false);
+  });
+
   it("keeps good values and pulls sizes into range", () => {
     const s = parseSettings('{"font":"sans","size":99,"flow":"scrolled","theme":"paper","justify":true}');
     expect(s).toMatchObject({ font: "sans", size: SIZE_RANGE.max, flow: "scrolled", theme: "paper", justify: true });

@@ -122,10 +122,10 @@ export function PreviewsDialog({
 
   const sections = useMemo(
     () =>
-      bookOrder(chapters)
+      bookOrder(chapters, settings.freeOrder)
         .map((c, i) => ({ id: c.id, n: i + 1, title: c.title.trim() || (c.role === "part" ? "Part" : "Untitled") }))
         .filter((s) => s.title),
-    [chapters],
+    [chapters, settings.freeOrder],
   );
 
   useEffect(() => {

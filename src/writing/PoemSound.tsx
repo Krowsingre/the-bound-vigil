@@ -1,5 +1,6 @@
-// A poem's sound, above the poem in the editor: a recording or a song made
-// from it, and a web page where it can be heard. The plain EPUB and the
+// A page's link and sound, above the page in the editor: a web page where a
+// song, a reading or anything else for this page can be found, and a sound
+// file to play inside the book. It folds away to one line. The plain EPUB and the
 // Apple edition carry the sound itself; the Kindle and other store editions
 // get the link, and the paperback a QR code of it.
 
@@ -8,6 +9,7 @@ import { api, isWeb } from "../api";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { webLink, type PoemSound as Sound } from "./pages";
+import { Fold } from "./Fold";
 
 const ACCEPT = ".mp3,.m4a,.aac,.wav,.ogg,.oga,.opus,.flac,audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/ogg,audio/flac";
 
@@ -67,14 +69,27 @@ export function PoemSound({ sound, onChange }: { sound: Sound | null; onChange: 
     void onChange(sound?.file || next ? { file: sound?.file ?? null, name: sound?.name ?? "", link: next } : null);
   };
 
+  const summary = [sound?.link ? siteName(sound.link) : null, file ? sound?.name || "A sound" : null].filter(Boolean).join(" · ");
   return (
-    <section className="poem-sound-bar" aria-label="The poem's sound">
+    <Fold name="page-link" title="Add a link to this page" summary={summary || undefined} className="poem-sound-bar" startOpen={false}>
+      <label className="field poem-sound-link">
+        <span>A web page for it: a song, a reading, a video or anything else. Kindle and other stores show it as a link, and the paperback as a QR code.</span>
+        <input
+          type="url"
+          inputMode="url"
+          value={link}
+          placeholder="https://"
+          onChange={(e) => setLink(e.target.value)}
+          onBlur={saveLink}
+          onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+        />
+      </label>
       <div className="poem-sound-row">
         <Icon name="headphones" size={18} className="poem-sound-icon" />
         {file ? (
           <>
             <div className="poem-sound-what">
-              <strong title={sound?.name}>{sound?.name || "The poem's sound"}</strong>
+              <strong title={sound?.name}>{sound?.name || "This page's sound"}</strong>
               {url ? (
                 <audio controls src={url} preload="metadata" />
               ) : (
@@ -93,8 +108,8 @@ export function PoemSound({ sound, onChange }: { sound: Sound | null; onChange: 
         ) : (
           <>
             <div className="poem-sound-what">
-              <strong>Add a sound to this poem</strong>
-              <span className="muted">A reading or a song of it. It plays inside the EPUB and the Apple edition.</span>
+              <strong>A sound file</strong>
+              <span className="muted">A reading or a song. It plays inside the EPUB and the Apple edition.</span>
             </div>
             {!isWeb && (
               <button type="button" className="btn btn-small" disabled={busy} onClick={() => picker.current?.click()}>
@@ -104,19 +119,16 @@ export function PoemSound({ sound, onChange }: { sound: Sound | null; onChange: 
           </>
         )}
       </div>
-      <label className="field poem-sound-link">
-        <span>Where to hear it online, for Kindle and the paperback's QR code</span>
-        <input
-          type="url"
-          inputMode="url"
-          value={link}
-          placeholder="https://"
-          onChange={(e) => setLink(e.target.value)}
-          onBlur={saveLink}
-          onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
-        />
-      </label>
       <input ref={picker} type="file" accept={ACCEPT} hidden onChange={(e) => void add(e.target.files?.[0])} />
-    </section>
+    </Fold>
   );
 }
+
+/** A link's site, for the folded line: "youtube.com". */
+const siteName = (link: string) => {
+  try {
+    return new URL(link).hostname.replace(/^www\./, "");
+  } catch {
+    return link;
+  }
+};

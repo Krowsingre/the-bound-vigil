@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { WritingChapter, WritingProject } from "../api/types";
 import { Icon } from "../components/Icon";
+import { Fold } from "./Fold";
 import { usePublisher } from "../license/Publisher";
 import { BOOK_STYLES, chooseStyle } from "./bookStyles";
 import { bookOrder, copyrightHtml, inlineXhtml, madeSectionHtml, previewHtml, type ExportSettings } from "./epub";
@@ -75,7 +76,7 @@ export function BookPreview({
     const timer = window.setTimeout(async () => {
       const [fonts, citer] = await Promise.all([
         loadBookFonts(settings, chapters).catch(() => ({ font: null, passageFonts: [] })),
-        makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters), settings.customSourceFormat).catch(() => null),
+        makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters, settings.freeOrder), settings.customSourceFormat).catch(() => null),
       ]);
       if (!current) return;
       made = URL.createObjectURL(new Blob([previewHtml({ project, chapters, settings, cover, citer, ...fonts })], { type: "text/html" }));
@@ -94,13 +95,29 @@ export function BookPreview({
   }, [project, chapters, settings, cover]);
 
   const goTo = (id: string | null, smooth: boolean) => {
-    const n = id ? bookOrder(chapters).findIndex((c) => c.id === id) + 1 : 0;
+    const n = id ? bookOrder(chapters, settings.freeOrder).findIndex((c) => c.id === id) + 1 : 0;
     const target = n ? frame.current?.contentDocument?.getElementById(`c${n}`) : null;
     target?.closest("article")?.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
+    return !!target;
   };
-  useEffect(() => goTo(showing, true), [showing, picked]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => void goTo(showing, true), [showing, picked]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The first time it's made, the preview opens at the page being written; after that it keeps its place.
+  const placed = useRef(false);
 
   const px = WIDTHS.find((w) => w.value === width)?.px ?? 0;
+  // The page's width is kept inside the preview, so it scrolls with the bar at the panel's right edge.
+  const fitWidth = () => {
+    const doc = frame.current?.contentDocument;
+    if (!doc?.head) return;
+    let style = doc.getElementById("tbv-preview-width");
+    if (!style) {
+      style = doc.createElement("style");
+      style.id = "tbv-preview-width";
+      doc.head.appendChild(style);
+    }
+    style.textContent = px ? `body { max-width: ${px}px; margin: 0 auto; }` : "";
+  };
+  useEffect(fitWidth, [px]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <aside className="book-preview" aria-label="Preview of the book">
       <div className="book-preview-head">
@@ -121,10 +138,11 @@ export function BookPreview({
           <Icon name="edit" size={16} /> Back to writing
         </button>
       </div>
-      {/* Book styles are chosen here, where they can be seen, before the book is ever exported. */}
+      {/* Book styles are chosen here, where they can be seen, before the book is ever exported. Folds away to one line. */}
+      <Fold name="book-styles" title="Book style" summary={BOOK_STYLES.find((b) => b.id === settings.bookStyle)?.label ?? "Plain"} className="book-preview-fold" startOpen>
       <div className="book-styles book-preview-styles" role="radiogroup" aria-label="Book style">
         <button type="button" role="radio" aria-checked={!settings.bookStyle} className="book-style" onClick={() => onSettings(chooseStyle(settings, null))}>
-          <b>Your own</b>
+          <b>Plain</b>
           <span>Your export settings</span>
         </button>
         {BOOK_STYLES.map((s) => (
@@ -133,7 +151,8 @@ export function BookPreview({
             <span>{s.about}</span>
           </button>
         ))}
-      </div>
+        </div>
+      </Fold>
       <div className="book-preview-stage">
         {url ? (
           <iframe
@@ -141,8 +160,11 @@ export function BookPreview({
             title="The book as it will be exported"
             src={url}
             sandbox="allow-same-origin"
-            style={px ? { width: px } : undefined}
-            onLoad={() => frame.current?.contentWindow?.scrollTo(0, scroll.current)}
+            onLoad={() => {
+              fitWidth();
+              if (!placed.current) placed.current = goTo(showing, false) || !showing;
+              else frame.current?.contentWindow?.scrollTo(0, scroll.current);
+            }}
           />
         ) : (
           <div className="library-loading" aria-busy="true" aria-label="Making the preview" />
@@ -241,7 +263,7 @@ export function MadePage({
   useEffect(() => {
     if (page.kind !== "sources") return;
     let current = true;
-    void makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters), settings.customSourceFormat).then((c) => current && setCiter(c), () => current && setCiter(null));
+    void makeCiter(settings.citationStyle, settings.sources, bookOrder(chapters, settings.freeOrder), settings.customSourceFormat).then((c) => current && setCiter(c), () => current && setCiter(null));
     return () => {
       current = false;
     };

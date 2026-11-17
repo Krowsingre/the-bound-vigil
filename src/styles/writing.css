@@ -205,6 +205,45 @@
   opacity: 0.4;
 }
 
+/* Where a dragged page or section will land: a line above or below the row. */
+.writing-chapter-list li.is-drop-above {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.writing-chapter-list li.is-drop-below {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.writing-chapter-list li.is-drop-into {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  border-radius: 6px;
+}
+
+.writing-chapter-list li.writing-area.is-drop-target {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* A body section folds its pages away. */
+.writing-fold {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-left: 2px;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+}
+
+.writing-fold:hover {
+  background: var(--surface-sunk);
+  color: var(--text);
+}
+
+.writing-chapter-list li.is-part .writing-chapter {
+  padding-left: 4px;
+}
+
 .writing-chapter {
   display: flex;
   align-items: baseline;
@@ -2554,16 +2593,20 @@
   color: var(--accent);
 }
 
-/* A poem's sound, above the poem. */
+/* A page's link and sound, above the page; folds to one line. */
 .poem-sound-bar {
   display: flex;
   flex-direction: column;
   gap: 10px;
   margin: 0 0 12px;
-  padding: 12px 14px;
+  padding: 4px 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface-sunk);
+}
+
+.poem-sound-bar.is-open {
+  padding-bottom: 12px;
 }
 
 .poem-sound-row {
@@ -2873,4 +2916,50 @@
 }
 .writing-drafts-import {
   margin-right: auto;
+}
+
+/* Panels beside the writing that fold away to one line. */
+.scribe-fold {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.scribe-fold-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 4px;
+  border-radius: var(--radius-s);
+  font: 500 13px var(--font-sans);
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.scribe-fold-head:hover {
+  background: var(--surface-sunk);
+  color: var(--text);
+}
+
+.scribe-fold-title {
+  flex: none;
+}
+
+.scribe-fold-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+.book-preview-fold {
+  flex: none;
+  padding: 2px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.book-preview-fold .book-preview-styles {
+  padding: 4px 4px 10px;
+  border-bottom: 0;
 }

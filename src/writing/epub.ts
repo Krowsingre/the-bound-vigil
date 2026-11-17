@@ -74,6 +74,12 @@ export interface ExportSettings {
   kind?: BookKind | null;
   /** Canva designs made for this book, by what they're for (canvaDesigns.ts). */
   canva?: CanvaDesigns;
+  /**
+   * Body sections may sit anywhere among the body's own chapters, in the order
+   * they were dragged to. Older books, never rearranged since 0.119, keep the
+   * body's own chapters first and the sections after them.
+   */
+  freeOrder?: boolean;
 }
 
 export type BookKind = "blank" | "novel" | "collection" | "nonfiction";
@@ -102,6 +108,7 @@ export const DEFAULT_EXPORT: ExportSettings = {
   seriesStyle: DEFAULT_SERIES_STYLE,
   kind: null,
   canva: {},
+  freeOrder: false,
 };
 
 const text = (value: unknown, fallback: string, max = 2000) => (typeof value === "string" ? value.slice(0, max) : fallback);
@@ -159,6 +166,7 @@ export function readExport(json: string | null | undefined): ExportSettings {
       storeBooks: readStoreBooks(saved.storeBooks),
       kind: oneOf(saved.kind, ["blank", "novel", "collection", "nonfiction", null] as const, null),
       canva: readCanva(saved.canva),
+      freeOrder: saved.freeOrder === true,
     };
   } catch {
     return DEFAULT_EXPORT;
@@ -210,8 +218,8 @@ const AUDIO_TYPES: Record<string, string> = { mp3: "audio/mpeg", m4a: "audio/mp4
 const PLAYS_SOUND = (edition: Store | null | undefined) => !edition || edition === "apple";
 
 /** The line under a poem that says where to hear it (made into a QR code in print). */
-export function listenHtml(link: string): string {
-  return `<p class="poem-listen">Listen to this poem: <a href="${escapeXml(link)}">${escapeXml(link.replace(/^https?:\/\//, "").replace(/\/$/, ""))}</a></p>`;
+export function listenHtml(link: string, poem = true): string {
+  return `<p class="poem-listen">${poem ? "Listen to this poem" : "More for this page"}: <a href="${escapeXml(link)}">${escapeXml(link.replace(/^https?:\/\//, "").replace(/\/$/, ""))}</a></p>`;
 }
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -312,21 +320,21 @@ export function pictureFrom(src: string): { mime: string; bytes: Uint8Array } | 
  * its own front matter, chapters and back matter, then the book's back matter.
  * Each group keeps its own order.
  */
-export function bookOrder(chapters: WritingChapter[]): WritingChapter[] {
+export function bookOrder(chapters: WritingChapter[], freeOrder = false): WritingChapter[] {
   const parts = chapters.filter((c) => c.role === "part");
   const partIds = new Set(parts.map((p) => p.id));
   const own = (c: WritingChapter) => c.role !== "part" && !(c.part && partIds.has(c.part));
   const of = (list: WritingChapter[], role: WritingChapter["role"]) => list.filter((c) => (c.role ?? "chapter") === role);
   const ownSections = chapters.filter(own);
-  return [
-    ...of(ownSections, "front"),
-    ...of(ownSections, "chapter"),
-    ...parts.flatMap((p) => {
-      const inside = chapters.filter((c) => c.role !== "part" && c.part === p.id);
-      return [p, ...of(inside, "front"), ...of(inside, "chapter"), ...of(inside, "back")];
-    }),
-    ...of(ownSections, "back"),
-  ];
+  const withInside = (p: WritingChapter) => {
+    const inside = chapters.filter((c) => c.role !== "part" && c.part === p.id);
+    return [p, ...of(inside, "front"), ...of(inside, "chapter"), ...of(inside, "back")];
+  };
+  // Free order: the body's own chapters and its sections, each section with its pages, as they were arranged.
+  const body = freeOrder
+    ? chapters.filter((c) => c.role === "part" || (own(c) && (c.role ?? "chapter") === "chapter")).flatMap((c) => (c.role === "part" ? withInside(c) : [c]))
+    : [...of(ownSections, "chapter"), ...parts.flatMap(withInside)];
+  return [...of(ownSections, "front"), ...body, ...of(ownSections, "back")];
 }
 
 const INLINE: Record<string, string> = { strong: "strong", b: "strong", em: "em", i: "em", u: "u", s: "s", strike: "s", del: "s", code: "code", sub: "sub", sup: "sup", mark: "mark" };
@@ -403,9 +411,12 @@ export function poemHtml(html: string): string {
     }
     const stanza = doc.createElement("div");
     stanza.setAttribute("data-stanza", "");
+    // The stanza's own look (alignment, line spacing) goes with each of its lines.
+    const look = block.getAttribute("style");
     for (const group of groups) {
       const line = doc.createElement("p");
       line.setAttribute("data-line", "");
+      if (look) line.setAttribute("style", look);
       line.append(...group);
       // The spaces a line starts with become its indent.
       const walker = doc.createTreeWalker(line, NodeFilter.SHOW_TEXT);
@@ -520,7 +531,11 @@ export function chapterXhtml(
       out.push("</div>");
     } else if (tag === "p" && el.hasAttribute("data-line")) {
       const indent = Number(el.getAttribute("data-indent") ?? 0);
-      out.push(`<p class="line"${indent > 0 && indent < 40 ? ` style="margin-left: ${indent}em"` : ""}>`);
+      const look = [
+        ...(indent > 0 && indent < 40 ? [`margin-left: ${indent}em`] : []),
+        ...(/^ style="(.*)"$/.exec(keptStyle(el, BLOCK_STYLE))?.[1] ?? "").split("; ").filter(Boolean),
+      ];
+      out.push(`<p class="line"${look.length ? ` style="${look.join("; ")}"` : ""}>`);
       children(true);
       out.push(el.textContent ? "</p>" : "\u00a0</p>");
     } else if (tag === "div" && el.hasAttribute("data-page-break")) {
@@ -669,8 +684,9 @@ section.page-sources p.source { text-indent: -2em; padding-left: 2em; text-align
 p.poem-listen { margin: 1.5em 0 0; text-indent: 0; text-align: center; font-size: 0.85em; font-style: italic; }
 .poem-centred p.poem-listen, p.poem-listen a { text-align: center; }
 section.page-haiku { padding-top: 20%; }
-.cover { margin: 0; padding: 0; text-align: center; }
-.cover img { max-width: 100%; max-height: 100%; }
+/* The cover fills the whole page, its colour reaching every edge. */
+.cover { margin: 0; padding: 0; text-align: center; height: 100vh; }
+.cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
 ${styleCss(settings)}`;
 }
 
@@ -707,7 +723,7 @@ export function epubFiles({ project, chapters, settings, cover, font, passageFon
     // A title page inside a part is that work's own (a box set's books keep theirs).
     !chapters.some((c) => !c.part && c.role !== "part" && readPage(c.page, c.role).kind === "title_page");
 
-  const ordered = bookOrder(chapters);
+  const ordered = bookOrder(chapters, settings.freeOrder);
   const audio = new Map<string, Uint8Array>();
   const pageOf = ordered.map((c) => readPage(c.page, c.role ?? "chapter"));
   const author = project.author?.trim();
@@ -732,14 +748,14 @@ export function epubFiles({ project, chapters, settings, cover, font, passageFon
     } else if (!c.part && inPart) inPart = null;
     const made = isMade(settingsOf);
     const poem = isPoem(settingsOf);
-    // A poem's sound plays inside the book where readers can play it; elsewhere it's a link.
-    const sound = poem && !made ? settingsOf.sound : null;
+    // A page's sound plays inside the book where readers can play it; elsewhere it's a link.
+    const sound = !made && c.role !== "part" ? settingsOf.sound : null;
     const playable = sound?.file && PLAYS_SOUND(edition) ? sounds?.get(sound.file) : undefined;
     if (sound?.file && playable) audio.set(sound.file, playable);
     const heard = playable
-      ? `<div class="poem-sound"><audio controls="controls" src="audio/${sound!.file}">${sound!.link ? listenHtml(sound!.link) : "<p>This reader can't play the poem's sound.</p>"}</audio></div>`
+      ? `<div class="poem-sound"><audio controls="controls" src="audio/${sound!.file}">${sound!.link ? listenHtml(sound!.link, poem) : `<p>This reader can't play the ${poem ? "poem" : "page"}'s sound.</p>`}</audio></div>`
       : sound?.link
-        ? listenHtml(sound.link)
+        ? listenHtml(sound.link, poem)
         : "";
     const numbered = role === "chapter" && settingsOf.kind === "chapter";
     const number = numbered ? ++chapterCount : 0;
@@ -1057,7 +1073,8 @@ html { background: #d9d6d0; }
 body { margin: 0; padding: 16px 0 48px; }
 .sheet { background: #fffdf9; color: #1a1c1e; max-width: 34em; min-height: 46em; margin: 0 auto 16px; padding: 3em 2.5em; box-shadow: 0 1px 3px rgb(0 0 0 / 0.18); box-sizing: border-box; }
 .sheet section.chapter, .sheet section.frontmatter, .sheet section.backmatter, .sheet section.part { break-before: auto; page-break-before: auto; }
-.sheet.cover { padding: 0; min-height: 0; }
+.sheet.cover { padding: 0; height: 46em; overflow: hidden; }
+.sheet.cover section.cover { height: 100%; }
 .pagebreak { border-top: 1px dashed #bbb; margin: 1.5em 0; }
 a { color: inherit; }
 </style>
@@ -1070,7 +1087,7 @@ ${sheets.join("\n")}
 
 /** One section's page as the EPUB has it, without its heading: what Scribe makes for a ready-made page. */
 export function madeSectionHtml(input: EpubInput, chapterId: string): string {
-  const n = bookOrder(input.chapters).findIndex((c) => c.id === chapterId) + 1;
+  const n = bookOrder(input.chapters, input.settings.freeOrder).findIndex((c) => c.id === chapterId) + 1;
   if (!n) return "";
   for (const [, data] of epubFiles(input).files) {
     if (typeof data !== "string") continue;

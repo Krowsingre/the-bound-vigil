@@ -160,6 +160,15 @@ describe("poems", () => {
     );
   });
 
+  it("keeps the alignment and line spacing set on a stanza for each of its lines", () => {
+    const html = '<p style="text-align: center; line-height: 2">Under the lamp<br>&nbsp;&nbsp;a moth</p>';
+    const { body } = chapterXhtml(poemHtml(html), "asterisks", "c1");
+    expect(body).toBe(
+      '<div class="stanza"><p class="line" style="text-align: center; line-height: 2">Under the lamp</p>' +
+        '<p class="line" style="margin-left: 1em; text-align: center; line-height: 2">a moth</p></div>',
+    );
+  });
+
   it("is named by its first line, starts a new page, and is set centred when asked", () => {
     const base = chapters[0];
     const poem = { ...base, id: "p1", title: "", body: "<p><em>Ash</em> on the road<br>and nothing else</p>", page: JSON.stringify({ kind: "poem", centred: true }), position: 5 };
@@ -470,4 +479,22 @@ describe("the Made with credit", () => {
     const opf = text(epubFiles({ project, chapters, settings: settings(), cover: null }).files, "OEBPS/content.opf");
     expect(opf).toContain(`<meta name="generator" content="The Bound Vigil"/>`);
   });
+
+describe("book order", () => {
+  const ch = (id: string, extra: Partial<WritingChapter> = {}): WritingChapter => ({ id, title: id, html: "", ...extra } as WritingChapter);
+  const list = [ch("a"), ch("p1", { role: "part" }), ch("b", { part: "p1" }), ch("c"), ch("front", { role: "front" }), ch("back", { role: "back" })];
+
+  it("puts loose chapters before the sections unless the book was arranged by hand", () => {
+    expect(bookOrder(list).map((c) => c.id)).toEqual(["front", "a", "c", "p1", "b", "back"]);
+  });
+
+  it("keeps a hand arrangement, each section with its pages", () => {
+    expect(bookOrder(list, true).map((c) => c.id)).toEqual(["front", "a", "p1", "b", "c", "back"]);
+  });
+
+  it("only uses the hand arrangement when it was saved", () => {
+    expect(readExport("{}").freeOrder).toBe(false);
+    expect(readExport('{"freeOrder":true}').freeOrder).toBe(true);
+  });
+});
 });

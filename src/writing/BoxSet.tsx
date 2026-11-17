@@ -22,7 +22,7 @@ export function boxSetSections(
   keep: { front: boolean; back: boolean },
 ): { title: string; body: string; role: WritingChapter["role"]; page: string }[] {
   const out: { title: string; body: string; role: WritingChapter["role"]; page: string }[] = [];
-  for (const c of bookOrder(chapters)) {
+  for (const c of bookOrder(chapters, settings.freeOrder)) {
     const page = readPage(c.page, c.role);
     if (LEFT_OUT.includes(page.kind)) continue;
     // A part inside the book becomes a page of its own, headed with its name.

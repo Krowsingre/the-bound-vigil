@@ -26,6 +26,8 @@ export interface MenuItem {
   excluded?: boolean;
   onSelect?: () => void;
   submenu?: MenuEntry[];
+  /** Set in under the item above it, as one of its parts. */
+  indent?: boolean;
 }
 
 export type MenuEntry = MenuItem | "divider" | { heading: ReactNode };
@@ -242,7 +244,7 @@ export const MenuList = forwardRef<
               role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
               aria-haspopup={item.submenu ? "menu" : undefined}
               aria-checked={item.excluded ? "mixed" : item.checked}
-              className={`menu-item${item.danger ? " menu-item-danger" : ""}${item.excluded ? " menu-item-excluded" : ""}${item.description ? " has-description" : ""}`}
+              className={`menu-item${item.danger ? " menu-item-danger" : ""}${item.excluded ? " menu-item-excluded" : ""}${item.description ? " has-description" : ""}${item.indent ? " menu-item-indent" : ""}`}
               disabled={item.disabled}
               onClick={() => {
                 if (item.submenu && onSubmenu) {
