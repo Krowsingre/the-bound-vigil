@@ -47,6 +47,8 @@ export interface ReaderSettings {
   fadeStrength: number;
   /** Read aloud: the voice chosen for each language ("en" → voiceURI). */
   voices: Record<string, string>;
+  /** Read aloud, reading by scrolling: the page glides at the voice's pace, keeping the words being read in view. */
+  followVoice: boolean;
   /** Read aloud speed, 1 being the voice's normal pace. */
   rate: number;
   /** PDFs, comics and other books made of fixed pages. */
@@ -70,6 +72,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   justify: false,
   edgeFade: true,
   fadeStrength: 16,
+  followVoice: false,
   voices: {},
   rate: 1,
   pageZoom: "fit-page",
@@ -143,6 +146,7 @@ export function parseSettings(json: string | null): ReaderSettings {
     fadeStrength: typeof raw.fadeStrength === "number" && Number.isFinite(raw.fadeStrength)
       ? clamp(Math.round(raw.fadeStrength), FADE_RANGE.min, FADE_RANGE.max) : d.fadeStrength,
     voices: parseVoices(raw.voices),
+    followVoice: raw.followVoice === true,
     rate: typeof raw.rate === "number" && Number.isFinite(raw.rate) ? clamp(Math.round(raw.rate * 100) / 100, RATE_RANGE.min, RATE_RANGE.max) : d.rate,
     pageZoom: parseZoom(raw.pageZoom),
     pageSpread: oneOf(raw.pageSpread, ["one", "two", "auto"], d.pageSpread),

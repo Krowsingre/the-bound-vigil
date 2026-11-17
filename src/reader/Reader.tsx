@@ -340,6 +340,7 @@ export function Reader({
     voices: settings.voices,
     rate: settings.rate,
     dark: theme === "dark" || theme === "vesper",
+    glide: settings.followVoice && !engine.fixed && viewSettings.flow === "scrolled",
   });
   const readAlong = useReadAlong({
     getView: engine.getView,
@@ -880,6 +881,7 @@ export function Reader({
           lang={bookLang}
           timer={listenTimer}
           onTimer={setListenTimer}
+          canGlide={!engine.fixed && viewSettings.flow === "scrolled"}
         />
   );
 

@@ -4,13 +4,13 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { CopyMatch, WritingChapter, WritingProject } from "../api/types";
-import { bookOrder } from "./epub";
+import { bookOrder, readExport } from "./epub";
 import { isMade, readPage } from "./pages";
 
 /** The pages worth checking, as plain text: quotations and epigraphs are left out, since they're meant to be someone else's words. */
-export function writingSections(chapters: WritingChapter[]): { title: string; text: string }[] {
+export function writingSections(chapters: WritingChapter[], freeOrder = false): { title: string; text: string }[] {
   const out: { title: string; text: string }[] = [];
-  for (const c of bookOrder(chapters)) {
+  for (const c of bookOrder(chapters, freeOrder)) {
     if (c.role === "part") continue;
     const page = readPage(c.page, c.role);
     if (isMade(page) || page.kind === "epigraph" || page.kind === "sources") continue;
@@ -37,7 +37,7 @@ export function CopyCheckDialog({ project, onFlush, onClose }: { project: Writin
     running.current = true;
     void (async () => {
       try {
-        const sections = writingSections(await onFlush());
+        const sections = writingSections(await onFlush(), readExport(project.export).freeOrder);
         setTitles(sections.map((s) => s.title));
         const result = await api.copyCheck(sections, project.title);
         if (!stale) setFound(result);

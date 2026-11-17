@@ -13,6 +13,9 @@ interface Props {
   label?: string;
 }
 
+/** The marks a line can start with: a bullet, a number, a heading or a quote. */
+const MARKS = /^\s*(?:[-*+•]|\d+[.)]|#{1,6}|>)\s+/;
+
 export function FormattedText({ value, onChange, rows = 5, placeholder, label }: Props) {
   const box = useRef<HTMLTextAreaElement>(null);
   const [preview, setPreview] = useState(false);
@@ -53,8 +56,28 @@ export function FormattedText({ value, onChange, rows = 5, placeholder, label }:
     const endAt = value.indexOf("\n", el.selectionEnd);
     const b = endAt === -1 ? value.length : endAt;
     const picked = value.slice(a, b).split("\n");
-    const all = picked.every((l) => match.test(l));
-    const changed = picked.map((l, i) => (all ? l.replace(match, "") : prefix(i) + l.replace(/^\s*(?:[-*+•]|\d+[.)]|#{1,6}|>)\s+/, ""))).join("\n");
+    // Blank lines between items don't count, and never get a mark of their own.
+    const filled = picked.filter((l) => l.trim());
+    const all = filled.length > 0 && filled.every((l) => match.test(l));
+    let n = 0;
+    const changed = picked
+      .map((l) => (!l.trim() ? l : all ? l.replace(match, "") : prefix(n++) + l.replace(MARKS, "")))
+      .join("\n");
+    apply(value.slice(0, a) + changed + value.slice(b), a, a + changed.length);
+  };
+
+  // Plain text: the picked lines lose their list, heading and quote marks, and bold and italic.
+  const plain = () => {
+    const el = box.current;
+    if (!el) return;
+    const a = value.lastIndexOf("\n", el.selectionStart - 1) + 1;
+    const endAt = value.indexOf("\n", el.selectionEnd);
+    const b = endAt === -1 ? value.length : endAt;
+    const changed = value
+      .slice(a, b)
+      .split("\n")
+      .map((l) => l.replace(MARKS, "").replace(/(\*\*|__)(.+?)\1/g, "$2").replace(/(\*|_)(.+?)\1/g, "$2"))
+      .join("\n");
     apply(value.slice(0, a) + changed + value.slice(b), a, a + changed.length);
   };
 
@@ -78,6 +101,9 @@ export function FormattedText({ value, onChange, rows = 5, placeholder, label }:
         </button>
         <button type="button" title="Quote" aria-label="Quote" disabled={preview} onClick={() => lines(() => "> ", /^\s*>\s?/)}>
           ❝
+        </button>
+        <button type="button" title="Plain text: no list, heading, quote, bold or italic" aria-label="Plain text" disabled={preview} onClick={plain}>
+          T̸
         </button>
         <span className="formatted-text-gap" />
         <button type="button" className={preview ? "on" : ""} aria-pressed={preview} onClick={() => setPreview((p) => !p)}>

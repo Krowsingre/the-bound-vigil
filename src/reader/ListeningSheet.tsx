@@ -111,7 +111,7 @@ function TimerPick({ timer, onTimer }: { timer: ListenTimer; onTimer: (timer: Li
   );
 }
 
-export function ListeningSheet({ docked = false, mode, onMode, onClose, readAloud: ra, readAlong, ebookId, narration, settings, onSettings, lang, timer, onTimer }: {
+export function ListeningSheet({ docked = false, mode, onMode, onClose, readAloud: ra, readAlong, ebookId, narration, settings, onSettings, lang, timer, onTimer, canGlide = false }: {
   /** Computers: a drop-down under its button instead of a sheet from the bottom. */
   docked?: boolean;
   mode: ListenMode;
@@ -126,6 +126,8 @@ export function ListeningSheet({ docked = false, mode, onMode, onClose, readAlou
   lang: string | null;
   timer: ListenTimer;
   onTimer: (timer: ListenTimer) => void;
+  /** The book is read by scrolling, so the page can glide along with the voice. */
+  canGlide?: boolean;
 }) {
   const player = usePlayer();
   const sheet = useRef<HTMLDivElement>(null);
@@ -259,6 +261,14 @@ export function ListeningSheet({ docked = false, mode, onMode, onClose, readAlou
             <span className="listen-row-label"><Icon name="sliders" size={18} /> Speed</span>
             <Rate label="Speed" value={formatRate(settings.rate)} lessOff={rateOff(-1)} moreOff={rateOff(1)} onLess={() => rate(-1)} onMore={() => rate(1)} />
           </div>
+          <div className="listen-row">
+            <span className="listen-row-label" id="listen-glide"><Icon name="readingA" size={18} /> Scroll with the voice</span>
+            <button type="button" role="switch" className="switch" aria-labelledby="listen-glide" aria-checked={settings.followVoice}
+              onClick={() => onSettings({ followVoice: !settings.followVoice })}>
+              <span className="switch-knob" aria-hidden />
+            </button>
+          </div>
+          {settings.followVoice && !canGlide && <p className="listen-note">Works when the book is read by scrolling. Choose Scroll under "Moving through the book" in Aa.</p>}
         </div>
       </>
     );

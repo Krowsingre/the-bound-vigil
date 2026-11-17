@@ -119,11 +119,13 @@ export class Scroller extends HTMLElement {
     }
     #watchInput(target) {
         const mark = () => this.#lastInput = performance.now()
+        // the reader's own scrolling, so things moving the page for them can stop
+        const own = () => (mark(), this.dispatchEvent(new Event('userinput')))
         const opts = { passive: true }
-        target.addEventListener('wheel', mark, opts)
-        target.addEventListener('keydown', mark, opts)
+        target.addEventListener('wheel', own, opts)
+        target.addEventListener('keydown', own, opts)
         target.addEventListener('touchstart', () => (this.#touching = true, mark()), opts)
-        target.addEventListener('touchmove', mark, opts)
+        target.addEventListener('touchmove', own, opts)
         target.addEventListener('touchend', () => (this.#touching = false, mark()), opts)
         target.addEventListener('touchcancel', () => (this.#touching = false, mark()), opts)
     }

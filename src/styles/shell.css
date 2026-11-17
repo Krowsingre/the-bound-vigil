@@ -467,6 +467,10 @@
   color: var(--text);
 }
 
+.menu-item.menu-item-indent {
+  padding-left: 28px;
+}
+
 .menu-item:hover:not(:disabled),
 .menu-item:focus-visible {
   background: var(--surface-sunk);

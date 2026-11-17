@@ -8,6 +8,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Draw } from "../vendor/foliate-js/overlayer.js";
 import type { TTS, View } from "../vendor/foliate-js/view.js";
 import { pickVoice, sentencesOf, ssmlToText, type Sentence } from "./readAloud";
+import { MS_PER_PAGE } from "./ListeningSheet";
+
+/** Letters in a page, as MS_PER_PAGE counts it. */
+const PAGE_CHARS = 1500;
 
 export type ReadAloudStatus = "stopped" | "playing" | "paused";
 
@@ -95,7 +99,10 @@ export function useReadAloud({
   voices: chosen,
   rate,
   dark,
+  glide = false,
 }: {
+  /** Reading by scrolling with "Scroll with the voice" on: the page glides at the voice's pace. */
+  glide?: boolean;
   getView: () => View | null;
   ready: boolean;
   /** The book's language, to choose a voice that speaks it. */
@@ -138,9 +145,19 @@ export function useReadAloud({
     unlocking: false,
     /** Utterances still queued: phones drop the events of ones nothing holds on to. */
     queue: [] as SpeechSynthesisUtterance[],
+    /** Gliding with the voice: the frame under way, and how the voice has been keeping time. */
+    glideFrame: 0,
+    glideStart: 0,
+    /** The page is gliding, or settling after a glide: its moves aren't the reader's. */
+    gliding: false,
+    glideSettle: undefined as ReturnType<typeof setTimeout> | undefined,
+    lastStart: 0,
+    lastChars: 0,
+    /** Milliseconds per letter at normal speed, learned from the voice as it reads. */
+    msPerChar: MS_PER_PAGE / PAGE_CHARS,
   }).current;
-  const opts = useRef({ getView, voice, rate, dark, lang });
-  opts.current = { getView, voice, rate, dark, lang };
+  const opts = useRef({ getView, voice, rate, dark, lang, glide });
+  opts.current = { getView, voice, rate, dark, lang, glide };
 
   const setStatus = (next: ReadAloudStatus) => {
     s.status = next;
@@ -182,9 +199,85 @@ export function useReadAloud({
     } catch {
       /* drawn again with the next sentence */
     }
+    if (s.held) return;
+    if (opts.current.glide && !v.isFixedLayout && glideTo(v, range)) return;
     // A sentence running onto the next page is read from this one, so the page
     // turns when the next sentence starts there.
-    if (!s.held && (v.isFixedLayout || !wholeOnScreen(range, v.lastLocation?.range))) void move(() => v.renderer.scrollToAnchor?.(range));
+    if (v.isFixedLayout || !wholeOnScreen(range, v.lastLocation?.range)) void move(() => v.renderer.scrollToAnchor?.(range));
+  };
+
+  const stopGlide = () => {
+    if (!s.glideFrame) return;
+    cancelAnimationFrame(s.glideFrame);
+    s.glideFrame = 0;
+    // The engine reports where it is a moment after scrolling stops: still this hook's move.
+    clearTimeout(s.glideSettle);
+    s.glideSettle = setTimeout(() => (s.gliding = false), 1200);
+  };
+
+  /** The reader scrolled for themselves: the glide gives way at once. */
+  const dropGlide = () => {
+    if (s.glideFrame) cancelAnimationFrame(s.glideFrame);
+    s.glideFrame = 0;
+    clearTimeout(s.glideSettle);
+    s.gliding = false;
+  };
+
+  /**
+   * Scroll with the voice: over the time the voice will take to read this
+   * sentence, the page glides so the sentence comes up to a third of the way
+   * down the screen. The time is learned from how long the last sentences
+   * took, so it keeps up with the voice and its speed. False when the
+   * sentence is too far away to glide to (a new chapter), so the page jumps.
+   */
+  const glideTo = (v: View, range: Range): boolean => {
+    const now = performance.now();
+    const rate = opts.current.rate || 1;
+    // How the voice is keeping time: the last sentence's length against how long it took.
+    if (s.lastStart && s.lastChars > 8) {
+      const measured = ((now - s.lastStart) / s.lastChars) * rate;
+      if (measured > 10 && measured < 400) s.msPerChar = s.msPerChar * 0.7 + measured * 0.3;
+    }
+    const chars = range.toString().length;
+    s.lastStart = now;
+    s.lastChars = chars;
+    let delta: number;
+    let height: number;
+    try {
+      const frame = range.startContainer.ownerDocument?.defaultView?.frameElement;
+      const box = v.getBoundingClientRect();
+      const at = range.getBoundingClientRect().top + (frame?.getBoundingClientRect().top ?? 0);
+      height = box.height;
+      delta = at - (box.top + box.height / 3);
+    } catch {
+      return false;
+    }
+    if (!height || Math.abs(delta) > height * 1.5) {
+      stopGlide();
+      return false;
+    }
+    stopGlide();
+    const duration = Math.max(400, (chars * s.msPerChar) / rate);
+    clearTimeout(s.glideSettle);
+    s.gliding = true;
+    let previous = now;
+    let done = 0;
+    let remainder = 0;
+    const tick = (t: number) => {
+      const left = delta - done;
+      const step = Math.abs(left) < 1 ? left : (delta * Math.min(50, t - previous)) / duration + remainder;
+      const pixels = Math.trunc(step);
+      remainder = step - pixels;
+      if (pixels) {
+        v.renderer.scrollByPixels?.(pixels);
+        done += pixels;
+      }
+      previous = t;
+      if (Math.abs(delta - done) >= 1 && t - now < duration * 1.5) s.glideFrame = requestAnimationFrame(tick);
+      else stopGlide();
+    };
+    s.glideFrame = requestAnimationFrame(tick);
+    return true;
   };
 
   /** Where a sentence is, asked of the engine without highlighting it. */
@@ -253,6 +346,8 @@ export function useReadAloud({
   };
 
   const finish = () => {
+    stopGlide();
+    s.lastStart = 0;
     s.run++;
     synth?.cancel();
     clearMark();
@@ -390,6 +485,8 @@ export function useReadAloud({
   const pause = useCallback(() => {
     if (s.status !== "playing") return;
     // Pausing is stopping and starting the sentence again: pause() is unreliable on phones.
+    stopGlide();
+    s.lastStart = 0;
     s.run++;
     synth?.cancel();
     setStatus("paused");
@@ -449,7 +546,7 @@ export function useReadAloud({
     if (!v) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const onRelocate = () => {
-      if (s.moving > 0 || s.status === "stopped") return;
+      if (s.moving > 0 || s.gliding || s.status === "stopped") return;
       s.held = true;
       clearTimeout(timer);
       timer = setTimeout(() => {
@@ -458,9 +555,18 @@ export function useReadAloud({
         if (s.status === "playing") void startFromPage();
       }, SETTLE_MS);
     };
+    // Scrolling by hand while the page glides with the voice stops the glide,
+    // and then counts like any page turned by hand.
+    const onInput = () => {
+      if (!s.gliding) return;
+      dropGlide();
+      onRelocate();
+    };
     v.addEventListener("relocate", onRelocate);
+    v.renderer.addEventListener?.("userinput", onInput);
     return () => {
       clearTimeout(timer);
+      v.renderer.removeEventListener?.("userinput", onInput);
       s.held = false;
       v.removeEventListener("relocate", onRelocate);
       // Another book, or the reader closing.

@@ -12,7 +12,7 @@ import { EXPORT_CHANGED } from "./CanvaLink";
 import { startNewEdition } from "./newEdition";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
-import { Menu, type MenuEntry } from "../components/Menu";
+import { Menu, type MenuEntry, type MenuItem } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { Notes, type NewNoteKind } from "../notes/Notes";
 import type { ScribeAsk } from "../widgets";
@@ -289,10 +289,13 @@ function useProjects(shown: boolean, refreshKey: number, reload: number): Projec
 }
 
 type Area = "front" | "chapter" | "back";
+const SHORTCUT_NEW = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘⇧N" : "Ctrl+Shift+N";
 const AREA_NAMES: Record<Area, string> = { front: "Front matter", chapter: "Body", back: "Back matter" };
 
 /** Where a dragged section is dropped: on another section, or on an area's heading (its end). */
-type DropTarget = { section: WritingChapter } | { area: Area };
+/** Where a drop lands beside a row: above it, below it, or (on a section) into it. */
+type DropWhere = "above" | "below" | "into";
+type DropTarget = { section: WritingChapter; where?: DropWhere } | { area: Area };
 
 function ProjectView({
   id,
@@ -325,6 +328,29 @@ function ProjectView({
   const publisher = usePublisher();
   const [deletingChapter, setDeletingChapter] = useState<WritingChapter | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
+  // The row a dragged page or section would land on, marked with a line.
+  const [dropOn, setDropOn] = useState<string | null>(null);
+  const [dropWhere, setDropWhere] = useState<DropWhere>("above");
+  // Body sections folded shut in the contents, remembered for each book on this device.
+  const foldKey = `tbv.scribe.folded.${id}`;
+  const [folded, setFolded] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(foldKey) ?? "[]") as string[]);
+    } catch {
+      return new Set();
+    }
+  });
+  const toggleFold = (sectionId: string) =>
+    setFolded((before) => {
+      const next = new Set(before);
+      if (!next.delete(sectionId)) next.add(sectionId);
+      try {
+        localStorage.setItem(foldKey, JSON.stringify([...next]));
+      } catch {
+        /* remembered for now only */
+      }
+      return next;
+    });
   const [listOpen, setListOpen] = useState(true);
   // On a phone the contents and the page share the screen badly, so one shows at a time:
   // picking a page opens it, and the Contents button goes back.
@@ -366,8 +392,8 @@ function ProjectView({
     return () => window.removeEventListener(EXPORT_CHANGED, changed);
   }, [id]);
 
-  const chapters = useMemo(() => bookOrder(view?.chapters ?? []), [view?.chapters]);
   const settings = useMemo(() => readExport(view?.project.export), [view?.project.export]);
+  const chapters = useMemo(() => bookOrder(view?.chapters ?? [], settings.freeOrder), [view?.chapters, settings.freeOrder]);
   const partIds = new Set(chapters.filter((c) => c.role === "part").map((c) => c.id));
   /** The part (body section) a section is in, or null for the book's own. */
   const partOf = (c: WritingChapter) => (c.role !== "part" && c.part && partIds.has(c.part) ? c.part : null);
@@ -472,8 +498,9 @@ function ProjectView({
     return done;
   };
 
-  /** Adds a page of this kind at the end of its area (or of a body section), and opens it. */
-  const addPage = async (kind: PageKind, role: WritingChapter["role"], part: string | null = null) => {
+  /** Adds a page of this kind at the end of its area (or of a body section), or just after `after`, and opens it. */
+  const addPage = async (kind: PageKind, role: WritingChapter["role"], part: string | null = null, after?: string) => {
+    await flushEditor.current?.();
     await saving.current;
     try {
       const siblings = chapters.filter((c) => c.role === role && partOf(c) === part);
@@ -493,7 +520,7 @@ function ProjectView({
         role,
         part,
         page: role === "part" ? "{}" : JSON.stringify({ kind }),
-        after: siblings[siblings.length - 1]?.id ?? (part && role !== "part" ? part : null),
+        after: after ?? siblings[siblings.length - 1]?.id ?? (part && role !== "part" ? part : null),
       });
       await load();
       setChapterId(added.id);
@@ -502,6 +529,45 @@ function ProjectView({
       toast(String(e));
     }
   };
+
+  /** A copy of a page, words and settings, just after it. */
+  const duplicatePage = async (c: WritingChapter) => {
+    try {
+      await flushEditor.current?.();
+      await saving.current;
+      const fresh = (await load())?.chapters.find((x) => x.id === c.id) ?? c;
+      const added = await api.addWritingSection(id, {
+        title: fresh.title ? `${fresh.title} (copy)` : "",
+        body: fresh.body,
+        role: fresh.role,
+        part: partOf(fresh),
+        page: fresh.page,
+        after: fresh.id,
+      });
+      await load();
+      setChapterId(added.id);
+    } catch (e) {
+      toast(String(e));
+    }
+  };
+
+  /** Ctrl+Shift+N: a new, empty page of the same kind as this one, in the same place, just after it. */
+  const addLikeThis = (c: WritingChapter) => {
+    if (c.role === "part") return void addPage("chapter", "chapter", c.id, c.id);
+    void addPage(readPage(c.page, c.role).kind, c.role, partOf(c), c.id);
+  };
+  const likeThis = useRef<() => void>(() => undefined);
+  likeThis.current = () => chapter && addLikeThis(chapter);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        likeThis.current();
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, []);
 
   const setPage = async (c: WritingChapter, change: Partial<PageSettings>) => {
     try {
@@ -540,32 +606,66 @@ function ProjectView({
     }
   };
 
+  /** A section with everything in it, or a page on its own: what moves together. */
+  const blockOf = (c: WritingChapter) => (c.role === "part" ? [c, ...chapters.filter((x) => partOf(x) === c.id)] : [c]);
+  /** The body's own chapters, its sections and their pages. */
+  const inBody = (c: WritingChapter) => c.role === "part" || !!partOf(c) || c.role === "chapter";
+
   /**
-   * Moves a section by dragging (or the ••• menu): onto another section it
-   * takes that one's place, area and body section; onto a body section's
-   * own row it goes first inside it; onto an area's heading, to that area's end.
-   * Body sections move only among each other.
+   * Moves a page or a whole body section by dragging (or the ••• menu). A page
+   * dropped on another page takes its place, area and section; on a section's
+   * own row it goes first inside it; on an area's heading, to that area's end.
+   * A section moves with all its pages to wherever in the body it's dropped.
    */
   const moveTo = async (fromId: string, target: DropTarget) => {
     const from = chapters.find((c) => c.id === fromId);
     if (!from) return;
     const onto = "section" in target ? target.section : null;
-    if (onto?.id === from.id) return;
-    if (from.role === "part" && (!onto || onto.role !== "part")) return;
+    const where: DropWhere = ("section" in target && target.where) || (onto?.role === "part" ? "into" : onto && chapters.indexOf(from) < chapters.indexOf(onto) ? "below" : "above");
+    const block = blockOf(from);
+    const moving = new Set(block.map((c) => c.id));
+    if (onto && moving.has(onto.id)) return;
+    const rest = chapters.filter((c) => !moving.has(c.id));
+    const firstBody = rest.findIndex(inBody);
+    const lastBody = rest.length - 1 - [...rest].reverse().findIndex(inBody);
+    const anyBody = firstBody >= 0;
+    const ownBack = rest.findIndex((c) => c.role === "back" && !partOf(c));
+    const bodyStart = firstBody >= 0 ? firstBody : ownBack >= 0 ? ownBack : rest.length;
+    const bodyEnd = anyBody ? lastBody + 1 : bodyStart;
+    const down = (other: WritingChapter) => chapters.indexOf(from) < chapters.indexOf(other);
     let role: WritingChapter["role"] = from.role;
     let part: string | null = partOf(from);
-    if (from.role !== "part") {
-      if (!onto) [role, part] = [(target as { area: Area }).area, null];
-      else if (onto.role === "part") [role, part] = ["chapter", onto.id];
-      else [role, part] = [onto.role, partOf(onto)];
+    let at: number;
+    if (from.role === "part") {
+      if (!onto) at = (target as { area: Area }).area === "front" ? bodyStart : bodyEnd;
+      else if (!inBody(onto)) at = onto.role === "front" ? bodyStart : bodyEnd;
+      else {
+        // Onto a page inside another section: beside that whole section.
+        const holder = onto.role === "part" ? onto : (chapters.find((c) => c.id === partOf(onto)) ?? onto);
+        const theirs = blockOf(holder);
+        const after = holder === onto ? where !== "above" : down(holder);
+        at = after ? rest.indexOf(theirs[theirs.length - 1]) + 1 : rest.indexOf(theirs[0]);
+      }
+    } else if (!onto) {
+      const area = (target as { area: Area }).area;
+      [role, part] = [area, null];
+      at = area === "front" ? bodyStart : area === "chapter" ? bodyEnd : rest.length;
+    } else if (onto.role === "part" && where === "into") {
+      [role, part] = ["chapter", onto.id];
+      at = rest.indexOf(onto) + 1;
+    } else if (onto.role === "part") {
+      // Just above or below the whole section: a chapter of the body on its own.
+      const theirs = blockOf(onto);
+      [role, part] = ["chapter", null];
+      at = where === "above" ? rest.indexOf(onto) : rest.indexOf(theirs[theirs.length - 1]) + 1;
+    } else {
+      [role, part] = [onto.role, partOf(onto)];
+      at = rest.indexOf(onto) + (where === "below" ? 1 : 0);
     }
-    const order = chapters.map((c) => c.id).filter((c) => c !== from.id);
-    if (!onto) order.push(from.id);
-    else if (onto.role === "part" && from.role !== "part") order.splice(order.indexOf(onto.id) + 1, 0, from.id);
-    else {
-      const down = chapters.findIndex((c) => c.id === from.id) < chapters.findIndex((c) => c.id === onto.id);
-      order.splice(order.indexOf(onto.id) + (down ? 1 : 0), 0, from.id);
-    }
+    const order = [...rest.slice(0, at), ...block, ...rest.slice(at)].map((c) => c.id);
+    if (order.join() === chapters.map((c) => c.id).join() && role === from.role && part === partOf(from)) return;
+    // From the first move on, the body keeps the order it's given (sections among chapters too).
+    if (!settings.freeOrder) saveSettings({ ...settings, freeOrder: true });
     setView((v) => v && { ...v, chapters: order.map((o) => ({ ...v.chapters.find((c) => c.id === o)!, ...(o === from.id ? { role, part } : {}) })) });
     try {
       await saving.current;
@@ -578,15 +678,34 @@ function ProjectView({
     void load();
   };
 
-  /** Sections of the same kind and place, for Move up and Move down. */
-  const groupOf = (c: WritingChapter) => (c.role === "part" ? "part" : `${partOf(c) ?? ""}:${c.role}`);
+  /** Pages of the same kind and place, for Move up and Move down; a section steps past the body's chapters and sections. */
+  const groupOf = (c: WritingChapter) => (c.role === "part" || (c.role === "chapter" && !partOf(c)) ? "body" : `${partOf(c) ?? ""}:${c.role}`);
   const neighbour = (c: WritingChapter, by: -1 | 1) => {
     const same = chapters.filter((x) => groupOf(x) === groupOf(c));
     return same[same.findIndex((x) => x.id === c.id) + by];
   };
   const nudge = (c: WritingChapter, by: -1 | 1) => {
     const other = neighbour(c, by);
-    if (other) void moveTo(c.id, { section: other });
+    if (!other) return;
+    // A body page moved past a section lands beside it, not inside it.
+    if (c.role !== "part" && other.role === "part") void moveBeside(c, other, by);
+    else void moveTo(c.id, { section: other, where: by < 0 ? "above" : "below" });
+  };
+  /** Moves a body page just past a whole section, keeping it out of the section. */
+  const moveBeside = async (c: WritingChapter, section: WritingChapter, by: -1 | 1) => {
+    const rest = chapters.filter((x) => x.id !== c.id);
+    const theirs = blockOf(section);
+    const at = by > 0 ? rest.indexOf(theirs[theirs.length - 1]) + 1 : rest.indexOf(theirs[0]);
+    const order = [...rest.slice(0, at), c, ...rest.slice(at)].map((x) => x.id);
+    if (!settings.freeOrder) saveSettings({ ...settings, freeOrder: true });
+    setView((v) => v && { ...v, chapters: order.map((o) => v.chapters.find((x) => x.id === o)!) });
+    try {
+      await saving.current;
+      await api.orderWritingChapters(id, order);
+    } catch (e) {
+      toast(String(e));
+    }
+    void load();
   };
 
   // Chapter numbers as the book will have them.
@@ -631,6 +750,8 @@ function ProjectView({
     return [
       { label: "Move up", icon: "chevronUp", disabled: !neighbour(c, -1), onSelect: () => nudge(c, -1) },
       { label: "Move down", icon: "chevronDown", disabled: !neighbour(c, 1), onSelect: () => nudge(c, 1) },
+      { label: "Duplicate page", icon: "copy", onSelect: () => void duplicatePage(c) },
+      { label: "New page like this one", icon: "plus", hint: SHORTCUT_NEW, onSelect: () => addLikeThis(c) },
       "divider",
       { heading: <span className="menu-tip">This page</span> },
       ...(c.role === "front" ? ([{
@@ -653,12 +774,13 @@ function ProjectView({
       ...(made && page.byHand ? ([{ label: "Let Scribe make it again", icon: "sync", onSelect: () => void setPage(c, { byHand: false }) }] as MenuEntry[]) : []),
       "divider",
       { heading: <span className="menu-tip">Where it goes</span> },
-      ...(["front", "chapter", "back"] as Area[]).map((area) => ({
-        label: AREA_NAMES[area],
-        checked: c.role === area && !partOf(c),
-        onSelect: () => void moveTo(c.id, { area }),
-      })),
-      ...parts.map((p, n) => ({ label: p.title || `Section ${n + 1}`, checked: partOf(c) === p.id, onSelect: () => void moveTo(c.id, { section: p }) })),
+      // The body's sections sit under Body, in the book's order.
+      ...(["front", "chapter", "back"] as Area[]).flatMap((area): MenuItem[] => [
+        { label: AREA_NAMES[area], checked: c.role === area && !partOf(c), onSelect: () => void moveTo(c.id, { area }) },
+        ...(area === "chapter"
+          ? parts.map((p, n) => ({ label: p.title || `Section ${n + 1}`, indent: true, checked: partOf(c) === p.id, onSelect: () => void moveTo(c.id, { section: p }) }))
+          : []),
+      ]),
       "divider",
       { label: "Delete page…", icon: "trash", danger: true, disabled: sections.length === 1, onSelect: () => setDeletingChapter(c) },
     ];
@@ -685,25 +807,46 @@ function ProjectView({
     const number =
       c.role === "part" ? romanOf(parts.findIndex((p) => p.id === c.id) + 1) : numbers.has(c.id) ? numbers.get(c.id) : KINDS[page.kind].made && !page.byHand ? "◇" : "·";
     const words = c.role === "part" ? chapters.filter((x) => partOf(x) === c.id).reduce((n, x) => n + x.words, 0) : c.words;
-    const canDrop = dragging && dragging !== c.id && (chapters.find((x) => x.id === dragging)?.role !== "part" || c.role === "part");
+    const dragged = dragging ? chapters.find((x) => x.id === dragging) : undefined;
+    // Anything can be dropped anywhere but into itself (a section into its own pages).
+    const canDrop = !!dragged && !blockOf(dragged).some((x) => x.id === c.id);
+    const isFolded = c.role === "part" && folded.has(c.id);
+    const inside = c.role === "part" ? chapters.filter((x) => partOf(x) === c.id).length : 0;
     return (
       <li
         key={c.id}
         draggable
-        className={`${c.id === chapter?.id ? "is-current" : ""}${dragging === c.id ? " is-dragging" : ""}${inPart ? " is-in-part" : ""}${c.role === "part" ? " is-part" : ""}`}
+        className={`${c.id === chapter?.id ? "is-current" : ""}${dragging === c.id ? " is-dragging" : ""}${inPart ? " is-in-part" : ""}${c.role === "part" ? " is-part" : ""}${dropOn === c.id ? ` is-drop-${dropWhere}` : ""}`}
         onDragStart={(e) => {
           setDragging(c.id);
           e.dataTransfer.effectAllowed = "move";
           e.dataTransfer.setData("text/plain", c.id);
         }}
-        onDragEnd={() => setDragging(null)}
-        onDragOver={(e) => canDrop && e.preventDefault()}
+        onDragEnd={() => (setDragging(null), setDropOn(null))}
+        onDragOver={(e) => {
+          if (!canDrop) return;
+          e.preventDefault();
+          // The top of a row drops above it, the bottom below; the middle of a section drops into it.
+          const box = e.currentTarget.getBoundingClientRect();
+          const y = (e.clientY - box.top) / Math.max(1, box.height);
+          const where: DropWhere = c.role === "part" && dragged?.role !== "part" ? (y < 0.3 ? "above" : y > 0.7 && isFolded ? "below" : "into") : y < 0.5 ? "above" : "below";
+          if (dropOn !== c.id) setDropOn(c.id);
+          if (dropWhere !== where) setDropWhere(where);
+        }}
+        onDragLeave={() => dropOn === c.id && setDropOn(null)}
         onDrop={(e) => {
           e.preventDefault();
-          if (dragging) void moveTo(dragging, { section: c });
+          if (dragging && canDrop) void moveTo(dragging, { section: c, where: dropWhere });
           setDragging(null);
+          setDropOn(null);
         }}
       >
+        {c.role === "part" && (
+          <button type="button" className="writing-fold" aria-expanded={!isFolded} aria-label={isFolded ? `Show what's in ${c.title || "this section"}` : `Fold ${c.title || "this section"}`}
+            title={isFolded ? `Show its ${inside} ${inside === 1 ? "page" : "pages"}` : "Fold"} onClick={() => toggleFold(c.id)}>
+            <Icon name={isFolded ? "chevronRight" : "chevronDown"} size={14} />
+          </button>
+        )}
         <button type="button" className="writing-chapter" onClick={() => void saving.current.then(() => (setChapterId(c.id), setPicked((n) => n + 1), narrow && setListOpen(false)))}>
           <span className="writing-chapter-number num">{number}</span>
           <span className={`writing-chapter-name${c.title ? "" : " muted"}`}>
@@ -717,12 +860,18 @@ function ProjectView({
   };
   const areaHead = (area: Area) => (
     <li
-      className="writing-area"
-      onDragOver={(e) => dragging && chapters.find((x) => x.id === dragging)?.role !== "part" && e.preventDefault()}
+      className={`writing-area${dropOn === `area:${area}` ? " is-drop-target" : ""}`}
+      onDragOver={(e) => {
+        if (!dragging) return;
+        e.preventDefault();
+        if (dropOn !== `area:${area}`) setDropOn(`area:${area}`);
+      }}
+      onDragLeave={() => dropOn === `area:${area}` && setDropOn(null)}
       onDrop={(e) => {
         e.preventDefault();
         if (dragging) void moveTo(dragging, { area });
         setDragging(null);
+        setDropOn(null);
       }}
     >
       <span>{AREA_NAMES[area]}</span>
@@ -811,11 +960,11 @@ function ProjectView({
             {areaHead("front")}
             {front.map(row)}
             {areaHead("chapter")}
-            {body.map(row)}
+            {body.filter((c) => !(partOf(c) && folded.has(partOf(c)!))).map(row)}
             {areaHead("back")}
             {back.map(row)}
           </ol>
-          <p className="muted writing-hint">Drag pages to put them in order, or into another area or section. Each area's + adds a page.</p>
+          <p className="muted writing-hint">Drag pages and sections to put them in order. Each area's + adds a page. Ctrl+Shift+N adds a page like the one you're on.</p>
         </aside>
         {side === "preview" ? (
           <BookPreview
@@ -859,7 +1008,7 @@ function ProjectView({
             ) : (
               chapter && (
                 <>
-                {current && isPoem(current) && <PoemSound key={`sound-${chapter.id}`} sound={current.sound} onChange={(sound) => setPage(chapter, { sound })} />}
+                {current && <PoemSound key={`sound-${chapter.id}`} sound={current.sound} onChange={(sound) => setPage(chapter, { sound })} />}
                 <ChapterEditor
                   key={chapter.id}
                   chapter={chapter}
@@ -868,6 +1017,11 @@ function ProjectView({
                   flushRef={flushEditor}
                   insertRef={insertInEditor}
                   poem={current && isPoem(current) ? (current.centred ? "centred" : "left") : null}
+                  book={{
+                    font: settings.font === "lora" ? "Lora, serif" : settings.font === "echolume" ? "Echolume, serif" : null,
+                    lineHeight: "1.5",
+                    align: current && isPoem(current) ? (current.centred ? "center" : "left") : settings.align,
+                  }}
                   sources={settings.sources}
                   citationChapters={chapters}
                   citationStyle={settings.citationStyle}
