@@ -381,9 +381,12 @@ export function ImportBookDialog({
       await sign(made, picked);
       if (manuscript.description || manuscript.language)
         await api.updateWritingDetails(made, { title: view.project.title, author: view.project.author, series: null, seriesIndex: null, language: manuscript.language, description: manuscript.description }).catch(() => undefined);
-      if (manuscript.isbn) {
+      if (manuscript.isbn || manuscript.subtitle) {
         const settings = readExport(view.project.export);
-        await api.setWritingExport(made, JSON.stringify({ ...settings, copyright: { ...settings.copyright, isbn: manuscript.isbn } })).catch(() => undefined);
+        const isbn = manuscript.isbn ?? settings.copyright.isbn;
+        await api
+          .setWritingExport(made, JSON.stringify({ ...settings, copyright: { ...settings.copyright, isbn }, subtitle: manuscript.subtitle ?? settings.subtitle }))
+          .catch(() => undefined);
       }
       await addSections(made, manuscript, chosen);
       // The empty chapter every new book starts with.

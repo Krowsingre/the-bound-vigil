@@ -34,7 +34,7 @@ import { StoreEditionsDialog } from "./StoreEditions";
 import { BoxSetDialog } from "./BoxSet";
 import { PreviewsDialog } from "./Previews";
 import { usePublisher } from "../license/Publisher";
-import { addSampleBook, addSampleOnce, SAMPLE_AUTHOR, SAMPLE_TITLE } from "./sampleBook";
+import { addSampleBook, addSampleOnce, SAMPLE_TITLE } from "./sampleBook";
 
 type BibliographySettings = Pick<ExportSettings, "sources" | "citationStyle" | "customSourceFormat">;
 
@@ -130,50 +130,45 @@ export function Writing({
     setChip("books");
     setCreating(template);
   };
-  const newItems: MenuEntry[] = [
-    { label: "Note", icon: "noteLines", description: "Write freely", onSelect: () => newNote("personal") },
-    { label: "Book note", icon: "notePen", description: "Write about a book in your library", onSelect: () => newNote("book_note") },
-    ...(booksShown
-      ? [
-          { label: "Book", icon: "bookOpen" as const, description: "Create a manuscript for EPUB export", onSelect: () => newBook() },
-          {
-            label: "Import a manuscript",
-            icon: "importFile" as const,
-            description: "From Word, OpenDocument, RTF, text, Markdown or EPUB",
-            onSelect: () => {
-              setChip("books");
-              setImporting(true);
-            },
+  // New makes what the tab holds; only Write a book has other ways to start, under the arrow.
+  const bookItems: MenuEntry[] = [
+    {
+      label: "Import a manuscript",
+      icon: "importFile",
+      description: "Bring an existing manuscript into Scribe.",
+      onSelect: () => {
+        setChip("books");
+        setImporting(true);
+      },
+    },
+    {
+      label: "Sample book",
+      icon: "bookClosed",
+      description: `Explore Scribe with ${SAMPLE_TITLE}.`,
+      onSelect: () => {
+        setChip("books");
+        toast(`Adding ${SAMPLE_TITLE}…`);
+        void addSampleBook().then(
+          () => {
+            setReload((n) => n + 1);
+            toast(`${SAMPLE_TITLE} is in your books`);
           },
-          {
-            label: "Sample book",
-            icon: "bookClosed" as const,
-            description: `${SAMPLE_TITLE} by ${SAMPLE_AUTHOR}, to try Scribe on`,
-            onSelect: () => {
-              setChip("books");
-              toast(`Adding ${SAMPLE_TITLE}…`);
-              void addSampleBook().then(
-                () => {
-                  setReload((n) => n + 1);
-                  toast(`${SAMPLE_TITLE} is in your books`);
-                },
-                (e: unknown) => toast(String(e).replace(/^Error: /, "")),
-              );
-            },
-          },
-          {
-            label: "Box set",
-            icon: "layers" as const,
-            description: "Several of your books joined into one",
-            onSelect: () =>
-              publisher.check("Box sets", () => {
-                setChip("books");
-                setBoxing(true);
-              }),
-          },
-        ]
-      : []),
+          (e: unknown) => toast(String(e).replace(/^Error: /, "")),
+        );
+      },
+    },
+    {
+      label: "Box set",
+      icon: "layers",
+      description: "Combine multiple books into one set.",
+      onSelect: () =>
+        publisher.check("Box sets", () => {
+          setChip("books");
+          setBoxing(true);
+        }),
+    },
   ];
+  const newLabel = showing === "books" ? "New book" : showing === "book_notes" ? "New reading note" : "New note";
 
   return (
     <div className={`library writing-home scribe writing-${showing}`}>
@@ -181,22 +176,20 @@ export function Writing({
       <header className="scribe-top">
         <div className="library-head scribe-head">
           <h1 className="library-title">Scribe</h1>
-          {/* New starts what the tab holds (a note, a reading note, a book); the arrow has the other kinds. */}
-          <div className="split-button">
+          {/* New starts what the tab holds (a note, a reading note, a book); on Write a book the arrow has other ways to start one. */}
+          <div className={showing === "books" ? "split-button" : undefined}>
             <button
               type="button"
-              className="btn btn-primary split-main"
+              className={`btn btn-primary${showing === "books" ? " split-main" : ""}`}
+              aria-label={newLabel}
+              title={newLabel}
               onClick={() => (showing === "books" ? newBook() : newNote(showing === "book_notes" ? "book_note" : "personal"))}
             >
               <Icon name="plus" size={15} /> New
             </button>
-            <Menu
-              label="Other kinds of new"
-              className="btn btn-primary split-arrow"
-              align="end"
-              trigger={<Icon name="chevronDown" size={14} />}
-              items={newItems}
-            />
+            {showing === "books" && (
+              <Menu label="Other ways to start a book" className="btn btn-primary split-arrow" align="end" trigger={<Icon name="chevronDown" size={14} />} items={bookItems} />
+            )}
           </div>
         </div>
         <div className="scribe-chips" role="tablist" aria-label="What to show">

@@ -11,6 +11,8 @@ export interface ImportedDocument {
   description: string | null;
   language?: string | null;
   isbn?: string | null;
+  /** The line under the title (Word's or OpenDocument's Subtitle style), when the file has one. */
+  subtitle?: string | null;
   /** The whole book as HTML, chapter headings as <h1>/<h2>. */
   html: string;
   /** Things the reading itself couldn't carry over, for the import report. */
@@ -154,9 +156,11 @@ async function fromDocx(bytes: Uint8Array, fallback: string): Promise<ImportedDo
     title ??= docTitle.textContent?.trim() || null;
     docTitle.remove();
   }
-  doc.querySelectorAll("p.doc-subtitle").forEach((p) => p.remove());
+  const subtitles = [...doc.querySelectorAll("p.doc-subtitle")];
+  const subtitle = subtitles[0]?.textContent?.replace(/\s+/g, " ").trim() || null;
+  subtitles.forEach((p) => p.remove());
   foldNotes([{ path: "", doc }], (_, href) => href);
-  return { title: title || fallback, author, description, html: doc.body.innerHTML };
+  return { title: title || fallback, author, description, subtitle, html: doc.body.innerHTML };
 }
 
 // ---- OpenDocument ----
@@ -244,6 +248,7 @@ function fromOdt(bytes: Uint8Array, fallback: string): ImportedDocument {
         const parentName = l?.parent ?? el.getAttributeNS(TEXT, "style-name") ?? "";
         const words = inline(el);
         if (/^Title$/i.test(parentName)) html += `<p class="doc-title">${words}</p>`;
+        else if (/^Subtitle$/i.test(parentName)) html += `<p class="doc-subtitle">${words}</p>`;
         else if (/Quot/i.test(parentName)) html += `<blockquote><p>${words}</p></blockquote>`;
         else html += l?.center ? `<p style="text-align: center">${words}</p>` : `<p>${words}</p>`;
       } else if (el.namespaceURI === TEXT && el.localName === "list") {
@@ -262,8 +267,12 @@ function fromOdt(bytes: Uint8Array, fallback: string): ImportedDocument {
   const docTitle = doc.querySelector("p.doc-title");
   const title = meta?.getElementsByTagName("dc:title")[0]?.textContent?.trim() || docTitle?.textContent?.trim() || fallback;
   docTitle?.remove();
+  const subtitles = [...doc.querySelectorAll("p.doc-subtitle")];
+  const subtitle = subtitles[0]?.textContent?.replace(/\s+/g, " ").trim() || null;
+  subtitles.forEach((p) => p.remove());
   return {
     title,
+    subtitle,
     author: meta?.getElementsByTagName("dc:creator")[0]?.textContent?.trim() || meta?.getElementsByTagName("meta:initial-creator")[0]?.textContent?.trim() || null,
     description: meta?.getElementsByTagName("dc:description")[0]?.textContent?.trim() || null,
     html: doc.body.innerHTML,

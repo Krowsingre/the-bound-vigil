@@ -79,6 +79,7 @@ export function NewBookDialog({
   startWith?: Template;
 }) {
   const [title, setTitle] = useState("");
+  const [subtitle, setSubtitle] = useState("");
   const [author, setAuthor] = useState("");
   const [template, setTemplate] = useState<Template>(startWith);
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +100,10 @@ export function NewBookDialog({
         if (s.role === "part" && first) await api.setWritingChapterPart(first.id, added.id);
       }
       // Remembered for the book's card ("Novel · 12 chapters").
-      await api.setWritingExport(made.project.id, JSON.stringify({ ...readExport(made.project.export), kind: template, citationStyle: "custom" }));
+      await api.setWritingExport(
+        made.project.id,
+        JSON.stringify({ ...readExport(made.project.export), kind: template, citationStyle: "custom", subtitle: subtitle.trim() }),
+      );
       onCreated(made.project.id);
     } catch (e) {
       setError(String(e));
@@ -109,32 +113,49 @@ export function NewBookDialog({
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && !busy && onCancel()}>
       <form
-        className="dialog writing-dialog"
+        className="dialog writing-dialog new-book"
         role="dialog"
-        aria-label="New book"
+        aria-labelledby="new-book-heading"
         onSubmit={(e) => {
           e.preventDefault();
           void create();
         }}
         onKeyDown={(e) => e.key === "Escape" && !busy && onCancel()}
       >
-        <h2>New book</h2>
-        <label className="field">
+        <div className="new-book-head">
+          <h2 id="new-book-heading">New Book</h2>
+          <button type="button" className="icon-btn" aria-label="Close" onClick={onCancel} disabled={busy}>
+            <Icon name="close" size={20} />
+          </button>
+        </div>
+        <div className="new-book-rule" aria-hidden="true">
+          <span>✦</span>
+        </div>
+        <label className="field new-book-field">
           <span>Title</span>
           <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} autoFocus />
         </label>
-        <label className="field">
+        <label className="field new-book-field">
+          <span>
+            Subtitle <span className="new-book-optional">(optional)</span>
+          </span>
+          <input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} maxLength={300} placeholder="A line under the title, like A Novel" />
+        </label>
+        <label className="field new-book-field">
           <AuthorLabel />
           <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="Your name, or a pen name" />
         </label>
-        <fieldset className="writing-templates">
-          <legend>Start with</legend>
+        <fieldset className="writing-templates new-book-frameworks">
+          <legend>
+            <span className="new-book-frameworks-title">Choose a Starting Framework</span>
+            <span className="new-book-frameworks-lede">Select a template to create your book's initial structure. You can customize it at any time.</span>
+          </legend>
           <div className="writing-template-grid">
             {TEMPLATES.map((t) => (
               <label key={t.value} className={`writing-template${template === t.value ? " is-on" : ""}`}>
                 <input type="radio" name="writing-template" checked={template === t.value} onChange={() => setTemplate(t.value)} />
-                <strong>{t.label}</strong>
-                <span>{t.hint}</span>
+                <strong>{t.name}</strong>
+                <span>{t.pitch}</span>
               </label>
             ))}
           </div>
@@ -149,7 +170,7 @@ export function NewBookDialog({
             Cancel
           </button>
           <button type="submit" className="btn btn-primary" disabled={busy}>
-            Start writing
+            Start Writing
           </button>
         </div>
       </form>
@@ -182,6 +203,8 @@ export function DetailsDialog({
   const [cover, setCover] = useState(project);
   const savedSeriesStyle = readExport(project.export).seriesStyle;
   const [seriesStyle, setSeriesStyle] = useState<SeriesStyle>(savedSeriesStyle);
+  const savedSubtitle = readExport(project.export).subtitle;
+  const [subtitle, setSubtitle] = useState(savedSubtitle);
   const [opensWith, setOpensWith] = useState(project.coverPage);
   const [making, setMaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -192,8 +215,8 @@ export function DetailsDialog({
     setBusy(true);
     try {
       // Saved first, so the book that comes back carries it.
-      if (seriesStyle.word !== savedSeriesStyle.word || seriesStyle.numbers !== savedSeriesStyle.numbers)
-        await api.setWritingExport(project.id, JSON.stringify({ ...readExport(project.export), seriesStyle }));
+      if (seriesStyle.word !== savedSeriesStyle.word || seriesStyle.numbers !== savedSeriesStyle.numbers || subtitle.trim() !== savedSubtitle)
+        await api.setWritingExport(project.id, JSON.stringify({ ...readExport(project.export), seriesStyle, subtitle: subtitle.trim() }));
       const saved = await api.updateWritingDetails(project.id, details);
       onSaved(opensWith !== project.coverPage ? await api.setWritingCoverPage(project.id, opensWith) : saved);
     } catch (e) {
@@ -255,6 +278,10 @@ export function DetailsDialog({
             <label className="field">
               <span>Title</span>
               <input value={details.title} onChange={(e) => set({ title: e.target.value })} maxLength={200} autoFocus={focus === "title"} />
+            </label>
+            <label className="field">
+              <span>Subtitle</span>
+              <input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} maxLength={300} placeholder="None" />
             </label>
             <label className="field">
               <AuthorLabel />

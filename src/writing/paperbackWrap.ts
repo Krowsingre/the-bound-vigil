@@ -74,6 +74,8 @@ export function dpiFor(wrap: Wrap, most = 16_000_000): number {
 
 export interface PaperbackDesign {
   title: string;
+  /** The line under the title on a front lettered here; empty for none. */
+  subtitle?: string;
   author: string;
   /** Background colour for the back and spine (and the front, when designed here). */
   background: number;
@@ -146,7 +148,7 @@ export async function drawWrap(canvas: HTMLCanvasElement, design: PaperbackDesig
     }
   } else {
     const front = document.createElement("canvas");
-    await drawCover(front, { title: design.title, author: design.author, background: design.background, picture: design.frontPicture, font: design.font, layout: "middle" }, { width: frontW, height: canvas.height });
+    await drawCover(front, { title: design.title, subtitle: design.subtitle, author: design.author, background: design.background, picture: design.frontPicture, font: design.font, layout: "middle" }, { width: frontW, height: canvas.height });
     ctx.drawImage(front, frontX, 0);
   }
 

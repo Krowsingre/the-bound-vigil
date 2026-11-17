@@ -358,6 +358,18 @@ describe("anthologies, page breaks and what opens the book", () => {
     expect(text(epubFiles({ project, chapters, settings: settings() }).files, "OEBPS/styles.css")).toContain(".pagebreak {");
   });
 
+  it("puts the subtitle on the title page and in the book's details", () => {
+    const files = epubFiles({ project: { ...project, coverPage: "title" }, chapters, settings: { ...settings(), subtitle: "A Novel" } }).files;
+    expect(text(files, "OEBPS/titlepage.xhtml")).toContain(`<p class="subtitle">A Novel</p>`);
+    const opf = text(files, "OEBPS/content.opf");
+    expect(opf).toContain(`<dc:title id="subtitle">A Novel</dc:title>`);
+    expect(opf).toContain(`<meta refines="#subtitle" property="title-type">subtitle</meta>`);
+    // Without one, the details are as they always were.
+    expect(text(epubFiles({ project, chapters, settings: settings() }).files, "OEBPS/content.opf")).not.toContain("title-type");
+    expect(readExport('{"subtitle":"  Poems  "}').subtitle).toBe("Poems");
+    expect(readExport("{}").subtitle).toBe("");
+  });
+
   it("opens with the cover, a title page, both or neither", () => {
     const cover = { bytes: new Uint8Array([0xff, 0xd8, 0xff]), mime: "image/jpeg" };
     const spine = (coverPage: WritingProject["coverPage"], withCover = true) => {
