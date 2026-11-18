@@ -434,6 +434,7 @@ export function ChapterEditor({
   sources,
   citationStyle = "chicago-notes",
   onSources,
+  look,
 }: {
   chapter: WritingChapter;
   citationChapters?: WritingChapter[];
@@ -445,6 +446,8 @@ export function ChapterEditor({
   sources?: Source[];
   citationStyle?: CitationStyle;
   onSources?: (sources: Source[], style: CitationStyle) => void;
+  /** The book's look (bookLook.ts): its stylesheet, whether this is a body chapter, and the line above its title. */
+  look?: { css: string; chapter: boolean; label: string };
   onSave: (title: string, body: string) => Promise<void>;
   onSaveState: (state: SaveState, words: number) => void;
   /** Set to a function that saves what's waiting now, and resolves once it's saved. */
@@ -560,7 +563,13 @@ export function ChapterEditor({
   return (
     <div className="writing-editor">
       {editor && <Toolbar editor={editor} poem={!!poem} chapter={chapter} book={book} cites={sources && onSources ? { sources, citationStyle, onSources } : undefined} />}
-      <div className={`writing-sheet${poem ? ` is-poem${poem === "centred" ? " is-centred" : ""}` : ""}`} onClick={(e) => e.target === e.currentTarget && editor?.commands.focus("end")}>
+      <div
+        className={`writing-sheet${poem ? ` is-poem${poem === "centred" ? " is-centred" : ""}` : ""}${look && !poem ? ` book-look${look.chapter ? " is-chapter" : ""}` : ""}`}
+        onClick={(e) => e.target === e.currentTarget && editor?.commands.focus("end")}
+      >
+        {look && !poem && <style>{look.css}</style>}
+        <div className="writing-chapter-head">
+        {look && !poem && look.label && <p className="writing-chapter-label">{look.label}</p>}
         <input
           className="writing-chapter-title"
           value={title}
@@ -578,6 +587,7 @@ export function ChapterEditor({
             }
           }}
         />
+        </div>
         <EditorContent editor={editor} />
         {poem && (
           <div className="writing-poem-help muted">
