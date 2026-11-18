@@ -4,6 +4,10 @@ import lora400 from "@fontsource/lora/files/lora-latin-400-normal.woff2?url";
 import lora400i from "@fontsource/lora/files/lora-latin-400-italic.woff2?url";
 import lora700 from "@fontsource/lora/files/lora-latin-700-normal.woff2?url";
 import lora700i from "@fontsource/lora/files/lora-latin-700-italic.woff2?url";
+import crimson400 from "@fontsource/crimson-pro/files/crimson-pro-latin-400-normal.woff2?url";
+import crimson400i from "@fontsource/crimson-pro/files/crimson-pro-latin-400-italic.woff2?url";
+import crimson700 from "@fontsource/crimson-pro/files/crimson-pro-latin-700-normal.woff2?url";
+import crimson700i from "@fontsource/crimson-pro/files/crimson-pro-latin-700-italic.woff2?url";
 import echolume from "../assets/fonts/echolume-variable.woff2?url";
 import echolumeItalic from "../assets/fonts/echolume-italic-variable.woff2?url";
 import type { WritingChapter } from "../api/types";
@@ -17,6 +21,15 @@ const FILES: Record<Exclude<BookFont, "none">, { family: string; files: (Omit<Fo
       { name: "lora-400-italic.woff2", url: lora400i, weight: "400", style: "italic" },
       { name: "lora-700-normal.woff2", url: lora700, weight: "700", style: "normal" },
       { name: "lora-700-italic.woff2", url: lora700i, weight: "700", style: "italic" },
+    ],
+  },
+  crimson: {
+    family: "Crimson Pro",
+    files: [
+      { name: "crimson-pro-400-normal.woff2", url: crimson400, weight: "400", style: "normal" },
+      { name: "crimson-pro-400-italic.woff2", url: crimson400i, weight: "400", style: "italic" },
+      { name: "crimson-pro-700-normal.woff2", url: crimson700, weight: "700", style: "normal" },
+      { name: "crimson-pro-700-italic.woff2", url: crimson700i, weight: "700", style: "italic" },
     ],
   },
   echolume: {

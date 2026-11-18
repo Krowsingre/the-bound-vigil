@@ -536,10 +536,19 @@
 
 .writing-status {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   padding: 8px 4px 0;
   font-size: 12px;
+}
+
+.writing-status > :last-child {
+  margin-left: auto;
+}
+
+.writing-status-book {
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
 }
 
 .writing-status .is-problem {
@@ -630,21 +639,21 @@
 }
 
 @media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
-  .writing-project {
+  .writing-project:not(.is-wide) {
     height: auto;
   }
 
-  .writing-project {
+  .writing-project:not(.is-wide) {
     padding-left: 16px;
     padding-right: 16px;
   }
 
-  .writing-head {
+  .writing-project:not(.is-wide) .writing-head {
     flex-wrap: wrap;
   }
 
   /* Every button stays on the screen: three to a row, the full width. */
-  .writing-head-actions {
+  .writing-project:not(.is-wide) .writing-head-actions {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
@@ -664,21 +673,21 @@
     text-overflow: ellipsis;
   }
 
-  .writing-body {
+  .writing-project:not(.is-wide) .writing-body {
     grid-template-columns: minmax(0, 1fr);
   }
 
   /* One at a time on a phone: the contents, or the page picked from them. */
-  .writing-project:not(.is-list-closed) .writing-main,
-  .writing-project:not(.is-list-closed) .writing-body > .book-preview {
+  .writing-project:not(.is-list-closed):not(.is-wide) .writing-main,
+  .writing-project:not(.is-list-closed):not(.is-wide) .writing-body > .book-preview {
     display: none;
   }
 
-  .writing-chapters {
+  .writing-project:not(.is-wide) .writing-chapters {
     overflow: auto;
   }
 
-  .writing-list-toggle.is-floating {
+  .writing-project:not(.is-wide) .writing-list-toggle.is-floating {
     position: static;
     display: inline-flex;
     gap: 2px;
@@ -690,11 +699,11 @@
     font-size: 15px;
   }
 
-  .is-list-closed .writing-toolbar {
+  .writing-project.is-list-closed .writing-toolbar {
     padding-left: 10px;
   }
 
-  .writing-sheet {
+  .writing-project:not(.is-wide) .writing-sheet {
     padding: 20px 16px 40px;
   }
 
@@ -3110,4 +3119,484 @@
   min-width: 120px;
   font-family: var(--font-serif);
   font-size: 15px;
+}
+
+/* Beside the page (a computer or tablet, embre's concept of 18 November):
+   Contents, the page and the tools, each folding to a thin strip that opens it again. */
+.writing-project.is-wide {
+  padding: 14px 16px 14px;
+}
+
+.is-wide .writing-body {
+  display: flex;
+  gap: 12px;
+  padding-top: 0;
+}
+
+.is-wide .writing-chapters,
+.writing-tools,
+.writing-strip,
+.writing-details-main {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+
+.is-wide .writing-chapters {
+  flex: 0 0 250px;
+  padding: 12px 6px 10px 12px;
+}
+
+.is-wide .writing-chapters-head {
+  padding-right: 4px;
+}
+
+.is-wide .writing-main,
+.is-wide .writing-body > .book-preview,
+.writing-details-main {
+  flex: 1;
+  min-width: 280px;
+}
+
+.is-wide .quote-drawer {
+  flex: 0 0 300px;
+  max-height: none;
+  order: 0;
+}
+
+.writing-strip {
+  display: flex;
+  flex: 0 0 34px;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.writing-strip span {
+  writing-mode: vertical-rl;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.writing-strip.is-right span {
+  transform: rotate(180deg);
+}
+
+.writing-strip:hover {
+  background: var(--surface-sunk);
+  color: var(--text);
+}
+
+.writing-chapter-list li.is-chosen {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+/* Search this book: the pages it's on, with the words around it. */
+.writing-found-page {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.writing-found-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.writing-found-words {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.writing-found-words mark {
+  background: color-mix(in srgb, var(--highlight, #f5d76e) 55%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+
+.writing-found-none {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+/* The tools: Format, Style, Layout and Details. */
+.writing-tools {
+  display: flex;
+  flex: 0 0 340px;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.writing-tools-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.writing-tabs {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+}
+
+.writing-tabs button {
+  flex: 1;
+  padding: 7px 4px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-muted);
+  font: 600 14px/1.2 var(--font-serif);
+  cursor: pointer;
+}
+
+.writing-tabs button:hover {
+  color: var(--text);
+}
+
+.writing-tabs button.is-active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.writing-tools-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 14px 14px;
+}
+
+.book-panel-note {
+  margin: 14px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.book-panel .book-panel-styles {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.book-panel-positions {
+  display: flex;
+  margin: 0;
+}
+
+.book-panel-positions button {
+  flex: 1;
+  min-width: 0;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.book-panel .check-row {
+  margin: 6px 0;
+  font-size: 13px;
+}
+
+.format-section {
+  padding: 14px 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.format-section h3 {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font: 600 12px/1.2 var(--font-sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.format-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.format-row select,
+.format-row input,
+.format-indent select,
+.format-inches input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text);
+  font: 400 13px/1.3 var(--font-sans);
+}
+
+.format-stepper {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  max-width: 170px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.format-stepper button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.format-stepper button:hover {
+  background: var(--surface-sunk);
+}
+
+.format-row .format-stepper input {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  text-align: center;
+}
+
+.format-buttons {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+}
+
+.format-button {
+  display: grid;
+  place-items: center;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.format-buttons .format-button:last-child {
+  border-right: 0;
+}
+
+.format-button:hover:not(:disabled) {
+  background: var(--surface-sunk);
+}
+
+.format-button.is-on {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.format-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.format-button-text {
+  font: 700 16px/1 var(--font-serif);
+}
+
+.format-button[aria-label="Italic"] .format-button-text {
+  font-style: italic;
+}
+
+.format-button[aria-label="Underline"] .format-button-text {
+  text-decoration: underline;
+}
+
+.format-button[aria-label="Strikethrough"] .format-button-text {
+  text-decoration: line-through;
+}
+
+.format-indent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px;
+  gap: 6px;
+}
+
+.format-inches {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.format-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.format-inserts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.format-insert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text);
+  font: 400 13px/1.2 var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.format-insert:hover {
+  background: var(--surface-sunk);
+}
+
+.format-insert.is-on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.format-insert-mark {
+  width: 16px;
+  font: 700 14px/1 var(--font-serif);
+  text-align: center;
+}
+
+.format-section .writing-link {
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.format-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.format-foot {
+  display: flex;
+  gap: 6px;
+  padding-top: 14px;
+}
+
+.format-foot .format-button {
+  flex: 0 0 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+}
+
+.format-clear {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text);
+  font: 400 13px/1.2 var(--font-sans);
+  cursor: pointer;
+}
+
+.format-clear:hover {
+  background: var(--surface-sunk);
+}
+
+/* Details, in place of the page. */
+.writing-details-main {
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+}
+
+.writing-details.is-inline {
+  width: auto;
+  max-width: 760px;
+  max-height: none;
+  margin: 0 auto;
+  overflow: visible;
+}
+
+/* The open book's title, Preview and ••• in the header. */
+.scribe-book-title {
+  display: flex;
+  flex: 0 1 300px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.scribe-back {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.scribe-back:hover {
+  background: var(--surface-sunk);
+}
+
+.scribe-book-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.scribe-book-name strong {
+  overflow: hidden;
+  font: 600 20px/1.2 var(--font-serif);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scribe-book-name span {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scribe-book-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.scribe-preview.is-on {
+  background: var(--surface-sunk);
 }

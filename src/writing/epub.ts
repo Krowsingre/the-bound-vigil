@@ -18,7 +18,7 @@ import { ebookIsbn, editionLine, historyLines, isbnLines, readEdition, type Edit
 import { DEFAULT_SERIES_STYLE, readSeriesStyle, titlePageSeries, type SeriesStyle } from "./seriesLabel";
 
 export type SceneBreak = "asterisks" | "ornament" | "space" | "line";
-export type BookFont = "lora" | "echolume" | "none";
+export type BookFont = "lora" | "crimson" | "echolume" | "none";
 
 /** A standard manuscript's layout and the details on its first page. */
 export interface ManuscriptSettings {
@@ -45,7 +45,7 @@ export interface ExportSettings {
   /** Lines even on both sides, or ragged on the right. */
   align: "justify" | "left";
   /** Where chapter titles sit. */
-  titles: "center" | "left";
+  titles: "center" | "left" | "right";
   /** A large first letter at the start of each chapter. */
   dropCap: boolean;
   /** The first line of each chapter in small capitals. */
@@ -122,13 +122,13 @@ export function readExport(json: string | null | undefined): ExportSettings {
   try {
     const saved = JSON.parse(json || "{}") as Partial<ExportSettings>;
     return {
-      font: oneOf(saved.font, ["lora", "echolume", "none"] as const, DEFAULT_EXPORT.font),
+      font: oneOf(saved.font, ["lora", "crimson", "echolume", "none"] as const, DEFAULT_EXPORT.font),
       newPage: typeof saved.newPage === "boolean" ? saved.newPage : DEFAULT_EXPORT.newPage,
       sceneBreak: oneOf(saved.sceneBreak, ["asterisks", "ornament", "space", "line"] as const, DEFAULT_EXPORT.sceneBreak),
       tocDepth: oneOf(saved.tocDepth, [1, 2, 3] as const, DEFAULT_EXPORT.tocDepth),
       paragraphs: oneOf(saved.paragraphs, ["indent", "space"] as const, DEFAULT_EXPORT.paragraphs),
       align: oneOf(saved.align, ["justify", "left"] as const, DEFAULT_EXPORT.align),
-      titles: oneOf(saved.titles, ["center", "left"] as const, DEFAULT_EXPORT.titles),
+      titles: oneOf(saved.titles, ["center", "left", "right"] as const, DEFAULT_EXPORT.titles),
       dropCap: typeof saved.dropCap === "boolean" ? saved.dropCap : DEFAULT_EXPORT.dropCap,
       smallCaps: typeof saved.smallCaps === "boolean" ? saved.smallCaps : DEFAULT_EXPORT.smallCaps,
       chapterHeading: oneOf(saved.chapterHeading, ["title", "number", "words", "numeral"] as const, DEFAULT_EXPORT.chapterHeading),
@@ -346,6 +346,7 @@ const INLINE: Record<string, string> = { strong: "strong", b: "strong", em: "em"
 /** The fonts a passage can be set in (see the editor's Font menu), and the ones TBV puts inside the book for them. */
 const PASSAGE_FONTS: Record<string, Exclude<BookFont, "none"> | null> = {
   "lora, serif": "lora",
+  "crimson pro, serif": "crimson",
   "echolume, serif": "echolume",
   serif: null,
   "sans-serif": null,
@@ -366,6 +367,9 @@ const SPAN_STYLE: Record<string, (v: string) => boolean> = {
 const BLOCK_STYLE: Record<string, (v: string) => boolean> = {
   "text-align": (v) => ["left", "center", "right", "justify"].includes(v),
   "line-height": (v) => NUMBER.test(v),
+  "margin-bottom": (v) => v === "0" || (LENGTH.test(v) && !v.startsWith("-")),
+  "text-indent": (v) => v === "0" || LENGTH.test(v),
+  "margin-left": (v) => v === "0" || (LENGTH.test(v) && !v.startsWith("-")),
 };
 
 /** An element's style, kept to what's allowed, as an attribute ready to write (or ""). */
@@ -641,6 +645,9 @@ h1 + p, h2 + p, h3 + p, .scene + p, hr + p, blockquote + p, .blank + p, .picture
 ${settings.dropCap ? "section.chapter > h1 + p::first-letter { float: left; font-size: 3.2em; line-height: 0.85; margin: 0.05em 0.08em 0 0; }\n" : ""}${
   settings.smallCaps ? "section.chapter > h1 + p::first-line { font-variant: small-caps; letter-spacing: 0.03em; }\n" : ""
 }.chapter-label { text-align: ${settings.titles}; text-indent: 0; margin: 2em 0 -1.2em; font-size: 0.85em; letter-spacing: 0.12em; text-transform: uppercase; }
+.titles-left > h1, .titles-left > .chapter-label { text-align: left; }
+.titles-center > h1, .titles-center > .chapter-label { text-align: center; }
+.titles-right > h1, .titles-right > .chapter-label { text-align: right; }
 .picture { text-align: center; text-indent: 0; margin: 1em 0; }
 .picture img, p img { max-width: 100%; }
 figure.picture { margin: 1.2em 0; }
@@ -787,6 +794,7 @@ export function epubFiles({ project, chapters, settings, cover, font, passageFon
       role,
       kind: settingsOf.kind,
       centred: poem && settingsOf.centred,
+      titles: settingsOf.titles,
       made,
       // An untitled poem is listed by its first line but not headed by it, so the line isn't printed twice.
       showTitle: role === "part" || (settingsOf.showTitle && !(poem && !named)),
@@ -855,7 +863,7 @@ export function epubFiles({ project, chapters, settings, cover, font, passageFon
   const sectionHtml = (p: (typeof parts)[number]) => {
     const type = { chapter: "chapter", front: "frontmatter", back: "backmatter", part: "part" }[p.role];
     const semantic = SEMANTIC[p.kind] ?? type;
-    const classes = [type, p.kind === "chapter" || p.kind === "custom" ? "" : `page-${p.kind.replace(/_/g, "-")}`, p.first ? "" : "follows", p.kind === "title_page" ? "titlepage" : "", p.centred ? "poem-centred" : "", p.part && p.role !== "part" ? "in-part" : ""].filter(Boolean).join(" ");
+    const classes = [type, p.kind === "chapter" || p.kind === "custom" ? "" : `page-${p.kind.replace(/_/g, "-")}`, p.first ? "" : "follows", p.kind === "title_page" ? "titlepage" : "", p.centred ? "poem-centred" : "", p.titles ? `titles-${p.titles}` : "", p.part && p.role !== "part" ? "in-part" : ""].filter(Boolean).join(" ");
     const top = `${p.label ? `<p class="chapter-label">${escapeXml(p.label)}</p>\n` : ""}${p.showTitle ? `<h1>${escapeXml(p.heading)}</h1>\n` : ""}`;
     return `<section class="${classes}" epub:type="${semantic}" id="c${p.n}">\n${top}${p.made ? madeBody(p.kind) : p.body}\n${p.notes}</section>`;
   };

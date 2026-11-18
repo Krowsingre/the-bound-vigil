@@ -12,7 +12,7 @@ const PAGE = ".writing-sheet.book-look";
 /** A body chapter's page: the book style's headings, first letters and first lines are for these, as in the book. */
 const CHAPTER = `${PAGE}.is-chapter`;
 
-const FAMILY: Record<ExportSettings["font"], string | null> = { none: null, lora: `"Lora", serif`, echolume: `"Echolume", serif` };
+const FAMILY: Record<ExportSettings["font"], string | null> = { none: null, lora: `"Lora", serif`, crimson: `"Crimson Pro", serif`, echolume: `"Echolume", serif` };
 const SCENE: Record<ExportSettings["sceneBreak"], string> = { asterisks: "* * *", ornament: "❦", space: " ", line: "" };
 
 /** A book style's CSS (written for the book's pages), moved onto the editor's. */
@@ -49,6 +49,7 @@ export function editorLookCss(settings: ExportSettings): string {
   return `${family ? `${PAGE} .writing-page, ${PAGE} .writing-chapter-title, ${PAGE} .writing-chapter-label { font-family: ${family}; }\n` : ""}${PAGE} .writing-chapter-head { margin: 0 0 1.6em; text-align: ${settings.titles}; }
 ${PAGE} .writing-chapter-title { margin: 0; font-size: 1.6em; font-weight: normal; text-align: ${settings.titles}; }
 ${PAGE} .writing-chapter-label { margin: 0 0 0.4em; color: var(--text); font-size: 0.85em; letter-spacing: 0.12em; text-transform: uppercase; text-align: ${settings.titles}; }
+${["left", "center", "right"].map((t) => `${PAGE}.titles-${t} :is(.writing-chapter-head, .writing-chapter-title, .writing-chapter-label) { text-align: ${t}; }`).join("\n")}
 ${PAGE} .writing-page p { margin: ${indent ? "0" : "0 0 0.9em"}; text-indent: ${indent ? "1.5em" : "0"}; text-align: ${settings.align}; }
 ${PAGE} .writing-page > p:first-child, ${PAGE} .writing-page :is(h2, h3, hr, blockquote, ul, ol, figure, .writing-page-break) + p, ${PAGE} .writing-page p[style*="text-align: center"], ${PAGE} .writing-page p[style*="text-align: right"] { text-indent: 0; }
 ${PAGE} .writing-page hr::after { content: "${scene}"; white-space: pre; }

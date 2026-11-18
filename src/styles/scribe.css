@@ -246,14 +246,21 @@
 
 .scribe-book-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 28px 32px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.scribe-book-card,
+.scribe-book-card {
+  position: relative;
+}
+
+.scribe-book-card .cover-generated {
+  font-size: 15px;
+}
+
 .scribe-book-row {
   position: relative;
   border: 1px solid var(--border);
@@ -262,7 +269,6 @@
   overflow: hidden;
 }
 
-.scribe-book-card:hover,
 .scribe-book-row:hover {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
@@ -329,13 +335,14 @@
   font-size: 13px !important;
 }
 
+.scribe-book-card .scribe-book-meta {
+  white-space: normal;
+}
+
 .scribe-book-card .scribe-book-more {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  border-radius: var(--radius-s);
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
-  backdrop-filter: blur(4px);
+  width: 28px;
+  height: 24px;
+  margin-top: -2px;
 }
 
 .scribe-book-rows {
@@ -394,17 +401,16 @@
 }
 
 /* Linked books: one card, drawn as a small stack, for every edition of the book. */
-.scribe-book-card.is-linked,
+.scribe-book-card.is-linked .cover {
+  box-shadow: 3px 3px var(--surface-sunk), 6px 6px var(--border);
+}
+
 .scribe-book-row.is-linked {
   box-shadow:
     4px 4px 0 -1px var(--surface),
     4px 4px 0 0 var(--border),
     8px 8px 0 -1px var(--surface),
     8px 8px 0 0 var(--border);
-}
-
-.scribe-book-card.is-linked .scribe-book-art {
-  border-radius: var(--radius-m) var(--radius-m) 0 0;
 }
 
 .scribe-linked {

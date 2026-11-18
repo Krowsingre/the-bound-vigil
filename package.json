@@ -2,7 +2,7 @@
   "name": "the-bound-vigil",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
-  "version": "0.122.0",
+  "version": "0.123.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,6 +14,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@fontsource/crimson-pro": "^5.3.0",
     "@fontsource/gelasio": "^5.3.0",
     "@fontsource/lora": "^5.3.0",
     "@mozilla/readability": "0.6.0",

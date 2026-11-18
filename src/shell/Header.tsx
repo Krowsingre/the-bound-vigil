@@ -84,6 +84,8 @@ export const Header = forwardRef<
         </button>
       )}
       {pageAction}
+      {/* A page can put its own things here (Scribe's open book: its title, Preview and •••). */}
+      <div id="header-page-start" className="header-slot" />
       <form
         className="search"
         role="search"
@@ -161,6 +163,7 @@ export const Header = forwardRef<
         {searchEnd}
         {typing && typingPanel?.(search, done)}
       </form>
+      <div id="header-page-end" className="header-slot" />
       <div className="header-spacer" data-tauri-drag-region />
       <SyncMenu sync={sync} profile={profile} {...menu} />
       <WindowControls />

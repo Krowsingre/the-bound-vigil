@@ -932,3 +932,8 @@
 }
 .tbv-workspaces .split-divider.is-horizontal::before { width: 100%; height: 2px; }
 .tbv-workspace-frame .window-controls { display: none; }
+
+/* Where a page puts its own things in the header (Scribe's open book). */
+.header-slot {
+  display: contents;
+}

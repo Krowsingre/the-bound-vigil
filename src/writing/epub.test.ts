@@ -510,3 +510,15 @@ describe("book order", () => {
   });
 });
 });
+
+describe("title position", () => {
+  it("puts the book's title position in the stylesheet, and a page's own on its section", () => {
+    const own = { ...chapters[1], page: JSON.stringify({ kind: "chapter", titles: "right" }) };
+    const files = epubFiles({ project, chapters: [chapters[0], own], settings: settings({ titles: "left", newPage: true }) }).files.map(([n, b]) => [n, typeof b === "string" ? b : strFromU8(b)] as const);
+    const all = files.map(([, b]) => b).join("\n");
+    expect(all).toContain("h1 { font-size: 1.6em; text-align: left;");
+    expect(all).toMatch(/<section class="[^"]*\btitles-right\b[^"]*"[^>]*>\s*(<p class="chapter-label">[^<]*<\/p>\s*)?<h1>Leaving<\/h1>/);
+    expect(all).toContain(".titles-right > h1, .titles-right > .chapter-label { text-align: right; }");
+    expect(readExport(JSON.stringify({ titles: "right" })).titles).toBe("right");
+  });
+});

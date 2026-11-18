@@ -317,6 +317,12 @@ export const TextLookMark = Mark.create({
 export interface BlockLook {
   textAlign: "left" | "center" | "right" | "justify" | null;
   lineHeight: string | null;
+  /** Space under the paragraph, in em ("0.9em"). */
+  marginBottom: string | null;
+  /** The first line's indent, in em; less than nothing for a hanging indent. */
+  textIndent: string | null;
+  /** The whole paragraph moved in, in em: what a hanging indent hangs from. */
+  marginLeft: string | null;
 }
 
 const BLOCK_TYPES = ["paragraph", "heading"];
@@ -337,6 +343,21 @@ export const BlockLookExtension = Extension.create({
             default: null,
             parseHTML: (el: HTMLElement) => el.style.lineHeight || null,
             renderHTML: (attrs: Record<string, string | null>) => (attrs.lineHeight ? { style: `line-height: ${attrs.lineHeight}` } : {}),
+          },
+          marginBottom: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.style.marginBottom || null,
+            renderHTML: (attrs: Record<string, string | null>) => (attrs.marginBottom ? { style: `margin-bottom: ${attrs.marginBottom}` } : {}),
+          },
+          textIndent: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.style.textIndent || null,
+            renderHTML: (attrs: Record<string, string | null>) => (attrs.textIndent ? { style: `text-indent: ${attrs.textIndent}` } : {}),
+          },
+          marginLeft: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.style.marginLeft || null,
+            renderHTML: (attrs: Record<string, string | null>) => (attrs.marginLeft ? { style: `margin-left: ${attrs.marginLeft}` } : {}),
           },
         },
       },

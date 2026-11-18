@@ -172,6 +172,14 @@ function align(el: Element): string {
   return found ? `<w:jc w:val="${{ left: "left", center: "center", right: "right", justify: "both" }[found[1]]}"/>` : "";
 }
 
+/** A page's own title position (Layout), for its title and the line above it. */
+function titleAlign(el: Element): string {
+  const own = align(el);
+  if (own) return own;
+  const found = /\btitles-(left|center|right)\b/.exec(el.closest("section")?.getAttribute("class") ?? "");
+  return found ? `<w:jc w:val="${found[1]}"/>` : "";
+}
+
 /** The runs inside an element: text with its styling, pictures, links and footnote marks. */
 function runs(node: Node, p: RunProps, w: Writer, notes: Map<string, Element>): string {
   if (node.nodeType === Node.TEXT_NODE) return textRun((node.textContent ?? "").replace(/[\r\n\t]+/g, " "), p);
@@ -252,13 +260,13 @@ function blocks(root: Element, c: Context) {
     const cls = (el.getAttribute("class") ?? "").split(/\s+/);
     const inner = runs(el, {}, w, c.notes);
     if (tag === "h1") {
-      w.paragraph(c.outline ? "Heading1" : "PageTitle", inner, align(el));
+      w.paragraph(c.outline ? "Heading1" : "PageTitle", inner, titleAlign(el));
       c.first = true;
     } else if (tag === "h2" || tag === "h3") {
       w.paragraph(tag === "h2" ? "Heading2" : "Heading3", inner, align(el));
       c.first = true;
     } else if (tag === "p" && cls.includes("chapter-label")) {
-      w.paragraph("ChapterLabel", inner);
+      w.paragraph("ChapterLabel", inner, titleAlign(el));
     } else if (tag === "p" && (cls.includes("title") || cls.includes("author") || cls.includes("series")) && root.closest(".titlepage, .page-half-title, body")) {
       w.paragraph(cls.includes("subtitle") || cls.includes("author") ? "Subtitle" : cls.includes("title") ? "Title" : "SeriesLine", inner);
     } else if ((tag === "p" && cls.includes("scene")) || (tag === "hr" && cls.includes("scene"))) {
@@ -362,7 +370,7 @@ function tocField(w: Writer, entries: { level: number; text: string }[]) {
 
 function styles(input: EpubInput, manuscript: ManuscriptSettings | null): string {
   const s = input.settings;
-  const font = manuscript ? (manuscript.font === "courier" ? "Courier New" : "Times New Roman") : s.font === "lora" ? "Lora" : s.font === "echolume" ? "Echolume" : "Georgia";
+  const font = manuscript ? (manuscript.font === "courier" ? "Courier New" : "Times New Roman") : s.font === "lora" ? "Lora" : s.font === "crimson" ? "Crimson Pro" : s.font === "echolume" ? "Echolume" : "Georgia";
   const prose = manuscript?.layout === "shunn";
   const line = prose ? 480 : manuscript ? 240 : 300;
   const body = manuscript
@@ -370,7 +378,7 @@ function styles(input: EpubInput, manuscript: ManuscriptSettings | null): string
     : s.paragraphs === "indent"
       ? `<w:spacing w:after="0" w:line="${line}" w:lineRule="auto"/><w:ind w:firstLine="360"/><w:jc w:val="${s.align === "justify" ? "both" : "left"}"/>`
       : `<w:spacing w:after="180" w:line="${line}" w:lineRule="auto"/><w:jc w:val="${s.align === "justify" ? "both" : "left"}"/>`;
-  const title = s.titles === "center" || manuscript ? "center" : "left";
+  const title = manuscript ? "center" : s.titles;
   // A manuscript's chapter titles move a third of the way down only on a fresh page (see Writer.paragraph).
   const headingTop = manuscript ? (prose ? 480 : 0) : 720;
   const style = (id: string, name: string, ppr: string, rpr = "", extra = "", basedOn = "Normal") =>
