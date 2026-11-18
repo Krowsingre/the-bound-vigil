@@ -41,7 +41,7 @@ export async function keptCoverPicture(projectId: string): Promise<Blob | null> 
 
 const key = (projectId: string) => `tbv.coverMaker.${projectId}`;
 
-export function keptDesign<T>(projectId: string): Partial<T> & { bookTitle?: string; bookAuthor?: string } {
+export function keptDesign<T>(projectId: string): Partial<T> & { bookTitle?: string; bookAuthor?: string; bookSubtitle?: string } {
   try {
     const raw = JSON.parse(localStorage.getItem(key(projectId)) ?? "null");
     return raw && typeof raw === "object" ? raw : {};

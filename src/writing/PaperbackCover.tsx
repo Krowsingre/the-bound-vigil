@@ -10,6 +10,7 @@ import { BACKGROUNDS, COVER_FONTS } from "./CoverMaker";
 import { CanvaLink } from "./CanvaLink";
 import { FormattedText } from "./FormattedText";
 import { imageMime } from "./fonts";
+import { readExport } from "./epub";
 import { estimatePages } from "./printBook";
 import { TRIMS, type TrimSize } from "./printSettings";
 import { bookFileName } from "./txt";
@@ -37,6 +38,7 @@ export function PaperbackCover({ project, trim: startTrim, onClose }: { project:
   const [guides, setGuides] = useState(true);
   const [design, setDesign] = useState<PaperbackDesign>({
     title: project.title,
+    subtitle: readExport(project.export).subtitle,
     author: project.author ?? "",
     background: 0,
     font: "Lora",
@@ -256,6 +258,10 @@ export function PaperbackCover({ project, trim: startTrim, onClose }: { project:
             <label className="field">
               <span>Title</span>
               <input value={design.title} onChange={(e) => set({ title: e.target.value })} maxLength={200} />
+            </label>
+            <label className="field">
+              <span>Subtitle</span>
+              <input value={design.subtitle ?? ""} onChange={(e) => set({ subtitle: e.target.value })} maxLength={300} placeholder="None" />
             </label>
             <label className="field">
               <AuthorLabel />

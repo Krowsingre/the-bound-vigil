@@ -260,7 +260,7 @@ function blocks(root: Element, c: Context) {
     } else if (tag === "p" && cls.includes("chapter-label")) {
       w.paragraph("ChapterLabel", inner);
     } else if (tag === "p" && (cls.includes("title") || cls.includes("author") || cls.includes("series")) && root.closest(".titlepage, .page-half-title, body")) {
-      w.paragraph(cls.includes("title") ? "Title" : cls.includes("author") ? "Subtitle" : "SeriesLine", inner);
+      w.paragraph(cls.includes("subtitle") || cls.includes("author") ? "Subtitle" : cls.includes("title") ? "Title" : "SeriesLine", inner);
     } else if ((tag === "p" && cls.includes("scene")) || (tag === "hr" && cls.includes("scene"))) {
       const mark = c.sceneMark ?? (el.textContent?.trim() || (tag === "hr" ? "———" : ""));
       w.paragraph("SceneBreak", textRun(mark, {}));

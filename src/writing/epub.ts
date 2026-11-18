@@ -80,6 +80,8 @@ export interface ExportSettings {
    * body's own chapters first and the sections after them.
    */
   freeOrder?: boolean;
+  /** The line under the title, like "A Novel" or "Poems of the Night"; empty for none. */
+  subtitle: string;
 }
 
 export type BookKind = "blank" | "novel" | "collection" | "nonfiction";
@@ -109,6 +111,7 @@ export const DEFAULT_EXPORT: ExportSettings = {
   kind: null,
   canva: {},
   freeOrder: false,
+  subtitle: "",
 };
 
 const text = (value: unknown, fallback: string, max = 2000) => (typeof value === "string" ? value.slice(0, max) : fallback);
@@ -167,6 +170,7 @@ export function readExport(json: string | null | undefined): ExportSettings {
       kind: oneOf(saved.kind, ["blank", "novel", "collection", "nonfiction", null] as const, null),
       canva: readCanva(saved.canva),
       freeOrder: saved.freeOrder === true,
+      subtitle: text(saved.subtitle, "", 300).trim(),
     };
   } catch {
     return DEFAULT_EXPORT;
@@ -669,6 +673,7 @@ ol.contents li { margin: 0.4em 0; }
 ol.contents a { text-decoration: none; }
 .titlepage { text-align: center; }
 .titlepage .title { font-size: 2em; margin: 30% 0 0.5em; text-indent: 0; text-align: center; }
+.titlepage .subtitle { font-size: 1.3em; font-style: italic; margin: 0 0 1.5em; text-indent: 0; text-align: center; }
 .titlepage .author { font-size: 1.2em; text-indent: 0; text-align: center; }
 .titlepage .series { font-style: italic; margin-top: 1em; text-indent: 0; text-align: center; }
 .pagebreak { height: 0; margin: 0; page-break-after: always; break-after: page; -webkit-column-break-after: always; }
@@ -728,7 +733,8 @@ export function epubFiles({ project, chapters, settings, cover, font, passageFon
   const pageOf = ordered.map((c) => readPage(c.page, c.role ?? "chapter"));
   const author = project.author?.trim();
   const series = project.series?.trim();
-  const titleBlock = `<p class="title">${escapeXml(title)}</p>\n${author ? `<p class="author">${escapeXml(author)}</p>\n` : ""}${
+  const subtitle = settings.subtitle.trim();
+  const titleBlock = `<p class="title">${escapeXml(title)}</p>\n${subtitle ? `<p class="subtitle">${escapeXml(subtitle)}</p>\n` : ""}${author ? `<p class="author">${escapeXml(author)}</p>\n` : ""}${
     series ? `<p class="series">${escapeXml(titlePageSeries(series, project.seriesIndex, settings.seriesStyle))}</p>\n` : ""
   }`;
 
@@ -926,7 +932,11 @@ ${navPoints(points)}
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="${escapeXml(lang)}">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
 <dc:identifier id="bookid">${escapeXml(id)}</dc:identifier>
-${ebookIsbn(settings.edition) ? `<dc:identifier id="isbn">urn:isbn:${escapeXml(ebookIsbn(settings.edition)!.replace(/[^0-9Xx]/g, ""))}</dc:identifier>\n` : ""}<dc:title>${escapeXml(title)}</dc:title>
+${ebookIsbn(settings.edition) ? `<dc:identifier id="isbn">urn:isbn:${escapeXml(ebookIsbn(settings.edition)!.replace(/[^0-9Xx]/g, ""))}</dc:identifier>\n` : ""}${
+    subtitle
+      ? `<dc:title id="main-title">${escapeXml(title)}</dc:title>\n<meta refines="#main-title" property="title-type">main</meta>\n<dc:title id="subtitle">${escapeXml(subtitle)}</dc:title>\n<meta refines="#subtitle" property="title-type">subtitle</meta>`
+      : `<dc:title>${escapeXml(title)}</dc:title>`
+  }
 <dc:language>${escapeXml(lang)}</dc:language>
 ${author ? `<dc:creator id="author">${escapeXml(author)}</dc:creator>\n<meta refines="#author" property="role" scheme="marc:relators">aut</meta>\n` : ""}${
     description ? `<dc:description>${escapeXml(hasFormatting(description) ? blurbHtml(description) : description)}</dc:description>\n` : ""

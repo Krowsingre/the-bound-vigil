@@ -1502,6 +1502,11 @@
   font-size: 1.6em;
 }
 
+.made-title_page .subtitle {
+  font-size: 1.15em;
+  font-style: italic;
+}
+
 .made-page-preview ol {
   list-style: none;
   margin: 0;
@@ -2962,4 +2967,147 @@
 .book-preview-fold .book-preview-styles {
   padding: 4px 4px 10px;
   border-bottom: 0;
+}
+
+/* The New Book form: a serif heading over a starred rule, small-capital labels,
+   and the starting frameworks as cards. Colours come from the theme. */
+.dialog.new-book {
+  width: min(600px, calc(100vw - 32px));
+  gap: 12px;
+  padding: 28px 28px 24px;
+}
+
+.new-book-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.new-book-head h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.new-book-rule {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+
+.new-book-rule::before,
+.new-book-rule::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+}
+
+.new-book-rule::before {
+  background: linear-gradient(to right, transparent, var(--text-muted));
+}
+
+.new-book-rule::after {
+  background: linear-gradient(to left, transparent, var(--text-muted));
+}
+
+.new-book-rule span {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.dialog.new-book .new-book-field > span {
+  margin-bottom: 4px;
+  font-weight: 700;
+  font-family: var(--font-serif);
+  font-variant: small-caps;
+  font-size: 17px;
+  letter-spacing: 0.06em;
+}
+
+.new-book-field .field-label-with-tip {
+  font-variant: small-caps;
+}
+
+.new-book-optional {
+  font-variant: normal;
+  text-transform: none;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+
+.new-book-field input {
+  padding: 10px 12px;
+  font-size: 15px;
+}
+
+.new-book-field input:focus {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.new-book-frameworks {
+  margin-top: 8px;
+}
+
+.new-book-frameworks legend {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.new-book-frameworks-title {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.new-book-frameworks-lede {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.new-book .writing-template-grid {
+  gap: 12px;
+}
+
+.new-book .writing-template {
+  padding: 18px 20px;
+  min-height: 104px;
+  gap: 6px;
+}
+
+.new-book .writing-template strong {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.new-book .writing-template span {
+  font-family: var(--font-serif);
+  font-size: 14.5px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.new-book .writing-template.is-on {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+
+.new-book .dialog-actions .btn {
+  min-width: 120px;
+  font-family: var(--font-serif);
+  font-size: 15px;
 }

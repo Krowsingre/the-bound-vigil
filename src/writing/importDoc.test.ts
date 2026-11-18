@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { WritingChapter, WritingProject } from "../api/types";
 import { buildDocx } from "./docx";
 import { readExport } from "./epub";
-import { bestSplit, markdownToHtml, readDocumentBytes, readDraftEpub, rtfToHtml, splitChapters, textToHtml } from "./importDoc";
+import { bestSplit, markdownToHtml, readDocumentBytes, readDraftEpub, rtfToHtml, splitChapters, textToHtml, subtitleOf } from "./importDoc";
 import { isbnValid, preflight } from "./preflightChecks";
 import { jpegPdf, spineWidth, wrapFor } from "./paperbackWrap";
 
@@ -172,4 +172,17 @@ it("restores an anthology draft with its parts, without the generated chapter nu
   ]);
   expect(restored[1].body).not.toContain("Chapter 1");
   expect(restored[4].body).not.toContain("Chapter");
+});
+
+describe("subtitles from a Subtitle style", () => {
+  const paragraphs = (...lines: string[]) => {
+    const doc = new DOMParser().parseFromString(lines.map((l) => `<p class="doc-subtitle">${l}</p>`).join(""), "text/html");
+    return [...doc.querySelectorAll("p")];
+  };
+  it("skips the author's byline, which Word files keep in the same style", () => {
+    expect(subtitleOf(paragraphs("Embre"), "Embre")).toBeNull();
+    expect(subtitleOf(paragraphs("by Embre"), null)).toBeNull();
+    expect(subtitleOf(paragraphs("Poems of the Long Dark", "Embre"), "Embre")).toBe("Poems of the Long Dark");
+    expect(subtitleOf(paragraphs("Embre", "A  Novel"), "embre")).toBe("A Novel");
+  });
 });

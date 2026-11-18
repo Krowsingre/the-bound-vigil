@@ -10,6 +10,7 @@ import type { WritingProject } from "../api/types";
 import { centreBlocks, dragBlocks, type Gap, type Place, type Size } from "./coverLayout";
 import { CanvaLink } from "./CanvaLink";
 import { keepCoverPicture, keepDesign, keptCoverPicture, keptDesign } from "./coverStore";
+import { readExport } from "./epub";
 
 export const COVER_WIDTH = 1600;
 export const COVER_HEIGHT = 2560;
@@ -34,9 +35,9 @@ export const COVER_FONTS = [
 
 type Layout = "top" | "middle" | "bottom";
 
-export type CoverBlock = "title" | "author" | "series";
+export type CoverBlock = "title" | "subtitle" | "author" | "series";
 export type CoverAlign = "left" | "center" | "right";
-const BLOCKS: CoverBlock[] = ["title", "author", "series"];
+const BLOCKS: CoverBlock[] = ["title", "subtitle", "author", "series"];
 
 /** How one block of words looks. Anything left out follows the cover's own choices. */
 export interface CoverTextStyle {
@@ -57,6 +58,8 @@ export type CoverPlace = Place;
 
 export interface CoverDesign {
   title: string;
+  /** The line under the title; empty or left out for none. */
+  subtitle?: string;
   author: string;
   /** The series line, like "Book Two of The Ash Saga"; empty for none. */
   series?: string;
@@ -84,6 +87,7 @@ export interface CoverBoxes {
   /** The cover's height in cover units (its width is always 1600). */
   height: number;
   title: CoverBox;
+  subtitle: CoverBox | null;
   author: CoverBox | null;
   series: CoverBox | null;
 }
@@ -110,8 +114,8 @@ const fontOf = (style: CoverTextStyle, fallback: CoverDesign["font"], boldByDefa
   `${style.italic ? "italic " : ""}${(style.bold ?? boldByDefault) ? 600 : 400} ${size}px ${familyOf(style.font ?? fallback)}`;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/** Whether a block is in capitals: the author and series are unless told otherwise, the title isn't. */
-export const isUpper = (block: CoverBlock, style: CoverTextStyle | undefined) => (block === "title" ? !!style?.upper : style?.upper !== false);
+/** Whether a block is in capitals: the author and series are unless told otherwise, the title and subtitle aren't. */
+export const isUpper = (block: CoverBlock, style: CoverTextStyle | undefined) => (block === "title" || block === "subtitle" ? !!style?.upper : style?.upper !== false);
 
 /**
  * Draws the cover onto `canvas`, 1600 × 2560 unless another size is given
@@ -198,8 +202,11 @@ export async function drawCover(target: HTMLCanvasElement, design: CoverDesign, 
   const textHeight = titleLines.length * lineHeight;
   const rule = design.rule !== false;
   const ruleGap = 70;
+  // A subtitle left in place sits under the title, and the line goes under the subtitle instead.
+  const subtitleText = design.subtitle?.trim() ?? "";
+  const subtitleFollows = !!subtitleText && !design.places?.subtitle;
   // The title's box runs from the top of its first line to the bottom of the line under it.
-  const titleBoxHeight = textHeight + (rule ? ruleGap + 6 : 0);
+  const titleBoxHeight = textHeight + (rule && !subtitleFollows ? ruleGap + 6 : 0);
   ctx.font = fontOf(titleStyle, design.font, true, size);
   const titleWidth = Math.min(width, Math.max(1, ...titleLines.map((l) => ctx.measureText(l).width)));
   const autoTop = design.layout === "top" ? 380 : design.layout === "bottom" ? height - 520 - textHeight : (height - textHeight) / 2;
@@ -212,17 +219,12 @@ export async function drawCover(target: HTMLCanvasElement, design: CoverDesign, 
   const titleX = anchor(titleCx, titleWidth, titleAlign);
   titleLines.forEach((l, i) => ctx.fillText(l, titleX, titleTop + size + i * lineHeight, width));
 
-  // A short rule between title and author, lined up with the title.
-  const ruleY = titleTop + textHeight + ruleGap;
-  if (rule) {
-    const ruleX = titleAlign === "left" ? titleX : titleAlign === "right" ? titleX - 180 : titleX - 90;
-    ctx.fillRect(ruleX, ruleY, 180, 6);
-  }
   const title: CoverBox = { x: titleCx - titleWidth / 2, y: titleTop, width: titleWidth, height: titleBoxHeight };
 
-  /** The author or series: a smaller block that follows the title unless it's been moved. */
-  const smallBlock = (block: "author" | "series", text: string, share: number, autoTopOf: (h: number) => number): CoverBox | null => {
-    const style = styleOf(block);
+  /** The subtitle, author or series: a smaller block that follows the title unless it's been moved. */
+  const smallBlock = (block: "subtitle" | "author" | "series", text: string, share: number, autoTopOf: (h: number) => number): CoverBox | null => {
+    // The subtitle is in italics unless told otherwise.
+    const style = block === "subtitle" ? { ...styleOf(block), italic: styleOf(block).italic ?? true } : styleOf(block);
     if (!text.trim()) return null;
     const blockSize = style.size ?? Math.round(size * share);
     ctx.font = fontOf(style, design.font, false, blockSize);
@@ -240,15 +242,24 @@ export async function drawCover(target: HTMLCanvasElement, design: CoverDesign, 
     blockLines.forEach((l, i) => ctx.fillText(l, x, top + blockSize + i * blockLineHeight, width));
     return { x: cx - w / 2, y: top, width: w, height: h };
   };
+  const subtitle = smallBlock("subtitle", subtitleText, 0.48, () => titleTop + textHeight + 28);
+  // A short rule between the title (or the subtitle under it) and the author, lined up with the title.
+  const above = subtitleFollows && subtitle ? subtitle.y + subtitle.height : titleTop + textHeight;
+  const ruleY = above + ruleGap;
+  if (rule) {
+    ctx.fillStyle = titleStyle.colour ?? autoColour;
+    const ruleX = titleAlign === "left" ? titleX : titleAlign === "right" ? titleX - 180 : titleX - 90;
+    ctx.fillRect(ruleX, ruleY, 180, 6);
+  }
   // Left alone, the author sits under the title (or its line), and the series above it.
-  const author = smallBlock("author", design.author, 0.42, () => (rule ? ruleY + 6 : titleTop + textHeight) + 64);
+  const author = smallBlock("author", design.author, 0.42, () => (rule ? ruleY + 6 : above) + 64);
   const series = smallBlock("series", design.series ?? "", 0.3, (h) => titleTop - 56 - h);
   if (drawings.get(target) === turn) {
     target.width = canvas.width;
     target.height = canvas.height;
     target.getContext("2d")!.drawImage(canvas, 0, 0);
   }
-  return { height, title, author, series };
+  return { height, title, subtitle, author, series };
 }
 
 /** A box's centre as a place. */
@@ -320,10 +331,11 @@ export const COVER_TEMPLATES: { name: string; design: Pick<CoverDesign, "backgro
 const COLOURS = ["#f5f1ea", "#1c1f24", "#c9a45c", "#b8402e", "#8fb3c9", "#7fa07a"];
 const SIZES: Record<CoverBlock, { min: number; max: number; auto: number }> = {
   title: { min: 60, max: 320, auto: 200 },
+  subtitle: { min: 30, max: 220, auto: 96 },
   author: { min: 30, max: 200, auto: 84 },
   series: { min: 24, max: 160, auto: 60 },
 };
-const BLOCK_LABEL: Record<CoverBlock, string> = { title: "Title", author: "Author", series: "Series" };
+const BLOCK_LABEL: Record<CoverBlock, string> = { title: "Title", subtitle: "Subtitle", author: "Author", series: "Series" };
 /** How near the middle, in screen pixels, a block snaps onto it. */
 const SNAP_PIXELS = 8;
 
@@ -354,8 +366,9 @@ export function CoverMaker({
 }) {
   const [design, setDesign] = useState<CoverDesign>(() => {
     const kept = keptDesign<CoverDesign>(project.id);
-    const { bookTitle, bookAuthor, picture: _picture, ...saved } = kept;
+    const { bookTitle, bookAuthor, bookSubtitle, picture: _picture, ...saved } = kept;
     const bookAuthorNow = project.author ?? "";
+    const bookSubtitleNow = readExport(project.export).subtitle;
     return {
       background: 0,
       font: "Lora",
@@ -364,6 +377,7 @@ export function CoverMaker({
       // The words as you left them, unless the book's own title or author has changed since.
       title: saved.title !== undefined && bookTitle === project.title ? saved.title : project.title,
       author: saved.author !== undefined && bookAuthor === bookAuthorNow ? saved.author : bookAuthorNow,
+      subtitle: saved.subtitle !== undefined && (bookSubtitle ?? "") === bookSubtitleNow ? saved.subtitle : bookSubtitleNow,
       // A series line the writer cleared stays cleared.
       series: saved.series !== undefined ? saved.series : (seriesLine ?? ""),
       picture: null,
@@ -387,7 +401,7 @@ export function CoverMaker({
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const { picture: _picture, ...keep } = design;
-      keepDesign(project.id, { ...keep, bookTitle: project.title, bookAuthor: project.author ?? "" });
+      keepDesign(project.id, { ...keep, bookTitle: project.title, bookAuthor: project.author ?? "", bookSubtitle: readExport(project.export).subtitle });
     }, 300);
     return () => window.clearTimeout(timer);
   }, [design, project.id, project.title, project.author]);
@@ -524,6 +538,7 @@ export function CoverMaker({
   const choose = (blocks: CoverBlock[]) => setSelected(blocks);
   const textOf: Record<CoverBlock, { value: string; set: (v: string) => void }> = {
     title: { value: design.title, set: (v) => set({ title: v }) },
+    subtitle: { value: design.subtitle ?? "", set: (v) => set({ subtitle: v }) },
     author: { value: design.author, set: (v) => set({ author: v }) },
     series: { value: design.series ?? "", set: (v) => set({ series: v }) },
   };
@@ -641,11 +656,11 @@ export function CoverMaker({
                 </label>
               ) : (
                 <label className="field" key={block}>
-                  {block === "author" ? <AuthorLabel /> : <span>Series</span>}
+                  {block === "author" ? <AuthorLabel /> : <span>{BLOCK_LABEL[block]}</span>}
                   <input
                     ref={primary === block ? textBox : undefined}
                     value={textOf[block].value}
-                    placeholder={block === "series" ? "None, e.g. Book One of The Ash Saga" : undefined}
+                    placeholder={block === "series" ? "None, e.g. Book One of The Ash Saga" : block === "subtitle" ? "None" : undefined}
                     onChange={(e) => textOf[block].set(e.target.value)}
                     maxLength={200}
                   />
