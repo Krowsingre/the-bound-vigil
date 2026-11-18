@@ -3155,7 +3155,7 @@
 .is-wide .writing-body > .book-preview,
 .writing-details-main {
   flex: 1;
-  min-width: 0;
+  min-width: 280px;
 }
 
 .is-wide .quote-drawer {

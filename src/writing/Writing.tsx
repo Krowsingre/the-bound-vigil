@@ -307,6 +307,9 @@ const PANELS: { panel: Panel; label: string }[] = [
 ];
 /** Whether Contents and the tools are open beside the page, remembered on this device. */
 const LIST_OPEN = "tbv.scribe.contentsOpen";
+/** The width beside the page that Contents (250) and the tools (340) need, with a page of at least 360 to write in. */
+const ROOM_FOR_ALL = 250 + 340 + 360 + 24;
+const ROOM_FOR_TOOLS = 34 + 340 + 360 + 24;
 const TOOLS_OPEN = "tbv.scribe.toolsOpen";
 function remembered(key: string, fallback: boolean): boolean {
   try {
@@ -450,6 +453,20 @@ function ProjectView({
   // The header's own places for the book's title, Preview and •••.
   const [slots, setSlots] = useState<{ start: HTMLElement | null; end: HTMLElement | null }>({ start: null, end: null });
   useEffect(() => setSlots({ start: document.getElementById("header-page-start"), end: document.getElementById("header-page-end") }), []);
+  // A narrow window or tablet folds Contents, then the tools, to strips when the page would be too narrow to write in.
+  const [bodyBox, setBodyBox] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!wide || !bodyBox || typeof ResizeObserver !== "function") return;
+    const fit = () => {
+      const room = bodyBox.clientWidth;
+      if (room < ROOM_FOR_ALL) setListOpenNow(false);
+      if (room < ROOM_FOR_TOOLS) setToolsOpenNow(false);
+    };
+    fit();
+    const watch = new ResizeObserver(fit);
+    watch.observe(bodyBox);
+    return () => watch.disconnect();
+  }, [wide, bodyBox]);
   // Searching this book shows the contents, with the pages it's found on.
   useEffect(() => {
     if (wide && search.trim()) setListOpenNow(true);
@@ -1203,7 +1220,7 @@ function ProjectView({
     "divider",
     { label: "Delete Book…", icon: "trash", danger: true, onSelect: () => setDialog("delete") },
   ];
-  const togglePreview = () => void flushEditor.current?.().finally(() => (setSide((s) => (s === "preview" ? null : "preview")), narrow && !wide && setListOpen(false)));
+  const togglePreview = () => void flushEditor.current?.().finally(() => panel === "details" && setPanel("format")).finally(() => (setSide((s) => (s === "preview" ? null : "preview")), narrow && !wide && setListOpen(false)));
   const byline = `${project.author ?? ""}${project.author && settings.edition ? " · " : ""}${settings.edition?.name ?? ""}`;
   const found = wide && search.trim() ? searchPages([...front, ...body, ...back], search) : null;
   const details = wide && panel === "details";
@@ -1422,7 +1439,7 @@ function ProjectView({
             </div>,
             slots.end,
           )}
-        <div className="writing-body">
+        <div className="writing-body" ref={setBodyBox}>
           {listOpen ? (
             contents
           ) : (
