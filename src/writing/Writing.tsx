@@ -21,6 +21,7 @@ import { ChapterEditor, type SaveState } from "./ChapterEditor";
 import { quoteHtml } from "./fromNotes";
 import { QuoteDrawer } from "./QuoteDrawer";
 import { BookPreview, MadePage } from "./BookPreview";
+import { chapterLabels, editorLookCss } from "./bookLook";
 import { bookOrder, escapeXml, madeSectionHtml, readExport, type ExportSettings } from "./epub";
 import { ScribeBooks, type Projects } from "./ScribeBooks";
 import { ADD_MENUS, firstLine, isMade, isNumbered, isPoem, KINDS, numberInWords, readPage, romanOf, startingTitle, writePage, type PageKind, type PageSettings, type Template } from "./pages";
@@ -388,7 +389,10 @@ function ProjectView({
   }, [id]);
 
   const settings = useMemo(() => readExport(view?.project.export), [view?.project.export]);
+  // The editor shows the book as it will look: its settings and book style.
+  const lookCss = useMemo(() => editorLookCss(settings), [settings]);
   const chapters = useMemo(() => bookOrder(view?.chapters ?? [], settings.freeOrder), [view?.chapters, settings.freeOrder]);
+  const labels = useMemo(() => chapterLabels(chapters, settings), [chapters, settings]);
   const partIds = new Set(chapters.filter((c) => c.role === "part").map((c) => c.id));
   /** The part (body section) a section is in, or null for the book's own. */
   const partOf = (c: WritingChapter) => (c.role !== "part" && c.part && partIds.has(c.part) ? c.part : null);
@@ -1025,6 +1029,7 @@ function ProjectView({
                   citationChapters={chapters}
                   citationStyle={settings.citationStyle}
                   onSources={(sources, citationStyle) => changeSources({ sources, citationStyle })}
+                  look={{ css: lookCss, chapter: (chapter.role ?? "chapter") === "chapter", label: labels.get(chapter.id) ?? "" }}
                 />
                 </>
               )

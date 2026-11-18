@@ -689,9 +689,9 @@ section.page-sources p.source { text-indent: -2em; padding-left: 2em; text-align
 p.poem-listen { margin: 1.5em 0 0; text-indent: 0; text-align: center; font-size: 0.85em; font-style: italic; }
 .poem-centred p.poem-listen, p.poem-listen a { text-align: center; }
 section.page-haiku { padding-top: 20%; }
-/* The cover fills the whole page, its colour reaching every edge. */
+/* The whole cover on its page, never cut to fit a screen of another shape. */
 .cover { margin: 0; padding: 0; text-align: center; height: 100vh; }
-.cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.cover img { display: block; width: 100%; height: 100%; object-fit: contain; }
 ${styleCss(settings)}`;
 }
 
@@ -1083,8 +1083,10 @@ html { background: #d9d6d0; }
 body { margin: 0; padding: 16px 0 48px; }
 .sheet { background: #fffdf9; color: #1a1c1e; max-width: 34em; min-height: 46em; margin: 0 auto 16px; padding: 3em 2.5em; box-shadow: 0 1px 3px rgb(0 0 0 / 0.18); box-sizing: border-box; }
 .sheet section.chapter, .sheet section.frontmatter, .sheet section.backmatter, .sheet section.part { break-before: auto; page-break-before: auto; }
-.sheet.cover { padding: 0; height: 46em; overflow: hidden; }
-.sheet.cover section.cover { height: 100%; }
+/* The cover's sheet takes the cover's own shape, scaled to the sheet's width. */
+.sheet.cover { padding: 0; min-height: 0; height: auto; overflow: hidden; }
+.sheet.cover section.cover { height: auto; }
+.sheet.cover img { height: auto; object-fit: fill; }
 .pagebreak { border-top: 1px dashed #bbb; margin: 1.5em 0; }
 a { color: inherit; }
 </style>
