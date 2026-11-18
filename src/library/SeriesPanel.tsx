@@ -89,7 +89,12 @@ export function SeriesPanel({
   const [showHidden, setShowHidden] = useState(false);
   const [adding, setAdding] = useState(false);
   // Books the series check found since this series was last looked at: marked New here, then taken off Sanctum's row.
-  const [fresh] = useState(() => new Set(seriesNews().filter((n) => n.series === name).map((n) => n.key)));
+  // Taken again whenever the panel shows another series, before that series' news is cleared.
+  const snapshot = (of: string) => ({ series: of, keys: new Set(seriesNews().filter((n) => n.series === of).map((n) => n.key)) });
+  const [taken, setTaken] = useState(() => snapshot(name));
+  const current = taken.series === name ? taken : snapshot(name);
+  if (current !== taken) setTaken(current);
+  const fresh = current.keys;
   useEffect(() => {
     if (fresh.size) clearSeriesNews(name);
   }, [fresh, name]);
