@@ -30,7 +30,7 @@ export function fromKeyboard(e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey
   return e.ctrlKey || e.metaKey || e.altKey || KEYBOARD_ONLY.has(e.key) || ["Control", "Meta", "Alt"].includes(e.key) || !typing(e.target);
 }
 
-const isPhone = () => typeof screen !== "undefined" && Math.min(screen.width, screen.height) < PHONE_SCREEN;
+export const isPhone = () => typeof screen !== "undefined" && Math.min(screen.width, screen.height) < PHONE_SCREEN;
 
 /** Notes a key press. The window hears its own; a book's page (a frame of its own) passes its keys here. */
 export function noteKey(e: KeyboardEvent): void {

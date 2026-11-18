@@ -3,6 +3,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNarrow } from "../lib/useNarrow";
+import { useSideBySide } from "../lib/useSideBySide";
+import { createPortal } from "react-dom";
+import { LayoutPanel, StylePanel } from "./BookPanels";
 import { keyHint, useShortcuts } from "../lib/shortcuts";
 import { api, isWeb } from "../api";
 import type { WritingChapter, WritingDraft, WritingProject, WritingProjectView } from "../api/types";
@@ -24,7 +27,7 @@ import { BookPreview, MadePage } from "./BookPreview";
 import { chapterLabels, editorLookCss } from "./bookLook";
 import { bookOrder, escapeXml, madeSectionHtml, readExport, type ExportSettings } from "./epub";
 import { ScribeBooks, type Projects } from "./ScribeBooks";
-import { ADD_MENUS, firstLine, isMade, isNumbered, isPoem, KINDS, numberInWords, readPage, romanOf, startingTitle, writePage, type PageKind, type PageSettings, type Template } from "./pages";
+import { ADD_MENUS, TITLE_POSITIONS, type TitlePosition, firstLine, isMade, isNumbered, isPoem, KINDS, numberInWords, readPage, romanOf, startingTitle, writePage, type PageKind, type PageSettings, type Template } from "./pages";
 import { DetailsDialog, DraftsDialog, ExportDialog, NewBookDialog } from "./WritingDialogs";
 import { PaperbackCover } from "./PaperbackCover";
 import { PoemSound } from "./PoemSound";
@@ -100,11 +103,20 @@ export function Writing({
       void addSampleOnce(projects.list).then((added) => added && setReload((n) => n + 1));
   }, [projects, booksShown]);
 
+  // A book opens with its own search (Search this book…), not the list's.
+  const opened = useRef(openId);
+  useEffect(() => {
+    if (openId && opened.current !== openId) onClearSearch();
+    opened.current = openId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId]);
+
   if (openId && booksShown)
     return (
       <ProjectView
         key={openId}
         id={openId}
+        search={search}
         books={projects.state === "ready" ? projects.list : []}
         onOpenEdition={(other) => {
           setReload((n) => n + 1);
@@ -284,6 +296,75 @@ function useProjects(shown: boolean, refreshKey: number, reload: number): Projec
 }
 
 type Area = "front" | "chapter" | "back";
+
+/** The tabs beside the page: Format replaces the toolbar; Details shows the book's details in place of the page. */
+type Panel = "format" | "style" | "layout" | "details";
+const PANELS: { panel: Panel; label: string }[] = [
+  { panel: "format", label: "Format" },
+  { panel: "style", label: "Style" },
+  { panel: "layout", label: "Layout" },
+  { panel: "details", label: "Details" },
+];
+/** Whether Contents and the tools are open beside the page, remembered on this device. */
+const LIST_OPEN = "tbv.scribe.contentsOpen";
+const TOOLS_OPEN = "tbv.scribe.toolsOpen";
+function remembered(key: string, fallback: boolean): boolean {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved === null ? fallback : saved === "1";
+  } catch {
+    return fallback;
+  }
+}
+function remember(key: string, open: boolean) {
+  try {
+    localStorage.setItem(key, open ? "1" : "0");
+  } catch {
+    /* remembered for now only */
+  }
+}
+
+/** A page's words as plain text, for Search this book. */
+export function plainText(html: string): string {
+  return html
+    .replace(/<\/(p|h\d|li|blockquote|div)>|<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** The pages a search is found on, in the book's order: how often, and the words around the first. */
+export function searchPages(chapters: WritingChapter[], query: string): { chapter: WritingChapter; count: number; before: string; match: string; after: string }[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const out: { chapter: WritingChapter; count: number; before: string; match: string; after: string }[] = [];
+  for (const c of chapters) {
+    const text = `${c.title} — ${plainText(c.body)}`;
+    const lower = text.toLowerCase();
+    let count = 0;
+    let first = -1;
+    for (let at = lower.indexOf(q); at >= 0; at = lower.indexOf(q, at + q.length)) {
+      if (first < 0) first = at;
+      count++;
+    }
+    if (!count) continue;
+    const start = Math.max(0, first - 30);
+    out.push({
+      chapter: c,
+      count,
+      before: `${start > 0 ? "…" : ""}${text.slice(start, first)}`,
+      match: text.slice(first, first + q.length),
+      after: `${text.slice(first + q.length, first + q.length + 50)}${first + q.length + 50 < text.length ? "…" : ""}`,
+    });
+  }
+  return out;
+}
 const SHORTCUT_NEW = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘⇧N" : "Ctrl+Shift+N";
 const AREA_NAMES: Record<Area, string> = { front: "Front matter", chapter: "Body", back: "Back matter" };
 
@@ -294,6 +375,7 @@ type DropTarget = { section: WritingChapter; where?: DropWhere } | { area: Area 
 
 function ProjectView({
   id,
+  search,
   books,
   onOpenEdition,
   onBooksChanged,
@@ -303,6 +385,8 @@ function ProjectView({
   onDeleted,
 }: {
   id: string;
+  /** The header's search box: Search this book… beside the page. */
+  search: string;
   /** Every book in Scribe, for this one's other editions. */
   books: WritingProject[];
   onOpenEdition: (id: string) => void;
@@ -346,7 +430,30 @@ function ProjectView({
       }
       return next;
     });
-  const [listOpen, setListOpen] = useState(true);
+  // Beside the page (a computer or tablet): contents, page and tools side by side.
+  const wide = useSideBySide();
+  const [listOpen, setListOpenNow] = useState(() => !wide || remembered(LIST_OPEN, true));
+  const setListOpen = (open: boolean) => {
+    setListOpenNow(open);
+    if (wide) remember(LIST_OPEN, open);
+  };
+  const [toolsOpen, setToolsOpenNow] = useState(() => remembered(TOOLS_OPEN, true));
+  const setToolsOpen = (open: boolean) => {
+    setToolsOpenNow(open);
+    remember(TOOLS_OPEN, open);
+  };
+  const [panel, setPanel] = useState<Panel>("format");
+  // Where the Format tab's tools go: the editor puts them here.
+  const [formatHost, setFormatHost] = useState<HTMLDivElement | null>(null);
+  // Pages chosen with Shift in Contents, for Layout's title position.
+  const [chosen, setChosen] = useState<string[]>([]);
+  // The header's own places for the book's title, Preview and •••.
+  const [slots, setSlots] = useState<{ start: HTMLElement | null; end: HTMLElement | null }>({ start: null, end: null });
+  useEffect(() => setSlots({ start: document.getElementById("header-page-start"), end: document.getElementById("header-page-end") }), []);
+  // Searching this book shows the contents, with the pages it's found on.
+  useEffect(() => {
+    if (wide && search.trim()) setListOpenNow(true);
+  }, [wide, search]);
   // On a phone the contents and the page share the screen badly, so one shows at a time:
   // picking a page opens it, and the Contents button goes back.
   const narrow = useNarrow();
@@ -577,6 +684,17 @@ function ProjectView({
     }
   };
 
+  /** Where the titles of these pages sit, in place of the book's own (null follows the book). */
+  const setTitles = async (pages: WritingChapter[], titles: TitlePosition | null) => {
+    try {
+      const saved = new Map<string, string>();
+      for (const c of pages) saved.set(c.id, (await api.setWritingChapterPage(c.id, writePage({ ...readPage(c.page, c.role), titles }))).page);
+      setView((v) => v && { ...v, chapters: v.chapters.map((x) => (saved.has(x.id) ? { ...x, page: saved.get(x.id)! } : x)) });
+    } catch (e) {
+      toast(String(e));
+    }
+  };
+
   const changeFrontPageType = async (c: WritingChapter, kind: PageKind) => {
     const before = readPage(c.page, c.role);
     if (before.kind === kind || !view) return;
@@ -764,6 +882,14 @@ function ProjectView({
       { label: "Show in the contents", checked: page.inContents, onSelect: () => void setPage(c, { inContents: !page.inContents }) },
       { label: "Show its title", checked: page.showTitle, onSelect: () => void setPage(c, { showTitle: !page.showTitle }) },
       {
+        label: chosen.length > 1 && chosen.includes(c.id) ? `Title position (${chosen.length} pages)` : "Title position",
+        submenu: [null, ...TITLE_POSITIONS].map((titles) => ({
+          label: titles === null ? "As the book's Layout" : { left: "Left", center: "Centre", right: "Right" }[titles],
+          checked: page.titles === titles,
+          onSelect: () => void setTitles(chosen.length > 1 && chosen.includes(c.id) ? chapters.filter((x) => chosen.includes(x.id)) : [c], titles),
+        })),
+      },
+      {
         label: "Start on a new page",
         hint: page.newPage === null ? (isPoem(page) ? "Poems always do, unless you say" : "As the book's export settings say") : undefined,
         checked: page.newPage ?? (isPoem(page) || settings.newPage),
@@ -815,7 +941,7 @@ function ProjectView({
       <li
         key={c.id}
         draggable
-        className={`${c.id === chapter?.id ? "is-current" : ""}${dragging === c.id ? " is-dragging" : ""}${inPart ? " is-in-part" : ""}${c.role === "part" ? " is-part" : ""}${dropOn === c.id ? ` is-drop-${dropWhere}` : ""}`}
+        className={`${c.id === chapter?.id ? "is-current" : ""}${chosen.length > 1 && chosen.includes(c.id) ? " is-chosen" : ""}${dragging === c.id ? " is-dragging" : ""}${inPart ? " is-in-part" : ""}${c.role === "part" ? " is-part" : ""}${dropOn === c.id ? ` is-drop-${dropWhere}` : ""}`}
         onDragStart={(e) => {
           setDragging(c.id);
           e.dataTransfer.effectAllowed = "move";
@@ -846,7 +972,27 @@ function ProjectView({
             <Icon name={isFolded ? "chevronRight" : "chevronDown"} size={14} />
           </button>
         )}
-        <button type="button" className="writing-chapter" onClick={() => void saving.current.then(() => (setChapterId(c.id), setPicked((n) => n + 1), narrow && setListOpen(false)))}>
+        <button
+          type="button"
+          className="writing-chapter"
+          // Shift picks every page from the one open to this one, without picking text.
+          onMouseDown={(e) => wide && e.shiftKey && e.preventDefault()}
+          onClick={(e) => {
+            if (wide && e.shiftKey && chapter && chapter.id !== c.id) {
+              const order = [...front, ...body, ...back].filter((x) => x.role !== "part");
+              const [from, to] = [order.findIndex((x) => x.id === chapter.id), order.findIndex((x) => x.id === c.id)].sort((x, y) => x - y);
+              if (from >= 0 && to >= 0) {
+                setChosen(order.slice(from, to + 1).map((x) => x.id));
+                setPanel("layout");
+                setToolsOpen(true);
+                return;
+              }
+            }
+            setChosen([]);
+            if (panel === "details") setPanel("format");
+            void saving.current.then(() => (setChapterId(c.id), setPicked((n) => n + 1), narrow && !wide && setListOpen(false)));
+          }}
+        >
           <span className="writing-chapter-number num">{number}</span>
           <span className={`writing-chapter-name${c.title ? "" : " muted"}`}>
             {c.title || (c.role === "part" ? "Untitled section" : numbers.has(c.id) ? `Chapter ${numbers.get(c.id)}` : (isPoem(page) && firstLine(c.body)) || KINDS[page.kind].label)}
@@ -874,19 +1020,6 @@ function ProjectView({
       }}
     >
       <span>{AREA_NAMES[area]}</span>
-      {area === "chapter" && parts.length > 0 && (
-        <Menu
-          label="Chapter numbers"
-          className="writing-area-add"
-          align="end"
-          trigger={<Icon name="listNumber" size={14} />}
-          items={[
-            { heading: <span className="menu-tip">Chapter numbers</span> },
-            { label: "Start again in each section", checked: settings.numbering === "restart", onSelect: () => saveSettings({ ...settings, numbering: "restart" }) },
-            { label: "Run on through the book", checked: settings.numbering === "continuous", onSelect: () => saveSettings({ ...settings, numbering: "continuous" }) },
-          ]}
-        />
-      )}
       <Menu label={`Add to ${AREA_NAMES[area].toLowerCase()}`} className="writing-area-add" align="end" trigger={<Icon name="plus" size={15} />} items={addMenus[area]} />
     </li>
   );
@@ -894,155 +1027,8 @@ function ProjectView({
   const back = chapters.filter((c) => c.role === "back" && !partOf(c));
   const body = chapters.filter((c) => !front.includes(c) && !back.includes(c));
 
-  return (
-    <div className={`writing-project${listOpen ? "" : " is-list-closed"}${side ? ` has-${side}` : ""}`}>
-      <header className="writing-head">
-        <button type="button" className="btn btn-quiet btn-small" onClick={() => void saving.current.then(onBack)}>
-          <Icon name="arrowLeft" size={16} /> Your books
-        </button>
-        <div className="writing-head-title">
-          <h1>{project.title}</h1>
-          <span className="muted">
-            {project.author ? `${project.author} · ` : ""}
-            {settings.edition ? `${settings.edition.name} · ` : ""}
-            {words(project.words)}
-          </span>
-        </div>
-        <div className="writing-head-actions">
-          <button type="button" className={`btn btn-quiet${side === "preview" ? " is-on" : ""}`} aria-pressed={side === "preview"} onClick={() => void flushEditor.current?.().finally(() => (setSide((s) => (s === "preview" ? null : "preview")), narrow && setListOpen(false)))}>
-            <Icon name="bookOpen" size={16} /> Preview
-          </button>
-          <button type="button" className={`btn btn-quiet${side === "quotes" ? " is-on" : ""}`} aria-pressed={side === "quotes"} onClick={() => setSide((s) => (s === "quotes" ? null : "quotes"))}>
-            <Icon name="notes" size={16} /> Notes
-          </button>
-          <button type="button" className="btn btn-quiet" onClick={() => setDialog("details")}>
-            <Icon name="info" size={16} /> Book details
-          </button>
-          {!isWeb && (
-            <button type="button" className="btn btn-quiet" onClick={() => setDialog("drafts")}>
-              <Icon name="drafts" size={16} /> Drafts
-            </button>
-          )}
-          <button type="button" className="btn btn-primary" onClick={() => setDialog("export")}>
-            <Icon name="upload" size={16} /> Export
-          </button>
-          <Menu
-            label="More"
-            className="btn btn-quiet btn-icon"
-            trigger={<Icon name="more" size={18} />}
-            items={[
-              { label: "Sources and citation style…", icon: "bookClosed", onSelect: () => setDialog("sources") },
-              "divider",
-              ...editionItems,
-              "divider",
-              { label: "Previews on each device…", icon: "phone", onSelect: () => publisher.check("Side-by-side previews", () => void Promise.resolve(flushEditor.current?.()).finally(() => setDialog("previews"))) },
-              { label: "Store editions…", icon: "layers", onSelect: () => publisher.check("Store editions", () => setDialog("editions")) },
-              { label: "Paperback cover…", icon: "image", onSelect: () => publisher.check("The paperback cover maker", () => setDialog("cover")) },
-              { label: "Check before uploading…", icon: "checkCircle", onSelect: () => publisher.check("Checking before uploading", () => setDialog("preflight")) },
-              { label: "Plagiarism Check…", icon: "checkCircle", onSelect: () => setDialog("copies") },
-              "divider",
-              { label: "Delete Book…", icon: "trash", danger: true, onSelect: () => setDialog("delete") },
-            ]}
-          />
-        </div>
-      </header>
-
-      <div className="writing-body">
-        <aside className="writing-chapters" aria-label="The book's pages">
-          <div className="writing-chapters-head">
-            <strong>Contents</strong>
-            <button type="button" className="writing-list-toggle" aria-label="Hide the list" title="Hide the list" onClick={() => setListOpen(false)}>
-              <Icon name="panelLeft" size={17} />
-            </button>
-          </div>
-          <ol className="writing-chapter-list">
-            {areaHead("front")}
-            {front.map(row)}
-            {areaHead("chapter")}
-            {body.filter((c) => !(partOf(c) && folded.has(partOf(c)!))).map(row)}
-            {areaHead("back")}
-            {back.map(row)}
-          </ol>
-          <p className="muted writing-hint">
-            {keys
-              ? `Drag pages and sections to put them in order. Each area's + adds a page. ${SHORTCUT_NEW} adds a page like the one you're on.`
-              : "Hold and drag pages and sections to put them in order. Each area's + adds a page."}
-          </p>
-        </aside>
-        {side === "preview" ? (
-          <BookPreview
-            project={project}
-            chapters={chapters}
-            settings={settings}
-            showing={chapter?.id ?? null}
-            picked={picked}
-            onShowList={listOpen ? undefined : () => setListOpen(true)}
-            onSettings={saveSettings}
-            onClose={() => setSide(null)}
-          />
-        ) : (
-          <section className="writing-main">
-            {!listOpen && (
-              <button type="button" className="writing-list-toggle is-floating" aria-label={narrow ? "Contents" : "Show the list"} title={narrow ? "Contents" : "Show the list"} onClick={() => setListOpen(true)}>
-                <Icon name={narrow ? "chevronLeft" : "panelLeft"} size={17} />
-                {narrow && <span>Contents</span>}
-              </button>
-            )}
-            {chapter && current && isMade(current) ? (
-              <MadePage
-                key={chapter.id}
-                chapter={chapter}
-                project={project}
-                chapters={chapters}
-                settings={settings}
-                onTitle={(title) => void saveChapter(chapter.id)(title, chapter.body).catch((e) => toast(String(e)))}
-                onCopyright={(copyright) => saveSettings({ ...settings, copyright })}
-                onEdition={(edition) => saveSettings({ ...settings, edition })}
-                onWriteMyself={(html) => void writeMyself(chapter, html)}
-                onOpenDetails={() => setDialog("details")}
-                onOpenSources={() => setDialog("sources")}
-                onSourcesChange={(sources) => changeSources({ sources })}
-                onFormatChange={(citationStyle, customSourceFormat) => changeSources({ citationStyle, customSourceFormat })}
-                canUndoSources={sourceHistory.undo.length > 0}
-                canRedoSources={sourceHistory.redo.length > 0}
-                onUndoSources={() => restoreSources("undo")}
-                onRedoSources={() => restoreSources("redo")}
-              />
-            ) : (
-              chapter && (
-                <>
-                {current && <PoemSound key={`sound-${chapter.id}`} sound={current.sound} onChange={(sound) => setPage(chapter, { sound })} />}
-                <ChapterEditor
-                  key={chapter.id}
-                  chapter={chapter}
-                  onSave={saveChapter(chapter.id)}
-                  onSaveState={(state, w) => setSave({ state, words: w })}
-                  flushRef={flushEditor}
-                  insertRef={insertInEditor}
-                  poem={current && isPoem(current) ? (current.centred ? "centred" : "left") : null}
-                  book={{
-                    font: settings.font === "lora" ? "Lora, serif" : settings.font === "echolume" ? "Echolume, serif" : null,
-                    lineHeight: "1.5",
-                    align: current && isPoem(current) ? (current.centred ? "center" : "left") : settings.align,
-                  }}
-                  sources={settings.sources}
-                  citationChapters={chapters}
-                  citationStyle={settings.citationStyle}
-                  onSources={(sources, citationStyle) => changeSources({ sources, citationStyle })}
-                  look={{ css: lookCss, chapter: (chapter.role ?? "chapter") === "chapter", label: labels.get(chapter.id) ?? "" }}
-                />
-                </>
-              )
-            )}
-            <footer className="writing-status muted" aria-live="polite">
-              <span>{words(save.words)} on this page</span>
-              <span className={save.state === "failed" ? "is-problem" : undefined}>{saveLabel}</span>
-            </footer>
-          </section>
-        )}
-        {side === "quotes" && <QuoteDrawer refreshKey={refreshKey} projectId={project.id} onInsert={(n) => insertInEditor.current?.(quoteHtml(n))} onClose={() => setSide(null)} />}
-      </div>
-
+  const dialogs = (
+    <>
       {dialog === "sources" && (
         <SourcesDialog
           sources={settings.sources}
@@ -1068,6 +1054,7 @@ function ProjectView({
         <ExportDialog
           project={project}
           chapters={chapters}
+          layoutBeside={wide}
           onFlush={async () => {
             // Words typed a moment ago haven't been handed over to save yet.
             await flushEditor.current?.();
@@ -1200,6 +1187,329 @@ function ProjectView({
           }}
         />
       )}
+    </>
+  );
+
+  const moreItems: MenuEntry[] = [
+    { label: "Sources and citation style…", icon: "bookClosed", onSelect: () => setDialog("sources") },
+    "divider",
+    ...editionItems,
+    "divider",
+    { label: "Previews on each device…", icon: "phone", onSelect: () => publisher.check("Side-by-side previews", () => void Promise.resolve(flushEditor.current?.()).finally(() => setDialog("previews"))) },
+    { label: "Store editions…", icon: "layers", onSelect: () => publisher.check("Store editions", () => setDialog("editions")) },
+    { label: "Paperback cover…", icon: "image", onSelect: () => publisher.check("The paperback cover maker", () => setDialog("cover")) },
+    { label: "Check before uploading…", icon: "checkCircle", onSelect: () => publisher.check("Checking before uploading", () => setDialog("preflight")) },
+    { label: "Plagiarism Check…", icon: "checkCircle", onSelect: () => setDialog("copies") },
+    "divider",
+    { label: "Delete Book…", icon: "trash", danger: true, onSelect: () => setDialog("delete") },
+  ];
+  const togglePreview = () => void flushEditor.current?.().finally(() => (setSide((s) => (s === "preview" ? null : "preview")), narrow && !wide && setListOpen(false)));
+  const byline = `${project.author ?? ""}${project.author && settings.edition ? " · " : ""}${settings.edition?.name ?? ""}`;
+  const found = wide && search.trim() ? searchPages([...front, ...body, ...back], search) : null;
+  const details = wide && panel === "details";
+  const chosenPages = chosen.length > 1 ? chapters.filter((c) => chosen.includes(c.id)) : chapter && chapter.role !== "part" ? [chapter] : [];
+  const editorTools: "toolbar" | HTMLElement | null = !wide ? "toolbar" : toolsOpen && panel === "format" && side !== "quotes" ? formatHost : null;
+
+  const contents = (
+    <aside className="writing-chapters" aria-label="The book's pages">
+      <div className="writing-chapters-head">
+        <strong>{found ? `Found on ${found.length} ${found.length === 1 ? "page" : "pages"}` : "Contents"}</strong>
+        <button type="button" className="writing-list-toggle" aria-label="Hide the contents" title="Hide the contents" onClick={() => setListOpen(false)}>
+          <Icon name="panelLeft" size={17} />
+        </button>
+      </div>
+      {found ? (
+        <ol className="writing-chapter-list writing-found">
+          {found.map((f) => (
+            <li key={f.chapter.id} className={f.chapter.id === chapter?.id ? "is-current" : ""}>
+              <button
+                type="button"
+                className="writing-found-page"
+                onClick={() => {
+                  if (panel === "details") setPanel("format");
+                  void saving.current.then(() => (setChapterId(f.chapter.id), setPicked((n) => n + 1)));
+                }}
+              >
+                <span className="writing-found-head">
+                  <b>{f.chapter.title || (numbers.has(f.chapter.id) ? `Chapter ${numbers.get(f.chapter.id)}` : KINDS[readPage(f.chapter.page, f.chapter.role).kind].label)}</b>
+                  <span className="muted num">{f.count}</span>
+                </span>
+                <span className="muted writing-found-words">
+                  {f.before}
+                  <mark>{f.match}</mark>
+                  {f.after}
+                </span>
+              </button>
+            </li>
+          ))}
+          {!found.length && <li className="muted writing-found-none">Not in this book.</li>}
+        </ol>
+      ) : (
+        <ol className="writing-chapter-list">
+          {areaHead("front")}
+          {front.map(row)}
+          {areaHead("chapter")}
+          {body.filter((c) => !(partOf(c) && folded.has(partOf(c)!))).map(row)}
+          {areaHead("back")}
+          {back.map(row)}
+        </ol>
+      )}
+      <p className="muted writing-hint">
+        {found
+          ? "Pick a page to open it. Empty the search box to see Contents again."
+          : keys
+            ? `Drag pages and sections to put them in order. Each area's + adds a page. ${SHORTCUT_NEW} adds a page like the one you're on.${wide ? " Shift-click chooses a run of pages." : ""}`
+            : "Hold and drag pages and sections to put them in order. Each area's + adds a page."}
+      </p>
+    </aside>
+  );
+
+  const writing = (
+    <section className="writing-main">
+      {!listOpen && !wide && (
+        <button type="button" className="writing-list-toggle is-floating" aria-label={narrow ? "Contents" : "Show the list"} title={narrow ? "Contents" : "Show the list"} onClick={() => setListOpen(true)}>
+          <Icon name={narrow ? "chevronLeft" : "panelLeft"} size={17} />
+          {narrow && <span>Contents</span>}
+        </button>
+      )}
+      {chapter && current && isMade(current) ? (
+        <MadePage
+          key={chapter.id}
+          chapter={chapter}
+          project={project}
+          chapters={chapters}
+          settings={settings}
+          onTitle={(title) => void saveChapter(chapter.id)(title, chapter.body).catch((e) => toast(String(e)))}
+          onCopyright={(copyright) => saveSettings({ ...settings, copyright })}
+          onEdition={(edition) => saveSettings({ ...settings, edition })}
+          onWriteMyself={(html) => void writeMyself(chapter, html)}
+          onOpenDetails={() => (wide ? (setPanel("details"), setToolsOpen(true)) : setDialog("details"))}
+          onOpenSources={() => setDialog("sources")}
+          onSourcesChange={(sources) => changeSources({ sources })}
+          onFormatChange={(citationStyle, customSourceFormat) => changeSources({ citationStyle, customSourceFormat })}
+          canUndoSources={sourceHistory.undo.length > 0}
+          canRedoSources={sourceHistory.redo.length > 0}
+          onUndoSources={() => restoreSources("undo")}
+          onRedoSources={() => restoreSources("redo")}
+        />
+      ) : (
+        chapter && (
+          <>
+            {current && <PoemSound key={`sound-${chapter.id}`} sound={current.sound} onChange={(sound) => setPage(chapter, { sound })} />}
+            <ChapterEditor
+              key={chapter.id}
+              chapter={chapter}
+              onSave={saveChapter(chapter.id)}
+              onSaveState={(state, w) => setSave({ state, words: w })}
+              flushRef={flushEditor}
+              insertRef={insertInEditor}
+              poem={current && isPoem(current) ? (current.centred ? "centred" : "left") : null}
+              book={{
+                font: settings.font === "lora" ? "Lora, serif" : settings.font === "crimson" ? "Crimson Pro, serif" : settings.font === "echolume" ? "Echolume, serif" : null,
+                lineHeight: "1.5",
+                align: current && isPoem(current) ? (current.centred ? "center" : "left") : settings.align,
+                paragraphs: settings.paragraphs,
+              }}
+              sources={settings.sources}
+              citationChapters={chapters}
+              citationStyle={settings.citationStyle}
+              onSources={(sources, citationStyle) => changeSources({ sources, citationStyle })}
+              look={{ css: lookCss, chapter: (chapter.role ?? "chapter") === "chapter", label: labels.get(chapter.id) ?? "", titles: current?.titles ?? null }}
+              format={editorTools}
+            />
+          </>
+        )
+      )}
+      <footer className="writing-status muted" aria-live="polite">
+        <span>{words(save.words)} on this page</span>
+        <span className="writing-status-book">{words(project.words)} in book</span>
+        <span className={save.state === "failed" ? "is-problem" : undefined}>{saveLabel}</span>
+      </footer>
+    </section>
+  );
+
+  const preview = (
+    <BookPreview
+      project={project}
+      chapters={chapters}
+      settings={settings}
+      showing={chapter?.id ?? null}
+      picked={picked}
+      stylePicker={!wide}
+      onShowList={listOpen || wide ? undefined : () => setListOpen(true)}
+      onSettings={saveSettings}
+      onClose={() => setSide(null)}
+    />
+  );
+
+  const quotes = <QuoteDrawer refreshKey={refreshKey} projectId={project.id} onInsert={(n) => insertInEditor.current?.(quoteHtml(n))} onClose={() => setSide(null)} />;
+
+  // Beside the page: Format, Style, Layout and Details.
+  const tools = (
+    <aside className="writing-tools" aria-label="Tools">
+      <div className="writing-tools-head">
+        <div className="writing-tabs" role="tablist" aria-label="Tools">
+          {PANELS.map((t) => (
+            <button
+              key={t.panel}
+              type="button"
+              role="tab"
+              aria-selected={panel === t.panel}
+              className={panel === t.panel ? "is-active" : ""}
+              onClick={() => {
+                setPanel(t.panel);
+                if (t.panel === "details") setSide((s) => (s === "preview" ? null : s));
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="writing-list-toggle" aria-label="Hide the tools" title="Hide the tools" onClick={() => setToolsOpen(false)}>
+          <Icon name="panelRight" size={17} />
+        </button>
+      </div>
+      <div className="writing-tools-body">
+        {panel === "format" &&
+          (side === "preview" ? (
+            <p className="muted book-panel-note">The preview shows the book as it will be exported. Choose Back to writing to format the page.</p>
+          ) : chapter && current && isMade(current) ? (
+            <p className="muted book-panel-note">Scribe makes this page from the book's details, so there's nothing to format. Choose Write it myself on the page to write it your own way.</p>
+          ) : (
+            <div ref={setFormatHost} className="writing-format-host" />
+          ))}
+        {panel === "style" && <StylePanel settings={settings} onSettings={saveSettings} />}
+        {panel === "layout" && <LayoutPanel settings={settings} onSettings={saveSettings} hasParts={parts.length > 0} pages={chosenPages} onTitles={(pages, titles) => void setTitles(pages, titles)} />}
+        {panel === "details" && <p className="muted book-panel-note">The book's details are open in place of the page. Choose Format, or a page in Contents, to go back to writing.</p>}
+      </div>
+    </aside>
+  );
+
+  if (wide)
+    return (
+      <div className={`writing-project is-wide${listOpen ? "" : " is-list-closed"}${toolsOpen || side === "quotes" ? "" : " is-tools-closed"}`}>
+        {slots.start &&
+          createPortal(
+            <div className="scribe-book-title">
+              <button type="button" className="scribe-back" aria-label="Your books" title="Your books" onClick={() => void saving.current.then(onBack)}>
+                <Icon name="arrowLeft" size={18} />
+              </button>
+              <div className="scribe-book-name">
+                <strong>{project.title}</strong>
+                {byline && <span className="muted">{byline}</span>}
+              </div>
+            </div>,
+            slots.start,
+          )}
+        {slots.end &&
+          createPortal(
+            <div className="scribe-book-actions">
+              <button type="button" className={`btn btn-quiet scribe-preview${side === "preview" ? " is-on" : ""}`} aria-pressed={side === "preview"} onClick={togglePreview}>
+                <Icon name="bookOpen" size={16} /> Preview
+              </button>
+              <Menu
+                label="More for this book"
+                className="btn btn-quiet btn-icon"
+                trigger={<Icon name="more" size={18} />}
+                items={[
+                  { label: "Notes", icon: "notes", checked: side === "quotes", onSelect: () => setSide((s) => (s === "quotes" ? null : "quotes")) },
+                  ...(!isWeb ? [{ label: "Drafts…", icon: "drafts" as const, onSelect: () => setDialog("drafts") }] : []),
+                  { label: "Export…", icon: "upload", onSelect: () => setDialog("export") },
+                  "divider",
+                  ...moreItems,
+                ]}
+              />
+            </div>,
+            slots.end,
+          )}
+        <div className="writing-body">
+          {listOpen ? (
+            contents
+          ) : (
+            <button type="button" className="writing-strip" aria-label="Show the contents" title="Show the contents" onClick={() => setListOpen(true)}>
+              <Icon name="chevronRight" size={16} />
+              <span>Contents</span>
+            </button>
+          )}
+          {details ? (
+            <div className="writing-details-main">
+              <DetailsDialog
+                key={project.id}
+                inline
+                project={project}
+                onCancel={(p) => {
+                  setView((v) => v && { ...v, project: { ...v.project, cover: p.cover, coverPath: p.coverPath } });
+                  setPanel("format");
+                }}
+                onSaved={(p) => {
+                  setView((v) => v && { ...v, project: p });
+                  setPanel("format");
+                  toast("Saved the book's details.");
+                }}
+              />
+            </div>
+          ) : side === "preview" ? (
+            preview
+          ) : (
+            writing
+          )}
+          {side === "quotes" ? (
+            quotes
+          ) : toolsOpen ? (
+            tools
+          ) : (
+            <button type="button" className="writing-strip is-right" aria-label="Show the tools" title="Show the tools" onClick={() => setToolsOpen(true)}>
+              <Icon name="chevronLeft" size={16} />
+              <span>Format</span>
+            </button>
+          )}
+        </div>
+        {dialogs}
+      </div>
+    );
+
+  return (
+    <div className={`writing-project${listOpen ? "" : " is-list-closed"}${side ? ` has-${side}` : ""}`}>
+      <header className="writing-head">
+        <button type="button" className="btn btn-quiet btn-small" onClick={() => void saving.current.then(onBack)}>
+          <Icon name="arrowLeft" size={16} /> Your books
+        </button>
+        <div className="writing-head-title">
+          <h1>{project.title}</h1>
+          <span className="muted">
+            {project.author ? `${project.author} · ` : ""}
+            {settings.edition ? `${settings.edition.name} · ` : ""}
+            {words(project.words)}
+          </span>
+        </div>
+        <div className="writing-head-actions">
+          <button type="button" className={`btn btn-quiet${side === "preview" ? " is-on" : ""}`} aria-pressed={side === "preview"} onClick={togglePreview}>
+            <Icon name="bookOpen" size={16} /> Preview
+          </button>
+          <button type="button" className={`btn btn-quiet${side === "quotes" ? " is-on" : ""}`} aria-pressed={side === "quotes"} onClick={() => setSide((s) => (s === "quotes" ? null : "quotes"))}>
+            <Icon name="notes" size={16} /> Notes
+          </button>
+          <button type="button" className="btn btn-quiet" onClick={() => setDialog("details")}>
+            <Icon name="info" size={16} /> Book details
+          </button>
+          {!isWeb && (
+            <button type="button" className="btn btn-quiet" onClick={() => setDialog("drafts")}>
+              <Icon name="drafts" size={16} /> Drafts
+            </button>
+          )}
+          <button type="button" className="btn btn-primary" onClick={() => setDialog("export")}>
+            <Icon name="upload" size={16} /> Export
+          </button>
+          <Menu label="More" className="btn btn-quiet btn-icon" trigger={<Icon name="more" size={18} />} items={moreItems} />
+        </div>
+      </header>
+
+      <div className="writing-body">
+        {contents}
+        {side === "preview" ? preview : writing}
+        {side === "quotes" && quotes}
+      </div>
+      {dialogs}
     </div>
   );
 }

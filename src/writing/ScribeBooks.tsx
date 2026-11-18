@@ -12,7 +12,8 @@ import { holdForMenu, openContextMenu } from "../components/ContextMenu";
 import { Icon, type IconName } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
-import { relativeTime } from "../lib/format";
+import { hashOf, relativeTime } from "../lib/format";
+import { CLOTH } from "../components/BookCover";
 import { CopyCheckDialog } from "./CopyCheck";
 import { readExport } from "./epub";
 import { TEMPLATES, type Template } from "./pages";
@@ -344,24 +345,34 @@ export function ScribeBooks({
     );
   else
     books = (
-      <ul className="scribe-book-cards">
+      <ul className="book-grid scribe-book-cards">
         {shelves.map((s) => {
           const p = s.kind === "book" ? s.book : latestOf(s);
           const linked = s.kind === "linked" ? s : null;
           const cover = coverOf(p);
           return (
-            <li key={linked ? linked.group : p.id} className={`scribe-book-card${linked ? " is-linked" : ""}`} {...cardProps(p, linked)}>
-              <button type="button" className="scribe-book-open" onClick={() => (linked ? setOpenGroup(linked.group) : onOpen(p.id))}>
-                <span className="scribe-book-art">
-                  {cover ? <img src={cover} alt="" draggable={false} /> : <span className="scribe-book-blank">{p.title}</span>}
-                </span>
-                <span className="scribe-book-text">
-                  <strong>{p.title}</strong>
-                  <span className="muted">{p.author || "No author yet"}</span>
-                  <span className="muted scribe-book-meta">{linked ? linkedLine(linked) : metaLine(p)}</span>
-                </span>
+            <li key={linked ? linked.group : p.id} className={`grid-card scribe-book-card${linked ? " is-linked" : ""}`} {...cardProps(p, linked)}>
+              {/* A cover like the Archive's: the book's own picture, or one made from its title and author. */}
+              <button type="button" className="grid-open scribe-book-open" title={`${p.title}${p.author ? `, ${p.author}` : ""}`} onClick={() => (linked ? setOpenGroup(linked.group) : onOpen(p.id))}>
+                <div className="cover cover-m">
+                  {cover ? (
+                    <img src={cover} alt="" draggable={false} />
+                  ) : (
+                    <div className="cover-generated" style={{ background: CLOTH[hashOf(p.id) % CLOTH.length] }}>
+                      <span className="cover-title">{p.title}</span>
+                      <span className="cover-author">{p.author ?? ""}</span>
+                    </div>
+                  )}
+                </div>
               </button>
-              {more(p, linked)}
+              <div className="grid-caption">
+                <div className="grid-text">
+                  <span className="book-title">{p.title}</span>
+                  <span className="book-author">{p.author || "No author yet"}</span>
+                  <span className="book-author scribe-book-meta">{linked ? linkedLine(linked) : metaLine(p)}</span>
+                </div>
+                {more(p, linked)}
+              </div>
             </li>
           );
         })}

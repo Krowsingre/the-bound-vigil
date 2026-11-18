@@ -7,7 +7,7 @@ import { isAudio, isDocument } from "../lib/queryBooks";
 import { Icon } from "./Icon";
 
 // Muted cloth tones for books that ship without cover art.
-const CLOTH = ["#2f3a44", "#3d3a33", "#33403a", "#41323a", "#2e3540", "#463c2e"];
+export const CLOTH = ["#2f3a44", "#3d3a33", "#33403a", "#41323a", "#2e3540", "#463c2e"];
 
 type CoverBook = Pick<BookPreview, "id" | "title" | "authors" | "coverPath"> & Partial<Pick<BookPreview, "availability" | "format" | "paired" | "pairInStep">>;
 

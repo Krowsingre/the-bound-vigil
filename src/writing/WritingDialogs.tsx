@@ -184,8 +184,11 @@ export function DetailsDialog({
   onSaved,
   onCancel,
   focus = "title",
+  inline = false,
 }: {
   project: WritingProject;
+  /** Shown in place of the page (the Details tab on a computer or tablet), not over it. */
+  inline?: boolean;
   /** Where to start: the title, the author (Change Author) or the cover (Change Cover). */
   focus?: "title" | "author" | "cover";
   onSaved: (project: WritingProject) => void;
@@ -242,10 +245,10 @@ export function DetailsDialog({
   };
   const coverSrc = cover.coverPath ? (isWeb ? cover.coverPath : api.coverUrl(cover.coverPath)) : null;
   return (
-    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && !busy && onCancel(cover)}>
+    <div className={inline ? "writing-details-place" : "dialog-backdrop"} onPointerDown={(e) => !inline && e.target === e.currentTarget && !busy && onCancel(cover)}>
       <form
-        className="dialog writing-dialog writing-details"
-        role="dialog"
+        className={inline ? "writing-dialog writing-details is-inline" : "dialog writing-dialog writing-details"}
+        role={inline ? "region" : "dialog"}
         aria-label="Book details"
         onSubmit={(e) => {
           e.preventDefault();
@@ -253,7 +256,7 @@ export function DetailsDialog({
         }}
         onKeyDown={(e) => e.key === "Escape" && !busy && onCancel(cover)}
       >
-        <h2>Book details</h2>
+        <h2>{inline ? "Details" : "Book details"}</h2>
         <p className="muted dialog-lede">These go into the EPUB, so e-readers and stores show them.</p>
         <div className="writing-details-grid">
           <div className="writing-details-cover">
@@ -277,7 +280,7 @@ export function DetailsDialog({
           <div className="writing-details-fields">
             <label className="field">
               <span>Title</span>
-              <input value={details.title} onChange={(e) => set({ title: e.target.value })} maxLength={200} autoFocus={focus === "title"} />
+              <input value={details.title} onChange={(e) => set({ title: e.target.value })} maxLength={200} autoFocus={focus === "title" && !inline} />
             </label>
             <label className="field">
               <span>Subtitle</span>
@@ -332,7 +335,7 @@ export function DetailsDialog({
         )}
         <div className="dialog-actions">
           <button type="button" className="btn btn-quiet" onClick={() => onCancel(cover)} disabled={busy}>
-            Cancel
+            {inline ? "Back to writing" : "Cancel"}
           </button>
           <button type="submit" className="btn btn-primary" disabled={busy}>
             Save
@@ -406,6 +409,7 @@ function SeriesStyleFields({ style, index, series, onChange }: { style: SeriesSt
 const FONTS: { value: ExportSettings["font"]; label: string }[] = [
   { value: "none", label: "None, the reader chooses" },
   { value: "lora", label: "Lora" },
+  { value: "crimson", label: "Crimson Pro" },
   { value: "echolume", label: "Echolume" },
 ];
 const BREAKS: { value: ExportSettings["sceneBreak"]; label: string }[] = [
@@ -440,9 +444,12 @@ export function ExportDialog({
   onFlush,
   onSettings,
   onClose,
+  layoutBeside = false,
 }: {
   project: WritingProject;
   chapters: WritingChapter[];
+  /** The book's look is set in the Style and Layout tabs beside the page, so it isn't repeated here. */
+  layoutBeside?: boolean;
   /** Saves the chapter being written, so the export has its latest words. */
   onFlush: () => Promise<WritingChapter[]>;
   /** Keeps the settings as they're changed, so the preview shows them. */
@@ -608,11 +615,12 @@ export function ExportDialog({
 
         {styled && (
           <p className="muted writing-export-style">
-            Book style: <b>{BOOK_STYLES.find((s) => s.id === settings.bookStyle)?.label ?? "Your own"}</b>. Choose and compare styles in Preview, before exporting.
+            Book style: <b>{BOOK_STYLES.find((s) => s.id === settings.bookStyle)?.label ?? "Your own"}</b>.{" "}
+            {layoutBeside ? "Change it, and the fonts, headings and paragraphs, in the Style and Layout tabs beside the page." : "Choose and compare styles in Preview, before exporting."}
           </p>
         )}
 
-        {styled && (
+        {styled && !layoutBeside && (
           <RememberedDetails disclosure="writing.exportOptions" className="writing-export-more">
             <summary>Fonts, headings and paragraphs</summary>
             {select("Font", settings.font, FONTS, (font) => set({ font }), true)}

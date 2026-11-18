@@ -52,7 +52,13 @@ export interface PageSettings {
   centred: boolean;
   /** A poem's sound: a recording or song of it, and where else it can be heard. */
   sound: PoemSound | null;
+  /** Where this page's title sits, in place of the book's own setting (Layout); null follows the book. */
+  titles: TitlePosition | null;
 }
+
+/** Where a page's title sits. */
+export type TitlePosition = "left" | "center" | "right";
+export const TITLE_POSITIONS: TitlePosition[] = ["left", "center", "right"];
 
 /** A sound kept with a poem (see writing_sounds.rs). */
 export interface PoemSound {
@@ -163,6 +169,7 @@ export function readPage(json: string | null | undefined, role: WritingChapter["
     byHand: saved.byHand === true,
     centred: saved.centred === true,
     sound: readSound(saved.sound),
+    titles: TITLE_POSITIONS.includes(saved.titles as TitlePosition) ? (saved.titles as TitlePosition) : null,
   };
 }
 
@@ -176,6 +183,7 @@ export function writePage(page: PageSettings): string {
   if (page.byHand) out.byHand = true;
   if (page.centred) out.centred = true;
   if (page.sound && (page.sound.file || page.sound.link)) out.sound = page.sound;
+  if (page.titles) out.titles = page.titles;
   return JSON.stringify(out);
 }
 

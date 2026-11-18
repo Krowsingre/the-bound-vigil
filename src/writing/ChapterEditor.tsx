@@ -5,6 +5,10 @@
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { createPortal } from "react-dom";
+import { FONTS, FormatPanel, PictureLook, type BookLook, type SourcesProps } from "./FormatPanel";
+export type { BookLook } from "./FormatPanel";
+import type { TitlePosition } from "./pages";
 import { isApp } from "../api";
 import type { WritingChapter } from "../api/types";
 import { Icon, type IconName } from "../components/Icon";
@@ -60,14 +64,6 @@ function Tool({
   );
 }
 
-/** Fonts a passage can be set in: ones TBV can put inside the book, and the reader's own kinds. */
-const FONTS: { label: string; value: string | null }[] = [
-  { label: "Lora", value: "Lora, serif" },
-  { label: "Echolume", value: "Echolume, serif" },
-  { label: "Serif", value: "serif" },
-  { label: "Sans serif", value: "sans-serif" },
-  { label: "Typewriter", value: "monospace" },
-];
 const SIZES: { label: string; value: string | null }[] = [
   { label: "Small", value: "0.85em" },
   { label: "Normal", value: null },
@@ -117,23 +113,6 @@ function ToolMenu({ label, text, icon, active, items }: { label: string; text?: 
   );
 }
 
-interface SourcesProps {
-  sources: Source[];
-  citationStyle: CitationStyle;
-  onSources: (sources: Source[], style: CitationStyle) => void;
-}
-
-/**
- * What a page looks like when nothing is set on it: the font, line spacing and
- * alignment the whole book uses. The menus tick these, so they always show the
- * setting actually in use.
- */
-export interface BookLook {
-  /** As in FONTS, or null when readers' own font is used. */
-  font: string | null;
-  lineHeight: string;
-  align: NonNullable<BlockLook["textAlign"]>;
-}
 const PLAIN_BOOK: BookLook = { font: null, lineHeight: "1.5", align: "justify" };
 
 function Toolbar({ editor, poem, cites, chapter, book = PLAIN_BOOK }: { editor: Editor; poem: boolean; cites?: SourcesProps; chapter?: WritingChapter; book?: BookLook }) {
@@ -204,7 +183,7 @@ function Toolbar({ editor, poem, cites, chapter, book = PLAIN_BOOK }: { editor: 
     run()
       .unsetAllMarks()
       .clearNodes()
-      .setBlockLook({ lineHeight: null, textAlign: null })
+      .setBlockLook({ lineHeight: null, textAlign: null, marginBottom: null, textIndent: null, marginLeft: null })
       .run();
   const caps = state.look.textTransform === "uppercase" ? "all" : state.look.fontVariant === "small-caps" ? "small" : null;
   const saveLink = () => {
@@ -388,40 +367,6 @@ function Toolbar({ editor, poem, cites, chapter, book = PLAIN_BOOK }: { editor: 
   );
 }
 
-/** The picture selected: its caption, its description for readers who can't see it, and whether it has a page of its own. */
-function PictureLook({ editor, look }: { editor: Editor; look: { caption: string; alt: string; size: string } }) {
-  const publisher = usePublisher();
-  const set = (change: Partial<{ caption: string; alt: string; size: "inline" | "full" }>) => editor.commands.setPictureLook(change);
-  return (
-    <div className="writing-link writing-picture-look">
-      <input
-        value={look.caption ?? ""}
-        placeholder="Caption under the picture"
-        aria-label="Caption"
-        maxLength={400}
-        onChange={(e) => {
-          const caption = e.target.value;
-          if (!look.caption && caption && !publisher.allowed) return publisher.check("Captions", () => undefined);
-          set({ caption });
-        }}
-      />
-      <input value={look.alt ?? ""} placeholder="What it shows, for readers who can't see it" aria-label="Description" maxLength={400} onChange={(e) => set({ alt: e.target.value })} />
-      <label className="check-row">
-        <input
-          type="checkbox"
-          checked={look.size === "full"}
-          onChange={(e) => {
-            const full = e.target.checked;
-            if (full) publisher.check("Full-page pictures", () => set({ size: "full" }));
-            else set({ size: "inline" });
-          }}
-        />
-        <span>A page of its own</span>
-      </label>
-    </div>
-  );
-}
-
 export function ChapterEditor({
   chapter,
   citationChapters,
@@ -435,6 +380,7 @@ export function ChapterEditor({
   citationStyle = "chicago-notes",
   onSources,
   look,
+  format = "toolbar",
 }: {
   chapter: WritingChapter;
   citationChapters?: WritingChapter[];
@@ -447,7 +393,12 @@ export function ChapterEditor({
   citationStyle?: CitationStyle;
   onSources?: (sources: Source[], style: CitationStyle) => void;
   /** The book's look (bookLook.ts): its stylesheet, whether this is a body chapter, and the line above its title. */
-  look?: { css: string; chapter: boolean; label: string };
+  look?: { css: string; chapter: boolean; label: string; titles?: TitlePosition | null };
+  /**
+   * Where the formatting tools go: the toolbar above the page (phones), the
+   * Format tab beside it (a computer or tablet), or nowhere while that tab is shut.
+   */
+  format?: "toolbar" | HTMLElement | null;
   onSave: (title: string, body: string) => Promise<void>;
   onSaveState: (state: SaveState, words: number) => void;
   /** Set to a function that saves what's waiting now, and resolves once it's saved. */
@@ -560,11 +511,13 @@ export function ChapterEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const cites = sources && onSources ? { sources, citationStyle, onSources } : undefined;
   return (
-    <div className="writing-editor">
-      {editor && <Toolbar editor={editor} poem={!!poem} chapter={chapter} book={book} cites={sources && onSources ? { sources, citationStyle, onSources } : undefined} />}
+    <div className={`writing-editor${format === "toolbar" ? "" : " has-panel"}`}>
+      {editor && format === "toolbar" && <Toolbar editor={editor} poem={!!poem} chapter={chapter} book={book} cites={cites} />}
+      {editor && format && format !== "toolbar" && createPortal(<FormatPanel editor={editor} poem={!!poem} chapter={chapter} book={book ?? PLAIN_BOOK} cites={cites} />, format)}
       <div
-        className={`writing-sheet${poem ? ` is-poem${poem === "centred" ? " is-centred" : ""}` : ""}${look && !poem ? ` book-look${look.chapter ? " is-chapter" : ""}` : ""}`}
+        className={`writing-sheet${poem ? ` is-poem${poem === "centred" ? " is-centred" : ""}` : ""}${look && !poem ? ` book-look${look.chapter ? " is-chapter" : ""}${look.titles ? ` titles-${look.titles}` : ""}` : ""}`}
         onClick={(e) => e.target === e.currentTarget && editor?.commands.focus("end")}
       >
         {look && !poem && <style>{look.css}</style>}

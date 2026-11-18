@@ -7,8 +7,8 @@ import { api } from "../api";
 import type { WritingChapter, WritingProject } from "../api/types";
 import { Icon } from "../components/Icon";
 import { Fold } from "./Fold";
-import { usePublisher } from "../license/Publisher";
-import { BOOK_STYLES, chooseStyle } from "./bookStyles";
+import { BOOK_STYLES } from "./bookStyles";
+import { BookStylePicker } from "./BookPanels";
 import { bookOrder, copyrightHtml, inlineXhtml, madeSectionHtml, previewHtml, type ExportSettings } from "./epub";
 import { imageMime, loadBookFonts } from "./fonts";
 import { EditionFields } from "./EditionFields";
@@ -33,10 +33,13 @@ export function BookPreview({
   onShowList,
   onSettings,
   onClose,
+  stylePicker = true,
 }: {
   project: WritingProject;
   chapters: WritingChapter[];
   settings: ExportSettings;
+  /** The book styles above the pages (phones); a computer has them in the Style tab. */
+  stylePicker?: boolean;
   /** The section to show, when one is picked in the list. */
   showing: string | null;
   /** Goes up each time a page is picked in the list. */
@@ -47,7 +50,6 @@ export function BookPreview({
   onSettings: (next: ExportSettings) => void;
   onClose: () => void;
 }) {
-  const publisher = usePublisher();
   const [url, setUrl] = useState<string | null>(null);
   const [width, setWidth] = useState<(typeof WIDTHS)[number]["value"]>("ereader");
   const [cover, setCover] = useState<{ bytes: Uint8Array; mime: string } | null>(null);
@@ -138,21 +140,12 @@ export function BookPreview({
           <Icon name="edit" size={16} /> Back to writing
         </button>
       </div>
-      {/* Book styles are chosen here, where they can be seen, before the book is ever exported. Folds away to one line. */}
-      <Fold name="book-styles" title="Book style" summary={BOOK_STYLES.find((b) => b.id === settings.bookStyle)?.label ?? "Plain"} className="book-preview-fold" startOpen>
-      <div className="book-styles book-preview-styles" role="radiogroup" aria-label="Book style">
-        <button type="button" role="radio" aria-checked={!settings.bookStyle} className="book-style" onClick={() => onSettings(chooseStyle(settings, null))}>
-          <b>Plain</b>
-          <span>Your export settings</span>
-        </button>
-        {BOOK_STYLES.map((s) => (
-          <button key={s.id} type="button" role="radio" aria-checked={settings.bookStyle === s.id} className={`book-style book-style-${s.id}`} onClick={() => publisher.check("Book styles", () => onSettings(chooseStyle(settings, s.id)))}>
-            <b>{s.label}</b>
-            <span>{s.about}</span>
-          </button>
-        ))}
-        </div>
-      </Fold>
+      {/* Book styles are chosen here, where they can be seen, before the book is ever exported. Folds away to one line. Beside the page they're in the Style tab instead. */}
+      {stylePicker && (
+        <Fold name="book-styles" title="Book style" summary={BOOK_STYLES.find((b) => b.id === settings.bookStyle)?.label ?? "Plain"} className="book-preview-fold" startOpen>
+          <BookStylePicker settings={settings} onSettings={onSettings} className="book-preview-styles" />
+        </Fold>
+      )}
       <div className="book-preview-stage">
         {url ? (
           <iframe

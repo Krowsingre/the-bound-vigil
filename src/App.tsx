@@ -49,6 +49,7 @@ import { useAppSettings } from "./settings/appSettings";
 import { Settings } from "./settings/Settings";
 import type { SettingsTab } from "./settings/settingsIndex";
 import { Header } from "./shell/Header";
+import { useSideBySide } from "./lib/useSideBySide";
 import { navFor, navRouteOf, routesFor, type Route } from "./shell/routes";
 import { Sidebar } from "./shell/Sidebar";
 import { Icon } from "./components/Icon";
@@ -121,6 +122,8 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const [reading, setReading] = useState<{ bookId: string; at?: string; fileId?: string } | null>(null);
   const [writingSection, setWritingSection] = useState<WritingSection>("notes");
   const [writingBook, setWritingBook] = useState<string | null>(null);
+  // An open book beside its tools searches only itself (Scribe, 18 November).
+  const scribeSideBySide = useSideBySide();
   /** A widget asking Scribe for a new note, or to show one. */
   const [scribeAsk, setScribeAsk] = useState<ScribeAsk | null>(null);
   const [openCollection, setOpenCollection] = useState<CollectionRef | null>(null);
@@ -709,7 +712,9 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
           search={route === "catalogs" ? browserDraft : searchingKindle ? kindleSearch : showingSeries ? seriesSearch : searchText}
           onSearchChange={route === "catalogs" ? setBrowserDraft : searchingKindle ? setKindleSearch : showingSeries ? (value) => { setSeriesSearch(value); setSeriesPage(0); } : changeSearch}
           placeholder={
-            route === "notes" || route === "writing"
+            route === "writing" && writingBook && scribeSideBySide
+              ? "Search this book…"
+              : route === "notes" || route === "writing"
               ? "Search notes, books, authors or words…"
               : route === "audiobooks"
                 ? "Search audiobooks…"

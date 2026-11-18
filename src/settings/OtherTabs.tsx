@@ -898,6 +898,12 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
     url: "https://github.com/cyrealtype/Lora-Cyrillic",
   },
   {
+    name: "Crimson Pro",
+    what: "A book font in Scribe, by Jacques Le Bailly",
+    licence: "SIL Open Font License 1.1",
+    url: "https://github.com/Fonthausen/CrimsonPro",
+  },
+  {
     name: "Gelasio",
     what: "Titles where Georgia isn't installed",
     licence: "SIL Open Font License 1.1",
@@ -1097,7 +1103,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.122.0");
+  const [version, setVersion] = useState("0.123.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));
