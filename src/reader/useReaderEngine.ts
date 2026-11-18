@@ -10,6 +10,7 @@ import type { Relocation, SearchResult, TocItem, View } from "../vendor/foliate-
 import { fitTextToPage, hexToRgb, luminance } from "./darkText";
 import { describeStructuredContent, type StructuredContent, type StructuredTarget } from "./structuredContent";
 import type { ReaderSource } from "./formats";
+import { noteKey } from "../lib/shortcuts";
 import { DEFAULT_SETTINGS, highlightHex, readerCss, WIDTHS, type PageColors, type ReaderSettings } from "./settings";
 
 /** Phones and tablets, which select a word by pressing and holding it. */
@@ -368,7 +369,10 @@ export function useReaderEngine({
             });
           }
           doc.addEventListener("keyup", (k) => k.shiftKey && check());
-          doc.addEventListener("keydown", (k) => eventsRef.current.onKey?.(k));
+          doc.addEventListener("keydown", (k) => {
+            noteKey(k);
+            eventsRef.current.onKey?.(k);
+          });
           doc.addEventListener("keyup", (k) => eventsRef.current.onKeyUp?.(k));
         });
 
