@@ -48,6 +48,9 @@ describe("a book written by hand", () => {
     expect(chapter).toContain("data-footnote=");
     console.log(m.sections[4].body.replace(/base64,[^"]+/,"…"));
     expect(m.sections[4].body).toContain('data-size="full"');
+    // The section ends before the back matter.
+    expect(m.sections[5].partOf).toBeUndefined();
+    expect(m.sections[4].partOf).toBe(1);
   });
 
   it("lists pictures it couldn't find", async () => {

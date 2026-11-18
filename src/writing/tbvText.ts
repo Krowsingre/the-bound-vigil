@@ -233,6 +233,8 @@ down the long road home.
 === Picture page: pictures/lamp.png ===
 The valley, as the lamplighters knew it.
 
+=== End section ===
+
 === About the Author ===
 A line or two about you.
 `;
