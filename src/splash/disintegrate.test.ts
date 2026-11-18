@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sweepWay } from "./disintegrate";
+import { fall, sweepWay } from "./disintegrate";
 
 describe("sweepWay", () => {
   it("goes from the corner it starts at to the opposite one", () => {
@@ -20,5 +20,16 @@ describe("sweepWay", () => {
         expect(t).toBeLessThanOrEqual(1 + 1e-9);
       }
     }
+  });
+});
+
+describe("fall", () => {
+  it("hangs a moment, then gathers speed downwards", () => {
+    const early = fall(0, 0, 0.1).dy;
+    const late = fall(0, 0, 0.9).dy - fall(0, 0, 0.8).dy;
+    expect(early).toBeLessThan(10);
+    expect(late).toBeGreaterThan(early * 10);
+    expect(fall(0, 0, 1).dy).toBeGreaterThan(500);
+    expect(fall(30, 0, 1).dx).toBeCloseTo(30);
   });
 });

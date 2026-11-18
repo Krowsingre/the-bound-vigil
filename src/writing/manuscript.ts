@@ -8,6 +8,7 @@ import { strFromU8, unzipSync } from "fflate";
 import { IMPORT_ACCEPT, pageMark, readDocumentBytes, splitChapters, type ImportedChapter, type ImportedDocument, type SplitAt } from "./importDoc";
 import { ADD_MENUS, KINDS, type Area, type PageKind } from "./pages";
 import { isTbv } from "./tbvFile";
+import { isTextBookZip } from "./tbvText";
 
 /** What a chosen file turned out to be. */
 export interface Inspection {
@@ -41,7 +42,10 @@ const extensionOf = (name: string) => /\.([^.]+)$/.exec(name)?.[1]?.toLowerCase(
 export function inspect(name: string, bytes: Uint8Array): Inspection {
   const ext = extensionOf(name);
   // Saved from Scribe: opened as it was, nothing rebuilt (damage is reported when it's read).
-  if (ext === "tbv" || isTbv(bytes)) return { format: "tbv", label: "Scribe book file", supported: true };
+  if (isTbv(bytes)) return { format: "tbv", label: "Scribe book file", supported: true };
+  // Written by hand in a text editor: book.md and its pictures, zipped (tbvText.ts).
+  if ((ext === "tbv" || ext === "zip") && isTextBookZip(bytes)) return { format: "tbv_text", label: "Book written by hand", supported: true };
+  if (ext === "tbv") return { format: "tbv", label: "Scribe book file", supported: true };
   if (LABELS[ext]) return { format: ext === "markdown" ? "md" : ext === "htm" ? "html" : ext, label: LABELS[ext], supported: true };
   if (ext === "pdf") return { format: "pdf", label: "PDF", supported: true };
   if (ext === "kcb")
@@ -113,6 +117,8 @@ export interface ManuscriptSection {
   marked?: boolean;
   /** It's a part (an anthology's book, "Part One"), holding the sections after it. */
   isPart?: boolean;
+  /** A picture page: shown without a heading. */
+  untitled?: boolean;
   /** The part it sits in, by its place in the list. */
   partOf?: number;
 }
@@ -200,6 +206,8 @@ const MARK_NAMES: Record<string, PageKind | "part" | "end part"> = (() => {
     sources: "sources",
     page: "custom",
     custom: "custom",
+    // A picture on a page of its own (tbvText.ts), with no heading.
+    "picture page": "custom",
     part: "part",
     section: "part",
     book: "part",
@@ -232,8 +240,9 @@ export const MARK_HELP: string[] = [
 const MADE_ONLY: PageKind[] = ["contents", "sources"];
 
 /** A page the writer marked: what it is is never guessed, only where it goes when it could go in more than one place. */
-function markedSection(c: ImportedChapter, reached: Area, inBody: boolean): { kind: PageKind; area: Area; sure: boolean; why?: string; byHand?: boolean; isPart?: boolean; endsPart?: boolean } {
+function markedSection(c: ImportedChapter, reached: Area, inBody: boolean): { kind: PageKind; area: Area; sure: boolean; why?: string; byHand?: boolean; isPart?: boolean; endsPart?: boolean; untitled?: boolean } {
   const said = markKind(c.mark ?? "");
+  if (/^picture page$/i.test((c.mark ?? "").trim())) return { kind: "custom", area: reached, sure: true, untitled: true };
   if (said === "part") return { kind: "custom", area: "chapter", sure: true, isPart: true };
   if (said === "end part") return { kind: "custom", area: reached, sure: true, endsPart: true };
   if (!said) return { kind: "custom", area: reached, sure: false, why: `“=== ${c.mark}” isn't a kind of page Scribe knows, so it came in as a custom page. Check what it should be.` };
@@ -479,7 +488,9 @@ export function buildManuscript(doc: ImportedDocument, at: SplitAt): Manuscript 
     if (m.area === "chapter") inBody = true;
     reached = m.area;
     const unknown = !markKind(c.mark);
-    const title = c.title || (unknown ? c.mark.charAt(0).toUpperCase() + c.mark.slice(1) : m.kind === "chapter" || m.kind === "poem" || m.kind === "haiku" ? "" : m.kind === "contents" || m.kind === "contents_manual" ? "Contents" : KINDS[m.kind].label);
+    // A picture page is named in Contents by its caption.
+    const caption = m.untitled ? (/<figcaption>([\s\S]*?)<\/figcaption>/.exec(body)?.[1] ?? "").replace(/<[^>]+>/g, "").trim() : "";
+    const title = c.title || (m.untitled ? caption || "Picture" : unknown ? c.mark.charAt(0).toUpperCase() + c.mark.slice(1) : m.kind === "chapter" || m.kind === "poem" || m.kind === "haiku" ? "" : m.kind === "contents" || m.kind === "contents_manual" ? "Contents" : KINDS[m.kind].label);
     sections.push({
       title,
       body,
@@ -491,6 +502,7 @@ export function buildManuscript(doc: ImportedDocument, at: SplitAt): Manuscript 
       include: true,
       marked: true,
       ...(m.byHand ? { byHand: true } : {}),
+      ...(m.untitled ? { untitled: true } : {}),
       ...(part !== null ? { partOf: part } : {}),
     });
   }

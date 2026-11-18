@@ -49,7 +49,8 @@ export function SeriesRow({
     ...review.missing.filter((m) => !m.hidden).map((missing) => ({ missing })),
   ].sort((a, b) => (position(a) ?? 1e9) - (position(b) ?? 1e9));
   const canLook = !isWeb && !isHome;
-  if (items.length <= 1 && (review.checkedAt || !canLook)) return null;
+  // With nothing to show and no way to look, there's no section; once it can look, it's always offered.
+  if (items.length <= 1 && !canLook) return null;
 
   const find = () => {
     setBusy(true);
@@ -106,9 +107,10 @@ export function SeriesRow({
           ),
         )}
       </ul>
-      {!review.checkedAt && canLook && (
+      {review.checkedAt && items.length <= 1 && <p className="muted">No other books of this series were found online.</p>}
+      {canLook && (
         <button type="button" className="view-all" disabled={busy} onClick={find}>
-          <Icon name="search" size={14} /> {busy ? "Looking…" : "Find the rest of the series online"}
+          <Icon name="search" size={14} /> {busy ? "Looking…" : review.checkedAt ? "Check again" : "Find the rest of the series online"}
         </button>
       )}
     </section>

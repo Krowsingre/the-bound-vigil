@@ -291,6 +291,18 @@
   appearance: none;
 }
 
+.settings-number {
+  height: 36px;
+  width: 90px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.settings-number:focus,
 .settings-select:focus {
   border-color: var(--focus);
   outline: none;

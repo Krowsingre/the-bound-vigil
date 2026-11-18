@@ -14,7 +14,7 @@ import { RememberedDetails } from "../components/RememberedDetails";
 // written (the words there now are kept as a draft first).
 
 import { useEffect, useRef, useState } from "react";
-import { api } from "../api";
+import { api, isWeb } from "../api";
 import { Icon } from "../components/Icon";
 import { formatBytes } from "../settings/controls";
 import { ACK_CONFIRMATION, ACK_PARAGRAPHS, ACK_TITLE, POLICY_VERSION, sha256Hex, WORDING } from "./acknowledgment";
@@ -26,6 +26,7 @@ import { buildManuscript, inspect, MANUSCRIPT_ACCEPT, MARK_HELP, type Inspection
 import { ADD_MENUS, KINDS, writePage, readPage, type Area, type PageKind } from "./pages";
 import { bookFromTbv } from "./openTbv";
 import { readTbv, type TbvBook } from "./tbvFile";
+import { EXAMPLE_BOOK, exampleBook } from "./tbvText";
 import type { NewWritingSection, WritingDraft, WritingProject } from "../api/types";
 import { makeEpub } from "./WritingDialogs";
 
@@ -58,6 +59,29 @@ async function shrinkPictures(html: string): Promise<string> {
   }
   return doc.body.innerHTML;
 }
+
+/** The example's picture: a lamp glowing in the dark, drawn here so nothing is downloaded. */
+async function examplePicture(): Promise<Uint8Array> {
+  const canvas = document.createElement("canvas");
+  canvas.width = 600;
+  canvas.height = 400;
+  const g = canvas.getContext("2d")!;
+  g.fillStyle = "#1c2230";
+  g.fillRect(0, 0, 600, 400);
+  const glow = g.createRadialGradient(300, 190, 6, 300, 190, 170);
+  glow.addColorStop(0, "rgba(255, 214, 140, 0.95)");
+  glow.addColorStop(1, "rgba(255, 214, 140, 0)");
+  g.fillStyle = glow;
+  g.fillRect(0, 0, 600, 400);
+  g.fillStyle = "#3a3f4b";
+  g.fillRect(296, 220, 8, 180);
+  const blob = await new Promise<Blob | null>((done) => canvas.toBlob(done, "image/png"));
+  if (!blob) throw new Error("The picture couldn't be drawn.");
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+/** A whole folder can be chosen on a computer; phones and tablets choose files only. */
+const canPickFolder = typeof document !== "undefined" && "webkitdirectory" in document.createElement("input") && !matchMedia("(pointer: coarse)").matches;
 
 type Picked = { name: string; bytes: Uint8Array; inspection: Inspection; sha256: string };
 
@@ -110,6 +134,7 @@ export function ImportBookDialog({
 }) {
   const [how, setHow] = useState<IntoBook>(restoreDraft ? "current" : "draft");
   const picking = useRef<HTMLInputElement>(null);
+  const pickingFolder = useRef<HTMLInputElement | null>(null);
   const [stage, setStage] = useState<"choose" | "confirm" | "review">("choose");
   const [picked, setPicked] = useState<Picked | null>(null);
   const [agreed, setAgreed] = useState(false);
@@ -150,13 +175,42 @@ export function ImportBookDialog({
 
   const open = async (file: File | undefined) => {
     if (!file) return;
+    await look(file.name, async () => new Uint8Array(await file.arrayBuffer()));
+  };
+
+  /** A folder holding a book written by hand: its book.md and pictures, read as one zip (tbvText.ts). */
+  const openFolder = async (files: FileList | null) => {
+    const chosen = [...(files ?? [])].filter((f) => !/(^|\/)\./.test(f.webkitRelativePath || f.name));
+    if (!chosen.length) return;
+    const folder = (chosen[0].webkitRelativePath || chosen[0].name).split("/")[0] || "Book";
+    await look(`${folder}.tbv`, async () => {
+      const { bundle } = await import("./tbvText");
+      return bundle(await Promise.all(chosen.map(async (f) => ({ path: f.webkitRelativePath || f.name, bytes: new Uint8Array(await f.arrayBuffer()) }))));
+    });
+  };
+
+  /** The guide's example as a zip, to open in a text editor or bring straight back in. */
+  const saveExample = async () => {
+    setError(null);
+    try {
+      const bytes = exampleBook(await examplePicture());
+      const fileName = "Night Lanterns.tbv";
+      const path = isWeb ? null : await api.pickExportPath(fileName, "tbv");
+      if (!isWeb && !path) return;
+      await api.saveExportFile(bytes, fileName, path);
+    } catch (e) {
+      setError(`Couldn't save the example: ${String(e).replace(/^Error: /, "")}`);
+    }
+  };
+
+  const look = async (name: string, read: () => Promise<Uint8Array>) => {
     setError(null);
     setAgreed(false);
     setBusy("Looking at the file…");
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const inspection = inspect(file.name, bytes);
-      setPicked({ name: file.name, bytes, inspection, sha256: inspection.supported ? await sha256Hex(bytes) : "" });
+      const bytes = await read();
+      const inspection = inspect(name, bytes);
+      setPicked({ name, bytes, inspection, sha256: inspection.supported ? await sha256Hex(bytes) : "" });
       setStage(inspection.supported ? "confirm" : "choose");
     } catch (e) {
       setError(String(e).replace(/^Error: /, ""));
@@ -260,7 +314,7 @@ export function ImportBookDialog({
         added.push(part.id);
         continue;
       }
-      const page = { ...readPage(JSON.stringify({ kind: s.kind }), s.area === "chapter" ? "chapter" : s.area), byHand: !!s.byHand };
+      const page = { ...readPage(JSON.stringify({ kind: s.kind }), s.area === "chapter" ? "chapter" : s.area), byHand: !!s.byHand, ...(s.untitled ? { showTitle: false } : {}) };
       const part = s.partOf === undefined ? null : (parts.get(s.partOf) ?? null);
       const made: { id: string } = await api.addWritingSection(projectId, { title: s.title, body: await shrinkPictures(s.body), role: s.area, part, page: writePage(page), after: previous });
       previous = made.id;
@@ -434,12 +488,17 @@ export function ImportBookDialog({
             )}
             <p className="muted dialog-lede">
               Rebuild a book you've written elsewhere as a Scribe book you can edit: Word, OpenDocument, RTF, plain text, Markdown, HTML, EPUB or PDF, or a Kindle Create project made from a PDF (zip its folder first). For Google Docs, download it as Word first. A
-              Scribe book file (.tbv) opens exactly as it was saved. Your file is never changed.
+              Scribe book file (.tbv) opens exactly as it was saved, and a book you wrote in a text editor is rebuilt from its marks. Your file is never changed.
             </p>
             <div className="import-book-file">
               <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => picking.current?.click()}>
                 {picked ? "Choose another file" : "Choose a file"}
               </button>
+              {canPickFolder && (
+                <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => pickingFolder.current?.click()}>
+                  Choose a folder
+                </button>
+              )}
               {picked && <span className="muted">{picked.name}</span>}
             </div>
             <RememberedDetails disclosure="writing.importMarks" className="import-marks">
@@ -449,6 +508,22 @@ export function ImportBookDialog({
               </p>
               <pre>{["=== title page", "=== copyright", "=== dedication", "=== contents", "=== part: Book One", "=== chapter: Arrival", "=== poem: Ash on the road", "=== end part", "=== acknowledgments", "=== about the author"].join("\n")}</pre>
               <p className="muted">Every kind of page works: {MARK_HELP.join(", ")}.</p>
+            </RememberedDetails>
+            <RememberedDetails disclosure="writing.importByHand" className="import-marks">
+              <summary>Writing a book in a text editor</summary>
+              <p>
+                Put the book in a folder: a text file called <strong>book.md</strong>, and a <strong>pictures</strong> folder beside it. Start book.md with the book's details, then start each page with a mark. Write the words in Markdown: <code>*italic*</code>, <code>**bold**</code>, and <code>[^1]</code> for a footnote.
+              </p>
+              <pre>{EXAMPLE_BOOK.trim()}</pre>
+              <p>
+                A picture inside a page is written as <code>![caption](pictures/lamp.png)</code>. A picture with a page of its own is a mark, <code>=== Picture page: pictures/map.jpg ===</code>, with its caption on the next line if you want one. Pictures can be PNG, JPEG, GIF or WebP.
+              </p>
+              <p>
+                {canPickFolder ? "Choose the folder itself, or zip it and choose the zip. " : "Zip the folder and choose the zip. "}A zip can be renamed .tbv. Anything Scribe can't read, such as a picture that isn't in the folder, is listed when the book is rebuilt.
+              </p>
+              <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => void saveExample()}>
+                Save the example
+              </button>
             </RememberedDetails>
             {picked && !picked.inspection.supported && (
               <div className="import-unsupported" role="alert">
@@ -471,6 +546,21 @@ export function ImportBookDialog({
             e.target.value = "";
           }}
         />
+        {canPickFolder && (
+          <input
+            ref={(el) => {
+              pickingFolder.current = el;
+              // Choosing a whole folder isn't in React's list of input attributes.
+              el?.setAttribute("webkitdirectory", "");
+            }}
+            type="file"
+            hidden
+            onChange={(e) => {
+              void openFolder(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        )}
 
         {stage === "confirm" && picked && (
           <>

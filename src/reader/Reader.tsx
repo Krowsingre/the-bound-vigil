@@ -2,7 +2,7 @@ import { offerFinishedDownloadRemoval } from "../library/FinishedDownloadPrompt"
 import { END_OF_BOOK, EndOfBook } from "./EndOfBook";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, isApp, isIOS, isMac } from "../api";
-import { isNarrow, useNarrow } from "../lib/useNarrow";
+import { READER_NARROW, useNarrow } from "../lib/useNarrow";
 import type { Annotation, HighlightColor, Profile, ReadStatus, ReaderBook, ReaderLocator, SyncStatus, WordDefinition } from "../api/types";
 import { Icon } from "../components/Icon";
 import type { MenuEntry } from "../components/Menu";
@@ -61,7 +61,7 @@ const SAVE_DELAY_MS = 800;
 
 function readPanels(): { left: boolean; right: boolean } {
   // On a phone the panels cover the page, so it opens on the text alone.
-  if (isNarrow()) return { left: false, right: false };
+  if (typeof matchMedia === "function" && matchMedia(READER_NARROW).matches) return { left: false, right: false };
   try {
     const saved = JSON.parse(localStorage.getItem(PANELS_KEY) ?? "null");
     if (saved && typeof saved.left === "boolean" && typeof saved.right === "boolean") return saved;
@@ -151,7 +151,7 @@ export function Reader({
   useEffect(() => setExpandedContent(null), [file]);
   const searchInput = useRef<HTMLInputElement>(null);
   const prefersDark = useAppDark();
-  const narrowViewport = useNarrow();
+  const narrowViewport = useNarrow(READER_NARROW);
   const narrow = compact || narrowViewport;
   const keys = useShortcuts();
   // Phones (and a narrow pane): the bars lie over the page and slide away while reading.

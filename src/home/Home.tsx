@@ -16,6 +16,7 @@ import { RecentlyAdded } from "./RecentlyAdded";
 import { QuickLinks } from "./QuickLinks";
 import { ResumeHero } from "./ResumeHero";
 import { SuggestedReading } from "./SuggestedReading";
+import { SeriesNewsRow } from "./SeriesNewsRow";
 
 type Load = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; home: HomeViewModel };
 
@@ -121,6 +122,7 @@ export function Home({
       <div className="home home-desk">
         <ResumeHero book={home.resumeBook} actions={actions} onOpenLibrary={openLibrary} />
         <ReadingActivity finished={home.libraryCounts.read} finishedDates={home.finishedDates} refreshKey={refreshKey} wide />
+        <SeriesNewsRow onOpenSeries={onOpenSeries ?? ((name) => onOpenLibrary({ tab: "all", series: [name] }))} />
         <RecentlyAdded books={home.recentlyAdded} actions={actions} onOpenSeries={onOpenSeries ?? openLibrary} onViewAll={() => onOpenCompendium("recently_added")} menus />
         <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenCompendium("in_progress")} list />
         <QuickLinks refreshKey={refreshKey} onNavigate={onNavigate} onOpenBook={onOpenBook} onOpenCollection={onOpenCollection} />
@@ -137,6 +139,7 @@ export function Home({
       </div>
       <div className="home-middle">
         <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenCompendium("in_progress")} />
+        <SeriesNewsRow onOpenSeries={onOpenSeries ?? ((name) => onOpenLibrary({ tab: "all", series: [name] }))} />
         <RecentlyAdded
           books={home.recentlyAdded}
           actions={actions}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSeriesSchedule } from "./library/seriesCheck";
 import { api, isAndroid, isApp, isHome, isWeb } from "./api";
 import type { CollectionRef, HomeViewModel, ImportsView, KindleImport, Profile, SmartKind, SyncStatus } from "./api/types";
 import { isKindleList, KINDLE_CHANGED, KindleReviewDialog } from "./imports/KindleReview";
@@ -135,7 +136,9 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const toast = useToast();
   const activeDownloads = useDownloads().filter(isActiveDownload).length;
   useEffect(() => workspaceFrame ? undefined : listenForDownloads(toast), [toast]);
-  const { refreshAdaptive, togglePrivacy } = useAppSettings();
+  const { refreshAdaptive, togglePrivacy, settings: appSettings } = useAppSettings();
+  // Series looked up online on the schedule set in Preferences, quietly.
+  useSeriesSchedule(appSettings);
   useStartupUpdateCheck(!workspaceFrame);
 
   const navigate = useCallback((r: Route) => {

@@ -12,7 +12,9 @@ import { canSelfUpdate, useUpdater, type UpdateState } from "./updates";
 import { SORTS, type Layout } from "../library/libraryView";
 import { TextSettings } from "../reader/ReaderPopovers";
 import { PAGE_COLORS, resolveTheme, WIDTHS } from "../reader/settings";
-import { readLocal, useAppDark, useAppSettings, writeLocal } from "./appSettings";
+import { readLocal, useAppDark, useAppSettings, writeLocal, type SeriesCheckEvery } from "./appSettings";
+import { canCheckSeries, checkAllSeries, useSeriesNews } from "../library/seriesCheck";
+import { relativeTime } from "../lib/format";
 import { useReaderSettings } from "./AppearanceTab";
 import { ActionTile, Columns, formatBytes, RadioList, Row, Section, SectionGroup, Segmented, Select, Toggle } from "./controls";
 import { HardcoverSection } from "./HardcoverSection";
@@ -526,10 +528,61 @@ function GoodreadsReport({ report, onClose }: { report: GoodreadsImport; onClose
 
 const COLLECTIONS_PREFS = "tbv.collections.view";
 
+/** How often series are looked up online for books you don't have yet (seriesCheck.ts). */
+function SeriesCheckSection() {
+  const { settings, change } = useAppSettings();
+  const { last, progress } = useSeriesNews();
+  const [days, setDays] = useState(String(settings.seriesCheckDays));
+  if (!canCheckSeries) return null;
+  return (
+    <Section id="series-check" title="Check for new books in a series" lede="Every series in your library is looked up online for books you don't have yet. New finds show on the series page and in Sanctum. Nothing is added to your library without you.">
+      <Row label="Check" hint="It runs quietly in the background, one series at a time.">
+        <Select<SeriesCheckEvery>
+          label="How often to check series"
+          value={settings.seriesCheck}
+          options={[
+            { value: "never", label: "Never" },
+            { value: "day", label: "Every day" },
+            { value: "week", label: "Every week" },
+            { value: "month", label: "Every month" },
+            { value: "year", label: "Every year" },
+            { value: "custom", label: "Custom" },
+          ]}
+          onChange={(seriesCheck) => change({ seriesCheck })}
+        />
+      </Row>
+      {settings.seriesCheck === "custom" && (
+        <Row label="Days between checks">
+          <input
+            className="settings-number"
+            type="number"
+            min={1}
+            max={365}
+            inputMode="numeric"
+            aria-label="Days between checks"
+            value={days}
+            onChange={(e) => {
+              setDays(e.target.value);
+              const n = Math.round(Number(e.target.value));
+              if (n >= 1 && n <= 365) change({ seriesCheckDays: n });
+            }}
+          />
+        </Row>
+      )}
+      <Row label="Last check" hint={progress ? `Checking ${Math.min(progress.done + 1, progress.total)} of ${progress.total} series…` : last ? relativeTime(last) : "Not checked yet"}>
+        <button type="button" className="btn btn-quiet" disabled={!!progress} onClick={() => void checkAllSeries()}>
+          <Icon name="search" size={16} /> {progress ? "Checking…" : "Check now"}
+        </button>
+      </Row>
+    </Section>
+  );
+}
+
 export function CollectionsTab() {
   const { settings, change } = useAppSettings();
   const [layout, setLayout] = useState<"grid" | "list">(() => (readLocal(COLLECTIONS_PREFS).layout === "list" ? "list" : "grid"));
   return (
+    <>
     <Section id="show" title="What the Compendium shows" lede="Sorting and your own order are set in the Compendium itself.">
       <div className="toggle-list">
         <Toggle
@@ -560,6 +613,8 @@ export function CollectionsTab() {
         />
       </Row>
     </Section>
+    <SeriesCheckSection />
+    </>
   );
 }
 
@@ -1103,7 +1158,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.123.0");
+  const [version, setVersion] = useState("0.124.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));
