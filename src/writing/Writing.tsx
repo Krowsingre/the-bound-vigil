@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNarrow } from "../lib/useNarrow";
+import { keyHint, useShortcuts } from "../lib/shortcuts";
 import { api, isWeb } from "../api";
 import type { WritingChapter, WritingDraft, WritingProject, WritingProjectView } from "../api/types";
 import { editionName, editionsOf } from "./bookEditions";
@@ -348,6 +349,7 @@ function ProjectView({
   // On a phone the contents and the page share the screen badly, so one shows at a time:
   // picking a page opens it, and the Contents button goes back.
   const narrow = useNarrow();
+  const keys = useShortcuts();
   const toast = useToast();
   // Waiting saves, so the EPUB and other chapters see the latest words.
   const saving = useRef<Promise<void>>(Promise.resolve());
@@ -744,7 +746,7 @@ function ProjectView({
       { label: "Move up", icon: "chevronUp", disabled: !neighbour(c, -1), onSelect: () => nudge(c, -1) },
       { label: "Move down", icon: "chevronDown", disabled: !neighbour(c, 1), onSelect: () => nudge(c, 1) },
       { label: "Duplicate page", icon: "copy", onSelect: () => void duplicatePage(c) },
-      { label: "New page like this one", icon: "plus", hint: SHORTCUT_NEW, onSelect: () => addLikeThis(c) },
+      { label: "New page like this one", icon: "plus", hint: keyHint(keys, SHORTCUT_NEW), onSelect: () => addLikeThis(c) },
       "divider",
       { heading: <span className="menu-tip">This page</span> },
       ...(c.role === "front" ? ([{
@@ -957,7 +959,11 @@ function ProjectView({
             {areaHead("back")}
             {back.map(row)}
           </ol>
-          <p className="muted writing-hint">Drag pages and sections to put them in order. Each area's + adds a page. Ctrl+Shift+N adds a page like the one you're on.</p>
+          <p className="muted writing-hint">
+            {keys
+              ? `Drag pages and sections to put them in order. Each area's + adds a page. ${SHORTCUT_NEW} adds a page like the one you're on.`
+              : "Hold and drag pages and sections to put them in order. Each area's + adds a page."}
+          </p>
         </aside>
         {side === "preview" ? (
           <BookPreview

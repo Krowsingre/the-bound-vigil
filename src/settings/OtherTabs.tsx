@@ -18,6 +18,7 @@ import { ActionTile, Columns, formatBytes, RadioList, Row, Section, SectionGroup
 import { HardcoverSection } from "./HardcoverSection";
 import { CanvaSection, canvaHere } from "./CanvaSection";
 import { ReadingHistorySection } from "./ReadingHistory";
+import { useShortcuts } from "../lib/shortcuts";
 
 const READING_FONTS = {
   lora: '"Lora", Georgia, serif',
@@ -296,6 +297,8 @@ export function LibraryTab({
 }
 
 function TagsSection() {
+  // Phones and iPads hold a book where a computer right-clicks it.
+  const keys = useShortcuts();
   const toast = useToast();
   const [tags, setTags] = useState<TagCount[] | null>(null);
   const [removing, setRemoving] = useState<TagCount | null>(null);
@@ -319,9 +322,9 @@ function TagsSection() {
     load();
   };
   return (
-    <Section id="tags" title="Tags" lede="Your own labels for books. Add them from any book's menu, right-click a book, or filter the Archive by them.">
+    <Section id="tags" title="Tags" lede={`Your own labels for books. Add them from any book's menu, ${keys ? "right-click" : "hold"} a book, or filter the Archive by them.`}>
       {tags === null ? null : tags.length === 0 ? (
-        <p className="settings-row-hint">No tags yet. Right-click a book, or open its … menu, and choose Add tags.</p>
+        <p className="settings-row-hint">No tags yet. {keys ? "Right-click" : "Hold"} a book, or open its … menu, and choose Add tags.</p>
       ) : (
         <ul className="tag-manage">
           {tags.map((t) => (
@@ -1094,7 +1097,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.120.0");
+  const [version, setVersion] = useState("0.121.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

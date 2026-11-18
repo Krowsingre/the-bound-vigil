@@ -12,6 +12,7 @@ import { isHome, isWeb } from "../api";
 import { WebSyncTab } from "../web/WebConnect";
 import { unfoldSection } from "./controls";
 import { ActivityTab, type ActivitySide } from "./ActivityTab";
+import { useShortcuts } from "../lib/shortcuts";
 import { useNarrow } from "../lib/useNarrow";
 
 /** The pages the web version has: the rest are about files and features on a computer. */
@@ -67,6 +68,10 @@ export function Settings({
   onQuery: (text: string) => void;
 }) {
   const narrow = useNarrow();
+  // Keyboard shortcuts are left out where there's no keyboard (a phone, or an iPad without one).
+  const keys = useShortcuts();
+  const grouped = keys ? GROUPED : GROUPED.map((g) => g.filter((t) => t.tab !== "shortcuts")).filter((g) => g.length > 0);
+  if (!keys && tab === "shortcuts") tab = null;
   // A computer has no landing page.
   tab = tab ?? (narrow ? null : "appearance");
   const setQuery = onQuery;
@@ -78,7 +83,7 @@ export function Settings({
   }, [jump, onJumped]);
   const body = useRef<HTMLDivElement>(null);
   const jumped = useRef(false);
-  const results = searchSettings(query).filter((r) => TABS.some((t) => t.tab === r.tab));
+  const results = searchSettings(query).filter((r) => TABS.some((t) => t.tab === r.tab) && (keys || r.tab !== "shortcuts"));
   const page = SETTINGS_TABS.find((t) => t.tab === tab);
 
   // A new page starts at its top, or at the section picked from search
@@ -190,7 +195,7 @@ export function Settings({
             found
           ) : (
             // The same groups as the computer's list, split by a thin line.
-            GROUPED.map((group, i) => (
+            grouped.map((group, i) => (
               <ul key={i} className="settings-landing">
                 {group.map((t) => (
                   <li key={t.tab}>
@@ -218,7 +223,7 @@ export function Settings({
         {query.trim() ? (
           found
         ) : (
-          GROUPED.map((group, i) => (
+          grouped.map((group, i) => (
             <ul key={i} className="settings-menu">
               {group.map((t) => (
                 <li key={t.tab}>

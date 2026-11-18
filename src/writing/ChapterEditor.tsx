@@ -19,6 +19,7 @@ import { BlockLookExtension, Citation, Footnote, Highlight, PageBreak, Picture, 
 import { useToast } from "../components/Toast";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { usePublisher } from "../license/Publisher";
+import { useShortcuts } from "../lib/shortcuts";
 
 const SAVE_AFTER_MS = 800;
 
@@ -41,13 +42,14 @@ function Tool({
   icon?: IconName;
   text?: string;
 }) {
+  const keys = useShortcuts();
   return (
     <button
       type="button"
       className={`writing-tool${active ? " is-on" : ""}`}
       aria-label={label}
       aria-pressed={active}
-      title={shortcut ? `${label} (${shortcut})` : label}
+      title={shortcut && keys ? `${label} (${shortcut})` : label}
       disabled={disabled}
       // Keeps the words selected while the button is pressed.
       onMouseDown={(e) => e.preventDefault()}

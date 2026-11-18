@@ -4,6 +4,7 @@ import { Menu, type MenuEntry } from "../components/Menu";
 import { percent } from "../lib/format";
 import { WindowControls } from "../shell/WindowControls";
 import { formatNumber, formatPage, pageAtFraction, type Jump, type PagePosition } from "./pages";
+import { useShortcuts } from "../lib/shortcuts";
 
 /**
  * The reader's own title bar, in place of the app header: home and contents
@@ -47,6 +48,8 @@ export function ReaderTopBar({
   avatar?: ReactNode;
 }) {
   const hidden = overlay && focus;
+  const keys = useShortcuts();
+  const bookmarkLabel = `${bookmarked ? "Remove bookmark" : "Bookmark this page"}${keys ? " (Ctrl+B)" : ""}`;
   return (
     <header className={`reader-top${focus ? " reader-top-focus" : ""}${overlay ? " is-overlay" : ""}${hidden ? " is-hidden" : ""}`} data-tauri-drag-region aria-hidden={hidden || undefined} inert={hidden || undefined}>
       <div className="reader-top-row" data-tauri-drag-region>
@@ -70,8 +73,8 @@ export function ReaderTopBar({
         <button
           type="button"
           className={`icon-btn${bookmarked ? " is-on" : ""}`}
-          aria-label={bookmarked ? "Remove bookmark (Ctrl+B)" : "Bookmark this page (Ctrl+B)"}
-          title={bookmarked ? "Remove bookmark (Ctrl+B)" : "Bookmark this page (Ctrl+B)"}
+          aria-label={bookmarkLabel}
+          title={bookmarkLabel}
           aria-pressed={bookmarked}
           onClick={onToggleBookmark}
         >

@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 import { Icon } from "../components/Icon";
 import type { SearchExcerpt, SearchResult } from "../vendor/foliate-js/view.js";
+import { useShortcuts } from "../lib/shortcuts";
 
 interface Group {
   label: string;
@@ -17,6 +18,7 @@ export const ReaderSearch = forwardRef<
     autoFocus?: boolean;
   }
 >(function ReaderSearch({ run, clear, onGo, autoFocus }, inputRef) {
+  const keys = useShortcuts();
   const [query, setQuery] = useState("");
   const [groups, setGroups] = useState<Group[]>([]);
   const [progress, setProgress] = useState<number | null>(null);
@@ -107,7 +109,7 @@ export const ReaderSearch = forwardRef<
           autoComplete="off"
           spellCheck={false}
         />
-        <kbd>Ctrl K</kbd>
+        {keys && <kbd>Ctrl K</kbd>}
       </form>
       {open && (query.trim() || progress !== null) && (
         <div className="reader-search-results" role="listbox" aria-label="Search results">

@@ -33,6 +33,7 @@ import { useReadAlong } from "./useReadAlong";
 import { StructuredViewer } from "./StructuredViewer";
 import type { StructuredContent } from "./structuredContent";
 import { useReaderEngine, type TextSelection } from "./useReaderEngine";
+import { keyHint, useShortcuts } from "../lib/shortcuts";
 
 export interface ReaderShellProps {
   sync: SyncStatus | null;
@@ -152,6 +153,7 @@ export function Reader({
   const prefersDark = useAppDark();
   const narrowViewport = useNarrow();
   const narrow = compact || narrowViewport;
+  const keys = useShortcuts();
   // Phones (and a narrow pane): the bars lie over the page and slide away while reading.
   const overlay = narrow;
   // On a phone books open in focus, just the page, and a tap brings the bars
@@ -795,7 +797,7 @@ export function Reader({
     );
 
   const menu: MenuEntry[] = [
-    { label: "Search this book", icon: "search", hint: narrow ? undefined : "Ctrl+F", onSelect: () => (setFocus(false), setPhoneSearch(true)) },
+    { label: "Search this book", icon: "search", hint: narrow || !keys ? undefined : "Ctrl+F", onSelect: () => (setFocus(false), setPhoneSearch(true)) },
     {
       label: "Book info",
       icon: "info",
@@ -823,7 +825,7 @@ export function Reader({
     ...(narrow ? [] : [
       "divider" as const,
       { label: focus ? "Leave focus mode" : "Focus mode", icon: "focus" as const, hint: "F", onSelect: () => setFocus((f) => !f) },
-      { label: fullscreen ? "Leave full screen" : "Full screen", icon: (fullscreen ? "exitFullscreen" : "fullscreen") as "fullscreen", hint: "F11", onSelect: toggleFullscreen },
+      { label: fullscreen ? "Leave full screen" : "Full screen", icon: (fullscreen ? "exitFullscreen" : "fullscreen") as "fullscreen", hint: keyHint(keys, "F11"), onSelect: toggleFullscreen },
     ]),
   ];
 

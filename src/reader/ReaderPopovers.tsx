@@ -23,6 +23,7 @@ import {
 import type { ReadAlong } from "./useReadAlong";
 import { liningUp, onLiningUp, type LiningUp } from "../readAlong/lineUp";
 import { PauseLiningUpButton, pausedUntilText, usePause } from "../readAlong/PauseLiningUp";
+import { useShortcuts } from "../lib/shortcuts";
 
 function Choice<T extends string | number>({
   label,
@@ -69,6 +70,7 @@ const THEME_OPTIONS: { value: ReadingTheme; label: string; style?: React.CSSProp
 ];
 
 function ScrollSpeeds({ settings, onChange }: { settings: ReaderSettings; onChange: (change: Partial<ReaderSettings>) => void }) {
+  const keys = useShortcuts();
   return (
     <div>
       <label className="field">
@@ -81,7 +83,7 @@ function ScrollSpeeds({ settings, onChange }: { settings: ReaderSettings; onChan
         <input type="range" aria-label="Auto-scroll speed" min={1} max={100} value={settings.autoScrollSpeed}
           onChange={(event) => onChange({ autoScrollSpeed: Number(event.target.value) })} />
       </label>
-      <p className="settings-row-hint">Tap the page three times to start or stop auto-scroll{isApp && !isIOS && !isAndroid ? " (or press Ctrl+Space)" : ""}.</p>
+      <p className="settings-row-hint">Tap the page three times to start or stop auto-scroll{keys && isApp && !isIOS && !isAndroid ? " (or press Ctrl+Space)" : ""}.</p>
     </div>
   );
 }
@@ -383,6 +385,7 @@ export function ZoomControls({
   onChange: (zoom: PageZoom) => void;
   compact?: boolean;
 }) {
+  const keys = useShortcuts();
   const label = zoom === "fit-page" ? "Fit page" : zoom === "fit-width" ? "Fit width" : `${Math.round(scale * 100)}%`;
   const next = zoom === "fit-page" ? "fit-width" : "fit-page";
   return (
@@ -390,8 +393,8 @@ export function ZoomControls({
       <button
         type="button"
         className="icon-btn"
-        aria-label="Zoom out (Ctrl −)"
-        title="Zoom out (Ctrl −)"
+        aria-label={keys ? "Zoom out (Ctrl −)" : "Zoom out"}
+        title={keys ? "Zoom out (Ctrl −)" : "Zoom out"}
         disabled={scale <= ZOOM_RANGE.min + 0.001}
         onClick={() => onChange(zoomStep(scale, -1))}
       >
@@ -400,7 +403,7 @@ export function ZoomControls({
       <button
         type="button"
         className="zoom-value"
-        title={next === "fit-width" ? "Fit the page's width to the screen" : "Fit the whole page on screen (Ctrl 0)"}
+        title={next === "fit-width" ? "Fit the page's width to the screen" : `Fit the whole page on screen${keys ? " (Ctrl 0)" : ""}`}
         aria-label={`${label}. ${next === "fit-width" ? "Switch to fit width" : "Switch to fit page"}`}
         onClick={() => onChange(next)}
       >
@@ -409,8 +412,8 @@ export function ZoomControls({
       <button
         type="button"
         className="icon-btn"
-        aria-label="Zoom in (Ctrl +)"
-        title="Zoom in (Ctrl +)"
+        aria-label={keys ? "Zoom in (Ctrl +)" : "Zoom in"}
+        title={keys ? "Zoom in (Ctrl +)" : "Zoom in"}
         disabled={scale >= ZOOM_RANGE.max - 0.001}
         onClick={() => onChange(zoomStep(scale, 1))}
       >
