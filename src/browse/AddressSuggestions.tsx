@@ -10,6 +10,7 @@ import { onHistory, readHistory, removeFromHistory } from "./browserHistory";
 import { readableAddress, readBrowserPrefs, siteOf } from "./browserPrefs";
 import { readTabs } from "./browserTabs";
 import { SiteBadge } from "./SiteBadge";
+import { useShortcuts } from "../lib/shortcuts";
 
 export interface Suggestion {
   kind: "tab" | "bookmark" | "quick" | "history" | "search";
@@ -57,6 +58,7 @@ export function suggestionsFor(typed: string, from: Suggestion[]): Suggestion[] 
 const ICONS: Record<Suggestion["kind"], IconName> = { tab: "arrowRight", quick: "link", bookmark: "bookmark", history: "clock", search: "search" };
 
 export function AddressSuggestions({ typed, current, onGo, onOpen, onTab, showPaste = true }: { showPaste?: boolean; typed: string; current: string; onGo: (text: string) => void; onOpen: (url: string) => void; onTab: (id: string) => void }) {
+  const keys = useShortcuts();
   const [marks, setMarks] = useState<Bookmark[]>([]);
   const [links, setLinks] = useState<QuickLink[]>([]);
   const [history, setHistory] = useState(readHistory);
@@ -144,7 +146,7 @@ export function AddressSuggestions({ typed, current, onGo, onOpen, onTab, showPa
           <Icon name={ICONS[s.kind]} size={14} className="address-suggestion-kind" />
         </button>
         {s.tab && <button type="button" className="btn btn-quiet btn-small address-suggestion-switch" title="Go to the tab it's open in" onClick={() => onTab(s.tab!)}>Switch to tab</button>}
-        {!!s.historyIds?.length && <button type="button" className="icon-btn" aria-label={`Remove ${s.title} from history`} title="Remove from history (Shift+Delete)" onClick={() => { removeFromHistory(s.historyIds ?? []); setSelected(-1); }}><Icon name="close" size={14} /></button>}
+        {!!s.historyIds?.length && <button type="button" className="icon-btn" aria-label={`Remove ${s.title} from history`} title={keys ? "Remove from history (Shift+Delete)" : "Remove from history"} onClick={() => { removeFromHistory(s.historyIds ?? []); setSelected(-1); }}><Icon name="close" size={14} /></button>}
         </div>
       ))}
     </div>

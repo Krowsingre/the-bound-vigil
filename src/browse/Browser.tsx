@@ -76,6 +76,7 @@ import { BookmarksPanel, ReadingListPanel } from "./StartPanels";
 import { StartPage, type StartPanel } from "./StartPage";
 import { useTabDrag } from "./useTabDrag";
 import { articleByline, articleEpub, articleFrom, cleanArticle, readerScript } from "./readerArticle";
+import { useShortcuts } from "../lib/shortcuts";
 
 /** The header's search box, on Discover, sends what's typed here. */
 export const BROWSER_NEW = "tbv:browser-new";
@@ -365,6 +366,7 @@ export function Browser({
   onSplitWith?: (route: Route) => void;
 }) {
   const narrow = useNarrow();
+  const keys = useShortcuts();
   const [tabs, setTabs] = useState<TabsState>(startingTabs);
   const [pair, setPair] = useState<{ other: string; activeLeft: boolean } | null>(null);
   const [ratio, setRatio] = useState(50);
@@ -1497,7 +1499,7 @@ export function Browser({
           <div ref={strip} className="browser-tabs" role="tablist" aria-label="Tabs">
             <div className="browser-pinned-tabs">{tabs.tabs.filter((tab) => tab.pinned).map(tabRow)}</div>
             {tabs.tabs.filter((tab) => !tab.pinned).map(tabRow)}
-            <button type="button" className="browser-tab-new" aria-label="New tab" title="New tab (Ctrl+T). Private tab: Ctrl+Alt+T, or right-click" onClick={() => newTab()} onContextMenu={(e) => openContextMenu(e, "New tab", [{ label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) }])}>
+            <button type="button" className="browser-tab-new" aria-label="New tab" title={keys ? "New tab (Ctrl+T). Private tab: Ctrl+Alt+T, or right-click" : "New tab"} onClick={() => newTab()} onContextMenu={(e) => openContextMenu(e, "New tab", [{ label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) }])}>
               <Icon name="plus" size={15} />
             </button>
           </div>

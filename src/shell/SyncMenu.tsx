@@ -4,6 +4,7 @@ import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { relativeTime } from "../lib/format";
 import { PRIVACY_SHORTCUT, useAppSettings } from "../settings/appSettings";
+import { keyHint, useShortcuts } from "../lib/shortcuts";
 
 const SUMMARY: Record<SyncStatus["state"], string> = {
   disabled: "Sync is off",
@@ -62,6 +63,7 @@ export function SyncMenu({
   const avatar = profile?.avatarPath ? api.coverUrl(profile.avatarPath) : "";
   const { settings, togglePrivacy } = useAppSettings();
   const hidden = settings.privacy.on;
+  const keys = useShortcuts();
   return (
     <Menu
       label={`Sync and import: ${SUMMARY[state]}`}
@@ -119,13 +121,13 @@ export function SyncMenu({
             ]),
         ...(onOpenPlaces ? [{ label: "Where your books are", icon: "cloud" as const, hint: "Computer and cloud", onSelect: onOpenPlaces }] : []),
         "divider",
-        { label: "Import books…", icon: "importFile", hint: "Ctrl+O", onSelect: onImportBooks },
+        { label: "Import books…", icon: "importFile", hint: keyHint(keys, "Ctrl+O"), onSelect: onImportBooks },
         { label: "Import a folder…", icon: "folder", onSelect: onImportFolder },
         "divider",
         {
           label: hidden ? "Show covers" : "Hide covers",
           icon: hidden ? "focus" : "eyeOff",
-          hint: PRIVACY_SHORTCUT,
+          hint: keyHint(keys, PRIVACY_SHORTCUT),
           onSelect: togglePrivacy,
         },
         ...(onOpenPlan ? [{ label: "Your plan…", icon: "tag" as const, hint: "Plans and purchases", onSelect: onOpenPlan }] : []),

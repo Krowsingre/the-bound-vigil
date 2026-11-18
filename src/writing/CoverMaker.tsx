@@ -10,6 +10,7 @@ import type { WritingProject } from "../api/types";
 import { centreBlocks, dragBlocks, type Gap, type Place, type Size } from "./coverLayout";
 import { CanvaLink } from "./CanvaLink";
 import { keepCoverPicture, keepDesign, keptCoverPicture, keptDesign } from "./coverStore";
+import { useShortcuts } from "../lib/shortcuts";
 
 export const COVER_WIDTH = 1600;
 export const COVER_HEIGHT = 2560;
@@ -393,6 +394,7 @@ export function CoverMaker({
   }, [design, project.id, project.title, project.author]);
   const [boxes, setBoxes] = useState<CoverBoxes | null>(null);
   const [selected, setSelected] = useState<CoverBlock[]>(["title"]);
+  const keys = useShortcuts();
   const [guides, setGuides] = useState({ x: false, y: false });
   const [gaps, setGaps] = useState<Gap[]>([]);
   const [busy, setBusy] = useState(false);
@@ -604,8 +606,9 @@ export function CoverMaker({
                 })}
             </div>
             <p className="muted cover-maker-tip">
-              Drag the words to move them. Hold Shift to move straight across or straight up and down. Ctrl-click (⌘ on a Mac) picks more than one. They snap to the
-              middle and to even spacing; hold Alt to stop that.
+              {keys
+                ? "Drag the words to move them. Hold Shift to move straight across or straight up and down. Ctrl-click (⌘ on a Mac) picks more than one. They snap to the middle and to even spacing; hold Alt to stop that."
+                : "Drag the words to move them. All picks every block to move together. They snap to the middle and to even spacing."}
             </p>
             <div className="cover-maker-centre">
               <button type="button" className="btn btn-quiet btn-small" onClick={() => centre("x")}>

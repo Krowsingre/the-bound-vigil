@@ -1,3 +1,4 @@
+import { useShortcuts } from "../lib/shortcuts";
 import emblem from "../assets/emblem.svg?raw";
 import { holdForMenu } from "../components/ContextMenu";
 import { Icon } from "../components/Icon";
@@ -62,6 +63,7 @@ export function Sidebar({
     return !open;
   });
   const inDiscover = DISCOVER_MENU.some((d) => d.route === active);
+  const keys = useShortcuts();
   const fold = () => {
     setSpin(collapsed ? "outer" : "inner");
     onToggle();
@@ -89,7 +91,7 @@ export function Sidebar({
               onAnimationEnd={() => setSpin(null)}
               aria-label={collapsed ? "Expand menu" : "Collapse menu"}
               aria-expanded={!collapsed}
-              title={`${collapsed ? "Expand" : "Collapse"} menu (Ctrl+\\)`}
+              title={`${collapsed ? "Expand" : "Collapse"} menu${keys ? " (Ctrl+\\)" : ""}`}
             >
               <svg className="arch arch-outer" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d={OUTER_ARCH} />
@@ -143,7 +145,7 @@ export function Sidebar({
                           aria-current={active === sub.route ? "page" : undefined}
                           {...split(sub.route, sub.label)}
                           onClick={() => onNavigate(sub.route)}
-                          title={collapsed ? (sub.route === "catalogs" ? `${sub.label} (Ctrl+${i + 1})` : sub.label) : undefined}
+                          title={collapsed ? (sub.route === "catalogs" && keys ? `${sub.label} (Ctrl+${i + 1})` : sub.label) : undefined}
                         >
                           <Icon name={sub.icon} size={20} />
                           <span className="nav-label">
@@ -165,7 +167,7 @@ export function Sidebar({
                   aria-current={active === item.route ? "page" : undefined}
                   {...split(item.route, item.label)}
                   onClick={() => onNavigate(item.route)}
-                  title={collapsed ? `${item.label} (Ctrl+${i + 1})` : undefined}
+                  title={collapsed ? (keys ? `${item.label} (Ctrl+${i + 1})` : item.label) : undefined}
                 >
                   <Icon name={item.icon} size={22} />
                   <span className="nav-label">

@@ -22,6 +22,7 @@ import { CustomThemeSection, themeFromWindow } from "./CustomThemeSection";
 import { ProfileSection } from "./ProfileSection";
 import { api } from "../api";
 import { useToast } from "../components/Toast";
+import { useShortcuts } from "../lib/shortcuts";
 
 /** The reader's own settings, shared with the Aa panel in the reader. */
 export function useReaderSettings(): [ReaderSettings | null, (change: Partial<ReaderSettings>) => void] {
@@ -103,6 +104,7 @@ export function AppearanceTab({
   sidebarShown: boolean;
   onSidebarShown: (shown: boolean) => void;
 }) {
+  const keys = useShortcuts();
   const { settings, change, adaptive, adaptiveBook, refreshAdaptive, togglePrivacy } = useAppSettings();
   const adaptiveOn = settings.theme === "adaptive";
   const systemDark = useSystemDark();
@@ -343,7 +345,7 @@ export function AppearanceTab({
       <Section
         id="privacy"
         title="Privacy mode"
-        lede={`Hides every book cover at once, and brings them back just as fast. Press ${PRIVACY_SHORTCUT} anywhere, or use the menu under your sync circle.`}
+        lede={`Hides every book cover at once, and brings them back just as fast. ${keys ? `Press ${PRIVACY_SHORTCUT} anywhere, or use` : "Use"} the menu under your sync circle.`}
       >
         <div className="toggle-list">
           <Toggle
