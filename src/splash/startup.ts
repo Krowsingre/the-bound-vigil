@@ -17,6 +17,8 @@ const STEPS: StartupStep[] = ["look", "library", "sanctum", "covers", "fonts"];
 const AT_MOST = 12_000;
 /** The splash stays at least this long, so it never just flickers past. */
 const AT_LEAST = 1_100;
+/** Once everything is ready, the splash stays this much longer (embre, 18 November: "a second longer"). */
+const HOLD = 1_000;
 /** How long covers on the first screen are waited for. */
 const COVERS_WAIT = 2_500;
 
@@ -136,7 +138,7 @@ async function finish() {
   STEPS.forEach((s) => done.add(s));
   progress();
   const shownFor = performance.now() - openedAt;
-  if (shownFor < AT_LEAST) await new Promise((ok) => setTimeout(ok, AT_LEAST - shownFor));
+  await new Promise((ok) => setTimeout(ok, Math.max(AT_LEAST - shownFor, 0) + HOLD));
   // One more frame, so the page underneath is fully drawn. A hidden window
   // (the computer's, behind its card) may draw no frames at all, so this
   // never waits long.

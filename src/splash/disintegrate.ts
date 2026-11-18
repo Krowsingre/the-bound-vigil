@@ -1,7 +1,9 @@
 // The splash breaking up: a line sweeps across it on a slant (a different
-// way each time TBV opens), and behind
-// the line the picture turns to specks that drift off and fade, showing TBV
-// underneath. The splash is drawn onto a canvas first (from where its parts
+// way each time TBV opens), and behind the line the picture breaks into
+// pieces that fall away with weight (embre, 18 November): each one is
+// nudged off the way the line goes, then gravity takes it, so it hangs a
+// moment and gathers speed as it drops, turning slowly, fading only near
+// the end. TBV shows underneath. The splash is drawn onto a canvas first (from where its parts
 // sit on the page), then the canvas is broken up. On the iPhone it fills the
 // screen; on a computer it's the card, whose window has room round it for
 // the specks to drift into.
@@ -9,11 +11,14 @@
 import emblem from "../assets/emblem.svg?raw";
 import { paintings } from "./splashView";
 
-/** How long the line takes to cross, and each speck to fade (ms). */
-const SWEEP = 520;
-const LIFE = 460;
-/** Speck size, in points. */
-const SPECK = 7;
+/** How long the line takes to cross, and each piece to fall (ms). */
+const SWEEP = 700;
+const LIFE = 1_000;
+/** Piece size, in points. */
+const SPECK = 10;
+/** The pull downwards, in points a second squared, and the first nudge along the sweep (points a second). */
+const GRAVITY = 1_500;
+const NUDGE = 45;
 
 export async function disintegrate(splash: HTMLElement): Promise<void> {
   const box = splash.getBoundingClientRect();
@@ -48,16 +53,16 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
   const specks: { x: number; y: number; start: number; vx: number; vy: number; spin: number }[] = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      // Where the line reaches first goes first; the specks drift on the way it's going.
-      const speed = 60 + Math.random() * 90;
-      const aside = (Math.random() - 0.5) * 80;
+      // Where the line reaches first goes first; each piece is nudged the way it's going, then falls.
+      const speed = NUDGE * (0.5 + Math.random());
+      const aside = (Math.random() - 0.5) * 30;
       specks.push({
         x: c * SPECK,
         y: r * SPECK,
-        start: way.along(c / cols, r / rows) * SWEEP + Math.random() * 70,
+        start: way.along(c / cols, r / rows) * SWEEP + Math.random() * 90,
         vx: way.dx * speed - way.dy * aside,
-        vy: way.dy * speed + way.dx * aside,
-        spin: (Math.random() - 0.5) * 1.2,
+        vy: way.dy * speed + way.dx * aside - 20 * Math.random(),
+        spin: (Math.random() - 0.5) * 0.9,
       });
     }
   }
@@ -79,11 +84,11 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
           out.drawImage(picture, p.x * dpr, p.y * dpr, s, s, ox + p.x * dpr, oy + p.y * dpr, s, s);
           continue;
         }
-        const ease = age * age;
-        const x = ox + (p.x + p.vx * ease) * dpr;
-        const y = oy + (p.y + p.vy * ease) * dpr;
-        const size = 1 - age * 0.55;
-        out.globalAlpha = 1 - age;
+        const { dx, dy } = fall(p.vx, p.vy, (age * LIFE) / 1000);
+        const x = ox + (p.x + dx) * dpr;
+        const y = oy + (p.y + dy) * dpr;
+        const size = 1 - age * 0.2;
+        out.globalAlpha = age < 0.6 ? 1 : 1 - (age - 0.6) / 0.4;
         out.setTransform(size, 0, 0, size, x + s / 2, y + s / 2);
         out.rotate(p.spin * age);
         out.drawImage(picture, p.x * dpr, p.y * dpr, s, s, -s / 2, -s / 2, s, s);
@@ -94,6 +99,11 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
     requestAnimationFrame(frame);
   });
   dust.remove();
+}
+
+/** How far a piece has gone after `seconds`, nudged at (vx, vy) and pulled down by gravity. */
+export function fall(vx: number, vy: number, seconds: number): { dx: number; dy: number } {
+  return { dx: vx * seconds, dy: vy * seconds + (GRAVITY * seconds * seconds) / 2 };
 }
 
 /**
