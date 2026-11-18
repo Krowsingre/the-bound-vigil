@@ -132,6 +132,8 @@ export interface Manuscript {
   description: string | null;
   language: string | null;
   isbn: string | null;
+  /** The line under the title, from the file's Subtitle style. */
+  subtitle: string | null;
   sections: ManuscriptSection[];
   issues: ManuscriptIssue[];
 }
@@ -543,7 +545,7 @@ export function buildManuscript(doc: ImportedDocument, at: SplitAt): Manuscript 
   for (const w of doc.warnings ?? []) issues.push({ kind: w.kind, section: null, message: w.message });
   if (breaks) issues.push({ kind: "breaks", section: null, message: `${breaks} blank ${breaks === 1 ? "line was" : "lines were"} kept as ${breaks === 1 ? "a scene break" : "scene breaks"}.` });
 
-  return { title: doc.title, author: doc.author, description: doc.description, language: doc.language ?? null, isbn: doc.isbn ?? null, sections, issues };
+  return { title: doc.title, author: doc.author, description: doc.description, language: doc.language ?? null, isbn: doc.isbn ?? null, subtitle: doc.subtitle ?? null, sections, issues };
 }
 
 /** Reads a supported file into a manuscript. */

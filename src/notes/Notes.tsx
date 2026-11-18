@@ -46,7 +46,7 @@ const TYPES: Record<NotesKindTab, NoteKind[]> = {
 };
 const TYPE_LABEL: Record<NoteKind, string> = {
   personal: "Notes",
-  book_note: "Book notes",
+  book_note: "Reading notes",
   highlight: "Highlights",
   annotation: "Highlights with notes",
 };

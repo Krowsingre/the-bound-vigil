@@ -38,7 +38,7 @@ export function NewNoteDialog({
       <form
         className="dialog new-note-dialog"
         role="dialog"
-        aria-label="New book note"
+        aria-label="New reading note"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
@@ -48,7 +48,7 @@ export function NewNoteDialog({
           if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void save();
         }}
       >
-        <h2>New note about a book</h2>
+        <h2>New reading note</h2>
         {book ? (
           <div className="picked-book">
             <BookCover book={book} size="s" />

@@ -290,7 +290,7 @@ export function MadePage({
   };
   const about = {
     half_title: "Just the book's title, on a page of its own before the title page.",
-    title_page: "Made from the book's title, author and series. Change them in Book details.",
+    title_page: "Made from the book's title, subtitle, author and series. Change them in Book details.",
     copyright: "Made from the details below and the book's author. Leave a box empty to leave it out.",
     contents: "Lists the sections shown in the contents, and stays up to date as you add, rename and move them.",
     sources: "Cited sources appear here automatically. You can edit their details or add sources directly to the bibliography.",
