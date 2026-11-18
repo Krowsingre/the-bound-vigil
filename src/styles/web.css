@@ -279,7 +279,7 @@
 /* Reader on a phone, or a tablet held upright (which reads as a phone, embre
    18 November): the text fills the screen and the panels slide over it. A
    tablet held sideways gets the computer's reader. See READER_NARROW in useNarrow.ts. */
-@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) and (orientation: portrait) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) and (orientation: portrait), (pointer: coarse) and (max-height: 600px) {
   /* Reader: the text fills the screen; the panels slide over it. */
   .reader .reader-body,
   .reader.has-left .reader-body,

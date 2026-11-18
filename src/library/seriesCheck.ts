@@ -106,10 +106,13 @@ export function checkAllSeries(): Promise<void> {
       const { series } = await api.getCollectionsOverview();
       progress = { done: 0, total: series.length };
       write(NEWS_KEY, seriesNews());
+      // Only a run that reached at least one series counts as a check: offline, it's tried again later.
+      let reached = series.length === 0;
       for (const s of series) {
         try {
           const before = await api.seriesReview(s.name);
           const after = await api.findSeriesBooks(s.name, s.authors[0] ?? "");
+          reached = true;
           const found = newlyListed(before.missing, after.missing);
           if (found.length) {
             const now = new Date().toISOString();
@@ -123,7 +126,7 @@ export function checkAllSeries(): Promise<void> {
         window.dispatchEvent(new Event(SERIES_NEWS));
         await new Promise((r) => setTimeout(r, REST_MS));
       }
-      write(LAST_KEY, new Date().toISOString());
+      if (reached) write(LAST_KEY, new Date().toISOString());
     } finally {
       progress = null;
       running = null;

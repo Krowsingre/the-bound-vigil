@@ -5,9 +5,10 @@ export const NARROW = "(max-width: 760px), (pointer: coarse) and (max-width: 140
 
 /**
  * The reader's own: phones, and tablets held upright, read as on a phone; a
- * tablet held sideways gets the computer's reader (embre, 18 November).
+ * tablet held sideways gets the computer's reader (embre, 18 November). A phone
+ * held sideways is short, whatever its width, so it stays a phone.
  */
-export const READER_NARROW = "(max-width: 760px), (pointer: coarse) and (max-width: 1400px) and (orientation: portrait)";
+export const READER_NARROW = "(max-width: 760px), (pointer: coarse) and (max-width: 1400px) and (orientation: portrait), (pointer: coarse) and (max-height: 600px)";
 
 export const isNarrow = () => typeof matchMedia === "function" && matchMedia(NARROW).matches;
 
