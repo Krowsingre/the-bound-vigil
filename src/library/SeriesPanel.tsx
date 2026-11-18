@@ -5,6 +5,7 @@ import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { authorLine } from "../lib/format";
+import { clearSeriesNews, seriesNews } from "./seriesCheck";
 
 const number = (n: number | null) => (n === null ? null : `Book ${n}`);
 
@@ -51,10 +52,10 @@ export function useSeriesReview(name: string | null, author: string, refreshKey:
 
 /** The series' Find missing books button. */
 export function FindMissingButton({ state }: { state: SeriesState }) {
-  if (!state.review) return null;
+  // Shown at once, before the series' saved list has loaded: it never waits to appear.
   return (
     <button type="button" className="btn btn-quiet" disabled={state.busy} onClick={state.find}>
-      <Icon name="search" size={16} /> {state.busy ? "Looking…" : state.review.checkedAt ? "Check again" : "Find missing books"}
+      <Icon name="search" size={16} /> {state.busy ? "Looking…" : state.review?.checkedAt ? "Check again" : "Find missing books"}
     </button>
   );
 }
@@ -87,6 +88,11 @@ export function SeriesPanel({
   const { review, busy, run } = given ?? own;
   const [showHidden, setShowHidden] = useState(false);
   const [adding, setAdding] = useState(false);
+  // Books the series check found since this series was last looked at: marked New here, then taken off Sanctum's row.
+  const [fresh] = useState(() => new Set(seriesNews().filter((n) => n.series === name).map((n) => n.key)));
+  useEffect(() => {
+    if (fresh.size) clearSeriesNews(name);
+  }, [fresh, name]);
 
   if (!review) return null;
   // Nothing to show until it has looked, or found a book that may belong.
@@ -194,6 +200,7 @@ export function SeriesPanel({
                 <MissingCard
                   key={m.key}
                   book={m}
+                  isNew={fresh.has(m.key)}
                   busy={busy}
                   onHide={(hidden) => void run(() => api.hideSeriesBook(name, m.key, hidden))}
                   onRead={(read) => void run(() => api.markSeriesBookRead(name, m.key, read))}
@@ -247,12 +254,15 @@ function AddMissing({ busy, onAdd }: { busy: boolean; onAdd: (title: string, pos
 
 function MissingCard({
   book,
+  isNew = false,
   busy,
   onHide,
   onRead,
   onRemove,
 }: {
   book: MissingBook;
+  /** Found by the last series check. */
+  isNew?: boolean;
   busy: boolean;
   onHide: (hidden: boolean) => void;
   onRead: (read: boolean) => void;
@@ -273,7 +283,7 @@ function MissingCard({
             <span className="cover-title">{book.title}</span>
           </div>
         )}
-        <span className="missing-badge">{book.read ? "Read" : "Missing"}</span>
+        <span className={`missing-badge${isNew && !book.read ? " is-new" : ""}`}>{book.read ? "Read" : isNew ? "New" : "Missing"}</span>
       </div>
       <span className="missing-title" title={book.title}>
         {book.title}

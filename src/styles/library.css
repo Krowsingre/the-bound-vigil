@@ -668,6 +668,7 @@ button.tag-chip-add:hover {
   max-width: 140px;
 }
 
+.missing-badge.is-new,
 .missing-card.is-read .missing-badge {
   background: var(--accent);
   color: var(--accent-text);

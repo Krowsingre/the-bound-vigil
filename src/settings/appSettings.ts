@@ -57,6 +57,8 @@ export interface SyncSettings {
   conflicts: ConflictRule;
 }
 
+export type SeriesCheckEvery = "never" | "day" | "week" | "month" | "year" | "custom";
+
 export interface AppSettings {
   theme: ThemeChoice;
   /** Whether Adaptive builds on the light or dark theme. */
@@ -89,6 +91,10 @@ export interface AppSettings {
   suggestOnline: boolean;
   /** Imports leave out books that were deleted before, instead of bringing them back. */
   skipDeletedImports: boolean;
+  /** How often series are looked up online for books you don't have yet (seriesCheck.ts). */
+  seriesCheck: SeriesCheckEvery;
+  /** The days between checks when seriesCheck is "custom". */
+  seriesCheckDays: number;
   /** Looks for a newer version of TBV each time it opens (on a computer). */
   checkUpdates: boolean;
   /** Installs a newer version found when TBV opens, then starts again. */
@@ -124,6 +130,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showSmartCollections: true,
   showSeries: true,
   skipDeletedImports: false,
+  // Once a month unless changed (embre, 17 November).
+  seriesCheck: "month",
+  seriesCheckDays: 14,
   checkUpdates: true,
   autoInstallUpdates: false,
   privacy: { on: false, style: "titles", avatar: true },
@@ -195,6 +204,8 @@ export function parseAppSettings(json: string | null): AppSettings {
     scrollLibrary: flag(raw.scrollLibrary, d.scrollLibrary),
     fullMenu: flag(raw.fullMenu, d.fullMenu),
     skipDeletedImports: flag(raw.skipDeletedImports, d.skipDeletedImports),
+    seriesCheck: oneOf(raw.seriesCheck, ["never", "day", "week", "month", "year", "custom"], d.seriesCheck),
+    seriesCheckDays: typeof raw.seriesCheckDays === "number" && raw.seriesCheckDays >= 1 ? Math.min(365, Math.round(raw.seriesCheckDays)) : d.seriesCheckDays,
     checkUpdates: flag(raw.checkUpdates, d.checkUpdates),
     autoInstallUpdates: flag(raw.autoInstallUpdates, d.autoInstallUpdates),
     privacy: {

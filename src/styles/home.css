@@ -688,6 +688,10 @@
   grid-column: span 4;
 }
 
+.home-desk > .series-news {
+  grid-column: span 12;
+}
+
 .home-desk > .recent {
   grid-column: span 5;
 }

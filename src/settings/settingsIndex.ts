@@ -254,6 +254,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     words: "collections smart series layout cards list",
   },
   {
+    tab: "collections",
+    section: "series-check",
+    label: "Check for new books in a series",
+    words: "series new books missing check online schedule daily weekly monthly yearly custom days check now",
+  },
+  {
     tab: "notes",
     section: "view",
     label: "Notes view",
