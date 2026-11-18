@@ -90,9 +90,13 @@ export async function readDocumentBytes(name: string, bytes: Uint8Array): Promis
       return { title: fallback, author: null, description: null, html: rtfToHtml(new TextDecoder("latin1").decode(bytes)) };
     case "md":
     case "markdown":
-      return { title: fallback, author: null, description: null, html: markdownToHtml(isolateMarks(new TextDecoder().decode(bytes))) };
-    case "txt":
-      return { title: fallback, author: null, description: null, html: textToHtml(isolateMarks(new TextDecoder().decode(bytes))) };
+    case "txt": {
+      const text = new TextDecoder().decode(bytes);
+      // A book written by hand, with its details at the top (tbvText.ts).
+      const byHand = await import("./tbvText");
+      if (byHand.looksHandWritten(text)) return byHand.readTextBook(name, bytes);
+      return { title: fallback, author: null, description: null, html: ext === "txt" ? textToHtml(isolateMarks(text)) : markdownToHtml(isolateMarks(text)) };
+    }
     case "html":
     case "htm":
     case "xhtml": {
@@ -104,8 +108,14 @@ export async function readDocumentBytes(name: string, bytes: Uint8Array): Promis
       return fromEpub(bytes, fallback);
     case "pdf":
       return (await import("./pdfImport")).fromPdf(bytes, fallback);
-    case "zip":
+    case "tbv":
+    case "zip": {
+      // book.md and its pictures, zipped: a book written by hand (tbvText.ts).
+      const byHand = await import("./tbvText");
+      if (byHand.isTextBookZip(bytes)) return byHand.readTextBook(name, bytes);
+      if (ext === "tbv") throw new Error("That .tbv file isn't a Scribe book file, and has no book.md inside.");
       return fromKindleCreate(bytes, fallback);
+    }
     default:
       throw new Error("TBV can bring in Word (.docx), OpenDocument (.odt), RTF, text, Markdown, HTML and EPUB files.");
   }
@@ -554,10 +564,23 @@ export function rtfToHtml(rtf: string): string {
 
 // ---- Markdown and text ----
 
-function markdownInline(text: string, notes: Map<string, string>): string {
+/**
+ * Finds a picture a Markdown file names (its path as written), as a data
+ * address, or null when it isn't there. Only books written by hand bring
+ * pictures with them (tbvText.ts); elsewhere pictures are left out.
+ */
+export type PictureFinder = (path: string) => string | null;
+
+/** A picture written in Markdown, ![caption](path), or ![caption](path "full") for one on a page of its own. */
+const MD_PICTURE = /^!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"([^"]*)")?\s*\)$/;
+
+function markdownInline(text: string, notes: Map<string, string>, picture?: PictureFinder): string {
   return escapeHtml(text)
     .replace(/\[\^([^\]]+)\]/g, (_, id: string) => (notes.has(id) ? `<sup data-footnote="${escapeHtml(notes.get(id)!)}">*</sup>` : ""))
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/!\[([^\]]*)\]\(\s*([^)\s]+)(?:\s+&quot;[^)]*&quot;)?\s*\)/g, (_, alt: string, path: string) => {
+      const src = picture?.(path.replace(/&amp;/g, "&"));
+      return src ? `<img src="${src}" alt="${alt}">` : "";
+    })
     .replace(/\[([^\]]+)\]\(((?:https?:|mailto:)[^)\s]+)\)/g, '<a href="$2">$1</a>')
     .replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, "<strong>$2</strong>")
     .replace(/(\*|_)(?=\S)([\s\S]*?\S)\1/g, "<em>$2</em>")
@@ -566,7 +589,7 @@ function markdownInline(text: string, notes: Map<string, string>): string {
     .replace(/\n/g, " ");
 }
 
-export function markdownToHtml(md: string): string {
+export function markdownToHtml(md: string, picture?: PictureFinder): string {
   const notes = new Map<string, string>();
   const text = md.replace(/\r\n?/g, "\n").replace(/^\[\^([^\]]+)\]:\s*(.+)$/gm, (_, id: string, note: string) => {
     notes.set(id, note.trim());
@@ -577,20 +600,26 @@ export function markdownToHtml(md: string): string {
     const b = block.replace(/^\n+|\s+$/g, "");
     if (!b.trim()) continue;
     const heading = /^(#{1,6})\s+(.*)$/.exec(b);
-    if (heading && !b.includes("\n")) {
+    const pictured = !b.includes("\n") ? MD_PICTURE.exec(b.trim()) : null;
+    if (pictured) {
+      // A picture on a line of its own: a picture block, with its caption, or a page of its own.
+      const src = picture?.(pictured[2]);
+      const caption = pictured[1].trim();
+      if (src) out.push(`<figure data-picture=""${pictured[3] === "full" ? ' data-size="full"' : ""}><img src="${src}" alt="${escapeHtml(caption)}">${caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ""}</figure>`);
+    } else if (heading && !b.includes("\n")) {
       const level = Math.min(3, heading[1].length);
-      out.push(`<h${level}>${markdownInline(heading[2].replace(/\s#+$/, ""), notes)}</h${level}>`);
+      out.push(`<h${level}>${markdownInline(heading[2].replace(/\s#+$/, ""), notes, picture)}</h${level}>`);
     } else if (/^(\*\s*){3,}$|^(-\s*){3,}$|^(_\s*){3,}$/.test(b.trim())) out.push("<hr>");
-    else if (/^>/.test(b)) out.push(`<blockquote><p>${markdownInline(b.replace(/^>\s?/gm, ""), notes)}</p></blockquote>`);
+    else if (/^>/.test(b)) out.push(`<blockquote><p>${markdownInline(b.replace(/^>\s?/gm, ""), notes, picture)}</p></blockquote>`);
     else if (/^\s*([-*+]|\d+[.)])\s/.test(b)) {
       const ordered = /^\s*\d/.test(b);
-      const items = b.split(/\n(?=\s*(?:[-*+]|\d+[.)])\s)/).map((li) => `<li><p>${markdownInline(li.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, ""), notes)}</p></li>`);
+      const items = b.split(/\n(?=\s*(?:[-*+]|\d+[.)])\s)/).map((li) => `<li><p>${markdownInline(li.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, ""), notes, picture)}</p></li>`);
       out.push(ordered ? `<ol>${items.join("")}</ol>` : `<ul>${items.join("")}</ul>`);
     } else {
       // Short lines kept apart, as a poem's are; prose wrapped in the file runs on as usual.
       const lines = b.split("\n");
       const verse = lines.length >= 2 && lines.every((l) => l.trim().length <= 60);
-      out.push(`<p>${verse ? lines.map((l) => markdownInline(l, notes)).join("<br>") : markdownInline(b, notes)}</p>`);
+      out.push(`<p>${verse ? lines.map((l) => markdownInline(l, notes, picture)).join("<br>") : markdownInline(b, notes, picture)}</p>`);
     }
   }
   return out.join("");
@@ -753,6 +782,31 @@ function tidy(root: Element) {
   const rename: Record<string, string> = { I: "em", B: "strong", CITE: "em", STRIKE: "s", DEL: "s", H4: "h3", H5: "h3", H6: "h3" };
   const walk = (el: Element) => {
     for (const child of [...el.children]) {
+      if (child.tagName === "FIGURE" && child.hasAttribute("data-picture")) {
+        // Scribe's own picture block (a book written by hand makes them): kept whole, with only what it needs.
+        const img = child.querySelector("img");
+        const src = img?.getAttribute("src") ?? "";
+        if (!/^data:image\//.test(src)) {
+          child.remove();
+          continue;
+        }
+        const d = child.ownerDocument;
+        const figure = d.createElement("figure");
+        figure.setAttribute("data-picture", "");
+        if (child.getAttribute("data-size") === "full") figure.setAttribute("data-size", "full");
+        const picture = d.createElement("img");
+        picture.setAttribute("src", src);
+        picture.setAttribute("alt", img?.getAttribute("alt") ?? "");
+        figure.append(picture);
+        const caption = (child.querySelector("figcaption")?.textContent ?? "").trim();
+        if (caption) {
+          const fc = d.createElement("figcaption");
+          fc.textContent = caption;
+          figure.append(fc);
+        }
+        child.replaceWith(figure);
+        continue;
+      }
       walk(child);
       const tag = child.tagName.toUpperCase();
       if (rename[tag]) {
