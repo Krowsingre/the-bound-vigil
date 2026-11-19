@@ -202,6 +202,9 @@ export function checkWatched(): Promise<number> {
   }
   running = (async () => {
     let found = 0;
+    // Waits a turn first, so `running` is set before the end clears it
+    // (an empty list would otherwise finish at once and never be cleared).
+    await Promise.resolve();
     try {
       const rest = () => new Promise((r) => setTimeout(r, REST_MS));
       do {
