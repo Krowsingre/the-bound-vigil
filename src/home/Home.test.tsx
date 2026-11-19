@@ -1,10 +1,15 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { BookPreview, HomeViewModel } from "../api/types";
 import type { Route } from "../shell/routes";
 import { ToastProvider } from "../components/Toast";
 import { Home } from "./Home";
 
 const getHome = vi.fn<() => Promise<HomeViewModel>>();
+const getLibrary = vi.fn();
+const details = vi.hoisted(() => ({ showBookDetails: vi.fn() }));
+const player = vi.hoisted(() => ({ playAudiobook: vi.fn() }));
+vi.mock("../details/openDetails", () => details);
+vi.mock("../audio/player", async (real) => ({ ...(await real<object>()), playAudiobook: player.playAudiobook }));
 vi.mock("../splash/startup", () => ({ startupStep: () => undefined }));
 vi.mock("../api", () => ({
   isApp: false,
@@ -13,6 +18,7 @@ vi.mock("../api", () => ({
   api: {
     kind: "app",
     getHome: () => getHome(),
+    getLibrary: (q: unknown) => getLibrary(q),
     timeSpent: async () => [],
     sanctumLinks: async () => [],
     getSetting: async () => null,
@@ -111,4 +117,28 @@ test("the resume hero shows the in-progress book and other devices' positions", 
   expect(await screen.findByRole("heading", { name: "Dracula", level: 1 })).toBeInTheDocument();
   expect(screen.getByText(/On Phone you're at 50%/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Continue reading/ })).toBeInTheDocument();
+});
+
+test("Continue reading and Continue listening take turns; the cover opens details", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const reading = { ...dracula, status: "in_progress" as const, totalProgression: 0.42 };
+  const listening = { ...dracula, id: "sha256:cd", title: "Carmilla", format: "m4b", status: "in_progress" as const, totalProgression: 0.1 };
+  getLibrary.mockResolvedValue({ books: [listening], total: 1 });
+  getHome.mockResolvedValue({ ...emptyHome, resumeBook: reading, inProgress: [reading], libraryCounts: { total: 2, unread: 0, inProgress: 2, read: 0 } });
+  renderHome();
+  expect(await screen.findByRole("heading", { name: "Dracula", level: 1 })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Next" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Show Continue reading" })).toHaveAttribute("aria-current", "true");
+
+  // It turns by itself.
+  await vi.advanceTimersByTimeAsync(8000);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Show Continue listening" })).toHaveAttribute("aria-current", "true"));
+  fireEvent.click(screen.getByRole("button", { name: "Continue listening" }));
+  expect(player.playAudiobook).toHaveBeenCalledWith("sha256:cd");
+
+  // Arrows turn it back, and the cover opens Book details.
+  fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+  fireEvent.click(screen.getByRole("button", { name: "Details of Dracula" }));
+  expect(details.showBookDetails).toHaveBeenCalledWith("sha256:ab");
+  vi.useRealTimers();
 });

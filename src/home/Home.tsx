@@ -127,7 +127,7 @@ export function Home({
   if (!narrow)
     return (
       <div className="home home-desk">
-        <ResumeHero book={home.resumeBook} actions={actions} onOpenLibrary={openLibrary} />
+        <ResumeHero book={home.resumeBook} actions={actions} onOpenLibrary={openLibrary} refresh={refreshKey + reload} />
         <ReadingActivity finished={home.libraryCounts.read} finishedDates={home.finishedDates} refreshKey={refreshKey} wide />
         <SeriesNewsRow onOpenSeries={onOpenSeries ?? ((name) => onOpenLibrary({ tab: "all", series: [name] }))} />
         <WatchNewsRow onOpenLink={openLink} />
@@ -142,7 +142,7 @@ export function Home({
   return (
     <div className="home">
       <div className="home-top">
-        <ResumeHero book={home.resumeBook} actions={actions} onOpenLibrary={openLibrary} />
+        <ResumeHero book={home.resumeBook} actions={actions} onOpenLibrary={openLibrary} refresh={refreshKey + reload} />
         <ReadingActivity finished={home.libraryCounts.read} finishedDates={home.finishedDates} refreshKey={refreshKey} />
       </div>
       <div className="home-middle">

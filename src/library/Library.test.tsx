@@ -267,7 +267,6 @@ test("Shift-click chooses a range of books, series stacks whole", async () => {
   );
   renderLibrary({ view: { ...view, seriesGrouping: "mixed" } });
   fireEvent.click(await screen.findByRole("button", { name: "Select" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Choose books" }));
   fireEvent.click(await screen.findByRole("button", { name: /Book 1/, pressed: false }));
   fireEvent.click(screen.getByRole("button", { name: /Book 4/, pressed: false }), { shiftKey: true });
   await waitFor(() => expect(screen.getByRole("button", { name: "Choose series Long series" })).toHaveAttribute("aria-pressed", "true"));

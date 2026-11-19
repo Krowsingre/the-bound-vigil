@@ -1982,10 +1982,13 @@
   cursor: default;
 }
 
+/* As it has looked since 0.111 (it used to borrow Resonance's card title). */
 .listen-title {
   margin: 8px 0 0;
-  font-size: 14px;
-  overflow-wrap: anywhere;
+  font: 400 15px/1.25 var(--font-serif);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .listen-progress {

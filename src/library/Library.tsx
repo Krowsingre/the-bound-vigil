@@ -865,7 +865,6 @@ export function Library({
         }}
         selecting={selected !== null}
         onSelecting={(on) => setSelected(on ? new Map() : null)}
-        onSelectAll={() => void chooseAll()}
         onChange={onChange}
       />}
 
