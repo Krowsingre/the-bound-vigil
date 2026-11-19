@@ -77,6 +77,17 @@ describe("read-along timing", () => {
     // Finishing the dedication, then on at the story: never crawling through the pages between.
     expect(wordAt(timing, 21_000, 10_000)).toBe(73);
     expect(wordAt(timing, 24_000, 10_000)).toBe(897);
+    // With a long pause before the story too: nothing while it lasts, never the unread pages.
+    const paused: Timing = { ...timing, anchors: [...reading(10_000, 40, 6), ...reading(100_000, 900, 20)] };
+    expect(wordAt(paused, 30_000, 10_000)).toBeNull();
+    expect(wordAt(paused, 50_000, 10_000)).toBeNull();
+    expect(wordAt(paused, 98_000, 10_000)).toBe(894);
+  });
+
+  it("treats a 20 second break as a break, not slow reading", () => {
+    const timing: Timing = { version: 1, sections: [400], anchors: [...reading(0, 0, 21), ...reading(60_000, 126, 20)], heard: 100_000, done: false };
+    expect(wordAt(timing, 50_000, 10_000)).toBeNull();
+    expect(wordAt(timing, 41_000, 10_000)).toBe(123);
   });
 
   it("highlights nothing during talk that isn't in the book, or after the end", () => {
