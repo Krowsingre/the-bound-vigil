@@ -2052,9 +2052,21 @@ pub(crate) async fn share_book_files(
     #[cfg(target_os = "ios")]
     {
         use tauri::Manager;
-        let folder = app.path().temp_dir().map_err(|e| e.to_string())?.join("tbv-share");
-        // Copies from an earlier share have gone by now.
-        let _ = std::fs::remove_dir_all(&folder);
+        let shares = app.path().temp_dir().map_err(|e| e.to_string())?.join("tbv-share");
+        // Each share has a folder of its own, so a second one started while the
+        // first still fetches leaves the first one's copies alone. Folders from
+        // shares over an hour old have gone by now.
+        if let Ok(old) = std::fs::read_dir(&shares) {
+            let hour = std::time::Duration::from_secs(3600);
+            for entry in old.flatten() {
+                let stale = entry.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > hour);
+                if stale {
+                    let _ = std::fs::remove_dir_all(entry.path());
+                }
+            }
+        }
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
+        let folder = shares.join(stamp.to_string());
         std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
         let mut paths = Vec::new();
         let mut skipped = Vec::new();
