@@ -301,6 +301,14 @@
   font-size: 12px;
 }
 
+/* "Book 3 of 12" when several chosen books are looked up in turn. */
+.fetch-step {
+  margin: -6px 0 6px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .fetch-chosen {
   margin: 0 0 10px;
   font-size: 14px;

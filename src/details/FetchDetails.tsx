@@ -1,5 +1,6 @@
 // Finding a book's details online: search Google Books and Open Library,
-// choose the match, then tick which details to keep. What's kept is saved as
+// choose the match, then tick which details to keep. Several chosen books
+// come one after another (`step`), each kept or skipped in turn. What's kept is saved as
 // fetched details, under your own edits and over the book's own.
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,7 +18,15 @@ function shown(field: DetailFieldName, value: string | null): string {
   return isList(field) ? listOf(value).join(", ") : value;
 }
 
-export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (changed: boolean) => void }) {
+/** Where this book is in a run through several chosen books. */
+export interface FetchStep {
+  /** Counted from 0. */
+  at: number;
+  of: number;
+  onSkip: () => void;
+}
+
+export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClose: (changed: boolean) => void; step?: FetchStep }) {
   const toast = useToast();
   const [details, setDetails] = useState<BookDetails | null>(null);
   const [query, setQuery] = useState({ title: book.title, author: book.authors[0] ?? "", isbn: "" });
@@ -140,6 +149,11 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
         onKeyDown={(e) => e.key === "Escape" && onClose(false)}
       >
         <h2>Find details online</h2>
+        {step && (
+          <p className="fetch-step">
+            Book {step.at + 1} of {step.of}
+          </p>
+        )}
         <p className="muted add-dialog-book">
           {book.title}. Searches Google Books, Open Library{isApp ? ", Audible, Apple Books and Hardcover (when it's connected)" : ""}. Your book file
           isn't changed.
@@ -206,8 +220,13 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
             </div>
             <div className="dialog-actions">
               <button type="button" className="btn btn-quiet" onClick={() => onClose(false)}>
-                Cancel
+                {step ? "Stop" : "Cancel"}
               </button>
+              {step && (
+                <button type="button" className="btn btn-quiet" onClick={step.onSkip}>
+                  {step.at + 1 < step.of ? "Skip this book" : "Skip and finish"}
+                </button>
+              )}
             </div>
           </>
         ) : (
@@ -271,13 +290,18 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
               <button type="button" className="btn btn-quiet" onClick={() => setChosen(null)}>
                 Back to results
               </button>
+              {step && (
+                <button type="button" className="btn btn-quiet" disabled={saving} onClick={step.onSkip}>
+                  {step.at + 1 < step.of ? "Skip this book" : "Skip and finish"}
+                </button>
+              )}
               <button
                 type="button"
                 className="btn btn-primary"
                 disabled={saving || (!keep.size && !cover)}
                 onClick={() => void save()}
               >
-                Keep ticked details
+                {step && step.at + 1 < step.of ? "Keep and go to next" : "Keep ticked details"}
               </button>
             </div>
           </>

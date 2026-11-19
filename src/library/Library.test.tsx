@@ -253,3 +253,23 @@ test("removing downloads from a stack keeps cloud-only and local-only books unto
   await waitFor(() => expect(screen.getByText(/was kept here/)).toBeInTheDocument());
   expect(removeDownload.mock.calls).toEqual([[backedUp.id]]);
 });
+
+test("Shift-click chooses a range of books, series stacks whole", async () => {
+  const first = book(1);
+  const stack = book(2, { series: "Long series" });
+  const rest = book(3, { series: "Long series" });
+  const last = book(4);
+  const page = { counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [], page: 0, pageSize: 24 };
+  getLibrary.mockImplementation(async (q) =>
+    q?.series?.length
+      ? { ...page, books: [stack, rest], total: 2 }
+      : { ...page, books: [first, stack, last], seriesCounts: { [stack.id]: 2 }, total: 3 },
+  );
+  renderLibrary({ view: { ...view, seriesGrouping: "mixed" } });
+  fireEvent.click(await screen.findByRole("button", { name: "Select" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Choose books" }));
+  fireEvent.click(await screen.findByRole("button", { name: /Book 1/, pressed: false }));
+  fireEvent.click(screen.getByRole("button", { name: /Book 4/, pressed: false }), { shiftKey: true });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Choose series Long series" })).toHaveAttribute("aria-pressed", "true"));
+  expect(screen.getByText(/4 chosen|4 books/)).toBeInTheDocument();
+});
