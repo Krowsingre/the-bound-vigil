@@ -17,6 +17,8 @@ import { QuickLinks } from "./QuickLinks";
 import { ResumeHero } from "./ResumeHero";
 import { SuggestedReading } from "./SuggestedReading";
 import { SeriesNewsRow } from "./SeriesNewsRow";
+import { WatchNewsRow } from "./WatchNewsRow";
+import { openInDiscover } from "../browse/discoverQueue";
 
 type Load = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; home: HomeViewModel };
 
@@ -74,6 +76,11 @@ export function Home({
 
   const actions = makeBookActions(api, toast, () => setReload((n) => n + 1), onOpenBook);
   const openLibrary = useCallback(() => onOpenLibrary({ tab: "all" }), [onOpenLibrary]);
+  // A watched author's new book: its page, in a new Discover tab.
+  const openLink = (url: string) => {
+    onNavigate("catalogs");
+    openInDiscover(url);
+  };
 
   if (load.state === "loading") return <div className="home home-loading" aria-busy="true" aria-label="Loading your library" />;
   if (load.state === "error")
@@ -123,6 +130,7 @@ export function Home({
         <ResumeHero book={home.resumeBook} actions={actions} onOpenLibrary={openLibrary} />
         <ReadingActivity finished={home.libraryCounts.read} finishedDates={home.finishedDates} refreshKey={refreshKey} wide />
         <SeriesNewsRow onOpenSeries={onOpenSeries ?? ((name) => onOpenLibrary({ tab: "all", series: [name] }))} />
+        <WatchNewsRow onOpenLink={openLink} />
         <RecentlyAdded books={home.recentlyAdded} actions={actions} onOpenSeries={onOpenSeries ?? openLibrary} onViewAll={() => onOpenCompendium("recently_added")} menus />
         <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenCompendium("in_progress")} list />
         <QuickLinks refreshKey={refreshKey} onNavigate={onNavigate} onOpenBook={onOpenBook} onOpenCollection={onOpenCollection} />
@@ -140,6 +148,7 @@ export function Home({
       <div className="home-middle">
         <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenCompendium("in_progress")} />
         <SeriesNewsRow onOpenSeries={onOpenSeries ?? ((name) => onOpenLibrary({ tab: "all", series: [name] }))} />
+        <WatchNewsRow onOpenLink={openLink} />
         <RecentlyAdded
           books={home.recentlyAdded}
           actions={actions}

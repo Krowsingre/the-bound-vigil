@@ -18,6 +18,7 @@ import { askUpNextReplacement } from "../library/UpNextReplacement";
 import { NO_FILTERS } from "../library/libraryView";
 import { isWeb } from "../api";
 import { bookDownload, isDownloading, tracked, wasStopped } from "../library/cloudDownloads";
+import { canWatch, isWatchingAuthor, unwatch, watchAuthor } from "../library/watchList";
 
 /** The PWA transfer controls are hidden while the PWA is disabled. */
 export const phoneChoiceShown = () => false;
@@ -124,6 +125,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
             icon: "search" as const,
             onSelect: () => showInLibrary(kindOf(book.format), { ...NO_FILTERS, tab: "all", authors: [book.authors[0]] }),
           },
+          ...(canWatch() ? [watchAuthorItem(book.authors[0])] : []),
         ]
       : []),
     ] },
@@ -179,6 +181,13 @@ const onAudiobooksPage = () => !!document.querySelector(".audiobooks");
 /** Right-clicking a book, or holding a finger on it, opens its menu. Spread onto the book's card or row. */
 export function bookContextMenu(book: BookPreview, actions: BookActions) {
   return holdForMenu(`More for ${book.title}`, () => bookMenu(book, actions));
+}
+
+/** Watch an author: their new books are news in Sanctum (watchList.ts). */
+function watchAuthorItem(author: string): MenuEntry {
+  return isWatchingAuthor(author)
+    ? { label: `Stop watching ${author}`, icon: "bell", onSelect: () => unwatch({ kind: "author", name: author, addedAt: "", known: [], primed: false }) }
+    : { label: `Watch ${author}`, icon: "bell", hint: "News when a new book is announced or out", onSelect: () => watchAuthor(author) };
 }
 
 function downloadItem(book: BookPreview, actions: BookActions): MenuEntry {

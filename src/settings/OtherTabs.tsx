@@ -14,6 +14,7 @@ import { TextSettings } from "../reader/ReaderPopovers";
 import { PAGE_COLORS, resolveTheme, WIDTHS } from "../reader/settings";
 import { readLocal, useAppDark, useAppSettings, writeLocal, type SeriesCheckEvery } from "./appSettings";
 import { canCheckSeries, checkAllSeries, useSeriesNews } from "../library/seriesCheck";
+import { canWatch, unwatch, useWatch, watchAuthor, watchBook, whenLine } from "../library/watchList";
 import { relativeTime } from "../lib/format";
 import { useReaderSettings } from "./AppearanceTab";
 import { ActionTile, Columns, formatBytes, RadioList, Row, Section, SectionGroup, Segmented, Select, Toggle } from "./controls";
@@ -526,6 +527,82 @@ function GoodreadsReport({ report, onClose }: { report: GoodreadsImport; onClose
   );
 }
 
+/** Authors and books watched for news: announced, then out (watchList.ts). */
+function WatchSection() {
+  const { list } = useWatch();
+  const [author, setAuthor] = useState("");
+  const [title, setTitle] = useState("");
+  const [by, setBy] = useState("");
+  if (!canWatch()) return null;
+  const authors = list.flatMap((w) => (w.kind === "author" ? [w] : []));
+  const books = list.flatMap((w) => (w.kind === "book" && !w.auto ? [w] : []));
+  return (
+    <Section id="watching" title="Watching" lede="Authors and books you follow. When a new book is announced, and when it comes out, you get a message and it shows in Sanctum. They're looked up with the series check above, and straight away when you add one.">
+      <Row label="Authors" hint={authors.length ? undefined : "No authors yet. You can also watch one from a book's menu, under Find related."}>
+        <form
+          className="watch-add"
+          onSubmit={(e) => {
+            e.preventDefault();
+            watchAuthor(author);
+            setAuthor("");
+          }}
+        >
+          <input className="input" aria-label="Author to watch" placeholder="Author's name" value={author} onChange={(e) => setAuthor(e.target.value)} />
+          <button type="submit" className="btn btn-quiet" disabled={!author.trim()}>
+            <Icon name="bell" size={16} /> Watch
+          </button>
+        </form>
+      </Row>
+      {authors.length > 0 && (
+        <ul className="tag-manage">
+          {authors.map((a) => (
+            <li key={a.name}>
+              <span className="tag-chip">
+                {a.name}
+                <button type="button" aria-label={`Stop watching ${a.name}`} title="Stop watching" onClick={() => unwatch(a)}>
+                  <Icon name="close" size={12} />
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Row label="Books" hint={books.length ? undefined : "No books yet. You can also watch one from its series' missing books."}>
+        <form
+          className="watch-add"
+          onSubmit={(e) => {
+            e.preventDefault();
+            watchBook(title, by);
+            setTitle("");
+            setBy("");
+          }}
+        >
+          <input className="input" aria-label="Title of the book to watch" placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input className="input" aria-label="Its author" placeholder="Author" value={by} onChange={(e) => setBy(e.target.value)} />
+          <button type="submit" className="btn btn-quiet" disabled={!title.trim()}>
+            <Icon name="bell" size={16} /> Watch
+          </button>
+        </form>
+      </Row>
+      {books.length > 0 && (
+        <ul className="tag-manage">
+          {books.map((b) => (
+            <li key={b.key}>
+              <span className="tag-chip">
+                {b.title}
+                <span className="muted">{b.released ? "Out now" : b.date ? whenLine({ kind: "announced", date: b.date }) : "No date yet"}</span>
+                <button type="button" aria-label={`Stop watching ${b.title}`} title="Stop watching" onClick={() => unwatch(b)}>
+                  <Icon name="close" size={12} />
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
 const COLLECTIONS_PREFS = "tbv.collections.view";
 
 /** How often series are looked up online for books you don't have yet (seriesCheck.ts). */
@@ -535,7 +612,7 @@ function SeriesCheckSection() {
   const [days, setDays] = useState(String(settings.seriesCheckDays));
   if (!canCheckSeries) return null;
   return (
-    <Section id="series-check" title="Check for new books in a series" lede="Every series in your library is looked up online for books you don't have yet. New finds show on the series page and in Sanctum. Nothing is added to your library without you.">
+    <Section id="series-check" title="Check for new books in a series" lede="Every series in your library is looked up online for books you don't have yet, and so are the authors and books you watch. New finds show on the series page and in Sanctum. Nothing is added to your library without you.">
       <Row label="Check" hint="It runs quietly in the background, one series at a time.">
         <Select<SeriesCheckEvery>
           label="How often to check series"
@@ -614,6 +691,7 @@ export function CollectionsTab() {
       </Row>
     </Section>
     <SeriesCheckSection />
+    <WatchSection />
     </>
   );
 }
@@ -1158,7 +1236,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.135.0");
+  const [version, setVersion] = useState("0.136.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

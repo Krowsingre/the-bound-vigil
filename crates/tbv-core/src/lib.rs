@@ -52,6 +52,7 @@ pub mod servers;
 pub mod stop;
 pub mod sync;
 pub mod time;
+pub mod watch;
 pub mod time_log;
 pub mod widget;
 pub mod writing;

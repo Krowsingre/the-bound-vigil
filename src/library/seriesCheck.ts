@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { api, isApp, isHome, isWeb } from "../api";
 import type { MissingBook } from "../api/types";
 import type { AppSettings } from "../settings/appSettings";
+import { checkWatched } from "./watchList";
 
 const LAST_KEY = "tbv.series.lastCheck";
 const NEWS_KEY = "tbv.series.news";
@@ -126,6 +127,8 @@ export function checkAllSeries(): Promise<void> {
         window.dispatchEvent(new Event(SERIES_NEWS));
         await new Promise((r) => setTimeout(r, REST_MS));
       }
+      // Watched authors and books are looked up on the same schedule.
+      await checkWatched().catch(() => 0);
       if (reached) write(LAST_KEY, new Date().toISOString());
     } finally {
       progress = null;

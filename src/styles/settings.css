@@ -2178,3 +2178,15 @@ kbd {
     align-items: stretch;
   }
 }
+
+/* Preferences › Compendium › Watching: a name (or title and author) and Watch. */
+.watch-add {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.watch-add .input {
+  min-width: 0;
+  flex: 1 1 140px;
+}

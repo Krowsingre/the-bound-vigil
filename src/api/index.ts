@@ -5,6 +5,7 @@
 import { homeAudioUrl, homeCore, homeEvents } from "./homeCore";
 import type { Found } from "../lib/onlineDetails";
 import type {
+  WatchedBook,
   PageVideo,
   HistoryEntry,
   OpenTab,
@@ -378,6 +379,10 @@ export interface Api {
    * cloud book), `web:<id>` (Scry's own) or `catalog:<key>`. False if it had
    * already ended. Only in the app. */
   stopDownload?(name: string): Promise<boolean>;
+  /** A watched author's books online, out or coming, less those in the library. Only in the app. */
+  watchAuthorBooks?(author: string): Promise<WatchedBook[]>;
+  /** A watched book online, with its release date. Only in the app. */
+  watchFindBook?(title: string, author: string): Promise<WatchedBook | null>;
   /** Everywhere a book's file is: this device, other devices and sync places. */
   bookLocations(bookId: string): Promise<BookLocation[]>;
   /** A phone: keeps a downloaded book for good, or lets it go again after a while. */
@@ -1185,6 +1190,8 @@ function appApi(): Api {
     resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
     downloadBook: async (bookId, temporary) => (await core).invoke("download_book", { bookId, temporary: temporary ?? false }),
     stopDownload: async (name) => (await core).invoke("stop_download", { name }),
+    watchAuthorBooks: async (author) => (await core).invoke("watch_author_books", { author }),
+    watchFindBook: async (title, author) => (await core).invoke("watch_find_book", { title, author }),
     bookLocations: async (bookId) => (await core).invoke<BookLocation[]>("book_locations", { bookId }),
     keepDownload: async (bookId, keep) => (await core).invoke("keep_download", { bookId, keep }),
     coverOnView: async (bookId) => (await core).invoke<string | null>("cover_on_view", { bookId }),
