@@ -565,7 +565,7 @@ impl Supabase {
             200..=299 => {
                 let mut out = File::create(to)?;
                 let mut body = answer.body_mut().with_config().limit(u64::MAX).reader();
-                io::copy(&mut body, &mut out).map_err(|e| Error::Offline(e.to_string()))?;
+                io::copy(&mut body, &mut crate::stop::watched(&mut out)).map_err(|e| if crate::stop::stopped() { crate::stop::error() } else { Error::Offline(e.to_string()) })?;
                 Ok(true)
             }
             400 | 404 => {
@@ -704,7 +704,7 @@ impl Remote for Supabase {
                 if !found {
                     return Err(Error::Cloud("a piece of this file is missing from Supabase".into()));
                 }
-                io::copy(&mut File::open(&piece)?, &mut out)?;
+                io::copy(&mut File::open(&piece)?, &mut crate::stop::watched(&mut out))?;
                 Ok(())
             });
             let _ = std::fs::remove_file(&piece);

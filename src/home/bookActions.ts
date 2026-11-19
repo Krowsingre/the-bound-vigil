@@ -17,6 +17,7 @@ import { UP_NEXT_FULL } from "../library/shelfLimits";
 import { askUpNextReplacement } from "../library/UpNextReplacement";
 import { NO_FILTERS } from "../library/libraryView";
 import { isWeb } from "../api";
+import { bookDownload, isDownloading, tracked, wasStopped } from "../library/cloudDownloads";
 
 /** The PWA transfer controls are hidden while the PWA is disabled. */
 export const phoneChoiceShown = () => false;
@@ -32,6 +33,8 @@ export interface BookActions {
   setPinned?: (book: BookPreview, pinned: boolean) => void;
   /** Fetches a cloud-only book onto this device. */
   download?: (book: BookPreview) => void;
+  /** Stops the book's download while it's coming down. */
+  stopDownload?: (book: BookPreview) => void;
   /** Removes the copy here, keeping the one in the cloud. */
   removeDownload?: (book: BookPreview) => void;
   /** Saves a copy named "Title - Author" somewhere of your choosing. */
@@ -179,6 +182,8 @@ export function bookContextMenu(book: BookPreview, actions: BookActions) {
 }
 
 function downloadItem(book: BookPreview, actions: BookActions): MenuEntry {
+  if (actions.stopDownload && isDownloading(book.id))
+    return { label: "Stop download", icon: "close", hint: "Coming down now", onSelect: () => actions.stopDownload?.(book) };
   if (book.fileUnavailable) return { label: "Download", icon: "download", hint: "File not in the cloud", disabled: true };
   if (book.availability === "cloud")
     return { label: "Download", icon: "download", disabled: !actions.download, onSelect: () => actions.download?.(book) };
@@ -201,7 +206,7 @@ export function cannotOpen(book: BookPreview): string | null {
 /** The shared actions, refreshing the current view after each change. */
 export function makeBookActions(
   api: Pick<import("../api").Api, "setBookStatus" | "setFavorite" | "setWantToRead" | "setRating"> &
-    Partial<Pick<import("../api").Api, "downloadBook" | "removeDownload" | "saveCopies" | "shareBookFiles" | "setPhoneWanted" | "setPinned" | "setAudioType">>,
+    Partial<Pick<import("../api").Api, "downloadBook" | "stopDownload" | "removeDownload" | "saveCopies" | "shareBookFiles" | "setPhoneWanted" | "setPinned" | "setAudioType">>,
   toast: ShowToast,
   refresh: () => void,
   openBook: (bookId: string) => void,
@@ -253,9 +258,14 @@ export function makeBookActions(
       if (!pinned && book.pinnedAt) toast("Unpinned from Archive.", { label: "Undo", run: () => void run(book, api.setPinned!(book.id, true)) });
     }))),
     download: api.downloadBook && ((book) => {
-      toast(`Downloading “${book.title}”…`);
-      void run(book, api.downloadBook!(book.id).then(() => toast(`“${book.title}” is on this device.`)));
+      const stop = api.stopDownload && { label: "Stop", run: () => void api.stopDownload!(bookDownload(book.id)) };
+      toast(`Downloading “${book.title}”…`, stop || undefined);
+      void tracked(book.id, api.downloadBook!(book.id)).then(
+        () => (toast(`“${book.title}” is on this device.`), refresh()),
+        (e: unknown) => toast(wasStopped(e) ? `Stopped downloading “${book.title}”. Nothing of it was kept.` : `Couldn't update “${book.title}”: ${String(e)}`),
+      );
     }),
+    stopDownload: api.stopDownload && ((book) => void api.stopDownload!(bookDownload(book.id))),
     removeDownload: api.removeDownload && ((book) =>
       void run(book, api.removeDownload!(book.id).then(() => toast(`Removed the copy of “${book.title}” here. It's still in the cloud.`)))),
     // Each book is fetched from the cloud first if it's only there.

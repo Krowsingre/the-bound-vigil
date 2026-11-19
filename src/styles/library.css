@@ -1658,3 +1658,11 @@ button.tag-chip-add:hover {
   top: 2px;
   bottom: auto;
 }
+
+/* "Downloading 3 of 10…" with its Stop all button beside it. */
+.batch-download-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}

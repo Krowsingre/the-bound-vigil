@@ -53,7 +53,7 @@ export function ServerRows({ queue }: { queue: ServerQueue }) {
         <div className="imports-summary-actions">
           {notDown > 0 && (
             <button type="button" className="btn btn-quiet btn-danger-text" onClick={() => void api.cancelServerQueue()}>
-              Stop the rest
+              Stop all
             </button>
           )}
           {c.done + c.failed > 0 && (
@@ -100,7 +100,12 @@ export function ServerRows({ queue }: { queue: ServerQueue }) {
                   Try again
                 </button>
               )}
-              {(f.state === "waiting" || f.state === "downloading" || f.state === "failed") && (
+              {(f.state === "waiting" || f.state === "downloading") && (
+                <button type="button" className="btn btn-quiet btn-small btn-danger-text" aria-label={`Stop ${f.name}`} onClick={() => void api.removeServerFile(f.id)}>
+                  Stop
+                </button>
+              )}
+              {f.state === "failed" && (
                 <button type="button" className="icon-btn" aria-label={`Remove ${f.name}`} title="Remove" onClick={() => void api.removeServerFile(f.id)}>
                   <Icon name="close" size={16} />
                 </button>

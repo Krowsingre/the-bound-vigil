@@ -377,7 +377,7 @@ impl Store for WebDav {
     fn get_file(&mut self, path: &str, to: &Path) -> Result<bool> {
         let Some(mut answer) = self.get(path)? else { return Ok(false) };
         let mut out = File::create(to)?;
-        io::copy(&mut answer.body_mut().as_reader(), &mut out)?;
+        io::copy(&mut answer.body_mut().as_reader(), &mut crate::stop::watched(&mut out))?;
         Ok(true)
     }
 

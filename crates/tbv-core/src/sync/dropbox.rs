@@ -323,7 +323,7 @@ impl Store for Dropbox {
     fn get_file(&mut self, path: &str, to: &Path) -> Result<bool> {
         let Some(mut answer) = self.download(path, None)? else { return Ok(false) };
         let mut out = File::create(to)?;
-        io::copy(&mut answer.body_mut().with_config().limit(u64::MAX).reader(), &mut out)?;
+        io::copy(&mut answer.body_mut().with_config().limit(u64::MAX).reader(), &mut crate::stop::watched(&mut out))?;
         Ok(true)
     }
 

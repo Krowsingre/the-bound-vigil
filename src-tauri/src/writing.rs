@@ -102,6 +102,7 @@ pub async fn download_from_catalog(
     id: String,
     file: OpdsFile,
     title: String,
+    key: Option<String>,
 ) -> CommandResult<()> {
     let library = state.0.clone();
     let access = with_library(state, move |library| library.catalog_access(&id)).await?;
@@ -109,7 +110,9 @@ pub async fn download_from_catalog(
     let imports = imports.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let folder = Arc::new(TempFolder::new(&downloads).map_err(|e| e.to_string())?);
-        let path = access.download(&file, &title, folder.path());
+        // Its Stop button stops it by this name; a partial file goes with the folder.
+        let name = format!("catalog:{}", key.unwrap_or_else(|| file.url.clone()));
+        let path = crate::stops::run(&name, || access.download(&file, &title, folder.path()));
         keep_sign_ins(&library);
         imports.add_holding(&app, &library, vec![path.map_err(|e| e.to_string())?], Some(folder));
         Ok(())

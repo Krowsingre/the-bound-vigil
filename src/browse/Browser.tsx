@@ -1,3 +1,4 @@
+import { wasStopped } from "../library/cloudDownloads";
 import { workspaceFrame, workspaceHost } from "../shell/workspaceFrame";
 import { placeWorkspaceBrowser, workspaceOffset } from "./workspaceBrowser";
 // Discover: a web browser inside TBV. Each tab's page shows in a view of its
@@ -648,7 +649,7 @@ export function Browser({
           } else {
             void api.downloadWebBook(ev.url, fileTitle(ev.url), downloadSource(ev.tab, ev.url)).then(
               () => toast("It's being added to your library."),
-              (e: unknown) => toast(clean(e)),
+              (e: unknown) => wasStopped(e) || toast(clean(e)),
             );
           }
           break;
@@ -1186,11 +1187,19 @@ export function Browser({
     void api.browserAct(id, "go", failure.url || url).catch((e: unknown) => toast(clean(e)));
   };
 
+  /** Downloads › Stop: ends the transfer and deletes what came down, and its row goes. */
+  const stoppable = (d: Fetched) => d.state === "coming" && (!d.direct || !!api.stopDownload);
+  const stopFetch = (d: Fetched) =>
+    (d.direct ? api.stopDownload!(`web:${d.id}`).then(() => undefined) : api.browserCancelDownload(d.id)).then(
+      () => setDownloads((list) => list.filter((x) => x.id !== d.id || x.state !== "coming")),
+      (e: unknown) => toast(clean(e)),
+    );
+
   /** Downloads › Retry: the same address again, in its tab if that's still open. */
   const retry = (d: Fetched) => {
     if (!d.url || !/^https?:/i.test(d.url) || d.securityBlocked) return;
     if (d.direct) {
-      void api.downloadWebBook(d.url, d.name, d.sourceUrl).catch((e: unknown) => toast(clean(e)));
+      void api.downloadWebBook(d.url, d.name, d.sourceUrl).catch((e: unknown) => wasStopped(e) || toast(clean(e)));
       return;
     }
     const tab = d.tab && made.current.has(d.tab) ? d.tab : made.current.has(active.id) && !onStart ? active.id : null;
@@ -1270,7 +1279,7 @@ export function Browser({
       await api.downloadWebBook(url, fileTitle(url), downloadSource(active.id, url));
       toast("It's being added to your library.");
     } catch (e) {
-      toast(String(e));
+      if (!wasStopped(e)) toast(String(e));
     }
   };
 
@@ -1743,6 +1752,12 @@ export function Browser({
           <div className="dialog browser-downloads" role="dialog" aria-label="Downloads" onKeyDown={(e) => e.key === "Escape" && setPanel(null)}>
             <header className="catalogues-head">
               <h2>Downloads</h2>
+              {fetched.filter(stoppable).length > 1 && (
+                <button type="button" className="btn btn-quiet btn-small btn-danger-text"
+                  onClick={() => void Promise.all(fetched.filter(stoppable).map(stopFetch)).then(() => downloadClose.current?.focus({ preventScroll: true }))}>
+                  Stop all
+                </button>
+              )}
               <button type="button" className="btn btn-quiet btn-small" disabled={!fetched.some((d) => !isActiveDownload(d))}
                 onClick={(e) => void removeDownloadRows(fetched.map((d) => d.id), e.currentTarget)}>
                 Remove all
@@ -1770,26 +1785,22 @@ export function Browser({
                       <button type="button" className="btn btn-quiet btn-small" onClick={() => openInNewTab(d.sourceUrl!, false)}>Open source page</button>
                     )}
                     {d.state === "failed" && !d.securityBlocked && !d.direct && d.url && /^https?:\/\//i.test(d.url) && BOOK_FILE.test(d.url) && (
-                      <button type="button" className="btn btn-quiet btn-small" onClick={() => void api.downloadWebBook(d.url!, d.name, d.sourceUrl).catch((error: unknown) => toast(clean(error)))}>
+                      <button type="button" className="btn btn-quiet btn-small" onClick={() => void api.downloadWebBook(d.url!, d.name, d.sourceUrl).catch((error: unknown) => wasStopped(error) || toast(clean(error)))}>
                         Download and add to library
                       </button>
                     )}
-                    {d.state === "coming" && !d.direct && (
+                    {d.state === "coming" && (!d.direct || api.stopDownload) && (
                       <button
                         type="button"
-                        className="btn btn-quiet btn-small"
+                        className="btn btn-quiet btn-small btn-danger-text"
                         onClick={(event) => {
                           const button = event.currentTarget;
-                          void api.browserCancelDownload(d.id).then(
-                            () => {
-                              setDownloads((list) => list.filter((x) => x.id !== d.id || x.state !== "coming"));
-                              if (document.activeElement === button || document.activeElement === document.body) downloadClose.current?.focus({ preventScroll: true });
-                            },
-                            (e: unknown) => toast(clean(e)),
-                          );
+                          void stopFetch(d).then(() => {
+                            if (document.activeElement === button || document.activeElement === document.body) downloadClose.current?.focus({ preventScroll: true });
+                          });
                         }}
                       >
-                        Cancel
+                        Stop
                       </button>
                     )}
                     {d.state === "failed" && d.url && /^https?:/i.test(d.url) && !d.securityBlocked && (

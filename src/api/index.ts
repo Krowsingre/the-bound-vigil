@@ -374,6 +374,10 @@ export interface Api {
   resolveSyncConflict(kind: string, key: string, keepCloud: boolean): Promise<void>;
   /** Fetches a book that's only in the cloud onto this device. `temporary` (a phone playing it): removed again after a while unless kept. */
   downloadBook(bookId: string, temporary?: boolean): Promise<void>;
+  /** Stops a download part-way and deletes what came down: `book:<id>` (a
+   * cloud book), `web:<id>` (Scry's own) or `catalog:<key>`. False if it had
+   * already ended. Only in the app. */
+  stopDownload?(name: string): Promise<boolean>;
   /** Everywhere a book's file is: this device, other devices and sync places. */
   bookLocations(bookId: string): Promise<BookLocation[]>;
   /** A phone: keeps a downloaded book for good, or lets it go again after a while. */
@@ -538,7 +542,8 @@ export interface Api {
   catalogFeed(id: string, url: string | null): Promise<OpdsFeed>;
   catalogSearch(id: string, search: string, words: string): Promise<OpdsFeed>;
   /** Brings a book down and adds it through the import queue. */
-  downloadFromCatalog(id: string, file: OpdsFile, title: string): Promise<void>;
+  /** `key` names it for its Stop button (`stopDownload("catalog:" + key)`). */
+  downloadFromCatalog(id: string, file: OpdsFile, title: string, key?: string): Promise<void>;
   /** Brings a book down from a web address (a Bible, or a browser page's file) and adds it through the import queue. */
   downloadWebBook(url: string, title: string, sourceUrl?: string): Promise<void>;
   /** Websites saved in the browser, in order. */
@@ -1179,6 +1184,7 @@ function appApi(): Api {
     activateLicense: async (key) => (await core).invoke<LicenseView | null>("license_activate", { key }),
     resolveSyncConflict: async (kind, key, keepCloud) => (await core).invoke("resolve_sync_conflict", { kind, key, keepCloud }),
     downloadBook: async (bookId, temporary) => (await core).invoke("download_book", { bookId, temporary: temporary ?? false }),
+    stopDownload: async (name) => (await core).invoke("stop_download", { name }),
     bookLocations: async (bookId) => (await core).invoke<BookLocation[]>("book_locations", { bookId }),
     keepDownload: async (bookId, keep) => (await core).invoke("keep_download", { bookId, keep }),
     coverOnView: async (bookId) => (await core).invoke<string | null>("cover_on_view", { bookId }),
@@ -1315,7 +1321,7 @@ function appApi(): Api {
     removeCatalog: async (id) => (await core).invoke("remove_catalog", { id }),
     catalogFeed: async (id, url) => (await core).invoke<OpdsFeed>("catalog_feed", { id, url }),
     catalogSearch: async (id, search, words) => (await core).invoke<OpdsFeed>("catalog_search", { id, search, words }),
-    downloadFromCatalog: async (id, file, title) => (await core).invoke("download_from_catalog", { id, file, title }),
+    downloadFromCatalog: async (id, file, title, key) => (await core).invoke("download_from_catalog", { id, file, title, key: key ?? null }),
     downloadWebBook: async (url, title, sourceUrl) => (await core).invoke("download_web_book", { url, title, sourceUrl }),
     bookmarks: async () => (await core).invoke<Bookmark[]>("bookmarks"),
     addBookmark: async (title, url, folderId) => (await core).invoke<Bookmark>("add_bookmark", { title, url, folderId: folderId ?? null }),

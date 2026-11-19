@@ -2358,7 +2358,7 @@ pub async fn download_web_book(
         let folder = downloads.join(&id);
         std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
         tell(&app, Event::DirectDownloadStart { id: id.clone(), name: title.clone(), url: url.clone(), source_url });
-        match tbv_core::opds::download_book(&url, &title, &folder) {
+        match crate::stops::run(&format!("web:{id}"), || tbv_core::opds::download_book(&url, &title, &folder)) {
             Ok(path) => {
                 tell(&app, Event::Download { tab: String::new(), id: id.clone(), path: path.to_string_lossy().into_owned(), name: title, ok: true, error: None, security_blocked: false });
                 if imports.queue_browser_download(&app, &library, path, id.clone(), hold) {
@@ -2371,6 +2371,10 @@ pub async fn download_web_book(
             }
             Err(e) => {
                 let _ = std::fs::remove_dir_all(folder);
+                // Stopped: its row is already gone from Downloads.
+                if crate::stops::was_stopped(&e.to_string()) {
+                    return Err(e.to_string());
+                }
                 tell(&app, Event::Download { tab: String::new(), id, path: String::new(), name: title, ok: false, error: Some(e.to_string()), security_blocked: false });
                 Err(e.to_string())
             }

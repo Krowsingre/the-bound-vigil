@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, isApp, serverBookId } from "../api";
 import { playAudiobook } from "../audio/player";
+import { wasStopped } from "../library/cloudDownloads";
 import type { CatalogInput, CatalogView, OpdsEntry, OpdsFeed, OpdsFile } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon, type IconName } from "../components/Icon";
@@ -250,9 +251,12 @@ function EntryCard({
   onOpen,
   onDownload,
   onListen,
+  onStop,
 }: {
   entry: OpdsEntry;
   state: "idle" | "busy" | "done";
+  /** Stops it while it's coming down. */
+  onStop?: () => void;
   onOpen: () => void;
   onDownload: (file: OpdsFile) => void;
   /** Plays it straight from the server (an Audiobookshelf audiobook). */
@@ -293,6 +297,11 @@ function EntryCard({
                   </>
                 )}
               </button>
+              {state === "busy" && onStop && (
+                <button type="button" className="btn btn-quiet btn-small btn-danger-text" onClick={onStop}>
+                  Stop
+                </button>
+              )}
               {more.length > 0 && state === "idle" && (
                 <Menu label="Other formats" className="btn btn-quiet btn-small" trigger={<>Other formats <Icon name="chevronDown" size={13} /></>} items={more} />
               )}
@@ -423,7 +432,7 @@ export function Catalogs({
     if (!current) return;
     setDownloads((d) => ({ ...d, [entry.id]: "busy" }));
     try {
-      await api.downloadFromCatalog(current, file, entry.title);
+      await api.downloadFromCatalog(current, file, entry.title, `${current}:${entry.id}`);
       setDownloads((d) => ({ ...d, [entry.id]: "done" }));
       toast(`${entry.title} is being added to your library.`);
     } catch (e) {
@@ -431,6 +440,7 @@ export function Catalogs({
         const { [entry.id]: _, ...rest } = d;
         return rest;
       });
+      if (wasStopped(e)) return toast(`Stopped bringing in ${entry.title}. Nothing of it was kept.`);
       toast(String(e) === NEEDS_LOGIN ? "The catalog wants you to sign in. Add your details with Edit." : String(e));
     }
   };
@@ -607,6 +617,7 @@ export function Catalogs({
                           state={downloads[b.id] ?? "idle"}
                           onOpen={() => b.navigation && go(b.title, b.navigation)}
                           onDownload={(f) => void download(b, f)}
+                          onStop={api.stopDownload && current ? () => void api.stopDownload!(`catalog:${current}:${b.id}`) : undefined}
                           onListen={
                             isApp && catalog?.kind === "audiobookshelf" && b.files.some((f) => f.url.endsWith("/audio"))
                               ? () => playAudiobook(serverBookId(catalog.id, b.id))
