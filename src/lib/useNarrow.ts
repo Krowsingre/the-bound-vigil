@@ -25,3 +25,11 @@ export function useNarrow(query: string = NARROW): boolean {
   }, [query]);
   return narrow;
 }
+
+/**
+ * Scry's toolbar: the phone's row under the address on phones, on an iPad held
+ * upright and on the Duo folded; the computer's bar on a computer, on an iPad
+ * held sideways and on the Duo open (embre, 19 November). The same lines as
+ * the reader's.
+ */
+export const BROWSER_NARROW = READER_NARROW;

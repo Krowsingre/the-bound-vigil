@@ -61,7 +61,7 @@ export function VideoReader({ video, onClose }: { video: PageVideo; onClose: () 
   };
 
   return (
-    <section className="browser-video" aria-label="Video reader view" onKeyDown={(e) => e.key === "Escape" && onClose()}>
+    <section className="browser-video" aria-label="Focus Video" onKeyDown={(e) => e.key === "Escape" && onClose()}>
       <div className="browser-reader-bar">
         <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
           <Icon name="arrowLeft" size={14} /> Back to the page

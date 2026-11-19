@@ -11,6 +11,7 @@ import { placeWorkspaceBrowser, workspaceOffset } from "./workspaceBrowser";
 // page's buttons (back, forward, reload, home, bookmark, reader) beside it.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, isIOS, isWindows, openExternal } from "../api";
 import type { Bookmark, BrowserEvent, BrowserFrame, BrowserPane, DeviceTabs, OpenTab, PageVideo, ReaderArticle } from "../api/types";
 import { VideoReader } from "./VideoReader";
@@ -21,7 +22,7 @@ import { Menu, type MenuEntry } from "../components/Menu";
 import { useToast } from "../components/Toast";
 import { askSendWithLocalSend } from "../localsend/SendWithLocalSend";
 import { formatLabel } from "../lib/queryBooks";
-import { useNarrow } from "../lib/useNarrow";
+import { BROWSER_NARROW, useNarrow } from "../lib/useNarrow";
 import type { Route } from "../shell/routes";
 import { SplitDivider } from "./SplitDivider";
 import {
@@ -163,34 +164,17 @@ function useTravel(way: "back" | "forward") {
   };
 }
 
-function BrowserBookmarks({ state, className }: { state: BarState; className: string }) {
-  const sites = state.bookmarks.length ? state.bookmarks : SUGGESTED_SITES;
-  const items: MenuEntry[] = [
-    { label: state.marked ? "Remove bookmark" : "Bookmark this page", icon: "bookmark", disabled: !state.web, onSelect: () => ask("mark") },
-    { label: "Manage bookmarks", icon: "edit", onSelect: () => ask("bookmarks") },
-    "divider",
-    { heading: <strong>{state.bookmarks.length ? "Saved sites" : "Book sites to start with"}</strong> },
-    ...sites.map((site) => ({ label: site.title, icon: "globe" as const, onSelect: () => ask("bookmark:" + site.url) })),
-  ];
-  return (
-    <Menu
-      label={state.marked ? "Bookmarks (page saved)" : "Bookmarks"}
-      className={className + (state.marked ? " browser-bookmark-saved" : "")}
-      align="start"
-      trigger={<Icon name="bookmark" size={20} />}
-      items={items}
-    />
-  );
-}
-
 /**
- * The top bar's buttons on Discover, before the address: Back, Forward,
- * Reload, Home, Bookmark and Reader view. A phone has Home here and the rest
- * in the row under the bar.
+ * The top bar's buttons on Discover, before the address: Back, Forward and
+ * Reload, with Home left of Back when it's turned on in Preferences ›
+ * Discover (embre, 19 November). A phone, an iPad held upright and the Duo
+ * folded have Home here and the rest in the row under the bar.
  */
-export function BrowserNav({ compact = false }: { compact?: boolean } = {}) {
-  const narrow = useNarrow();
+export function BrowserNav() {
+  const phoneBar = useNarrow(BROWSER_NARROW);
   const [state, setState] = useState(barNow);
+  const [home, setHome] = useState(() => readBrowserPrefs().homeButton);
+  useEffect(() => onBrowserPrefs(() => setHome(readBrowserPrefs().homeButton)), []);
   useEffect(() => {
     const heard = (e: Event) => setState((e as CustomEvent<BarState>).detail);
     window.addEventListener(BROWSER_STATE, heard);
@@ -203,20 +187,13 @@ export function BrowserNav({ compact = false }: { compact?: boolean } = {}) {
       <Icon name={icon} size={20} />
     </button>
   );
-  if (narrow) return button("Home page", "home", "home");
+  if (phoneBar) return button("Home page", "home", "home");
   return (
     <div className="browser-nav">
+      {home && button("Home page", "home", "home")}
       {button("Back", "arrowLeft", "back", back)}
       {button("Forward", "arrowRight", "forward", forward)}
       {button(state.busy ? "Stop" : "Reload", state.busy ? "close" : "sync", state.busy ? "stop" : "reload")}
-      {!compact && button("Home page", "home", "home")}
-      {!compact && <BrowserBookmarks state={state} className="header-action" />}
-      {!compact && button("Sessions", "list", "sessions")}
-      {!compact && state.split && (state.split.on
-        ? button("Close split screen", "splitScreen", "unsplit", { "aria-pressed": true, className: "header-action is-on" })
-        : <Menu label="Split screen" className="header-action" trigger={<Icon name="splitScreen" size={20} />}
-            items={state.split.choices.length ? state.split.choices.map((c) => (c.id === "divider" ? "divider" as const : { label: c.label, onSelect: () => ask(`split:${c.id}`) })) : [{ label: "Open another tab to split with", disabled: true, onSelect: () => undefined }]} />)}
-      {!compact && button("Reader view", "bookOpen", "reader", { disabled: !state.web && !state.reader, "aria-pressed": state.reader, className: `header-action${state.reader ? " is-on" : ""}` })}
     </div>
   );
 }
@@ -366,6 +343,13 @@ export function Browser({
   onSplitWith?: (route: Route) => void;
 }) {
   const narrow = useNarrow();
+  /** The phone's row of buttons under the address, not the computer's bar (see BROWSER_NARROW). */
+  const phoneBar = useNarrow(BROWSER_NARROW);
+  /** What the tabs workspace shows: the open tabs, saved sessions, or recently closed and other devices'. */
+  const [tabsView, setTabsView] = useState<"open" | "sessions" | "recent">("open");
+  /** Where the computer's bar puts Eidolon and ••• (after the address). */
+  const [barEnd, setBarEnd] = useState<HTMLElement | null>(null);
+  useEffect(() => setBarEnd(document.getElementById("header-page-end")), [phoneBar]);
   const keys = useShortcuts();
   const [tabs, setTabs] = useState<TabsState>(startingTabs);
   const [pair, setPair] = useState<{ other: string; activeLeft: boolean } | null>(null);
@@ -543,7 +527,6 @@ export function Browser({
   const reloadMarks = useCallback(() => api.bookmarks().then(setMarks, () => undefined), []);
   useEffect(() => void reloadMarks(), [reloadMarks]);
 
-  const downloadTrigger = useRef<HTMLButtonElement>(null);
   const downloadClose = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (panel !== "downloads") return;
@@ -551,7 +534,7 @@ export function Browser({
     downloadClose.current?.focus();
     return () => {
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
-      else downloadTrigger.current?.focus();
+      else document.querySelector<HTMLElement>(".browser-more")?.focus();
     };
   }, [panel]);
   const removeDownloadRows = async (ids: string[], from: HTMLElement) => {
@@ -1379,47 +1362,6 @@ export function Browser({
     }
   };
 
-  const moreItems: MenuEntry[] = [
-    // On a computer it's a button by Downloads; on a phone or iPad, here. A video popped out keeps playing over the reader.
-    ...(narrow ? [
-      { label: "Picture in picture", icon: "pictureInPicture" as const, disabled: !web, onSelect: () => void popOut() },
-      { label: film ? "Exit Video reader view" : "Video reader view", icon: "videoReader" as const, disabled: !web && !film, onSelect: () => void openVideo() },
-    ] : []),
-    ...(companion && !narrow ? [
-      { label: "Home page", icon: "home" as const, onSelect: goHome },
-      { label: marked ? "Remove bookmark" : "Bookmark this page", icon: "bookmark" as const, disabled: !web, onSelect: () => void toggleMark() },
-      { label: article ? "Exit Reader view" : "Reader view", icon: "bookOpen" as const, disabled: !web && !article, onSelect: () => void (article ? setArticle(null) : openReader()) },
-    ] : []),
-    { label: "Share and open", icon: "share", disabled: !web, submenu: [
-      { label: "Copy link", icon: "copy", onSelect: () => void navigator.clipboard?.writeText(url).then(() => toast("Link copied.")) },
-      { label: "Share...", icon: "share", onSelect: () => share(url, titleOf(active.title, url)) },
-      { label: "Open in your normal browser", icon: "link", onSelect: () => void openExternal(url) },
-    ] },
-    { label: "Bookmarks", icon: "bookmark", onSelect: () => setPanel("bookmarks") },
-    { label: "Sessions", icon: "list", onSelect: () => setPanel("sessions") },
-    { label: "Reading List", icon: "bookOpen", submenu: [
-      { label: "Save this page", icon: "notes", disabled: !web || saving, onSelect: () => void saveToReadingList() },
-      { label: "Open Reading List", icon: "bookOpen", onSelect: () => setPanel("reading") },
-    ] },
-    { label: "Save selection as Scribe note", icon: "notes", disabled: !web || !!article, onSelect: () => void saveSelection() },
-    { label: "History", icon: "clock", onSelect: () => setPanel("history") },
-    { label: "Find on page", icon: "search", onSelect: () => setFinding("") },
-    // Also on a page's right-click menu (Windows), for one thing at a time.
-    { label: "Remove things from this page", icon: "eyeOff", disabled: !web || !!article, onSelect: () => void api.browserRead(active.id, REMOVE_FROM_PAGE).then((on) => {
-      if (!on) toast("This page doesn't allow it.");
-    }, () => toast("This page doesn't allow it.")) },
-    { label: "Bring back removed things", icon: "undo", disabled: !web || !!article, onSelect: () => void api.browserRead(active.id, BRING_BACK).then((had) => {
-      if (!had) toast("Nothing was removed from this site.");
-    }, () => toast("Nothing was removed from this site.")) },
-    { label: "Copy page report", icon: "copy", disabled: !web || !!article, onSelect: () => void copyPageReport(active.id) },
-    { label: "New tab", icon: "plus", onSelect: () => newTab() },
-    { label: "New private tab", icon: "eyeOff", onSelect: () => newTab(true) },
-    { label: "Reopen closed tab", icon: "undo", disabled: !closedTabs.length, onSelect: () => reopen() },
-    { label: "Make this your home page", icon: "home", disabled: !web, onSelect: () => (writeBrowserPrefs({ home: url }), toast("This is your home page now.")) },
-    ...(narrow ? [{ label: "Site information", icon: "info" as const, disabled: !site, onSelect: () => setPanel("site") }] : []),
-    { label: "Clear all cookies and site data", icon: "trash", onSelect: () => void api.browserClear().then(() => toast("Every site's cookies and data are cleared.")) },
-  ];
-
   const splitItems: MenuEntry[] = [
     ...tabs.tabs.filter((tab) => allowSplit && tab.id !== tabs.active).map((tab) => ({
       label: `Beside ${titleOf(tab.title, tab.url, tab.private)}`, onSelect: () => splitWithTab(tab.id),
@@ -1427,6 +1369,58 @@ export function Browser({
     "divider",
     ...(onSplitWith ? SPLIT_ROUTES
       .map(({ label, route }) => ({ label: `Beside ${label}`, onSelect: () => { setPair(null); onSplitWith(route); } })) : []),
+  ];
+
+  /** Eidolon: the page in a calmer form. Focus Audio joins these in 0.146 (embre, 19 November). */
+  const eidolonItems: MenuEntry[] = [
+    { label: article ? "Leave Focus Reader" : "Focus Reader", icon: "bookOpen", disabled: !web && !article, onSelect: () => void (article ? setArticle(null) : openReader()) },
+    { label: film ? "Leave Focus Video" : "Focus Video", icon: "videoReader", disabled: !web && !film, onSelect: () => void openVideo() },
+  ];
+
+  const savedSites = marks.length ? marks : SUGGESTED_SITES;
+  // ••• in the order embre set (19 November): Add to library first, then the groups.
+  const moreItems: MenuEntry[] = [
+    ...(isFile ? [{ label: "Add to library", icon: "plus" as const, onSelect: () => void addThisFile() }, "divider" as const] : []),
+    // A phone's Picture in picture, for now; a computer has the button on each video.
+    ...(phoneBar ? [{ label: "Picture in picture", icon: "pictureInPicture" as const, disabled: !web, onSelect: () => void popOut() }] : []),
+    { label: "Bookmarks", icon: "bookmark", submenu: [
+      { label: marked ? "Remove bookmark" : "Bookmark this page", icon: "bookmark", disabled: !web, onSelect: () => void toggleMark() },
+      { label: "Manage bookmarks", icon: "edit", onSelect: () => setPanel("bookmarks") },
+      "divider",
+      { heading: <strong>{marks.length ? "Saved sites" : "Book sites to start with"}</strong> },
+      ...savedSites.map((site) => ({ label: site.title, icon: "globe" as const, onSelect: () => go(site.url) })),
+    ] },
+    { label: coming ? `Downloads (${coming} in progress)` : "Downloads", icon: "download", onSelect: () => setPanel("downloads") },
+    { label: "History", icon: "clock", onSelect: () => setPanel("history") },
+    { label: "Reading List", icon: "bookOpen", submenu: [
+      { label: "Save this page", icon: "notes", disabled: !web || saving, onSelect: () => void saveToReadingList() },
+      { label: "Open Reading List", icon: "bookOpen", onSelect: () => setPanel("reading") },
+    ] },
+    { label: "Share and open", icon: "share", disabled: !web, submenu: [
+      { label: "Copy link", icon: "copy", onSelect: () => void navigator.clipboard?.writeText(url).then(() => toast("Link copied.")) },
+      { label: "Share...", icon: "share", onSelect: () => share(url, titleOf(active.title, url)) },
+      { label: "Open in your normal browser", icon: "link", onSelect: () => void openExternal(url) },
+    ] },
+    { label: "Find on page", icon: "search", onSelect: () => setFinding("") },
+    ...(canSplit ? [other
+      ? { label: "Close split screen", icon: "splitScreen" as const, onSelect: () => setPair(null) }
+      : { label: "Split screen", icon: "splitScreen" as const, submenu: splitItems.some((item) => item !== "divider") ? splitItems : [{ label: "Open another tab to split with", disabled: true }] }] : []),
+    { label: "Page tools", icon: "sliders", submenu: [
+      { label: "Save selection as Scribe note", icon: "notes", disabled: !web || !!article, onSelect: () => void saveSelection() },
+      // Also on a page's right-click menu (Windows), for one thing at a time.
+      { label: "Remove things from this page", icon: "eyeOff", disabled: !web || !!article, onSelect: () => void api.browserRead(active.id, REMOVE_FROM_PAGE).then((on) => {
+        if (!on) toast("This page doesn't allow it.");
+      }, () => toast("This page doesn't allow it.")) },
+      { label: "Bring back removed things", icon: "undo", disabled: !web || !!article, onSelect: () => void api.browserRead(active.id, BRING_BACK).then((had) => {
+        if (!had) toast("Nothing was removed from this site.");
+      }, () => toast("Nothing was removed from this site.")) },
+      { label: "Copy page report", icon: "copy", disabled: !web || !!article, onSelect: () => void copyPageReport(active.id) },
+      ...(phoneBar ? [{ label: "Site information", icon: "info" as const, disabled: !site, onSelect: () => setPanel("site") }] : []),
+    ] },
+    { label: "Browser settings", icon: "settings", submenu: [
+      { label: "Make this your home page", icon: "home", disabled: !web, onSelect: () => (writeBrowserPrefs({ home: url }), toast("This is your home page now.")) },
+      { label: "Clear all cookies and site data", icon: "trash", onSelect: () => void api.browserClear().then(() => toast("Every site's cookies and data are cleared.")) },
+    ] },
   ];
 
   const button = (label: string, icon: Parameters<typeof Icon>[0]["name"], onClick: () => void, extra = "", more: React.ButtonHTMLAttributes<HTMLButtonElement> = {}) => (
@@ -1460,34 +1454,21 @@ export function Browser({
 
   const backTravel = useTravel("back");
   const forwardTravel = useTravel("forward");
-  const downloadsButton = (
-    <button type="button" ref={downloadTrigger} className="toolbar-button browser-downloads-button" aria-label={coming ? `Downloads, ${coming} in progress` : "Downloads"} title="Downloads" onClick={() => setPanel("downloads")}>
-      <Icon name="download" size={17} />
-      {(coming > 0 || asking.length > 0) && <span className="browser-badge">{coming || asking.length}</span>}
-    </button>
+  // Downloads are in •••, so ••• carries their count (embre, 19 November).
+  const badge = coming || asking.length;
+  const more = (
+    <Menu label={badge ? `More, ${badge} download${badge === 1 ? "" : "s"}` : "More"} className="toolbar-button browser-more" trigger={<>
+      <Icon name="more" size={17} />
+      {badge > 0 && <span className="browser-badge">{badge}</span>}
+    </>} items={moreItems} />
   );
-  const tabList: MenuEntry[] = [
-    { heading: <strong>{tabs.tabs.length === 1 ? "1 tab" : `${tabs.tabs.length} tabs`}</strong> },
-    ...tabs.tabs.map((t) => ({
-      id: t.id,
-      label: titleOf(t.title, t.url, t.private),
-      closeAction: { label: `Close ${titleOf(t.title, t.url, t.private)}`, run: () => close(t.id) },
-      icon: (t.pinned ? "pin" : t.private ? "eyeOff" : "globe") as Parameters<typeof Icon>[0]["name"],
-      checked: t.id === tabs.active,
-      hint: siteOf(t.url) ?? undefined,
-      onSelect: () => switchTo(t.id),
-    })),
-    ...(closedTabs.length ? [
-      { heading: "Recently closed" },
-      ...closedTabs.map((tab, index) => ({ label: tab.title || tab.url, icon: "undo" as const, onSelect: () => reopen(1, index) })),
-      { label: "Clear recently closed", icon: "trash" as const, onSelect: () => clearClosedWithUndo() },
-    ] : []),
-    ...otherTabs.flatMap((device) => [
-      { heading: `On ${device.name}` },
-      ...device.tabs.map((t) => ({ label: t.title?.trim() || siteOf(t.url) || t.url, icon: (device.kind === "phone" ? "phone" : "computer") as Parameters<typeof Icon>[0]["name"],
-        hint: siteOf(t.url) ?? undefined, onSelect: () => openInNewTab(t.url, false) })),
-    ]),
-  ];
+  const eidolon = (
+    <Menu label="Eidolon" className={`toolbar-button browser-eidolon${article || film ? " is-on" : ""}`} trigger={<Icon name="focus" size={17} />} items={eidolonItems} />
+  );
+  const openTabs = (view: typeof tabsView = "open") => {
+    setTabsView(view);
+    setPanel("tabs");
+  };
 
   const tabRow = (t: TabsState["tabs"][number]) => (
     <div
@@ -1530,7 +1511,7 @@ export function Browser({
 
   return (
     <div className={`browser${active.private ? " is-private-tab" : ""}`}>
-      {!narrow && (
+      {!phoneBar && (
         <div className="browser-strip">
           <div ref={strip} className="browser-tabs" role="tablist" aria-label="Tabs">
             <div className="browser-pinned-tabs">{tabs.tabs.filter((tab) => tab.pinned).map(tabRow)}</div>
@@ -1540,34 +1521,25 @@ export function Browser({
             </button>
           </div>
           <div className="browser-strip-tools">
-            <Menu label="Every tab" closeOnScroll={false} className="toolbar-button" trigger={<Icon name="chevronDown" size={16} />} items={tabList} searchLabel="Search open tabs" />
-            <span className="browser-bar-divider" aria-hidden />
-            {button("Video reader view", "videoReader", () => void openVideo(), film ? " is-on" : "")}
-            {button("Picture in picture", "pictureInPicture", () => void popOut())}
-            {downloadsButton}
-            <Menu label="More" className="toolbar-button" trigger={<Icon name="more" size={17} />} items={moreItems} />
+            <button type="button" className={`toolbar-button${panel === "tabs" ? " is-on" : ""}`} aria-label="Tabs, sessions and recently closed" title="Tabs, sessions and recently closed"
+              aria-expanded={panel === "tabs"} onClick={() => (panel === "tabs" ? setPanel(null) : openTabs())}>
+              <Icon name="chevronDown" size={16} />
+            </button>
           </div>
         </div>
       )}
-      {narrow && busy && !onStart && <span className="browser-loading" role="progressbar" aria-label="Loading" />}
-      {narrow && (
+      {!phoneBar && barEnd && createPortal(<div className="browser-bar-end">{eidolon}{more}</div>, barEnd)}
+      {phoneBar && busy && !onStart && <span className="browser-loading" role="progressbar" aria-label="Loading" />}
+      {phoneBar && (
         <div className="browser-bar">
           {button("Back", "arrowLeft", () => act("back"), "", backTravel)}
           {button("Forward", "arrowRight", () => act("forward"), "", forwardTravel)}
           {button(busy ? "Stop" : "Reload", busy ? "close" : "sync", () => act(busy ? "stop" : "reload"))}
-          <BrowserBookmarks state={{ busy, web, marked: !!marked, bookmarks: marks, reader: !!article, split: null }} className="toolbar-button" />
-          {button("Sessions", "list", () => setPanel("sessions"))}
-          {/* Split screen sits between Sessions and Reader view, as in the computer's top bar (BrowserNav). */}
-          {(allowSplit || onSplitWith) && !companion && (other
-            ? button("Close split screen", "splitScreen", () => setPair(null), " is-on")
-            : <Menu label="Split screen" className="toolbar-button" trigger={<Icon name="splitScreen" size={17} />} items={splitItems} />)}
-          <button type="button" className={`toolbar-button browser-count${panel === "tabs" ? " is-on" : ""}`} aria-label={`Tabs: ${tabs.tabs.length} open`} title="Tabs" onClick={() => setPanel(panel === "tabs" ? null : "tabs")}>
+          {eidolon}
+          <button type="button" className={`toolbar-button browser-count${panel === "tabs" ? " is-on" : ""}`} aria-label={`Tabs: ${tabs.tabs.length} open`} title="Tabs" onClick={() => (panel === "tabs" ? setPanel(null) : openTabs())}>
             <span>{tabs.tabs.length}</span>
           </button>
-          {button("Reader view", "bookOpen", () => void (article ? setArticle(null) : openReader()), article ? " is-on" : "")}
-          {isFile && button("Add to library", "plus", () => void addThisFile(), " is-on")}
-          {downloadsButton}
-          <Menu label="More" className="toolbar-button" trigger={<Icon name="more" size={17} />} items={moreItems} />
+          {more}
         </div>
       )}
       {finding !== null && (
@@ -1600,7 +1572,7 @@ export function Browser({
           <button type="button" className="btn btn-quiet btn-small" onClick={(e) => void removeDownloadRows([d.id], e.currentTarget)}>Remove</button>
         </div>
       ))}
-      {isFile && !narrow && !fetched.some((d) => d.url === url && (isActiveDownload(d) || d.asking)) && (
+      {isFile && !phoneBar && !fetched.some((d) => d.url === url && (isActiveDownload(d) || d.asking)) && (
         <div className="browser-offer" role="status">
           <span>This page is a {formatLabel(url.match(BOOK_FILE)![1].toLowerCase())} file.</span>
           <button type="button" className="btn btn-primary btn-small" onClick={() => void addThisFile()}>
@@ -1672,20 +1644,29 @@ export function Browser({
         {panel === "tabs" && (
           <div className="browser-grid" role="dialog" aria-label="Tabs" onKeyDown={(event) => { if (event.key === "Escape") setPanel(null); }}>
             <div className="browser-grid-head">
-              <h2>
-                {tabs.tabs.length} {tabs.tabs.length === 1 ? "tab" : "tabs"}
-              </h2>
-              {tabs.tabs.length > 1 && <span className="muted browser-grid-hint">Hold a tab to move it</span>}
-              <button type="button" className="btn btn-quiet btn-small" onClick={() => newTab()}>
-                <Icon name="plus" size={14} /> New tab
-              </button>
-              <button type="button" className="btn btn-quiet btn-small" aria-label="New private tab" onClick={() => newTab(true)}>
-                <Icon name="eyeOff" size={14} /> Private
-              </button>
+              <div className="scribe-chips browser-tabs-views" role="tablist" aria-label="Tabs workspace">
+                {([["open", `Open (${tabs.tabs.length})`], ["sessions", "Sessions"], ["recent", "Recent"]] as const).map(([view, label]) => (
+                  <button key={view} type="button" role="tab" aria-selected={tabsView === view} className={`chip${tabsView === view ? " is-active" : ""}`} onClick={() => setTabsView(view)}>{label}</button>
+                ))}
+              </div>
+              {tabsView === "open" && tabs.tabs.length > 1 && <span className="muted browser-grid-hint">{narrow ? "Hold a tab to move it" : "Drag a tab to move it"}</span>}
+              {tabsView === "open" && (
+                <>
+                  <button type="button" className="btn btn-quiet btn-small" onClick={() => newTab()}>
+                    <Icon name="plus" size={14} /> New tab
+                  </button>
+                  <button type="button" className="btn btn-quiet btn-small" aria-label="New private tab" onClick={() => newTab(true)}>
+                    <Icon name="eyeOff" size={14} /> Private
+                  </button>
+                </>
+              )}
               <button type="button" className="btn btn-primary btn-small" onClick={() => setPanel(null)}>
                 Done
               </button>
             </div>
+            {tabsView === "sessions" && <SessionsPanel bare current={tabs} onClose={() => setPanel(null)} onLoad={(session) => replaceAllTabs(restoreSession(session))}
+              onNew={() => replaceAllTabs(freshTabs(homeOf()))} />}
+            {tabsView === "open" && <>
             <input className="browser-tab-search" type="search" aria-label="Search open tabs" placeholder="Search open tabs"
               value={tabSearch} onChange={(event) => setTabSearch(event.target.value)} onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.nativeEvent.isComposing && matchingTabs[0]) {
@@ -1711,7 +1692,9 @@ export function Browser({
                 </div>
               ))}
             </div>
-            {!tabQuery && closedTabs.length > 0 && (
+            </>}
+            {tabsView === "recent" && !closedTabs.length && !otherTabs.length && <p className="muted">No recently closed tabs, and no tabs open on your other devices.</p>}
+            {tabsView === "recent" && closedTabs.length > 0 && (
               <section className="browser-grid-closed" aria-labelledby="grid-closed">
                 <header className="browser-grid-closed-head">
                   <h3 id="grid-closed">Recently closed</h3>
@@ -1722,7 +1705,7 @@ export function Browser({
                 <ClosedList closed={closedTabs} onReopen={(index) => reopen(1, index)} />
               </section>
             )}
-            {!tabQuery && otherTabs.map((device) => (
+            {tabsView === "recent" && otherTabs.map((device) => (
               <section key={device.deviceId} className="browser-grid-closed" aria-label={`Tabs open on ${device.name}`}>
                 <h3>On {device.name}</h3>
                 <ul className="browser-download-list">
