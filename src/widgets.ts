@@ -33,7 +33,7 @@ export interface ScribeAsk {
 }
 
 /** Pages a Quick Access widget can open. */
-const PAGES: Route[] = ["home", "library", "documents", "collections", "audiobooks", "writing", "catalogs", "geas", "libram", "settings"];
+const PAGES: Route[] = ["home", "library", "documents", "collections", "audiobooks", "writing", "catalogs", "geas", "settings"];
 
 const core = () => import("@tauri-apps/api/core");
 
