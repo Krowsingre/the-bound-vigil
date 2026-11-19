@@ -181,6 +181,9 @@ final class TbvFriendShare: NSObject {
       return
     }
     var count = 0
+    // A book that couldn't be copied (a full phone, say) fails the whole
+    // receive, so nothing arrives half done; the link can be opened again.
+    var staging: Error?
     let changes = CKFetchRecordZoneChangesOperation(recordZoneIDs: [zone], configurationsByRecordZoneID: nil)
     changes.qualityOfService = .userInitiated
     changes.recordWasChangedBlock = { _, result in
@@ -193,12 +196,19 @@ final class TbvFriendShare: NSObject {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: from, to: folder.appendingPathComponent(name))
         count += 1
-      } catch {}
+      } catch {
+        if staging == nil { staging = error }
+      }
     }
     changes.fetchRecordZoneChangesResultBlock = { result in
       if case .failure(let error) = result {
         try? FileManager.default.removeItem(at: batch)
         done(.failure(error))
+        return
+      }
+      if let error = staging {
+        try? FileManager.default.removeItem(at: batch)
+        done(.failure(Self.problem("Not every book could be saved on this device (\(error.localizedDescription)). Free up some space and open the link again.")))
         return
       }
       guard count > 0 else {
