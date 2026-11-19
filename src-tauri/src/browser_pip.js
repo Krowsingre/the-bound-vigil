@@ -211,29 +211,65 @@
       .filter((v) => v.currentSrc || v.src || v.querySelector('source[src]'))
       .sort((a, b) => (b.paused ? 0 : 1) - (a.paused ? 0 : 1) || area(b) - area(a))[0];
     if (window === window.top) {
+      // What frames said about their videos, each with the frame that said it.
       const heard = [];
       addEventListener('message', (e) => {
         const info = e.data && e.data.__tbvVideo;
         if (!info || typeof info.src !== 'string' || typeof info.page !== 'string') return;
-        const at = heard.findIndex((h) => h.page === info.page);
+        const at = heard.findIndex((h) => h.from === e.source || h.page === info.page);
         if (at >= 0) heard.splice(at, 1);
-        heard.push({ src: info.src.slice(0, 4000), kind: String(info.kind), title: String(info.title || '').slice(0, 300), poster: String(info.poster || '').slice(0, 2000), page: info.page.slice(0, 2000), playing: !!info.playing, area: +info.area || 0, time: +info.time || 0, frame: true });
+        heard.push({ from: e.source, video: { src: info.src.slice(0, 4000), kind: String(info.kind), title: String(info.title || '').slice(0, 300), poster: String(info.poster || '').slice(0, 2000), page: info.page.slice(0, 2000), playing: !!info.playing, area: +info.area || 0, time: +info.time || 0, frame: true } });
         if (heard.length > 12) heard.shift();
       });
-      // The video to show (pausing the page's own when asked), as JSON, or 'none'.
+      // The frame element on this page a frame's video came from (through
+      // frames within frames), or null once it's gone from the page.
+      const frameOf = (w) => {
+        try {
+          if (!w || w.closed) return null;
+          let child = w;
+          while (child.parent && child.parent !== window) {
+            if (child.parent === child) return null;
+            child = child.parent;
+          }
+          return Array.from(document.querySelectorAll('iframe, frame')).find((f) => f.contentWindow === child) || null;
+        } catch (_) { return null; }
+      };
+      // Seen on the page: not taken away, and not hidden with "Remove things from this page".
+      const shown = (el) => !!el && el.isConnected && el.getClientRects().length > 0 && area(el) > 0;
+      // Every video on the page that's still there, in the page's order, and
+      // which of them to start with: one playing, else the largest. Frames
+      // whose videos were removed (an advert taken away) drop out (embre, 19 November).
+      const listed = () => {
+        for (let i = heard.length - 1; i >= 0; i -= 1) if (!shown(frameOf(heard[i].from))) heard.splice(i, 1);
+        const own = Array.from(document.querySelectorAll('video'))
+          .filter((v) => (v.currentSrc || v.src || v.querySelector('source[src]')) && shown(v))
+          .map((v) => ({ el: v, video: describe(v) }));
+        const framed = heard.map((h) => ({ el: frameOf(h.from), video: h.video }));
+        const all = own.concat(framed)
+          .sort((a, b) => (a.el === b.el ? 0 : a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+        const seen = new Set();
+        return all.filter((x) => {
+          const key = x.video.src || x.video.page + '#' + all.indexOf(x);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      };
+      // The video to show (pausing the page's own when asked), with the
+      // page's other videos to go on to, as JSON, or 'none'.
       window.__tbvVideoNow = (pause) => {
-        const here = best();
-        const all = (here ? [describe(here)] : []).concat(heard);
-        const chosen = all.filter((v) => v.kind !== 'none').sort((a, b) => (b.playing ? 1 : 0) - (a.playing ? 1 : 0) || b.area - a.area)[0] || all[0];
+        const all = listed();
+        const usable = all.filter((x) => x.video.kind !== 'none');
+        const chosen = usable.slice().sort((a, b) => (b.video.playing ? 1 : 0) - (a.video.playing ? 1 : 0) || b.video.area - a.video.area)[0] || all[0];
         if (!chosen) return 'none';
         if (pause) {
-          if (here) here.pause();
+          document.querySelectorAll('video').forEach((v) => v.pause());
           const tell = (w) => { for (let i = 0; i < w.frames.length; i += 1) { try { w.frames[i].postMessage({ __tbvVideoPause: 1 }, '*'); } catch (_) {} } };
           tell(window);
         }
-        chosen.title = chosen.frame ? document.title || chosen.title : chosen.title;
-        chosen.top = location.href;
-        return JSON.stringify(chosen);
+        const out = (x) => Object.assign({}, x.video, { title: x.video.frame ? document.title || x.video.title : x.video.title, top: location.href });
+        const queue = usable.length ? usable : [chosen];
+        return JSON.stringify(Object.assign(out(chosen), { queue: queue.map(out), at: Math.max(0, queue.indexOf(chosen)) }));
       };
     } else {
       let last = 0;

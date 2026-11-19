@@ -1969,8 +1969,8 @@ pub async fn browser_pip(app: tauri::AppHandle, tab: String) -> CommandResult<St
     tauri::async_runtime::spawn_blocking(move || view::pip(&app, &tab)).await.map_err(|e| e.to_string())?
 }
 
-/// Video reader view: the video playing in the tab (or in a page within
-/// it), with an address TBV's own player can play it from; the page's own
+/// Eidolon: the video playing in the tab (or in a page within it), and the
+/// page's other videos, each with an address TBV's own player can play it from; the page's own
 /// copy is paused. None when there's no video, and kind "dash" or "none" when
 /// TBV can't play the one there.
 #[tauri::command]
@@ -1982,16 +1982,30 @@ pub async fn browser_video(app: tauri::AppHandle, tab: String) -> CommandResult<
     .await
     .map_err(|e| e.to_string())??;
     let Some(found) = found.as_object() else { return Ok(None) };
+    let mut video = playable_video(found);
+    // The page's other videos, for Eidolon's Previous and Next.
+    if let Some(queue) = found.get("queue").and_then(|q| q.as_array()) {
+        let queue: Vec<serde_json::Value> = queue.iter().filter_map(|v| v.as_object()).map(playable_video).collect();
+        video["at"] = found.get("at").cloned().unwrap_or(serde_json::json!(0));
+        video["queue"] = serde_json::Value::Array(queue);
+    }
+    Ok(Some(video))
+}
+
+/// One of the page's videos as TBV's player gets it: an address it can play
+/// it from (through TBV), or none when it can't.
+fn playable_video(found: &serde_json::Map<String, serde_json::Value>) -> serde_json::Value {
     let text = |name: &str| found.get(name).and_then(|v| v.as_str()).unwrap_or_default().to_owned();
     let (src, kind, page) = (text("src"), text("kind"), text("page"));
     let playable = (kind == "hls" || kind == "file") && (src.starts_with("https://") || src.starts_with("http://"));
-    Ok(Some(serde_json::json!({
+    serde_json::json!({
         "src": if playable { crate::video_proxy::address(&src, &page) } else { String::new() },
         "kind": if playable || kind == "dash" { kind } else { "none".into() },
         "title": text("title"),
+        "poster": text("poster"),
         "page": text("top"),
         "time": found.get("time").and_then(|v| v.as_f64()).unwrap_or(0.0),
-    })))
+    })
 }
 
 /// Stops a download that's coming down; nothing of it is kept.

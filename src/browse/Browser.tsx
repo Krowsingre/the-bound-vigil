@@ -13,8 +13,9 @@ import { placeWorkspaceBrowser, workspaceOffset } from "./workspaceBrowser";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, isIOS, isWindows, openExternal } from "../api";
-import type { Bookmark, BrowserEvent, BrowserFrame, BrowserPane, DeviceTabs, OpenTab, PageVideo, ReaderArticle } from "../api/types";
-import { VideoReader } from "./VideoReader";
+import type { Bookmark, BrowserEvent, BrowserFrame, BrowserPane, DeviceTabs, OpenTab, ReaderArticle } from "../api/types";
+import { Eidolon } from "./Eidolon";
+import { endEidolon, eidolonNow, onEidolon, setMode, startEidolon, type EidolonMode } from "./eidolonPlayer";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { openContextMenu, openContextMenuAt } from "../components/ContextMenu";
 import { Icon } from "../components/Icon";
@@ -384,7 +385,19 @@ export function Browser({
   const [finding, setFinding] = useState<string | null>(null);
   const [article, setArticle] = useState<ReaderArticle | null>(null);
   /** Video reader view: the page's video, playing in TBV's own player. */
-  const [film, setFilm] = useState<PageVideo | null>(null);
+  /** Eidolon open over the page. What it plays lives in eidolonPlayer, so it
+   * can go on playing after leaving Scry; coming back opens it again. */
+  const [eidolonOpen, setEidolonOpen] = useState(() => !!eidolonNow());
+  const [playing, setPlaying] = useState(eidolonNow);
+  useEffect(() => onEidolon(() => {
+    setPlaying(eidolonNow());
+    if (!eidolonNow()) setEidolonOpen(false);
+  }), []);
+  const film = eidolonOpen ? playing : null;
+  const closeEidolon = () => {
+    setEidolonOpen(false);
+    endEidolon();
+  };
   const [saving, setSaving] = useState(false);
   const [prefs, setPrefs] = useState(readBrowserPrefs);
   const [problem, setProblem] = useState<string | null>(null);
@@ -463,9 +476,16 @@ export function Browser({
   /** Reader mode, the tab grid, the start page and the error page cover the page, so the page's view steps aside. */
   const aside = useRef(false);
   aside.current = !!article || !!film || panel === "tabs" || onStart || !!failure;
-  // Another tab, or another page, ends video reader view.
+  // Another tab, or another page, ends Eidolon (not coming back to Scry, though).
   const pageOnly = url.split("#")[0];
-  useEffect(() => setFilm(null), [active.id, pageOnly]);
+  const firstPage = useRef(true);
+  useEffect(() => {
+    if (firstPage.current) {
+      firstPage.current = false;
+      return;
+    }
+    if (eidolonNow()) closeEidolon();
+  }, [active.id, pageOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => writeTabs(tabs), [tabs]);
   useEffect(() => onClosedTabs(() => setClosedTabs(readClosedTabs())), []);
@@ -1324,9 +1344,9 @@ export function Browser({
     }
   };
 
-  /** Video reader view (the button, More, or a video's right-click menu). */
-  const openVideo = async (tab: string = active.id) => {
-    if (film) return setFilm(null);
+  /** Eidolon's Focus Video or Focus Audio (its menu, or a video's right-click menu). */
+  const openVideo = async (tab: string = active.id, mode: EidolonMode = "video") => {
+    if (film) return film.mode === mode ? closeEidolon() : setMode(mode);
     if (!web) return toast("Open a page with a video first.");
     try {
       const found = await api.browserVideo(tab);
@@ -1335,7 +1355,8 @@ export function Browser({
       else if (!found.src) toast("TBV can't tell where this video comes from, so it can't play it on its own.");
       else {
         setArticle(null);
-        setFilm(found);
+        startEidolon(found, mode);
+        setEidolonOpen(true);
       }
     } catch (e) {
       toast(clean(e));
@@ -1381,8 +1402,9 @@ export function Browser({
 
   /** Eidolon: the page in a calmer form. Focus Audio joins these in 0.146 (embre, 19 November). */
   const eidolonItems: MenuEntry[] = [
-    { label: article ? "Leave Focus Reader" : "Focus Reader", icon: "bookOpen", disabled: !web && !article, onSelect: () => void (article ? setArticle(null) : openReader()) },
-    { label: film ? "Leave Focus Video" : "Focus Video", icon: "videoReader", disabled: !web && !film, onSelect: () => void openVideo() },
+    { label: article ? "Leave Focus Reader" : "Focus Reader", icon: "bookOpen", disabled: !web && !article, onSelect: () => { if (film) closeEidolon(); void (article ? setArticle(null) : openReader()); } },
+    { label: film?.mode === "video" ? "Leave Focus Video" : "Focus Video", icon: "videoReader", disabled: !web && !film, onSelect: () => void openVideo(active.id, "video") },
+    { label: film?.mode === "audio" ? "Leave Focus Audio" : "Focus Audio", icon: "headphones", disabled: !web && !film, onSelect: () => void openVideo(active.id, "audio") },
   ];
 
   const savedSites = marks.length ? marks : SUGGESTED_SITES;
@@ -1631,7 +1653,7 @@ export function Browser({
             <p className="muted">{problem}</p>
           </div>
         )}
-        {film && <VideoReader video={film} onClose={() => setFilm(null)} />}
+        {film && <Eidolon state={film} sheets={phoneBar} onClose={closeEidolon} />}
         {article && (
           <article className="browser-reader" lang={article.lang ?? undefined}>
             <div className="browser-reader-bar">
