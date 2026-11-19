@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Icon, type IconName } from "./Icon";
+import { justClosed, menusFloat, openMenuPopup } from "./menuPopups";
 
 export interface MenuItem {
   label: string;
@@ -61,6 +62,8 @@ export function Menu({
   searchLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
+  /** Open in the menu window instead (see menuPopups). */
+  const [floating, setFloating] = useState(false);
   const [query, setQuery] = useState("");
   const search = useRef<HTMLInputElement>(null);
   const [section, setSection] = useState<number | null>(null);
@@ -165,8 +168,21 @@ export function Menu({
         aria-label={label}
         title={label}
         aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => open ? closeMenu() : setOpen(true)}
+        aria-expanded={open || floating}
+        onClick={() => {
+          if (open) return closeMenu();
+          // Over a website in Scry, in a window of its own (see menuPopups).
+          if (menusFloat() && !searchLabel) {
+            if (floating || justClosed(label)) return;
+            const box = root.current?.getBoundingClientRect();
+            if (box) {
+              setFloating(true);
+              void openMenuPopup(label, items, { x: box.left, y: box.top, width: box.width, height: box.height }, align).finally(() => setFloating(false));
+              return;
+            }
+          }
+          setOpen(true);
+        }}
       >
         {trigger}
       </button>

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "menu-popup",
+  "description": "Scry's menus in a small window of their own: it hears which menu to draw",
+  "windows": ["menu-popup"],
+  "permissions": ["core:event:default"]
+}
