@@ -53,7 +53,7 @@ export function UpNextReplacementHost({ onChanged }: { onChanged: () => void }) 
     <ConfirmDialog
       title="Replace a book in Up Next"
       body={<>
-        <p>Up Next holds 15 books. Choose which book to replace with “{book.title}”.</p>
+        <p>Up Next holds {UP_NEXT_LIMIT} books. Choose which book to replace with “{book.title}”.</p>
         <label>
           Book to replace
           <select disabled={busy || !members.length} value={picked} onChange={(event) => { setPicked(event.target.value); setError(""); }}>

@@ -76,7 +76,7 @@ impl Library {
             .optional()?
             .flatten();
         let changed = self.conn.execute(
-            "UPDATE books SET last_opened_at = ?2, want_to_read = 0,
+            "UPDATE books SET last_opened_at = ?2,
                     status = CASE status WHEN 'unread' THEN 'in_progress' ELSE status END
              WHERE id = ?1 AND deleted_at IS NULL",
             params![book_id, now_utc()],
@@ -271,7 +271,7 @@ mod tests {
         library.set_want_to_read(&id, true).unwrap();
         let opened = library.open_book(&id).unwrap();
         assert_eq!(opened.book.status, ReadStatus::InProgress);
-        assert!(!opened.book.want_to_read);
+        assert!(!opened.book.want_to_read, "a book that starts leaves Up next");
         assert!(opened.book.last_opened_at.is_some());
         assert!(opened.file_size > 0);
         assert_eq!(opened.previously_opened_at, None);
@@ -279,11 +279,23 @@ mod tests {
         assert_eq!(again.previously_opened_at, opened.book.last_opened_at);
         assert!(library.book_file(&id).unwrap().exists());
 
+        // Already in progress: putting it back in Up next and opening it again keeps it there.
+        library.set_want_to_read(&id, true).unwrap();
+        assert!(library.open_book(&id).unwrap().book.want_to_read);
+
         library.set_status(&id, ReadStatus::Read).unwrap();
         assert_eq!(
             library.open_book(&id).unwrap().book.status,
             ReadStatus::Read
         );
+        // Marked In progress by hand (or by another device): it leaves Up next.
+        library.conn.execute("UPDATE sync_clock SET pushed = 1", []).unwrap();
+        library.set_status(&id, ReadStatus::InProgress).unwrap();
+        assert!(!library.book(&id).unwrap().unwrap().want_to_read);
+        // Made here, the change goes out to the other devices.
+        let waiting: i64 = library.conn.query_row(
+            "SELECT COUNT(*) FROM sync_clock WHERE kind = 'book_shelves' AND pushed = 0", [], |r| r.get(0)).unwrap();
+        assert_eq!(waiting, 1);
         assert!(library.open_book("sha256:nope").is_err());
     }
 

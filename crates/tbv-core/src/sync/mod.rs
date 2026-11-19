@@ -453,6 +453,22 @@ pub(crate) fn install_triggers(conn: &Connection) -> Result<()> {
             stamp("NEW")
         );
     }
+    // A book that becomes In progress leaves Up next (embre, 18 November),
+    // however it got there: the reader, another device, an audiobook, by hand
+    // or an import. Books already in both are left alone; only the change
+    // into In progress moves one. The shelf trigger above stamps the change
+    // when it's made here; while another device's changes are applied it
+    // isn't stamped, so that device's favourite or rating edits still win.
+    let leave = "UPDATE books SET want_to_read = 0 WHERE id = NEW.id;";
+    sql += "DROP TRIGGER IF EXISTS up_next_started_upd;\nDROP TRIGGER IF EXISTS up_next_started_ins;\n";
+    sql += &format!(
+        "CREATE TRIGGER up_next_started_upd AFTER UPDATE OF status ON books
+         WHEN NEW.status = 'in_progress' AND OLD.status IS NOT 'in_progress' AND NEW.want_to_read = 1
+         BEGIN {leave} END;
+         CREATE TRIGGER up_next_started_ins AFTER INSERT ON books
+         WHEN NEW.status = 'in_progress' AND NEW.want_to_read = 1
+         BEGIN {leave} END;\n"
+    );
     conn.execute_batch(&sql)?;
     Ok(())
 }
