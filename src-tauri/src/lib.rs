@@ -1775,6 +1775,30 @@ async fn search_details_more(
     .map_err(|e| e.to_string())
 }
 
+/// A watched author's books, out or coming, leaving out those already in
+/// the library (Preferences › Compendium › Watching).
+#[tauri::command]
+async fn watch_author_books(state: State<'_, AppLibrary>, author: String) -> CommandResult<Vec<tbv_core::watch::WatchedBook>> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let found = tbv_core::watch::author_books(&author)?;
+        let owned = library.lock().map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?.title_keys()?;
+        Ok(found.into_iter().filter(|b| !owned.contains(&b.key)).collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e: tbv_core::Error| e.to_string())
+}
+
+/// A watched book as Google Books knows it, with its release date.
+#[tauri::command]
+async fn watch_find_book(title: String, author: String) -> CommandResult<Option<tbv_core::watch::WatchedBook>> {
+    tauri::async_runtime::spawn_blocking(move || tbv_core::watch::find_book(&title, &author))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 /// Looks the books of a series up online, in every source at once
 /// (Hardcover when it's connected, Wikidata, the ISFDB, Audible and Google
 /// Books), and keeps the merged list, for showing what's missing.
@@ -2329,6 +2353,8 @@ pub fn run() {
             book_files,
             find_duplicates,
             find_series_books,
+            watch_author_books,
+            watch_find_book,
             prepare_stream,
             abs_stream::server_audiobook,
             abs_stream::server_listening,

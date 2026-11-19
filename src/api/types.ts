@@ -647,6 +647,17 @@ export interface SeriesEntry {
   source: string;
 }
 
+/** A book found online for a watched author or book (watch.rs). */
+export interface WatchedBook {
+  key: string;
+  title: string;
+  authors: string[];
+  /** "2027-03-04", "2027-03" or "2027". */
+  date: string | null;
+  coverUrl: string | null;
+  link: string | null;
+}
+
 /** A book of the series the library doesn't have. */
 export interface MissingBook extends SeriesEntry {
   key: string;

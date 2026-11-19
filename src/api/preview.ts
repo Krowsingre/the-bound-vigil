@@ -577,6 +577,10 @@ export function previewApi(): Api {
     ...previewMove(params),
     ...writing,
     ...browseStub(),
+    watchAuthorBooks: async (author) => [
+      { key: "quiet tide", title: "The Quiet Tide", authors: [author], date: "2027-03-04", coverUrl: null, link: "https://books.google.com/" },
+    ],
+    watchFindBook: async (title, author) => ({ key: title.toLowerCase(), title, authors: [author], date: "2026-12-01", coverUrl: null, link: "https://books.google.com/" }),
     findSeriesBooks: async (name, author) => {
       await new Promise((r) => setTimeout(r, 600));
       const titles = name.toLowerCase() === "sherlock holmes" ? HOLMES : Array.from({ length: 5 }, (_, i) => `${name}, book ${i + 1}`);
@@ -1023,7 +1027,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.135.0", version: "0.135.0", notes: "The Bound Vigil 0.135.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.136.0", version: "0.136.0", notes: "The Bound Vigil 0.136.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

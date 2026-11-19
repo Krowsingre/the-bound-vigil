@@ -1,3 +1,5 @@
+import { WAITING, waiting } from "./discoverQueue";
+export { openInDiscover } from "./discoverQueue";
 import { wasStopped } from "../library/cloudDownloads";
 import { workspaceFrame, workspaceHost } from "../shell/workspaceFrame";
 import { placeWorkspaceBrowser, workspaceOffset } from "./workspaceBrowser";
@@ -83,13 +85,6 @@ import { useShortcuts } from "../lib/shortcuts";
 export const BROWSER_NEW = "tbv:browser-new";
 export const BROWSER_GO = "tbv:browser-go";
 
-/** Pages asked for from elsewhere in TBV (the reader's Search), opened as new tabs when Discover shows. */
-const waiting: string[] = [];
-const WAITING = "tbv:browser-waiting";
-export function openInDiscover(url: string) {
-  waiting.push(url);
-  window.dispatchEvent(new Event(WAITING));
-}
 /** The page in front, told to the header so its search box can show the address. */
 export const BROWSER_PAGE = "tbv:browser-page";
 

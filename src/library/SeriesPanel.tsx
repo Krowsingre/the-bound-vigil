@@ -6,6 +6,7 @@ import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { authorLine } from "../lib/format";
 import { clearSeriesNews, seriesNews } from "./seriesCheck";
+import { canWatch, isWatchingBook, unwatchBook, useWatch, watchBook } from "./watchList";
 
 const number = (n: number | null) => (n === null ? null : `Book ${n}`);
 
@@ -275,6 +276,8 @@ function MissingCard({
   onRemove?: () => void;
 }) {
   const [failed, setFailed] = useState(false);
+  useWatch(); // shown again when the watch list changes
+  const watching = isWatchingBook(book.title);
   return (
     <li className={`missing-card${book.hidden ? " is-hidden" : ""}${book.read ? " is-read" : ""}`}>
       <div className="cover cover-m missing-cover">
@@ -307,6 +310,18 @@ function MissingCard({
           >
             <Icon name="check" size={14} />
           </button>
+          {canWatch() && !book.read && (
+            <button
+              type="button"
+              className={`icon-btn${watching ? " is-on" : ""}`}
+              aria-pressed={watching}
+              title={watching ? "Stop watching it" : "Watch it: news when it's announced and when it's out"}
+              aria-label={watching ? `Stop watching ${book.title}` : `Watch ${book.title}`}
+              onClick={() => (watching ? unwatchBook(book.title) : watchBook(book.title, book.authors[0] ?? ""))}
+            >
+              <Icon name="bell" size={14} />
+            </button>
+          )}
           {onRemove && (
             <button
               type="button"

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSeriesSchedule } from "./library/seriesCheck";
+import { useWatchAlerts } from "./library/watchList";
 import { api, isAndroid, isApp, isHome, isWeb } from "./api";
 import type { CollectionRef, HomeViewModel, ImportsView, KindleImport, Profile, SmartKind, SyncStatus } from "./api/types";
 import { isKindleList, KINDLE_CHANGED, KindleReviewDialog } from "./imports/KindleReview";
@@ -139,6 +140,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const { refreshAdaptive, togglePrivacy, settings: appSettings } = useAppSettings();
   // Series looked up online on the schedule set in Preferences, quietly.
   useSeriesSchedule(appSettings);
+  useWatchAlerts(toast);
   useStartupUpdateCheck(!workspaceFrame);
 
   const navigate = useCallback((r: Route) => {

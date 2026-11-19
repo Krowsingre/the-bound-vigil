@@ -268,6 +268,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     words: "series new books missing check online schedule daily weekly monthly yearly custom days check now",
   },
   {
+    tab: "collections",
+    section: "watching",
+    label: "Watching authors and books",
+    words: "watch follow author authors book books new announced release released coming out alerts news bell",
+  },
+  {
     tab: "notes",
     section: "view",
     label: "Notes view",
