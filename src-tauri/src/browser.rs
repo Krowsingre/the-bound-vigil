@@ -1741,6 +1741,12 @@ mod view {
         ask(serde_json::json!({ "action": "share", "url": url, "text": title, "frame": anchor.map(frame_of) })).map(|_| ())
     }
 
+    /// The Share sheet with files on this phone, such as a book's own file.
+    pub fn share_files(paths: &[std::path::PathBuf], anchor: Option<Frame>) -> CommandResult<()> {
+        let text = paths.iter().map(|p| p.to_string_lossy()).collect::<Vec<_>>().join("\n");
+        ask(serde_json::json!({ "action": "shareFiles", "text": text, "frame": anchor.map(frame_of) })).map(|_| ())
+    }
+
     pub fn open_app(_app: &tauri::AppHandle, url: &str) -> CommandResult<()> {
         ask(serde_json::json!({ "action": "openApp", "url": url })).map(|_| ())
     }
@@ -2031,6 +2037,78 @@ pub async fn browser_clear_site(app: tauri::AppHandle, site: String) -> CommandR
 pub async fn browser_share(app: tauri::AppHandle, url: String, title: String, anchor: Option<Frame>) -> CommandResult<()> {
     let url = web_url(&url)?;
     view::share(&app, url.as_str(), title.trim(), anchor)
+}
+
+/// iPhone and iPad: the Share sheet with books' files, so they can go by
+/// AirDrop, Messages, Mail or any app (embre, 19 November). Each is a copy
+/// named "Title - Author.epub"; the library's own file is only read.
+#[tauri::command]
+pub(crate) async fn share_book_files(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::AppLibrary>,
+    book_ids: Vec<String>,
+    anchor: Option<Frame>,
+) -> CommandResult<SharedFiles> {
+    #[cfg(target_os = "ios")]
+    {
+        use tauri::Manager;
+        let folder = app.path().temp_dir().map_err(|e| e.to_string())?.join("tbv-share");
+        // Copies from an earlier share have gone by now.
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+        let mut paths = Vec::new();
+        let mut skipped = Vec::new();
+        for id in book_ids {
+            match crate::outgoing(state.clone(), id.clone()).await {
+                Ok(book) => {
+                    let to = shared_name(&folder, &book.file_name);
+                    let from = book.path.clone();
+                    let copied = tauri::async_runtime::spawn_blocking({
+                        let to = to.clone();
+                        move || std::fs::copy(&from, &to)
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?;
+                    match copied {
+                        Ok(_) => paths.push(to),
+                        Err(e) => skipped.push((id, e.to_string())),
+                    }
+                }
+                Err(e) => skipped.push((id, e)),
+            }
+        }
+        if !paths.is_empty() {
+            view::share_files(&paths, anchor)?;
+        }
+        Ok(SharedFiles { shared: paths.len(), skipped })
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = (app, state, book_ids, anchor);
+        Err("Sharing a book's file is on the iPhone and iPad.".into())
+    }
+}
+
+/// What sharing books' files did.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedFiles {
+    pub shared: usize,
+    /// A book that couldn't be shared (its id), and why.
+    pub skipped: Vec<(String, String)>,
+}
+
+/// A free name in `folder`: "Title - Author.epub", then "Title - Author (2).epub".
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+fn shared_name(folder: &std::path::Path, name: &str) -> std::path::PathBuf {
+    let first = folder.join(name);
+    if !first.exists() {
+        return first;
+    }
+    let path = std::path::Path::new(name);
+    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| name.to_string());
+    let ext = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    (2..).map(|n| folder.join(format!("{stem} ({n}){ext}"))).find(|p| !p.exists()).expect("a free name")
 }
 
 /// Opens a link for another app (mail, a phone number), told by `External`.

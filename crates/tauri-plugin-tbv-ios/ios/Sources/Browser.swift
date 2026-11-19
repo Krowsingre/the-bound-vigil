@@ -452,6 +452,25 @@ class TbvBrowser: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecogni
         shown.present(sheet, animated: true)
         invoke.resolve(["ok": true])
         return
+      case "shareFiles":
+        // Books' own files (AirDrop, Messages, Mail…): one path per line.
+        let files = (args.text ?? "").split(separator: "\n").map { URL(fileURLWithPath: String($0)) }
+        guard !files.isEmpty, let shown = self.shownController else {
+          invoke.reject("TBV couldn't open the Share sheet.")
+          return
+        }
+        let sheet = UIActivityViewController(activityItems: files, applicationActivities: nil)
+        if let popover = sheet.popoverPresentationController, let tbv = self.tbv {
+          popover.sourceView = tbv
+          if let f = args.frame {
+            popover.sourceRect = CGRect(x: f.x, y: f.y, width: max(f.width, 1), height: max(f.height, 1))
+          } else {
+            popover.sourceRect = CGRect(x: tbv.bounds.midX, y: tbv.bounds.midY, width: 1, height: 1)
+          }
+        }
+        shown.present(sheet, animated: true)
+        invoke.resolve(["ok": true])
+        return
       case "cancel":
         if let id = args.id, let download = self.downloads.removeValue(forKey: id) {
           if #available(iOS 14.5, *), let download = download as? WKDownload {
