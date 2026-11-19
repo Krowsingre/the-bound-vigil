@@ -36,6 +36,8 @@ export interface BookActions {
   removeDownload?: (book: BookPreview) => void;
   /** Saves a copy named "Title - Author" somewhere of your choosing. */
   saveCopy?: (book: BookPreview) => void;
+  /** iPhone and iPad: the Share sheet with the books' files (AirDrop, Messages, Mail…). */
+  shareFiles?: (books: BookPreview[]) => void;
   /** On a computer: chooses books for the phone. On the phone: asks the computer to send them. */
   setPhoneWanted?: (books: BookPreview[], wanted: boolean) => void;
   /** Set when the books are shown inside one of the user's collections. */
@@ -125,6 +127,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     { label: "Download & send", icon: "download", submenu: [
     ...(isAudio(book.format) ? [] : [{ label: "Send to e-reader…", icon: "ereader" as const, onSelect: () => askSendToEreader([book]) }]),
     ...(canSendWithLocalSend ? [{ label: "Send with Grimoire…", icon: "upload" as const, onSelect: () => askSendWithLocalSend([book]) }] : []),
+    ...(actions.shareFiles ? [{ label: "Share the file…", icon: "share" as const, onSelect: () => actions.shareFiles?.([book]) }] : []),
     ...(actions.saveCopy ? [{ label: "Save a copy…", icon: "copy" as const, onSelect: () => actions.saveCopy?.(book) }] : []),
     downloadItem(book, actions),
     ] },
@@ -198,7 +201,7 @@ export function cannotOpen(book: BookPreview): string | null {
 /** The shared actions, refreshing the current view after each change. */
 export function makeBookActions(
   api: Pick<import("../api").Api, "setBookStatus" | "setFavorite" | "setWantToRead" | "setRating"> &
-    Partial<Pick<import("../api").Api, "downloadBook" | "removeDownload" | "saveCopies" | "setPhoneWanted" | "setPinned" | "setAudioType">>,
+    Partial<Pick<import("../api").Api, "downloadBook" | "removeDownload" | "saveCopies" | "shareBookFiles" | "setPhoneWanted" | "setPinned" | "setAudioType">>,
   toast: ShowToast,
   refresh: () => void,
   openBook: (bookId: string) => void,
@@ -255,6 +258,16 @@ export function makeBookActions(
     }),
     removeDownload: api.removeDownload && ((book) =>
       void run(book, api.removeDownload!(book.id).then(() => toast(`Removed the copy of “${book.title}” here. It's still in the cloud.`)))),
+    // Each book is fetched from the cloud first if it's only there.
+    shareFiles: api.shareBookFiles ? (books) => {
+      void api.shareBookFiles!(books.map((b) => b.id)).then(
+        ({ skipped }) => {
+          const title = (id: string) => books.find((b) => b.id === id)?.title ?? "a book";
+          if (skipped.length) toast(skipped.length === 1 ? `Couldn't share “${title(skipped[0][0])}”: ${skipped[0][1]}` : `Couldn't share ${skipped.length} of the books.`);
+        },
+        (e: unknown) => toast(`Couldn't open the Share sheet: ${String(e)}`),
+      );
+    } : undefined,
     setPhoneWanted: api.setPhoneWanted && ((books, wanted) => {
       const what = books.length === 1 ? `“${books[0].title}”` : `${books.length} books`;
       void api.setPhoneWanted!(books.map((b) => b.id), wanted).then(

@@ -605,6 +605,7 @@ export function Library({
     { label: "Add to or take out of a collection", icon: "collections", disabled: none, onSelect: () => askAddToCollection(chosen) },
     ...(kind !== "audiobooks" ? [{ label: "Send to e-reader", icon: "ereader", disabled: none, onSelect: () => askSendToEreader(chosen) } as MenuItem] : []),
     ...(canSendWithLocalSend ? [{ label: "Send with Grimoire", icon: "upload", disabled: none, onSelect: () => askSendWithLocalSend(chosen) } as MenuItem] : []),
+    ...(actions.shareFiles ? [{ label: chosen.length === 1 ? "Share the file" : "Share the files", icon: "share", disabled: none, onSelect: () => actions.shareFiles?.(chosen) } as MenuItem] : []),
     ...(!isWeb && phoneChoiceShown()
       ? [
           { label: "Send to device", icon: "upload", disabled: none, onSelect: () => actions.setPhoneWanted?.(chosen, true) } as MenuItem,
