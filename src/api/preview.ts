@@ -486,7 +486,7 @@ export function previewApi(): Api {
   // Book details in their layers: what each book started with, your edits and what was fetched.
   const own = new Map<string, Record<string, string | null>>();
   const edited = new Map<string, Record<string, string>>();
-  const fetched = new Map<string, Record<string, { value: string; source: "google" | "openlibrary" | "audible" | "hardcover" }>>();
+  const fetched = new Map<string, Record<string, { value: string; source: "google" | "openlibrary" | "audible" | "apple" | "hardcover" }>>();
   const ownOf = (id: string) => {
     if (!own.has(id)) {
       const b = find(id);
@@ -1027,7 +1027,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.137.0", version: "0.137.0", notes: "The Bound Vigil 0.137.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.138.0", version: "0.138.0", notes: "The Bound Vigil 0.138.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

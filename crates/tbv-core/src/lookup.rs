@@ -1,7 +1,8 @@
 //! More places to look a book up for Find details online, beside Google
 //! Books and Open Library (searched from the page itself): Audible's public
-//! catalogue, which knows audiobooks, narrators and series, and Hardcover,
-//! for people who've connected it for their ratings. These are reached from
+//! catalogue, which knows audiobooks, narrators and series, Apple Books
+//! (ebooks and audiobooks, with large covers), and Hardcover, for people
+//! who've connected it for their ratings. These are reached from
 //! here because their services don't answer a web page directly.
 
 use serde::Serialize;
@@ -171,6 +172,85 @@ pub fn search_audible(title: &str, author: &str) -> Result<Vec<Found>> {
     Ok(audible_from(&data))
 }
 
+/// Apple's search answer (ebooks or audiobooks) as found books. Apple gives
+/// no series, publisher or language, so those are left for other sources.
+pub fn apple_from(data: &Value) -> Vec<Found> {
+    let Some(results) = data["results"].as_array() else { return Vec::new() };
+    results
+        .iter()
+        .filter_map(|r| {
+            // Ebooks are "tracks"; audiobooks are "collections".
+            let audiobook = text(&r["wrapperType"]).as_deref() == Some("audiobook");
+            let title = if audiobook { text(&r["collectionName"]) } else { text(&r["trackName"]) }?;
+            let id = if audiobook { &r["collectionId"] } else { &r["trackId"] };
+            let mut genres: Vec<String> = r["genres"]
+                .as_array()
+                .map(|g| g.iter().filter_map(text).filter(|g| g != "Books").collect())
+                .unwrap_or_default();
+            if let Some(primary) = text(&r["primaryGenreName"]) {
+                if primary != "Books" && !genres.contains(&primary) {
+                    genres.insert(0, primary);
+                }
+            }
+            genres.truncate(6);
+            let authors: Vec<String> = text(&r["artistName"])
+                .map(|a| a.split(" & ").map(str::trim).filter(|a| !a.is_empty()).map(String::from).collect())
+                .unwrap_or_default();
+            // Apple's picture links name their size; a larger one is the same picture.
+            let cover = text(&r["artworkUrl100"]).or_else(|| text(&r["artworkUrl60"])).map(|c| {
+                c.replace("http://", "https://").replace("100x100bb", "1000x1000bb").replace("60x60bb", "1000x1000bb")
+            });
+            Some(Found {
+                id: format!("apple:{}", id.as_i64().map(|n| n.to_string()).or_else(|| text(id)).unwrap_or_default()),
+                source: "apple".into(),
+                title,
+                authors,
+                synopsis: text(&r["description"]).map(|h| plain(&h)).filter(|d| !d.is_empty()),
+                genres,
+                published: text(&r["releaseDate"]).map(|d| d.chars().take(10).collect()),
+                cover_url: cover,
+                ..Found::default()
+            })
+        })
+        .collect()
+}
+
+/// Searches Apple Books for ebooks and audiobooks (no account needed).
+pub fn search_apple(title: &str, author: &str) -> Result<Vec<Found>> {
+    let term = format!("{} {}", title.trim(), author.trim());
+    if term.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(15)))
+        .user_agent(concat!("The Bound Vigil/", env!("CARGO_PKG_VERSION"), " (eBook reader)"))
+        .build()
+        .into();
+    let mut found = Vec::new();
+    let mut failed = None;
+    for (media, limit) in [("ebook", 5), ("audiobook", 3)] {
+        let answer = agent
+            .get("https://itunes.apple.com/search")
+            .query("term", term.trim())
+            .query("media", media)
+            .query("entity", media)
+            .query("limit", limit.to_string())
+            .call()
+            .map_err(|e| Error::Offline(format!("Apple Books couldn't be reached: {e}")))
+            .and_then(|mut response| {
+                response.body_mut().read_json::<Value>().map_err(|e| Error::Offline(format!("Apple Books' answer couldn't be read: {e}")))
+            });
+        match answer {
+            Ok(data) => found.extend(apple_from(&data)),
+            Err(e) => failed = Some(e),
+        }
+    }
+    match failed {
+        Some(e) if found.is_empty() => Err(e),
+        _ => Ok(found),
+    }
+}
+
 /// Hardcover's search answer as found books.
 pub fn hardcover_from(data: &Value) -> Vec<Found> {
     let hits = data.pointer("/search/results/hits").and_then(Value::as_array).cloned().unwrap_or_default();
@@ -249,6 +329,30 @@ mod tests {
         assert_eq!(f.language.as_deref(), Some("en"));
         assert_eq!(f.genres, ["Fantasy", "Humorous"]);
         assert_eq!(f.cover_url.as_deref(), Some("https://m.media-amazon.com/images/I/51.jpg"));
+    }
+
+    #[test]
+    fn apple_gives_ebooks_and_audiobooks_with_large_covers() {
+        let data = json!({ "results": [
+            { "wrapperType": "ebook", "kind": "ebook", "trackId": 360583612, "trackName": "Mort", "artistName": "Terry Pratchett",
+              "description": "<p>Death takes an apprentice.</p><p>Second.</p>", "genres": ["Fantasy", "Books", "Fiction & Literature"],
+              "releaseDate": "2009-10-13T07:00:00Z", "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/x/100x100bb.jpg" },
+            { "wrapperType": "audiobook", "collectionId": 1440000000_i64, "collectionName": "Good Omens", "artistName": "Terry Pratchett & Neil Gaiman",
+              "primaryGenreName": "Sci-Fi & Fantasy", "releaseDate": "2019-05-01T07:00:00Z", "artworkUrl60": "http://is1.mzstatic.com/a/60x60bb.jpg" },
+            { "wrapperType": "ebook", "trackId": 1 }
+        ]});
+        let found = apple_from(&data);
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].id, "apple:360583612");
+        assert_eq!(found[0].source, "apple");
+        assert_eq!(found[0].synopsis.as_deref(), Some("Death takes an apprentice.\n\nSecond."));
+        assert_eq!(found[0].genres, ["Fantasy", "Fiction & Literature"]);
+        assert_eq!(found[0].published.as_deref(), Some("2009-10-13"));
+        assert_eq!(found[0].cover_url.as_deref(), Some("https://is1-ssl.mzstatic.com/image/thumb/x/1000x1000bb.jpg"));
+        assert_eq!(found[1].title, "Good Omens");
+        assert_eq!(found[1].authors, ["Terry Pratchett", "Neil Gaiman"]);
+        assert_eq!(found[1].genres, ["Sci-Fi & Fantasy"]);
+        assert_eq!(found[1].cover_url.as_deref(), Some("https://is1.mzstatic.com/a/1000x1000bb.jpg"));
     }
 
     #[test]

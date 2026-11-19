@@ -604,7 +604,7 @@ export interface DetailField {
   own: string | null;
   /** Fetched online, or read from the file beyond the basics. */
   fetched: string | null;
-  fetchedFrom: "google" | "openlibrary" | "audible" | "hardcover" | "file" | null;
+  fetchedFrom: "google" | "openlibrary" | "audible" | "apple" | "hardcover" | "file" | null;
   /** Your own edit. */
   edited: string | null;
 }

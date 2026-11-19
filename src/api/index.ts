@@ -453,9 +453,9 @@ export interface Api {
   /** Takes away your edits, and with `fetched` what was fetched online too. */
   resetDetails(bookId: string, fetched: boolean): Promise<void>;
   /** Keeps details found online. Lists (authors, genres) as JSON arrays. */
-  saveFetched(bookId: string, source: "google" | "openlibrary" | "audible" | "hardcover", values: Record<string, string>): Promise<void>;
+  saveFetched(bookId: string, source: "google" | "openlibrary" | "audible" | "apple" | "hardcover", values: Record<string, string>): Promise<void>;
   /** Looks a book up in Audible's catalogue, or on Hardcover when it's connected (desktop app). */
-  searchDetailsMore(source: "audible" | "hardcover", title: string, author: string): Promise<Found[]>;
+  searchDetailsMore(source: "audible" | "apple" | "hardcover", title: string, author: string): Promise<Found[]>;
   /** Looks a series' books up online (Hardcover when connected, Wikidata, the ISFDB, Audible, Google Books) and keeps the list. Desktop app. */
   findSeriesBooks(name: string, author: string): Promise<SeriesReview>;
   /** What's missing from a series, and books that probably belong to it. */
