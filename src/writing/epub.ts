@@ -7,6 +7,7 @@
 
 import { blurbHtml, hasFormatting } from "./blurb";
 import { readCanva, type CanvaDesigns } from "./canvaDesigns";
+import { readBookType, type BookType } from "./bookType";
 import { zipSync, strToU8 } from "fflate";
 import type { WritingChapter, WritingProject } from "../api/types";
 import { DEFAULT_COPYRIGHT, DEFAULT_RIGHTS, firstLine, isMade, isPoem, KINDS, numberInWords, readPage, type CopyrightDetails, type PageKind, type PageSettings } from "./pages";
@@ -72,6 +73,8 @@ export interface ExportSettings {
   seriesStyle: SeriesStyle;
   /** The template the book started from, shown on its card in Scribe; null for older books. */
   kind?: BookKind | null;
+  /** The book's type as chosen in Book details (bookType.ts); null until chosen, when the card shows `kind`'s. */
+  bookType?: BookType | null;
   /** Canva designs made for this book, by what they're for (canvaDesigns.ts). */
   canva?: CanvaDesigns;
   /**
@@ -109,6 +112,7 @@ export const DEFAULT_EXPORT: ExportSettings = {
   edition: null,
   seriesStyle: DEFAULT_SERIES_STYLE,
   kind: null,
+  bookType: null,
   canva: {},
   freeOrder: false,
   subtitle: "",
@@ -168,6 +172,7 @@ export function readExport(json: string | null | undefined): ExportSettings {
       seriesStyle: readSeriesStyle(saved.seriesStyle),
       storeBooks: readStoreBooks(saved.storeBooks),
       kind: oneOf(saved.kind, ["blank", "novel", "collection", "nonfiction", null] as const, null),
+      bookType: readBookType(saved.bookType),
       canva: readCanva(saved.canva),
       freeOrder: saved.freeOrder === true,
       subtitle: text(saved.subtitle, "", 300).trim(),
