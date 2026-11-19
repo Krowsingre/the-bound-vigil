@@ -141,7 +141,7 @@ export function FetchDetails({ book, onClose }: { book: BookPreview; onClose: (c
       >
         <h2>Find details online</h2>
         <p className="muted add-dialog-book">
-          {book.title}. Searches Google Books, Open Library{isApp ? ", Audible and Hardcover (when it's connected)" : ""}. Your book file
+          {book.title}. Searches Google Books, Open Library{isApp ? ", Audible, Apple Books and Hardcover (when it's connected)" : ""}. Your book file
           isn't changed.
         </p>
 

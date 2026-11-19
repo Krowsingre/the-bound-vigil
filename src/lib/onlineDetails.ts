@@ -1,15 +1,16 @@
 // Looks a book up online for the Book details page: Google Books and Open
-// Library from here, and in the desktop app Audible's catalogue (audiobooks,
-// narrators, series) and Hardcover (when it's connected), which TBV's core
-// reaches. Nothing here changes a book: the person picks what to keep, and
+// Library from here, and in the app Audible's catalogue (audiobooks,
+// narrators, series), Apple Books (ebooks and audiobooks, large covers) and
+// Hardcover (when it's connected), which TBV's core reaches. Nothing here changes a book: the person picks what to keep, and
 // it's saved as fetched details.
 
-export type Source = "google" | "openlibrary" | "audible" | "hardcover";
+export type Source = "google" | "openlibrary" | "audible" | "apple" | "hardcover";
 
 export const SOURCE_NAME: Record<Source, string> = {
   google: "Google Books",
   openlibrary: "Open Library",
   audible: "Audible",
+  apple: "Apple Books",
   hardcover: "Hardcover",
 };
 
@@ -204,8 +205,8 @@ export async function openLibraryDescription(workKey: string, signal: AbortSigna
   return d ? plainText(d) : null;
 }
 
-/** Searches the core reaches (Audible, Hardcover), in the desktop app. */
-export type MoreSources = (source: "audible" | "hardcover", q: Lookup) => Promise<Found[]>;
+/** Searches the core reaches (Audible, Apple Books, Hardcover), in the app. */
+export type MoreSources = (source: "audible" | "apple" | "hardcover", q: Lookup) => Promise<Found[]>;
 
 /** Every source at once. Fails only when all do, saying why. */
 export async function searchOnline(q: Lookup, signal: AbortSignal, more?: MoreSources): Promise<Found[]> {
@@ -213,9 +214,9 @@ export async function searchOnline(q: Lookup, signal: AbortSignal, more?: MoreSo
     ["Google Books", searchGoogle(q, signal)],
     ["Open Library", searchOpenLibrary(q, signal)],
   ];
-  // The ISBN alone means nothing to Audible's search; the title does.
+  // The ISBN alone means nothing to Audible's or Apple's search; the title does.
   if (more && (q.title.trim() || q.author.trim())) {
-    tried.push(["Audible", more("audible", q)], ["Hardcover", more("hardcover", q)]);
+    tried.push(["Audible", more("audible", q)], ["Apple Books", more("apple", q)], ["Hardcover", more("hardcover", q)]);
   }
   const settled = await Promise.allSettled(tried.map(([, p]) => p));
   const found = settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));

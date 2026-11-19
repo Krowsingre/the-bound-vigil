@@ -26,7 +26,7 @@ import { SeriesRow } from "./SeriesRow";
 
 type Load = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: BookDetails };
 
-const SOURCE = { google: "Google Books", openlibrary: "Open Library", audible: "Audible", hardcover: "Hardcover", file: "the book file" } as const;
+const SOURCE = { google: "Google Books", openlibrary: "Open Library", audible: "Audible", apple: "Apple Books", hardcover: "Hardcover", file: "the book file" } as const;
 
 /** Where a detail's value comes from, when it isn't the book's own. */
 function origin(f: DetailField | undefined): string | null {

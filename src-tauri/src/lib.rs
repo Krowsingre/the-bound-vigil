@@ -1767,6 +1767,7 @@ async fn search_details_more(
     let library = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || match source.as_str() {
         "audible" => tbv_core::lookup::search_audible(&title, &author),
+        "apple" => tbv_core::lookup::search_apple(&title, &author),
         "hardcover" => hardcover::lookup(&library, &title, &author).map(Option::unwrap_or_default),
         other => Err(tbv_core::Error::Unsuitable(format!("unknown source {other}"))),
     })

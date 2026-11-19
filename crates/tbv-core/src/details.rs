@@ -13,7 +13,7 @@ use crate::library::Library;
 use crate::model::{BookId, BookPreview};
 use crate::time::now_utc;
 
-/// Where a fetched cover may come from: the two services the details search
+/// Where a fetched cover may come from: the services the details search
 /// uses, and the archive Open Library keeps its pictures in.
 fn cover_host_allowed(host: &str) -> bool {
     matches!(
@@ -22,6 +22,8 @@ fn cover_host_allowed(host: &str) -> bool {
     )
         || host.ends_with(".archive.org")
         || host == "archive.org"
+        // Apple Books' pictures (is1-ssl.mzstatic.com and its siblings).
+        || host.ends_with(".mzstatic.com")
 }
 
 /// Downloads a cover picture found online, for [`Library::fill_cover`]. Runs
@@ -305,11 +307,11 @@ impl Library {
         Ok(())
     }
 
-    /// Keeps details found online (`source` "google", "openlibrary", "audible"
-    /// or "hardcover"). Only the
+    /// Keeps details found online (`source` "google", "openlibrary", "audible",
+    /// "apple" or "hardcover"). Only the
     /// fields given change; empty values are skipped.
     pub fn save_fetched(&self, book_id: &str, source: &str, values: &BTreeMap<String, String>) -> Result<()> {
-        if !matches!(source, "google" | "openlibrary" | "audible" | "hardcover" | "file") {
+        if !matches!(source, "google" | "openlibrary" | "audible" | "apple" | "hardcover" | "file") {
             return Err(Error::Unsuitable(format!("unknown source {source}")));
         }
         let mut cleaned = Vec::new();
