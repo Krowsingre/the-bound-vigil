@@ -224,7 +224,11 @@ impl Library {
                 format!("EXISTS (SELECT 1 FROM book_tags t WHERE t.book_id = b.id AND t.removed_at IS NULL AND {})", like("t.tag")),
                 like(&format!("COALESCE({NARRATORS}, '')")),
                 like(&format!("COALESCE({DESCRIPTION}, '')")),
-                like("COALESCE(o_series_list.value, '')"),
+                format!(
+                    "EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(o_series_list.value) THEN o_series_list.value ELSE '[]' END) j \
+                     WHERE {})",
+                    like("COALESCE(json_extract(j.value, '$.name'), '')")
+                ),
                 like("COALESCE(tbv_file_name(lf.path), '')"),
             ]
             .join(" OR ");
@@ -328,7 +332,7 @@ impl Library {
             let rank = if query.mix_series { "0".into() } else { format!("({group}) NOT LIKE 'series:%'") };
             let position_order = if query.mix_series && query.sort == SortOrder::Title {
                 let name = format!("CASE WHEN ({group}) LIKE 'series:%' THEN trim({SERIES}) ELSE {TITLE} END");
-                format!("{}, b.id", sort_title_value(&name))
+                format!("{}{}, b.id", search_rank.as_deref().unwrap_or(""), sort_title_value(&name))
             } else { order.clone() };
             let sql = format!(
                 "WITH ranked AS (
@@ -1192,6 +1196,36 @@ mod tests {
         // A folder's name finds nothing: only the file's own name counts.
         let folder = std::path::Path::new(&file).parent().unwrap().file_name().unwrap().to_string_lossy().to_string();
         assert_eq!(search(&folder), "");
+    }
+
+    #[test]
+    fn search_matches_extra_series_names_not_their_json() {
+        let (dir, mut library) = open_temp_library();
+        let id = add(&mut library, dir.path(), "Dawn", "Writer");
+        let change = crate::details::DetailChange {
+            field: "series_list".into(),
+            value: Some(r#"[{"name":"Sovereign","number":2}]"#.into()),
+        };
+        library.edit_details(&[id], &[change]).unwrap();
+        let search = |s: &str| titles(&library.library_page(&query(|q| q.search = Some(s.into()))).unwrap()).join(",");
+        assert_eq!(search("sovereign"), "Dawn");
+        assert_eq!(search("name"), "");
+        assert_eq!(search("number"), "");
+    }
+
+    #[test]
+    fn mixed_series_title_sort_keeps_title_matches_first() {
+        let (dir, mut library) = open_temp_library();
+        let a = add(&mut library, dir.path(), "Aardvark Days", "Writer");
+        add(&mut library, dir.path(), "Zebra Planet", "Writer");
+        library.conn.execute("UPDATE books SET synopsis = 'Not about a zebra at all' WHERE id = ?1", [&a]).unwrap();
+        let page = library.library_page(&query(|q| {
+            q.search = Some("zebra".into());
+            q.sort = SortOrder::Title;
+            q.group_series = true;
+            q.mix_series = true;
+        })).unwrap();
+        assert_eq!(titles(&page).join(","), "Zebra Planet,Aardvark Days");
     }
 
     #[test]
