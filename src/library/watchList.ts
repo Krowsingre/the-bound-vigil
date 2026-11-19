@@ -63,6 +63,18 @@ export const isOut = (date: string | null, now = Date.now()) => date !== null &&
 
 const fold = (s: string) => s.trim().toLowerCase();
 
+/**
+ * A book's title as one key, the same as TBV's core makes for books found
+ * online: no subtitle, punctuation or leading "The/A/An", lower case. So a
+ * book watched by hand and the same book found for its author are one.
+ */
+export function titleKey(title: string): string {
+  const main = title.split(/[:([]/)[0] ?? title;
+  const words = main.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  const skip = words.length > 1 && ["the", "a", "an"].includes(words[0] ?? "") ? 1 : 0;
+  return words.slice(skip).join(" ");
+}
+
 function news(kind: WatchNews["kind"], b: WatchedBook, at: string): WatchNews {
   return { kind, key: b.key, title: b.title, authors: b.authors, date: b.date, coverUrl: b.coverUrl, link: b.link, foundAt: at };
 }
@@ -139,7 +151,7 @@ export const canWatch = () => !!api.watchAuthorBooks && !!api.watchFindBook;
 
 export const isWatchingAuthor = (name: string) => watchList().some((w) => w.kind === "author" && fold(w.name) === fold(name));
 
-export const isWatchingBook = (title: string) => watchList().some((w) => w.kind === "book" && !w.auto && fold(w.title) === fold(title));
+export const isWatchingBook = (title: string) => watchList().some((w) => w.kind === "book" && !w.auto && titleKey(w.title) === titleKey(title));
 
 export function watchAuthor(name: string) {
   if (!name.trim() || isWatchingAuthor(name)) return;
@@ -148,10 +160,10 @@ export function watchAuthor(name: string) {
 }
 
 export function watchBook(title: string, author: string) {
-  const key = fold(title);
+  const key = titleKey(title);
   if (!key) return;
-  const list = watchList().filter((w) => !(w.kind === "book" && w.auto && fold(w.title) === key));
-  if (list.some((w) => w.kind === "book" && fold(w.title) === key)) return;
+  const list = watchList().filter((w) => !(w.kind === "book" && w.auto && titleKey(w.title) === key));
+  if (list.some((w) => w.kind === "book" && titleKey(w.title) === key)) return;
   const book: WatchedTitle = { kind: "book", key, title: title.trim(), author: author.trim(), date: null, coverUrl: null, link: null, addedAt: new Date().toISOString(), released: false };
   write(LIST_KEY, [...list, book]);
   void checkWatched();
@@ -159,7 +171,7 @@ export function watchBook(title: string, author: string) {
 
 /** Stops watching a book by its title. */
 export function unwatchBook(title: string) {
-  write(LIST_KEY, watchList().filter((w) => !(w.kind === "book" && fold(w.title) === fold(title))));
+  write(LIST_KEY, watchList().filter((w) => !(w.kind === "book" && titleKey(w.title) === titleKey(title))));
 }
 
 /** Stops watching one. An author takes the books followed for them along. */
@@ -206,12 +218,16 @@ export function checkWatched(): Promise<number> {
               if (!isWatchingAuthor(item.name)) continue;
               const update = authorUpdate(item, books);
               const list = watchList();
-              const keys = new Set(list.filter((w): w is WatchedTitle => w.kind === "book").map((w) => w.key));
+              // Books already watched (by hand, or for another author) are
+              // one watch, with one set of news, however their titles are written.
+              const watched = list.filter((w): w is WatchedTitle => w.kind === "book");
+              const keys = new Set(watched.flatMap((w) => [w.key, titleKey(w.title)]));
+              const byHand = new Set(watched.filter((w) => !w.auto).flatMap((w) => [w.key, titleKey(w.title)]));
               write(LIST_KEY, [
                 ...list.map((w) => (w.kind === "author" && fold(w.name) === fold(item.name) ? update.author : w)),
                 ...update.follow.filter((b) => !keys.has(b.key)),
               ]);
-              found += addNews(update.news);
+              found += addNews(update.news.filter((n) => !byHand.has(n.key)));
               await rest();
             } else {
               // Followed for an author: their lookup just above says what's new, so no lookup of its own.
