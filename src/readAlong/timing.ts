@@ -189,8 +189,8 @@ function steady(a: [number, number], b: [number, number], pace: number): boolean
   const dw = b[1] - a[1];
   if (dt <= 0) return false;
   const expected = pace * dt;
-  // A short stretch is reading whatever its pace: words are misheard and timed loosely.
-  if (Math.abs(dw - expected) < 60) return true;
+  // A few seconds' worth of words off is still reading: words are misheard and timed loosely.
+  if (Math.abs(dw - expected) < Math.min(60, pace * 5_000)) return true;
   const ratio = dw / Math.max(1e-9, expected);
   return dt < GAP_MS * 3 && ratio <= OFF_PACE && ratio >= 1 / OFF_PACE;
 }
@@ -261,9 +261,9 @@ export function wordAt(timing: Timing, ms: number, gapMs: number): number | null
   const back = w1 - pace * (t1 - ms);
   const on = w0 + pace * (ms - t0);
   if (ms - t0 <= Math.min(RUN_ON_MS, (t1 - t0) / 2) && on < w1) return Math.round(on);
-  // Skipping ahead: on from where the next anchor says the narrator is.
-  if (back > on) return Math.round(back);
-  // Something not in the book: nothing, until the narrator is nearly back at it.
+  // Then nothing (a pause, or talk that isn't in the book) until the narrator
+  // is nearly at the next anchor, which may be far ahead: the pages between
+  // aren't read, so they're never crawled through.
   if (t1 - ms <= RUN_ON_MS && back >= w0) return Math.round(back);
   return null;
 }

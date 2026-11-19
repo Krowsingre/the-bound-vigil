@@ -77,7 +77,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # The build cache keeps CMake's record of where Visual Studio's compiler
+      # is (whisper.cpp), so a cache from an older runner image points at a
+      # compiler that's gone. Each runner image gets its own cache.
+      - name: Note the runner image
+        shell: pwsh
+        run: '"RUNNER_IMAGE=$env:ImageOS-$env:ImageVersion" | Out-File -FilePath $env:GITHUB_ENV -Append'
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ env.RUNNER_IMAGE }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22

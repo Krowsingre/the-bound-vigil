@@ -289,8 +289,13 @@ mod tests {
             ReadStatus::Read
         );
         // Marked In progress by hand (or by another device): it leaves Up next.
+        library.conn.execute("UPDATE sync_clock SET pushed = 1", []).unwrap();
         library.set_status(&id, ReadStatus::InProgress).unwrap();
         assert!(!library.book(&id).unwrap().unwrap().want_to_read);
+        // Made here, the change goes out to the other devices.
+        let waiting: i64 = library.conn.query_row(
+            "SELECT COUNT(*) FROM sync_clock WHERE kind = 'book_shelves' AND pushed = 0", [], |r| r.get(0)).unwrap();
+        assert_eq!(waiting, 1);
         assert!(library.open_book("sha256:nope").is_err());
     }
 

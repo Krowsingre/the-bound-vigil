@@ -84,10 +84,16 @@ function metaLine(p: WritingProject, show: ShowField[]): string {
   ].filter(Boolean).join(" · ");
 }
 
-/** "3 editions · Poetry". */
+/** "3 editions · Poetry", with the latest edition's chapters and words when chosen. */
 function linkedLine(s: Extract<Shelf, { kind: "linked" }>, show: ShowField[]): string {
-  const { kind, bookType } = readExport(latestOf(s).export);
-  return [show.includes("edition") && `${s.editions.length} editions`, show.includes("type") && bookTypeLabel(bookType, kind)].filter(Boolean).join(" · ");
+  const latest = latestOf(s);
+  const { kind, bookType } = readExport(latest.export);
+  return [
+    show.includes("edition") && `${s.editions.length} editions`,
+    show.includes("type") && bookTypeLabel(bookType, kind),
+    show.includes("chapters") && `${latest.chapters} ${latest.chapters === 1 ? "chapter" : "chapters"}`,
+    show.includes("words") && words(latest.words),
+  ].filter(Boolean).join(" · ");
 }
 
 function coverOf(p: WritingProject): string | null {
@@ -348,7 +354,7 @@ export function ScribeBooks({
           const cover = coverOf(p);
           return (
             <li key={linked ? linked.group : p.id} className={`scribe-book-row${linked ? " is-linked" : ""}`} {...cardProps(p, linked)}>
-              <button type="button" className="scribe-book-open" onClick={() => (linked ? setOpenGroup(linked.group) : onOpen(p.id))}>
+              <button type="button" className="scribe-book-open" aria-label={`${p.title}${p.author ? `, ${p.author}` : ""}`} onClick={() => (linked ? setOpenGroup(linked.group) : onOpen(p.id))}>
                 <span className="scribe-book-thumb">{cover ? <img src={cover} alt="" /> : <span className="scribe-book-blank">{p.title}</span>}</span>
                 <span className="scribe-book-text">
                   {shows("title") && <strong>{p.title}</strong>}
