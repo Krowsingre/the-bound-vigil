@@ -1,4 +1,4 @@
-// Preferences › Appearance › Profile: the picture in the sync circle, the
+// Preferences › Profile (its own page, below About): the picture in the sync circle, the
 // account's name (both the same on every device), and this device's own
 // name, which other devices see in Grimoire and in sync's notes.
 
@@ -53,7 +53,7 @@ export function ProfileSection() {
   };
   const avatar = profile?.avatarPath ? api.coverUrl(profile.avatarPath) : "";
   return (
-    <Section id="profile" title="Profile" lede="Your picture and name go to every device. Each device has a name of its own too.">
+    <Section id="profile" title="Picture and names" lede="Your picture and name go to every device. Each device has a name of its own too.">
       <div className="profile-card">
         <span className="profile-picture" aria-hidden>
           {avatar ? <img src={avatar} alt="" draggable={false} /> : <Icon name="image" size={22} />}

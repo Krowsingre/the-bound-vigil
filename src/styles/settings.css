@@ -1543,7 +1543,7 @@ kbd {
   gap: 16px;
 }
 
-/* Appearance › Profile: the picture as the sync circle shows it, then its buttons. */
+/* Preferences › Profile: the picture as the sync circle shows it, then its buttons. */
 .profile-card {
   display: flex;
   align-items: center;

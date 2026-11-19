@@ -3,6 +3,7 @@ import type { SortOrder } from "../api/types";
 import { Icon } from "../components/Icon";
 import type { Layout } from "../library/libraryView";
 import { AppearanceTab } from "./AppearanceTab";
+import { ProfileSection } from "./ProfileSection";
 import { BrowserTab } from "./BrowserTab";
 import { AboutTab, AccessibilityTab, PlanTab, AdvancedTab, CollectionsTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
 import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex";
@@ -16,15 +17,15 @@ import { useShortcuts } from "../lib/shortcuts";
 import { useNarrow } from "../lib/useNarrow";
 
 /** The pages the web version has: the rest are about files and features on a computer. */
-const WEB_TABS = new Set<SettingsTab>(["appearance", "reading", "collections", "sync", "activity", "accessibility", "about"]);
+const WEB_TABS = new Set<SettingsTab>(["appearance", "reading", "collections", "sync", "activity", "accessibility", "about", "profile"]);
 // On the phone at home, the computer keeps the settings; these change only how this phone shows things.
 const HOME_TABS = new Set<SettingsTab>(["appearance", "reading", "accessibility", "about"]);
 const TABS = isWeb ? SETTINGS_TABS.filter((t) => WEB_TABS.has(t.tab)) : isHome ? SETTINGS_TABS.filter((t) => HOME_TABS.has(t.tab)) : SETTINGS_TABS;
 
 /** The computer's list of pages, in groups split by a thin line. */
 const GROUPS: SettingsTab[][] = [
-  // About is its own page, straight under Your plan (embre, 31 October).
-  ["plan", "about"],
+  // About is its own page, straight under Your plan (embre, 31 October); Profile below About (19 November).
+  ["plan", "about", "profile"],
   ["appearance", "reading", "library", "collections", "notes", "browser", "files", "ereaders"],
   ["sync", "activity"],
   ["accessibility", "shortcuts", "advanced"],
@@ -150,6 +151,8 @@ export function Settings({
         return <AdvancedTab />;
       case "about":
         return <AboutTab />;
+      case "profile":
+        return <ProfileSection />;
     }
   })();
 

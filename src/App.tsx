@@ -337,11 +337,11 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     return () => window.removeEventListener(PROFILE_CHANGED, changed);
   }, []);
 
-  // Preferences › Appearance, at the Profile card.
+  // Preferences › Profile.
   const openProfile = useCallback(() => {
     setReading(null);
     setMenuOpen(false);
-    setSettingsTab("appearance");
+    setSettingsTab("profile");
     setSettingsJump("profile");
     setRoute("settings");
   }, []);
