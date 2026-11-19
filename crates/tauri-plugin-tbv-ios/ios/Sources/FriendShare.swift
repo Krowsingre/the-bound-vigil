@@ -43,6 +43,8 @@ final class TbvFriendShare: NSObject {
     if !class_addMethod(target, name, imp, "v@:@@"), let method = class_getInstanceMethod(target, name) {
       method_setImplementation(method, imp)
     }
+    // Links end after 30 days even for someone who never sends again.
+    clearOld()
   }
 
   // MARK: Sending
@@ -103,13 +105,19 @@ final class TbvFriendShare: NSObject {
     let oldest = Date().timeIntervalSince1970 - keepDays * 24 * 3600
     db.fetchAllRecordZones { zones, _ in
       let old = (zones ?? []).map(\.zoneID).filter { id in
-        let parts = id.zoneName.split(separator: "-")
-        guard parts.count > 2, parts[0] == "Sent", let at = Double(parts[1]) else { return false }
+        guard let at = Self.sentAt(id.zoneName) else { return false }
         return at < oldest
       }
       guard !old.isEmpty else { return }
       db.add(CKModifyRecordZonesOperation(recordZonesToSave: nil, recordZoneIDsToDelete: old))
     }
+  }
+
+  /// When a send was made, from its zone's name ("Sent-<seconds>-<id>").
+  private static func sentAt(_ zoneName: String) -> Double? {
+    let parts = zoneName.split(separator: "-")
+    guard parts.count > 2, parts[0] == "Sent" else { return nil }
+    return Double(parts[1])
   }
 
   // MARK: Receiving
@@ -146,6 +154,12 @@ final class TbvFriendShare: NSObject {
       return
     }
     let zone = metadata.share.recordID.zoneID
+    // Past 30 days the link has ended, even if the sender's device hasn't
+    // cleared it away yet.
+    if let at = Self.sentAt(zone.zoneName), at < Date().timeIntervalSince1970 - keepDays * 24 * 3600 {
+      done(.failure(Self.problem("That link doesn't work any more. Links last 30 days; ask your friend to send the book again.")))
+      return
+    }
     // Opened before: the books are just brought down again.
     if metadata.participantStatus == .accepted {
       bringDown(zone, done: done)
