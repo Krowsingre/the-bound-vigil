@@ -25,6 +25,8 @@ export interface EidolonState {
 let state: EidolonState | null = null;
 let media: HTMLVideoElement | null = null;
 let stopStream: () => void = () => undefined;
+/** The last load's "start once it's ready", taken off when another video replaces it. */
+let pendingStart: (() => void) | null = null;
 const listeners = new Set<() => void>();
 
 const tell = () => listeners.forEach((listener) => listener());
@@ -81,16 +83,36 @@ function waitingRoom(): HTMLElement {
   return room;
 }
 
+function dropPendingStart() {
+  if (media && pendingStart) media.removeEventListener("loadedmetadata", pendingStart);
+  pendingStart = null;
+}
+
+/** Stops what's loaded, so nothing goes on playing under a video that can't play. */
+function unload() {
+  dropPendingStart();
+  stopStream();
+  stopStream = () => undefined;
+  if (media) {
+    media.pause();
+    media.removeAttribute("src");
+    media.load();
+  }
+}
+
 function load(video: PageVideo, from: number) {
   const el = eidolonMedia();
+  dropPendingStart();
   stopStream();
   stopStream = () => undefined;
   set({ trouble: null });
   const start = () => {
+    pendingStart = null;
     if (from > 2) el.currentTime = from;
     el.playbackRate = state?.rate ?? 1;
     void el.play().catch(() => undefined);
   };
+  pendingStart = start;
   el.addEventListener("loadedmetadata", start, { once: true });
   if (video.kind === "hls") {
     let gone = false;
@@ -131,8 +153,9 @@ export function go(at: number) {
   set({ at });
   if (!video.src) {
     set({ trouble: video.kind === "dash" ? "This site's video comes in a form TBV can't play on its own yet." : "TBV can't tell where this video comes from, so it can't play it on its own." });
-    stopStream();
-    eidolonMedia().removeAttribute("src");
+    eidolonMedia();
+    unload();
+    setSession(null);
     return;
   }
   load(video, 0);
@@ -173,14 +196,8 @@ export function leave(keepPlaying: boolean) {
 
 /** Stops it altogether. */
 export function endEidolon() {
-  stopStream();
-  stopStream = () => undefined;
-  if (media) {
-    media.pause();
-    media.removeAttribute("src");
-    media.load();
-    media.remove();
-  }
+  unload();
+  media?.remove();
   state = null;
   setSession(null);
   tell();

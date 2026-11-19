@@ -42,4 +42,22 @@ describe("Eidolon's player", () => {
     endEidolon();
     expect(eidolonNow()).toBeNull();
   });
+
+  it("a video skipped before it was ready doesn't move the next one to its place", () => {
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    startEidolon({ ...video(1), time: 90, queue: [video(1), video(2)], at: 0 }, "video");
+    go(1);
+    eidolonMedia().dispatchEvent(new Event("loadedmetadata"));
+    expect(eidolonMedia().currentTime).toBe(0);
+  });
+
+  it("stops the last video when the next one can't play", () => {
+    const pause = vi.mocked(HTMLMediaElement.prototype.pause);
+    startEidolon({ ...video(1), queue: [video(1), { ...video(2), src: "", kind: "dash" }], at: 0 }, "video");
+    pause.mockClear();
+    go(1);
+    expect(pause).toHaveBeenCalled();
+    expect(eidolonMedia().hasAttribute("src")).toBe(false);
+    expect(eidolonNow()?.trouble).toMatch(/can't play/);
+  });
 });
