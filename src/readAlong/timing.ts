@@ -165,29 +165,89 @@ export function thin(anchors: [number, number][], gapMs = 2000): [number, number
   return out;
 }
 
+/** A narrator's usual pace when the timing can't tell: about 150 words a minute, in words per ms. */
+const USUAL_PACE = 150 / 60_000;
+/** Matches this many words or fewer, followed by a gap, are taken to be the title or credits, not the story. */
+const STRAY = 3;
+/** A stretch with no anchors this long, or this far off the narrator's pace, is a jump, not reading. */
+const GAP_MS = 20_000;
+const OFF_PACE = 2.5;
+/** How long the narrator is followed past the last anchor before a jump, at their own pace. */
+const RUN_ON_MS = 8_000;
+
+interface Shape {
+  /** The anchors that are the story, with stray front-matter matches left out. */
+  anchors: [number, number][];
+  /** The narrator's usual pace, in words per ms. */
+  pace: number;
+}
+const shapes = new WeakMap<Timing, Shape>();
+
+/** Whether going from one anchor to the next is reading at the narrator's pace, or a jump. */
+function steady(a: [number, number], b: [number, number], pace: number): boolean {
+  const dt = b[0] - a[0];
+  const dw = b[1] - a[1];
+  if (dt <= 0) return false;
+  const expected = pace * dt;
+  // A few seconds' worth of words off is still reading: words are misheard and timed loosely.
+  if (Math.abs(dw - expected) < Math.min(60, pace * 5_000)) return true;
+  const ratio = dw / Math.max(1e-9, expected);
+  return dt < GAP_MS * 3 && ratio <= OFF_PACE && ratio >= 1 / OFF_PACE;
+}
+
+function shapeOf(timing: Timing): Shape {
+  const known = shapes.get(timing);
+  if (known) return known;
+  const all = timing.anchors;
+  const paces: number[] = [];
+  for (let i = 1; i < all.length; i++) {
+    const dt = all[i][0] - all[i - 1][0];
+    const dw = all[i][1] - all[i - 1][1];
+    if (dt > 0 && dw > 0 && dt < GAP_MS) paces.push(dw / dt);
+  }
+  paces.sort((x, y) => x - y);
+  const pace = paces.length >= 3 ? paces[paces.length >> 1] : USUAL_PACE;
+  // The audiobook's opening (the title, "written by", "narrated by") can
+  // match the book's title page: a few words, then a jump to the story.
+  let first = 0;
+  for (;;) {
+    let end = first + 1;
+    while (end < all.length && steady(all[end - 1], all[end], pace)) end++;
+    if (end >= all.length || end - first > STRAY) break;
+    first = end;
+  }
+  const shape = { anchors: all.slice(first), pace };
+  shapes.set(timing, shape);
+  return shape;
+}
+
 /**
  * The word the narrator is at, `ms` into the audiobook, or null where the
- * timing doesn't reach yet. Before the first anchor and after the last, the
- * nearest stretch's pace carries on.
+ * narrator isn't reading the book: before the story starts (an opening
+ * like "This is Audible"), after it ends (credits), during a stretch that
+ * isn't in the book, or where the timing doesn't reach yet. A big jump in
+ * the book (front matter that isn't narrated, a skipped passage) is jumped,
+ * not crawled through. A dedication or foreword the narrator reads is
+ * followed like the rest.
  */
 export function wordAt(timing: Timing, ms: number, gapMs: number): number | null {
-  const a = timing.anchors;
+  const { anchors: a, pace } = shapeOf(timing);
   if (!a.length) return null;
   const total = timing.sections.reduce((s, n) => s + n, 0);
-  if (ms > a[a.length - 1][0] + gapMs && !timing.done) return null;
+  const inBook = (w: number) => (w < 0 || w >= total ? null : Math.round(w));
+  if (ms < a[0][0]) {
+    // Before the first anchor: back from it at the narrator's pace, until the story's start.
+    const w = a[0][1] - pace * (a[0][0] - ms);
+    return w < a[0][1] - pace * Math.min(a[0][0], gapMs + RUN_ON_MS) ? null : inBook(w);
+  }
+  const last = a[a.length - 1];
+  if (ms >= last[0]) {
+    // After the last anchor: on at the narrator's pace for a little, then nothing (the credits, or not heard yet).
+    if (ms > last[0] + Math.min(gapMs, RUN_ON_MS * 2)) return null;
+    return inBook(Math.min(total - 1, last[1] + pace * (ms - last[0])));
+  }
   let lo = 0;
   let hi = a.length - 1;
-  if (ms <= a[0][0]) {
-    // Before the first anchor: from the start of the book.
-    const [t, w] = a[0];
-    return Math.max(0, Math.round(t ? (w * ms) / t : 0));
-  }
-  if (ms >= a[hi][0]) {
-    const [t0, w0] = a.length > 1 ? a[hi - 1] : [0, 0];
-    const [t1, w1] = a[hi];
-    const pace = t1 > t0 ? (w1 - w0) / (t1 - t0) : 0;
-    return Math.min(Math.max(0, total - 1), Math.round(w1 + pace * (ms - t1)));
-  }
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1;
     if (a[mid][0] <= ms) lo = mid;
@@ -195,7 +255,17 @@ export function wordAt(timing: Timing, ms: number, gapMs: number): number | null
   }
   const [t0, w0] = a[lo];
   const [t1, w1] = a[hi];
-  return Math.round(w0 + ((w1 - w0) * (ms - t0)) / (t1 - t0));
+  if (steady(a[lo], a[hi], pace)) return Math.round(w0 + ((w1 - w0) * (ms - t0)) / (t1 - t0));
+  // A jump. The narrator finishes what they were reading, then either skips
+  // ahead to where the next anchor is or talks about something not in the book.
+  const back = w1 - pace * (t1 - ms);
+  const on = w0 + pace * (ms - t0);
+  if (ms - t0 <= Math.min(RUN_ON_MS, (t1 - t0) / 2) && on < w1) return Math.round(on);
+  // Then nothing (a pause, or talk that isn't in the book) until the narrator
+  // is nearly at the next anchor, which may be far ahead: the pages between
+  // aren't read, so they're never crawled through.
+  if (t1 - ms <= RUN_ON_MS && back >= w0) return Math.round(back);
+  return null;
 }
 
 /** A word of the whole book as a section and the word within it. */
