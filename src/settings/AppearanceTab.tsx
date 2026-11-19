@@ -19,7 +19,6 @@ import {
 } from "./appSettings";
 import { Columns, Row, Section, Segmented, Toggle } from "./controls";
 import { CustomThemeSection, themeFromWindow } from "./CustomThemeSection";
-import { ProfileSection } from "./ProfileSection";
 import { api } from "../api";
 import { useToast } from "../components/Toast";
 import { useShortcuts } from "../lib/shortcuts";
@@ -339,8 +338,6 @@ export function AppearanceTab({
       )}
 
       {card === "custom" && <CustomThemeSection />}
-
-      <ProfileSection />
 
       <Section
         id="privacy"

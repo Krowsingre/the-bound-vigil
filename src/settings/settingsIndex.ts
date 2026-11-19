@@ -17,7 +17,8 @@ export type SettingsTab =
   | "accessibility"
   | "shortcuts"
   | "advanced"
-  | "about";
+  | "about"
+  | "profile";
 
 export const SETTINGS_TABS: {
   tab: SettingsTab;
@@ -36,6 +37,13 @@ export const SETTINGS_TABS: {
     label: "About",
     icon: "info",
     lede: "The Bound Vigil, and the work it is built on.",
+  },
+  {
+    // Its own page, below About (embre, 19 November). A friend code would go here later.
+    tab: "profile",
+    label: "Profile",
+    icon: "person",
+    lede: "Your picture and name, and this device's name.",
   },
   {
     tab: "appearance",
@@ -332,7 +340,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     words: "discover browser other apps mail email phone call links open ask before external",
   },
   {
-    tab: "appearance",
+    tab: "profile",
     section: "profile",
     label: "Profile: picture, your name and this device's name",
     words: "name account profile picture photo avatar image remove person user device computer phone ipad iphone called rename grimoire",

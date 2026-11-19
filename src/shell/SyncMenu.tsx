@@ -50,7 +50,7 @@ export function SyncMenu({
   onOpenActivity?: () => void;
   /** The Where your books are page; desktop only too. */
   onOpenPlaces?: () => void;
-  /** Preferences › Appearance › Profile: picture, name and device name. */
+  /** Preferences › Profile: picture, name and device name. */
   onOpenProfile: () => void;
   /** Preferences › Your plan; left out where nothing can be bought (the web version). */
   onOpenPlan?: () => void;
