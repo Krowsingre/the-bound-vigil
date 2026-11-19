@@ -1367,6 +1367,8 @@
   position: relative;
   padding-inline: 52px;
   padding-bottom: 32px;
+  /* Sideways swipes belong to the card; up and down still scroll the page. */
+  touch-action: pan-y;
 }
 
 .hero-turn {
