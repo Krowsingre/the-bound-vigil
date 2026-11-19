@@ -517,7 +517,7 @@ enum Shortcuts {
     ShortcutEntity(id: "page:collections", title: "Compendium", symbol: "square.stack", cover: nil, link: "theboundvigil://page/collections"),
     ShortcutEntity(id: "scribe:new", title: "New note", symbol: "square.and.pencil", cover: nil, link: "theboundvigil://scribe/new"),
     ShortcutEntity(id: "page:catalogs", title: "Scry", symbol: "safari", cover: nil, link: "theboundvigil://page/catalogs"),
-    ShortcutEntity(id: "page:libram", title: "Libram", symbol: "book.closed", cover: nil, link: "theboundvigil://page/libram"),
+    // Libram is hidden until it returns as Nexus (embre, 19 November).
     ShortcutEntity(id: "page:geas", title: "Geas", symbol: "externaldrive.connected.to.line.below", cover: nil, link: "theboundvigil://page/geas"),
     ShortcutEntity(id: "page:settings", title: "Preferences", symbol: "gearshape", cover: nil, link: "theboundvigil://page/settings"),
   ]
