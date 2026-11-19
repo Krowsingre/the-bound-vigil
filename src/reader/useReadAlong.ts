@@ -225,6 +225,12 @@ export function useReadAlong({
     const ci = player.chapterIndex;
     const section = chapters?.[ci];
     const said = timing ? wordAt(timing, position, 10_000) : null;
+    // Lined up here, but the narrator isn't reading the book (the opening, a
+    // break, the credits): nothing is highlighted and the page stays put.
+    if (timing && said === null && timing.anchors.length && (timing.done || position <= timing.heard)) {
+      if (s.shown) clear();
+      return;
+    }
     const place = timing && said !== null ? placeOf(timing, said) : null;
     if (timing && place) {
       index = place.section;
@@ -279,7 +285,7 @@ export function useReadAlong({
       }
     };
     void run();
-  }, [following, view, book, audiobookId, position, chapters, player.chapterIndex, dark, s, timing]);
+  }, [following, view, book, audiobookId, position, chapters, player.chapterIndex, dark, s, timing, clear]);
 
   useEffect(() => {
     if (!following) clear();

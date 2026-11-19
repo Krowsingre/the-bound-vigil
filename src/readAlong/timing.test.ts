@@ -46,12 +46,46 @@ describe("read-along timing", () => {
   it("tells the word at any moment, between anchors and beyond", () => {
     const timing: Timing = { version: 1, sections: [100, 100], anchors: [[10_000, 20], [20_000, 40], [30_000, 70]], heard: 30_000, done: false };
     expect(wordAt(timing, 15_000, 60_000)).toBe(30);
-    expect(wordAt(timing, 5_000, 60_000)).toBe(10);
-    expect(wordAt(timing, 40_000, 60_000)).toBe(100);
+    // Just before the first anchor and just after the last: at the narrator's pace (about 150 words a minute here).
+    expect(wordAt(timing, 5_000, 60_000)).toBe(8);
+    expect(wordAt(timing, 34_000, 60_000)).toBe(80);
     // Past what's been heard and more than a gap on: not known yet.
     expect(wordAt(timing, 120_000, 60_000)).toBeNull();
     expect(placeOf(timing, 130)).toEqual({ section: 1, word: 30 });
     expect(placeOf(timing, 250)).toBeNull();
+  });
+
+  // Anchors every 2 s at 3 words a second, like a narrator reading steadily.
+  const reading = (fromMs: number, fromWord: number, count: number): [number, number][] =>
+    Array.from({ length: count }, (_, i) => [fromMs + i * 2_000, fromWord + i * 6] as [number, number]);
+
+  it("starts at the story, not during the audiobook's opening", () => {
+    // "This is Audible. The Ash Road, written by…" for 40 s, then the story at word 300.
+    const timing: Timing = { version: 1, sections: [5_000], anchors: [[3_000, 2], [4_000, 4], ...reading(40_000, 300, 30)], heard: 100_000, done: false };
+    // The title-page match is left out, and nothing is highlighted while the opening plays.
+    expect(wordAt(timing, 3_000, 10_000)).toBeNull();
+    expect(wordAt(timing, 20_000, 10_000)).toBeNull();
+    // A moment before the first story anchor: just before it, never back in the front matter.
+    expect(wordAt(timing, 39_000, 10_000)).toBe(297);
+    expect(wordAt(timing, 42_000, 10_000)).toBe(306);
+  });
+
+  it("follows a narrated dedication, then jumps the pages that aren't read", () => {
+    // Dedication at words 40-70, then the story at word 900 after a short pause.
+    const timing: Timing = { version: 1, sections: [5_000], anchors: [...reading(10_000, 40, 6), ...reading(25_000, 900, 20)], heard: 70_000, done: false };
+    expect(wordAt(timing, 13_000, 10_000)).toBe(49);
+    // Finishing the dedication, then on at the story: never crawling through the pages between.
+    expect(wordAt(timing, 21_000, 10_000)).toBe(73);
+    expect(wordAt(timing, 24_000, 10_000)).toBe(897);
+  });
+
+  it("highlights nothing during talk that isn't in the book, or after the end", () => {
+    // Reading to word 120, a long break that isn't in the book, reading from word 126 on.
+    const timing: Timing = { version: 1, sections: [400], anchors: [...reading(0, 0, 21), ...reading(100_000, 126, 20)], heard: 140_000, done: true };
+    expect(wordAt(timing, 70_000, 10_000)).toBeNull();
+    expect(wordAt(timing, 99_000, 10_000)).toBe(123);
+    // The credits after the last word read.
+    expect(wordAt(timing, 200_000, 10_000)).toBeNull();
   });
 
   it("only reads timing it understands", () => {
