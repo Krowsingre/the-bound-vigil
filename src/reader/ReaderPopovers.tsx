@@ -497,9 +497,15 @@ function useFloating(rect: DOMRect) {
   return { ref, style: pos ? { left: pos.left, top: pos.top } : { visibility: "hidden" as const } };
 }
 
-/** Shown over selected words: four colours, a note, copy, and looking the words up. */
+/**
+ * Shown over selected words: four colours, a note, copy, and looking the words up.
+ * `docked` (the iPhone): a bar at the foot of the screen with only the colours,
+ * the note and removing, so it never covers iOS's own menu by the words, which
+ * already has Copy, Look Up and Translate (embre, 19 November).
+ */
 export function SelectionToolbar({
   rect,
+  docked = false,
   activeColor,
   hasNote,
   onColor,
@@ -511,6 +517,7 @@ export function SelectionToolbar({
   onTranslate,
 }: {
   rect: DOMRect;
+  docked?: boolean;
   /** Set when the toolbar is for an existing highlight. */
   activeColor?: HighlightColor | null;
   hasNote?: boolean;
@@ -524,7 +531,14 @@ export function SelectionToolbar({
 }) {
   const { ref, style } = useFloating(rect);
   return (
-    <div ref={ref} className="selection-toolbar" style={style} role="toolbar" aria-label="Highlight" onPointerDown={(e) => e.preventDefault()}>
+    <div
+      ref={ref}
+      className={`selection-toolbar${docked ? " is-docked" : ""}`}
+      style={docked ? undefined : style}
+      role="toolbar"
+      aria-label="Highlight"
+      onPointerDown={(e) => e.preventDefault()}
+    >
       {HIGHLIGHT_COLORS.map((c) => (
         <button
           key={c.value}
@@ -540,20 +554,22 @@ export function SelectionToolbar({
       <button type="button" className="selection-btn" onClick={onNote}>
         <Icon name="note" size={16} /> <span className="selection-label">{hasNote ? "Edit note" : "Add a note"}</span>
       </button>
-      <button type="button" className="icon-btn icon-btn-s" aria-label="Copy" title="Copy" onClick={onCopy}>
-        <Icon name="copy" size={16} />
-      </button>
-      {onDefine && (
+      {!docked && (
+        <button type="button" className="icon-btn icon-btn-s" aria-label="Copy" title="Copy" onClick={onCopy}>
+          <Icon name="copy" size={16} />
+        </button>
+      )}
+      {!docked && onDefine && (
         <button type="button" className="icon-btn icon-btn-s" aria-label="Define" title="Define" onClick={onDefine}>
           <Icon name="bookOpen" size={16} />
         </button>
       )}
-      {onSearch && (
+      {!docked && onSearch && (
         <button type="button" className="icon-btn icon-btn-s" aria-label="Search the web" title="Search the web" onClick={onSearch}>
           <Icon name="search" size={16} />
         </button>
       )}
-      {onTranslate && (
+      {!docked && onTranslate && (
         <button type="button" className="icon-btn icon-btn-s" aria-label="Translate" title="Translate" onClick={onTranslate}>
           <Icon name="translate" size={16} />
         </button>

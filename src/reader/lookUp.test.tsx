@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { DefineCard, SelectionToolbar } from "./ReaderPopovers";
 import { googleTranslate } from "./Reader";
 
-vi.mock("../api", () => ({ api: { coverUrl: () => "", getSetting: async () => null }, isApp: false, isIOS: false, isMac: false, isAndroid: false }));
+vi.mock("../api", () => ({ api: { coverUrl: () => "", getSetting: async () => null }, isApp: false, isIOS: false, isIPhone: false, isMac: false, isAndroid: false }));
 afterEach(() => cleanup());
 const rect = new DOMRect(100, 200, 60, 20);
 
@@ -43,4 +43,12 @@ it("shows a word's meanings by part of speech, or says none were found", () => {
 it("translates in Google Translate into the device's language", () => {
   vi.spyOn(navigator, "language", "get").mockReturnValue("fr-FR");
   expect(googleTranslate("a quiet lantern")).toBe("https://translate.google.com/?sl=auto&tl=fr&text=a%20quiet%20lantern&op=translate");
+});
+
+it("keeps only the colours, the note and removing when docked at the foot (iPhone)", () => {
+  render(<SelectionToolbar rect={rect} docked onColor={vi.fn()} onNote={vi.fn()} onCopy={vi.fn()} onDelete={vi.fn()} onDefine={vi.fn()} onSearch={vi.fn()} onTranslate={vi.fn()} />);
+  for (const gone of ["Copy", "Define", "Search the web", "Translate"]) expect(screen.queryByRole("button", { name: gone })).toBeNull();
+  expect(screen.getByRole("button", { name: /Add a note/ })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Remove highlight" })).toBeTruthy();
+  expect(screen.getByRole("toolbar").className).toContain("is-docked");
 });

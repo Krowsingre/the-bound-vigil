@@ -1089,6 +1089,25 @@
   }
 }
 
+/* The iPhone: a bar at the foot of the screen, clear of iOS's own menu by the words. */
+.selection-toolbar.is-docked {
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 26px;
+}
+
+.selection-toolbar.is-docked .swatch {
+  width: 28px;
+  height: 28px;
+}
+
+.selection-toolbar.is-docked .selection-label {
+  display: inline;
+}
+
 /* What a word means (Define, from the offline dictionary) */
 .define-card {
   position: fixed;
