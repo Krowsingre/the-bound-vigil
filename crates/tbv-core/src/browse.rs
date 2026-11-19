@@ -1178,7 +1178,7 @@ mod tests {
         let lathe = add(&mut library, dir.path(), "The Lathe of Heaven", "Ursula K. Le Guin");
         library.conn.execute("UPDATE books SET publisher = 'Chilton Books', isbn = '9780441013593' WHERE id = ?1", [&dune]).unwrap();
         library.conn.execute("UPDATE books SET synopsis = 'A werewolf story set on a desert planet' WHERE id = ?1", [&wolf]).unwrap();
-        library.add_tag(&[lathe.clone()], "Dreams").unwrap();
+        library.add_tag(std::slice::from_ref(&lathe), "Dreams").unwrap();
         let search = |s: &str| {
             let s = s.to_string();
             titles(&library.library_page(&query(|q| q.search = Some(s))).unwrap()).join(",")
