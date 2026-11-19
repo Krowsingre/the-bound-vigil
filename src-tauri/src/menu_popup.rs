@@ -33,6 +33,13 @@ pub struct Request {
     pub align: String,
 }
 
+/// TBV's window. Not `get_webview_window`: while Scry shows a website the
+/// window holds the sites' views too, and then that finds nothing, which is
+/// what left every Scry menu doing nothing in 0.145.
+fn main_window(app: &AppHandle) -> Result<tauri::Window, String> {
+    app.get_window("main").ok_or_else(|| "TBV's window isn't open.".to_string())
+}
+
 #[derive(Default)]
 pub struct Showing(Mutex<Option<Request>>);
 
@@ -49,7 +56,7 @@ pub async fn menu_popup_open(app: AppHandle, request: Request) -> Result<(), Str
         window.emit("tbv://menu-popup-request", &request).map_err(|e| e.to_string())?;
         return Ok(());
     }
-    let main = app.get_webview_window("main").ok_or("TBV's window isn't open.")?;
+    let main = main_window(&app)?;
     let window = WebviewWindowBuilder::new(&app, LABEL, WebviewUrl::App("menu.html".into()))
         .title("Menu")
         .decorations(false)
@@ -60,9 +67,12 @@ pub async fn menu_popup_open(app: AppHandle, request: Request) -> Result<(), Str
         .shadow(false)
         .visible(false)
         .focused(false)
-        .inner_size(240.0, 40.0)
-        .parent(&main)
-        .map_err(|e| e.to_string())?;
+        .inner_size(240.0, 40.0);
+    // Kept above TBV's window and hidden with it.
+    #[cfg(windows)]
+    let window = window.owner_raw(main.hwnd().map_err(|e| e.to_string())?);
+    #[cfg(not(windows))]
+    let _ = &main;
     #[cfg(not(target_os = "macos"))]
     let window = window.transparent(true);
     let window = window.build().map_err(|e| e.to_string())?;
@@ -90,7 +100,7 @@ pub fn menu_popup_fit(app: AppHandle, id: u64, width: f64, height: f64) -> Resul
     if request.id != id {
         return Ok(());
     }
-    let main = app.get_webview_window("main").ok_or("TBV's window isn't open.")?;
+    let main = main_window(&app)?;
     let window = app.get_webview_window(LABEL).ok_or("The menu window isn't open.")?;
     let scale = main.scale_factor().map_err(|e| e.to_string())?;
     let origin = main.inner_position().map_err(|e| e.to_string())?;
@@ -155,7 +165,7 @@ fn close(app: &AppHandle, path: Option<Vec<usize>>, refocus: bool) {
     let _ = app.emit_to("main", "tbv://menu-popup-chosen", Chosen { id: request.id, path });
     // Back to TBV's window, so keys go where they were going.
     if refocus {
-        if let Some(main) = app.get_webview_window("main") {
+        if let Ok(main) = main_window(app) {
             let _ = main.set_focus();
         }
     }

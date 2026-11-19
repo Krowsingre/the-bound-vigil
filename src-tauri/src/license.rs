@@ -331,7 +331,7 @@ mod store {
     fn context(app: &AppHandle) -> windows::core::Result<StoreContext> {
         let context = StoreContext::GetDefault()?;
         // A desktop app shows the Store's sheets over its own window.
-        if let Some(window) = app.get_webview_window("main") {
+        if let Some(window) = app.get_window("main") {
             if let Ok(hwnd) = window.hwnd() {
                 let init: IInitializeWithWindow = context.cast()?;
                 unsafe { init.Initialize(windows::Win32::Foundation::HWND(hwnd.0 as _))? };
