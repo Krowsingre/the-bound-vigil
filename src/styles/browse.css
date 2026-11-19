@@ -2399,3 +2399,45 @@
 .bookmark-delete-actions {
   flex-wrap: wrap;
 }
+
+/* Phones and tablets: a tab card's close and ⋮ buttons are big enough to
+   tap, side by side at its top right, with the title starting under them;
+   so are the video reader's buttons (Picture in picture). */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
+  .browser-grid-tab .browser-tab-close {
+    top: 2px;
+    right: 2px;
+    width: 44px;
+    height: 44px;
+    margin: 0;
+  }
+
+  .browser-grid-tab .browser-tab-close svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .browser-grid-tab .browser-grid-more {
+    top: 2px;
+    right: 46px;
+  }
+
+  .browser-grid-tab .browser-grid-more button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .browser-grid-tab .browser-grid-open {
+    padding-right: 12px;
+  }
+
+  .browser-grid-open > svg {
+    flex: none;
+    margin-bottom: 8px;
+  }
+
+  .browser-video .browser-reader-bar .btn {
+    min-height: 44px;
+    padding-inline: 14px;
+  }
+}

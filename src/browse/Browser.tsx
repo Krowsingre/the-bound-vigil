@@ -1,4 +1,5 @@
-import { WAITING, waiting } from "./discoverQueue";
+import { TAB_WAITING, tabWaiting, WAITING, waiting } from "./discoverQueue";
+import { checkForPip, notePopped, whenStillOpen } from "./pipReturn";
 export { openInDiscover } from "./discoverQueue";
 import { wasStopped } from "../library/cloudDownloads";
 import { workspaceFrame, workspaceHost } from "../shell/workspaceFrame";
@@ -283,6 +284,7 @@ let openedThisRun = false;
  * page: coming back shows them as they were instead of loading them again. */
 const madeViews = new Set<string>();
 const releasingViews = new Set<string>();
+whenStillOpen((id) => madeViews.has(id) && !releasingViews.has(id));
 
 function releaseView(id: string) {
   if (releasingViews.has(id)) return;
@@ -906,6 +908,33 @@ export function Browser({
     window.addEventListener(WAITING, drain);
     return () => window.removeEventListener(WAITING, drain);
   }, []);
+  // A popped-out video brought back to full size: its tab comes to the front.
+  useEffect(() => {
+    if (companion || workspaceFrame) return;
+    const drain = () => {
+      const id = tabWaiting.id;
+      tabWaiting.id = null;
+      if (id) switchRef.current(id);
+    };
+    drain();
+    window.addEventListener(TAB_WAITING, drain);
+    return () => window.removeEventListener(TAB_WAITING, drain);
+  }, [companion]);
+  // A video popped out from the page itself (its own button, or the one TBV
+  // puts on it): the tab in front is looked at now and then, and every tab
+  // as Discover is left, so it's known when the video comes back.
+  useEffect(() => {
+    if (companion || workspaceFrame || api.kind !== "app") return;
+    const front = () => {
+      const id = tabsRef.current.active;
+      if (made.current.has(id)) void checkForPip(id);
+    };
+    const every = window.setInterval(front, 2000);
+    return () => {
+      window.clearInterval(every);
+      for (const id of made.current) void checkForPip(id);
+    };
+  }, [companion]);
   const switchTo = (id: string) => {
     const previous = tabsRef.current.active;
     if (id !== previous && otherRef.current?.id === id) {
@@ -1421,6 +1450,7 @@ export function Browser({
     if (!web) return toast("Open a page with a video first.");
     try {
       const done = await api.browserPip(active.id);
+      if (done === "popped") notePopped(active.id);
       if (done === "none") toast("No video is playing on this page. Start it, then try again.");
       else if (done === "refused") toast(narrow ? "This video can't be popped out from here. Tap the video and use the button on it." : "This video can't be popped out. Try pointing at the video and using the button on it.");
     } catch (e) {

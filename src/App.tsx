@@ -21,6 +21,8 @@ import { Geas } from "./browse/Geas";
 import { UpNextReplacementHost } from "./library/UpNextReplacement";
 import { workspaceFrame } from "./shell/workspaceFrame";
 import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory, openInDiscover } from "./browse/Browser";
+import { showTabInDiscover } from "./browse/discoverQueue";
+import { PIP_RETURN } from "./browse/pipReturn";
 import { AddressSuggestions } from "./browse/AddressSuggestions";
 import { readBrowserPrefs, shortAddress } from "./browse/browserPrefs";
 import { loadHistory } from "./browse/browserHistory";
@@ -579,6 +581,19 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     // Adaptive takes its colour from the book just read.
     refreshAdaptive();
   }, [refreshAdaptive]);
+
+  // A video popped out of a Scry tab, brought back to full size: Scry, at
+  // that tab (Preferences › Discover can turn this off; see pipReturn.ts).
+  useEffect(() => {
+    if (workspaceFrame) return;
+    const back = (event: Event) => {
+      if (reading) closeBook();
+      navigate("catalogs");
+      showTabInDiscover((event as CustomEvent<string>).detail);
+    };
+    window.addEventListener(PIP_RETURN, back);
+    return () => window.removeEventListener(PIP_RETURN, back);
+  }, [reading, closeBook, navigate]);
 
   const shell = {
     sync,
