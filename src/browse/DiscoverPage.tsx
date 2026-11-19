@@ -7,7 +7,8 @@ import { Icon, type IconName } from "../components/Icon";
 /** The page's mark, name and caption. "row" puts the line about the page beside
  * them after a short upright rule (Geas); "stacked" puts it underneath (Libram). */
 export function DiscoverHeader({ icon, title, caption, about, layout = "row" }: {
-  icon: IconName;
+  /** None on Geas (embre, 19 November). */
+  icon?: IconName;
   title: string;
   caption: string;
   about: string;
@@ -16,7 +17,7 @@ export function DiscoverHeader({ icon, title, caption, about, layout = "row" }: 
   return (
     <header className={`discover-head is-${layout}`}>
       <div className="discover-head-name">
-        <Icon name={icon} size={layout === "stacked" ? 64 : 52} className="discover-head-mark" />
+        {icon && <Icon name={icon} size={layout === "stacked" ? 64 : 52} className="discover-head-mark" />}
         <span>
           <h1>{title}</h1>
           <span className="discover-head-caption">{caption}</span>
