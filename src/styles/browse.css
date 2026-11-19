@@ -237,7 +237,7 @@
   background: var(--surface);
 }
 
-.browser-downloads-button {
+.browser-more {
   position: relative;
 }
 
@@ -2440,4 +2440,40 @@
     min-height: 44px;
     padding-inline: 14px;
   }
+}
+
+/* The computer's bar after the address: Eidolon, then ••• (embre, 19 November). */
+.browser-bar-end {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 2px;
+}
+
+.browser-bar-end .toolbar-button {
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+}
+
+.toolbar-button.browser-eidolon.is-on {
+  color: var(--accent);
+}
+
+/* The tabs workspace: Open, Sessions, Recent. */
+.browser-grid-head {
+  flex-wrap: wrap;
+}
+
+.browser-grid-head .browser-tabs-views {
+  flex: 1 0 auto;
+  min-width: max-content;
+  margin: 0;
+}
+
+.browser-sessions-bare {
+  display: grid;
+  gap: 10px;
+  max-width: 720px;
 }

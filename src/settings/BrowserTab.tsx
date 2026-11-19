@@ -229,6 +229,12 @@ export function BrowserTab() {
             />
           </Row>
           <Toggle
+            label="Show the Home button"
+            hint="In the top bar, left of Back, on a computer and on an iPad held sideways."
+            checked={prefs.homeButton}
+            onChange={(homeButton) => writeBrowserPrefs({ homeButton })}
+          />
+          <Toggle
             label="Show Recent Sites on the start page"
             hint={prefs.historyOn ? "The sites you visited last, from History." : "History is off, so there are none to show."}
             checked={prefs.showRecent}

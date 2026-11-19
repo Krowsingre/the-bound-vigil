@@ -104,6 +104,8 @@ export interface BrowserPrefs {
   askApps: boolean;
   /** Every site's cookies and data are cleared each time TBV starts. */
   clearOnStart: boolean;
+  /** The computer's top bar has a Home button, left of Back (off unless chosen; embre, 19 November). */
+  homeButton: boolean;
 }
 
 /** A site's own choices. Left out, it's as everywhere else. */
@@ -171,6 +173,7 @@ export function readBrowserPrefs(): BrowserPrefs {
     sites: readSites(saved.sites),
     askApps: saved.askApps !== false,
     clearOnStart: saved.clearOnStart === true,
+    homeButton: saved.homeButton === true,
   };
 }
 

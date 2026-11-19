@@ -83,8 +83,10 @@ type Pending =
   | { action: "same-name"; session: SavedSession; saving: SavedSession }
   | { action: "new" };
 
-export function SessionsPanel({ current, onLoad, onNew, onClose }: {
+export function SessionsPanel({ current, onLoad, onNew, onClose, bare = false }: {
   current: TabsState;
+  /** Inside the tabs workspace, with no window of its own. */
+  bare?: boolean;
   onLoad: (session: SavedSession) => void;
   /** Closes every tab and opens one at the home page. */
   onNew: () => void;
@@ -163,8 +165,9 @@ export function SessionsPanel({ current, onLoad, onNew, onClose }: {
     }
   };
 
+  const Frame = bare ? BareFrame : Panel;
   return (
-    <Panel title="Sessions" onClose={onClose}>
+    <Frame title="Sessions" onClose={onClose}>
       {pending ? (() => {
         const ask = confirmation(pending);
         return (
@@ -240,6 +243,10 @@ export function SessionsPanel({ current, onLoad, onNew, onClose }: {
           </div>
         </>
       )}
-    </Panel>
+    </Frame>
   );
+}
+
+function BareFrame({ children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return <div className="browser-sessions-bare">{children}</div>;
 }
