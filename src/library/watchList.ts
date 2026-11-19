@@ -162,8 +162,15 @@ export function unwatchBook(title: string) {
   write(LIST_KEY, watchList().filter((w) => !(w.kind === "book" && fold(w.title) === fold(title))));
 }
 
+/** Stops watching one. An author takes the books followed for them along. */
 export function unwatch(item: Watched) {
-  write(LIST_KEY, watchList().filter((w) => !(w.kind === item.kind && (w.kind === "author" ? fold(w.name) === fold((item as WatchedAuthor).name) : w.key === (item as WatchedTitle).key))));
+  write(LIST_KEY, watchList().filter((w) => {
+    if (item.kind === "author") {
+      if (w.kind === "author") return fold(w.name) !== fold(item.name);
+      return !(w.auto && fold(w.author) === fold(item.name));
+    }
+    return !(w.kind === "book" && w.key === item.key);
+  }));
 }
 
 export function clearWatchNews(key?: string) {
@@ -187,10 +194,14 @@ export function checkWatched(): Promise<number> {
       const rest = () => new Promise((r) => setTimeout(r, REST_MS));
       do {
         again = false;
+        // What each author's lookup just said about their books, so books
+        // followed for them pick up a newly set or moved release date.
+        const latest = new Map<string, WatchedBook>();
         for (const item of watchList()) {
           try {
             if (item.kind === "author") {
               const books = await api.watchAuthorBooks!(item.name);
+              for (const b of books) latest.set(b.key, b);
               const update = authorUpdate(item, books);
               const list = watchList();
               const keys = new Set(list.filter((w): w is WatchedTitle => w.kind === "book").map((w) => w.key));
@@ -201,8 +212,8 @@ export function checkWatched(): Promise<number> {
               found += addNews(update.news);
               await rest();
             } else {
-              // Followed for an author: the date is already known, so no lookup.
-              const online = item.auto ? null : await api.watchFindBook!(item.title, item.author).catch(() => null);
+              // Followed for an author: their lookup just above says what's new, so no lookup of its own.
+              const online = item.auto ? latest.get(item.key) ?? null : await api.watchFindBook!(item.title, item.author).catch(() => null);
               const update = bookUpdate(item, online);
               write(LIST_KEY, watchList().flatMap((w) => {
                 if (w.kind !== "book" || w.key !== item.key) return [w];

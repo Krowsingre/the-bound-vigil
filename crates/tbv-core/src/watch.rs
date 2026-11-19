@@ -78,7 +78,12 @@ pub fn books_from_google(data: &Value, author: &str) -> Vec<WatchedBook> {
                 let kept = &mut found[i];
                 let better = match (&book.date, &kept.date) {
                     (Some(_), None) => true,
-                    (Some(new), Some(old)) => new.len() > old.len() || (new.len() == old.len() && new < old),
+                    // Earliest first, then the more exact: a reprint's exact
+                    // date never makes an old book look unreleased.
+                    (Some(new), Some(old)) => {
+                        let common = new.len().min(old.len());
+                        new[..common] < old[..common] || (new[..common] == old[..common] && new.len() > old.len())
+                    }
                     _ => false,
                 };
                 if better {
@@ -170,6 +175,17 @@ mod tests {
         assert_eq!(found[0].cover_url.as_deref(), Some("https://books.google.com/c.jpg"));
         assert_eq!(found[0].link.as_deref(), Some("https://books.google.com/a"));
         assert_eq!(found[2].date, None);
+    }
+
+    #[test]
+    fn a_reprint_never_makes_an_old_book_look_new() {
+        let data = json!({ "items": [
+            { "volumeInfo": { "title": "Old Tales", "authors": ["A. Writer"], "publishedDate": "2001" } },
+            { "volumeInfo": { "title": "Old Tales", "authors": ["A. Writer"], "publishedDate": "2027-03-04" } },
+            { "volumeInfo": { "title": "Old Tales", "authors": ["A. Writer"], "publishedDate": "2001-05-06" } }
+        ]});
+        let found = books_from_google(&data, "A. Writer");
+        assert_eq!(found[0].date.as_deref(), Some("2001-05-06"));
     }
 
     #[test]
