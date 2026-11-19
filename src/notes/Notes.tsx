@@ -531,6 +531,7 @@ export function Notes({
             onSave={saveWords}
             onTags={saveTags}
             onClose={() => setSelectedId(null)}
+            onDelete={(n) => setDeleting([n])}
             onOpenInReader={openInReader}
             onSelect={(n) => {
               // A related note hidden by the current filters brings them all down.

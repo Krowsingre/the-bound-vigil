@@ -522,9 +522,11 @@ enum Shortcuts {
     ShortcutEntity(id: "page:settings", title: "Preferences", symbol: "gearshape", cover: nil, link: "theboundvigil://page/settings"),
   ]
 
-  /// TBV's pages, then your Sigils from Sanctum.
+  /// TBV's pages, then your Sigils from Sanctum. An iPhone has no New note
+  /// for now: its Scribe holds only Reading notes (embre, 19 November).
   static func all() -> [ShortcutEntity] {
-    pages + Store.load().sigils.map { sigil in
+    let offered = UIDevice.current.userInterfaceIdiom == .phone ? pages.filter { $0.id != "scribe:new" } : pages
+    return offered + Store.load().sigils.map { sigil in
       ShortcutEntity(id: "sigil:\(sigil.id)", title: sigil.title, symbol: symbol(sigil.icon), cover: sigil.cover,
                      link: Links.sigil(sigil.id).absoluteString)
     }
@@ -782,6 +784,26 @@ struct ScribeView: View {
   let entry: Entry
 
   var body: some View {
+    // An iPhone's Scribe holds only Reading notes for now (embre, 19 November):
+    // no book being written, no personal notes, no New note.
+    if UIDevice.current.userInterfaceIdiom == .phone {
+      Link(destination: Links.page("writing")) {
+        VStack(alignment: .leading, spacing: 6) {
+          Caption(text: "Scribe", symbol: "pencil")
+          Text("Your reading notes").font(.system(.subheadline, design: .serif).weight(.semibold))
+            .foregroundColor(Palette.ash)
+          Text("Highlights and notes from your books").font(.caption).foregroundColor(Palette.ash.opacity(0.7))
+          Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .widgetBackground(Palette.ink)
+    } else {
+      workspace
+    }
+  }
+
+  private var workspace: some View {
     HStack(alignment: .top, spacing: 12) {
       if let project = entry.snapshot.project {
         Link(destination: Links.scribeBook(project.id)) {

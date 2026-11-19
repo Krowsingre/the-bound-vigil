@@ -750,6 +750,8 @@ export const isIOS =
   isApp &&
   typeof navigator !== "undefined" &&
   (/iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
+/** An iPhone (not an iPad): Scribe shows only Reading notes there for now (embre, 19 November). */
+export const isIPhone = isIOS && typeof navigator !== "undefined" && /iPhone|iPod/.test(navigator.userAgent);
 /** The Android test version: the phone layout, without iCloud, the browser or saving files to the phone. */
 export const isAndroid = isApp && typeof navigator !== "undefined" && /Android/.test(navigator.userAgent);
 /** The Mac app: the computer's layout, with the Mac's own window buttons. */
