@@ -445,7 +445,7 @@ impl Server {
         let mut answer = self.get_raw(path)?;
         let written = (|| -> Result<u64> {
             let mut out = fs::File::create(to)?;
-            let n = std::io::copy(&mut answer.body_mut().with_config().limit(u64::MAX).reader(), &mut out)?;
+            let n = std::io::copy(&mut answer.body_mut().with_config().limit(u64::MAX).reader(), &mut crate::stop::watched(&mut out))?;
             out.flush()?;
             Ok(n)
         })();

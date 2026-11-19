@@ -821,7 +821,7 @@ impl CatalogAccess {
         let path = folder.join(format!("{}.{format}", safe_name(title)));
         let written = (|| -> Result<u64> {
             let mut out = fs::File::create(&path)?;
-            let copied = std::io::copy(&mut fetched.body.take(MAX_BOOK_BYTES + 1), &mut out)?;
+            let copied = std::io::copy(&mut fetched.body.take(MAX_BOOK_BYTES + 1), &mut crate::stop::watched(&mut out))?;
             out.flush()?;
             Ok(copied)
         })();

@@ -2,6 +2,7 @@
 // versions, brought in as normal books (they sync, take highlights and open
 // in the reader), and a picker that opens one at a chapter.
 
+import { wasStopped } from "../library/cloudDownloads";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import { Icon } from "../components/Icon";
@@ -92,7 +93,7 @@ export function Bible({
       await api.downloadWebBook(t.url, t.name);
       toast(`The ${t.name} is being added to your library.`);
     } catch (e) {
-      toast(`The ${t.name} couldn't be brought in: ${String(e)}`);
+      if (!wasStopped(e)) toast(`The ${t.name} couldn't be brought in: ${String(e)}`);
     } finally {
       setAdding((a) => ({ ...a, [t.id]: false }));
     }

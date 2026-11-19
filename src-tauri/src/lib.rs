@@ -33,6 +33,7 @@ mod servers;
 #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
 mod shared;
 mod splash;
+mod stops;
 #[cfg(windows)]
 mod windows_quit;
 mod sync;
@@ -1317,12 +1318,20 @@ async fn supabase_usage(state: State<'_, AppLibrary>) -> CommandResult<tbv_core:
         .map_err(|e| e.to_string())
 }
 
+/// Stops a download that's coming down (see `stops`): `book:<id>` for a
+/// cloud book, `web:<id>` for Scry's own, `catalog:<key>` for Libram and
+/// Audiobookshelf. Its partial file is deleted. False if it had already ended.
+#[tauri::command(async)]
+fn stop_download(name: String) -> bool {
+    stops::stop(&name)
+}
+
 /// Fetches a book that's only in the cloud onto this device.
 #[tauri::command]
 async fn download_book(state: State<'_, AppLibrary>, book_id: String, temporary: Option<bool>) -> CommandResult<()> {
     let library = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        sync::download(&library, &book_id)?;
+        stops::run(&format!("book:{book_id}"), || sync::download(&library, &book_id))?;
         // Played on a phone, it's removed again after a while unless kept;
         // downloaded on purpose, it stays.
         let library = library.lock().map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?;
@@ -2481,6 +2490,7 @@ pub fn run() {
             welcomed_back,
             resolve_sync_conflict,
             download_book,
+            stop_download,
             book_locations,
             keep_download,
             cover_on_view,

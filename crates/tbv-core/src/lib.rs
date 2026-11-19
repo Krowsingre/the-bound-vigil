@@ -49,6 +49,7 @@ pub mod rules;
 pub mod series;
 pub mod series_sources;
 pub mod servers;
+pub mod stop;
 pub mod sync;
 pub mod time;
 pub mod time_log;

@@ -626,6 +626,10 @@ impl Store for FolderStore {
         } else {
             bring_down(&from);
         }
+        // Stopped while iCloud was bringing it down.
+        if crate::stop::stopped() {
+            return Err(crate::stop::error());
+        }
         if !from.is_file() {
             return Ok(false);
         }

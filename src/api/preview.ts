@@ -1023,7 +1023,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.134.0", version: "0.134.0", notes: "The Bound Vigil 0.134.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.135.0", version: "0.135.0", notes: "The Bound Vigil 0.135.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

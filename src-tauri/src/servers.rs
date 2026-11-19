@@ -280,6 +280,12 @@ impl ServerImports {
             let target = self.queue.lock().map(|q| q.path_of(&file)).unwrap_or_default();
             let outcome = self.fetch(app, library, &mut open, &file, &target);
             if let Ok(mut queue) = self.queue.lock() {
+                // Stopped part-way: the list let it go while the file was still
+                // open (Windows won't delete an open file), so it goes now.
+                if queue.file(file.id).is_none() {
+                    let _ = std::fs::remove_file(tbv_core::servers::queue::partial(&target));
+                    let _ = std::fs::remove_file(&target);
+                }
                 queue.finished(file.id, outcome);
             }
             self.changed();
