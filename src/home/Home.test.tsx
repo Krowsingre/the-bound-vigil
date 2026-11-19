@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { BookPreview, HomeViewModel } from "../api/types";
 import type { Route } from "../shell/routes";
 import { ToastProvider } from "../components/Toast";
@@ -132,7 +132,7 @@ test("Continue reading and Continue listening take turns; the cover opens detail
 
   // It turns by itself.
   await vi.advanceTimersByTimeAsync(8000);
-  expect(screen.getByRole("button", { name: "Show Continue listening" })).toHaveAttribute("aria-current", "true");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Show Continue listening" })).toHaveAttribute("aria-current", "true"));
   fireEvent.click(screen.getByRole("button", { name: "Continue listening" }));
   expect(player.playAudiobook).toHaveBeenCalledWith("sha256:cd");
 

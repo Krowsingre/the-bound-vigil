@@ -56,7 +56,8 @@ function timeLeft(book: BookPreview): string | null {
 
 /**
  * Continue reading and Continue listening, taking turns in one card. It
- * turns by itself every few seconds, stops while the pointer rests on it,
+ * turns by itself every few seconds, stops while the pointer rests on it
+ * or keyboard focus is inside,
  * and stays put once someone has used the arrows, dots or a swipe. On touch
  * screens a sideways swipe turns it too. With only one side, it's that side alone.
  */
@@ -80,14 +81,15 @@ export function ResumeHero({
   const [at, setAt] = useState(0);
   const [resting, setResting] = useState(false);
   const [held, setHeld] = useState(false);
+  const [focused, setFocused] = useState(false);
   const count = slides.length;
   const showing = count ? at % count : 0;
 
   useEffect(() => {
-    if (count < 2 || resting || held) return;
+    if (count < 2 || resting || held || focused) return;
     const timer = window.setInterval(() => setAt((n) => (n + 1) % count), TURN_MS);
     return () => window.clearInterval(timer);
-  }, [count, resting, held]);
+  }, [count, resting, held, focused]);
 
   const go = useCallback(
     (to: number) => {
@@ -141,6 +143,9 @@ export function ResumeHero({
       onPointerDown={down}
       onPointerUp={up}
       onPointerCancel={() => (start.current = null)}
+      // Keyboard focus inside the card holds it still too.
+      onFocus={() => setFocused(true)}
+      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setFocused(false)}
     >
       <div className="hero-slides">
         {slides.map((slide, i) => (
