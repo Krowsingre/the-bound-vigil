@@ -15,69 +15,6 @@
   min-width: 0;
 }
 
-/* Continue listening */
-.listen-row {
-  padding: 22px 0 6px;
-}
-
-.listen-row .section-title {
-  margin: 0 0 14px;
-}
-
-.listen-cards {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 8px;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 168px;
-  gap: 18px;
-  overflow-x: auto;
-}
-
-.listen-card {
-  display: grid;
-  gap: 8px;
-  align-content: start;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-m);
-}
-
-.listen-card.is-chosen {
-  border-color: var(--border);
-  background: var(--surface);
-}
-
-.listen-open {
-  display: grid;
-  gap: 4px;
-  text-align: left;
-  min-width: 0;
-}
-
-.listen-open .cover {
-  width: 100%;
-  max-width: none;
-  margin-bottom: 6px;
-}
-
-.listen-title {
-  font: 400 15px/1.25 var(--font-serif);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.listen-author,
-.listen-meta {
-  font-size: 12.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* The side panel */
 .audio-panel {
   position: sticky;

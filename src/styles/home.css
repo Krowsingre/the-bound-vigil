@@ -1338,3 +1338,116 @@
   max-height: 180px;
   overflow: auto;
 }
+
+/* Continue reading and Continue listening take turns in one card (0.142).
+   Both sides sit in the same spot, so the card keeps the taller one's height
+   and nothing below it jumps when it turns. */
+.hero-slides {
+  display: grid;
+}
+
+.hero-slide {
+  grid-area: 1 / 1;
+  min-width: 0;
+  transition: opacity 0.45s ease, visibility 0.45s;
+}
+
+.hero-slide:not(.is-on) {
+  opacity: 0;
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-slide {
+    transition: none;
+  }
+}
+
+.hero.is-turning {
+  position: relative;
+  padding-inline: 52px;
+  padding-bottom: 32px;
+}
+
+.hero-turn {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  translate: 0 -50%;
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  color: var(--text);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.hero-turn:hover,
+.hero-turn:focus-visible {
+  opacity: 1;
+}
+
+.hero-turn-back {
+  left: 8px;
+}
+
+.hero-turn-next {
+  right: 8px;
+}
+
+.hero-dots {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  translate: -50% 0;
+}
+
+.hero-dot {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.hero-dot::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 28%, transparent);
+}
+
+.hero-dot.is-on::after {
+  background: var(--text);
+}
+
+/* Phones and touch tablets: smaller arrows close to the edge (swiping works too). */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1400px) {
+  .hero.is-turning {
+    padding-inline: 38px;
+  }
+
+  .hero-turn {
+    width: 30px;
+    height: 30px;
+  }
+
+  .hero-turn-back {
+    left: 4px;
+  }
+
+  .hero-turn-next {
+    right: 4px;
+  }
+}

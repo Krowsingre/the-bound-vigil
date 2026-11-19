@@ -91,7 +91,11 @@ jobs:
           path: the-bound-vigil-mac.pkg
           if-no-files-found: error
       # Only once the Mac has been added to the app in App Store Connect.
+      # Not sent out for now (embre, 19 November 2026): the Mac version still
+      # builds as a check, but nothing goes to TestFlight until embre says so.
+      # To send again, remove the `if: false` line.
       - name: Send to TestFlight
+        if: false
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}

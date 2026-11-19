@@ -61,7 +61,6 @@ export function LibraryToolbar({
   onContinuous,
   selecting,
   onSelecting,
-  onSelectAll,
   onChange,
 }: {
   view: LibraryView;
@@ -84,8 +83,6 @@ export function LibraryToolbar({
   onContinuous?: (enabled: boolean) => void;
   selecting: boolean;
   onSelecting: (on: boolean) => void;
-  /** Starts choosing with every book the page shows already chosen. */
-  onSelectAll?: () => void;
   onChange: (change: Partial<LibraryView>) => void;
 }) {
   const sortLabel = SORTS.find((s) => s.sort === view.sort)?.label;
@@ -260,22 +257,17 @@ export function LibraryToolbar({
         {view.tab === "collections" && <span className="tabs-menu">{tabName(view.tab)}</span>}
         {view.tab !== "collections" && (
           <>
-            <Menu
-              label="Select"
+            {/* Select goes straight into choosing; pressing it again (or Done) ends it. */}
+            <button
+              type="button"
               className={`toolbar-button${selecting ? " is-on" : ""}`}
-              trigger={
-                <>
-                  <Icon name="check" size={16} />
-                  <Icon name="chevronDown" size={12} className="toolbar-chevron" />
-                </>
-              }
-              items={[
-                selecting
-                  ? { label: "Done choosing", onSelect: () => onSelecting(false) }
-                  : { label: "Choose books", onSelect: () => onSelecting(true) },
-                ...(onSelectAll ? [{ label: "Choose everything shown", onSelect: onSelectAll }] : []),
-              ]}
-            />
+              aria-label="Select"
+              aria-pressed={selecting}
+              title="Select"
+              onClick={() => onSelecting(!selecting)}
+            >
+              <Icon name="check" size={16} />
+            </button>
             <span className="toolbar-divider" aria-hidden />
             {/* A shelf other than everything is named here; it's chosen in Filter. */}
             {(view.tab !== "all" || view.location === "on_device") && (

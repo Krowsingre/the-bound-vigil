@@ -1,4 +1,4 @@
-// The Audiobooks page: Continue listening, every audiobook (searched, filtered
+// The Audiobooks page: every audiobook (searched, filtered
 // by genre, author, narrator and status), and a panel for the one chosen, with
 // its chapters, details, files and collections.
 
@@ -10,7 +10,6 @@ import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
 import { showBookDetails } from "../details/openDetails";
-import { bookContextMenu, makeBookActions } from "../home/bookActions";
 import { useToast } from "../components/Toast";
 import { Library } from "../library/Library";
 import type { LibraryView } from "../library/libraryView";
@@ -27,13 +26,6 @@ const PANEL_TABS: { tab: PanelTab; label: string }[] = [
   { tab: "files", label: "Files" },
   { tab: "collections", label: "Collections" },
 ];
-
-/** "8h 24m left", from where you are. */
-function timeLeft(book: BookPreview): string | null {
-  if (!book.durationMs) return null;
-  const left = book.durationMs - (book.resumeLocator?.audioMs ?? 0);
-  return left > 0 ? `${formatLength(left)} left` : null;
-}
 
 const AUDIO_VIEWS: { type: AudioType; label: string }[] = [
   { type: "audiobook", label: "Audiobooks" },
@@ -100,14 +92,6 @@ export function Audiobooks({
   };
   const [listening, setListening] = useState<BookPreview[] | null>(null);
   const [reload, setReload] = useState(0);
-  const toast = useToast();
-  const actions = makeBookActions(
-    api,
-    toast,
-    () => setReload((n) => n + 1),
-    (id) => void player.load(id),
-  );
-
   useEffect(() => {
     let current = true;
     api
@@ -121,7 +105,7 @@ export function Audiobooks({
         location: view.location,
         audioType: view.audioType,
         page: 0,
-        pageSize: 10,
+        pageSize: 1,
       })
       .then(
         (page) => current && setListening(page.books),
@@ -136,7 +120,6 @@ export function Audiobooks({
   // library, not played from a server), else the last listened to.
   const playingHere = player.book && !isServerBook(player.book.book.id) ? player.book.book.id : null;
   const shown = chosen ?? playingHere ?? listening?.[0]?.id ?? null;
-  const showContinue = !seriesBack && view.tab === "all" && !search.trim() && listening !== null && listening.length > 0;
 
   // Tapping a cover shows the audiobook in the panel (and the player bar);
   // playing stays on the Listen and Play buttons. On a phone the panel opens
@@ -191,35 +174,6 @@ export function Audiobooks({
           onImportFolder={onImportFolder}
           onOpenBook={choose}
           onOpenCollection={onOpenCollection}
-          intro={
-            showContinue && (
-              <section className="listen-row" aria-label="Continue listening">
-                <h2 className="section-title">Continue listening</h2>
-                <ul className="listen-cards">
-                  {listening.map((b) => (
-                    <li
-                      key={b.id}
-                      className={`listen-card${b.id === shown ? " is-chosen" : ""}`}
-                      {...bookContextMenu(b, actions)}
-                    >
-                      <button type="button" className="listen-open" onClick={() => actions.open(b)}>
-                        <BookCover book={b} size="m" />
-                        <span className="listen-title">{b.title}</span>
-                        <span className="muted listen-author">{b.authors.join(", ") || "Unknown author"}</span>
-                      </button>
-                      <ProgressBar
-                        value={b.totalProgression}
-                        label={`${Math.round((b.totalProgression ?? 0) * 100)}% listened`}
-                      />
-                      <span className="muted listen-meta">
-                        {[b.resumeLocator?.chapter, timeLeft(b)].filter(Boolean).join(" · ")}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )
-          }
         />
       </div>
       {shown && (!narrow || sheet) && (

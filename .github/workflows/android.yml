@@ -81,8 +81,12 @@ jobs:
       # so a phone can download it straight from
       # https://github.com/Krowsingre/the-bound-vigil/releases/tag/android-test
       # (it opens only with that phone's activation key).
+      # Not sent out for now (embre, 19 November 2026): the Android version
+      # still builds as a check, but no new test version is published until
+      # embre says so. To publish again, put back:
+      # if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       - name: Put it where phones can download it
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: false
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
