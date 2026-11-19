@@ -806,6 +806,8 @@ pub(crate) fn migrate(conn: &mut Connection) -> Result<()> {
 ///
 /// `tbv_language` turns a language as books spell it into a short code.
 ///
+/// `tbv_file_name` is the last part of a path, so a search for a folder's name doesn't find every book in it.
+///
 /// `tbv_sync_live` tells the sync triggers whether a change is this device's own.
 fn register_functions(conn: &Connection, sync_live: &Arc<AtomicBool>) -> Result<()> {
     use rusqlite::functions::FunctionFlags;
@@ -820,6 +822,14 @@ fn register_functions(conn: &Connection, sync_live: &Arc<AtomicBool>) -> Result<
         1,
         FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
         |ctx| Ok(ctx.get::<Option<String>>(0)?.and_then(|s| crate::browse::language_code(&s))),
+    )?;
+    conn.create_scalar_function(
+        "tbv_file_name",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| {
+            Ok(ctx.get::<Option<String>>(0)?.map(|path| path.rsplit(['/', '\\']).next().unwrap_or_default().to_string()))
+        },
     )?;
     let live = sync_live.clone();
     conn.create_scalar_function("tbv_file_exists", 1, FunctionFlags::SQLITE_UTF8, |ctx| {
