@@ -5,6 +5,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { itemMenus, MenuList, type MenuEntry } from "./Menu";
+import { menusFloat, openMenuPopup } from "./menuPopups";
 
 interface Request {
   x: number;
@@ -20,12 +21,14 @@ export function openContextMenu(e: React.MouseEvent, label: string, items: MenuE
   if (!listener) return;
   e.preventDefault();
   e.stopPropagation();
-  listener({ x: e.clientX, y: e.clientY, label, items });
+  openContextMenuAt(e.clientX, e.clientY, label, items);
 }
 
 /** Opens a menu at a point, for one whose items arrive after the click (the browser's Back list). */
 export function openContextMenuAt(x: number, y: number, label: string, items: MenuEntry[]) {
-  listener?.({ x, y, label, items });
+  // Over a website in Scry, in a window of its own (see menuPopups).
+  if (menusFloat()) void openMenuPopup(label, items, { x, y, width: 0, height: 0 }, "point");
+  else listener?.({ x, y, label, items });
 }
 
 let held: { timer: number; x: number; y: number } | null = null;

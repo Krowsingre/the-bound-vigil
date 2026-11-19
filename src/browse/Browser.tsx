@@ -19,6 +19,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { openContextMenu, openContextMenuAt } from "../components/ContextMenu";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
+import { floatMenus } from "../components/menuPopups";
 import { useToast } from "../components/Toast";
 import { askSendWithLocalSend } from "../localsend/SendWithLocalSend";
 import { formatLabel } from "../lib/queryBooks";
@@ -350,6 +351,13 @@ export function Browser({
   /** Where the computer's bar puts Eidolon and ••• (after the address). */
   const [barEnd, setBarEnd] = useState<HTMLElement | null>(null);
   useEffect(() => setBarEnd(document.getElementById("header-page-end")), [phoneBar]);
+  // On Windows, menus open in a little window of their own over the page, so
+  // the page stays in sight (embre, 19 November; see menuPopups).
+  useEffect(() => {
+    if (!isWindows || phoneBar || workspaceFrame) return;
+    floatMenus(true);
+    return () => floatMenus(false);
+  }, [phoneBar]);
   const keys = useShortcuts();
   const [tabs, setTabs] = useState<TabsState>(startingTabs);
   const [pair, setPair] = useState<{ other: string; activeLeft: boolean } | null>(null);

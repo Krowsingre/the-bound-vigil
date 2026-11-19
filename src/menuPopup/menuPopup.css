@@ -1,0 +1,15 @@
+/* The menu window: nothing but the menu, which the window fits round. */
+html,
+body.menu-popup-page {
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.menu.menu-floating.menu-in-popup {
+  position: static;
+  display: inline-block;
+  min-width: 260px;
+  max-height: calc(100vh - 2px);
+  box-shadow: none;
+}

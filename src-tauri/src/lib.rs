@@ -22,6 +22,8 @@ mod imports;
 mod license;
 mod lining;
 mod look_up;
+#[cfg(desktop)]
+mod menu_popup;
 mod localsend;
 mod moving;
 mod copycheck;
@@ -2175,6 +2177,8 @@ pub fn run() {
             #[cfg(target_os = "ios")]
             background_sync::ready(worker.clone());
             app.manage(worker);
+            #[cfg(desktop)]
+            app.manage(menu_popup::Showing::default());
             // Paired books and audiobooks lined up word by word, in the background.
             lining::start(app.handle(), library.clone(), data_dir.clone());
             app.manage(AppLibrary(library));
@@ -2505,6 +2509,14 @@ pub fn run() {
             sync_overview,
             sync_now,
             sync_soon,
+            #[cfg(desktop)]
+            menu_popup::menu_popup_open,
+            #[cfg(desktop)]
+            menu_popup::menu_popup_request,
+            #[cfg(desktop)]
+            menu_popup::menu_popup_fit,
+            #[cfg(desktop)]
+            menu_popup::menu_popup_choose,
             splash::startup_progress,
             splash::startup_done,
             splash::startup_painted,
