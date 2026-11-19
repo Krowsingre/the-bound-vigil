@@ -3,7 +3,7 @@
 use rusqlite::{params, params_from_iter, types::Value, OptionalExtension};
 
 use crate::error::{Error, Result};
-use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM, DOCUMENT_FORMATS, LANGUAGE, NARRATORS, PAIRED};
+use crate::home::{book_from_row, BOOK_COLUMNS, BOOK_FROM, DOCUMENT_FORMATS, LANGUAGE, NARRATORS, PAIRED, PUBLISHER};
 use crate::library::Library;
 use crate::model::*;
 
@@ -23,6 +23,9 @@ const FIRST_AUTHOR: &str = "json_extract(COALESCE(o_authors.value, f_authors.val
 const SERIES: &str = "COALESCE(o_series.value, f_series.value, b.series)";
 const SERIES_INDEX: &str =
     "COALESCE(CAST(NULLIF(o_series_index.value, '') AS REAL), CAST(NULLIF(f_series_index.value, '') AS REAL), b.series_index)";
+const ISBN: &str = "COALESCE((SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = 'isbn'),
+    (SELECT value FROM metadata_fetched WHERE book_id = b.id AND field = 'isbn'), b.isbn)";
+const DESCRIPTION: &str = "COALESCE(o_synopsis.value, f_synopsis.value, b.synopsis)";
 const GENRES: &str = "COALESCE(o_genres.value, f_genres.value)";
 
 /// The SQL test for books of one kind, on the books table as `b`.
@@ -108,6 +111,15 @@ pub fn language_code(raw: &str) -> Option<String> {
 }
 
 /// `%` and `_` typed by the user match themselves, not anything.
+/// The search matching a book's title, author or series, with the pattern in ?n.
+fn main_match(n: usize) -> String {
+    format!(
+        "(tbv_fold({TITLE}) LIKE ?{n} ESCAPE '\\' \
+          OR tbv_fold({AUTHORS}) LIKE ?{n} ESCAPE '\\' \
+          OR tbv_fold(COALESCE({SERIES}, '')) LIKE ?{n} ESCAPE '\\')"
+    )
+}
+
 fn like_pattern(text: &str) -> String {
     let escaped = text
         .replace('\\', "\\\\")
@@ -181,6 +193,7 @@ impl Library {
     pub fn library_page(&self, query: &LibraryQuery) -> Result<LibraryPage> {
         let mut conditions: Vec<String> = Vec::new();
         let mut values: Vec<Value> = Vec::new();
+        let mut search_rank: Option<String> = None;
 
         match query.shelf {
             Shelf::All => {}
@@ -198,13 +211,26 @@ impl Library {
             .map(str::trim)
             .filter(|s| !s.is_empty())
         {
-            conditions.push(format!(
-                "(tbv_fold({TITLE}) LIKE ?{n} ESCAPE '\\' \
-                  OR tbv_fold({AUTHORS}) LIKE ?{n} ESCAPE '\\' \
-                  OR tbv_fold(COALESCE({SERIES}, '')) LIKE ?{n} ESCAPE '\\')",
-                n = values.len() + 1
-            ));
+            let n = values.len() + 1;
+            let main = main_match(n);
+            // Beyond the title, author and series (embre, 14 November): the
+            // publisher, ISBN, your tags, narrators, the description, every
+            // series it's in, and its file's name. Books found by those come
+            // after the ones whose title, author or series matched.
+            let like = |expr: &str| format!("tbv_fold({expr}) LIKE ?{n} ESCAPE '\\'");
+            let wider = [
+                like(&format!("COALESCE({PUBLISHER}, '')")),
+                like(&format!("COALESCE({ISBN}, '')")),
+                format!("EXISTS (SELECT 1 FROM book_tags t WHERE t.book_id = b.id AND t.removed_at IS NULL AND {})", like("t.tag")),
+                like(&format!("COALESCE({NARRATORS}, '')")),
+                like(&format!("COALESCE({DESCRIPTION}, '')")),
+                like("COALESCE(o_series_list.value, '')"),
+                like("COALESCE(tbv_file_name(lf.path), '')"),
+            ]
+            .join(" OR ");
+            conditions.push(format!("({main} OR {wider})"));
             values.push(Value::Text(like_pattern(search)));
+            search_rank = Some(format!("NOT {main}, "));
         }
 
         // The filters chosen to show, then those chosen to leave out.
@@ -278,7 +304,7 @@ impl Library {
             }
             _ => order_by(query.sort),
         };
-        let order = format!("{pins}{by_series}, b.id");
+        let order = format!("{pins}{}{by_series}, b.id", search_rank.as_deref().unwrap_or(""));
         let group = format!(
             "CASE WHEN {}NULLIF(trim({SERIES}), '') IS NOT NULL THEN 'series:' || tbv_fold(trim({SERIES})) ELSE 'book:' || b.id END",
             if query.pinned_first { "b.pinned_at IS NULL AND " } else { "" },
@@ -1138,6 +1164,44 @@ mod tests {
         assert_eq!(search("%"), "100% Wolf");
         assert_eq!(search("   "), "Oathbringer,100% Wolf,Dune");
         assert_eq!(search("nothing like this"), "");
+    }
+
+    #[test]
+    fn search_also_finds_publisher_isbn_tags_description_and_file_name() {
+        let (dir, mut library) = open_temp_library();
+        let dune = add(&mut library, dir.path(), "Dune", "Frank Herbert");
+        let wolf = add(&mut library, dir.path(), "100% Wolf", "Jayne Lyons");
+        let lathe = add(&mut library, dir.path(), "The Lathe of Heaven", "Ursula K. Le Guin");
+        library.conn.execute("UPDATE books SET publisher = 'Chilton Books', isbn = '9780441013593' WHERE id = ?1", [&dune]).unwrap();
+        library.conn.execute("UPDATE books SET synopsis = 'A werewolf story set on a desert planet' WHERE id = ?1", [&wolf]).unwrap();
+        library.add_tag(&[lathe.clone()], "Dreams").unwrap();
+        let search = |s: &str| {
+            let s = s.to_string();
+            titles(&library.library_page(&query(|q| q.search = Some(s))).unwrap()).join(",")
+        };
+        assert_eq!(search("chilton"), "Dune");
+        assert_eq!(search("9780441013593"), "Dune");
+        assert_eq!(search("dreams"), "The Lathe of Heaven");
+        assert_eq!(search("werewolf"), "100% Wolf");
+        // Found by its title first, then by its description.
+        assert_eq!(search("dune"), "Dune");
+        assert_eq!(search("planet"), "100% Wolf");
+        let file = library.conn.query_row("SELECT path FROM local_files WHERE book_id = ?1", [&lathe], |r| r.get::<_, String>(0)).unwrap();
+        let name = std::path::Path::new(&file).file_stem().unwrap().to_string_lossy().to_lowercase();
+        assert_eq!(search(&name), "The Lathe of Heaven");
+        // A folder's name finds nothing: only the file's own name counts.
+        let folder = std::path::Path::new(&file).parent().unwrap().file_name().unwrap().to_string_lossy().to_string();
+        assert_eq!(search(&folder), "");
+    }
+
+    #[test]
+    fn title_matches_come_before_description_matches() {
+        let (dir, mut library) = open_temp_library();
+        let a = add(&mut library, dir.path(), "Aardvark Days", "Writer");
+        add(&mut library, dir.path(), "Zebra Planet", "Writer");
+        library.conn.execute("UPDATE books SET synopsis = 'Not about a zebra at all' WHERE id = ?1", [&a]).unwrap();
+        let page = library.library_page(&query(|q| { q.search = Some("zebra".into()); q.sort = SortOrder::Title; })).unwrap();
+        assert_eq!(titles(&page).join(","), "Zebra Planet,Aardvark Days");
     }
 
     #[test]
