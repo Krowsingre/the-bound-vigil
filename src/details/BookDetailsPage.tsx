@@ -1,6 +1,7 @@
 // The Book details page: everything about one book, with its details in their
 // layers (your edits, fetched online, the book's own) and ways to change them.
 
+import { useDownloadsChanging } from "../library/cloudDownloads";
 import { useEffect, useMemo, useState } from "react";
 import { api, isAndroid, isApp, isIOS } from "../api";
 import type { BookDetails, BookFile, DetailField, DetailFieldName } from "../api/types";
@@ -53,6 +54,7 @@ export function BookDetailsPage({
   /** Shows the Library (or Documents) filtered to one genre. */
   onOpenLibrary: (genre: string, documents: boolean) => void;
 }) {
+  useDownloadsChanging();
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [reload, setReload] = useState(0);
   const [expandedCover, setExpandedCover] = useState<string | null>(null);

@@ -1,3 +1,4 @@
+import { useDownloadsChanging } from "../library/cloudDownloads";
 import type { BookPreview } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
@@ -10,6 +11,7 @@ import { EmptyNote, Section } from "./Section";
 /** Books under way, with their title, author and how far along: covers on a
  * phone, and on a computer a list with a ••• menu for each. */
 export function InProgress({ books, actions, onViewAll, list = false }: { books: BookPreview[]; actions: BookActions; onViewAll: () => void; list?: boolean }) {
+  useDownloadsChanging();
   return (
     <Section title="In progress" onViewAll={books.length ? onViewAll : undefined} className="in-progress">
       {books.length === 0 ? (
