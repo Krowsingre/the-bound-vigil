@@ -962,16 +962,25 @@
     display: block;
   }
 
-  /* The open note covers the list on narrow screens, with its close button. */
+  /* The open note covers the list on narrow screens, with its close button.
+     Its top and foot keep clear of the iPhone's clock, camera and home bar,
+     where taps go to iOS instead (embre, 19 November: no way to close it). */
   .scribe .notes-layout.has-panel .note-panel {
     position: fixed;
     inset: 0 0 0 auto;
     z-index: 30;
     width: min(420px, 100vw);
     margin: 0;
+    padding-top: calc(20px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
     border-radius: 0;
     box-shadow: -8px 0 30px rgb(0 0 0 / 0.25);
+  }
+
+  /* Scrolled as a whole, so nothing in it is squeezed to fit. */
+  .scribe .notes-layout.has-panel .note-panel > * {
+    flex-shrink: 0;
   }
 }
 

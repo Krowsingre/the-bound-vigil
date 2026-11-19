@@ -7,7 +7,7 @@ import { useSideBySide } from "../lib/useSideBySide";
 import { createPortal } from "react-dom";
 import { LayoutPanel, StylePanel } from "./BookPanels";
 import { keyHint, useShortcuts } from "../lib/shortcuts";
-import { api, isWeb } from "../api";
+import { api, isIPhone, isWeb } from "../api";
 import type { WritingChapter, WritingDraft, WritingProject, WritingProjectView } from "../api/types";
 import { editionName, editionsOf } from "./bookEditions";
 import { LinkBookDialog } from "./LinkBooks";
@@ -63,7 +63,7 @@ export function Writing({
   search,
   onClearSearch,
   onOpenBook,
-  booksShown = true,
+  booksShown: booksWanted = true,
   chip, setChip, openId, setOpenId,
   widgetAsk = null,
 }: {
@@ -90,11 +90,16 @@ export function Writing({
   // A widget's New note, or one of its notes.
   const [showNote, setShowNote] = useState<{ id: string; n: number } | null>(null);
   useEffect(() => {
-    if (!widgetAsk) return;
+    // An iPhone's Scribe has no personal notes for now, so a widget's asks aren't for it.
+    if (!widgetAsk || isIPhone) return;
     if (widgetAsk.open === "new") setAsk((a) => ({ kind: "personal", n: (a?.n ?? 0) + 1 }));
     else if (widgetAsk.id) setShowNote({ id: widgetAsk.id, n: widgetAsk.n });
   }, [widgetAsk]);
-  const showing: Chip = booksShown || chip !== "books" ? chip : "notes";
+  // On an iPhone, Scribe shows only Reading notes for now: Write a book and
+  // Personal notes wait for designs made for phone screens (embre, 19 November).
+  // Nothing is deleted, and the iPad keeps both.
+  const booksShown = booksWanted && !isIPhone;
+  const showing: Chip = isIPhone ? "book_notes" : booksShown || chip !== "books" ? chip : "notes";
   const projects = useProjects(booksShown, refreshKey, reload);
   const toast = useToast();
   // The sample book, the first time Scribe has no books on this device.
@@ -206,7 +211,7 @@ export function Writing({
             )}
           </div>
         </div>
-        <div className="scribe-chips" role="tablist" aria-label="What to show">
+        {!isIPhone && <div className="scribe-chips" role="tablist" aria-label="What to show">
           {CHIPS.filter((c) => booksShown || c.chip !== "books").map((c) => (
             <button
               key={c.chip}
@@ -219,7 +224,7 @@ export function Writing({
               {c.label}
             </button>
           ))}
-        </div>
+        </div>}
       </header>
       {showing === "books" ? (
         <ScribeBooks

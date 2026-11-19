@@ -20,6 +20,7 @@ export function NotePanel({
   onOpenInReader,
   onSelect,
   onViewAllForBook,
+  onDelete,
 }: {
   note: NoteItem;
   /** Other notes from the same book. */
@@ -33,6 +34,8 @@ export function NotePanel({
   onOpenInReader: (note: NoteItem) => void;
   onSelect: (note: NoteItem) => void;
   onViewAllForBook: (bookId: string) => void;
+  /** Asks before deleting it. Also in the ••• menu; at the foot of the note so a phone can reach it. */
+  onDelete?: (note: NoteItem) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [words, setWords] = useState(note.note ?? "");
@@ -175,6 +178,12 @@ export function NotePanel({
             ))}
           </ul>
         </section>
+      )}
+
+      {onDelete && (
+        <button type="button" className="btn btn-quiet note-delete" onClick={() => onDelete(note)}>
+          <Icon name="trash" size={15} /> Delete this note
+        </button>
       )}
     </aside>
   );

@@ -827,3 +827,9 @@
   .personal-note-list { max-height: 16dvh; }
   .personal-note-head { flex-wrap: wrap; }
 }
+
+/* At the foot of an open note: deleting it, also in its ••• menu. */
+.note-delete {
+  align-self: flex-start;
+  color: var(--danger);
+}
