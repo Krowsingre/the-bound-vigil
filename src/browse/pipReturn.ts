@@ -9,11 +9,13 @@
 import { api } from "../api";
 import { readBrowserPrefs } from "./browserPrefs";
 
-/** Whether the page has a popped-out video, and whether any video plays. */
+/** Whether the page (or a frame in it) has a popped-out video, and whether any video plays. */
 export const PIP_STATE = `(() => {
   const videos = Array.from(document.querySelectorAll('video'));
   const out = document.pictureInPictureElement || videos.find((v) => v.webkitPresentationMode === 'picture-in-picture');
-  return JSON.stringify({ out: !!out, playing: videos.some((v) => !v.paused && !v.ended) });
+  // Videos in frames (an embedded player), as the frames last told this page.
+  const frames = window.__tbvPipFrames ? window.__tbvPipFrames() : { out: false, playing: false };
+  return JSON.stringify({ out: !!out || frames.out, playing: videos.some((v) => !v.paused && !v.ended) || frames.playing });
 })()`;
 
 interface PipState {

@@ -15,6 +15,32 @@
   let aimed = null;
   let hideTimer = 0;
   const popped = () => document.pictureInPictureElement || Array.from(document.querySelectorAll('video')).find((v) => v.webkitPresentationMode === 'picture-in-picture');
+  // Frames tell the top page when their video pops out, comes back, plays or
+  // stops, since TBV only asks the top page (see src/browse/pipReturn.ts).
+  if (window !== window.top) {
+    const tell = () => {
+      const state = { out: !!popped(), playing: Array.from(document.querySelectorAll('video')).some((v) => !v.paused && !v.ended) };
+      try { window.top.postMessage({ __tbvPipFrame: state }, '*'); } catch (_) {}
+    };
+    for (const kind of ['enterpictureinpicture', 'leavepictureinpicture', 'webkitpresentationmodechanged', 'play', 'pause', 'ended']) {
+      addEventListener(kind, () => setTimeout(tell, 0), { capture: true, passive: true });
+    }
+  } else {
+    const frames = new Map();
+    addEventListener('message', (e) => {
+      const state = e.data && e.data.__tbvPipFrame;
+      if (state && e.source) frames.set(e.source, { out: state.out === true, playing: state.playing === true });
+    });
+    window.__tbvPipFrames = () => {
+      const all = { out: false, playing: false };
+      for (const [from, state] of frames) {
+        if (from.closed) { frames.delete(from); continue; }
+        all.out = all.out || state.out;
+        all.playing = all.playing || state.playing;
+      }
+      return all;
+    };
+  }
   const make = () => {
     if (host) return;
     host = document.createElement('tbv-pip');
