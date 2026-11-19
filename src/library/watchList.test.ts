@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WatchedBook } from "../api/types";
-import { authorUpdate, bookUpdate, isOut, whenLine, type WatchedAuthor, type WatchedTitle } from "./watchList";
+import { authorUpdate, bookUpdate, isOut, unwatch, watchList, whenLine, type WatchedAuthor, type WatchedTitle } from "./watchList";
 
 const now = Date.UTC(2026, 10, 19);
 const book = (key: string, date: string | null): WatchedBook => ({ key, title: key, authors: ["A. Writer"], date, coverUrl: null, link: null });
@@ -43,5 +43,22 @@ describe("watching", () => {
     expect(whenLine({ kind: "released", date: "2020" })).toBe("Out now");
     expect(whenLine({ kind: "announced", date: null })).toBe("Announced");
     expect(whenLine({ kind: "announced", date: "2027" })).toBe("Coming 2027");
+  });
+  it("a watched book's date can move later without calling it out", () => {
+    const followed: WatchedTitle = { kind: "book", key: "next", title: "next", author: "A. Writer", date: "2026-11-10", coverUrl: null, link: null, addedAt: "", released: false, auto: true };
+    const moved = bookUpdate({ ...followed, date: "2026-12-01" }, book("next", "2027-02-01"), now);
+    expect(moved.book.date).toBe("2027-02-01");
+    expect(moved.news).toEqual([]);
+  });
+
+  it("stopping an author also stops the books followed for them", () => {
+    localStorage.setItem("tbv.watch.list", JSON.stringify([
+      author,
+      { kind: "book", key: "next", title: "Next", author: "A. Writer", date: null, coverUrl: null, link: null, addedAt: "", released: false, auto: true },
+      { kind: "book", key: "mine", title: "Mine", author: "A. Writer", date: null, coverUrl: null, link: null, addedAt: "", released: false },
+    ]));
+    unwatch(author);
+    expect(watchList().map((w) => (w.kind === "book" ? w.key : w.name))).toEqual(["mine"]);
+    localStorage.clear();
   });
 });
