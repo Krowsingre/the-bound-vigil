@@ -1,3 +1,4 @@
+import { useDownloadsChanging } from "./cloudDownloads";
 import type { BookPreview } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
@@ -105,6 +106,7 @@ function Marks({ book }: { book: BookPreview }) {
 }
 
 function MoreMenu({ book, actions }: { book: BookPreview; actions: BookActions }) {
+  useDownloadsChanging();
   return <Menu label={`More for ${book.title}`} trigger={<Icon name="more" />} items={bookMenu(book, actions)} />;
 }
 
