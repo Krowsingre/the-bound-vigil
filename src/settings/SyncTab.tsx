@@ -17,7 +17,7 @@ import { HomeSection } from "./HomeSection";
 import { UsageSection } from "./UsageSection";
 import { ContentsSection } from "./ContentsSection";
 import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
-import { PROVIDERS, ProviderPicker, type Provider } from "./providers";
+import { ALL_PROVIDERS, PROVIDERS, ProviderPicker, type Provider } from "./providers";
 import { Columns, ActionTile, RadioList, Row, Section, SectionGroup, Select, Toggle } from "./controls";
 
 /** Sync's state in a few words, for the connection details. */
@@ -31,7 +31,7 @@ const STATE_TEXT: Record<SyncOverview["status"]["state"], string> = {
 };
 
 /** The card picked before anything is set up: the cloud this device already has. */
-const FIRST_CARD: Provider = isIOS || isMac ? "icloud" : isWindows ? "onedrive" : "supabase";
+const FIRST_CARD: Provider = isIOS || isMac ? "icloud" : isWindows ? "onedrive" : "dropbox";
 
 /** The card for the service in use. */
 function cardFor(view: ProviderView): Provider {
@@ -114,7 +114,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
         : current.kind === "cloud"
           ? serviceName(current.service)
           : "Supabase";
-  const chosen = PROVIDERS.find((p) => p.id === provider)!;
+  const chosen = ALL_PROVIDERS.find((p) => p.id === provider)!;
   // Supabase's own parts (its space, tidying, contents) show only when it's in use.
   const supabaseOn = !!overview && ((overview.provider.kind === "supabase" && !!overview.signedInAs) || overview.also?.provider.kind === "supabase");
 
