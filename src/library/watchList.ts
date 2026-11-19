@@ -202,6 +202,8 @@ export function checkWatched(): Promise<number> {
             if (item.kind === "author") {
               const books = await api.watchAuthorBooks!(item.name);
               for (const b of books) latest.set(b.key, b);
+              // Stopped watching while the lookup ran: nothing of it is kept.
+              if (!isWatchingAuthor(item.name)) continue;
               const update = authorUpdate(item, books);
               const list = watchList();
               const keys = new Set(list.filter((w): w is WatchedTitle => w.kind === "book").map((w) => w.key));
