@@ -29,6 +29,32 @@ pub fn stopped() -> bool {
     FLAG.with(|f| f.borrow().as_ref().is_some_and(|f| f.load(Ordering::Relaxed)))
 }
 
+/// Runs `work`, something that only waits (like iCloud bringing a file
+/// down), on a thread of its own, and stops waiting for it as soon as this
+/// thread's download is stopped: None then. The work carries on by itself
+/// until it ends; nothing is written by it. Runs `work` here when nothing is
+/// watching this thread.
+pub fn unless_stopped<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    use std::sync::mpsc::{channel, RecvTimeoutError};
+    let Some(flag) = FLAG.with(|f| f.borrow().clone()) else {
+        return Some(work());
+    };
+    if flag.load(Ordering::Relaxed) {
+        return None;
+    }
+    let (done, answer) = channel();
+    std::thread::spawn(move || {
+        let _ = done.send(work());
+    });
+    loop {
+        match answer.recv_timeout(std::time::Duration::from_millis(200)) {
+            Ok(out) => return Some(out),
+            Err(RecvTimeoutError::Timeout) if !flag.load(Ordering::Relaxed) => {}
+            Err(_) => return None,
+        }
+    }
+}
+
 /// The error a stopped download ends with.
 pub fn error() -> crate::Error {
     crate::Error::Unsuitable(STOPPED.into())
@@ -76,5 +102,24 @@ mod tests {
         // Once the work is done, nothing's watched.
         assert!(!stopped());
         assert!(watched(Vec::new()).write_all(b"three").is_ok());
+    }
+
+    #[test]
+    fn waiting_ends_when_stopped() {
+        // Nothing watching: the work runs and answers.
+        assert_eq!(unless_stopped(|| 1), Some(1));
+        let flag = Arc::new(AtomicBool::new(false));
+        watching(flag.clone(), || {
+            assert_eq!(unless_stopped(|| 2), Some(2));
+            let stopper = flag.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                stopper.store(true, Ordering::Relaxed);
+            });
+            let started = std::time::Instant::now();
+            // Would wait a minute; Stop ends the wait.
+            assert_eq!(unless_stopped(|| std::thread::sleep(std::time::Duration::from_secs(60))), None);
+            assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        });
     }
 }

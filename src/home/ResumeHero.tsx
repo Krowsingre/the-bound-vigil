@@ -1,3 +1,4 @@
+import { useDownloadsChanging } from "../library/cloudDownloads";
 import { api } from "../api";
 import type { BookPreview } from "../api/types";
 import { BookCover } from "../components/BookCover";
@@ -17,6 +18,7 @@ export function ResumeHero({
   actions: BookActions;
   onOpenLibrary: () => void;
 }) {
+  useDownloadsChanging();
   if (!book) {
     return (
       <section className="hero hero-empty" aria-labelledby="hero-title">
