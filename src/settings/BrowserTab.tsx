@@ -115,6 +115,12 @@ export function BrowserTab() {
             onChange={(keepPlaying) => writeBrowserPrefs({ keepPlaying })}
           />
           <Toggle
+            label="Picture in picture comes back to its tab"
+            hint="When you bring a popped-out video back to full size, TBV goes to Scry and the tab it's playing in."
+            checked={prefs.pipReturn}
+            onChange={(pipReturn) => writeBrowserPrefs({ pipReturn })}
+          />
+          <Toggle
             label="Keep videos playing in the background"
             hint={isIOS
               ? "When TBV goes to the background, a playing video pops out into Picture in picture. With the screen locked, its sound goes on. Some sites still stop."

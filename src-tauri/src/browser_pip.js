@@ -22,7 +22,9 @@
     const root = host.attachShadow({ mode: 'closed' });
     button = document.createElement('button');
     button.type = 'button';
-    button.style.cssText = 'all:initial;font:600 12px system-ui,sans-serif;color:#fff;background:rgb(20 20 20 / 0.82);border:1px solid rgb(255 255 255 / 0.35);border-radius:14px;padding:5px 10px;cursor:pointer;white-space:nowrap';
+    // On a touch screen it's big enough for a finger.
+    const touch = matchMedia('(pointer: coarse)').matches;
+    button.style.cssText = 'all:initial;font:600 ' + (touch ? '15px' : '12px') + ' system-ui,sans-serif;color:#fff;background:rgb(20 20 20 / 0.82);border:1px solid rgb(255 255 255 / 0.35);border-radius:' + (touch ? '22px' : '14px') + ';padding:' + (touch ? '12px 18px' : '5px 10px') + ';cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent';
     root.append(button);
   };
   const place = (video) => {
@@ -31,7 +33,7 @@
     const r = video.getBoundingClientRect();
     button.textContent = popped() === video ? 'Exit picture in picture' : 'Picture in picture';
     host.style.display = 'block';
-    const width = button.offsetWidth || 130;
+    const width = button.offsetWidth || 180;
     host.style.left = Math.max(4, Math.min(innerWidth - width - 4, r.right - width - 10)) + 'px';
     host.style.top = Math.max(4, r.top + 10) + 'px';
   };

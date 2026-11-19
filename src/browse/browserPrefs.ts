@@ -69,6 +69,8 @@ export interface BrowserPrefs {
   redirectAllowlist: string[];
   /** Videos and sound go on playing after leaving Discover (otherwise they pause). */
   keepPlaying: boolean;
+  /** Bringing a popped-out video back to full size goes to its tab in Scry. */
+  pipReturn: boolean;
   /** Videos go on playing when TBV is minimized or the screen locks (pages aren't told they're out of sight). */
   backgroundPlay: boolean;
   /** Sites' text boxes don't hear Tab, so their suggestions can't take the word on Tab. */
@@ -151,6 +153,7 @@ export function readBrowserPrefs(): BrowserPrefs {
     redirectAllowlist: [...new Set((Array.isArray(saved.redirectAllowlist) ? saved.redirectAllowlist : [])
       .flatMap((host) => typeof host === "string" ? redirectHost(host) ?? [] : []))],
     keepPlaying: saved.keepPlaying === true,
+    pipReturn: saved.pipReturn !== false,
     backgroundPlay: saved.backgroundPlay === true,
     quietTab: saved.quietTab === true,
     formMemory: saved.formMemory === true,
