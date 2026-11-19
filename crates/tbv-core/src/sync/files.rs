@@ -53,9 +53,11 @@ pub fn set_refresher(refresh: fn(&Path)) {
     let _ = REFRESH.set(refresh);
 }
 
+/// Waits for iCloud's answer, but no longer than until Stop is pressed.
 fn refresh(path: &Path) {
-    if let Some(refresh) = REFRESH.get() {
-        refresh(path);
+    if let Some(&refresh) = REFRESH.get() {
+        let path = path.to_path_buf();
+        crate::stop::unless_stopped(move || refresh(&path));
     }
 }
 
@@ -84,7 +86,10 @@ fn bring_down(path: &Path) {
     }
     if let (Some(fetch), Some(stand_in)) = (FETCH.get(), stand_in(path)) {
         if stand_in.exists() {
-            fetch(path);
+            // iCloud can take minutes; Stop ends the wait (the phone may
+            // still finish bringing the file down by itself).
+            let (fetch, path) = (*fetch, path.to_path_buf());
+            crate::stop::unless_stopped(move || fetch(&path));
         }
     }
 }
@@ -103,6 +108,9 @@ fn bring_down_expected(path: &Path) {
     }
     let here = |p: &Path| p.exists() || stand_in(p).is_some_and(|s| s.exists());
     refresh(path);
+    if crate::stop::stopped() {
+        return;
+    }
     if !here(path) {
         if let Some(folder) = path.parent() {
             let due = FOLDERS_ASKED.lock().map(|mut asked| {
@@ -116,6 +124,9 @@ fn bring_down_expected(path: &Path) {
                 refresh(folder);
             }
         }
+    }
+    if crate::stop::stopped() {
+        return;
     }
     bring_down(path);
 }

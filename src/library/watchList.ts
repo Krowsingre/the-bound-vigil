@@ -232,6 +232,8 @@ export function checkWatched(): Promise<number> {
             } else {
               // Followed for an author: their lookup just above says what's new, so no lookup of its own.
               const online = item.auto ? latest.get(item.key) ?? null : await api.watchFindBook!(item.title, item.author).catch(() => null);
+              // Stopped watching (it, or its author) while it was looked up: nothing of it is kept.
+              if (!watchList().some((w) => w.kind === "book" && w.key === item.key)) continue;
               const update = bookUpdate(item, online);
               write(LIST_KEY, watchList().flatMap((w) => {
                 if (w.kind !== "book" || w.key !== item.key) return [w];
