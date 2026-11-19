@@ -73,6 +73,8 @@ export interface BrowserPrefs {
   backgroundPlay: boolean;
   /** Sites' text boxes don't hear Tab, so their suggestions can't take the word on Tab. */
   quietTab: boolean;
+  /** Tabs remember what's typed in sites' forms and offer it back (Windows; off unless chosen). Passwords are separate. */
+  formMemory: boolean;
   /** Where Discover is when you come back: as you left it, or at the home
    * page with the other tabs closed after leaving Discover or after closing TBV. */
   comeBack: ComeBack;
@@ -151,6 +153,7 @@ export function readBrowserPrefs(): BrowserPrefs {
     keepPlaying: saved.keepPlaying === true,
     backgroundPlay: saved.backgroundPlay === true,
     quietTab: saved.quietTab === true,
+    formMemory: saved.formMemory === true,
     historyOn: saved.historyOn !== false,
     historySearches: saved.historySearches !== false,
     historyKeep: HISTORY_KEEPS.some((k) => k.value === saved.historyKeep) ? (saved.historyKeep as HistoryKeep) : "quarter",

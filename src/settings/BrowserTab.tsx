@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, isIOS } from "../api";
+import { api, isIOS, isWindows } from "../api";
 import { useToast } from "../components/Toast";
 import {
   COME_BACK,
@@ -127,7 +127,7 @@ export function BrowserTab() {
           />
         </Section>
       </SectionGroup>
-      <Section id="typing" title="Typing on sites" lede="How Tab works in a site's own search boxes and text boxes.">
+      <Section id="typing" title="Typing on sites" lede="How typing works in a site's own search boxes and text boxes.">
         <Toggle
           label="Tab doesn't fill in a site's suggestions"
           hint="On: a site's search box never hears Tab, so Tab just moves to the next thing on the page. Pick a suggestion with the arrow keys or by tapping it."
@@ -137,6 +137,24 @@ export function BrowserTab() {
             void api.browserTabKeys(quietTab).catch(() => undefined);
           }}
         />
+        {isWindows && (
+          <>
+            <Toggle
+              label="Remember what I type in forms"
+              hint="On: sites' boxes suggest names, addresses and searches you've typed before. Off: nothing pops up while you type. Saved passwords aren't affected."
+              checked={prefs.formMemory}
+              onChange={(formMemory) => {
+                writeBrowserPrefs({ formMemory });
+                void api.browserFormMemory(formMemory).catch(() => undefined);
+              }}
+            />
+            <Row label="Saved form entries" hint="What Scry remembered from forms. Saved passwords stay.">
+              <button type="button" className="btn btn-quiet btn-small" onClick={() => {
+                void api.browserClearForms().then(() => toast("Saved form entries cleared."), (error) => toast(String(error)));
+              }}>Clear saved form entries</button>
+            </Row>
+          </>
+        )}
       </Section>
       <Section id="apps" title="Links for other apps" lede="Links that open another app, such as an email address or a phone number.">
         <Toggle

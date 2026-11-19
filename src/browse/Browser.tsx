@@ -7,7 +7,7 @@ import { placeWorkspaceBrowser, workspaceOffset } from "./workspaceBrowser";
 // page's buttons (back, forward, reload, home, bookmark, reader) beside it.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { api, isIOS, openExternal } from "../api";
+import { api, isIOS, isWindows, openExternal } from "../api";
 import type { Bookmark, BrowserEvent, BrowserFrame, BrowserPane, DeviceTabs, OpenTab, PageVideo, ReaderArticle } from "../api/types";
 import { VideoReader } from "./VideoReader";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -314,6 +314,8 @@ function releaseView(id: string) {
 // Told once, before Discover opens any page, since each page starts with it.
 if (api.kind === "app" && readBrowserPrefs().backgroundPlay) void api.browserKeepPlaying(true).catch(() => undefined);
 if (api.kind === "app" && readBrowserPrefs().quietTab) void api.browserTabKeys(true).catch(() => undefined);
+// Form memory is off unless chosen; the tabs are told before the first opens.
+if (isWindows && readBrowserPrefs().formMemory) void api.browserFormMemory(true).catch(() => undefined);
 
 /** The tabs Discover opens with, as chosen in Preferences › Discover. */
 function startingTabs(): TabsState {

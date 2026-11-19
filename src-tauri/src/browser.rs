@@ -378,7 +378,7 @@ mod view {
         format!("{PREFIX}{tab}")
     }
 
-    fn tabs(app: &tauri::AppHandle) -> Vec<tauri::Webview> {
+    pub(super) fn tabs(app: &tauri::AppHandle) -> Vec<tauri::Webview> {
         app.webviews().into_iter().filter(|(l, _)| l.starts_with(PREFIX) && !l.starts_with("browser-popup-")).map(|(_, v)| v).collect()
     }
 
@@ -1051,10 +1051,15 @@ mod windows {
     unsafe fn set_up(platform: &tauri::webview::PlatformWebview, app: tauri::AppHandle, tab: String) -> windows_core::Result<()> {
         let core = platform.controller().CoreWebView2()?;
         let environment = platform.environment();
-        // Logins and forms are remembered, in the browser's own store on this computer.
+        // Logins are remembered, in the browser's own store on this computer.
+        // What's typed in forms only when chosen (Preferences › Discover):
+        // its suggestions get in the way of typing.
         if let Ok(settings) = core.Settings()?.cast::<ICoreWebView2Settings4>() {
             let _ = settings.SetIsPasswordAutosaveEnabled(true);
-            let _ = settings.SetIsGeneralAutofillEnabled(true);
+            let _ = settings.SetIsGeneralAutofillEnabled(super::FORM_MEMORY.load(std::sync::atomic::Ordering::Relaxed));
+        }
+        if super::CLEAR_FORMS_LATER.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            let _ = clear_forms_now(&core);
         }
         let _ = set_tracking(&core, view::protection().level);
         let mut token = 0i64;
@@ -1494,6 +1499,31 @@ mod windows {
         });
     }
 
+    /// Turns form memory on or off for a tab open now.
+    pub fn form_memory(view: &tauri::Webview, on: bool) {
+        let _ = view.with_webview(move |platform| unsafe {
+            let Ok(core) = platform.controller().CoreWebView2() else { return };
+            if let Ok(settings) = core.Settings().and_then(|s| s.cast::<ICoreWebView2Settings4>()) {
+                let _ = settings.SetIsGeneralAutofillEnabled(on);
+            }
+        });
+    }
+
+    /// Forgets what was typed in sites' forms. Saved passwords stay.
+    pub fn clear_forms(view: &tauri::Webview) {
+        let _ = view.with_webview(move |platform| unsafe {
+            if let Ok(core) = platform.controller().CoreWebView2() {
+                let _ = clear_forms_now(&core);
+            }
+        });
+    }
+
+    unsafe fn clear_forms_now(core: &ICoreWebView2) -> windows_core::Result<()> {
+        let profile = core.cast::<ICoreWebView2_13>()?.Profile()?.cast::<ICoreWebView2Profile2>()?;
+        let done = webview2_com::ClearBrowsingDataCompletedHandler::create(Box::new(|_| Ok(())));
+        profile.ClearBrowsingData(COREWEBVIEW2_BROWSING_DATA_KINDS_GENERAL_AUTOFILL, &done)
+    }
+
     thread_local! {
         /// What the last Share asked for, taken away before the next one.
         static SHARING: std::cell::Cell<Option<i64>> = const { std::cell::Cell::new(None) };
@@ -1738,11 +1768,18 @@ fn sent_behind() -> bool {
 const PIP_SCRIPT: &str = include_str!("browser_pip.js");
 /// Keeps videos playing in the background, when chosen (browser_keep_playing.js).
 const KEEP_PLAYING_SCRIPT: &str = include_str!("browser_keep_playing.js");
+
 /// Preferences › Discover › Keep videos playing in the background.
 static KEEP_PLAYING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Keeps Tab out of sites' text boxes, when chosen (browser_tab_keys.js).
 const TAB_KEYS_SCRIPT: &str = include_str!("browser_tab_keys.js");
+/// Whether tabs remember what's typed in sites' forms (off unless chosen).
+#[cfg_attr(not(windows), allow(dead_code))]
+static FORM_MEMORY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Form entries to forget when the next tab opens (none was open when asked).
+#[cfg_attr(not(windows), allow(dead_code))]
+static CLEAR_FORMS_LATER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Preferences › Discover › Tab doesn't fill in sites' suggestions.
 static TAB_KEYS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -1870,6 +1907,34 @@ pub async fn browser_tab_keys(app: tauri::AppHandle, on: bool) -> CommandResult<
     TAB_KEYS.store(on, std::sync::atomic::Ordering::Relaxed);
     let script = format!("window.__tbvTabKeys ? window.__tbvTabKeys({on}) : 'null'");
     tauri::async_runtime::spawn_blocking(move || view::everywhere(&app, &script)).await.map_err(|e| e.to_string())?
+}
+
+/// Preferences › Discover › Remember what I type in forms (Windows; off
+/// unless chosen): for the tabs open now and those opened from now on.
+#[tauri::command]
+pub async fn browser_form_memory(app: tauri::AppHandle, on: bool) -> CommandResult<()> {
+    FORM_MEMORY.store(on, std::sync::atomic::Ordering::Relaxed);
+    #[cfg(windows)]
+    for view in view::tabs(&app) {
+        windows::form_memory(&view, on);
+    }
+    #[cfg(not(windows))]
+    let _ = app;
+    Ok(())
+}
+
+/// Preferences › Discover › Clear saved form entries. Passwords stay. With
+/// no tab open, it's done as the next one opens.
+#[tauri::command]
+pub async fn browser_clear_forms(app: tauri::AppHandle) -> CommandResult<()> {
+    #[cfg(windows)]
+    match view::tabs(&app).first() {
+        Some(view) => windows::clear_forms(view),
+        None => CLEAR_FORMS_LATER.store(true, std::sync::atomic::Ordering::Relaxed),
+    }
+    #[cfg(not(windows))]
+    let _ = app;
+    Ok(())
 }
 
 /// Preferences › Discover › Keep videos playing in the background.
