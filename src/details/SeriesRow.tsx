@@ -1,13 +1,16 @@
 // A book's details: the other books of its series, in order. Books not in
-// the library are greyed out, as on the series' own page.
+// the library are greyed out, as on the series' own page. A book of the list
+// that's in Archive or Resonance under another series (or none) shows in its
+// place, marked In your library, and is offered under the strip to approve.
 
 import { useEffect, useState } from "react";
 import { api, isHome, isWeb } from "../api";
-import type { MissingBook, OwnedBook, SeriesReview } from "../api/types";
+import type { MissingBook, OwnedBook, SeriesMatch, SeriesReview } from "../api/types";
 import { placesIn, placesWords, placeWords } from "../lib/details";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
+import { SeriesMatches } from "../library/SeriesPanel";
 import { showBookDetails } from "./openDetails";
 
 type Item = { owned: OwnedBook } | { missing: MissingBook };
@@ -52,13 +55,18 @@ export function SeriesRow({
   // With nothing to show and no way to look, there's no section; once it can look, it's always offered.
   if (items.length <= 1 && !canLook) return null;
 
-  const find = () => {
+  const run = (work: () => Promise<SeriesReview>) => {
     setBusy(true);
-    api
-      .findSeriesBooks(name, author)
+    work()
       .then(setReview, (e: unknown) => toast(String(e).replace(/^Error: /, "")))
       .finally(() => setBusy(false));
   };
+  const find = () => run(() => api.findSeriesBooks(name, author));
+  const approve = (matches: SeriesMatch[]) =>
+    run(() => api.approveSeriesMatches(name, matches.map((m) => ({ bookId: m.book.id, position: m.position }))));
+  const deny = (matches: SeriesMatch[]) => run(() => api.denySeriesMatches(name, matches.map((m) => m.book.id)));
+  // A listed book that's already in the library under other details.
+  const inLibrary = (key: string) => review.matches.find((m) => m.forKey === key)?.book ?? null;
 
   return (
     <section className="details-section">
@@ -94,20 +102,38 @@ export function SeriesRow({
               </button>
             </li>
           ) : (
-            <li key={`missing-${item.missing.key}`} className="is-missing">
-              <MissingCover book={item.missing} />
-              <span className="series-strip-title" title={item.missing.title}>
-                {item.missing.title}
-              </span>
-              <span className="muted">
-                {item.missing.position !== null ? `Book ${item.missing.position}` : "No number"}
-                {item.missing.read ? " · Read" : ""}
-              </span>
-            </li>
+            (() => {
+              const here = inLibrary(item.missing.key);
+              return here ? (
+                <li key={`missing-${item.missing.key}`}>
+                  <button type="button" className="series-strip-book" onClick={() => showBookDetails(here.id)}>
+                    <BookCover book={here} size="s" />
+                    <span className="series-strip-title" title={here.title}>
+                      {here.title}
+                    </span>
+                    <span className="muted">
+                      {item.missing.position !== null ? `Book ${item.missing.position}` : "No number"} · In your library
+                    </span>
+                  </button>
+                </li>
+              ) : (
+                <li key={`missing-${item.missing.key}`} className="is-missing">
+                  <MissingCover book={item.missing} />
+                  <span className="series-strip-title" title={item.missing.title}>
+                    {item.missing.title}
+                  </span>
+                  <span className="muted">
+                    {item.missing.position !== null ? `Book ${item.missing.position}` : "No number"}
+                    {item.missing.read ? " · Read" : ""}
+                  </span>
+                </li>
+              );
+            })()
           ),
         )}
       </ul>
       {review.checkedAt && items.length <= 1 && <p className="muted">No other books of this series were found online.</p>}
+      <SeriesMatches matches={review.matches} busy={busy} onApprove={approve} onDeny={deny} />
       {canLook && (
         <button type="button" className="view-all" disabled={busy} onClick={find}>
           <Icon name="search" size={14} /> {busy ? "Looking…" : review.checkedAt ? "Check again" : "Find the rest of the series online"}

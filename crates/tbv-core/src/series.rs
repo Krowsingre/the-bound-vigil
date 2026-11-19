@@ -263,6 +263,9 @@ pub struct SeriesMatch {
     pub position: Option<f64>,
     /// Why TBV thinks it fits, in words.
     pub reason: String,
+    /// The missing book of the list it stands for, when it was matched to
+    /// one (by title), so a book's page can show it in that book's place.
+    pub for_key: Option<String>,
 }
 
 /// What TBV knows about one series.
@@ -695,14 +698,14 @@ impl Library {
                 places.push((book.id.as_str(), entry.position));
                 // In the series already, but without its number.
                 if place(book).order().is_none() && entry.position.is_some() && !denied.contains(book.id.as_str()) && offered.insert(book.id.to_string()) {
-                    matches.push(SeriesMatch { book: book.clone(), position: entry.position, reason: "In the series, but without its number".into() });
+                    matches.push(SeriesMatch { book: book.clone(), position: entry.position, reason: "In the series, but without its number".into(), for_key: None });
                 }
                 continue;
             }
             let key = entry.key();
             let hidden = saved.hidden.contains(&key);
             let read = saved.read.contains(&key);
-            missing.push(MissingBook { key, entry: entry.clone(), hidden, read });
+            missing.push(MissingBook { key: key.clone(), entry: entry.clone(), hidden, read });
             if hidden {
                 continue;
             }
@@ -717,7 +720,7 @@ impl Library {
                         None => format!("{how}{author}, with no series in its details"),
                     };
                     offered.insert(book.id.to_string());
-                    matches.push(SeriesMatch { book: book.clone(), position: entry.position, reason });
+                    matches.push(SeriesMatch { book: book.clone(), position: entry.position, reason, for_key: Some(key.clone()) });
                 }
             }
         }
@@ -784,6 +787,8 @@ mod tests {
         assert_eq!(missing, ["The Light Fantastic", "Equal Rites", "Mort"]);
         let offered: Vec<(&str, Option<f64>)> = review.matches.iter().map(|m| (m.book.title.as_str(), m.position)).collect();
         assert_eq!(offered, [("The Light Fantastik", Some(2.0)), ("Equal Rites", Some(3.0))]);
+        // Each stands for the missing book it matched, for the book page's strip.
+        assert_eq!(review.matches[1].for_key.as_deref(), Some(review.missing[1].key.as_str()));
 
         // Approving one puts it in the series; denying the other keeps it out of the list.
         library.approve_series_matches("Discworld", &[Approval { book_id: loose.clone(), position: Some(3.0) }]).unwrap();

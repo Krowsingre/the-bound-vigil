@@ -139,42 +139,7 @@ export function SeriesPanel({
         {withFind && <FindMissingButton state={given ?? own} />}
       </header>
 
-      {review.matches.length > 0 && (
-        <div className="series-matches">
-          <div className="series-sub">
-            <span>
-              <strong>Might be in this series</strong>
-              <span className="muted"> · their details don't say so yet</span>
-            </span>
-            <span className="series-sub-actions">
-              <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => deny(review.matches)}>
-                Deny all
-              </button>
-              <button type="button" className="btn btn-primary btn-small" disabled={busy} onClick={() => approve(review.matches)}>
-                Approve all
-              </button>
-            </span>
-          </div>
-          <ul>
-            {review.matches.map((m) => (
-              <li key={m.book.id} className="duplicate-book">
-                <BookCover book={m.book} size="s" />
-                <span className="duplicate-text">
-                  <strong>{m.book.title}</strong>
-                  <span className="muted">{authorLine(m.book.authors)}</span>
-                  <span className="muted duplicate-facts">{[number(m.position), m.reason].filter(Boolean).join(" · ")}</span>
-                </span>
-                <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => deny([m])}>
-                  Deny
-                </button>
-                <button type="button" className="btn btn-primary btn-small" disabled={busy} onClick={() => approve([m])}>
-                  Approve
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <SeriesMatches matches={review.matches} busy={busy} onApprove={approve} onDeny={deny} />
 
       {review.checkedAt && review.missing.length === 0 && <p className="muted series-done">You have every book in the list.</p>}
       {(review.missing.length > 0 || review.checkedAt) && (
@@ -347,5 +312,60 @@ function MissingCard({
         </span>
       </span>
     </li>
+  );
+}
+
+/**
+ * Books in the library (Archive or Resonance) that are probably in the
+ * series, though their details don't say so: Approve puts them in, Deny
+ * stops them being offered. Shown under a series and on a book's page.
+ */
+export function SeriesMatches({
+  matches,
+  busy,
+  onApprove,
+  onDeny,
+}: {
+  matches: SeriesMatch[];
+  busy: boolean;
+  onApprove: (matches: SeriesMatch[]) => void;
+  onDeny: (matches: SeriesMatch[]) => void;
+}) {
+  if (!matches.length) return null;
+  return (
+    <div className="series-matches">
+      <div className="series-sub">
+        <span>
+          <strong>Might be in this series</strong>
+          <span className="muted"> · their details don't say so yet</span>
+        </span>
+        <span className="series-sub-actions">
+          <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => onDeny(matches)}>
+            Deny all
+          </button>
+          <button type="button" className="btn btn-primary btn-small" disabled={busy} onClick={() => onApprove(matches)}>
+            Approve all
+          </button>
+        </span>
+      </div>
+      <ul>
+        {matches.map((m) => (
+          <li key={m.book.id} className="duplicate-book">
+            <BookCover book={m.book} size="s" />
+            <span className="duplicate-text">
+              <strong>{m.book.title}</strong>
+              <span className="muted">{authorLine(m.book.authors)}</span>
+              <span className="muted duplicate-facts">{[number(m.position), m.reason].filter(Boolean).join(" · ")}</span>
+            </span>
+            <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => onDeny([m])}>
+              Deny
+            </button>
+            <button type="button" className="btn btn-primary btn-small" disabled={busy} onClick={() => onApprove([m])}>
+              Approve
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
