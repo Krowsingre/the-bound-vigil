@@ -1,7 +1,7 @@
 import { offerFinishedDownloadRemoval } from "../library/FinishedDownloadPrompt";
 import { END_OF_BOOK, EndOfBook } from "./EndOfBook";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, isApp, isIOS, isMac } from "../api";
+import { api, isApp, isIOS, isIPhone, isMac } from "../api";
 import { READER_NARROW, useNarrow } from "../lib/useNarrow";
 import type { Annotation, HighlightColor, Profile, ReadStatus, ReaderBook, ReaderLocator, SyncStatus, WordDefinition } from "../api/types";
 import { Icon } from "../components/Icon";
@@ -1054,6 +1054,7 @@ export function Reader({
       {selection && (
         <SelectionToolbar
           rect={selection.rect}
+          docked={isIPhone}
           onColor={(c) => void highlight(selection, c)}
           onNote={() => setNoteEdit({ selection })}
           onCopy={() => copy(selection.text)}
@@ -1063,6 +1064,7 @@ export function Reader({
       {active && (
         <SelectionToolbar
           rect={active.rect}
+          docked={isIPhone}
           activeColor={active.a.color}
           hasNote={isNote(active.a)}
           onColor={(c) => {
