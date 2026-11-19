@@ -1,3 +1,4 @@
+import { useDownloadsChanging } from "../library/cloudDownloads";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { BookPreview } from "../api/types";
@@ -11,6 +12,7 @@ import { EmptyNote, Section } from "./Section";
 
 /** The newest books, as covers. On a computer each has a ••• menu beside its title. */
 export function RecentlyAdded({ books, actions, onViewAll, onOpenSeries, menus = false }: { books: BookPreview[]; actions: BookActions; onViewAll: () => void; onOpenSeries: (name: string) => void; menus?: boolean }) {
+  useDownloadsChanging();
   let coverChoices: Record<string, string> = {};
   try { coverChoices = JSON.parse(localStorage.getItem("tbv.stackCovers.books") ?? "{}") ?? {}; } catch { /* Use automatic covers. */ }
   const stacks = new Map<string, BookPreview[]>();
