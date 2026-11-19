@@ -6,7 +6,7 @@ import { Menu } from "../components/Menu";
 
 export type Provider = "supabase" | "dropbox" | "gdrive" | "onedrive" | "icloud" | "mega" | "custom";
 
-const ALL_PROVIDERS: { id: Provider; name: string; art: React.ReactNode }[] = [
+export const ALL_PROVIDERS: { id: Provider; name: string; art: React.ReactNode }[] = [
   {
     id: "supabase",
     name: "Supabase",
@@ -83,8 +83,13 @@ const ALL_PROVIDERS: { id: Provider; name: string; art: React.ReactNode }[] = [
   },
 ];
 
-/** The places to sync with here. Android's test version has no iCloud, and can't reach a folder a desktop app keeps in step (MEGA). */
-export const PROVIDERS = isAndroid ? ALL_PROVIDERS.filter((p) => p.id !== "icloud" && p.id !== "mega") : ALL_PROVIDERS;
+/**
+ * The places that can be chosen here. Supabase isn't offered for now
+ * (embre, 19 November); a device already syncing with it keeps it, shown
+ * as its card, until another place is chosen. Android's test version has no
+ * iCloud, and can't reach a folder a desktop app keeps in step (MEGA).
+ */
+export const PROVIDERS = ALL_PROVIDERS.filter((p) => p.id !== "supabase" && !(isAndroid && (p.id === "icloud" || p.id === "mega")));
 
 /**
  * The place chosen, as a card, and every other one in a dropdown. With
@@ -105,8 +110,10 @@ export function ProviderPicker({
   /** The one syncing now, marked with a ready dot. */
   inUse?: Provider | null;
 }) {
-  const card = PROVIDERS.find((p) => p.id === picked);
-  const others = PROVIDERS.filter((p) => p.id !== picked);
+  const card = ALL_PROVIDERS.find((p) => p.id === picked);
+  // A place in use stays reachable even when it isn't offered any more (Supabase).
+  const inUseCard = inUse && !PROVIDERS.some((p) => p.id === inUse) ? ALL_PROVIDERS.filter((p) => p.id === inUse) : [];
+  const others = [...PROVIDERS, ...inUseCard].filter((p) => p.id !== picked);
   return (
     <div className="provider-picker">
       {card && (
