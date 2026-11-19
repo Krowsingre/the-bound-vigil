@@ -46,7 +46,7 @@ export function Sidebar({
   useEffect(() => onLiningUp(setLining), []);
   const liningPercent = lining ? Math.floor(lining.fraction * 100) : 0;
   const [spin, setSpin] = useState<"inner" | "outer" | null>(null);
-  // Discover opens and closes its submenu (Scry, Geas, Libram), and remembers which.
+  // Discover opens and closes its submenu (Scry, Geas), and remembers which.
   const [discoverOpen, setDiscoverOpen] = useState(() => {
     try {
       return localStorage.getItem(DISCOVER_OPEN_KEY) !== "0";

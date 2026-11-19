@@ -16,12 +16,12 @@ export const PAGE: Record<"home" | "library" | "collections" | "audiobooks" | "w
   settings: { label: "Preferences", caption: "Settings & sync" },
 };
 
-/** Discover's submenu in the sidebar: the browser (Scry), bringing things in
- * from servers (Geas), and the catalogues (Libram) (embre, 13 November). */
+/** Discover's submenu in the sidebar: the browser (Scry) and bringing things
+ * in from servers (Geas) (embre, 13 November). Libram, the catalogues, is
+ * hidden until it comes back as Nexus after release (embre, 19 November). */
 export const DISCOVER_MENU: { route: Route; label: string; caption: string; icon: IconName }[] = [
   { route: "catalogs", label: "Scry", caption: "The web", icon: "globe" },
   { route: "geas", label: "Geas", caption: "Transfers", icon: "database" },
-  { route: "libram", label: "Libram", caption: "Catalogues", icon: "bookClosed" },
 ];
 
 export const NAV: { route: Route; label: string; caption: string; icon: IconName }[] = [
