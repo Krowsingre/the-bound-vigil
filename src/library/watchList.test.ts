@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WatchedBook } from "../api/types";
-import { authorUpdate, bookUpdate, isOut, unwatch, watchList, whenLine, type WatchedAuthor, type WatchedTitle } from "./watchList";
+import { authorUpdate, bookUpdate, isOut, titleKey, unwatch, watchList, whenLine, type WatchedAuthor, type WatchedTitle } from "./watchList";
 
 const now = Date.UTC(2026, 10, 19);
 const book = (key: string, date: string | null): WatchedBook => ({ key, title: key, authors: ["A. Writer"], date, coverUrl: null, link: null });
@@ -60,5 +60,11 @@ describe("watching", () => {
     unwatch(author);
     expect(watchList().map((w) => (w.kind === "book" ? w.key : w.name))).toEqual(["mine"]);
     localStorage.clear();
+  });
+  it("keys titles as the core does, so one book is one watch", () => {
+    expect(titleKey("The Next Book: A Novel")).toBe("next book");
+    expect(titleKey("Monte-Cristo (Vol. 1)")).toBe("monte cristo");
+    expect(titleKey("A")).toBe("a");
+    expect(titleKey("Él & Ñu")).toBe("él ñu");
   });
 });
