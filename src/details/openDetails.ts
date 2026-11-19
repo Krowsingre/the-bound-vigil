@@ -4,7 +4,7 @@
 import type { BookPreview, ItemKind } from "../api/types";
 import type { LibraryView } from "../library/libraryView";
 
-type Ask = { kind: "edit"; books: BookPreview[] } | { kind: "fetch"; book: BookPreview };
+type Ask = { kind: "edit"; books: BookPreview[] } | { kind: "fetch"; book: BookPreview } | { kind: "fetchMany"; books: BookPreview[] };
 
 let pageListener: ((bookId: string) => void) | null = null;
 let libraryListener: ((kind: ItemKind, change: Partial<LibraryView>) => void) | null = null;
@@ -27,6 +27,12 @@ export function askEditDetails(books: BookPreview[]) {
 /** Looks a book up online and keeps what the person picks. */
 export function askFetchDetails(book: BookPreview) {
   dialogListener?.({ kind: "fetch", book });
+}
+
+/** Looks chosen books up online one after another, each kept or skipped in turn. */
+export function askFetchManyDetails(books: BookPreview[]) {
+  if (books.length === 1) askFetchDetails(books[0]);
+  else if (books.length) dialogListener?.({ kind: "fetchMany", books });
 }
 
 export function onShowBookDetails(listen: (bookId: string) => void) {

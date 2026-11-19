@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, isHome, isWeb } from "../api";
 import type { BookPreview, CollectionPreview, ItemKind, LibraryPage } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
-import { askEditDetails, showBookDetails } from "../details/openDetails";
+import { askEditDetails, askFetchManyDetails, showBookDetails } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
 import { askSendWithLocalSend, canSendWithLocalSend } from "../localsend/SendWithLocalSend";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -488,15 +488,10 @@ export function Library({
   const selection: Selection | null = selected && {
     has: (id) => selected.has(id),
     toggle: (book, range) => {
-      const from = range?.findIndex((b) => b.id === lastPicked.current) ?? -1;
-      const to = range?.findIndex((b) => b.id === book.id) ?? -1;
-      lastPicked.current = book.id;
+      if (pickRange(book, range)) return;
       setSelected((s) => {
         const next = new Map(s);
-        if (range && from >= 0 && to >= 0) {
-          // Shift: everything between the last book picked and this one.
-          for (const b of range.slice(Math.min(from, to), Math.max(from, to) + 1)) next.set(b.id, b);
-        } else if (next.has(book.id)) next.delete(book.id);
+        if (next.has(book.id)) next.delete(book.id);
         else next.set(book.id, book);
         return next;
       });
@@ -505,8 +500,32 @@ export function Library({
       const books = stackBooks.get(name);
       return !!books?.length && books.every((b) => selected.has(b.id));
     },
-    toggleSeries: (name) => void chooseSeries([name], !selection?.hasSeries?.(name)),
+    toggleSeries: (name, book, range) => {
+      if (book && pickRange(book, range)) return;
+      void chooseSeries([name], !selection?.hasSeries?.(name));
+    },
   };
+  /**
+   * Shift: everything shown between the last book or series picked and this
+   * one is chosen, series stacks whole. Says whether it was a range.
+   */
+  function pickRange(book: BookPreview, range?: BookPreview[]): boolean {
+    const from = range?.findIndex((b) => b.id === lastPicked.current) ?? -1;
+    const to = range?.findIndex((b) => b.id === book.id) ?? -1;
+    lastPicked.current = book.id;
+    if (!range || from < 0 || to < 0) return false;
+    const between = range.slice(Math.min(from, to), Math.max(from, to) + 1);
+    const names = [...new Set(between.flatMap((b) => stackOf(b) ?? []))];
+    const single = between.filter((b) => !stackOf(b));
+    if (names.length) void chooseSeries(names, true, single);
+    else
+      setSelected((s) => {
+        const next = new Map(s);
+        for (const b of single) next.set(b.id, b);
+        return next;
+      });
+    return true;
+  }
   /** Every book of these series (as the filters show them), chosen or let go together. */
   async function booksOfSeries(name: string): Promise<BookPreview[]> {
     const known = stackBooks.get(name);
@@ -601,6 +620,7 @@ export function Library({
     : matchingBooks > 0 && (selected?.size ?? 0) >= matchingBooks;
   const chosenActions: MenuEntry[] = [
     { label: "Edit details", icon: "edit", disabled: none, onSelect: () => askEditDetails(chosen) },
+    { label: "Find details online", icon: "search", disabled: none, onSelect: () => askFetchManyDetails(chosen) },
     { label: "Tags", icon: "tag", disabled: none, onSelect: () => setTagging(true) },
     { label: "Add to or take out of a collection", icon: "collections", disabled: none, onSelect: () => askAddToCollection(chosen) },
     ...(kind !== "audiobooks" ? [{ label: "Send to e-reader", icon: "ereader", disabled: none, onSelect: () => askSendToEreader(chosen) } as MenuItem] : []),

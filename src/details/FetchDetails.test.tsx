@@ -37,3 +37,30 @@ it("approves edited found values and leaves unchecked fields out", async () => {
     series_index: "2.5",
   });
 });
+
+it("goes through several chosen books one at a time, kept or skipped", async () => {
+  const { DetailsHost } = await import("./DetailsHost");
+  const { askFetchManyDetails } = await import("./openDetails");
+  const { act } = await import("@testing-library/react");
+  const found: Found = {
+    id: "one", source: "google", title: "Catalogue title", authors: ["Online Author"],
+    series: null, seriesIndex: null, synopsis: null, genres: [], publisher: "Press",
+    published: null, language: null, isbn: null, coverUrl: null,
+  };
+  searchOnline.mockResolvedValue([found]);
+  saveFetched.mockClear();
+  const onChanged = vi.fn();
+  render(<DetailsHost onChanged={onChanged} />);
+  const books = ["first", "second"].map((id) => ({ id, title: id, authors: [], format: "epub" }) as unknown as BookPreview);
+  act(() => askFetchManyDetails(books));
+  expect(await screen.findByText("Book 1 of 2")).toBeTruthy();
+  fireEvent.click(await screen.findByRole("button", { name: /Catalogue title/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Keep and go to next" }));
+  expect(await screen.findByText("Book 2 of 2")).toBeTruthy();
+  expect(saveFetched).toHaveBeenCalledWith("first", "google", expect.objectContaining({ publisher: "Press" }));
+  expect(onChanged).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Skip and finish" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(saveFetched).toHaveBeenCalledTimes(1);
+  expect(onChanged).toHaveBeenCalledTimes(1);
+});
