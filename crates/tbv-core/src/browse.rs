@@ -9,7 +9,7 @@ use crate::model::*;
 
 pub const DEFAULT_PAGE_SIZE: u32 = 24;
 const MAX_PAGE_SIZE: u32 = 200;
-pub(crate) const UP_NEXT_LIMIT: u32 = 15;
+pub(crate) const UP_NEXT_LIMIT: u32 = 75;
 
 const TITLE: &str = "COALESCE(o_title.value, f_title.value, b.title)";
 const AUTHORS: &str = "COALESCE(o_authors.value, f_authors.value, b.authors)";
@@ -686,7 +686,7 @@ impl Library {
                 |row| row.get(0),
             )?;
             if count > UP_NEXT_LIMIT {
-                return Err(Error::Unsuitable("Up Next already exceeds 15 books. Remove books before adding another.".into()));
+                return Err(Error::Unsuitable(format!("Up Next already exceeds {UP_NEXT_LIMIT} books. Remove books before adding another.")));
             }
             if let Some(old) = replace {
                 let changed = tx.execute(
@@ -1092,21 +1092,21 @@ mod tests {
     #[test]
     fn shelf_limits_require_an_explicit_replacement() {
         let (dir, mut library) = open_temp_library();
-        let ids: Vec<String> = (0..16).map(|i| add(&mut library, dir.path(), &format!("Book {i}"), "Writer")).collect();
+        let ids: Vec<String> = (0..=UP_NEXT_LIMIT as usize).map(|i| add(&mut library, dir.path(), &format!("Book {i}"), "Writer")).collect();
         for id in &ids[..10] {
             library.set_pinned(id, true).unwrap();
         }
         assert!(library.set_pinned(&ids[10], true).is_err());
         library.set_pinned(&ids[0], true).unwrap();
-        for id in &ids[..15] {
+        for id in &ids[..UP_NEXT_LIMIT as usize] {
             library.set_want_to_read(id, true).unwrap();
         }
-        assert!(library.set_want_to_read(&ids[15], true).is_err());
-        assert!(library.update_up_next(&ids[15], true, Some("missing")).is_err());
-        library.update_up_next(&ids[15], true, Some(&ids[0])).unwrap();
+        assert!(library.set_want_to_read(&ids[UP_NEXT_LIMIT as usize], true).is_err());
+        assert!(library.update_up_next(&ids[UP_NEXT_LIMIT as usize], true, Some("missing")).is_err());
+        library.update_up_next(&ids[UP_NEXT_LIMIT as usize], true, Some(&ids[0])).unwrap();
         let shelf = library.library_page(&query(|q| q.shelf = Shelf::WantToRead)).unwrap();
-        assert_eq!(shelf.total, 15);
-        assert!(shelf.books.iter().any(|book| book.id == ids[15]));
+        assert_eq!(shelf.total, UP_NEXT_LIMIT);
+        assert!(shelf.books.iter().any(|book| book.id == ids[UP_NEXT_LIMIT as usize]));
         assert!(!shelf.books.iter().any(|book| book.id == ids[0]));
     }
 

@@ -906,7 +906,7 @@ export function previewApi(): Api {
     },
     openBook: async (bookId) => {
       const before = find(bookId);
-      update(bookId, { lastOpenedAt: new Date().toISOString(), status: before.status === "unread" ? "in_progress" : before.status, wantToRead: false });
+      update(bookId, { lastOpenedAt: new Date().toISOString(), status: before.status === "unread" ? "in_progress" : before.status, wantToRead: before.status === "unread" ? false : before.wantToRead });
       return { book: find(bookId), publisher: "Sample Press", language: "en", fileSize: 48_000, previouslyOpenedAt: before.lastOpenedAt };
     },
     readBookFile: async (bookId) => {
@@ -1023,7 +1023,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.124.0", version: "0.124.0", notes: "The Bound Vigil 0.124.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.125.0", version: "0.125.0", notes: "The Bound Vigil 0.125.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
