@@ -34,6 +34,8 @@ export interface BookActions {
   setPinned?: (book: BookPreview, pinned: boolean) => void;
   /** Fetches a cloud-only book onto this device. */
   download?: (book: BookPreview) => void;
+  /** Send to a TBV friend: iCloud carries the books, and the Share sheet sends the link. */
+  sendToFriend?: (books: BookPreview[]) => void;
   /** Stops the book's download while it's coming down. */
   stopDownload?: (book: BookPreview) => void;
   /** Removes the copy here, keeping the one in the cloud. */
@@ -132,6 +134,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     { label: "Download & send", icon: "download", submenu: [
     ...(isAudio(book.format) ? [] : [{ label: "Send to e-reader…", icon: "ereader" as const, onSelect: () => askSendToEreader([book]) }]),
     ...(canSendWithLocalSend ? [{ label: "Send with Grimoire…", icon: "upload" as const, onSelect: () => askSendWithLocalSend([book]) }] : []),
+    ...(actions.sendToFriend ? [{ label: "Send to a TBV friend…", icon: "person" as const, onSelect: () => actions.sendToFriend?.([book]) }] : []),
     ...(actions.shareFiles ? [{ label: "Share the file…", icon: "share" as const, onSelect: () => actions.shareFiles?.([book]) }] : []),
     ...(actions.saveCopy ? [{ label: "Save a copy…", icon: "copy" as const, onSelect: () => actions.saveCopy?.(book) }] : []),
     downloadItem(book, actions),
@@ -215,7 +218,7 @@ export function cannotOpen(book: BookPreview): string | null {
 /** The shared actions, refreshing the current view after each change. */
 export function makeBookActions(
   api: Pick<import("../api").Api, "setBookStatus" | "setFavorite" | "setWantToRead" | "setRating"> &
-    Partial<Pick<import("../api").Api, "downloadBook" | "stopDownload" | "removeDownload" | "saveCopies" | "shareBookFiles" | "setPhoneWanted" | "setPinned" | "setAudioType">>,
+    Partial<Pick<import("../api").Api, "downloadBook" | "stopDownload" | "removeDownload" | "saveCopies" | "shareBookFiles" | "sendToFriend" | "setPhoneWanted" | "setPinned" | "setAudioType">>,
   toast: ShowToast,
   refresh: () => void,
   openBook: (bookId: string) => void,
@@ -285,6 +288,17 @@ export function makeBookActions(
           if (skipped.length) toast(skipped.length === 1 ? `Couldn't share “${title(skipped[0][0])}”: ${skipped[0][1]}` : `Couldn't share ${skipped.length} of the books.`);
         },
         (e: unknown) => toast(`Couldn't open the Share sheet: ${String(e)}`),
+      );
+    } : undefined,
+    sendToFriend: api.sendToFriend ? (books) => {
+      toast(books.length === 1 ? `Getting “${books[0].title}” ready to send…` : `Getting ${books.length} books ready to send…`);
+      void api.sendToFriend!(books.map((b) => b.id)).then(
+        ({ shared, skipped }) => {
+          const title = (id: string) => books.find((b) => b.id === id)?.title ?? "a book";
+          if (skipped.length) toast(skipped.length === 1 ? `Couldn't send “${title(skipped[0][0])}”: ${skipped[0][1]}` : `Couldn't send ${skipped.length} of the books.`);
+          else if (shared) toast("Send the link to your friend. It works for 30 days.");
+        },
+        (e: unknown) => toast(`Couldn't send to a friend: ${String(e)}`),
       );
     } : undefined,
     setPhoneWanted: api.setPhoneWanted && ((books, wanted) => {

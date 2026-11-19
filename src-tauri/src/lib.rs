@@ -2245,6 +2245,8 @@ pub fn run() {
             browser::browser_clear_site,
             browser::browser_share,
             browser::share_book_files,
+            browser::send_to_friend,
+            browser::receive_from_friend,
             browser::browser_open_app,
             browser::browser_travelled,
             browser::browser_report,

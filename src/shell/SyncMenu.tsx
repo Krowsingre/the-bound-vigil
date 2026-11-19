@@ -1,3 +1,4 @@
+import { askFriendLink, canReceiveFromFriend } from "../library/FriendLink";
 import { api } from "../api";
 import type { Profile, SyncBehind, SyncStatus } from "../api/types";
 import { Icon } from "../components/Icon";
@@ -123,6 +124,7 @@ export function SyncMenu({
         "divider",
         { label: "Import books…", icon: "importFile", hint: keyHint(keys, "Ctrl+O"), onSelect: onImportBooks },
         { label: "Import a folder…", icon: "folder", onSelect: onImportFolder },
+        ...(canReceiveFromFriend() ? [{ label: "Open a friend's link…", icon: "person" as const, onSelect: askFriendLink }] : []),
         "divider",
         {
           label: hidden ? "Show covers" : "Hide covers",

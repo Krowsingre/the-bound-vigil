@@ -7,6 +7,7 @@ import { isKindleList, KINDLE_CHANGED, KindleReviewDialog } from "./imports/Kind
 import { AddToCollectionHost } from "./collections/AddToCollection";
 import { ContextMenuHost } from "./components/ContextMenu";
 import { BookDialogsHost } from "./library/BookDialogs";
+import { FriendLinkHost } from "./library/FriendLink";
 import { SendToEreaderHost } from "./ereaders/SendToEreader";
 import { SendWithLocalSendHost } from "./localsend/SendWithLocalSend";
 import { BookDetailsPage } from "./details/BookDetailsPage";
@@ -973,6 +974,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
       <PlayerBar onShowAudiobooks={() => navigate("audiobooks")} />
       <AddToCollectionHost onChanged={refresh} />
       <BookDialogsHost onChanged={refresh} />
+      <FriendLinkHost />
       <UpNextReplacementHost onChanged={refresh} />
       <DetailsHost onChanged={refresh} />
       <SendToEreaderHost

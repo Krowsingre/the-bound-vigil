@@ -142,6 +142,7 @@ final class TbvBackgroundWork: NSObject {
 public func registerBackgroundTasks() {
   TbvBackgroundWork.shared.register()
   TbvPush.shared.start()
+  if #available(iOS 15.0, *) { TbvFriendShare.shared.start() }
 }
 
 /// How warm the phone is: 0 normal, 1 fair, 2 serious, 3 critical.

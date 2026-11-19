@@ -2039,6 +2039,54 @@ pub async fn browser_share(app: tauri::AppHandle, url: String, title: String, an
     view::share(&app, url.as_str(), title.trim(), anchor)
 }
 
+/// Copies of books' own files, under readable names, for sending: each
+/// fetched from the cloud first if it's only there. Each send has a folder
+/// of its own, so a second one started while the first still fetches leaves
+/// the first one's copies alone. Folders from sends over an hour old go.
+#[cfg(target_os = "ios")]
+async fn copies_to_send(
+    app: &tauri::AppHandle,
+    state: &tauri::State<'_, crate::AppLibrary>,
+    book_ids: Vec<String>,
+) -> CommandResult<(Vec<(PathBuf, String)>, Vec<(String, String)>)> {
+    use tauri::Manager;
+    let shares = app.path().temp_dir().map_err(|e| e.to_string())?.join("tbv-share");
+    if let Ok(old) = std::fs::read_dir(&shares) {
+        let hour = std::time::Duration::from_secs(3600);
+        for entry in old.flatten() {
+            let stale = entry.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > hour);
+            if stale {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
+    let folder = shares.join(stamp.to_string());
+    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    let mut copies = Vec::new();
+    let mut skipped = Vec::new();
+    for id in book_ids {
+        match crate::outgoing(state.clone(), id.clone()).await {
+            Ok(book) => {
+                let to = shared_name(&folder, &book.file_name);
+                let from = book.path.clone();
+                let copied = tauri::async_runtime::spawn_blocking({
+                    let to = to.clone();
+                    move || std::fs::copy(&from, &to)
+                })
+                .await
+                .map_err(|e| e.to_string())?;
+                match copied {
+                    Ok(_) => copies.push((to, book.title)),
+                    Err(e) => skipped.push((id, e.to_string())),
+                }
+            }
+            Err(e) => skipped.push((id, e)),
+        }
+    }
+    Ok((copies, skipped))
+}
+
 /// iPhone and iPad: the Share sheet with books' files, so they can go by
 /// AirDrop, Messages, Mail or any app (embre, 19 November). Each is a copy
 /// named "Title - Author.epub"; the library's own file is only read.
@@ -2051,44 +2099,8 @@ pub(crate) async fn share_book_files(
 ) -> CommandResult<SharedFiles> {
     #[cfg(target_os = "ios")]
     {
-        use tauri::Manager;
-        let shares = app.path().temp_dir().map_err(|e| e.to_string())?.join("tbv-share");
-        // Each share has a folder of its own, so a second one started while the
-        // first still fetches leaves the first one's copies alone. Folders from
-        // shares over an hour old have gone by now.
-        if let Ok(old) = std::fs::read_dir(&shares) {
-            let hour = std::time::Duration::from_secs(3600);
-            for entry in old.flatten() {
-                let stale = entry.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > hour);
-                if stale {
-                    let _ = std::fs::remove_dir_all(entry.path());
-                }
-            }
-        }
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
-        let folder = shares.join(stamp.to_string());
-        std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
-        let mut paths = Vec::new();
-        let mut skipped = Vec::new();
-        for id in book_ids {
-            match crate::outgoing(state.clone(), id.clone()).await {
-                Ok(book) => {
-                    let to = shared_name(&folder, &book.file_name);
-                    let from = book.path.clone();
-                    let copied = tauri::async_runtime::spawn_blocking({
-                        let to = to.clone();
-                        move || std::fs::copy(&from, &to)
-                    })
-                    .await
-                    .map_err(|e| e.to_string())?;
-                    match copied {
-                        Ok(_) => paths.push(to),
-                        Err(e) => skipped.push((id, e.to_string())),
-                    }
-                }
-                Err(e) => skipped.push((id, e)),
-            }
-        }
+        let (copies, skipped) = copies_to_send(&app, &state, book_ids).await?;
+        let paths: Vec<PathBuf> = copies.into_iter().map(|(path, _)| path).collect();
         if !paths.is_empty() {
             view::share_files(&paths, anchor)?;
         }
@@ -2098,6 +2110,63 @@ pub(crate) async fn share_book_files(
     {
         let _ = (app, state, book_ids, anchor);
         Err("Sharing a book's file is on the iPhone and iPad.".into())
+    }
+}
+
+/// Send to a TBV friend: the books go into the person's own iCloud, shared
+/// with anyone who has the link, and the Share sheet sends the link
+/// (FriendShare.swift). Links last 30 days.
+#[tauri::command]
+pub(crate) async fn send_to_friend(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::AppLibrary>,
+    book_ids: Vec<String>,
+    anchor: Option<Frame>,
+) -> CommandResult<SharedFiles> {
+    #[cfg(target_os = "ios")]
+    {
+        let (copies, skipped) = copies_to_send(&app, &state, book_ids).await?;
+        if copies.is_empty() {
+            return Ok(SharedFiles { shared: 0, skipped });
+        }
+        let count = copies.len();
+        let title = if count == 1 { format!("“{}” from The Bound Vigil", copies[0].1) } else { format!("{count} books from The Bound Vigil") };
+        let args = serde_json::json!({
+            "action": "send",
+            "paths": copies.iter().map(|(p, _)| p.to_string_lossy().into_owned()).collect::<Vec<_>>(),
+            "titles": copies.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(),
+        });
+        let answer = tauri::async_runtime::spawn_blocking(move || tauri_plugin_tbv_ios::friend_share(args)).await.map_err(|e| e.to_string())??;
+        let link = answer.get("link").and_then(|l| l.as_str()).ok_or("iCloud didn't give a link for the books.")?.to_string();
+        // iCloud has its own copy now.
+        if let Some(folder) = copies[0].0.parent() {
+            let _ = std::fs::remove_dir_all(folder);
+        }
+        view::share(&app, &link, &title, anchor)?;
+        Ok(SharedFiles { shared: count, skipped })
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = (app, state, book_ids, anchor);
+        Err("Sending to a TBV friend is on the iPhone and iPad.".into())
+    }
+}
+
+/// A link a friend sent: its books are brought down and added like shared
+/// books. Answers how many came.
+#[tauri::command]
+pub(crate) async fn receive_from_friend(app: tauri::AppHandle, link: String) -> CommandResult<usize> {
+    #[cfg(target_os = "ios")]
+    {
+        let args = serde_json::json!({ "action": "receive", "link": link });
+        let answer = tauri::async_runtime::spawn_blocking(move || tauri_plugin_tbv_ios::friend_share(args)).await.map_err(|e| e.to_string())??;
+        crate::shared::check(&app);
+        Ok(answer.get("count").and_then(|c| c.as_u64()).unwrap_or(0) as usize)
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = (app, link);
+        Err("Opening a friend's link is on the iPhone and iPad.".into())
     }
 }
 
