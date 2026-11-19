@@ -24,11 +24,11 @@ import { LinkBookDialog } from "./LinkBooks";
 import { latestOf, LinkedBookView, shelve, type Shelf } from "./LinkedBooks";
 import { useNarrow } from "../lib/useNarrow";
 import { DetailsDialog } from "./WritingDialogs";
+import { bookTypeLabel } from "./bookType";
 
 export type Projects = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; list: WritingProject[] };
 
 const TEMPLATE_ICON: Record<Template, IconName> = { blank: "file", novel: "bookOpen", collection: "layers", nonfiction: "bookClosed" };
-const KIND_NAME: Record<Template, string | null> = { blank: null, novel: "Novel", collection: "Short Story Collection", nonfiction: "Non-fiction" };
 
 type BookSort = "edited" | "title" | "newest";
 const SORTS: { sort: BookSort; label: string }[] = [
@@ -37,16 +37,29 @@ const SORTS: { sort: BookSort; label: string }[] = [
   { sort: "newest", label: "Newest" },
 ];
 type BookView = "grid" | "list";
+/** What can show under a book (embre, 18 November): title and author unless more are chosen. */
+type ShowField = "title" | "author" | "type" | "edition" | "chapters" | "words" | "edited";
+const SHOW_FIELDS: { field: ShowField; label: string }[] = [
+  { field: "title", label: "Title" },
+  { field: "author", label: "Author" },
+  { field: "type", label: "Book type" },
+  { field: "edition", label: "Edition" },
+  { field: "chapters", label: "Chapters" },
+  { field: "words", label: "Words" },
+  { field: "edited", label: "Last edited" },
+];
+const DEFAULT_SHOW: ShowField[] = ["title", "author"];
 const VIEW_KEY = "tbv.scribe.books";
 /** The banner's painting: "" for a different one each time, or a gallery name. */
 export const BANNER_KEY = "tbv.scribe.banner";
 
-function readView(): { sort: BookSort; view: BookView } {
+function readView(): { sort: BookSort; view: BookView; show: ShowField[] } {
   try {
     const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}");
-    return { sort: SORTS.some((s) => s.sort === v.sort) ? v.sort : "edited", view: v.view === "list" ? "list" : "grid" };
+    const show = Array.isArray(v.show) ? SHOW_FIELDS.map((f) => f.field).filter((f) => v.show.includes(f)) : DEFAULT_SHOW;
+    return { sort: SORTS.some((s) => s.sort === v.sort) ? v.sort : "edited", view: v.view === "list" ? "list" : "grid", show };
   } catch {
-    return { sort: "edited", view: "grid" };
+    return { sort: "edited", view: "grid", show: DEFAULT_SHOW };
   }
 }
 
@@ -60,16 +73,27 @@ function readBanner(): string {
 
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
 
-/** "Novel · 12 chapters · 34,210 words". */
-function metaLine(p: WritingProject): string {
-  const { kind, edition } = readExport(p.export);
-  return [edition?.name, kind && KIND_NAME[kind], `${p.chapters} ${p.chapters === 1 ? "chapter" : "chapters"}`, words(p.words)].filter(Boolean).join(" · ");
+/** "Poetry · 12 chapters · 34,210 words", from what's chosen to show. */
+function metaLine(p: WritingProject, show: ShowField[]): string {
+  const { kind, bookType, edition } = readExport(p.export);
+  return [
+    show.includes("edition") && edition?.name,
+    show.includes("type") && bookTypeLabel(bookType, kind),
+    show.includes("chapters") && `${p.chapters} ${p.chapters === 1 ? "chapter" : "chapters"}`,
+    show.includes("words") && words(p.words),
+  ].filter(Boolean).join(" · ");
 }
 
-/** "3 editions · Novel". */
-function linkedLine(s: Extract<Shelf, { kind: "linked" }>): string {
-  const kind = readExport(latestOf(s).export).kind;
-  return [`${s.editions.length} editions`, kind && KIND_NAME[kind]].filter(Boolean).join(" · ");
+/** "3 editions · Poetry", with the latest edition's chapters and words when chosen. */
+function linkedLine(s: Extract<Shelf, { kind: "linked" }>, show: ShowField[]): string {
+  const latest = latestOf(s);
+  const { kind, bookType } = readExport(latest.export);
+  return [
+    show.includes("edition") && `${s.editions.length} editions`,
+    show.includes("type") && bookTypeLabel(bookType, kind),
+    show.includes("chapters") && `${latest.chapters} ${latest.chapters === 1 ? "chapter" : "chapters"}`,
+    show.includes("words") && words(latest.words),
+  ].filter(Boolean).join(" · ");
 }
 
 function coverOf(p: WritingProject): string | null {
@@ -218,6 +242,8 @@ export function ScribeBooks({
       return v;
     });
 
+  const shows = (field: ShowField) => prefs.show.includes(field);
+  const meta = (p: WritingProject, linked: Extract<Shelf, { kind: "linked" }> | null) => (linked ? linkedLine(linked, prefs.show) : metaLine(p, prefs.show));
   const list = projects.state === "ready" ? projects.list : [];
   // Editions of one book share a card; it's found when any of them matches, and sorts by the one that sorts first.
   const shelves = useMemo(() => {
@@ -328,14 +354,14 @@ export function ScribeBooks({
           const cover = coverOf(p);
           return (
             <li key={linked ? linked.group : p.id} className={`scribe-book-row${linked ? " is-linked" : ""}`} {...cardProps(p, linked)}>
-              <button type="button" className="scribe-book-open" onClick={() => (linked ? setOpenGroup(linked.group) : onOpen(p.id))}>
+              <button type="button" className="scribe-book-open" aria-label={`${p.title}${p.author ? `, ${p.author}` : ""}`} onClick={() => (linked ? setOpenGroup(linked.group) : onOpen(p.id))}>
                 <span className="scribe-book-thumb">{cover ? <img src={cover} alt="" /> : <span className="scribe-book-blank">{p.title}</span>}</span>
                 <span className="scribe-book-text">
-                  <strong>{p.title}</strong>
-                  <span className="muted">{p.author || "No author yet"}</span>
+                  {shows("title") && <strong>{p.title}</strong>}
+                  {shows("author") && <span className="muted">{p.author || "No author yet"}</span>}
                 </span>
-                <span className="muted scribe-book-meta">{linked ? linkedLine(linked) : metaLine(p)}</span>
-                <span className="muted scribe-book-when">Edited {relativeTime(p.updatedAt)}</span>
+                <span className="muted scribe-book-meta">{linked ? linkedLine(linked, prefs.show) : metaLine(p, prefs.show)}</span>
+                {shows("edited") && <span className="muted scribe-book-when">Edited {relativeTime(p.updatedAt)}</span>}
               </button>
               {more(p, linked)}
             </li>
@@ -367,9 +393,10 @@ export function ScribeBooks({
               </button>
               <div className="grid-caption">
                 <div className="grid-text">
-                  <span className="book-title">{p.title}</span>
-                  <span className="book-author">{p.author || "No author yet"}</span>
-                  <span className="book-author scribe-book-meta">{linked ? linkedLine(linked) : metaLine(p)}</span>
+                  {shows("title") && <span className="book-title">{p.title}</span>}
+                  {shows("author") && <span className="book-author">{p.author || "No author yet"}</span>}
+                  {meta(p, linked) && <span className="book-author scribe-book-meta">{meta(p, linked)}</span>}
+                  {shows("edited") && <span className="book-author scribe-book-meta">Edited {relativeTime(p.updatedAt)}</span>}
                 </div>
                 {more(p, linked)}
               </div>
@@ -400,6 +427,21 @@ export function ScribeBooks({
               </>
             }
             items={SORTS.map((s) => ({ label: s.label, checked: prefs.sort === s.sort, onSelect: () => change({ sort: s.sort }) }))}
+          />
+          <Menu
+            label="Show under each book"
+            className="notes-filter notes-sort"
+            trigger={
+              <>
+                <span>Show</span>
+                <Icon name="chevronDown" size={13} />
+              </>
+            }
+            items={SHOW_FIELDS.map((f) => ({
+              label: f.label,
+              checked: shows(f.field),
+              onSelect: () => change({ show: SHOW_FIELDS.map((s) => s.field).filter((s) => (s === f.field ? !shows(s) : shows(s))) }),
+            }))}
           />
           <div className="layout-switch" role="radiogroup" aria-label="Layout">
             {(

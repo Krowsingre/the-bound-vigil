@@ -1,3 +1,4 @@
+import { BOOK_TYPES, currentBookType, type BookType, type BookTypeKey } from "./bookType";
 import { RememberedDetails } from "../components/RememberedDetails";
 import { FormattedText } from "./FormattedText";
 import { useEffect, useRef, useState } from "react";
@@ -208,6 +209,10 @@ export function DetailsDialog({
   const [seriesStyle, setSeriesStyle] = useState<SeriesStyle>(savedSeriesStyle);
   const savedSubtitle = readExport(project.export).subtitle;
   const [subtitle, setSubtitle] = useState(savedSubtitle);
+  const savedType = currentBookType(readExport(project.export).bookType, readExport(project.export).kind);
+  const [bookType, setBookType] = useState<BookType>(savedType);
+  // Only a type the writer picks is saved: a book's template is never turned into a choice for them.
+  const typeChanged = bookType.type !== savedType.type || (bookType.custom ?? "").trim() !== (savedType.custom ?? "").trim();
   const [opensWith, setOpensWith] = useState(project.coverPage);
   const [making, setMaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -218,8 +223,11 @@ export function DetailsDialog({
     setBusy(true);
     try {
       // Saved first, so the book that comes back carries it.
-      if (seriesStyle.word !== savedSeriesStyle.word || seriesStyle.numbers !== savedSeriesStyle.numbers || subtitle.trim() !== savedSubtitle)
-        await api.setWritingExport(project.id, JSON.stringify({ ...readExport(project.export), seriesStyle, subtitle: subtitle.trim() }));
+      if (seriesStyle.word !== savedSeriesStyle.word || seriesStyle.numbers !== savedSeriesStyle.numbers || subtitle.trim() !== savedSubtitle || typeChanged) {
+        const now = readExport(project.export);
+        const chosen = typeChanged ? (bookType.type === "custom" ? { type: bookType.type, custom: (bookType.custom ?? "").trim() } : { type: bookType.type }) : now.bookType;
+        await api.setWritingExport(project.id, JSON.stringify({ ...now, seriesStyle, subtitle: subtitle.trim(), bookType: chosen }));
+      }
       const saved = await api.updateWritingDetails(project.id, details);
       onSaved(opensWith !== project.coverPage ? await api.setWritingCoverPage(project.id, opensWith) : saved);
     } catch (e) {
@@ -286,6 +294,24 @@ export function DetailsDialog({
               <span>Subtitle</span>
               <input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} maxLength={300} placeholder="None" />
             </label>
+            <div className="writing-details-row">
+              <label className="field">
+                <span>Book type</span>
+                <select value={bookType.type} onChange={(e) => setBookType({ type: e.target.value as BookTypeKey, custom: bookType.custom })}>
+                  {BOOK_TYPES.map((t) => (
+                    <option key={t.type} value={t.type}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {bookType.type === "custom" && (
+                <label className="field">
+                  <span>Your type</span>
+                  <input value={bookType.custom ?? ""} onChange={(e) => setBookType({ type: "custom", custom: e.target.value })} maxLength={60} placeholder="Like Verse novel" autoComplete="off" />
+                </label>
+              )}
+            </div>
             <label className="field">
               <AuthorLabel />
               <input value={details.author ?? ""} onChange={(e) => set({ author: e.target.value })} autoFocus={focus === "author"} />
