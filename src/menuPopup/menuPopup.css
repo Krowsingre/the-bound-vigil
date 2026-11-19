@@ -8,8 +8,11 @@ body.menu-popup-page {
 
 .menu.menu-floating.menu-in-popup {
   position: static;
-  display: inline-block;
+  display: block;
+  /* Its own size, whatever size the window is now: the window fits round it. */
+  width: max-content;
   min-width: 260px;
-  max-height: calc(100vh - 2px);
+  max-width: 480px;
+  max-height: none;
   box-shadow: none;
 }

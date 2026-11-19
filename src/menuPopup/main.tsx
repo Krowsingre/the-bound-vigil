@@ -57,8 +57,12 @@ function PopupMenu() {
     root.setAttribute("style", look.style);
     const element = list.current;
     if (!element) return;
+    // Measured at its full height, then kept to the screen (scrolling inside).
+    element.style.maxHeight = "";
     const box = element.getBoundingClientRect();
-    void invoke("menu_popup_fit", { id: request.id, width: Math.ceil(box.width), height: Math.ceil(Math.min(box.height, screen.availHeight - 16)) });
+    const room = screen.availHeight - 16;
+    if (box.height > room) element.style.maxHeight = `${room}px`;
+    void invoke("menu_popup_fit", { id: request.id, width: Math.ceil(box.width), height: Math.ceil(Math.min(box.height, room)) });
     element.querySelector<HTMLButtonElement>(".menu-item:not(:disabled)")?.focus({ preventScroll: true });
   }, [request, section]);
 

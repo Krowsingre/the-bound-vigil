@@ -36,9 +36,10 @@ pub struct Request {
 #[derive(Default)]
 pub struct Showing(Mutex<Option<Request>>);
 
-/// Opens the menu window (making it the first time) with a new menu.
+/// Opens the menu window (making it the first time) with a new menu. Async:
+/// making a window in a command that isn't would freeze Windows.
 #[tauri::command]
-pub fn menu_popup_open(app: AppHandle, request: Request) -> Result<(), String> {
+pub async fn menu_popup_open(app: AppHandle, request: Request) -> Result<(), String> {
     let state = app.state::<Showing>();
     // A menu still open is closed first, unchosen.
     if let Some(old) = state.0.lock().map_err(|e| e.to_string())?.replace(request.clone()) {
