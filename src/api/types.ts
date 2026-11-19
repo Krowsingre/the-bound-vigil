@@ -682,6 +682,8 @@ export interface SeriesMatch {
   position: number | null;
   /** Why TBV thinks it fits, in words. */
   reason: string;
+  /** The missing book of the list it stands for, when matched by title. */
+  forKey?: string | null;
 }
 
 export interface SeriesReview {
