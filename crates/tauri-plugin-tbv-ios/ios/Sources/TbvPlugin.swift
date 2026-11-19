@@ -72,6 +72,9 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
     try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
     NotificationCenter.default.addObserver(
       self, selector: #selector(appCameBack), name: UIApplication.didBecomeActiveNotification, object: nil)
+    // Books from a friend have landed in the shared inbox: look, as on coming back.
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(appCameBack), name: Notification.Name("TBVFriendBooksArrived"), object: nil)
     DispatchQueue.main.async { self.watchCloud() }
   }
 
@@ -361,6 +364,38 @@ class TbvPlugin: Plugin, UIDocumentPickerDelegate, PHPickerViewControllerDelegat
     let args = try invoke.parseArgs(BackgroundWorkArgs.self)
     TbvBackgroundWork.shared.set(busy: args.busy, needsPower: args.needsPower)
     invoke.resolve()
+  }
+
+  /// Send to a TBV friend (FriendShare.swift): "send" shares files and
+  /// answers the link; "receive" opens a link and answers how many books came.
+  @objc public func friendShare(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(FriendShareArgs.self)
+    guard #available(iOS 15.0, *) else {
+      invoke.reject("Sending to a friend needs iOS 15 or later.")
+      return
+    }
+    switch args.action {
+    case "send":
+      TbvFriendShare.shared.send(paths: args.paths ?? [], titles: args.titles ?? []) { result in
+        switch result {
+        case .success(let url): invoke.resolve(["link": url.absoluteString])
+        case .failure(let error): invoke.reject(TbvFriendShare.words(error))
+        }
+      }
+    case "receive":
+      guard let link = args.link.flatMap({ URL(string: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }) else {
+        invoke.reject("That isn't a link.")
+        return
+      }
+      TbvFriendShare.shared.receive(link: link) { result in
+        switch result {
+        case .success(let count): invoke.resolve(["count": count])
+        case .failure(let error): invoke.reject(TbvFriendShare.words(error))
+        }
+      }
+    default:
+      invoke.reject("Unknown action.")
+    }
   }
 
   /// Where the browser's downloads wait.

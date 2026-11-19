@@ -109,6 +109,9 @@ entitlements["com.apple.security.application-groups"] = ["group.com.krowsingre.t
 # Silent pushes from TBV's push server (Push.swift). TestFlight and the App
 # Store use Apple's real push service.
 entitlements["aps-environment"] = "production"
+# Send to a TBV friend (FriendShare.swift): CloudKit in TBV's iCloud container.
+entitlements["com.apple.developer.icloud-container-identifiers"] = ["iCloud.com.krowsingre.theboundvigil"]
+entitlements["com.apple.developer.icloud-services"] = ["CloudKit"]
 with host_entitlements.open("wb") as f:
     plistlib.dump(entitlements, f)
 # XcodeGen regenerates target entitlements as well; restore the declared
@@ -141,4 +144,6 @@ if verified.get("com.apple.security.application-groups") != ["group.com.krowsing
     raise SystemExit("Host App Group entitlement verification failed")
 if verified.get("aps-environment") != "production":
     raise SystemExit("Host push entitlement verification failed")
+if verified.get("com.apple.developer.icloud-services") != ["CloudKit"]:
+    raise SystemExit("Host CloudKit entitlement verification failed")
 print("Share Extension and widget targets generated and App Group entitlements verified")

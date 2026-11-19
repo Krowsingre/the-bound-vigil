@@ -120,6 +120,22 @@ pub fn browser_active_downloads() -> Option<Vec<String>> {
     serde_json::from_value(answer.get("active")?.clone()).ok()
 }
 
+/// Send to a TBV friend through iCloud (FriendShare.swift): `{"action":
+/// "send", "paths", "titles"}` answers `{"link"}`; `{"action": "receive",
+/// "link"}` answers `{"count"}`. Waits for iCloud, so not on the main thread.
+pub fn friend_share(args: serde_json::Value) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get().ok_or("The iOS bridge isn't ready.")?;
+        swift.run_mobile_plugin::<serde_json::Value>("friendShare", args).map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = args;
+        Err("Sending to a friend is on the iPhone and iPad.".into())
+    }
+}
+
 /// Where the browser's downloads wait on the phone.
 pub fn browser_downloads_dir() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "ios")]

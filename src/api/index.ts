@@ -379,6 +379,10 @@ export interface Api {
    * cloud book), `web:<id>` (Scry's own) or `catalog:<key>`. False if it had
    * already ended. Only in the app. */
   stopDownload?(name: string): Promise<boolean>;
+  /** Send to a TBV friend: the books go to the person's iCloud, shared by a link sent from the Share sheet. iPhone and iPad. */
+  sendToFriend?(bookIds: string[]): Promise<{ shared: number; skipped: [string, string][] }>;
+  /** A link a friend sent: their books come into the library. Answers how many. iPhone and iPad. */
+  receiveFromFriend?(link: string): Promise<number>;
   /** A watched author's books online, out or coming, less those in the library. Only in the app. */
   watchAuthorBooks?(author: string): Promise<WatchedBook[]>;
   /** A watched book online, with its release date. Only in the app. */
@@ -1258,6 +1262,8 @@ function appApi(): Api {
       return { saved, folder: picked };
     },
     shareBookFiles: isIOS ? async (bookIds) => (await core).invoke<{ shared: number; skipped: [string, string][] }>("share_book_files", { bookIds, anchor: null }) : undefined,
+    sendToFriend: isIOS ? async (bookIds) => (await core).invoke<{ shared: number; skipped: [string, string][] }>("send_to_friend", { bookIds, anchor: null }) : undefined,
+    receiveFromFriend: isIOS ? async (link) => (await core).invoke<number>("receive_from_friend", { link }) : undefined,
     removeDownload: async (bookId) => (await core).invoke("remove_download", { bookId }),
     findDuplicates: async () => (await core).invoke<DuplicateGroup[]>("find_duplicates"),
     dismissDuplicates: async (key) => (await core).invoke("dismiss_duplicates", { key }),
