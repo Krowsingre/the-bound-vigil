@@ -2202,6 +2202,8 @@ pub fn run() {
             browser::browser_video,
             browser::browser_keep_playing,
             browser::browser_tab_keys,
+            browser::browser_form_memory,
+            browser::browser_clear_forms,
             browser::browser_cancel_download,
             browser::browser_download_status,
             browser::browser_fetch_picture,

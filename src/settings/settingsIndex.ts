@@ -304,8 +304,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   {
     tab: "browser",
     section: "typing",
-    label: "Tab in sites' search boxes",
-    words: "discover scry browser tab key autocomplete autofill suggestions fill in search box typing",
+    label: "Typing on sites",
+    words: "discover scry browser tab key autocomplete autofill suggestions fill in search box typing form forms remember saved entries clear",
   },
   {
     tab: "browser",
