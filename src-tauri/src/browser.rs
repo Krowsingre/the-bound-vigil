@@ -1058,8 +1058,10 @@ mod windows {
             let _ = settings.SetIsPasswordAutosaveEnabled(true);
             let _ = settings.SetIsGeneralAutofillEnabled(super::FORM_MEMORY.load(std::sync::atomic::Ordering::Relaxed));
         }
-        if super::CLEAR_FORMS_LATER.swap(false, std::sync::atomic::Ordering::Relaxed) {
-            let _ = clear_forms_now(&core);
+        if let Some(marker) = super::clear_forms_marker(&app).filter(|m| m.exists()) {
+            if clear_forms_now(&core).is_ok() {
+                let _ = std::fs::remove_file(marker);
+            }
         }
         let _ = set_tracking(&core, view::protection().level);
         let mut token = 0i64;
@@ -1777,9 +1779,13 @@ const TAB_KEYS_SCRIPT: &str = include_str!("browser_tab_keys.js");
 /// Whether tabs remember what's typed in sites' forms (off unless chosen).
 #[cfg_attr(not(windows), allow(dead_code))]
 static FORM_MEMORY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-/// Form entries to forget when the next tab opens (none was open when asked).
+/// A file saying form entries are to be forgotten when the next tab opens
+/// (none was open when asked). A file, so closing TBV first doesn't lose it.
 #[cfg_attr(not(windows), allow(dead_code))]
-static CLEAR_FORMS_LATER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+fn clear_forms_marker(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    use tauri::Manager;
+    app.path().app_local_data_dir().ok().map(|dir| dir.join("clear-form-entries"))
+}
 /// Preferences › Discover › Tab doesn't fill in sites' suggestions.
 static TAB_KEYS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -1930,7 +1936,13 @@ pub async fn browser_clear_forms(app: tauri::AppHandle) -> CommandResult<()> {
     #[cfg(windows)]
     match view::tabs(&app).first() {
         Some(view) => windows::clear_forms(view),
-        None => CLEAR_FORMS_LATER.store(true, std::sync::atomic::Ordering::Relaxed),
+        None => {
+            let marker = clear_forms_marker(&app).ok_or("TBV's data folder couldn't be found.")?;
+            if let Some(dir) = marker.parent() {
+                std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(&marker, b"").map_err(|e| e.to_string())?;
+        }
     }
     #[cfg(not(windows))]
     let _ = app;
