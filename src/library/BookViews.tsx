@@ -52,7 +52,62 @@ type Props = {
   onOpenSeries?: (name: string) => void;
   /** Showing one series: each book's place in it. */
   inSeries?: string;
+  /** The Pinned stack: pinned books and series, opened like a series, shown `at` this place. */
+  pinnedCard?: PinnedCard;
 };
+
+export type PinnedCard = { count: number; cover: BookPreview; at: number; onOpen: () => void };
+
+/** The list with the Pinned stack put in its place. */
+const withPinned = (rows: React.ReactNode[], card: React.ReactNode, at = 0) =>
+  card ? [...rows.slice(0, at), card, ...rows.slice(at)] : rows;
+
+const pinnedWords = (count: number) => `${count} pinned`;
+
+function PinnedGridCard({ card }: { card: PinnedCard }) {
+  return (
+    <li key="pinned-stack" className="grid-card series-stack pinned-stack">
+      <button type="button" className="grid-open" aria-label={`Open Pinned, ${pinnedWords(card.count)}`} onClick={card.onOpen}>
+        <BookCover key={card.cover.id} book={card.cover} seriesCount={card.count} />
+        <span className="pinned-stack-mark" aria-hidden><Icon name="pin" size={14} /></span>
+      </button>
+      <div className="grid-caption">
+        <div className="grid-text">
+          <span className="book-title">Pinned</span>
+          <span className="book-author">{pinnedWords(card.count)}</span>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function PinnedListRow({ card }: { card: PinnedCard }) {
+  return (
+    <li key="pinned-stack" className="list-row series-list-row pinned-stack">
+      <button type="button" className="list-open" aria-label={`Open Pinned, ${pinnedWords(card.count)}`} onClick={card.onOpen}>
+        <BookCover key={card.cover.id} book={card.cover} size="s" seriesCount={card.count} />
+        <span className="list-text">
+          <span className="book-title"><Icon name="pin" size={14} /> Pinned</span>
+          <span className="book-author">{pinnedWords(card.count)}</span>
+        </span>
+      </button>
+    </li>
+  );
+}
+
+function PinnedTableRow({ card }: { card: PinnedCard }) {
+  return (
+    <tr key="pinned-stack" className="series-table-row pinned-stack">
+      <td colSpan={8}>
+        <button type="button" className="table-title series-table-open" aria-label={`Open Pinned, ${pinnedWords(card.count)}`} onClick={card.onOpen}>
+          <BookCover book={card.cover} size="s" seriesCount={card.count} />
+          <Icon name="pin" size={14} /> Pinned
+          <span className="muted series-table-author">{pinnedWords(card.count)}</span>
+        </button>
+      </td>
+    </tr>
+  );
+}
 
 const press = (book: BookPreview, actions: BookActions, selection: Selection | null | undefined, books: BookPreview[], shift: boolean) =>
   selection ? selection.toggle(book, shift ? books : undefined) : clickBook(book, actions);
@@ -88,7 +143,7 @@ function Marks({ book }: { book: BookPreview }) {
   return (
     <>
       {book.pinnedAt && (
-        <span className="mark" title="Pinned to the top of the Archive">
+        <span className="mark" title="Pinned">
           <Icon name="pin" size={13} label="Pinned" />
         </span>
       )}
@@ -124,10 +179,10 @@ function Progress({ book }: { book: BookPreview }) {
 /** Right-click (or press and hold) on a stack opens its menu, as on a book. */
 const stackMenu = (name: string, seriesMenu?: Props["seriesMenu"]) => (seriesMenu ? holdForMenu(`More for ${name}`, () => seriesMenu(name)) : {});
 
-export function BookGrid({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, showStatus, inSeries }: Props) {
+export function BookGrid({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, showStatus, inSeries, pinnedCard }: Props) {
   return (
     <ul className={`book-grid${selection ? " is-selecting" : ""}`}>
-      {books.map((book) => {
+      {withPinned(books.map((book) => {
         const count = seriesCounts?.[book.id];
         if (count && book.series && onOpenSeries) {
           const name = book.series.trim();
@@ -186,15 +241,15 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesPublis
             <Progress book={book} />
           </li>
         );
-      })}
+      }), pinnedCard && <PinnedGridCard key="pinned-stack" card={pinnedCard} />, pinnedCard?.at)}
     </ul>
   );
 }
 
-export function BookList({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, inSeries }: Props) {
+export function BookList({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, inSeries, pinnedCard }: Props) {
   return (
     <ul className="book-list">
-      {books.map((book) => {
+      {withPinned(books.map((book) => {
         const count = seriesCounts?.[book.id];
         const name = book.series?.trim();
         if (count && name && onOpenSeries) {
@@ -242,12 +297,12 @@ export function BookList({ books, actions, selection, seriesCounts, seriesPublis
             <MoreMenu book={book} actions={actions} />
           </li>
         );
-      })}
+      }), pinnedCard && <PinnedListRow key="pinned-stack" card={pinnedCard} />, pinnedCard?.at)}
     </ul>
   );
 }
 
-export function BookTable({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, inSeries }: Props) {
+export function BookTable({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, inSeries, pinnedCard }: Props) {
   return (
     <table className="book-table">
       <thead>
@@ -265,7 +320,7 @@ export function BookTable({ books, actions, selection, seriesCounts, seriesPubli
         </tr>
       </thead>
       <tbody>
-        {books.map((book) => {
+        {withPinned(books.map((book) => {
           const count = seriesCounts?.[book.id];
           const name = book.series?.trim();
           const pick = count && name ? pickedSeries(name, selection, book, books) : null;
@@ -309,7 +364,7 @@ export function BookTable({ books, actions, selection, seriesCounts, seriesPubli
               </td>
             </tr>
           );
-        })}
+        }), pinnedCard && <PinnedTableRow key="pinned-stack" card={pinnedCard} />, pinnedCard?.at)}
       </tbody>
     </table>
   );

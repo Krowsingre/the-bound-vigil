@@ -111,7 +111,7 @@ export function Sidebar({
                   The Bound Vigil
                 </button>
               )}
-              <span className="brand-tagline">Books endure</span>
+              <span className="brand-tagline">Guardians of the realms of the imagination</span>
               <span className="brand-divider" aria-hidden />
             </>
           )}
@@ -225,7 +225,7 @@ export function Sidebar({
         {!collapsed && (
           <figure className="sidebar-quote" aria-hidden>
             <span className="sidebar-rule" />
-            <blockquote>A wider world lives in these pages.</blockquote>
+            <blockquote>Wider worlds live in these pages.</blockquote>
             <figcaption className="sidebar-quote-by">Krowsingre</figcaption>
             <span className="sidebar-rule" />
           </figure>

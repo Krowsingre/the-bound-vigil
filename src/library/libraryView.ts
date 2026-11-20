@@ -26,6 +26,7 @@ export interface LibraryView {
   narrators: string[];
   /** Leaves out books marked read. Remembered, like sort and layout. */
   hideRead: boolean;
+  /** Resonance's tab: always one kind of audio, Audiobooks to start (embre, 20 November). */
   audioType?: AudioType | null;
   /** Filters turned round (a second click): books with any of these are left out. */
   exclude: LibraryExclude;
@@ -53,7 +54,6 @@ export const NO_FILTERS: Partial<LibraryView> = {
   series: [],
   narrators: [],
   hideRead: false,
-  audioType: null,
   exclude: NO_EXCLUDE,
 };
 
@@ -97,6 +97,7 @@ export function initialView(kind: ItemKind = "books"): LibraryView {
   } catch {
     /* fall back to defaults */
   }
+  if (kind === "audiobooks") view.audioType = "audiobook";
   return view;
 }
 

@@ -19,7 +19,7 @@ import { makeBookActions, phoneChoiceShown } from "../home/bookActions";
 import { Spent, Stat } from "../home/ReadingActivity";
 import { useTimeSpent } from "../home/useTimeSpent";
 import { TagsDialog, deleteWarning, removeWarning } from "./BookDialogs";
-import { BookGrid, BookList, BookTable, type Selection } from "./BookViews";
+import { BookGrid, BookList, BookTable, type PinnedCard, type Selection } from "./BookViews";
 import { CollectionsTab } from "./CollectionsTab";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { excludeCount, NO_FILTERS, PAGE_SIZE, type LibraryView } from "./libraryView";
@@ -78,6 +78,8 @@ export function Library({
   onShowAllSeries,
   restoreScroll,
   onScrollRestored,
+  lead,
+  onFirstShown,
 }: {
   /** Books (the Library), documents (PDF, Word and text files) or audiobooks. */
   kind?: ItemKind;
@@ -102,6 +104,10 @@ export function Library({
   onShowAllSeries?: () => void;
   restoreScroll?: number | null;
   onScrollRestored?: () => void;
+  /** Resonance: the item last listened to, always shown first whatever the sort (embre, 20 November). */
+  lead?: BookPreview | null;
+  /** Says which item the list shows first, so Resonance's side bar can show it. */
+  onFirstShown?: (bookId: string | null) => void;
 }) {
   const [load, setLoad] = useState<Load<LibraryPage>>({ state: "loading" });
   const loadedView = useRef("");
@@ -194,8 +200,8 @@ export function Library({
       .map((a) => {
         if (a === "divider") return a;
         // A stack's downloads cover the whole series, whatever the filters show.
-        if (a.label === "Download") return { label: a.label, icon: a.icon, disabled: !!busy, onSelect: () => void downloadSeries(name) };
-        if (a.label === "Remove download") return { label: a.label, icon: a.icon, disabled: !!busy, onSelect: () => void askRemoveSeriesDownloads(name) };
+        if (a.label === "Download") return { label: a.label, icon: a.icon, disabled: !!busy || !canGetSeries(name), onSelect: () => void downloadSeries(name) };
+        if (a.label === "Remove download") return { label: a.label, icon: a.icon, disabled: !!busy || !hasSeriesHere(name), onSelect: () => void askRemoveSeriesDownloads(name) };
         return {
           label: a.label, icon: a.icon, hint: a.hint, danger: a.danger, disabled: !!busy, group: a.group,
           onSelect: withBooks((books) => (a.can && !a.can(books) ? toast(`Nothing in “${name}” for that.`) : a.run(books, name))),
@@ -233,15 +239,8 @@ export function Library({
       ...(kind === "books" ? [{ label: pinned ? "Unpin series" : "Pin series", onSelect: () => toggleSeriesPin(name, !pinned) }] : []),
     ];
   };
-  const [pinsExpanded, setPinsExpanded] = useState(() => {
-    try { return localStorage.getItem("tbv.archive.pinsCollapsed") === "0"; }
-    catch { return false; }
-  });
-  const togglePins = (expanded: boolean) => {
-    setPinsExpanded(expanded);
-    try { localStorage.setItem("tbv.archive.pinsCollapsed", expanded ? "0" : "1"); }
-    catch { /* The current view still folds. */ }
-  };
+  // Pinned books and series open as their own stack, the first card in the list (embre, 20 November).
+  const [showPinned, setShowPinned] = useState(false);
   const endless = narrow || scrollLibrary;
   /** Phone: how many pages are shown, and the books of every page after the first. */
   const [pages, setPages] = useState(1);
@@ -270,7 +269,7 @@ export function Library({
       .then((data) => { if (current) setSeriesTotal({ name: seriesName, count: data.total }); }, () => { if (current) setSeriesTotal(null); });
     return () => { current = false; };
   }, [seriesName, kind, refreshKey, reload]);
-  const separatePins = kind === "books" && !inSeries;
+  const separatePins = (kind === "books" || kind === "audiobooks") && !inSeries;
   const pinnedFirst = !inSeries;
   const pinned = separatePins ? false : undefined;
   const query = {
@@ -303,15 +302,44 @@ export function Library({
   const inFlight = useRef(false);
   const pendingRequest = useRef<(() => void) | null>(null);
   const previousSearch = useRef(query.search);
+  // Which series still have books to download here, and which have books on this device:
+  // a series' Download and Remove download are greyed out when there's nothing for them to do
+  // (embre, 20 November). Whole series, whatever the filters show.
+  const [seriesHere, setSeriesHere] = useState<{ toGet: Set<string>; here: Set<string> } | null>(null);
+  useEffect(() => {
+    if (kind === "documents") return;
+    let current = true;
+    const named = async (location: "on_device" | "cloud_only") => {
+      const found = new Set<string>();
+      for (let p = 0; ; p++) {
+        const got = await api.getLibrary({
+          kind, shelf: "all", sort: "series", search: null, formats: [], location, audioType: view.audioType,
+          groupSeries: true, mixSeries: true, page: p, pageSize: 200, omitFacets: true,
+        });
+        for (const b of got.books) if (got.seriesCounts?.[b.id] && b.series?.trim()) found.add(b.series.trim().toLowerCase());
+        if (got.page < p || (got.page + 1) * got.pageSize >= got.total) break;
+      }
+      return found;
+    };
+    void Promise.all([named("cloud_only"), named("on_device")]).then(
+      ([toGet, here]) => { if (current) setSeriesHere({ toGet, here }); },
+      () => { if (current) setSeriesHere(null); },
+    );
+    return () => { current = false; };
+  }, [kind, view.audioType, refreshKey, reload]);
+  const canGetSeries = (name: string) => !seriesHere || seriesHere.toGet.has(name.trim().toLowerCase());
+  const hasSeriesHere = (name: string) => !seriesHere || seriesHere.here.has(name.trim().toLowerCase());
+
   useEffect(() => {
     let current = true;
-    void api.getLibrary({ kind, shelf: "all", sort: "recently_added", search: null, formats: [], location: null, page: 0, pageSize: 1 })
+    // Resonance's counts and filter lists are for the tab showing (Audiobooks, Podcasts…).
+    void api.getLibrary({ kind, shelf: "all", sort: "recently_added", search: null, formats: [], location: null, audioType: view.audioType, page: 0, pageSize: 1 })
       .then((data) => { if (current) setFacets(data); }, () => undefined);
     if (kind === "books") void api.archiveSeriesPins?.().then((names) => {
       if (current) setPinnedSeries(names);
     }, () => undefined);
     return () => { current = false; };
-  }, [kind, refreshKey, reload]);
+  }, [kind, view.audioType, refreshKey, reload]);
 
   useEffect(() => {
     let current = true;
@@ -849,6 +877,25 @@ export function Library({
     }
   };
 
+  // Resonance's last listened item leads the first page, when nothing narrows the list.
+  const leadHere = lead && !inSeries && view.tab === "all" && !filtered && !search.trim() ? lead : null;
+  const firstPage = endless || (page?.page ?? 0) === 0;
+  const shownBooks = page ? (leadHere ? [...(firstPage ? [leadHere] : []), ...page.books.filter((b) => b.id !== leadHere.id)] : page.books) : [];
+  const firstShown = shownBooks[0]?.id ?? null;
+  const pageReady = !!page;
+  useEffect(() => {
+    if (pageReady) onFirstShown?.(firstShown);
+  }, [firstShown, pageReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pinCount = pins.length + (pinnedStacks?.books.length ?? 0);
+  const pinnedCover = pins[0] ?? pinnedStacks?.books[0];
+  const pinnedCard: PinnedCard | undefined = separatePins && firstPage && view.tab !== "collections" && pinCount > 0 && pinnedCover
+    ? { count: pinCount, cover: pinnedCover, at: leadHere ? 1 : 0, onOpen: () => { setSelected(null); setShowPinned(true); } }
+    : undefined;
+  // Nothing pinned any more: back to the list.
+  useEffect(() => {
+    if (showPinned && pageReady && pinCount === 0) setShowPinned(false);
+  }, [showPinned, pageReady, pinCount]);
+
   let body: React.ReactNode;
   if (load.state === "error") {
     body = (
@@ -862,6 +909,16 @@ export function Library({
     );
   } else if (view.tab === "collections") {
     body = <CollectionsTab collections={collections} onOpenCollection={onOpenCollection} />;
+  } else if (showPinned) {
+    body = (
+      <>
+        <Layout books={pins} actions={actions} />
+        {pinnedStacks && pinnedStacks.books.length > 0 && (
+          <Layout books={pinnedStacks.books} actions={actions} seriesCounts={pinnedStacks.seriesCounts}
+            seriesCovers={pinnedStacks.seriesCovers} seriesPublished={pinnedStacks.seriesPublished} seriesAuthors={pinnedStacks.seriesAuthors} onOpenSeries={onOpenSeries && ((name) => openStack(name, onOpenSeries))} seriesMenu={seriesMenu} />
+        )}
+      </>
+    );
   } else if (!page) {
     body = <div className="library-loading" aria-busy="true" aria-label="Loading your library" />;
   } else if (facets?.counts.all === 0) {
@@ -883,9 +940,7 @@ export function Library({
         </div>
       </div>
     );
-  } else if (page.total === 0 && (pins.length > 0 || (pinnedStacks?.books.length ?? 0) > 0)) {
-    body = null;
-  } else if (page.total === 0) {
+  } else if (page.total === 0 && !pinnedCard && !leadHere) {
     body = (
       <div className="library-empty">
         <h2>Nothing matches</h2>
@@ -918,7 +973,7 @@ export function Library({
       onClearSearch();
       onChange({ ...NO_FILTERS, tab: "all", series: [name], sort: "series", page: 0 });
     });
-    const items = <Layout books={page.books} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} seriesCovers={page.seriesCovers} seriesPublished={page.seriesPublished} seriesAuthors={page.seriesAuthors} seriesMenu={seriesMenu} showStatus={inSeries} inSeries={seriesName} onOpenSeries={(name) => openStack(name, openSeries)} />;
+    const items = <Layout books={shownBooks} pinnedCard={pinnedCard} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} seriesCovers={page.seriesCovers} seriesPublished={page.seriesPublished} seriesAuthors={page.seriesAuthors} seriesMenu={seriesMenu} showStatus={inSeries} inSeries={seriesName} onOpenSeries={(name) => openStack(name, openSeries)} />;
     body = endless ? (
       <>
         {items}
@@ -939,14 +994,20 @@ export function Library({
     <div className="library">
       <header className="library-head is-stacked">
         {seriesBack && <button type="button" className="back-link" onClick={seriesBack}><Icon name="chevronLeft" size={14} /> Back to {words.title}</button>}
+        {showPinned && !seriesBack && <button type="button" className="back-link" onClick={() => setShowPinned(false)}><Icon name="chevronLeft" size={14} /> Back to {words.title}</button>}
         <div className="library-title-row">
-          <h1 className="library-title">{inSeries ? view.series[0] : words.title}</h1>
-          {switcher}
+          <h1 className="library-title">{inSeries ? view.series[0] : showPinned ? "Pinned" : words.title}</h1>
+          {!showPinned && switcher}
         </div>
         {seriesName && (
           <div className="settings-actions">
-            <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => void downloadSeries(seriesName)}>Download</button>
-            <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => void askRemoveSeriesDownloads(seriesName)}>Remove download</button>
+            {/* Choosing books inside a series, as on the main page (embre, 20 November). */}
+            <button type="button" className={`btn btn-quiet select-button${selected ? " is-lit" : ""}`} aria-pressed={selected !== null}
+              onClick={() => setSelected(selected ? null : new Map())}>
+              <Icon name="check" size={16} /> Select
+            </button>
+            <button type="button" className="btn btn-quiet" disabled={!!busy || !canGetSeries(seriesName)} onClick={() => void downloadSeries(seriesName)}>Download</button>
+            <button type="button" className="btn btn-quiet" disabled={!!busy || !hasSeriesHere(seriesName)} onClick={() => void askRemoveSeriesDownloads(seriesName)}>Remove download</button>
             {seriesCheck && <FindMissingButton state={seriesCheck} />}
             {!albums && <SeriesHeart name={seriesName} favourite={isFavouriteSeries(seriesName, favourites.series)} onChange={(on) => toggleSeriesFavourite(seriesName, on)} />}
           </div>
@@ -962,7 +1023,8 @@ export function Library({
             {onShowAllSeries && <button type="button" className="view-all" onClick={onShowAllSeries}>{albums ? "Show all songs in this album" : "Show all books in this series"}</button>}
           </div>
         )}
-        {counts && (
+        {/* Inside a series (or Pinned) the page is about those books: no counts (embre, 20 November). */}
+        {counts && !inSeries && !showPinned && (
           <div className="stats stats-5 library-stats">
             <Stat icon="circleProgress" value={counts.inProgress} label="In progress" />
             <Stat icon="checkCircle" value={counts.read} label="Read" />
@@ -991,7 +1053,7 @@ export function Library({
         </div>
       )}
 
-      {!seriesBack && <LibraryToolbar
+      {!seriesBack && !showPinned && <LibraryToolbar
         view={view}
         counts={counts}
         formats={facets?.formats ?? []}
@@ -1016,7 +1078,7 @@ export function Library({
         onChange={onChange}
       />}
 
-      {selected && view.tab !== "collections" && (
+      {selected && view.tab !== "collections" && !showPinned && (
         <div className="select-bar" role="toolbar" aria-label={`Change many ${words.many}`}>
           <span className="select-count">
             {selected.size ? `${selected.size} chosen` : `Click ${words.many} to choose them`}
@@ -1059,10 +1121,10 @@ export function Library({
                 disabled={!page?.total || busy !== null}
                 onChange={(e) => (e.target.checked ? void chooseAll() : setSelected(new Map()))}
               />
-              All in library
+              {inSeries ? "Select all" : "All in library"}
             </label>
-            <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => setSelected(null)}>
-              Done
+            <button type="button" className="btn btn-quiet" disabled={none || busy !== null} onClick={() => setSelected(new Map())}>
+              Deselect all
             </button>
           </span>
         </div>
@@ -1118,16 +1180,6 @@ export function Library({
         onChoose={(id) => { changeCover(coverPicker, id); setCoverPicker(null); }} onClose={() => setCoverPicker(null)} />}
       {downloads.feedback}
       <div className="library-body">
-        {separatePins && (pins.length > 0 || (pinnedStacks?.books.length ?? 0) > 0) && view.tab !== "collections" && (
-          <details className="library-pins" open={pinsExpanded} onToggle={(event) => togglePins(event.currentTarget.open)}>
-            <summary><Icon name="pin" size={16} /> Pinned books <span className="tab-count num">{pins.length + (pinnedStacks?.books.length ?? 0)}</span></summary>
-            <Layout books={pins} actions={actions} selection={selection} />
-            {pinnedStacks && pinnedStacks.books.length > 0 && (
-              <Layout books={pinnedStacks.books} actions={actions} seriesCounts={pinnedStacks.seriesCounts}
-                seriesCovers={pinnedStacks.seriesCovers} seriesPublished={pinnedStacks.seriesPublished} seriesAuthors={pinnedStacks.seriesAuthors} onOpenSeries={onOpenSeries && ((name) => openStack(name, onOpenSeries))} seriesMenu={seriesMenu} />
-            )}
-          </details>
-        )}
         {body}
       </div>
       {seriesCheck && checkedSeries && (

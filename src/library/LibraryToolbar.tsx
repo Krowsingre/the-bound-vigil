@@ -26,11 +26,6 @@ const LAYOUTS: { layout: Layout; label: string; icon: "grid" | "list" | "rows" }
   { layout: "compact", label: "Compact list", icon: "rows" },
 ];
 
-const GROUPING: { value: SeriesGrouping; label: string }[] = [
-  { value: "individual", label: "Individual books" },
-  { value: "mixed", label: "Stacked and mixed" },
-  { value: "seriesFirst", label: "Stacked, series first" },
-];
 
 const OPENED_KEY = "tbv.filters.opened";
 
@@ -257,10 +252,10 @@ export function LibraryToolbar({
         {view.tab === "collections" && <span className="tabs-menu">{tabName(view.tab)}</span>}
         {view.tab !== "collections" && (
           <>
-            {/* Select goes straight into choosing; pressing it again (or Done) ends it. */}
+            {/* Select goes straight into choosing, lit while on; pressing it again ends it. */}
             <button
               type="button"
-              className={`toolbar-button${selecting ? " is-on" : ""}`}
+              className={`toolbar-button select-button${selecting ? " is-lit" : ""}`}
               aria-label="Select"
               aria-pressed={selecting}
               title="Select"
@@ -287,13 +282,9 @@ export function LibraryToolbar({
                 ]}
               />
             )}
-            {allowSeries && <Menu
-              label={`Series: ${GROUPING.find((item) => item.value === view.seriesGrouping)?.label}`}
-              className="toolbar-button"
-              trigger={<><Icon name="bookOpen" size={16} /> Series <Icon name="chevronDown" size={12} className="toolbar-chevron" /></>}
-              items={GROUPING.map(({ value, label }) => ({ label, checked: view.seriesGrouping === value,
-                onSelect: () => onChange({ seriesGrouping: value, page: 0 }) }))}
-            />}
+            {/* Series stacks each series into one card; Series first, joined to it, puts the stacks
+                ahead of single books and only works while Series is on (embre, 20 November). */}
+            {allowSeries && <SeriesSwitch grouping={view.seriesGrouping} onChange={(seriesGrouping) => onChange({ seriesGrouping, page: 0 })} />}
             <div className="layout-switch" role="radiogroup" aria-label="Layout">
               {LAYOUTS.map((l) => (
                 <button
@@ -314,6 +305,36 @@ export function LibraryToolbar({
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** The Series button and the Series first toggle joined to its right. */
+export function SeriesSwitch({ grouping, onChange }: { grouping: SeriesGrouping; onChange: (grouping: SeriesGrouping) => void }) {
+  const stacked = grouping !== "individual";
+  const first = grouping === "seriesFirst";
+  return (
+    <div className="series-switch" role="group" aria-label="Series">
+      <button
+        type="button"
+        aria-pressed={stacked}
+        title={stacked ? "Series stacked: show every book on its own" : "Stack each series into one card"}
+        className={stacked ? "is-active" : undefined}
+        onClick={() => onChange(stacked ? "individual" : "mixed")}
+      >
+        <Icon name="bookOpen" size={16} /> Series
+      </button>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={first}
+        disabled={!stacked}
+        title={stacked ? (first ? "Series first is on" : "Put series ahead of single books") : "Turn on Series to use Series first"}
+        className={`series-first${first ? " is-active" : ""}`}
+        onClick={() => onChange(first ? "mixed" : "seriesFirst")}
+      >
+        <span className="series-first-track" aria-hidden><span /></span> Series first
+      </button>
     </div>
   );
 }

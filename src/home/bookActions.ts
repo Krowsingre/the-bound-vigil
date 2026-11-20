@@ -55,6 +55,10 @@ export interface BookActions {
 
 /** The "…" menu for a book, and its right-click menu. */
 /** The menu item that opens an item's page: a song isn't a book (embre, 20 November). */
+/** Showing an audio item's series or author opens Resonance on that item's own tab. */
+const audioTab = (book: BookPreview): { audioType?: AudioType } =>
+  isAudio(book.format) ? { audioType: book.audioType ?? "audiobook" } : {};
+
 export function detailsLabel(book: BookPreview): string {
   if (!isAudio(book.format) || !book.audioType || book.audioType === "audiobook") return "Book details";
   return book.audioType === "music" ? "Song details" : book.audioType === "podcast" ? "Episode details" : "Details";
@@ -98,8 +102,8 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     ...(actions.setPinned
       ? [
           book.pinnedAt
-            ? { label: "Unpin from the Archive", icon: "pin" as const, onSelect: () => actions.setPinned?.(book, false) }
-            : { label: "Pin to the top of the Archive", icon: "pin" as const, onSelect: () => actions.setPinned?.(book, true) },
+            ? { label: `Unpin from ${isAudio(book.format) ? "Resonance" : "the Archive"}`, icon: "pin" as const, onSelect: () => actions.setPinned?.(book, false) }
+            : { label: `Pin to the top of ${isAudio(book.format) ? "Resonance" : "the Archive"}`, icon: "pin" as const, onSelect: () => actions.setPinned?.(book, true) },
         ]
       : []),
     { label: "Add to collection…", icon: "collections", onSelect: () => askAddToCollection(book) },
@@ -135,7 +139,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
           {
             label: book.audioType === "music" ? "Show album" : "Show series",
             icon: "library" as const,
-            onSelect: () => showInLibrary(kindOf(book.format), { ...NO_FILTERS, tab: "all", series: [book.series!], sort: "series" }),
+            onSelect: () => showInLibrary(kindOf(book.format), { ...NO_FILTERS, ...audioTab(book), tab: "all", series: [book.series!], sort: "series" }),
           },
         ]
       : []),
@@ -144,7 +148,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
           {
             label: book.authors.length > 1 ? `Show author (${book.authors[0]})` : "Show author",
             icon: "search" as const,
-            onSelect: () => showInLibrary(kindOf(book.format), { ...NO_FILTERS, tab: "all", authors: [book.authors[0]] }),
+            onSelect: () => showInLibrary(kindOf(book.format), { ...NO_FILTERS, ...audioTab(book), tab: "all", authors: [book.authors[0]] }),
           },
           ...(canWatch() ? [watchAuthorItem(book.authors[0])] : []),
         ]
@@ -292,7 +296,7 @@ export function makeBookActions(
     setAudioType: api.setAudioType && ((book, kind) => void run(book, api.setAudioType!(book.id, kind))),
     setRating: (book, rating) => void run(book, api.setRating(book.id, rating)),
     setPinned: api.setPinned && ((book, pinned) => void run(book, api.setPinned!(book.id, pinned).then(() => {
-      if (!pinned && book.pinnedAt) toast("Unpinned from Archive.", { label: "Undo", run: () => void run(book, api.setPinned!(book.id, true)) });
+      if (!pinned && book.pinnedAt) toast(`Unpinned from ${isAudio(book.format) ? "Resonance" : "the Archive"}.`, { label: "Undo", run: () => void run(book, api.setPinned!(book.id, true)) });
     }))),
     download: api.downloadBook && ((book) => {
       const stop = api.stopDownload && { label: "Stop", run: () => void api.stopDownload!(bookDownload(book.id)) };

@@ -69,7 +69,10 @@ html.is-starting body {
 }
 
 .splash-tagline {
-  margin: 12px 0 0;
+  margin: 12px auto 0;
+  max-width: min(90vw, 520px);
+  text-align: center;
+  line-height: 1.6;
   font-size: 12px;
   font-weight: 400;
   letter-spacing: 0.34em;
