@@ -2,11 +2,11 @@ import { workspaceFrame } from "../shell/workspaceFrame";
 // Opening TBV in one go: the splash stays up while the first screen gets
 // ready, its bar filling as each step finishes, then gives way to a
 // finished page. On a computer the splash is a card in its own window and
-// the main window stays hidden until now, and the card breaks up over it;
-// on the iPhone the splash covers the page and breaks up to show it.
+// the main window stays hidden until now, and the card settles away over it;
+// on the iPhone the splash covers the page and settles away to show it.
 
 import { api, isAndroid, isApp, isIOS } from "../api";
-import { disintegrate } from "./disintegrate";
+import { settle } from "./settle";
 import { setSplash, showSplash } from "./splashView";
 
 /** What has to be ready before the splash goes. */
@@ -163,5 +163,5 @@ async function finish() {
     setTimeout(() => overlay.remove(), 400);
     return;
   }
-  await disintegrate(overlay).catch(() => overlay.remove());
+  await settle(overlay);
 }

@@ -45,13 +45,10 @@ export function showSplash(card = false): HTMLElement {
       art.classList.add("is-shown");
     };
     img.src = url;
-    paintings.set(el, img);
   }
   return el;
 }
 
-/** The painting each splash shows, for drawing it again as it breaks up. */
-export const paintings = new WeakMap<HTMLElement, HTMLImageElement>();
 
 /** Moves the bar (0 to 1) and, when given, changes the words under it. */
 export function setSplash(el: HTMLElement, progress: number, label?: string) {
