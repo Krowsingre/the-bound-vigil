@@ -255,12 +255,13 @@ function Slide({
           {elsewhere && <p className="visually-hidden">{elsewhere}</p>}
           <div className="hero-actions">
             {reading ? (
-              <button type="button" className="btn btn-primary btn-large" onClick={() => actions.open(book)}>
-                <Icon name="play" size={16} /> Continue reading
+              // The button just says Continue, for books and audio alike (embre, 20 November).
+              <button type="button" className="btn btn-primary btn-large" aria-label="Continue reading" onClick={() => actions.open(book)}>
+                <Icon name="play" size={16} /> Continue
               </button>
             ) : (
-              <button type="button" className="btn btn-primary btn-large" onClick={() => playAudiobook(book.id)}>
-                <Icon name="play" size={16} /> Continue listening
+              <button type="button" className="btn btn-primary btn-large" aria-label="Continue listening" onClick={() => playAudiobook(book.id)}>
+                <Icon name="play" size={16} /> Continue
               </button>
             )}
             <Menu label={`More for ${book.title}`} className="icon-btn icon-btn-round" trigger={<Icon name="more" />} items={bookMenu(book, actions)} align="start" />

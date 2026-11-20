@@ -95,34 +95,71 @@ export function Audiobooks({
   };
   const [listening, setListening] = useState<BookPreview[] | null>(null);
   const [reload, setReload] = useState(0);
+  // Bumped when the list changes something, such as an item's type, so the tab counts are read again.
+  const [libraryChanges, setLibraryChanges] = useState(0);
+  // Resonance always shows one kind of audio, Audiobooks to start (embre, 20 November).
+  const audioType: AudioType = view.audioType ?? "audiobook";
+  useEffect(() => {
+    if (!view.audioType && !seriesBack) onChange({ audioType: "audiobook", page: view.page });
+  }, [view.audioType, seriesBack]); // eslint-disable-line react-hooks/exhaustive-deps
+  // How many items each kind has: a kind with none is greyed out.
+  const [typeCounts, setTypeCounts] = useState<Record<AudioType, number> | null>(null);
+  useEffect(() => {
+    let current = true;
+    void Promise.all(
+      AUDIO_VIEWS.map(({ type }) =>
+        api.getLibrary({ kind: "audiobooks", shelf: "all", sort: "recently_added", search: null, formats: [], location: null, audioType: type, page: 0, pageSize: 1, omitFacets: true })
+          .then((page) => [type, page.total] as const),
+      ),
+    ).then(
+      (pairs) => current && setTypeCounts(Object.fromEntries(pairs) as Record<AudioType, number>),
+      () => current && setTypeCounts(null),
+    );
+    return () => {
+      current = false;
+    };
+  }, [refreshKey, reload, libraryChanges]);
+  // Opening on a kind with nothing in it moves to the first kind that has something.
+  useEffect(() => {
+    if (!typeCounts || seriesBack || typeCounts[audioType] > 0) return;
+    const first = AUDIO_VIEWS.find(({ type }) => typeCounts[type] > 0);
+    if (first) onChange({ audioType: first.type, page: 0 });
+  }, [typeCounts]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The item last listened to on this tab, finished or not: it leads the list and fills the side bar.
   useEffect(() => {
     let current = true;
     api
       .getLibrary({
         kind: "audiobooks",
-        shelf: "in_progress",
+        shelf: "all",
         sort: "recently_opened",
         paired: pairing === "all" ? null : pairing === "paired",
         search: null,
         formats: [],
         location: view.location,
-        audioType: view.audioType,
+        audioType,
         page: 0,
         pageSize: 1,
+        omitFacets: true,
       })
       .then(
-        (page) => current && setListening(page.books),
+        (page) => current && setListening(page.books.filter((b) => b.lastOpenedAt)),
         () => current && setListening([]),
       );
     return () => {
       current = false;
     };
-  }, [refreshKey, reload, player.playing, pairing, view.location, view.audioType]);
+  }, [refreshKey, reload, player.playing, pairing, view.location, audioType]);
 
-  // The panel shows the book chosen, else the one playing (if it's in the
-  // library, not played from a server), else the last listened to.
-  const playingHere = player.book && !isServerBook(player.book.book.id) ? player.book.book.id : null;
-  const shown = chosen ?? playingHere ?? listening?.[0]?.id ?? null;
+  // The side bar is always there (embre, 20 November): the item chosen, else the one playing
+  // (if it's on this tab and in the library, not played from a server), else the last listened
+  // to, else the first in the list.
+  const [firstShown, setFirstShown] = useState<string | null>(null);
+  const playingHere = player.book && !isServerBook(player.book.book.id) && (player.book.book.audioType ?? "audiobook") === audioType ? player.book.book.id : null;
+  const lastListened = listening?.[0] ?? null;
+  const shown = chosen ?? playingHere ?? lastListened?.id ?? firstShown ?? null;
+  // A new tab starts from its own last listened item.
+  useEffect(() => setChosen(null), [audioType]);
 
   // Tapping a cover shows the audiobook in the panel (and the player bar);
   // playing stays on the Listen and Play buttons. On a phone the panel opens
@@ -159,9 +196,11 @@ export function Audiobooks({
                 <button
                   key={type}
                   type="button"
-                  aria-pressed={view.audioType === type}
-                  title={view.audioType === type ? "Show all audio" : undefined}
-                  onClick={() => onChange({ audioType: view.audioType === type ? null : type, page: 0 })}
+                  aria-pressed={audioType === type}
+                  // A kind with nothing in it can't be opened.
+                  disabled={audioType !== type && typeCounts !== null && typeCounts[type] === 0}
+                  title={audioType !== type && typeCounts?.[type] === 0 ? `No ${label.toLowerCase()} yet` : undefined}
+                  onClick={() => audioType !== type && onChange({ audioType: type, page: 0 })}
                 >
                   {label}
                 </button>
@@ -176,6 +215,9 @@ export function Audiobooks({
           onImportBooks={onImportBooks}
           onImportFolder={onImportFolder}
           onOpenBook={choose}
+          onLibraryChanged={() => setLibraryChanges((n) => n + 1)}
+          lead={lastListened}
+          onFirstShown={setFirstShown}
           onOpenCollection={onOpenCollection}
         />
       </div>

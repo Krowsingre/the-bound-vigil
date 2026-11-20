@@ -117,8 +117,11 @@
 }
 
 .brand-tagline {
-  font: 500 10px/1 var(--font-sans);
-  letter-spacing: 0.24em;
+  /* A long line: it wraps, centred, under the name. */
+  max-width: 200px;
+  text-align: center;
+  font: 500 10px/1.6 var(--font-sans);
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--sidebar-muted);
 }
@@ -265,10 +268,6 @@
 
 .sidebar-quote > .sidebar-rule:first-child {
   margin: 0 auto 18px;
-}
-
-.sidebar-quote-by::before {
-  content: "— ";
 }
 
 .sidebar-rule {

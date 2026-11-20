@@ -18,7 +18,7 @@ const MARKUP = `
   <div class="splash-body">
     <span class="splash-emblem">${emblem}</span>
     <h1 class="splash-title">The Bound Vigil</h1>
-    <p class="splash-tagline">Books endure</p>
+    <p class="splash-tagline">Guardians of the realms of the imagination</p>
     <div class="splash-divider"><span></span><i></i><span></span></div>
     <div class="splash-bar" role="progressbar" aria-label="Opening" aria-valuemin="0" aria-valuemax="100"><b></b></div>
     <p class="splash-label">Loading…</p>

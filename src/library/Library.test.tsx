@@ -126,7 +126,45 @@ test("choosing a shelf and a page reports the change", async () => {
   expect(onChange).toHaveBeenCalledWith({ page: 1 });
 });
 
-test("pinned books stay above the second page of Archive results", async () => {
+test("pinned books are the first stack, opened like a series", async () => {
+  getLibrary.mockImplementation(async (query) => ({
+    books: query?.pinned ? [book(1, { pinnedAt: "2026-01-01" })] : [book(25)],
+    total: query?.pinned ? 1 : 30,
+    page: query?.page ?? 0, pageSize: query?.pageSize ?? 24, counts, formats: ["epub"],
+    tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  renderLibrary();
+  // No folding section any more: a Pinned card leads the list.
+  expect(screen.queryByText("Pinned books")).toBeNull();
+  const card = await screen.findByRole("button", { name: "Open Pinned, 1 pinned" });
+  expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ pinned: true, page: 0 }));
+  expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ pinned: false, page: 0 }));
+  fireEvent.click(card);
+  expect(await screen.findByRole("heading", { name: "Pinned" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "More for Book 1" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Back to/ }));
+  expect(await screen.findByRole("button", { name: "More for Book 25" })).toBeInTheDocument();
+});
+
+test("opening a series from Pinned shows that series' books", async () => {
+  getLibrary.mockImplementation(async (query) => ({
+    books: query?.pinned ? [book(1, { pinnedAt: "2026-01-01" })] : query?.series?.length ? [book(7, { series: "Saga" })] : [book(25)],
+    total: query?.pinned ? 1 : 30,
+    page: query?.page ?? 0, pageSize: query?.pageSize ?? 24, counts, formats: ["epub"],
+    tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  const props = { search: "", refreshKey: 0, onChange: vi.fn(), onClearSearch: () => {}, onImportBooks: () => {}, onImportFolder: () => {}, onOpenBook: () => {}, onOpenCollection: () => {} };
+  const { rerender } = render(<ToastProvider><Library view={view} {...props} /></ToastProvider>);
+  fireEvent.click(await screen.findByRole("button", { name: "Open Pinned, 1 pinned" }));
+  expect(await screen.findByRole("heading", { name: "Pinned" })).toBeInTheDocument();
+  // The app keeps the same Library and hands it the series.
+  rerender(<ToastProvider><Library view={{ ...view, series: ["Saga"] }} seriesBack={() => {}} {...props} /></ToastProvider>);
+  expect(await screen.findByRole("heading", { name: "Saga" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "More for Book 7" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "More for Book 1" })).toBeNull();
+});
+
+test("the Pinned stack only leads the first page", async () => {
   getLibrary.mockImplementation(async (query) => ({
     books: query?.pinned ? [book(1, { pinnedAt: "2026-01-01" })] : [book(25)],
     total: query?.pinned ? 1 : 30,
@@ -134,11 +172,44 @@ test("pinned books stay above the second page of Archive results", async () => {
     tags: [], genres: [], authors: [], narrators: [], languages: [],
   }));
   renderLibrary({ view: { ...view, page: 1 } });
-  const heading = await screen.findByText("Pinned books");
-  expect(heading.closest("details")).not.toHaveAttribute("open");
   expect(await screen.findByRole("button", { name: "More for Book 25" })).toBeInTheDocument();
-  expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ pinned: true, page: 0 }));
-  expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ pinned: false, page: 1 }));
+  expect(screen.queryByRole("button", { name: /Open Pinned/ })).toBeNull();
+});
+
+test("Series stacks and Series first only works while Series is on", async () => {
+  getLibrary.mockResolvedValue({ books: [book(1)], total: 1, page: 0, pageSize: 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] });
+  const onChange = vi.fn();
+  renderLibrary({ onChange });
+  const series = await screen.findByRole("button", { name: "Series", pressed: false });
+  expect(screen.getByRole("switch", { name: /Series first/ })).toBeDisabled();
+  fireEvent.click(series);
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ seriesGrouping: "mixed" }));
+});
+
+test("Deselect all lets every chosen book go and Select ends choosing", async () => {
+  getLibrary.mockResolvedValue({ books: [book(1)], total: 1, page: 0, pageSize: 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] });
+  renderLibrary();
+  const select = await screen.findByRole("button", { name: "Select" });
+  fireEvent.click(select);
+  expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+  const deselect = screen.getByRole("button", { name: "Deselect all" });
+  expect(deselect).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: /Book 1/, pressed: false }));
+  expect(await screen.findByText("1 chosen")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Deselect all" }));
+  expect(await screen.findByText(/Click books to choose them/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Select", pressed: true }));
+  expect(screen.queryByRole("button", { name: "Deselect all" })).toBeNull();
+});
+
+test("the last listened item leads the list whatever the sort", async () => {
+  getLibrary.mockResolvedValue({ books: [book(1), book(2)], total: 2, page: 0, pageSize: 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] });
+  const onFirstShown = vi.fn();
+  renderLibrary({ lead: book(2), onFirstShown });
+  await screen.findByRole("button", { name: "More for Book 1" });
+  const titles = screen.getAllByRole("button", { name: /^More for Book/ }).map((b) => b.getAttribute("aria-label"));
+  expect(titles).toEqual(["More for Book 2", "More for Book 1"]);
+  await waitFor(() => expect(onFirstShown).toHaveBeenLastCalledWith(book(2).id));
 });
 
 test("search with no results says so and offers a way back", async () => {
@@ -209,7 +280,10 @@ test("series download skips local files and retries only the failed title", asyn
   const local = book(1, { series: "Shared series" });
   const remote = book(2, { availability: "cloud" });
   const failed = book(3, { availability: "cloud" });
-  getLibrary.mockResolvedValue({ books: [local], total: 3, page: 0, pageSize: 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] });
+  // The series still has books in the cloud, so its Download works.
+  getLibrary.mockImplementation(async (query) => query?.location === "cloud_only"
+    ? { books: [{ ...remote, series: "Shared series" }], seriesCounts: { [remote.id]: 2 }, total: 1, page: 0, pageSize: 200, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] }
+    : { books: [local], total: 3, page: 0, pageSize: 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] });
   getCollection.mockResolvedValue({ books: [local, remote, failed] });
   downloadBook.mockReset().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("Offline")).mockResolvedValueOnce(undefined);
   renderLibrary({ view: { ...view, series: ["Shared series"] }, seriesBack: () => {} });
@@ -275,4 +349,20 @@ test("Shift-click chooses a range of books, series stacks whole", async () => {
   fireEvent.click(screen.getByRole("button", { name: /Book 4/, pressed: false }), { shiftKey: true });
   await waitFor(() => expect(screen.getByRole("button", { name: "Choose series Long series" })).toHaveAttribute("aria-pressed", "true"));
   expect(screen.getByText(/4 chosen|4 books/)).toBeInTheDocument();
+});
+
+test("a series' Download and Remove download grey out when there's nothing for them to do", async () => {
+  const local = book(1, { series: "Shared series" });
+  // Every book is on this device: nothing in the cloud only.
+  getLibrary.mockImplementation(async (query) => query?.location === "cloud_only"
+    ? { books: [], total: 0, page: 0, pageSize: 200, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] }
+    : query?.location === "on_device"
+      ? { books: [local], seriesCounts: { [local.id]: 1 }, total: 1, page: 0, pageSize: 200, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] }
+      : { books: [local], total: 1, page: 0, pageSize: 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] });
+  renderLibrary({ view: { ...view, series: ["Shared series"] }, seriesBack: () => {} });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Download" })).toBeDisabled());
+  expect(screen.getByRole("button", { name: "Remove download" })).toBeEnabled();
+  // Inside a series: Select, and no counts row.
+  expect(screen.getByRole("button", { name: /Select/ })).toBeInTheDocument();
+  expect(screen.queryByText("In progress")).toBeNull();
 });

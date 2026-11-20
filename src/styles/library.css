@@ -143,6 +143,98 @@
   color: var(--accent-text);
 }
 
+/* Series and Series first, joined: lit like the layout buttons when on. */
+.series-switch {
+  display: flex;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+}
+.series-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  color: var(--text-muted);
+  font: 400 14px var(--font-serif);
+  white-space: nowrap;
+}
+.series-switch button + button {
+  border-left: 1px solid var(--border);
+}
+.series-switch button:not(:disabled):hover {
+  background: var(--surface-sunk);
+  color: var(--text);
+}
+.series-switch .is-active,
+.series-switch .is-active:hover {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.series-switch button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  background: none;
+  color: var(--text-muted);
+}
+/* A small on/off track in Series first. */
+.series-first-track {
+  position: relative;
+  width: 22px;
+  height: 12px;
+  border-radius: 6px;
+  border: 1px solid currentColor;
+}
+.series-first-track > span {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  transition: transform 0.15s;
+}
+.series-first.is-active .series-first-track > span {
+  transform: translateX(10px);
+}
+
+/* The Pinned stack's pin, on the cover's corner. */
+.pinned-stack .grid-open {
+  position: relative;
+}
+.pinned-stack-mark {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.pinned-stack .list-open .book-title,
+.pinned-stack .series-table-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Select, lit while choosing. */
+.library-toolbar.is-compact .toolbar-controls .toolbar-button.is-lit,
+.library-toolbar.is-compact .toolbar-controls .toolbar-button.is-lit:hover,
+.toolbar-button.is-lit,
+.btn.is-lit,
+.btn.is-lit:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
 .search-note {
   display: flex;
   align-items: baseline;
@@ -1362,6 +1454,17 @@ button.tag-chip-add:hover {
 
   .library-toolbar.is-compact {
     padding: 12px 0;
+  }
+
+  /* Series and Series first are wider than the old Series menu: the row wraps rather than run off the screen. */
+  .library-toolbar.is-compact .toolbar-controls {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+
+  /* Once the row wraps, the divider would be left hanging at the end of the first line. */
+  .library-toolbar.is-compact .toolbar-divider {
+    display: none;
   }
 
   /* Covers or the plain list on a phone; the list with pictures needs more room. */
