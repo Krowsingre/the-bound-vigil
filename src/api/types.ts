@@ -733,6 +733,8 @@ export interface Profile {
   name?: string | null;
   /** What this device is called: in Grimoire's list and in sync's notes. */
   deviceName?: string;
+  /** The library's friend code, like TBV-7K3Q-9F2M: the same on every device. */
+  friendCode?: string | null;
 }
 
 export type HighlightColor = "rose" | "amber" | "sage" | "slate";

@@ -2190,3 +2190,105 @@ kbd {
   min-width: 0;
   flex: 1 1 140px;
 }
+
+/* Profile on phones, an upright iPad and the folded Duo (embre's design, 20 November). */
+.profile-phone {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.profile-phone-picture {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.profile-picture.is-large {
+  width: 96px;
+  height: 96px;
+  border-width: 3px;
+  box-shadow: var(--shadow);
+}
+
+.profile-phone-buttons {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding-left: 18px;
+  border-left: 1px solid var(--border);
+}
+
+.profile-phone-buttons .btn {
+  justify-content: center;
+  min-height: 44px;
+}
+
+.profile-phone-row {
+  display: flex;
+  gap: 10px;
+}
+
+.profile-phone-row:empty {
+  display: none;
+}
+
+.profile-phone-row .btn {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-phone-fields > .field {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.profile-phone-fields > .field:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.profile-field-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.profile-field-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-s);
+  background: var(--surface-sunk);
+  color: var(--text-muted);
+}
+
+.profile-code {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-code-text {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--surface-sunk);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 17px;
+  letter-spacing: 0.06em;
+  user-select: all;
+  -webkit-user-select: all;
+}

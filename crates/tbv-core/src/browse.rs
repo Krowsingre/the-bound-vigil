@@ -677,7 +677,8 @@ impl Library {
     /// series ("series:<name>"). A book or series that stopped being a
     /// favourite, or a book that was deleted, isn't listed.
     pub fn top_favourites(&self) -> Result<Vec<TopFavourite>> {
-        // Two devices can each add a fifth before they sync; the earliest five are the Top five then.
+        // Two devices can each add a fifth before they sync; the earliest five are the Top five then
+        // (by key when two share a time, so every device agrees).
         let mut statement = self.conn.prepare(&format!("SELECT t.key, t.label FROM top_favourites t WHERE {} ORDER BY t.top_at, t.key LIMIT {TOP_FIVE}", Self::LIVE_TOP))?;
         let rows = statement.query_map([], |row| Ok(TopFavourite { key: row.get(0)?, label: row.get(1)? }))?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
@@ -1243,7 +1244,9 @@ mod tests {
         assert!(library.favourite_series().unwrap().is_empty());
         library.set_top_favourite(&format!("book:{}", ids[5]), "Book 5", true).unwrap();
         library.set_favorite(&ids[0], false).unwrap();
-        let top: Vec<_> = library.top_favourites().unwrap().into_iter().map(|t| t.label).collect();
+        // Added in the same millisecond, they can come back in any order.
+        let mut top: Vec<_> = library.top_favourites().unwrap().into_iter().map(|t| t.label).collect();
+        top.sort();
         assert_eq!(top, ["Book 1", "Book 2", "Book 3", "Book 5"]);
     }
 

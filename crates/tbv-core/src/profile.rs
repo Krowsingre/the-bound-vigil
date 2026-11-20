@@ -48,6 +48,21 @@ fn tidy_name(name: &str) -> Option<String> {
     (!name.is_empty()).then(|| name.chars().take(60).collect())
 }
 
+/// Letters and digits that can't be mistaken for each other (no 0/O, 1/I/L).
+const CODE_LETTERS: &[u8] = b"23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+
+/// "TBV-" and two groups of four, from a random number.
+fn new_friend_code() -> String {
+    let bytes = uuid::Uuid::new_v4().into_bytes();
+    let pick: String = bytes[..8].iter().map(|b| CODE_LETTERS[*b as usize % CODE_LETTERS.len()] as char).collect();
+    format!("TBV-{}-{}", &pick[..4], &pick[4..])
+}
+
+fn is_friend_code(code: &str) -> bool {
+    let parts: Vec<&str> = code.split('-').collect();
+    parts.len() == 3 && parts[0] == "TBV" && parts[1..].iter().all(|p| p.len() == 4 && p.bytes().all(|b| CODE_LETTERS.contains(&b)))
+}
+
 /// A name TBV gave a picture, safe to use as a file name.
 fn is_avatar_name(name: &str) -> bool {
     name.starts_with("avatar-") && !name.contains(['/', '\\']) && !name.contains("..")
@@ -87,7 +102,29 @@ impl Library {
 
     pub fn profile(&self) -> Result<Profile> {
         let path = self.avatar_name()?.map(|n| self.paths.profile_dir.join(n)).filter(|p| p.exists());
-        Ok(Profile { avatar_path: path.map(|p| p.display().to_string()), name: self.account_name()?, device_name: self.device_name()? })
+        Ok(Profile {
+            avatar_path: path.map(|p| p.display().to_string()),
+            name: self.account_name()?,
+            device_name: self.device_name()?,
+            friend_code: Some(self.friend_code()?),
+        })
+    }
+
+    /// The library's friend code, made the first time it's asked for. It
+    /// syncs on its own, apart from the name and picture; when two devices
+    /// each made one before syncing, the one made first is kept.
+    pub fn friend_code(&self) -> Result<String> {
+        let code: Option<String> = self.conn.query_row("SELECT code FROM friend_code WHERE id = ?1", params![ME], |r| r.get(0)).optional()?;
+        if let Some(code) = code.filter(|c| is_friend_code(c)) {
+            return Ok(code);
+        }
+        let code = new_friend_code();
+        self.conn.execute(
+            "INSERT INTO friend_code (id, code, made_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(id) DO UPDATE SET code = excluded.code, made_at = excluded.made_at",
+            params![ME, code, now_utc()],
+        )?;
+        Ok(code)
     }
 
     fn account_name(&self) -> Result<Option<String>> {
@@ -189,6 +226,16 @@ mod tests {
         fs::write(&picture, b"png").unwrap();
         library.set_account_name("embre").unwrap();
         assert_eq!(library.set_avatar(&picture).unwrap().name.as_deref(), Some("embre"));
+    }
+
+    #[test]
+    fn the_friend_code_is_made_once_and_kept() {
+        let (_dir, library) = open_temp_library();
+        let code = library.profile().unwrap().friend_code.unwrap();
+        assert!(super::is_friend_code(&code), "{code}");
+        assert_eq!(code.len(), "TBV-7K3Q-9F2M".len());
+        assert_eq!(library.friend_code().unwrap(), code);
+        assert_eq!(library.set_account_name("embre").unwrap().friend_code.as_deref(), Some(code.as_str()));
     }
 
     #[test]
