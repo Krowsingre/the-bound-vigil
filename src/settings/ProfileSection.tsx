@@ -241,7 +241,10 @@ function Oathkin() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    api.friends().then(setFriends, (e: unknown) => setError(String(e).replace(/^Error: /, "")));
+    const load = () => void api.friends().then(setFriends, (e: unknown) => setError(String(e).replace(/^Error: /, "")));
+    load();
+    // Friends saved on another device arrive with a sync.
+    return api.onSync({ libraryChanged: load });
   }, []);
   const words = (e: unknown) => {
     const text = String(e).replace(/^Error: /, "");
