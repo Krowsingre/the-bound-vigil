@@ -24,8 +24,11 @@ const MARKUP = `
     <p class="splash-label">Loading…</p>
   </div>`;
 
-/** The splash, made if the page doesn't have it yet, with a painting chosen. */
-export function showSplash(card = false): HTMLElement {
+/**
+ * The splash, made if the page doesn't have it yet, with a painting chosen
+ * (or the one given: the computer's glide copies the card's).
+ */
+export function showSplash(card = false, painting?: string): HTMLElement {
   let el = document.getElementById(SPLASH_ID);
   if (!el) {
     el = document.createElement("div");
@@ -37,17 +40,22 @@ export function showSplash(card = false): HTMLElement {
   el.setAttribute("aria-hidden", "true");
   el.innerHTML = MARKUP;
   const art = el.querySelector<HTMLElement>(".splash-art")!;
-  const url = PAINTINGS[Math.floor(Math.random() * PAINTINGS.length)];
+  const url = painting ?? PAINTINGS[Math.floor(Math.random() * PAINTINGS.length)];
   if (url) {
+    el.dataset.painting = url;
     const img = new Image();
     img.onload = () => {
       art.style.backgroundImage = `url("${url}")`;
       art.classList.add("is-shown");
     };
     img.src = url;
+    paintings.set(el, img);
   }
   return el;
 }
+
+/** The painting each splash shows, for drawing it again as it breaks up. */
+export const paintings = new WeakMap<HTMLElement, HTMLImageElement>();
 
 
 /** Moves the bar (0 to 1) and, when given, changes the words under it. */

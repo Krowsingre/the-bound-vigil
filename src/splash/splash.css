@@ -138,6 +138,72 @@ html.is-starting body {
   transition: opacity 0.35s ease;
 }
 
+/* The break-up's pieces (disintegrate.ts, phones and iPads). */
+.splash-dust {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  pointer-events: none;
+}
+
+/* The computer's glide (glide.ts): a copy of the card in the main window, at
+   the card's own spot, with the painting already showing. */
+.splash.is-card.is-copy {
+  transform: none;
+}
+
+.splash.is-copy .splash-art {
+  transition: none;
+}
+
+/* As the emblem, name and tagline glide off, the rest of the card goes. */
+.splash.is-copy.is-gliding {
+  opacity: 0;
+  transition: opacity 0.7s ease 0.2s;
+}
+
+.splash.is-copy.is-gliding .splash-art {
+  transform: scale(1.04);
+  transition: transform 0.9s ease-out;
+}
+
+.splash.is-copy.is-gliding .splash-divider,
+.splash.is-copy.is-gliding .splash-bar,
+.splash.is-copy.is-gliding .splash-label {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+/* Until the glide, the side bar's own emblem, name and tagline wait unseen
+   behind the card, so they don't show twice. */
+html.splash-glide-ahead .sidebar .brand-emblem,
+html.splash-glide-ahead .sidebar .brand-name,
+html.splash-glide-ahead .sidebar .brand-tagline {
+  opacity: 0;
+}
+
+/* The gliding parts, lifted out of the card so it doesn't clip them. */
+.splash-glide {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  pointer-events: none;
+  color: #ecebe8;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+.splash-glide > * {
+  position: fixed;
+  margin: 0;
+  max-width: none;
+  box-sizing: border-box;
+  will-change: transform, opacity;
+}
+
+.splash-glide > .splash-title {
+  white-space: nowrap;
+}
+
 /* Settling into TBV (settle.ts): the words drift up and fade, the painting
    eases forward and fades, then the dark gives way to the page underneath. */
 .splash.is-settling {

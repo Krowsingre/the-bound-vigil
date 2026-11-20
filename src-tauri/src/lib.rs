@@ -2597,6 +2597,8 @@ pub fn run() {
             splash::startup_progress,
             splash::startup_done,
             splash::startup_painted,
+            splash::splash_card,
+            splash::splash_handed_over,
             sync_sign_in,
             sync_sign_out,
             set_supabase_project,

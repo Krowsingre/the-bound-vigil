@@ -2,10 +2,12 @@
 //! while the main window gets ready out of sight. The page says how far it
 //! has got (the card's bar) and when its first screen is drawn; then the
 //! main window shows behind the card, already finished, and once it has
-//! drawn itself on screen the card settles away: its words drift up and fade,
-//! its painting eases forward and fades (or it simply fades, with Reduce
-//! motion on). The card's window is bigger than the card, with clear room
-//! round it for its shadow.
+//! drawn itself on screen the card turns into the side bar's emblem, name and
+//! tagline: the main window draws a copy of the card at the card's own spot
+//! (the card says where it sits, and this turns that into the main window's
+//! terms), the card's window goes, and the copy glides (glide.ts). With
+//! Reduce motion on the card simply fades. The card's window is bigger than
+//! the card, with clear room round it for its shadow.
 //!
 //! The hidden window is made the size of the screen from the start, so the
 //! page lays itself out once, at its real size. (Made at its normal size and
@@ -14,9 +16,10 @@
 //! opening animation is turned off for it too.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, EventTarget, Manager};
 
 const LABEL: &str = "splash";
@@ -34,6 +37,22 @@ const DRAWN_AT_MOST: Duration = Duration::from_millis(1500);
 const CARD: (f64, f64) = (420.0, 630.0);
 #[cfg(desktop)]
 const ROOM: f64 = 130.0;
+
+/// Where the card sits in its window (in its own points), and its painting.
+#[derive(Clone, Deserialize, Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Card {
+    left: f64,
+    top: f64,
+    width: f64,
+    height: f64,
+    painting: Option<String>,
+}
+
+static CARD_SPOT: Mutex<Option<Card>> = Mutex::new(None);
+/// The glide's copy has to say it's drawn within this long, or the card goes anyway.
+#[cfg(desktop)]
+const HAND_OVER_AT_MOST: Duration = Duration::from_millis(2500);
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -171,6 +190,59 @@ pub fn startup_painted(app: AppHandle, still: Option<bool>) {
     reveal(&app, still.unwrap_or(false));
 }
 
+/// The card says where it sits and which painting it shows, for the glide.
+#[tauri::command]
+pub fn splash_card(card: Card) {
+    if let Ok(mut spot) = CARD_SPOT.lock() {
+        *spot = Some(card);
+    }
+}
+
+/// The main window's copy of the card is drawn: the card's window goes.
+#[tauri::command]
+pub fn splash_handed_over(app: AppHandle) {
+    close_card(&app);
+}
+
+/// The card's spot in the main window's points, from both windows' places on
+/// screen (in pixels) and their scales.
+pub fn in_main(card: &Card, card_at: (f64, f64), card_scale: f64, main_at: (f64, f64), main_scale: f64) -> Card {
+    let x = |v: f64, at: f64, main: f64| (at + v * card_scale - main) / main_scale;
+    Card {
+        left: x(card.left, card_at.0, main_at.0),
+        top: x(card.top, card_at.1, main_at.1),
+        width: card.width * card_scale / main_scale,
+        height: card.height * card_scale / main_scale,
+        painting: card.painting.clone(),
+    }
+}
+
+/// Tells the main window where to draw its copy of the card, if both windows
+/// and the card's spot are known.
+#[cfg(desktop)]
+fn start_glide(app: &AppHandle) -> bool {
+    let Some(spot) = CARD_SPOT.lock().ok().and_then(|s| s.clone()) else { return false };
+    let (Some(card), Some(main)) = (app.get_webview_window(LABEL), app.get_webview_window("main")) else { return false };
+    let (Ok(card_at), Ok(card_scale), Ok(main_at), Ok(main_scale)) =
+        (card.inner_position(), card.scale_factor(), main.inner_position(), main.scale_factor())
+    else {
+        return false;
+    };
+    let from = in_main(&spot, (card_at.x as f64, card_at.y as f64), card_scale, (main_at.x as f64, main_at.y as f64), main_scale);
+    app.emit_to(EventTarget::webview_window("main"), "tbv://glide", from).is_ok()
+}
+
+/// The card's window goes, and Windows animates the main window as usual again.
+fn close_card(app: &AppHandle) {
+    if let Some(card) = app.get_webview_window(LABEL) {
+        let _ = card.destroy();
+    }
+    #[cfg(windows)]
+    if let Some(main) = app.get_webview_window("main") {
+        transitions(&main, true);
+    }
+}
+
 fn show_main(app: &AppHandle) {
     if SHOWN.swap(true, Ordering::SeqCst) {
         return;
@@ -207,19 +279,22 @@ fn reveal(app: &AppHandle, still: bool) {
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.set_focus();
     }
+    // The glide: the main window takes over from the card and says when (splash_handed_over).
+    #[cfg(desktop)]
+    if !still && start_glide(app) {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(HAND_OVER_AT_MOST);
+            close_card(&app);
+        });
+        return;
+    }
     let _ = app.emit_to(EventTarget::webview_window(LABEL), "tbv://splash", Splash { progress: 1.0, label: None, done: true, still });
     let app = app.clone();
     std::thread::spawn(move || {
         // The card's fade, or its settle (settle.ts, about half a second).
         std::thread::sleep(Duration::from_millis(if still { 400 } else { 700 }));
-        if let Some(card) = app.get_webview_window(LABEL) {
-            let _ = card.destroy();
-        }
-        // Minimising and restoring animate as usual from now on.
-        #[cfg(windows)]
-        if let Some(main) = app.get_webview_window("main") {
-            transitions(&main, true);
-        }
+        close_card(&app);
     });
 }
 
@@ -239,5 +314,22 @@ fn transitions(window: &tauri::WebviewWindow, on: bool) {
             (&disabled as *const i32).cast(),
             std::mem::size_of::<i32>() as u32,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_card_spot_lands_in_the_main_windows_points() {
+        let card = Card { left: 130.0, top: 130.0, width: 420.0, height: 630.0, painting: Some("p.webp".into()) };
+        // Both at 150%: the card window at (600, 150) px, the main window at (0, 0) px.
+        let at = in_main(&card, (600.0, 150.0), 1.5, (0.0, 0.0), 1.5);
+        assert_eq!((at.left, at.top, at.width, at.height), (530.0, 230.0, 420.0, 630.0));
+        assert_eq!(at.painting.as_deref(), Some("p.webp"));
+        // The card on a 100% screen, the main window at 200% further along.
+        let at = in_main(&card, (100.0, 0.0), 1.0, (40.0, 20.0), 2.0);
+        assert_eq!((at.left, at.top, at.width, at.height), (95.0, 55.0, 210.0, 315.0));
     }
 }

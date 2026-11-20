@@ -2,11 +2,13 @@ import { workspaceFrame } from "../shell/workspaceFrame";
 // Opening TBV in one go: the splash stays up while the first screen gets
 // ready, its bar filling as each step finishes, then gives way to a
 // finished page. On a computer the splash is a card in its own window and
-// the main window stays hidden until now, and the card settles away over it;
-// on the iPhone the splash covers the page and settles away to show it.
+// the main window stays hidden until now, then the card's emblem, name and
+// tagline glide into the side bar (glide.ts); on the iPhone and iPad the
+// splash covers the page and breaks up to show it.
 
 import { api, isAndroid, isApp, isIOS } from "../api";
-import { settle } from "./settle";
+import { disintegrate } from "./disintegrate";
+import { GLIDE, GLIDE_AHEAD, glide, type GlideFrom } from "./glide";
 import { setSplash, showSplash } from "./splashView";
 
 /** What has to be ready before the splash goes. */
@@ -154,7 +156,10 @@ async function finish() {
     // The window shows behind the card; the card goes once it has drawn on screen.
     await invoke("startup_done").catch(() => undefined);
     await drawnOnScreen();
+    if (still) document.documentElement.classList.remove(GLIDE_AHEAD);
     await invoke("startup_painted", { still }).catch(() => undefined);
+    // Should the glide never come, the side bar's emblem and words show anyway.
+    setTimeout(() => document.documentElement.classList.remove(GLIDE_AHEAD), 2_500 + GLIDE);
     return;
   }
   if (!overlay) return;
@@ -163,5 +168,20 @@ async function finish() {
     setTimeout(() => overlay.remove(), 400);
     return;
   }
-  await settle(overlay);
+  await disintegrate(overlay).catch(() => overlay.remove());
+}
+
+// The computer: once the window shows, the card hands over to a copy of
+// itself in the page, at the same spot, and the copy's emblem, name and
+// tagline glide into the side bar's (splash.rs says where the card is).
+if (onComputer) {
+  document.documentElement.classList.add(GLIDE_AHEAD);
+  void import("@tauri-apps/api/event").then(({ listen }) =>
+    listen<GlideFrom>("tbv://glide", ({ payload }) => {
+      void glide(payload, label ?? resting, async () => {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("splash_handed_over").catch(() => undefined);
+      });
+    }),
+  );
 }
