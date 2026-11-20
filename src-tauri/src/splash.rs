@@ -2,10 +2,9 @@
 //! while the main window gets ready out of sight. The page says how far it
 //! has got (the card's bar) and when its first screen is drawn; then the
 //! main window shows behind the card, already finished, and once it has
-//! drawn itself on screen the card settles away: its words drift up and fade,
-//! its painting eases forward and fades (or it simply fades, with Reduce
-//! motion on). The card's window is bigger than the card, with clear room
-//! round it for its shadow.
+//! drawn itself on screen the card breaks up into specks (or fades, with
+//! Reduce motion on). The card's window is bigger than the card, with clear
+//! room round it, so the specks can drift off it before they fade.
 //!
 //! The hidden window is made the size of the screen from the start, so the
 //! page lays itself out once, at its real size. (Made at its normal size and
@@ -29,7 +28,7 @@ static REVEALED: AtomicBool = AtomicBool::new(false);
 /// The card goes after this long once the main window shows, if the page never says it has drawn.
 #[cfg(desktop)]
 const DRAWN_AT_MOST: Duration = Duration::from_millis(1500);
-/// The card's size, and the clear room round it for its shadow.
+/// The card's size, and the clear room round it for its specks to drift into.
 #[cfg(desktop)]
 const CARD: (f64, f64) = (420.0, 630.0);
 #[cfg(desktop)]
@@ -41,7 +40,7 @@ struct Splash {
     progress: f64,
     label: Option<String>,
     done: bool,
-    /// Fade instead of settling (Reduce motion).
+    /// Fade instead of breaking up (Reduce motion).
     still: bool,
 }
 
@@ -93,7 +92,7 @@ pub fn open(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-/// The splash card's window, the size given (with room round it for its shadow).
+/// The splash card's window, the size given (with room round it for its specks).
 #[cfg(desktop)]
 fn build_card(app: &AppHandle, width: f64, height: f64) -> tauri::Result<tauri::WebviewWindow> {
     let card = tauri::WebviewWindowBuilder::new(app, LABEL, tauri::WebviewUrl::App("splash.html".into()))
@@ -164,8 +163,8 @@ pub fn startup_done(app: AppHandle) {
     show_main(&app);
 }
 
-/// The main window has drawn itself on screen: let the card go, settling
-/// away unless `still` (Reduce motion).
+/// The main window has drawn itself on screen: let the card go, breaking
+/// up unless `still` (Reduce motion).
 #[tauri::command]
 pub fn startup_painted(app: AppHandle, still: Option<bool>) {
     reveal(&app, still.unwrap_or(false));
@@ -210,8 +209,8 @@ fn reveal(app: &AppHandle, still: bool) {
     let _ = app.emit_to(EventTarget::webview_window(LABEL), "tbv://splash", Splash { progress: 1.0, label: None, done: true, still });
     let app = app.clone();
     std::thread::spawn(move || {
-        // The card's fade, or its settle (settle.ts, about half a second).
-        std::thread::sleep(Duration::from_millis(if still { 400 } else { 700 }));
+        // The card's fade, or its specks drifting off.
+        std::thread::sleep(Duration::from_millis(if still { 400 } else { 1400 }));
         if let Some(card) = app.get_webview_window(LABEL) {
             let _ = card.destroy();
         }

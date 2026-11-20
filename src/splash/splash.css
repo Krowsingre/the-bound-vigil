@@ -36,7 +36,8 @@ html.is-starting body {
   transform: scale(1);
 }
 
-/* The veil keeps the painting quiet behind the words. */
+/* The veil keeps the painting quiet behind the words. Its colours are also
+   drawn by disintegrate.ts, so the two must match. */
 .splash-shade {
   position: absolute;
   inset: 0;
@@ -52,6 +53,11 @@ html.is-starting body {
   justify-content: center;
   padding: 24px;
   text-align: center;
+}
+
+/* Until the name's font has arrived (splashView.ts). */
+.splash-body.is-waiting {
+  visibility: hidden;
 }
 
 .splash-emblem {
@@ -138,31 +144,15 @@ html.is-starting body {
   transition: opacity 0.35s ease;
 }
 
-/* Settling into TBV (settle.ts): the words drift up and fade, the painting
-   eases forward and fades, then the dark gives way to the page underneath. */
-.splash.is-settling {
-  opacity: 0;
-  transition: opacity 0.4s ease 0.15s;
-}
-
-.splash.is-settling .splash-body {
-  opacity: 0;
-  transform: translateY(-14px);
-  transition:
-    opacity 0.35s ease,
-    transform 0.45s ease-out;
-}
-
-.splash.is-settling .splash-art {
-  opacity: 0;
-  transform: scale(1.06);
-  transition:
-    opacity 0.45s ease,
-    transform 0.55s ease-out;
+.splash-dust {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  pointer-events: none;
 }
 
 /* The computer's card: its own window, with clear room round it for its
-   shadow. */
+   shadow and for the specks to drift into as it breaks up. */
 html.splash-window,
 html.splash-window body {
   margin: 0;

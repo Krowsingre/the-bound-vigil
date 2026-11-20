@@ -2,6 +2,8 @@
 // computer's (a card in its own window). Plain DOM, so it shows before
 // anything else of TBV has loaded.
 
+// The name's font, before anything else, so the splash can wait for it.
+import "@fontsource/gelasio/400.css";
 import emblem from "../assets/emblem.svg?raw";
 import "./splash.css";
 
@@ -45,10 +47,21 @@ export function showSplash(card = false): HTMLElement {
       art.classList.add("is-shown");
     };
     img.src = url;
+    paintings.set(el, img);
+  }
+  // The name waits for its own font, so it never shows in a stand-in font first
+  // and then grows when the real one arrives (but not for long).
+  const body = el.querySelector<HTMLElement>(".splash-body");
+  if (body && document.fonts?.load) {
+    body.classList.add("is-waiting");
+    const show = () => body.classList.remove("is-waiting");
+    void Promise.race([document.fonts.load('400 34px Gelasio').catch(() => undefined), new Promise((ok) => setTimeout(ok, 800))]).then(show);
   }
   return el;
 }
 
+/** The painting each splash shows, for drawing it again as it breaks up. */
+export const paintings = new WeakMap<HTMLElement, HTMLImageElement>();
 
 /** Moves the bar (0 to 1) and, when given, changes the words under it. */
 export function setSplash(el: HTMLElement, progress: number, label?: string) {
