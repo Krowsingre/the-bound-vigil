@@ -557,6 +557,16 @@ pub fn write_parts_bundle(parts: &[PathBuf], dir: &Path, out: &Path) -> Result<(
     }
 }
 
+/// The picture beside one audio file, for a song split out of an album folder
+/// that keeps its cover as a file rather than inside each song.
+pub fn sibling_cover(path: &Path, format: &str) -> Option<Cover> {
+    if !PART_FORMATS.contains(&format) {
+        return None;
+    }
+    let picture = folder_cover(path.parent()?)?;
+    crate::formats::cover_from_bytes(fs::read(picture).ok()?)
+}
+
 /// A cover picture kept beside the audio files.
 fn folder_cover(dir: &Path) -> Option<PathBuf> {
     let mut pictures: Vec<PathBuf> = fs::read_dir(dir)
@@ -675,7 +685,10 @@ fn combine(infos: Vec<PartInfo>, names: Vec<String>, bundle_cover: Option<Cover>
         AudioKind::Podcast
     } else if many {
         // A book in parts, or an album kept whole from before songs came apart.
-        if infos.iter().zip(&exts).all(|(info, ext)| song_like(info, ext)) { AudioKind::Music } else { AudioKind::Audiobook }
+        // The same size limits as import, so a book ripped from CDs that
+        // import kept whole isn't then called an album.
+        let album_sized = infos.len() <= ALBUM_PARTS && at <= ALBUM_MS;
+        if album_sized && infos.iter().zip(&exts).all(|(info, ext)| song_like(info, ext)) { AudioKind::Music } else { AudioKind::Audiobook }
     } else if audiobook_signal(first, &exts[0]) {
         AudioKind::Audiobook
     } else if song_like(first, &exts[0]) {
@@ -1336,6 +1349,10 @@ pub(crate) mod tests {
         fs::create_dir(&album).unwrap();
         fs::write(album.join("01 Morning.mp3"), silent_song(40, "Morning", "Harvest", "Ann Singer", 1)).unwrap();
         fs::write(album.join("02 Evening.mp3"), silent_song(40, "Evening", "Harvest", "Ann Singer", 2)).unwrap();
+        // The album's picture is a file beside the songs, not inside them.
+        let mut png = Vec::new();
+        image::RgbImage::new(4, 4).write_to(&mut io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        fs::write(album.join("cover.png"), png).unwrap();
         let books = folder_books(&album);
         assert_eq!(books.iter().map(|(n, p)| (n.as_str(), p.len())).collect::<Vec<_>>(), vec![("01 Morning", 1), ("02 Evening", 1)]);
 
@@ -1357,6 +1374,8 @@ pub(crate) mod tests {
         };
         let kind: String = library.conn.query_row("SELECT audio_type FROM books WHERE id = ?1", [&id], |r| r.get(0)).unwrap();
         assert_eq!(kind, "music");
+        let cover: Option<String> = library.conn.query_row("SELECT cover_path FROM local_files WHERE book_id = ?1", [&id], |r| r.get(0)).unwrap();
+        assert!(cover.is_some(), "each song keeps the album's picture");
         let details = library.book_details(&id).unwrap();
         let field = |f: &str| details.fields.iter().find(|x| x.field == f).and_then(|x| x.fetched.clone().or(x.own.clone()));
         assert_eq!(field("series").as_deref(), Some("Harvest"));
@@ -1377,6 +1396,25 @@ pub(crate) mod tests {
         let series: Option<String> = library.conn.query_row("SELECT series FROM books WHERE id = ?1", [&id], |r| r.get(0)).unwrap();
         assert_eq!(series.as_deref(), Some("Harvest"));
         assert!(library.audio_recheck_list().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_long_bundle_of_tagged_tracks_stays_an_audiobook() {
+        let track = |n: u32| PartInfo {
+            album: Some("The Long Book".into()),
+            track: Some(n),
+            duration_ms: 70 * 60 * 1000,
+            ..PartInfo::default()
+        };
+        // Three tracks of 70 minutes are past an album's length: a book from CDs.
+        let infos: Vec<PartInfo> = (1..=3).map(track).collect();
+        let names = (1..=3).map(|n| format!("{n:02}.mp3")).collect();
+        let (_, audio) = combine(infos, names, None);
+        assert_eq!(audio.kind, AudioKind::Audiobook);
+        // Two short tracks are still an album kept whole.
+        let short = |n: u32| PartInfo { duration_ms: 4 * 60 * 1000, ..track(n) };
+        let (_, audio) = combine(vec![short(1), short(2)], vec!["01.mp3".into(), "02.mp3".into()], None);
+        assert_eq!(audio.kind, AudioKind::Music);
     }
 
     #[test]
