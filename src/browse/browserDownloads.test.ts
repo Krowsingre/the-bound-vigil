@@ -6,6 +6,7 @@ const native = vi.hoisted(() => ({
   browserDownloadStatus: vi.fn(),
   onBrowserEvent: vi.fn((_receive: (event: BrowserEvent) => void) => () => undefined),
   browserDownloadKind: vi.fn(async () => "ebook"),
+  downloadWebBook: vi.fn(async () => undefined),
 }));
 vi.mock("../api", () => ({ api: native }));
 
@@ -108,4 +109,27 @@ it("resumes checking a completed file after restart and keeps it available to im
   } finally {
     stop();
   }
+});
+
+it("fetches a book the page couldn't finish once, however often Scry is opened again", async () => {
+  vi.resetModules();
+  native.downloadWebBook.mockResolvedValue(undefined);
+  let receive: (event: BrowserEvent) => void = () => undefined;
+  native.onBrowserEvent.mockImplementation((listen: (event: BrowserEvent) => void) => {
+    receive = listen;
+    return () => undefined;
+  });
+  const { listenForDownloads } = await import("./browserDownloads");
+  const url = "https://books.example/get/star-druid.epub";
+  for (let visit = 0; visit < 3; visit++) {
+    const stop = listenForDownloads(vi.fn());
+    if (visit === 0) {
+      receive({ kind: "downloadStart", tab: "a", id: "d1", name: "Star Druid.epub", url } as BrowserEvent);
+      receive({ kind: "download", tab: "a", id: "d1", name: "Star Druid.epub", path: "", ok: false, error: "The browser interrupted this transfer.", securityBlocked: false } as BrowserEvent);
+    }
+    stop();
+  }
+  await Promise.resolve();
+  expect(native.downloadWebBook).toHaveBeenCalledTimes(1);
+  expect(native.downloadWebBook).toHaveBeenCalledWith(url, "Star Druid.epub", undefined);
 });

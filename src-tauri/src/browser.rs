@@ -388,8 +388,10 @@ mod view {
                 let address = url.to_string();
                 let key = (download_tab.to_owned(), address.clone());
                 if SAVING.lock().ok().is_some_and(|saving| saving.as_ref().is_some_and(|items| items.contains_key(&key))) {
+                    crate::browser::note(download_tab, format!("download refused, already coming down: {address}"));
                     return false;
                 }
+                crate::browser::note(download_tab, format!("download starting: {address}"));
                 let name = destination
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
@@ -412,6 +414,7 @@ mod view {
             }
             Download::Finished { url, path, success } => {
                 let key = (download_tab.to_owned(), url.to_string());
+                crate::browser::note(download_tab, format!("download ended ({}): {url}", if success { "finished" } else { "failed" }));
                 let kept = SAVING.lock().ok().and_then(|mut saving| {
                     let items = saving.as_mut()?;
                     let by_path = path.as_ref().and_then(|path| items.iter().find(|(_, (_, saved, _, _))| saved == path).map(|(key, _)| key.clone()));
@@ -772,15 +775,36 @@ mod view {
         CANCELLED.lock().map_err(|error| error.to_string())?
             .get_or_insert_with(HashSet::new).insert(id.to_string());
         #[cfg(windows)]
-        if let Err(error) = super::windows::cancel(app, tab, url) {
-            if let Ok(mut cancelled) = CANCELLED.lock() {
-                if let Some(cancelled) = cancelled.as_mut() { cancelled.remove(id); }
-            }
-            return Err(error);
+        if let Err(error) = super::windows::cancel(app, tab.clone(), url.clone()) {
+            // WebView2 refuses to cancel a transfer that is no longer running
+            // (it ended or was interrupted without telling TBV), which showed
+            // as "Class not registered (0x8007139F)". Stop still means stop:
+            // the row goes and whatever came down is deleted.
+            crate::browser::note(&tab, format!("download {id}: the browser couldn't cancel it ({error}), so TBV dropped it"));
+            forget(id);
         }
         #[cfg(not(windows))]
         let _ = (app, url, tab);
         Ok(())
+    }
+
+    /// Lets go of a download TBV was waiting on, deleting its folder.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    fn forget(id: &str) {
+        let kept = SAVING.lock().ok().and_then(|mut saving| {
+            let items = saving.as_mut()?;
+            let key = items.iter().find(|(_, (i, _, _, _))| i == id).map(|(key, _)| key.clone())?;
+            items.remove(&key)
+        });
+        if let Ok(mut cancelled) = CANCELLED.lock() {
+            if let Some(cancelled) = cancelled.as_mut() { cancelled.remove(id); }
+        }
+        if let Some((_, saved, _, hold)) = kept {
+            if let Some(folder) = saved.parent() {
+                let _ = std::fs::remove_dir_all(folder);
+            }
+            drop(hold);
+        }
     }
 
     /// How large the tab's page is drawn: 1 is the site's own size.
