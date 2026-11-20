@@ -1009,7 +1009,7 @@ impl Library {
                 return Ok(ImportPlan::Finished(ImportResult::AlreadyInLibrary { path, book_id, title: title.clone() }));
             }
         }
-        if known.is_none() && self.skips_deleted()? {
+        if known.is_none() && self.skips_deleted()? && !self.deleted_for_a_document(&book_id)? {
             if let Some(title) = self.deleted_title(&book_id)? {
                 return Ok(ImportPlan::Finished(ImportResult::SkippedDeleted { path, book_id, title }));
             }
@@ -1100,6 +1100,44 @@ impl Library {
                 |r| r.get(0),
             )
             .optional()?)
+    }
+
+    /// An ebook or audiobook deleted as the "duplicate" of a document with the
+    /// same title and author (before documents were told apart) comes back
+    /// when imported again: a document never stands in for it.
+    fn deleted_for_a_document(&self, book_id: &BookId) -> Result<bool> {
+        let Some((format, title, authors)) = self
+            .conn
+            .query_row(
+                "SELECT format, title, authors FROM books WHERE id = ?1 AND deleted_at IS NOT NULL",
+                params![book_id],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?)),
+            )
+            .optional()?
+        else {
+            return Ok(false);
+        };
+        if crate::manage::duplicate_kind(&format) == "document" {
+            return Ok(false);
+        }
+        let key = |title: &str, authors: Option<String>| {
+            let authors: Vec<String> = authors.and_then(|a| serde_json::from_str(&a).ok()).unwrap_or_default();
+            (crate::manage::title_key(title), crate::manage::author_key(&authors))
+        };
+        let wanted = key(&title, authors);
+        let docs: Vec<String> = crate::home::DOCUMENT_FORMATS.iter().map(|f| format!("'{f}'")).collect();
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT title, authors FROM books WHERE deleted_at IS NULL AND lower(format) IN ({})",
+            docs.join(", ")
+        ))?;
+        let rows = statement.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?)))?;
+        for row in rows {
+            let (title, authors) = row?;
+            if key(&title, authors) == wanted {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     /// Preferences › Library › Skip books I've deleted.
