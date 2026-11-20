@@ -795,7 +795,7 @@ export function FilesTab() {
           </li>
           <li>
             <Icon name="check" size={18} /> TBV never changes a book file. Titles, authors, covers and other details you correct are kept beside the
-            book, and a reset brings back the book's own.
+            book, and a reset brings back the details in the file.
           </li>
           <li>
             <Icon name="check" size={18} /> The same book imported twice is recognised from its contents, so it appears once.
@@ -1236,7 +1236,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.147.0");
+  const [version, setVersion] = useState("0.148.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

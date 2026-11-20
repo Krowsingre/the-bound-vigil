@@ -1,12 +1,16 @@
+import { authorName } from "./authorNames";
+
 export function percent(progression: number | null | undefined): string {
   if (progression == null) return "0%";
   return `${Math.round(Math.min(1, Math.max(0, progression)) * 100)}%`;
 }
 
-export function authorLine(authors: string[]): string {
-  if (authors.length === 0) return "Unknown author";
-  if (authors.length <= 2) return authors.join(" & ");
-  return `${authors[0]} and ${authors.length - 1} others`;
+/** The authors as one line, each name as Preferences › Appearance asks. */
+export function authorLine(authors: string[], audioType?: string | null): string {
+  const names = authors.map((a) => authorName(a, audioType));
+  if (names.length === 0) return "Unknown author";
+  if (names.length <= 2) return names.join(" & ");
+  return `${names[0]} and ${names.length - 1} others`;
 }
 
 export function relativeTime(iso: string, now = Date.now()): string {

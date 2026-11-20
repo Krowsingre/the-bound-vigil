@@ -4,6 +4,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import type { BookPreview, CustomTheme } from "../api/types";
+import type { AuthorStyle } from "../lib/authorNames";
 
 export type ThemeChoice = "light" | "dark" | "system" | "adaptive" | "custom";
 export type AdaptiveBase = "system" | "light" | "dark";
@@ -80,6 +81,8 @@ export interface AppSettings {
   /** Always draws a focus ring, not only when moving with the keyboard. */
   strongFocus: boolean;
   underlineLinks: boolean;
+  /** How authors' names are shown: as in the book, "First Last" or "Last, First" (embre, 19 November). */
+  authorNames: AuthorStyle;
   showProgress: boolean;
   /** The Library scrolls on without pages on a computer too (a phone always does). */
   scrollLibrary: boolean;
@@ -124,6 +127,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   reduceMotion: false,
   strongFocus: false,
   underlineLinks: false,
+  authorNames: "asBook",
   showProgress: true,
   scrollLibrary: false,
   fullMenu: false,
@@ -198,6 +202,7 @@ export function parseAppSettings(json: string | null): AppSettings {
     reduceMotion: flag(raw.reduceMotion, d.reduceMotion),
     strongFocus: flag(raw.strongFocus, d.strongFocus),
     underlineLinks: flag(raw.underlineLinks, d.underlineLinks),
+    authorNames: oneOf(raw.authorNames, ["asBook", "firstLast", "lastFirst"], d.authorNames),
     showProgress: flag(raw.showProgress, d.showProgress),
     showSmartCollections: flag(raw.showSmartCollections, d.showSmartCollections),
     showSeries: flag(raw.showSeries, d.showSeries),

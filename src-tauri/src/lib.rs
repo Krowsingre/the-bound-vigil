@@ -1853,6 +1853,31 @@ async fn series_review(state: State<'_, AppLibrary>, name: String) -> CommandRes
 }
 
 #[tauri::command]
+async fn remove_listed_series_book(state: State<'_, AppLibrary>, name: String, key: String, removed: bool) -> CommandResult<tbv_core::series::SeriesReview> {
+    with_library(state, move |library| library.remove_listed_series_book(&name, &key, removed)).await
+}
+
+#[tauri::command]
+async fn favourite_series(state: State<'_, AppLibrary>) -> CommandResult<Vec<String>> {
+    with_library(state, |library| library.favourite_series()).await
+}
+
+#[tauri::command]
+async fn set_series_favourite(state: State<'_, AppLibrary>, name: String, favourite: bool) -> CommandResult<()> {
+    with_library(state, move |library| library.set_series_favourite(&name, favourite)).await
+}
+
+#[tauri::command]
+async fn top_favourites(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::model::TopFavourite>> {
+    with_library(state, |library| library.top_favourites()).await
+}
+
+#[tauri::command]
+async fn set_top_favourite(state: State<'_, AppLibrary>, key: String, label: String, top: bool) -> CommandResult<()> {
+    with_library(state, move |library| library.set_top_favourite(&key, &label, top)).await
+}
+
+#[tauri::command]
 async fn hide_series_book(state: State<'_, AppLibrary>, name: String, key: String, hidden: bool) -> CommandResult<tbv_core::series::SeriesReview> {
     with_library(state, move |library| library.hide_series_book(&name, &key, hidden)).await
 }
@@ -2420,6 +2445,11 @@ pub fn run() {
             forget_home_phones,
             series_review,
             hide_series_book,
+            remove_listed_series_book,
+            favourite_series,
+            set_series_favourite,
+            top_favourites,
+            set_top_favourite,
             mark_series_book_read,
             add_series_book,
             remove_series_book,

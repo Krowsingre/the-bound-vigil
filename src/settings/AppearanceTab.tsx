@@ -18,6 +18,7 @@ import {
   type ThemeChoice,
 } from "./appSettings";
 import { Columns, Row, Section, Segmented, Toggle } from "./controls";
+import type { AuthorStyle } from "../lib/authorNames";
 import { CustomThemeSection, themeFromWindow } from "./CustomThemeSection";
 import { api } from "../api";
 import { useToast } from "../components/Toast";
@@ -186,6 +187,18 @@ export function AppearanceTab({
               { value: "echolume", label: "Echolume" },
             ]}
             onChange={(interfaceFont) => change({ interfaceFont })}
+          />
+        </Row>
+        <Row label="Author names" hint="How names are shown everywhere. Searching finds either order, and both spellings count as one author." stack>
+          <Segmented<AuthorStyle>
+            label="Author names"
+            value={settings.authorNames}
+            options={[
+              { value: "asBook", label: "As in the book" },
+              { value: "firstLast", label: "First Last" },
+              { value: "lastFirst", label: "Last, First" },
+            ]}
+            onChange={(authorNames) => change({ authorNames })}
           />
         </Row>
         <Row label="Font scaling" hint="Makes all text and controls smaller or larger." stack>

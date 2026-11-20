@@ -31,6 +31,8 @@ export interface Fetched {
   asking?: boolean;
   /** When it started, as milliseconds since 1970. */
   at: number;
+  /** TBV already fetched it itself after the page's download failed. */
+  fellBack?: boolean;
 }
 
 const KEY = "tbv.browser.downloads";
@@ -192,6 +194,23 @@ async function finishDownload(row: Fetched, toast: (message: string) => void) {
   }
 }
 
+/**
+ * A book file the page's own download couldn't finish (the browser
+ * interrupted it) is fetched once by TBV itself and added to the library,
+ * as "Download and add to library" does by hand. Once means once: the mark
+ * is kept on the row, so leaving Scry and coming back doesn't fetch it again
+ * (that was one click saving the same book 5 or 6 times).
+ */
+function fallBack(row: Fetched | undefined, toast: (message: string) => void) {
+  if (!row || row.state !== "failed" || row.fellBack || row.securityBlocked || row.direct) return;
+  if (!row.url || !/^https?:\/\//i.test(row.url) || !BOOK_FILE.test(row.url)) return;
+  updateDownload(row.id, { fellBack: true });
+  void api.downloadWebBook(row.url, row.name, row.sourceUrl).then(
+    () => toast(`“${row.name}” didn't finish in the page, so TBV downloaded it itself.`),
+    () => undefined,
+  );
+}
+
 function receiveDownload(event: BrowserEvent, toast: (message: string) => void) {
   if (event.kind === "downloadStart" || event.kind === "directDownloadStart") {
     const row: Fetched = {
@@ -216,6 +235,7 @@ function receiveDownload(event: BrowserEvent, toast: (message: string) => void) 
     };
     setDownloads((rows) => [row, ...rows.filter((d) => d.id !== row.id)]);
     if (row.state === "checking" && row.path) void finishDownload(row, toast);
+    else fallBack(snapshot().find((d) => d.id === row.id), toast);
   } else if (event.kind === "downloadImport") {
     if (!snapshot().some((row) => row.id === event.id && row.state === "importing")) return;
     updateDownload(event.id, {
@@ -257,6 +277,7 @@ export function listenForDownloads(toast: (message: string) => void) {
         if (finished.has(row.id) || active.has(row.id)) missing.delete(row.id);
         else if (missing.has(row.id)) {
           updateDownload(row.id, { state: "failed", error: interrupted });
+          fallBack(snapshot().find((d) => d.id === row.id), toast);
         } else {
           // WebKit can finish just before its completion event reaches Rust.
           missing.add(row.id);

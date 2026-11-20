@@ -2,6 +2,7 @@
 // in the main sync place and in the second. Each place is asked for its own
 // list of files, so books another device put there count too.
 
+import { authorName } from "../lib/authorNames";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type { BookPlaces as Book, PlaceCheck, PlacesView } from "../api/types";
@@ -180,7 +181,7 @@ export function BookPlacesPage({ onOpenSyncSettings }: { onOpenSyncSettings: () 
                       <button type="button" className="places-book" onClick={() => showBookDetails(b.bookId)}>
                         <span className="import-name">{b.title}</span>
                         <span className="import-detail">
-                          {[b.authors.join(", "), b.format.toUpperCase()].filter(Boolean).join(" · ")}
+                          {[b.authors.map((a) => authorName(a)).join(", "), b.format.toUpperCase()].filter(Boolean).join(" · ")}
                         </span>
                       </button>
                     </td>

@@ -670,6 +670,14 @@ export interface MissingBook extends SeriesEntry {
   hidden: boolean;
   /** Read somewhere else, as the person marked it. */
   read: boolean;
+  /** Not in this series at all, as the person said: off the list and its count. */
+  removed?: boolean;
+}
+
+/** One of the Top five favourites: `key` is "book:<id>" or "series:<name>". */
+export interface TopFavourite {
+  key: string;
+  label: string;
 }
 
 /** A book of the series in the library, with its number (its own, or the list's). */

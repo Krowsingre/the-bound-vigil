@@ -64,6 +64,18 @@ fn clean_tag(tag: &str) -> Option<String> {
 
 /// A title as it compares with others: lowercase, letters and digits only,
 /// without a leading article or a subtitle.
+/** Which books can be copies of each other: audio, documents and ebooks each only among themselves. */
+pub(crate) fn duplicate_kind(format: &str) -> &'static str {
+    let format = format.to_ascii_lowercase();
+    if crate::audio::is_audio(&format) {
+        "audio"
+    } else if crate::home::DOCUMENT_FORMATS.contains(&format.as_str()) {
+        "document"
+    } else {
+        "text"
+    }
+}
+
 pub(crate) fn title_key(title: &str) -> String {
     let main = title.split([':', '(', '[']).next().unwrap_or(title);
     let words: Vec<String> = main
@@ -407,7 +419,8 @@ impl Library {
         let mut by_title: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         for (i, (book, isbn, ..)) in rows.iter().enumerate() {
             // An audiobook and the ebook of the same title are a pair, not two copies.
-            let kind = if crate::audio::is_audio(&book.format) { "audio" } else { "text" };
+            // A document (PDF, Word, text) is never a copy of an ebook either (embre, 19 November).
+            let kind = duplicate_kind(&book.format);
             if let Some(isbn) = isbn
                 .as_deref()
                 .map(|s| {
@@ -1023,6 +1036,14 @@ mod tests {
         fs::write(&mp3, crate::audio::tests::silent_mp3(40, "The Moonstone", "The Moonstone", "Wilkie Collins")).unwrap();
         assert!(matches!(library.import_files(&[mp3]).remove(0), ImportResult::Imported { .. }));
         assert!(library.find_duplicates().unwrap().is_empty());
+    }
+
+    #[test]
+    fn documents_are_only_ever_copies_of_documents() {
+        assert_eq!(duplicate_kind("PDF"), "document");
+        assert_eq!(duplicate_kind("docx"), "document");
+        assert_eq!(duplicate_kind("epub"), "text");
+        assert_eq!(duplicate_kind("m4b"), "audio");
     }
 
     #[test]

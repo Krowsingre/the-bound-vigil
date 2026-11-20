@@ -6,7 +6,7 @@ import { askAddToCollection } from "../collections/AddToCollection";
 import { holdForMenu } from "../components/ContextMenu";
 import type { MenuEntry } from "../components/Menu";
 import { StarRating } from "../components/StarRating";
-import { askEditDetails, showBookDetails, showInLibrary } from "../details/openDetails";
+import { askAlbum, askEditDetails, askFetchDetails, showBookDetails, showInLibrary } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
 import { askSendWithLocalSend, canSendWithLocalSend } from "../localsend/SendWithLocalSend";
 import { askDeleteBook, askEditTags, askRemoveBook } from "../library/BookDialogs";
@@ -14,6 +14,7 @@ import { cueAudiobook, playAudiobook } from "../audio/player";
 import { askPair } from "../audio/LinkEbook";
 import { isAudio, kindOf } from "../lib/queryBooks";
 import { UP_NEXT_FULL } from "../library/shelfLimits";
+import { bookTopKey, favouritesChanged, isTopFive, setTopFive } from "../library/favourites";
 import { askUpNextReplacement } from "../library/UpNextReplacement";
 import { NO_FILTERS } from "../library/libraryView";
 import { isWeb } from "../api";
@@ -27,6 +28,8 @@ export interface BookActions {
   open: (book: BookPreview) => void;
   setStatus: (book: BookPreview, status: BookPreview["status"]) => void;
   setFavorite: (book: BookPreview, favorite: boolean) => void;
+  /** Marks a favourite as one of the Top five, or takes it out. */
+  setTopFive?: (book: BookPreview, top: boolean) => void;
   setWantToRead: (book: BookPreview, want: boolean) => void;
   setAudioType?: (book: BookPreview, kind: AudioType | null) => void;
   setRating: (book: BookPreview, rating: number | null) => void;
@@ -51,6 +54,12 @@ export interface BookActions {
 }
 
 /** The "…" menu for a book, and its right-click menu. */
+/** The menu item that opens an item's page: a song isn't a book (embre, 20 November). */
+export function detailsLabel(book: BookPreview): string {
+  if (!isAudio(book.format) || !book.audioType || book.audioType === "audiobook") return "Book details";
+  return book.audioType === "music" ? "Song details" : book.audioType === "podcast" ? "Episode details" : "Details";
+}
+
 export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
   const audio = isAudio(book.format);
   const types: [AudioType, string][] = [["audiobook", "Audiobook"], ["podcast", "Podcast"], ["music", "Music"], ["other", "Other"]];
@@ -58,8 +67,11 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     isAudio(book.format)
       ? { label: "Listen", icon: "play" as const, onSelect: () => playAudiobook(book.id) }
       : { label: "Open", icon: "bookOpen" as const, onSelect: () => actions.open(book) },
-    { label: "Book details", icon: "info", onSelect: () => showBookDetails(book.id) },
+    { label: detailsLabel(book), icon: "info", onSelect: () => showBookDetails(book.id) },
     { label: "Edit details…", icon: "edit", onSelect: () => askEditDetails([book]) },
+    // Everything the selection's Actions menu offers is here too (embre, 20 November).
+    { label: "Find details online…", icon: "search", onSelect: () => askFetchDetails(book) },
+    ...(book.audioType === "music" && book.series ? [{ label: "Take out of its album", icon: "close" as const, onSelect: () => askAlbum([book], true) }] : []),
     {
       heading: createElement(
         "span",
@@ -73,6 +85,13 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     book.favorite
       ? { label: "Remove from favourites", icon: "heart", onSelect: () => actions.setFavorite(book, false) }
       : { label: "Add to favourites", icon: "heart", onSelect: () => actions.setFavorite(book, true) },
+    ...(book.favorite && actions.setTopFive
+      ? [
+          isTopFive(bookTopKey(book.id))
+            ? { label: "Take out of Top five", icon: "star" as const, onSelect: () => actions.setTopFive!(book, false) }
+            : { label: "Add to Top five", icon: "star" as const, onSelect: () => actions.setTopFive!(book, true) },
+        ]
+      : []),
     book.wantToRead
       ? { label: "Remove from Up next", icon: "bookmark", onSelect: () => actions.setWantToRead(book, false) }
       : { label: "Add to Up next", icon: "bookmark", onSelect: () => actions.setWantToRead(book, true) },
@@ -114,7 +133,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     ...(book.series
       ? [
           {
-            label: "Show series",
+            label: book.audioType === "music" ? "Show album" : "Show series",
             icon: "library" as const,
             onSelect: () => showInLibrary(kindOf(book.format), { ...NO_FILTERS, tab: "all", series: [book.series!], sort: "series" }),
           },
@@ -137,6 +156,11 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     ...(actions.sendToFriend ? [{ label: "Send to a TBV friend…", icon: "person" as const, onSelect: () => actions.sendToFriend?.([book]) }] : []),
     ...(actions.shareFiles ? [{ label: "Share the file…", icon: "share" as const, onSelect: () => actions.shareFiles?.([book]) }] : []),
     ...(actions.saveCopy ? [{ label: "Save a copy…", icon: "copy" as const, onSelect: () => actions.saveCopy?.(book) }] : []),
+    ...(!isWeb && actions.setPhoneWanted && phoneChoiceShown()
+      ? [book.phoneWanted
+          ? { label: "Stop sending to device", icon: "cloudOff" as const, onSelect: () => actions.setPhoneWanted?.([book], false) }
+          : { label: "Send to device", icon: "upload" as const, onSelect: () => actions.setPhoneWanted?.([book], true) }]
+      : []),
     downloadItem(book, actions),
     ] },
     "divider",
@@ -255,7 +279,8 @@ export function makeBookActions(
         if (!api.removeDownload || !offerFinishedDownloadRemoval(book, status, refresh, undo)) undo();
       }
     })),
-    setFavorite: (book, favorite) => void run(book, api.setFavorite(book.id, favorite)),
+    setFavorite: (book, favorite) => void run(book, api.setFavorite(book.id, favorite).then(favouritesChanged)),
+    setTopFive: (book, top) => void run(book, setTopFive(bookTopKey(book.id), book.title, top)),
     setWantToRead: (book, want) => {
       void run(book, api.setWantToRead(book.id, want).then(() => {
         if (!want && book.wantToRead) toast("Removed from Up Next.", { label: "Undo", run: () => void run(book, api.setWantToRead(book.id, true)) });

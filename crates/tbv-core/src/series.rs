@@ -241,6 +241,10 @@ pub struct MissingBook {
     pub hidden: bool,
     /// Read somewhere else (borrowed, say), as the person marked it.
     pub read: bool,
+    /// Not in this series at all, as the person said (a wrong match online):
+    /// left out of the list and its count, shown only with Show removed.
+    #[serde(default)]
+    pub removed: bool,
 }
 
 /// A book of the series the library has, with its number: from its details,
@@ -498,6 +502,7 @@ struct Saved {
     hidden: Vec<String>,
     denied: Vec<String>,
     read: Vec<String>,
+    removed: Vec<String>,
     checked_at: Option<String>,
 }
 
@@ -517,7 +522,7 @@ impl Library {
         let row = self
             .conn
             .query_row(
-                "SELECT name, books, hidden, denied, checked_at, read FROM series_lists WHERE id = ?1",
+                "SELECT name, books, hidden, denied, checked_at, read, removed FROM series_lists WHERE id = ?1",
                 params![series_id(name)],
                 |r| {
                     Ok((
@@ -527,25 +532,28 @@ impl Library {
                         r.get::<_, String>(3)?,
                         r.get::<_, Option<String>>(4)?,
                         r.get::<_, String>(5)?,
+                        r.get::<_, String>(6)?,
                     ))
                 },
             )
             .optional()?;
-        Ok(row.map(|(name, books, hidden, denied, checked_at, read)| Saved {
+        Ok(row.map(|(name, books, hidden, denied, checked_at, read, removed)| Saved {
             name,
             books: serde_json::from_str(&books).unwrap_or_default(),
             hidden: serde_json::from_str(&hidden).unwrap_or_default(),
             denied: serde_json::from_str(&denied).unwrap_or_default(),
             read: serde_json::from_str(&read).unwrap_or_default(),
+            removed: serde_json::from_str(&removed).unwrap_or_default(),
             checked_at,
         }))
     }
 
     fn save_series(&self, saved: &Saved) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO series_lists (id, name, books, hidden, denied, checked_at, updated_at, read) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "INSERT INTO series_lists (id, name, books, hidden, denied, checked_at, updated_at, read, removed) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT(id) DO UPDATE SET name = excluded.name, books = excluded.books, hidden = excluded.hidden,
-                denied = excluded.denied, checked_at = excluded.checked_at, updated_at = excluded.updated_at, read = excluded.read",
+                denied = excluded.denied, checked_at = excluded.checked_at, updated_at = excluded.updated_at, read = excluded.read,
+                removed = excluded.removed",
             params![
                 series_id(&saved.name),
                 saved.name.trim(),
@@ -555,6 +563,7 @@ impl Library {
                 saved.checked_at,
                 now_utc(),
                 serde_json::to_string(&saved.read)?,
+                serde_json::to_string(&saved.removed)?,
             ],
         )?;
         Ok(())
@@ -576,6 +585,16 @@ impl Library {
     pub fn hide_series_book(&self, name: &str, key: &str, hidden: bool) -> Result<SeriesReview> {
         let mut saved = self.saved_series(name)?.ok_or_else(|| Error::Unsuitable(format!("TBV hasn't looked up {name} yet")))?;
         toggle(&mut saved.hidden, key, hidden);
+        self.save_series(&saved)?;
+        self.series_review(name)
+    }
+
+    /// Says one missing book isn't in the series at all (a wrong match
+    /// online), or puts it back. It stays off when the series is looked up
+    /// again.
+    pub fn remove_listed_series_book(&self, name: &str, key: &str, removed: bool) -> Result<SeriesReview> {
+        let mut saved = self.saved_series(name)?.ok_or_else(|| Error::Unsuitable(format!("TBV hasn't looked up {name} yet")))?;
+        toggle(&mut saved.removed, key, removed);
         self.save_series(&saved)?;
         self.series_review(name)
     }
@@ -705,8 +724,9 @@ impl Library {
             let key = entry.key();
             let hidden = saved.hidden.contains(&key);
             let read = saved.read.contains(&key);
-            missing.push(MissingBook { key: key.clone(), entry: entry.clone(), hidden, read });
-            if hidden {
+            let removed = saved.removed.contains(&key);
+            missing.push(MissingBook { key: key.clone(), entry: entry.clone(), hidden, read, removed });
+            if hidden || removed {
                 continue;
             }
             for book in &outside {
@@ -728,7 +748,7 @@ impl Library {
         Ok(SeriesReview {
             name: saved.name.clone(),
             checked_at: saved.checked_at.clone(),
-            listed: saved.books.len(),
+            listed: saved.books.iter().filter(|b| !saved.removed.contains(&b.key())).count(),
             owned: inside.len(),
             missing,
             matches,
@@ -804,6 +824,18 @@ mod tests {
         assert!(review.missing.iter().any(|m| m.key == "4" && m.hidden));
         let review = library.save_series_found("Discworld", vec![entry("Mort", 4.0)]).unwrap();
         assert!(review.missing[0].hidden);
+
+        // A wrong match online comes off the list and its count, and stays off.
+        let review = library.save_series_found("Discworld", vec![entry("The Light Fantastic", 2.0), entry("Mort", 4.0)]).unwrap();
+        let listed = review.listed;
+        let review = library.remove_listed_series_book("Discworld", "2", true).unwrap();
+        assert_eq!(review.listed, listed - 1);
+        assert!(review.missing.iter().any(|m| m.key == "2" && m.removed));
+        let review = library.save_series_found("Discworld", vec![entry("The Light Fantastic", 2.0), entry("Mort", 4.0)]).unwrap();
+        assert!(review.missing.iter().any(|m| m.key == "2" && m.removed));
+        assert_eq!(review.listed, listed - 1);
+        let review = library.remove_listed_series_book("Discworld", "2", false).unwrap();
+        assert_eq!(review.listed, listed);
     }
 
     #[test]

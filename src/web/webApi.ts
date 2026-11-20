@@ -692,6 +692,14 @@ export async function webApi(): Promise<Api> {
     getLibrary: async (query) => queryBooks(books(), query, previews().length),
     getCollections: async () => previews(),
     setFavorite: async (bookId, favorite) => writeShelves(bookId, { favorite: favorite ? 1 : 0 }),
+    favouriteSeries: async () => [],
+    setSeriesFavourite: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    topFavourites: async () => [],
+    setTopFavourite: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
     archiveSeriesPins: async () => library.rows("archive_series_pins").filter((row) => row.pinned_at).map((row) => String(row.label)),
     setArchiveSeriesPin: async (label, pinned) => {
       const name = label.trim().toLowerCase();
@@ -1411,6 +1419,9 @@ export async function webApi(): Promise<Api> {
     },
     seriesReview: async (name) => ({ name, checkedAt: null, listed: 0, owned: 0, missing: [], matches: [], ownedBooks: [] }),
     hideSeriesBook: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    removeListedSeriesBook: async () => {
       throw new Error(DESKTOP_ONLY);
     },
     markSeriesBookRead: async () => {

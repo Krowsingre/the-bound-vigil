@@ -2,6 +2,7 @@
 // one of Discover's panels, a book, a collection) or to a website, kept
 // apart from Discover's own links and synced. See crates/tbv-core/src/sanctum_links.rs.
 
+import { authorName } from "../lib/authorNames";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import type { BookPreview, CollectionSummary, SanctumLink } from "../api/types";
@@ -406,7 +407,7 @@ function BookPicker({ value, onPick }: { value: string; onPick: (b: BookPreview)
             <li key={b.id}>
               <button type="button" role="option" aria-selected={value === `book:${b.id}`} onClick={() => onPick(b)}>
                 <b>{b.title}</b>
-                <span className="muted">{b.authors.join(", ")}</span>
+                <span className="muted">{b.authors.map((a) => authorName(a, b.audioType)).join(", ")}</span>
               </button>
             </li>
           ))}

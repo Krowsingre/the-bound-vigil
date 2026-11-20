@@ -14,6 +14,8 @@ import { authorLine, percent } from "../lib/format";
 import { useNarrow } from "../lib/useNarrow";
 import { Badge } from "./badges";
 import { CollectionSeries } from "./CollectionSeries";
+import { FavouriteRows } from "./FavouriteRows";
+import { isFavouriteSeries, SeriesHeart, setSeriesFavourite, useFavourites } from "../library/favourites";
 import { CollectionPicture } from "./CollectionCards";
 import { bookCount, KIND_LABEL, SMART_INFO } from "./collectionInfo";
 import { saveSort, savedSort, SHOW_OPTIONS, SORT_OPTIONS, viewCompendium, type CompendiumShow, type CompendiumSort } from "./compendiumView";
@@ -29,6 +31,7 @@ export function CollectionView({
   menuFor,
   onBack,
   onOpenBook,
+  onOpenSeries,
   onChanged,
 }: {
   collection: CollectionRef;
@@ -37,6 +40,8 @@ export function CollectionView({
   menuFor: (detail: CollectionDetail) => MenuEntry[];
   onBack: () => void;
   onOpenBook: (bookId: string) => void;
+  /** Opens a series, from the Favourites compendium's rows. */
+  onOpenSeries?: (name: string) => void;
   onChanged: () => void;
 }) {
   const [detail, setDetail] = useState<CollectionDetail | null>(null);
@@ -47,6 +52,7 @@ export function CollectionView({
   /** The Read compendium separates finished and dropped books. */
   const [ended, setEnded] = useState<"read" | "dropped">("read");
   const toast = useToast();
+  const favourites = useFavourites(refreshKey);
   const key = JSON.stringify(collection);
   // Narrowing and ordering what's shown, without changing the compendium.
   const [words, setWords] = useState("");
@@ -166,6 +172,13 @@ export function CollectionView({
           {description && <p className="collection-hero-description">{description}</p>}
         </div>
         <div className="collection-hero-actions" data-item-menu>
+          {collection.kind === "series" && (
+            <SeriesHeart
+              name={collection.name}
+              favourite={isFavouriteSeries(collection.name, favourites.series)}
+              onChange={(on) => void setSeriesFavourite(collection.name, on).catch((e: unknown) => toast(String(e).replace(/^Error: /, "")))}
+            />
+          )}
           {own && (
             <button type="button" className="btn btn-primary" onClick={() => setAdding(true)}>
               <span aria-hidden>+</span> Add books
@@ -249,6 +262,9 @@ export function CollectionView({
       </div>
 
       <CollectionSeries collection={collection} books={detail.books} refreshKey={refreshKey + reload} onChanged={changed} />
+      {collection.kind === "smart" && collection.smart === "favorites" && !narrowed && (
+        <FavouriteRows books={detail.books} series={series} refreshKey={refreshKey + reload} actions={actions} onOpenSeries={onOpenSeries} />
+      )}
 
       {books.length === 0 && detail.books.length > 0 ? (
         <div className="library-empty">

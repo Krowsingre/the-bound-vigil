@@ -1,3 +1,4 @@
+import { authorName } from "../lib/authorNames";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { BookPreview } from "../api/types";
@@ -58,7 +59,7 @@ export function UpNextReplacementHost({ onChanged }: { onChanged: () => void }) 
           Book to replace
           <select disabled={busy || !members.length} value={picked} onChange={(event) => { setPicked(event.target.value); setError(""); }}>
             <option value="">Choose a book</option>
-            {members.map((member) => <option key={member.id} value={member.id}>{member.title} · {member.authors.join(", ")}</option>)}
+            {members.map((member) => <option key={member.id} value={member.id}>{member.title} · {member.authors.map((a) => authorName(a, member.audioType)).join(", ")}</option>)}
           </select>
         </label>
         {error && <p role="alert">{error}</p>}

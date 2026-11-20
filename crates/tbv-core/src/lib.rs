@@ -38,6 +38,7 @@ pub mod manage;
 pub mod model;
 pub mod notes;
 pub mod oauth;
+pub mod people;
 pub mod opds;
 pub mod profile;
 pub mod activation;

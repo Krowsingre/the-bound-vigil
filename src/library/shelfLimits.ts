@@ -4,6 +4,9 @@ export const PIN_LIMIT = 10;
 export const UP_NEXT_LIMIT = 75;
 export const UP_NEXT_FULL = "Up Next is full.";
 export const PIN_LIMIT_MESSAGE = "The Archive holds ten pins. Unpin a book or series first.";
+/** Favourites marked Top five (embre, 18 November). Same words as TOP_FIVE_FULL in the core's browse.rs. */
+export const TOP_FIVE = 5;
+export const TOP_FIVE_FULL = "Your Top five is full. Take one out first.";
 
 export function upNextChanges(books: BookPreview[], bookId: string, want: boolean, replace?: string): string[] {
   const current = books.find((book) => book.id === bookId);

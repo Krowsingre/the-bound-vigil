@@ -9,7 +9,7 @@ export const SMART_INFO: Record<SmartKind, { name: string; badge: string; descri
   unread: { name: "Unread", badge: "book", description: "Books you haven't opened yet." },
   read: { name: "Read", badge: "check", description: "Books you've finished or dropped." },
   in_progress: { name: "In progress", badge: "bookmark", description: "Books you've started and not finished." },
-  favorites: { name: "Favourites", badge: "heart", description: "Books you've marked as a favourite." },
+  favorites: { name: "Favourites", badge: "heart", description: "Books and series you've marked as a favourite." },
   up_next: { name: "Up next", badge: "hourglass", description: "Books you want to read next." },
   send_to_device: { name: "Sent to device", badge: "phone", description: "Books you've chosen for your phone." },
 };

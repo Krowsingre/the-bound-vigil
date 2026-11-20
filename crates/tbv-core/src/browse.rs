@@ -9,6 +9,9 @@ use crate::model::*;
 
 pub const DEFAULT_PAGE_SIZE: u32 = 24;
 const MAX_PAGE_SIZE: u32 = 200;
+/// How many favourites can be marked Top five (embre, 18 November).
+pub const TOP_FIVE: u32 = 5;
+pub const TOP_FIVE_FULL: &str = "Your Top five is full. Take one out first.";
 pub(crate) const UP_NEXT_LIMIT: u32 = 75;
 
 const TITLE: &str = "COALESCE(o_title.value, f_title.value, b.title)";
@@ -116,6 +119,7 @@ fn main_match(n: usize) -> String {
     format!(
         "(tbv_fold({TITLE}) LIKE ?{n} ESCAPE '\\' \
           OR tbv_fold({AUTHORS}) LIKE ?{n} ESCAPE '\\' \
+          OR tbv_people({AUTHORS}) LIKE ?{n} ESCAPE '\\' \
           OR tbv_fold(COALESCE({SERIES}, '')) LIKE ?{n} ESCAPE '\\')"
     )
 }
@@ -164,13 +168,19 @@ impl Filters<'_> {
             ));
         }
         // Genres, authors and narrators are JSON lists: a book matches when any name does.
-        for (list, names) in [(GENRES, self.genres), (AUTHORS, self.authors), (NARRATORS, self.narrators)] {
+        // People match however their name is written: "Primo, Jaz" is "Jaz Primo".
+        for (list, names, person) in [(GENRES, self.genres, false), (AUTHORS, self.authors, true), (NARRATORS, self.narrators, true)] {
             if names.is_empty() {
                 continue;
             }
-            let s = slots(values, names.iter().map(|g| g.trim().to_lowercase()).collect());
+            let (keys, fold) = if person {
+                (names.iter().map(|g| crate::people::key(g)).collect(), "tbv_person")
+            } else {
+                (names.iter().map(|g| g.trim().to_lowercase()).collect(), "tbv_fold")
+            };
+            let s = slots(values, keys);
             conditions.push(format!(
-                "(EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid({list}) THEN {list} ELSE '[]' END) g WHERE tbv_fold(g.value) IN ({s})))"
+                "(EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid({list}) THEN {list} ELSE '[]' END) g WHERE {fold}(g.value) IN ({s})))"
             ));
         }
         if !self.series.is_empty() {
@@ -594,10 +604,12 @@ impl Library {
     /// this kind, one spelling each, A to Z.
     fn names_in_library(&self, list: &str, kind: Option<ItemKind>) -> Result<Vec<String>> {
         let only = kind.map(|k| format!(" AND {}", kind_condition(k))).unwrap_or_default();
+        // Both spellings of a person are one name in the list.
+        let fold = if list == AUTHORS || list == NARRATORS { "tbv_person" } else { "tbv_fold" };
         let mut statement = self.conn.prepare(&format!(
             "SELECT MIN(g.value) FROM (SELECT {list} AS names {BOOK_FROM}{only}) x, json_each(CASE WHEN json_valid(x.names) THEN x.names ELSE '[]' END) g
              WHERE trim(g.value) != ''
-             GROUP BY tbv_fold(g.value) ORDER BY tbv_fold(g.value)"
+             GROUP BY {fold}(g.value) ORDER BY {fold}(g.value)"
         ))?;
         let rows = statement.query_map([], |r| r.get(0))?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
@@ -628,6 +640,90 @@ impl Library {
             params![name, label, at],
         )?;
         tx.commit()?;
+        Ok(())
+    }
+
+    /// Series you've favourited, by the name as you gave it. Favouriting a
+    /// series favourites the stack, not each book in it.
+    pub fn favourite_series(&self) -> Result<Vec<String>> {
+        let mut statement = self.conn.prepare("SELECT label FROM series_favourites WHERE favourite_at IS NOT NULL ORDER BY favourite_at DESC")?;
+        let rows = statement.query_map([], |row| row.get(0))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    pub fn set_series_favourite(&self, label: &str, favourite: bool) -> Result<()> {
+        let label = label.trim();
+        if label.is_empty() { return Err(Error::Unsuitable("Choose a series to favourite.".into())); }
+        let name = label.to_lowercase();
+        let tx = self.conn.unchecked_transaction()?;
+        let already: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM series_favourites WHERE name = ?1 AND favourite_at IS NOT NULL)",
+            params![name], |row| row.get(0),
+        )?;
+        if already != favourite {
+            let at = favourite.then(crate::time::now_utc);
+            tx.execute(
+                "INSERT INTO series_favourites (name, label, favourite_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(name) DO UPDATE SET label = excluded.label, favourite_at = excluded.favourite_at",
+                params![name, label, at],
+            )?;
+        }
+        if !favourite { Self::drop_top(&tx, &format!("series:{name}"))?; }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The Top five, oldest first: favourite books ("book:<id>") and
+    /// series ("series:<name>"). A book or series that stopped being a
+    /// favourite, or a book that was deleted, isn't listed.
+    pub fn top_favourites(&self) -> Result<Vec<TopFavourite>> {
+        // Two devices can each add a fifth before they sync; the earliest five are the Top five then.
+        let mut statement = self.conn.prepare(&format!("SELECT t.key, t.label FROM top_favourites t WHERE {} ORDER BY t.top_at, t.key LIMIT {TOP_FIVE}", Self::LIVE_TOP))?;
+        let rows = statement.query_map([], |row| Ok(TopFavourite { key: row.get(0)?, label: row.get(1)? }))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    const LIVE_TOP: &'static str = "t.top_at IS NOT NULL AND (
+        (t.key LIKE 'book:%' AND EXISTS(SELECT 1 FROM books b WHERE b.id = substr(t.key, 6) AND b.favorite = 1 AND b.deleted_at IS NULL))
+        OR (t.key LIKE 'series:%' AND EXISTS(SELECT 1 FROM series_favourites s WHERE s.name = substr(t.key, 8) AND s.favourite_at IS NOT NULL)))";
+
+    /// Adds a favourite book or series to the Top five, or takes it out.
+    /// A sixth is refused; the app asks which one to replace.
+    pub fn set_top_favourite(&self, key: &str, label: &str, top: bool) -> Result<()> {
+        let key = match key.split_once(':') {
+            Some(("book", id)) if !id.is_empty() => format!("book:{id}"),
+            Some(("series", name)) if !name.trim().is_empty() => format!("series:{}", name.trim().to_lowercase()),
+            _ => return Err(Error::Unsuitable("Only a book or a series can be in the Top five.".into())),
+        };
+        let tx = self.conn.unchecked_transaction()?;
+        if !top {
+            Self::drop_top(&tx, &key)?;
+            tx.commit()?;
+            return Ok(());
+        }
+        let favourite: bool = match key.split_once(':') {
+            Some(("book", id)) => tx.query_row("SELECT EXISTS(SELECT 1 FROM books WHERE id = ?1 AND favorite = 1 AND deleted_at IS NULL)", params![id], |r| r.get(0))?,
+            Some((_, name)) => tx.query_row("SELECT EXISTS(SELECT 1 FROM series_favourites WHERE name = ?1 AND favourite_at IS NOT NULL)", params![name], |r| r.get(0))?,
+            None => false,
+        };
+        if !favourite { return Err(Error::Unsuitable("Add it to your favourites first.".into())); }
+        let (already, count): (bool, u32) = tx.query_row(
+            &format!("SELECT COALESCE(SUM(t.key = ?1), 0) > 0, COUNT(*) FROM top_favourites t WHERE {}", Self::LIVE_TOP),
+            params![key], |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        if already { return Ok(()); }
+        if count >= TOP_FIVE { return Err(Error::Unsuitable(TOP_FIVE_FULL.into())); }
+        tx.execute(
+            "INSERT INTO top_favourites (key, label, top_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET label = excluded.label, top_at = excluded.top_at",
+            params![key, label.trim(), crate::time::now_utc()],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn drop_top(conn: &rusqlite::Connection, key: &str) -> Result<()> {
+        conn.execute("UPDATE top_favourites SET top_at = NULL WHERE key = ?1 AND top_at IS NOT NULL", params![key])?;
         Ok(())
     }
 
@@ -680,6 +776,7 @@ impl Library {
             "UPDATE books SET favorite = ?2 WHERE id = ?1",
             params![book_id, favorite],
         )?;
+        if !favorite { Self::drop_top(&self.conn, &format!("book:{book_id}"))?; }
         Ok(())
     }
 
@@ -812,6 +909,24 @@ mod tests {
         assert_eq!(sorted(&|q| q.exclude.series = vec!["Discworld".into()]).len(), 3);
         assert_eq!(sorted(&|q| q.exclude.languages = vec!["fr".into()]).len(), 3);
         assert_eq!(sorted(&|q| q.hide_read = true), ["Carmilla", "Emma"]);
+    }
+
+    #[test]
+    fn an_author_is_found_and_counted_once_whichever_way_round() {
+        let (dir, mut library) = open_temp_library();
+        add(&mut library, dir.path(), "Star Druid", "Primo, Jaz");
+        add(&mut library, dir.path(), "Moon Druid", "Jaz Primo");
+        add(&mut library, dir.path(), "Emma", "Jane Austen");
+        let found = |f: &dyn Fn(&mut LibraryQuery)| {
+            let mut got: Vec<String> = titles(&library.library_page(&query(|q| f(q))).unwrap()).into_iter().map(str::to_string).collect();
+            got.sort();
+            got
+        };
+        assert_eq!(found(&|q| q.search = Some("jaz primo".into())), ["Moon Druid", "Star Druid"]);
+        assert_eq!(found(&|q| q.search = Some("primo jaz".into())), ["Moon Druid", "Star Druid"]);
+        assert_eq!(found(&|q| q.authors = vec!["Jaz Primo".into()]), ["Moon Druid", "Star Druid"]);
+        let names = library.names_in_library(AUTHORS, None).unwrap();
+        assert_eq!(names.iter().filter(|n| crate::people::key(n) == "jaz primo").count(), 1, "{names:?}");
     }
 
     #[test]
@@ -1103,6 +1218,33 @@ mod tests {
         assert!(library.set_pinned(&ids[9], true).is_err());
         library.set_archive_series_pin("a SERIES", false).unwrap();
         library.set_pinned(&ids[9], true).unwrap();
+    }
+
+    #[test]
+    fn favourite_series_and_the_top_five() {
+        let (dir, mut library) = open_temp_library();
+        let ids: Vec<_> = (0..6).map(|i| add(&mut library, dir.path(), &format!("Book {i}"), "Writer")).collect();
+        library.set_series_favourite(" The Saga ", true).unwrap();
+        library.set_series_favourite("the saga", true).unwrap();
+        assert_eq!(library.favourite_series().unwrap(), ["The Saga"]);
+        // A book has to be a favourite before it can be in the Top five.
+        assert!(library.set_top_favourite(&format!("book:{}", ids[0]), "Book 0", true).is_err());
+        for id in &ids { library.set_favorite(id, true).unwrap(); }
+        library.set_top_favourite("series:The Saga", "The Saga", true).unwrap();
+        for (i, id) in ids[..4].iter().enumerate() { library.set_top_favourite(&format!("book:{id}"), &format!("Book {i}"), true).unwrap(); }
+        assert_eq!(library.top_favourites().unwrap().len(), 5);
+        assert!(library.set_top_favourite(&format!("book:{}", ids[5]), "Book 5", true).is_err());
+        // A sixth that arrives from another device isn't shown.
+        library.conn.execute("INSERT INTO top_favourites (key, label, top_at) VALUES (?1, 'Book 5', '2099-01-01T00:00:00Z')", params![format!("book:{}", ids[5])]).unwrap();
+        assert_eq!(library.top_favourites().unwrap().len(), 5);
+        library.conn.execute("UPDATE top_favourites SET top_at = NULL WHERE key = ?1", params![format!("book:{}", ids[5])]).unwrap();
+        // Taking a series out of favourites takes it out of the Top five, and frees a place.
+        library.set_series_favourite("THE SAGA", false).unwrap();
+        assert!(library.favourite_series().unwrap().is_empty());
+        library.set_top_favourite(&format!("book:{}", ids[5]), "Book 5", true).unwrap();
+        library.set_favorite(&ids[0], false).unwrap();
+        let top: Vec<_> = library.top_favourites().unwrap().into_iter().map(|t| t.label).collect();
+        assert_eq!(top, ["Book 1", "Book 2", "Book 3", "Book 5"]);
     }
 
     #[test]

@@ -1,6 +1,7 @@
 // The bar along the bottom while an audiobook is loaded: what's playing, where
 // you are, and the controls.
 
+import { authorName } from "../lib/authorNames";
 import { useState } from "react";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
@@ -25,7 +26,7 @@ export function PlayerBar({ onShowAudiobooks }: { onShowAudiobooks: () => void }
         <BookCover book={book.book} size="s" />
         <span className="player-book-text">
           <strong>{book.book.title}</strong>
-          <span className="muted">{[book.book.authors.join(", "), chapter?.title].filter(Boolean).join(" · ")}</span>
+          <span className="muted">{[book.book.authors.map((a) => authorName(a, book.book.audioType)).join(", "), chapter?.title].filter(Boolean).join(" · ")}</span>
         </span>
       </button>
 

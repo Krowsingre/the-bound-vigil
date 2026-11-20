@@ -49,7 +49,7 @@ export function SeriesRow({
   if (!review) return null;
   const items: Item[] = [
     ...review.ownedBooks.map((owned) => ({ owned })),
-    ...review.missing.filter((m) => !m.hidden).map((missing) => ({ missing })),
+    ...review.missing.filter((m) => !m.hidden && !m.removed).map((missing) => ({ missing })),
   ].sort((a, b) => (position(a) ?? 1e9) - (position(b) ?? 1e9));
   const canLook = !isWeb && !isHome;
   // With nothing to show and no way to look, there's no section; once it can look, it's always offered.
