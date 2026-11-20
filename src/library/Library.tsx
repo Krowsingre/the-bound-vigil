@@ -915,11 +915,11 @@ export function Library({
   const pinnedCover = pins[0] ?? pinnedStacks?.books[0];
   const pinnedNames = (pinnedStacks?.books ?? []).flatMap((b) => (pinnedStacks?.seriesCounts?.[b.id] && b.series?.trim() ? [b.series.trim()] : []));
   const pinnedAllChosen = pinCount > 0 && pins.every((b) => selected?.has(b.id)) && pinnedNames.every((n) => !!selection?.hasSeries?.(n));
-  /** Every pinned book, and every book of every pinned series. */
+  /** Every pinned book, and every book of every pinned series, as the filters show them (as choosing one stack does). */
   const choosePinned = async () => {
     setBusy("Choosing…");
     try {
-      const lists = await Promise.all(pinnedNames.map(async (n) => [n, await wholeSeries(n)] as const));
+      const lists = await Promise.all(pinnedNames.map(async (n) => [n, await booksOfSeries(n)] as const));
       setStackBooks((m) => {
         const next = new Map(m);
         for (const [n, books] of lists) next.set(n, books);

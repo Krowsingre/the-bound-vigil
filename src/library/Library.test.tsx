@@ -11,6 +11,7 @@ const setFavorite = vi.fn(async () => {});
 const downloadBook = vi.fn<(id: string) => Promise<void>>();
 const removeDownload = vi.fn<(id: string) => Promise<void>>(async () => {});
 const getCollection = vi.fn();
+const archiveSeriesPins = vi.fn<() => Promise<string[]>>(async () => []);
 const setBookStatus = vi.fn<(id: string, status: string) => Promise<void>>(async () => {});
 vi.mock("../api", () => ({
   isApp: false,
@@ -28,6 +29,7 @@ vi.mock("../api", () => ({
     setFavorite: (...a: unknown[]) => setFavorite(...(a as [])),
     setWantToRead: vi.fn(),
     setBookStatus: (id: string, status: string) => setBookStatus(id, status),
+    archiveSeriesPins: () => archiveSeriesPins(),
     coverUrl: () => "",
   },
 }));
@@ -162,6 +164,24 @@ test("opening a series from Pinned shows that series' books", async () => {
   expect(await screen.findByRole("heading", { name: "Saga" })).toBeInTheDocument();
   expect(await screen.findByRole("button", { name: "More for Book 7" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "More for Book 1" })).toBeNull();
+});
+
+test("Pinned's Select all takes a pinned series as the shelf shows it", async () => {
+  archiveSeriesPins.mockResolvedValueOnce(["Saga"]);
+  getLibrary.mockImplementation(async (query) => ({
+    books: query?.pinned ? [] : query?.series?.length ? [book(7, { series: "Saga" })] : [book(25)],
+    seriesCounts: query?.series?.length && query.groupSeries ? { "sha256:7": 2 } : undefined,
+    total: query?.pinned ? 0 : 30,
+    page: query?.page ?? 0, pageSize: query?.pageSize ?? 24, counts, formats: ["epub"],
+    tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  renderLibrary({ view: { ...view, tab: "in_progress" } });
+  fireEvent.click(await screen.findByRole("button", { name: "Open Pinned, 1 pinned" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Select" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
+  expect(await screen.findByText("1 chosen")).toBeInTheDocument();
+  // The series' books come from the shelf showing, not the whole library.
+  expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ series: ["Saga"], shelf: "in_progress", groupSeries: false }));
 });
 
 test("the Pinned stack only leads the first page", async () => {
