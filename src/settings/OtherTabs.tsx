@@ -11,7 +11,7 @@ import { PublisherPlans, PublisherTools } from "../license/Publisher";
 import { canSelfUpdate, useUpdater, type UpdateState } from "./updates";
 import { SORTS, type Layout } from "../library/libraryView";
 import { TextSettings } from "../reader/ReaderPopovers";
-import { PAGE_COLORS, resolveTheme, WIDTHS } from "../reader/settings";
+import { PAGE_COLORS, resolveTheme } from "../reader/settings";
 import { readLocal, useAppDark, useAppSettings, writeLocal, type SeriesCheckEvery } from "./appSettings";
 import { canCheckSeries, checkAllSeries, useSeriesNews } from "../library/seriesCheck";
 import { canWatch, unwatch, useWatch, watchAuthor, watchBook, whenLine } from "../library/watchList";
@@ -50,7 +50,7 @@ export function ReadingTab() {
                 fontSize: reader.size,
                 lineHeight: reader.lineHeight,
                 textAlign: reader.justify ? "justify" : "start",
-                maxWidth: WIDTHS[reader.width] / 1.6,
+                maxWidth: reader.width / 1.6,
               }}
             >
               It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief,
@@ -1236,7 +1236,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.150.0");
+  const [version, setVersion] = useState("0.151.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

@@ -107,8 +107,9 @@ export function ReaderBottomBar({
   chapter,
   onContents,
   onSeek,
-  onPrev,
-  onNext,
+  onLeft,
+  onRight,
+  rtl = false,
   focus,
   overlay,
   arrows,
@@ -119,8 +120,11 @@ export function ReaderBottomBar({
   chapter: string | null;
   onContents: () => void;
   onSeek: (fraction: number) => void;
-  onPrev: () => void;
-  onNext: () => void;
+  /** The left and right arrows: in a right-to-left book the left one is the next page. */
+  onLeft: () => void;
+  onRight: () => void;
+  /** Right-to-left books: the line fills from the right and the arrows swap names. */
+  rtl?: boolean;
   focus: boolean;
   overlay: boolean;
   /** Page-turn arrows: only when pages turn, not when the book scrolls. */
@@ -138,6 +142,8 @@ export function ReaderBottomBar({
     setDragging(null);
   };
   const hidden = overlay && focus;
+  const leftName = rtl ? "Next page" : "Previous page";
+  const rightName = rtl ? "Previous page" : "Next page";
   return (
     <footer
       className={`reader-bottom${focus ? " reader-bottom-focus" : ""}${overlay ? " is-overlay" : ""}${hidden ? " is-hidden" : ""}${zoom ? " has-zoom" : ""}`}
@@ -146,7 +152,8 @@ export function ReaderBottomBar({
     >
       <input
         type="range"
-        className="reader-slider"
+        className={`reader-slider${rtl ? " is-rtl" : ""}`}
+        dir={rtl ? "rtl" : undefined}
         min={0}
         max={1}
         step={0.0005}
@@ -162,7 +169,7 @@ export function ReaderBottomBar({
       />
       <div className="reader-bottom-row">
         {arrows ? (
-          <button type="button" className="icon-btn" aria-label="Previous page" title="Previous page (←)" onClick={onPrev}>
+          <button type="button" className="icon-btn" aria-label={leftName} title={`${leftName} (←)`} onClick={onLeft}>
             <Icon name="chevronLeft" size={20} />
           </button>
         ) : <span className="reader-bottom-gap" />}
@@ -172,7 +179,7 @@ export function ReaderBottomBar({
         </button>
         {zoom}
         {arrows ? (
-          <button type="button" className="icon-btn" aria-label="Next page" title="Next page (→)" onClick={onNext}>
+          <button type="button" className="icon-btn" aria-label={rightName} title={`${rightName} (→)`} onClick={onRight}>
             <Icon name="chevronRight" size={20} />
           </button>
         ) : <span className="reader-bottom-gap" />}

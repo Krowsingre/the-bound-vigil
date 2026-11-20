@@ -6,7 +6,10 @@
 // - pages that stay in view when zoomed past the screen's width;
 // - Ctrl+wheel and pinch zoom, reported as a `zoom-change` event, and the
 //   scale in use reported as a `scale` event;
-// - a page drawn again at a new size only once the newest drawing is done.
+// - a page drawn again at a new size only once the newest drawing is done;
+// - a `dir` attribute ("ltr" or "rtl") to read the pages either way, a
+//   `cover` attribute ("alone" or "paired") for two pages side by side, and
+//   a `strip` attribute for scrolling with no room between pages (webtoons).
 
 const parseViewport = str => str
     ?.split(/[,;\s]/) // NOTE: technically, only the comma is valid
@@ -48,7 +51,7 @@ const clampZoom = z => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z))
 const SCROLL_GAP = 12
 
 export class FixedLayout extends HTMLElement {
-    static observedAttributes = ['zoom', 'spread', 'flow']
+    static observedAttributes = ['zoom', 'spread', 'flow', 'dir', 'cover', 'strip']
     #root = this.attachShadow({ mode: 'closed' })
     #observer = new ResizeObserver(() => this.#relayout())
     #spreads
@@ -62,6 +65,7 @@ export class FixedLayout extends HTMLElement {
     #side
     #zoom
     #spreadMode = 'auto'
+    #coverAlone = true
     #flow = 'paginated'
     #scale = 1
     // Scrolling: one holder per page, with a frame while it's near the screen.
@@ -87,6 +91,10 @@ export class FixedLayout extends HTMLElement {
         }
         :host([flow="scrolled"]) {
             display: block;
+        }
+        :host([strip]) .column {
+            gap: 0;
+            padding: 0;
         }
         .column {
             display: flex;
@@ -128,6 +136,19 @@ export class FixedLayout extends HTMLElement {
                 this.#flow = value === 'scrolled' ? 'scrolled' : 'paginated'
                 if (this.book) this.#rebuild()
                 break
+            case 'dir':
+                if (!this.book) break
+                this.book.dir = value === 'rtl' ? 'rtl' : 'ltr'
+                this.rtl = this.book.dir === 'rtl'
+                this.#rebuild()
+                break
+            case 'cover':
+                this.#coverAlone = value !== 'paired'
+                if (this.book && this.#flow === 'paginated') this.#rebuild()
+                break
+            case 'strip':
+                if (this.book && this.#flow === 'scrolled') this.#relayout()
+                break
         }
     }
     // Moved to a screen of another sharpness (or the system zoom changed):
@@ -142,6 +163,10 @@ export class FixedLayout extends HTMLElement {
     /** TBV: the scale the pages are drawn at now, 1 being their own size. */
     get scale() {
         return this.#scale
+    }
+    // TBV: room between pages when scrolling; none in a strip.
+    get #gap() {
+        return this.hasAttribute('strip') ? 0 : SCROLL_GAP
     }
     get #effectiveSpread() {
         return this.#spreadMode === 'auto' ? this.spread : this.#spreadMode
@@ -403,8 +428,11 @@ export class FixedLayout extends HTMLElement {
         this.spread = rendition?.spread
         this.defaultViewport = rendition?.viewport
 
+        const dir = this.getAttribute('dir')
+        if (dir === 'rtl' || dir === 'ltr') book.dir = dir
         const rtl = book.dir === 'rtl'
         this.rtl = rtl
+        this.#coverAlone = this.getAttribute('cover') !== 'paired'
         this.#buildSpreads()
         if (this.#flow === 'scrolled') this.#setupScroll()
     }
@@ -434,14 +462,15 @@ export class FixedLayout extends HTMLElement {
                 const spread = last.center || last.right || rtl && i ? newSpread() : last
                 spread.right = section
             }
+            // TBV: the first page (the cover) alone, or paired with the second.
             else if (ltr) {
                 if (last.center || last.right) newSpread().left = section
-                else if (last.left || !i) last.right = section
+                else if (last.left || !i && this.#coverAlone) last.right = section
                 else last.left = section
             }
             else {
                 if (last.center || last.left) newSpread().right = section
-                else if (last.right || !i) last.left = section
+                else if (last.right || !i && this.#coverAlone) last.left = section
                 else last.right = section
             }
             return arr
@@ -574,8 +603,8 @@ export class FixedLayout extends HTMLElement {
     }
     #scaleFor({ width, height }) {
         if (typeof this.#zoom === 'number' && !isNaN(this.#zoom)) return this.#zoom
-        const w = this.clientWidth - SCROLL_GAP * 2
-        const h = this.clientHeight - SCROLL_GAP * 2
+        const w = this.clientWidth - this.#gap * 2
+        const h = this.clientHeight - this.#gap * 2
         if (w <= 0 || h <= 0) return 1
         return (this.#zoom === 'fit-width' ? w / width : Math.min(w / width, h / height)) || 1
     }
@@ -615,7 +644,7 @@ export class FixedLayout extends HTMLElement {
         while (lo < hi) {
             const mid = (lo + hi) >> 1
             const { offsetTop, offsetHeight } = pages[mid].holder
-            if (offsetTop + offsetHeight + SCROLL_GAP <= y) lo = mid + 1
+            if (offsetTop + offsetHeight + this.#gap <= y) lo = mid + 1
             else hi = mid
         }
         return lo
@@ -670,7 +699,7 @@ export class FixedLayout extends HTMLElement {
     async #scrollToPage(index, reason) {
         const page = this.#pages[index]
         if (!page) return
-        this.scrollTop = page.holder.offsetTop - SCROLL_GAP
+        this.scrollTop = page.holder.offsetTop - this.#gap
         this.#scrollIndex = index
         this.#onScroll()
         await this.#loadPage(page)

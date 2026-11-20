@@ -20,11 +20,14 @@ import { RATE_RANGE } from "./readAloud";
 export type ReadingFont = "lora" | "georgia" | "sans" | "echolume" | "publisher";
 export type ReadingFlow = "paginated" | "scrolled";
 export type ReadingTheme = "auto" | "light" | "paper" | "dark" | "vesper";
-export type ReadingWidth = "narrow" | "medium" | "wide";
 /** PDFs and comics: fit to the screen, or a set size (1 = the page's own size). */
 export type PageZoom = "fit-page" | "fit-width" | number;
 /** PDFs and comics: one page at a time, two side by side, or two when the window is wide. */
 export type PageSpread = "one" | "two" | "auto";
+/** PDFs and comics: turn pages, scroll with room between them, or one unbroken strip (webtoons). */
+export type PageFlow = ReadingFlow | "strip";
+/** PDFs and comics, two pages side by side: the cover on its own, or paired with the next page. */
+export type PageCover = "alone" | "paired";
 /** Books of flowing text: one page at a time, or two side by side when there's room (a phone held sideways, a wide window). */
 export type TextSpread = "one" | "auto";
 
@@ -33,7 +36,8 @@ export interface ReaderSettings {
   /** Text size in CSS pixels. */
   size: number;
   lineHeight: number;
-  width: ReadingWidth;
+  /** How wide the text may be, in CSS pixels; the column stays in the middle of the window. */
+  width: number;
   flow: ReadingFlow;
   keyboardScrollSpeed: number;
   autoScrollSpeed: number;
@@ -54,7 +58,8 @@ export interface ReaderSettings {
   /** PDFs, comics and other books made of fixed pages. */
   pageZoom: PageZoom;
   pageSpread: PageSpread;
-  pageFlow: ReadingFlow;
+  pageFlow: PageFlow;
+  pageCover: PageCover;
 }
 
 export const SETTINGS_KEY = "reader.settings";
@@ -63,7 +68,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   font: "lora",
   size: 19,
   lineHeight: 1.6,
-  width: "medium",
+  width: 680,
   flow: "paginated",
   keyboardScrollSpeed: 420,
   autoScrollSpeed: 10,
@@ -78,6 +83,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   pageZoom: "fit-page",
   pageSpread: "one",
   pageFlow: "paginated",
+  pageCover: "alone",
 };
 
 /** Zoom steps for the + and − buttons, as multiples of the page's own size. */
@@ -112,7 +118,16 @@ export const FONTS: { value: ReadingFont; label: string }[] = [
   { value: "publisher", label: "Book's own" },
 ];
 
-export const WIDTHS: Record<ReadingWidth, number> = { narrow: 560, medium: 680, wide: 820 };
+/** Text width: a slider from narrow to wide, in CSS pixels. */
+export const WIDTH_RANGE = { min: 440, max: 1400, step: 20 } as const;
+/** The three widths offered before the slider, kept so saved choices carry over. */
+const OLD_WIDTHS: Record<string, number> = { narrow: 560, medium: 680, wide: 820 };
+
+export function parseWidth(raw: unknown): number {
+  if (typeof raw === "string" && raw in OLD_WIDTHS) return OLD_WIDTHS[raw];
+  if (typeof raw === "number" && Number.isFinite(raw)) return clamp(Math.round(raw / WIDTH_RANGE.step) * WIDTH_RANGE.step, WIDTH_RANGE.min, WIDTH_RANGE.max);
+  return DEFAULT_SETTINGS.width;
+}
 
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T =>
   allowed.includes(value as T) ? (value as T) : fallback;
@@ -133,7 +148,7 @@ export function parseSettings(json: string | null): ReaderSettings {
     size: typeof raw.size === "number" ? clamp(Math.round(raw.size), SIZE_RANGE.min, SIZE_RANGE.max) : d.size,
     lineHeight: typeof raw.lineHeight === "number" && Number.isFinite(raw.lineHeight)
       ? clamp(Math.round(raw.lineHeight * 10) / 10, LINE_HEIGHT_RANGE.min, LINE_HEIGHT_RANGE.max) : d.lineHeight,
-    width: oneOf(raw.width, ["narrow", "medium", "wide"], d.width),
+    width: parseWidth(raw.width),
     flow: oneOf(raw.flow, ["paginated", "scrolled"], d.flow),
     keyboardScrollSpeed: typeof raw.keyboardScrollSpeed === "number" && Number.isFinite(raw.keyboardScrollSpeed)
       ? Math.max(120, Math.min(1_200, raw.keyboardScrollSpeed)) : d.keyboardScrollSpeed,
@@ -150,7 +165,8 @@ export function parseSettings(json: string | null): ReaderSettings {
     rate: typeof raw.rate === "number" && Number.isFinite(raw.rate) ? clamp(Math.round(raw.rate * 100) / 100, RATE_RANGE.min, RATE_RANGE.max) : d.rate,
     pageZoom: parseZoom(raw.pageZoom),
     pageSpread: oneOf(raw.pageSpread, ["one", "two", "auto"], d.pageSpread),
-    pageFlow: oneOf(raw.pageFlow, ["paginated", "scrolled"], d.pageFlow),
+    pageFlow: oneOf(raw.pageFlow, ["paginated", "scrolled", "strip"], d.pageFlow),
+    pageCover: oneOf(raw.pageCover, ["alone", "paired"], d.pageCover),
   };
 }
 

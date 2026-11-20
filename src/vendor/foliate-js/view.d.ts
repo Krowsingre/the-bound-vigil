@@ -75,6 +75,12 @@ export interface View extends HTMLElement {
   /** PDFs, comics and pre-paginated EPUBs, laid out page by page. */
   isFixedLayout: boolean;
   lastLocation: Relocation | null;
+  /** Which way the book itself says it reads (from its EPUB package or a comic's ComicInfo.xml). */
+  ownDirection?: "ltr" | "rtl";
+  /** Set before `open`: the reader's own choice of direction, over the book's. */
+  directionOverride?: "ltr" | "rtl";
+  /** Reads the pages left to right or right to left, whatever the book says. */
+  setDirection(dir: "ltr" | "rtl"): void;
   /** A file, or a book object built by TBV (see src/reader/formats). */
   open(book: Blob | File | object): Promise<void>;
   init(options: { lastLocation?: string | null; showTextStart?: boolean }): Promise<void>;
