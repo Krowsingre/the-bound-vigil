@@ -1,3 +1,4 @@
+import { authorName } from "../lib/authorNames";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { groupPlaces, placesOf, placesWords } from "../lib/details";
 import { useAppSettings } from "../settings/appSettings";
@@ -423,7 +424,7 @@ function BookInfo({ info, totalPages }: { info: ReaderBook; totalPages: number }
   };
   const rows: [string, string | null][] = [
     ["Title", b.title],
-    ["Author", b.authors.length ? b.authors.join(", ") : null],
+    ["Author", b.authors.length ? b.authors.map((a) => authorName(a, b.audioType)).join(", ") : null],
     ["Series", groupPlaces(placesOf(b)).map(({ name, places }) => (places.some((p) => p.number != null || p.after != null) ? `${name}, ${placesWords(places).toLowerCase()}` : name)).join("; ") || null],
     ["Publisher", info.publisher],
     ["Language", info.language],

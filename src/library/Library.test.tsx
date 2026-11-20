@@ -246,6 +246,10 @@ test("removing downloads from a stack keeps cloud-only and local-only books unto
   renderLibrary({ view: { ...view, seriesGrouping: "mixed" } });
   fireEvent.click(await screen.findByRole("button", { name: "More for Shared series" }));
   expect(screen.getByRole("menuitem", { name: "Download" })).toBeInTheDocument();
+  // A stack's menu offers what the selection's Actions do, without choosing first.
+  for (const name of ["Edit details", "Find details online", "Tags", "Remove from library", "Delete"]) {
+    expect(screen.getByRole("menuitem", { name })).toBeInTheDocument();
+  }
   fireEvent.click(screen.getByRole("menuitem", { name: "Remove download" }));
   const confirm = await screen.findByRole("button", { name: "Remove downloads" });
   expect(removeDownload).not.toHaveBeenCalled();

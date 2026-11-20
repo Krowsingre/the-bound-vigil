@@ -116,6 +116,7 @@ fn main_match(n: usize) -> String {
     format!(
         "(tbv_fold({TITLE}) LIKE ?{n} ESCAPE '\\' \
           OR tbv_fold({AUTHORS}) LIKE ?{n} ESCAPE '\\' \
+          OR tbv_people({AUTHORS}) LIKE ?{n} ESCAPE '\\' \
           OR tbv_fold(COALESCE({SERIES}, '')) LIKE ?{n} ESCAPE '\\')"
     )
 }
@@ -164,13 +165,19 @@ impl Filters<'_> {
             ));
         }
         // Genres, authors and narrators are JSON lists: a book matches when any name does.
-        for (list, names) in [(GENRES, self.genres), (AUTHORS, self.authors), (NARRATORS, self.narrators)] {
+        // People match however their name is written: "Primo, Jaz" is "Jaz Primo".
+        for (list, names, person) in [(GENRES, self.genres, false), (AUTHORS, self.authors, true), (NARRATORS, self.narrators, true)] {
             if names.is_empty() {
                 continue;
             }
-            let s = slots(values, names.iter().map(|g| g.trim().to_lowercase()).collect());
+            let (keys, fold) = if person {
+                (names.iter().map(|g| crate::people::key(g)).collect(), "tbv_person")
+            } else {
+                (names.iter().map(|g| g.trim().to_lowercase()).collect(), "tbv_fold")
+            };
+            let s = slots(values, keys);
             conditions.push(format!(
-                "(EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid({list}) THEN {list} ELSE '[]' END) g WHERE tbv_fold(g.value) IN ({s})))"
+                "(EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid({list}) THEN {list} ELSE '[]' END) g WHERE {fold}(g.value) IN ({s})))"
             ));
         }
         if !self.series.is_empty() {
@@ -594,10 +601,12 @@ impl Library {
     /// this kind, one spelling each, A to Z.
     fn names_in_library(&self, list: &str, kind: Option<ItemKind>) -> Result<Vec<String>> {
         let only = kind.map(|k| format!(" AND {}", kind_condition(k))).unwrap_or_default();
+        // Both spellings of a person are one name in the list.
+        let fold = if list == AUTHORS || list == NARRATORS { "tbv_person" } else { "tbv_fold" };
         let mut statement = self.conn.prepare(&format!(
             "SELECT MIN(g.value) FROM (SELECT {list} AS names {BOOK_FROM}{only}) x, json_each(CASE WHEN json_valid(x.names) THEN x.names ELSE '[]' END) g
              WHERE trim(g.value) != ''
-             GROUP BY tbv_fold(g.value) ORDER BY tbv_fold(g.value)"
+             GROUP BY {fold}(g.value) ORDER BY {fold}(g.value)"
         ))?;
         let rows = statement.query_map([], |r| r.get(0))?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
@@ -812,6 +821,24 @@ mod tests {
         assert_eq!(sorted(&|q| q.exclude.series = vec!["Discworld".into()]).len(), 3);
         assert_eq!(sorted(&|q| q.exclude.languages = vec!["fr".into()]).len(), 3);
         assert_eq!(sorted(&|q| q.hide_read = true), ["Carmilla", "Emma"]);
+    }
+
+    #[test]
+    fn an_author_is_found_and_counted_once_whichever_way_round() {
+        let (dir, mut library) = open_temp_library();
+        add(&mut library, dir.path(), "Star Druid", "Primo, Jaz");
+        add(&mut library, dir.path(), "Moon Druid", "Jaz Primo");
+        add(&mut library, dir.path(), "Emma", "Jane Austen");
+        let found = |f: &dyn Fn(&mut LibraryQuery)| {
+            let mut got: Vec<String> = titles(&library.library_page(&query(|q| f(q))).unwrap()).into_iter().map(str::to_string).collect();
+            got.sort();
+            got
+        };
+        assert_eq!(found(&|q| q.search = Some("jaz primo".into())), ["Moon Druid", "Star Druid"]);
+        assert_eq!(found(&|q| q.search = Some("primo jaz".into())), ["Moon Druid", "Star Druid"]);
+        assert_eq!(found(&|q| q.authors = vec!["Jaz Primo".into()]), ["Moon Druid", "Star Druid"]);
+        let names = library.names_in_library(AUTHORS, None).unwrap();
+        assert_eq!(names.iter().filter(|n| crate::people::key(n) == "jaz primo").count(), 1, "{names:?}");
     }
 
     #[test]

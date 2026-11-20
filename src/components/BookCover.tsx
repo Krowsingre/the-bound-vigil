@@ -9,7 +9,7 @@ import { Icon } from "./Icon";
 // Muted cloth tones for books that ship without cover art.
 export const CLOTH = ["#2f3a44", "#3d3a33", "#33403a", "#41323a", "#2e3540", "#463c2e"];
 
-type CoverBook = Pick<BookPreview, "id" | "title" | "authors" | "coverPath"> & Partial<Pick<BookPreview, "availability" | "format" | "paired" | "pairInStep">>;
+type CoverBook = Pick<BookPreview, "id" | "title" | "authors" | "coverPath"> & Partial<Pick<BookPreview, "availability" | "format" | "paired" | "pairInStep" | "audioType">>;
 
 export function BookCover({ book, size = "m", onExpand, seriesCount, seriesPublished }: { book: CoverBook; size?: "s" | "m" | "l"; onExpand?: (url: string) => void; seriesCount?: number; seriesPublished?: number }) {
   const [failed, setFailed] = useState(false);
@@ -25,14 +25,14 @@ export function BookCover({ book, size = "m", onExpand, seriesCount, seriesPubli
       {/* Privacy mode shows this instead of the cover; the cover stays loaded underneath. */}
       <div className="cover-private" aria-hidden>
         <span className="cover-title">{book.title}</span>
-        <span className="cover-author">{authorLine(book.authors)}</span>
+        <span className="cover-author">{authorLine(book.authors, book.audioType)}</span>
       </div>
       {src ? (
         <img src={src} alt="" draggable={false} onError={() => setFailed(true)} />
       ) : (
         <div className="cover-generated" style={{ background: CLOTH[hashOf(book.id) % CLOTH.length] }}>
           <span className="cover-title">{book.title}</span>
-          <span className="cover-author">{authorLine(book.authors)}</span>
+          <span className="cover-author">{authorLine(book.authors, book.audioType)}</span>
         </div>
       )}
       {src && onExpand && <button type="button" className="cover-expand" aria-label={"Expand cover for " + book.title} onClick={() => onExpand(src)} />}

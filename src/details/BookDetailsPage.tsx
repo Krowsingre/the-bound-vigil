@@ -1,6 +1,7 @@
 // The Book details page: everything about one book, with its details in their
 // layers (your edits, fetched online, the book's own) and ways to change them.
 
+import { authorName } from "../lib/authorNames";
 import { useDownloadsChanging } from "../library/cloudDownloads";
 import { useEffect, useMemo, useState } from "react";
 import { api, isAndroid, isApp, isIOS } from "../api";
@@ -230,7 +231,7 @@ export function BookDetailsPage({
               <h1 className="details-title" title={origin(field("title")) ?? undefined}>
                 {book.title}
               </h1>
-              <p className="details-authors">{book.authors.join(", ") || "Unknown author"}</p>
+              <p className="details-authors">{book.authors.map((a) => authorName(a, book.audioType)).join(", ") || "Unknown author"}</p>
               {kind === "music" && book.series && (
                 <p className="muted">
                   {book.series}

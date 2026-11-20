@@ -817,6 +817,20 @@ fn register_functions(conn: &Connection, sync_live: &Arc<AtomicBool>) -> Result<
         FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
         |ctx| Ok(ctx.get::<Option<String>>(0)?.map(|s| s.to_lowercase())),
     )?;
+    // One key for a person however the name is written (people.rs).
+    conn.create_scalar_function(
+        "tbv_person",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| Ok(ctx.get::<Option<String>>(0)?.map(|s| crate::people::key(&s))),
+    )?;
+    // A JSON list of names, each both ways round, for searching.
+    conn.create_scalar_function(
+        "tbv_people",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| Ok(ctx.get::<Option<String>>(0)?.map(|s| crate::people::search_text(&s))),
+    )?;
     conn.create_scalar_function(
         "tbv_language",
         1,

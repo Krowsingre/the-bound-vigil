@@ -130,7 +130,7 @@ export function Library({
     try {
       const books = (await seriesBooks(name)).filter((book) => book.availability === "local");
       if (!books.some((book) => book.inCloud)) {
-        toast(books.length ? "The downloaded files are the only copies and will stay on this device." : "This series has no downloads on this device.");
+        toast(books.length ? "The downloaded files are the only copies and will stay on this device." : `This ${albums ? "album" : "series"} has no downloads on this device.`);
         return;
       }
       setSeriesRemoval({ name, books });
@@ -176,9 +176,24 @@ export function Library({
   const seriesMenu = (name: string): import("../components/Menu").MenuEntry[] => {
     const key = name.trim().toLowerCase();
     const pinned = pinnedSeries.some((value) => value.trim().toLowerCase() === key);
+    // Edit a whole series or album at once, without choosing it first (embre, 20 November).
+    const withBooks = (then: (books: BookPreview[]) => void) => () =>
+      void booksOfSeries(name).then((books) => books.length && then(books), (e: unknown) => toast(String(e)));
+    const stackActions = groupActions
+      .filter((a) => a === "divider" || a.label !== "Group as album")
+      .map((a): MenuEntry => {
+        if (a === "divider") return a;
+        // A stack's downloads cover the whole series, whatever the filters show.
+        if (a.label === "Download") return { label: a.label, icon: a.icon, disabled: !!busy, onSelect: () => void downloadSeries(name) };
+        if (a.label === "Remove download") return { label: a.label, icon: a.icon, disabled: !!busy, onSelect: () => void askRemoveSeriesDownloads(name) };
+        return {
+          label: a.label, icon: a.icon, hint: a.hint, danger: a.danger, disabled: !!busy,
+          onSelect: withBooks((books) => (a.can && !a.can(books) ? toast(`Nothing in “${name}” for that.`) : a.run(books, name))),
+        };
+      });
     return [
-      { label: "Download", icon: "download", disabled: !!busy, onSelect: () => void downloadSeries(name) },
-      { label: "Remove download", icon: "cloudOff", disabled: !!busy, onSelect: () => void askRemoveSeriesDownloads(name) },
+      ...stackActions,
+      "divider",
       { label: "Choose stack cover", onSelect: () => setCoverPicker(name) },
       ...(coverChoices[key] ? [{ label: "Reset to automatic", onSelect: () => changeCover(name) }] : []),
       ...(kind === "books" ? [{ label: pinned ? "Unpin series" : "Pin series", onSelect: () => toggleSeriesPin(name, !pinned) }] : []),
@@ -441,7 +456,8 @@ export function Library({
     [first, endless, later],
   );
   // One series shown: its check for missing books (button up top, list under the books).
-  const checkedSeries = !isWeb && !isHome && view.tab !== "collections" && view.series.length === 1 ? view.series[0] : null;
+  // An album isn't a series: nothing is missing from it to look for.
+  const checkedSeries = !isWeb && !isHome && !albums && view.tab !== "collections" && view.series.length === 1 ? view.series[0] : null;
   const seriesAuthor = page?.books[0]?.authors[0] ?? "";
   const seriesCheckState = useSeriesReview(checkedSeries, seriesAuthor, refreshKey + reload, () => setReload((n) => n + 1));
   const seriesCheck = checkedSeries ? seriesCheckState : null;
@@ -621,48 +637,60 @@ export function Library({
   const libraryAllChosen = groupSeries
     ? everything !== null && everything > 0 && (selected?.size ?? 0) >= everything
     : matchingBooks > 0 && (selected?.size ?? 0) >= matchingBooks;
-  const chosenActions: MenuEntry[] = [
-    { label: "Edit details", icon: "edit", disabled: none, onSelect: () => askEditDetails(chosen) },
-    { label: "Find details online", icon: "search", disabled: none, onSelect: () => askFetchManyDetails(chosen) },
+  /**
+   * What can be done to several items at once. The same list is the
+   * selection's Actions menu and a stack's right-click menu, so nothing is
+   * only reachable by choosing first (embre, 20 November). `stack` names the
+   * series or album when the books are a stack's.
+   */
+  type GroupAction = { label: string; icon?: MenuItem["icon"]; hint?: string; danger?: boolean; can?: (books: BookPreview[]) => boolean; run: (books: BookPreview[], stack?: string) => void };
+  const ask = (what: "remove" | "delete" | "download") => (books: BookPreview[], stack?: string) => {
+    setSeriesRemoval(stack ? { name: stack, books } : null);
+    setAsking(what);
+  };
+  const groupActions: (GroupAction | "divider")[] = [
+    { label: "Edit details", icon: "edit", run: (books) => askEditDetails(books) },
+    { label: "Find details online", icon: "search", run: (books) => askFetchManyDetails(books) },
     // Music albums: songs kept together, each still its own item (embre, 19 November).
     ...(kind === "audiobooks"
       ? [
-          { label: "Group as album", icon: "layers", disabled: chosen.length < 2, onSelect: () => askAlbum(chosen, false) } as MenuItem,
-          { label: "Ungroup", icon: "close", disabled: !chosen.some((b) => b.series), onSelect: () => askAlbum(chosen.filter((b) => b.series), true) } as MenuItem,
+          { label: "Group as album", icon: "layers", can: (books) => books.length > 1, run: (books) => askAlbum(books, false) } as GroupAction,
+          { label: "Ungroup", icon: "close", can: (books) => books.some((b) => b.series), run: (books) => askAlbum(books.filter((b) => b.series), true) } as GroupAction,
         ]
       : []),
-    { label: "Tags", icon: "tag", disabled: none, onSelect: () => setTagging(true) },
-    { label: "Add to or take out of a collection", icon: "collections", disabled: none, onSelect: () => askAddToCollection(chosen) },
-    ...(kind !== "audiobooks" ? [{ label: "Send to e-reader", icon: "ereader", disabled: none, onSelect: () => askSendToEreader(chosen) } as MenuItem] : []),
-    ...(canSendWithLocalSend ? [{ label: "Send with Grimoire", icon: "upload", disabled: none, onSelect: () => askSendWithLocalSend(chosen) } as MenuItem] : []),
-    ...(actions.sendToFriend ? [{ label: "Send to a TBV friend", icon: "person", disabled: none, onSelect: () => actions.sendToFriend?.(chosen) } as MenuItem] : []),
-    ...(actions.shareFiles ? [{ label: chosen.length === 1 ? "Share the file" : "Share the files", icon: "share", disabled: none, onSelect: () => actions.shareFiles?.(chosen) } as MenuItem] : []),
+    { label: "Tags", icon: "tag", run: (books, stack) => { setSeriesRemoval(stack ? { name: stack, books } : null); setTagging(true); } },
+    { label: "Add to or take out of a collection", icon: "collections", run: (books) => askAddToCollection(books) },
+    ...(kind !== "audiobooks" ? [{ label: "Send to e-reader", icon: "ereader", run: (books) => askSendToEreader(books) } as GroupAction] : []),
+    ...(canSendWithLocalSend ? [{ label: "Send with Grimoire", icon: "upload", run: (books) => askSendWithLocalSend(books) } as GroupAction] : []),
+    ...(actions.sendToFriend ? [{ label: "Send to a TBV friend", icon: "person", run: (books) => actions.sendToFriend?.(books) } as GroupAction] : []),
+    ...(actions.shareFiles ? [{ label: "Share the files", icon: "share", run: (books) => actions.shareFiles?.(books) } as GroupAction] : []),
     ...(!isWeb && phoneChoiceShown()
       ? [
-          { label: "Send to device", icon: "upload", disabled: none, onSelect: () => actions.setPhoneWanted?.(chosen, true) } as MenuItem,
-          ...(chosen.some((b) => b.phoneWanted)
-            ? [{ label: "Stop sending to device", icon: "cloudOff", onSelect: () => actions.setPhoneWanted?.(chosen.filter((b) => b.phoneWanted), false) } as MenuItem]
-            : []),
+          { label: "Send to device", icon: "upload", run: (books) => actions.setPhoneWanted?.(books, true) } as GroupAction,
+          { label: "Stop sending to device", icon: "cloudOff", can: (books) => books.some((b) => b.phoneWanted), run: (books) => actions.setPhoneWanted?.(books.filter((b) => b.phoneWanted), false) } as GroupAction,
         ]
       : []),
-    { label: "Save copies", icon: "copy", disabled: none || busy !== null, onSelect: () => void saveChosen() },
-    {
-      label: "Download",
-      icon: "download",
-      disabled: !chosen.some(downloadable) || busy !== null,
-      onSelect: () => void downloads.download(async () => chosen),
-    },
+    { label: "Save copies", icon: "copy", run: (books) => void saveCopies(books) },
+    { label: "Download", icon: "download", can: (books) => books.some(downloadable), run: (books) => void downloads.download(async () => books) },
     {
       label: "Remove download",
       icon: "cloudOff",
       hint: "Keeps the cloud copy",
-      disabled: !chosen.some((b) => b.availability === "local" && b.inCloud) || busy !== null,
-      onSelect: () => setAsking("download"),
+      can: (books) => books.some((b) => b.availability === "local" && b.inCloud),
+      run: ask("download"),
     },
     "divider",
+    { label: "Remove from library", icon: "close", run: ask("remove") },
+    { label: "Delete", icon: "trash", danger: true, run: ask("delete") },
+  ];
+  const chosenActions: MenuEntry[] = [
+    ...groupActions.map((a): MenuEntry => a === "divider" ? a : {
+      label: a.label === "Share the files" && chosen.length === 1 ? "Share the file" : a.label,
+      icon: a.icon, hint: a.hint, danger: a.danger,
+      disabled: none || busy !== null || (a.can ? !a.can(chosen) : false),
+      onSelect: () => a.run(chosen),
+    }),
     { label: "Clear choice", icon: "close", disabled: none || busy !== null, onSelect: () => setSelected(new Map()) },
-    { label: "Remove from library", icon: "close", disabled: none || busy !== null, onSelect: () => setAsking("remove") },
-    { label: "Delete", icon: "trash", danger: true, disabled: none || busy !== null, onSelect: () => setAsking("delete") },
   ];
 
   /** Removes downloads, removes from the library, or deletes, one book at a time. */
@@ -700,10 +728,10 @@ export function Library({
     );
   };
 
-  const saveChosen = async () => {
+  const saveCopies = async (books: BookPreview[]) => {
     try {
       setBusy("Saving copies…");
-      const done = await api.saveCopies(chosen.map((b) => b.id));
+      const done = await api.saveCopies(books.map((b) => b.id));
       if (done) toast(`Saved ${done.saved === 1 ? "a copy" : `${done.saved} copies`} to ${done.folder}.`);
     } catch (e) {
       toast(`Couldn't save the copies: ${String(e)}`);
@@ -820,8 +848,8 @@ export function Library({
         )}
         {seriesName && seriesTotal?.name === seriesName && page && page.total < seriesTotal.count && (
           <div className="search-note">
-            <span>{page.total} of {seriesTotal.count} books shown</span>
-            {onShowAllSeries && <button type="button" className="view-all" onClick={onShowAllSeries}>Show all books in this series</button>}
+            <span>{page.total} of {seriesTotal.count} {albums ? "songs" : "books"} shown</span>
+            {onShowAllSeries && <button type="button" className="view-all" onClick={onShowAllSeries}>{albums ? "Show all songs in this album" : "Show all books in this series"}</button>}
           </div>
         )}
         {counts && (
@@ -935,14 +963,16 @@ export function Library({
             {
               download: seriesRemoval ? `Remove downloads for “${seriesRemoval.name}”?` :
                 `Remove the downloads of ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`}?`,
-              remove: `Remove ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`} from your library?`,
-              delete: `Delete ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`} for good?`,
+              remove: seriesRemoval ? `Remove “${seriesRemoval.name}” (${seriesRemoval.books.length} ${seriesRemoval.books.length === 1 ? words.one : words.many}) from your library?` :
+                `Remove ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`} from your library?`,
+              delete: seriesRemoval ? `Delete “${seriesRemoval.name}” (${seriesRemoval.books.length} ${seriesRemoval.books.length === 1 ? words.one : words.many}) for good?` :
+                `Delete ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`} for good?`,
             }[asking]
           }
           body={
             asking === "download"
               ? "This frees up space on this device. The books stay in your library and in the cloud, and download again when you open them. Books that aren't in the cloud yet are kept here."
-              : (asking === "remove" ? removeWarning : deleteWarning)(chosen.length > 1)
+              : (asking === "remove" ? removeWarning : deleteWarning)((seriesRemoval?.books ?? chosen).length > 1)
           }
           confirm={{ download: "Remove downloads", remove: "Remove from library", delete: "Delete for good" }[asking]}
           danger={asking !== "download"}
@@ -952,9 +982,10 @@ export function Library({
       )}
       {tagging && (
         <TagsDialog
-          books={chosen}
+          books={seriesRemoval?.books ?? chosen}
           onClose={(changed) => {
             setTagging(false);
+            setSeriesRemoval(null);
             if (changed) setReload((n) => n + 1);
           }}
         />

@@ -6,7 +6,7 @@ import { askAddToCollection } from "../collections/AddToCollection";
 import { holdForMenu } from "../components/ContextMenu";
 import type { MenuEntry } from "../components/Menu";
 import { StarRating } from "../components/StarRating";
-import { askEditDetails, showBookDetails, showInLibrary } from "../details/openDetails";
+import { askAlbum, askEditDetails, askFetchDetails, showBookDetails, showInLibrary } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
 import { askSendWithLocalSend, canSendWithLocalSend } from "../localsend/SendWithLocalSend";
 import { askDeleteBook, askEditTags, askRemoveBook } from "../library/BookDialogs";
@@ -66,6 +66,9 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
       : { label: "Open", icon: "bookOpen" as const, onSelect: () => actions.open(book) },
     { label: detailsLabel(book), icon: "info", onSelect: () => showBookDetails(book.id) },
     { label: "Edit details…", icon: "edit", onSelect: () => askEditDetails([book]) },
+    // Everything the selection's Actions menu offers is here too (embre, 20 November).
+    { label: "Find details online…", icon: "search", onSelect: () => askFetchDetails(book) },
+    ...(book.audioType === "music" && book.series ? [{ label: "Take out of its album", icon: "close" as const, onSelect: () => askAlbum([book], true) }] : []),
     {
       heading: createElement(
         "span",
@@ -120,7 +123,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     ...(book.series
       ? [
           {
-            label: "Show series",
+            label: book.audioType === "music" ? "Show album" : "Show series",
             icon: "library" as const,
             onSelect: () => showInLibrary(kindOf(book.format), { ...NO_FILTERS, tab: "all", series: [book.series!], sort: "series" }),
           },
@@ -143,6 +146,11 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     ...(actions.sendToFriend ? [{ label: "Send to a TBV friend…", icon: "person" as const, onSelect: () => actions.sendToFriend?.([book]) }] : []),
     ...(actions.shareFiles ? [{ label: "Share the file…", icon: "share" as const, onSelect: () => actions.shareFiles?.([book]) }] : []),
     ...(actions.saveCopy ? [{ label: "Save a copy…", icon: "copy" as const, onSelect: () => actions.saveCopy?.(book) }] : []),
+    ...(!isWeb && actions.setPhoneWanted && phoneChoiceShown()
+      ? [book.phoneWanted
+          ? { label: "Stop sending to device", icon: "cloudOff" as const, onSelect: () => actions.setPhoneWanted?.([book], false) }
+          : { label: "Send to device", icon: "upload" as const, onSelect: () => actions.setPhoneWanted?.([book], true) }]
+      : []),
     downloadItem(book, actions),
     ] },
     "divider",

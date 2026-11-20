@@ -2,6 +2,7 @@
 // by genre, author, narrator and status), and a panel for the one chosen, with
 // its chapters, details, files and collections.
 
+import { authorName } from "../lib/authorNames";
 import { useCallback, useEffect, useState } from "react";
 import { api, isServerBook } from "../api";
 import type { AudioType, Audiobook, BookDetails, BookPreview } from "../api/types";
@@ -254,7 +255,7 @@ function AudiobookPanel({
         <BookCover book={b} size="l" />
         <div className="audio-panel-title">
           <h2>{b.title}</h2>
-          <p>{b.authors.join(", ") || "Unknown author"}</p>
+          <p>{b.authors.map((a) => authorName(a, b.audioType)).join(", ") || "Unknown author"}</p>
           {book.narrators.length > 0 && <p className="muted">Narrated by {book.narrators.join(", ")}</p>}
           {b.genres.length > 0 && (
             <div className="details-chips">

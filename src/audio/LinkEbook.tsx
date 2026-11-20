@@ -1,6 +1,7 @@
 // Pairing an audiobook with its ebook or document, from either side, so you
 // can read along as it plays. Books with the same title come first.
 
+import { authorName } from "../lib/authorNames";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { BookPreview } from "../api/types";
@@ -117,7 +118,7 @@ export function PairDialog({ book, onClose }: { book: BookPreview; onClose: (oth
                 <BookCover book={b} size="s" />
                 <span className="fetch-result-text">
                   <strong>{b.title}</strong>
-                  <span className="muted">{[b.authors.join(", "), b.format.toUpperCase()].filter(Boolean).join(" · ")}</span>
+                  <span className="muted">{[b.authors.map((a) => authorName(a, b.audioType)).join(", "), b.format.toUpperCase()].filter(Boolean).join(" · ")}</span>
                 </span>
               </button>
             ))

@@ -3,6 +3,7 @@ import type { BookPreview } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
+import { holdForMenu } from "../components/ContextMenu";
 import { ProgressBar } from "../components/ProgressBar";
 import { Stars } from "../components/StarRating";
 import { authorLine, percent } from "../lib/format";
@@ -120,6 +121,9 @@ function Progress({ book }: { book: BookPreview }) {
   );
 }
 
+/** Right-click (or press and hold) on a stack opens its menu, as on a book. */
+const stackMenu = (name: string, seriesMenu?: Props["seriesMenu"]) => (seriesMenu ? holdForMenu(`More for ${name}`, () => seriesMenu(name)) : {});
+
 export function BookGrid({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, showStatus, inSeries }: Props) {
   return (
     <ul className={`book-grid${selection ? " is-selecting" : ""}`}>
@@ -130,7 +134,7 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesPublis
           const cover = seriesCovers?.[book.id] ?? book;
           const pick = pickedSeries(name, selection, book, books);
           return (
-            <li key={book.id} className={`grid-card series-stack${pick?.on ? " is-selected" : ""}`}>
+            <li key={book.id} className={`grid-card series-stack${pick?.on ? " is-selected" : ""}`} {...stackMenu(name, seriesMenu)}>
               <button
                 type="button"
                 className="grid-open"
@@ -162,7 +166,7 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesPublis
               type="button"
               className="grid-open"
               onClick={(e) => press(book, actions, selection, books, e.shiftKey)}
-              title={`${book.title}, ${authorLine(book.authors)}`}
+              title={`${book.title}, ${authorLine(book.authors, book.audioType)}`}
               {...props}
             >
               <BookCover book={book} />
@@ -172,7 +176,7 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesPublis
               <div className="grid-text">
                 <span className="book-title">{book.title}</span>
                 <span className="book-author">
-                  {authorLine(book.authors)}
+                  {authorLine(book.authors, book.audioType)}
                   <Marks book={book} />
                 </span>
                 {showStatus && <span className="book-author">{[seriesLine(book, inSeries), STATUS[book.status]].filter(Boolean).join(" · ")}</span>}
@@ -196,7 +200,7 @@ export function BookList({ books, actions, selection, seriesCounts, seriesPublis
         if (count && name && onOpenSeries) {
           const cover = seriesCovers?.[book.id] ?? book;
           const pick = pickedSeries(name, selection, book, books);
-          return <li key={book.id} className={`list-row series-list-row${pick?.on ? " is-selected" : ""}`}>
+          return <li key={book.id} className={`list-row series-list-row${pick?.on ? " is-selected" : ""}`} {...stackMenu(name, seriesMenu)}>
             <button type="button" className="list-open" aria-label={pick ? `Choose series ${name}` : `Open series ${name}`}
               aria-pressed={pick ? pick.on : undefined} onClick={(e) => (pick ? pick.toggle(e.shiftKey) : onOpenSeries(name))}>
               {pick?.mark}
@@ -222,7 +226,7 @@ export function BookList({ books, actions, selection, seriesCounts, seriesPublis
               <span className="list-text">
                 <span className="book-title">{book.title}</span>
                 <span className="book-author">
-                  {authorLine(book.authors)}
+                  {authorLine(book.authors, book.audioType)}
                   <Marks book={book} />
                 </span>
                 {seriesLine(book, inSeries) && <span className="book-author">{seriesLine(book, inSeries)}</span>}
@@ -265,7 +269,7 @@ export function BookTable({ books, actions, selection, seriesCounts, seriesPubli
           const count = seriesCounts?.[book.id];
           const name = book.series?.trim();
           const pick = count && name ? pickedSeries(name, selection, book, books) : null;
-          if (count && name && onOpenSeries) return <tr key={book.id} className={`series-table-row${pick?.on ? " is-selected" : ""}`}>
+          if (count && name && onOpenSeries) return <tr key={book.id} className={`series-table-row${pick?.on ? " is-selected" : ""}`} {...stackMenu(name, seriesMenu)}>
             <td colSpan={7}>
               <button type="button" aria-label={pick ? `Choose series ${name}` : `Open series ${name}`} aria-pressed={pick ? pick.on : undefined}
                 className="table-title series-table-open" onClick={(e) => (pick ? pick.toggle(e.shiftKey) : onOpenSeries(name))}>
@@ -292,7 +296,7 @@ export function BookTable({ books, actions, selection, seriesCounts, seriesPubli
                   </span>
                 )}
               </td>
-              <td>{authorLine(book.authors)}</td>
+              <td>{authorLine(book.authors, book.audioType)}</td>
               <td className="muted">{seriesLine(book, inSeries) ?? ""}</td>
               <td className="num">{book.status === "in_progress" ? percent(book.totalProgression) : STATUS[book.status]}</td>
               <td>

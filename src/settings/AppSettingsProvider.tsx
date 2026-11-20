@@ -1,3 +1,4 @@
+import { setAuthorStyle } from "../lib/authorNames";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { startupStep } from "../splash/startup";
@@ -162,6 +163,8 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     [adaptiveOn, coverHex, dark, settings.adaptiveStrength],
   );
 
+  // Set while drawing, so names already follow it on the first screen.
+  setAuthorStyle(settings.authorNames);
   useLayoutEffect(() => applyAppSettings(settings, dark, adaptive), [settings, dark, adaptive]);
   // The saved look is on, so the splash may go once the rest is ready.
   useEffect(() => {
