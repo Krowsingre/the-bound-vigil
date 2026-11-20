@@ -89,7 +89,7 @@ export const makeBook = async file => {
         const loader = await makeZipLoader(file)
         if (isCBZ(file)) {
             const { makeComicBook } = await import('./comic-book.js')
-            book = makeComicBook(loader, file)
+            book = await makeComicBook(loader, file)
         }
         else if (isFBZ(file)) {
             const { makeFB2 } = await import('./fb2.js')
@@ -251,6 +251,9 @@ export class View extends HTMLElement {
         }
 
         this.isFixedLayout = this.book.rendition?.layout === 'pre-paginated'
+        // TBV: the way the book says it reads, and the reader's own choice over it.
+        this.ownDirection = book.dir === 'rtl' ? 'rtl' : 'ltr'
+        if (this.directionOverride) book.dir = this.directionOverride
         await this.#makeRenderer(this.isFixedLayout ? 'foliate-fxl' : 'foliate-paginator')
 
         if (book.sections.some(section => section.mediaOverlay)) {
@@ -293,6 +296,14 @@ export class View extends HTMLElement {
             e.detail.attach(this.#createOverlayer(e.detail)))
         this.renderer.open(this.book)
         this.#root.append(this.renderer)
+    }
+    // TBV: reads the pages left to right or right to left, whatever the book says.
+    setDirection(dir) {
+        dir = dir === 'rtl' ? 'rtl' : 'ltr'
+        this.directionOverride = dir
+        if (!this.book || this.book.dir === dir) return
+        this.book.dir = dir
+        if (this.isFixedLayout) this.renderer?.setAttribute('dir', dir)
     }
     // TBV: flowing books scroll as one long page (scroller.js) and turn
     // pages with the paginator, so changing between them swaps the renderer

@@ -31,8 +31,9 @@ import { ListeningDock, ListeningSheet, MS_PER_PAGE, type ListenMode, type Liste
 import { useReadAloud } from "./useReadAloud";
 import { useReadAlong } from "./useReadAlong";
 import { StructuredViewer } from "./StructuredViewer";
+import { PictureViewer } from "./PictureViewer";
 import type { StructuredContent } from "./structuredContent";
-import { useReaderEngine, type TextSelection } from "./useReaderEngine";
+import { useReaderEngine, type ReadingDirection, type TextSelection } from "./useReaderEngine";
 import { keyHint, useShortcuts } from "../lib/shortcuts";
 
 export interface ReaderShellProps {
@@ -89,6 +90,31 @@ const isTyping = (target: EventTarget | null) => {
 const TAP_WAIT_MS = 420;
 /** After seeking or jumping with the reader's own controls, the bars stay a moment. */
 const QUIET_MS = 1500;
+
+/** Each book's own Reading direction choice, kept on this device; missing means "what the book says". */
+const DIRECTIONS_KEY = "reader.directions";
+function readDirections(): Record<string, ReadingDirection> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DIRECTIONS_KEY) ?? "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function savedDirection(bookId: string): ReadingDirection | null {
+  const d = readDirections()[bookId];
+  return d === "ltr" || d === "rtl" ? d : null;
+}
+function saveDirection(bookId: string, dir: ReadingDirection | null) {
+  try {
+    const all = readDirections();
+    if (dir) all[bookId] = dir;
+    else delete all[bookId];
+    localStorage.setItem(DIRECTIONS_KEY, JSON.stringify(all));
+  } catch {
+    // Storage unavailable: the choice lasts until the book closes.
+  }
+}
 
 /** The reading screen. It replaces the sidebar and header while a book is open. */
 export function Reader({
@@ -280,7 +306,11 @@ export function Reader({
   // Time read counts while the book is open on screen and being read.
   useEffect(() => recordReading(), []);
 
+  // This book's reading direction, when chosen; otherwise the book's own.
+  const [direction, setDirectionChoice] = useState<ReadingDirection | null>(() => savedDirection(bookId));
+  const [picture, setPicture] = useState<{ src: string; alt: string } | null>(null);
   const engine = useReaderEngine({
+    direction,
     host,
     file,
     startCfi: usable(info?.book.resumeLocator) ? info!.book.resumeLocator!.cfi! : null,
@@ -300,6 +330,11 @@ export function Reader({
           if (now.current.busy) return;
           setFocus((f) => !f);
         }, TAP_WAIT_MS);
+      },
+      // A picture in the text: shown closer, and focus mode stays as it was.
+      onPicture: (p) => {
+        clearTimeout(tapTimer.current);
+        setPicture(p);
       },
       onRelocate: (r) => {
         noteReading();
@@ -471,6 +506,7 @@ export function Reader({
     void engine.goTo(last.cfi);
   };
 
+  /** One page on or back in reading order (Page Down, Page Up, Space). */
   const turn = useCallback(
     (forward: boolean) => {
       setSelection(null);
@@ -479,6 +515,24 @@ export function Reader({
     },
     [engine],
   );
+  /** One page to the left or right on screen (arrow keys and buttons): back or on by the reading direction. */
+  const turnSide = useCallback(
+    (side: "left" | "right") => {
+      setSelection(null);
+      setActive(null);
+      void (side === "left" ? engine.left() : engine.right());
+    },
+    [engine],
+  );
+  const directionControl = {
+    value: engine.direction,
+    own: engine.ownDirection,
+    onChange: (d: ReadingDirection) => {
+      const choice = d === engine.ownDirection ? null : d;
+      saveDirection(bookId, choice);
+      setDirectionChoice(choice);
+    },
+  };
 
   const pagePanels = (change: Partial<typeof panels>) =>
     setPanels((p) => {
@@ -711,8 +765,8 @@ export function Reader({
       if (readAloud.unavailable) toast(readAloud.unavailable);
       else narrate.toggle();
     }
-    else if (e.key === "ArrowLeft") turn(false);
-    else if (e.key === "ArrowRight") turn(true);
+    else if (e.key === "ArrowLeft") turnSide("left");
+    else if (e.key === "ArrowRight") turnSide("right");
     else if (!e.shiftKey && (engine.fixed || viewSettings.flow === "scrolled") && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       const direction = e.key === "ArrowUp" ? -1 : 1;
       if (engine.fixed && !scrolling) engine.scrollStep(direction);
@@ -902,7 +956,7 @@ export function Reader({
         textSettings={
           engine.fixed ? (
             <Popover label="Page settings" trigger={<Icon name="sliders" size={20} />} className="text-settings-popover">
-              <PageSettings settings={settings} scale={engine.scale} onChange={changeSettings} />
+              <PageSettings settings={settings} scale={engine.scale} onChange={changeSettings} direction={directionControl} />
             </Popover>
           ) : overlay ? (
             <button type="button" className={`icon-btn${lookOpen ? " is-on" : ""}`} aria-label="Reading appearance" title="Reading appearance" aria-haspopup="dialog" aria-expanded={lookOpen} onClick={() => setLookOpen((o) => !o)}>
@@ -911,7 +965,7 @@ export function Reader({
           ) : (
             // Computers keep the small drop-down from before the phone redesign.
             <Popover label="Text settings" trigger={<span className="aa">Aa</span>} className="text-settings-popover">
-              <TextSettings settings={settings} onChange={changeSettings} />
+              <TextSettings settings={settings} onChange={changeSettings} direction={directionControl} />
             </Popover>
           )
         }
@@ -1024,8 +1078,9 @@ export function Reader({
               remember();
               void engine.goToFraction(f);
             }}
-            onPrev={() => ((quietUntil.current = performance.now() + QUIET_MS), turn(false))}
-            onNext={() => ((quietUntil.current = performance.now() + QUIET_MS), turn(true))}
+            onLeft={() => ((quietUntil.current = performance.now() + QUIET_MS), turnSide("left"))}
+            onRight={() => ((quietUntil.current = performance.now() + QUIET_MS), turnSide("right"))}
+            rtl={engine.direction === "rtl"}
             focus={focus}
             overlay={overlay}
             arrows={!scrolling}
@@ -1100,7 +1155,8 @@ export function Reader({
         />
       )}
 {listenOpen && overlay && listening(false)}
-      {lookOpen && !engine.fixed && <ReadingAppearance settings={settings} onChange={changeSettings} onClose={() => setLookOpen(false)} />}
+      {lookOpen && !engine.fixed && <ReadingAppearance settings={settings} onChange={changeSettings} onClose={() => setLookOpen(false)} direction={directionControl} />}
+      {picture && <PictureViewer picture={picture} onClose={() => setPicture(null)} />}
       {noteEdit && (
         <NoteDialog
           excerpt={noteEdit.a?.excerpt ?? noteEdit.selection?.text ?? ""}

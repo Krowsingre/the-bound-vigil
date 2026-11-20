@@ -1,4 +1,19 @@
-export const makeComicBook = ({ entries, loadBlob, getSize }, file) => {
+// TBV: a comic's ComicInfo.xml can say it reads right to left (manga), as
+// <Manga>YesAndRightToLeft</Manga>; the book's `dir` follows it.
+export const comicDirection = async ({ entries, loadBlob }) => {
+    const info = entries.find(entry => /(^|\/)comicinfo\.xml$/i.test(entry.filename))
+    if (!info) return 'ltr'
+    try {
+        const text = await (await loadBlob(info.filename)).text()
+        const doc = new DOMParser().parseFromString(text, 'application/xml')
+        const manga = doc.getElementsByTagName('Manga')[0]?.textContent?.trim().toLowerCase()
+        return manga === 'yesandrighttoleft' ? 'rtl' : 'ltr'
+    } catch {
+        return 'ltr'
+    }
+}
+
+export const makeComicBook = async ({ entries, loadBlob, getSize }, file) => {
     const cache = new Map()
     const urls = new Map()
     const load = async name => {
@@ -34,6 +49,7 @@ export const makeComicBook = ({ entries, loadBlob, getSize }, file) => {
     }))
     book.toc = files.map(name => ({ label: name, href: name }))
     book.rendition = { layout: 'pre-paginated' }
+    book.dir = await comicDirection({ entries, loadBlob })
     book.resolveHref = href => ({ index: book.sections.findIndex(s => s.id === href) })
     book.splitTOCHref = href => [href, null]
     book.getTOCFragment = doc => doc.documentElement

@@ -796,6 +796,20 @@
   position: relative;
 }
 
+/* The text stays centred on the whole window, not between a side panel and the
+   window's edge: the side away from an open panel gets the same room, so opening
+   panels or going in and out of focus mode never moves the text sideways. */
+.reader:not(.is-compact):not(.is-overlay).has-left .reader-host {
+  padding-right: 320px;
+}
+.reader:not(.is-compact):not(.is-overlay).has-right .reader-host {
+  padding-left: 360px;
+}
+.reader:not(.is-compact):not(.is-overlay).has-left.has-right .reader-host {
+  padding-right: 0;
+  padding-left: 40px;
+}
+
 .reader-view {
   display: block;
   width: 100%;
@@ -981,6 +995,14 @@
   border-radius: 2px;
   background: linear-gradient(
     to right,
+    var(--accent) var(--fill),
+    color-mix(in srgb, var(--page-muted) 30%, transparent) var(--fill)
+  );
+}
+
+.reader-slider.is-rtl::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to left,
     var(--accent) var(--fill),
     color-mix(in srgb, var(--page-muted) 30%, transparent) var(--fill)
   );
@@ -2206,4 +2228,64 @@
   .reader.is-overlay .listen-bar {
     transition: none;
   }
+}
+
+/* A picture from the book, looked at closer. */
+.picture-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: color-mix(in srgb, var(--page-bg) 94%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.picture-viewer-stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  touch-action: none;
+  cursor: zoom-in;
+}
+.picture-viewer-stage.is-zoomed {
+  cursor: grab;
+}
+.picture-viewer-stage img {
+  max-width: calc(100% - 48px);
+  max-height: calc(100% - 128px);
+  object-fit: contain;
+  transform-origin: center;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.picture-viewer-close {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  right: 12px;
+  color: var(--page-text);
+}
+.picture-viewer-bar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+}
+.picture-viewer-size {
+  min-width: 56px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: 500 13px var(--font-sans, inherit);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
 }

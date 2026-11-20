@@ -11,7 +11,7 @@ import { fitTextToPage, hexToRgb, luminance } from "./darkText";
 import { describeStructuredContent, type StructuredContent, type StructuredTarget } from "./structuredContent";
 import type { ReaderSource } from "./formats";
 import { noteKey } from "../lib/shortcuts";
-import { DEFAULT_SETTINGS, highlightHex, readerCss, WIDTHS, type PageColors, type ReaderSettings } from "./settings";
+import { DEFAULT_SETTINGS, highlightHex, readerCss, type PageColors, type ReaderSettings } from "./settings";
 
 /** Phones and tablets, which select a word by pressing and holding it. */
 /** How long a finger may stay down for it to count as a tap. */
@@ -65,7 +65,12 @@ export interface EngineEvents {
   onTripleTap?: () => void;
   /** A quick tap (or click) that isn't on a link, with what made it. */
   onTap?: (pointerType: string) => void;
+  /** A quick tap (or click) on a picture in a book of flowing text, to look at it closer. */
+  onPicture?: (picture: { src: string; alt: string }) => void;
 }
+
+/** Which way pages turn: left to right, or right to left (manga, Japanese and Arabic books). */
+export type ReadingDirection = "ltr" | "rtl";
 
 export interface ReaderEngine {
   ready: boolean;
@@ -78,8 +83,15 @@ export interface ReaderEngine {
   sectionOf: (href: string) => number | null;
   goTo: (target: string) => Promise<void>;
   goToFraction: (fraction: number) => Promise<void>;
+  /** One page back or on, in reading order (Page Up and Page Down). */
   prev: () => Promise<void>;
   next: () => Promise<void>;
+  /** One page to the left or right on screen (arrow keys, the arrow buttons): on or back by the reading direction. */
+  left: () => Promise<void>;
+  right: () => Promise<void>;
+  /** The way pages turn now, and the way the book itself says. */
+  direction: ReadingDirection;
+  ownDirection: ReadingDirection;
   search: (query: string) => AsyncGenerator<SearchResult> | null;
   clearSearch: () => void;
   deselect: () => void;
@@ -174,15 +186,33 @@ export function keepPicturesInShape(doc: Document) {
   }
 }
 
+/** The picture under a tap in a book's page: an <img>, or an SVG <image> (as covers often are). */
+function pictureAt(target: Element | null, doc: Document): { src: string; alt: string } | null {
+  const img = target?.closest?.("img") as HTMLImageElement | null;
+  if (img?.currentSrc || img?.src) return { src: img.currentSrc || img.src, alt: img.alt ?? "" };
+  const svg = target?.closest?.("svg");
+  const image = (target?.localName === "image" ? target : svg?.querySelector("image")) as SVGImageElement | null;
+  const href = image?.href?.baseVal || image?.getAttribute("xlink:href") || image?.getAttribute("href");
+  if (!href) return null;
+  try {
+    return { src: new URL(href, doc.baseURI).href, alt: svg?.getAttribute("aria-label") ?? "" };
+  } catch {
+    return null;
+  }
+}
+
 /** Styles inside the pages, and page layout around them. */
 async function applyLayout(view: View, settings: ReaderSettings, colors: PageColors) {
   // Scrolling shows chapters one after another on a single long page, which
   // is a different renderer from turning pages: swapped here, at the same place.
-  await view.setFlow(view.isFixedLayout ? settings.pageFlow : settings.flow);
+  await view.setFlow(view.isFixedLayout ? (settings.pageFlow === "paginated" ? "paginated" : "scrolled") : settings.flow);
   const r = view.renderer;
   if (view.isFixedLayout) {
     // Pages keep their own look; only their size and arrangement change.
     const set = (name: string, value: string) => r.getAttribute(name) !== value && r.setAttribute(name, value);
+    // A strip: one page under another with nothing between (webtoons).
+    if (r.hasAttribute("strip") !== (settings.pageFlow === "strip")) r.toggleAttribute("strip", settings.pageFlow === "strip");
+    set("cover", settings.pageCover);
     set("zoom", String(settings.pageZoom));
     set("spread", settings.pageSpread === "one" ? "none" : settings.pageSpread === "two" ? "both" : "auto");
     for (const { doc } of r.getContents?.() ?? []) fitTextToPage(doc, colors, isDarkPage(colors));
@@ -190,7 +220,7 @@ async function applyLayout(view: View, settings: ReaderSettings, colors: PageCol
   }
   // Read when the pages are laid out, which setting their width does next.
   r.setAttribute("max-column-count", settings.textSpread === "auto" ? "2" : "1");
-  r.setAttribute("max-inline-size", `${WIDTHS[settings.width]}px`);
+  r.setAttribute("max-inline-size", `${settings.width}px`);
   r.setAttribute("gap", "6%");
   r.setAttribute("margin", "32px");
   // Fixed-layout books (comics, pre-paginated EPUBs) keep their own styles.
@@ -206,7 +236,10 @@ export function useReaderEngine({
   colors,
   annotations,
   events,
+  direction = null,
 }: {
+  /** The reader's own choice of direction for this book; null keeps the book's. */
+  direction?: ReadingDirection | null;
   host: RefObject<HTMLDivElement | null>;
   file: ReaderSource | null;
   startCfi: string | null;
@@ -224,6 +257,9 @@ export function useReaderEngine({
   const [sectionStarts, setSectionStarts] = useState<number[]>([]);
   const [fixed, setFixed] = useState(false);
   const [scale, setScale] = useState(1);
+  const [ownDirection, setOwnDirection] = useState<ReadingDirection>("ltr");
+  const directionRef = useRef(direction);
+  directionRef.current = direction;
 
   // Latest values, read from inside the engine's event handlers.
   const eventsRef = useRef(events);
@@ -251,7 +287,9 @@ export function useReaderEngine({
         view = document.createElement("foliate-view") as View;
         view.className = "reader-view";
         container.append(view);
+        if (directionRef.current) view.directionOverride = directionRef.current;
         await view.open(file);
+        setOwnDirection(view.ownDirection ?? "ltr");
         if (cancelled) return;
         viewRef.current = view;
         const v = view;
@@ -343,7 +381,12 @@ export function useReaderEngine({
             // A quick tap, not a press, a drag or a swipe, and not on a link.
             const quick = down && tap.at - down.at < TAP_HOLD_MS && Math.hypot(tap.x - down.x, tap.y - down.y) <= TAP_SLOP_PX;
             down = null;
-            if (quick && !(p.target as Element | null)?.closest?.("a[href]")) eventsRef.current.onTap?.(p.pointerType);
+            const target = p.target as Element | null;
+            // A picture in flowing text opens to be looked at closer, without
+            // the tap also going in or out of focus mode.
+            const picture = quick && !v.isFixedLayout && !target?.closest?.("a[href]") ? pictureAt(target, doc) : null;
+            if (picture) eventsRef.current.onPicture?.(picture);
+            else if (quick && !target?.closest?.("a[href]")) eventsRef.current.onTap?.(p.pointerType);
             const last = taps[taps.length - 1];
             if (last && (tap.at - last.at > TAP_GAP_MS || Math.hypot(tap.x - last.x, tap.y - last.y) > TAP_SLOP_PX)) taps.length = 0;
             taps.push(tap);
@@ -438,12 +481,18 @@ export function useReaderEngine({
     };
   }, [file, host]);
 
+  // The direction chosen for this book changed while it's open.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (ready && view) view.setDirection(direction ?? ownDirection);
+  }, [ready, direction, ownDirection]);
+
   // Reading settings changed while the book is open. The read aloud voice
   // and speed don't change the page, so they don't lay it out again.
-  const { font, size, lineHeight, width, flow, textSpread, theme, justify, pageZoom, pageSpread, pageFlow } = settings;
+  const { font, size, lineHeight, width, flow, textSpread, theme, justify, pageZoom, pageSpread, pageFlow, pageCover } = settings;
   const look = useMemo(
-    () => ({ ...DEFAULT_SETTINGS, font, size, lineHeight, width, flow, textSpread, theme, justify, pageZoom, pageSpread, pageFlow }),
-    [font, size, lineHeight, width, flow, textSpread, theme, justify, pageZoom, pageSpread, pageFlow],
+    () => ({ ...DEFAULT_SETTINGS, font, size, lineHeight, width, flow, textSpread, theme, justify, pageZoom, pageSpread, pageFlow, pageCover }),
+    [font, size, lineHeight, width, flow, textSpread, theme, justify, pageZoom, pageSpread, pageFlow, pageCover],
   );
   useEffect(() => {
     const view = viewRef.current;
@@ -486,11 +535,19 @@ export function useReaderEngine({
       await viewRef.current?.goToFraction(fraction);
     }, []),
     prev: useCallback(async () => {
-      await viewRef.current?.goLeft();
+      await viewRef.current?.prev();
     }, []),
     next: useCallback(async () => {
+      await viewRef.current?.next();
+    }, []),
+    left: useCallback(async () => {
+      await viewRef.current?.goLeft();
+    }, []),
+    right: useCallback(async () => {
       await viewRef.current?.goRight();
     }, []),
+    direction: direction ?? ownDirection,
+    ownDirection,
     search: useCallback((query: string) => {
       const view = viewRef.current;
       if (!view) return null;

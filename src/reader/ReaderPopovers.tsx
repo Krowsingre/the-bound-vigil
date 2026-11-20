@@ -18,12 +18,15 @@ import {
   type ReaderSettings,
   type ReadingFlow,
   type ReadingTheme,
-  type ReadingWidth,
+  type PageFlow,
+  type PageCover,
+  WIDTH_RANGE,
 } from "./settings";
 import type { ReadAlong } from "./useReadAlong";
 import { liningUp, onLiningUp, type LiningUp } from "../readAlong/lineUp";
 import { PauseLiningUpButton, pausedUntilText, usePause } from "../readAlong/PauseLiningUp";
 import { useShortcuts } from "../lib/shortcuts";
+import type { ReadingDirection } from "./useReaderEngine";
 
 function Choice<T extends string | number>({
   label,
@@ -88,8 +91,37 @@ function ScrollSpeeds({ settings, onChange }: { settings: ReaderSettings; onChan
   );
 }
 
+/** This book's reading direction: what it is now, and what the book itself says. */
+export interface DirectionControl {
+  value: ReadingDirection;
+  own: ReadingDirection;
+  onChange: (direction: ReadingDirection) => void;
+}
+
+const DIRECTION_NAMES: Record<ReadingDirection, string> = { ltr: "Left to right", rtl: "Right to left" };
+
+/** Which way this book's pages turn. Saved for this book only. */
+function DirectionChoice({ direction }: { direction: DirectionControl }) {
+  return (
+    <>
+      <Choice<ReadingDirection>
+        label="Reading direction (this book)"
+        value={direction.value}
+        options={[
+          { value: "ltr", label: DIRECTION_NAMES.ltr },
+          { value: "rtl", label: DIRECTION_NAMES.rtl },
+        ]}
+        onChange={direction.onChange}
+      />
+      {direction.value !== direction.own && (
+        <p className="settings-hint">The book itself says {DIRECTION_NAMES[direction.own].toLowerCase()}.</p>
+      )}
+    </>
+  );
+}
+
 /** The Aa panel: how the book text looks. */
-export function TextSettings({ settings, onChange }: { settings: ReaderSettings; onChange: (s: Partial<ReaderSettings>) => void }) {
+export function TextSettings({ settings, onChange, direction }: { settings: ReaderSettings; onChange: (s: Partial<ReaderSettings>) => void; /** In the reader, for the open book; not in Preferences. */ direction?: DirectionControl }) {
   return (
     <div className="text-settings">
       <Choice
@@ -156,16 +188,22 @@ export function TextSettings({ settings, onChange }: { settings: ReaderSettings;
           <span className="size-value">{settings.lineHeight.toFixed(1)}</span>
         </div>
       </fieldset>
-      <Choice<ReadingWidth>
-        label="Page width"
-        value={settings.width}
-        options={[
-          { value: "narrow", label: "Narrow" },
-          { value: "medium", label: "Medium" },
-          { value: "wide", label: "Wide" },
-        ]}
-        onChange={(width) => onChange({ width })}
-      />
+      <fieldset className="choice">
+        <legend>Page width</legend>
+        <div className="size-row line-row">
+          <input
+            type="range"
+            min={WIDTH_RANGE.min}
+            max={WIDTH_RANGE.max}
+            step={WIDTH_RANGE.step}
+            value={settings.width}
+            aria-label="Page width"
+            aria-valuetext={widthShown(settings.width)}
+            onChange={(e) => onChange({ width: Number(e.target.value) })}
+          />
+          <span className="size-value">{widthShown(settings.width)}</span>
+        </div>
+      </fieldset>
       <Choice<ReadingFlow>
         label="Moving through the book"
         value={settings.flow}
@@ -175,6 +213,7 @@ export function TextSettings({ settings, onChange }: { settings: ReaderSettings;
         ]}
         onChange={(flow) => onChange({ flow })}
       />
+      {direction && <DirectionChoice direction={direction} />}
       <ScrollSpeeds settings={settings} onChange={onChange} />
       {settings.flow === "paginated" && (
         <Choice<TextSpread>
@@ -269,13 +308,16 @@ function Slider({ label, value, min, max, step, shown, low, high, onChange }: {
   );
 }
 
+/** The page width as a share of the usual width (680 pixels), which reads as "100%". */
+const widthShown = (width: number) => `${Math.round((width / 680) * 100)}%`;
+
 const widthLines = (n: number) => <span className={`look-lines look-lines-${n}`}><i /><i /><i /><i /></span>;
 
 /**
  * Aa: Reading Appearance, a sheet from the bottom. Typeface, text size,
  * line spacing, page width, swipe or scroll, page colour and justified text.
  */
-export function ReadingAppearance({ settings, onChange, onClose }: { settings: ReaderSettings; onChange: (s: Partial<ReaderSettings>) => void; onClose: () => void }) {
+export function ReadingAppearance({ settings, onChange, onClose, direction }: { settings: ReaderSettings; onChange: (s: Partial<ReaderSettings>) => void; onClose: () => void; direction: DirectionControl }) {
   const sheet = useRef<HTMLDivElement>(null);
   useEffect(() => {
     sheet.current?.focus();
@@ -306,17 +348,8 @@ export function ReadingAppearance({ settings, onChange, onClose }: { settings: R
         <Slider label="Line spacing" value={settings.lineHeight} min={LINE_HEIGHT_RANGE.min} max={LINE_HEIGHT_RANGE.max} step={LINE_HEIGHT_RANGE.step}
           shown={settings.lineHeight.toFixed(1)} low={<Icon name="menu" size={18} />} high={<Icon name="menu" size={24} />}
           onChange={(v) => onChange({ lineHeight: Math.round(v * 10) / 10 })} />
-        <Cards<ReadingWidth>
-          label="Page width"
-          className="look-widths"
-          value={settings.width}
-          options={[
-            { value: "narrow", label: "Narrow", face: widthLines(1) },
-            { value: "medium", label: "Medium", face: widthLines(2) },
-            { value: "wide", label: "Wide", face: widthLines(3) },
-          ]}
-          onChange={(width) => onChange({ width })}
-        />
+        <Slider label="Page width" value={settings.width} min={WIDTH_RANGE.min} max={WIDTH_RANGE.max} step={WIDTH_RANGE.step}
+          shown={widthShown(settings.width)} low={widthLines(1)} high={widthLines(3)} onChange={(width) => onChange({ width })} />
         <Cards<ReadingFlow>
           label="Reading mode"
           className="look-mode"
@@ -338,6 +371,17 @@ export function ReadingAppearance({ settings, onChange, onClose }: { settings: R
             onChange={(textSpread) => onChange({ textSpread })}
           />
         ) : <ScrollSpeeds settings={settings} onChange={onChange} />}
+        <Cards<ReadingDirection>
+          label="Reading direction (this book)"
+          className="look-mode"
+          value={direction.value}
+          options={[
+            { value: "ltr", label: DIRECTION_NAMES.ltr, face: <Icon name="arrowRight" size={20} /> },
+            { value: "rtl", label: DIRECTION_NAMES.rtl, face: <Icon name="arrowLeft" size={20} /> },
+          ]}
+          onChange={direction.onChange}
+        />
+        {direction.value !== direction.own && <p className="settings-hint">The book itself says {DIRECTION_NAMES[direction.own].toLowerCase()}.</p>}
         <fieldset className="look-section">
           <legend>Page colour</legend>
           <div className="look-colours" role="radiogroup" aria-label="Page colour">
@@ -428,10 +472,12 @@ export function PageSettings({
   settings,
   scale,
   onChange,
+  direction,
 }: {
   settings: ReaderSettings;
   scale: number;
   onChange: (s: Partial<ReaderSettings>) => void;
+  direction: DirectionControl;
 }) {
   return (
     <div className="text-settings">
@@ -460,20 +506,31 @@ export function PageSettings({
         onChange={(pageSpread) => onChange({ pageSpread })}
       />
       {settings.pageSpread !== "one" && settings.pageFlow === "paginated" && (
-        <p className="settings-hint">The first page (the cover) shows on its own.</p>
+        <Choice<PageCover>
+          label="The cover"
+          value={settings.pageCover}
+          options={[
+            { value: "alone", label: "On its own" },
+            { value: "paired", label: "Paired with page 2" },
+          ]}
+          onChange={(pageCover) => onChange({ pageCover })}
+        />
       )}
-      {settings.pageSpread !== "one" && settings.pageFlow === "scrolled" && (
+      {settings.pageSpread !== "one" && settings.pageFlow !== "paginated" && (
         <p className="settings-hint">Scrolling shows one page under another.</p>
       )}
-      <Choice<ReadingFlow>
+      <Choice<PageFlow>
         label="Moving through the book"
         value={settings.pageFlow}
         options={[
           { value: "paginated", label: "Swipe" },
           { value: "scrolled", label: "Scroll" },
+          { value: "strip", label: "Vertical strip" },
         ]}
         onChange={(pageFlow) => onChange({ pageFlow })}
       />
+      {settings.pageFlow === "strip" && <p className="settings-hint">One unbroken column with no room between pages, for webtoons.</p>}
+      {direction && <DirectionChoice direction={direction} />}
       <ScrollSpeeds settings={settings} onChange={onChange} />
       <Choice<ReadingTheme> label="Colour around the pages" value={settings.theme} options={THEME_OPTIONS} onChange={(theme) => onChange({ theme })} />
     </div>
