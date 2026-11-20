@@ -798,16 +798,29 @@
 
 /* The text stays centred on the whole window, not between a side panel and the
    window's edge: the side away from an open panel gets the same room, so opening
-   panels or going in and out of focus mode never moves the text sideways. */
-.reader:not(.is-compact):not(.is-overlay).has-left .reader-host {
+   panels or going in and out of focus mode never moves the text sideways.
+   Turned pages get that room round them; a scrolling page keeps the full width,
+   so its scroll bar stays at the edge, and moves its text inside instead
+   (--text-shift, Reader.tsx). */
+.reader:not(.is-compact):not(.is-overlay):not(.is-scrolled).has-left .reader-host {
   padding-right: 320px;
 }
-.reader:not(.is-compact):not(.is-overlay).has-right .reader-host {
+.reader:not(.is-compact):not(.is-overlay):not(.is-scrolled).has-right .reader-host {
   padding-left: 360px;
 }
-.reader:not(.is-compact):not(.is-overlay).has-left.has-right .reader-host {
+.reader:not(.is-compact):not(.is-overlay):not(.is-scrolled).has-left.has-right .reader-host {
   padding-right: 0;
   padding-left: 40px;
+}
+
+/* "Page X of Y" sits under the text, wherever the text is. */
+.reader:not(.is-compact):not(.is-overlay) .reader-bottom-where {
+  transform: translateX(var(--text-shift, 0px));
+}
+
+/* Computers: the book's name at the top only in focus mode (embre, 20 November). */
+.reader.on-computer:not(.is-focus) .reader-top-name {
+  display: none;
 }
 
 .reader-view {

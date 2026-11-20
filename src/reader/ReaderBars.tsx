@@ -114,6 +114,7 @@ export function ReaderBottomBar({
   overlay,
   arrows,
   zoom,
+  slider = true,
 }: {
   position: PagePosition | null;
   fraction: number;
@@ -131,6 +132,8 @@ export function ReaderBottomBar({
   arrows: boolean;
   /** PDFs and comics: the zoom buttons. */
   zoom?: ReactNode;
+  /** The line showing how far through: on phones and iPads, not on computers (embre, 20 November). */
+  slider?: boolean;
 }) {
   // While dragging, the label shows where you'd land; the book moves on release.
   const [dragging, setDragging] = useState<number | null>(null);
@@ -150,7 +153,7 @@ export function ReaderBottomBar({
       aria-hidden={hidden || undefined}
       inert={hidden || undefined}
     >
-      <input
+      {slider && <input
         type="range"
         className={`reader-slider${rtl ? " is-rtl" : ""}`}
         dir={rtl ? "rtl" : undefined}
@@ -166,7 +169,7 @@ export function ReaderBottomBar({
         onPointerUp={commit}
         onKeyUp={commit}
         onBlur={() => setDragging(null)}
-      />
+      />}
       <div className="reader-bottom-row">
         {arrows ? (
           <button type="button" className="icon-btn" aria-label={leftName} title={`${leftName} (←)`} onClick={onLeft}>
@@ -174,7 +177,7 @@ export function ReaderBottomBar({
           </button>
         ) : <span className="reader-bottom-gap" />}
         <button type="button" className="reader-bottom-where" title="Show contents" aria-label={chapter ? `Show contents: ${chapter}` : "Show contents"} onClick={onContents}>
-          <span className="reader-bottom-chapter">{chapter || "Contents"}</span>
+          {chapter && <span className="reader-bottom-chapter">{chapter}</span>}
           <span className="reader-bottom-page">{shownPage ? formatPage(shownPage) : percent(shown)}</span>
         </button>
         {zoom}

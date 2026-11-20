@@ -1,7 +1,7 @@
 import { offerFinishedDownloadRemoval } from "../library/FinishedDownloadPrompt";
 import { END_OF_BOOK, EndOfBook } from "./EndOfBook";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, isApp, isIOS, isIPhone, isMac } from "../api";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { api, isAndroid, isApp, isIOS, isIPhone, isMac } from "../api";
 import { READER_NARROW, useNarrow } from "../lib/useNarrow";
 import type { Annotation, HighlightColor, Profile, ReadStatus, ReaderBook, ReaderLocator, SyncStatus, WordDefinition } from "../api/types";
 import { Icon } from "../components/Icon";
@@ -52,6 +52,8 @@ const PANELS_KEY = "tbv.reader.panels";
 
 /** iPhone, iPad and Mac, which have Apple's own dictionary and translation. */
 const isApple = isIOS || isMac;
+/** iPhones, iPads and Android phones (and the web version on a touch screen); everything else is a computer. */
+const isMobile = isIOS || isAndroid || (!isApp && typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches);
 
 /** Google Translate for the words, into the language TBV's device is set to. */
 export function googleTranslate(words: string): string {
@@ -189,7 +191,7 @@ export function Reader({
   const quietUntil = useRef(0);
   const tapTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   /** What the tap and page-turn handlers need to know now, set each render. */
-  const now = useRef({ busy: false, overlay, focus, panels: false });
+  const now = useRef({ busy: false, overlay, focus, panels: false, toFocus: false });
   // Focus on a computer is one uninterrupted page: the book scrolls, fading
   // in at one edge and out at the other, whatever paging is chosen otherwise.
   const flowing = focus && !overlay;
@@ -338,9 +340,10 @@ export function Reader({
       },
       onRelocate: (r) => {
         noteReading();
-        // Swiping to the next page, or scrolling, hides the bars.
+        // On iPhones and iPads, reading on (scrolling, or swiping to the next
+        // page) goes into focus mode, unless turned off in Aa; a tap leaves it.
         const n = now.current;
-        if (n.overlay && !n.focus && !n.panels && !n.busy && performance.now() > quietUntil.current) setFocus(true);
+        if (n.toFocus && !n.focus && !n.panels && !n.busy && performance.now() > quietUntil.current) setFocus(true);
         const page = pageOf(r.location);
         pending.current = {
           cfi: r.cfi,
@@ -912,8 +915,33 @@ export function Reader({
 
   const showLeft = !focus && panels.left && !!info;
   const showRight = !focus && panels.right && !!info;
+  // How far the text sits from the middle of the book's area, so it stays
+  // centred on the whole window beside the side panels (as the room in
+  // reader.css gives turned pages: half of it).
+  const textShift = overlay || compact ? 0 : showLeft && showRight ? 20 : showLeft ? -160 : showRight ? 180 : 0;
+  // A scrolling page keeps the book's full width, so its scroll bar stays at
+  // the edge; the text is moved inside it instead.
+  const scrolledText = scrolling && !engine.fixed;
+  useEffect(() => {
+    const renderer = engine.getView()?.renderer;
+    if (!renderer || !engine.ready) return;
+    const value = String(scrolledText ? textShift : 0);
+    if (renderer.getAttribute("shift") !== value) renderer.setAttribute("shift", value);
+  }, [engine, engine.ready, scrolledText, textShift, viewSettings]);
+  // Leaving focus mode resizes the page, which moves the reading place a
+  // little; that must not count as reading on and turn focus back on.
+  useLayoutEffect(() => {
+    if (!focus) quietUntil.current = performance.now() + QUIET_MS;
+  }, [focus]);
   const noteCount = annotations.filter((a) => !isBookmark(a)).length;
-  now.current = { busy: !!(selection || active || noteEdit || lookOpen || listenOpen || expandedContent || phoneSearch), overlay, focus, panels: showLeft || showRight };
+  now.current = {
+    busy: !!(selection || active || noteEdit || lookOpen || listenOpen || expandedContent || phoneSearch),
+    overlay,
+    focus,
+    panels: showLeft || showRight,
+    // A landscape iPad lays out as a computer, where focus means one scrolling page: only when the book already scrolls.
+    toFocus: isMobile ? settings.scrollFocus && (overlay || scrolling) : overlay,
+  };
   const openContents = () => {
     setFocus(false);
     setLeftTab("contents");
@@ -943,8 +971,8 @@ export function Reader({
 
   return (
     <div
-      className={`reader theme-${theme}${overlay ? " is-overlay" : ""}${compact ? " is-compact" : ""}${focus ? " is-focus" : ""}${flowing ? " is-flowing" : ""}${fading ? " has-fade" : ""}${showLeft ? " has-left" : ""}${showRight ? " has-right" : ""}`}
-      style={{ ["--fade" as string]: `${settings.fadeStrength}%`, ["--page-bg" as string]: colors.background, ["--page-text" as string]: colors.text, ["--page-muted" as string]: colors.muted }}
+      className={`reader theme-${theme}${overlay ? " is-overlay" : ""}${compact ? " is-compact" : ""}${focus ? " is-focus" : ""}${flowing ? " is-flowing" : ""}${fading ? " has-fade" : ""}${showLeft ? " has-left" : ""}${showRight ? " has-right" : ""}${scrolledText ? " is-scrolled" : ""}${isMobile ? "" : " on-computer"}`}
+      style={{ ["--text-shift" as string]: `${textShift}px`, ["--fade" as string]: `${settings.fadeStrength}%`, ["--page-bg" as string]: colors.background, ["--page-text" as string]: colors.text, ["--page-muted" as string]: colors.muted }}
     >
       <ReaderTopBar
         title={info?.book.title ?? ""}
@@ -1071,7 +1099,8 @@ export function Reader({
           <ReaderBottomBar
             position={position}
             fraction={r?.fraction ?? 0}
-            chapter={r?.tocItem?.label?.trim() ?? null}
+            chapter={r?.tocItem?.label?.trim() || null}
+            slider={isMobile}
             onContents={openContents}
             onSeek={(f) => {
               quietUntil.current = performance.now() + QUIET_MS;

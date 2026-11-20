@@ -295,12 +295,17 @@ export class View {
         if (this.#column) this.columnize(layout)
         else this.scrolled(layout)
     }
-    scrolled({ gap, columnWidth }) {
+    scrolled({ gap, columnWidth, shift = 0 }) {
         const vertical = this.#vertical
         const doc = this.document
+        // TBV: moves the text sideways (px, + = right) inside a page that keeps
+        // its full width, so the scroll bar stays at the edge: room added on
+        // one side moves the centred text half as far the other way.
+        const left = gap + Math.max(0, shift * 2)
+        const right = gap + Math.max(0, -shift * 2)
         setStylesImportant(doc.documentElement, {
             'box-sizing': 'border-box',
-            'padding': vertical ? `${gap}px 0` : `0 ${gap}px`,
+            'padding': vertical ? `${gap}px 0` : `0 ${right}px 0 ${left}px`,
             'column-width': 'auto',
             'height': 'auto',
             'width': 'auto',
