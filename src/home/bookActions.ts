@@ -51,6 +51,12 @@ export interface BookActions {
 }
 
 /** The "…" menu for a book, and its right-click menu. */
+/** The menu item that opens an item's page: a song isn't a book (embre, 20 November). */
+export function detailsLabel(book: BookPreview): string {
+  if (!isAudio(book.format) || !book.audioType || book.audioType === "audiobook") return "Book details";
+  return book.audioType === "music" ? "Song details" : book.audioType === "podcast" ? "Episode details" : "Details";
+}
+
 export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
   const audio = isAudio(book.format);
   const types: [AudioType, string][] = [["audiobook", "Audiobook"], ["podcast", "Podcast"], ["music", "Music"], ["other", "Other"]];
@@ -58,7 +64,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     isAudio(book.format)
       ? { label: "Listen", icon: "play" as const, onSelect: () => playAudiobook(book.id) }
       : { label: "Open", icon: "bookOpen" as const, onSelect: () => actions.open(book) },
-    { label: "Book details", icon: "info", onSelect: () => showBookDetails(book.id) },
+    { label: detailsLabel(book), icon: "info", onSelect: () => showBookDetails(book.id) },
     { label: "Edit details…", icon: "edit", onSelect: () => askEditDetails([book]) },
     {
       heading: createElement(

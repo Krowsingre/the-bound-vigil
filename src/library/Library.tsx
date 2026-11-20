@@ -207,7 +207,10 @@ export function Library({
   const shelf = view.tab === "collections" ? "all" : view.tab;
   const Layout = { grid: BookGrid, list: BookList, compact: BookTable }[view.layout];
   // Series stay stacked while choosing: a stack is chosen whole.
-  const groupSeries = kind !== "documents" && view.seriesGrouping !== "individual" && !seriesBack;
+  // In Music an album is always one stack: grouping songs as an album means
+  // seeing them as one item (embre, 20 November).
+  const albums = kind === "audiobooks" && view.audioType === "music";
+  const groupSeries = kind !== "documents" && (albums || view.seriesGrouping !== "individual") && !seriesBack;
   const inSeries = !!seriesBack;
   const seriesName = inSeries ? view.series[0] : undefined;
   const [seriesTotal, setSeriesTotal] = useState<{ name: string; count: number } | null>(null);
@@ -242,7 +245,7 @@ export function Library({
     pinnedFirst,
     pinned,
     groupSeries,
-    mixSeries: groupSeries && view.seriesGrouping === "mixed",
+    mixSeries: groupSeries && (view.seriesGrouping === "mixed" || (albums && view.seriesGrouping === "individual")),
     omitFacets: true,
     seriesCoverChoices: coverChoices,
   };
@@ -860,7 +863,7 @@ export function Library({
         authors={facets?.authors ?? undefined}
         narrators={facets?.narrators ?? undefined}
         allLabel={kind === "books" ? undefined : `All ${words.many}`}
-        allowSeries={kind !== "documents"}
+        allowSeries={kind !== "documents" && !albums}
         seriesNames={facets?.seriesNames ?? []}
         paired={paired}
         onPairing={onPairing}

@@ -14,7 +14,7 @@ import { Menu, type MenuEntry } from "../components/Menu";
 import { ProgressBar } from "../components/ProgressBar";
 import { StarRating } from "../components/StarRating";
 import { useToast } from "../components/Toast";
-import { bookMenu, makeBookActions } from "../home/bookActions";
+import { bookMenu, detailsLabel, makeBookActions } from "../home/bookActions";
 import { askEditTags } from "../library/BookDialogs";
 import { detailsKindOf, effective, groupPlaces, labelFor, listOf, placesOf, placesWords } from "../lib/details";
 import { formatLength, formatLabel, isAudio, isDocument } from "../lib/queryBooks";
@@ -27,7 +27,7 @@ import { SeriesRow } from "./SeriesRow";
 
 type Load = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: BookDetails };
 
-const SOURCE = { google: "Google Books", openlibrary: "Open Library", audible: "Audible", apple: "Apple Books", hardcover: "Hardcover", musicbrainz: "MusicBrainz", applemusic: "Apple Music", file: "the book file" } as const;
+const SOURCE = { google: "Google Books", openlibrary: "Open Library", audible: "Audible", apple: "Apple Books", hardcover: "Hardcover", musicbrainz: "MusicBrainz", applemusic: "Apple Music", file: "the file" } as const;
 
 /** Where a detail's value comes from, when it isn't the book's own. */
 function origin(f: DetailField | undefined): string | null {
@@ -218,7 +218,7 @@ export function BookDetailsPage({
             </button>
             {changed && (
               <button type="button" className="btn btn-quiet" onClick={() => setResetting(true)}>
-                <Icon name="restore" size={16} /> Show the book's own details
+                <Icon name="restore" size={16} /> Reset to the file's details
               </button>
             )}
           </div>
@@ -250,7 +250,7 @@ export function BookDetailsPage({
               trigger={<Icon name="more" size={18} />}
               items={[
                 ...bookMenu(book, actions).filter(
-                  (e) => typeof e === "string" || !("label" in e) || e.label !== "Book details",
+                  (e) => typeof e === "string" || !("label" in e) || e.label !== detailsLabel(book),
                 ),
                 ...(findItems.length ? ["divider" as const, ...findItems] : []),
               ]}
@@ -361,15 +361,15 @@ export function BookDetailsPage({
 
       {resetting && (
         <ConfirmDialog
-          title="Show the book's own details?"
-          body="This takes away your edits and the details found online for this book, on every device, and brings back the cover it came with. The book file was never changed, so its own details come back as they were."
-          confirm="Show the book's own"
+          title="Reset to the file's details?"
+          body={`This takes away your edits and the details found online for this ${kind === "music" ? "song" : kind === "spoken" ? "recording" : "book"}, on every device, and brings back the cover it came with. The file was never changed, so its details come back as they were.`}
+          confirm="Reset"
           onCancel={() => setResetting(false)}
           onConfirm={() => {
             setResetting(false);
             api.resetDetails(book.id, true).then(
               () => {
-                toast(`“${book.title}” shows its own details again.`);
+                toast(`“${book.title}” shows the file's details again.`);
                 refresh();
               },
               (e: unknown) => toast(`Couldn't reset the details: ${String(e)}`),
