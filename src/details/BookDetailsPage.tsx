@@ -16,7 +16,7 @@ import { StarRating } from "../components/StarRating";
 import { useToast } from "../components/Toast";
 import { bookMenu, makeBookActions } from "../home/bookActions";
 import { askEditTags } from "../library/BookDialogs";
-import { effective, groupPlaces, listOf, placesOf, placesWords } from "../lib/details";
+import { detailsKindOf, effective, groupPlaces, labelFor, listOf, placesOf, placesWords } from "../lib/details";
 import { formatLength, formatLabel, isAudio, isDocument } from "../lib/queryBooks";
 import { formatBytes } from "../settings/controls";
 import { askEditDetails, askFetchDetails } from "./openDetails";
@@ -27,7 +27,7 @@ import { SeriesRow } from "./SeriesRow";
 
 type Load = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: BookDetails };
 
-const SOURCE = { google: "Google Books", openlibrary: "Open Library", audible: "Audible", apple: "Apple Books", hardcover: "Hardcover", file: "the book file" } as const;
+const SOURCE = { google: "Google Books", openlibrary: "Open Library", audible: "Audible", apple: "Apple Books", hardcover: "Hardcover", musicbrainz: "MusicBrainz", applemusic: "Apple Music", file: "the book file" } as const;
 
 /** Where a detail's value comes from, when it isn't the book's own. */
 function origin(f: DetailField | undefined): string | null {
@@ -140,14 +140,23 @@ export function BookDetailsPage({
   const synopsis = value("synopsis");
   const changed = fields.some((f) => f.edited !== null || (f.fetched !== null && f.fetchedFrom !== "file"));
   const started = book.status === "in_progress" && book.totalProgression;
+  // Songs, podcasts and other audio show details of their own (embre, 19 November).
+  const kind = detailsKindOf([book]);
+  const shownAs = (name: DetailFieldName): [string, string | null, DetailFieldName] => [labelFor(name, kind), value(name), name];
   const facts: [string, string | null, DetailFieldName | null][] = [
-    ["Publisher", value("publisher"), "publisher"],
-    ["Published", value("published"), "published"],
-    ["Language", value("language"), "language"],
-    ["ISBN", value("isbn"), "isbn"],
+    ...(kind === "music"
+      ? [shownAs("series"), shownAs("series_index"), shownAs("disc"), shownAs("album_artist"), shownAs("published"), shownAs("composer")]
+      : kind === "spoken"
+        ? [shownAs("episode"), shownAs("published")]
+        : ([
+            ["Publisher", value("publisher"), "publisher"],
+            ["Published", value("published"), "published"],
+            ["Language", value("language"), "language"],
+            ["ISBN", value("isbn"), "isbn"],
+          ] as [string, string | null, DetailFieldName | null][])),
     ...(isAudio(book.format)
       ? ([
-          ["Narrators", listOf(value("narrators")).join(", ") || null, "narrators"],
+          ...(kind === "book" ? [["Narrators", listOf(value("narrators")).join(", ") || null, "narrators"]] : []),
           ["Length", formatLength(book.durationMs), null],
         ] as [string, string | null, DetailFieldName | null][])
       : []),
@@ -222,7 +231,13 @@ export function BookDetailsPage({
                 {book.title}
               </h1>
               <p className="details-authors">{book.authors.join(", ") || "Unknown author"}</p>
-              {groupPlaces(placesOf(book)).map(({ name, places }) => (
+              {kind === "music" && book.series && (
+                <p className="muted">
+                  {book.series}
+                  {book.seriesIndex != null ? `, track ${book.seriesIndex}` : ""}
+                </p>
+              )}
+              {kind !== "music" && groupPlaces(placesOf(book)).map(({ name, places }) => (
                 <p key={name} className="muted">
                   {name}
                   {places.some((p) => p.number != null || p.after != null) ? `, ${placesWords(places).toLowerCase()}` : ""}
@@ -305,11 +320,11 @@ export function BookDetailsPage({
                 ))}
               <LocationsRow bookId={book.id} refreshKey={refreshKey + reload} fallback={where} />
               {files.length > 1 && <FormatsRow bookId={book.id} files={files} onOpen={(fileId) => onOpenBook(book.id, undefined, fileId)} onChanged={refresh} />}
-              <PairRow book={book} refreshKey={refreshKey + reload} />
+              {kind !== "music" && <PairRow book={book} refreshKey={refreshKey + reload} />}
             </dl>
           </section>
 
-          {groupPlaces(placesOf(book)).map(({ name }, _, all) => (
+          {kind !== "music" && groupPlaces(placesOf(book)).map(({ name }, _, all) => (
             <SeriesRow key={name} name={name} author={book.authors[0] ?? ""} bookId={book.id} refreshKey={refreshKey + reload} titled={all.length > 1} />
           ))}
 

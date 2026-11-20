@@ -31,6 +31,8 @@ const AUDIO_VIEWS: { type: AudioType; label: string }[] = [
   { type: "audiobook", label: "Audiobooks" },
   { type: "podcast", label: "Podcasts" },
   { type: "music", label: "Music" },
+  // Audio that says nothing about what it is (embre, 19 November).
+  { type: "other", label: "Other" },
 ];
 
 type Pairing = "all" | "paired" | "alone";

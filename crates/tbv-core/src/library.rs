@@ -1067,6 +1067,7 @@ impl Library {
         let _ = self.keep_file_details(&book_id, &metadata.subjects, metadata.published.as_deref());
         if let Some(audio) = &metadata.audio {
             self.keep_audio_details(&book_id, audio)?;
+            self.keep_audio_kind(&book_id, audio)?;
         }
         if returned {
             self.add_to_previously_deleted(&book_id)?;
@@ -1131,6 +1132,7 @@ impl Library {
         let _ = self.keep_file_details(book_id, &metadata.subjects, metadata.published.as_deref());
         if let Some(audio) = &metadata.audio {
             self.keep_audio_details(book_id, audio)?;
+            self.keep_audio_kind(book_id, audio)?;
         }
         Ok(())
     }

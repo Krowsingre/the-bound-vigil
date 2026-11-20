@@ -7,7 +7,10 @@ import { api } from "../api";
 import type { BookPreview, DetailChange, DetailField, DetailFieldName, SeriesPlace } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
-import { AUDIO_ONLY, cleanValue, DETAIL_FIELDS, effective, isList, listOf } from "../lib/details";
+import {
+  AUDIO_ONLY, cleanValue, DETAIL_FIELDS, detailsKindOf, effective, isList, labelFor, LISTENING_ONLY, listOf, MUSIC_FIELDS, MUSIC_MASS,
+  SPOKEN_FIELDS, SPOKEN_MASS,
+} from "../lib/details";
 import { isAudio } from "../lib/queryBooks";
 import { ChipInput } from "./ChipInput";
 import { bulkPlaces, emptyRow, placeChanges, placesFromFields, placesFromRows, rowsOf, SeriesEditor, type PlaceRow } from "./SeriesEditor";
@@ -36,6 +39,8 @@ const fromForm = (value: string | string[]) => (Array.isArray(value) ? JSON.stri
 
 export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClose: (changed: boolean) => void }) {
   const many = books.length > 1;
+  // Songs, podcasts and other audio have details of their own (embre, 19 November).
+  const kind = detailsKindOf(books);
   const toast = useToast();
   const [fields, setFields] = useState<DetailField[] | null>(many ? [] : null);
   const [values, setValues] = useState<Values>({});
@@ -44,7 +49,7 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
   // Lists (authors, genres, narrators): add to what a book has, or replace it.
   // Many books start on Add; one book shows its list to change.
   const [modes, setModes] = useState<Partial<Record<DetailFieldName, ListMode>>>({});
-  const modeOf = (field: DetailFieldName): ListMode => modes[field] ?? (many ? "add" : "replace");
+  const modeOf = (field: DetailFieldName): ListMode => modes[field] ?? (many && !(kind === "music" && field === "series") ? "add" : "replace");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmation, setConfirmation] = useState<{ groups: EditGroup[]; fields: string[]; count: number } | null>(null);
@@ -120,7 +125,9 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
     const places = placesFromRows(seriesRows ?? []);
     const placesChanged = samePlaces(JSON.stringify(places)) !== samePlaces(startedPlaces);
     for (const f of fields ?? []) {
-      if (f.field === "series" || f.field === "series_index" || f.field === "series_list") {
+      // A song's album and track are edited as plain details.
+      if (kind === "music" && f.field === "series_list") continue;
+      if (kind !== "music" && (f.field === "series" || f.field === "series_index" || f.field === "series_list")) {
         if (!placesChanged) continue;
         const value = placeChanges(places).find((c) => c.field === f.field)!.value;
         const shown = effective(f);
@@ -204,13 +211,20 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
 
   // Narrators belong to audiobooks only.
   const audio = books.every((b) => isAudio(b.format));
-  const shownFields = DETAIL_FIELDS.filter(
-    (f) =>
-      f.field !== "series_index" &&
-      f.field !== "series_list" &&
-      (!many || MASS_FIELDS.includes(f.field) || (audio && f.field === "narrators")) &&
-      (audio || !AUDIO_ONLY.includes(f.field)),
-  );
+  const listening = kind === "music" ? (many ? MUSIC_MASS : MUSIC_FIELDS) : kind === "spoken" ? (many ? SPOKEN_MASS : SPOKEN_FIELDS) : null;
+  const shownFields = (listening
+    ? listening.map((field) => DETAIL_FIELDS.find((f) => f.field === field)!)
+    : DETAIL_FIELDS.filter(
+        (f) =>
+          f.field !== "series_index" &&
+          f.field !== "series_list" &&
+          !LISTENING_ONLY.includes(f.field) &&
+          (!many || MASS_FIELDS.includes(f.field) || (audio && f.field === "narrators")) &&
+          (audio || !AUDIO_ONLY.includes(f.field)),
+      )
+  ).map((f) => ({ ...f, label: labelFor(f.field, kind) }));
+  // A song's album is one name, not a list of series.
+  const plainSeries = kind === "music" && !many;
   const undoEdit = (f: DetailField) => {
     setModes((m) => ({ ...m, [f.field]: "replace" }));
     set(f.field, toForm(f.field, f.fetched ?? f.own));
@@ -271,30 +285,32 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
                     ) : (
                       <label htmlFor={`detail-${field}`}>{label}</label>
                     )}
-                    {field !== "series" && f?.edited !== null && f?.edited !== undefined && (
+                    {(field !== "series" || plainSeries) && f?.edited !== null && f?.edited !== undefined && (
                       <button type="button" className="view-all" onClick={() => undoEdit(f)}>
                         Undo my edit
                       </button>
                     )}
                   </span>
-                  {field === "series" ? (
+                  {field === "series" && !plainSeries ? (
                     many ? (
                       <>
-                        <AddOrReplace mode={modeOf("series")} onChange={(m) => setModes((ms) => ({ ...ms, series: m }))} label="Add to their series or replace them" />
+                        {kind !== "music" && (
+                          <AddOrReplace mode={modeOf("series")} onChange={(m) => setModes((ms) => ({ ...ms, series: m }))} label="Add to their series or replace them" />
+                        )}
                         <div className="series-bulk">
                           <SuggestInput
                             value={bulkName}
                             onChange={(v) => { set("series", v); setBulkName(v); }}
                             all={suggested.series ?? []}
-                            label="Series"
-                            placeholder="Series name"
+                            label={kind === "music" ? "Album" : "Series"}
+                            placeholder={kind === "music" ? "Album name" : "Series name"}
                           />
                           <input
                             inputMode="decimal"
                             autoComplete="off"
                             value={bulkStart}
-                            placeholder="Starting number"
-                            aria-label="Starting number"
+                            placeholder={kind === "music" ? "First track" : "Starting number"}
+                            aria-label={kind === "music" ? "First track" : "Starting number"}
                             onChange={(e) => {
                               set("series", bulkName);
                               setBulkStart(e.target.value);
@@ -302,9 +318,11 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
                           />
                         </div>
                         <span className="details-origin">
-                          {modeOf("series") === "add"
-                            ? "Joins the series each book is in; a book with none gets it as its main series."
-                            : "Becomes each book's only series."}
+                          {kind === "music"
+                            ? "Becomes the album of every song you chose."
+                            : modeOf("series") === "add"
+                              ? "Joins the series each book is in; a book with none gets it as its main series."
+                              : "Becomes each book's only series."}
                           {bulkStart.trim() ? " Numbered in the order you chose them." : ""}
                         </span>
                       </>
@@ -312,13 +330,13 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
                       <SeriesEditor rows={seriesRows ?? []} onChange={setSeriesRows} all={suggested.series ?? []} />
                     )
                   ) : null}
-                  {field !== "series" && Array.isArray(value) && (
+                  {(field !== "series" || plainSeries) && Array.isArray(value) && (
                     <AddOrReplace mode={modeOf(field)} onChange={(m) => chooseMode(field, m)} label={`Add to or replace ${label.toLowerCase()}`} />
                   )}
                   {Array.isArray(value) && modeOf(field) === "add" && !many && listNow(books[0], field).length > 0 && (
                     <span className="details-origin">Joins {listNow(books[0], field).join(", ")}.</span>
                   )}
-                  {field === "series" ? null : Array.isArray(value) ? (
+                  {field === "series" && !plainSeries ? null : Array.isArray(value) ? (
                     <ChipInput
                       value={value}
                       onChange={(v) => set(field, v)}
@@ -342,7 +360,7 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
                       id={`detail-${field}`}
                       value={value}
                       autoComplete="off"
-                      inputMode={field === "series_index" ? "decimal" : undefined}
+                      inputMode={field === "series_index" || field === "disc" ? "decimal" : undefined}
                       placeholder={
                         field === "published"
                           ? "Like 1897 or 1897-05-26"

@@ -2458,7 +2458,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "device" => short(text("name")),
         "read_along_queue" => if data.get("queued").and_then(Value::as_i64) == Some(0) { "Left out of lining up".into() } else { "Queued to line up".into() },
         "book_pin" => if text("pinned_at").is_empty() { "Unpinned".into() } else { "Pinned to the top of the Archive".into() },
-        "book_audio_type" => match text("audio_type").as_str() { "podcast" => "Podcast".into(), "music" => "Music".into(), _ => "Audiobook".into() },
+        "book_audio_type" => match text("audio_type").as_str() { "podcast" => "Podcast".into(), "music" => "Music".into(), "other" => "Other".into(), _ => "Audiobook".into() },
         "archive_series_pin" => if text("pinned_at").is_empty() { "Series unpinned".into() } else { "Series pinned".into() },
         "annotation_mark" | "personal_note_mark" => if text("pinned_at").is_empty() { "Not pinned".into() } else { "Pinned in Scribe".into() },
         "book" => short(text("title")),

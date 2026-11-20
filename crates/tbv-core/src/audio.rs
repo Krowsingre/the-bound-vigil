@@ -16,6 +16,9 @@ use serde::{Deserialize, Serialize};
 use crate::epub::{BookMetadata, Cover};
 use crate::error::{Error, Result};
 
+/// Set once audio imported before Resonance's tabs has been looked at.
+const AUDIO_RECHECK: &str = "audio_recheck";
+
 /// The format of a folder of audio files kept as one book.
 pub const BUNDLE: &str = "tbvaudio";
 
@@ -64,6 +67,44 @@ pub struct AudioDetails {
     pub duration_ms: u64,
     pub chapters: Vec<Chapter>,
     pub parts: Vec<Part>,
+    /// Which of Resonance's tabs it belongs in, by its tags (embre, 19 November).
+    pub kind: AudioKind,
+    /// A song's album, track and the rest, when it's music.
+    pub music: Option<MusicTags>,
+}
+
+/// Resonance's tabs: Audiobooks, Podcasts, Music and Other.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AudioKind {
+    #[default]
+    Audiobook,
+    Podcast,
+    Music,
+    /// Nothing says what it is.
+    Other,
+}
+
+impl AudioKind {
+    /// As `books.audio_type` keeps it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AudioKind::Audiobook => "audiobook",
+            AudioKind::Podcast => "podcast",
+            AudioKind::Music => "music",
+            AudioKind::Other => "other",
+        }
+    }
+}
+
+/// A song's tags beyond the usual details: the album is its series, the
+/// track its number in it; these are kept as details read from the file.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MusicTags {
+    pub album: Option<String>,
+    pub track: Option<u32>,
+    pub disc: Option<u32>,
+    pub album_artist: Option<String>,
+    pub composer: Option<String>,
 }
 
 /// One file's tags and length.
@@ -72,6 +113,16 @@ struct PartInfo {
     title: Option<String>,
     album: Option<String>,
     artists: Vec<String>,
+    /// The song's own artist, without the album artist.
+    track_artists: Vec<String>,
+    album_artist: Option<String>,
+    composer: Option<String>,
+    track: Option<u32>,
+    disc: Option<u32>,
+    /// A narrator tag (not a composer standing in for one).
+    narrated: bool,
+    /// Podcast tags (feed, episode id, the podcast flag).
+    podcast: bool,
     narrators: Vec<String>,
     genres: Vec<String>,
     published: Option<String>,
@@ -401,13 +452,25 @@ pub fn folder_books(dir: &Path) -> Vec<(String, Vec<PathBuf>)> {
     if parts.len() < 2 {
         return if parts.is_empty() { Vec::new() } else { vec![(folder_name(), parts)] };
     }
-    let infos: Vec<(Option<String>, bool)> = parts
+    let read: Vec<(PartInfo, String)> = parts
         .iter()
         .map(|p| {
             let ext = extension(p).unwrap_or_default();
-            let Ok(len) = fs::metadata(p).map(|m| m.len()) else { return (None, false) };
-            let Ok(mut slice) = File::open(p).and_then(|f| Slice::new(f, 0, len)) else { return (None, false) };
-            let info = read_part(&mut slice, &ext);
+            let Ok(len) = fs::metadata(p).map(|m| m.len()) else { return (PartInfo::default(), ext) };
+            let Ok(mut slice) = File::open(p).and_then(|f| Slice::new(f, 0, len)) else { return (PartInfo::default(), ext) };
+            (read_part(&mut slice, &ext), ext)
+        })
+        .collect();
+    // An album of songs: each song its own item, kept together as the album
+    // (embre, 19 November). Only when every file reads as a song and the
+    // whole is album-sized, so an audiobook ripped from CDs stays one book.
+    let total: u64 = read.iter().map(|(info, _)| info.duration_ms).sum();
+    if parts.len() <= ALBUM_PARTS && total <= ALBUM_MS && read.iter().all(|(info, ext)| song_like(info, ext)) {
+        return parts.iter().map(|p| (stem(p), vec![p.clone()])).collect();
+    }
+    let infos: Vec<(Option<String>, bool)> = read
+        .into_iter()
+        .map(|(info, ext)| {
             let whole = matches!(ext.as_str(), "m4b" | "m4a") || info.chapters.len() > 1;
             (info.album, whole)
         })
@@ -540,11 +603,55 @@ pub fn read(path: &Path, format: &str) -> Result<(BookMetadata, AudioDetails)> {
     Ok(combine(infos, names, bundle_cover))
 }
 
+/// Longest a song runs.
+const SONG_MS: u64 = 15 * 60_000;
+/// The most an album holds before a folder of short tracks is taken for
+/// an audiobook on CDs instead.
+const ALBUM_MS: u64 = 150 * 60_000;
+const ALBUM_PARTS: usize = 40;
+/// A file this long that says nothing else is taken for an audiobook.
+const LONG_MS: u64 = 3 * 60 * 60_000;
+
+/// Genres that mean spoken word, not music.
+fn spoken_genre(genres: &[String]) -> bool {
+    genres.iter().any(|g| {
+        let g = g.to_lowercase();
+        ["audiobook", "audio book", "book", "spoken", "speech", "literature", "fiction", "hörbuch", "hörspiel"].iter().any(|w| g.contains(w))
+    })
+}
+
+/// A title like "Chapter 3", "Part 2" or just "07": a piece of a book.
+fn reads_like_a_chapter(title: Option<&str>) -> bool {
+    let Some(title) = title.map(|t| t.trim().to_lowercase()).filter(|t| !t.is_empty()) else { return false };
+    ["chapter", "part ", "kapitel", "chapitre", "capítulo", "capitulo", "prologue", "epilogue", "disc ", "cd "].iter().any(|w| title.starts_with(w))
+        || title.chars().all(|c| c.is_ascii_digit() || c.is_whitespace() || matches!(c, '-' | '.' | '_'))
+}
+
+fn audiobook_signal(info: &PartInfo, ext: &str) -> bool {
+    ext == "m4b" || info.chapters.len() > 1 || info.narrated || spoken_genre(&info.genres) || reads_like_a_chapter(info.title.as_deref())
+}
+
+fn podcast_signal(info: &PartInfo) -> bool {
+    info.podcast || info.genres.iter().any(|g| g.to_lowercase().contains("podcast"))
+}
+
+/// A song: short, on an album, numbered or given a genre, and nothing
+/// saying it's spoken word.
+fn song_like(info: &PartInfo, ext: &str) -> bool {
+    info.duration_ms > 0
+        && info.duration_ms < SONG_MS
+        && info.album.is_some()
+        && (info.track.is_some() || !info.genres.is_empty())
+        && !audiobook_signal(info, ext)
+        && !podcast_signal(info)
+}
+
 /// One book from its parts: the first part's tags speak for the book, and
 /// every part adds its chapters (or is a chapter itself).
 fn combine(infos: Vec<PartInfo>, names: Vec<String>, bundle_cover: Option<Cover>) -> (BookMetadata, AudioDetails) {
     let many = infos.len() > 1;
     let first = &infos[0];
+    let exts: Vec<String> = names.iter().map(|n| extension(Path::new(n)).unwrap_or_default()).collect();
     let title = if many { first.album.clone().or(first.title.clone()) } else { first.title.clone().or(first.album.clone()) };
     let mut details = AudioDetails::default();
     let mut at = 0u64;
@@ -564,13 +671,50 @@ fn combine(infos: Vec<PartInfo>, names: Vec<String>, bundle_cover: Option<Cover>
     }
     details.duration_ms = at;
     details.narrators = first.narrators.clone();
+    details.kind = if infos.iter().any(podcast_signal) {
+        AudioKind::Podcast
+    } else if many {
+        // A book in parts, or an album kept whole from before songs came apart.
+        if infos.iter().zip(&exts).all(|(info, ext)| song_like(info, ext)) { AudioKind::Music } else { AudioKind::Audiobook }
+    } else if audiobook_signal(first, &exts[0]) {
+        AudioKind::Audiobook
+    } else if song_like(first, &exts[0]) {
+        AudioKind::Music
+    } else if at >= LONG_MS {
+        AudioKind::Audiobook
+    } else {
+        AudioKind::Other
+    };
+    let mut authors = first.artists.clone();
+    let (mut series, mut series_index) = (None, None);
+    if details.kind == AudioKind::Music {
+        // A composer isn't a narrator; the song's artist is its author.
+        details.narrators.clear();
+        let album_artist = first.album_artist.clone().filter(|a| !first.track_artists.iter().any(|t| t.eq_ignore_ascii_case(a)));
+        if !many {
+            if !first.track_artists.is_empty() {
+                authors = first.track_artists.clone();
+            }
+            series = first.album.clone();
+            series_index = first.track.map(f64::from);
+        }
+        details.music = Some(MusicTags {
+            album: first.album.clone(),
+            track: if many { None } else { first.track },
+            disc: first.disc,
+            album_artist,
+            composer: first.composer.clone(),
+        });
+    }
     let metadata = BookMetadata {
         title,
-        authors: first.artists.clone(),
+        authors,
         synopsis: first.synopsis.clone(),
         publisher: first.publisher.clone(),
         subjects: first.genres.clone(),
         published: first.published.clone(),
+        series,
+        series_index,
         cover: bundle_cover.or_else(|| infos.iter().find_map(|i| i.cover.clone())),
         audio: Some(details.clone()),
         ..Default::default()
@@ -613,6 +757,15 @@ fn read_part(reader: &mut Slice, ext: &str) -> PartInfo {
                 info.artists = names(artists).into_iter().take(1).chain(names(tag.artist().map(|a| a.to_string()))).collect();
                 info.artists.dedup();
                 let narrator = tag.get_string(&ItemKey::Unknown("NARRATOR".into())).map(String::from);
+                info.narrated = narrator.is_some();
+                info.track_artists = names(tag.artist().map(|a| a.to_string()));
+                info.album_artist = text(&ItemKey::AlbumArtist);
+                info.composer = text(&ItemKey::Composer);
+                info.track = tag.track().filter(|n| *n > 0);
+                info.disc = tag.disk().filter(|n| *n > 0);
+                info.podcast = [ItemKey::FlagPodcast, ItemKey::PodcastUrl, ItemKey::PodcastGlobalUniqueId, ItemKey::PodcastSeriesCategory]
+                    .iter()
+                    .any(|key| text(key).is_some_and(|v| v != "0"));
                 info.narrators = names(narrator.into_iter().chain(text(&ItemKey::Composer)));
                 info.genres = names(tag.genre().map(|g| g.to_string()));
                 info.published = text(&ItemKey::RecordingDate).or_else(|| text(&ItemKey::Year)).or_else(|| tag.year().map(|y| y.to_string()));
@@ -634,6 +787,7 @@ fn read_part(reader: &mut Slice, ext: &str) -> PartInfo {
                     .collect();
                 let narrators: Vec<String> = tag.strings_of(&mp4ameta::Fourcc(*b"\xa9nrt")).map(String::from).collect();
                 if !narrators.is_empty() {
+                    info.narrated = true;
                     info.narrators = names(narrators);
                 }
                 if info.duration_ms == 0 {
@@ -664,6 +818,7 @@ fn read_part(reader: &mut Slice, ext: &str) -> PartInfo {
                     .map(|t| t.value.clone())
                     .collect();
                 if !narrators.is_empty() {
+                    info.narrated = true;
                     info.narrators = names(narrators);
                 }
             }
@@ -738,6 +893,75 @@ impl crate::library::Library {
             ],
         )?;
         Ok(())
+    }
+
+    /// Puts newly found audio in its Resonance tab, unless it already has
+    /// one (chosen by hand, or found before), and keeps a song's album
+    /// artist, disc and composer as details read from the file.
+    pub(crate) fn keep_audio_kind(&self, book_id: &str, audio: &AudioDetails) -> Result<()> {
+        self.conn.execute(
+            "UPDATE books SET audio_type = ?2 WHERE id = ?1 AND audio_type IS NULL",
+            rusqlite::params![book_id, audio.kind.as_str()],
+        )?;
+        if let Some(music) = &audio.music {
+            let now = crate::time::now_utc();
+            let fields = [
+                ("album_artist", music.album_artist.clone()),
+                ("disc", music.disc.map(|d| d.to_string())),
+                ("composer", music.composer.clone()),
+            ];
+            for (field, value) in fields {
+                let Some(value) = value.filter(|v| !v.trim().is_empty()) else { continue };
+                let value = crate::details::clean_value(field, &value)?;
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO metadata_fetched (book_id, field, value, source, updated_at) VALUES (?1, ?2, ?3, 'file', ?4)",
+                    rusqlite::params![book_id, field, value, now],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Audio here that's never been put in a tab, with its file on this
+    /// device: for the one-time look at audio imported before Resonance
+    /// sorted it (embre, 19 November). Empty once that's been done.
+    pub fn audio_recheck_list(&self) -> Result<Vec<(crate::model::BookId, PathBuf, String)>> {
+        if self.setting(AUDIO_RECHECK)?.is_some() {
+            return Ok(Vec::new());
+        }
+        let formats = AUDIO_FORMATS.iter().map(|f| format!("'{f}'")).collect::<Vec<_>>().join(", ");
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT b.id, lf.path, b.format FROM books b JOIN local_files lf ON lf.book_id = b.id
+             WHERE b.deleted_at IS NULL AND b.audio_type IS NULL AND b.format IN ({formats})"
+        ))?;
+        let rows = statement.query_map([], |r| Ok((r.get::<_, String>(0)?, PathBuf::from(r.get::<_, String>(1)?), r.get::<_, String>(2)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// One item from that look: its tab, and for a song its album and track
+    /// (only where it has none yet) and its other song details.
+    pub fn apply_audio_recheck(&self, book_id: &str, metadata: &BookMetadata) -> Result<()> {
+        let Some(audio) = &metadata.audio else { return Ok(()) };
+        let open: bool = self
+            .conn
+            .query_row("SELECT audio_type IS NULL FROM books WHERE id = ?1 AND deleted_at IS NULL", rusqlite::params![book_id], |r| r.get(0))
+            .unwrap_or(false);
+        if !open {
+            return Ok(());
+        }
+        if audio.kind == AudioKind::Music {
+            self.conn.execute(
+                "UPDATE books SET series = ?2, series_index = ?3 WHERE id = ?1 AND (series IS NULL OR trim(series) = '')",
+                rusqlite::params![book_id, metadata.series, metadata.series_index],
+            )?;
+            self.keep_audio_details(book_id, audio)?;
+        }
+        self.keep_audio_kind(book_id, audio)
+    }
+
+    /// The one-time look is done.
+    pub fn finish_audio_recheck(&self) -> Result<()> {
+        self.set_setting(AUDIO_RECHECK, &crate::time::now_utc())
     }
 
     pub fn audiobook(&self, book_id: &str) -> Result<Audiobook> {
@@ -1082,6 +1306,94 @@ pub(crate) mod tests {
             out.extend_from_slice(&frame);
         }
         out
+    }
+
+    /// A song: no narrator, a track number and a genre.
+    pub(crate) fn silent_song(frames: usize, title: &str, album: &str, artist: &str, track: u32) -> Vec<u8> {
+        use id3::TagLike;
+        let mut tag = id3::Tag::new();
+        tag.set_title(title);
+        tag.set_album(album);
+        tag.set_artist(artist);
+        tag.set_album_artist("The Band");
+        tag.set_track(track);
+        tag.set_disc(1);
+        tag.set_genre("Folk");
+        let mut out = Vec::new();
+        tag.write_to(&mut out, id3::Version::Id3v24).unwrap();
+        let mut frame = vec![0u8; 417];
+        frame[..4].copy_from_slice(&[0xFF, 0xFB, 0x90, 0x64]);
+        for _ in 0..frames {
+            out.extend_from_slice(&frame);
+        }
+        out
+    }
+
+    #[test]
+    fn an_album_comes_in_as_songs_kept_together() {
+        let dir = tempfile::tempdir().unwrap();
+        let album = dir.path().join("Harvest");
+        fs::create_dir(&album).unwrap();
+        fs::write(album.join("01 Morning.mp3"), silent_song(40, "Morning", "Harvest", "Ann Singer", 1)).unwrap();
+        fs::write(album.join("02 Evening.mp3"), silent_song(40, "Evening", "Harvest", "Ann Singer", 2)).unwrap();
+        let books = folder_books(&album);
+        assert_eq!(books.iter().map(|(n, p)| (n.as_str(), p.len())).collect::<Vec<_>>(), vec![("01 Morning", 1), ("02 Evening", 1)]);
+
+        let (metadata, audio) = read(&album.join("02 Evening.mp3"), "mp3").unwrap();
+        assert_eq!(audio.kind, AudioKind::Music);
+        assert_eq!(metadata.title.as_deref(), Some("Evening"));
+        assert_eq!(metadata.authors, vec!["Ann Singer".to_string()]);
+        assert_eq!(metadata.series.as_deref(), Some("Harvest"));
+        assert_eq!(metadata.series_index, Some(2.0));
+        assert!(audio.narrators.is_empty());
+        assert_eq!(audio.music.as_ref().and_then(|m| m.album_artist.as_deref()), Some("The Band"));
+
+        let (_library_dir, mut library) = crate::library::tests::open_temp_library();
+        let results = library.import_files(&[album]);
+        assert_eq!(results.len(), 2, "two songs: {results:?}");
+        let id = match &results[1] {
+            crate::model::ImportResult::Imported { book_id, .. } => book_id.clone(),
+            other => panic!("{other:?}"),
+        };
+        let kind: String = library.conn.query_row("SELECT audio_type FROM books WHERE id = ?1", [&id], |r| r.get(0)).unwrap();
+        assert_eq!(kind, "music");
+        let details = library.book_details(&id).unwrap();
+        let field = |f: &str| details.fields.iter().find(|x| x.field == f).and_then(|x| x.fetched.clone().or(x.own.clone()));
+        assert_eq!(field("series").as_deref(), Some("Harvest"));
+        assert_eq!(field("album_artist").as_deref(), Some("The Band"));
+        assert_eq!(field("disc").as_deref(), Some("1"));
+
+        // Audio from before the tabs is looked at once, and only once.
+        library.conn.execute("UPDATE books SET audio_type = NULL, series = NULL", []).unwrap();
+        let waiting = library.audio_recheck_list().unwrap();
+        assert_eq!(waiting.len(), 2);
+        for (id, path, format) in &waiting {
+            let metadata = crate::formats::read_metadata(path, format).unwrap();
+            library.apply_audio_recheck(id, &metadata).unwrap();
+        }
+        library.finish_audio_recheck().unwrap();
+        let kind: String = library.conn.query_row("SELECT audio_type FROM books WHERE id = ?1", [&id], |r| r.get(0)).unwrap();
+        assert_eq!(kind, "music");
+        let series: Option<String> = library.conn.query_row("SELECT series FROM books WHERE id = ?1", [&id], |r| r.get(0)).unwrap();
+        assert_eq!(series.as_deref(), Some("Harvest"));
+        assert!(library.audio_recheck_list().unwrap().is_empty());
+    }
+
+    #[test]
+    fn audio_that_says_nothing_goes_to_other_and_a_narrated_book_stays_an_audiobook() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare = dir.path().join("memo.mp3");
+        let mut bytes = Vec::new();
+        let mut frame = vec![0u8; 417];
+        frame[..4].copy_from_slice(&[0xFF, 0xFB, 0x90, 0x64]);
+        for _ in 0..40 {
+            bytes.extend_from_slice(&frame);
+        }
+        fs::write(&bare, bytes).unwrap();
+        assert_eq!(read(&bare, "mp3").unwrap().1.kind, AudioKind::Other);
+        let book = dir.path().join("book.mp3");
+        fs::write(&book, silent_mp3(40, "The Moonstone", "The Moonstone", "Wilkie Collins")).unwrap();
+        assert_eq!(read(&book, "mp3").unwrap().1.kind, AudioKind::Audiobook);
     }
 
     #[test]

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, isHome, isWeb } from "../api";
 import type { BookPreview, CollectionPreview, ItemKind, LibraryPage } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
-import { askEditDetails, askFetchManyDetails, showBookDetails } from "../details/openDetails";
+import { askAlbum, askEditDetails, askFetchManyDetails, showBookDetails } from "../details/openDetails";
 import { askSendToEreader } from "../ereaders/SendToEreader";
 import { askSendWithLocalSend, canSendWithLocalSend } from "../localsend/SendWithLocalSend";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -621,6 +621,13 @@ export function Library({
   const chosenActions: MenuEntry[] = [
     { label: "Edit details", icon: "edit", disabled: none, onSelect: () => askEditDetails(chosen) },
     { label: "Find details online", icon: "search", disabled: none, onSelect: () => askFetchManyDetails(chosen) },
+    // Music albums: songs kept together, each still its own item (embre, 19 November).
+    ...(kind === "audiobooks"
+      ? [
+          { label: "Group as album", icon: "layers", disabled: chosen.length < 2, onSelect: () => askAlbum(chosen, false) } as MenuItem,
+          { label: "Ungroup", icon: "close", disabled: !chosen.some((b) => b.series), onSelect: () => askAlbum(chosen.filter((b) => b.series), true) } as MenuItem,
+        ]
+      : []),
     { label: "Tags", icon: "tag", disabled: none, onSelect: () => setTagging(true) },
     { label: "Add to or take out of a collection", icon: "collections", disabled: none, onSelect: () => askAddToCollection(chosen) },
     ...(kind !== "audiobooks" ? [{ label: "Send to e-reader", icon: "ereader", disabled: none, onSelect: () => askSendToEreader(chosen) } as MenuItem] : []),

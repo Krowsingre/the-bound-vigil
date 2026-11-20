@@ -664,7 +664,7 @@ impl Library {
     }
 
     pub fn set_audio_type(&self, book_id: &str, kind: Option<&str>) -> Result<()> {
-        if kind.is_some_and(|kind| !matches!(kind, "audiobook" | "podcast" | "music")) {
+        if kind.is_some_and(|kind| !matches!(kind, "audiobook" | "podcast" | "music" | "other")) {
             return Err(Error::Unsuitable("Choose an audio type.".into()));
         }
         let changed = self.conn.execute(

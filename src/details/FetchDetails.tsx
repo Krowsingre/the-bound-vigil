@@ -9,8 +9,8 @@ import type { BookDetails, BookPreview, DetailFieldName } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
-import { AUDIO_ONLY, DETAIL_FIELDS, cleanValue, detailLabel, effective, isList, listOf } from "../lib/details";
-import { foundValues, openLibraryDescription, searchOnline, SOURCE_NAME, type Found } from "../lib/onlineDetails";
+import { AUDIO_ONLY, DETAIL_FIELDS, cleanValue, detailsKindOf, effective, isList, labelFor, LISTENING_ONLY, listOf, MUSIC_FIELDS } from "../lib/details";
+import { foundValues, openLibraryDescription, searchMusic, searchOnline, SOURCE_NAME, type Found } from "../lib/onlineDetails";
 import { isAudio } from "../lib/queryBooks";
 
 function shown(field: DetailFieldName, value: string | null): string {
@@ -28,6 +28,10 @@ export interface FetchStep {
 
 export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClose: (changed: boolean) => void; step?: FetchStep }) {
   const toast = useToast();
+  // A song is looked up in MusicBrainz and Apple Music instead (embre, 19 November).
+  const kind = detailsKindOf([book]);
+  const music = kind === "music";
+  const detailLabel = (field: DetailFieldName) => labelFor(field, kind);
   const [details, setDetails] = useState<BookDetails | null>(null);
   const [query, setQuery] = useState({ title: book.title, author: book.authors[0] ?? "", isbn: "" });
   const [results, setResults] = useState<Found[] | null>(null);
@@ -47,7 +51,11 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
     running.current = stop;
     setSearching(true);
     setError(null);
-    searchOnline(q, stop.signal, isApp ? (source, lookup) => api.searchDetailsMore(source, lookup.title, lookup.author) : undefined).then(
+    const more = isApp ? (source: Parameters<typeof api.searchDetailsMore>[0], lookup: typeof q) => api.searchDetailsMore(source, lookup.title, lookup.author) : undefined;
+    const searching = music
+      ? more ? searchMusic(q, more) : Promise.reject(new Error("Songs are looked up in the TBV app."))
+      : searchOnline(q, stop.signal, more);
+    searching.then(
       (found) => {
         if (stop.signal.aborted) return;
         setResults(found);
@@ -60,7 +68,7 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
         setSearching(false);
       },
     );
-  }, []);
+  }, [music]);
 
   // Search straight away with what the book already says.
   useEffect(() => {
@@ -155,8 +163,10 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
           </p>
         )}
         <p className="muted add-dialog-book">
-          {book.title}. Searches Google Books, Open Library{isApp ? ", Audible, Apple Books and Hardcover (when it's connected)" : ""}. Your book file
-          isn't changed.
+          {music
+            ? `${book.title}. Searches MusicBrainz and Apple Music. Your file isn't changed.`
+            : <>{book.title}. Searches Google Books, Open Library{isApp ? ", Audible, Apple Books and Hardcover (when it's connected)" : ""}. Your book file
+          isn't changed.</>}
         </p>
 
         {!chosen ? (
@@ -173,13 +183,15 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
                 <input value={query.title} onChange={(e) => setQuery({ ...query, title: e.target.value })} />
               </label>
               <label className="field">
-                <span>Author</span>
+                <span>{music ? "Artist" : "Author"}</span>
                 <input value={query.author} onChange={(e) => setQuery({ ...query, author: e.target.value })} />
               </label>
-              <label className="field">
-                <span>ISBN</span>
-                <input value={query.isbn} placeholder="Optional" onChange={(e) => setQuery({ ...query, isbn: e.target.value })} />
-              </label>
+              {!music && (
+                <label className="field">
+                  <span>ISBN</span>
+                  <input value={query.isbn} placeholder="Optional" onChange={(e) => setQuery({ ...query, isbn: e.target.value })} />
+                </label>
+              )}
               <button type="submit" className="btn btn-quiet" disabled={searching}>
                 <Icon name="search" size={16} /> Search
               </button>
@@ -193,7 +205,7 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
               {searching ? (
                 <div className="library-loading" aria-label="Searching" />
               ) : results && results.length === 0 ? (
-                !error && <p className="muted">Nothing found. Try fewer words, or just the ISBN.</p>
+                !error && <p className="muted">{music ? "Nothing found. Try fewer words." : "Nothing found. Try fewer words, or just the ISBN."}</p>
               ) : (
                 results?.map((r) => (
                   <button key={r.id} type="button" className="fetch-result" onClick={() => void choose(r)}>
@@ -207,7 +219,7 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
                       </span>
                       {(r.series || r.narrators?.length) && (
                         <span className="muted">
-                          {[r.series && `${r.series}${r.seriesIndex ? ` #${r.seriesIndex}` : ""}`, r.narrators?.length && `Read by ${r.narrators.join(", ")}`]
+                          {[r.series && (music ? `${r.series}${r.seriesIndex ? `, track ${r.seriesIndex}` : ""}` : `${r.series}${r.seriesIndex ? ` #${r.seriesIndex}` : ""}`), r.narrators?.length && `Read by ${r.narrators.join(", ")}`]
                             .filter(Boolean)
                             .join(" · ")}
                         </span>
@@ -242,7 +254,7 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
                 <span role="columnheader">Now</span>
                 <span role="columnheader">Found</span>
               </div>
-              {DETAIL_FIELDS.filter((f) => values[f.field] && (isAudio(book.format) || !AUDIO_ONLY.includes(f.field))).map(({ field, long }) => {
+              {DETAIL_FIELDS.filter((f) => values[f.field] && (music ? MUSIC_FIELDS.includes(f.field) : !LISTENING_ONLY.includes(f.field) && (isAudio(book.format) || !AUDIO_ONLY.includes(f.field)))).map(({ field, long }) => {
                 const current = details?.fields.find((x) => x.field === field);
                 return (
                   <div key={field} className="fetch-row" role="row">

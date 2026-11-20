@@ -451,3 +451,15 @@ button.chapter-row:hover {
     z-index: 47;
   }
 }
+
+/* Group as album (AlbumDialog.tsx). */
+.album-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.album-dialog h2,
+.album-dialog p {
+  margin: 0;
+}
