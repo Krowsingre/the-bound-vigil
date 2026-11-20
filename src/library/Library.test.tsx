@@ -202,14 +202,54 @@ test("Deselect all lets every chosen book go and Select ends choosing", async ()
   expect(screen.queryByRole("button", { name: "Deselect all" })).toBeNull();
 });
 
-test("the last listened item leads the list whatever the sort", async () => {
+test("the last listened item leads the list, marked, and stays in its own place", async () => {
   getLibrary.mockResolvedValue({ books: [book(1), book(2)], total: 2, page: 0, pageSize: 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] });
   const onFirstShown = vi.fn();
-  renderLibrary({ lead: book(2), onFirstShown });
+  renderLibrary({ kind: "audiobooks", lead: book(2), onFirstShown });
   await screen.findByRole("button", { name: "More for Book 1" });
   const titles = screen.getAllByRole("button", { name: /^More for Book/ }).map((b) => b.getAttribute("aria-label"));
-  expect(titles).toEqual(["More for Book 2", "More for Book 1"]);
+  expect(titles).toEqual(["More for Book 2", "More for Book 1", "More for Book 2"]);
+  expect(screen.getByText("Last listened")).toBeInTheDocument();
+  // Counted once: the total is the library's own.
   await waitFor(() => expect(onFirstShown).toHaveBeenLastCalledWith(book(2).id));
+});
+
+test("the Archive leads with the last book read, marked Last read", async () => {
+  getLibrary.mockImplementation(async (query) => ({
+    books: query?.sort === "recently_opened" && query.pageSize === 1 ? [book(3, { lastOpenedAt: "2026-11-19T10:00:00.000Z" })] : [book(1), book(3)],
+    total: 2, page: 0, pageSize: query?.pageSize ?? 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  renderLibrary();
+  expect(await screen.findByText("Last read")).toBeInTheDocument();
+  const titles = screen.getAllByRole("button", { name: /^More for Book/ }).map((b) => b.getAttribute("aria-label"));
+  expect(titles).toEqual(["More for Book 3", "More for Book 1", "More for Book 3"]);
+});
+
+test("no Last read card once a filter or search narrows the list", async () => {
+  getLibrary.mockImplementation(async (query) => ({
+    books: query?.sort === "recently_opened" && query.pageSize === 1 ? [book(3, { lastOpenedAt: "2026-11-19T10:00:00.000Z" })] : [book(1)],
+    total: 1, page: 0, pageSize: query?.pageSize ?? 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  renderLibrary({ search: "Book 1" });
+  await screen.findByRole("button", { name: "More for Book 1" });
+  expect(screen.queryByText("Last read")).toBeNull();
+});
+
+test("Pinned has its own Select, with Select all for the pinned books", async () => {
+  getLibrary.mockImplementation(async (query) => ({
+    books: query?.pinned ? [book(1, { pinnedAt: "2026-01-01" }), book(2, { pinnedAt: "2026-01-02" })] : [book(25)],
+    total: query?.pinned ? 2 : 30,
+    page: query?.page ?? 0, pageSize: query?.pageSize ?? 24, counts, formats: ["epub"],
+    tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  renderLibrary();
+  fireEvent.click(await screen.findByRole("button", { name: "Open Pinned, 2 pinned" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Select" }));
+  expect(screen.queryByText("All on page")).toBeNull();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
+  expect(await screen.findByText("2 chosen")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Deselect all" }));
+  expect(await screen.findByText(/to choose them/)).toBeInTheDocument();
 });
 
 test("search with no results says so and offers a way back", async () => {

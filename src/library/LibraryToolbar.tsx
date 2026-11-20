@@ -5,6 +5,7 @@ import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { formatLabel } from "../lib/queryBooks";
 import { languageName } from "../lib/language";
+import { PHONE_LIST, useNarrow } from "../lib/useNarrow";
 import { excludeCount, NO_FILTERS, SORTS, TABS, type Layout, type SeriesGrouping, type LibraryTab, type LibraryView } from "./libraryView";
 
 type FilterList = "formats" | "tags" | "genres" | "languages" | "authors" | "series" | "narrators";
@@ -86,6 +87,9 @@ export function LibraryToolbar({
   // Filter's groups start folded; the ones opened stay open next time.
   const [opened, setOpened] = useState(readOpened);
   const [mode, setMode] = useState<"include" | "exclude">("include");
+  // iPhone, portrait iPad and a Duo that's closed or upright: Covers is one on/off button.
+  const phoneList = useNarrow(PHONE_LIST);
+  const covers = view.layout === "grid";
   const [find, setFind] = useState({ series: "", tags: "" });
   const fold = (name: string) => {
     const next = new Set(opened);
@@ -216,6 +220,9 @@ export function LibraryToolbar({
   return (
     <div className="library-toolbar is-compact">
       <div className="toolbar-controls">
+        {/* Sort, Filter and Select are one joined group, like the layout buttons; on a phone or a
+            portrait iPad, Covers joins it as a fourth button (embre, 20 November). */}
+        <div className="toolbar-group" role="group" aria-label="Sort, filter and select">
         {view.tab !== "collections" && (
           <Menu
             label={`Sort by ${sortLabel}`}
@@ -249,20 +256,36 @@ export function LibraryToolbar({
           }
           items={filterItems}
         />
+        {view.tab !== "collections" && (
+          // Select goes straight into choosing, lit while on; pressing it again ends it.
+          <button
+            type="button"
+            className={`toolbar-button select-button${selecting ? " is-lit" : ""}`}
+            aria-label="Select"
+            aria-pressed={selecting}
+            title="Select"
+            onClick={() => onSelecting(!selecting)}
+          >
+            <Icon name="check" size={16} />
+          </button>
+        )}
+        {view.tab !== "collections" && phoneList && (
+          // Covers on shows the covers; off shows the plain list.
+          <button
+            type="button"
+            className={`toolbar-button covers-button${covers ? " is-lit" : ""}`}
+            aria-label="Covers"
+            aria-pressed={covers}
+            title="Covers"
+            onClick={() => onChange({ layout: covers ? "compact" : "grid", page: 0 })}
+          >
+            <Icon name="grid" size={16} />
+          </button>
+        )}
+        </div>
         {view.tab === "collections" && <span className="tabs-menu">{tabName(view.tab)}</span>}
         {view.tab !== "collections" && (
           <>
-            {/* Select goes straight into choosing, lit while on; pressing it again ends it. */}
-            <button
-              type="button"
-              className={`toolbar-button select-button${selecting ? " is-lit" : ""}`}
-              aria-label="Select"
-              aria-pressed={selecting}
-              title="Select"
-              onClick={() => onSelecting(!selecting)}
-            >
-              <Icon name="check" size={16} />
-            </button>
             <span className="toolbar-divider" aria-hidden />
             {/* A shelf other than everything is named here; it's chosen in Filter. */}
             {(view.tab !== "all" || view.location === "on_device") && (
@@ -285,7 +308,7 @@ export function LibraryToolbar({
             {/* Series stacks each series into one card; Series first, joined to it, puts the stacks
                 ahead of single books and only works while Series is on (embre, 20 November). */}
             {allowSeries && <SeriesSwitch grouping={view.seriesGrouping} onChange={(seriesGrouping) => onChange({ seriesGrouping, page: 0 })} />}
-            <div className="layout-switch" role="radiogroup" aria-label="Layout">
+            {!phoneList && <div className="layout-switch" role="radiogroup" aria-label="Layout">
               {LAYOUTS.map((l) => (
                 <button
                   key={l.layout}
@@ -301,7 +324,7 @@ export function LibraryToolbar({
                   <Icon name={l.icon} size={18} />
                 </button>
               ))}
-            </div>
+            </div>}
           </>
         )}
       </div>

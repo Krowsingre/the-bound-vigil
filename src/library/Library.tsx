@@ -19,12 +19,12 @@ import { makeBookActions, phoneChoiceShown } from "../home/bookActions";
 import { Spent, Stat } from "../home/ReadingActivity";
 import { useTimeSpent } from "../home/useTimeSpent";
 import { TagsDialog, deleteWarning, removeWarning } from "./BookDialogs";
-import { BookGrid, BookList, BookTable, type PinnedCard, type Selection } from "./BookViews";
+import { BookGrid, BookList, BookTable, PhoneList, type LeadCard, type PinnedCard, type Selection } from "./BookViews";
 import { CollectionsTab } from "./CollectionsTab";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { excludeCount, NO_FILTERS, PAGE_SIZE, type LibraryView } from "./libraryView";
 import { Pagination } from "./Pagination";
-import { useNarrow } from "../lib/useNarrow";
+import { PHONE_LIST, useNarrow } from "../lib/useNarrow";
 import { useAppSettings } from "../settings/appSettings";
 
 type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
@@ -259,7 +259,9 @@ export function Library({
   );
 
   const shelf = view.tab === "collections" ? "all" : view.tab;
-  const Layout = { grid: BookGrid, list: BookList, compact: BookTable }[view.layout];
+  // iPhone, portrait iPad and an upright Duo: covers, or the list of names (embre, 20 November).
+  const phoneList = useNarrow(PHONE_LIST);
+  const Layout = phoneList && view.layout !== "grid" ? PhoneList : { grid: BookGrid, list: BookList, compact: BookTable }[view.layout];
   // Series stay stacked while choosing: a stack is chosen whole.
   // In Music an album is always one stack: grouping songs as an album means
   // seeing them as one item (embre, 20 November).
@@ -887,19 +889,55 @@ export function Library({
     }
   };
 
-  // Resonance's last listened item leads the first page, when nothing narrows the list.
-  const leadHere = lead && !inSeries && view.tab === "all" && !filtered && !search.trim() ? lead : null;
+  // The last thing read (the Archive) or listened to (Resonance, which passes its own for the tab)
+  // leads the first page, marked, and stays in its own place too (embre, 20 November).
+  const [ownLead, setOwnLead] = useState<BookPreview | null>(null);
+  useEffect(() => {
+    if (lead !== undefined) return;
+    let current = true;
+    void api.getLibrary({ kind, shelf: "all", sort: "recently_opened", search: null, formats: [], location: null, page: 0, pageSize: 1, omitFacets: true })
+      .then((got) => { if (current) setOwnLead(got.books.find((b) => b.lastOpenedAt) ?? null); }, () => { if (current) setOwnLead(null); });
+    return () => { current = false; };
+  }, [kind, lead === undefined, refreshKey, reload]); // eslint-disable-line react-hooks/exhaustive-deps
+  const leadBook = lead === undefined ? ownLead : lead;
+  const leadHere = leadBook && !inSeries && view.tab === "all" && !filtered && !search.trim() ? leadBook : null;
   const firstPage = endless || (page?.page ?? 0) === 0;
-  const shownBooks = page ? (leadHere ? [...(firstPage ? [leadHere] : []), ...page.books.filter((b) => b.id !== leadHere.id)] : page.books) : [];
-  const firstShown = shownBooks[0]?.id ?? null;
+  const leadCard: LeadCard | undefined = leadHere && firstPage && page
+    ? { book: leadHere, label: kind === "audiobooks" ? "Last listened" : "Last read" }
+    : undefined;
+  const shownBooks = page?.books ?? [];
+  const firstShown = leadCard?.book.id ?? shownBooks[0]?.id ?? null;
   const pageReady = !!page;
   useEffect(() => {
     if (pageReady) onFirstShown?.(firstShown);
   }, [firstShown, pageReady]); // eslint-disable-line react-hooks/exhaustive-deps
   const pinCount = pins.length + (pinnedStacks?.books.length ?? 0);
   const pinnedCover = pins[0] ?? pinnedStacks?.books[0];
+  const pinnedNames = (pinnedStacks?.books ?? []).flatMap((b) => (pinnedStacks?.seriesCounts?.[b.id] && b.series?.trim() ? [b.series.trim()] : []));
+  const pinnedAllChosen = pinCount > 0 && pins.every((b) => selected?.has(b.id)) && pinnedNames.every((n) => !!selection?.hasSeries?.(n));
+  /** Every pinned book, and every book of every pinned series. */
+  const choosePinned = async () => {
+    setBusy("Choosing…");
+    try {
+      const lists = await Promise.all(pinnedNames.map(async (n) => [n, await wholeSeries(n)] as const));
+      setStackBooks((m) => {
+        const next = new Map(m);
+        for (const [n, books] of lists) next.set(n, books);
+        return next;
+      });
+      setSelected((s) => {
+        const next = new Map(s ?? []);
+        for (const b of [...pins, ...lists.flatMap(([, books]) => books)]) next.set(b.id, b);
+        return next;
+      });
+    } catch (e) {
+      toast(`Couldn't choose them all: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
   const pinnedCard: PinnedCard | undefined = separatePins && firstPage && view.tab !== "collections" && pinCount > 0 && pinnedCover
-    ? { count: pinCount, cover: pinnedCover, at: leadHere ? 1 : 0, onOpen: () => { setSelected(null); setShowPinned(true); } }
+    ? { count: pinCount, cover: pinnedCover, onOpen: () => { setSelected(null); setShowPinned(true); } }
     : undefined;
   // Nothing pinned any more: back to the list.
   useEffect(() => {
@@ -922,9 +960,9 @@ export function Library({
   } else if (showPinned && !inSeries) {
     body = (
       <>
-        <Layout books={pins} actions={actions} />
+        <Layout books={pins} actions={actions} selection={selection} />
         {pinnedStacks && pinnedStacks.books.length > 0 && (
-          <Layout books={pinnedStacks.books} actions={actions} seriesCounts={pinnedStacks.seriesCounts}
+          <Layout books={pinnedStacks.books} actions={actions} selection={selection} seriesCounts={pinnedStacks.seriesCounts}
             seriesCovers={pinnedStacks.seriesCovers} seriesPublished={pinnedStacks.seriesPublished} seriesAuthors={pinnedStacks.seriesAuthors} onOpenSeries={onOpenSeries && ((name) => openStack(name, onOpenSeries))} seriesMenu={seriesMenu} />
         )}
       </>
@@ -983,7 +1021,7 @@ export function Library({
       onClearSearch();
       onChange({ ...NO_FILTERS, tab: "all", series: [name], sort: "series", page: 0 });
     });
-    const items = <Layout books={shownBooks} pinnedCard={pinnedCard} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} seriesCovers={page.seriesCovers} seriesPublished={page.seriesPublished} seriesAuthors={page.seriesAuthors} seriesMenu={seriesMenu} showStatus={inSeries} inSeries={seriesName} onOpenSeries={(name) => openStack(name, openSeries)} />;
+    const items = <Layout books={shownBooks} pinnedCard={pinnedCard} lead={leadCard} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} seriesCovers={page.seriesCovers} seriesPublished={page.seriesPublished} seriesAuthors={page.seriesAuthors} seriesMenu={seriesMenu} showStatus={inSeries} inSeries={seriesName} onOpenSeries={(name) => openStack(name, openSeries)} />;
     body = endless ? (
       <>
         {items}
@@ -1004,11 +1042,20 @@ export function Library({
     <div className="library">
       <header className="library-head is-stacked">
         {seriesBack && <button type="button" className="back-link" onClick={seriesBack}><Icon name="chevronLeft" size={14} /> Back to {words.title}</button>}
-        {showPinned && !seriesBack && <button type="button" className="back-link" onClick={() => setShowPinned(false)}><Icon name="chevronLeft" size={14} /> Back to {words.title}</button>}
+        {showPinned && !seriesBack && <button type="button" className="back-link" onClick={() => { setSelected(null); setShowPinned(false); }}><Icon name="chevronLeft" size={14} /> Back to {words.title}</button>}
         <div className="library-title-row">
           <h1 className="library-title">{inSeries ? view.series[0] : showPinned ? "Pinned" : words.title}</h1>
           {!showPinned && switcher}
         </div>
+        {showPinned && !seriesName && (
+          <div className="settings-actions">
+            {/* Choosing among the pinned books and series, as inside a series (embre, 20 November). */}
+            <button type="button" className={`btn btn-quiet select-button${selected ? " is-lit" : ""}`} aria-pressed={selected !== null}
+              onClick={() => setSelected(selected ? null : new Map())}>
+              <Icon name="check" size={16} /> Select
+            </button>
+          </div>
+        )}
         {seriesName && (
           <div className="settings-actions">
             {/* Choosing books inside a series, as on the main page (embre, 20 November). */}
@@ -1088,7 +1135,7 @@ export function Library({
         onChange={onChange}
       />}
 
-      {selected && view.tab !== "collections" && !showPinned && (
+      {selected && view.tab !== "collections" && (
         <div className="select-bar" role="toolbar" aria-label={`Change many ${words.many}`}>
           <span className="select-count">
             {selected.size ? `${selected.size} chosen` : `Click ${words.many} to choose them`}
@@ -1107,7 +1154,7 @@ export function Library({
               items={chosenActions}
             />
             {/* The phone has no pages, so only "All in library" there. */}
-            {!endless && (
+            {!endless && !showPinned && (
               <label className="select-all">
                 <input
                   type="checkbox"
@@ -1127,11 +1174,11 @@ export function Library({
             <label className="select-all">
               <input
                 type="checkbox"
-                checked={libraryAllChosen}
-                disabled={!page?.total || busy !== null}
-                onChange={(e) => (e.target.checked ? void chooseAll() : setSelected(new Map()))}
+                checked={showPinned ? pinnedAllChosen : libraryAllChosen}
+                disabled={(showPinned ? !pinCount : !page?.total) || busy !== null}
+                onChange={(e) => (e.target.checked ? void (showPinned ? choosePinned() : chooseAll()) : setSelected(new Map()))}
               />
-              {inSeries ? "Select all" : "All in library"}
+              {inSeries || showPinned ? "Select all" : "All in library"}
             </label>
             <button type="button" className="btn btn-quiet" disabled={none || busy !== null} onClick={() => setSelected(new Map())}>
               Deselect all

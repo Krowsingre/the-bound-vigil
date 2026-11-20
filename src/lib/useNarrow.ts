@@ -3,6 +3,11 @@ import { useEffect, useState } from "react";
 /** Phones held either way, and tablets (touch screens up to an iPad's width), where the layout folds into one column with the menu of pages sliding in (see styles/web.css). */
 export const NARROW = "(max-width: 760px), (pointer: coarse) and (max-width: 1400px)";
 
+/** iPhone, portrait iPad and a Duo that's closed or upright (embre, 20 November): Covers is an on/off
+ *  button and the list is just names. An iPad or open Duo on its side works like a computer here;
+ *  a phone on its side is short, so it stays a phone. */
+export const PHONE_LIST = "(max-width: 760px), (pointer: coarse) and (max-width: 1400px) and (orientation: portrait), (pointer: coarse) and (max-height: 600px)";
+
 /**
  * The reader's own: phones, and tablets held upright, read as on a phone; a
  * tablet held sideways gets the computer's reader (embre, 18 November). A phone

@@ -143,6 +143,126 @@
   color: var(--accent-text);
 }
 
+/* Sort, Filter and Select (and Covers on a phone) joined into one group, like the layout buttons. */
+.library-toolbar.is-compact .toolbar-group {
+  display: flex;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+}
+
+.library-toolbar.is-compact .toolbar-controls .toolbar-group .toolbar-button {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.library-toolbar.is-compact .toolbar-group > * + *,
+.library-toolbar.is-compact .toolbar-controls .toolbar-group > * + .toolbar-button {
+  border-left: 1px solid var(--border);
+}
+
+.library-toolbar.is-compact .toolbar-group > :first-child,
+.library-toolbar.is-compact .toolbar-group > :first-child .toolbar-button {
+  border-top-left-radius: calc(var(--radius-s) - 1px);
+  border-bottom-left-radius: calc(var(--radius-s) - 1px);
+}
+
+.library-toolbar.is-compact .toolbar-group > :last-child,
+.library-toolbar.is-compact .toolbar-group > :last-child.toolbar-button {
+  border-top-right-radius: calc(var(--radius-s) - 1px);
+  border-bottom-right-radius: calc(var(--radius-s) - 1px);
+}
+
+.library-toolbar.is-compact .toolbar-controls .toolbar-group .toolbar-button.is-on {
+  border-color: transparent;
+}
+
+.library-toolbar.is-compact .toolbar-controls .toolbar-group .toolbar-button.is-lit,
+.library-toolbar.is-compact .toolbar-controls .toolbar-group .toolbar-button.is-lit:hover {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* The last thing read or listened to, first and marked; it's in its own place in the list too. */
+.lead-label {
+  display: block;
+  font: 600 10px var(--font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.grid-card.is-lead .grid-open > .cover {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.list-row.is-lead,
+.book-table tr.is-lead,
+.phone-row.is-lead {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.book-table tr.is-lead .lead-label {
+  margin-bottom: 2px;
+}
+
+/* The list on a phone, portrait iPad or upright Duo: just names, how far along, and •••. */
+.phone-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.phone-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 4px 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.phone-row.is-selected {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.phone-open {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 10px;
+  min-width: 0;
+  padding: 10px 0;
+  text-align: left;
+}
+
+.phone-open .lead-label {
+  flex-basis: 100%;
+}
+
+.phone-open .book-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 16px var(--font-serif);
+}
+
+.phone-row.is-series .book-title {
+  font-weight: 600;
+}
+
+.phone-percent {
+  flex: none;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
 /* Series and Series first, joined: lit like the layout buttons when on. */
 .series-switch {
   display: flex;
