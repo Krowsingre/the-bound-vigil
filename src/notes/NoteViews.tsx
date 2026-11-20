@@ -42,7 +42,7 @@ export function cardTitle(n: NoteItem): string {
   return n.book ? n.book.title : personalTitle(n);
 }
 
-export function Tags({ tags, most = 2, project }: { tags: string[] | undefined; most?: number; /** The Scribe book the note belongs to. */ project?: string }) {
+export function Tags({ tags, most = 2, project }: { tags: string[] | undefined; most?: number; /** The Quire book the note belongs to. */ project?: string }) {
   if (!tags?.length && !project) return null;
   tags = tags ?? [];
   return (

@@ -49,7 +49,7 @@ function inBrowser() {
   }
 }
 
-/** Inside Scribe's previews: laid out as two-page spreads, never printed. The previews hand over the book. */
+/** Inside Quire's previews: laid out as two-page spreads, never printed. The previews hand over the book. */
 function asSpreads() {
   document.documentElement.classList.add("is-spread");
   window.addEventListener("message", (e: MessageEvent<{ kind?: string; html?: string }>) => {

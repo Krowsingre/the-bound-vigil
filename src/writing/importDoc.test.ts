@@ -41,7 +41,7 @@ describe("Importing", () => {
     expect(splitChapters("<p>All of it.</p>", "none", "Whole")).toEqual([{ title: "Whole", body: "<p>All of it.</p>", words: 3 }]);
   });
 
-  it("brings back a Word file Scribe made, chapters and footnotes intact", async () => {
+  it("brings back a Word file Quire made, chapters and footnotes intact", async () => {
     const project: WritingProject = {
       id: "p",
       title: "Round Trip",

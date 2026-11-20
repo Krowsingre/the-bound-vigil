@@ -1,4 +1,4 @@
-// A book written in Scribe as plain text, made from the same pages as the
+// A book written in Quire as plain text, made from the same pages as the
 // EPUB: titles in capitals, a blank line between paragraphs, scene breaks
 // kept, and each chapter's notes after it. No cover or pictures.
 

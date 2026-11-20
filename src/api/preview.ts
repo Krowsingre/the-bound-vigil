@@ -35,6 +35,7 @@ import type {
   KindleEmailView,
   ImportItem,
   Profile,
+  Friend,
   SeriesEntry,
   SeriesReview,
   HomeStatus,
@@ -487,6 +488,13 @@ function previewSync(): SyncOverview {
 
 export function previewApi(): Api {
   let sync = previewSync();
+  // `?friends` starts Oathkin with two friends saved.
+  let friends: Friend[] = params.has("friends")
+    ? [
+        { code: "TBV-4HWK-QX8R", name: "Ash", addedAt: "2026-11-20T09:00:00Z" },
+        { code: "TBV-N2PD-7TMC", name: null, addedAt: "2026-11-20T09:05:00Z" },
+      ]
+    : [];
   let profile: Profile = { avatarPath: params.has("avatar") ? SAMPLE_AVATAR : null, name: null, deviceName: "This computer", friendCode: "TBV-7K3Q-9F2M" };
   const settings = new Map<string, string>();
   const dismissed = new Set<string>();
@@ -951,6 +959,16 @@ export function previewApi(): Api {
     clearAvatar: async () => (profile = { ...profile, avatarPath: null }),
     setAccountName: async (name) => (profile = { ...profile, name: name.trim() || null }),
     setDeviceName: async (name) => (profile = { ...profile, deviceName: name.trim() || "This computer" }),
+    friends: async () => friends,
+    saveFriend: async (code, name) => {
+      const letters = code.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^TBV(?=.{8}$)/, "");
+      if (!/^[2-9A-HJKMNP-Z]{8}$/.test(letters)) throw new Error("that isn't a friend code. They look like TBV-7K3Q-9F2M");
+      const tidy = `TBV-${letters.slice(0, 4)}-${letters.slice(4)}`;
+      if (tidy === profile.friendCode) throw new Error("that's your own friend code");
+      friends = [...friends.filter((f) => f.code !== tidy), { code: tidy, name: name.trim() || null, addedAt: new Date().toISOString() }];
+      return friends;
+    },
+    removeFriend: async (code) => (friends = friends.filter((f) => f.code !== code)),
     // `?kindle` picks a list of Kindle books, to review that flow.
     pickBooks: async () => (params.has("kindle") ? ["Kindle books.json"] : []),
     pickFolder: async () => [],
@@ -1080,7 +1098,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.149.0", version: "0.149.0", notes: "The Bound Vigil 0.149.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.150.0", version: "0.150.0", notes: "The Bound Vigil 0.150.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

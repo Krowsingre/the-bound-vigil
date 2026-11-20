@@ -1,4 +1,4 @@
-// Making a Scribe book from an opened .tbv file (tbvFile.ts), exactly as it
+// Making a Quire book from an opened .tbv file (tbvFile.ts), exactly as it
 // was saved: details, settings, cover, pages in order with their parts, and
 // notes. Used by Import a manuscript and for the sample book.
 

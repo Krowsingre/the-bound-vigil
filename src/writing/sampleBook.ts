@@ -1,6 +1,6 @@
-// The sample book in Scribe: John Milton's Paradise Lost (public domain),
+// The sample book in Quire: John Milton's Paradise Lost (public domain),
 // shipped as a .tbv file (public/samples, made by scripts/make-sample-book.ts).
-// It is added once, the first time Scribe has no books at all on this device,
+// It is added once, the first time Quire has no books at all on this device,
 // and can be added again from the New menu. Its author is Milton, never the
 // writer's own name.
 
@@ -24,7 +24,7 @@ export async function addSampleBook(): Promise<string> {
 let adding: Promise<boolean> | null = null;
 
 /**
- * The first time Scribe shows no books, the sample is added (once per device,
+ * The first time Quire shows no books, the sample is added (once per device,
  * and never when books are already there, such as ones synced from another
  * device). True when it was added.
  */

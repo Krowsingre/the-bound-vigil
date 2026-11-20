@@ -807,6 +807,11 @@ export async function webApi(): Promise<Api> {
       await db.setMeta(DEVICE_NAME, name.split(/\s+/).filter(Boolean).join(" ").slice(0, 60) || null);
       return profile();
     },
+    friends: async () => [],
+    saveFriend: async () => {
+      throw new Error("Oathkin works in the TBV app.");
+    },
+    removeFriend: async () => [],
     pickBooks: () => phoneImports.pick(false),
     pickFolder: () => phoneImports.pick(true),
     coverUrl: (path) => (/^(blob|data|https?):/.test(path) ? path : ""),

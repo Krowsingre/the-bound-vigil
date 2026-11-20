@@ -1,5 +1,5 @@
 // citeproc-js, the open citation engine Zotero uses, has no types of its own.
-// Only the parts Scribe calls are described here.
+// Only the parts Quire calls are described here.
 
 declare module "citeproc" {
   interface Sys {

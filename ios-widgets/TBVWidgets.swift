@@ -85,7 +85,7 @@ struct Snapshot: Codable {
     sigils: [
       WidgetSigil(id: "", title: "Discover", icon: "compass", cover: nil),
       WidgetSigil(id: "", title: "Archive", icon: "library", cover: nil),
-      WidgetSigil(id: "", title: "Scribe", icon: "feather", cover: nil),
+      WidgetSigil(id: "", title: "Quire", icon: "feather", cover: nil),
       WidgetSigil(id: "", title: "Resonance", icon: "headphones", cover: nil),
     ],
     todayReadMinutes: 25, todayListenMinutes: 40,
@@ -513,7 +513,7 @@ enum Shortcuts {
     ShortcutEntity(id: "page:home", title: "Sanctum", symbol: "house", cover: nil, link: "theboundvigil://page/home"),
     ShortcutEntity(id: "page:library", title: "Archive", symbol: "books.vertical", cover: nil, link: "theboundvigil://page/library"),
     ShortcutEntity(id: "page:audiobooks", title: "Resonance", symbol: "headphones", cover: nil, link: "theboundvigil://page/audiobooks"),
-    ShortcutEntity(id: "page:writing", title: "Scribe", symbol: "pencil", cover: nil, link: "theboundvigil://page/writing"),
+    ShortcutEntity(id: "page:writing", title: "Quire", symbol: "pencil", cover: nil, link: "theboundvigil://page/writing"),
     ShortcutEntity(id: "page:collections", title: "Compendium", symbol: "square.stack", cover: nil, link: "theboundvigil://page/collections"),
     ShortcutEntity(id: "scribe:new", title: "New note", symbol: "square.and.pencil", cover: nil, link: "theboundvigil://scribe/new"),
     ShortcutEntity(id: "page:catalogs", title: "Scry", symbol: "safari", cover: nil, link: "theboundvigil://page/catalogs"),
@@ -789,7 +789,7 @@ struct ScribeView: View {
     if UIDevice.current.userInterfaceIdiom == .phone {
       Link(destination: Links.page("writing")) {
         VStack(alignment: .leading, spacing: 6) {
-          Caption(text: "Scribe", symbol: "pencil")
+          Caption(text: "Quire", symbol: "pencil")
           Text("Your reading notes").font(.system(.subheadline, design: .serif).weight(.semibold))
             .foregroundColor(Palette.ash)
           Text("Highlights and notes from your books").font(.caption).foregroundColor(Palette.ash.opacity(0.7))
@@ -822,7 +822,7 @@ struct ScribeView: View {
         Link(destination: Links.page("writing")) {
           VStack(alignment: .leading, spacing: 6) {
             Caption(text: "Writing", symbol: "pencil")
-            Text("Start a book in Scribe").font(.caption).foregroundColor(Palette.ash.opacity(0.8))
+            Text("Start a book in Quire").font(.caption).foregroundColor(Palette.ash.opacity(0.8))
           }
           .frame(width: 96, alignment: .leading)
         }
@@ -866,7 +866,7 @@ struct ScribeWidget: Widget {
     StaticConfiguration(kind: "ScribeWorkspace", provider: Provider()) { entry in
       ScribeView(entry: entry)
     }
-    .configurationDisplayName("Scribe Workspace")
+    .configurationDisplayName("Quire Workspace")
     .description("The book you're writing, your latest notes, and a new note.")
     .supportedFamilies([.systemMedium])
   }

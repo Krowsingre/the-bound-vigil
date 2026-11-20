@@ -39,11 +39,12 @@ export const SETTINGS_TABS: {
     lede: "The Bound Vigil, and the work it is built on.",
   },
   {
-    // Its own page, below About (embre, 19 November). A friend code would go here later.
+    // Its own page, below About (embre, 19 November), named Visage, with Oathkin
+    // (friends) beside it on a switch at the top (20 November).
     tab: "profile",
-    label: "Profile",
+    label: "Visage",
     icon: "person",
-    lede: "Your picture and name, and this device's name.",
+    lede: "Your picture, your name, this device's name and your friends.",
   },
   {
     tab: "appearance",
@@ -71,7 +72,7 @@ export const SETTINGS_TABS: {
   },
   {
     tab: "notes",
-    label: "Scribe",
+    label: "Quire",
     icon: "pen",
     lede: "How your notes are shown, taking them with you, and designing in Canva.",
   },
@@ -348,8 +349,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   {
     tab: "profile",
     section: "profile",
-    label: "Profile: picture, your name and this device's name",
-    words: "name account profile picture photo avatar image remove person user device computer phone ipad iphone called rename grimoire",
+    label: "Visage: picture, your name and this device's name",
+    words: "visage name account profile picture photo avatar image remove person user device computer phone ipad iphone called rename grimoire friend code",
+  },
+  {
+    tab: "profile",
+    section: "oathkin",
+    label: "Oathkin: your friends' codes",
+    words: "oathkin friends friend code codes add save share people",
   },
   {
     tab: "sync",

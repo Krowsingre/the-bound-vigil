@@ -1,4 +1,4 @@
-// A Scribe book written by hand, in any text editor (embre's plan, 17 November):
+// A Quire book written by hand, in any text editor (embre's plan, 17 November):
 //
 //   book.md       the book's details at the top, then its pages:
 //
@@ -63,7 +63,7 @@ function zipNames(bytes: Uint8Array): string[] {
   return names;
 }
 
-/** A zip holding a book written by hand (and not a book saved by Scribe, which has book.json). */
+/** A zip holding a book written by hand (and not a book saved by Quire, which has book.json). */
 export function isTextBookZip(bytes: Uint8Array): boolean {
   if (!isZip(bytes)) return false;
   const names = zipNames(bytes);
@@ -193,7 +193,7 @@ export function readTextBook(name: string, bytes: Uint8Array): ImportedDocument 
   const html = markdownToHtml(marked, picture);
   const warnings: ImportWarning[] = [
     ...[...missing].map((p) => ({ kind: "images" as const, message: `The picture “${p}” wasn't found, so it was left out. Put it in the pictures folder beside book.md.` })),
-    ...[...unread].map((p) => ({ kind: "images" as const, message: `“${p}” isn't a picture Scribe can show (PNG, JPEG, GIF or WebP), so it was left out.` })),
+    ...[...unread].map((p) => ({ kind: "images" as const, message: `“${p}” isn't a picture Quire can show (PNG, JPEG, GIF or WebP), so it was left out.` })),
   ];
   const fallback = (textPath ?? name).replace(/^.*\//, "").replace(/\.[^.]+$/, "").replace(/_+/g, " ").trim();
   return {
@@ -207,7 +207,7 @@ export function readTextBook(name: string, bytes: Uint8Array): ImportedDocument 
   };
 }
 
-/** The ready-made example in Scribe's guide: book.md, with a picture in a page and a picture page. */
+/** The ready-made example in Quire's guide: book.md, with a picture in a page and a picture page. */
 export const EXAMPLE_BOOK = `Title: Night Lanterns
 Subtitle: Poems of the Long Dark
 Author: Your Name

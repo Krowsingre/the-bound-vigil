@@ -70,7 +70,7 @@ pub struct WritingChapter {
     pub page: String,
 }
 
-/// A section added with everything about it at once (Scribe's Add menus,
+/// A section added with everything about it at once (Quire's Add menus,
 /// and the sections a template starts a book with).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -216,7 +216,7 @@ fn page_of(page: &str) -> Result<String> {
     if ok {
         Ok(page.to_string())
     } else {
-        Err(Error::Unsuitable("that isn't a kind of page Scribe knows".into()))
+        Err(Error::Unsuitable("that isn't a kind of page Quire knows".into()))
     }
 }
 

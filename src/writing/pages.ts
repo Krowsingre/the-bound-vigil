@@ -1,4 +1,4 @@
-// The kinds of page a book written in Scribe can have: ready-made ones for
+// The kinds of page a book written in Quire can have: ready-made ones for
 // the front matter (title page, copyright, contents…), the body (chapters,
 // interludes) and the back matter (acknowledgements, about the author…),
 // plus pages of your own. A section's kind and how it's set out are kept as
@@ -46,7 +46,7 @@ export interface PageSettings {
   newPage: boolean | null;
   /** The title shows as a heading at the top of the page. */
   showTitle: boolean;
-  /** A page Scribe makes (title page, copyright, contents) that you've chosen to write yourself instead. */
+  /** A page Quire makes (title page, copyright, contents) that you've chosen to write yourself instead. */
   byHand: boolean;
   /** A poem's lines set centred rather than from the left. */
   centred: boolean;
@@ -98,7 +98,7 @@ interface KindInfo {
   /** Under the name in the Add menu. */
   hint?: string;
   areas: Area[];
-  /** Scribe makes the page from the book's details, until you write it yourself. */
+  /** Quire makes the page from the book's details, until you write it yourself. */
   made?: boolean;
   /** Left out of the table of contents unless asked. */
   unlisted?: boolean;
@@ -187,7 +187,7 @@ export function writePage(page: PageSettings): string {
   return JSON.stringify(out);
 }
 
-/** Whether Scribe makes this page itself from the book's details. */
+/** Whether Quire makes this page itself from the book's details. */
 export const isMade = (page: PageSettings) => !!KINDS[page.kind].made && !page.byHand;
 
 /** A page set line by line, as poems are. */

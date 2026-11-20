@@ -1,4 +1,4 @@
-// Linked books in Scribe (embre, 4 November 2026): books linked as editions
+// Linked books in Quire (embre, 4 November 2026): books linked as editions
 // of one book show as one card, not separately. Opening it shows the
 // editions in order, each a book you can still write in, and under each
 // edition the drafts kept of it, which are locked copies to read.
@@ -15,7 +15,7 @@ import { isSample } from "./sampleBook";
 
 export type Shelf = { kind: "book"; book: WritingProject } | { kind: "linked"; group: string; editions: { book: WritingProject; edition: EditionInfo }[] };
 
-/** The books as they show in Scribe: editions of one book together, every other book on its own, in the order given. */
+/** The books as they show in Quire: editions of one book together, every other book on its own, in the order given. */
 export function shelve(books: WritingProject[]): Shelf[] {
   const groups = new Map<string, { book: WritingProject; edition: EditionInfo }[]>();
   for (const book of books) {

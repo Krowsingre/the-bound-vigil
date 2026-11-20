@@ -1,7 +1,7 @@
 // Linking two books that were started separately: as editions of one book
 // (a first and second edition, a revised version, a translation…), or the
 // other book kept as a locked draft of this one. The other book itself is
-// never changed when it becomes a draft; it stays in Scribe until deleted.
+// never changed when it becomes a draft; it stays in Quire until deleted.
 
 import { useMemo, useState } from "react";
 import { api } from "../api";
@@ -49,7 +49,7 @@ export function LinkBookDialog({
   onCancel,
 }: {
   project: WritingProject;
-  /** Every book in Scribe. */
+  /** Every book in Quire. */
   books: WritingProject[];
   onDone: (message: string) => void;
   onCancel: () => void;
@@ -86,7 +86,7 @@ export function LinkBookDialog({
         if (problems.length) throw new Error(`${other.title} has nothing written in it yet.`);
         const next = (await api.writingDrafts(project.id)).reduce((n, d) => Math.max(n, d.number), 0) + 1;
         const draft = await api.saveWritingDraft(project.id, await makeEpub({ ...project, title: `${project.title} (Draft ${next})` }, view.chapters, readExport(view.project.export)));
-        onDone(`${other.title} is kept as Draft ${draft.number} of this book. It's still in Scribe too; delete it there if you don't need it.`);
+        onDone(`${other.title} is kept as Draft ${draft.number} of this book. It's still in Quire too; delete it there if you don't need it.`);
       }
     } catch (e) {
       setError(String(e).replace(/^Error: /, ""));
@@ -109,7 +109,7 @@ export function LinkBookDialog({
         <h2>Link another book</h2>
         <p className="muted dialog-lede">For two books you started separately that are really one book: an earlier edition, a revised version, or a draft.</p>
         {choices.length === 0 ? (
-          <p className="muted">There are no other books in Scribe to link.</p>
+          <p className="muted">There are no other books in Quire to link.</p>
         ) : (
           <>
             <label className="field">

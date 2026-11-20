@@ -1,5 +1,5 @@
-// Preferences › Scribe › Canva: connect a Canva account to design covers,
-// pictures and whole pages there (a Scribe Publisher feature, on computers). In Preferences › Scribe.
+// Preferences › Quire › Canva: connect a Canva account to design covers,
+// pictures and whole pages there (a Quire Publisher feature, on computers). In Preferences › Quire.
 
 import { api, isApp, isIOS, openExternal } from "../api";
 import { useState } from "react";
@@ -38,7 +38,7 @@ export function CanvaSection() {
     <Section
       id="canva"
       title="Canva"
-      lede="Design covers, pictures and whole pages of your books in Canva, then bring them back into Scribe. Part of Scribe Publisher."
+      lede="Design covers, pictures and whole pages of your books in Canva, then bring them back into Quire. Part of Quire Publisher."
     >
       {!status?.available ? (
         <p className="settings-row-hint">Canva isn't set up in this copy of TBV.</p>

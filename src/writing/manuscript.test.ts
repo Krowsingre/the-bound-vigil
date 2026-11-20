@@ -60,7 +60,7 @@ describe("Rebuilding a manuscript", () => {
     expect(spacing.sections[0].body).toBe("<p>A.</p><p>B.</p><p>C.</p>");
   });
 
-  it("leaves out a title page Scribe makes itself, and keeps a copyright page as written", () => {
+  it("leaves out a title page Quire makes itself, and keeps a copyright page as written", () => {
     const m = buildManuscript(doc("<p>Night Road</p><p>A. Pen</p><h1>Copyright</h1><p>© 2026 A. Pen. All rights reserved.</p><h1>Chapter 1</h1><p>Rain.</p>"), "headings");
     expect(m.sections[0]).toMatchObject({ kind: "title_page", include: false });
     expect(m.sections[1]).toMatchObject({ kind: "copyright", area: "front" });

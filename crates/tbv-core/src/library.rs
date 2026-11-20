@@ -798,6 +798,9 @@ const MIGRATIONS: &[&str] = &[
     // friends can add you. Made once and synced on its own, apart from the
     // profile, so a new device making one never outranks the name and picture.
     "CREATE TABLE friend_code (id TEXT PRIMARY KEY, code TEXT NOT NULL, made_at TEXT NOT NULL);",
+    // v48: Oathkin, the friend codes saved here (embre, 20 November), by code.
+    // A removed friend keeps its row with removed_at, so the removal syncs.
+    "CREATE TABLE friends (code TEXT PRIMARY KEY, name TEXT, added_at TEXT NOT NULL, removed_at TEXT);",
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

@@ -11,7 +11,7 @@ use rusqlite::{params, OptionalExtension};
 use crate::error::{Error, Result};
 use crate::ids::new_record_id;
 use crate::library::Library;
-use crate::model::Profile;
+use crate::model::{Friend, Profile};
 use crate::time::now_utc;
 
 pub const AVATAR_FORMATS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif"];
@@ -61,6 +61,14 @@ fn new_friend_code() -> String {
 fn is_friend_code(code: &str) -> bool {
     let parts: Vec<&str> = code.split('-').collect();
     parts.len() == 3 && parts[0] == "TBV" && parts[1..].iter().all(|p| p.len() == 4 && p.bytes().all(|b| CODE_LETTERS.contains(&b)))
+}
+
+/// A friend code as typed: any case, with or without "TBV" and dashes.
+fn tidy_friend_code(typed: &str) -> Option<String> {
+    let letters: String = typed.chars().filter(char::is_ascii_alphanumeric).map(|c| c.to_ascii_uppercase()).collect();
+    let letters = if letters.len() == 11 { letters.strip_prefix("TBV")?.to_string() } else { letters };
+    let code = (letters.len() == 8).then(|| format!("TBV-{}-{}", &letters[..4], &letters[4..]))?;
+    is_friend_code(&code).then_some(code)
 }
 
 /// A name TBV gave a picture, safe to use as a file name.
@@ -125,6 +133,38 @@ impl Library {
             params![ME, code, now_utc()],
         )?;
         Ok(code)
+    }
+
+    /// The friends saved in Oathkin, by name and then code.
+    pub fn friends(&self) -> Result<Vec<Friend>> {
+        let mut statement = self.conn.prepare(
+            "SELECT code, name, added_at FROM friends WHERE removed_at IS NULL
+             ORDER BY COALESCE(NULLIF(name, ''), code) COLLATE NOCASE, code",
+        )?;
+        let rows = statement.query_map([], |r| Ok(Friend { code: r.get(0)?, name: r.get(1)?, added_at: r.get(2)? }))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Saves a friend's code in Oathkin, with what to call them. Saving a
+    /// code that's there already changes only the name.
+    pub fn save_friend(&self, code: &str, name: &str) -> Result<Vec<Friend>> {
+        let code = tidy_friend_code(code).ok_or_else(|| Error::Unsuitable("that isn't a friend code. They look like TBV-7K3Q-9F2M".into()))?;
+        if code == self.friend_code()? {
+            return Err(Error::Unsuitable("that's your own friend code".into()));
+        }
+        self.conn.execute(
+            "INSERT INTO friends (code, name, added_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(code) DO UPDATE SET name = excluded.name,
+               added_at = CASE WHEN removed_at IS NULL THEN added_at ELSE excluded.added_at END, removed_at = NULL",
+            params![code, tidy_name(name), now_utc()],
+        )?;
+        self.friends()
+    }
+
+    /// Takes a friend out of Oathkin, on every device.
+    pub fn remove_friend(&self, code: &str) -> Result<Vec<Friend>> {
+        self.conn.execute("UPDATE friends SET removed_at = ?2 WHERE code = ?1 AND removed_at IS NULL", params![code, now_utc()])?;
+        self.friends()
     }
 
     fn account_name(&self) -> Result<Option<String>> {
@@ -236,6 +276,23 @@ mod tests {
         assert_eq!(code.len(), "TBV-7K3Q-9F2M".len());
         assert_eq!(library.friend_code().unwrap(), code);
         assert_eq!(library.set_account_name("embre").unwrap().friend_code.as_deref(), Some(code.as_str()));
+    }
+
+    #[test]
+    fn friends_are_saved_renamed_and_removed() {
+        let (_dir, library) = open_temp_library();
+        assert!(library.friends().unwrap().is_empty());
+        let saved = library.save_friend(" tbv 7k3q 9f2m ", "  Ash ").unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].code, "TBV-7K3Q-9F2M");
+        assert_eq!(saved[0].name.as_deref(), Some("Ash"));
+        assert_eq!(library.save_friend("7K3Q9F2M", "Ash Pale").unwrap()[0].name.as_deref(), Some("Ash Pale"), "the same code, renamed");
+        assert!(library.save_friend("TBV-0000-0000", "").is_err(), "0 isn't in a code");
+        assert!(library.save_friend("hello", "").is_err());
+        let own = library.friend_code().unwrap();
+        assert!(library.save_friend(&own, "me").is_err(), "not your own");
+        assert!(library.remove_friend("TBV-7K3Q-9F2M").unwrap().is_empty());
+        assert_eq!(library.save_friend("TBV-7K3Q-9F2M", "").unwrap()[0].name, None, "saved again after removing");
     }
 
     #[test]

@@ -126,7 +126,7 @@ let barNow = BAR_START;
 
 /** TBV's pages Discover can sit beside. */
 const SPLIT_ROUTES = [{ label: "Sanctum", route: "home" }, { label: "Archive", route: "library" }, { label: "Resonance", route: "audiobooks" },
-  { label: "Scribe", route: "writing" }, { label: "Compendium", route: "collections" }, { label: "Preferences", route: "settings" }] as const;
+  { label: "Quire", route: "writing" }, { label: "Compendium", route: "collections" }, { label: "Preferences", route: "settings" }] as const;
 
 const ask = (what: string) => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: what }));
 /** Webpage Back/Forward when a control in TBV, rather than the native page, has focus. */
@@ -1311,7 +1311,7 @@ export function Browser({
       const quote = clip.text.split(/\r?\n/).map((line) => "> " + line.replace(/[\\`*_~\[\]<>]/g, "\\$&")).join("\n");
       const title = typeof clip.title === "string" && clip.title.trim() ? clip.title.trim() : titleOf(active.title, url);
       await api.savePersonalNote(null, title, `${quote}\n\nSource: <${address}>`);
-      toast("Saved the selection to Scribe.");
+      toast("Saved the selection to Quire.");
     } catch (error) {
       toast(clean(error));
     }
@@ -1420,7 +1420,7 @@ export function Browser({
       ? { label: "Close split screen", icon: "splitScreen" as const, onSelect: () => setPair(null) }
       : { label: "Split screen", icon: "splitScreen" as const, submenu: splitItems.some((item) => item !== "divider") ? splitItems : [{ label: "Open another tab to split with", disabled: true }] }] : []),
     { label: "Page tools", icon: "sliders", submenu: [
-      { label: "Save selection as Scribe note", icon: "notes", disabled: !web || !!article, onSelect: () => void saveSelection() },
+      { label: "Save selection as Quire note", icon: "notes", disabled: !web || !!article, onSelect: () => void saveSelection() },
       // Also on a page's right-click menu (Windows), for one thing at a time.
       { label: "Remove things from this page", icon: "eyeOff", disabled: !web || !!article, onSelect: () => void api.browserRead(active.id, REMOVE_FROM_PAGE).then((on) => {
         if (!on) toast("This page doesn't allow it.");

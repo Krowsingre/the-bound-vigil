@@ -727,6 +727,13 @@ export interface HomeStatus {
   problem: string | null;
 }
 
+/** A friend saved in Oathkin by their friend code. */
+export interface Friend {
+  code: string;
+  name: string | null;
+  addedAt: string;
+}
+
 export interface Profile {
   avatarPath: string | null;
   /** The account's own name, the same on every device. */
@@ -1064,10 +1071,10 @@ export interface NoteItem {
   locator: ReaderLocator | null;
   createdAt: IsoUtc;
   updatedAt: IsoUtc;
-  /** When it was pinned above the rest in Scribe; null when it isn't. */
+  /** When it was pinned above the rest in Quire; null when it isn't. */
   pinnedAt?: IsoUtc | null;
   tags?: string[];
-  /** The book you're writing in Scribe that a personal note belongs to. */
+  /** The book you're writing in Quire that a personal note belongs to. */
   project?: { id: string; title: string } | null;
 }
 
@@ -1526,7 +1533,7 @@ export interface WritingProjectView {
   chapters: WritingChapter[];
 }
 
-/** What the person agreed to when importing a manuscript into Scribe (src/writing/acknowledgment.ts). */
+/** What the person agreed to when importing a manuscript into Quire (src/writing/acknowledgment.ts). */
 export interface ImportAcknowledgment {
   policyVersion: string;
   /** The warning and the confirmation, word for word. The core keeps only its SHA-256. */
@@ -1537,11 +1544,11 @@ export interface ImportAcknowledgment {
   sourceBytes: number;
   sourceFormat: string;
   method: "checkbox";
-  /** The records a Scribe book file (.tbv) brought from the book it was saved from, signed into this one so they travel on. */
+  /** The records a Quire book file (.tbv) brought from the book it was saved from, signed into this one so they travel on. */
   carried?: unknown[];
 }
 
-/** A signed record of where a Scribe book came from, checked when read. */
+/** A signed record of where a Quire book came from, checked when read. */
 export interface ProvenanceRecord {
   id: string;
   /** This book, or the book it was duplicated from. */

@@ -25,7 +25,7 @@ export type WidgetLink =
   | { kind: "scribe"; open: "new" | "note" | "book"; id: string | null }
   | { kind: "home" };
 
-/** A widget asking Scribe for a new note (`n` counts asks), or to show one. */
+/** A widget asking Quire for a new note (`n` counts asks), or to show one. */
 export interface ScribeAsk {
   open: "new" | "note";
   id: string | null;

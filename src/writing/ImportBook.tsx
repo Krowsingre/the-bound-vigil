@@ -1,5 +1,5 @@
 import { RememberedDetails } from "../components/RememberedDetails";
-// Bringing a manuscript written elsewhere into Scribe, in stages:
+// Bringing a manuscript written elsewhere into Quire, in stages:
 // 1. choose the file, which is only looked at (nothing is made yet);
 // 2. confirm you own it or may publish it, a box that is never ticked for
 //    you and that no import skips;
@@ -7,7 +7,7 @@ import { RememberedDetails } from "../components/RememberedDetails";
 //    each one is, and anything to check;
 // 4. the book is made, with a signed record of the confirmation and the
 //    original file kept beside it. The report goes into the book's notes.
-// A Scribe book file (.tbv) is confirmed the same way, then opened exactly
+// A Quire book file (.tbv) is confirmed the same way, then opened exactly
 // as it was saved, with nothing rebuilt or guessed (see tbvFile.ts).
 // Opened from a book's Drafts, the file comes in as another draft of that
 // book instead: kept as a locked draft to read, or made the version being
@@ -44,7 +44,7 @@ const AREAS: { area: Area; label: string }[] = [
   { area: "back", label: "Back matter" },
 ];
 
-/** Large pictures are made the size Scribe keeps, as when one is added by hand. */
+/** Large pictures are made the size Quire keeps, as when one is added by hand. */
 async function shrinkPictures(html: string): Promise<string> {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
   for (const img of doc.querySelectorAll("img")) {
@@ -254,7 +254,7 @@ export function ImportBookDialog({
   const change = (i: number, edit: Partial<ManuscriptSection>) =>
     setManuscript((m) => (m ? { ...m, sections: m.sections.map((s, j) => (j === i ? { ...s, ...edit, sure: true } : s)), issues: m.issues.filter((x) => !(x.section === i && x.kind === "classification" && edit.area)) } : m));
 
-  /** A Scribe book file, made into the book it was saved from. */
+  /** A Quire book file, made into the book it was saved from. */
   const makeFromTbv = async (book: TbvBook) => {
     if (!picked || !agreed) return;
     setError(null);
@@ -487,8 +487,8 @@ export function ImportBookDialog({
               </p>
             )}
             <p className="muted dialog-lede">
-              Rebuild a book you've written elsewhere as a Scribe book you can edit: Word, OpenDocument, RTF, plain text, Markdown, HTML, EPUB or PDF, or a Kindle Create project made from a PDF (zip its folder first). For Google Docs, download it as Word first. A
-              Scribe book file (.tbv) opens exactly as it was saved, and a book you wrote in a text editor is rebuilt from its marks. Your file is never changed.
+              Rebuild a book you've written elsewhere as a Quire book you can edit: Word, OpenDocument, RTF, plain text, Markdown, HTML, EPUB or PDF, or a Kindle Create project made from a PDF (zip its folder first). For Google Docs, download it as Word first. A
+              Quire book file (.tbv) opens exactly as it was saved, and a book you wrote in a text editor is rebuilt from its marks. Your file is never changed.
             </p>
             <div className="import-book-file">
               <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => picking.current?.click()}>
@@ -504,7 +504,7 @@ export function ImportBookDialog({
             <RememberedDetails disclosure="writing.importMarks" className="import-marks">
               <summary>Writing in another app? Mark your pages</summary>
               <p>
-                In any app, put a line like these where each page starts. Scribe then knows what every page is, with nothing guessed. The words after the colon are the page's title.
+                In any app, put a line like these where each page starts. Quire then knows what every page is, with nothing guessed. The words after the colon are the page's title.
               </p>
               <pre>{["=== title page", "=== copyright", "=== dedication", "=== contents", "=== part: Book One", "=== chapter: Arrival", "=== poem: Ash on the road", "=== end part", "=== acknowledgments", "=== about the author"].join("\n")}</pre>
               <p className="muted">Every kind of page works: {MARK_HELP.join(", ")}.</p>
@@ -519,7 +519,7 @@ export function ImportBookDialog({
                 A picture inside a page is written as <code>![caption](pictures/lamp.png)</code>. A picture with a page of its own is a mark, <code>=== Picture page: pictures/map.jpg ===</code>, with its caption on the next line if you want one. Pictures can be PNG, JPEG, GIF or WebP.
               </p>
               <p>
-                {canPickFolder ? "Choose the folder itself, or zip it and choose the zip. " : "Zip the folder and choose the zip. "}A zip can be renamed .tbv. Anything Scribe can't read, such as a picture that isn't in the folder, is listed when the book is rebuilt.
+                {canPickFolder ? "Choose the folder itself, or zip it and choose the zip. " : "Zip the folder and choose the zip. "}A zip can be renamed .tbv. Anything Quire can't read, such as a picture that isn't in the folder, is listed when the book is rebuilt.
               </p>
               <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => void saveExample()}>
                 Save the example
@@ -600,7 +600,7 @@ export function ImportBookDialog({
                 <span className="muted">
                   {" "}
                   · it becomes the version you're writing. The words there now are kept as a draft first.
-                  {tbv ? " (A Scribe book file can only come in as a draft; open it as its own book to write from it.)" : ""}
+                  {tbv ? " (A Quire book file can only come in as a draft; open it as its own book to write from it.)" : ""}
                 </span>
               </span>
             </label>
@@ -661,7 +661,7 @@ export function ImportBookDialog({
               {kept.length} {kept.length === 1 ? "section" : "sections"}, {words.toLocaleString()} words.{" "}
               {split === "marks"
                 ? "Each page is what its mark says. Untick anything you don't want."
-                : "Check where each one goes and what it is; untick anything you don't want, such as a contents page, which Scribe makes for you."}
+                : "Check where each one goes and what it is; untick anything you don't want, such as a contents page, which Quire makes for you."}
             </p>
             {manuscript.issues.length > 0 && (
               <div className="import-report" role="status">
@@ -712,7 +712,7 @@ export function ImportBookDialog({
                                   {AREAS.map((g) => (
                                     <optgroup key={g.area} label={g.label}>
                                       {ADD_MENUS[g.area]
-                                        // Made by Scribe, so only offered for a page the writer marked as one.
+                                        // Made by Quire, so only offered for a page the writer marked as one.
                                         .filter((k) => (k !== "contents" && k !== "sources") || k === s.kind)
                                         .map((k) => (
                                           <option key={k} value={`${g.area}:${k}`}>
@@ -785,7 +785,7 @@ export function ImportBookDialog({
   );
 }
 
-/** What a Scribe book file holds, by area, before the book is made from it. */
+/** What a Quire book file holds, by area, before the book is made from it. */
 function TbvSummary({ book }: { book: TbvBook }) {
   const label = (p: TbvBook["pages"][number]) => {
     if (p.role === "part") return "Section";

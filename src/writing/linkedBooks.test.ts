@@ -10,7 +10,7 @@ const book = (id: string, edition?: { group: string; number: number }, title = i
     export: edition ? JSON.stringify({ edition: { year: "2025", note: "", isbns: {}, earlier: [], name: "", ...edition } }) : null,
   }) as unknown as WritingProject;
 
-describe("linked books in Scribe", () => {
+describe("linked books in Quire", () => {
   it("puts editions of one book on one card, where the first of them was", () => {
     const shelves = shelve([book("x"), book("b2", { group: "g", number: 2 }), book("y"), book("b1", { group: "g", number: 1 })]);
     expect(shelves.map((s) => (s.kind === "book" ? s.book.id : s.editions.map((e) => e.book.id).join("+")))).toEqual(["x", "b1+b2", "y"]);

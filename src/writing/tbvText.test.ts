@@ -20,7 +20,7 @@ describe("a book written by hand", () => {
     expect(out).toContain("=== Chapter: Two ===");
   });
 
-  it("is told apart from a Scribe book file and from other zips", () => {
+  it("is told apart from a Quire book file and from other zips", () => {
     const book = exampleBook(PNG);
     expect(isTextBookZip(book)).toBe(true);
     expect(inspect("Night Lanterns.tbv", book)).toMatchObject({ format: "tbv_text", supported: true });

@@ -1,4 +1,4 @@
-// Rebuilding a book from a PDF for Scribe: the words on each page, read with
+// Rebuilding a book from a PDF for Quire: the words on each page, read with
 // PDF.js, turned back into headings, paragraphs and poems. A PDF only knows
 // where each line sits, so this reads the layout: bigger lines that look
 // like titles become headings, centred or short lines set apart become
@@ -106,7 +106,7 @@ const mostCommon = (values: number[]) => {
   return [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0;
 };
 
-/** The book's pages, read as a PDF reader shows them, turned into Scribe's markup. */
+/** The book's pages, read as a PDF reader shows them, turned into Quire's markup. */
 export function layoutToHtml(pages: PdfPage[]): { html: string; title: string | null; warnings: ImportWarning[] } {
   const warnings: ImportWarning[] = [];
   const all = pages.map((p, i) => linesOf(p, i));
@@ -128,7 +128,7 @@ export function layoutToHtml(pages: PdfPage[]): { html: string; title: string | 
       return !out;
     }),
   );
-  if (dropped) warnings.push({ kind: "text", message: `${dropped} page numbers and running heads were left out. Scribe numbers its own pages.` });
+  if (dropped) warnings.push({ kind: "text", message: `${dropped} page numbers and running heads were left out. Quire numbers its own pages.` });
 
   const words = lines.flat().reduce((n, l) => n + l.text.split(/\s+/).length, 0);
   const pictured = pages.filter((p) => p.pictures > 0).length;
@@ -180,7 +180,7 @@ export function layoutToHtml(pages: PdfPage[]): { html: string; title: string | 
     for (const block of blocks) {
       const size = block[0].size;
       const text = block.map((l) => l.text).join(" ");
-      // The title page stays as written: Scribe makes its own from the book's details.
+      // The title page stays as written: Quire makes its own from the book's details.
       if (title && pageIndex === 0) {
         out.push(`<p>${block.map((l) => escapeHtml(l.text)).join("<br>")}</p>`);
         continue;
@@ -228,7 +228,7 @@ export function layoutToHtml(pages: PdfPage[]): { html: string; title: string | 
       flush();
     }
   });
-  if (pictured) warnings.push({ kind: "images", message: `${pictured} ${pictured === 1 ? "page has a picture" : "pages have pictures"} in the PDF. Pictures aren't brought in from a PDF; add them again in Scribe.` });
+  if (pictured) warnings.push({ kind: "images", message: `${pictured} ${pictured === 1 ? "page has a picture" : "pages have pictures"} in the PDF. Pictures aren't brought in from a PDF; add them again in Quire.` });
   warnings.push({ kind: "formatting", message: "A PDF doesn't say which words are in italics or bold, so none are. Check the book against the original." });
   return { html: out.join(""), title, warnings };
 }

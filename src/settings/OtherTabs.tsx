@@ -707,7 +707,7 @@ export function NotesTab() {
   const [sort, setSort] = useState<NotesSortChoice>(saved.sort === "updated" || saved.sort === "book" ? saved.sort : "recent");
   return (
     <>
-      <Section id="view" title="Notes" lede="How Scribe shows your notes, and all of them in one file.">
+      <Section id="view" title="Notes" lede="How Quire shows your notes, and all of them in one file.">
         <Row label="Layout">
           <Segmented<NotesLayout>
             label="Notes layout"
@@ -848,7 +848,7 @@ export function AccessibilityTab() {
 const EVERYWHERE: [string, string][] = [
   ["Alt + ← / →", "Back / Forward through app screens"],
   ["Alt + ← / → in Scry", "Back / Forward through webpages (add Shift for app screens)"],
-  ["Ctrl + 1 to 7", "Go to Sanctum, Archive, Resonance, Compendium, Scribe, Discover or Preferences"],
+  ["Ctrl + 1 to 7", "Go to Sanctum, Archive, Resonance, Compendium, Quire, Discover or Preferences"],
   ["Ctrl + F  or  Ctrl + K", "Search"],
   ["Ctrl + O", "Import books"],
   ["Ctrl + \\", "Show or hide the sidebar"],
@@ -1032,7 +1032,7 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
   },
   {
     name: "Crimson Pro",
-    what: "A book font in Scribe, by Jacques Le Bailly",
+    what: "A book font in Quire, by Jacques Le Bailly",
     licence: "SIL Open Font License 1.1",
     url: "https://github.com/Fonthausen/CrimsonPro",
   },
@@ -1062,7 +1062,7 @@ const CREDITS: { name: string; what: string; licence: string; url?: string }[] =
   },
   {
     name: "citeproc-js",
-    what: "Writes citations in Scribe",
+    what: "Writes citations in Quire",
     licence: "CPAL 1.0",
     url: "https://github.com/Juris-M/citeproc-js",
   },
@@ -1236,7 +1236,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.149.0");
+  const [version, setVersion] = useState("0.150.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));
