@@ -677,8 +677,9 @@ impl Library {
     /// series ("series:<name>"). A book or series that stopped being a
     /// favourite, or a book that was deleted, isn't listed.
     pub fn top_favourites(&self) -> Result<Vec<TopFavourite>> {
-        // Two devices can each add a fifth before they sync; the earliest five are the Top five then.
-        let mut statement = self.conn.prepare(&format!("SELECT t.key, t.label FROM top_favourites t WHERE {} ORDER BY t.top_at, t.key LIMIT {TOP_FIVE}", Self::LIVE_TOP))?;
+        // Two devices can each add a fifth before they sync; the earliest five are the Top five then
+        // (in the order they were added, when two share a time).
+        let mut statement = self.conn.prepare(&format!("SELECT t.key, t.label FROM top_favourites t WHERE {} ORDER BY t.top_at, t.rowid LIMIT {TOP_FIVE}", Self::LIVE_TOP))?;
         let rows = statement.query_map([], |row| Ok(TopFavourite { key: row.get(0)?, label: row.get(1)? }))?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
