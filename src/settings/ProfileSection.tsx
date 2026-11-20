@@ -51,7 +51,10 @@ export function ProfileSection() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const toast = useToast();
   useEffect(() => {
-    api.getProfile().then(setProfile, () => undefined);
+    const load = () => void api.getProfile().then(setProfile, () => undefined);
+    load();
+    // A first sync can swap this device's new friend code for the library's own.
+    return api.onSync({ libraryChanged: load });
   }, []);
   const saved = (p: Profile) => {
     setProfile(p);
