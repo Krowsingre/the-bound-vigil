@@ -146,6 +146,24 @@ test("pinned books are the first stack, opened like a series", async () => {
   expect(await screen.findByRole("button", { name: "More for Book 25" })).toBeInTheDocument();
 });
 
+test("opening a series from Pinned shows that series' books", async () => {
+  getLibrary.mockImplementation(async (query) => ({
+    books: query?.pinned ? [book(1, { pinnedAt: "2026-01-01" })] : query?.series?.length ? [book(7, { series: "Saga" })] : [book(25)],
+    total: query?.pinned ? 1 : 30,
+    page: query?.page ?? 0, pageSize: query?.pageSize ?? 24, counts, formats: ["epub"],
+    tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  const props = { search: "", refreshKey: 0, onChange: vi.fn(), onClearSearch: () => {}, onImportBooks: () => {}, onImportFolder: () => {}, onOpenBook: () => {}, onOpenCollection: () => {} };
+  const { rerender } = render(<ToastProvider><Library view={view} {...props} /></ToastProvider>);
+  fireEvent.click(await screen.findByRole("button", { name: "Open Pinned, 1 pinned" }));
+  expect(await screen.findByRole("heading", { name: "Pinned" })).toBeInTheDocument();
+  // The app keeps the same Library and hands it the series.
+  rerender(<ToastProvider><Library view={{ ...view, series: ["Saga"] }} seriesBack={() => {}} {...props} /></ToastProvider>);
+  expect(await screen.findByRole("heading", { name: "Saga" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "More for Book 7" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "More for Book 1" })).toBeNull();
+});
+
 test("the Pinned stack only leads the first page", async () => {
   getLibrary.mockImplementation(async (query) => ({
     books: query?.pinned ? [book(1, { pinnedAt: "2026-01-01" })] : [book(25)],

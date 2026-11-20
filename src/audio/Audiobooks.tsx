@@ -95,6 +95,8 @@ export function Audiobooks({
   };
   const [listening, setListening] = useState<BookPreview[] | null>(null);
   const [reload, setReload] = useState(0);
+  // Bumped when the list changes something, such as an item's type, so the tab counts are read again.
+  const [libraryChanges, setLibraryChanges] = useState(0);
   // Resonance always shows one kind of audio, Audiobooks to start (embre, 20 November).
   const audioType: AudioType = view.audioType ?? "audiobook";
   useEffect(() => {
@@ -116,7 +118,7 @@ export function Audiobooks({
     return () => {
       current = false;
     };
-  }, [refreshKey, reload]);
+  }, [refreshKey, reload, libraryChanges]);
   // Opening on a kind with nothing in it moves to the first kind that has something.
   useEffect(() => {
     if (!typeCounts || seriesBack || typeCounts[audioType] > 0) return;
@@ -213,6 +215,7 @@ export function Audiobooks({
           onImportBooks={onImportBooks}
           onImportFolder={onImportFolder}
           onOpenBook={choose}
+          onLibraryChanged={() => setLibraryChanges((n) => n + 1)}
           lead={lastListened}
           onFirstShown={setFirstShown}
           onOpenCollection={onOpenCollection}

@@ -80,6 +80,7 @@ export function Library({
   onScrollRestored,
   lead,
   onFirstShown,
+  onLibraryChanged,
 }: {
   /** Books (the Library), documents (PDF, Word and text files) or audiobooks. */
   kind?: ItemKind;
@@ -108,6 +109,8 @@ export function Library({
   lead?: BookPreview | null;
   /** Says which item the list shows first, so Resonance's side bar can show it. */
   onFirstShown?: (bookId: string | null) => void;
+  /** Something in the library changed here (a book's type, a delete, a download…). */
+  onLibraryChanged?: () => void;
 }) {
   const [load, setLoad] = useState<Load<LibraryPage>>({ state: "loading" });
   const loadedView = useRef("");
@@ -241,6 +244,9 @@ export function Library({
   };
   // Pinned books and series open as their own stack, the first card in the list (embre, 20 November).
   const [showPinned, setShowPinned] = useState(false);
+  useEffect(() => {
+    if (reload > 0) onLibraryChanged?.();
+  }, [reload]); // eslint-disable-line react-hooks/exhaustive-deps
   const endless = narrow || scrollLibrary;
   /** Phone: how many pages are shown, and the books of every page after the first. */
   const [pages, setPages] = useState(1);
@@ -261,6 +267,10 @@ export function Library({
   const groupSeries = kind !== "documents" && (albums || view.seriesGrouping !== "individual") && !seriesBack;
   const inSeries = !!seriesBack;
   const seriesName = inSeries ? view.series[0] : undefined;
+  // Opening a pinned series leaves the Pinned view, so the series' own books show.
+  useEffect(() => {
+    if (seriesName) setShowPinned(false);
+  }, [seriesName]);
   const [seriesTotal, setSeriesTotal] = useState<{ name: string; count: number } | null>(null);
   useEffect(() => {
     if (!seriesName) return;
@@ -909,7 +919,7 @@ export function Library({
     );
   } else if (view.tab === "collections") {
     body = <CollectionsTab collections={collections} onOpenCollection={onOpenCollection} />;
-  } else if (showPinned) {
+  } else if (showPinned && !inSeries) {
     body = (
       <>
         <Layout books={pins} actions={actions} />
