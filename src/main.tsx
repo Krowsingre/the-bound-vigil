@@ -12,7 +12,7 @@ import "@fontsource/gelasio/400.css";
 import "@fontsource/gelasio/400-italic.css";
 // The reader's default font, also used to preview it in the text settings.
 import "@fontsource/lora/400.css";
-// Scribe's other book font, shown in the editor and Preview.
+// Quire's other book font, shown in the editor and Preview.
 import "@fontsource/crimson-pro/400.css";
 import "@fontsource/crimson-pro/400-italic.css";
 import "@fontsource/crimson-pro/700.css";

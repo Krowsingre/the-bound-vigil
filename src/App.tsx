@@ -128,9 +128,9 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const [reading, setReading] = useState<{ bookId: string; at?: string; fileId?: string } | null>(null);
   const [writingSection, setWritingSection] = useState<WritingSection>("notes");
   const [writingBook, setWritingBook] = useState<string | null>(null);
-  // An open book beside its tools searches only itself (Scribe, 18 November).
+  // An open book beside its tools searches only itself (Quire, 18 November).
   const scribeSideBySide = useSideBySide();
-  /** A widget asking Scribe for a new note, or to show one. */
+  /** A widget asking Quire for a new note, or to show one. */
   const [scribeAsk, setScribeAsk] = useState<ScribeAsk | null>(null);
   const [openCollection, setOpenCollection] = useState<CollectionRef | null>(null);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);

@@ -1,4 +1,4 @@
-//! Where a book in Scribe came from. Importing a manuscript into Scribe asks
+//! Where a book in Quire came from. Importing a manuscript into Quire asks
 //! the person to confirm they own it or may publish it, and that
 //! confirmation is kept as a signed record with the book: the exact words
 //! they agreed to (by their SHA-256), the original file's SHA-256, when, and
@@ -62,7 +62,7 @@ pub struct ImportAcknowledgment {
     pub source_format: String,
     /// How they agreed: a ticked box.
     pub method: String,
-    /// The records a Scribe book file (.tbv) brought with it from the book it was saved from, as the file had them.
+    /// The records a Quire book file (.tbv) brought with it from the book it was saved from, as the file had them.
     /// Signed into this record so they travel on; they were checked on the device that made them, not here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub carried: Option<Value>,
@@ -235,7 +235,7 @@ impl Library {
     }
 
     /// Records that the person confirmed they may import and publish this
-    /// manuscript, for the Scribe book made from it.
+    /// manuscript, for the Quire book made from it.
     pub fn record_writing_import(&self, project_id: &str, ack: &ImportAcknowledgment, stamp: impl FnOnce(&str) -> Option<String>) -> Result<ProvenanceRecord> {
         if ack.wording.trim().is_empty() || ack.policy_version.trim().is_empty() {
             return Err(Error::Unsuitable("the confirmation's wording is missing".into()));
@@ -243,7 +243,7 @@ impl Library {
         if !is_sha256(&ack.source_sha256) {
             return Err(Error::Unsuitable("the original file's fingerprint is missing".into()));
         }
-        self.conn.query_row("SELECT 1 FROM writing_projects WHERE id = ?1", params![project_id], |_| Ok(())).optional()?.ok_or_else(|| Error::Unsuitable("that book isn't in Scribe".into()))?;
+        self.conn.query_row("SELECT 1 FROM writing_projects WHERE id = ?1", params![project_id], |_| Ok(())).optional()?.ok_or_else(|| Error::Unsuitable("that book isn't in Quire".into()))?;
         let mut fields = Map::new();
         fields.insert("policyVersion".into(), json!(ack.policy_version));
         fields.insert("wordingSha256".into(), json!(sha256_hex(ack.wording.as_bytes())));

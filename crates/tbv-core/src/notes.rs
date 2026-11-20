@@ -372,7 +372,7 @@ impl Library {
                 |r| r.get(0),
             )?;
             if !exists {
-                return Err(Error::Unsuitable("that book isn't in Scribe any more".into()));
+                return Err(Error::Unsuitable("that book isn't in Quire any more".into()));
             }
         }
         let changed = self.conn.execute(

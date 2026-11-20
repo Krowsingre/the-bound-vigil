@@ -220,8 +220,8 @@
 			</dict>
 		</dict>
 	</array>
-	<!-- The Scribe book file (.tbv), TBV's own: named here so the Files picker lets it be chosen
-	     in Scribe's Import a manuscript. It's a zip inside, but isn't declared as one, so Files
+	<!-- The Quire book file (.tbv), TBV's own: named here so the Files picker lets it be chosen
+	     in Quire's Import a manuscript. It's a zip inside, but isn't declared as one, so Files
 	     doesn't unpack it when tapped. -->
 	<key>UTExportedTypeDeclarations</key>
 	<array>
@@ -229,7 +229,7 @@
 			<key>UTTypeIdentifier</key>
 			<string>com.krowsingre.theboundvigil.book</string>
 			<key>UTTypeDescription</key>
-			<string>Scribe book file</string>
+			<string>Quire book file</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>

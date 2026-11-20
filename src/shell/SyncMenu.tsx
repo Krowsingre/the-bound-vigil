@@ -89,7 +89,7 @@ export function SyncMenu({
       items={[
         // Who and where, opening the Profile card.
         {
-          label: profile?.name ?? "Your profile",
+          label: profile?.name ?? "Your visage",
           icon: "edit",
           hint: profile?.deviceName ? `On ${profile.deviceName}` : "Picture and names",
           onSelect: onOpenProfile,

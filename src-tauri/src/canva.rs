@@ -40,7 +40,7 @@ pub fn sign_out(library: &Mutex<Library>) -> tbv_core::Result<CanvaStatus> {
 /// The signed-in account with a usable token. Canva's refresh tokens work
 /// once, so the refreshed account is saved straight away.
 fn account(library: &Mutex<Library>) -> tbv_core::Result<Account> {
-    let saved = lock(library)?.canva_account()?.ok_or_else(|| Error::Unsuitable("Connect Canva first, in Preferences › Scribe.".into()))?;
+    let saved = lock(library)?.canva_account()?.ok_or_else(|| Error::Unsuitable("Connect Canva first, in Preferences › Quire.".into()))?;
     match canva::fresh(&Http, &saved) {
         Ok(account) => {
             if account.access_token != saved.access_token {
@@ -50,7 +50,7 @@ fn account(library: &Mutex<Library>) -> tbv_core::Result<Account> {
         }
         Err(Error::SignedOut) => {
             lock(library)?.save_canva_account(None)?;
-            Err(Error::Unsuitable("Canva signed TBV out. Connect it again in Preferences › Scribe.".into()))
+            Err(Error::Unsuitable("Canva signed TBV out. Connect it again in Preferences › Quire.".into()))
         }
         Err(e) => Err(e),
     }
@@ -62,7 +62,7 @@ fn with_token<T>(library: &Mutex<Library>, work: impl FnOnce(&str) -> tbv_core::
     match work(&account.access_token) {
         Err(Error::SignedOut) => {
             lock(library)?.save_canva_account(None)?;
-            Err(Error::Unsuitable("Canva signed TBV out. Connect it again in Preferences › Scribe.".into()))
+            Err(Error::Unsuitable("Canva signed TBV out. Connect it again in Preferences › Quire.".into()))
         }
         other => other,
     }

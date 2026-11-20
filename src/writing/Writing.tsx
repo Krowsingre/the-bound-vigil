@@ -1,4 +1,4 @@
-// Scribe (the Writing page): books you write in TBV (open one to write its
+// Quire (the Writing page): books you write in TBV (open one to write its
 // chapters, change its details and export an EPUB), and your notes from reading.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -45,7 +45,7 @@ type BibliographySettings = Pick<ExportSettings, "sources" | "citationStyle" | "
 
 const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
 
-/** Scribe's tabs: your own notes, what you noted from books, or the books you write (embre, 31 October: no All tab). */
+/** Quire's tabs: your own notes, what you noted from books, or the books you write (embre, 31 October: no All tab). */
 export type WritingSection = "notes" | "book_notes" | "books";
 type Chip = WritingSection;
 /** What the tab of notes from books is called. */
@@ -57,7 +57,7 @@ const CHIPS: { chip: Chip; label: string }[] = [
 ];
 const NOTES_TAB = { notes: "personal", book_notes: "book_notes" } as const;
 
-/** Scribe: the books you write and everything you've noted while reading or on your own. */
+/** Quire: the books you write and everything you've noted while reading or on your own. */
 export function Writing({
   refreshKey,
   search,
@@ -90,19 +90,19 @@ export function Writing({
   // A widget's New note, or one of its notes.
   const [showNote, setShowNote] = useState<{ id: string; n: number } | null>(null);
   useEffect(() => {
-    // An iPhone's Scribe has no personal notes for now, so a widget's asks aren't for it.
+    // An iPhone's Quire has no personal notes for now, so a widget's asks aren't for it.
     if (!widgetAsk || isIPhone) return;
     if (widgetAsk.open === "new") setAsk((a) => ({ kind: "personal", n: (a?.n ?? 0) + 1 }));
     else if (widgetAsk.id) setShowNote({ id: widgetAsk.id, n: widgetAsk.n });
   }, [widgetAsk]);
-  // On an iPhone, Scribe shows only Reading notes for now: Write a book and
+  // On an iPhone, Quire shows only Reading notes for now: Write a book and
   // Personal notes wait for designs made for phone screens (embre, 19 November).
   // Nothing is deleted, and the iPad keeps both.
   const booksShown = booksWanted && !isIPhone;
   const showing: Chip = isIPhone ? "book_notes" : booksShown || chip !== "books" ? chip : "notes";
   const projects = useProjects(booksShown, refreshKey, reload);
   const toast = useToast();
-  // The sample book, the first time Scribe has no books on this device.
+  // The sample book, the first time Quire has no books on this device.
   useEffect(() => {
     if (projects.state === "ready" && booksShown && !isWeb)
       void addSampleOnce(projects.list).then((added) => added && setReload((n) => n + 1));
@@ -154,7 +154,7 @@ export function Writing({
     {
       label: "Import a manuscript",
       icon: "importFile",
-      description: "Bring an existing manuscript into Scribe.",
+      description: "Bring an existing manuscript into Quire.",
       onSelect: () => {
         setChip("books");
         setImporting(true);
@@ -163,7 +163,7 @@ export function Writing({
     {
       label: "Sample book",
       icon: "bookClosed",
-      description: `Explore Scribe with ${SAMPLE_TITLE}.`,
+      description: `Explore Quire with ${SAMPLE_TITLE}.`,
       onSelect: () => {
         setChip("books");
         toast(`Adding ${SAMPLE_TITLE}…`);
@@ -194,7 +194,7 @@ export function Writing({
       {/* One header for every tab: the heading, New, and the tabs under them. */}
       <header className="scribe-top">
         <div className="library-head scribe-head">
-          <h1 className="library-title">Scribe</h1>
+          <h1 className="library-title">Quire</h1>
           {/* New starts what the tab holds (a note, a reading note, a book); on Write a book the arrow has other ways to start one. */}
           <div className={showing === "books" ? "split-button" : undefined}>
             <button
@@ -395,7 +395,7 @@ function ProjectView({
   id: string;
   /** The header's search box: Search this book… beside the page. */
   search: string;
-  /** Every book in Scribe, for this one's other editions. */
+  /** Every book in Quire, for this one's other editions. */
   books: WritingProject[];
   onOpenEdition: (id: string) => void;
   /** Another book's details changed here (editions linked), so the list should be read again. */
@@ -733,7 +733,7 @@ function ProjectView({
     }
   };
 
-  /** A ready-made page becomes one you write, starting from what Scribe made. */
+  /** A ready-made page becomes one you write, starting from what Quire made. */
   const writeMyself = async (c: WritingChapter, html: string) => {
     await saving.current;
     try {
@@ -918,7 +918,7 @@ function ProjectView({
         onSelect: () => void setPage(c, { newPage: !(page.newPage ?? (isPoem(page) || settings.newPage)) }),
       },
       ...(isPoem(page) ? ([{ label: "Centre the lines", checked: page.centred, onSelect: () => void setPage(c, { centred: !page.centred }) }] as MenuEntry[]) : []),
-      ...(made && page.byHand ? ([{ label: "Let Scribe make it again", icon: "sync", onSelect: () => void setPage(c, { byHand: false }) }] as MenuEntry[]) : []),
+      ...(made && page.byHand ? ([{ label: "Let Quire make it again", icon: "sync", onSelect: () => void setPage(c, { byHand: false }) }] as MenuEntry[]) : []),
       "divider",
       { heading: <span className="menu-tip">Where it goes</span> },
       // The body's sections sit under Body, in the book's order.
@@ -1165,7 +1165,7 @@ function ProjectView({
             void load();
             if (how === "current") {
               setDialog(null);
-              toast(restoreDraft ? "The draft is now editable in Scribe." : "The new version is in. What was there before is kept as a draft.");
+              toast(restoreDraft ? "The draft is now editable in Quire." : "The new version is in. What was there before is kept as a draft.");
             } else {
               setDialog("drafts");
               toast("Kept as a new draft.");
@@ -1396,7 +1396,7 @@ function ProjectView({
           (side === "preview" ? (
             <p className="muted book-panel-note">The preview shows the book as it will be exported. Choose Back to writing to format the page.</p>
           ) : chapter && current && isMade(current) ? (
-            <p className="muted book-panel-note">Scribe makes this page from the book's details, so there's nothing to format. Choose Write it myself on the page to write it your own way.</p>
+            <p className="muted book-panel-note">Quire makes this page from the book's details, so there's nothing to format. Choose Write it myself on the page to write it your own way.</p>
           ) : (
             <div ref={setFormatHost} className="writing-format-host" />
           ))}

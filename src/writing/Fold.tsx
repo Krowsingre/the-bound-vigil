@@ -1,4 +1,4 @@
-// A side panel in Scribe that folds away to one line (the link bar under a
+// A side panel in Quire that folds away to one line (the link bar under a
 // page, the book styles in Preview), remembered on this device.
 
 import { useState, type ReactNode } from "react";

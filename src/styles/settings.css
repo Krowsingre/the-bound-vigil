@@ -2292,3 +2292,116 @@ kbd {
   user-select: all;
   -webkit-user-select: all;
 }
+
+/* Visage: no heading, the Visage / Oathkin switch at the top centre (embre, 20 November). */
+.settings-head.is-bare:not(:has(> *)) {
+  display: none;
+}
+
+.profile-switch {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 20px;
+}
+
+.oathkin-add {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.oathkin-add > .btn {
+  align-self: flex-start;
+  min-height: 44px;
+}
+
+.oathkin-code-input {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.oathkin-code-input::placeholder {
+  text-transform: none;
+}
+
+.oathkin-error {
+  margin: 0;
+  color: var(--danger);
+}
+
+.oathkin-list-head {
+  margin: 24px 0 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.oathkin-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oathkin-friend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.oathkin-friend:last-child {
+  border-bottom: 0;
+}
+
+.oathkin-friend-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.oathkin-friend-name {
+  width: 100%;
+  padding: 2px 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+}
+
+.oathkin-friend-name:focus {
+  border-bottom-color: var(--accent);
+  outline: none;
+}
+
+.oathkin-friend-code {
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+
+.profile-phone.oathkin .oathkin-add > .btn {
+  align-self: stretch;
+  justify-content: center;
+}
+
+/* The friend code on a computer's Visage: its own row under the names. */
+.profile-code-row {
+  max-width: 460px;
+  margin-top: 18px;
+}
+
+.profile-code-text {
+  white-space: nowrap;
+}

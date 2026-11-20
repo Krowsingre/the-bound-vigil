@@ -286,6 +286,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "friend",
+        table: "friends",
+        keys: &["code"],
+        cols: &["name", "added_at", "removed_at"],
+        category: Category::Library,
+        creates: true,
+    },
+    Kind {
         name: "personal_note",
         table: "personal_notes",
         keys: &["id"],
@@ -1676,11 +1684,12 @@ impl Library {
             }
             "profile" => "Profile".into(),
             "friend_code" => "Friend code".into(),
+            "friend" => named("Oathkin", text("name")),
             "personal_note" => named("Note", text("title")),
             "writing_project" => named("Writing", text("title")),
             "writing_chapter" => named("Chapter", text("title")),
-            "writing_draft" => "A Scribe draft".into(),
-            "writing_provenance" => "Where a Scribe book came from".into(),
+            "writing_draft" => "A Quire draft".into(),
+            "writing_provenance" => "Where a Quire book came from".into(),
             "kindle_purchase" => named("Bought on Kindle", text("title")),
             "reading_history" => named(if gone { "Taken off reading history" } else { "Reading history" }, text("title")),
             "bookmark" => named("Discover bookmark", text("title")),
@@ -1957,6 +1966,7 @@ impl Library {
             "book_tag" => format!("The tag {}{}", key.get(1).and_then(Value::as_str).unwrap_or_default(), book(key.first())?),
             "profile" => "Your name and profile picture".into(),
             "friend_code" => "Your friend code".into(),
+            "friend" => format!("The friend code {}", key.first().and_then(Value::as_str).unwrap_or_default()),
             "bookmark" => format!("The bookmark {}", field("title").unwrap_or_default()),
             "bookmark_folder" => format!("The bookmark folder {}", field("name").unwrap_or_default()),
             "quick_link" => format!("The Quick Link {}", field("title").unwrap_or_default()),
@@ -1972,8 +1982,8 @@ impl Library {
             "read_along_holder" => format!("Which devices can converge{}", book(key.get(1))?),
             "device" => format!("The name of {}", field("name").unwrap_or_default()),
             "book_holder" => format!("Where it's downloaded{}", book(key.get(1))?),
-            "writing_draft" => "A draft of a book in Scribe".into(),
-            "writing_provenance" => "The signed record of where a Scribe book came from".into(),
+            "writing_draft" => "A draft of a book in Quire".into(),
+            "writing_provenance" => "The signed record of where a Quire book came from".into(),
             "kindle_purchase" => format!("The Kindle purchase {}", field("title").unwrap_or_default()),
             "reading_history" => format!("A book in your reading history: {}", field("title").unwrap_or_default()),
             _ => format!("The note {}", field("title").filter(|t| !t.is_empty()).unwrap_or_else(|| "without a title".into())),
@@ -2028,7 +2038,7 @@ impl Library {
         // Sanctum's Quick links sync with the library, their pictures too.
         sources.push("SELECT picture FROM sanctum_links WHERE deleted_at IS NULL");
         // Covers of books being written travel with notes, and so do the
-        // originals Scribe books were imported from.
+        // originals Quire books were imported from.
         if options.notes {
             sources.push("SELECT cover AS picture FROM writing_projects WHERE deleted_at IS NULL");
             wanted.extend(self.originals_kept()?);
@@ -2364,7 +2374,7 @@ impl Library {
             return "A collection picture".into();
         }
         if path.starts_with(crate::provenance::ORIGINALS) {
-            return "The original of a Scribe book".into();
+            return "The original of a Quire book".into();
         }
         if path.starts_with(crate::writing_sounds::SOUNDS) {
             return "A poem's sound".into();
@@ -2511,7 +2521,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "archive_series_pin" => if text("pinned_at").is_empty() { "Series unpinned".into() } else { "Series pinned".into() },
         "series_favourite" => if text("favourite_at").is_empty() { "Series taken out of favourites".into() } else { "Series added to favourites".into() },
         "top_favourite" => if text("top_at").is_empty() { "Taken out of the Top five".into() } else { "Added to the Top five".into() },
-        "annotation_mark" | "personal_note_mark" => if text("pinned_at").is_empty() { "Not pinned".into() } else { "Pinned in Scribe".into() },
+        "annotation_mark" | "personal_note_mark" => if text("pinned_at").is_empty() { "Not pinned".into() } else { "Pinned in Quire".into() },
         "book" => short(text("title")),
         "override" | "fetched" => short(text("value")),
         "audiobook" => if data.get("ebook_id").and_then(|v| v.as_str()).is_some_and(|v| !v.is_empty()) { "Linked to its ebook".into() } else { "Chapters and narrators".into() },
@@ -2521,6 +2531,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "profile" if !text("name").is_empty() => short(text("name")),
         "profile" => if text("avatar").is_empty() { "No picture".into() } else { "A picture".into() },
         "friend_code" => short(text("code")),
+        "friend" => if data.get("removed_at").is_some_and(|v| !v.is_null()) { "Friend removed".into() } else { "A friend".into() },
         "bookmark" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Bookmark removed".into() } else { short(text("url")) },
         "bookmark_folder" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Folder removed".into() } else { short(text("name")) },
         "quick_link" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Quick Link removed".into() } else { short(text("url")) },
@@ -3141,7 +3152,7 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
             }
         }
     }
-    // Originals of Scribe books come down to computers, once they're in the
+    // Originals of Quire books come down to computers, once they're in the
     // cloud; a phone, short of room, leaves them there.
     if options.notes && !holdings::covers_on_view() {
         let wanted = lock()?.originals_to_fetch()?;
@@ -3149,7 +3160,7 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
             let there = remote.list(crate::provenance::ORIGINALS)?;
             for (path, local) in wanted {
                 if there.iter().any(|n| path.ends_with(&format!("/{n}"))) {
-                    fetches.push((path, local, "The original of a Scribe book".into(), None));
+                    fetches.push((path, local, "The original of a Quire book".into(), None));
                 }
             }
         }

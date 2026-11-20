@@ -84,7 +84,7 @@ export const Header = forwardRef<
         </button>
       )}
       {pageAction}
-      {/* A page can put its own things here (Scribe's open book: its title, Preview and •••). */}
+      {/* A page can put its own things here (Quire's open book: its title, Preview and •••). */}
       <div id="header-page-start" className="header-slot" />
       <form
         className="search"

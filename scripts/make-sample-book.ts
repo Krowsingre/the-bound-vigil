@@ -1,4 +1,4 @@
-// Makes public/samples/paradise-lost.tbv, the sample book Scribe starts with.
+// Makes public/samples/paradise-lost.tbv, the sample book Quire starts with.
 // The text is John Milton's Paradise Lost (second edition, 1674, in twelve
 // books), which is in the public domain; the plain-text copy it was made from
 // is passed in, along with the cover picture:
@@ -64,7 +64,7 @@ const project: WritingProject = {
   seriesIndex: null,
   language: "en",
   description:
-    "Milton’s epic of the war in Heaven, the fall of Satan and his angels, and the temptation and fall of Adam and Eve, told in blank verse in twelve books. A sample book: open it to see how Scribe lays out a long poem, then try the cover, styles and exports on it.",
+    "Milton’s epic of the war in Heaven, the fall of Satan and his angels, and the temptation and fall of Adam and Eve, told in blank verse in twelve books. A sample book: open it to see how Quire lays out a long poem, then try the cover, styles and exports on it.",
   cover: "picture:cover.jpg",
   coverPath: null,
   coverPage: null,
@@ -109,7 +109,7 @@ const chapters: WritingChapter[] = [
     "<p>Paradise Lost, by John Milton</p>" +
       "<p>First published in ten books in 1667. This text follows the second edition of 1674, in twelve books.</p>" +
       "<p>This work is in the public domain.</p>" +
-      "<p>A sample book for Scribe in The Bound Vigil. Change anything in it, or delete it when you’re done.</p>",
+      "<p>A sample book for Quire in The Bound Vigil. Change anything in it, or delete it when you’re done.</p>",
   ),
   section("Contents", "front", { kind: "contents" }, ""),
   ...starts.map((start, i) =>

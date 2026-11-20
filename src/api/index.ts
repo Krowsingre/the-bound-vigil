@@ -114,6 +114,7 @@ import type {
   NotesPage,
   NotesQuery,
   Profile,
+  Friend,
   ReadStatus,
   ReaderBook,
   ReaderLocator,
@@ -275,6 +276,11 @@ export interface Api {
   setAccountName(name: string): Promise<Profile>;
   /** What this device is called; empty goes back to the name it started with. */
   setDeviceName(name: string): Promise<Profile>;
+  /** Oathkin: the friends saved by their friend codes. */
+  friends(): Promise<Friend[]>;
+  /** Saves a friend's code (any case, dashes optional) with what to call them; the same code again renames. */
+  saveFriend(code: string, name: string): Promise<Friend[]>;
+  removeFriend(code: string): Promise<Friend[]>;
   pickBooks(): Promise<string[]>;
   pickFolder(): Promise<string[]>;
   coverUrl(path: string): string;
@@ -323,11 +329,11 @@ export interface Api {
   /** Changes the words on a highlight. Empty words make it a plain highlight. */
   setAnnotationNote(id: string, note: string | null): Promise<NoteItem>;
   deleteNote(id: string, kind: NoteKind): Promise<void>;
-  /** Pins a note above the rest in Scribe, or lets it go back among them. */
+  /** Pins a note above the rest in Quire, or lets it go back among them. */
   setNotePinned(id: string, pinned: boolean): Promise<void>;
   /** Gives a note these tags in place of its old ones; answers them as kept. */
   setNoteTags(id: string, tags: string[]): Promise<string[]>;
-  /** Makes a personal note part of a book you're writing in Scribe, or (null) a note of its own. */
+  /** Makes a personal note part of a book you're writing in Quire, or (null) a note of its own. */
   setNoteProject(id: string, projectId: string | null): Promise<NoteItem>;
   /** Where this device keeps the library, and how big it is. */
   libraryInfo(): Promise<LibraryInfo>;
@@ -774,7 +780,7 @@ export const isIOS =
   isApp &&
   typeof navigator !== "undefined" &&
   (/iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
-/** An iPhone (not an iPad): Scribe shows only Reading notes there for now (embre, 19 November). */
+/** An iPhone (not an iPad): Quire shows only Reading notes there for now (embre, 19 November). */
 export const isIPhone = isIOS && typeof navigator !== "undefined" && /iPhone|iPod/.test(navigator.userAgent);
 /** The Android test version: the phone layout, without iCloud, the browser or saving files to the phone. */
 export const isAndroid = isApp && typeof navigator !== "undefined" && /Android/.test(navigator.userAgent);
@@ -1100,6 +1106,9 @@ function appApi(): Api {
     clearAvatar: async () => (await core).invoke<Profile>("clear_avatar"),
     setAccountName: async (name) => (await core).invoke<Profile>("set_account_name", { name }),
     setDeviceName: async (name) => (await core).invoke<Profile>("set_device_name", { name }),
+    friends: async () => (await core).invoke<Friend[]>("friends"),
+    saveFriend: async (code, name) => (await core).invoke<Friend[]>("save_friend", { code, name }),
+    removeFriend: async (code) => (await core).invoke<Friend[]>("remove_friend", { code }),
     pickBooks: async () =>
       openFiles({
         multiple: true,
@@ -1459,9 +1468,9 @@ function appApi(): Api {
       }),
     pickExportPath: async (fileName, format) =>
       (await savePicker({
-        title: format === "html" ? "Export bookmarks" : format === "pdf" ? "Save the PDF" : format === "docx" ? "Save the Word file" : format === "tbv" ? "Save the Scribe book file" : "Save the text file",
+        title: format === "html" ? "Export bookmarks" : format === "pdf" ? "Save the PDF" : format === "docx" ? "Save the Word file" : format === "tbv" ? "Save the Quire book file" : "Save the text file",
         defaultPath: fileName,
-        filters: [{ name: format === "html" ? "Bookmarks HTML" : format === "pdf" ? "PDF" : format === "docx" ? "Word document" : format === "tbv" ? "Scribe book file" : "Text", extensions: [format] }],
+        filters: [{ name: format === "html" ? "Bookmarks HTML" : format === "pdf" ? "PDF" : format === "docx" ? "Word document" : format === "tbv" ? "Quire book file" : "Text", extensions: [format] }],
       })) ?? null,
     saveExportFile: async (bytes, fileName, path) =>
       (await core).invoke("save_writing_epub", bytes, { headers: { path: encodeURIComponent(path ?? ""), add: "0", "file-name": encodeURIComponent(fileName) } }),

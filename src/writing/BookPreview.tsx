@@ -1,5 +1,5 @@
 // Everything that goes into the exported book, in place of the editor: the cover,
-// the title page, every section in order and the pages Scribe makes, as the
+// the title page, every section in order and the pages Quire makes, as the
 // EPUB has them. It follows your writing as it's saved.
 
 import { useEffect, useRef, useState } from "react";
@@ -175,7 +175,7 @@ const field = (label: string, value: string, onChange: (v: string) => void, plac
 );
 
 /**
- * A page Scribe makes (half title, title page, copyright, contents): what it
+ * A page Quire makes (half title, title page, copyright, contents): what it
  * will say, the details it's made from, and a way to write it yourself.
  */
 function BibliographyEntries({ citer, chapters, sources, onEdit }: {

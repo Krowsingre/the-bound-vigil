@@ -466,6 +466,16 @@ pub struct Profile {
     pub friend_code: Option<String>,
 }
 
+/// A friend saved in Oathkin by their friend code.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Friend {
+    pub code: String,
+    /// What to call them; None until it's given.
+    pub name: Option<String>,
+    pub added_at: String,
+}
+
 /// What happened to one file handed to import.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(

@@ -1,4 +1,4 @@
-//! Sound files kept with poems in Scribe books: a recording or a song made
+//! Sound files kept with poems in Quire books: a recording or a song made
 //! from the poem. Each file is named by its SHA-256 and kept on this device;
 //! the poem's page settings name it ({"sound":{"file":"<sha>.mp3",...}}), so
 //! the name travels with the book and the file itself goes to the cloud at
@@ -60,7 +60,7 @@ impl Library {
     /// Keeps a sound file for a poem and says what the page should name.
     pub fn keep_writing_sound(&self, name: &str, bytes: &[u8]) -> Result<WritingSound> {
         let Some(extension) = extension_of(name) else {
-            return Err(Error::Unsuitable("That isn't a sound file Scribe can keep. Choose an MP3, M4A, AAC, WAV, OGG, Opus or FLAC file.".into()));
+            return Err(Error::Unsuitable("That isn't a sound file Quire can keep. Choose an MP3, M4A, AAC, WAV, OGG, Opus or FLAC file.".into()));
         };
         if bytes.is_empty() {
             return Err(Error::Unsuitable("That sound file is empty.".into()));

@@ -607,6 +607,22 @@ async fn set_account_name(state: State<'_, AppLibrary>, name: String) -> Command
     with_library(state, move |library| library.set_account_name(&name)).await
 }
 
+/// Oathkin: the friends saved by their friend codes.
+#[tauri::command]
+async fn friends(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::model::Friend>> {
+    with_library(state, |library| library.friends()).await
+}
+
+#[tauri::command]
+async fn save_friend(state: State<'_, AppLibrary>, code: String, name: String) -> CommandResult<Vec<tbv_core::model::Friend>> {
+    with_library(state, move |library| library.save_friend(&code, &name)).await
+}
+
+#[tauri::command]
+async fn remove_friend(state: State<'_, AppLibrary>, code: String) -> CommandResult<Vec<tbv_core::model::Friend>> {
+    with_library(state, move |library| library.remove_friend(&code)).await
+}
+
 /// What this device is called, in Grimoire's list and in sync's notes.
 /// Grimoire starts again under the new name, so other devices see it.
 #[tauri::command]
@@ -2522,6 +2538,9 @@ pub fn run() {
             set_avatar,
             clear_avatar,
             set_account_name,
+            friends,
+            save_friend,
+            remove_friend,
             set_device_name,
             supported_formats,
             quit_app,
