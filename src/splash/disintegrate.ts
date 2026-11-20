@@ -32,7 +32,8 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
   picture.width = Math.round(box.width * dpr);
   picture.height = Math.round(box.height * dpr);
   const pen = picture.getContext("2d");
-  if (!pen) return;
+  // No canvas to draw on: give up, and the splash is simply removed (startup.ts).
+  if (!pen) throw new Error("no canvas");
   pen.scale(dpr, dpr);
   await draw(pen, splash, box);
 
@@ -47,7 +48,7 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
   dust.style.width = `${room.w}px`;
   dust.style.height = `${room.h}px`;
   const out = dust.getContext("2d");
-  if (!out) return;
+  if (!out) throw new Error("no canvas");
   document.body.appendChild(dust);
   out.drawImage(picture, ox, oy);
   splash.remove();
