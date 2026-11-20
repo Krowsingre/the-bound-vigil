@@ -461,6 +461,9 @@ pub struct Profile {
     /// What this device is called: in Grimoire's list and in sync's notes.
     #[serde(default)]
     pub device_name: String,
+    /// The library's friend code, like TBV-7K3Q-9F2M: the same on every device.
+    #[serde(default)]
+    pub friend_code: Option<String>,
 }
 
 /// What happened to one file handed to import.

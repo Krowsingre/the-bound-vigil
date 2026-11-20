@@ -273,7 +273,7 @@ pub(crate) const KINDS: &[Kind] = &[
         name: "profile",
         table: "profile",
         keys: &["id"],
-        cols: &["avatar", "name", "updated_at"],
+        cols: &["avatar", "name", "updated_at", "friend_code"],
         category: Category::Library,
         creates: true,
     },

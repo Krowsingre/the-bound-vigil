@@ -3,7 +3,7 @@ import type { SortOrder } from "../api/types";
 import { Icon } from "../components/Icon";
 import type { Layout } from "../library/libraryView";
 import { AppearanceTab } from "./AppearanceTab";
-import { ProfileSection } from "./ProfileSection";
+import { PROFILE_PHONE, ProfileSection } from "./ProfileSection";
 import { BrowserTab } from "./BrowserTab";
 import { AboutTab, AccessibilityTab, PlanTab, AdvancedTab, CollectionsTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
 import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex";
@@ -69,6 +69,7 @@ export function Settings({
   onQuery: (text: string) => void;
 }) {
   const narrow = useNarrow();
+  const profilePhone = useNarrow(PROFILE_PHONE);
   // Keyboard shortcuts are left out where there's no keyboard (a phone, or an iPad without one).
   const keys = useShortcuts();
   const grouped = keys ? GROUPED : GROUPED.map((g) => g.filter((t) => t.tab !== "shortcuts")).filter((g) => g.length > 0);
@@ -254,7 +255,8 @@ export function Settings({
           )}
           <h1>{page.label}</h1>
           {!narrow && <span className="settings-ornament" aria-hidden />}
-          <p className="muted">{page.lede}</p>
+          {/* embre's phone Profile design has no line under the heading (20 November). */}
+          {!(page.tab === "profile" && profilePhone) && <p className="muted">{page.lede}</p>}
           {isHome && (
             <p className="settings-row-hint">
               You're using TBV from your computer. Changes here last until this page reloads; the rest of the settings are on the computer.
