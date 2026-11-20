@@ -482,6 +482,15 @@ export function Library({
       return next;
     });
   }, [load]);
+  // Pinned books come in their own list (the main one leaves them out), so they keep up from it.
+  useEffect(() => {
+    setSelected((s) => {
+      if (!s || !pins.some((b) => s.has(b.id))) return s;
+      const next = new Map(s);
+      pins.forEach((b) => next.has(b.id) && next.set(b.id, b));
+      return next;
+    });
+  }, [pins]);
 
   // Only books the search and filters show stay chosen: when they change,
   // chosen books they now leave out are let go, so changing many never

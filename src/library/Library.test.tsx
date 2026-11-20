@@ -184,6 +184,31 @@ test("Pinned's Select all takes a pinned series as the shelf shows it", async ()
   expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ series: ["Saga"], shelf: "in_progress", groupSeries: false }));
 });
 
+test("chosen pinned books keep up with changes, so the right actions stay open", async () => {
+  let favourite = false;
+  getLibrary.mockImplementation(async (query) => ({
+    books: query?.pinned || query?.ids?.includes("sha256:1") ? [book(1, { pinnedAt: "2026-01-01", favorite: favourite })] : [book(25)],
+    total: query?.pinned ? 1 : 30,
+    page: query?.page ?? 0, pageSize: query?.pageSize ?? 24, counts, formats: ["epub"],
+    tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  const props = { view, search: "", onChange: vi.fn(), onClearSearch: () => {}, onImportBooks: () => {}, onImportFolder: () => {}, onOpenBook: () => {}, onOpenCollection: () => {} };
+  const { rerender } = render(<ToastProvider><Library refreshKey={0} {...props} /></ToastProvider>);
+  fireEvent.click(await screen.findByRole("button", { name: "Open Pinned, 1 pinned" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Select" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
+  await screen.findByText("1 chosen");
+  // The book becomes a favourite elsewhere, and the lists are read again.
+  favourite = true;
+  rerender(<ToastProvider><Library refreshKey={1} {...props} /></ToastProvider>);
+  await waitFor(() => expect(getLibrary.mock.calls.filter(([q]) => q.pinned === true).length).toBeGreaterThanOrEqual(2));
+  await new Promise((r) => setTimeout(r, 50));
+  fireEvent.click(screen.getByRole("button", { name: /Do something with the chosen/ }));
+  const organise = screen.queryByRole("menuitem", { name: /Organi[sz]e/ });
+  if (organise) fireEvent.click(organise);
+  await waitFor(() => expect(screen.getByRole("menuitem", { name: /Remove from favourites/ })).toBeEnabled());
+});
+
 test("the Pinned stack only leads the first page", async () => {
   getLibrary.mockImplementation(async (query) => ({
     books: query?.pinned ? [book(1, { pinnedAt: "2026-01-01" })] : [book(25)],
