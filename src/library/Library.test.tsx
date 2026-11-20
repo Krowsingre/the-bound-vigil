@@ -11,6 +11,7 @@ const setFavorite = vi.fn(async () => {});
 const downloadBook = vi.fn<(id: string) => Promise<void>>();
 const removeDownload = vi.fn<(id: string) => Promise<void>>(async () => {});
 const getCollection = vi.fn();
+const archiveSeriesPins = vi.fn<() => Promise<string[]>>(async () => []);
 const setBookStatus = vi.fn<(id: string, status: string) => Promise<void>>(async () => {});
 vi.mock("../api", () => ({
   isApp: false,
@@ -28,6 +29,7 @@ vi.mock("../api", () => ({
     setFavorite: (...a: unknown[]) => setFavorite(...(a as [])),
     setWantToRead: vi.fn(),
     setBookStatus: (id: string, status: string) => setBookStatus(id, status),
+    archiveSeriesPins: () => archiveSeriesPins(),
     coverUrl: () => "",
   },
 }));
@@ -164,6 +166,49 @@ test("opening a series from Pinned shows that series' books", async () => {
   expect(screen.queryByRole("button", { name: "More for Book 1" })).toBeNull();
 });
 
+test("Pinned's Select all takes a pinned series as the shelf shows it", async () => {
+  archiveSeriesPins.mockResolvedValueOnce(["Saga"]);
+  getLibrary.mockImplementation(async (query) => ({
+    books: query?.pinned ? [] : query?.series?.length ? [book(7, { series: "Saga" })] : [book(25)],
+    seriesCounts: query?.series?.length && query.groupSeries ? { "sha256:7": 2 } : undefined,
+    total: query?.pinned ? 0 : 30,
+    page: query?.page ?? 0, pageSize: query?.pageSize ?? 24, counts, formats: ["epub"],
+    tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  renderLibrary({ view: { ...view, tab: "in_progress" } });
+  fireEvent.click(await screen.findByRole("button", { name: "Open Pinned, 1 pinned" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Select" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
+  expect(await screen.findByText("1 chosen")).toBeInTheDocument();
+  // The series' books come from the shelf showing, not the whole library.
+  expect(getLibrary).toHaveBeenCalledWith(expect.objectContaining({ series: ["Saga"], shelf: "in_progress", groupSeries: false }));
+});
+
+test("chosen pinned books keep up with changes, so the right actions stay open", async () => {
+  let favourite = false;
+  getLibrary.mockImplementation(async (query) => ({
+    books: query?.pinned || query?.ids?.includes("sha256:1") ? [book(1, { pinnedAt: "2026-01-01", favorite: favourite })] : [book(25)],
+    total: query?.pinned ? 1 : 30,
+    page: query?.page ?? 0, pageSize: query?.pageSize ?? 24, counts, formats: ["epub"],
+    tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  const props = { view, search: "", onChange: vi.fn(), onClearSearch: () => {}, onImportBooks: () => {}, onImportFolder: () => {}, onOpenBook: () => {}, onOpenCollection: () => {} };
+  const { rerender } = render(<ToastProvider><Library refreshKey={0} {...props} /></ToastProvider>);
+  fireEvent.click(await screen.findByRole("button", { name: "Open Pinned, 1 pinned" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Select" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
+  await screen.findByText("1 chosen");
+  // The book becomes a favourite elsewhere, and the lists are read again.
+  favourite = true;
+  rerender(<ToastProvider><Library refreshKey={1} {...props} /></ToastProvider>);
+  await waitFor(() => expect(getLibrary.mock.calls.filter(([q]) => q.pinned === true).length).toBeGreaterThanOrEqual(2));
+  await new Promise((r) => setTimeout(r, 50));
+  fireEvent.click(screen.getByRole("button", { name: /Do something with the chosen/ }));
+  const organise = screen.queryByRole("menuitem", { name: /Organi[sz]e/ });
+  if (organise) fireEvent.click(organise);
+  await waitFor(() => expect(screen.getByRole("menuitem", { name: /Remove from favourites/ })).toBeEnabled());
+});
+
 test("the Pinned stack only leads the first page", async () => {
   getLibrary.mockImplementation(async (query) => ({
     books: query?.pinned ? [book(1, { pinnedAt: "2026-01-01" })] : [book(25)],
@@ -202,14 +247,54 @@ test("Deselect all lets every chosen book go and Select ends choosing", async ()
   expect(screen.queryByRole("button", { name: "Deselect all" })).toBeNull();
 });
 
-test("the last listened item leads the list whatever the sort", async () => {
+test("the last listened item leads the list, marked, and stays in its own place", async () => {
   getLibrary.mockResolvedValue({ books: [book(1), book(2)], total: 2, page: 0, pageSize: 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [] });
   const onFirstShown = vi.fn();
-  renderLibrary({ lead: book(2), onFirstShown });
+  renderLibrary({ kind: "audiobooks", lead: book(2), onFirstShown });
   await screen.findByRole("button", { name: "More for Book 1" });
   const titles = screen.getAllByRole("button", { name: /^More for Book/ }).map((b) => b.getAttribute("aria-label"));
-  expect(titles).toEqual(["More for Book 2", "More for Book 1"]);
+  expect(titles).toEqual(["More for Book 2", "More for Book 1", "More for Book 2"]);
+  expect(screen.getByText("Last listened")).toBeInTheDocument();
+  // Counted once: the total is the library's own.
   await waitFor(() => expect(onFirstShown).toHaveBeenLastCalledWith(book(2).id));
+});
+
+test("the Archive leads with the last book read, marked Last read", async () => {
+  getLibrary.mockImplementation(async (query) => ({
+    books: query?.sort === "recently_opened" && query.pageSize === 1 ? [book(3, { lastOpenedAt: "2026-11-19T10:00:00.000Z" })] : [book(1), book(3)],
+    total: 2, page: 0, pageSize: query?.pageSize ?? 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  renderLibrary();
+  expect(await screen.findByText("Last read")).toBeInTheDocument();
+  const titles = screen.getAllByRole("button", { name: /^More for Book/ }).map((b) => b.getAttribute("aria-label"));
+  expect(titles).toEqual(["More for Book 3", "More for Book 1", "More for Book 3"]);
+});
+
+test("no Last read card once a filter or search narrows the list", async () => {
+  getLibrary.mockImplementation(async (query) => ({
+    books: query?.sort === "recently_opened" && query.pageSize === 1 ? [book(3, { lastOpenedAt: "2026-11-19T10:00:00.000Z" })] : [book(1)],
+    total: 1, page: 0, pageSize: query?.pageSize ?? 24, counts, formats: [], tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  renderLibrary({ search: "Book 1" });
+  await screen.findByRole("button", { name: "More for Book 1" });
+  expect(screen.queryByText("Last read")).toBeNull();
+});
+
+test("Pinned has its own Select, with Select all for the pinned books", async () => {
+  getLibrary.mockImplementation(async (query) => ({
+    books: query?.pinned ? [book(1, { pinnedAt: "2026-01-01" }), book(2, { pinnedAt: "2026-01-02" })] : [book(25)],
+    total: query?.pinned ? 2 : 30,
+    page: query?.page ?? 0, pageSize: query?.pageSize ?? 24, counts, formats: ["epub"],
+    tags: [], genres: [], authors: [], narrators: [], languages: [],
+  }));
+  renderLibrary();
+  fireEvent.click(await screen.findByRole("button", { name: "Open Pinned, 2 pinned" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Select" }));
+  expect(screen.queryByText("All on page")).toBeNull();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
+  expect(await screen.findByText("2 chosen")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Deselect all" }));
+  expect(await screen.findByText(/to choose them/)).toBeInTheDocument();
 });
 
 test("search with no results says so and offers a way back", async () => {

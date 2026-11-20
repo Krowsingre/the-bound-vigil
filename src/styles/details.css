@@ -420,6 +420,7 @@
 }
 
 .list-open .select-mark,
+.phone-open .select-mark,
 .table-title .select-mark {
   position: static;
   flex: none;
