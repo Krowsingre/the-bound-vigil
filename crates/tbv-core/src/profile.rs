@@ -110,18 +110,18 @@ impl Library {
         })
     }
 
-    /// The library's friend code, made the first time it's asked for. A code
-    /// synced from another device is kept; two made before a sync settle on
-    /// whichever syncs last, which is fine while nothing uses them yet.
+    /// The library's friend code, made the first time it's asked for. It
+    /// syncs on its own, apart from the name and picture; when two devices
+    /// each made one before syncing, the one made first is kept.
     pub fn friend_code(&self) -> Result<String> {
-        let code: Option<Option<String>> = self.conn.query_row("SELECT friend_code FROM profile WHERE id = ?1", params![ME], |r| r.get(0)).optional()?;
-        if let Some(code) = code.flatten().filter(|c| is_friend_code(c)) {
+        let code: Option<String> = self.conn.query_row("SELECT code FROM friend_code WHERE id = ?1", params![ME], |r| r.get(0)).optional()?;
+        if let Some(code) = code.filter(|c| is_friend_code(c)) {
             return Ok(code);
         }
         let code = new_friend_code();
         self.conn.execute(
-            "INSERT INTO profile (id, friend_code, updated_at) VALUES (?1, ?2, ?3)
-             ON CONFLICT(id) DO UPDATE SET friend_code = excluded.friend_code, updated_at = excluded.updated_at",
+            "INSERT INTO friend_code (id, code, made_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(id) DO UPDATE SET code = excluded.code, made_at = excluded.made_at",
             params![ME, code, now_utc()],
         )?;
         Ok(code)

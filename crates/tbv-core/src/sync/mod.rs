@@ -273,7 +273,15 @@ pub(crate) const KINDS: &[Kind] = &[
         name: "profile",
         table: "profile",
         keys: &["id"],
-        cols: &["avatar", "name", "updated_at", "friend_code"],
+        cols: &["avatar", "name", "updated_at"],
+        category: Category::Library,
+        creates: true,
+    },
+    Kind {
+        name: "friend_code",
+        table: "friend_code",
+        keys: &["id"],
+        cols: &["code", "made_at"],
         category: Category::Library,
         creates: true,
     },
@@ -1667,6 +1675,7 @@ impl Library {
                 format!("{what}{}: {book}", if gone { " removed" } else { "" })
             }
             "profile" => "Profile".into(),
+            "friend_code" => "Friend code".into(),
             "personal_note" => named("Note", text("title")),
             "writing_project" => named("Writing", text("title")),
             "writing_chapter" => named("Chapter", text("title")),
@@ -1709,7 +1718,26 @@ impl Library {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
-        let take = match local {
+        // Two devices that each made a friend code before syncing settle on
+        // the one made first, so a code already given out stays the same.
+        let mut first_made = false;
+        if kind.name == "friend_code" {
+            if let (Some(mine), Some(theirs), Some((at, _))) = (self.snapshot(kind, &record.key)?, record.data.as_ref(), local.as_ref()) {
+                let made = |m: &Map<String, Value>| {
+                    let text = |c: &str| m.get(c).and_then(Value::as_str).unwrap_or("~").to_string();
+                    (text("made_at"), text("code"))
+                };
+                if made(&mine) < made(theirs) {
+                    // Ours came first: keep it and send it again.
+                    self.stamp(record, after(&record.changed_at).max(at.clone()), false)?;
+                    return Ok(Merge::Kept);
+                }
+                if made(&mine) > made(theirs) {
+                    first_made = true;
+                }
+            }
+        }
+        let take = first_made || match local {
             None => true,
             Some((at, _)) if at == record.changed_at => {
                 // Already the same change.
@@ -1928,6 +1956,7 @@ impl Library {
             "annotation" => format!("A note or highlight{}", book(data.and_then(|d| d.get("book_id")))?),
             "book_tag" => format!("The tag {}{}", key.get(1).and_then(Value::as_str).unwrap_or_default(), book(key.first())?),
             "profile" => "Your name and profile picture".into(),
+            "friend_code" => "Your friend code".into(),
             "bookmark" => format!("The bookmark {}", field("title").unwrap_or_default()),
             "bookmark_folder" => format!("The bookmark folder {}", field("name").unwrap_or_default()),
             "quick_link" => format!("The Quick Link {}", field("title").unwrap_or_default()),
@@ -2491,6 +2520,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "book_tag" => if data.get("removed_at").is_some_and(|v| !v.is_null()) { "Tag taken off".into() } else { "Tagged".into() },
         "profile" if !text("name").is_empty() => short(text("name")),
         "profile" => if text("avatar").is_empty() { "No picture".into() } else { "A picture".into() },
+        "friend_code" => short(text("code")),
         "bookmark" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Bookmark removed".into() } else { short(text("url")) },
         "bookmark_folder" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Folder removed".into() } else { short(text("name")) },
         "quick_link" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Quick Link removed".into() } else { short(text("url")) },

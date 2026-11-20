@@ -1148,6 +1148,29 @@ fn the_profile_picture_follows_the_library() {
 }
 
 #[test]
+fn a_new_device_keeps_the_name_and_the_first_friend_code() {
+    let cloud = FakeRemote::default();
+    let a = Device::new();
+    a.lib().set_account_name("embre").unwrap();
+    let first = a.lib().friend_code().unwrap();
+    a.sync(&cloud);
+
+    // A new device opens Profile before it has synced.
+    tick();
+    let b = Device::new();
+    let early = b.lib().profile().unwrap();
+    assert_eq!(early.name, None);
+    assert_ne!(early.friend_code.as_deref(), Some(first.as_str()));
+    b.sync(&cloud);
+    a.sync(&cloud);
+    for device in [&a, &b] {
+        let profile = device.lib().profile().unwrap();
+        assert_eq!(profile.name.as_deref(), Some("embre"), "the name isn't wiped");
+        assert_eq!(profile.friend_code.as_deref(), Some(first.as_str()), "the code made first is kept");
+    }
+}
+
+#[test]
 fn the_second_place_syncs_when_the_first_cannot_be_opened() {
     let supabase = FakeRemote::default();
     let pc = Device::new();

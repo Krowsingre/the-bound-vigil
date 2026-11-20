@@ -795,8 +795,9 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE series_lists ADD COLUMN removed TEXT NOT NULL DEFAULT '[]';
     "#,
     // v47: the library's friend code (like TBV-7K3Q-9F2M), shown on Profile so
-    // friends can add you once the friends list exists. Made once, synced.
-    "ALTER TABLE profile ADD COLUMN friend_code TEXT;",
+    // friends can add you. Made once and synced on its own, apart from the
+    // profile, so a new device making one never outranks the name and picture.
+    "CREATE TABLE friend_code (id TEXT PRIMARY KEY, code TEXT NOT NULL, made_at TEXT NOT NULL);",
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
