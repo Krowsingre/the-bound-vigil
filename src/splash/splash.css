@@ -55,6 +55,11 @@ html.is-starting body {
   text-align: center;
 }
 
+/* Until the name's font has arrived (splashView.ts). */
+.splash-body.is-waiting {
+  visibility: hidden;
+}
+
 .splash-emblem {
   width: 64px;
   height: 64px;
