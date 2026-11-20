@@ -1,9 +1,7 @@
 name: Mac app
 
+# Runs only when started by hand: no Mac updates for now (embre, 19-20 November).
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 concurrency:
