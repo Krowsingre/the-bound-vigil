@@ -3,10 +3,11 @@
 // little book pages (embre, 20 November), each with a folded corner, that
 // fall away with weight (embre, 18 November): each one is nudged off the
 // way the line goes, then gravity takes it, so it hangs a moment and
-// gathers speed as it drops, swaying and turning over like a loose page
-// (its pale back showing as it turns), fading only near the end. TBV shows underneath. The splash is drawn onto a canvas first (from where its parts
-// sit on the page), then the canvas is broken up. Phones and iPads only (embre,
-// 20 November); the computer's card glides into the side bar instead (glide.ts).
+// gathers speed as it drops, turning slowly, fading only near the end. TBV
+// shows underneath. The splash is drawn onto a canvas first (from where its
+// parts sit on the page), then the canvas is broken up. On the iPhone it fills the
+// screen; on a computer it's the card, whose window has room round it for
+// the pages to drift into.
 
 import emblem from "../assets/emblem.svg?raw";
 import { paintings } from "./splashView";
@@ -19,7 +20,7 @@ const PAGE_W = 11;
 const PAGE_H = 15;
 /** The folded corner, in points. */
 const FOLD = 3.5;
-/** The back of a page, as it turns over. */
+/** The folded corner's paper. */
 const PAPER = "rgba(232, 226, 212, 0.92)";
 /** The pull downwards, in points a second squared, and the first nudge along the sweep (points a second). */
 const GRAVITY = 1_500;
@@ -56,9 +57,8 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
   const cols = Math.ceil(box.width / PAGE_W);
   const rows = Math.ceil(box.height / PAGE_H);
   const pages = cutPages(picture, cols, rows, dpr);
-  const back = paperBack(dpr);
   const way = sweepWay(Math.random() * Math.PI * 2);
-  const specks: { x: number; y: number; start: number; vx: number; vy: number; spin: number; turn: number; sway: number; swing: number }[] = [];
+  const specks: { x: number; y: number; start: number; vx: number; vy: number; spin: number }[] = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       // Where the line reaches first goes first; each piece is nudged the way it's going, then falls.
@@ -71,10 +71,6 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
         vx: way.dx * speed - way.dy * aside,
         vy: way.dy * speed + way.dx * aside - 20 * Math.random(),
         spin: (Math.random() - 0.5) * 0.9,
-        // Turns over once or twice as it falls, swaying side to side.
-        turn: Math.PI * 2 * (0.6 + Math.random() * 0.9) * (Math.random() < 0.5 ? -1 : 1),
-        sway: 5 + Math.random() * 9,
-        swing: 1.2 + Math.random() * 1.4,
       });
     }
   }
@@ -97,19 +93,14 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
           out.drawImage(picture, p.x * dpr, p.y * dpr, w, h, ox + p.x * dpr, oy + p.y * dpr, w, h);
           continue;
         }
-        const seconds = (age * LIFE) / 1000;
-        const { dx: fallX, dy } = fall(p.vx, p.vy, seconds);
-        const dx = fallX + Math.sin(seconds * p.swing * Math.PI * 2) * p.sway * Math.min(1, age * 3);
+        const { dx, dy } = fall(p.vx, p.vy, (age * LIFE) / 1000);
         const x = ox + (p.x + dx) * dpr;
         const y = oy + (p.y + dy) * dpr;
         const size = 1 - age * 0.2;
         out.globalAlpha = age < 0.6 ? 1 : 1 - (age - 0.6) / 0.4;
-        const over = Math.cos(p.turn * age);
         out.setTransform(size, 0, 0, size, x + w / 2, y + h / 2);
         out.rotate(p.spin * age);
-        out.scale(Math.max(Math.abs(over), 0.08), 1);
-        if (over >= 0) out.drawImage(pages, p.x * dpr, p.y * dpr, w, h, -w / 2, -h / 2, w, h);
-        else out.drawImage(back, -w / 2, -h / 2, w, h);
+        out.drawImage(pages, p.x * dpr, p.y * dpr, w, h, -w / 2, -h / 2, w, h);
       }
       if (left > 0 && t < SWEEP + LIFE + 200) requestAnimationFrame(frame);
       else done();
@@ -159,22 +150,6 @@ function cutPages(picture: HTMLCanvasElement, cols: number, rows: number, dpr: n
     }
   }
   return pages;
-}
-
-/** A page's pale back, for when it turns over. */
-function paperBack(dpr: number): HTMLCanvasElement {
-  const back = document.createElement("canvas");
-  back.width = Math.ceil(PAGE_W * dpr);
-  back.height = Math.ceil(PAGE_H * dpr);
-  const pen = back.getContext("2d");
-  if (!pen) return back;
-  pageOutline(pen, 0, 0, PAGE_W * dpr, PAGE_H * dpr, FOLD * dpr);
-  pen.fillStyle = PAPER;
-  pen.fill();
-  // A few faint lines of print.
-  pen.fillStyle = "rgba(60, 56, 50, 0.35)";
-  for (let line = 3; line < PAGE_H - 2; line += 2.5) pen.fillRect(2 * dpr, line * dpr, (PAGE_W - 4) * dpr, 0.6 * dpr);
-  return back;
 }
 
 /** How far a piece has gone after `seconds`, nudged at (vx, vy) and pulled down by gravity. */
