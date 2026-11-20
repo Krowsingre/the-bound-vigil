@@ -188,7 +188,7 @@ export function Library({
     const pinned = pinnedSeries.some((value) => value.trim().toLowerCase() === key);
     // Edit a whole series or album at once, without choosing it first (embre, 20 November).
     const withBooks = (then: (books: BookPreview[]) => void) => () =>
-      void booksOfSeries(name).then((books) => books.length && then(books), (e: unknown) => toast(String(e)));
+      void wholeSeries(name).then((books) => books.length && then(books), (e: unknown) => toast(String(e)));
     const stackActions = withSubmenus(groupActions
       .filter((a) => a === "divider" || (a.label !== "Group as album" && !a.bookOnly))
       .map((a) => {
@@ -586,6 +586,19 @@ export function Library({
     const found: BookPreview[] = [];
     for (let p = 0; ; p++) {
       const got = await api.getLibrary({ ...query, series: [name], pinned: undefined, groupSeries: false, page: p, pageSize: 200 });
+      found.push(...got.books);
+      if (got.page < p || (got.page + 1) * got.pageSize >= got.total) break;
+    }
+    return found;
+  }
+  /** Every book of a stack, whatever search or filter is on: a stack's own menu acts on all of it. */
+  async function wholeSeries(name: string): Promise<BookPreview[]> {
+    const found: BookPreview[] = [];
+    for (let p = 0; ; p++) {
+      const got = await api.getLibrary({
+        kind, shelf: "all", sort: "series", search: null, formats: [], location: null, audioType: query.audioType,
+        series: [name], groupSeries: false, page: p, pageSize: 200, omitFacets: true,
+      });
       found.push(...got.books);
       if (got.page < p || (got.page + 1) * got.pageSize >= got.total) break;
     }

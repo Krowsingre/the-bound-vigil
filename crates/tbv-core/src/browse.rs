@@ -677,7 +677,8 @@ impl Library {
     /// series ("series:<name>"). A book or series that stopped being a
     /// favourite, or a book that was deleted, isn't listed.
     pub fn top_favourites(&self) -> Result<Vec<TopFavourite>> {
-        let mut statement = self.conn.prepare(&format!("SELECT t.key, t.label FROM top_favourites t WHERE {} ORDER BY t.top_at", Self::LIVE_TOP))?;
+        // Two devices can each add a fifth before they sync; the earliest five are the Top five then.
+        let mut statement = self.conn.prepare(&format!("SELECT t.key, t.label FROM top_favourites t WHERE {} ORDER BY t.top_at, t.key LIMIT {TOP_FIVE}", Self::LIVE_TOP))?;
         let rows = statement.query_map([], |row| Ok(TopFavourite { key: row.get(0)?, label: row.get(1)? }))?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
@@ -1233,6 +1234,10 @@ mod tests {
         for (i, id) in ids[..4].iter().enumerate() { library.set_top_favourite(&format!("book:{id}"), &format!("Book {i}"), true).unwrap(); }
         assert_eq!(library.top_favourites().unwrap().len(), 5);
         assert!(library.set_top_favourite(&format!("book:{}", ids[5]), "Book 5", true).is_err());
+        // A sixth that arrives from another device isn't shown.
+        library.conn.execute("INSERT INTO top_favourites (key, label, top_at) VALUES (?1, 'Book 5', '2099-01-01T00:00:00Z')", params![format!("book:{}", ids[5])]).unwrap();
+        assert_eq!(library.top_favourites().unwrap().len(), 5);
+        library.conn.execute("UPDATE top_favourites SET top_at = NULL WHERE key = ?1", params![format!("book:{}", ids[5])]).unwrap();
         // Taking a series out of favourites takes it out of the Top five, and frees a place.
         library.set_series_favourite("THE SAGA", false).unwrap();
         assert!(library.favourite_series().unwrap().is_empty());
