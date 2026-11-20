@@ -1067,6 +1067,7 @@ impl Library {
         let _ = self.keep_file_details(&book_id, &metadata.subjects, metadata.published.as_deref());
         if let Some(audio) = &metadata.audio {
             self.keep_audio_details(&book_id, audio)?;
+            self.keep_audio_kind(&book_id, audio)?;
         }
         if returned {
             self.add_to_previously_deleted(&book_id)?;
@@ -1131,6 +1132,7 @@ impl Library {
         let _ = self.keep_file_details(book_id, &metadata.subjects, metadata.published.as_deref());
         if let Some(audio) = &metadata.audio {
             self.keep_audio_details(book_id, audio)?;
+            self.keep_audio_kind(book_id, audio)?;
         }
         Ok(())
     }
@@ -1421,7 +1423,12 @@ impl ImportJob {
         let metadata = if self.known.is_some() && self.cover.is_some() {
             crate::epub::BookMetadata::default()
         } else {
-            read_metadata(&self.source, &self.format)?
+            let mut metadata = read_metadata(&self.source, &self.format)?;
+            // A song from an album folder takes the folder's picture when it has none inside.
+            if metadata.cover.is_none() {
+                metadata.cover = crate::audio::sibling_cover(&self.source, &self.format);
+            }
+            metadata
         };
         let title = self.known.clone().or_else(|| metadata.title.clone()).unwrap_or_else(|| title_from_file_name(&self.source));
         let stored = copy_into_library(paths, &self.source, &title, &self.book_id, &self.format)?;

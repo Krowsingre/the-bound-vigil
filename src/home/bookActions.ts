@@ -53,7 +53,7 @@ export interface BookActions {
 /** The "…" menu for a book, and its right-click menu. */
 export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
   const audio = isAudio(book.format);
-  const types: [AudioType, string][] = [["audiobook", "Audiobook"], ["podcast", "Podcast"], ["music", "Music"]];
+  const types: [AudioType, string][] = [["audiobook", "Audiobook"], ["podcast", "Podcast"], ["music", "Music"], ["other", "Other"]];
   return [
     isAudio(book.format)
       ? { label: "Listen", icon: "play" as const, onSelect: () => playAudiobook(book.id) }

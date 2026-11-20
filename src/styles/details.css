@@ -482,6 +482,17 @@
     grid-row: span 3;
   }
 
+  /* Long labels wrap inside the column instead of running off the screen. */
+  .details-side-actions {
+    min-width: 0;
+  }
+
+  .details-side-actions .btn {
+    min-width: 0;
+    white-space: normal;
+    text-align: left;
+  }
+
   .details-title {
     font-size: 26px;
   }

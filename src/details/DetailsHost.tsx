@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AlbumDialog } from "../audio/AlbumDialog";
 import { DetailsEditor } from "./DetailsEditor";
 import { FetchDetails } from "./FetchDetails";
 import { onDetailsDialog, type DetailsAsk } from "./openDetails";
@@ -25,6 +26,7 @@ export function DetailsHost({ onChanged }: { onChanged: () => void }) {
     changedAny.current = false;
   };
   if (ask.kind === "edit") return <DetailsEditor key={ask.books.map((b) => b.id).join()} books={ask.books} onClose={close} />;
+  if (ask.kind === "album") return <AlbumDialog key={ask.books.map((b) => b.id).join()} books={ask.books} ungroup={ask.ungroup} onClose={close} />;
   if (ask.kind === "fetch") return <FetchDetails key={ask.book.id} book={ask.book} onClose={close} />;
   const { books } = ask;
   const next = () => {

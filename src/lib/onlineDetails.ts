@@ -4,7 +4,7 @@
 // Hardcover (when it's connected), which TBV's core reaches. Nothing here changes a book: the person picks what to keep, and
 // it's saved as fetched details.
 
-export type Source = "google" | "openlibrary" | "audible" | "apple" | "hardcover";
+export type Source = "google" | "openlibrary" | "audible" | "apple" | "hardcover" | "musicbrainz" | "applemusic";
 
 export const SOURCE_NAME: Record<Source, string> = {
   google: "Google Books",
@@ -12,6 +12,8 @@ export const SOURCE_NAME: Record<Source, string> = {
   audible: "Audible",
   apple: "Apple Books",
   hardcover: "Hardcover",
+  musicbrainz: "MusicBrainz",
+  applemusic: "Apple Music",
 };
 
 export interface Found {
@@ -33,6 +35,9 @@ export interface Found {
   coverUrl: string | null;
   /** Open Library keeps descriptions on the work's own page, fetched when chosen. */
   workKey?: string;
+  /** A song's album artist and disc (MusicBrainz, Apple Music). */
+  albumArtist?: string;
+  disc?: string;
 }
 
 export interface Lookup {
@@ -206,7 +211,21 @@ export async function openLibraryDescription(workKey: string, signal: AbortSigna
 }
 
 /** Searches the core reaches (Audible, Apple Books, Hardcover), in the app. */
-export type MoreSources = (source: "audible" | "apple" | "hardcover", q: Lookup) => Promise<Found[]>;
+export type MoreSources = (source: "audible" | "apple" | "hardcover" | "musicbrainz" | "applemusic", q: Lookup) => Promise<Found[]>;
+
+/** A song: MusicBrainz and Apple Music, which TBV's core reaches (embre, 19 November). */
+export async function searchMusic(q: Lookup, more: MoreSources): Promise<Found[]> {
+  const tried: [string, Promise<Found[]>][] = [["MusicBrainz", more("musicbrainz", q)], ["Apple Music", more("applemusic", q)]];
+  const settled = await Promise.allSettled(tried.map(([, p]) => p));
+  const found = settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  if (!found.length && settled.every((r) => r.status === "rejected")) {
+    const reasons = settled.map((r, i) => `${tried[i][0]} ${String(r.status === "rejected" && r.reason instanceof Error ? r.reason.message : r.status === "rejected" ? r.reason : "").replace(/\.$/, "")}`);
+    throw new Error(`Couldn't search online. ${reasons.join(". ")}.`);
+  }
+  // Ones that know the album and track first.
+  const score = (f: Found) => [f.series, f.seriesIndex, f.published, f.coverUrl].filter(Boolean).length + f.genres.length / 3;
+  return found.sort((a, b) => score(b) - score(a));
+}
 
 /** Every source at once. Fails only when all do, saying why. */
 export async function searchOnline(q: Lookup, signal: AbortSignal, more?: MoreSources): Promise<Found[]> {
@@ -249,5 +268,7 @@ export function foundValues(f: Found): Record<string, string> {
   put("published", f.published);
   put("language", f.language);
   put("isbn", f.isbn);
+  put("album_artist", f.albumArtist ?? null);
+  put("disc", f.disc ?? null);
   return out;
 }

@@ -4,7 +4,11 @@
 import type { BookPreview, ItemKind } from "../api/types";
 import type { LibraryView } from "../library/libraryView";
 
-type Ask = { kind: "edit"; books: BookPreview[] } | { kind: "fetch"; book: BookPreview } | { kind: "fetchMany"; books: BookPreview[] };
+type Ask =
+  | { kind: "edit"; books: BookPreview[] }
+  | { kind: "fetch"; book: BookPreview }
+  | { kind: "fetchMany"; books: BookPreview[] }
+  | { kind: "album"; books: BookPreview[]; ungroup: boolean };
 
 let pageListener: ((bookId: string) => void) | null = null;
 let libraryListener: ((kind: ItemKind, change: Partial<LibraryView>) => void) | null = null;
@@ -33,6 +37,11 @@ export function askFetchDetails(book: BookPreview) {
 export function askFetchManyDetails(books: BookPreview[]) {
   if (books.length === 1) askFetchDetails(books[0]);
   else if (books.length) dialogListener?.({ kind: "fetchMany", books });
+}
+
+/** Keeps chosen songs together as an album, or takes them out of theirs. */
+export function askAlbum(books: BookPreview[], ungroup: boolean) {
+  if (books.length) dialogListener?.({ kind: "album", books, ungroup });
 }
 
 export function onShowBookDetails(listen: (bookId: string) => void) {

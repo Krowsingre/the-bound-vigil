@@ -19,6 +19,8 @@ fn cover_host_allowed(host: &str) -> bool {
     matches!(
         host,
         "books.google.com" | "books.googleusercontent.com" | "covers.openlibrary.org" | "m.media-amazon.com" | "assets.hardcover.app"
+            // Album covers from MusicBrainz, kept by the Cover Art Archive.
+            | "coverartarchive.org"
     )
         || host.ends_with(".archive.org")
         || host == "archive.org"
@@ -54,6 +56,9 @@ pub fn download_cover(url: &str) -> Result<Vec<u8>> {
 pub const FIELDS: &[&str] = &[
     "title", "authors", "series", "series_index", "synopsis", "genres", "publisher", "published", "language", "isbn",
     "narrators", "series_list",
+    // Music and other audio (embre, 19 November): a song's album is its
+    // series and its track the number; these are the rest.
+    "album_artist", "disc", "composer", "episode",
 ];
 
 /// Fields held as a JSON list of names.
@@ -311,7 +316,7 @@ impl Library {
     /// "apple" or "hardcover"). Only the
     /// fields given change; empty values are skipped.
     pub fn save_fetched(&self, book_id: &str, source: &str, values: &BTreeMap<String, String>) -> Result<()> {
-        if !matches!(source, "google" | "openlibrary" | "audible" | "apple" | "hardcover" | "file") {
+        if !matches!(source, "google" | "openlibrary" | "audible" | "apple" | "hardcover" | "musicbrainz" | "applemusic" | "file") {
             return Err(Error::Unsuitable(format!("unknown source {source}")));
         }
         let mut cleaned = Vec::new();

@@ -4,6 +4,7 @@
 // the Book details page.
 
 import type { BookPreview, DetailField, DetailFieldName, SeriesPlace } from "../api/types";
+import { isAudio } from "./queryBooks";
 
 export const DETAIL_FIELDS: { field: DetailFieldName; label: string; list?: boolean; long?: boolean }[] = [
   { field: "title", label: "Title" },
@@ -19,12 +20,53 @@ export const DETAIL_FIELDS: { field: DetailFieldName; label: string; list?: bool
   { field: "narrators", label: "Narrators", list: true },
   // Every series a book is in; edited with the series, never on its own.
   { field: "series_list", label: "Series" },
+  { field: "album_artist", label: "Album artist" },
+  { field: "disc", label: "Disc" },
+  { field: "composer", label: "Composer" },
+  { field: "episode", label: "Episode" },
 ];
 
 /** Details that only audiobooks have. */
 export const AUDIO_ONLY: DetailFieldName[] = ["narrators"];
+/** Details only music, podcasts and other audio have. */
+export const LISTENING_ONLY: DetailFieldName[] = ["album_artist", "disc", "composer", "episode"];
 
 export const detailLabel = (field: DetailFieldName) => DETAIL_FIELDS.find((f) => f.field === field)?.label ?? field;
+
+/** Which details a book shows (embre, 19 November): a book's or an
+ *  audiobook's, a song's, or a podcast's and other audio's. */
+export type DetailsKind = "book" | "music" | "spoken";
+
+/** The kind shared by every book given; books of mixed kinds edit as books. */
+export function detailsKindOf(books: Pick<BookPreview, "format" | "audioType">[]): DetailsKind {
+  const kinds = new Set(books.map((b) => (!isAudio(b.format) ? "book" : b.audioType === "music" ? "music" : b.audioType === "podcast" || b.audioType === "other" ? "spoken" : "book")));
+  return kinds.size === 1 ? ([...kinds][0] as DetailsKind) : "book";
+}
+
+/** A song: Title, Artist, Album, Track, Disc, Album artist, Genre, Year, Composer. */
+export const MUSIC_FIELDS: DetailFieldName[] = ["title", "authors", "series", "series_index", "disc", "album_artist", "genres", "published", "composer"];
+/** What a whole album's songs share. */
+export const MUSIC_MASS: DetailFieldName[] = ["authors", "series", "album_artist", "genres", "published"];
+/** A podcast or other audio: Title, Show or creator, Episode, Date, Description. */
+export const SPOKEN_FIELDS: DetailFieldName[] = ["title", "authors", "episode", "published", "synopsis"];
+export const SPOKEN_MASS: DetailFieldName[] = ["authors", "published"];
+
+const MUSIC_LABELS: Partial<Record<DetailFieldName, string>> = {
+  authors: "Artist",
+  series: "Album",
+  series_index: "Track",
+  genres: "Genre",
+  published: "Year",
+};
+const SPOKEN_LABELS: Partial<Record<DetailFieldName, string>> = {
+  authors: "Show or creator",
+  published: "Date",
+};
+
+/** A detail's name as this kind of book calls it. */
+export function labelFor(field: DetailFieldName, kind: DetailsKind): string {
+  return (kind === "music" ? MUSIC_LABELS[field] : kind === "spoken" ? SPOKEN_LABELS[field] : undefined) ?? detailLabel(field);
+}
 export const isList = (field: DetailFieldName) => field === "authors" || field === "genres" || field === "narrators";
 
 /** The value that shows: your edit, else fetched, else the book's own. */

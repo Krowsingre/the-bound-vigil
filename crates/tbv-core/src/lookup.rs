@@ -31,6 +31,11 @@ pub struct Found {
     pub language: Option<String>,
     pub isbn: Option<String>,
     pub cover_url: Option<String>,
+    /// A song's album artist and disc (MusicBrainz, Apple Music).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub album_artist: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disc: Option<String>,
 }
 
 fn text(v: &Value) -> Option<String> {
@@ -141,6 +146,8 @@ pub fn audible_from(data: &Value) -> Vec<Found> {
                 language: text(&p["language"]).map(|l| language_code(&l)),
                 isbn: None,
                 cover_url: cover.map(|c| c.replace("http://", "https://")),
+                album_artist: None,
+                disc: None,
             })
         })
         .collect()
@@ -209,6 +216,8 @@ pub fn apple_from(data: &Value) -> Vec<Found> {
                 genres,
                 published: text(&r["releaseDate"]).map(|d| d.chars().take(10).collect()),
                 cover_url: cover,
+                album_artist: None,
+                disc: None,
                 ..Found::default()
             })
         })
@@ -251,6 +260,138 @@ pub fn search_apple(title: &str, author: &str) -> Result<Vec<Found>> {
     }
 }
 
+fn agent() -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(15)))
+        // MusicBrainz asks every app to name itself and where it lives.
+        .user_agent(concat!("TheBoundVigil/", env!("CARGO_PKG_VERSION"), " ( https://krowsingre.github.io/the-bound-vigil/ )"))
+        .build()
+        .into()
+}
+
+/// MusicBrainz's answer to a recording search as found songs: the album is
+/// the first release it's on, with that release's cover from the Cover Art
+/// Archive.
+pub fn musicbrainz_from(data: &Value) -> Vec<Found> {
+    let Some(recordings) = data["recordings"].as_array() else { return Vec::new() };
+    let credit = |list: &Value| -> Vec<String> {
+        list.as_array().map(|c| c.iter().filter_map(|a| text(&a["name"]).or_else(|| text(&a["artist"]["name"]))).collect()).unwrap_or_default()
+    };
+    recordings
+        .iter()
+        .take(LIMIT)
+        .filter_map(|r| {
+            let title = text(&r["title"])?;
+            let release = r["releases"].as_array().and_then(|list| {
+                // An album first, else whatever it came out on.
+                list.iter().find(|x| x["release-group"]["primary-type"].as_str() == Some("Album")).or_else(|| list.first())
+            });
+            let release = release.cloned().unwrap_or(Value::Null);
+            let medium = release["media"].as_array().and_then(|m| m.first()).cloned().unwrap_or(Value::Null);
+            let track = medium["track"].as_array().and_then(|t| t.first()).cloned().unwrap_or(Value::Null);
+            let album_artist = credit(&release["artist-credit"]).into_iter().next();
+            let artists = credit(&r["artist-credit"]);
+            let genres: Vec<String> = r["tags"]
+                .as_array()
+                .map(|t| t.iter().filter_map(|x| text(&x["name"])).take(4).collect())
+                .unwrap_or_default();
+            Some(Found {
+                id: format!("musicbrainz:{}", text(&r["id"]).unwrap_or_default()),
+                source: "musicbrainz".into(),
+                title,
+                album_artist: album_artist.filter(|a| !artists.iter().any(|t| t.eq_ignore_ascii_case(a))),
+                authors: artists,
+                narrators: Vec::new(),
+                series: text(&release["title"]),
+                series_index: number(&track["number"]).or_else(|| number(&track["position"])),
+                synopsis: None,
+                genres,
+                publisher: None,
+                published: text(&release["date"]).or_else(|| text(&r["first-release-date"])),
+                language: None,
+                isbn: None,
+                cover_url: text(&release["id"]).map(|id| format!("https://coverartarchive.org/release/{id}/front-500")),
+                disc: medium["position"].as_u64().filter(|d| *d > 0).map(|d| d.to_string()),
+            })
+        })
+        .collect()
+}
+
+/// Searches MusicBrainz for a song (no account needed).
+pub fn search_musicbrainz(title: &str, artist: &str) -> Result<Vec<Found>> {
+    let quote = |s: &str| s.replace(['"', '\\'], " ");
+    let mut query = format!("recording:\"{}\"", quote(title.trim()));
+    if !artist.trim().is_empty() {
+        query.push_str(&format!(" AND artist:\"{}\"", quote(artist.trim())));
+    }
+    if title.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let data = agent()
+        .get("https://musicbrainz.org/ws/2/recording")
+        .query("query", &query)
+        .query("fmt", "json")
+        .query("limit", LIMIT.to_string())
+        .call()
+        .map_err(|e| Error::Offline(format!("MusicBrainz couldn't be reached: {e}")))?
+        .body_mut()
+        .read_json::<Value>()
+        .map_err(|e| Error::Offline(format!("MusicBrainz's answer couldn't be read: {e}")))?;
+    Ok(musicbrainz_from(&data))
+}
+
+/// Apple Music's (the iTunes Store's) answer to a song search.
+pub fn apple_music_from(data: &Value) -> Vec<Found> {
+    let Some(results) = data["results"].as_array() else { return Vec::new() };
+    results
+        .iter()
+        .take(LIMIT)
+        .filter_map(|r| {
+            let title = text(&r["trackName"])?;
+            let artist = text(&r["artistName"]);
+            let album_artist = text(&r["collectionArtistName"]).filter(|a| Some(a) != artist.as_ref());
+            Some(Found {
+                id: format!("applemusic:{}", r["trackId"].as_i64().unwrap_or_default()),
+                source: "applemusic".into(),
+                title,
+                authors: artist.into_iter().collect(),
+                narrators: Vec::new(),
+                series: text(&r["collectionName"]),
+                series_index: number(&r["trackNumber"]),
+                synopsis: None,
+                genres: text(&r["primaryGenreName"]).into_iter().collect(),
+                publisher: None,
+                published: text(&r["releaseDate"]).map(|d| d.chars().take(10).collect()),
+                language: None,
+                isbn: None,
+                cover_url: text(&r["artworkUrl100"]).map(|u| u.replace("100x100bb", "600x600bb")),
+                album_artist,
+                disc: r["discNumber"].as_u64().filter(|d| *d > 0).map(|d| d.to_string()),
+            })
+        })
+        .collect()
+}
+
+/// Searches Apple Music for a song (no account needed).
+pub fn search_apple_music(title: &str, artist: &str) -> Result<Vec<Found>> {
+    let term = format!("{} {}", title.trim(), artist.trim());
+    if term.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let data = agent()
+        .get("https://itunes.apple.com/search")
+        .query("term", term.trim())
+        .query("media", "music")
+        .query("entity", "song")
+        .query("limit", "6")
+        .call()
+        .map_err(|e| Error::Offline(format!("Apple Music couldn't be reached: {e}")))?
+        .body_mut()
+        .read_json::<Value>()
+        .map_err(|e| Error::Offline(format!("Apple Music's answer couldn't be read: {e}")))?;
+    Ok(apple_music_from(&data))
+}
+
 /// Hardcover's search answer as found books.
 pub fn hardcover_from(data: &Value) -> Vec<Found> {
     let hits = data.pointer("/search/results/hits").and_then(Value::as_array).cloned().unwrap_or_default();
@@ -281,6 +422,8 @@ pub fn hardcover_from(data: &Value) -> Vec<Found> {
                 language: None,
                 isbn,
                 cover_url: text(&d["image"]["url"]),
+                album_artist: None,
+                disc: None,
             })
         })
         .collect()
@@ -375,5 +518,41 @@ mod tests {
         assert_eq!(number(&json!("Book 3")), Some("3".into()));
         assert_eq!(number(&json!(2.5)), Some("2.5".into()));
         assert_eq!(number(&json!("")), None);
+    }
+
+    #[test]
+    fn songs_are_read_from_musicbrainz_and_apple_music() {
+        let mb = json!({"recordings": [{
+            "id": "rec-1", "title": "Morning", "first-release-date": "1999-04-01",
+            "artist-credit": [{"name": "Ann Singer", "artist": {"name": "Ann Singer"}}],
+            "tags": [{"name": "folk", "count": 3}],
+            "releases": [
+                {"id": "single-1", "title": "Morning (single)", "release-group": {"primary-type": "Single"}, "media": [{"position": 1, "track": [{"number": "1"}]}]},
+                {"id": "rel-9", "title": "Harvest", "date": "1999-05-02", "release-group": {"primary-type": "Album"},
+                 "artist-credit": [{"name": "The Band"}], "media": [{"position": 2, "track": [{"number": "4", "position": 4}]}]}
+            ]
+        }]});
+        let found = musicbrainz_from(&mb);
+        assert_eq!(found.len(), 1);
+        let song = &found[0];
+        assert_eq!((song.title.as_str(), song.authors.clone()), ("Morning", vec!["Ann Singer".to_string()]));
+        assert_eq!(song.series.as_deref(), Some("Harvest"));
+        assert_eq!(song.series_index.as_deref(), Some("4"));
+        assert_eq!(song.disc.as_deref(), Some("2"));
+        assert_eq!(song.album_artist.as_deref(), Some("The Band"));
+        assert_eq!(song.published.as_deref(), Some("1999-05-02"));
+        assert_eq!(song.cover_url.as_deref(), Some("https://coverartarchive.org/release/rel-9/front-500"));
+
+        let apple = json!({"results": [{
+            "trackId": 77, "trackName": "Evening", "artistName": "Ann Singer", "collectionName": "Harvest",
+            "trackNumber": 2, "discNumber": 1, "releaseDate": "1999-05-02T07:00:00Z", "primaryGenreName": "Folk",
+            "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/a/100x100bb.jpg"
+        }]});
+        let found = apple_music_from(&apple);
+        assert_eq!(found[0].series.as_deref(), Some("Harvest"));
+        assert_eq!(found[0].series_index.as_deref(), Some("2"));
+        assert_eq!(found[0].published.as_deref(), Some("1999-05-02"));
+        assert_eq!(found[0].genres, vec!["Folk".to_string()]);
+        assert_eq!(found[0].cover_url.as_deref(), Some("https://is1-ssl.mzstatic.com/image/thumb/a/600x600bb.jpg"));
     }
 }

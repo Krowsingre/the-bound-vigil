@@ -303,6 +303,11 @@ let books: BookPreview[] = [
   book("Carmilla", "Sheridan Le Fanu", { format: "mp3", narrators: ["Rosamund Pike"], genres: ["Gothic fiction", "Horror"] }),
   book("The Time Machine", "H. G. Wells", { format: "m4b", narrators: ["Derek Jacobi"], genres: ["Science fiction"], status: "read", totalProgression: 1 }),
   book("Northanger Abbey", "Jane Austen", { format: "m4b", narrators: ["Juliet Stevenson"], genres: ["Romance", "Gothic fiction"], availability: "cloud" }),
+  // Resonance's Music and Other tabs: songs kept together as an album.
+  book("Lantern Hymn", "The Ash Choir", { format: "mp3", audioType: "music", series: "Winter Songs", seriesIndex: 1, genres: ["Folk"] }),
+  book("Snow on the Bell", "The Ash Choir", { format: "mp3", audioType: "music", series: "Winter Songs", seriesIndex: 2, genres: ["Folk"] }),
+  book("The Long Night", "The Ash Choir", { format: "mp3", audioType: "music", series: "Winter Songs", seriesIndex: 3, genres: ["Folk"] }),
+  book("Voice memo, 3 March", "Unknown", { format: "m4a", audioType: "other" }),
 ];
 
 // Sample audiobooks are short, so the preview plays them as silence of the right length.
@@ -486,7 +491,7 @@ export function previewApi(): Api {
   // Book details in their layers: what each book started with, your edits and what was fetched.
   const own = new Map<string, Record<string, string | null>>();
   const edited = new Map<string, Record<string, string>>();
-  const fetched = new Map<string, Record<string, { value: string; source: "google" | "openlibrary" | "audible" | "apple" | "hardcover" }>>();
+  const fetched = new Map<string, Record<string, { value: string; source: import("../lib/onlineDetails").Source }>>();
   const ownOf = (id: string) => {
     if (!own.has(id)) {
       const b = find(id);
@@ -1027,7 +1032,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.146.0", version: "0.146.0", notes: "The Bound Vigil 0.146.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.147.0", version: "0.147.0", notes: "The Bound Vigil 0.147.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

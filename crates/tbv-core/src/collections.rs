@@ -313,7 +313,8 @@ impl Library {
         let mut statement = self.conn.prepare(&format!(
             "SELECT {SERIES} AS s, b.id, COALESCE(o_title.value, f_title.value, b.title),
                     COALESCE(o_authors.value, f_authors.value, b.authors), lf.cover_path, {SERIES_INDEX}, o_series_list.value
-             {BOOK_FROM} AND ((s IS NOT NULL AND trim(s) != '') OR o_series_list.value IS NOT NULL)"
+             {BOOK_FROM} AND ((s IS NOT NULL AND trim(s) != '') OR o_series_list.value IS NOT NULL)
+               AND COALESCE(b.audio_type, '') != 'music'"
         ))?;
         let rows = statement.query_map([], |r| {
             Ok((

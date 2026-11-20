@@ -1770,6 +1770,8 @@ async fn search_details_more(
     tauri::async_runtime::spawn_blocking(move || match source.as_str() {
         "audible" => tbv_core::lookup::search_audible(&title, &author),
         "apple" => tbv_core::lookup::search_apple(&title, &author),
+        "musicbrainz" => tbv_core::lookup::search_musicbrainz(&title, &author),
+        "applemusic" => tbv_core::lookup::search_apple_music(&title, &author),
         "hardcover" => hardcover::lookup(&library, &title, &author).map(Option::unwrap_or_default),
         other => Err(tbv_core::Error::Unsuitable(format!("unknown source {other}"))),
     })
@@ -2154,6 +2156,32 @@ pub fn run() {
                 if let Ok(library) = linking.lock() {
                     let _ = library.auto_link_audiobooks();
                 }
+            });
+            // Audio from before Resonance's tabs is sorted once, in the
+            // background: a moment after starting, one item at a time.
+            let rechecking = library.clone();
+            let telling = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(20));
+                let waiting = match rechecking.lock() {
+                    Ok(library) => library.audio_recheck_list().unwrap_or_default(),
+                    Err(_) => return,
+                };
+                if waiting.is_empty() {
+                    return;
+                }
+                for (id, path, format) in waiting {
+                    if let Ok(metadata) = tbv_core::formats::read_metadata(&path, &format) {
+                        if let Ok(library) = rechecking.lock() {
+                            let _ = library.apply_audio_recheck(&id, &metadata);
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(40));
+                }
+                if let Ok(library) = rechecking.lock() {
+                    let _ = library.finish_audio_recheck();
+                }
+                let _ = telling.emit("library-changed", ());
             });
             // A phone keeps room: books fetched just to open go after a
             // while unopened, and covers share a set amount of room.

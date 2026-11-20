@@ -48,7 +48,7 @@ export interface RemotePosition {
   at: IsoUtc;
 }
 
-export type AudioType = "audiobook" | "podcast" | "music";
+export type AudioType = "audiobook" | "podcast" | "music" | "other";
 
 export interface BookPreview {
   audioType?: AudioType | null;
@@ -595,7 +595,12 @@ export type DetailFieldName =
   | "language"
   | "isbn"
   | "narrators"
-  | "series_list";
+  | "series_list"
+  // Music and other audio: a song's album is its series, its track the number.
+  | "album_artist"
+  | "disc"
+  | "composer"
+  | "episode";
 
 /** One detail in its layers. Lists (authors, genres) are JSON arrays. */
 export interface DetailField {
@@ -604,7 +609,7 @@ export interface DetailField {
   own: string | null;
   /** Fetched online, or read from the file beyond the basics. */
   fetched: string | null;
-  fetchedFrom: "google" | "openlibrary" | "audible" | "apple" | "hardcover" | "file" | null;
+  fetchedFrom: "google" | "openlibrary" | "audible" | "apple" | "hardcover" | "musicbrainz" | "applemusic" | "file" | null;
   /** Your own edit. */
   edited: string | null;
 }

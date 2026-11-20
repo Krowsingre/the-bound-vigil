@@ -213,7 +213,8 @@ export function previewCollections(books: () => BookPreview[], empty: boolean) {
   const api: CollectionsApi = {
     getCollectionsOverview: async () => {
       const series = new Map<string, BookPreview[]>();
-      for (const b of books()) for (const { name } of groupPlaces(placesOf(b))) series.set(name, [...(series.get(name) ?? []), b]);
+      // A song's album isn't a series of books (series_summaries in the core).
+      for (const b of books().filter((x) => x.audioType !== "music")) for (const { name } of groupPlaces(placesOf(b))) series.set(name, [...(series.get(name) ?? []), b]);
       return {
         pinned: stored.filter((c) => c.pinned && c.kind !== "shelf").map(summary),
         smart: SMART.map((kind) => {
