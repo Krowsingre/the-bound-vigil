@@ -1,6 +1,6 @@
 import { offerFinishedDownloadRemoval } from "../library/FinishedDownloadPrompt";
 import { END_OF_BOOK, EndOfBook } from "./EndOfBook";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, isAndroid, isApp, isIOS, isIPhone, isMac } from "../api";
 import { READER_NARROW, useNarrow } from "../lib/useNarrow";
 import type { Annotation, HighlightColor, Profile, ReadStatus, ReaderBook, ReaderLocator, SyncStatus, WordDefinition } from "../api/types";
@@ -928,6 +928,11 @@ export function Reader({
     const value = String(scrolledText ? textShift : 0);
     if (renderer.getAttribute("shift") !== value) renderer.setAttribute("shift", value);
   }, [engine, engine.ready, scrolledText, textShift, viewSettings]);
+  // Leaving focus mode resizes the page, which moves the reading place a
+  // little; that must not count as reading on and turn focus back on.
+  useLayoutEffect(() => {
+    if (!focus) quietUntil.current = performance.now() + QUIET_MS;
+  }, [focus]);
   const noteCount = annotations.filter((a) => !isBookmark(a)).length;
   now.current = {
     busy: !!(selection || active || noteEdit || lookOpen || listenOpen || expandedContent || phoneSearch),
