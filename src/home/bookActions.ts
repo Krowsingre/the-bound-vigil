@@ -14,6 +14,7 @@ import { cueAudiobook, playAudiobook } from "../audio/player";
 import { askPair } from "../audio/LinkEbook";
 import { isAudio, kindOf } from "../lib/queryBooks";
 import { UP_NEXT_FULL } from "../library/shelfLimits";
+import { bookTopKey, favouritesChanged, isTopFive, setTopFive } from "../library/favourites";
 import { askUpNextReplacement } from "../library/UpNextReplacement";
 import { NO_FILTERS } from "../library/libraryView";
 import { isWeb } from "../api";
@@ -27,6 +28,8 @@ export interface BookActions {
   open: (book: BookPreview) => void;
   setStatus: (book: BookPreview, status: BookPreview["status"]) => void;
   setFavorite: (book: BookPreview, favorite: boolean) => void;
+  /** Marks a favourite as one of the Top five, or takes it out. */
+  setTopFive?: (book: BookPreview, top: boolean) => void;
   setWantToRead: (book: BookPreview, want: boolean) => void;
   setAudioType?: (book: BookPreview, kind: AudioType | null) => void;
   setRating: (book: BookPreview, rating: number | null) => void;
@@ -82,6 +85,13 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     book.favorite
       ? { label: "Remove from favourites", icon: "heart", onSelect: () => actions.setFavorite(book, false) }
       : { label: "Add to favourites", icon: "heart", onSelect: () => actions.setFavorite(book, true) },
+    ...(book.favorite && actions.setTopFive
+      ? [
+          isTopFive(bookTopKey(book.id))
+            ? { label: "Take out of Top five", icon: "star" as const, onSelect: () => actions.setTopFive!(book, false) }
+            : { label: "Add to Top five", icon: "star" as const, onSelect: () => actions.setTopFive!(book, true) },
+        ]
+      : []),
     book.wantToRead
       ? { label: "Remove from Up next", icon: "bookmark", onSelect: () => actions.setWantToRead(book, false) }
       : { label: "Add to Up next", icon: "bookmark", onSelect: () => actions.setWantToRead(book, true) },
@@ -269,7 +279,8 @@ export function makeBookActions(
         if (!api.removeDownload || !offerFinishedDownloadRemoval(book, status, refresh, undo)) undo();
       }
     })),
-    setFavorite: (book, favorite) => void run(book, api.setFavorite(book.id, favorite)),
+    setFavorite: (book, favorite) => void run(book, api.setFavorite(book.id, favorite).then(favouritesChanged)),
+    setTopFive: (book, top) => void run(book, setTopFive(bookTopKey(book.id), book.title, top)),
     setWantToRead: (book, want) => {
       void run(book, api.setWantToRead(book.id, want).then(() => {
         if (!want && book.wantToRead) toast("Removed from Up Next.", { label: "Undo", run: () => void run(book, api.setWantToRead(book.id, true)) });

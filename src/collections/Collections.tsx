@@ -390,6 +390,7 @@ export function Collections({
           menuFor={detailMenu}
           onBack={() => onOpen(null)}
           onOpenBook={onOpenBook}
+          onOpenSeries={(name) => onOpen({ kind: "series", name })}
           onChanged={changed}
         />
         {dialogs}

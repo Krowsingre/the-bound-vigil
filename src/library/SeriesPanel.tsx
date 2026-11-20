@@ -88,6 +88,7 @@ export function SeriesPanel({
   const own = useSeriesReview(given ? null : name, author, refreshKey, onChanged);
   const { review, busy, run } = given ?? own;
   const [showHidden, setShowHidden] = useState(false);
+  const [showRemoved, setShowRemoved] = useState(false);
   const [adding, setAdding] = useState(false);
   // Books the series check found since this series was last looked at: marked New here, then taken off Sanctum's row.
   // Taken again whenever the panel shows another series, before that series' news is cleared.
@@ -103,9 +104,12 @@ export function SeriesPanel({
   if (!review) return null;
   // Nothing to show until it has looked, or found a book that may belong.
   if (!withFind && !review.checkedAt && review.missing.length === 0 && review.matches.length === 0) return null;
-  const visible = review.missing.filter((m) => showHidden || !m.hidden);
-  const hiddenCount = review.missing.filter((m) => m.hidden).length;
-  const readCount = review.missing.filter((m) => m.read && !m.hidden).length;
+  // A book said not to be in the series shows only with Show removed, even when hidden too.
+  const visible = review.missing.filter((m) => (m.removed ? showRemoved : showHidden || !m.hidden));
+  const hiddenCount = review.missing.filter((m) => m.hidden && !m.removed).length;
+  const removedCount = review.missing.filter((m) => m.removed).length;
+  const readCount = review.missing.filter((m) => m.read && !m.hidden && !m.removed).length;
+  const stillMissing = review.missing.filter((m) => !m.removed).length;
   const approve = (matches: SeriesMatch[]) =>
     void run(
       () =>
@@ -141,7 +145,7 @@ export function SeriesPanel({
 
       <SeriesMatches matches={review.matches} busy={busy} onApprove={approve} onDeny={deny} />
 
-      {review.checkedAt && review.missing.length === 0 && <p className="muted series-done">You have every book in the list.</p>}
+      {review.checkedAt && stillMissing === 0 && <p className="muted series-done">You have every book in the list.</p>}
       {(review.missing.length > 0 || review.checkedAt) && (
         <div className="series-missing">
           <div className="series-sub">
@@ -150,6 +154,11 @@ export function SeriesPanel({
               {hiddenCount > 0 && (
                 <button type="button" className="view-all" onClick={() => setShowHidden((s) => !s)}>
                   {showHidden ? "Leave hidden ones out" : `Show ${hiddenCount} hidden`}
+                </button>
+              )}
+              {removedCount > 0 && (
+                <button type="button" className="view-all" onClick={() => setShowRemoved((s) => !s)}>
+                  {showRemoved ? "Leave removed ones out" : `Show ${removedCount} removed`}
                 </button>
               )}
               <button type="button" className="view-all" onClick={() => setAdding((a) => !a)}>
@@ -175,6 +184,7 @@ export function SeriesPanel({
                   busy={busy}
                   onHide={(hidden) => void run(() => api.hideSeriesBook(name, m.key, hidden))}
                   onRead={(read) => void run(() => api.markSeriesBookRead(name, m.key, read))}
+                  onNotInSeries={m.source === "you" ? undefined : (removed) => void run(() => api.removeListedSeriesBook(name, m.key, removed))}
                   onRemove={m.source === "you" ? () => void run(() => api.removeSeriesBook(name, m.key)) : undefined}
                 />
               ))}
@@ -230,6 +240,7 @@ function MissingCard({
   onHide,
   onRead,
   onRemove,
+  onNotInSeries,
 }: {
   book: MissingBook;
   /** Found by the last series check. */
@@ -239,12 +250,14 @@ function MissingCard({
   onRead: (read: boolean) => void;
   /** For books added by hand. */
   onRemove?: () => void;
+  /** For books found online: says it isn't in the series at all, or puts it back. */
+  onNotInSeries?: (removed: boolean) => void;
 }) {
   const [failed, setFailed] = useState(false);
   useWatch(); // shown again when the watch list changes
   const watching = isWatchingBook(book.title);
   return (
-    <li className={`missing-card${book.hidden ? " is-hidden" : ""}${book.read ? " is-read" : ""}`}>
+    <li className={`missing-card${book.hidden || book.removed ? " is-hidden" : ""}${book.read ? " is-read" : ""}`}>
       <div className="cover cover-m missing-cover">
         <div className="cover-private" aria-hidden>
           <span className="cover-title">{book.title}</span>
@@ -256,7 +269,9 @@ function MissingCard({
             <span className="cover-title">{book.title}</span>
           </div>
         )}
-        <span className={`missing-badge${isNew && !book.read ? " is-new" : ""}`}>{book.read ? "Read" : isNew ? "New" : "Missing"}</span>
+        <span className={`missing-badge${isNew && !book.read && !book.removed ? " is-new" : ""}`}>
+          {book.removed ? "Not in series" : book.read ? "Read" : isNew ? "New" : "Missing"}
+        </span>
       </div>
       <span className="missing-title" title={book.title}>
         {book.title}
@@ -297,6 +312,19 @@ function MissingCard({
               onClick={onRemove}
             >
               <Icon name="trash" size={14} />
+            </button>
+          )}
+          {onNotInSeries && (
+            <button
+              type="button"
+              className={`icon-btn${book.removed ? " is-on" : ""}`}
+              disabled={busy}
+              aria-pressed={!!book.removed}
+              title={book.removed ? "Put it back in the series" : "Not in this series (a wrong match online)"}
+              aria-label={book.removed ? `Put ${book.title} back in the series` : `${book.title} is not in this series`}
+              onClick={() => onNotInSeries(!book.removed)}
+            >
+              <Icon name="close" size={14} />
             </button>
           )}
           <button

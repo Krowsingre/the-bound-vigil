@@ -51,7 +51,7 @@ export function CollectionSeries({
     for (const [i, s] of series.entries()) {
       try {
         const review = await api.findSeriesBooks(s.name, s.author);
-        if (review.matches.length || review.missing.some((m) => !m.hidden)) left.push(s.name);
+        if (review.matches.length || review.missing.some((m) => !m.hidden && !m.removed)) left.push(s.name);
       } catch {
         failed++;
       }

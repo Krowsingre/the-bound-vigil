@@ -75,6 +75,7 @@ import type {
   DetailFieldName,
   DuplicateGroup,
   SeriesReview,
+  TopFavourite,
   HomeStatus,
   CopiedToEreader,
   Ereader,
@@ -142,6 +143,13 @@ export interface Api {
   /** Pins a book to the top of the Archive, or unpins it. */
   archiveSeriesPins(): Promise<string[]>;
   setArchiveSeriesPin(name: string, pinned: boolean): Promise<void>;
+  /** Favourite series (the stack, not each book), as named. */
+  favouriteSeries(): Promise<string[]>;
+  setSeriesFavourite(name: string, favourite: boolean): Promise<void>;
+  /** The Top five favourites, oldest first. */
+  topFavourites(): Promise<TopFavourite[]>;
+  /** Adds a favourite book ("book:<id>") or series ("series:<name>") to the Top five, or takes it out. A sixth is refused. */
+  setTopFavourite(key: string, label: string, top: boolean): Promise<void>;
   setAudioType(bookId: string, kind: import("./types").AudioType | null): Promise<void>;
   setPinned(bookId: string, pinned: boolean): Promise<void>;
   setWantToRead(bookId: string, want: boolean, replace?: string): Promise<void>;
@@ -461,6 +469,8 @@ export interface Api {
   /** What's missing from a series, and books that probably belong to it. */
   seriesReview(name: string): Promise<SeriesReview>;
   hideSeriesBook(name: string, key: string, hidden: boolean): Promise<SeriesReview>;
+  /** Says a missing book isn't in the series at all (a wrong match online), or puts it back. */
+  removeListedSeriesBook(name: string, key: string, removed: boolean): Promise<SeriesReview>;
   /** Marks a missing book as read somewhere else, or not. */
   markSeriesBookRead(name: string, key: string, read: boolean): Promise<SeriesReview>;
   /** Adds a book no source knows to the series' list. */
@@ -937,6 +947,10 @@ function appApi(): Api {
     setFavorite: async (bookId, favorite) => (await core).invoke("set_favorite", { bookId, favorite }),
     archiveSeriesPins: async () => (await core).invoke<string[]>("archive_series_pins"),
     setArchiveSeriesPin: async (name, pinned) => (await core).invoke("set_archive_series_pin", { name, pinned }),
+    favouriteSeries: async () => (await core).invoke<string[]>("favourite_series"),
+    setSeriesFavourite: async (name, favourite) => (await core).invoke("set_series_favourite", { name, favourite }),
+    topFavourites: async () => (await core).invoke<TopFavourite[]>("top_favourites"),
+    setTopFavourite: async (key, label, top) => (await core).invoke("set_top_favourite", { key, label, top }),
     setAudioType: async (bookId, kind) => (await core).invoke("set_audio_type", { bookId, kind }),
     setPinned: async (bookId, pinned) => (await core).invoke("set_pinned", { bookId, pinned }),
     setWantToRead: async (bookId, want, replace) => (await core).invoke("set_want_to_read", { bookId, want, replace }),
@@ -1297,6 +1311,7 @@ function appApi(): Api {
     findSeriesBooks: async (name, author) => (await core).invoke<SeriesReview>("find_series_books", { name, author }),
     seriesReview: async (name) => (await core).invoke<SeriesReview>("series_review", { name }),
     hideSeriesBook: async (name, key, hidden) => (await core).invoke<SeriesReview>("hide_series_book", { name, key, hidden }),
+    removeListedSeriesBook: async (name, key, removed) => (await core).invoke<SeriesReview>("remove_listed_series_book", { name, key, removed }),
     markSeriesBookRead: async (name, key, read) => (await core).invoke<SeriesReview>("mark_series_book_read", { name, key, read }),
     addSeriesBook: async (name, title, position, authors) => (await core).invoke<SeriesReview>("add_series_book", { name, title, position, authors }),
     removeSeriesBook: async (name, key) => (await core).invoke<SeriesReview>("remove_series_book", { name, key }),

@@ -1261,3 +1261,136 @@
 .kindle-picker-results label {
   min-width: 0;
 }
+
+/* Favourites compendium: the Top five, then favourite series, then the books (0.148). */
+.favourite-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  margin-bottom: 14px;
+}
+
+.favourite-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.favourite-row-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.top-five-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 160px));
+  gap: 20px;
+  list-style: none;
+  margin: 0;
+  padding: 8px 0 0 8px;
+}
+
+.top-five-card {
+  position: relative;
+  min-width: 0;
+}
+
+.top-five-open {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+}
+
+.top-five-open .cover {
+  width: 100%;
+  max-width: none;
+}
+
+.top-five-rank {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: var(--shadow);
+}
+
+.top-five-stack {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+/* A series is a stack: two edges peek out behind its first cover. */
+.top-five-stack::before,
+.top-five-stack::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-s, 6px);
+  background: var(--surface-2, var(--border));
+  border: 1px solid var(--border);
+}
+
+.top-five-stack::before {
+  transform: translate(8px, -8px);
+}
+
+.top-five-stack::after {
+  transform: translate(4px, -4px);
+}
+
+.top-five-stack > * {
+  position: relative;
+  z-index: 1;
+}
+
+.top-five-title {
+  width: 100%;
+  overflow: hidden;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.top-five-meta {
+  width: 100%;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.series-heart.is-on svg {
+  fill: currentColor;
+  color: var(--accent);
+}
+
+/* Phones, iPad upright and the Duo folded: the Top five scrolls sideways. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1100px) {
+  .top-five-row {
+    display: flex;
+    overflow-x: auto;
+    padding: 10px 0 4px 10px;
+    scroll-snap-type: x proximity;
+  }
+
+  .top-five-card {
+    flex: 0 0 120px;
+    scroll-snap-align: start;
+  }
+}

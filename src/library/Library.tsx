@@ -12,7 +12,9 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry, type MenuItem } from "../components/Menu";
 import { FindMissingButton, SeriesPanel, useSeriesReview } from "./SeriesPanel";
+import { favouritesChanged, isFavouriteSeries, isTopFive, SeriesHeart, seriesTopKey, setSeriesFavourite, setTopFive, useFavourites } from "./favourites";
 import { useToast } from "../components/Toast";
+import { StarRating } from "../components/StarRating";
 import { makeBookActions, phoneChoiceShown } from "../home/bookActions";
 import { Spent, Stat } from "../home/ReadingActivity";
 import { useTimeSpent } from "../home/useTimeSpent";
@@ -148,6 +150,7 @@ export function Library({
   const { settings: { scrollLibrary }, change: changeSettings } = useAppSettings();
   const [pins, setPins] = useState<BookPreview[]>([]);
   const [pinnedSeries, setPinnedSeries] = useState<string[]>([]);
+  const favourites = useFavourites(refreshKey);
   const [pinnedStacks, setPinnedStacks] = useState<LibraryPage | null>(null);
   const [facets, setFacets] = useState<LibraryPage | null>(null);
   const [searching, setSearching] = useState(false);
@@ -173,25 +176,56 @@ export function Library({
       if (!pinned) toast("Series unpinned.", { label: "Undo", run: () => toggleSeriesPin(name, true) });
     }, (error: unknown) => toast(String(error)));
   };
+  const toggleSeriesFavourite = (name: string, favourite: boolean) =>
+    void setSeriesFavourite(name, favourite).then(() => {
+      if (!favourite) toast(`Took “${name}” out of favourites.`, { label: "Undo", run: () => toggleSeriesFavourite(name, true) });
+    }, (error: unknown) => toast(String(error).replace(/^Error: /, "")));
+  const toggleSeriesTop = (name: string, top: boolean) =>
+    void setTopFive(seriesTopKey(name), name, top).catch((error: unknown) => toast(String(error).replace(/^Error: /, "")));
   const seriesMenu = (name: string): import("../components/Menu").MenuEntry[] => {
     const key = name.trim().toLowerCase();
+    const favourite = isFavouriteSeries(name, favourites.series);
     const pinned = pinnedSeries.some((value) => value.trim().toLowerCase() === key);
     // Edit a whole series or album at once, without choosing it first (embre, 20 November).
     const withBooks = (then: (books: BookPreview[]) => void) => () =>
       void booksOfSeries(name).then((books) => books.length && then(books), (e: unknown) => toast(String(e)));
-    const stackActions = groupActions
-      .filter((a) => a === "divider" || a.label !== "Group as album")
-      .map((a): MenuEntry => {
+    const stackActions = withSubmenus(groupActions
+      .filter((a) => a === "divider" || (a.label !== "Group as album" && !a.bookOnly))
+      .map((a) => {
         if (a === "divider") return a;
         // A stack's downloads cover the whole series, whatever the filters show.
         if (a.label === "Download") return { label: a.label, icon: a.icon, disabled: !!busy, onSelect: () => void downloadSeries(name) };
         if (a.label === "Remove download") return { label: a.label, icon: a.icon, disabled: !!busy, onSelect: () => void askRemoveSeriesDownloads(name) };
         return {
-          label: a.label, icon: a.icon, hint: a.hint, danger: a.danger, disabled: !!busy,
+          label: a.label, icon: a.icon, hint: a.hint, danger: a.danger, disabled: !!busy, group: a.group,
           onSelect: withBooks((books) => (a.can && !a.can(books) ? toast(`Nothing in “${name}” for that.`) : a.run(books, name))),
         };
-      });
+      }));
+    // Albums aren't series, so they're never favourite series (embre, 20 November).
+    const favouriteItems: MenuEntry[] = albums
+      ? []
+      : [
+          favourite
+            ? { label: "Remove series from favourites", icon: "heart", onSelect: () => toggleSeriesFavourite(name, false) }
+            : { label: "Add series to favourites", icon: "heart", onSelect: () => toggleSeriesFavourite(name, true) },
+          ...(favourite
+            ? [isTopFive(seriesTopKey(name), favourites.top)
+                ? { label: "Take out of Top five", icon: "star" as const, onSelect: () => toggleSeriesTop(name, false) }
+                : { label: "Add to Top five", icon: "star" as const, onSelect: () => toggleSeriesTop(name, true) }]
+            : []),
+        ];
+    // A rating for the whole stack rates each of its books (embre, 20 November).
+    const rating: MenuEntry = {
+      heading: (
+        <span className="menu-rating">
+          Rate every {albums ? "song" : "book"}
+          <StarRating value={null} size={18} onChange={(r) => withBooks(each((b) => api.setRating(b.id, r)))()} />
+        </span>
+      ),
+    };
     return [
+      ...favouriteItems,
+      rating,
       ...stackActions,
       "divider",
       { label: "Choose stack cover", onSelect: () => setCoverPicker(name) },
@@ -643,7 +677,60 @@ export function Library({
    * only reachable by choosing first (embre, 20 November). `stack` names the
    * series or album when the books are a stack's.
    */
-  type GroupAction = { label: string; icon?: MenuItem["icon"]; hint?: string; danger?: boolean; can?: (books: BookPreview[]) => boolean; run: (books: BookPreview[], stack?: string) => void };
+  type GroupAction = {
+    label: string;
+    icon?: MenuItem["icon"];
+    hint?: string;
+    danger?: boolean;
+    /** Shown inside this submenu, as a book's menu has them (Organize, Reading status). */
+    group?: { label: string; icon: MenuItem["icon"] };
+    /** Left out of a series' or album's own menu (a series has its own favourite). */
+    bookOnly?: boolean;
+    can?: (books: BookPreview[]) => boolean;
+    run: (books: BookPreview[], stack?: string) => void;
+  };
+  /** Does the same to each book, then shows the change. */
+  const each = (work: (book: BookPreview) => Promise<unknown>) => (books: BookPreview[]) =>
+    void books.reduce<Promise<unknown>>((done, book) => done.then(() => work(book)), Promise.resolve()).then(
+      () => (setReload((n) => n + 1), favouritesChanged()),
+      (e: unknown) => (setReload((n) => n + 1), toast(String(e).replace(/^Error: /, ""))),
+    );
+  const listening = kind === "audiobooks";
+  const organize = { label: "Organize", icon: "collections" as const };
+  const statusGroup = { label: listening ? "Listening status" : "Reading status", icon: "checkCircle" as const };
+  const audioGroup = { label: "Audio type", icon: "headphones" as const };
+  // Everything a book's own menu offers, for many books at once (embre, 20 November).
+  const bookOptions: GroupAction[] = [
+    { label: "Add to favourites", icon: "heart", group: organize, bookOnly: true, can: (books) => books.some((b) => !b.favorite), run: each((b) => (b.favorite ? Promise.resolve() : api.setFavorite(b.id, true))) },
+    { label: "Remove from favourites", icon: "heart", group: organize, bookOnly: true, can: (books) => books.some((b) => b.favorite), run: each((b) => (b.favorite ? api.setFavorite(b.id, false) : Promise.resolve())) },
+    { label: "Add to Up next", icon: "bookmark", group: organize, can: (books) => books.some((b) => !b.wantToRead), run: each((b) => (b.wantToRead ? Promise.resolve() : api.setWantToRead(b.id, true))) },
+    { label: "Remove from Up next", icon: "bookmark", group: organize, can: (books) => books.some((b) => b.wantToRead), run: each((b) => (b.wantToRead ? api.setWantToRead(b.id, false) : Promise.resolve())) },
+    ...(listening && api.setAudioType
+      ? ([["audiobook", "Audiobook"], ["podcast", "Podcast"], ["music", "Music"], ["other", "Other"]] as const).map(
+          ([type, label]): GroupAction => ({ label, group: audioGroup, run: each((b) => api.setAudioType!(b.id, type)) }),
+        )
+      : []),
+    { label: listening ? "Mark as listened" : "Mark as read", group: statusGroup, can: (books) => books.some((b) => b.status !== "read"), run: each((b) => api.setBookStatus(b.id, "read")) },
+    { label: listening ? "Mark as unplayed" : "Mark as unread", group: statusGroup, can: (books) => books.some((b) => b.status !== "unread"), run: each((b) => api.setBookStatus(b.id, "unread")) },
+    { label: "Mark as dropped", hint: "Stopped, not going back", group: statusGroup, can: (books) => books.some((b) => b.status !== "dropped"), run: each((b) => api.setBookStatus(b.id, "dropped")) },
+  ];
+  /** Puts grouped actions into their submenus, where the first of each group stood. */
+  const withSubmenus = (entries: (MenuEntry & { group?: GroupAction["group"] })[]): MenuEntry[] => {
+    const out: MenuEntry[] = [];
+    const subs = new Map<string, MenuEntry[]>();
+    for (const e of entries) {
+      const group = e !== "divider" && "group" in e ? e.group : undefined;
+      if (!group) { out.push(e); continue; }
+      const { group: _, ...item } = e as MenuItem & { group?: unknown };
+      if (!subs.has(group.label)) {
+        const list: MenuEntry[] = [];
+        subs.set(group.label, list);
+        out.push({ label: group.label, icon: group.icon, submenu: list });
+      }
+      subs.get(group.label)!.push(item as MenuEntry);
+    }
+    return out;
+  };
   const ask = (what: "remove" | "delete" | "download") => (books: BookPreview[], stack?: string) => {
     setSeriesRemoval(stack ? { name: stack, books } : null);
     setAsking(what);
@@ -651,6 +738,7 @@ export function Library({
   const groupActions: (GroupAction | "divider")[] = [
     { label: "Edit details", icon: "edit", run: (books) => askEditDetails(books) },
     { label: "Find details online", icon: "search", run: (books) => askFetchManyDetails(books) },
+    ...bookOptions,
     // Music albums: songs kept together, each still its own item (embre, 19 November).
     ...(kind === "audiobooks"
       ? [
@@ -684,12 +772,20 @@ export function Library({
     { label: "Delete", icon: "trash", danger: true, run: ask("delete") },
   ];
   const chosenActions: MenuEntry[] = [
-    ...groupActions.map((a): MenuEntry => a === "divider" ? a : {
+    ...(none ? [] : [{
+      heading: (
+        <span className="menu-rating">
+          Rate the chosen ones
+          <StarRating value={null} size={18} onChange={(r) => each((b) => api.setRating(b.id, r))(chosen)} />
+        </span>
+      ),
+    } as MenuEntry]),
+    ...withSubmenus(groupActions.map((a) => a === "divider" ? a : {
       label: a.label === "Share the files" && chosen.length === 1 ? "Share the file" : a.label,
-      icon: a.icon, hint: a.hint, danger: a.danger,
+      icon: a.icon, hint: a.hint, danger: a.danger, group: a.group,
       disabled: none || busy !== null || (a.can ? !a.can(chosen) : false),
       onSelect: () => a.run(chosen),
-    }),
+    })),
     { label: "Clear choice", icon: "close", disabled: none || busy !== null, onSelect: () => setSelected(new Map()) },
   ];
 
@@ -839,6 +935,7 @@ export function Library({
             <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => void downloadSeries(seriesName)}>Download</button>
             <button type="button" className="btn btn-quiet" disabled={!!busy} onClick={() => void askRemoveSeriesDownloads(seriesName)}>Remove download</button>
             {seriesCheck && <FindMissingButton state={seriesCheck} />}
+            {!albums && <SeriesHeart name={seriesName} favourite={isFavouriteSeries(seriesName, favourites.series)} onChange={(on) => toggleSeriesFavourite(seriesName, on)} />}
           </div>
         )}
         {!seriesName && seriesCheck && (

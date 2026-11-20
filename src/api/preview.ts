@@ -2,7 +2,7 @@
 // It is never used inside the desktop app (see api/index.ts), and the shell
 // shows a "Preview" badge whenever it is active.
 
-import { PIN_LIMIT, PIN_LIMIT_MESSAGE, upNextChanges } from "../library/shelfLimits";
+import { PIN_LIMIT, PIN_LIMIT_MESSAGE, TOP_FIVE, TOP_FIVE_FULL, upNextChanges } from "../library/shelfLimits";
 import type { Api } from "./index";
 import { previewCollections } from "../preview/collections";
 import { previewNotes, sampleAnnotations } from "../preview/notes";
@@ -438,6 +438,8 @@ function home(): HomeViewModel {
 }
 
 const seriesPins = new Map<string, string>();
+const seriesFavourites = new Map<string, string>([["sherlock holmes", "Sherlock Holmes"]]);
+const topFavourites = new Map<string, string>();
 
 const update = (bookId: string, change: Partial<BookPreview>) => {
   books = books.map((b) => (b.id === bookId ? { ...b, ...change } : b));
@@ -553,7 +555,7 @@ export function previewApi(): Api {
   );
 
   // Find missing books: a made-up online list for each series asked about.
-  const seriesLists = new Map<string, { list: SeriesEntry[]; hidden: Set<string>; denied: Set<string>; read: Set<string> }>();
+  const seriesLists = new Map<string, { list: SeriesEntry[]; hidden: Set<string>; denied: Set<string>; read: Set<string>; removed?: Set<string> }>();
   const seriesReviewOf = (name: string): SeriesReview => {
     const id = name.toLowerCase();
     const inside = library().filter((b) => b.series?.toLowerCase() === id);
@@ -564,15 +566,22 @@ export function previewApi(): Api {
     if (!saved) return { name, checkedAt: null, listed: 0, owned: inside.length, missing: [], matches: [], ownedBooks };
     const missing = saved.list
       .filter((e) => !inside.some((b) => b.seriesIndex === e.position || b.title.toLowerCase() === e.title.toLowerCase()))
-      .map((e) => ({ ...e, key: String(e.position), hidden: saved.hidden.has(String(e.position)), read: saved.read.has(String(e.position)) }));
+      .map((e) => ({
+        ...e,
+        key: String(e.position),
+        hidden: saved.hidden.has(String(e.position)),
+        read: saved.read.has(String(e.position)),
+        removed: !!saved.removed?.has(String(e.position)),
+      }));
     const matches = missing.flatMap((m) =>
-      m.hidden
+      m.hidden || m.removed
         ? []
         : library()
             .filter((b) => !saved.denied.has(b.id) && b.series?.toLowerCase() !== id && b.title.toLowerCase() === m.title.toLowerCase())
             .map((book) => ({ book, position: m.position, reason: "The same title and author, with no series in its details" })),
     );
-    return { name, checkedAt: new Date().toISOString(), listed: saved.list.length, owned: inside.length, missing, matches, ownedBooks };
+    const listed = saved.list.filter((e) => !saved.removed?.has(String(e.position))).length;
+    return { name, checkedAt: new Date().toISOString(), listed, owned: inside.length, missing, matches, ownedBooks };
   };
   const HOLMES = ["A Study in Scarlet", "The Sign of the Four", "The Adventures of Sherlock Holmes", "The Memoirs of Sherlock Holmes", "The Hound of the Baskervilles", "The Return of Sherlock Holmes", "The Valley of Fear", "His Last Bow", "The Case-Book of Sherlock Holmes"];
 
@@ -597,6 +606,7 @@ export function previewApi(): Api {
         hidden: old?.hidden ?? new Set(),
         denied: old?.denied ?? new Set(),
         read: old?.read ?? new Set(),
+        removed: old?.removed ?? new Set(),
       });
       return seriesReviewOf(name);
     },
@@ -604,6 +614,15 @@ export function previewApi(): Api {
     hideSeriesBook: async (name, key, hidden) => {
       const saved = seriesLists.get(name.toLowerCase());
       if (saved) hidden ? saved.hidden.add(key) : saved.hidden.delete(key);
+      return seriesReviewOf(name);
+    },
+    removeListedSeriesBook: async (name, key, removed) => {
+      const saved = seriesLists.get(name.toLowerCase());
+      if (saved) {
+        saved.removed ??= new Set();
+        if (removed) saved.removed.add(key);
+        else saved.removed.delete(key);
+      }
       return seriesReviewOf(name);
     },
     markSeriesBookRead: async (name, key, read) => {
@@ -720,7 +739,36 @@ export function previewApi(): Api {
       update(bookId, status === "unread" ? { status, totalProgression: null } : { status }),
     getLibrary: async (query) => queryBooks(library(), query, collections.previews().length),
     getCollections: async () => collections.previews(),
-    setFavorite: async (bookId, favorite) => update(bookId, { favorite }),
+    setFavorite: async (bookId, favorite) => {
+      if (!favorite) topFavourites.delete(`book:${bookId}`);
+      return update(bookId, { favorite });
+    },
+    favouriteSeries: async () => [...seriesFavourites.values()],
+    setSeriesFavourite: async (label, favourite) => {
+      const key = label.trim().toLowerCase();
+      if (favourite) seriesFavourites.set(key, label.trim());
+      else {
+        seriesFavourites.delete(key);
+        topFavourites.delete(`series:${key}`);
+      }
+    },
+    topFavourites: async () =>
+      [...topFavourites.entries()]
+        .filter(([key]) => (key.startsWith("book:") ? !!books.find((b) => b.id === key.slice(5))?.favorite : seriesFavourites.has(key.slice(7))))
+        .map(([key, label]) => ({ key, label })),
+    setTopFavourite: async (key, label, top) => {
+      const [kind, ref] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
+      const id = kind === "series" ? `series:${ref.trim().toLowerCase()}` : key;
+      if (!top) {
+        topFavourites.delete(id);
+        return;
+      }
+      const favourite = kind === "series" ? seriesFavourites.has(ref.trim().toLowerCase()) : !!books.find((b) => b.id === ref)?.favorite;
+      if (!favourite) throw new Error("Add it to your favourites first.");
+      if (topFavourites.has(id)) return;
+      if (topFavourites.size >= TOP_FIVE) throw new Error(TOP_FIVE_FULL);
+      topFavourites.set(id, label.trim());
+    },
     archiveSeriesPins: async () => [...seriesPins.values()],
     setArchiveSeriesPin: async (label, pinned) => {
       const key = label.trim().toLowerCase();

@@ -92,7 +92,7 @@ export function clearSeriesNews(series?: string, key?: string) {
 /** The books on a series' list now that weren't on it before. */
 export function newlyListed(before: MissingBook[], after: MissingBook[]): MissingBook[] {
   const known = new Set(before.map((m) => m.key));
-  return after.filter((m) => !m.hidden && !known.has(m.key));
+  return after.filter((m) => !m.hidden && !m.removed && !known.has(m.key));
 }
 
 let running: Promise<void> | null = null;

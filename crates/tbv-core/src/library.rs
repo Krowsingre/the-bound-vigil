@@ -776,6 +776,24 @@ const MIGRATIONS: &[&str] = &[
     // v45: finds an ebook's audiobook without reading every audiobook, for
     // the paired marks on every book in a list.
     "CREATE INDEX IF NOT EXISTS audiobooks_ebook ON audiobooks(ebook_id);",
+    // v46: favourite series (the stack, not each book in it), and the Top
+    // five: up to five favourite books or series, keyed "book:<id>" or
+    // "series:<name>". Both sync; a removal keeps its row with a NULL time.
+    // `series_lists.removed`: keys of listed books the person said aren't in
+    // the series (a wrong match online), kept off the list and its count.
+    r#"
+    CREATE TABLE series_favourites (
+        name TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        favourite_at TEXT
+    );
+    CREATE TABLE top_favourites (
+        key TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        top_at TEXT
+    );
+    ALTER TABLE series_lists ADD COLUMN removed TEXT NOT NULL DEFAULT '[]';
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

@@ -19,6 +19,7 @@ import { Browse } from "./browse/Browse";
 import { Libram } from "./catalogs/Libram";
 import { Geas } from "./browse/Geas";
 import { UpNextReplacementHost } from "./library/UpNextReplacement";
+import { TopFiveReplaceHost } from "./library/favourites";
 import { workspaceFrame } from "./shell/workspaceFrame";
 import { BROWSER_GO, BROWSER_PAGE, BROWSER_SWITCH, BrowserNav, BrowserSiteButton, navigateBrowserHistory, openInDiscover } from "./browse/Browser";
 import { showTabInDiscover } from "./browse/discoverQueue";
@@ -991,6 +992,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
       <BookDialogsHost onChanged={refresh} />
       <FriendLinkHost />
       <UpNextReplacementHost onChanged={refresh} />
+      <TopFiveReplaceHost />
       <DetailsHost onChanged={refresh} />
       <SendToEreaderHost
         onSetUp={() => {

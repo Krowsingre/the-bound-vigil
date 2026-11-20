@@ -189,15 +189,18 @@ export function SeriesCard({
   selected,
   onSelect,
   onOpen,
+  hold,
 }: {
   series: SeriesSummary;
   layout: "grid" | "list";
   selected: boolean;
   onSelect: () => void;
   onOpen: () => void;
+  /** Its right-click and press-and-hold menu, where it has one. */
+  hold?: object;
 }) {
   return (
-    <li className={`collection-card collection-card-${layout}${selected ? " is-selected" : ""}`} data-tone={hashOf(series.name) % 4}>
+    <li className={`collection-card collection-card-${layout}${selected ? " is-selected" : ""}`} data-tone={hashOf(series.name) % 4} {...hold}>
       <button type="button" className="collection-card-open" onClick={onSelect} onDoubleClick={onOpen} aria-pressed={selected}>
         <span className="collection-card-head">
           <span className="collection-card-name">

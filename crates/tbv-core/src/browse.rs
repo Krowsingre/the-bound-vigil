@@ -9,6 +9,9 @@ use crate::model::*;
 
 pub const DEFAULT_PAGE_SIZE: u32 = 24;
 const MAX_PAGE_SIZE: u32 = 200;
+/// How many favourites can be marked Top five (embre, 18 November).
+pub const TOP_FIVE: u32 = 5;
+pub const TOP_FIVE_FULL: &str = "Your Top five is full. Take one out first.";
 pub(crate) const UP_NEXT_LIMIT: u32 = 75;
 
 const TITLE: &str = "COALESCE(o_title.value, f_title.value, b.title)";
@@ -640,6 +643,89 @@ impl Library {
         Ok(())
     }
 
+    /// Series you've favourited, by the name as you gave it. Favouriting a
+    /// series favourites the stack, not each book in it.
+    pub fn favourite_series(&self) -> Result<Vec<String>> {
+        let mut statement = self.conn.prepare("SELECT label FROM series_favourites WHERE favourite_at IS NOT NULL ORDER BY favourite_at DESC")?;
+        let rows = statement.query_map([], |row| row.get(0))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    pub fn set_series_favourite(&self, label: &str, favourite: bool) -> Result<()> {
+        let label = label.trim();
+        if label.is_empty() { return Err(Error::Unsuitable("Choose a series to favourite.".into())); }
+        let name = label.to_lowercase();
+        let tx = self.conn.unchecked_transaction()?;
+        let already: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM series_favourites WHERE name = ?1 AND favourite_at IS NOT NULL)",
+            params![name], |row| row.get(0),
+        )?;
+        if already != favourite {
+            let at = favourite.then(crate::time::now_utc);
+            tx.execute(
+                "INSERT INTO series_favourites (name, label, favourite_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(name) DO UPDATE SET label = excluded.label, favourite_at = excluded.favourite_at",
+                params![name, label, at],
+            )?;
+        }
+        if !favourite { Self::drop_top(&tx, &format!("series:{name}"))?; }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The Top five, oldest first: favourite books ("book:<id>") and
+    /// series ("series:<name>"). A book or series that stopped being a
+    /// favourite, or a book that was deleted, isn't listed.
+    pub fn top_favourites(&self) -> Result<Vec<TopFavourite>> {
+        let mut statement = self.conn.prepare(&format!("SELECT t.key, t.label FROM top_favourites t WHERE {} ORDER BY t.top_at", Self::LIVE_TOP))?;
+        let rows = statement.query_map([], |row| Ok(TopFavourite { key: row.get(0)?, label: row.get(1)? }))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    const LIVE_TOP: &'static str = "t.top_at IS NOT NULL AND (
+        (t.key LIKE 'book:%' AND EXISTS(SELECT 1 FROM books b WHERE b.id = substr(t.key, 6) AND b.favorite = 1 AND b.deleted_at IS NULL))
+        OR (t.key LIKE 'series:%' AND EXISTS(SELECT 1 FROM series_favourites s WHERE s.name = substr(t.key, 8) AND s.favourite_at IS NOT NULL)))";
+
+    /// Adds a favourite book or series to the Top five, or takes it out.
+    /// A sixth is refused; the app asks which one to replace.
+    pub fn set_top_favourite(&self, key: &str, label: &str, top: bool) -> Result<()> {
+        let key = match key.split_once(':') {
+            Some(("book", id)) if !id.is_empty() => format!("book:{id}"),
+            Some(("series", name)) if !name.trim().is_empty() => format!("series:{}", name.trim().to_lowercase()),
+            _ => return Err(Error::Unsuitable("Only a book or a series can be in the Top five.".into())),
+        };
+        let tx = self.conn.unchecked_transaction()?;
+        if !top {
+            Self::drop_top(&tx, &key)?;
+            tx.commit()?;
+            return Ok(());
+        }
+        let favourite: bool = match key.split_once(':') {
+            Some(("book", id)) => tx.query_row("SELECT EXISTS(SELECT 1 FROM books WHERE id = ?1 AND favorite = 1 AND deleted_at IS NULL)", params![id], |r| r.get(0))?,
+            Some((_, name)) => tx.query_row("SELECT EXISTS(SELECT 1 FROM series_favourites WHERE name = ?1 AND favourite_at IS NOT NULL)", params![name], |r| r.get(0))?,
+            None => false,
+        };
+        if !favourite { return Err(Error::Unsuitable("Add it to your favourites first.".into())); }
+        let (already, count): (bool, u32) = tx.query_row(
+            &format!("SELECT COALESCE(SUM(t.key = ?1), 0) > 0, COUNT(*) FROM top_favourites t WHERE {}", Self::LIVE_TOP),
+            params![key], |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        if already { return Ok(()); }
+        if count >= TOP_FIVE { return Err(Error::Unsuitable(TOP_FIVE_FULL.into())); }
+        tx.execute(
+            "INSERT INTO top_favourites (key, label, top_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET label = excluded.label, top_at = excluded.top_at",
+            params![key, label.trim(), crate::time::now_utc()],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn drop_top(conn: &rusqlite::Connection, key: &str) -> Result<()> {
+        conn.execute("UPDATE top_favourites SET top_at = NULL WHERE key = ?1 AND top_at IS NOT NULL", params![key])?;
+        Ok(())
+    }
+
     fn check_archive_pin_limit(conn: &rusqlite::Connection) -> Result<()> {
         let count: u32 = conn.query_row(
             "SELECT (SELECT COUNT(*) FROM books WHERE pinned_at IS NOT NULL AND deleted_at IS NULL AND same_as IS NULL)
@@ -689,6 +775,7 @@ impl Library {
             "UPDATE books SET favorite = ?2 WHERE id = ?1",
             params![book_id, favorite],
         )?;
+        if !favorite { Self::drop_top(&self.conn, &format!("book:{book_id}"))?; }
         Ok(())
     }
 
@@ -1130,6 +1217,29 @@ mod tests {
         assert!(library.set_pinned(&ids[9], true).is_err());
         library.set_archive_series_pin("a SERIES", false).unwrap();
         library.set_pinned(&ids[9], true).unwrap();
+    }
+
+    #[test]
+    fn favourite_series_and_the_top_five() {
+        let (dir, mut library) = open_temp_library();
+        let ids: Vec<_> = (0..6).map(|i| add(&mut library, dir.path(), &format!("Book {i}"), "Writer")).collect();
+        library.set_series_favourite(" The Saga ", true).unwrap();
+        library.set_series_favourite("the saga", true).unwrap();
+        assert_eq!(library.favourite_series().unwrap(), ["The Saga"]);
+        // A book has to be a favourite before it can be in the Top five.
+        assert!(library.set_top_favourite(&format!("book:{}", ids[0]), "Book 0", true).is_err());
+        for id in &ids { library.set_favorite(id, true).unwrap(); }
+        library.set_top_favourite("series:The Saga", "The Saga", true).unwrap();
+        for (i, id) in ids[..4].iter().enumerate() { library.set_top_favourite(&format!("book:{id}"), &format!("Book {i}"), true).unwrap(); }
+        assert_eq!(library.top_favourites().unwrap().len(), 5);
+        assert!(library.set_top_favourite(&format!("book:{}", ids[5]), "Book 5", true).is_err());
+        // Taking a series out of favourites takes it out of the Top five, and frees a place.
+        library.set_series_favourite("THE SAGA", false).unwrap();
+        assert!(library.favourite_series().unwrap().is_empty());
+        library.set_top_favourite(&format!("book:{}", ids[5]), "Book 5", true).unwrap();
+        library.set_favorite(&ids[0], false).unwrap();
+        let top: Vec<_> = library.top_favourites().unwrap().into_iter().map(|t| t.label).collect();
+        assert_eq!(top, ["Book 1", "Book 2", "Book 3", "Book 5"]);
     }
 
     #[test]

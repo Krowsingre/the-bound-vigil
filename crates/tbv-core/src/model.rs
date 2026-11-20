@@ -173,6 +173,14 @@ pub struct BookPreview {
     pub pinned_at: Option<IsoUtc>,
 }
 
+/// One of the Top five favourites: `key` is "book:<id>" or "series:<name>".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TopFavourite {
+    pub key: String,
+    pub label: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionPreview {
