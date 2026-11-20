@@ -20,7 +20,7 @@ export function PictureViewer({ picture, onClose }: { picture: { src: string; al
   const closeBtn = useRef<HTMLButtonElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ dist: number; scale: number } | null>(null);
-  const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; ox: number; oy: number; onPicture: boolean } | null>(null);
 
   const zoomTo = (next: number) => {
     const s = clamp(next);
@@ -37,8 +37,12 @@ export function PictureViewer({ picture, onClose }: { picture: { src: string; al
       else if (e.key === "+" || e.key === "=") zoomTo(scale * STEP);
       else if (e.key === "-" || e.key === "−") zoomTo(scale / STEP);
       else if (e.key === "0") zoomTo(1);
-      else if (e.key === "Tab") return;
-      else return;
+      else {
+        // Other keys (arrows, Page Down, f…) mustn't turn pages or change focus mode behind
+        // the picture; Tab, Enter and Space still work the viewer's own buttons.
+        e.stopImmediatePropagation();
+        return;
+      }
       e.preventDefault();
       e.stopImmediatePropagation();
     };
@@ -81,7 +85,8 @@ export function PictureViewer({ picture, onClose }: { picture: { src: string; al
       pinch.current = { dist: Math.hypot(a.x - b.x, a.y - b.y), scale };
       drag.current = null;
     } else {
-      drag.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+      // Captured pointers report the stage as their target afterwards, so note now whether this began on the picture.
+      drag.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y, onPicture: !!(e.target as HTMLElement).closest("img") };
     }
   };
   const onPointerMove = (e: ReactPointerEvent) => {
@@ -102,7 +107,7 @@ export function PictureViewer({ picture, onClose }: { picture: { src: string; al
     if (pointers.current.size < 2) pinch.current = null;
     if (pointers.current.size === 0) drag.current = null;
     // A plain tap outside the picture, not zoomed in, closes it.
-    if (start && scale === 1 && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 6 && !(e.target as HTMLElement).closest("img")) onClose();
+    if (start && scale === 1 && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 6 && !start.onPicture) onClose();
   };
 
   const zoomOut = `Make smaller${keyHint(keys, " (−)") ?? ""}`;

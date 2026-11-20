@@ -688,7 +688,7 @@ export function Reader({
   }, [flush, onClose, fullscreen]);
 
   const [autoScrolling, setAutoScrolling] = useState(false);
-  const scrolling = (engine.fixed ? viewSettings.pageFlow : viewSettings.flow) === "scrolled";
+  const scrolling = engine.fixed ? viewSettings.pageFlow !== "paginated" : viewSettings.flow === "scrolled";
   // The edge fade: on computers in focus mode; on phones while the bars are away and the book scrolls
   // (turned pages would lose their first and last lines to it).
   const fading = settings.edgeFade && (flowing || (overlay && focus && scrolling));
