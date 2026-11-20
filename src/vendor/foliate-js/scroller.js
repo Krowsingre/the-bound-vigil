@@ -16,7 +16,8 @@ const KEEP = 3
 const ACTIVE_MS = 800
 
 export class Scroller extends HTMLElement {
-    static observedAttributes = ['gap', 'margin', 'max-inline-size']
+    // TBV: 'shift' moves the text sideways (px, + = right), see View.scrolled
+    static observedAttributes = ['gap', 'margin', 'max-inline-size', 'shift']
     #root = this.attachShadow({ mode: 'closed' })
     #observer = new ResizeObserver(() => requestAnimationFrame(() => this.#render()))
     #background
@@ -140,7 +141,8 @@ export class Scroller extends HTMLElement {
         this.#margin = margin
         // the same spacing sum as the paginator's, so the text sits alike in both modes
         const gap = -g / (g - 1) * width
-        return { flow: 'scrolled', width, height, margin, gap, columnWidth }
+        const shift = parseFloat(this.getAttribute('shift') ?? '0') || 0
+        return { flow: 'scrolled', width, height, margin, gap, columnWidth, shift }
     }
     #render() {
         if (!this.#entries.length) return

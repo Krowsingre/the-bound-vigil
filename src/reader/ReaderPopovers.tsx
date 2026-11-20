@@ -2,6 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { HighlightColor, WordDefinition, WordSense } from "../api/types";
 import { Icon } from "../components/Icon";
 import { isAndroid, isApp, isIOS } from "../api";
+
+/** iPhones and iPads (and Android, and the web version on a touch screen): only they have the scroll-into-focus switch. */
+const onTouchDevice = isIOS || isAndroid || (!isApp && typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches);
 import {
   FONTS,
   FADE_RANGE,
@@ -231,6 +234,12 @@ export function TextSettings({ settings, onChange, direction }: { settings: Read
         <input type="checkbox" checked={settings.justify} onChange={(e) => onChange({ justify: e.target.checked })} />
         Justify text (even right edge)
       </label>
+      {onTouchDevice && (
+        <label className="check-row">
+          <input type="checkbox" checked={settings.scrollFocus} onChange={(e) => onChange({ scrollFocus: e.target.checked })} />
+          Scrolling turns on focus mode
+        </label>
+      )}
       <label className="check-row">
         <input type="checkbox" checked={settings.edgeFade} onChange={(e) => onChange({ edgeFade: e.target.checked })} />
         Fade the edges in focus mode
@@ -400,6 +409,14 @@ export function ReadingAppearance({ settings, onChange, onClose, direction }: { 
             <span className="switch-knob" aria-hidden />
           </button>
         </div>
+        {onTouchDevice && (
+          <div className="look-section look-justify">
+            <span id="look-scroll-focus">Scrolling turns on focus mode</span>
+            <button type="button" role="switch" className="switch" aria-labelledby="look-scroll-focus" aria-checked={settings.scrollFocus} onClick={() => onChange({ scrollFocus: !settings.scrollFocus })}>
+              <span className="switch-knob" aria-hidden />
+            </button>
+          </div>
+        )}
         <div className="look-section look-justify">
           <span id="look-fade">Fade the edges in focus mode</span>
           <button type="button" role="switch" className="switch" aria-labelledby="look-fade" aria-checked={settings.edgeFade} onClick={() => onChange({ edgeFade: !settings.edgeFade })}>

@@ -47,6 +47,8 @@ export interface ReaderSettings {
   justify: boolean;
   /** Focus mode: the text fades out at the top and bottom edges. */
   edgeFade: boolean;
+  /** iPhones and iPads: reading on (scrolling or turning pages) goes into focus mode; a tap leaves it. */
+  scrollFocus: boolean;
   /** How much of the page height each fade covers, in percent. */
   fadeStrength: number;
   /** Read aloud: the voice chosen for each language ("en" → voiceURI). */
@@ -76,6 +78,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   theme: "auto",
   justify: false,
   edgeFade: true,
+  scrollFocus: true,
   fadeStrength: 16,
   followVoice: false,
   voices: {},
@@ -158,6 +161,7 @@ export function parseSettings(json: string | null): ReaderSettings {
     theme: oneOf(raw.theme, ["auto", "light", "paper", "dark", "vesper"], d.theme),
     justify: typeof raw.justify === "boolean" ? raw.justify : d.justify,
     edgeFade: typeof raw.edgeFade === "boolean" ? raw.edgeFade : d.edgeFade,
+    scrollFocus: typeof raw.scrollFocus === "boolean" ? raw.scrollFocus : d.scrollFocus,
     fadeStrength: typeof raw.fadeStrength === "number" && Number.isFinite(raw.fadeStrength)
       ? clamp(Math.round(raw.fadeStrength), FADE_RANGE.min, FADE_RANGE.max) : d.fadeStrength,
     voices: parseVoices(raw.voices),
