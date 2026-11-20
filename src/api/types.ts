@@ -1680,7 +1680,7 @@ export type BrowserEvent =
   | { kind: "key"; tab: string; key: "focusAddress" | "bookmarkPage" | "newTab" | "newPrivateTab" | "closeTab" | "nextTab" | "previousTab" | "reopenTab" | "appBack" | "appForward" | "pageBack" | "pageForward" };
 
 /** An article found on a page by reader mode (Mozilla's Readability). */
-/** Video reader view: the video on a Discover page, and where TBV's player plays it from. */
+/** Eidolon: a video on a Scry page, and where TBV's player plays it from. */
 export interface PageVideo {
   /** Empty when TBV can't play it. */
   src: string;
@@ -1690,6 +1690,10 @@ export interface PageVideo {
   page: string;
   /** Where the page had got to, in seconds. */
   time: number;
+  /** Every video on the page still there, in the page's order (Eidolon's Previous and Next). */
+  queue?: PageVideo[];
+  /** Which of `queue` this one is. */
+  at?: number;
 }
 
 export interface ReaderArticle {

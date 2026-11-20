@@ -64,8 +64,7 @@ export function AudiobookshelfSection() {
           <h2 id="discover-audiobookshelf-title">Audiobookshelf</h2>
         </span>
         <p className="discover-card-lede">
-          Sign in to your Audiobookshelf server here. Its libraries then show in Discover › Libram, where you can listen straight from the server or bring books
-          into TBV.
+          Sign in to your Audiobookshelf server here.
         </p>
         {!form && (
           <button type="button" className="btn btn-quiet" disabled={!isApp} onClick={() => (setError(null), setForm({ id: null, name: "", url: "", username: "", password: "" }))}>
