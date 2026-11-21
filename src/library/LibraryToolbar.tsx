@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { phoneChoiceShown } from "../home/bookActions";
 import type { ShelfCounts } from "../api/types";
 import { Icon } from "../components/Icon";
@@ -6,6 +6,7 @@ import { Menu, type MenuEntry } from "../components/Menu";
 import { formatLabel } from "../lib/queryBooks";
 import { languageName } from "../lib/language";
 import { PHONE_LIST, useNarrow } from "../lib/useNarrow";
+import { createPortal } from "react-dom";
 import { PageNumbers } from "./Pagination";
 import { excludeCount, NO_FILTERS, SORTS, TABS, type Layout, type SeriesGrouping, type LibraryTab, type LibraryView } from "./libraryView";
 
@@ -96,6 +97,11 @@ export function LibraryToolbar({
   const [mode, setMode] = useState<"include" | "exclude">("include");
   // iPhone, portrait iPad and a Duo that's closed or upright: Covers is one on/off button.
   const phoneList = useNarrow(PHONE_LIST);
+  const narrow = useNarrow();
+  // The top row's place at the left of the search bar, on a computer.
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => setSlot(document.getElementById("header-page-start")), []);
+  const headerSlot = narrow ? null : slot;
   const covers = view.layout === "grid";
   const [find, setFind] = useState({ series: "", tags: "" });
   const fold = (name: string) => {
@@ -224,8 +230,35 @@ export function LibraryToolbar({
     ]),
   ];
 
+  // Select goes straight into choosing, lit while on; pressing it again ends it.
+  const selectButton = (className: string) => (
+    <button
+      type="button"
+      className={`${className} select-button${selecting ? " is-lit" : ""}`}
+      aria-label="Select"
+      aria-pressed={selecting}
+      title="Select"
+      onClick={() => onSelecting(!selecting)}
+    >
+      <Icon name="check" size={16} />
+    </button>
+  );
+
   return (
     <div className="library-toolbar is-compact">
+      {/* On a computer, Select and then Find alike (words only) sit at the left of the
+          search bar in the top row (embre, 21 November). */}
+      {headerSlot && view.tab !== "collections" && createPortal(
+        <div className="header-library-tools">
+          {selectButton("header-tool")}
+          {onFindAlike && (
+            <button type="button" className="header-tool find-alike-button" title="Group books with similar names by the same author" onClick={onFindAlike}>
+              Find alike
+            </button>
+          )}
+        </div>,
+        headerSlot,
+      )}
       <div className="toolbar-controls">
         {/* Sort, Filter and Select are one joined group, like the layout buttons; on a phone or a
             portrait iPad, Covers joins it as a fourth button (embre, 20 November). */}
@@ -263,19 +296,7 @@ export function LibraryToolbar({
           }
           items={filterItems}
         />
-        {view.tab !== "collections" && (
-          // Select goes straight into choosing, lit while on; pressing it again ends it.
-          <button
-            type="button"
-            className={`toolbar-button select-button${selecting ? " is-lit" : ""}`}
-            aria-label="Select"
-            aria-pressed={selecting}
-            title="Select"
-            onClick={() => onSelecting(!selecting)}
-          >
-            <Icon name="check" size={16} />
-          </button>
-        )}
+        {view.tab !== "collections" && !headerSlot && selectButton("toolbar-button")}
         {view.tab !== "collections" && phoneList && (
           // Covers on shows the covers; off shows the plain list.
           <button
@@ -293,11 +314,7 @@ export function LibraryToolbar({
         {view.tab === "collections" && <span className="tabs-menu">{tabName(view.tab)}</span>}
         {view.tab !== "collections" && (
           <>
-            {onFindAlike && !phoneList && (
-              <button type="button" className="toolbar-labelled find-alike-button" title="Group books with similar names by the same author" onClick={onFindAlike}>
-                <Icon name="search" size={16} /> Find alike
-              </button>
-            )}
+
             <span className="toolbar-divider" aria-hidden />
             {/* A shelf other than everything is named here; it's chosen in Filter. */}
             {(view.tab !== "all" || view.location === "on_device") && (
