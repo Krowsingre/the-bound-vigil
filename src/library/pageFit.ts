@@ -2,6 +2,7 @@
 // (embre, 21 November): no fixed 24, and the Pinned and Last read cards count
 // inside the page instead of being added on top.
 import { useEffect, useState, type RefObject } from "react";
+import { pageScroller } from "../lib/pageScroller";
 import { PAGE_SIZE } from "./libraryView";
 
 const KEY = "tbv.archive.pageFit.";
@@ -72,7 +73,7 @@ export function usePageFit(root: RefObject<HTMLElement | null>, layout: string, 
   useEffect(() => setFit(remembered(layout)), [layout]);
   useEffect(() => {
     if (!paged) return;
-    const content = document.querySelector<HTMLElement>(".content");
+    const content = pageScroller(root.current);
     if (!content) return;
     const measure = () => {
       if (!root.current) return;

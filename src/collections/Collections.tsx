@@ -203,11 +203,11 @@ export function Collections({
     );
   }, []);
 
-  // Something is always selected for the side panel: the first pinned one to start.
-  const firstPinned = overview?.pinned[0]?.id;
+  // Something is always selected for the side panel, so it's never blank: In progress
+  // to start (embre, 21 November).
   useEffect(() => {
-    if (!selected && firstPinned) setSelected({ kind: "collection", id: firstPinned });
-  }, [selected, firstPinned]);
+    if (!selected) setSelected({ kind: "smart", smart: "in_progress" });
+  }, [selected]);
 
   const changePrefs = (change: Partial<Prefs>) =>
     setPrefs((p) => {
@@ -329,12 +329,13 @@ export function Collections({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overview, tab, q, prefs.sort]);
   const smart = useMemo(() => {
-    const list = overview?.smart ?? [];
+    // Sent to device is gone from the computer (embre, 21 November); phones keep it until the mobile update.
+    const list = (overview?.smart ?? []).filter((s) => !wide || s.kind !== "send_to_device");
     if (prefs.smartSort === "name") return [...list].sort((a, b) => SMART_INFO[a.kind].name.localeCompare(SMART_INFO[b.kind].name));
     if (prefs.smartSort === "size") return [...list].sort((a, b) => b.count - a.count);
     if (prefs.smartSort === "rating") return [...list].sort(byRating);
     return orderSmart(list, smartOrder);
-  }, [overview, prefs.smartSort, smartOrder]);
+  }, [overview, prefs.smartSort, smartOrder, wide]);
 
   const reorderSmart = useReorder(
     smart.map((s) => s.kind),
@@ -552,7 +553,9 @@ export function Collections({
                       smart={s}
                       selected={isSel(ref)}
                       reorder={reorderSmart(s.kind)}
-                      onSelect={() => pick(ref)}
+                      // With the side panel, one click shows a smart compendium there and a
+                      // double-click opens it; your own collections open on one click (embre, 21 November).
+                      onSelect={() => (wide ? setSelected(ref) : pick(ref))}
                       onOpen={() => onOpen(ref)}
                     />
                   );

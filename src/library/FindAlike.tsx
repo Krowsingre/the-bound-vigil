@@ -66,7 +66,12 @@ const books = (n: number) => `${n.toLocaleString()} ${n === 1 ? "book" : "books"
 const numberText = (n: number | null | undefined) => (n == null ? "" : String(n));
 const sameGroup = (a: AlikeGroup, keys: string[]) => a.keys.some((k) => keys.includes(k));
 
-export function FindAlike({ kind, onClose, onChanged }: { kind: ItemKind; onClose: () => void; onChanged: () => void }) {
+/**
+ * `from`: the books chosen when Find alike opened, or the one book its menu
+ * was opened from. The whole library is still searched; only the groups with
+ * one of these books in them are shown (embre, 21 November).
+ */
+export function FindAlike({ kind, from = [], onClose, onChanged }: { kind: ItemKind; from?: BookPreview[]; onClose: () => void; onChanged: () => void }) {
   const toast = useToast();
   const [groups, setGroups] = useState<AlikeGroup[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +114,12 @@ export function FindAlike({ kind, onClose, onChanged }: { kind: ItemKind; onClos
     onChanged();
   };
   const shownBooks = (g: AlikeGroup) => g.books.filter((b) => !notHere.has(`${g.keys[0]}|${b.book.id}`));
-  const shown = (groups ?? []).filter((g) => shownBooks(g).length >= 2);
+  const [startFrom, setStartFrom] = useState(from);
+  const fromIds = useMemo(() => new Set(startFrom.map((b) => b.id)), [startFrom]);
+  const shown = (groups ?? []).filter(
+    (g) => shownBooks(g).length >= 2 && (!fromIds.size || shownBooks(g).some((b) => fromIds.has(b.book.id))),
+  );
+  const fromText = startFrom.length === 1 ? `“${startFrom[0].title}”` : `the ${books(startFrom.length)} chosen`;
   const group = open ? shown.find((g) => sameGroup(g, open)) ?? null : null;
 
   return (
@@ -155,13 +165,23 @@ export function FindAlike({ kind, onClose, onChanged }: { kind: ItemKind; onClos
                 : ""}
               .
             </p>
+            {!!startFrom.length && (
+              <p className="alike-from">
+                <span>Alike to {fromText}, from the whole library.</span>
+                <button type="button" className="btn btn-quiet btn-small" onClick={() => setStartFrom([])}>Show every group</button>
+              </p>
+            )}
             {showOptions && <OptionsPanel options={options} onChange={setOptions} />}
             {error ? (
               <p className="form-error" role="alert">{error}</p>
             ) : !groups ? (
               <div className="library-loading" aria-busy="true" aria-label="Looking for alike books" />
             ) : shown.length === 0 ? (
-              <p className="muted">Nothing alike found. Books that share what they're matched by show up here.</p>
+              <p className="muted">
+                {startFrom.length
+                  ? `Nothing alike found for ${fromText}. Try other details under Options.`
+                  : "Nothing alike found. Books that share what they're matched by show up here."}
+              </p>
             ) : (
               <>
                 <p className="muted">
