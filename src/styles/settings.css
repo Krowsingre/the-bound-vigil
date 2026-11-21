@@ -2405,3 +2405,34 @@ kbd {
 .profile-code-text {
   white-space: nowrap;
 }
+
+/* Preferences › Library › Deleted books: books TBV remembers, each with Forget. */
+.deleted-books {
+  margin-top: 12px;
+}
+.deleted-books-search {
+  width: 100%;
+  margin-bottom: 8px;
+}
+.deleted-books-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.deleted-books-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.deleted-books-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.deleted-books-text > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

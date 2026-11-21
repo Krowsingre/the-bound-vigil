@@ -38,7 +38,7 @@ export const KINDS: Kind[] = [
     name: "book",
     table: "books",
     keys: ["id"],
-    cols: ["title", "authors", "format", "file_size", "synopsis", "publisher", "language", "series", "series_index", "added_at", "deleted_at", "isbn"],
+    cols: ["title", "authors", "format", "file_size", "synopsis", "publisher", "language", "series", "series_index", "added_at", "deleted_at", "isbn", "forgotten_at"],
   },
   { name: "audiobook", table: "audiobooks", keys: ["book_id"], cols: ["narrators", "duration_ms", "chapters", "parts", "ebook_id", "updated_at"] },
   { name: "read_along", table: "read_along", keys: ["ebook_id", "audiobook_id"], cols: ["timing", "updated_at"] },

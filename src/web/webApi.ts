@@ -1320,7 +1320,7 @@ export async function webApi(): Promise<Api> {
     deleteBook: async (bookId) => {
       const b = find(bookId);
       const at = now();
-      const changes: [string, Row][] = [["book", { ...b, deleted_at: at }]];
+      const changes: [string, Row][] = [["book", { ...b, deleted_at: at, forgotten_at: null }]];
       for (const a of library.rows("annotations"))
         if (a.book_id === bookId && !a.deleted_at) changes.push(["annotation", { ...a, deleted_at: at, updated_at: at }]);
       for (const m of library.rows("collection_books"))
@@ -1351,9 +1351,19 @@ export async function webApi(): Promise<Api> {
     // Out of the library everywhere; notes, tags, collections and the cloud file wait for it to come back.
     removeFromLibrary: async (bookId) => {
       const b = find(bookId);
-      await library.writeAll([["book", { ...b, deleted_at: now() }]]);
+      await library.writeAll([["book", { ...b, deleted_at: now(), forgotten_at: null }]]);
       await db.deleteFile(`books/${bookId.replace(/^sha256:/, "")}.${b.format}`).catch(() => undefined);
       await refreshDownloaded();
+    },
+    deletedBooks: async () =>
+      library
+        .rows("books")
+        .filter((b) => b.deleted_at && !b.forgotten_at)
+        .sort((a, b) => String(b.deleted_at).localeCompare(String(a.deleted_at)))
+        .map((b) => ({ id: String(b.id), title: String(b.title), authors: listOf(b.authors as string | null), format: String(b.format), deletedAt: String(b.deleted_at) })),
+    forgetDeleted: async (bookId) => {
+      const b = library.rows("books").find((r) => r.id === bookId && r.deleted_at && !r.forgotten_at);
+      if (b) await library.writeAll([["book", { ...b, forgotten_at: now() }]]);
     },
     removeDownload: async (bookId) => {
       const b = find(bookId);
