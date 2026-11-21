@@ -316,7 +316,7 @@ impl Library {
             "SELECT a.id, a.book_id, COALESCE(o.value, b.title), a.kind, a.excerpt, a.note, a.locator, a.updated_at
              FROM annotations a JOIN books b ON b.id = a.book_id
              LEFT JOIN metadata_overrides o ON o.book_id = b.id AND o.field = 'title'
-             WHERE a.deleted_at IS NULL AND b.deleted_at IS NULL AND a.kind IN ('note', 'highlight')
+             WHERE a.deleted_at IS NULL AND b.deleted_at IS NULL AND b.hidden_at IS NULL AND a.kind IN ('note', 'highlight')
              ORDER BY a.updated_at DESC LIMIT ?1",
         )?;
         let rows = statement.query_map(params![ANNOTATIONS_LIMIT], |r| {

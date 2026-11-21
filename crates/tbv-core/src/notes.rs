@@ -85,7 +85,7 @@ impl Library {
                     b.id, COALESCE(o_title.value, f_title.value, b.title), COALESCE(o_authors.value, f_authors.value, b.authors),
                     lf.cover_path, a.pinned_at, a.tags
              FROM annotations a
-             JOIN books b ON b.id = a.book_id AND b.deleted_at IS NULL
+             JOIN books b ON b.id = a.book_id AND b.deleted_at IS NULL AND b.hidden_at IS NULL
              LEFT JOIN local_files lf ON lf.book_id = b.id
              LEFT JOIN metadata_overrides o_title ON o_title.book_id = b.id AND o_title.field = 'title'
              LEFT JOIN metadata_overrides o_authors ON o_authors.book_id = b.id AND o_authors.field = 'authors'
