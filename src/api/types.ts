@@ -638,6 +638,38 @@ export interface DetailField {
   edited: string | null;
 }
 
+/** One book of a Find alike group. */
+export interface AlikeBook {
+  book: BookPreview;
+  /** The number its title gives it ("Book 3", "#2"). */
+  guess: number | null;
+  /** Another book of the group that is the same book. */
+  sameAs: string | null;
+  /** The audiobook paired with this ebook. */
+  pairedAudio: string | null;
+}
+
+/** The details Find alike can match by, or look only at. */
+export type AlikeField = "author" | "title" | "series" | "publisher" | "genre" | "tag" | "narrator" | "language" | "year";
+
+/** How Find alike searches (embre, 21 November). */
+export interface AlikeOptions {
+  /** The details books must share to be grouped; author and title start when empty. */
+  matchBy: AlikeField[];
+  /** Only books with these values are looked at (any of a list's values). */
+  only: { field: AlikeField; value: string }[];
+}
+
+/** Find alike: books by one author with alike titles, and the series they're in. */
+export interface AlikeGroup {
+  /** Every key the group was found by; keeping a book out stores them. */
+  keys: string[];
+  /** The series most of its books are in, or the words their titles share. */
+  name: string;
+  author: string;
+  books: AlikeBook[];
+}
+
 export interface BookDetails {
   book: BookPreview;
   fields: DetailField[];

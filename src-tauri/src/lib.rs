@@ -21,6 +21,7 @@ mod home;
 mod imports;
 mod license;
 mod lining;
+mod alike;
 mod hidden;
 mod look_up;
 #[cfg(desktop)]
@@ -1849,40 +1850,43 @@ async fn watch_find_book(title: String, author: String) -> CommandResult<Option<
 async fn find_series_books(state: State<'_, AppLibrary>, name: String, author: String) -> CommandResult<tbv_core::series::SeriesReview> {
     let library = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        use tbv_core::series::{search_audible_series, SeriesEntry};
-        use tbv_core::series_sources::{search_google_series, search_isfdb_series, search_wikidata_series};
-        type Found = tbv_core::Result<Vec<SeriesEntry>>;
-        let (name, author) = (name.as_str(), author.as_str());
-        // Earlier sources' numbers win when they disagree.
-        let results: Vec<Found> = std::thread::scope(|scope| {
-            let hardcover = scope.spawn(|| hardcover::series(&library, name).map(Option::unwrap_or_default));
-            let others: Vec<_> = [
-                search_wikidata_series as fn(&str, &str) -> Found,
-                search_isfdb_series,
-                search_audible_series,
-                search_google_series,
-            ]
-            .into_iter()
-            .map(|search| scope.spawn(move || search(name, author)))
-            .collect();
-            std::iter::once(hardcover)
-                .chain(others)
-                .map(|h| h.join().unwrap_or_else(|_| Err(tbv_core::Error::Offline("a search stopped unexpectedly".into()))))
-                .collect()
-        });
-        let problem = results.iter().all(Result::is_err).then(|| results.iter().find_map(|r| r.as_ref().err().map(ToString::to_string))).flatten();
-        let lists: Vec<Vec<SeriesEntry>> = results.into_iter().map(Result::unwrap_or_default).collect();
-        let books = tbv_core::series::merge(lists);
-        if books.is_empty() {
-            return Err(tbv_core::Error::Unsuitable(
-                problem.unwrap_or_else(|| format!("No list of the books in {name} was found online.")),
-            ));
-        }
-        hardcover::lock(&library)?.save_series_found(name, books)
+        let books = search_series_online(&library, &name, &author)?;
+        hardcover::lock(&library)?.save_series_found(&name, books)
     })
     .await
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())
+}
+
+/// A series' books as listed online, from every source at once; earlier sources'
+/// numbers win when they disagree. An error when no source lists any.
+pub(crate) fn search_series_online(library: &Arc<Mutex<Library>>, name: &str, author: &str) -> tbv_core::Result<Vec<tbv_core::series::SeriesEntry>> {
+    use tbv_core::series::{search_audible_series, SeriesEntry};
+    use tbv_core::series_sources::{search_google_series, search_isfdb_series, search_wikidata_series};
+    type Found = tbv_core::Result<Vec<SeriesEntry>>;
+    let results: Vec<Found> = std::thread::scope(|scope| {
+        let hardcover = scope.spawn(|| hardcover::series(library, name).map(Option::unwrap_or_default));
+        let others: Vec<_> = [
+            search_wikidata_series as fn(&str, &str) -> Found,
+            search_isfdb_series,
+            search_audible_series,
+            search_google_series,
+        ]
+        .into_iter()
+        .map(|search| scope.spawn(move || search(name, author)))
+        .collect();
+        std::iter::once(hardcover)
+            .chain(others)
+            .map(|h| h.join().unwrap_or_else(|_| Err(tbv_core::Error::Offline("a search stopped unexpectedly".into()))))
+            .collect()
+    });
+    let problem = results.iter().all(Result::is_err).then(|| results.iter().find_map(|r| r.as_ref().err().map(ToString::to_string))).flatten();
+    let lists: Vec<Vec<SeriesEntry>> = results.into_iter().map(Result::unwrap_or_default).collect();
+    let books = tbv_core::series::merge(lists);
+    if books.is_empty() {
+        return Err(tbv_core::Error::Unsuitable(problem.unwrap_or_else(|| format!("No list of the books in {name} was found online."))));
+    }
+    Ok(books)
 }
 
 #[tauri::command]
@@ -2453,6 +2457,12 @@ pub fn run() {
             hidden::device_unlock_kind,
             hidden::device_unlock,
             hidden::series_here,
+            alike::find_alike,
+            alike::keep_out_of_alike,
+            alike::kept_out_of_alike,
+            alike::include_in_alike,
+            alike::kept_out_books,
+            alike::series_list_online,
             save_copies,
             merge_reading,
             keep_together,
