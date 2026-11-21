@@ -129,8 +129,11 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
     );
     if (!music) {
       // The series and its number are one row here, set like in Edit details.
+      // A series you set yourself (name, number or list) stays unticked: replacing it is your choice.
+      const edited = fields.some((x) => (x.field === "series" || x.field === "series_index" || x.field === "series_list") && x.edited !== null);
       if (ticked.has("series_index")) ticked.add("series");
       ticked.delete("series_index");
+      if (edited) ticked.delete("series");
       setSeriesRows(v.series ? rowsOf([{ name: v.series, number: v.series_index ? Number(v.series_index) : null }]) : []);
     }
     setKeep(ticked);

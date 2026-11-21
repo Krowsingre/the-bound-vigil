@@ -71,6 +71,27 @@ it("sets the series found with the same rows as Edit details, kept as your own e
   ]);
 });
 
+it("leaves the series unticked when you set it yourself", async () => {
+  const { api } = await import("../api");
+  const before = api.bookDetails;
+  (api as { bookDetails: unknown }).bookDetails = async () => ({
+    fields: [
+      { field: "series", own: null, fetched: null, edited: "Mine" },
+      { field: "series_index", own: "4", fetched: null, edited: null },
+    ],
+  });
+  searchOnline.mockResolvedValue([{
+    id: "one", source: "google", title: "Catalogue title", authors: [],
+    series: "Mine", seriesIndex: "1", synopsis: null, genres: [], publisher: null,
+    published: null, language: null, isbn: null, coverUrl: null,
+  } satisfies Found]);
+  const book = { id: "book", title: "Local title", authors: [], format: "epub" } as unknown as BookPreview;
+  render(<FetchDetails book={book} onClose={vi.fn()} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Catalogue title/ }));
+  expect(screen.getByRole("checkbox", { name: "Series" })).not.toBeChecked();
+  (api as { bookDetails: unknown }).bookDetails = before;
+});
+
 it("goes through several chosen books one at a time, kept or skipped", async () => {
   const { DetailsHost } = await import("./DetailsHost");
   const { askFetchManyDetails } = await import("./openDetails");
