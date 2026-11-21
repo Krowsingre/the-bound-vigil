@@ -328,6 +328,9 @@ const covered = () => !!document.querySelector(".dialog-backdrop, [role=menu], [
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
 const clean = (e: unknown) => String(e).replace(/^Error: /, "");
 
+/** Where the tab row was scrolled to, kept while TBV is open. */
+const stripPlace = { tabs: 0, pins: 0 };
+
 export function Browser({
   onOpenBook,
   search,
@@ -1503,6 +1506,22 @@ export function Browser({
     </div>
   );
   const strip = useRef<HTMLDivElement>(null);
+  // Scry is closed while another page shows: back on it, the tab row is where it was left,
+  // not scrolled afresh to put the open tab at the far right (embre, 21 November).
+  useLayoutEffect(() => {
+    const list = strip.current;
+    if (!list) return;
+    const pins = () => list.querySelector<HTMLElement>(".browser-pinned-tabs");
+    list.scrollLeft = stripPlace.tabs;
+    const pinned = pins();
+    if (pinned) pinned.scrollLeft = stripPlace.pins;
+    const keep = () => {
+      stripPlace.tabs = list.scrollLeft;
+      stripPlace.pins = pins()?.scrollLeft ?? 0;
+    };
+    list.addEventListener("scroll", keep, { capture: true, passive: true });
+    return () => list.removeEventListener("scroll", keep, { capture: true });
+  }, [phoneBar]);
   useLayoutEffect(() => {
     const list = strip.current;
     if (!list) return;
