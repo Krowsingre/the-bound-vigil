@@ -805,6 +805,12 @@ const MIGRATIONS: &[&str] = &[
     // file again is then a plain import, neither skipped nor put in Previously
     // deleted. Synced with the book, so every device forgets it.
     "ALTER TABLE books ADD COLUMN forgotten_at TEXT;",
+    // v50: hidden books (embre, 21 November), synced (book_hidden), and the
+    // Hidden collection's password as a salted hash, synced (hidden_lock).
+    r#"
+    ALTER TABLE books ADD COLUMN hidden_at TEXT;
+    CREATE TABLE hidden_lock (id TEXT PRIMARY KEY, salt TEXT NOT NULL, hash TEXT NOT NULL, rounds INTEGER NOT NULL, updated_at TEXT NOT NULL);
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

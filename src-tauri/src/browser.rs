@@ -1618,13 +1618,39 @@ mod windows {
         let mut reason = COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON::default();
         let Some(operation) = operation else { return (None, false) };
         if unsafe { operation.InterruptReason(&mut reason) }.is_err() { return (None, false) }
+        // Every reason Windows' browser gives is named, so a failed download says why (embre, 21 November).
         let (message, security) = match reason {
             COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_MALICIOUS => ("Windows reported the file as potentially unsafe.", true),
-            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_BLOCKED_BY_POLICY | COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_SECURITY_CHECK_FAILED
-                | COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_ACCESS_DENIED => ("A Windows security check or policy stopped the download.", true),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_BLOCKED_BY_POLICY => ("A Windows policy blocked this download.", true),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_SECURITY_CHECK_FAILED => ("A Windows security check stopped the download.", true),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_ACCESS_DENIED => ("TBV wasn't allowed to save the file in its downloads folder.", true),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_FAILED => ("The file couldn't be saved on this computer.", false),
             COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_NO_SPACE => ("The device ran out of disk space.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_NAME_TOO_LONG => ("The file's name was too long to save.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_TOO_LARGE => ("The file is too large to save on this computer.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_TRANSIENT_ERROR => ("Saving the file briefly failed. Trying again may work.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_TOO_SHORT => ("The file arrived shorter than the site said it would be.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_FILE_HASH_MISMATCH => ("The file arrived damaged: it didn't match what the site sent.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_NETWORK_FAILED => ("The network connection failed during the download.", false),
             COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_NETWORK_TIMEOUT => ("The download timed out.", false),
-            _ => ("The browser interrupted this transfer.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_NETWORK_DISCONNECTED => ("The internet connection dropped during the download.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_NETWORK_SERVER_DOWN => ("The site's server stopped answering.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_NETWORK_INVALID_REQUEST => ("The site wouldn't accept the download request.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_SERVER_FAILED => ("The site's server had an error.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_SERVER_NO_RANGE => ("The site couldn't carry on the download from where it stopped.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_SERVER_BAD_CONTENT => ("The site doesn't have the file any more, or sent something else.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_SERVER_UNAUTHORIZED => ("The site asked for a sign-in before it would send the file.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_SERVER_CERTIFICATE_PROBLEM => ("The site's security certificate had a problem.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_SERVER_FORBIDDEN => ("The site refused to send the file.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_SERVER_UNEXPECTED_RESPONSE => ("The site sent an answer the browser didn't expect.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_SERVER_CONTENT_LENGTH_MISMATCH => ("The site sent a different amount of data than it said it would.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_SERVER_CROSS_ORIGIN_REDIRECT => ("The site sent the download on to another site, which the browser doesn't allow.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_USER_CANCELED => ("The download was cancelled.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_USER_SHUTDOWN => ("TBV closed before the download finished.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_USER_PAUSED => ("The download was paused.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_DOWNLOAD_PROCESS_CRASHED => ("The browser's download process crashed.", false),
+            COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_NONE => ("The download stopped without the browser giving a reason.", false),
+            other => return (Some(format!("The browser stopped the download (reason {}).", other.0)), false),
         };
         (Some(message.into()), security)
     }

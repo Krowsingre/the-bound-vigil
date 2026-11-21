@@ -201,6 +201,8 @@ impl Filters<'_> {
 
 impl Library {
     pub fn library_page(&self, query: &LibraryQuery) -> Result<LibraryPage> {
+        // The Hidden collection shows only hidden books; every other list leaves them out.
+        let book_from = if query.hidden { crate::home::book_from_hidden() } else { BOOK_FROM.to_string() };
         let mut conditions: Vec<String> = Vec::new();
         let mut values: Vec<Value> = Vec::new();
         let mut search_rank: Option<String> = None;
@@ -325,7 +327,7 @@ impl Library {
         );
         let total_expr = if query.group_series { format!("COUNT(DISTINCT {group})") } else { "COUNT(*)".into() };
         let total: u32 = self.conn.query_row(
-            &format!("SELECT {total_expr} {BOOK_FROM} {filter}"),
+            &format!("SELECT {total_expr} {book_from} {filter}"),
             params_from_iter(values.iter()),
             |r| r.get(0),
         )?;
@@ -334,8 +336,14 @@ impl Library {
             0 => DEFAULT_PAGE_SIZE,
             n => n.min(MAX_PAGE_SIZE),
         };
-        let page = query.page.min(total.saturating_sub(1) / page_size);
-        let limit = format!("LIMIT {page_size} OFFSET {}", page * page_size);
+        // The cards leading the first page count as its first places.
+        let lead = query.lead_slots.min(page_size - 1);
+        let page = query.page.min((total + lead).saturating_sub(1) / page_size);
+        let limit = if page == 0 {
+            format!("LIMIT {} OFFSET 0", page_size - lead)
+        } else {
+            format!("LIMIT {page_size} OFFSET {}", page * page_size - lead)
+        };
         let mut series_counts = std::collections::BTreeMap::new();
         let books = if query.group_series {
             let pin_rank = if query.pinned_first { "b.pinned_at IS NULL" } else { "0" };
@@ -349,12 +357,12 @@ impl Library {
                     SELECT b.id, {pin_rank} AS pin_rank, {rank} AS series_rank, {group} AS stack,
                            ROW_NUMBER() OVER (PARTITION BY {group} ORDER BY {order}) AS pick,
                            ROW_NUMBER() OVER (ORDER BY {position_order}) AS position
-                    {BOOK_FROM} {filter}
+                    {book_from} {filter}
                 ), page AS (
                     SELECT id, stack, position, pin_rank, series_rank FROM ranked WHERE pick = 1 ORDER BY pin_rank, series_rank, position {limit}
                 )
                 {BOOK_COLUMNS}, (SELECT 1 FROM page WHERE page.id = b.id AND stack LIKE 'series:%') AS series_marker
-                {BOOK_FROM} AND b.id IN (SELECT id FROM page)
+                {book_from} AND b.id IN (SELECT id FROM page)
                 ORDER BY (SELECT pin_rank FROM page WHERE page.id = b.id),
                          (SELECT series_rank FROM page WHERE page.id = b.id),
                          (SELECT position FROM page WHERE page.id = b.id)"
@@ -373,7 +381,7 @@ impl Library {
             }
             books
         } else {
-            let mut statement = self.conn.prepare(&format!("{BOOK_COLUMNS} {BOOK_FROM} {filter} ORDER BY {order} {limit}"))?;
+            let mut statement = self.conn.prepare(&format!("{BOOK_COLUMNS} {book_from} {filter} ORDER BY {order} {limit}"))?;
             let rows = statement.query_map(params_from_iter(values.iter()), book_from_row)?;
             rows.collect::<std::result::Result<_, _>>()?
         };
@@ -519,7 +527,7 @@ impl Library {
                     COALESCE(SUM(status = 'read'), 0),
                     COALESCE(SUM(status = 'unread'), 0),
                     (SELECT COUNT(*) FROM collections WHERE deleted_at IS NULL AND kind != 'shelf')
-             FROM books b WHERE deleted_at IS NULL AND same_as IS NULL{only}"),
+             FROM books b WHERE deleted_at IS NULL AND same_as IS NULL AND hidden_at IS NULL{only}"),
             [],
             |r| {
                 Ok(ShelfCounts {
@@ -730,7 +738,7 @@ impl Library {
 
     fn check_archive_pin_limit(conn: &rusqlite::Connection) -> Result<()> {
         let count: u32 = conn.query_row(
-            "SELECT (SELECT COUNT(*) FROM books WHERE pinned_at IS NOT NULL AND deleted_at IS NULL AND same_as IS NULL)
+            "SELECT (SELECT COUNT(*) FROM books WHERE pinned_at IS NOT NULL AND deleted_at IS NULL AND same_as IS NULL AND hidden_at IS NULL)
                   + (SELECT COUNT(*) FROM archive_series_pins WHERE pinned_at IS NOT NULL)",
             [], |row| row.get(0),
         )?;
@@ -940,6 +948,31 @@ mod tests {
             (0, 0, DEFAULT_PAGE_SIZE)
         );
         assert_eq!(page.counts, ShelfCounts::default());
+    }
+
+    #[test]
+    fn cards_leading_the_first_page_take_its_first_places() {
+        let (dir, mut library) = open_temp_library();
+        for t in ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8"] {
+            add(&mut library, dir.path(), t, "X");
+        }
+        let page = |n| {
+            library
+                .library_page(&query(|q| {
+                    q.sort = SortOrder::Title;
+                    q.page = n;
+                    q.page_size = 3;
+                    q.lead_slots = 2;
+                }))
+                .unwrap()
+        };
+        // Two cards and one book, then three books a page, with nothing skipped or shown twice.
+        assert_eq!(titles(&page(0)), ["A1"]);
+        assert_eq!(titles(&page(1)), ["A2", "A3", "A4"]);
+        assert_eq!(titles(&page(2)), ["A5", "A6", "A7"]);
+        assert_eq!(titles(&page(3)), ["A8"]);
+        // Past the end: the last page.
+        assert_eq!(page(9).page, 3);
     }
 
     #[test]

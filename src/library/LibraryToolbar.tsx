@@ -298,7 +298,7 @@ export function LibraryToolbar({
               <Menu
                 label={continuous ? "Browsing mode: Continuous scroll" : "Browsing mode: Paged"}
                 className="toolbar-button"
-                trigger={<><Icon name="rows" size={16} /><Icon name="chevronDown" size={12} className="toolbar-chevron" /></>}
+                trigger={<><Icon name={continuous ? "layers" : "bookOpen"} size={16} /><Icon name="chevronDown" size={12} className="toolbar-chevron" /></>}
                 items={[
                   { label: "Paged", checked: !continuous, onSelect: () => onContinuous(false) },
                   { label: "Continuous scroll", checked: continuous, onSelect: () => onContinuous(true) },

@@ -1983,3 +1983,27 @@ fn looking_at_a_book_records_nothing_until_it_opens() {
     assert_eq!(before.last_opened_at, after.last_opened_at);
     assert_eq!(a.lib().sync_overview().unwrap().waiting_to_send, 0, "nothing to sync");
 }
+
+#[test]
+fn hidden_books_and_their_password_reach_every_device() {
+    let cloud = FakeRemote::default();
+    let a = Device::new();
+    let b = Device::new();
+    let book = a.import("Secret Garden");
+    a.sync(&cloud);
+    b.sync(&cloud);
+    tick();
+    assert_eq!(a.lib().set_hidden(std::slice::from_ref(&book), true).unwrap(), 1);
+    let lock = crate::hidden::HiddenLock { salt: "ab".repeat(16), hash: "cd".repeat(32), rounds: 210_000 };
+    a.lib().set_hidden_lock(&lock).unwrap();
+    a.sync(&cloud);
+    b.sync(&cloud);
+    assert_eq!(b.lib().hidden_count().unwrap(), 1);
+    assert_eq!(b.lib().hidden_lock().unwrap(), Some(lock));
+
+    tick();
+    b.lib().set_hidden(&[book], false).unwrap();
+    b.sync(&cloud);
+    a.sync(&cloud);
+    assert_eq!(a.lib().hidden_count().unwrap(), 0);
+}

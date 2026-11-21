@@ -59,6 +59,16 @@ export interface DeletedBook {
   deletedAt: string;
 }
 
+/** The Hidden collection's password, kept only as a salted PBKDF2-SHA256 hash (hex). */
+export interface HiddenLock {
+  salt: string;
+  hash: string;
+  rounds: number;
+}
+
+/** What opens the Hidden collection besides its password, where the device has it. */
+export type DeviceUnlockKind = "faceId" | "touchId" | "opticId" | "windowsHello";
+
 export interface BookPreview {
   audioType?: AudioType | null;
   id: BookId;
@@ -535,6 +545,11 @@ export interface LibraryQuery {
   /** Zero-based. */
   page: number;
   pageSize: number;
+  /** Places on the first page taken by cards that aren't books (Pinned, Last read):
+   *  the first page holds that many fewer books, and later pages start that much earlier. */
+  leadSlots?: number;
+  /** Only hidden books: the Hidden collection, once it's open. */
+  hidden?: boolean;
 }
 
 /** The Library filters turned round: books with any of these are left out. */

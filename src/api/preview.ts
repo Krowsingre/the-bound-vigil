@@ -19,6 +19,8 @@ import { previewWriting } from "../preview/writing";
 import { previewKindle } from "../preview/kindle";
 import { browseStub } from "../preview/browse";
 import type {
+  DeviceUnlockKind,
+  HiddenLock,
   BookLocation,
   StoredFile,
   Audiobook,
@@ -390,7 +392,12 @@ const SAMPLE_AVATAR =
   encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x2="0" y2="1"><stop offset="0" stop-color="#8fa3b5"/><stop offset="1" stop-color="#2f3a44"/></linearGradient></defs><rect width="64" height="64" fill="url(#g)"/><circle cx="32" cy="26" r="11" fill="#e6e3de"/><path d="M12 64c2-14 10-20 20-20s18 6 20 20z" fill="#e6e3de"/></svg>`,
   );
-const library = () => (empty ? [] : books);
+/** Hidden books, out of every list until the Hidden collection is opened. */
+const hiddenIds = new Set<string>();
+let hiddenLockSample: HiddenLock | null = null;
+// `?unlock=faceId` (or touchId, windowsHello) tries the Hidden collection's shortcut button.
+const unlockSample = params.get("unlock") as DeviceUnlockKind | null;
+const library = () => (empty ? [] : books.filter((b) => !hiddenIds.has(b.id)));
 const collections = previewCollections(library, empty);
 let annotations: Annotation[] = empty ? [] : sampleAnnotations(books);
 const notes = previewNotes(library, { get: () => annotations, set: (list) => (annotations = list) }, empty);
@@ -752,7 +759,8 @@ export function previewApi(): Api {
     },
     setBookStatus: async (bookId, status) =>
       update(bookId, status === "unread" ? { status, totalProgression: null } : { status }),
-    getLibrary: async (query) => queryBooks(library(), query, collections.previews().length),
+    getLibrary: async (query) =>
+      queryBooks(query.hidden ? books.filter((b) => hiddenIds.has(b.id)) : library(), query, collections.previews().length),
     getCollections: async () => collections.previews(),
     setFavorite: async (bookId, favorite) => {
       if (!favorite) topFavourites.delete(`book:${bookId}`);
@@ -1105,7 +1113,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.157.0", version: "0.157.0", notes: "The Bound Vigil 0.157.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.158.0", version: "0.158.0", notes: "The Bound Vigil 0.158.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
@@ -1188,6 +1196,23 @@ export function previewApi(): Api {
     forgetDeleted: async (bookId) => {
       deletedSample = deletedSample.filter((b) => b.id !== bookId);
     },
+    setHidden: async (bookIds, hidden) => {
+      let changed = 0;
+      for (const id of bookIds) {
+        if (hiddenIds.has(id) === hidden) continue;
+        if (hidden) hiddenIds.add(id);
+        else hiddenIds.delete(id);
+        changed++;
+      }
+      return changed;
+    },
+    hiddenCount: async () => hiddenIds.size,
+    hiddenLock: async () => hiddenLockSample,
+    setHiddenLock: async (lock) => {
+      hiddenLockSample = { ...lock };
+    },
+    deviceUnlockKind: async () => unlockSample,
+    deviceUnlock: async () => !!unlockSample,
     removeDownload: async (bookId) => {
       if (!find(bookId).inCloud) throw new Error("This book isn't in the cloud yet, so this is its only copy.");
       update(bookId, { availability: "cloud" });

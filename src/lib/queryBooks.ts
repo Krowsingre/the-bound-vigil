@@ -130,8 +130,11 @@ export function queryBooks(everything: BookPreview[], q: LibraryQuery, collectio
       : Number(Boolean(seriesCounts[b.id])) - Number(Boolean(seriesCounts[a.id]))));
   }
   const pageSize = q.pageSize || 24;
-  const page = Math.min(q.page, Math.max(0, Math.ceil(list.length / pageSize) - 1));
-  const books = list.slice(page * pageSize, (page + 1) * pageSize);
+  // The cards leading the first page (Pinned, Last read) count as its first places.
+  const lead = Math.min(q.leadSlots ?? 0, pageSize - 1);
+  const page = Math.min(q.page, Math.max(0, Math.ceil((list.length + lead) / pageSize) - 1));
+  const start = page === 0 ? 0 : page * pageSize - lead;
+  const books = list.slice(start, (page + 1) * pageSize - lead);
   const seriesCovers: Record<string, BookPreview> = {};
   const seriesAuthors: Record<string, string> = {};
   const seriesKey = (b: BookPreview) => b.series?.trim().toLowerCase();
