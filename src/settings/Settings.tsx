@@ -253,6 +253,11 @@ export function Settings({
               onClick={() => {
                 setQuery("");
                 onTab(desk ? deskPageOf(r.tab, r.section).tab : r.tab);
+                // Shortcuts are a sheet on a computer: open it rather than jump on the page.
+                if (desk && r.tab === "shortcuts") {
+                  setShortcutsOpen(true);
+                  return;
+                }
                 setJumpTo(r.section);
               }}
             >
