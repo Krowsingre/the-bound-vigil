@@ -1,9 +1,12 @@
 // Imports: books being added, like a downloads page. The newest import's
 // books stay listed until cleared, with what happened to each.
 
+import { useState } from "react";
+import { api } from "../api";
 import type { ImportResult, ImportsView } from "../api/types";
 import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
+import { useToast } from "../components/Toast";
 import type { ServerQueue } from "./serverQueue";
 import { ServerRows } from "./ServerRows";
 import { LocalSendRows } from "./LocalSendRows";
@@ -60,6 +63,24 @@ export function Imports({
   embedded?: boolean;
 }) {
   const { done, total, running } = importCounts(view);
+  const toast = useToast();
+  // Skipped because it was deleted before: "Add anyway" forgets that deletion and
+  // imports the same file again (embre, 21 November).
+  const [overridden, setOverridden] = useState<Set<number>>(new Set());
+  const addAnyway = async (id: number, bookId: string, path: string) => {
+    setOverridden((s) => new Set(s).add(id));
+    try {
+      await api.forgetDeleted(bookId);
+      await api.queueImports([path]);
+    } catch (e) {
+      toast(`Couldn't add it: ${String(e)}`);
+      setOverridden((s) => {
+        const next = new Set(s);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
   const { current, waiting, finished } = view;
   // Whole-import progress counts the books under way by how much of them is read.
   const partly = view.currentBytes ? (view.currentRead / view.currentBytes) * current.length : 0;
@@ -180,7 +201,12 @@ export function Imports({
                         <span className="import-name">{i.result && "title" in i.result ? i.result.title : i.name}</span>
                         <span className="import-detail">{o.text}</span>
                       </div>
-                      {bookId && (
+                      {i.result?.outcome === "skippedDeleted" ? (
+                        <button type="button" className="btn btn-quiet" disabled={overridden.has(i.id)}
+                          onClick={() => i.result?.outcome === "skippedDeleted" && void addAnyway(i.id, i.result.bookId, i.result.path)}>
+                          {overridden.has(i.id) ? "Adding…" : "Add anyway"}
+                        </button>
+                      ) : bookId && (
                         <button type="button" className="btn btn-quiet" onClick={() => onOpenBook(bookId)}>
                           Read
                         </button>

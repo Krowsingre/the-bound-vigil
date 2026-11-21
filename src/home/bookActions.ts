@@ -52,6 +52,8 @@ export interface BookActions {
   setPhoneWanted?: (books: BookPreview[], wanted: boolean) => void;
   /** Set when the books are shown inside one of the user's collections. */
   removeFromCollection?: { name: string; remove: (book: BookPreview) => void };
+  /** Archive only: turns Select on with this book already chosen. */
+  select?: (book: BookPreview) => void;
   /** Hides the book: out of every list and count, into the locked Hidden collection. */
   hide?: (book: BookPreview) => void;
   /** Set inside the Hidden collection: brings the book back. */
@@ -77,6 +79,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
       ? { label: "Listen", icon: "play" as const, onSelect: () => playAudiobook(book.id) }
       : { label: "Open", icon: "bookOpen" as const, onSelect: () => actions.open(book) },
     { label: detailsLabel(book), icon: "info", onSelect: () => showBookDetails(book.id) },
+    ...(actions.select ? [{ label: "Select", icon: "check" as const, onSelect: () => actions.select?.(book) }] : []),
     { label: "Edit details…", icon: "edit", onSelect: () => askEditDetails([book]) },
     // Everything the selection's Actions menu offers is here too (embre, 20 November).
     { label: "Find details online…", icon: "search", onSelect: () => askFetchDetails(book) },

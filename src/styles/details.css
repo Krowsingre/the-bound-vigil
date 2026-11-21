@@ -362,7 +362,11 @@
 }
 
 /* Choosing many books */
+/* Stays at the top of the window while the page scrolls (embre, 21 November). */
 .select-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
   align-items: center;

@@ -124,7 +124,7 @@ export function HiddenDialogsHost() {
 }
 
 /** Choosing the password: typed twice. */
-function PasswordSetup({ books, onSet, onCancel }: { books?: BookPreview[]; onSet: () => void; onCancel?: () => void }) {
+function PasswordSetup({ books, onSet, onCancel, change }: { books?: BookPreview[]; onSet: () => void; onCancel?: () => void; change?: boolean }) {
   const [password, setPassword] = useState("");
   const [again, setAgain] = useState("");
   const [busy, setBusy] = useState(false);
@@ -153,7 +153,7 @@ function PasswordSetup({ books, onSet, onCancel }: { books?: BookPreview[]; onSe
         Hidden opens with this password on all your devices{unlockKind ? `, and with ${UNLOCK_NAME[unlockKind]} on this one` : ""}.
       </p>
       <label className="field">
-        <span>Password</span>
+        <span>{change ? "New password" : "Password"}</span>
         <input type="password" autoComplete="new-password" autoFocus value={password} onChange={(e) => (setPassword(e.target.value), setError(null))} />
       </label>
       <label className="field">
@@ -164,7 +164,7 @@ function PasswordSetup({ books, onSet, onCancel }: { books?: BookPreview[]; onSe
       <div className="dialog-actions">
         {onCancel && <button type="button" className="btn btn-quiet" onClick={onCancel}>Cancel</button>}
         <button type="submit" className="btn btn-primary" disabled={busy || !password || !again}>
-          {books ? "Set password and hide" : "Set password"}
+          {books ? "Set password and hide" : change ? "Change password" : "Set password"}
         </button>
       </div>
     </form>
@@ -288,6 +288,73 @@ function Unlock({ onOpen }: { onOpen: () => void }) {
   );
 }
 
+/** Changing the password: the current one (or the device's own unlock) first, then the new one twice. */
+function ChangePassword({ onClose }: { onClose: () => void }) {
+  const toast = useToast();
+  const [lock, setLock] = useState<HiddenLock | null>(null);
+  const [unlockKind, setUnlockKind] = useState<DeviceUnlockKind | null>(null);
+  const [passed, setPassed] = useState(false);
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    void api.hiddenLock().then(setLock, (e: unknown) => setError(String(e)));
+    void api.deviceUnlockKind().then(setUnlockKind, () => setUnlockKind(null));
+  }, []);
+  const tryPassword = async () => {
+    if (!lock || !password) return;
+    setBusy(true);
+    const right = await checkPassword(password, lock).catch(() => false);
+    setBusy(false);
+    if (right) return setPassed(true);
+    setError("That isn't the password.");
+    setPassword("");
+    field.current?.focus();
+  };
+  const tryDevice = async () => {
+    if (!unlockKind) return;
+    setError(null);
+    const ok = await api.deviceUnlock("Change the password for Hidden").catch(() => false);
+    if (ok) setPassed(true);
+    else setError(`${UNLOCK_NAME[unlockKind]} didn't work. Use the password instead.`);
+  };
+  return (
+    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="dialog hidden-dialog" role="dialog" aria-label="Change the password for Hidden" onKeyDown={(e) => e.key === "Escape" && onClose()}>
+        <h2>Change the password for Hidden</h2>
+        {passed ? (
+          <PasswordSetup
+            change
+            onCancel={onClose}
+            onSet={() => {
+              onClose();
+              toast("Password changed.");
+            }}
+          />
+        ) : (
+          <form className="hidden-setup" onSubmit={(e) => (e.preventDefault(), void tryPassword())}>
+            <label className="field">
+              <span>Current password</span>
+              <input ref={field} type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => (setPassword(e.target.value), setError(null))} />
+            </label>
+            {error && <p className="form-error" role="alert">{error}</p>}
+            <div className="dialog-actions">
+              <button type="button" className="btn btn-quiet" onClick={onClose}>Cancel</button>
+              {unlockKind && (
+                <button type="button" className="btn btn-quiet" onClick={() => void tryDevice()}>
+                  Use {UNLOCK_NAME[unlockKind]}
+                </button>
+              )}
+              <button type="submit" className="btn btn-primary" disabled={busy || !lock || !password}>Next</button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const PAGE = 200;
 
 function HiddenBooks({ refreshKey, onOpenBook, onChanged }: { refreshKey: number; onOpenBook: (bookId: string) => void; onChanged: () => void }) {
@@ -296,6 +363,7 @@ function HiddenBooks({ refreshKey, onOpenBook, onChanged }: { refreshKey: number
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
   const [reload, setReload] = useState(0);
+  const [changing, setChanging] = useState(false);
   useEffect(() => {
     let current = true;
     void Promise.all(Array.from({ length: pages }, (_, page) =>
@@ -325,7 +393,11 @@ function HiddenBooks({ refreshKey, onOpenBook, onChanged }: { refreshKey: number
     <>
       <div className="library-title-row">
         <h1 className="library-title">Hidden</h1>
+        <button type="button" className="btn btn-quiet" onClick={() => setChanging(true)}>
+          <Icon name="lock" size={15} /> Change password
+        </button>
       </div>
+      {changing && <ChangePassword onClose={() => setChanging(false)} />}
       <p className="muted">{total === 1 ? "1 book" : `${total.toLocaleString()} books`}, hidden from your library on every device.</p>
       {books.length === 0 ? (
         <div className="library-empty">

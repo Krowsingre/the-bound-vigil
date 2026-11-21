@@ -2441,6 +2441,7 @@ pub fn run() {
             hidden::set_hidden_lock,
             hidden::device_unlock_kind,
             hidden::device_unlock,
+            hidden::series_here,
             save_copies,
             merge_reading,
             keep_together,

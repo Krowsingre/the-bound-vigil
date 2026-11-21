@@ -501,6 +501,33 @@ impl Library {
             .collect())
     }
 
+    /// Which series have books still to download here, and which have books downloaded here,
+    /// by lower-cased name: what greys out a series' Download and Remove download. One look
+    /// at the library, without checking each file (embre, 21 November: checking every
+    /// downloaded book's file, page after page, made a big Archive very slow).
+    pub fn series_here(&self, kind: Option<ItemKind>, audio_type: Option<&str>) -> Result<SeriesHere> {
+        let mut only = kind.map(|kind| format!(" AND {}", kind_condition(kind))).unwrap_or_default();
+        if audio_type.is_some() {
+            only.push_str(" AND COALESCE(b.audio_type, 'audiobook') = ?1");
+        }
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT lower(trim({SERIES})), MAX(lf.path IS NULL), MAX(lf.path IS NOT NULL) {BOOK_FROM}{only}
+             AND NULLIF(trim({SERIES}), '') IS NOT NULL GROUP BY lower(trim({SERIES}))"
+        ))?;
+        let mut here = SeriesHere::default();
+        let rows = statement.query_map(rusqlite::params_from_iter(audio_type), |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?, r.get::<_, bool>(2)?)))?;
+        for row in rows {
+            let (name, to_get, downloaded) = row?;
+            if to_get {
+                here.to_get.push(name.clone());
+            }
+            if downloaded {
+                here.here.push(name);
+            }
+        }
+        Ok(here)
+    }
+
     fn series_names(&self, kind: Option<ItemKind>) -> Result<Vec<String>> {
         let only = kind.map(|kind| format!(" AND {}", kind_condition(kind))).unwrap_or_default();
         let mut statement = self.conn.prepare(&format!(
@@ -840,6 +867,14 @@ impl Library {
         tx.commit()?;
         Ok(())
     }
+}
+
+/// See [`Library::series_here`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesHere {
+    pub to_get: Vec<String>,
+    pub here: Vec<String>,
 }
 
 #[cfg(test)]
@@ -1473,6 +1508,25 @@ mod tests {
             .library_page(&query(|q| q.location = Some(Location::OnDevice)))
             .unwrap();
         assert_eq!(local.total, 2);
+    }
+
+    #[test]
+    fn series_here_says_which_series_can_be_downloaded_or_removed() {
+        let (dir, mut library) = open_temp_library();
+        let a = add(&mut library, dir.path(), "Saga One", "X");
+        let b = add(&mut library, dir.path(), "Saga Two", "X");
+        let c = add(&mut library, dir.path(), "Tale One", "Y");
+        for (id, series) in [(&a, "Saga"), (&b, "Saga"), (&c, " Tale ")] {
+            library.conn.execute("UPDATE books SET series = ?2 WHERE id = ?1", params![id, series]).unwrap();
+        }
+        // "Saga Two" is only in the cloud.
+        library.conn.execute("DELETE FROM local_files WHERE book_id = ?1", params![b]).unwrap();
+        let here = library.series_here(Some(ItemKind::Books), None).unwrap();
+        assert_eq!(here.to_get, ["saga"]);
+        let mut downloaded = here.here.clone();
+        downloaded.sort();
+        assert_eq!(downloaded, ["saga", "tale"]);
+        assert!(library.series_here(Some(ItemKind::Audiobooks), Some("podcast")).unwrap().here.is_empty());
     }
 
     #[test]

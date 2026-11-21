@@ -14,6 +14,8 @@ import type {
   BookFile,
   DeletedBook,
   DeviceUnlockKind,
+  ItemKind,
+  AudioType,
   HiddenLock,
   BookLocation,
   Bookmark,
@@ -471,6 +473,8 @@ export interface Api {
   deviceUnlockKind(): Promise<DeviceUnlockKind | null>;
   /** Asks for the face, finger or Windows Hello PIN; true when the person passed. */
   deviceUnlock(reason: string): Promise<boolean>;
+  /** Which series (lower-cased) have books to download here, and which have books here, in one quick look. */
+  seriesHere?(kind: ItemKind, audioType: AudioType | null): Promise<{ toGet: string[]; here: string[] }>;
   /** Saves copies of the books, named "Title - Author", into a folder chosen now. Null if none was chosen. */
   saveCopies(bookIds: string[]): Promise<{ saved: number; folder: string } | null>;
   /** iPhone and iPad: the Share sheet with these books' files (AirDrop, Messages, Mail…). */
@@ -1302,6 +1306,7 @@ function appApi(): Api {
     setHiddenLock: async (lock) => (await core).invoke("set_hidden_lock", { lock }),
     deviceUnlockKind: async () => (await core).invoke<DeviceUnlockKind | null>("device_unlock_kind"),
     deviceUnlock: async (reason) => (await core).invoke<boolean>("device_unlock", { reason }),
+    seriesHere: async (kind, audioType) => (await core).invoke<{ toGet: string[]; here: string[] }>("series_here", { kind, audioType }),
     saveCopies: async (bookIds) => {
       const picked = isIOS
         ? await (await core).invoke<string | null>("ios_pick_folder")
