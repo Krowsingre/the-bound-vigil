@@ -1993,7 +1993,7 @@ fn hidden_books_and_their_password_reach_every_device() {
     a.sync(&cloud);
     b.sync(&cloud);
     tick();
-    assert_eq!(a.lib().set_hidden(&[book.clone()], true).unwrap(), 1);
+    assert_eq!(a.lib().set_hidden(std::slice::from_ref(&book), true).unwrap(), 1);
     let lock = crate::hidden::HiddenLock { salt: "ab".repeat(16), hash: "cd".repeat(32), rounds: 210_000 };
     a.lib().set_hidden_lock(&lock).unwrap();
     a.sync(&cloud);
