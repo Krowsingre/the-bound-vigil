@@ -638,6 +638,27 @@ export interface DetailField {
   edited: string | null;
 }
 
+/** One book of a Find alike group. */
+export interface AlikeBook {
+  book: BookPreview;
+  /** The number its title gives it ("Book 3", "#2"). */
+  guess: number | null;
+  /** Another book of the group that is the same book. */
+  sameAs: string | null;
+  /** The audiobook paired with this ebook. */
+  pairedAudio: string | null;
+}
+
+/** Find alike: books by one author with alike titles, and the series they're in. */
+export interface AlikeGroup {
+  /** Every key the group was found by; keeping a book out stores them. */
+  keys: string[];
+  /** The series most of its books are in, or the words their titles share. */
+  name: string;
+  author: string;
+  books: AlikeBook[];
+}
+
 export interface BookDetails {
   book: BookPreview;
   fields: DetailField[];

@@ -16,6 +16,7 @@ import { favouritesChanged, isFavouriteSeries, isTopFive, SeriesHeart, seriesTop
 import { useToast } from "../components/Toast";
 import { StarRating } from "../components/StarRating";
 import { makeBookActions, phoneChoiceShown } from "../home/bookActions";
+import { FindAlike } from "./FindAlike";
 import { Spent, Stat } from "../home/ReadingActivity";
 import { useTimeSpent } from "../home/useTimeSpent";
 import { TagsDialog, deleteWarning, removeWarning } from "./BookDialogs";
@@ -121,6 +122,7 @@ export function Library({
   const [reload, setReload] = useState(0);
   // Choosing books to change many at once.
   const [selected, setSelected] = useState<Map<string, BookPreview> | null>(null);
+  const [findingAlike, setFindingAlike] = useState(false);
   /** The book picked last, where a Shift-click range starts. */
   const lastPicked = useRef<string | null>(null);
   /** The books of each series chosen as a stack, by series name. */
@@ -870,6 +872,10 @@ export function Library({
       onSelect: () => a.run(chosen),
     })),
     { label: "Clear choice", icon: "close", disabled: none || busy !== null, onSelect: () => setSelected(new Map()) },
+    // Find alike (embre, 21 November): the whole library, not only the chosen ones.
+    ...(api.findAlike && kind !== "documents"
+      ? ["divider" as const, { label: "Find alike…", icon: "search" as const, onSelect: () => setFindingAlike(true) }]
+      : []),
   ];
 
   /** Removes downloads, removes from the library, or deletes, one book at a time. */
@@ -1233,6 +1239,7 @@ export function Library({
           </span>
         </div>
       )}
+      {findingAlike && <FindAlike kind={kind} onClose={() => setFindingAlike(false)} onChanged={() => setReload((n) => n + 1)} />}
       {asking && (
         <ConfirmDialog
           title={

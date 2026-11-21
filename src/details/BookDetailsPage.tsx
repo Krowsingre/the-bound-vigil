@@ -24,6 +24,7 @@ import { askEditDetails, askFetchDetails } from "./openDetails";
 import { FormatsRow } from "./FormatsRow";
 import { LocationsRow } from "./LocationsRow";
 import { PairRow } from "./PairRow";
+import { FindAlikeRow } from "./FindAlikeRow";
 import { SeriesRow } from "./SeriesRow";
 
 type Load = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: BookDetails };
@@ -322,6 +323,7 @@ export function BookDetailsPage({
               <LocationsRow bookId={book.id} refreshKey={refreshKey + reload} fallback={where} />
               {files.length > 1 && <FormatsRow bookId={book.id} files={files} onOpen={(fileId) => onOpenBook(book.id, undefined, fileId)} onChanged={refresh} />}
               {kind !== "music" && <PairRow book={book} refreshKey={refreshKey + reload} />}
+              <FindAlikeRow bookId={book.id} refreshKey={refreshKey + reload} />
             </dl>
           </section>
 

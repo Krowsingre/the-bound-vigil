@@ -101,12 +101,12 @@ pub(crate) fn title_key(title: &str) -> String {
 /// The number a title gives a book of a series: the main title's last word
 /// ("Dark City Girls 3"), and, as `tagged`, one marked anywhere ("Book 2",
 /// "Vol. 4", "#1").
-struct TitleNumber {
-    main: Option<u64>,
-    tagged: Option<u64>,
+pub(crate) struct TitleNumber {
+    pub(crate) main: Option<u64>,
+    pub(crate) tagged: Option<u64>,
 }
 
-fn title_number(title: &str) -> TitleNumber {
+pub(crate) fn title_number(title: &str) -> TitleNumber {
     let lower = title.to_lowercase();
     let main_part = lower.split([':', '(', '[']).next().unwrap_or(&lower);
     let main = main_part.split(|c: char| !c.is_alphanumeric()).rfind(|w| !w.is_empty()).and_then(|w| w.parse().ok());

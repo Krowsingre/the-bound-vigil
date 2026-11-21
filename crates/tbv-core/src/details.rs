@@ -287,7 +287,11 @@ impl Library {
     /// Takes away your edits to a book, and with `fetched` also what was fetched
     /// online, so it shows its own details again.
     pub fn reset_details(&self, book_id: &str, fetched: bool) -> Result<()> {
-        self.conn.execute("DELETE FROM metadata_overrides WHERE book_id = ?1", params![book_id])?;
+        // Being kept out of a Find alike group isn't a detail of the book, so it stays.
+        self.conn.execute(
+            "DELETE FROM metadata_overrides WHERE book_id = ?1 AND field != ?2",
+            params![book_id, crate::alike::KEPT_OUT],
+        )?;
         if fetched {
             self.conn
                 .execute("DELETE FROM metadata_fetched WHERE book_id = ?1 AND source != 'file'", params![book_id])?;

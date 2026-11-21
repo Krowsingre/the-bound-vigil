@@ -16,6 +16,9 @@ import type {
   DeviceUnlockKind,
   ItemKind,
   AudioType,
+  AlikeGroup,
+  SeriesEntry,
+  BookPreview,
   HiddenLock,
   BookLocation,
   Bookmark,
@@ -135,6 +138,17 @@ export interface Api {
   getHome(): Promise<HomeViewModel>;
   /** Queues book files and folders on the Imports page. Returns how many books were found. */
   queueImports(paths: string[]): Promise<number>;
+  /** Find alike: groups of alike books of one kind (the app only). */
+  findAlike?(kind: ItemKind): Promise<AlikeGroup[]>;
+  /** Keeps books out of one Find alike group (by its keys), or lets them back. */
+  keepOutOfAlike?(bookIds: string[], keys: string[], out: boolean): Promise<void>;
+  keptOutOfAlike?(bookId: string): Promise<boolean>;
+  /** The books of one kind kept out of a Find alike group. */
+  keptOutBooks?(kind: ItemKind): Promise<BookPreview[]>;
+  /** Book details' "Include in Find alike": back into every group. */
+  includeInAlike?(bookId: string): Promise<void>;
+  /** A series' books as listed online, for suggestions only (nothing is kept). */
+  seriesListOnline?(name: string, author: string): Promise<SeriesEntry[]>;
   /** "Add anyway" for a book the import skipped as deleted before: the same file, queued again. */
   importAgain?(id: number): Promise<boolean>;
   importQueue(): Promise<ImportsView>;
@@ -929,6 +943,12 @@ function appApi(): Api {
     kind: "app",
     getHome: async () => (await core).invoke<HomeViewModel>("get_home"),
     queueImports: async (paths) => (await core).invoke<number>("queue_imports", { paths }),
+    findAlike: async (kind) => (await core).invoke<AlikeGroup[]>("find_alike", { kind }),
+    keepOutOfAlike: async (bookIds, keys, out) => (await core).invoke("keep_out_of_alike", { bookIds, keys, out }),
+    keptOutOfAlike: async (bookId) => (await core).invoke<boolean>("kept_out_of_alike", { bookId }),
+    keptOutBooks: async (kind) => (await core).invoke<BookPreview[]>("kept_out_books", { kind }),
+    includeInAlike: async (bookId) => (await core).invoke("include_in_alike", { bookId }),
+    seriesListOnline: async (name, author) => (await core).invoke<SeriesEntry[]>("series_list_online", { name, author }),
     importAgain: async (id) => (await core).invoke<boolean>("import_again", { id }),
     importQueue: async () => (await core).invoke<ImportsView>("import_queue"),
     takePdfCovers: async () => (await core).invoke<string[]>("take_pdf_covers"),

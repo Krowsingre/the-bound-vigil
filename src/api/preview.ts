@@ -9,7 +9,7 @@ import { previewNotes, sampleAnnotations } from "../preview/notes";
 import { sampleEpub } from "../preview/sampleEpub";
 import { previewMove } from "../preview/move";
 import { previewServers } from "../preview/servers";
-import { cleanTag, isAudio, queryBooks, tagCounts } from "../lib/queryBooks";
+import { cleanTag, isAudio, isDocument, queryBooks, tagCounts } from "../lib/queryBooks";
 import { sampleTime } from "../lib/timeSpent";
 import { duplicateGroups } from "../lib/duplicates";
 import { cleanValue, DETAIL_FIELDS, previewFields, suggestionsFrom } from "../lib/details";
@@ -397,6 +397,8 @@ const hiddenIds = new Set<string>();
 let hiddenLockSample: HiddenLock | null = null;
 // `?unlock=faceId` (or touchId, windowsHello) tries the Hidden collection's shortcut button.
 const unlockSample = params.get("unlock") as DeviceUnlockKind | null;
+/** Find alike: the groups each book is kept out of. */
+const alikeOut = new Map<string, Set<string>>();
 const library = () => (empty ? [] : books.filter((b) => !hiddenIds.has(b.id)));
 const collections = previewCollections(library, empty);
 let annotations: Annotation[] = empty ? [] : sampleAnnotations(books);
@@ -1113,7 +1115,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.159.0", version: "0.159.0", notes: "The Bound Vigil 0.159.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.160.0", version: "0.160.0", notes: "The Bound Vigil 0.160.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
@@ -1216,6 +1218,46 @@ export function previewApi(): Api {
     removeDownload: async (bookId) => {
       if (!find(bookId).inCloud) throw new Error("This book isn't in the cloud yet, so this is its only copy.");
       update(bookId, { availability: "cloud" });
+    },
+    // Find alike, roughly: an author's books, when some are in a series and some aren't.
+    findAlike: async (kind) => {
+      const items = library().filter((b) => (kind === "audiobooks" ? isAudio(b.format) : !isAudio(b.format) && !isDocument(b.format)));
+      const byAuthor = new Map<string, BookPreview[]>();
+      for (const b of items) byAuthor.set(b.authors[0] ?? "", [...(byAuthor.get(b.authors[0] ?? "") ?? []), b]);
+      return [...byAuthor.entries()].flatMap(([author, list]) => {
+        const keys = [`${author.toLowerCase()}|alike`];
+        const shown = list.filter((b) => !keys.some((k) => alikeOut.get(b.id)?.has(k)));
+        if (shown.length < 2 || !shown.some((b) => !b.series) || !shown.some((b) => b.series)) return [];
+        const seen = new Map<string, string>();
+        return [{
+          keys,
+          name: shown.find((b) => b.series)?.series ?? shown[0].title,
+          author,
+          books: shown.map((book) => {
+            const number = /(?:book|#|vol\.?)\s*(\d+)|\s(\d+)$/i.exec(book.title);
+            const sameAs = seen.get(book.title) ?? null;
+            if (!sameAs) seen.set(book.title, book.id);
+            return { book, guess: number ? Number(number[1] ?? number[2]) : null, sameAs, pairedAudio: null };
+          }),
+        }];
+      });
+    },
+    keepOutOfAlike: async (bookIds, keys, out) => {
+      for (const id of bookIds) {
+        const now = new Set(alikeOut.get(id));
+        for (const k of keys) out ? now.add(k) : now.delete(k);
+        if (now.size) alikeOut.set(id, now);
+        else alikeOut.delete(id);
+      }
+    },
+    keptOutOfAlike: async (bookId) => alikeOut.has(bookId),
+    keptOutBooks: async () => library().filter((b) => alikeOut.has(b.id)),
+    includeInAlike: async (bookId) => void alikeOut.delete(bookId),
+    seriesListOnline: async (name) => {
+      if (name !== "Sherlock Holmes") throw new Error(`No list of the books in ${name} was found online.`);
+      const titles = ["A Study in Scarlet", "The Sign of the Four", "The Adventures of Sherlock Holmes", "The Memoirs of Sherlock Holmes", "The Hound of the Baskervilles",
+        "The Return of Sherlock Holmes", "The Valley of Fear", "His Last Bow", "The Case-Book of Sherlock Holmes"];
+      return titles.map((title, i) => ({ title, position: i + 1, authors: ["Arthur Conan Doyle"], coverUrl: null, source: "Sample" }));
     },
     findDuplicates: async () =>
       duplicateGroups(library())

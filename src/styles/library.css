@@ -799,6 +799,133 @@ button.tag-chip-add:hover {
   white-space: nowrap;
 }
 
+/* Find alike (embre, 21 November) */
+.alike-dialog {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.alike-dialog > * {
+  flex-shrink: 0;
+}
+
+.alike-dialog > .alike-body,
+.alike-dialog > .alike-groups {
+  flex-shrink: 1;
+}
+
+.alike-book .duplicate-text > * {
+  white-space: normal;
+}
+
+.alike-groups,
+.alike-books {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 4px;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.alike-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.alike-group:hover {
+  background: var(--surface);
+}
+
+.alike-group-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.alike-online {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 8px 0 4px;
+  min-height: 32px;
+}
+
+.alike-body {
+  display: grid;
+  gap: 14px;
+  margin: 10px 0 4px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.alike-gaps {
+  color: var(--danger);
+}
+
+.alike-book.is-chosen {
+  background: var(--surface);
+}
+
+.alike-number input {
+  width: 56px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}
+
+.alike-number-shown {
+  min-width: 56px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.alike-missing {
+  margin: 0;
+}
+
+.alike-make {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.alike-make .field {
+  flex: 1 1 220px;
+  margin: 0;
+}
+
+.alike-audio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 8px;
+}
+
+@media (max-width: 640px) {
+  .alike-make .btn {
+    flex: 1 1 100%;
+  }
+}
+
 .duplicate-facts {
   font-size: 12.5px;
 }

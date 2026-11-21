@@ -1,6 +1,7 @@
 //! The Bound Vigil core: library storage, stable identities and view models.
 //! No UI code lives here, so all of it is testable with `cargo test`.
 
+pub mod alike;
 pub mod audio;
 pub mod audiobookshelf;
 pub mod bookmarks;

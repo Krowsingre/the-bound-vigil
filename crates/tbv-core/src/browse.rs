@@ -14,7 +14,7 @@ pub const TOP_FIVE: u32 = 5;
 pub const TOP_FIVE_FULL: &str = "Your Top five is full. Take one out first.";
 pub(crate) const UP_NEXT_LIMIT: u32 = 75;
 
-const TITLE: &str = "COALESCE(o_title.value, f_title.value, b.title)";
+pub(crate) const TITLE: &str = "COALESCE(o_title.value, f_title.value, b.title)";
 const AUTHORS: &str = "COALESCE(o_authors.value, f_authors.value, b.authors)";
 type StackDetails = (
     std::collections::BTreeMap<BookId, BookPreview>,
