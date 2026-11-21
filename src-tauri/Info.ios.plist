@@ -25,6 +25,9 @@
 	<!-- Sending books to LocalSend on devices on the same Wi-Fi. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>The Bound Vigil sends books to devices on your Wi-Fi that have LocalSend open.</string>
+	<!-- Face ID as a shortcut to the Hidden collection's password. -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>The Bound Vigil uses Face ID to open your Hidden collection.</string>
 	<!-- Only standard encryption (HTTPS), so TestFlight doesn't ask each time. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>

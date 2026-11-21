@@ -19,6 +19,7 @@ import { sameRef, SMART_INFO } from "./collectionInfo";
 import { CollectionPanel } from "./CollectionPanel";
 import { CollectionView } from "./CollectionView";
 import { KindleCard, KindleView, KINDLE_NAME } from "./KindleList";
+import { HiddenCard, HiddenView, useHiddenCount } from "../library/hidden";
 import { KINDLE_CHANGED } from "../imports/KindleReview";
 import { moved, useReorder } from "./useReorder";
 import { useAppSettings } from "../settings/appSettings";
@@ -162,10 +163,16 @@ export function Collections({
       window.removeEventListener(KINDLE_CHANGED, load);
     };
   }, [refreshKey, reload]);
-  // Opening another collection leaves the Kindle list.
+  // Opening another collection leaves the Kindle list, and locks Hidden again.
   useEffect(() => {
-    if (open) setKindleOpen(false);
+    if (open) {
+      setKindleOpen(false);
+      setHiddenOpen(false);
+    }
   }, [open]);
+  // The locked Hidden collection (embre, 21 November), shown once something is hidden.
+  const hiddenCount = useHiddenCount(refreshKey + reload);
+  const [hiddenOpen, setHiddenOpen] = useState(false);
 
   useEffect(() => {
     let current = true;
@@ -301,6 +308,7 @@ export function Collections({
   const q = filter.trim().toLocaleLowerCase();
   const matches = (...texts: (string | null | undefined)[]) => !q || texts.some((t) => t?.toLocaleLowerCase().includes(q));
 
+  const hiddenCard = !!hiddenCount && tab !== "reading_lists" && matches("Hidden");
   const kindleCard = !!kindle && kindle.total > 0 && (kindle.missing > 0 || kindle.removed > 0 || kindle.waiting > 0) && tab !== "reading_lists" && matches(KINDLE_NAME, "kindle amazon");
 
   const own = useMemo(() => {
@@ -366,6 +374,19 @@ export function Collections({
   );
 
   const { shown: seriesShown, more } = useShownBit(series.length, `${side}/${q}`);
+
+  if (hiddenOpen && !open)
+    return (
+      <HiddenView
+        refreshKey={refreshKey + reload}
+        onBack={() => setHiddenOpen(false)}
+        onOpenBook={onOpenBook}
+        onChanged={() => {
+          setReload((n) => n + 1);
+          onChanged();
+        }}
+      />
+    );
 
   if (kindleOpen && !open)
     return (
@@ -603,7 +624,7 @@ export function Collections({
               </div>
             </div>
 
-            {own.length === 0 && !kindleCard ? (
+            {own.length === 0 && !kindleCard && !hiddenCard ? (
               <div className="library-empty collections-empty">
                 {q ? (
                   <>
@@ -638,6 +659,7 @@ export function Collections({
                   );
                 })}
                 {kindleCard && <KindleCard summary={kindle} layout={prefs.layout} onOpen={() => setKindleOpen(true)} />}
+                {hiddenCard && <HiddenCard layout={prefs.layout} onOpen={() => { setKindleOpen(false); setHiddenOpen(true); }} />}
                 {!q && (
                   <li className="collection-card collection-card-new">
                     <button type="button" className="collection-card-open" onClick={() => setEditing({ books: [] })}>

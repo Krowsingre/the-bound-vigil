@@ -133,3 +133,27 @@ it("fetches a book the page couldn't finish once, however often Scry is opened a
   expect(native.downloadWebBook).toHaveBeenCalledTimes(1);
   expect(native.downloadWebBook).toHaveBeenCalledWith(url, "Star Druid.epub", undefined);
 });
+
+it("fetches a book again whose link doesn't end in a book name, when the file the site sent is named as one", async () => {
+  vi.resetModules();
+  native.downloadWebBook.mockReset();
+  native.downloadWebBook.mockResolvedValue(undefined);
+  let receive: (event: BrowserEvent) => void = () => undefined;
+  native.onBrowserEvent.mockImplementation((listen: (event: BrowserEvent) => void) => {
+    receive = listen;
+    return () => undefined;
+  });
+  const { listenForDownloads } = await import("./browserDownloads");
+  const stop = listenForDownloads(vi.fn());
+  const book = "https://books.example/download?id=42";
+  receive({ kind: "downloadStart", tab: "a", id: "d2", name: "Star Druid.epub", url: book } as BrowserEvent);
+  receive({ kind: "download", tab: "a", id: "d2", name: "Star Druid.epub", path: "", ok: false, error: "The site's server stopped answering.", securityBlocked: false } as BrowserEvent);
+  // Not a book: left alone.
+  const other = "https://books.example/download?id=43";
+  receive({ kind: "downloadStart", tab: "a", id: "d3", name: "setup.exe", url: other } as BrowserEvent);
+  receive({ kind: "download", tab: "a", id: "d3", name: "setup.exe", path: "", ok: false, error: "The site's server stopped answering.", securityBlocked: false } as BrowserEvent);
+  stop();
+  await Promise.resolve();
+  expect(native.downloadWebBook).toHaveBeenCalledTimes(1);
+  expect(native.downloadWebBook).toHaveBeenCalledWith(book, "Star Druid.epub", undefined);
+});

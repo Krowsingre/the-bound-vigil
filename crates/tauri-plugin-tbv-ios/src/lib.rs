@@ -522,3 +522,34 @@ pub fn translate(text: &str, x: f64, y: f64, width: f64, height: f64) -> Result<
         Ok(false)
     }
 }
+
+/// Face ID, Touch ID or Optic ID ("faceId", "touchId", "opticId") when the
+/// device has one set up (DeviceUnlock.swift). Must not be called on the main thread.
+pub fn device_unlock_kind() -> Option<String> {
+    #[cfg(target_os = "ios")]
+    {
+        let answer: serde_json::Value = SWIFT.get()?.run_mobile_plugin("deviceUnlockKind", ()).ok()?;
+        answer.get("kind").and_then(|k| k.as_str()).filter(|k| *k != "none").map(str::to_string)
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        None
+    }
+}
+
+/// Asks for Face ID or Touch ID, saying why; true when the person passed.
+/// Must not be called on the main thread.
+pub fn device_unlock(reason: &str) -> Result<bool, String> {
+    #[cfg(target_os = "ios")]
+    {
+        let swift = SWIFT.get().ok_or("Face ID isn't ready.")?;
+        let answer: serde_json::Value =
+            swift.run_mobile_plugin("deviceUnlock", serde_json::json!({ "reason": reason })).map_err(|e| e.to_string())?;
+        Ok(answer.get("ok").and_then(|s| s.as_bool()).unwrap_or(false))
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = reason;
+        Ok(false)
+    }
+}

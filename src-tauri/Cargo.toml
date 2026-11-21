@@ -1,6 +1,6 @@
 [package]
 name = "the-bound-vigil"
-version = "0.157.0"
+version = "0.158.0"
 edition.workspace = true
 license.workspace = true
 
@@ -38,8 +38,10 @@ tempfile = "3"
 webview2-com = "0.39"
 windows-core = "0.62"
 # The Microsoft Store, for buying the unlock.
-windows = { version = "0.62", features = ["std", "ApplicationModel", "Services_Store", "Foundation", "Foundation_Collections", "ApplicationModel_DataTransfer", "Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_Graphics_Dwm", "Win32_Security_Credentials", "Win32_UI_Input_KeyboardAndMouse"] }
+windows = { version = "0.62", features = ["std", "ApplicationModel", "Services_Store", "Foundation", "Foundation_Collections", "ApplicationModel_DataTransfer", "Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_Graphics_Dwm", "Win32_Security_Credentials", "Win32_UI_Input_KeyboardAndMouse", "Security_Credentials_UI", "Win32_System_WinRT"] }
 windows-collections = "0.3"
+# Windows Hello for the Hidden collection.
+windows-future = "0.3"
 
 # Updating itself, on computers (phones update from their app store).
 [target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]
