@@ -386,6 +386,9 @@ pub struct LibraryQuery {
     /// Zero-based.
     pub page: u32,
     pub page_size: u32,
+    /// Places on the first page taken by cards that aren't books (Pinned, Last read):
+    /// the first page holds that many fewer books, and every later page starts that much earlier.
+    pub lead_slots: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

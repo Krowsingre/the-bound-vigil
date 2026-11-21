@@ -24,6 +24,7 @@ import { CollectionsTab } from "./CollectionsTab";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { excludeCount, NO_FILTERS, PAGE_SIZE, type LibraryView } from "./libraryView";
 import { Pagination } from "./Pagination";
+import { usePageFit } from "./pageFit";
 import { PHONE_LIST, useNarrow } from "../lib/useNarrow";
 import { useAppSettings } from "../settings/appSettings";
 
@@ -310,7 +311,15 @@ export function Library({
     seriesCoverChoices: coverChoices,
   };
   const queryKey = JSON.stringify(query);
-  const requestKey = queryKey + ":" + (endless ? 0 : view.page);
+  // Paged on a computer: each page is as many full rows as fit the window, with the
+  // Pinned and Last read cards counted inside the first page (embre, 21 November).
+  const libraryRoot = useRef<HTMLDivElement>(null);
+  const [leadSlots, setLeadSlots] = useState(0);
+  const [measured, setMeasured] = useState(0);
+  const fit = usePageFit(libraryRoot, view.layout, !endless, measured);
+  const pageSize = endless ? PAGE_SIZE : fit;
+  const slots = endless ? 0 : leadSlots;
+  const requestKey = queryKey + ":" + (endless ? 0 : `${view.page}:${pageSize}:${slots}`);
   const inFlight = useRef(false);
   const pendingRequest = useRef<(() => void) | null>(null);
   const previousSearch = useRef(query.search);
@@ -364,7 +373,7 @@ export function Library({
       if (!current) return;
       inFlight.current = true;
       if (query.search) indicator = window.setTimeout(() => { if (current) setSearching(true); }, 180);
-      const results = api.getLibrary({ ...query, page: endless ? 0 : view.page, pageSize: PAGE_SIZE }).then(
+      const results = api.getLibrary({ ...query, page: endless ? 0 : view.page, pageSize, leadSlots: slots }).then(
         (data) => {
           if (!current) return;
           window.clearTimeout(indicator);
@@ -948,6 +957,23 @@ export function Library({
   const pinnedCard: PinnedCard | undefined = separatePins && firstPage && view.tab !== "collections" && pinCount > 0 && pinnedCover
     ? { count: pinCount, cover: pinnedCover, onOpen: () => { setSelected(null); setShowPinned(true); } }
     : undefined;
+  // The cards that lead the first page take its first places; every page counts them, so
+  // later pages start where the first one stopped.
+  const cardSlots = (separatePins && view.tab !== "collections" && pinCount > 0 && pinnedCover ? 1 : 0) + (leadHere ? 1 : 0);
+  useEffect(() => setLeadSlots(cardSlots), [cardSlots]);
+  // New books on screen: the page is measured again.
+  useEffect(() => {
+    if (load.state === "ready") setMeasured((n) => n + 1);
+  }, [load, view.layout]);
+  // The page size changed (a bigger window, another layout): stay with the books that were showing.
+  const lastSize = useRef(pageSize);
+  useEffect(() => {
+    const was = lastSize.current;
+    lastSize.current = pageSize;
+    if (endless || was === pageSize || view.page === 0) return;
+    const firstIndex = view.page * was - slots;
+    onChange({ page: Math.floor((firstIndex + slots) / pageSize) });
+  }, [pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
   // Nothing pinned any more: back to the list.
   useEffect(() => {
     if (showPinned && pageReady && pinCount === 0) setShowPinned(false);
@@ -1040,15 +1066,15 @@ export function Library({
       </>
     ) : (
       <>
-        <Pagination top page={page.page} pageSize={page.pageSize} total={page.total} onPage={(p) => onChange({ page: p })} />
+        <Pagination top page={page.page} pageSize={page.pageSize} lead={slots} total={page.total} onPage={(p) => onChange({ page: p })} />
         {items}
-        <Pagination noun={noun} page={page.page} pageSize={page.pageSize} total={page.total} onPage={(p) => onChange({ page: p })} />
+        <Pagination noun={noun} page={page.page} pageSize={page.pageSize} lead={slots} total={page.total} onPage={(p) => onChange({ page: p })} />
       </>
     );
   }
 
   return (
-    <div className="library">
+    <div className="library" ref={libraryRoot}>
       <header className="library-head is-stacked">
         {seriesBack && <button type="button" className="back-link" onClick={seriesBack}><Icon name="chevronLeft" size={14} /> Back to {words.title}</button>}
         {showPinned && !seriesBack && <button type="button" className="back-link" onClick={() => { setSelected(null); setShowPinned(false); }}><Icon name="chevronLeft" size={14} /> Back to {words.title}</button>}

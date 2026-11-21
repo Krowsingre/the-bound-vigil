@@ -334,8 +334,14 @@ impl Library {
             0 => DEFAULT_PAGE_SIZE,
             n => n.min(MAX_PAGE_SIZE),
         };
-        let page = query.page.min(total.saturating_sub(1) / page_size);
-        let limit = format!("LIMIT {page_size} OFFSET {}", page * page_size);
+        // The cards leading the first page count as its first places.
+        let lead = query.lead_slots.min(page_size - 1);
+        let page = query.page.min((total + lead).saturating_sub(1) / page_size);
+        let limit = if page == 0 {
+            format!("LIMIT {} OFFSET 0", page_size - lead)
+        } else {
+            format!("LIMIT {page_size} OFFSET {}", page * page_size - lead)
+        };
         let mut series_counts = std::collections::BTreeMap::new();
         let books = if query.group_series {
             let pin_rank = if query.pinned_first { "b.pinned_at IS NULL" } else { "0" };
@@ -940,6 +946,31 @@ mod tests {
             (0, 0, DEFAULT_PAGE_SIZE)
         );
         assert_eq!(page.counts, ShelfCounts::default());
+    }
+
+    #[test]
+    fn cards_leading_the_first_page_take_its_first_places() {
+        let (dir, mut library) = open_temp_library();
+        for t in ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8"] {
+            add(&mut library, dir.path(), t, "X");
+        }
+        let page = |n| {
+            library
+                .library_page(&query(|q| {
+                    q.sort = SortOrder::Title;
+                    q.page = n;
+                    q.page_size = 3;
+                    q.lead_slots = 2;
+                }))
+                .unwrap()
+        };
+        // Two cards and one book, then three books a page, with nothing skipped or shown twice.
+        assert_eq!(titles(&page(0)), ["A1"]);
+        assert_eq!(titles(&page(1)), ["A2", "A3", "A4"]);
+        assert_eq!(titles(&page(2)), ["A5", "A6", "A7"]);
+        assert_eq!(titles(&page(3)), ["A8"]);
+        // Past the end: the last page.
+        assert_eq!(page(9).page, 3);
     }
 
     #[test]

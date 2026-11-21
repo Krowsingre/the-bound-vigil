@@ -7,8 +7,11 @@ export function Pagination({
   total,
   noun = ["book", "books"],
   top = false,
+  lead = 0,
   onPage,
 }: {
+  /** Places on the first page taken by cards that aren't counted (Pinned, Last read). */
+  lead?: number;
   /** The copy above the list: only the page buttons, and only when there's more than one page. */
   top?: boolean;
   /** What's being counted, one and many. */
@@ -18,9 +21,9 @@ export function Pagination({
   total: number;
   onPage: (page: number) => void;
 }) {
-  const count = Math.max(1, Math.ceil(total / pageSize));
-  const first = total === 0 ? 0 : page * pageSize + 1;
-  const last = Math.min(total, (page + 1) * pageSize);
+  const count = Math.max(1, Math.ceil((total + lead) / pageSize));
+  const first = total === 0 ? 0 : page === 0 ? 1 : page * pageSize - lead + 1;
+  const last = Math.min(total, (page + 1) * pageSize - lead);
   if (top && count <= 1) return null;
   return (
     <div className={`pagination${top ? " pagination-top" : ""}`}>

@@ -535,6 +535,9 @@ export interface LibraryQuery {
   /** Zero-based. */
   page: number;
   pageSize: number;
+  /** Places on the first page taken by cards that aren't books (Pinned, Last read):
+   *  the first page holds that many fewer books, and later pages start that much earlier. */
+  leadSlots?: number;
 }
 
 /** The Library filters turned round: books with any of these are left out. */
