@@ -2157,3 +2157,42 @@ button.tag-chip-add:hover {
   width: 100%;
   margin-top: 4px;
 }
+
+/* Select and Find alike at the left of the search bar, on a computer (embre, 21 November). */
+.header-library-tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.header-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font: 400 14px var(--font-serif);
+  white-space: nowrap;
+}
+
+.header-tool.select-button {
+  width: 36px;
+  padding: 0;
+}
+
+.header-tool:hover {
+  background: var(--surface-sunk);
+  color: var(--text);
+}
+
+.header-tool.is-lit {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
