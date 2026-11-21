@@ -25,6 +25,16 @@ pub async fn set_hidden_lock(state: State<'_, AppLibrary>, lock: tbv_core::hidde
     with_library(state, move |library| library.set_hidden_lock(&lock)).await
 }
 
+/// Which series have books to download here, and which have books here (Archive's series menus).
+#[tauri::command]
+pub async fn series_here(
+    state: State<'_, AppLibrary>,
+    kind: Option<tbv_core::model::ItemKind>,
+    audio_type: Option<String>,
+) -> CommandResult<tbv_core::browse::SeriesHere> {
+    with_library(state, move |library| library.series_here(kind, audio_type.as_deref())).await
+}
+
 /// What the device can open the Hidden collection with besides the password:
 /// "faceId", "touchId", "opticId" or "windowsHello", or nothing.
 #[tauri::command]

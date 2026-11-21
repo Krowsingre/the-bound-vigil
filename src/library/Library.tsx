@@ -235,6 +235,8 @@ export function Library({
       ),
     };
     return [
+      // Start choosing with this whole stack, without going back to the top (embre, 21 November).
+      { label: "Select", icon: "check", onSelect: () => void chooseSeries([name], true) },
       ...favouriteItems,
       rating,
       ...stackActions,
@@ -256,7 +258,11 @@ export function Library({
   const loadingMore = useRef(false);
   const end = useRef<HTMLDivElement>(null);
   const actions = useMemo(
-    () => makeBookActions(api, toast, () => setReload((n) => n + 1), onOpenBook),
+    () => ({
+      ...makeBookActions(api, toast, () => setReload((n) => n + 1), onOpenBook),
+      // Start choosing from the book itself, wherever it is on the page (embre, 21 November).
+      select: (book: BookPreview) => setSelected((s) => new Map(s ?? []).set(book.id, book)),
+    }),
     [toast, onOpenBook],
   );
 
@@ -343,7 +349,11 @@ export function Library({
       }
       return found;
     };
-    void Promise.all([named("cloud_only"), named("on_device")]).then(
+    // The app answers in one quick look; the web version and preview look through their own lists.
+    const looked = api.seriesHere
+      ? api.seriesHere(kind, view.audioType ?? null).then(({ toGet, here }) => [new Set(toGet), new Set(here)] as const)
+      : Promise.all([named("cloud_only"), named("on_device")]);
+    void looked.then(
       ([toGet, here]) => { if (current) setSeriesHere({ toGet, here }); },
       () => { if (current) setSeriesHere(null); },
     );
@@ -739,7 +749,7 @@ export function Library({
   // Books a search or filter hides are let go from the choice, so this many means all of them.
   const matchingBooks = (page?.total ?? 0) + pins.length;
   const [everything, setEverything] = useState<number | null>(null);
-  // Stacked series count once in the total, so "all" is the number of books "All in library" found.
+  // Stacked series count once in the total, so "all" is the number of books "Select all" found.
   const libraryAllChosen = groupSeries
     ? everything !== null && everything > 0 && (selected?.size ?? 0) >= everything
     : matchingBooks > 0 && (selected?.size ?? 0) >= matchingBooks;
@@ -1190,7 +1200,7 @@ export function Library({
               }
               items={chosenActions}
             />
-            {/* The phone has no pages, so only "All in library" there. */}
+            {/* The phone has no pages, so only "Select all" there. */}
             {!endless && !showPinned && (
               <label className="select-all">
                 <input
@@ -1205,7 +1215,7 @@ export function Library({
                     void chooseSeries(stacks, on, single);
                   }}
                 />
-                All on page
+                Select page
               </label>
             )}
             <label className="select-all">
@@ -1215,7 +1225,7 @@ export function Library({
                 disabled={(showPinned ? !pinCount : !page?.total) || busy !== null}
                 onChange={(e) => (e.target.checked ? void (showPinned ? choosePinned() : chooseAll()) : setSelected(new Map()))}
               />
-              {inSeries || showPinned ? "Select all" : "All in library"}
+              Select all
             </label>
             <button type="button" className="btn btn-quiet" disabled={none || busy !== null} onClick={() => setSelected(new Map())}>
               Deselect all

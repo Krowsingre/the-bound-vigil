@@ -290,7 +290,7 @@ test("Pinned has its own Select, with Select all for the pinned books", async ()
   renderLibrary();
   fireEvent.click(await screen.findByRole("button", { name: "Open Pinned, 2 pinned" }));
   fireEvent.click(await screen.findByRole("button", { name: "Select" }));
-  expect(screen.queryByText("All on page")).toBeNull();
+  expect(screen.queryByText("Select page")).toBeNull();
   fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
   expect(await screen.findByText("2 chosen")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Deselect all" }));

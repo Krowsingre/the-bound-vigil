@@ -14,6 +14,8 @@ import type {
   BookFile,
   DeletedBook,
   DeviceUnlockKind,
+  ItemKind,
+  AudioType,
   HiddenLock,
   BookLocation,
   Bookmark,
@@ -133,6 +135,8 @@ export interface Api {
   getHome(): Promise<HomeViewModel>;
   /** Queues book files and folders on the Imports page. Returns how many books were found. */
   queueImports(paths: string[]): Promise<number>;
+  /** "Add anyway" for a book the import skipped as deleted before: the same file, queued again. */
+  importAgain?(id: number): Promise<boolean>;
   importQueue(): Promise<ImportsView>;
   /** Added PDFs still needing a cover drawn, handed over once. */
   takePdfCovers(): Promise<string[]>;
@@ -471,6 +475,8 @@ export interface Api {
   deviceUnlockKind(): Promise<DeviceUnlockKind | null>;
   /** Asks for the face, finger or Windows Hello PIN; true when the person passed. */
   deviceUnlock(reason: string): Promise<boolean>;
+  /** Which series (lower-cased) have books to download here, and which have books here, in one quick look. */
+  seriesHere?(kind: ItemKind, audioType: AudioType | null): Promise<{ toGet: string[]; here: string[] }>;
   /** Saves copies of the books, named "Title - Author", into a folder chosen now. Null if none was chosen. */
   saveCopies(bookIds: string[]): Promise<{ saved: number; folder: string } | null>;
   /** iPhone and iPad: the Share sheet with these books' files (AirDrop, Messages, Mail…). */
@@ -923,6 +929,7 @@ function appApi(): Api {
     kind: "app",
     getHome: async () => (await core).invoke<HomeViewModel>("get_home"),
     queueImports: async (paths) => (await core).invoke<number>("queue_imports", { paths }),
+    importAgain: async (id) => (await core).invoke<boolean>("import_again", { id }),
     importQueue: async () => (await core).invoke<ImportsView>("import_queue"),
     takePdfCovers: async () => (await core).invoke<string[]>("take_pdf_covers"),
     cancelImports: async () => (await core).invoke<void>("cancel_imports"),
@@ -1302,6 +1309,7 @@ function appApi(): Api {
     setHiddenLock: async (lock) => (await core).invoke("set_hidden_lock", { lock }),
     deviceUnlockKind: async () => (await core).invoke<DeviceUnlockKind | null>("device_unlock_kind"),
     deviceUnlock: async (reason) => (await core).invoke<boolean>("device_unlock", { reason }),
+    seriesHere: async (kind, audioType) => (await core).invoke<{ toGet: string[]; here: string[] }>("series_here", { kind, audioType }),
     saveCopies: async (bookIds) => {
       const picked = isIOS
         ? await (await core).invoke<string | null>("ios_pick_folder")
