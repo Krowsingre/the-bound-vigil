@@ -14,7 +14,8 @@ import { justClosed, menusFloat, openMenuPopup } from "./menuPopups";
 export interface MenuItem {
   label: string;
   id?: string;
-  closeAction?: { label: string; run: () => void };
+  /** A small button at the row's right end (a cross by default), done without closing the menu. */
+  closeAction?: { label: string; run: () => void; icon?: IconName; disabled?: boolean };
   icon?: IconName;
   hint?: string;
   /** A second, smaller line under the label, with a larger icon beside both. */
@@ -294,14 +295,14 @@ export const MenuList = forwardRef<
           const action = item.closeAction;
           return <div className="menu-row-action" key={item.id ?? i}>
             {row}
-            <button type="button" role="menuitem" className="menu-item menu-row-close" aria-label={action.label} title={action.label}
+            <button type="button" role="menuitem" className="menu-item menu-row-close" aria-label={action.label} title={action.label} disabled={action.disabled}
               onClick={(event) => {
                 const row = event.currentTarget.parentElement;
                 const next = row?.nextElementSibling ?? row?.previousElementSibling;
                 action.run();
                 requestAnimationFrame(() => next?.querySelector<HTMLButtonElement>(".menu-row-close, .menu-item")?.focus());
               }}>
-              <Icon name="close" size={14} />
+              <Icon name={action.icon ?? "close"} size={action.icon ? 16 : 14} />
             </button>
           </div>;
         }

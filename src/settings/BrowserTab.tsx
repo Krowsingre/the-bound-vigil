@@ -24,7 +24,7 @@ import {
   type ProtectionLevel,
   type SearchEngine,
 } from "../browse/browserPrefs";
-import { Columns, Row, Section, SectionGroup, Select, Toggle } from "./controls";
+import { Columns, Row, Section, SectionGroup, Select, Toggle, useDeskPrefs } from "./controls";
 import { temporaryDownloads } from "../browse/browserDownloads";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DiscoverBackgroundPicker } from "../browse/DiscoverBackground";
@@ -36,6 +36,7 @@ const protect = (prefs: BrowserPrefs) => void api.browserProtect(protectionOf(pr
 /** Discover's browser: what it searches with, where it starts, what it blocks, and what happens to downloads. */
 export function BrowserTab() {
   const toast = useToast();
+  const desk = useDeskPrefs();
   const [prefs, setPrefs] = useState(readBrowserPrefs);
   const [home, setHome] = useState(prefs.home);
   const [redirectSite, setRedirectSite] = useState("");
@@ -81,7 +82,7 @@ export function BrowserTab() {
 
   const side = (
     <>
-      <SectionGroup id="media" title="Downloads and media" lede="Ebooks you download, and sound that keeps playing." holds={["downloads", "playing"]}>
+      <SectionGroup id="media" title="Downloads and media" lede="Ebooks you download, and sound that keeps playing." holds={["downloads", "playing"]} collapsible={desk}>
         <Section id="downloads" title="Downloads" lede="Ebooks you download in Discover.">
           <Toggle
             label="Add ebooks to the library without asking"
@@ -133,7 +134,7 @@ export function BrowserTab() {
           />
         </Section>
       </SectionGroup>
-      <Section id="typing" title="Typing on sites" lede="How typing works in a site's own search boxes and text boxes.">
+      <Section id="typing" title="Typing on sites" lede="How typing works in a site's own search boxes and text boxes." collapsible={desk}>
         <Toggle
           label="Tab doesn't fill in a site's suggestions"
           hint="On: a site's search box never hears Tab, so Tab just moves to the next thing on the page. Pick a suggestion with the arrow keys or by tapping it."
@@ -162,7 +163,7 @@ export function BrowserTab() {
           </>
         )}
       </Section>
-      <Section id="apps" title="Links for other apps" lede="Links that open another app, such as an email address or a phone number.">
+      <Section id="apps" title="Links for other apps" lede="Links that open another app, such as an email address or a phone number." collapsible={desk}>
         <Toggle
           label="Ask before opening other apps"
           hint="Off: they open straight away."
@@ -174,7 +175,7 @@ export function BrowserTab() {
   );
   return (
     <Columns side={side}>
-      <Section id="redirects" title="Website redirects" lede="Choose what Discover does when a site automatically sends you to another page. Trusted sites can redirect under any mode.">
+      <Section id="redirects" title="Website redirects" lede="Choose what Discover does when a site automatically sends you to another page. Trusted sites can redirect under any mode." collapsible={desk}>
         <Row label="Automatic redirects">
           <Select label="Automatic redirects" value={prefs.redirects} options={REDIRECT_MODES}
             onChange={(redirects: RedirectMode) => protect(writeBrowserPrefs({ redirects }))} />
@@ -196,7 +197,7 @@ export function BrowserTab() {
           </Row>
         ))}
       </Section>
-      <SectionGroup id="start" title="Start and search" lede="What Discover opens to and how it searches." holds={["search", "home"]}>
+      <SectionGroup id="start" title="Start and search" lede="What Discover opens to and how it searches." holds={["search", "home"]} collapsible={desk}>
         <Section id="search" title="Searching" lede="Words typed into Discover's address box that aren't a web address are searched for.">
           <Toggle
             label="Suggest from history and bookmarks while typing"
@@ -288,7 +289,7 @@ export function BrowserTab() {
           </Row>
         </Section>
       </SectionGroup>
-      <Section id="history" title="History" lede="Pages visited and words searched for in Discover. Open it from Discover's ••• menu. To have the same history on every device, turn on Sync Discover history in Preferences › Sync & Backup.">
+      <Section id="history" title="History" lede="Pages visited and words searched for in Discover. Open it from Discover's ••• menu. To have the same history on every device, turn on Sync Discover history in Preferences › Sync & Backup." collapsible={desk}>
         <Toggle label="Keep a history of pages visited" checked={prefs.historyOn} onChange={(historyOn) => writeBrowserPrefs({ historyOn })} />
         <Toggle
           label="Keep searches too"
@@ -328,7 +329,7 @@ export function BrowserTab() {
           />
         )}
       </Section>
-      <SectionGroup id="privacy" title="Privacy and sites" lede="What Discover blocks, choices made for single sites, and what sites keep." holds={["protection", "sites", "sitedata"]}>
+      <SectionGroup id="privacy" title="Privacy and sites" lede="What Discover blocks, choices made for single sites, and what sites keep." holds={["protection", "sites", "sitedata"]} collapsible={desk}>
         <Section id="protection" title="Protection" lede="What Discover blocks on the websites you visit. A site that won't work properly can have its protection lowered from its Site information sheet (the lock in the address box).">
           <Row label="Protection" hint={PROTECTION_LEVELS.find((p) => p.value === prefs.protection)?.hint}>
             <Select<ProtectionLevel>

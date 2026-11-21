@@ -602,6 +602,10 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     profile,
     onOpenProfile: openProfile,
     onOpenPlan: isApp || api.kind === "preview" ? openPlan : undefined,
+    onOpenPreferences: api.kind === "web" ? undefined : () => {
+      setReading(null);
+      navigate("settings");
+    },
     onImportBooks: importBooks,
     onImportFolder: importFolder,
     onOpenSyncSettings: () => {
@@ -796,6 +800,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
           onOpenSyncSettings={() => navigate("sync")}
           onOpenActivity={shell.onOpenActivity}
           onOpenPlaces={shell.onOpenPlaces}
+          onOpenPreferences={shell.onOpenPreferences}
         />
         <div className="workspace-content">
         {route !== "catalogs" && <main className="content">
@@ -930,6 +935,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
               onRestored={() => window.location.reload()}
               query={searchText}
               onQuery={changeSearch}
+              onOpenPlaces={shell.onOpenPlaces}
               activity={{
                 side: activitySide,
                 onSide: setActivitySide,

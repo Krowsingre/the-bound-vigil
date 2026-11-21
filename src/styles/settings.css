@@ -2436,3 +2436,52 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Preferences on a computer, eight pages (embre, 21 November). */
+.settings-desk-part + .settings-desk-part,
+.settings-body > .prefs-columns + .prefs-columns,
+.settings-body > .prefs-columns + .settings-section,
+.settings-body > .settings-section + .prefs-columns {
+  margin-top: 20px;
+}
+
+.settings-desk-part > .settings-section + .settings-section,
+.settings-desk-part > .settings-section + .prefs-columns,
+.settings-desk-part > .prefs-columns + .settings-section {
+  margin-top: 20px;
+}
+
+/* Folded extras inside a card: Fine-tune, More. */
+.settings-more {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.settings-more > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 14px;
+  list-style-position: inside;
+}
+
+.settings-more[open] > summary {
+  margin-bottom: 10px;
+}
+
+.settings-section .theme-cards + .swatches {
+  margin-top: 16px;
+}
+
+.shortcuts-sheet {
+  width: min(920px, calc(100vw - 48px));
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+
+.shortcuts-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}

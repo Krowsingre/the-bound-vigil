@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import type { SortOrder } from "../api/types";
-import { Icon } from "../components/Icon";
+import { Icon, type IconName } from "../components/Icon";
 import type { Layout } from "../library/libraryView";
 import { AppearanceTab } from "./AppearanceTab";
 import { ProfileSection } from "./ProfileSection";
 import { BrowserTab } from "./BrowserTab";
-import { AboutTab, AccessibilityTab, PlanTab, AdvancedTab, CollectionsTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
+import { AboutTab, AccessibilityTab, PlanTab, AdvancedTab, CollectionsTab, ConnectionsTab, DeskLibraryTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
 import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex";
 import { SyncTab } from "./SyncTab";
 import { EreadersTab } from "./EreadersTab";
 import { isHome, isWeb } from "../api";
 import { WebSyncTab } from "../web/WebConnect";
-import { unfoldSection } from "./controls";
+import { PrefsDesk, unfoldSection } from "./controls";
 import { ActivityTab, type ActivitySide } from "./ActivityTab";
 import { useShortcuts } from "../lib/shortcuts";
 import { useNarrow } from "../lib/useNarrow";
@@ -32,6 +32,38 @@ const GROUPS: SettingsTab[][] = [
 ];
 const GROUPED = GROUPS.map((group) => group.flatMap((tab) => TABS.filter((t) => t.tab === tab))).filter((g) => g.length > 0);
 
+/** A page of Preferences on a computer: one or more of the phone's pages, one under another. */
+interface DeskPage {
+  tab: SettingsTab;
+  label: string;
+  icon: IconName;
+  holds: SettingsTab[];
+}
+const tabOf = (tab: SettingsTab) => SETTINGS_TABS.find((t) => t.tab === tab)!;
+const own = (tab: SettingsTab): DeskPage => ({ tab, label: tabOf(tab).label, icon: tabOf(tab).icon, holds: [tab] });
+
+/** The computer's eight pages, down from sixteen (embre, 21 November). Phones keep theirs for now. */
+const DESK_GROUPS: DeskPage[][] = [
+  [{ tab: "profile", label: "You & TBV", icon: "person", holds: ["profile", "plan", "about", "advanced"] }],
+  [
+    own("appearance"),
+    own("reading"),
+    { tab: "library", label: "Library", icon: "library", holds: ["library", "collections", "notes", "files"] },
+    { tab: "ereaders", label: "Connections", icon: "connections", holds: ["ereaders"] },
+    own("browser"),
+  ],
+  [{ tab: "sync", label: "Sync & Backup", icon: "cloud", holds: ["sync", "activity"] }],
+  [{ tab: "accessibility", label: "Accessibility", icon: "accessibility", holds: ["accessibility", "shortcuts"] }],
+];
+const DESK_PAGES = DESK_GROUPS.flat();
+/** Sections that moved to another page on a computer. */
+const DESK_SECTION_PAGE: Record<string, SettingsTab> = { goodreads: "ereaders", hardcover: "ereaders", ratings: "ereaders", canva: "ereaders" };
+/** The computer page holding a tab (or one of its sections). */
+export function deskPageOf(tab: SettingsTab, section?: string): DeskPage {
+  const moved = section ? DESK_SECTION_PAGE[section] : undefined;
+  return DESK_PAGES.find((p) => p.holds.includes(moved ?? tab)) ?? DESK_PAGES[1];
+}
+
 /** Settings: its own menu of pages on the left, the chosen page on the right.
  * A phone opens on a landing page of cards instead; a computer opens on Appearance. */
 export function Settings({
@@ -48,6 +80,7 @@ export function Settings({
   activity,
   query,
   onQuery,
+  onOpenPlaces,
 }: {
   /** null: the landing page, with a button for each tab. */
   tab: SettingsTab | null;
@@ -67,6 +100,8 @@ export function Settings({
   /** What's typed in the top bar's search box, which searches Preferences here (there's no second box). */
   query: string;
   onQuery: (text: string) => void;
+  /** Where your books are: on a computer it's reached from Sync & Backup. */
+  onOpenPlaces?: () => void;
 }) {
   const narrow = useNarrow();
   // Keyboard shortcuts are left out where there's no keyboard (a phone, or an iPad without one).
@@ -85,7 +120,16 @@ export function Settings({
   const body = useRef<HTMLDivElement>(null);
   const jumped = useRef(false);
   const results = searchSettings(query).filter((r) => TABS.some((t) => t.tab === r.tab) && (keys || r.tab !== "shortcuts"));
-  const page = SETTINGS_TABS.find((t) => t.tab === tab);
+  const desk = !narrow && !isWeb && !isHome;
+  const deskPage = desk && tab ? deskPageOf(tab) : null;
+  const page = deskPage ? { ...tabOf(deskPage.tab), label: deskPage.label } : SETTINGS_TABS.find((t) => t.tab === tab);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  // A tab inside a bigger computer page: open the page there (Activity, Your plan, Shortcuts).
+  useEffect(() => {
+    if (!deskPage || !tab || tab === deskPage.tab) return;
+    if (tab === "shortcuts") setShortcutsOpen(true);
+    else setJumpTo(`tab-${tab}`);
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A new page starts at its top, or at the section picked from search
   // (opened first, and found once it's drawn: it may sit inside another).
@@ -99,7 +143,7 @@ export function Settings({
     unfoldSection(jumpTo);
     let fade: ReturnType<typeof setTimeout> | undefined;
     const frame = requestAnimationFrame(() => {
-      const target = document.getElementById(`settings-${jumpTo}`);
+      const target = document.getElementById(`settings-${jumpTo}`) ?? document.getElementById(`settings-tab-${jumpTo}`);
       if (target) {
         target.scrollIntoView({ block: "start" });
         target.classList.add("is-found");
@@ -114,7 +158,47 @@ export function Settings({
     };
   }, [tab, jumpTo]);
 
-  const content = (() => {
+  const deskContent = (() => {
+    if (!deskPage) return null;
+    const part = (t: SettingsTab, node: React.ReactNode) => (
+      <div key={t} id={`settings-tab-${t}`} className="settings-desk-part">
+        {node}
+      </div>
+    );
+    switch (deskPage.tab) {
+      case "profile":
+        return [part("profile", <ProfileSection />), part("plan", <PlanTab />), part("about", <AboutTab />), part("advanced", <AdvancedTab />)];
+      case "library":
+        return <DeskLibraryTab />;
+      case "ereaders":
+        return <ConnectionsTab />;
+      case "sync":
+        return [part("sync", <SyncTab onRestored={onRestored} onOpenPlaces={onOpenPlaces} />), part("activity", <ActivityTab {...activity} />)];
+      case "accessibility":
+        return (
+          <>
+            <AccessibilityTab onShortcuts={keys ? () => setShortcutsOpen(true) : undefined} />
+            {shortcutsOpen && (
+              <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && setShortcutsOpen(false)}>
+                <div className="dialog shortcuts-sheet" role="dialog" aria-label="Keyboard shortcuts" onKeyDown={(e) => e.key === "Escape" && setShortcutsOpen(false)}>
+                  <div className="shortcuts-sheet-head">
+                    <h2>Keyboard shortcuts</h2>
+                    <button type="button" className="icon-btn" aria-label="Close" autoFocus onClick={() => setShortcutsOpen(false)}>
+                      <Icon name="close" size={18} />
+                    </button>
+                  </div>
+                  <ShortcutsTab />
+                </div>
+              </div>
+            )}
+          </>
+        );
+      default:
+        return null;
+    }
+  })();
+
+  const content = deskContent ?? (() => {
     switch (tab) {
       case "plan":
         return <PlanTab />;
@@ -168,13 +252,18 @@ export function Settings({
               className="settings-menu-item"
               onClick={() => {
                 setQuery("");
-                onTab(r.tab);
+                onTab(desk ? deskPageOf(r.tab, r.section).tab : r.tab);
+                // Shortcuts are a sheet on a computer: open it rather than jump on the page.
+                if (desk && r.tab === "shortcuts") {
+                  setShortcutsOpen(true);
+                  return;
+                }
                 setJumpTo(r.section);
               }}
             >
               <span>
                 {r.label}
-                <span className="settings-result-page">{SETTINGS_TABS.find((t) => t.tab === r.tab)?.label}</span>
+                <span className="settings-result-page">{desk ? deskPageOf(r.tab, r.section).label : SETTINGS_TABS.find((t) => t.tab === r.tab)?.label}</span>
               </span>
             </button>
           </li>
@@ -226,14 +315,14 @@ export function Settings({
         {query.trim() ? (
           found
         ) : (
-          grouped.map((group, i) => (
+          (desk ? DESK_GROUPS : grouped).map((group, i) => (
             <ul key={i} className="settings-menu">
               {group.map((t) => (
                 <li key={t.tab}>
                   <button
                     type="button"
-                    className={`settings-menu-item${tab === t.tab ? " is-active" : ""}`}
-                    aria-current={tab === t.tab ? "page" : undefined}
+                    className={`settings-menu-item${(deskPage?.tab ?? tab) === t.tab ? " is-active" : ""}`}
+                    aria-current={(deskPage?.tab ?? tab) === t.tab ? "page" : undefined}
                     onClick={() => onTab(t.tab)}
                   >
                     <Icon name={t.icon} size={20} />
@@ -247,17 +336,17 @@ export function Settings({
       </nav>
       <div className="settings-body" ref={body}>
         {/* Visage has no heading: its Visage / Oathkin switch sits at the top instead (embre, 20 November). */}
-        <header className={`settings-head${page.tab === "profile" ? " is-bare" : ""}`}>
+        <header className={`settings-head${page.tab === "profile" && !desk ? " is-bare" : ""}`}>
           {narrow && (
             <button type="button" className="link-btn settings-back" onClick={() => onTab(null)}>
               <Icon name="chevronLeft" size={16} /> All preferences
             </button>
           )}
-          {page.tab !== "profile" && (
+          {(page.tab !== "profile" || desk) && (
             <>
               <h1>{page.label}</h1>
               {!narrow && <span className="settings-ornament" aria-hidden />}
-              <p className="muted">{page.lede}</p>
+              {!desk && <p className="muted">{page.lede}</p>}
             </>
           )}
           {isHome && (
@@ -266,7 +355,7 @@ export function Settings({
             </p>
           )}
         </header>
-        {content}
+        <PrefsDesk.Provider value={desk}>{content}</PrefsDesk.Provider>
       </div>
     </div>
   );

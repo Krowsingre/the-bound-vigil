@@ -39,6 +39,14 @@ export function unfoldSection(id: string) {
   window.dispatchEvent(new CustomEvent("tbv:unfold-section", { detail: id }));
 }
 
+/**
+ * Preferences on a computer, trimmed (embre, 21 November): section ledes are left out unless they
+ * say how things stand (`status`), and a switch's explanation shows when the pointer rests on it.
+ * Phones keep everything as it was.
+ */
+export const PrefsDesk = createContext(false);
+export const useDeskPrefs = () => useContext(PrefsDesk);
+
 /** Set inside a group: its sections are parts of one card, not cards. */
 const InGroup = createContext(false);
 
@@ -61,10 +69,10 @@ export function Columns({ side, children }: { side?: React.ReactNode; children: 
  * inside it as a part under its own small heading. `holds` names them, so
  * searching for one of them opens the card.
  */
-export function SectionGroup({ id, title, lede, holds, children }: { id: string; title: string; lede?: string; holds: string[]; children: React.ReactNode }) {
+export function SectionGroup({ id, title, lede, holds, collapsible, children }: { id: string; title: string; lede?: string; holds: string[]; collapsible?: boolean; children: React.ReactNode }) {
   for (const part of holds) GROUP_OF.set(part, id);
   return (
-    <Section id={id} title={title} lede={lede}>
+    <Section id={id} title={title} lede={lede} collapsible={collapsible}>
       <InGroup.Provider value={true}>
         <div className="settings-parts">{children}</div>
       </InGroup.Provider>
@@ -79,16 +87,21 @@ export function Section({
   lede,
   aside,
   collapsible = false,
+  status = false,
   children,
 }: {
   id: string;
   title: string;
   lede?: string;
+  /** The lede says how things stand (a version, a plan), so it stays on a computer too. */
+  status?: boolean;
   /** A second column, e.g. a preview. */
   aside?: React.ReactNode;
   collapsible?: boolean;
   children: React.ReactNode;
 }) {
+  const desk = useContext(PrefsDesk);
+  if (desk && !status) lede = undefined;
   return useContext(InGroup) ? (
     <SectionPart id={id} title={title} lede={lede} aside={aside}>
       {children}
@@ -181,14 +194,15 @@ export function Toggle({
   onChange: (checked: boolean) => void;
 }) {
   const id = useId();
+  const desk = useContext(PrefsDesk);
   return (
-    <div className={`settings-toggle${disabled ? " is-disabled" : ""}`}>
+    <div className={`settings-toggle${disabled ? " is-disabled" : ""}`} title={desk ? hint : undefined}>
       <button type="button" role="switch" id={id} className="switch" aria-checked={checked} disabled={disabled} onClick={() => onChange(!checked)}>
         <span className="switch-knob" aria-hidden />
       </button>
       <label htmlFor={id} className="settings-toggle-text">
         <span className="settings-row-label">{label}</span>
-        {hint && <span className="settings-row-hint">{hint}</span>}
+        {hint && !desk && <span className="settings-row-hint">{hint}</span>}
       </label>
     </div>
   );
