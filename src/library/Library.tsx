@@ -872,10 +872,6 @@ export function Library({
       onSelect: () => a.run(chosen),
     })),
     { label: "Clear choice", icon: "close", disabled: none || busy !== null, onSelect: () => setSelected(new Map()) },
-    // Find alike (embre, 21 November): the whole library, not only the chosen ones.
-    ...(api.findAlike && kind !== "documents"
-      ? ["divider" as const, { label: "Find alike…", icon: "search" as const, onSelect: () => setFindingAlike(true) }]
-      : []),
   ];
 
   /** Removes downloads, removes from the library, or deletes, one book at a time. */
@@ -1178,6 +1174,7 @@ export function Library({
         onPairing={onPairing}
         continuous={scrollLibrary}
         pages={!endless && page ? { page: page.page, count: pageCount(page.total, page.pageSize, slots), onPage: (p) => onChange({ page: p }) } : null}
+        onFindAlike={api.findAlike && kind !== "documents" && !albums && !narrow ? () => setFindingAlike(true) : undefined}
         onContinuous={narrow ? undefined : (enabled) => {
           changeSettings({ scrollLibrary: enabled });
           onChange({ page: 0 });
