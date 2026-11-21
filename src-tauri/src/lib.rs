@@ -1457,6 +1457,16 @@ async fn delete_book(state: State<'_, AppLibrary>, book_id: String) -> CommandRe
 }
 
 #[tauri::command]
+async fn deleted_books(state: State<'_, AppLibrary>) -> CommandResult<Vec<tbv_core::manage::DeletedBook>> {
+    with_library(state, move |library| library.deleted_books()).await
+}
+
+#[tauri::command]
+async fn forget_deleted(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.forget_deleted(&book_id)).await
+}
+
+#[tauri::command]
 async fn remove_from_library(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
     with_library(state, move |library| library.remove_from_library(&book_id)).await
 }
@@ -2422,6 +2432,8 @@ pub fn run() {
             delete_book,
             remove_download,
             remove_from_library,
+            deleted_books,
+            forget_deleted,
             save_copies,
             merge_reading,
             keep_together,

@@ -49,6 +49,20 @@ export interface ReaderShellProps {
 }
 
 const PANELS_KEY = "tbv.reader.panels";
+/** Each book's last tab in each panel; a book opened the first time starts on Contents and Book Info. */
+const TABS_KEY = "tbv.reader.tabs.";
+
+function readTabs(bookId: string): { left: LeftTab; right: RightTab } {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TABS_KEY + bookId) ?? "null");
+    return {
+      left: saved?.left === "bookmarks" ? "bookmarks" : "contents",
+      right: saved?.right === "notes" ? "notes" : "info",
+    };
+  } catch {
+    return { left: "contents", right: "info" };
+  }
+}
 
 /** iPhone, iPad and Mac, which have Apple's own dictionary and translation. */
 const isApple = isIOS || isMac;
@@ -67,7 +81,11 @@ function readPanels(): { left: boolean; right: boolean } {
   if (typeof matchMedia === "function" && matchMedia(READER_NARROW).matches) return { left: false, right: false };
   try {
     const saved = JSON.parse(localStorage.getItem(PANELS_KEY) ?? "null");
-    if (saved && typeof saved.left === "boolean" && typeof saved.right === "boolean") return saved;
+    // On a computer both panels open and close together (embre, 21 November).
+    if (saved && typeof saved.left === "boolean" && typeof saved.right === "boolean") {
+      const open = saved.left || saved.right;
+      return { left: open, right: open };
+    }
   } catch {
     /* fall through to the default */
   }
@@ -152,8 +170,22 @@ export function Reader({
   const [compactPanels, setCompactPanels] = useState({ left: false, right: false });
   const panels = compact ? compactPanels : widePanels;
   const setPanels = compact ? setCompactPanels : setWidePanels;
-  const [rightTab, setRightTab] = useState<RightTab>("notes");
-  const [leftTab, setLeftTab] = useState<LeftTab>("contents");
+  const [tabs, setTabs] = useState(() => readTabs(bookId));
+  useEffect(() => setTabs(readTabs(bookId)), [bookId]);
+  const rightTab = tabs.right;
+  const leftTab = tabs.left;
+  const changeTabs = (change: Partial<typeof tabs>) =>
+    setTabs((t) => {
+      const next = { ...t, ...change };
+      try {
+        localStorage.setItem(TABS_KEY + bookId, JSON.stringify(next));
+      } catch {
+        /* not remembered */
+      }
+      return next;
+    });
+  const setRightTab = (right: RightTab) => changeTabs({ right });
+  const setLeftTab = (left: LeftTab) => changeTabs({ left });
   const [contentsRequest, setContentsRequest] = useState(0);
   // Search in the book: a row under the top bar, opened from ••• (or Ctrl+F).
   const [phoneSearch, setPhoneSearch] = useState(false);
@@ -539,8 +571,13 @@ export function Reader({
 
   const pagePanels = (change: Partial<typeof panels>) =>
     setPanels((p) => {
-      const next = { ...p, ...change };
-      if (narrow) return { left: change.right ? false : next.left, right: change.left ? false : next.right };
+      if (narrow) {
+        const next = { ...p, ...change };
+        return { left: change.right ? false : next.left, right: change.left ? false : next.right };
+      }
+      // A computer opens and closes both panels together.
+      const open = change.left ?? change.right ?? p.left;
+      const next = { left: open, right: open };
       try {
         localStorage.setItem(PANELS_KEY, JSON.stringify(next));
       } catch {
@@ -981,6 +1018,14 @@ export function Reader({
         onHome={leave}
         contentsOpen={showLeft && leftTab === "contents"}
         onToggleContents={() => (showLeft && leftTab === "contents" ? pagePanels({ left: false }) : openContents())}
+        bookInfoOpen={showLeft && showRight}
+        onToggleBookInfo={() => {
+          if (showLeft && showRight) pagePanels({ left: false });
+          else {
+            setFocus(false);
+            pagePanels({ left: true });
+          }
+        }}
         textSettings={
           engine.fixed ? (
             <Popover label="Page settings" trigger={<Icon name="sliders" size={20} />} className="text-settings-popover">
@@ -1101,7 +1146,7 @@ export function Reader({
             fraction={r?.fraction ?? 0}
             chapter={r?.tocItem?.label?.trim() || null}
             slider={isMobile}
-            onContents={openContents}
+            title={info?.book.title ?? ""}
             onSeek={(f) => {
               quietUntil.current = performance.now() + QUIET_MS;
               remember();

@@ -15,6 +15,17 @@ use crate::library::Library;
 use crate::model::{BookId, BookPreview};
 use crate::time::now_utc;
 
+/// A book TBV remembers as deleted (Preferences › Library › Deleted books).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletedBook {
+    pub id: String,
+    pub title: String,
+    pub authors: Vec<String>,
+    pub format: String,
+    pub deleted_at: String,
+}
+
 const MAX_TAG_CHARS: usize = 40;
 const MAX_TAGS: usize = 50;
 const DISMISSED: &str = "duplicates.dismissed";
@@ -306,7 +317,7 @@ impl Library {
         }
         let copy = self.own_copy(book_id)?;
         let tx = self.conn.unchecked_transaction()?;
-        tx.execute("UPDATE books SET deleted_at = ?2 WHERE id = ?1", params![book_id, now_utc()])?;
+        tx.execute("UPDATE books SET deleted_at = ?2, forgotten_at = NULL WHERE id = ?1", params![book_id, now_utc()])?;
         tx.execute("UPDATE local_files SET path = NULL WHERE book_id = ?1", params![book_id])?;
         tx.commit()?;
         if let Some(copy) = copy {
@@ -337,7 +348,7 @@ impl Library {
         let now = now_utc();
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
-            "UPDATE books SET deleted_at = ?2 WHERE id = ?1",
+            "UPDATE books SET deleted_at = ?2, forgotten_at = NULL WHERE id = ?1",
             params![book_id, now],
         )?;
         tx.execute(
@@ -360,6 +371,37 @@ impl Library {
         if let Some(copy) = copy {
             let _ = fs::remove_file(copy);
         }
+        Ok(())
+    }
+
+    /// The books TBV remembers as deleted, newest first: importing one of
+    /// their files again skips it or puts it in Previously deleted.
+    pub fn deleted_books(&self) -> Result<Vec<DeletedBook>> {
+        let mut statement = self.conn.prepare(
+            "SELECT id, title, authors, format, deleted_at FROM books
+             WHERE deleted_at IS NOT NULL AND forgotten_at IS NULL
+             ORDER BY deleted_at DESC, title COLLATE NOCASE",
+        )?;
+        let rows = statement.query_map([], |r| {
+            let authors: Option<String> = r.get(2)?;
+            Ok(DeletedBook {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                authors: authors.and_then(|a| serde_json::from_str(&a).ok()).unwrap_or_default(),
+                format: r.get(3)?,
+                deleted_at: r.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Forgets that a book was deleted, on every device: importing its file
+    /// again is then a plain import, and what was deleted with it comes back.
+    pub fn forget_deleted(&self, book_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE books SET forgotten_at = ?2 WHERE id = ?1 AND deleted_at IS NOT NULL AND forgotten_at IS NULL",
+            params![book_id, now_utc()],
+        )?;
         Ok(())
     }
 
@@ -881,6 +923,43 @@ mod tests {
                 .total,
             1
         );
+    }
+
+    #[test]
+    fn a_forgotten_book_imports_plainly_with_what_was_deleted_with_it() {
+        use crate::collections::PREVIOUSLY_DELETED;
+        use crate::model::{AnnotationInput, AnnotationKind, ReaderLocator};
+        let (dir, mut library) = open_temp_library();
+        let a = add(&mut library, dir.path(), "a", "Carmilla", "Le Fanu", "");
+        let mark = library
+            .save_annotation(&AnnotationInput {
+                id: None,
+                book_id: a.clone(),
+                kind: AnnotationKind::Highlight,
+                excerpt: "the shadow".into(),
+                note: Some("kept".into()),
+                color: Some("sage".into()),
+                locator: ReaderLocator { total_progression: Some(0.2), ..Default::default() },
+            })
+            .unwrap();
+        library.set_setting(crate::sync::APP_SETTINGS, r#"{"skipDeletedImports":true}"#).unwrap();
+        library.delete_book(&a).unwrap();
+        let listed = library.deleted_books().unwrap();
+        assert_eq!(listed.iter().map(|b| b.title.as_str()).collect::<Vec<_>>(), vec!["Carmilla"]);
+        assert_eq!(listed[0].authors, vec!["Le Fanu".to_string()]);
+
+        library.forget_deleted(&a).unwrap();
+        assert!(library.deleted_books().unwrap().is_empty(), "forgotten books leave the list");
+        let again = library.import_files(&[dir.path().join("a.epub")]).remove(0);
+        assert!(matches!(again, ImportResult::Imported { returned: false, .. }), "{again:?}");
+        assert!(library.collection(PREVIOUSLY_DELETED).is_err(), "not put in Previously deleted");
+        let back = library.book_annotations(&a).unwrap();
+        assert_eq!(back.iter().map(|n| n.id.as_str()).collect::<Vec<_>>(), vec![mark.id.as_str()]);
+
+        // Deleting it again remembers it again.
+        library.delete_book(&a).unwrap();
+        let skipped = library.import_files(&[dir.path().join("a.epub")]).remove(0);
+        assert!(matches!(skipped, ImportResult::SkippedDeleted { .. }), "{skipped:?}");
     }
 
     #[test]

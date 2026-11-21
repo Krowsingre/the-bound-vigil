@@ -42,6 +42,7 @@ import type {
   SyncOverview,
   SyncActivity,
   TimeSpent,
+  DeletedBook,
 } from "./types";
 
 const day = 86_400_000;
@@ -245,6 +246,12 @@ const reading = (p: number, daysAgo: number): Partial<BookPreview> => ({
   totalProgression: p,
   lastOpenedAt: ago(daysAgo),
 });
+
+/** Preview: books remembered as deleted. */
+let deletedSample: DeletedBook[] = [
+  { id: "sha256:deleted-1", title: "La Peste", authors: ["Albert Camus"], format: "epub", deletedAt: "2026-11-20T23:58:00Z" },
+  { id: "sha256:deleted-2", title: "The Moonstone", authors: ["Wilkie Collins"], format: "epub", deletedAt: "2026-11-02T10:15:00Z" },
+];
 
 let books: BookPreview[] = [
   book("The Count of Monte Cristo", "Alexandre Dumas", {
@@ -1098,7 +1105,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.156.0", version: "0.156.0", notes: "The Bound Vigil 0.156.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.157.0", version: "0.157.0", notes: "The Bound Vigil 0.157.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
@@ -1176,6 +1183,10 @@ export function previewApi(): Api {
     removeFromLibrary: async (bookId) => {
       find(bookId);
       books = books.filter((b) => b.id !== bookId);
+    },
+    deletedBooks: async () => [...deletedSample],
+    forgetDeleted: async (bookId) => {
+      deletedSample = deletedSample.filter((b) => b.id !== bookId);
     },
     removeDownload: async (bookId) => {
       if (!find(bookId).inCloud) throw new Error("This book isn't in the cloud yet, so this is its only copy.");

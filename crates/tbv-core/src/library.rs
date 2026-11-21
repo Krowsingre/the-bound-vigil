@@ -801,6 +801,10 @@ const MIGRATIONS: &[&str] = &[
     // v48: Oathkin, the friend codes saved here (embre, 20 November), by code.
     // A removed friend keeps its row with removed_at, so the removal syncs.
     "CREATE TABLE friends (code TEXT PRIMARY KEY, name TEXT, added_at TEXT NOT NULL, removed_at TEXT);",
+    // v49: a deleted book can be forgotten (embre, 21 November): importing its
+    // file again is then a plain import, neither skipped nor put in Previously
+    // deleted. Synced with the book, so every device forgets it.
+    "ALTER TABLE books ADD COLUMN forgotten_at TEXT;",
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
@@ -1071,7 +1075,23 @@ impl Library {
         }
 
         let returned = self.deleted_title(&book_id)?.is_some();
+        // A forgotten book's highlights, notes and bookmarks, deleted with it,
+        // come back with it (its reading place never left the book).
+        let forgotten: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT deleted_at FROM books WHERE id = ?1 AND deleted_at IS NOT NULL AND forgotten_at IS NOT NULL",
+                params![book_id],
+                |r| r.get(0),
+            )
+            .optional()?;
         let tx = self.conn.transaction()?;
+        if let Some(deleted_at) = &forgotten {
+            tx.execute(
+                "UPDATE annotations SET deleted_at = NULL, updated_at = ?3 WHERE book_id = ?1 AND deleted_at = ?2",
+                params![book_id, deleted_at, now_utc()],
+            )?;
+        }
         tx.execute(
             // A book deleted earlier comes back when its file is imported again.
             "INSERT INTO books (id, title, authors, format, file_size, synopsis, publisher, language, added_at, series, series_index, isbn)
@@ -1080,7 +1100,7 @@ impl Library {
                 title = excluded.title, authors = excluded.authors, format = excluded.format, file_size = excluded.file_size,
                 synopsis = excluded.synopsis, publisher = excluded.publisher, language = excluded.language,
                 added_at = excluded.added_at, series = excluded.series, series_index = excluded.series_index,
-                isbn = excluded.isbn, deleted_at = NULL",
+                isbn = excluded.isbn, deleted_at = NULL, forgotten_at = NULL",
             params![
                 book_id,
                 title,
@@ -1120,7 +1140,7 @@ impl Library {
         Ok(self
             .conn
             .query_row(
-                "SELECT title FROM books WHERE id = ?1 AND deleted_at IS NOT NULL",
+                "SELECT title FROM books WHERE id = ?1 AND deleted_at IS NOT NULL AND forgotten_at IS NULL",
                 params![book_id],
                 |r| r.get(0),
             )

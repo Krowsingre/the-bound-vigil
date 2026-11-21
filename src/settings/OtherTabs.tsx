@@ -1,7 +1,7 @@
 import { RememberedDetails } from "../components/RememberedDetails";
 import { useEffect, useRef, useState } from "react";
 import { api, isAndroid, isApp, isIOS, openExternal } from "../api";
-import type { DuplicateGroup, GoodreadsImport, LibraryInfo, SortOrder, TagCount } from "../api/types";
+import type { DeletedBook, DuplicateGroup, GoodreadsImport, LibraryInfo, SortOrder, TagCount } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
@@ -378,7 +378,63 @@ function DeletedBooksSection() {
           onChange={(skipDeletedImports) => change({ skipDeletedImports })}
         />
       </div>
+      <DeletedBooksList />
     </Section>
+  );
+}
+
+/** The books TBV remembers as deleted, each with Forget (embre, 21 November). */
+function DeletedBooksList() {
+  const [books, setBooks] = useState<DeletedBook[] | null>(null);
+  const [query, setQuery] = useState("");
+  const toast = useToast();
+  useEffect(() => {
+    let live = true;
+    api.deletedBooks().then((list) => live && setBooks(list), () => live && setBooks([]));
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (books === null) return null;
+  if (books.length === 0) return <p className="settings-row-hint">No deleted books.</p>;
+  const words = query.trim().toLowerCase();
+  const shown = words ? books.filter((b) => `${b.title} ${b.authors.join(" ")}`.toLowerCase().includes(words)) : books;
+  const forget = async (book: DeletedBook) => {
+    try {
+      await api.forgetDeleted(book.id);
+      setBooks((list) => list && list.filter((b) => b.id !== book.id));
+    } catch (e) {
+      toast(`That didn't work: ${String(e)}`);
+    }
+  };
+  return (
+    <div className="deleted-books">
+      {(books.length > 8 || query) && (
+        <input
+          type="search"
+          className="input deleted-books-search"
+          placeholder="Search deleted books"
+          aria-label="Search deleted books"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      )}
+      <ul className="deleted-books-list">
+        {shown.map((b) => (
+          <li key={b.id} className="deleted-books-item">
+            <span className="deleted-books-text">
+              <span className="settings-row-label">{b.title}</span>
+              <span className="settings-row-hint">
+                {[b.authors.join(", "), `Deleted ${relativeTime(b.deletedAt)}`].filter(Boolean).join(" · ")}
+              </span>
+            </span>
+            <button type="button" className="btn btn-quiet" onClick={() => void forget(b)}>
+              Forget
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -1236,7 +1292,7 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.156.0");
+  const [version, setVersion] = useState("0.157.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

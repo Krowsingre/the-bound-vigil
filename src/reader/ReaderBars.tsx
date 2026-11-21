@@ -7,10 +7,12 @@ import { formatNumber, formatPage, pageAtFraction, type Jump, type PagePosition 
 import { useShortcuts } from "../lib/shortcuts";
 
 /**
- * The reader's own title bar, in place of the app header: home and contents
- * on the left; Aa, listening, bookmark, notes and ••• on the right; the
- * book's name under them. On a phone it hides while reading (focus) and a
- * tap on the page brings it back.
+ * The reader's own title bar, in place of the app header. Computers: home and
+ * Book info (both side panels) on the left; Aa, listening, bookmark and ••• on
+ * the right; the book's name under them. Phones: home, then ‹ (which unfolds
+ * contents, Aa, listening, bookmark and notes) and •••; the book's name is in
+ * the bottom row. On a phone it hides while reading (focus) and a tap on the
+ * page brings it back.
  */
 export function ReaderTopBar({
   title,
@@ -19,6 +21,8 @@ export function ReaderTopBar({
   onHome,
   contentsOpen,
   onToggleContents,
+  bookInfoOpen,
+  onToggleBookInfo,
   textSettings,
   readAloud,
   bookmarked,
@@ -36,6 +40,9 @@ export function ReaderTopBar({
   onHome: () => void;
   contentsOpen: boolean;
   onToggleContents: () => void;
+  /** Computers: Book info opens both side panels together. */
+  bookInfoOpen: boolean;
+  onToggleBookInfo: () => void;
   textSettings: ReactNode;
   readAloud: ReactNode;
   bookmarked: boolean;
@@ -50,48 +57,117 @@ export function ReaderTopBar({
   const hidden = overlay && focus;
   const keys = useShortcuts();
   const bookmarkLabel = `${bookmarked ? "Remove bookmark" : "Bookmark this page"}${keys ? " (Ctrl+B)" : ""}`;
+  // Phones: the tools fold into a ‹ beside •••; a tap on anything else in
+  // the bar (or the page, which goes back into focus) folds them again.
+  const [unfolded, setUnfolded] = useState(false);
+  useEffect(() => {
+    if (hidden || !overlay) setUnfolded(false);
+  }, [hidden, overlay]);
+  const tools = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!unfolded) return;
+    const fold = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (tools.current?.contains(target)) return;
+      // What the tools opened (a sheet, a panel, a menu) leaves them unfolded.
+      if (target?.closest?.(".look-backdrop, .reader-left, .reader-right, .reader-scrim, [role='dialog'], .menu, .popover")) return;
+      setUnfolded(false);
+    };
+    document.addEventListener("pointerdown", fold, true);
+    return () => document.removeEventListener("pointerdown", fold, true);
+  }, [unfolded]);
+  const contents = (
+    <button
+      type="button"
+      className={`icon-btn${contentsOpen ? " is-on" : ""}`}
+      aria-label="Contents"
+      title="Contents"
+      aria-pressed={contentsOpen}
+      onClick={onToggleContents}
+    >
+      <Icon name="listBullet" size={20} />
+    </button>
+  );
+  const bookmark = (
+    <button
+      type="button"
+      className={`icon-btn${bookmarked ? " is-on" : ""}`}
+      aria-label={bookmarkLabel}
+      title={bookmarkLabel}
+      aria-pressed={bookmarked}
+      onClick={onToggleBookmark}
+    >
+      <Icon name="bookmark" size={20} filled={bookmarked} />
+    </button>
+  );
+  const notes = (
+    <button
+      type="button"
+      className={`icon-btn reader-notes-btn${notesOpen ? " is-on" : ""}`}
+      aria-label="Highlights and notes"
+      title="Highlights and notes"
+      aria-pressed={notesOpen}
+      onClick={onToggleNotes}
+    >
+      <Icon name="notePen" size={20} />
+      {noteCount > 0 && <span className="dot" aria-hidden />}
+    </button>
+  );
+  const more = <Menu label="More" trigger={<Icon name="more" size={20} />} items={menu} menuClassName="menu-narrow" />;
+  if (overlay) {
+    return (
+      <header
+        className={`reader-top${focus ? " reader-top-focus" : ""} is-overlay${hidden ? " is-hidden" : ""}`}
+        data-tauri-drag-region
+        aria-hidden={hidden || undefined}
+        inert={hidden || undefined}
+      >
+        <div className="reader-top-row" data-tauri-drag-region>
+          <button type="button" className="icon-btn reader-home" aria-label="Back to Sanctum" title="Back to Sanctum" onClick={onHome}>
+            <Icon name="home" size={22} filled />
+          </button>
+          <span className="reader-top-spacer" data-tauri-drag-region />
+          {unfolded ? (
+            <div className="reader-top-tools" ref={tools}>
+              {contents}
+              {textSettings}
+              {readAloud}
+              {bookmark}
+              {notes}
+            </div>
+          ) : (
+            <button type="button" className="icon-btn" aria-label="Show tools" title="Show tools" aria-expanded={false} onClick={() => setUnfolded(true)}>
+              <Icon name="chevronLeft" size={20} />
+            </button>
+          )}
+          {more}
+          <WindowControls />
+        </div>
+      </header>
+    );
+  }
   return (
-    <header className={`reader-top${focus ? " reader-top-focus" : ""}${overlay ? " is-overlay" : ""}${hidden ? " is-hidden" : ""}`} data-tauri-drag-region aria-hidden={hidden || undefined} inert={hidden || undefined}>
+    <header className={`reader-top${focus ? " reader-top-focus" : ""}`} data-tauri-drag-region>
       <div className="reader-top-row" data-tauri-drag-region>
         <button type="button" className="icon-btn reader-home" aria-label="Back to Sanctum" title="Back to Sanctum" onClick={onHome}>
           <Icon name="home" size={22} filled />
         </button>
-        <span className="reader-top-rule" aria-hidden />
         <button
           type="button"
-          className={`icon-btn${contentsOpen ? " is-on" : ""}`}
-          aria-label="Contents"
-          title="Contents"
-          aria-pressed={contentsOpen}
-          onClick={onToggleContents}
+          className={`icon-btn reader-notes-btn${bookInfoOpen ? " is-on" : ""}`}
+          aria-label="Book info"
+          title="Book info"
+          aria-pressed={bookInfoOpen}
+          onClick={onToggleBookInfo}
         >
-          <Icon name="listBullet" size={20} />
+          <Icon name="info" size={20} />
+          {noteCount > 0 && <span className="dot" aria-hidden />}
         </button>
         <span className="reader-top-spacer" data-tauri-drag-region />
         {textSettings}
         {readAloud}
-        <button
-          type="button"
-          className={`icon-btn${bookmarked ? " is-on" : ""}`}
-          aria-label={bookmarkLabel}
-          title={bookmarkLabel}
-          aria-pressed={bookmarked}
-          onClick={onToggleBookmark}
-        >
-          <Icon name="bookmark" size={20} filled={bookmarked} />
-        </button>
-        <button
-          type="button"
-          className={`icon-btn reader-notes-btn${notesOpen ? " is-on" : ""}`}
-          aria-label="Highlights and notes"
-          title="Highlights and notes"
-          aria-pressed={notesOpen}
-          onClick={onToggleNotes}
-        >
-          <Icon name="notePen" size={20} />
-          {noteCount > 0 && <span className="dot" aria-hidden />}
-        </button>
-        <Menu label="More" trigger={<Icon name="more" size={20} />} items={menu} menuClassName="menu-narrow" />
+        {bookmark}
+        {more}
         {avatar}
         <WindowControls />
       </div>
@@ -105,7 +181,7 @@ export function ReaderBottomBar({
   position,
   fraction,
   chapter,
-  onContents,
+  title,
   onSeek,
   onLeft,
   onRight,
@@ -119,7 +195,8 @@ export function ReaderBottomBar({
   position: PagePosition | null;
   fraction: number;
   chapter: string | null;
-  onContents: () => void;
+  /** Phones: the book's name, at the bottom left. */
+  title: string;
   onSeek: (fraction: number) => void;
   /** The left and right arrows: in a right-to-left book the left one is the next page. */
   onLeft: () => void;
@@ -176,11 +253,21 @@ export function ReaderBottomBar({
             <Icon name="chevronLeft" size={20} />
           </button>
         ) : <span className="reader-bottom-gap" />}
-        <button type="button" className="reader-bottom-where" title="Show contents" aria-label={chapter ? `Show contents: ${chapter}` : "Show contents"} onClick={onContents}>
-          {chapter && <span className="reader-bottom-chapter">{chapter}</span>}
-          <span className="reader-bottom-page">{shownPage ? formatPage(shownPage) : percent(shown)}</span>
-        </button>
-        {zoom}
+        {overlay ? (
+          <>
+            <SlidingName text={title} />
+            {zoom}
+            <ChapterOrPage chapter={chapter} page={shownPage ? formatPage(shownPage) : percent(shown)} />
+          </>
+        ) : (
+          <>
+            <div className="reader-bottom-where">
+              {chapter && <span className="reader-bottom-chapter">{chapter}</span>}
+              <span className="reader-bottom-page">{shownPage ? formatPage(shownPage) : percent(shown)}</span>
+            </div>
+            {zoom}
+          </>
+        )}
         {arrows ? (
           <button type="button" className="icon-btn" aria-label={rightName} title={`${rightName} (→)`} onClick={onRight}>
             <Icon name="chevronRight" size={20} />
@@ -188,6 +275,63 @@ export function ReaderBottomBar({
         ) : <span className="reader-bottom-gap" />}
       </div>
     </footer>
+  );
+}
+
+const BOTTOM_SHOWS_KEY = "tbv.reader.bottomShows";
+
+/** Phones: the chapter's name, or with a tap "Page X of Y" (remembered); the page when there's no chapter name. */
+function ChapterOrPage({ chapter, page }: { chapter: string | null; page: string }) {
+  const [showPage, setShowPage] = useState(() => {
+    try {
+      return localStorage.getItem(BOTTOM_SHOWS_KEY) === "page";
+    } catch {
+      return false;
+    }
+  });
+  if (!chapter) return <span className="reader-bottom-end">{page}</span>;
+  const swap = () =>
+    setShowPage((now) => {
+      try {
+        localStorage.setItem(BOTTOM_SHOWS_KEY, now ? "chapter" : "page");
+      } catch {
+        /* not remembered */
+      }
+      return !now;
+    });
+  return (
+    <button type="button" className="reader-bottom-end" aria-label={showPage ? `${page}. Show the chapter` : `${chapter}. Show the page`} onClick={swap}>
+      {showPage ? page : chapter}
+    </button>
+  );
+}
+
+/** The book's name, cut short to fit; when it doesn't fit it slides along by itself now and then. */
+function SlidingName({ text }: { text: string }) {
+  const box = useRef<HTMLSpanElement>(null);
+  const inner = useRef<HTMLSpanElement>(null);
+  const [over, setOver] = useState(0);
+  useEffect(() => {
+    const outer = box.current;
+    const words = inner.current;
+    if (!outer || !words || typeof ResizeObserver === "undefined") return;
+    const measure = () => setOver(Math.max(0, Math.ceil(words.scrollWidth - outer.clientWidth)));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(outer);
+    observer.observe(words);
+    return () => observer.disconnect();
+  }, [text]);
+  return (
+    <span ref={box} className={`reader-bottom-name${over > 0 ? " is-sliding" : ""}`} title={text}>
+      <span
+        ref={inner}
+        className="reader-bottom-name-text"
+        style={over > 0 ? { ["--slide" as string]: `-${over}px`, ["--slide-time" as string]: `${Math.max(8, 4 + over / 25)}s` } : undefined}
+      >
+        {text}
+      </span>
+    </span>
   );
 }
 

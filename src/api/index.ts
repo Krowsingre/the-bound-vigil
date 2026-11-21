@@ -12,6 +12,7 @@ import type {
   BrowserSession,
   DeviceTabs,
   BookFile,
+  DeletedBook,
   BookLocation,
   Bookmark,
   BookmarkFolder,
@@ -453,6 +454,10 @@ export interface Api {
   bookFiles(bookId: string): Promise<BookFile[]>;
   /** Takes a book out of the library, keeping its notes and cloud file for when it's imported again. */
   removeFromLibrary(bookId: string): Promise<void>;
+  /** Books TBV remembers as deleted, newest first (Preferences › Library › Deleted books). */
+  deletedBooks(): Promise<DeletedBook[]>;
+  /** Forgets a deletion on every device: importing the file again is a plain import. */
+  forgetDeleted(bookId: string): Promise<void>;
   /** Saves copies of the books, named "Title - Author", into a folder chosen now. Null if none was chosen. */
   saveCopies(bookIds: string[]): Promise<{ saved: number; folder: string } | null>;
   /** iPhone and iPad: the Share sheet with these books' files (AirDrop, Messages, Mail…). */
@@ -1276,6 +1281,8 @@ function appApi(): Api {
     keepApart: async (bookId) => (await core).invoke("keep_apart", { bookId }),
     bookFiles: async (bookId) => (await core).invoke<BookFile[]>("book_files", { bookId }),
     removeFromLibrary: async (bookId) => (await core).invoke("remove_from_library", { bookId }),
+    deletedBooks: async () => (await core).invoke<DeletedBook[]>("deleted_books"),
+    forgetDeleted: async (bookId) => (await core).invoke("forget_deleted", { bookId }),
     saveCopies: async (bookIds) => {
       const picked = isIOS
         ? await (await core).invoke<string | null>("ios_pick_folder")

@@ -50,6 +50,15 @@ export interface RemotePosition {
 
 export type AudioType = "audiobook" | "podcast" | "music" | "other";
 
+/** A book TBV remembers as deleted. */
+export interface DeletedBook {
+  id: string;
+  title: string;
+  authors: string[];
+  format: string;
+  deletedAt: string;
+}
+
 export interface BookPreview {
   audioType?: AudioType | null;
   id: BookId;

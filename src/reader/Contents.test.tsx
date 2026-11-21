@@ -60,7 +60,7 @@ test("same-chapter reading and manual list browsing do not recenter; chapter cha
   expect(body.scrollTop).toBe(777);
   rerender(<Harness entries={entries} currentId="first" />);
   expect(body.scrollTop).toBe(717);
-  fireEvent.click(screen.getByRole("tab", { name: "Highlights" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Bookmarks" }));
   fireEvent.click(screen.getByRole("tab", { name: "Contents" }));
   expect(body.scrollTop).toBe(657);
 });
@@ -97,21 +97,39 @@ test("an already-visible current row does not scroll, and resizing can reveal it
   unmount(); expect(disconnect).toHaveBeenCalled();
 });
 
-test("footer chapter is an accessible Contents action, with a fallback for books without a chapter label", () => {
-  const onContents = vi.fn();
-  const props = { position: { page: 59, total: 100 }, fraction: 0.59, onSeek: vi.fn(), onLeft: vi.fn(), onRight: vi.fn(), onContents, focus: false, overlay: false, arrows: true };
+test("on a computer the footer shows the chapter and page and opens nothing", () => {
+  const props = { position: { page: 59, total: 100 }, fraction: 0.59, onSeek: vi.fn(), onLeft: vi.fn(), onRight: vi.fn(), title: "Carmilla", focus: false, overlay: false, arrows: false };
   const { rerender } = render(<ReaderBottomBar {...props} chapter="Chapter 59" />);
-  fireEvent.click(screen.getByRole("button", { name: "Show contents: Chapter 59" }));
-  expect(onContents).toHaveBeenCalledTimes(1);
-  expect(props.onSeek).not.toHaveBeenCalled();
+  expect(screen.getByText("Chapter 59")).toBeTruthy();
   expect(screen.getByText("Page 59 of 100")).toBeTruthy();
+  expect(screen.queryAllByRole("button")).toHaveLength(0);
   rerender(<ReaderBottomBar {...props} chapter={null} focus />);
-  fireEvent.click(screen.getByRole("button", { name: "Show contents" }));
-  expect(onContents).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText("Chapter 59")).toBeNull();
+  expect(screen.getByText("Page 59 of 100")).toBeTruthy();
+});
+
+test("on a phone the footer has the book's name, and the chapter swaps with the page on a tap", () => {
+  localStorage.removeItem("tbv.reader.bottomShows");
+  const props = { position: { page: 59, total: 100 }, fraction: 0.59, onSeek: vi.fn(), onLeft: vi.fn(), onRight: vi.fn(), title: "Carmilla", focus: false, overlay: true, arrows: false };
+  const { unmount } = render(<ReaderBottomBar {...props} chapter="Chapter 59" />);
+  expect(screen.getByText("Carmilla")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Chapter 59. Show the page" }));
+  expect(screen.getByText("Page 59 of 100")).toBeTruthy();
+  expect(screen.queryByText("Chapter 59")).toBeNull();
+  unmount();
+  // Remembered for the next book.
+  render(<ReaderBottomBar {...props} chapter="Chapter 1" />);
+  expect(screen.getByRole("button", { name: "Page 59 of 100. Show the chapter" })).toBeTruthy();
+});
+
+test("on a phone with no chapter name the footer shows the page", () => {
+  const props = { position: { page: 3, total: 10 }, fraction: 0.3, onSeek: vi.fn(), onLeft: vi.fn(), onRight: vi.fn(), title: "Carmilla", focus: false, overlay: true, arrows: false };
+  render(<ReaderBottomBar {...props} chapter={null} />);
+  expect(screen.getByText("Page 3 of 10")).toBeTruthy();
 });
 
 test("scrolling books have no page-turn arrows, and on a phone the bar hides while reading", () => {
-  const props = { position: { page: 3, total: 10 }, fraction: 0.3, chapter: "One", onSeek: vi.fn(), onLeft: vi.fn(), onRight: vi.fn(), onContents: vi.fn(), focus: false, overlay: true };
+  const props = { position: { page: 3, total: 10 }, fraction: 0.3, chapter: "One", title: "Carmilla", onSeek: vi.fn(), onLeft: vi.fn(), onRight: vi.fn(), focus: false, overlay: true };
   const { rerender, container } = render(<ReaderBottomBar {...props} arrows />);
   expect(screen.queryByRole("button", { name: "Next page" })).toBeTruthy();
   rerender(<ReaderBottomBar {...props} arrows={false} />);
