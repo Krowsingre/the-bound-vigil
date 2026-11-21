@@ -281,12 +281,23 @@
   font: 400 14px var(--font-serif);
   white-space: nowrap;
 }
+/* Find alike: a labelled button like Series (embre, 21 November). */
+.find-alike-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--text-muted);
+  font: 400 14px var(--font-serif);
+  white-space: nowrap;
+}
 .series-switch button + button {
   border-left: 1px solid var(--border);
-}
-.series-switch button:not(:disabled):hover {
-  background: var(--surface-sunk);
-  color: var(--text);
 }
 .series-switch .is-active,
 .series-switch .is-active:hover {

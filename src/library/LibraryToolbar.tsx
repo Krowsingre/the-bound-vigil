@@ -57,6 +57,7 @@ export function LibraryToolbar({
   continuous = false,
   onContinuous,
   pages = null,
+  onFindAlike,
   selecting,
   onSelecting,
   onChange,
@@ -81,6 +82,8 @@ export function LibraryToolbar({
   onContinuous?: (enabled: boolean) => void;
   /** Paged browsing: the page numbers that slide out beside the page mode button. */
   pages?: { page: number; count: number; onPage: (page: number) => void } | null;
+  /** Computer only: opens Find alike from its own button (embre, 21 November). */
+  onFindAlike?: () => void;
   selecting: boolean;
   onSelecting: (on: boolean) => void;
   onChange: (change: Partial<LibraryView>) => void;
@@ -290,6 +293,11 @@ export function LibraryToolbar({
         {view.tab === "collections" && <span className="tabs-menu">{tabName(view.tab)}</span>}
         {view.tab !== "collections" && (
           <>
+            {onFindAlike && !phoneList && (
+              <button type="button" className="toolbar-labelled find-alike-button" title="Group books with similar names by the same author" onClick={onFindAlike}>
+                <Icon name="search" size={16} /> Find alike
+              </button>
+            )}
             <span className="toolbar-divider" aria-hidden />
             {/* A shelf other than everything is named here; it's chosen in Filter. */}
             {(view.tab !== "all" || view.location === "on_device") && (
