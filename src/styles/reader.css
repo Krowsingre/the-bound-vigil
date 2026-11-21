@@ -957,12 +957,6 @@
   border-radius: 8px;
   background: transparent;
   color: inherit;
-  cursor: pointer;
-}
-
-.reader-bottom-where:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 2px;
 }
 
 .reader-bottom-chapter {
@@ -971,11 +965,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font: 400 15px var(--font-serif);
-  color: var(--page-text);
-}
-
-.reader-bottom-where:hover .reader-bottom-chapter {
-  text-decoration: underline;
 }
 
 .reader-bottom-page {
@@ -2301,4 +2290,62 @@
   font: 500 13px var(--font-sans, inherit);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
+}
+
+/* Phones: the book's name at the bottom left, the chapter (or, with a tap,
+   the page) at the bottom right (embre, 21 November). */
+.reader-bottom.is-overlay .reader-bottom-row {
+  display: flex;
+  gap: 16px;
+}
+.reader-bottom.is-overlay .reader-bottom-gap {
+  display: none;
+}
+.reader-bottom-name {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 400 15px var(--font-serif);
+  color: var(--page-muted);
+}
+.reader-bottom-name.is-sliding {
+  text-overflow: clip;
+}
+.reader-bottom-name-text {
+  display: inline-block;
+}
+.reader-bottom-name.is-sliding .reader-bottom-name-text {
+  animation: reader-name-slide var(--slide-time, 10s) ease-in-out infinite;
+}
+@keyframes reader-name-slide {
+  0%, 25% { transform: translateX(0); }
+  50%, 75% { transform: translateX(var(--slide)); }
+  100% { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reader-bottom-name.is-sliding { text-overflow: ellipsis; }
+  .reader-bottom-name.is-sliding .reader-bottom-name-text { animation: none; }
+}
+.reader-bottom-end {
+  max-width: 55vw;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--page-muted);
+  font: 400 15px var(--font-serif);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Phones: home, then ‹ (or the tools it unfolds) and •••. */
+.reader-top-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }

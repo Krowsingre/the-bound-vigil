@@ -15,8 +15,6 @@ import {
   counts,
   filterAnnotations,
   isBookmark,
-  isHighlight,
-  isNote,
   type AnnotationFilter,
   type AnnotationSort,
 } from "./annotations";
@@ -112,7 +110,7 @@ function EmptyList({ children }: { children: React.ReactNode }) {
   return <p className="panel-empty">{children}</p>;
 }
 
-export type LeftTab = "contents" | "highlights" | "notes";
+export type LeftTab = "contents" | "bookmarks";
 
 /** Book, progress and contents, on the left. */
 export function LeftPanel({
@@ -197,8 +195,7 @@ export function LeftPanel({
     setRemembered(saved);
     try { localStorage.setItem(disclosureKey, JSON.stringify([...saved])); } catch { /* Keep the current view. */ }
   };
-  const highlights = annotations.filter(isHighlight);
-  const notes = annotations.filter(isNote);
+  const bookmarks = filterAnnotations(annotations, "bookmarks", "position");
   const total = position?.total ?? 0;
 
   return (
@@ -226,8 +223,7 @@ export function LeftPanel({
         {(
           [
             ["contents", "Contents"],
-            ["highlights", "Highlights"],
-            ["notes", "Notes"],
+            ["bookmarks", "Bookmarks"],
           ] as const
         ).map(([value, label]) => (
           <button
@@ -271,25 +267,15 @@ export function LeftPanel({
           ) : (
             <EmptyList>This book has no table of contents.</EmptyList>
           ))}
-        {tab === "highlights" &&
-          (highlights.length ? (
+        {tab === "bookmarks" &&
+          (bookmarks.length ? (
             <ul className="ann-list">
-              {highlights.map((a) => (
+              {bookmarks.map((a) => (
                 <AnnotationItem key={a.id} a={a} totalPages={total} handlers={handlers} compact />
               ))}
             </ul>
           ) : (
-            <EmptyList>Select words in the book to highlight them.</EmptyList>
-          ))}
-        {tab === "notes" &&
-          (notes.length ? (
-            <ul className="ann-list">
-              {notes.map((a) => (
-                <AnnotationItem key={a.id} a={a} totalPages={total} handlers={handlers} compact />
-              ))}
-            </ul>
-          ) : (
-            <EmptyList>Select words in the book, then choose Add a note.</EmptyList>
+            <EmptyList>The bookmark button at the top marks the page you're on.</EmptyList>
           ))}
       </div>
     </aside>
@@ -300,7 +286,6 @@ const FILTERS: { value: AnnotationFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "highlights", label: "Highlights" },
   { value: "notes", label: "Notes" },
-  { value: "bookmarks", label: "Bookmarks" },
 ];
 
 export type RightTab = "notes" | "info";
@@ -327,8 +312,10 @@ export function RightPanel({
   const [sort, setSort] = useState<AnnotationSort>("position");
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
-  const n = counts(annotations);
-  const list = useMemo(() => filterAnnotations(annotations, filter, sort, query), [annotations, filter, sort, query]);
+  // Bookmarks are listed on the left, under Contents.
+  const marks = useMemo(() => annotations.filter((a) => !isBookmark(a)), [annotations]);
+  const n = counts(marks);
+  const list = useMemo(() => filterAnnotations(marks, filter, sort, query), [marks, filter, sort, query]);
 
   return (
     <aside className="reader-right" aria-label="Highlights, notes and book info">
@@ -400,8 +387,8 @@ export function RightPanel({
             </ul>
           ) : (
             <EmptyList>
-              {annotations.length === 0
-                ? "Nothing here yet. Select words in the book to highlight them or add a note. The bookmark button at the top marks the page you're on."
+              {marks.length === 0
+                ? "Nothing here yet. Select words in the book to highlight them or add a note."
                 : "Nothing matches."}
             </EmptyList>
           )}
