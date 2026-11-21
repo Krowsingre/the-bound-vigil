@@ -17,6 +17,7 @@ import type {
   ItemKind,
   AudioType,
   AlikeGroup,
+  AlikeOptions,
   SeriesEntry,
   BookPreview,
   HiddenLock,
@@ -139,7 +140,7 @@ export interface Api {
   /** Queues book files and folders on the Imports page. Returns how many books were found. */
   queueImports(paths: string[]): Promise<number>;
   /** Find alike: groups of alike books of one kind (the app only). */
-  findAlike?(kind: ItemKind): Promise<AlikeGroup[]>;
+  findAlike?(kind: ItemKind, options?: AlikeOptions): Promise<AlikeGroup[]>;
   /** Keeps books out of one Find alike group (by its keys), or lets them back. */
   keepOutOfAlike?(bookIds: string[], keys: string[], out: boolean): Promise<void>;
   keptOutOfAlike?(bookId: string): Promise<boolean>;
@@ -943,7 +944,7 @@ function appApi(): Api {
     kind: "app",
     getHome: async () => (await core).invoke<HomeViewModel>("get_home"),
     queueImports: async (paths) => (await core).invoke<number>("queue_imports", { paths }),
-    findAlike: async (kind) => (await core).invoke<AlikeGroup[]>("find_alike", { kind }),
+    findAlike: async (kind, options) => (await core).invoke<AlikeGroup[]>("find_alike", { kind, options: options ?? null }),
     keepOutOfAlike: async (bookIds, keys, out) => (await core).invoke("keep_out_of_alike", { bookIds, keys, out }),
     keptOutOfAlike: async (bookId) => (await core).invoke<boolean>("kept_out_of_alike", { bookId }),
     keptOutBooks: async (kind) => (await core).invoke<BookPreview[]>("kept_out_books", { kind }),

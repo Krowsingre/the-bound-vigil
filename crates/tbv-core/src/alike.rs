@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use rusqlite::params;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::browse::kind_condition;
 use crate::error::Result;
@@ -28,6 +28,79 @@ const NUMBER_WORDS: &[&str] = &["one", "two", "three", "four", "five", "six", "s
 const ROMAN: &[&str] = &["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii"];
 /// Little words kept lower-case in a group's suggested series name.
 const SMALL: &[&str] = &["a", "an", "and", "as", "at", "but", "by", "for", "in", "of", "on", "or", "the", "to"];
+
+/// The details Find alike can match by or look only at (embre, 21 November).
+pub const ALIKE_FIELDS: &[&str] = &["author", "title", "series", "publisher", "genre", "tag", "narrator", "language", "year"];
+/// A list detail (genres, tags, narrators) counts this many of its values at most.
+const MAX_VALUES: usize = 5;
+
+/// How Find alike searches: the details books must share to be grouped
+/// (author and title start until changed), and the books it looks at.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlikeOptions {
+    #[serde(default)]
+    pub match_by: Vec<String>,
+    #[serde(default)]
+    pub only: Vec<AlikeFilter>,
+}
+
+/// "Only look at" books whose `field` has this value (any of its values, for a list).
+#[derive(Debug, Clone, Deserialize)]
+pub struct AlikeFilter {
+    pub field: String,
+    pub value: String,
+}
+
+/// A book with the details Find alike reads that a preview doesn't carry.
+struct Row {
+    book: BookPreview,
+    audio: Option<String>,
+    out: Option<String>,
+    publisher: Option<String>,
+    published: Option<String>,
+}
+
+/// A detail's values, as they compare (lower case, words only).
+fn values(row: &Row, field: &str) -> Vec<String> {
+    let one = |v: Option<&str>| v.map(|v| words(v).join(" ")).filter(|v| !v.is_empty()).into_iter().collect::<Vec<_>>();
+    let many = |list: &[String]| {
+        let mut out: Vec<String> = list.iter().map(|v| words(v).join(" ")).filter(|v| !v.is_empty()).collect();
+        out.dedup();
+        out.truncate(MAX_VALUES);
+        out
+    };
+    let book = &row.book;
+    match field {
+        "author" => Some(author_of(&book.authors)).filter(|a| !a.is_empty()).into_iter().collect(),
+        "title" => Some(lead(&stem(&book.title))).filter(|t| !t.is_empty()).into_iter().collect(),
+        "series" => one(book.series.as_deref()),
+        "publisher" => one(row.publisher.as_deref()),
+        "genre" => many(&book.genres),
+        "tag" => many(&book.tags),
+        "narrator" => many(&book.narrators),
+        "language" => one(book.language.as_deref()),
+        "year" => row.published.as_deref().map(|p| p.chars().take(4).collect::<String>()).filter(|y| y.len() == 4 && y.chars().all(|c| c.is_ascii_digit())).into_iter().collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// The keys a book is found by: one for each mix of its values of the details matched.
+/// Matching by title start also joins the books of one series.
+fn keys_for(row: &Row, match_by: &[String]) -> Vec<String> {
+    let mut keys = vec![String::new()];
+    for field in match_by {
+        let mut options: Vec<String> = values(row, field).into_iter().map(|v| format!("{field}:{v}")).collect();
+        if field == "title" && !match_by.iter().any(|f| f == "series") {
+            options.extend(values(row, "series").into_iter().map(|v| format!("series:{v}")));
+        }
+        if options.is_empty() {
+            return Vec::new();
+        }
+        keys = keys.iter().flat_map(|k| options.iter().map(move |o| if k.is_empty() { o.clone() } else { format!("{k}|{o}") })).collect();
+    }
+    keys
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -151,42 +224,64 @@ impl Library {
     /// The groups of alike books of one kind, biggest first. A group needs two
     /// books, and something left to do: a book in no series, or books in
     /// different series.
-    pub fn find_alike(&self, kind: ItemKind) -> Result<Vec<AlikeGroup>> {
+    pub fn find_alike(&self, kind: ItemKind, options: &AlikeOptions) -> Result<Vec<AlikeGroup>> {
+        let mut match_by: Vec<String> = options.match_by.iter().filter(|f| ALIKE_FIELDS.contains(&f.as_str())).cloned().collect();
+        match_by.dedup();
+        if match_by.is_empty() {
+            match_by = vec!["author".into(), "title".into()];
+        }
         let sql = format!(
             "{BOOK_COLUMNS}, (SELECT a.book_id FROM audiobooks a JOIN books ab ON ab.id = a.book_id AND ab.deleted_at IS NULL
                               WHERE a.ebook_id = b.id LIMIT 1) AS alike_audio,
-                    (SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = '{KEPT_OUT}') AS alike_out
+                    (SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = '{KEPT_OUT}') AS alike_out,
+                    COALESCE((SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = 'publisher'),
+                             (SELECT value FROM metadata_fetched WHERE book_id = b.id AND field = 'publisher'), b.publisher) AS alike_publisher,
+                    COALESCE((SELECT value FROM metadata_overrides WHERE book_id = b.id AND field = 'published'),
+                             (SELECT value FROM metadata_fetched WHERE book_id = b.id AND field = 'published')) AS alike_published
              {BOOK_FROM} AND {} ORDER BY b.added_at",
             kind_condition(kind)
         );
         let mut statement = self.conn.prepare(&sql)?;
-        let rows = statement
+        let all = statement
             .query_map([], |r| {
-                Ok((book_from_row(r)?, r.get::<_, Option<String>>("alike_audio")?, r.get::<_, Option<String>>("alike_out")?))
+                Ok(Row {
+                    book: book_from_row(r)?,
+                    audio: r.get("alike_audio")?,
+                    out: r.get("alike_out")?,
+                    publisher: r.get("alike_publisher")?,
+                    published: r.get("alike_published")?,
+                })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
+        // "Only look at": every filter must hold.
+        let filters: Vec<(String, String)> = options
+            .only
+            .iter()
+            .filter(|f| ALIKE_FIELDS.contains(&f.field.as_str()))
+            .map(|f| (f.field.clone(), words(&f.value).join(" ")))
+            .filter(|(_, v)| !v.is_empty())
+            .collect();
+        let rows: Vec<Row> = all
+            .into_iter()
+            .filter(|row| {
+                filters.iter().all(|(field, want)| match field.as_str() {
+                    // A title is looked at by its words, anywhere in it.
+                    "title" => words(&row.book.title).join(" ").contains(want.as_str()),
+                    _ => values(row, field).iter().any(|v| v == want),
+                })
+            })
+            .collect();
 
-        // Each book is found by its author and its title's start, and by its series.
         let mut keys_of: Vec<Vec<String>> = Vec::with_capacity(rows.len());
         let mut stems: Vec<String> = Vec::with_capacity(rows.len());
         let mut by_key: HashMap<String, Vec<usize>> = HashMap::new();
-        for (i, (book, ..)) in rows.iter().enumerate() {
-            let author = author_of(&book.authors);
-            let stem = stem(&book.title);
-            let mut keys = Vec::new();
-            if !author.is_empty() && !stem.is_empty() {
-                keys.push(format!("{author}|{}", lead(&stem)));
-            }
-            if let Some(series) = book.series.as_deref().map(|s| words(s).join(" ")).filter(|s| !s.is_empty()) {
-                if !author.is_empty() {
-                    keys.push(format!("{author}|series:{series}"));
-                }
-            }
+        for (i, row) in rows.iter().enumerate() {
+            let keys = keys_for(row, &match_by);
             for key in &keys {
                 by_key.entry(key.clone()).or_default().push(i);
             }
             keys_of.push(keys);
-            stems.push(stem);
+            stems.push(stem(&row.book.title));
         }
         let mut found = Found { parent: (0..rows.len()).collect() };
         for members in by_key.values() {
@@ -204,7 +299,7 @@ impl Library {
 
         let kept_out: Vec<HashSet<String>> = rows
             .iter()
-            .map(|(_, _, out)| out.as_deref().and_then(|o| serde_json::from_str::<Vec<String>>(o).ok()).unwrap_or_default().into_iter().collect())
+            .map(|row| row.out.as_deref().and_then(|o| serde_json::from_str::<Vec<String>>(o).ok()).unwrap_or_default().into_iter().collect())
             .collect();
         let mut out = Vec::new();
         for members in groups.into_values() {
@@ -217,59 +312,16 @@ impl Library {
             }
             let series: HashSet<String> = members
                 .iter()
-                .filter_map(|&i| rows[i].0.series.as_deref().map(|s| words(s).join(" ")).filter(|s| !s.is_empty()))
+                .filter_map(|&i| rows[i].book.series.as_deref().map(|s| words(s).join(" ")).filter(|s| !s.is_empty()))
                 .collect();
-            let loose = members.iter().any(|&i| rows[i].0.series.as_deref().is_none_or(|s| s.trim().is_empty()));
+            let loose = members.iter().any(|&i| rows[i].book.series.as_deref().is_none_or(|s| s.trim().is_empty()));
             if !loose && series.len() < 2 {
                 continue;
             }
-            out.push(self.alike_group(&rows, &stems, members, keys));
+            out.push(alike_group(&rows, &stems, members, keys, &match_by));
         }
         out.sort_by(|a, b| b.books.len().cmp(&a.books.len()).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
         Ok(out)
-    }
-
-    fn alike_group(
-        &self,
-        rows: &[(BookPreview, Option<String>, Option<String>)],
-        stems: &[String],
-        members: Vec<usize>,
-        keys: Vec<String>,
-    ) -> AlikeGroup {
-        // The name: the series most of the books are in, or the words the titles share.
-        let mut counts: HashMap<&str, usize> = HashMap::new();
-        for &i in &members {
-            if let Some(s) = rows[i].0.series.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-                *counts.entry(s).or_default() += 1;
-            }
-        }
-        let name = match counts.into_iter().max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(a.0))) {
-            Some((series, _)) => series.to_string(),
-            None => {
-                let loose: Vec<String> = members.iter().map(|&i| stems[i].clone()).collect();
-                let shared = shared_start(&loose);
-                title_case(if shared.is_empty() { &loose[0] } else { &shared })
-            }
-        };
-        let author = rows[members[0]].0.authors.first().cloned().unwrap_or_default();
-        let mut seen: HashMap<(String, Option<u64>), String> = HashMap::new();
-        let books = members
-            .iter()
-            .map(|&i| {
-                let book = &rows[i].0;
-                let number = title_number(&book.title);
-                let guess = number.tagged.or(number.main);
-                let same_as = match seen.get(&(title_key(&book.title), guess)) {
-                    Some(id) => Some(id.clone()),
-                    None => {
-                        seen.insert((title_key(&book.title), guess), book.id.to_string());
-                        None
-                    }
-                };
-                AlikeBook { book: book.clone(), guess: guess.map(|n| n as f64), same_as, paired_audio: rows[i].1.clone() }
-            })
-            .collect();
-        AlikeGroup { keys, name, author, books }
     }
 
     /// Keeps these books out of the group found by `keys` (until `include_in_alike`),
@@ -338,6 +390,56 @@ impl Library {
     }
 }
 
+fn alike_group(rows: &[Row], stems: &[String], members: Vec<usize>, keys: Vec<String>, match_by: &[String]) -> AlikeGroup {
+    // The name: the series most of the books are in, or the words the titles share.
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for &i in &members {
+        if let Some(s) = rows[i].book.series.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            *counts.entry(s).or_default() += 1;
+        }
+    }
+    let name = match counts.into_iter().max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(a.0))) {
+        Some((series, _)) => series.to_string(),
+        None if match_by.iter().any(|f| f == "title") => {
+            let loose: Vec<String> = members.iter().map(|&i| stems[i].clone()).collect();
+            let shared = shared_start(&loose);
+            title_case(if shared.is_empty() { &loose[0] } else { &shared })
+        }
+        // Not matched by title: named by what its books share.
+        None => {
+            let first = &rows[members[0]];
+            let shared: Vec<String> = match_by
+                .iter()
+                .filter_map(|field| {
+                    let mine = values(first, field);
+                    mine.into_iter().find(|v| members.iter().all(|&i| values(&rows[i], field).contains(v)))
+                })
+                .map(|v| title_case(&v))
+                .collect();
+            if shared.is_empty() { title_case(&stems[members[0]]) } else { shared.join(" · ") }
+        }
+    };
+    let author = rows[members[0]].book.authors.first().cloned().unwrap_or_default();
+    let mut seen: HashMap<(String, Option<u64>), String> = HashMap::new();
+    let books = members
+        .iter()
+        .map(|&i| {
+            let book = &rows[i].book;
+            let number = title_number(&book.title);
+            let guess = number.tagged.or(number.main);
+            let same_as = match seen.get(&(title_key(&book.title), guess)) {
+                Some(id) => Some(id.clone()),
+                None => {
+                    seen.insert((title_key(&book.title), guess), book.id.to_string());
+                    None
+                }
+            };
+            AlikeBook { book: book.clone(), guess: guess.map(|n| n as f64), same_as, paired_audio: rows[i].audio.clone() }
+        })
+        .collect();
+    AlikeGroup { keys, name, author, books }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -365,7 +467,7 @@ mod tests {
         add(&mut library, dir.path(), "Dark City Lights", "Someone Else");
         library.conn.execute("UPDATE books SET series = 'Dark City Girls' WHERE id IN (?1, ?2)", params![side, three]).unwrap();
 
-        let groups = library.find_alike(ItemKind::Books).unwrap();
+        let groups = library.find_alike(ItemKind::Books, &AlikeOptions::default()).unwrap();
         assert_eq!(groups.len(), 1, "{groups:?}");
         let group = &groups[0];
         assert_eq!(group.name, "Dark City Girls");
@@ -380,18 +482,50 @@ mod tests {
         // Kept out of this group: gone from it, and back with Include in Find alike.
         library.keep_out_of_alike(std::slice::from_ref(&two), &group.keys, true).unwrap();
         assert!(library.kept_out_of_alike(&two).unwrap());
-        let groups = library.find_alike(ItemKind::Books).unwrap();
+        let groups = library.find_alike(ItemKind::Books, &AlikeOptions::default()).unwrap();
         assert!(groups[0].books.iter().all(|b| b.book.id != two));
         library.reset_details(&two, false).unwrap();
         assert!(library.kept_out_of_alike(&two).unwrap(), "resetting details keeps it out");
         let out: Vec<String> = library.kept_out_books(ItemKind::Books).unwrap().into_iter().map(|b| b.id.to_string()).collect();
         assert_eq!(out, std::slice::from_ref(&two));
         library.include_in_alike(&two).unwrap();
-        assert_eq!(library.find_alike(ItemKind::Books).unwrap()[0].books.len(), 4);
+        assert_eq!(library.find_alike(ItemKind::Books, &AlikeOptions::default()).unwrap()[0].books.len(), 4);
 
         // All in one series: nothing left to do, so no group.
         library.conn.execute("UPDATE books SET series = 'Dark City Girls' WHERE id IN (?1, ?2)", params![one, two]).unwrap();
-        assert!(library.find_alike(ItemKind::Books).unwrap().is_empty());
+        assert!(library.find_alike(ItemKind::Books, &AlikeOptions::default()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn options_choose_what_must_match_and_which_books_are_looked_at() {
+        let (dir, mut library) = open_temp_library();
+        let a = add(&mut library, dir.path(), "Night Market", "Kay Smith");
+        let b = add(&mut library, dir.path(), "Glass Harbour", "Kay Smith");
+        let c = add(&mut library, dir.path(), "Night Market 2", "Kay Smith");
+        let genre = |ids: &[String], g: &str| {
+            let change = crate::details::DetailChange { field: "genres".into(), value: Some(format!("[\"{g}\"]")) };
+            library.edit_details(ids, std::slice::from_ref(&change)).unwrap();
+        };
+        genre(&[a.clone(), b.clone()], "Fantasy");
+        genre(std::slice::from_ref(&c), "Crime");
+        let options = |match_by: &[&str], only: &[(&str, &str)]| AlikeOptions {
+            match_by: match_by.iter().map(|f| f.to_string()).collect(),
+            only: only.iter().map(|(f, v)| AlikeFilter { field: f.to_string(), value: v.to_string() }).collect(),
+        };
+        let ids = |groups: Vec<AlikeGroup>| {
+            groups.into_iter().map(|g| { let mut v: Vec<String> = g.books.into_iter().map(|b| b.book.id.to_string()).collect(); v.sort(); v }).collect::<Vec<_>>()
+        };
+        let sorted = |mut v: Vec<String>| { v.sort(); v };
+
+        // Author and title start: the two Night Markets.
+        assert_eq!(ids(library.find_alike(ItemKind::Books, &options(&[], &[])).unwrap()), [sorted(vec![a.clone(), c.clone()])]);
+        // Author and genre: the two fantasy books, named by what they share.
+        let by_genre = library.find_alike(ItemKind::Books, &options(&["author", "genre"], &[])).unwrap();
+        assert_eq!(by_genre[0].name, "Kay Smith · Fantasy");
+        assert_eq!(ids(by_genre), [sorted(vec![a.clone(), b.clone()])]);
+        // Only crime books: one Night Market alone isn't a group.
+        assert!(library.find_alike(ItemKind::Books, &options(&[], &[("genre", "crime")])).unwrap().is_empty());
+        assert_eq!(ids(library.find_alike(ItemKind::Books, &options(&["author"], &[("title", "night")])).unwrap()), [sorted(vec![a, c])]);
     }
 
     #[test]

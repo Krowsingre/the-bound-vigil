@@ -1220,8 +1220,16 @@ export function previewApi(): Api {
       update(bookId, { availability: "cloud" });
     },
     // Find alike, roughly: an author's books, when some are in a series and some aren't.
-    findAlike: async (kind) => {
-      const items = library().filter((b) => (kind === "audiobooks" ? isAudio(b.format) : !isAudio(b.format) && !isDocument(b.format)));
+    findAlike: async (kind, options) => {
+      const only = (options?.only ?? []).filter((f) => f.value.trim());
+      const has = (b: BookPreview, field: string, value: string) => {
+        const want = value.trim().toLowerCase();
+        const list = field === "author" ? b.authors : field === "tag" ? b.tags : field === "genre" ? (b.genres ?? []) : field === "series" ? [b.series ?? ""] : field === "title" ? [b.title] : [];
+        return list.some((v) => (field === "title" ? v.toLowerCase().includes(want) : v.toLowerCase() === want));
+      };
+      const items = library()
+        .filter((b) => (kind === "audiobooks" ? isAudio(b.format) : !isAudio(b.format) && !isDocument(b.format)))
+        .filter((b) => only.every((f) => has(b, f.field, f.value)));
       const byAuthor = new Map<string, BookPreview[]>();
       for (const b of items) byAuthor.set(b.authors[0] ?? "", [...(byAuthor.get(b.authors[0] ?? "") ?? []), b]);
       return [...byAuthor.entries()].flatMap(([author, list]) => {

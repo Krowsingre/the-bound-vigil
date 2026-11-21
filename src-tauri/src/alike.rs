@@ -6,8 +6,12 @@ use tauri::State;
 use crate::{with_library, AppLibrary, CommandResult};
 
 #[tauri::command]
-pub async fn find_alike(state: State<'_, AppLibrary>, kind: tbv_core::model::ItemKind) -> CommandResult<Vec<tbv_core::alike::AlikeGroup>> {
-    with_library(state, move |library| library.find_alike(kind)).await
+pub async fn find_alike(
+    state: State<'_, AppLibrary>,
+    kind: tbv_core::model::ItemKind,
+    options: Option<tbv_core::alike::AlikeOptions>,
+) -> CommandResult<Vec<tbv_core::alike::AlikeGroup>> {
+    with_library(state, move |library| library.find_alike(kind, &options.unwrap_or_default())).await
 }
 
 #[tauri::command]

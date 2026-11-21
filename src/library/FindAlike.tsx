@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-import type { AlikeBook, AlikeGroup, BookPreview, DetailChange, ItemKind, SeriesEntry } from "../api/types";
+import type { AlikeBook, AlikeField, AlikeGroup, AlikeOptions, BookPreview, DetailChange, ItemKind, SeriesEntry } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
@@ -37,6 +37,31 @@ export function validNumber(text: string): boolean {
   return Number.isFinite(n) && n >= 0 && n < 100_000;
 }
 
+/** The details Find alike can match by or look only at, as they're named. */
+export const ALIKE_FIELDS: { field: AlikeField; label: string; only: string }[] = [
+  { field: "author", label: "Author", only: "Author" },
+  { field: "title", label: "Title start", only: "Title has" },
+  { field: "series", label: "Series", only: "Series" },
+  { field: "publisher", label: "Publisher", only: "Publisher" },
+  { field: "genre", label: "Genre", only: "Genre" },
+  { field: "tag", label: "Tag", only: "Tag" },
+  { field: "narrator", label: "Narrator", only: "Narrator" },
+  { field: "language", label: "Language", only: "Language" },
+  { field: "year", label: "Year", only: "Year" },
+];
+const DEFAULT_OPTIONS: AlikeOptions = { matchBy: ["author", "title"], only: [] };
+const OPTIONS_KEY = "tbv.findAlike.options.";
+
+function rememberedOptions(kind: ItemKind): AlikeOptions {
+  try {
+    const kept = JSON.parse(localStorage.getItem(OPTIONS_KEY + kind) ?? "null") as AlikeOptions | null;
+    if (kept && Array.isArray(kept.matchBy) && kept.matchBy.length && Array.isArray(kept.only)) return kept;
+  } catch {
+    // Not kept: the usual options.
+  }
+  return DEFAULT_OPTIONS;
+}
+
 const books = (n: number) => `${n.toLocaleString()} ${n === 1 ? "book" : "books"}`;
 const numberText = (n: number | null | undefined) => (n == null ? "" : String(n));
 const sameGroup = (a: AlikeGroup, keys: string[]) => a.keys.some((k) => keys.includes(k));
@@ -51,10 +76,25 @@ export function FindAlike({ kind, onClose, onChanged }: { kind: ItemKind; onClos
   // "Not in this group": left out until Find alike runs again, by group and book.
   const [notHere, setNotHere] = useState<Set<string>>(new Set());
   const [reload, setReload] = useState(0);
+  const [options, setOptions] = useState<AlikeOptions>(() => rememberedOptions(kind));
+  const [showOptions, setShowOptions] = useState(false);
+  // What the search uses: the options a moment after the last change, so typing doesn't search each letter.
+  const [searched, setSearched] = useState(options);
+  useEffect(() => {
+    const wait = window.setTimeout(() => setSearched(options), 400);
+    try {
+      localStorage.setItem(OPTIONS_KEY + kind, JSON.stringify(options));
+    } catch {
+      // Not kept: the usual options next time.
+    }
+    return () => window.clearTimeout(wait);
+  }, [options, kind]);
 
   useEffect(() => {
     let current = true;
-    void api.findAlike?.(kind).then(
+    setGroups(null);
+    const asked = { ...searched, only: searched.only.filter((f) => f.value.trim()) };
+    void api.findAlike?.(kind, asked).then(
       (found) => current && (setGroups(found), setError(null)),
       (e: unknown) => current && setError(String(e)),
     );
@@ -62,7 +102,7 @@ export function FindAlike({ kind, onClose, onChanged }: { kind: ItemKind; onClos
     return () => {
       current = false;
     };
-  }, [kind, reload]);
+  }, [kind, reload, searched]);
 
   const again = () => {
     setReload((n) => n + 1);
@@ -102,17 +142,30 @@ export function FindAlike({ kind, onClose, onChanged }: { kind: ItemKind; onClos
           }} />
         ) : (
           <>
-            <h2>Find alike</h2>
+            <div className="alike-head">
+              <h2>Find alike</h2>
+              <button type="button" className={`btn btn-quiet btn-small${showOptions ? " is-lit" : ""}`} aria-expanded={showOptions} onClick={() => setShowOptions((o) => !o)}>
+                <Icon name="filter" size={14} /> Options
+              </button>
+            </div>
+            <p className="muted alike-summary">
+              Matching by {options.matchBy.map((f) => ALIKE_FIELDS.find((x) => x.field === f)?.label.toLowerCase()).join(", ")}
+              {options.only.some((f) => f.value.trim())
+                ? `; only ${options.only.filter((f) => f.value.trim()).map((f) => `${ALIKE_FIELDS.find((x) => x.field === f.field)?.only.toLowerCase()} “${f.value.trim()}”`).join(", ")}`
+                : ""}
+              .
+            </p>
+            {showOptions && <OptionsPanel options={options} onChange={setOptions} />}
             {error ? (
               <p className="form-error" role="alert">{error}</p>
             ) : !groups ? (
               <div className="library-loading" aria-busy="true" aria-label="Looking for alike books" />
             ) : shown.length === 0 ? (
-              <p className="muted">Nothing alike found. Books by one author whose titles start alike show up here.</p>
+              <p className="muted">Nothing alike found. Books that share what they're matched by show up here.</p>
             ) : (
               <>
                 <p className="muted">
-                  {shown.length.toLocaleString()} {shown.length === 1 ? "group" : "groups"} of books by one author with alike titles. Open one to make a series.
+                  {shown.length.toLocaleString()} {shown.length === 1 ? "group" : "groups"}. Open one to make a series.
                 </p>
                 <ul className="alike-groups">
                   {shown.map((g) => {
@@ -153,6 +206,49 @@ export function FindAlike({ kind, onClose, onChanged }: { kind: ItemKind; onClos
         )}
       </div>
     </div>
+  );
+}
+
+function OptionsPanel({ options, onChange }: { options: AlikeOptions; onChange: (options: AlikeOptions) => void }) {
+  const toggle = (field: AlikeField) => {
+    const on = options.matchBy.includes(field);
+    // At least one detail is always matched.
+    if (on && options.matchBy.length === 1) return;
+    onChange({ ...options, matchBy: on ? options.matchBy.filter((f) => f !== field) : [...options.matchBy, field] });
+  };
+  const setOnly = (i: number, change: Partial<{ field: AlikeField; value: string }>) =>
+    onChange({ ...options, only: options.only.map((f, j) => (j === i ? { ...f, ...change } : f)) });
+  return (
+    <section className="alike-options" aria-label="Find alike options">
+      <h3 className="section-label">Match by</h3>
+      <div className="alike-chips" role="group" aria-label="Match by">
+        {ALIKE_FIELDS.map(({ field, label }) => (
+          <button key={field} type="button" className={`duplicate-format${options.matchBy.includes(field) ? " is-on" : ""}`}
+            aria-pressed={options.matchBy.includes(field)} onClick={() => toggle(field)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <h3 className="section-label">Only look at</h3>
+      {options.only.map((f, i) => (
+        <div key={i} className="alike-only">
+          <select className="settings-select" aria-label="Detail" value={f.field} onChange={(e) => setOnly(i, { field: e.target.value as AlikeField })}>
+            {ALIKE_FIELDS.map((x) => <option key={x.field} value={x.field}>{x.only}</option>)}
+          </select>
+          <input aria-label="Value" value={f.value} autoComplete="off" onChange={(e) => setOnly(i, { value: e.target.value })} />
+          <button type="button" className="icon-btn icon-btn-s" aria-label="Remove" title="Remove"
+            onClick={() => onChange({ ...options, only: options.only.filter((_, j) => j !== i) })}>
+            <Icon name="close" size={14} />
+          </button>
+        </div>
+      ))}
+      <div className="alike-options-actions">
+        <button type="button" className="btn btn-quiet btn-small" onClick={() => onChange({ ...options, only: [...options.only, { field: "tag", value: "" }] })}>
+          + Add a detail
+        </button>
+        <button type="button" className="btn btn-quiet btn-small" onClick={() => onChange(DEFAULT_OPTIONS)}>Reset</button>
+      </div>
+    </section>
   );
 }
 

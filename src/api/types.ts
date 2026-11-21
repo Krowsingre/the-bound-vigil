@@ -649,6 +649,17 @@ export interface AlikeBook {
   pairedAudio: string | null;
 }
 
+/** The details Find alike can match by, or look only at. */
+export type AlikeField = "author" | "title" | "series" | "publisher" | "genre" | "tag" | "narrator" | "language" | "year";
+
+/** How Find alike searches (embre, 21 November). */
+export interface AlikeOptions {
+  /** The details books must share to be grouped; author and title start when empty. */
+  matchBy: AlikeField[];
+  /** Only books with these values are looked at (any of a list's values). */
+  only: { field: AlikeField; value: string }[];
+}
+
 /** Find alike: books by one author with alike titles, and the series they're in. */
 export interface AlikeGroup {
   /** Every key the group was found by; keeping a book out stores them. */

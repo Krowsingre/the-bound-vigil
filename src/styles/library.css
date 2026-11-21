@@ -817,6 +817,66 @@ button.tag-chip-add:hover {
   white-space: normal;
 }
 
+.alike-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.alike-summary {
+  margin: 4px 0 0;
+}
+
+.alike-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+}
+
+.alike-options .section-label {
+  margin: 0;
+}
+
+.alike-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.alike-only {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alike-only select {
+  flex: 0 0 auto;
+  width: 40%;
+  max-width: 180px;
+  min-width: 0;
+}
+
+.alike-only input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+}
+
+.alike-options-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .alike-groups,
 .alike-books {
   display: grid;
