@@ -568,13 +568,6 @@
   margin-bottom: 0;
 }
 
-.pagination-top {
-  justify-content: flex-end;
-  margin: 0 0 20px;
-  padding: 0;
-  border-top: 0;
-}
-
 .book-grid + .pagination,
 .book-list + .pagination,
 .book-table + .pagination {
@@ -608,6 +601,54 @@
 
 .page-gap {
   color: var(--text-muted);
+}
+
+/* The … takes a typed page number. */
+.page-jump {
+  width: 56px;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--text);
+  text-align: center;
+  font: inherit;
+}
+
+/* The page numbers slide out to the right of the page mode button while it's lit. */
+.page-slide {
+  display: grid;
+  flex: none;
+  grid-template-columns: 0fr;
+  transition: grid-template-columns 0.25s ease, margin-left 0.25s ease;
+}
+
+.page-slide.is-open {
+  grid-template-columns: 1fr;
+  margin-left: 10px;
+}
+
+.page-slide-inner {
+  min-width: 0;
+  /* clip, not hidden: a hidden box can be scrolled sideways by focus and stay shifted. */
+  overflow: clip;
+  overflow-clip-margin: 4px;
+}
+
+.page-slide .pages {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.page-slide .pages > * {
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-slide {
+    transition: none;
+  }
 }
 
 .collection-grid {
@@ -1677,8 +1718,19 @@ button.tag-chip-add:hover {
    a thin divider, then the joined grid / list pair at the far right. */
 .library-toolbar.is-compact .toolbar-controls {
   flex: 1;
+  flex-wrap: wrap;
+  row-gap: 10px;
   margin-left: 0;
   gap: 10px;
+}
+
+/* The layout buttons and the page numbers beside them move as one, at the right end. When the
+   window is too narrow for both, they go down to a line of their own. */
+.library-toolbar.is-compact .layout-pages {
+  display: flex;
+  align-items: center;
+  flex: none;
+  margin-left: auto;
 }
 
 .library-toolbar.is-compact .toolbar-controls .toolbar-button {

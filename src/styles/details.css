@@ -348,6 +348,39 @@
 .fetch-now,
 .fetch-found input,
 .fetch-found textarea { width: 100%; }
+
+/* The series row: what the book has now, then the series rows to keep, across both columns. */
+.fetch-row-series .fetch-now,
+.fetch-row-series .fetch-series {
+  grid-column: 2 / -1;
+}
+
+.fetch-row-series .fetch-series {
+  display: block;
+  overflow: visible;
+}
+
+/* Too narrow here for one line: the series name on its own line, how it's numbered under it. */
+.fetch-series .series-edit-row {
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  row-gap: 6px;
+}
+
+.fetch-series .series-edit-row > :nth-child(2) {
+  grid-column: 2 / -1;
+}
+
+.fetch-series .series-edit-kind {
+  grid-column: 2;
+}
+
+.fetch-series .series-edit-numbers {
+  min-width: 0;
+}
+
+.fetch-series .series-edit-tools {
+  min-width: 0;
+}
 .fetch-found {
   display: -webkit-box;
   -webkit-line-clamp: 5;

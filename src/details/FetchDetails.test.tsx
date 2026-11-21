@@ -3,13 +3,14 @@ import type { BookPreview } from "../api/types";
 import type { Found } from "../lib/onlineDetails";
 import { FetchDetails } from "./FetchDetails";
 
-const { saveFetched, searchOnline } = vi.hoisted(() => ({
+const { saveFetched, editDetails, searchOnline } = vi.hoisted(() => ({
   saveFetched: vi.fn(async () => {}),
+  editDetails: vi.fn(async () => {}),
   searchOnline: vi.fn(),
 }));
 vi.mock("../api", () => ({
   isApp: false,
-  api: { bookDetails: async () => ({ fields: [] }), saveFetched },
+  api: { bookDetails: async () => ({ fields: [] }), saveFetched, editDetails, detailSuggestions: async () => [] },
 }));
 vi.mock("../lib/onlineDetails", async (original) => ({
   ...await original<typeof import("../lib/onlineDetails")>(),
@@ -28,14 +29,46 @@ it("approves edited found values and leaves unchecked fields out", async () => {
   render(<FetchDetails book={book} onClose={onClose} />);
   fireEvent.click(await screen.findByRole("button", { name: /Catalogue title/ }));
   fireEvent.change(screen.getByRole("textbox", { name: "Found Authors" }), { target: { value: "First Author\nSecond Author" } });
-  fireEvent.change(screen.getByRole("textbox", { name: "Found Number in series" }), { target: { value: "2,5" } });
   fireEvent.click(screen.getByRole("checkbox", { name: "Series" }));
   fireEvent.click(screen.getByRole("button", { name: "Keep ticked details" }));
   await waitFor(() => expect(onClose).toHaveBeenCalledWith(true));
   expect(saveFetched).toHaveBeenCalledWith("book", "google", {
     authors: '["First Author","Second Author"]',
-    series_index: "2.5",
   });
+  expect(editDetails).not.toHaveBeenCalled();
+});
+
+it("sets the series found with the same rows as Edit details, kept as your own edit", async () => {
+  const found: Found = {
+    id: "one", source: "google", title: "Catalogue title", authors: [],
+    series: "The series", seriesIndex: "1", synopsis: null, genres: [], publisher: null,
+    published: null, language: null, isbn: null, coverUrl: null,
+  };
+  searchOnline.mockResolvedValue([found]);
+  saveFetched.mockClear();
+  editDetails.mockClear();
+  const onClose = vi.fn();
+  const book = { id: "book", title: "Local title", authors: [], format: "epub" } as unknown as BookPreview;
+  render(<FetchDetails book={book} onClose={onClose} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Catalogue title/ }));
+  // Filled in from what was found: an omnibus of books 1 to 3, and a second series.
+  expect(screen.getByRole("textbox", { name: "Number in series" })).toHaveValue("1");
+  fireEvent.change(screen.getByRole("textbox", { name: "Number in series" }), { target: { value: "1–3" } });
+  fireEvent.click(screen.getByRole("button", { name: /Add series/ }));
+  fireEvent.change(screen.getAllByRole("textbox", { name: "Number in series" })[1], { target: { value: "10, 12" } });
+  fireEvent.change(screen.getByRole("combobox", { name: "Series 2" }), { target: { value: "Omnibus" } });
+  fireEvent.click(screen.getByRole("button", { name: "Keep ticked details" }));
+  await waitFor(() => expect(onClose).toHaveBeenCalledWith(true));
+  expect(saveFetched).not.toHaveBeenCalled();
+  expect(editDetails).toHaveBeenCalledWith(["book"], [
+    { field: "series", value: "The series" },
+    { field: "series_index", value: "1" },
+    { field: "series_list", value: JSON.stringify([
+      { name: "The series", number: 1, end: 3 },
+      { name: "Omnibus", number: 10 },
+      { name: "Omnibus", number: 12 },
+    ]) },
+  ]);
 });
 
 it("goes through several chosen books one at a time, kept or skipped", async () => {

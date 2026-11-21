@@ -1,7 +1,9 @@
 // Finding a book's details online: search Google Books and Open Library,
 // choose the match, then tick which details to keep. Several chosen books
 // come one after another (`step`), each kept or skipped in turn. What's kept is saved as
-// fetched details, under your own edits and over the book's own.
+// fetched details, under your own edits and over the book's own. The series is the
+// exception: it's set with the same rows as Edit details (numbers like 3, 1–3 or
+// 10, 12, 14, and more than one series), and kept as your own edit.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isApp } from "../api";
@@ -9,9 +11,19 @@ import type { BookDetails, BookPreview, DetailFieldName } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
-import { AUDIO_ONLY, DETAIL_FIELDS, cleanValue, detailsKindOf, effective, isList, labelFor, LISTENING_ONLY, listOf, MUSIC_FIELDS } from "../lib/details";
+import { AUDIO_ONLY, DETAIL_FIELDS, cleanValue, detailsKindOf, effective, groupPlaces, isList, labelFor, LISTENING_ONLY, listOf, MUSIC_FIELDS, numbersText } from "../lib/details";
 import { foundValues, openLibraryDescription, searchMusic, searchOnline, SOURCE_NAME, type Found } from "../lib/onlineDetails";
 import { isAudio } from "../lib/queryBooks";
+import { placeChanges, placesFromFields, placesFromRows, rowsOf, SeriesEditor, type PlaceRow } from "./SeriesEditor";
+import { useSuggestions } from "./Suggest";
+import type { SeriesPlace } from "../api/types";
+
+/** A book's series as one line: "Discworld 3; Witches 1–3". */
+function placesText(places: SeriesPlace[]): string {
+  return groupPlaces(places)
+    .map(({ name, places: here }) => [name, numbersText(here)].filter(Boolean).join(" "))
+    .join("; ");
+}
 
 function shown(field: DetailFieldName, value: string | null): string {
   if (!value) return "";
@@ -43,6 +55,9 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
   const [keep, setKeep] = useState<Set<string>>(new Set());
   const [cover, setCover] = useState(false);
   const [saving, setSaving] = useState(false);
+  // The series found, as rows to change before keeping (not for songs: an album stays plain).
+  const [seriesRows, setSeriesRows] = useState<PlaceRow[]>([]);
+  const seriesNames = useSuggestions("series");
   const running = useRef<AbortController | null>(null);
 
   const search = useCallback((q: typeof query) => {
@@ -105,15 +120,20 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
     setValues(v);
     // Ticked to start with: what the book is missing, or differs from what it shows.
     const fields = details?.fields ?? [];
-    setKeep(
-      new Set(
-        Object.keys(v).filter((field) => {
-          const current = fields.find((x) => x.field === field);
-          const now = current ? effective(current) : null;
-          return field !== "title" && (!now || now === "[]" || now !== v[field]) && !(current && current.edited !== null);
-        }),
-      ),
+    const ticked = new Set(
+      Object.keys(v).filter((field) => {
+        const current = fields.find((x) => x.field === field);
+        const now = current ? effective(current) : null;
+        return field !== "title" && (!now || now === "[]" || now !== v[field]) && !(current && current.edited !== null);
+      }),
     );
+    if (!music) {
+      // The series and its number are one row here, set like in Edit details.
+      if (ticked.has("series_index")) ticked.add("series");
+      ticked.delete("series_index");
+      setSeriesRows(v.series ? rowsOf([{ name: v.series, number: v.series_index ? Number(v.series_index) : null }]) : []);
+    }
+    setKeep(ticked);
     // Offered for every book; ticked to start with only where there's none.
     setCover(Boolean(found.coverUrl && !book.coverPath && isApp));
   };
@@ -123,7 +143,10 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
     setSaving(true);
     setError(null);
     try {
-      const picked = Object.fromEntries(DETAIL_FIELDS.filter(({ field }) => keep.has(field) && values[field] !== undefined).map(({ field }) => {
+      const seriesKept = !music && keep.has("series") && values.series !== undefined;
+      const places = seriesKept ? placesFromRows(seriesRows) : [];
+      if (seriesKept && !places.length) throw new Error(`Enter a series or uncheck ${detailLabel("series")}.`);
+      const picked = Object.fromEntries(DETAIL_FIELDS.filter(({ field }) => keep.has(field) && values[field] !== undefined && (music || (field !== "series" && field !== "series_index"))).map(({ field }) => {
         const edit = edits[field];
         const value = edit === undefined ? values[field] : isList(field) ? JSON.stringify(edit.split("\n")) : edit;
         const cleaned = cleanValue(field, value);
@@ -131,8 +154,10 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
         return [field, cleaned];
       }));
       if (Object.keys(picked).length) await api.saveFetched(book.id, chosen.source, picked);
+      // Kept as your own edit, like a series set in Edit details.
+      if (seriesKept) await api.editDetails([book.id], placeChanges(places));
       if (cover && chosen.coverUrl) await api.fetchCover(book.id, chosen.coverUrl);
-      toast(`Kept ${Object.keys(picked).length + (cover ? 1 : 0)} details from ${SOURCE_NAME[chosen.source]}.`);
+      toast(`Kept ${Object.keys(picked).length + (seriesKept ? 1 : 0) + (cover ? 1 : 0)} details from ${SOURCE_NAME[chosen.source]}.`);
       onClose(true);
     } catch (e) {
       setSaving(false);
@@ -254,8 +279,26 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
                 <span role="columnheader">Now</span>
                 <span role="columnheader">Found</span>
               </div>
-              {DETAIL_FIELDS.filter((f) => values[f.field] && (music ? MUSIC_FIELDS.includes(f.field) : !LISTENING_ONLY.includes(f.field) && (isAudio(book.format) || !AUDIO_ONLY.includes(f.field)))).map(({ field, long }) => {
+              {DETAIL_FIELDS.filter((f) => values[f.field] && (music ? MUSIC_FIELDS.includes(f.field) : !LISTENING_ONLY.includes(f.field) && f.field !== "series_index" && (isAudio(book.format) || !AUDIO_ONLY.includes(f.field)))).map(({ field, long }) => {
                 const current = details?.fields.find((x) => x.field === field);
+                if (field === "series" && !music) {
+                  const now = placesText(details ? placesFromFields(details.fields) : []);
+                  return (
+                    <div key={field} className="fetch-row fetch-row-series" role="row">
+                      <label role="cell" className="fetch-field">
+                        <input type="checkbox" checked={keep.has(field)} onChange={() => toggle(field)} />
+                        {detailLabel(field)}
+                      </label>
+                      <span role="cell" className="fetch-now">
+                        <span className="muted">Now: </span>
+                        {now || <em className="muted">Empty</em>}
+                      </span>
+                      <span role="cell" className="fetch-found fetch-series">
+                        <SeriesEditor rows={seriesRows} onChange={setSeriesRows} all={seriesNames} />
+                      </span>
+                    </div>
+                  );
+                }
                 return (
                   <div key={field} className="fetch-row" role="row">
                     <label role="cell" className="fetch-field">
