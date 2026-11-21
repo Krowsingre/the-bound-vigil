@@ -71,9 +71,10 @@ export function Imports({
     setOverridden((s) => new Set(s).add(id));
     try {
       await api.forgetDeleted(bookId);
-      await api.queueImports([path]);
+      const queued = api.importAgain ? await api.importAgain(id) : (await api.queueImports([path])) > 0;
+      if (!queued) throw new Error("the file is no longer there");
     } catch (e) {
-      toast(`Couldn't add it: ${String(e)}`);
+      toast(`Couldn't add it: ${e instanceof Error ? e.message : String(e)}`);
       setOverridden((s) => {
         const next = new Set(s);
         next.delete(id);

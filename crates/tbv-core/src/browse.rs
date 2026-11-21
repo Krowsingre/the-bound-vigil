@@ -511,20 +511,25 @@ impl Library {
             only.push_str(" AND COALESCE(b.audio_type, 'audiobook') = ?1");
         }
         let mut statement = self.conn.prepare(&format!(
-            "SELECT lower(trim({SERIES})), MAX(lf.path IS NULL), MAX(lf.path IS NOT NULL) {BOOK_FROM}{only}
-             AND NULLIF(trim({SERIES}), '') IS NOT NULL GROUP BY lower(trim({SERIES}))"
+            "SELECT trim({SERIES}), MAX(lf.path IS NULL), MAX(lf.path IS NOT NULL) {BOOK_FROM}{only}
+             AND NULLIF(trim({SERIES}), '') IS NOT NULL GROUP BY trim({SERIES})"
         ))?;
         let mut here = SeriesHere::default();
         let rows = statement.query_map(rusqlite::params_from_iter(audio_type), |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?, r.get::<_, bool>(2)?)))?;
+        // Lower-cased here, as the page does (SQLite's lower() leaves "É" as it is).
+        let (mut to_get_names, mut here_names) = (std::collections::BTreeSet::new(), std::collections::BTreeSet::new());
         for row in rows {
             let (name, to_get, downloaded) = row?;
+            let name = name.to_lowercase();
             if to_get {
-                here.to_get.push(name.clone());
+                to_get_names.insert(name.clone());
             }
             if downloaded {
-                here.here.push(name);
+                here_names.insert(name);
             }
         }
+        here.to_get = to_get_names.into_iter().collect();
+        here.here = here_names.into_iter().collect();
         Ok(here)
     }
 
@@ -1516,7 +1521,7 @@ mod tests {
         let a = add(&mut library, dir.path(), "Saga One", "X");
         let b = add(&mut library, dir.path(), "Saga Two", "X");
         let c = add(&mut library, dir.path(), "Tale One", "Y");
-        for (id, series) in [(&a, "Saga"), (&b, "Saga"), (&c, " Tale ")] {
+        for (id, series) in [(&a, "Saga"), (&b, "Saga"), (&c, " ÉPOPÉE ")] {
             library.conn.execute("UPDATE books SET series = ?2 WHERE id = ?1", params![id, series]).unwrap();
         }
         // "Saga Two" is only in the cloud.
@@ -1525,7 +1530,7 @@ mod tests {
         assert_eq!(here.to_get, ["saga"]);
         let mut downloaded = here.here.clone();
         downloaded.sort();
-        assert_eq!(downloaded, ["saga", "tale"]);
+        assert_eq!(downloaded, ["saga", "épopée"]);
         assert!(library.series_here(Some(ItemKind::Audiobooks), Some("podcast")).unwrap().here.is_empty());
     }
 

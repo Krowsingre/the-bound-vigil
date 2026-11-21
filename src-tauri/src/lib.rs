@@ -147,6 +147,17 @@ async fn queue_imports(
     .map_err(|e| e.to_string())
 }
 
+/// "Add anyway" for a book skipped because it was deleted before.
+#[tauri::command(async)]
+fn import_again(
+    app: tauri::AppHandle,
+    state: State<'_, AppLibrary>,
+    imports: State<'_, Arc<imports::Imports>>,
+    id: u64,
+) -> bool {
+    imports.import_again(&app, &state.0, id)
+}
+
 // Off the window's thread, so a busy queue never freezes the app.
 #[tauri::command(async)]
 fn import_queue(imports: State<'_, Arc<imports::Imports>>) -> imports::ImportsView {
@@ -2499,6 +2510,7 @@ pub fn run() {
             save_fetched,
             queue_imports,
             import_queue,
+            import_again,
             take_pdf_covers,
             cancel_imports,
             clear_finished_imports,

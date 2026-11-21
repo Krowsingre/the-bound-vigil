@@ -259,12 +259,32 @@ impl Imports {
         self.tell(app, true);
     }
 
-    /// Clears finished books from the list.
+    /// Clears finished books from the list, letting go of the files kept for "Add anyway".
     pub fn clear_finished(&self, app: &AppHandle) {
-        if let Ok(mut queue) = self.queue.lock() {
-            queue.items.retain(|i| i.stage != Stage::Done);
-        }
+        // Holds are let go with the queue unlocked: letting go can tell others.
+        let _released: Vec<Hold> = match self.queue.lock() {
+            Ok(mut queue) => {
+                let done: Vec<u64> = queue.items.iter().filter(|i| i.stage == Stage::Done).map(|i| i.id).collect();
+                queue.items.retain(|i| i.stage != Stage::Done);
+                done.iter().filter_map(|id| queue.holds.remove(id)).collect()
+            }
+            Err(_) => Vec::new(),
+        };
         self.tell(app, true);
+    }
+
+    /// "Add anyway" on a book skipped because it was deleted before: queues the
+    /// same file again, handing over the hold that kept it (embre, 21 November).
+    /// The caller forgets the deletion first. False when that book isn't listed.
+    pub fn import_again(self: &Arc<Self>, app: &AppHandle, library: &Arc<Mutex<Library>>, id: u64) -> bool {
+        let source = self.queue.lock().ok().and_then(|mut queue| {
+            let path = queue.items.iter()
+                .find(|i| i.id == id && matches!(i.result, Some(ImportResult::SkippedDeleted { .. })))
+                .map(|i| PathBuf::from(&i.path))?;
+            Some((path, queue.holds.remove(&id)))
+        });
+        let Some(source) = source else { return false };
+        self.enqueue_sources(app, library, vec![source], None) == 1
     }
 
     fn work(&self, app: &AppHandle, library: &Arc<Mutex<Library>>) {
@@ -308,12 +328,15 @@ impl Imports {
                     }
                 }
             }
+            // A book skipped as deleted before keeps its file until the list is
+            // cleared, so "Add anyway" can still bring it in.
+            let keep = matches!(result, ImportResult::SkippedDeleted { .. });
             self.update(id, |item| {
                 item.stage = Stage::Done;
                 item.bytes_read = item.bytes;
                 item.result = Some(result);
             });
-            let released = self.queue.lock().ok().and_then(|mut queue| queue.holds.remove(&id));
+            let released = if keep { None } else { self.queue.lock().ok().and_then(|mut queue| queue.holds.remove(&id)) };
             drop(released);
             self.tell(app, false);
             // Pages refresh to show new books, a few times a second at most.

@@ -135,6 +135,8 @@ export interface Api {
   getHome(): Promise<HomeViewModel>;
   /** Queues book files and folders on the Imports page. Returns how many books were found. */
   queueImports(paths: string[]): Promise<number>;
+  /** "Add anyway" for a book the import skipped as deleted before: the same file, queued again. */
+  importAgain?(id: number): Promise<boolean>;
   importQueue(): Promise<ImportsView>;
   /** Added PDFs still needing a cover drawn, handed over once. */
   takePdfCovers(): Promise<string[]>;
@@ -927,6 +929,7 @@ function appApi(): Api {
     kind: "app",
     getHome: async () => (await core).invoke<HomeViewModel>("get_home"),
     queueImports: async (paths) => (await core).invoke<number>("queue_imports", { paths }),
+    importAgain: async (id) => (await core).invoke<boolean>("import_again", { id }),
     importQueue: async () => (await core).invoke<ImportsView>("import_queue"),
     takePdfCovers: async () => (await core).invoke<string[]>("take_pdf_covers"),
     cancelImports: async () => (await core).invoke<void>("cancel_imports"),
