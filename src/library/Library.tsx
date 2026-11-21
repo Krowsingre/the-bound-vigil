@@ -24,7 +24,7 @@ import { BookGrid, BookList, BookTable, PhoneList, type LeadCard, type PinnedCar
 import { CollectionsTab } from "./CollectionsTab";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { excludeCount, NO_FILTERS, PAGE_SIZE, type LibraryView } from "./libraryView";
-import { Pagination } from "./Pagination";
+import { pageCount, Pagination } from "./Pagination";
 import { usePageFit } from "./pageFit";
 import { askHide } from "./hidden";
 import { PHONE_LIST, useNarrow } from "../lib/useNarrow";
@@ -1084,7 +1084,6 @@ export function Library({
       </>
     ) : (
       <>
-        <Pagination top page={page.page} pageSize={page.pageSize} lead={slots} total={page.total} onPage={(p) => onChange({ page: p })} />
         {items}
         <Pagination noun={noun} page={page.page} pageSize={page.pageSize} lead={slots} total={page.total} onPage={(p) => onChange({ page: p })} />
       </>
@@ -1178,6 +1177,7 @@ export function Library({
         paired={paired}
         onPairing={onPairing}
         continuous={scrollLibrary}
+        pages={!endless && page ? { page: page.page, count: pageCount(page.total, page.pageSize, slots), onPage: (p) => onChange({ page: p }) } : null}
         onContinuous={narrow ? undefined : (enabled) => {
           changeSettings({ scrollLibrary: enabled });
           onChange({ page: 0 });

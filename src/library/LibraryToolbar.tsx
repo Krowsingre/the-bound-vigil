@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { phoneChoiceShown } from "../home/bookActions";
 import type { ShelfCounts } from "../api/types";
 import { Icon } from "../components/Icon";
@@ -6,6 +6,7 @@ import { Menu, type MenuEntry } from "../components/Menu";
 import { formatLabel } from "../lib/queryBooks";
 import { languageName } from "../lib/language";
 import { PHONE_LIST, useNarrow } from "../lib/useNarrow";
+import { PageNumbers } from "./Pagination";
 import { excludeCount, NO_FILTERS, SORTS, TABS, type Layout, type SeriesGrouping, type LibraryTab, type LibraryView } from "./libraryView";
 
 type FilterList = "formats" | "tags" | "genres" | "languages" | "authors" | "series" | "narrators";
@@ -55,6 +56,7 @@ export function LibraryToolbar({
   onPairing,
   continuous = false,
   onContinuous,
+  pages = null,
   selecting,
   onSelecting,
   onChange,
@@ -77,6 +79,8 @@ export function LibraryToolbar({
   onPairing?: (value: boolean | null) => void;
   continuous?: boolean;
   onContinuous?: (enabled: boolean) => void;
+  /** Paged browsing: the page numbers that slide out beside the page mode button. */
+  pages?: { page: number; count: number; onPage: (page: number) => void } | null;
   selecting: boolean;
   onSelecting: (on: boolean) => void;
   onChange: (change: Partial<LibraryView>) => void;
@@ -294,21 +298,11 @@ export function LibraryToolbar({
                 {view.location === "on_device" && " · Downloaded"}
               </span>
             )}
-            {onContinuous && (
-              <Menu
-                label={continuous ? "Browsing mode: Continuous scroll" : "Browsing mode: Paged"}
-                className="toolbar-button"
-                trigger={<><Icon name={continuous ? "layers" : "bookOpen"} size={16} /><Icon name="chevronDown" size={12} className="toolbar-chevron" /></>}
-                items={[
-                  { label: "Paged", checked: !continuous, onSelect: () => onContinuous(false) },
-                  { label: "Continuous scroll", checked: continuous, onSelect: () => onContinuous(true) },
-                ]}
-              />
-            )}
             {/* Series stacks each series into one card; Series first, joined to it, puts the stacks
                 ahead of single books and only works while Series is on (embre, 20 November). */}
             {allowSeries && <SeriesSwitch grouping={view.seriesGrouping} onChange={(seriesGrouping) => onChange({ seriesGrouping, page: 0 })} />}
-            {!phoneList && <div className="layout-switch" role="radiogroup" aria-label="Layout">
+            {!phoneList && <div className="layout-pages">
+            <div className="layout-switch" role="radiogroup" aria-label="Layout">
               {LAYOUTS.map((l) => (
                 <button
                   key={l.layout}
@@ -324,9 +318,40 @@ export function LibraryToolbar({
                   <Icon name={l.icon} size={18} />
                 </button>
               ))}
+              {/* Page mode: lit is Paged, off is Continuous scroll. The page numbers slide out to
+                  its right while it's lit, and fold back into it when it's turned off. */}
+              {onContinuous && (
+                <button
+                  type="button"
+                  className={`page-mode${continuous ? "" : " is-active"}`}
+                  aria-pressed={!continuous}
+                  aria-label="Paged"
+                  title={continuous ? "Continuous scroll: press for pages" : "Paged: press for continuous scroll"}
+                  onClick={() => onContinuous(!continuous)}
+                >
+                  <Icon name="hash" size={18} />
+                </button>
+              )}
+            </div>
+            {onContinuous && <PageSlide pages={continuous ? null : pages} />}
             </div>}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** The page numbers beside the page mode button. The last numbers stay while they fold away. */
+function PageSlide({ pages }: { pages: { page: number; count: number; onPage: (page: number) => void } | null }) {
+  const last = useRef(pages);
+  if (pages) last.current = pages;
+  const shown = pages && pages.count > 1 ? pages : null;
+  const kept = last.current;
+  return (
+    <div className={`page-slide${shown ? " is-open" : ""}`} aria-hidden={shown ? undefined : true} inert={shown ? undefined : true}>
+      <div className="page-slide-inner">
+        {kept && kept.count > 1 && <PageNumbers page={kept.page} count={kept.count} label="Pages (top)" onPage={kept.onPage} />}
       </div>
     </div>
   );
