@@ -409,7 +409,7 @@ function DeletedBooksList() {
   };
   return (
     <div className="deleted-books">
-      {books.length > 8 && (
+      {(books.length > 8 || query) && (
         <input
           type="search"
           className="input deleted-books-search"

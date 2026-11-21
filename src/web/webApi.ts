@@ -297,10 +297,19 @@ export async function webApi(): Promise<Api> {
       phone_has: 1,
       from_phone: 1,
     };
+    // A forgotten book's highlights, notes and bookmarks, deleted with it, come back with it.
+    const gone = library.rows("books").find((b) => b.id === id && b.deleted_at && b.forgotten_at);
+    const restored: [string, Row][] = gone
+      ? library
+          .rows("annotations")
+          .filter((a) => a.book_id === id && a.deleted_at === gone.deleted_at)
+          .map((a) => ["annotation", { ...a, deleted_at: null, updated_at: now() }])
+      : [];
     // Sent only now the file is in Supabase, so the computer never looks for a file that isn't there.
     await library.writeAll([
-      ["book", row],
+      ["book", { ...row, forgotten_at: null }],
       ["book_phone", row],
+      ...restored,
     ]);
     return { outcome: "imported", path, bookId: id as BookId, title: details.title };
   };
