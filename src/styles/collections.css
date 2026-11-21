@@ -1394,3 +1394,55 @@
     scroll-snap-align: start;
   }
 }
+
+/* Hidden: a locked collection (embre, 21 November). The card shows no covers or count. */
+.hidden-card-lock {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 2 / 1;
+  border: 1px dashed var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+}
+
+.hidden-unlock {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  max-width: 340px;
+  margin: 48px auto 0;
+  text-align: center;
+}
+
+.hidden-unlock form,
+.hidden-unlock .hidden-setup {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+}
+
+.hidden-unlock-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--surface-sunk);
+  color: var(--text-muted);
+}
+
+.hidden-unlock-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hidden-setup {
+  display: grid;
+  gap: 12px;
+}
+
+.hidden-view > .muted {
+  margin: 0 0 20px;
+}

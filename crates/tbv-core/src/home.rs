@@ -111,12 +111,20 @@ pub(crate) const BOOK_FROM: &str = r#"
     LEFT JOIN metadata_fetched f_publisher ON f_publisher.book_id = b.id AND f_publisher.field = 'publisher'
     LEFT JOIN metadata_fetched f_language ON f_language.book_id = b.id AND f_language.field = 'language'
     LEFT JOIN metadata_fetched f_genres ON f_genres.book_id = b.id AND f_genres.field = 'genres'
-    WHERE b.deleted_at IS NULL AND b.same_as IS NULL
+    WHERE b.deleted_at IS NULL AND b.same_as IS NULL AND b.hidden_at IS NULL
 "#;
 
-/// `BOOK_FROM` that also finds Scribe's drafts, which only the reader opens.
+/// `BOOK_FROM` that also finds Scribe's drafts, which only the reader opens,
+/// and hidden books, which open from the Hidden collection.
 pub(crate) fn book_from_with_drafts() -> String {
-    BOOK_FROM.replace("b.same_as IS NULL", "(b.same_as IS NULL OR b.same_as LIKE 'draft:%')")
+    BOOK_FROM
+        .replace("b.same_as IS NULL", "(b.same_as IS NULL OR b.same_as LIKE 'draft:%')")
+        .replace(" AND b.hidden_at IS NULL", "")
+}
+
+/// `BOOK_FROM` for the Hidden collection: only hidden books.
+pub(crate) fn book_from_hidden() -> String {
+    BOOK_FROM.replace("b.hidden_at IS NULL", "b.hidden_at IS NOT NULL")
 }
 
 /// Effective publisher and language, for rules and the reader.
@@ -155,7 +163,7 @@ impl Library {
     fn suggested_from_shelves(&self) -> Result<Vec<BookPreview>> {
         let audio = crate::audio::AUDIO_FORMATS.iter().map(|f| format!("'{f}'")).collect::<Vec<_>>().join(", ");
         let mut statement = self.conn.prepare(&format!(
-            "SELECT id, want_to_read FROM books WHERE deleted_at IS NULL AND same_as IS NULL
+            "SELECT id, want_to_read FROM books WHERE deleted_at IS NULL AND same_as IS NULL AND hidden_at IS NULL
                AND status = 'unread' AND last_opened_at IS NULL AND format NOT IN ({audio})"
         ))?;
         let mut picks: Vec<(String, bool)> = statement.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<std::result::Result<_, _>>()?;
@@ -177,7 +185,7 @@ impl Library {
     fn read_authors(&self) -> Result<Vec<String>> {
         let mut statement = self.conn.prepare(
             "SELECT json_extract(authors, '$[0]') AS author, COUNT(*) AS n FROM books
-             WHERE deleted_at IS NULL AND same_as IS NULL AND status IN ('read', 'in_progress')
+             WHERE deleted_at IS NULL AND same_as IS NULL AND hidden_at IS NULL AND status IN ('read', 'in_progress')
                AND author IS NOT NULL AND trim(author) != '' AND lower(author) NOT IN ('unknown', 'unknown author', 'various')
              GROUP BY lower(author) ORDER BY n DESC, MAX(COALESCE(last_opened_at, finished_at, added_at)) DESC LIMIT 4",
         )?;
@@ -201,7 +209,7 @@ impl Library {
         let since = (chrono::Utc::now() - chrono::Duration::days(400)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
         let mut statement = self.conn.prepare(
             "SELECT finished_at FROM books
-             WHERE deleted_at IS NULL AND same_as IS NULL AND status = 'read' AND finished_at >= ?1
+             WHERE deleted_at IS NULL AND same_as IS NULL AND hidden_at IS NULL AND status = 'read' AND finished_at >= ?1
              ORDER BY finished_at DESC",
         )?;
         let rows = statement.query_map([since], |r| r.get(0))?;
@@ -250,7 +258,7 @@ impl Library {
                     COALESCE(SUM(status = 'unread'), 0),
                     COALESCE(SUM(status = 'in_progress'), 0),
                     COALESCE(SUM(status = 'read'), 0)
-             FROM books WHERE deleted_at IS NULL AND same_as IS NULL",
+             FROM books WHERE deleted_at IS NULL AND same_as IS NULL AND hidden_at IS NULL",
             [],
             |r| {
                 Ok(LibraryCounts {
@@ -272,13 +280,14 @@ impl Library {
         let mut statement = self.conn.prepare(
             "SELECT c.id, c.name,
                     (SELECT COUNT(*) FROM collection_books cb JOIN books b ON b.id = cb.book_id
-                     WHERE cb.collection_id = c.id AND cb.removed_at IS NULL AND b.deleted_at IS NULL AND b.same_as IS NULL)
+                     WHERE cb.collection_id = c.id AND cb.removed_at IS NULL AND b.deleted_at IS NULL AND b.same_as IS NULL AND b.hidden_at IS NULL)
              FROM collections c WHERE c.deleted_at IS NULL AND c.kind != 'shelf'
              ORDER BY c.created_at DESC LIMIT ?1",
         )?;
         let mut covers = self.conn.prepare(
             "SELECT lf.cover_path FROM collection_books cb
              JOIN local_files lf ON lf.book_id = cb.book_id
+             JOIN books b ON b.id = cb.book_id AND b.hidden_at IS NULL
              WHERE cb.collection_id = ?1 AND cb.removed_at IS NULL AND lf.cover_path IS NOT NULL
              ORDER BY cb.added_at LIMIT 4",
         )?;

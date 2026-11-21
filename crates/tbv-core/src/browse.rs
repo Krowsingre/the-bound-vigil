@@ -201,6 +201,8 @@ impl Filters<'_> {
 
 impl Library {
     pub fn library_page(&self, query: &LibraryQuery) -> Result<LibraryPage> {
+        // The Hidden collection shows only hidden books; every other list leaves them out.
+        let book_from = if query.hidden { crate::home::book_from_hidden() } else { BOOK_FROM.to_string() };
         let mut conditions: Vec<String> = Vec::new();
         let mut values: Vec<Value> = Vec::new();
         let mut search_rank: Option<String> = None;
@@ -325,7 +327,7 @@ impl Library {
         );
         let total_expr = if query.group_series { format!("COUNT(DISTINCT {group})") } else { "COUNT(*)".into() };
         let total: u32 = self.conn.query_row(
-            &format!("SELECT {total_expr} {BOOK_FROM} {filter}"),
+            &format!("SELECT {total_expr} {book_from} {filter}"),
             params_from_iter(values.iter()),
             |r| r.get(0),
         )?;
@@ -355,12 +357,12 @@ impl Library {
                     SELECT b.id, {pin_rank} AS pin_rank, {rank} AS series_rank, {group} AS stack,
                            ROW_NUMBER() OVER (PARTITION BY {group} ORDER BY {order}) AS pick,
                            ROW_NUMBER() OVER (ORDER BY {position_order}) AS position
-                    {BOOK_FROM} {filter}
+                    {book_from} {filter}
                 ), page AS (
                     SELECT id, stack, position, pin_rank, series_rank FROM ranked WHERE pick = 1 ORDER BY pin_rank, series_rank, position {limit}
                 )
                 {BOOK_COLUMNS}, (SELECT 1 FROM page WHERE page.id = b.id AND stack LIKE 'series:%') AS series_marker
-                {BOOK_FROM} AND b.id IN (SELECT id FROM page)
+                {book_from} AND b.id IN (SELECT id FROM page)
                 ORDER BY (SELECT pin_rank FROM page WHERE page.id = b.id),
                          (SELECT series_rank FROM page WHERE page.id = b.id),
                          (SELECT position FROM page WHERE page.id = b.id)"
@@ -379,7 +381,7 @@ impl Library {
             }
             books
         } else {
-            let mut statement = self.conn.prepare(&format!("{BOOK_COLUMNS} {BOOK_FROM} {filter} ORDER BY {order} {limit}"))?;
+            let mut statement = self.conn.prepare(&format!("{BOOK_COLUMNS} {book_from} {filter} ORDER BY {order} {limit}"))?;
             let rows = statement.query_map(params_from_iter(values.iter()), book_from_row)?;
             rows.collect::<std::result::Result<_, _>>()?
         };
@@ -525,7 +527,7 @@ impl Library {
                     COALESCE(SUM(status = 'read'), 0),
                     COALESCE(SUM(status = 'unread'), 0),
                     (SELECT COUNT(*) FROM collections WHERE deleted_at IS NULL AND kind != 'shelf')
-             FROM books b WHERE deleted_at IS NULL AND same_as IS NULL{only}"),
+             FROM books b WHERE deleted_at IS NULL AND same_as IS NULL AND hidden_at IS NULL{only}"),
             [],
             |r| {
                 Ok(ShelfCounts {
@@ -736,7 +738,7 @@ impl Library {
 
     fn check_archive_pin_limit(conn: &rusqlite::Connection) -> Result<()> {
         let count: u32 = conn.query_row(
-            "SELECT (SELECT COUNT(*) FROM books WHERE pinned_at IS NOT NULL AND deleted_at IS NULL AND same_as IS NULL)
+            "SELECT (SELECT COUNT(*) FROM books WHERE pinned_at IS NOT NULL AND deleted_at IS NULL AND same_as IS NULL AND hidden_at IS NULL)
                   + (SELECT COUNT(*) FROM archive_series_pins WHERE pinned_at IS NOT NULL)",
             [], |row| row.get(0),
         )?;

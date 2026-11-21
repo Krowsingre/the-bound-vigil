@@ -25,6 +25,7 @@ import { LibraryToolbar } from "./LibraryToolbar";
 import { excludeCount, NO_FILTERS, PAGE_SIZE, type LibraryView } from "./libraryView";
 import { Pagination } from "./Pagination";
 import { usePageFit } from "./pageFit";
+import { askHide } from "./hidden";
 import { PHONE_LIST, useNarrow } from "../lib/useNarrow";
 import { useAppSettings } from "../settings/appSettings";
 
@@ -838,6 +839,7 @@ export function Library({
       can: (books) => books.some((b) => b.availability === "local" && b.inCloud),
       run: ask("download"),
     },
+    { label: "Hide", icon: "eyeOff", run: (books) => askHide(books, () => { setSelected(null); setReload((n) => n + 1); }) },
     "divider",
     { label: "Remove from library", icon: "close", run: ask("remove") },
     { label: "Delete", icon: "trash", danger: true, run: ask("delete") },

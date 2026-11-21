@@ -13,6 +13,8 @@ import type {
   DeviceTabs,
   BookFile,
   DeletedBook,
+  DeviceUnlockKind,
+  HiddenLock,
   BookLocation,
   Bookmark,
   BookmarkFolder,
@@ -458,6 +460,17 @@ export interface Api {
   deletedBooks(): Promise<DeletedBook[]>;
   /** Forgets a deletion on every device: importing the file again is a plain import. */
   forgetDeleted(bookId: string): Promise<void>;
+  /** Hides books from every list and count, on every device, or brings them back. How many changed. */
+  setHidden(bookIds: string[], hidden: boolean): Promise<number>;
+  /** How many books are hidden. */
+  hiddenCount(): Promise<number>;
+  /** The Hidden collection's password hash, once one is set. */
+  hiddenLock(): Promise<HiddenLock | null>;
+  setHiddenLock(lock: HiddenLock): Promise<void>;
+  /** Face ID, Touch ID or Windows Hello, where this device has it set up. */
+  deviceUnlockKind(): Promise<DeviceUnlockKind | null>;
+  /** Asks for the face, finger or Windows Hello PIN; true when the person passed. */
+  deviceUnlock(reason: string): Promise<boolean>;
   /** Saves copies of the books, named "Title - Author", into a folder chosen now. Null if none was chosen. */
   saveCopies(bookIds: string[]): Promise<{ saved: number; folder: string } | null>;
   /** iPhone and iPad: the Share sheet with these books' files (AirDrop, Messages, Mail…). */
@@ -1283,6 +1296,12 @@ function appApi(): Api {
     removeFromLibrary: async (bookId) => (await core).invoke("remove_from_library", { bookId }),
     deletedBooks: async () => (await core).invoke<DeletedBook[]>("deleted_books"),
     forgetDeleted: async (bookId) => (await core).invoke("forget_deleted", { bookId }),
+    setHidden: async (bookIds, hidden) => (await core).invoke<number>("set_hidden", { bookIds, hidden }),
+    hiddenCount: async () => (await core).invoke<number>("hidden_count"),
+    hiddenLock: async () => (await core).invoke<HiddenLock | null>("hidden_lock"),
+    setHiddenLock: async (lock) => (await core).invoke("set_hidden_lock", { lock }),
+    deviceUnlockKind: async () => (await core).invoke<DeviceUnlockKind | null>("device_unlock_kind"),
+    deviceUnlock: async (reason) => (await core).invoke<boolean>("device_unlock", { reason }),
     saveCopies: async (bookIds) => {
       const picked = isIOS
         ? await (await core).invoke<string | null>("ios_pick_folder")

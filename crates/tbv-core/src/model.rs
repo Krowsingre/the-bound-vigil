@@ -389,6 +389,8 @@ pub struct LibraryQuery {
     /// Places on the first page taken by cards that aren't books (Pinned, Last read):
     /// the first page holds that many fewer books, and every later page starts that much earlier.
     pub lead_slots: u32,
+    /// Only hidden books: the Hidden collection, once it's open.
+    pub hidden: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

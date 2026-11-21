@@ -20,6 +20,7 @@ import { NO_FILTERS } from "../library/libraryView";
 import { isWeb } from "../api";
 import { bookDownload, isDownloading, tracked, wasStopped } from "../library/cloudDownloads";
 import { canWatch, isWatchingAuthor, unwatch, watchAuthor } from "../library/watchList";
+import { askHide } from "../library/hidden";
 
 /** The PWA transfer controls are hidden while the PWA is disabled. */
 export const phoneChoiceShown = () => false;
@@ -51,6 +52,10 @@ export interface BookActions {
   setPhoneWanted?: (books: BookPreview[], wanted: boolean) => void;
   /** Set when the books are shown inside one of the user's collections. */
   removeFromCollection?: { name: string; remove: (book: BookPreview) => void };
+  /** Hides the book: out of every list and count, into the locked Hidden collection. */
+  hide?: (book: BookPreview) => void;
+  /** Set inside the Hidden collection: brings the book back. */
+  unhide?: (book: BookPreview) => void;
 }
 
 /** The "…" menu for a book, and its right-click menu. */
@@ -167,6 +172,11 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
       : []),
     downloadItem(book, actions),
     ] },
+    ...(actions.unhide
+      ? [{ label: "Unhide", icon: "eye" as const, onSelect: () => actions.unhide?.(book) }]
+      : actions.hide
+        ? [{ label: "Hide", icon: "eyeOff" as const, onSelect: () => actions.hide?.(book) }]
+        : []),
     "divider",
     { label: "Removal options", icon: "trash", submenu: [
     { label: "Remove from library…", icon: "close", onSelect: () => askRemoveBook(book) },
@@ -295,6 +305,7 @@ export function makeBookActions(
     },
     setAudioType: api.setAudioType && ((book, kind) => void run(book, api.setAudioType!(book.id, kind))),
     setRating: (book, rating) => void run(book, api.setRating(book.id, rating)),
+    hide: (book) => askHide([book], refresh),
     setPinned: api.setPinned && ((book, pinned) => void run(book, api.setPinned!(book.id, pinned).then(() => {
       if (!pinned && book.pinnedAt) toast(`Unpinned from ${isAudio(book.format) ? "Resonance" : "the Archive"}.`, { label: "Undo", run: () => void run(book, api.setPinned!(book.id, true)) });
     }))),

@@ -15,6 +15,7 @@ interface Kind {
 
 export type Table =
   | "books"
+  | "hidden_lock"
   | "audiobooks"
   | "archive_series_pins"
   | "metadata_overrides"
@@ -48,6 +49,8 @@ export const KINDS: Kind[] = [
   { name: "book_audio_type", table: "books", keys: ["id"], cols: ["audio_type"] },
   { name: "archive_series_pin", table: "archive_series_pins", keys: ["name"], cols: ["label", "pinned_at"] },
   { name: "book_pin", table: "books", keys: ["id"], cols: ["pinned_at"] },
+  { name: "book_hidden", table: "books", keys: ["id"], cols: ["hidden_at"] },
+  { name: "hidden_lock", table: "hidden_lock", keys: ["id"], cols: ["salt", "hash", "rounds", "updated_at"] },
   { name: "book_progress", table: "books", keys: ["id"], cols: ["status", "total_progression", "resume_locator", "last_opened_at", "finished_at"] },
   { name: "book_shelves", table: "books", keys: ["id"], cols: ["favorite", "want_to_read", "rating"] },
   { name: "override", table: "metadata_overrides", keys: ["book_id", "field"], cols: ["value", "updated_at"] },
@@ -115,6 +118,8 @@ export interface BookRow {
   same_as?: string | null;
   /** When it was pinned to the top of the Archive. */
   pinned_at?: string | null;
+  /** When it was hidden: out of every list but the Hidden collection. */
+  hidden_at?: string | null;
   audio_type?: import("../api/types").AudioType | null;
 }
 
@@ -216,7 +221,12 @@ export class WebLibrary {
 
   /** The books as they're listed: a copy kept with another book shows as that book. */
   listed(): BookRow[] {
-    return this.books().filter((b) => !b.same_as);
+    return this.books().filter((b) => !b.same_as && !b.hidden_at);
+  }
+
+  /** The hidden books, for the Hidden collection once it's open. */
+  hiddenListed(): BookRow[] {
+    return this.books().filter((b) => !b.same_as && b.hidden_at);
   }
 
   book(id: string): BookRow | undefined {

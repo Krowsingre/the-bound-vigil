@@ -21,6 +21,7 @@ mod home;
 mod imports;
 mod license;
 mod lining;
+mod hidden;
 mod look_up;
 #[cfg(desktop)]
 mod menu_popup;
@@ -2434,6 +2435,12 @@ pub fn run() {
             remove_from_library,
             deleted_books,
             forget_deleted,
+            hidden::set_hidden,
+            hidden::hidden_count,
+            hidden::hidden_lock,
+            hidden::set_hidden_lock,
+            hidden::device_unlock_kind,
+            hidden::device_unlock,
             save_copies,
             merge_reading,
             keep_together,

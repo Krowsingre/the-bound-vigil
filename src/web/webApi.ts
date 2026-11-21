@@ -241,6 +241,10 @@ export async function webApi(): Promise<Api> {
     const edits = overrides();
     return library.listed().map((b) => preview(b, edits.get(b.id)));
   };
+  const hiddenBooks = (): BookPreview[] => {
+    const edits = overrides();
+    return library.hiddenListed().map((b) => preview(b, edits.get(b.id)));
+  };
   const bookById = () => new Map(books().map((b) => [b.id as string, b]));
   const find = (id: string) => {
     const row = library.book(id);
@@ -698,7 +702,7 @@ export async function webApi(): Promise<Api> {
       else if (status === "in_progress") await writeProgress(bookId, { status, last_opened_at: b.last_opened_at ?? at });
       else await writeProgress(bookId, { status, finished_at: b.finished_at ?? at });
     },
-    getLibrary: async (query) => queryBooks(books(), query, previews().length),
+    getLibrary: async (query) => queryBooks(query.hidden ? hiddenBooks() : books(), query, previews().length),
     getCollections: async () => previews(),
     setFavorite: async (bookId, favorite) => writeShelves(bookId, { favorite: favorite ? 1 : 0 }),
     favouriteSeries: async () => [],
@@ -1374,6 +1378,26 @@ export async function webApi(): Promise<Api> {
       const b = library.rows("books").find((r) => r.id === bookId && r.deleted_at && !r.forgotten_at);
       if (b) await library.writeAll([["book", { ...b, forgotten_at: now() }]]);
     },
+    setHidden: async (bookIds, hidden) => {
+      const changes: [string, Row][] = [];
+      for (const id of bookIds) {
+        const b = library.book(id);
+        if (b && !!b.hidden_at !== hidden) changes.push(["book_hidden", { ...b, hidden_at: hidden ? now() : null }]);
+      }
+      if (changes.length) await library.writeAll(changes);
+      return changes.length;
+    },
+    hiddenCount: async () => library.hiddenListed().length,
+    hiddenLock: async () => {
+      const row = library.rows("hidden_lock").find((r) => r.id === "hidden");
+      return row ? { salt: String(row.salt), hash: String(row.hash), rounds: Number(row.rounds) } : null;
+    },
+    setHiddenLock: async (lock) => {
+      await library.write("hidden_lock", { id: "hidden", salt: lock.salt, hash: lock.hash, rounds: lock.rounds, updated_at: now() });
+    },
+    // The web version has no face or fingerprint check: the password opens Hidden.
+    deviceUnlockKind: async () => null,
+    deviceUnlock: async () => false,
     removeDownload: async (bookId) => {
       const b = find(bookId);
       await db.deleteFile(`books/${bookId.replace(/^sha256:/, "")}.${b.format}`);

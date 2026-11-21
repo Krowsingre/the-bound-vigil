@@ -21,6 +21,7 @@ pub mod error;
 pub mod formats;
 pub mod goodreads;
 pub mod hardcover;
+pub mod hidden;
 pub mod history;
 pub mod home;
 pub mod http;
