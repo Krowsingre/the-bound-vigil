@@ -872,6 +872,10 @@ export function Library({
       onSelect: () => a.run(chosen),
     })),
     { label: "Clear choice", icon: "close", disabled: none || busy !== null, onSelect: () => setSelected(new Map()) },
+    // Find alike (embre, 21 November): a toolbar button on the computer; phones and iPads keep it here.
+    ...(api.findAlike && kind !== "documents" && narrow
+      ? ["divider" as const, { label: "Find alike…", icon: "search" as const, onSelect: () => setFindingAlike(true) }]
+      : []),
   ];
 
   /** Removes downloads, removes from the library, or deletes, one book at a time. */
