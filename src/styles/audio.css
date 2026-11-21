@@ -15,6 +15,63 @@
   min-width: 0;
 }
 
+/* On a computer (embre, 21 November): the book column scrolls by itself and
+   the side bar stays put beside it, so there is one scroll bar, at the
+   column's edge. In the side bar only the tab's list scrolls. */
+.content:has(.audiobooks.is-desk) {
+  overflow: hidden;
+}
+
+.audiobooks.is-desk {
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.audiobooks.is-desk.is-folded {
+  grid-template-columns: minmax(0, 1fr) 44px;
+}
+
+.audiobooks.is-desk .audiobooks-main {
+  min-height: 0;
+  overflow: auto;
+}
+
+.audiobooks.is-desk .audio-panel {
+  position: relative;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+}
+
+.audiobooks.is-desk .audio-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin-right: -14px;
+  padding-right: 14px;
+  scrollbar-width: thin;
+}
+
+.audio-panel-fold {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+.audiobooks.is-desk .audio-panel-head {
+  padding-right: 22px;
+}
+
+.audio-panel-rail {
+  display: flex;
+  justify-content: center;
+  padding-top: 14px;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
 /* The side panel */
 .audio-panel {
   position: sticky;

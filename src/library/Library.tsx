@@ -17,6 +17,8 @@ import { useToast } from "../components/Toast";
 import { StarRating } from "../components/StarRating";
 import { makeBookActions, phoneChoiceShown } from "../home/bookActions";
 import { FindAlike } from "./FindAlike";
+import { usePageSwipe } from "./pageSwipe";
+import { pageScroller } from "../lib/pageScroller";
 import { Spent, Stat } from "../home/ReadingActivity";
 import { useTimeSpent } from "../home/useTimeSpent";
 import { TagsDialog, deleteWarning, removeWarning } from "./BookDialogs";
@@ -122,7 +124,8 @@ export function Library({
   const [reload, setReload] = useState(0);
   // Choosing books to change many at once.
   const [selected, setSelected] = useState<Map<string, BookPreview> | null>(null);
-  const [findingAlike, setFindingAlike] = useState(false);
+  /** Find alike is open: starting from these books, or from the whole library when empty. */
+  const [findingAlike, setFindingAlike] = useState<BookPreview[] | null>(null);
   /** The book picked last, where a Shift-click range starts. */
   const lastPicked = useRef<string | null>(null);
   /** The books of each series chosen as a stack, by series name. */
@@ -259,13 +262,16 @@ export function Library({
   const [later, setLater] = useState<LibraryPage[]>([]);
   const loadingMore = useRef(false);
   const end = useRef<HTMLDivElement>(null);
+  // Find alike (embre, 21 November): books and audiobooks, not documents or music.
+  const canFindAlike = !!api.findAlike && kind !== "documents" && !(kind === "audiobooks" && view.audioType === "music");
   const actions = useMemo(
     () => ({
       ...makeBookActions(api, toast, () => setReload((n) => n + 1), onOpenBook),
       // Start choosing from the book itself, wherever it is on the page (embre, 21 November).
       select: (book: BookPreview) => setSelected((s) => new Map(s ?? []).set(book.id, book)),
+      ...(canFindAlike && !narrow ? { findAlike: (book: BookPreview) => setFindingAlike([book]) } : {}),
     }),
-    [toast, onOpenBook],
+    [toast, onOpenBook, canFindAlike, narrow],
   );
 
   const shelf = view.tab === "collections" ? "all" : view.tab;
@@ -544,7 +550,7 @@ export function Library({
 
   // A new page starts at the top, like turning a page.
   useEffect(() => {
-    if (!endless || inSeries) document.querySelector(".content")?.scrollTo({ top: 0 });
+    if (!endless || inSeries) pageScroller(libraryRoot.current)?.scrollTo({ top: 0 });
   }, [view.page, endless, inSeries]);
 
   const first = load.state === "ready" ? load.data : null;
@@ -560,6 +566,12 @@ export function Library({
     } : first),
     [first, endless, later],
   );
+  // Paged mode on a computer: swipes and wheel tilt turn the page (embre, 21 November).
+  const pageTotal = page && !endless ? pageCount(page.total, page.pageSize, slots) : 1;
+  usePageSwipe(libraryRoot, !endless && !narrow && pageTotal > 1, (step) => {
+    const to = view.page + step;
+    if (to >= 0 && to < pageTotal) onChange({ page: to });
+  });
   // One series shown: its check for missing books (button up top, list under the books).
   // An album isn't a series: nothing is missing from it to look for.
   const checkedSeries = !isWeb && !isHome && !albums && view.tab !== "collections" && view.series.length === 1 ? view.series[0] : null;
@@ -569,13 +581,13 @@ export function Library({
   useEffect(() => {
     if (restoreScroll == null || !first || loadedView.current !== requestKey || (endless && hasPendingScroll())) return;
     const id = requestAnimationFrame(() => {
-      document.querySelector(".content")?.scrollTo({ top: restoreScroll });
+      pageScroller(libraryRoot.current)?.scrollTo({ top: restoreScroll });
       onScrollRestored?.();
     });
     return () => cancelAnimationFrame(id);
 
     function hasPendingScroll() {
-      const content = document.querySelector(".content");
+      const content = pageScroller(libraryRoot.current);
       if (!content || content.scrollHeight - content.clientHeight >= restoreScroll!) return false;
       if ((later.length + 1) * PAGE_SIZE >= first!.total) return false;
       if (!loadingMore.current) setPages((n) => Math.max(n, later.length + 2));
@@ -601,7 +613,7 @@ export function Library({
       (seen) => {
         if (seen.some((s) => s.isIntersecting) && !loadingMore.current) setPages((n) => Math.max(n, later.length + 2));
       },
-      { root: document.querySelector(".content"), rootMargin: "800px 0px" },
+      { root: pageScroller(libraryRoot.current), rootMargin: "800px 0px" },
     );
     watch.observe(target);
     return () => watch.disconnect();
@@ -874,7 +886,7 @@ export function Library({
     { label: "Clear choice", icon: "close", disabled: none || busy !== null, onSelect: () => setSelected(new Map()) },
     // Find alike (embre, 21 November): a toolbar button on the computer; phones and iPads keep it here.
     ...(api.findAlike && kind !== "documents" && narrow
-      ? ["divider" as const, { label: "Find alike…", icon: "search" as const, onSelect: () => setFindingAlike(true) }]
+      ? ["divider" as const, { label: "Find alike…", icon: "search" as const, onSelect: () => setFindingAlike(chosen) }]
       : []),
   ];
 
@@ -1178,11 +1190,11 @@ export function Library({
         onPairing={onPairing}
         continuous={scrollLibrary}
         pages={!endless && page ? { page: page.page, count: pageCount(page.total, page.pageSize, slots), onPage: (p) => onChange({ page: p }) } : null}
-        onFindAlike={api.findAlike && kind !== "documents" && !albums && !narrow ? () => setFindingAlike(true) : undefined}
+        onFindAlike={canFindAlike && !narrow ? () => setFindingAlike(selected ? [...selected.values()] : []) : undefined}
         onContinuous={narrow ? undefined : (enabled) => {
           changeSettings({ scrollLibrary: enabled });
           onChange({ page: 0 });
-          document.querySelector(".content")?.scrollTo({ top: 0 });
+          pageScroller(libraryRoot.current)?.scrollTo({ top: 0 });
         }}
         selecting={selected !== null}
         onSelecting={(on) => setSelected(on ? new Map() : null)}
@@ -1240,7 +1252,7 @@ export function Library({
           </span>
         </div>
       )}
-      {findingAlike && <FindAlike kind={kind} onClose={() => setFindingAlike(false)} onChanged={() => setReload((n) => n + 1)} />}
+      {findingAlike && <FindAlike kind={kind} from={findingAlike} onClose={() => setFindingAlike(null)} onChanged={() => setReload((n) => n + 1)} />}
       {asking && (
         <ConfirmDialog
           title={

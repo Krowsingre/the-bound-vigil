@@ -880,6 +880,18 @@ button.tag-chip-add:hover {
   margin: 4px 0 0;
 }
 
+/* Find alike started from chosen books or one book's menu. */
+.alike-from {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-m);
+  background: var(--surface-2, var(--surface));
+}
+
 .alike-options {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

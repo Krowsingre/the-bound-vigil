@@ -10,6 +10,7 @@ import { pictureUrl, SMART_INFO } from "../collections/collectionInfo";
 import { GALLERY, galleryUrl } from "../collections/gallery";
 import { hashOf } from "../lib/format";
 import { EmptyNote, Section } from "./Section";
+import { useNarrow } from "../lib/useNarrow";
 
 const SHOWN = 4;
 
@@ -40,6 +41,7 @@ export function CompendiumRow({
   onOpenCompendium: (kind: SmartKind) => void;
   onViewAll: () => void;
 }) {
+  const narrow = useNarrow();
   const [overview, setOverview] = useState<CollectionsOverview | null>(null);
   useEffect(() => {
     let current = true;
@@ -56,7 +58,8 @@ export function CompendiumRow({
   const cards: Card[] = own.length
     ? own.slice(0, SHOWN).map((c) => ({ key: c.id, name: c.name, count: c.count, badge: c.badge, picture: pictureUrl(c) ?? paintingFor(c.id), own: !!pictureUrl(c) && !c.picture?.startsWith("gallery:"), open: () => onOpenCollection(c.id) }))
     : (overview?.smart ?? [])
-        .filter((s) => s.kind !== "recently_added")
+        // Sent to device is gone from the computer (embre, 21 November); phones keep it until the mobile update.
+        .filter((s) => s.kind !== "recently_added" && (narrow || s.kind !== "send_to_device"))
         .slice(0, SHOWN)
         .map((s) => ({ key: s.kind, name: SMART_INFO[s.kind].name, count: s.count, badge: SMART_INFO[s.kind].badge, picture: paintingFor(s.kind), own: false, open: () => onOpenCompendium(s.kind) }));
 

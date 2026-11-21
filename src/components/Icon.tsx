@@ -162,7 +162,7 @@ export function Icon({
 }) {
   return (
     <svg
-      className={className}
+      className={name === "more" || name === "moreVertical" ? `icon-more${className ? ` ${className}` : ""}` : className}
       width={size}
       height={size}
       viewBox="0 0 24 24"

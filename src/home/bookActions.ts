@@ -54,6 +54,8 @@ export interface BookActions {
   removeFromCollection?: { name: string; remove: (book: BookPreview) => void };
   /** Archive only: turns Select on with this book already chosen. */
   select?: (book: BookPreview) => void;
+  /** Archive and Resonance on a computer: Find alike, starting from this book (embre, 21 November). */
+  findAlike?: (book: BookPreview) => void;
   /** Hides the book: out of every list and count, into the locked Hidden collection. */
   hide?: (book: BookPreview) => void;
   /** Set inside the Hidden collection: brings the book back. */
@@ -83,6 +85,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     { label: "Edit details…", icon: "edit", onSelect: () => askEditDetails([book]) },
     // Everything the selection's Actions menu offers is here too (embre, 20 November).
     { label: "Find details online…", icon: "search", onSelect: () => askFetchDetails(book) },
+    ...(actions.findAlike ? [{ label: "Find alike…", icon: "search" as const, onSelect: () => actions.findAlike?.(book) }] : []),
     ...(book.audioType === "music" && book.series ? [{ label: "Take out of its album", icon: "close" as const, onSelect: () => askAlbum([book], true) }] : []),
     {
       heading: createElement(

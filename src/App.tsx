@@ -66,6 +66,7 @@ import { useSwipes } from "./shell/useSwipes";
 import { drawImportedCovers } from "./reader/formats";
 import { useNavigationHistory } from "./shell/useNavigationHistory";
 import { useNavigationShortcuts } from "./shell/useNavigationShortcuts";
+import { pageScroller } from "./lib/pageScroller";
 
 const COLLAPSE_KEY = "tbv.sidebarCollapsed";
 const NO_IMPORTS = isHome
@@ -112,7 +113,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const [seriesSearch, setSeriesSearch] = useState("");
   const [seriesPage, setSeriesPage] = useState(0);
   const openSeries = (destination: SeriesPlace["route"], name: string) => {
-    setSeriesPlace({ route: destination, name, showAll: route !== destination, parentScroll: document.querySelector(".content")?.scrollTop ?? 0 });
+    setSeriesPlace({ route: destination, name, showAll: route !== destination, parentScroll: pageScroller()?.scrollTop ?? 0 });
     setSeriesSearch(route === destination ? searchText : "");
     setSeriesPage(0);
   };
@@ -191,7 +192,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
       navigate(target);
       return;
     }
-    const content = document.querySelector<HTMLElement>(".workspace-content > .content");
+    const content = pageScroller();
     const same = target === section;
     if (!same) {
       sidebarPlaces.current.set(section, {

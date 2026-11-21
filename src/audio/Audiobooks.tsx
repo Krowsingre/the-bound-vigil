@@ -3,7 +3,7 @@
 // its chapters, details, files and collections.
 
 import { authorName } from "../lib/authorNames";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isServerBook } from "../api";
 import type { AudioType, Audiobook, BookDetails, BookPreview } from "../api/types";
 import { askAddToCollection } from "../collections/AddToCollection";
@@ -18,6 +18,7 @@ import { formatLength } from "../lib/queryBooks";
 import { formatBytes } from "../settings/controls";
 import { LinkEbook } from "./LinkEbook";
 import { useNarrow } from "../lib/useNarrow";
+import { useAppSettings } from "../settings/appSettings";
 import { chapterAt, chapterLength, clock, onCue, usePlayer } from "./player";
 
 type PanelTab = "chapters" | "details" | "files" | "collections";
@@ -178,9 +179,30 @@ export function Audiobooks({
   );
   useEffect(() => onCue(choose), [choose]);
 
+  // On a computer the book column scrolls by itself and the side bar stays put
+  // beside it, so only one scroll bar shows; the side bar folds away, and
+  // turning Paged mode on folds it (embre, 21 November).
+  const stacked = useNarrow("(max-width: 1180px)");
+  const desk = !narrow && !stacked;
+  const { settings: { scrollLibrary } } = useAppSettings();
+  const [folded, setFolded] = useState(() => keptFold(scrollLibrary));
+  const pagedWas = useRef(scrollLibrary);
+  useEffect(() => {
+    if (pagedWas.current === scrollLibrary) return;
+    pagedWas.current = scrollLibrary;
+    const fold = !scrollLibrary;
+    setFolded(fold);
+    keepFold(scrollLibrary, fold);
+  }, [scrollLibrary]);
+  const fold = (value: boolean) => {
+    setFolded(value);
+    keepFold(scrollLibrary, value);
+  };
+  const deskFolded = desk && folded;
+
   return (
-    <div className="audiobooks">
-      <div className="audiobooks-main">
+    <div className={`audiobooks${desk ? " is-desk" : ""}${deskFolded ? " is-folded" : ""}`}>
+      <div className={`audiobooks-main${desk ? " page-scroll" : ""}`}>
         <Library
           kind="audiobooks"
           onOpenSeries={onOpenSeries}
@@ -221,7 +243,14 @@ export function Audiobooks({
           onOpenCollection={onOpenCollection}
         />
       </div>
-      {shown && (!narrow || sheet) && (
+      {deskFolded && (
+        <div className="audio-panel-rail">
+          <button type="button" className="icon-btn" aria-label="Show the side bar" title="Show the side bar" onClick={() => fold(false)}>
+            <Icon name="panelRight" size={18} />
+          </button>
+        </div>
+      )}
+      {shown && (!narrow || sheet) && !deskFolded && (
         <>
           {narrow && <div className="audio-sheet-backdrop" aria-hidden onClick={() => setSheet(false)} />}
           <AudiobookPanel
@@ -232,6 +261,7 @@ export function Audiobooks({
             onReadAlong={onReadAlong}
             onChanged={() => setReload((n) => n + 1)}
             onClose={narrow ? () => setSheet(false) : undefined}
+            onFold={desk ? () => fold(true) : undefined}
           />
         </>
       )}
@@ -246,6 +276,7 @@ function AudiobookPanel({
   onReadAlong,
   onChanged,
   onClose,
+  onFold,
 }: {
   bookId: string;
   refreshKey: number;
@@ -254,6 +285,8 @@ function AudiobookPanel({
   onChanged: () => void;
   /** On a phone, where the panel is a sheet: closes it. */
   onClose?: () => void;
+  /** On a computer: folds the side bar away. */
+  onFold?: () => void;
 }) {
   const player = usePlayer();
   const [book, setBook] = useState<Audiobook | null>(null);
@@ -288,6 +321,11 @@ function AudiobookPanel({
 
   return (
     <aside className={`audio-panel${onClose ? " is-sheet" : ""}`} aria-label={`About ${b.title}`}>
+      {onFold && (
+        <button type="button" className="icon-btn audio-panel-fold" aria-label="Hide the side bar" title="Hide the side bar" onClick={onFold}>
+          <Icon name="panelRight" size={18} />
+        </button>
+      )}
       {onClose && (
         <button type="button" className="icon-btn audio-sheet-close" aria-label="Close" onClick={onClose}>
           <Icon name="close" size={18} />
@@ -511,4 +549,23 @@ function AudiobookPanel({
       )}
     </aside>
   );
+}
+
+/** Whether the side bar was left folded, for Paged mode and for scrolling each. Paged mode starts folded. */
+const FOLD_KEY = "tbv.resonance.folded.";
+function keptFold(scrolling: boolean): boolean {
+  try {
+    const kept = localStorage.getItem(FOLD_KEY + (scrolling ? "scroll" : "paged"));
+    if (kept === "1" || kept === "0") return kept === "1";
+  } catch {
+    // Not kept: as the mode starts.
+  }
+  return !scrolling;
+}
+function keepFold(scrolling: boolean, folded: boolean) {
+  try {
+    localStorage.setItem(FOLD_KEY + (scrolling ? "scroll" : "paged"), folded ? "1" : "0");
+  } catch {
+    // Not kept: as the mode starts next time.
+  }
 }

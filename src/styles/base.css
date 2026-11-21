@@ -102,6 +102,18 @@ input {
   color: var(--text);
 }
 
+/* The ••• buttons on a computer: heavier dots in the text colour, so they're
+   easy to find (embre, 21 November). Phones come with the mobile update. */
+@media not ((max-width: 760px) or ((pointer: coarse) and (max-width: 1400px))) {
+  .icon-more {
+    stroke-width: 3.6;
+  }
+
+  .icon-btn:has(> .icon-more) {
+    color: var(--text);
+  }
+}
+
 .muted {
   color: var(--text-muted);
 }
