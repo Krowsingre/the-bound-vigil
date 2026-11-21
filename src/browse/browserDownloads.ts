@@ -196,14 +196,15 @@ async function finishDownload(row: Fetched, toast: (message: string) => void) {
 
 /**
  * A book file the page's own download couldn't finish (the browser
- * interrupted it) is fetched once by TBV itself and added to the library,
+ * interrupted it), by its link or by the name the site gave it, is fetched once by TBV itself and added to the library,
  * as "Download and add to library" does by hand. Once means once: the mark
  * is kept on the row, so leaving Scry and coming back doesn't fetch it again
  * (that was one click saving the same book 5 or 6 times).
  */
 function fallBack(row: Fetched | undefined, toast: (message: string) => void) {
   if (!row || row.state !== "failed" || row.fellBack || row.securityBlocked || row.direct) return;
-  if (!row.url || !/^https?:\/\//i.test(row.url) || !BOOK_FILE.test(row.url)) return;
+  // Many book sites' links don't end in .epub or the like, but the file they send is named as a book.
+  if (!row.url || !/^https?:\/\//i.test(row.url) || !(BOOK_FILE.test(row.url) || BOOK_FILE.test(row.name))) return;
   updateDownload(row.id, { fellBack: true });
   void api.downloadWebBook(row.url, row.name, row.sourceUrl).then(
     () => toast(`“${row.name}” didn't finish in the page, so TBV downloaded it itself.`),
