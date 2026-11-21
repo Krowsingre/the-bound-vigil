@@ -17,7 +17,7 @@ import {
   type SurfaceStyle,
   type ThemeChoice,
 } from "./appSettings";
-import { Columns, Row, Section, Segmented, Toggle } from "./controls";
+import { Columns, Row, Section, SectionGroup, Segmented, Toggle, useDeskPrefs } from "./controls";
 import type { AuthorStyle } from "../lib/authorNames";
 import { CustomThemeSection, themeFromWindow } from "./CustomThemeSection";
 import { api } from "../api";
@@ -105,6 +105,7 @@ export function AppearanceTab({
   onSidebarShown: (shown: boolean) => void;
 }) {
   const keys = useShortcuts();
+  const desk = useDeskPrefs();
   const { settings, change, adaptive, adaptiveBook, refreshAdaptive, togglePrivacy } = useAppSettings();
   const adaptiveOn = settings.theme === "adaptive";
   const systemDark = useSystemDark();
@@ -124,6 +125,160 @@ export function AppearanceTab({
   };
   const custom = settings.customTheme;
 
+  const swatches = (
+    <ul className="swatches">
+      <li>
+        <span className="swatch-chip" style={{ background: "var(--bg)" }} />
+        Page
+      </li>
+      <li>
+        <span className="swatch-chip" style={{ background: "var(--surface)" }} />
+        Surface
+      </li>
+      <li>
+        <span className="swatch-chip" style={{ background: "var(--accent)" }} />
+        Accent
+      </li>
+      <li>
+        <span className="swatch-chip" style={{ background: (card === "custom" ? custom?.highlight : adaptive?.highlight) ?? HIGHLIGHT_COLORS[3].hex }} />
+        Highlight
+      </li>
+    </ul>
+  );
+  const sec_density = (
+    <Section id="density" title="Interface density" lede="More room between things, or less, everywhere in TBV.">
+      <Stops<InterfaceDensity>
+        label="Interface density"
+        value={settings.density}
+        stops={DENSITIES.map((d) => d.value)}
+        names={["Compact", DENSITIES.find((d) => d.value === settings.density)?.label ?? "Default", "Spacious"]}
+        onChange={(density) => change({ density })}
+      />
+    </Section>
+  );
+  const sec_text = (
+    <Section id="text" title="Interface text" lede="The font of menus, buttons and labels, and how big everything is. The reading font is under Reading.">
+      <Row label="Font" stack>
+        <Segmented<InterfaceFont>
+          label="Interface font"
+          value={settings.interfaceFont}
+          options={[
+            { value: "system", label: "Segoe UI" },
+            { value: "serif", label: "Georgia" },
+            { value: "echolume", label: "Echolume" },
+          ]}
+          onChange={(interfaceFont) => change({ interfaceFont })}
+        />
+      </Row>
+      <Row label="Author names" hint="How names are shown everywhere. Searching finds either order, and both spellings count as one author." stack>
+        <Segmented<AuthorStyle>
+          label="Author names"
+          value={settings.authorNames}
+          options={[
+            { value: "asBook", label: "As in the book" },
+            { value: "firstLast", label: "First Last" },
+            { value: "lastFirst", label: "Last, First" },
+          ]}
+          onChange={(authorNames) => change({ authorNames })}
+        />
+      </Row>
+      <Row label="Font scaling" hint="Makes all text and controls smaller or larger." stack>
+        <Stops<InterfaceScale>
+          label="Font scaling"
+          value={settings.scale}
+          stops={SCALE_STEPS}
+          names={["Smaller", `${Math.round(SCALES[settings.scale] * 100)}%`, "Larger"]}
+          onChange={(scale) => change({ scale })}
+        />
+      </Row>
+    </Section>
+  );
+  const sec_touches = (
+    <Section id="touches" title="Finishing touches" lede="The texture behind pages and cards, and progress on covers.">
+      <Row label="Surface style" stack>
+        <Segmented<SurfaceStyle>
+          label="Surface style"
+          value={settings.surface}
+          options={[
+            { value: "clean", label: "Clean" },
+            { value: "matte", label: "Matte" },
+            { value: "paper", label: "Paper" },
+            { value: "linen", label: "Linen" },
+            { value: "vellum", label: "Vellum" },
+          ]}
+          onChange={(surface) => change({ surface })}
+        />
+      </Row>
+      <div className="toggle-list">
+        <Toggle
+          label="Show progress bars on books"
+          hint="In the Archive and Compendium. Sanctum always shows what you're reading."
+          checked={settings.showProgress}
+          onChange={(showProgress) => change({ showProgress })}
+        />
+      </div>
+    </Section>
+  );
+  const sec_privacy = (
+    <Section
+      id="privacy"
+      title="Privacy mode"
+      lede={`Hides every book cover at once, and brings them back just as fast. ${keys ? `Press ${PRIVACY_SHORTCUT} anywhere, or use` : "Use"} the menu under your sync circle.`}
+    >
+      <div className="toggle-list">
+        <Toggle
+          label="Hide covers now"
+          hint="Stays on until you turn it off, even if you close TBV."
+          checked={settings.privacy.on}
+          onChange={() => togglePrivacy()}
+        />
+      </div>
+      <Row label="Hidden covers show" hint="What appears in place of each cover.">
+        <Segmented<PrivacyStyle>
+          label="Hidden covers show"
+          value={settings.privacy.style}
+          options={[
+            { value: "titles", label: "The title" },
+            { value: "blank", label: "Nothing" },
+          ]}
+          onChange={(style) => change({ privacy: { ...settings.privacy, style } })}
+        />
+      </Row>
+      <div className="toggle-list">
+        <Toggle
+          label="Hide my profile picture too"
+          hint="Collection pictures made from covers or your own images are always hidden. TBV's gallery paintings stay."
+          checked={settings.privacy.avatar}
+          onChange={(avatar) => change({ privacy: { ...settings.privacy, avatar } })}
+        />
+      </div>
+    </Section>
+  );
+  const sec_sanctum = (
+    <Section id="sanctum" title="Sanctum" lede="Your home page. Suggested reading always includes books you own and haven't started.">
+      <div className="toggle-list">
+        <Toggle
+          label="Suggest books from online"
+          hint="Adds free and new books from Krowsingre Publishing, and other books by authors you read, found on Open Library. Only author names are sent."
+          checked={settings.suggestOnline}
+          onChange={(suggestOnline) => change({ suggestOnline })}
+        />
+      </div>
+    </Section>
+  );
+  const sec_sidebar = (
+    <Section id="sidebar" title="Sidebar" lede="The menu of pages down the left. Clicking the emblem or the title at its top folds it too.">
+      <div className="toggle-list">
+        <Toggle label="Show the full sidebar" checked={sidebarShown} onChange={onSidebarShown} />
+        <Toggle
+          label="Full-screen menu on a phone"
+          hint="When the phone is upright, the menu of pages fills the screen."
+          checked={settings.fullMenu}
+          onChange={(fullMenu) => change({ fullMenu })}
+        />
+      </div>
+    </Section>
+  );
   const preview = (
     <Section id="preview" title="Theme preview" lede="How the interface's colours look together.">
       <div className="theme-preview">
@@ -142,105 +297,37 @@ export function AppearanceTab({
             </div>
           )}
         </div>
-        <ul className="swatches">
-          <li>
-            <span className="swatch-chip" style={{ background: "var(--bg)" }} />
-            Page
-          </li>
-          <li>
-            <span className="swatch-chip" style={{ background: "var(--surface)" }} />
-            Surface
-          </li>
-          <li>
-            <span className="swatch-chip" style={{ background: "var(--accent)" }} />
-            Accent
-          </li>
-          <li>
-            <span className="swatch-chip" style={{ background: (card === "custom" ? custom?.highlight : adaptive?.highlight) ?? HIGHLIGHT_COLORS[3].hex }} />
-            Highlight
-          </li>
-        </ul>
+        {swatches}
       </div>
     </Section>
   );
 
-  const side = (
+  // On a computer (embre, 21 November): the preview's colours sit under the themes, and the
+  // smaller sections share cards.
+  const side = desk ? (
+    <>
+      <SectionGroup id="looks" title="Text & density" holds={["density", "text", "touches"]}>
+        {sec_density}
+        {sec_text}
+        {sec_touches}
+      </SectionGroup>
+      <SectionGroup id="around" title="Sidebar & Sanctum" holds={["sidebar", "sanctum"]}>
+        {sec_sidebar}
+        {sec_sanctum}
+      </SectionGroup>
+    </>
+  ) : (
     <>
       {preview}
-      <Section id="density" title="Interface density" lede="More room between things, or less, everywhere in TBV.">
-        <Stops<InterfaceDensity>
-          label="Interface density"
-          value={settings.density}
-          stops={DENSITIES.map((d) => d.value)}
-          names={["Compact", DENSITIES.find((d) => d.value === settings.density)?.label ?? "Default", "Spacious"]}
-          onChange={(density) => change({ density })}
-        />
-      </Section>
-      <Section id="text" title="Interface text" lede="The font of menus, buttons and labels, and how big everything is. The reading font is under Reading.">
-        <Row label="Font" stack>
-          <Segmented<InterfaceFont>
-            label="Interface font"
-            value={settings.interfaceFont}
-            options={[
-              { value: "system", label: "Segoe UI" },
-              { value: "serif", label: "Georgia" },
-              { value: "echolume", label: "Echolume" },
-            ]}
-            onChange={(interfaceFont) => change({ interfaceFont })}
-          />
-        </Row>
-        <Row label="Author names" hint="How names are shown everywhere. Searching finds either order, and both spellings count as one author." stack>
-          <Segmented<AuthorStyle>
-            label="Author names"
-            value={settings.authorNames}
-            options={[
-              { value: "asBook", label: "As in the book" },
-              { value: "firstLast", label: "First Last" },
-              { value: "lastFirst", label: "Last, First" },
-            ]}
-            onChange={(authorNames) => change({ authorNames })}
-          />
-        </Row>
-        <Row label="Font scaling" hint="Makes all text and controls smaller or larger." stack>
-          <Stops<InterfaceScale>
-            label="Font scaling"
-            value={settings.scale}
-            stops={SCALE_STEPS}
-            names={["Smaller", `${Math.round(SCALES[settings.scale] * 100)}%`, "Larger"]}
-            onChange={(scale) => change({ scale })}
-          />
-        </Row>
-      </Section>
-      <Section id="touches" title="Finishing touches" lede="The texture behind pages and cards, and progress on covers.">
-        <Row label="Surface style" stack>
-          <Segmented<SurfaceStyle>
-            label="Surface style"
-            value={settings.surface}
-            options={[
-              { value: "clean", label: "Clean" },
-              { value: "matte", label: "Matte" },
-              { value: "paper", label: "Paper" },
-              { value: "linen", label: "Linen" },
-              { value: "vellum", label: "Vellum" },
-            ]}
-            onChange={(surface) => change({ surface })}
-          />
-        </Row>
-        <div className="toggle-list">
-          <Toggle
-            label="Show progress bars on books"
-            hint="In the Archive and Compendium. Sanctum always shows what you're reading."
-            checked={settings.showProgress}
-            onChange={(showProgress) => change({ showProgress })}
-          />
-        </div>
-      </Section>
+      {sec_density}
+      {sec_text}
+      {sec_touches}
     </>
   );
 
   return (
     <Columns side={side}>
-      <Section id="theme" title="Application theme" lede="Choose the base theme for the interface.">
+      <Section id="theme" title={desk ? "Theme" : "Application theme"} lede="Choose the base theme for the interface.">
         <div className="theme-cards" role="radiogroup" aria-label="Theme">
           {THEMES.map((t) => (
             <label key={t.value} className={`theme-card${card === t.value ? " is-active" : ""}`}>
@@ -264,6 +351,7 @@ export function AppearanceTab({
             </label>
           ))}
         </div>
+        {desk && swatches}
       </Section>
 
       {adaptiveOn && (
@@ -352,62 +440,9 @@ export function AppearanceTab({
 
       {card === "custom" && <CustomThemeSection />}
 
-      <Section
-        id="privacy"
-        title="Privacy mode"
-        lede={`Hides every book cover at once, and brings them back just as fast. ${keys ? `Press ${PRIVACY_SHORTCUT} anywhere, or use` : "Use"} the menu under your sync circle.`}
-      >
-        <div className="toggle-list">
-          <Toggle
-            label="Hide covers now"
-            hint="Stays on until you turn it off, even if you close TBV."
-            checked={settings.privacy.on}
-            onChange={() => togglePrivacy()}
-          />
-        </div>
-        <Row label="Hidden covers show" hint="What appears in place of each cover.">
-          <Segmented<PrivacyStyle>
-            label="Hidden covers show"
-            value={settings.privacy.style}
-            options={[
-              { value: "titles", label: "The title" },
-              { value: "blank", label: "Nothing" },
-            ]}
-            onChange={(style) => change({ privacy: { ...settings.privacy, style } })}
-          />
-        </Row>
-        <div className="toggle-list">
-          <Toggle
-            label="Hide my profile picture too"
-            hint="Collection pictures made from covers or your own images are always hidden. TBV's gallery paintings stay."
-            checked={settings.privacy.avatar}
-            onChange={(avatar) => change({ privacy: { ...settings.privacy, avatar } })}
-          />
-        </div>
-      </Section>
-
-      <Section id="sanctum" title="Sanctum" lede="Your home page. Suggested reading always includes books you own and haven't started.">
-        <div className="toggle-list">
-          <Toggle
-            label="Suggest books from online"
-            hint="Adds free and new books from Krowsingre Publishing, and other books by authors you read, found on Open Library. Only author names are sent."
-            checked={settings.suggestOnline}
-            onChange={(suggestOnline) => change({ suggestOnline })}
-          />
-        </div>
-      </Section>
-
-      <Section id="sidebar" title="Sidebar" lede="The menu of pages down the left. Clicking the emblem or the title at its top folds it too.">
-        <div className="toggle-list">
-          <Toggle label="Show the full sidebar" checked={sidebarShown} onChange={onSidebarShown} />
-          <Toggle
-            label="Full-screen menu on a phone"
-            hint="When the phone is upright, the menu of pages fills the screen."
-            checked={settings.fullMenu}
-            onChange={(fullMenu) => change({ fullMenu })}
-          />
-        </div>
-      </Section>
+      {sec_privacy}
+      {!desk && sec_sanctum}
+      {!desk && sec_sidebar}
     </Columns>
   );
 }

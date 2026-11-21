@@ -18,7 +18,8 @@ import { UsageSection } from "./UsageSection";
 import { ContentsSection } from "./ContentsSection";
 import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
 import { ALL_PROVIDERS, PROVIDERS, ProviderPicker, type Provider } from "./providers";
-import { Columns, ActionTile, RadioList, Row, Section, SectionGroup, Select, Toggle } from "./controls";
+import { Columns, ActionTile, RadioList, Row, Section, SectionGroup, Select, Toggle, useDeskPrefs } from "./controls";
+import { RememberedDetails } from "../components/RememberedDetails";
 
 /** Sync's state in a few words, for the connection details. */
 const STATE_TEXT: Record<SyncOverview["status"]["state"], string> = {
@@ -42,7 +43,8 @@ function cardFor(view: ProviderView): Provider {
   return "supabase";
 }
 
-export function SyncTab({ onRestored }: { onRestored: () => void }) {
+export function SyncTab({ onRestored, onOpenPlaces }: { onRestored: () => void; onOpenPlaces?: () => void }) {
+  const desk = useDeskPrefs();
   const { settings, changeSync } = useAppSettings();
   const sync = settings.sync;
   const toast = useToast();
@@ -121,7 +123,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
   const side = (
     <>
       {overview && supabaseOn && !isWeb && (
-        <SectionGroup id="storage" title="Supabase storage" lede="The room TBV uses in your Supabase project, tidying it up, and what it holds." holds={["usage", "tidy", "contents"]}>
+        <SectionGroup id="storage" title="Supabase storage" lede="The room TBV uses in your Supabase project, tidying it up, and what it holds." holds={["usage", "tidy", "contents"]} collapsible={desk}>
           <UsageSection overview={overview} />
           <TidySection overview={overview} />
           <ContentsSection overview={overview} />
@@ -298,7 +300,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
           id="options"
           title="Sync options"
           lede="Choose what goes between your devices."
-          aside={
+          aside={desk ? undefined : (
             <div className="settings-aside-note">
               <h3>
                 <Icon name="info" size={18} /> About book file syncing
@@ -306,8 +308,64 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
               <p>Book files are not synced unless you turn it on. Without it, other devices list your books and their covers, and a book opens where its file is.</p>
               <p>With it on, any of your devices can open any book, and downloads it the first time. TBV never changes the files themselves. Supabase's free plan holds 1 GB and takes files up to 50 MB. Turn on Split big files to send bigger ones in pieces.</p>
             </div>
-          }
+          )}
         >
+          {desk ? (
+            // Three switches on a computer (embre, 21 November); the rest under More.
+            <>
+              <div className="toggle-list">
+                <Toggle
+                  label="Sync your reading"
+                  hint="Where you are in each book, highlights, notes and bookmarks, and your collections."
+                  checked={sync.progress && sync.notes && sync.collections}
+                  onChange={(on) => changeSync({ progress: on, notes: on, collections: on })}
+                />
+                <Toggle
+                  label="Sync library details"
+                  hint="Titles, authors, series and other details you've corrected."
+                  checked={sync.metadata}
+                  onChange={(metadata) => changeSync({ metadata })}
+                />
+                <Toggle
+                  label="Sync book files"
+                  hint="Keep a copy of your books in the cloud."
+                  checked={sync.bookFiles}
+                  onChange={(bookFiles) => changeSync({ bookFiles })}
+                />
+              </div>
+              <RememberedDetails className="settings-more" disclosure="prefs.sync.more">
+                <summary>More</summary>
+                <div className="toggle-list">
+                  <Toggle
+                    label="Sync audiobook files"
+                    hint="Audiobooks are large, so this is separate. Their chapters and your place sync either way."
+                    checked={sync.audioFiles}
+                    onChange={(audioFiles) => changeSync({ audioFiles })}
+                  />
+                  <Toggle
+                    label="Sync Discover history"
+                    hint="Pages visited and searches in Discover, so every device has the same history. Off: each device keeps its own."
+                    checked={sync.browserHistory}
+                    onChange={(browserHistory) => changeSync({ browserHistory })}
+                  />
+                  {supabaseOn && (
+                    <Toggle
+                      label="Split big files for Supabase's free plan"
+                      hint="Files over 50 MB, like most audiobooks, go up in pieces, which the free plan needs. Leave it off on a paid plan: it takes big files whole."
+                      checked={sync.splitBigFiles}
+                      onChange={(splitBigFiles) => changeSync({ splitBigFiles })}
+                    />
+                  )}
+                  <Toggle
+                    label="Stream audiobooks that aren't on this computer"
+                    hint="Play them straight from the cloud without downloading. Turn off to download each one before it plays."
+                    checked={sync.streamAudio}
+                    onChange={(streamAudio) => changeSync({ streamAudio })}
+                  />
+                </div>
+              </RememberedDetails>
+            </>
+          ) : (
           <div className="toggle-list">
             <Toggle
               label="Sync reading progress"
@@ -367,6 +425,7 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
               onChange={(streamAudio) => changeSync({ streamAudio })}
             />
           </div>
+          )}
           {(isIOS || isAndroid) && (
             <Row
               label="Books opened on this phone"
@@ -440,6 +499,14 @@ export function SyncTab({ onRestored }: { onRestored: () => void }) {
           </div>
         </Section>
       </SectionGroup>
+
+      {desk && onOpenPlaces && (
+        <Section id="places" title="Where your books are">
+          <button type="button" className="btn btn-quiet" onClick={onOpenPlaces}>
+            <Icon name="cloud" size={16} /> Show where each book is
+          </button>
+        </Section>
+      )}
 
       <SectionGroup id="moveback" title="Move and back up" lede="Move your library to another place, or keep a copy of it." holds={["move", "backup"]}>
         <MoveSection overview={overview} inUse={inUse} onChanged={reload} />

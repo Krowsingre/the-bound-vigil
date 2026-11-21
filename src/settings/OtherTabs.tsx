@@ -17,7 +17,8 @@ import { canCheckSeries, checkAllSeries, useSeriesNews } from "../library/series
 import { canWatch, unwatch, useWatch, watchAuthor, watchBook, whenLine } from "../library/watchList";
 import { relativeTime } from "../lib/format";
 import { useReaderSettings } from "./AppearanceTab";
-import { ActionTile, Columns, formatBytes, RadioList, Row, Section, SectionGroup, Segmented, Select, Toggle } from "./controls";
+import { ActionTile, Columns, formatBytes, RadioList, Row, Section, SectionGroup, Segmented, Select, Toggle, useDeskPrefs } from "./controls";
+import { EreadersTab } from "./EreadersTab";
 import { HardcoverSection } from "./HardcoverSection";
 import { CanvaSection, canvaHere } from "./CanvaSection";
 import { ReadingHistorySection } from "./ReadingHistory";
@@ -90,6 +91,7 @@ function ReadAlongSection() {
   const [models, setModels] = useState<[string, number][]>([]);
   const [asking, setAsking] = useState(false);
   const toast = useToast();
+  const desk = useDeskPrefs();
   useEffect(() => {
     api.getSetting(LINE_UP_KEY).then(
       (raw) => {
@@ -118,34 +120,8 @@ function ReadAlongSection() {
     void api.setSetting(LINE_UP_KEY, JSON.stringify(next)).then(() => api.wakeLiningUp());
   };
   const size = models.reduce((sum, [, bytes]) => sum + bytes, 0);
-  return (
-    <Section
-      id="read-along"
-      title="Read-along"
-      lede="A book paired with its audiobook converges with it word by word in Confluence, so the words light up as they're read. Activity shows how far each pair has got."
-    >
-      <Toggle
-        label="Run Confluence by itself"
-        hint={
-          isIOS
-            ? `Off unless you turn it on. ${PHONE_LINE_UP_WARNING}`
-            : "When it's off, nothing converges on this device. Pairs still follow along by chapter."
-        }
-        checked={set.auto && (!isIOS || set.agreed)}
-        onChange={(auto) => (auto && isIOS ? setAsking(true) : change({ auto }))}
-      />
-      {asking && (
-        <ConfirmDialog
-          title="Run Confluence on this phone?"
-          body={PHONE_LINE_UP_WARNING}
-          confirm="Turn on"
-          onConfirm={() => {
-            setAsking(false);
-            change({ auto: true, agreed: true });
-          }}
-          onCancel={() => setAsking(false)}
-        />
-      )}
+  const tune = (
+    <>
       <Row label="Accuracy" hint="Applies to what converges from now on." stack>
         <RadioList<LineUpSettings["model"]>
           label="Accuracy"
@@ -195,6 +171,44 @@ function ReadAlongSection() {
           </button>
         )}
       </Row>
+    </>
+  );
+  return (
+    <Section
+      id="read-along"
+      title="Read-along"
+      lede="A book paired with its audiobook converges with it word by word in Confluence, so the words light up as they're read. Activity shows how far each pair has got."
+    >
+      <Toggle
+        label="Run Confluence by itself"
+        hint={
+          isIOS
+            ? `Off unless you turn it on. ${PHONE_LINE_UP_WARNING}`
+            : "When it's off, nothing converges on this device. Pairs still follow along by chapter."
+        }
+        checked={set.auto && (!isIOS || set.agreed)}
+        onChange={(auto) => (auto && isIOS ? setAsking(true) : change({ auto }))}
+      />
+      {asking && (
+        <ConfirmDialog
+          title="Run Confluence on this phone?"
+          body={PHONE_LINE_UP_WARNING}
+          confirm="Turn on"
+          onConfirm={() => {
+            setAsking(false);
+            change({ auto: true, agreed: true });
+          }}
+          onCancel={() => setAsking(false)}
+        />
+      )}
+      {desk ? (
+        <RememberedDetails className="settings-more" disclosure="prefs.readalong.tune">
+          <summary>Fine-tune</summary>
+          {tune}
+        </RememberedDetails>
+      ) : (
+        tune
+      )}
     </Section>
   );
 }
@@ -223,6 +237,104 @@ function ShowButton({ path, label = "Show in File Explorer" }: { path: string; l
     >
       <Icon name="folder" size={16} /> {label}
     </button>
+  );
+}
+
+function ArchiveFolderSection({ info }: { info: LibraryInfo | null }) {
+  return (
+    <Section id="folder" title="Archive folder" lede="TBV keeps its own copy of every book you import here. The originals you imported from are left alone.">
+      {info ? (
+        <Row label="Folder" hint={`${info.bookCount} ${info.bookCount === 1 ? "book" : "books"}, ${formatBytes(info.booksBytes)}`} stack>
+          <div className="path-row">
+            <code className="path">{info.booksDir}</code>
+            <ShowButton path={info.booksDir} />
+          </div>
+        </Row>
+      ) : (
+        <p className="settings-row-hint">The library folder couldn't be read.</p>
+      )}
+    </Section>
+  );
+}
+
+/**
+ * The computer's Library page (embre, 21 November): the Archive, Compendium, Quire and file
+ * pages in one. The views each page's own toolbar already sets are left out.
+ */
+export function DeskLibraryTab() {
+  const info = useLibraryInfo();
+  const { settings, change } = useAppSettings();
+  const toast = useToast();
+  const side = (
+    <>
+      <Section id="show" title="Compendium">
+        <div className="toggle-list">
+          <Toggle
+            label="Show smart collections"
+            hint="Recently added, Unread, In progress and the others that fill themselves."
+            checked={settings.showSmartCollections}
+            onChange={(showSmartCollections) => change({ showSmartCollections })}
+          />
+          <Toggle
+            label="Show series"
+            hint="Series found in your books' details, next to your own collections."
+            checked={settings.showSeries}
+            onChange={(showSeries) => change({ showSeries })}
+          />
+        </div>
+      </Section>
+      <SectionGroup id="series-authors" title="Series & authors" holds={["series-check", "watching"]}>
+        <SeriesCheckSection />
+        <WatchSection />
+      </SectionGroup>
+      <Section id="view" title="Quire">
+        <Row label="Export notes" hint="Every highlight and note in one Markdown file, grouped by book.">
+          <button
+            type="button"
+            className="btn btn-quiet"
+            onClick={() => {
+              if (!isApp) return toast("Exporting works in the desktop app.");
+              api.exportNotesMarkdown().then(
+                (done) => done && toast("Exported your notes."),
+                (e: unknown) => toast(`That didn't work: ${String(e)}`),
+              );
+            }}
+          >
+            <Icon name="download" size={16} /> Export as Markdown
+          </button>
+        </Row>
+      </Section>
+    </>
+  );
+  return (
+    <Columns side={side}>
+      <SectionGroup id="where" title="Your files" holds={["folder", "files", "formats"]}>
+        <ArchiveFolderSection info={info} />
+        <BookFilesSection />
+        <BookFormatsSection />
+      </SectionGroup>
+      <SectionGroup id="tidying" title="Tidy your library" holds={["tags", "duplicates", "deleted"]}>
+        <TagsSection />
+        <DuplicatesSection />
+        <DeletedBooksSection />
+      </SectionGroup>
+      <ReadingHistorySection />
+    </Columns>
+  );
+}
+
+/** The computer's Connections page: the other services TBV works with, in one place. */
+export function ConnectionsTab() {
+  return (
+    <>
+      <Columns side={canvaHere ? <CanvaSection /> : undefined}>
+        <SectionGroup id="ratings" title="Ratings sites" holds={["goodreads", "hardcover"]}>
+          <GoodreadsSection />
+          <HardcoverSection />
+        </SectionGroup>
+      </Columns>
+      <EreadersTab />
+    </>
   );
 }
 
@@ -827,8 +939,8 @@ const FORMATS: { ext: string; name: string }[] = [
   { ext: "DOC", name: "Older Word documents, as text only" },
 ];
 
-export function FilesTab() {
-  const formats = (
+function BookFormatsSection() {
+  return (
       <Section id="formats" title="Book formats" lede="TBV imports and reads all of these.">
         <ul className="format-list">
           {FORMATS.map((f) => (
@@ -842,8 +954,10 @@ export function FilesTab() {
         <p className="settings-row-hint">Books with DRM (copy protection) can't be opened by any reader but the shop's own.</p>
       </Section>
   );
+}
+
+function BookFilesSection() {
   return (
-    <Columns side={formats}>
       <Section id="files" title="Your book files" lede="What TBV does, and never does, with your books.">
         <ul className="promise-list">
           <li>
@@ -861,11 +975,18 @@ export function FilesTab() {
           </li>
         </ul>
       </Section>
+  );
+}
+
+export function FilesTab() {
+  return (
+    <Columns side={<BookFormatsSection />}>
+      <BookFilesSection />
     </Columns>
   );
 }
 
-export function AccessibilityTab() {
+export function AccessibilityTab({ onShortcuts }: { onShortcuts?: () => void } = {}) {
   const { settings, change } = useAppSettings();
   return (
     <>
@@ -897,6 +1018,13 @@ export function AccessibilityTab() {
           />
         </div>
       </Section>
+      {onShortcuts && (
+        <Section id="keys" title="Keyboard shortcuts">
+          <button type="button" className="btn btn-quiet" onClick={onShortcuts}>
+            <Icon name="keyboard" size={16} /> Show keyboard shortcuts
+          </button>
+        </Section>
+      )}
     </>
   );
 }
@@ -962,54 +1090,69 @@ export function ShortcutsTab() {
 }
 
 export function AdvancedTab() {
+  const desk = useDeskPrefs();
   const info = useLibraryInfo();
   const { reset } = useAppSettings();
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
-  return (
-    <Columns
-      side={
-        <Section
-          id="reset"
-          title="Reset settings"
-          lede="Puts Appearance, Compendium, Accessibility and Sync choices back as they came. Your books, notes and collections are not touched."
-        >
-          <button type="button" className="btn btn-quiet" onClick={() => setConfirming(true)}>
-            Reset settings…
-          </button>
-        </Section>
-      }
+  const resetSection = (
+    <Section
+      id="reset"
+      title="Reset settings"
+      lede="Puts Appearance, Compendium, Accessibility and Sync choices back as they came. Your books, notes and collections are not touched."
     >
-      <Section id="data" title="Data on this device" lede="Your library's details, progress, notes and collections live in one database file.">
-        {info ? (
-          <>
-            <Row label="Database" hint={formatBytes(info.databaseBytes)} stack>
-              <div className="path-row">
-                <code className="path">{info.database}</code>
-                <ShowButton path={info.database} />
-              </div>
-            </Row>
-            <Row label="Data version" hint="Goes up when an update changes how TBV stores things. Backups from newer versions need the newer TBV.">
-              <span className="settings-value">{info.schemaVersion}</span>
-            </Row>
-          </>
-        ) : (
-          <p className="settings-row-hint">The data folder couldn't be read.</p>
-        )}
-      </Section>
-      {confirming && (
-        <ConfirmDialog
-          title="Reset settings?"
-          body="Theme, scale, accessibility and sync choices go back to how they came. Your library, notes and collections stay as they are."
-          confirm="Reset settings"
-          onCancel={() => setConfirming(false)}
-          onConfirm={() => {
-            reset();
-            setConfirming(false);
-            toast("Settings are back as they came.");
-          }}
-        />
+      <button type="button" className="btn btn-quiet" onClick={() => setConfirming(true)}>
+        Reset settings…
+      </button>
+    </Section>
+  );
+  const data = (
+    <Section id="data" title="Data on this device" lede="Your library's details, progress, notes and collections live in one database file.">
+      {info ? (
+        <>
+          <Row label="Database" hint={formatBytes(info.databaseBytes)} stack>
+            <div className="path-row">
+              <code className="path">{info.database}</code>
+              <ShowButton path={info.database} />
+            </div>
+          </Row>
+          <Row label="Data version" hint="Goes up when an update changes how TBV stores things. Backups from newer versions need the newer TBV.">
+            <span className="settings-value">{info.schemaVersion}</span>
+          </Row>
+        </>
+      ) : (
+        <p className="settings-row-hint">The data folder couldn't be read.</p>
       )}
+    </Section>
+  );
+  const dialog = confirming && (
+    <ConfirmDialog
+      title="Reset settings?"
+      body="Theme, scale, accessibility and sync choices go back to how they came. Your library, notes and collections stay as they are."
+      confirm="Reset settings"
+      onCancel={() => setConfirming(false)}
+      onConfirm={() => {
+        reset();
+        setConfirming(false);
+        toast("Settings are back as they came.");
+      }}
+    />
+  );
+  // On a computer, folded at the bottom of You & TBV (embre, 21 November).
+  if (desk)
+    return (
+      <>
+        <SectionGroup id="trouble" title="Troubleshooting" holds={["data", "reset"]} collapsible>
+          {data}
+          {resetSection}
+        </SectionGroup>
+        {dialog}
+      </>
+    );
+  return (
+    <Columns side={resetSection}>
+      {data}
+      {dialog}
     </Columns>
   );
 }
@@ -1144,7 +1287,7 @@ function YourCopy() {
         ? `${license.daysLeft === 1 ? "1 day" : `${license.daysLeft} days`} left of your free trial (until ${ends}). Choose a plan to keep using it after that.`
         : "Choose a plan to use The Bound Vigil.";
   return (
-    <Section id="licence" title="TBV Standard" lede={words}>
+    <Section id="licence" title="TBV Standard" lede={words} status>
       {license.state !== "owned" && canBuyIn(license) && (
         <div className="settings-actions">
           <PlanButtons />
@@ -1198,7 +1341,7 @@ function Updates() {
   const { state, check, install } = useUpdater();
   const ready = state.step === "checked" && state.info.version ? state.info : null;
   return (
-    <Section id="updates" title="Updates" lede={updateWords(state)}>
+    <Section id="updates" title="Updates" lede={updateWords(state)} status>
       {ready?.notes && <p className="settings-row-hint update-notes">{ready.notes}</p>}
       <div className="settings-actions">
         {ready ? (
@@ -1276,7 +1419,7 @@ function PublisherPlan() {
         ? "Everything you need to publish, on top of all of TBV, included while you try it."
         : "Everything you need to publish, on top of all of TBV. Your writing and exports to EPUB, Word and text stay free to use either way.";
   return (
-    <Section id="publisher" title="TBV Publisher" lede={lede}>
+    <Section id="publisher" title="TBV Publisher" lede={lede} status>
       <PublisherTools />
       {!license.publisher && canBuyIn(license) && <PublisherPlans license={license} />}
       {onTop && (
@@ -1292,7 +1435,8 @@ function PublisherPlan() {
 }
 
 export function AboutTab() {
-  const [version, setVersion] = useState("0.162.0");
+  const desk = useDeskPrefs();
+  const [version, setVersion] = useState("0.163.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));
@@ -1311,7 +1455,7 @@ export function AboutTab() {
         </Section>
       )}
       </Columns>
-      <Section id="licences" title="Built with" lede="TBV stands on the work of these projects. Thank you to their authors.">
+      <Section id="licences" title="Built with" lede="TBV stands on the work of these projects. Thank you to their authors." collapsible={desk}>
         <ul className="credit-list">
           {CREDITS.map((c) => (
             <li key={c.name}>

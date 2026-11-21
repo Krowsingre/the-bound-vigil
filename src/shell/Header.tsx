@@ -22,6 +22,7 @@ export const Header = forwardRef<
     onOpenPlaces?: () => void;
     onOpenProfile: () => void;
     onOpenPlan?: () => void;
+    onOpenPreferences?: () => void;
     /** Opens the menu of pages, on a phone. */
     onOpenMenu?: () => void;
     /** A button for the page showing, beside the menu button. */

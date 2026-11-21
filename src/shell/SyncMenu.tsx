@@ -6,6 +6,8 @@ import { Menu } from "../components/Menu";
 import { relativeTime } from "../lib/format";
 import { PRIVACY_SHORTCUT, useAppSettings } from "../settings/appSettings";
 import { keyHint, useShortcuts } from "../lib/shortcuts";
+import { useNarrow } from "../lib/useNarrow";
+import type { MenuEntry } from "../components/Menu";
 
 const SUMMARY: Record<SyncStatus["state"], string> = {
   disabled: "Sync is off",
@@ -41,6 +43,7 @@ export function SyncMenu({
   onOpenPlaces,
   onOpenProfile,
   onOpenPlan,
+  onOpenPreferences,
 }: {
   sync: SyncStatus | null;
   profile: Profile | null;
@@ -55,6 +58,8 @@ export function SyncMenu({
   onOpenProfile: () => void;
   /** Preferences › Your plan; left out where nothing can be bought (the web version). */
   onOpenPlan?: () => void;
+  /** Preferences itself: the computer's shorter menu ends with it. */
+  onOpenPreferences?: () => void;
 }) {
   const state = sync?.state ?? "disabled";
   // Up to date as far as this device knows, but another has more.
@@ -65,6 +70,47 @@ export function SyncMenu({
   const { settings, togglePrivacy } = useAppSettings();
   const hidden = settings.privacy.on;
   const keys = useShortcuts();
+  const narrow = useNarrow();
+  const detail = off
+    ? "No cloud service connected yet."
+    : state === "attention"
+      ? "Some changes need you to choose. See Sync & Accounts."
+      : behind
+      ? behindText(behind)
+      : sync?.lastSuccessAt
+      ? `Last synced ${relativeTime(sync.lastSuccessAt)}`
+      : "Not synced yet";
+  const coverItem: MenuEntry = {
+    label: hidden ? "Show covers" : "Hide covers",
+    icon: hidden ? "focus" : "eyeOff",
+    hint: keyHint(keys, PRIVACY_SHORTCUT),
+    onSelect: togglePrivacy,
+  };
+  // The computer's menu, four rows (embre, 21 November): you and sync as one, Import, covers, Preferences.
+  const desk = !narrow && onOpenPreferences !== undefined;
+  const deskItems: MenuEntry[] = [
+    {
+      label: profile?.name ?? "Your visage",
+      description: `${behind ? "Not caught up yet" : SUMMARY[state]}. ${detail}`,
+      icon: icon,
+      onSelect: onOpenSyncSettings,
+      closeAction: off
+        ? undefined
+        : { label: state === "syncing" ? "Syncing…" : "Sync now", icon: "sync", disabled: state === "syncing", run: () => void api.syncNow() },
+    },
+    "divider",
+    {
+      label: "Import",
+      icon: "importFile",
+      submenu: [
+        { label: "Books…", icon: "importFile", hint: keyHint(keys, "Ctrl+O"), onSelect: onImportBooks },
+        { label: "A folder…", icon: "folder", onSelect: onImportFolder },
+        ...(canReceiveFromFriend() ? [{ label: "A friend's link…", icon: "person" as const, onSelect: askFriendLink }] : []),
+      ],
+    },
+    coverItem,
+    { label: "Preferences", icon: "settings", onSelect: () => onOpenPreferences?.() },
+  ];
   return (
     <Menu
       label={`Sync and import: ${SUMMARY[state]}`}
@@ -86,7 +132,7 @@ export function SyncMenu({
           </span>
         </>
       }
-      items={[
+      items={desk ? deskItems : [
         // Who and where, opening the Profile card.
         {
           label: profile?.name ?? "Your visage",
@@ -99,17 +145,7 @@ export function SyncMenu({
           heading: (
             <>
               <strong>{behind ? "Not caught up yet" : SUMMARY[state]}</strong>
-              <span>
-                {off
-                  ? "No cloud service connected yet."
-                  : state === "attention"
-                    ? "Some changes need you to choose. See Sync & Accounts."
-                    : behind
-                    ? behindText(behind)
-                    : sync?.lastSuccessAt
-                    ? `Last synced ${relativeTime(sync.lastSuccessAt)}`
-                    : "Not synced yet"}
-              </span>
+              <span>{detail}</span>
             </>
           ),
         },
@@ -126,12 +162,7 @@ export function SyncMenu({
         { label: "Import a folder…", icon: "folder", onSelect: onImportFolder },
         ...(canReceiveFromFriend() ? [{ label: "Open a friend's link…", icon: "person" as const, onSelect: askFriendLink }] : []),
         "divider",
-        {
-          label: hidden ? "Show covers" : "Hide covers",
-          icon: hidden ? "focus" : "eyeOff",
-          hint: keyHint(keys, PRIVACY_SHORTCUT),
-          onSelect: togglePrivacy,
-        },
+        coverItem,
         ...(onOpenPlan ? [{ label: "Your plan…", icon: "tag" as const, hint: "Plans and purchases", onSelect: onOpenPlan }] : []),
       ]}
     />
