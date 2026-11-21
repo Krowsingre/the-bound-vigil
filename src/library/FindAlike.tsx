@@ -29,6 +29,14 @@ export function gapsIn(numbers: number[]): number[] {
   return gaps;
 }
 
+/** Empty, or a number as Book details takes it (0 to 99,999; a comma for the decimal point is fine). */
+export function validNumber(text: string): boolean {
+  const t = text.trim().replace(",", ".");
+  if (!t) return true;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 && n < 100_000;
+}
+
 const books = (n: number) => `${n.toLocaleString()} ${n === 1 ? "book" : "books"}`;
 const numberText = (n: number | null | undefined) => (n == null ? "" : String(n));
 const sameGroup = (a: AlikeGroup, keys: string[]) => a.keys.some((k) => keys.includes(k));
@@ -196,7 +204,9 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
     }));
   }, [group]);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
-  const [numbers, setNumbers] = useState<Map<string, string>>(() => new Map(loose.map((b) => [b.book.id, numberText(b.guess)])));
+  const [numbers, setNumbers] = useState<Map<string, string>>(
+    () => new Map(group.books.map((b) => [b.book.id, b.book.series?.trim() ? numberText(b.book.seriesIndex) : numberText(b.guess)])),
+  );
   const [name, setName] = useState(group.name);
   const [withAudio, setWithAudio] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -206,7 +216,14 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
   const found = online.state === "found" ? online.entries : [];
   const onlineNumber = (b: AlikeBook) => found.find((e) => titleKey(e.title) === titleKey(b.book.title))?.position ?? null;
   const notHereOnline = found.filter((e) => !group.books.some((b) => titleKey(b.book.title) === titleKey(e.title)));
-  const chosenBooks = loose.filter((b) => chosen.has(b.book.id));
+  // Books already in a series can be chosen too, so a group split across series can be joined.
+  const chosenBooks = group.books.filter((b) => chosen.has(b.book.id));
+  const choose = (id: string) => (on: boolean) => setChosen((s) => {
+    const next = new Set(s);
+    if (on) next.add(id);
+    else next.delete(id);
+    return next;
+  });
   const pairs = chosenBooks.filter((b) => b.pairedAudio);
 
   const lookUp = async () => {
@@ -223,6 +240,9 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
   const putIn = async (series: string) => {
     const series_ = series.trim();
     if (!series_ || !chosenBooks.length) return;
+    // Every number is checked before anything is saved, so a wrong one changes nothing.
+    const wrong = chosenBooks.find((b) => !validNumber(numbers.get(b.book.id) ?? ""));
+    if (wrong) return toast(`The number for “${wrong.book.title}” should be a number, like 2 or 2.5.`);
     setBusy(true);
     const changes: { id: string; number: string; before: BookPreview | null }[] = [];
     for (const b of chosenBooks) {
@@ -240,8 +260,12 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
       ];
       return api.editDetails([id], edit);
     };
+    const done: typeof changes = [];
     try {
-      for (const c of changes) await set(c.id, series_, c.number);
+      for (const c of changes) {
+        await set(c.id, series_, c.number);
+        done.push(c);
+      }
       const count = chosenBooks.length;
       setChosen(new Set());
       onChanged();
@@ -255,7 +279,10 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
         },
       });
     } catch (e) {
-      toast(`Couldn't change the series: ${e instanceof Error ? e.message : String(e)}`);
+      // What was already changed goes back, so nothing is left half done.
+      for (const c of done) await set(c.id, c.before?.series?.trim() || null, numberText(c.before?.seriesIndex) || null).catch(() => undefined);
+      onChanged();
+      toast(`Couldn't change the series, so nothing was changed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -314,7 +341,17 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
               </header>
               <ul>
                 {stack.books.map((b) => (
-                  <BookRow key={b.book.id} item={b} titleOf={titleOf} number={numberText(b.book.seriesIndex)} onNotHere={onNotHere} onKeepOut={onKeepOut} />
+                  <BookRow
+                    key={b.book.id}
+                    item={b}
+                    titleOf={titleOf}
+                    chosen={chosen.has(b.book.id)}
+                    onChoose={choose(b.book.id)}
+                    number={numbers.get(b.book.id) ?? ""}
+                    onNumber={(n) => setNumbers((m) => new Map(m).set(b.book.id, n))}
+                    onNotHere={onNotHere}
+                    onKeepOut={onKeepOut}
+                  />
                 ))}
               </ul>
             </section>
@@ -327,8 +364,12 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
               <label className="select-all">
                 <input
                   type="checkbox"
-                  checked={chosen.size === loose.length}
-                  onChange={(e) => setChosen(e.target.checked ? new Set(loose.map((b) => b.book.id)) : new Set())}
+                  checked={loose.every((b) => chosen.has(b.book.id))}
+                  onChange={(e) => setChosen((s) => {
+                    const next = new Set(s);
+                    for (const b of loose) e.target.checked ? next.add(b.book.id) : next.delete(b.book.id);
+                    return next;
+                  })}
                 />
                 Select all
               </label>
@@ -340,12 +381,7 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
                   item={b}
                   titleOf={titleOf}
                   chosen={chosen.has(b.book.id)}
-                  onChoose={(on) => setChosen((s) => {
-                    const next = new Set(s);
-                    if (on) next.add(b.book.id);
-                    else next.delete(b.book.id);
-                    return next;
-                  })}
+                  onChoose={choose(b.book.id)}
                   number={numbers.get(b.book.id) ?? ""}
                   onNumber={(n) => setNumbers((m) => new Map(m).set(b.book.id, n))}
                   online={onlineNumber(b)}
@@ -364,7 +400,7 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
         )}
       </div>
 
-      {loose.length > 0 && (
+      {(
         <div className="alike-make">
           <label className="field">
             <span>Series name</span>
