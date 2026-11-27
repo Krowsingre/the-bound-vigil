@@ -172,7 +172,7 @@ export function Menu({
         aria-expanded={open || floating}
         onClick={() => {
           if (open) return closeMenu();
-          // Over a website in Scry, in a window of its own (see menuPopups).
+          // Over a website in Nexus, in a window of its own (see menuPopups).
           if (menusFloat() && !searchLabel) {
             if (floating || justClosed(label)) return;
             const box = root.current?.getBoundingClientRect();

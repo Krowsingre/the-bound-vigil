@@ -1350,7 +1350,7 @@ async fn supabase_usage(state: State<'_, AppLibrary>) -> CommandResult<tbv_core:
 }
 
 /// Stops a download that's coming down (see `stops`): `book:<id>` for a
-/// cloud book, `web:<id>` for Scry's own, `catalog:<key>` for Libram and
+/// cloud book, `web:<id>` for Nexus's own, `catalog:<key>` for Libram and
 /// Audiobookshelf. Its partial file is deleted. False if it had already ended.
 #[tauri::command(async)]
 fn stop_download(name: String) -> bool {
@@ -1606,7 +1606,7 @@ async fn forget_kindle_email(state: State<'_, AppLibrary>) -> CommandResult<()> 
 async fn kindle_settings(state: State<'_, AppLibrary>) -> CommandResult<email::KindleEmail> {
     with_library(state, |library| library.kindle_email())
         .await?
-        .ok_or_else(|| "Set up Kindle by email first, in Preferences › E-readers.".to_string())
+        .ok_or_else(|| "Set up Kindle by email first, in Attune › E-readers.".to_string())
 }
 
 /// Emails a book to the person's Kindle. The email service is waited on
@@ -1820,7 +1820,7 @@ async fn search_details_more(
 }
 
 /// A watched author's books, out or coming, leaving out those already in
-/// the library (Preferences › Compendium › Watching).
+/// the library (Attune › Compendium › Watching).
 #[tauri::command]
 async fn watch_author_books(state: State<'_, AppLibrary>, author: String) -> CommandResult<Vec<tbv_core::watch::WatchedBook>> {
     let library = state.0.clone();

@@ -56,7 +56,7 @@ const made = () =>
     app: "0.69.0",
   });
 
-describe("The Quire book file", () => {
+describe("The Scribe book file", () => {
   it("is a zip anyone can open, its type first and plain, then book.json", () => {
     const bytes = made();
     expect(isTbv(bytes)).toBe(true);
@@ -103,7 +103,7 @@ describe("The Quire book file", () => {
 
   it("says plainly when a file isn't one, and opens a newer one as far as it can", () => {
     expect(() => readTbv(new Uint8Array([1, 2, 3]))).toThrow(/couldn't be opened/);
-    expect(() => readTbv(zipSync({ "book.json": strToU8("{}") }))).toThrow(/isn't a Quire book file/);
+    expect(() => readTbv(zipSync({ "book.json": strToU8("{}") }))).toThrow(/isn't a Scribe book file/);
     const newer = zipSync({ mimetype: [strToU8(TBV_MIME), { level: 0 }], "book.json": strToU8(JSON.stringify({ format: "The Bound Vigil book", formatVersion: 7, book: { title: "Later" }, pages: [{ file: "p.html", role: "spaceship" }] })), "p.html": strToU8("<p>Hi</p>") });
     const book = readTbv(newer);
     expect(book.newer).toBe(true);

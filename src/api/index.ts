@@ -351,11 +351,11 @@ export interface Api {
   /** Changes the words on a highlight. Empty words make it a plain highlight. */
   setAnnotationNote(id: string, note: string | null): Promise<NoteItem>;
   deleteNote(id: string, kind: NoteKind): Promise<void>;
-  /** Pins a note above the rest in Quire, or lets it go back among them. */
+  /** Pins a note above the rest in Scribe, or lets it go back among them. */
   setNotePinned(id: string, pinned: boolean): Promise<void>;
   /** Gives a note these tags in place of its old ones; answers them as kept. */
   setNoteTags(id: string, tags: string[]): Promise<string[]>;
-  /** Makes a personal note part of a book you're writing in Quire, or (null) a note of its own. */
+  /** Makes a personal note part of a book you're writing in Scribe, or (null) a note of its own. */
   setNoteProject(id: string, projectId: string | null): Promise<NoteItem>;
   /** Where this device keeps the library, and how big it is. */
   libraryInfo(): Promise<LibraryInfo>;
@@ -412,7 +412,7 @@ export interface Api {
   /** Fetches a book that's only in the cloud onto this device. `temporary` (a phone playing it): removed again after a while unless kept. */
   downloadBook(bookId: string, temporary?: boolean): Promise<void>;
   /** Stops a download part-way and deletes what came down: `book:<id>` (a
-   * cloud book), `web:<id>` (Scry's own) or `catalog:<key>`. False if it had
+   * cloud book), `web:<id>` (Nexus's own) or `catalog:<key>`. False if it had
    * already ended. Only in the app. */
   stopDownload?(name: string): Promise<boolean>;
   /** Send to a TBV friend: the books go to the person's iCloud, shared by a link sent from the Share sheet. iPhone and iPad. */
@@ -475,7 +475,7 @@ export interface Api {
   bookFiles(bookId: string): Promise<BookFile[]>;
   /** Takes a book out of the library, keeping its notes and cloud file for when it's imported again. */
   removeFromLibrary(bookId: string): Promise<void>;
-  /** Books TBV remembers as deleted, newest first (Preferences › Library › Deleted books). */
+  /** Books TBV remembers as deleted, newest first (Attune › Library › Deleted books). */
   deletedBooks(): Promise<DeletedBook[]>;
   /** Forgets a deletion on every device: importing the file again is a plain import. */
   forgetDeleted(bookId: string): Promise<void>;
@@ -676,9 +676,9 @@ export interface Api {
   browserKeepPlaying(on: boolean): Promise<void>;
   /** Keeps Tab out of sites' text boxes, so their suggestions don't take it. */
   browserTabKeys(on: boolean): Promise<void>;
-  /** Preferences › Discover: tabs remember what's typed in forms (Windows). */
+  /** Attune › Discover: tabs remember what's typed in forms (Windows). */
   browserFormMemory(on: boolean): Promise<void>;
-  /** Preferences › Discover: forgets what was typed in forms. Saved passwords stay. */
+  /** Attune › Discover: forgets what was typed in forms. Saved passwords stay. */
   browserClearForms(): Promise<void>;
   browserPip(tab: string): Promise<"popped" | "exited" | "refused" | "none">;
   /** Video reader view: the video on the tab's page (paused there), or null. */
@@ -812,14 +812,14 @@ export const SERVER_BOOK = "abs~";
 export const isServerBook = (bookId: string) => bookId.startsWith(SERVER_BOOK);
 /** The player's id for an audiobook on a saved Audiobookshelf catalogue. */
 export const serverBookId = (catalogId: string, itemId: string) => `${SERVER_BOOK}${catalogId}~${itemId}`;
-/** The pages TBV on the computer serves to a phone at home (Preferences › Sync › Stream to your phone at home). */
+/** The pages TBV on the computer serves to a phone at home (Attune › Sync › Stream to your phone at home). */
 export const isHome = !isApp && typeof document !== "undefined" && !!document.querySelector('meta[name="tbv-home"]');
 /** The iPhone app: the full app, laid out for a phone. iPads say they're Macs. */
 export const isIOS =
   isApp &&
   typeof navigator !== "undefined" &&
   (/iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
-/** An iPhone (not an iPad): Quire shows only Reading notes there for now (embre, 19 November). */
+/** An iPhone (not an iPad): Scribe shows only Reading notes there for now (embre, 19 November). */
 export const isIPhone = isIOS && typeof navigator !== "undefined" && /iPhone|iPod/.test(navigator.userAgent);
 /** The Android test version: the phone layout, without iCloud, the browser or saving files to the phone. */
 export const isAndroid = isApp && typeof navigator !== "undefined" && /Android/.test(navigator.userAgent);
@@ -1523,9 +1523,9 @@ function appApi(): Api {
       }),
     pickExportPath: async (fileName, format) =>
       (await savePicker({
-        title: format === "html" ? "Export bookmarks" : format === "pdf" ? "Save the PDF" : format === "docx" ? "Save the Word file" : format === "tbv" ? "Save the Quire book file" : "Save the text file",
+        title: format === "html" ? "Export bookmarks" : format === "pdf" ? "Save the PDF" : format === "docx" ? "Save the Word file" : format === "tbv" ? "Save the Scribe book file" : "Save the text file",
         defaultPath: fileName,
-        filters: [{ name: format === "html" ? "Bookmarks HTML" : format === "pdf" ? "PDF" : format === "docx" ? "Word document" : format === "tbv" ? "Quire book file" : "Text", extensions: [format] }],
+        filters: [{ name: format === "html" ? "Bookmarks HTML" : format === "pdf" ? "PDF" : format === "docx" ? "Word document" : format === "tbv" ? "Scribe book file" : "Text", extensions: [format] }],
       })) ?? null,
     saveExportFile: async (bytes, fileName, path) =>
       (await core).invoke("save_writing_epub", bytes, { headers: { path: encodeURIComponent(path ?? ""), add: "0", "file-name": encodeURIComponent(fileName) } }),

@@ -437,7 +437,7 @@
   }
 }
 
-/* Chosen in Preferences › Appearance: an upright phone's menu fills the screen. */
+/* Chosen in Attune › Appearance: an upright phone's menu fills the screen. */
 @media (max-width: 500px) {
   :root[data-full-menu] .sidebar {
     width: 100vw;

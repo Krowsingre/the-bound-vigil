@@ -1,9 +1,9 @@
-// Research sources for a book written in Quire: each added once (a book, an
+// Research sources for a book written in Scribe: each added once (a book, an
 // article, a website…), then cited anywhere in the text. The EPUB writes the
 // citations and a Sources page in the style chosen, using citeproc-js and the
 // open citation style files (CSL) that Zotero and Mendeley use, so every style
 // follows its rules exactly. AP has no reference-list rules of its own, so
-// for AP Quire writes a plain list and names sources in the text.
+// for AP Scribe writes a plain list and names sources in the text.
 // Sources and the style are kept in the book's export settings, so they sync
 // with the book.
 

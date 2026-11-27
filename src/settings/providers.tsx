@@ -1,4 +1,4 @@
-// The services a library can be kept in, as Preferences › Sync shows them.
+// The services a library can be kept in, as Attune › Sync shows them.
 
 import { isAndroid } from "../api";
 import { Icon } from "../components/Icon";

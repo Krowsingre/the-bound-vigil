@@ -1,4 +1,4 @@
-// Discover › Geas › Audiobookshelf: signing in to and out of your
+// Discover › Commune › Audiobookshelf: signing in to and out of your
 // Audiobookshelf servers (embre, 29 October). Browsing and listening stay in
 // Libram, where each signed-in server shows as a catalogue.
 

@@ -71,7 +71,7 @@ export interface ExportSettings {
   edition: EditionInfo | null;
   /** What the book's place in its series is called, like "Book 2" or "Volume II" (seriesLabel.ts). */
   seriesStyle: SeriesStyle;
-  /** The template the book started from, shown on its card in Quire; null for older books. */
+  /** The template the book started from, shown on its card in Scribe; null for older books. */
   kind?: BookKind | null;
   /** The book's type as chosen in Book details (bookType.ts); null until chosen, when the card shows `kind`'s. */
   bookType?: BookType | null;
@@ -267,11 +267,11 @@ const SEMANTIC: Partial<Record<PageKind, string>> = {
   sources: "bibliography",
 };
 
-/** Noted inside every EPUB Quire makes, where readers never see it
+/** Noted inside every EPUB Scribe makes, where readers never see it
  * (embre, 31 October 2026: always there, and the export says so). */
 export const GENERATOR = "The Bound Vigil";
 
-/** The copyright page Quire makes from the book's details. */
+/** The copyright page Scribe makes from the book's details. */
 export function copyrightHtml(project: WritingProject, details: CopyrightDetails, now = new Date(), edition: EditionInfo | null = null): string {
   const year = details.year.trim() || String(now.getFullYear());
   const holder = details.holder.trim() || project.author?.trim() || "";
@@ -851,7 +851,7 @@ export function epubFiles({ project, chapters, settings, cover, font, passageFon
   const navList = (list: Point[], cls = ""): string =>
     `<ol${cls ? ` class="${cls}"` : ""}>\n${list.map((p) => `<li><a href="${p.href}">${escapeXml(p.label)}</a>${p.children.length ? navList(p.children) : ""}</li>`).join("\n")}\n</ol>`;
 
-  // Each section's page, with the pages Quire makes filled in.
+  // Each section's page, with the pages Scribe makes filled in.
   const madeBody = (kind: string): string =>
     kind === "half_title"
       ? `<p class="title">${escapeXml(title)}</p>`
@@ -1110,7 +1110,7 @@ ${sheets.join("\n")}
 </html>`;
 }
 
-/** One section's page as the EPUB has it, without its heading: what Quire makes for a ready-made page. */
+/** One section's page as the EPUB has it, without its heading: what Scribe makes for a ready-made page. */
 export function madeSectionHtml(input: EpubInput, chapterId: string): string {
   const n = bookOrder(input.chapters, input.settings.freeOrder).findIndex((c) => c.id === chapterId) + 1;
   if (!n) return "";

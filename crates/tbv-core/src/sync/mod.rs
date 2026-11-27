@@ -41,7 +41,7 @@ use crate::library::Library;
 use crate::model::{ImportResult, IsoUtc, SyncState, SyncStatus};
 use crate::time::now_utc;
 
-/// The groups of things the user can choose to sync (Preferences › Sync options).
+/// The groups of things the user can choose to sync (Attune › Sync options).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Category {
     /// Which books are in the library. Always synced, since everything else hangs off it.
@@ -555,7 +555,7 @@ pub enum Frequency {
     Manual,
 }
 
-/// The user's choices from Preferences › Sync, read from `app.settings`.
+/// The user's choices from Attune › Sync, read from `app.settings`.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct SyncOptions {
@@ -711,7 +711,7 @@ impl Lane {
     }
 }
 
-/// The Supabase project the user set up (Preferences › Sync › Supabase).
+/// The Supabase project the user set up (Attune › Sync › Supabase).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SupabaseProject {
@@ -883,7 +883,7 @@ pub struct Session {
     pub expires_at: i64,
 }
 
-/// How sync stands, for Preferences › Sync and the header circle.
+/// How sync stands, for Attune › Sync and the header circle.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncOverview {
@@ -1704,8 +1704,8 @@ impl Library {
             "personal_note" => named("Note", text("title")),
             "writing_project" => named("Writing", text("title")),
             "writing_chapter" => named("Chapter", text("title")),
-            "writing_draft" => "A Quire draft".into(),
-            "writing_provenance" => "Where a Quire book came from".into(),
+            "writing_draft" => "A Scribe draft".into(),
+            "writing_provenance" => "Where a Scribe book came from".into(),
             "kindle_purchase" => named("Bought on Kindle", text("title")),
             "reading_history" => named(if gone { "Taken off reading history" } else { "Reading history" }, text("title")),
             "bookmark" => named("Discover bookmark", text("title")),
@@ -1998,8 +1998,8 @@ impl Library {
             "read_along_holder" => format!("Which devices can converge{}", book(key.get(1))?),
             "device" => format!("The name of {}", field("name").unwrap_or_default()),
             "book_holder" => format!("Where it's downloaded{}", book(key.get(1))?),
-            "writing_draft" => "A draft of a book in Quire".into(),
-            "writing_provenance" => "The signed record of where a Quire book came from".into(),
+            "writing_draft" => "A draft of a book in Scribe".into(),
+            "writing_provenance" => "The signed record of where a Scribe book came from".into(),
             "kindle_purchase" => format!("The Kindle purchase {}", field("title").unwrap_or_default()),
             "reading_history" => format!("A book in your reading history: {}", field("title").unwrap_or_default()),
             _ => format!("The note {}", field("title").filter(|t| !t.is_empty()).unwrap_or_else(|| "without a title".into())),
@@ -2054,7 +2054,7 @@ impl Library {
         // Sanctum's Quick links sync with the library, their pictures too.
         sources.push("SELECT picture FROM sanctum_links WHERE deleted_at IS NULL");
         // Covers of books being written travel with notes, and so do the
-        // originals Quire books were imported from.
+        // originals Scribe books were imported from.
         if options.notes {
             sources.push("SELECT cover AS picture FROM writing_projects WHERE deleted_at IS NULL");
             wanted.extend(self.originals_kept()?);
@@ -2390,7 +2390,7 @@ impl Library {
             return "A collection picture".into();
         }
         if path.starts_with(crate::provenance::ORIGINALS) {
-            return "The original of a Quire book".into();
+            return "The original of a Scribe book".into();
         }
         if path.starts_with(crate::writing_sounds::SOUNDS) {
             return "A poem's sound".into();
@@ -2539,7 +2539,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "archive_series_pin" => if text("pinned_at").is_empty() { "Series unpinned".into() } else { "Series pinned".into() },
         "series_favourite" => if text("favourite_at").is_empty() { "Series taken out of favourites".into() } else { "Series added to favourites".into() },
         "top_favourite" => if text("top_at").is_empty() { "Taken out of the Top five".into() } else { "Added to the Top five".into() },
-        "annotation_mark" | "personal_note_mark" => if text("pinned_at").is_empty() { "Not pinned".into() } else { "Pinned in Quire".into() },
+        "annotation_mark" | "personal_note_mark" => if text("pinned_at").is_empty() { "Not pinned".into() } else { "Pinned in Scribe".into() },
         "book" => short(text("title")),
         "override" | "fetched" => short(text("value")),
         "audiobook" => if data.get("ebook_id").and_then(|v| v.as_str()).is_some_and(|v| !v.is_empty()) { "Linked to its ebook".into() } else { "Chapters and narrators".into() },
@@ -3170,7 +3170,7 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
             }
         }
     }
-    // Originals of Quire books come down to computers, once they're in the
+    // Originals of Scribe books come down to computers, once they're in the
     // cloud; a phone, short of room, leaves them there.
     if options.notes && !holdings::covers_on_view() {
         let wanted = lock()?.originals_to_fetch()?;
@@ -3178,7 +3178,7 @@ fn files(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions,
             let there = remote.list(crate::provenance::ORIGINALS)?;
             for (path, local) in wanted {
                 if there.iter().any(|n| path.ends_with(&format!("/{n}"))) {
-                    fetches.push((path, local, "The original of a Quire book".into(), None));
+                    fetches.push((path, local, "The original of a Scribe book".into(), None));
                 }
             }
         }

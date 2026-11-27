@@ -95,7 +95,7 @@ export function SyncActivity({
 }: {
   sync: SyncStatus | null;
   onOpenSyncSettings: () => void;
-  /** Shown inside Preferences › Activity, which gives the page its name. */
+  /** Shown inside Attune › Activity, which gives the page its name. */
   embedded?: boolean;
 }) {
   const [activity, setActivity] = useState<Activity>(NOTHING);

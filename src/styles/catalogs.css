@@ -293,7 +293,7 @@
   flex-wrap: wrap;
 }
 
-/* Discover's own pages, Geas and Libram (embre's pictures, 13 November). */
+/* Discover's own pages, Commune and Libram (embre's pictures, 13 November). */
 .discover-page {
   display: flex;
   flex-direction: column;
@@ -441,7 +441,7 @@
   font: 400 16px/1.5 var(--font-serif);
 }
 
-/* Geas: the servers beside Grimoire, Audiobookshelf along the bottom. */
+/* Commune: the servers beside Grimoire, Audiobookshelf along the bottom. */
 .geas-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr);

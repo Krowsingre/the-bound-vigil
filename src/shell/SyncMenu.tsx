@@ -54,11 +54,11 @@ export function SyncMenu({
   onOpenActivity?: () => void;
   /** The Where your books are page; desktop only too. */
   onOpenPlaces?: () => void;
-  /** Preferences › Profile: picture, name and device name. */
+  /** Attune › Profile: picture, name and device name. */
   onOpenProfile: () => void;
-  /** Preferences › Your plan; left out where nothing can be bought (the web version). */
+  /** Attune › Your plan; left out where nothing can be bought (the web version). */
   onOpenPlan?: () => void;
-  /** Preferences itself: the computer's shorter menu ends with it. */
+  /** Attune itself: the computer's shorter menu ends with it. */
   onOpenPreferences?: () => void;
 }) {
   const state = sync?.state ?? "disabled";
@@ -86,7 +86,7 @@ export function SyncMenu({
     hint: keyHint(keys, PRIVACY_SHORTCUT),
     onSelect: togglePrivacy,
   };
-  // The computer's menu, four rows (embre, 21 November): you and sync as one, Import, covers, Preferences.
+  // The computer's menu, four rows (embre, 21 November): you and sync as one, Import, covers, Attune.
   const desk = !narrow && onOpenPreferences !== undefined;
   const deskItems: MenuEntry[] = [
     {
@@ -109,7 +109,7 @@ export function SyncMenu({
       ],
     },
     coverItem,
-    { label: "Preferences", icon: "settings", onSelect: () => onOpenPreferences?.() },
+    { label: "Attune", icon: "settings", onSelect: () => onOpenPreferences?.() },
   ];
   return (
     <Menu

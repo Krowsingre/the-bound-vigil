@@ -1,4 +1,4 @@
-// Saving a Quire book as a .tbv file (see tbvFile.ts): its pages, cover,
+// Saving a Scribe book as a .tbv file (see tbvFile.ts): its pages, cover,
 // notes and the records of where it came from, gathered from the core.
 
 import { api, isApp, isWeb } from "../api";

@@ -1,5 +1,5 @@
-// Bringing a book written elsewhere into Quire: Word, OpenDocument, RTF,
-// plain text, Markdown, HTML or EPUB, turned into the markup Quire's editor
+// Bringing a book written elsewhere into Scribe: Word, OpenDocument, RTF,
+// plain text, Markdown, HTML or EPUB, turned into the markup Scribe's editor
 // keeps (paragraphs, headings, italics, quotations, lists, scene breaks,
 // footnotes, pictures and links), then split into chapters.
 
@@ -113,7 +113,7 @@ export async function readDocumentBytes(name: string, bytes: Uint8Array): Promis
       // book.md and its pictures, zipped: a book written by hand (tbvText.ts).
       const byHand = await import("./tbvText");
       if (byHand.isTextBookZip(bytes)) return byHand.readTextBook(name, bytes);
-      if (ext === "tbv") throw new Error("That .tbv file isn't a Quire book file, and has no book.md inside.");
+      if (ext === "tbv") throw new Error("That .tbv file isn't a Scribe book file, and has no book.md inside.");
       return fromKindleCreate(bytes, fallback);
     }
     default:
@@ -141,7 +141,7 @@ async function fromKindleCreate(bytes: Uint8Array, fallback: string): Promise<Im
 
 /**
  * The book's subtitle from paragraphs in a Subtitle style. Word files made by
- * Quire (and many others) put the author's byline in that style too, so a
+ * Scribe (and many others) put the author's byline in that style too, so a
  * line that is the author's name, or starts with "by", isn't a subtitle.
  */
 export function subtitleOf(paragraphs: Element[], author: string | null): string | null {
@@ -690,7 +690,7 @@ function fromEpub(bytes: Uint8Array, fallback: string, restoring = false): Impor
     if (restoring) {
       const spine = doc.createElement("div");
       const sections = [...body.children].filter((el) => el.localName === "section" && el.hasAttribute("epub:type"));
-      // Quire can put several pages into a single EPUB spine item.
+      // Scribe can put several pages into a single EPUB spine item.
       const pages = sections.length && [...body.childNodes].every((node) =>
         node.nodeType === Node.COMMENT_NODE || (node.nodeType === Node.TEXT_NODE ? !node.textContent?.trim() : sections.includes(node as Element)))
         ? sections : [body];
@@ -701,7 +701,7 @@ function fromEpub(bytes: Uint8Array, fallback: string, restoring = false): Impor
         if (!section.textContent?.trim() && !section.querySelector("img")) continue;
         const area = [...section.classList].filter((name) => /^(frontmatter|backmatter|part|in-part)$/.test(name)).join(" ");
         const heading = section.querySelector(":scope > h1, :scope > header > h1");
-        // The "Chapter 3" line above a heading is made by Quire on export, so it isn't part of the words.
+        // The "Chapter 3" line above a heading is made by Scribe on export, so it isn't part of the words.
         section.querySelector(":scope > p.chapter-label, :scope > header > p.chapter-label")?.remove();
         const marker = doc.createElement("h1");
         marker.setAttribute("data-spine-start", "");
@@ -734,7 +734,7 @@ function fromEpub(bytes: Uint8Array, fallback: string, restoring = false): Impor
 
 /**
  * Note marks that link to their note (in the same document or another) become
- * Quire's footnotes, the note's words kept with the mark, and the note itself
+ * Scribe's footnotes, the note's words kept with the mark, and the note itself
  * is taken out of the text.
  */
 function foldNotes(docs: { path: string; doc: Document }[], resolve: (from: string, href: string) => string) {
@@ -776,14 +776,14 @@ function foldNotes(docs: { path: string; doc: Document }[], resolve: (from: stri
 const SCENE_BREAK = /^\s*(?:[*#~•◆✦❦-]\s*){1,5}\s*$/;
 const CHAPTER_LINE = /^\s*(?:(?:chapter|part|book|prologue|epilogue|interlude|afterword|foreword|preface|introduction|acknowledg(?:e)?ments)\b.{0,80}|(?:\d{1,3}|[IVXLC]{1,7})\.?)\s*$/i;
 
-/** Keeps only the markup Quire's editor holds. */
+/** Keeps only the markup Scribe's editor holds. */
 function tidy(root: Element) {
   const keep = new Set(["P", "H1", "H2", "H3", "EM", "STRONG", "U", "S", "SUP", "SUB", "BLOCKQUOTE", "UL", "OL", "LI", "HR", "BR", "IMG", "A", "MARK"]);
   const rename: Record<string, string> = { I: "em", B: "strong", CITE: "em", STRIKE: "s", DEL: "s", H4: "h3", H5: "h3", H6: "h3" };
   const walk = (el: Element) => {
     for (const child of [...el.children]) {
       if (child.tagName === "FIGURE" && child.hasAttribute("data-picture")) {
-        // Quire's own picture block (a book written by hand makes them): kept whole, with only what it needs.
+        // Scribe's own picture block (a book written by hand makes them): kept whole, with only what it needs.
         const img = child.querySelector("img");
         const src = img?.getAttribute("src") ?? "";
         if (!/^data:image\//.test(src)) {
@@ -924,7 +924,7 @@ export function splitChapters(html: string, at: SplitAt, bookTitle: string, keep
     const body = holder.innerHTML.trim();
     const words = wordCount(body);
     if (i === 0 && !words && !holder.querySelector("img")) return;
-    // A marked page keeps the title the mark gave it, or none (Quire names it by its kind).
+    // A marked page keeps the title the mark gave it, or none (Scribe names it by its kind).
     if (part.mark !== undefined) return void chapters.push({ title: part.title, body, words, mark: part.mark });
     chapters.push({ title: part.title || (i === 0 ? (out.length > 1 ? "Opening" : bookTitle) : "Untitled"), body, words, ...(part.hint ? { hint: part.hint } : {}) });
   });

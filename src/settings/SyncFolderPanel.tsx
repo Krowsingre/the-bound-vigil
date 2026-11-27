@@ -1,4 +1,4 @@
-// Preferences › Sync: keeping the library in a folder a cloud app syncs
+// Attune › Sync: keeping the library in a folder a cloud app syncs
 // (iCloud Drive, Dropbox, Google Drive, OneDrive, MEGA…), or on a WebDAV
 // server. TBV makes a folder called "The Bound Vigil" inside the one chosen.
 

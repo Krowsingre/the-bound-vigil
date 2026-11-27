@@ -1,6 +1,6 @@
 import { RememberedDetails } from "../components/RememberedDetails";
 // Designing in Canva (embre, 3 November 2026). With Canva connected (a
-// Quire Publisher feature, on computers), "Design in Canva" makes a design
+// Scribe Publisher feature, on computers), "Design in Canva" makes a design
 // of exactly the right size, or opens the one made before, and "Bring it
 // back" fetches the finished file. Without it, the box says how to make one
 // by hand at the right size, and the finished file comes back through the

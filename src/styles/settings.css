@@ -1250,7 +1250,7 @@ kbd {
   gap: 10px;
 }
 
-/* Preferences › Sync: moving or backing up the library. */
+/* Attune › Sync: moving or backing up the library. */
 .move-panel {
   gap: 12px;
 }
@@ -1374,7 +1374,7 @@ kbd {
   gap: 8px;
 }
 
-/* Preferences › Sync › What's in Supabase. */
+/* Attune › Sync › What's in Supabase. */
 .contents-panel {
   display: grid;
   gap: 10px;
@@ -1536,14 +1536,14 @@ kbd {
   font-size: 13px;
 }
 
-/* Preferences › Sync & Accounts › Names: the two name boxes side by side. */
+/* Attune › Sync & Accounts › Names: the two name boxes side by side. */
 .names-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
 }
 
-/* Preferences › Profile: the picture as the sync circle shows it, then its buttons. */
+/* Attune › Profile: the picture as the sync circle shows it, then its buttons. */
 .profile-card {
   display: flex;
   align-items: center;
@@ -1676,7 +1676,7 @@ kbd {
   justify-self: stretch;
 }
 
-/* Preferences › Archive › Reading history. */
+/* Attune › Archive › Reading history. */
 .history-search {
   display: flex;
   align-items: center;
@@ -1740,7 +1740,7 @@ kbd {
   font-size: 12px;
 }
 
-/* A computer's Preferences: the list of pages in groups, the page's name
+/* A computer's Attune: the list of pages in groups, the page's name
    over a small ornament, and its cards in two columns. */
 .settings-landing + .settings-landing {
   margin-top: 16px;
@@ -2179,7 +2179,7 @@ kbd {
   }
 }
 
-/* Preferences › Compendium › Watching: a name (or title and author) and Watch. */
+/* Attune › Compendium › Watching: a name (or title and author) and Watch. */
 .watch-add {
   display: flex;
   gap: 8px;
@@ -2406,7 +2406,7 @@ kbd {
   white-space: nowrap;
 }
 
-/* Preferences › Library › Deleted books: books TBV remembers, each with Forget. */
+/* Attune › Library › Deleted books: books TBV remembers, each with Forget. */
 .deleted-books {
   margin-top: 12px;
 }
@@ -2437,7 +2437,7 @@ kbd {
   white-space: nowrap;
 }
 
-/* Preferences on a computer, eight pages (embre, 21 November). */
+/* Attune on a computer, eight pages (embre, 21 November). */
 .settings-desk-part + .settings-desk-part,
 .settings-body > .prefs-columns + .prefs-columns,
 .settings-body > .prefs-columns + .settings-section,
@@ -2484,4 +2484,169 @@ kbd {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+}
+
+/* ── Attune design framework (embre, 27 November) ───────────────────────────
+   Shared spacing for pages rebuilt to the framework, starting with Account.
+   Every value lives here; pages and sections don't set their own. Room between
+   things follows Interface density (--density); Interface size zooms it all. The
+   :root in front outranks the older density rules for .settings-body in shell.css. */
+:root .settings-body.attune {
+  --at-pad: calc(20px * var(--density, 1));
+  --at-section-gap: calc(12px * var(--density, 1));
+  --at-card-pad: calc(16px * var(--density, 1));
+  --at-control-gap: calc(12px * var(--density, 1));
+  --at-label-gap: 6px;
+  --at-hint-gap: 4px;
+  --at-button-gap: 8px;
+  --at-control-h: 36px;
+  gap: var(--at-section-gap);
+  max-width: none;
+  padding: var(--at-pad);
+}
+
+/* Sections sit side by side while each has room, one above the other when not. */
+.attune-page {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
+  align-items: start;
+  gap: var(--at-section-gap);
+}
+
+.attune-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-control-gap);
+  min-width: 0;
+  padding: var(--at-card-pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  scroll-margin-top: var(--at-pad);
+  transition: box-shadow 0.3s;
+}
+
+.attune-section.is-found {
+  box-shadow: 0 0 0 2px var(--focus);
+}
+
+.attune-section-head {
+  margin: 0;
+  font: 600 16px/1.3 var(--font-serif);
+}
+
+.attune-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-label-gap);
+  min-width: 0;
+}
+
+.attune-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.attune-hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.attune-field > .attune-hint {
+  margin-top: calc(var(--at-hint-gap) - var(--at-label-gap));
+}
+
+.attune-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.attune-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: var(--at-control-h);
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text);
+  font: 400 14px var(--font-sans);
+  outline: none;
+  user-select: text;
+}
+
+.attune-input:focus {
+  border-color: var(--focus);
+}
+
+.attune .btn {
+  height: var(--at-control-h);
+}
+
+.attune-buttons,
+.attune-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--at-button-gap);
+}
+
+.attune-inline > .attune-input {
+  flex: 1 1 180px;
+  width: auto;
+}
+
+/* Two equal columns of fields, one above the other when narrow. */
+.attune-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: var(--at-control-gap);
+}
+
+/* Account */
+.account-picture-row {
+  display: flex;
+  align-items: center;
+  gap: var(--at-control-gap);
+}
+
+.account-code {
+  display: flex;
+  align-items: center;
+  background: var(--surface-sunk);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  user-select: all;
+  -webkit-user-select: all;
+}
+
+/* The code, the name and Save on one row, their bottoms lined up; they wrap when narrow. */
+.account-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--at-control-gap);
+}
+
+.account-add > .attune-field {
+  flex: 1 1 180px;
+}
+
+.account-add > .btn {
+  flex: none;
+}
+
+.account-friends,
+.account-empty {
+  padding-top: var(--at-control-gap);
+  border-top: 1px solid var(--border);
+}
+
+.account-friends .oathkin-friend {
+  padding: var(--at-label-gap) 0;
 }

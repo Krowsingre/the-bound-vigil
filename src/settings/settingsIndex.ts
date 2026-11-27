@@ -3,6 +3,7 @@
 import type { IconName } from "../components/Icon";
 
 export type SettingsTab =
+  | "account"
   | "plan"
   | "appearance"
   | "reading"
@@ -26,6 +27,13 @@ export const SETTINGS_TABS: {
   icon: IconName;
   lede: string;
 }[] = [
+  {
+    // The computer's first page in the new layout (embre, 27 November). Phones keep Visage for now.
+    tab: "account",
+    label: "Account",
+    icon: "person",
+    lede: "Your picture, your name, this device's name and your friends.",
+  },
   {
     tab: "plan",
     label: "Your plan",
@@ -72,7 +80,7 @@ export const SETTINGS_TABS: {
   },
   {
     tab: "notes",
-    label: "Quire",
+    label: "Scribe",
     icon: "pen",
     lede: "How your notes are shown, taking them with you, and designing in Canva.",
   },
@@ -136,6 +144,18 @@ export interface SettingsEntry {
 }
 
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
+  {
+    tab: "account",
+    section: "account-profile",
+    label: "Account: picture, name and this device's name",
+    words: "profile visage avatar photo picture name device friend code",
+  },
+  {
+    tab: "account",
+    section: "account-friends",
+    label: "Account: friends",
+    words: "oathkin friends friend code add remove",
+  },
   {
     tab: "activity",
     section: "activity",

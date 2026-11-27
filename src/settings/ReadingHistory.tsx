@@ -1,4 +1,4 @@
-// Preferences › Archive › Reading history: books finished, dropped or rated,
+// Attune › Archive › Reading history: books finished, dropped or rated,
 // kept after they leave the library. Any one can be taken off for good.
 
 import { useEffect, useState } from "react";

@@ -55,7 +55,7 @@ test("non-navigation rerenders preserve Forward and each session retains at most
 const key = (key: string, shiftKey = true, extra = {}) => new KeyboardEvent("keydown", {
   key, altKey: true, shiftKey, bubbles: true, cancelable: true, ...extra,
 });
-test("Alt+arrow is app history outside Scry and Shift is needed inside it; extra modifiers are rejected", () => {
+test("Alt+arrow is app history outside Nexus and Shift is needed inside it; extra modifiers are rejected", () => {
   expect(navigationDirection(key("ArrowLeft", false), false)).toBe("back");
   expect(navigationDirection(key("ArrowRight", false), false)).toBe("forward");
   expect(navigationDirection(key("ArrowLeft"), false)).toBeNull();
@@ -95,7 +95,7 @@ test("native browser events navigate the app once and the listener is removed on
   unmount(); requestAppHistory("back"); expect(back).toHaveBeenCalledTimes(1);
 });
 
-test("outside Scry Alt+arrow moves through app screens and Alt+Shift does nothing", () => {
+test("outside Nexus Alt+arrow moves through app screens and Alt+Shift does nothing", () => {
   const back = vi.fn(), forward = vi.fn(), webpage = vi.fn();
   renderHook(() => useNavigationShortcuts({ back, forward, webpage, reading: false, discover: false }));
   window.dispatchEvent(key("ArrowLeft", false)); window.dispatchEvent(key("ArrowRight", false));

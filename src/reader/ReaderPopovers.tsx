@@ -124,7 +124,7 @@ function DirectionChoice({ direction }: { direction: DirectionControl }) {
 }
 
 /** The Aa panel: how the book text looks. */
-export function TextSettings({ settings, onChange, direction }: { settings: ReaderSettings; onChange: (s: Partial<ReaderSettings>) => void; /** In the reader, for the open book; not in Preferences. */ direction?: DirectionControl }) {
+export function TextSettings({ settings, onChange, direction }: { settings: ReaderSettings; onChange: (s: Partial<ReaderSettings>) => void; /** In the reader, for the open book; not in Attune. */ direction?: DirectionControl }) {
   return (
     <div className="text-settings">
       <Choice
@@ -750,7 +750,7 @@ export function LiningUpStatus({ readAlong, ebookId }: { readAlong: ReadAlong; e
             ? "TBV is listening through the audiobook and matching every word to the book, in the background."
             : isApp
               ? isIOS
-              ? "TBV lines up every word in the background on a computer with TBV open, or on this phone if you turn it on in Preferences › Reading › Read-along."
+              ? "TBV lines up every word in the background on a computer with TBV open, or on this phone if you turn it on in Attune › Reading › Read-along."
               : "TBV lines up every word in the background, one pair at a time, on each device that has both the book and the audiobook downloaded."
               : "TBV lines up every word in the app on your computer or phone."}{" "}
         Until it's done you can read the book or listen to the audiobook, but not both together.

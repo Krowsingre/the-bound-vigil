@@ -11,3 +11,8 @@ it("puts the phone's sixteen pages on the computer's eight", () => {
   expect(deskPageOf("notes", "canva").label).toBe("Connections");
   expect(deskPageOf("library", "tags").label).toBe("Library");
 });
+
+it("puts Account first, without moving anything off the older pages (embre, 27 November)", () => {
+  expect(deskPageOf("account").label).toBe("Account");
+  expect(deskPageOf("profile").label).toBe("You & TBV");
+});

@@ -37,7 +37,7 @@ export function personKey(name: string): string {
 
 let style: AuthorStyle = "asBook";
 
-/** Set from Preferences; shown names follow it from the next draw. */
+/** Set from Attune; shown names follow it from the next draw. */
 export function setAuthorStyle(next: AuthorStyle) {
   style = next;
 }
@@ -47,7 +47,7 @@ export function authorStyle(): AuthorStyle {
 }
 
 /**
- * A name as Preferences asks for it. Music keeps names as they are: an
+ * A name as Attune asks for it. Music keeps names as they are: an
  * artist is often a band, and "Choir, Ash" would be wrong.
  */
 export function authorName(name: string, audioType?: string | null): string {

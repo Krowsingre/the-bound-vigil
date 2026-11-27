@@ -26,7 +26,7 @@ export function openContextMenu(e: React.MouseEvent, label: string, items: MenuE
 
 /** Opens a menu at a point, for one whose items arrive after the click (the browser's Back list). */
 export function openContextMenuAt(x: number, y: number, label: string, items: MenuEntry[]) {
-  // Over a website in Scry, in a window of its own (see menuPopups).
+  // Over a website in Nexus, in a window of its own (see menuPopups).
   if (menusFloat()) void openMenuPopup(label, items, { x, y, width: 0, height: 0 }, "point");
   else listener?.({ x, y, label, items });
 }

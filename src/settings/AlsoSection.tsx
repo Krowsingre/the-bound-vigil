@@ -1,4 +1,4 @@
-// Preferences › Sync › Second sync: a second place kept in step at the same
+// Attune › Sync › Second sync: a second place kept in step at the same
 // time as the first. For example, iCloud Drive holds every file (audiobooks
 // too) while Supabase carries the library to a phone.
 

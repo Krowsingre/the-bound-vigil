@@ -1,4 +1,4 @@
-// The ⓘ beside every Author field in Quire: pen names, and what publishers
+// The ⓘ beside every Author field in Scribe: pen names, and what publishers
 // ask for (embre's spec, 31 October 2026, section 8). Only information:
 // nothing has to be read or agreed to. Recheck the publishers now and then.
 

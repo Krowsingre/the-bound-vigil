@@ -40,7 +40,7 @@ export function unfoldSection(id: string) {
 }
 
 /**
- * Preferences on a computer, trimmed (embre, 21 November): section ledes are left out unless they
+ * Attune on a computer, trimmed (embre, 21 November): section ledes are left out unless they
  * say how things stand (`status`), and a switch's explanation shows when the pointer rests on it.
  * Phones keep everything as it was.
  */

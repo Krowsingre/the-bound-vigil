@@ -1,5 +1,5 @@
 import { useRememberedDisclosure } from "../components/RememberedDetails";
-// Quire's notes: everything you've noted (All), your own notes (Notes), and
+// Scribe's notes: everything you've noted (All), your own notes (Notes), and
 // what you noted from books, highlights included (Book notes). A row of
 // filters, the notes pinned above the rest, then the rest. Opening a note
 // slides it in at the side, where it can be read and changed.
@@ -20,7 +20,7 @@ import { NotePanel } from "./NotePanel";
 import { NoteCards, NoteList, NoteTable, type NotesLayout } from "./NoteViews";
 import { TagsDialog } from "./TagsDialog";
 
-/** The tabs of Quire that show notes. */
+/** The tabs of Scribe that show notes. */
 export type NotesKindTab = "all" | "personal" | "book_notes";
 
 /** What the notes are called under each tab, above the list. */
@@ -121,13 +121,13 @@ export function Notes({
   refreshKey: number;
   onClearSearch: () => void;
   onOpenBook: (bookId: string, cfi?: string) => void;
-  /** Quire's New button asking for a note; a new `n` asks again. */
+  /** Scribe's New button asking for a note; a new `n` asks again. */
   ask?: { kind: NewNoteKind; n: number } | null;
   /** A note to open (from an iPhone widget); a new `n` asks again. */
   show?: { id: string; n: number } | null;
   /** Where "Add to a book I'm writing" sends you when there's no book yet. Left out, notes aren't offered to books. */
   onGoToBooks?: () => void;
-  /** Which of Quire's tabs is showing. */
+  /** Which of Scribe's tabs is showing. */
   kindTab: NotesKindTab;
 }) {
   const [prefs, setPrefs] = useState(readPrefs);
@@ -261,7 +261,7 @@ export function Notes({
     }
   };
 
-  // The books being written in Quire, which a note can belong to.
+  // The books being written in Scribe, which a note can belong to.
   const [projects, setProjects] = useState<WritingProject[]>([]);
   useEffect(() => {
     if (!onGoToBooks) return;

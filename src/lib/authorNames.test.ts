@@ -22,7 +22,7 @@ describe("author names", () => {
     expect(personKey("Le Guin, Ursula K.")).toBe(personKey("Ursula K Le Guin"));
   });
 
-  it("follows the choice in Preferences, and leaves music artists alone", () => {
+  it("follows the choice in Attune, and leaves music artists alone", () => {
     expect(authorLine(["Primo, Jaz"])).toBe("Primo, Jaz");
     setAuthorStyle("firstLast");
     expect(authorLine(["Primo, Jaz", "Ann Lee"])).toBe("Jaz Primo & Ann Lee");

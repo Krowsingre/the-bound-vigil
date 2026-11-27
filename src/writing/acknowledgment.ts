@@ -1,8 +1,8 @@
-// The confirmation every manuscript import into Quire asks for (embre's
+// The confirmation every manuscript import into Scribe asks for (embre's
 // spec, 31 October 2026, section 6). The words are shown exactly as here,
 // and the signed record keeps the SHA-256 of WORDING, so the version agreed
 // to can always be told afterwards. Change a word and POLICY_VERSION goes up.
-// Books brought into the Archive to read don't ask: only Quire imports do.
+// Books brought into the Archive to read don't ask: only Scribe imports do.
 
 export const POLICY_VERSION = "1";
 

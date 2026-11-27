@@ -117,7 +117,7 @@ export function BrowserTab() {
           />
           <Toggle
             label="Picture in picture comes back to its tab"
-            hint="When you bring a popped-out video back to full size, TBV goes to Scry and the tab it's playing in."
+            hint="When you bring a popped-out video back to full size, TBV goes to Nexus and the tab it's playing in."
             checked={prefs.pipReturn}
             onChange={(pipReturn) => writeBrowserPrefs({ pipReturn })}
           />
@@ -155,7 +155,7 @@ export function BrowserTab() {
                 void api.browserFormMemory(formMemory).catch(() => undefined);
               }}
             />
-            <Row label="Saved form entries" hint="What Scry remembered from forms. Saved passwords stay.">
+            <Row label="Saved form entries" hint="What Nexus remembered from forms. Saved passwords stay.">
               <button type="button" className="btn btn-quiet btn-small" onClick={() => {
                 void api.browserClearForms().then(() => toast("Saved form entries cleared."), (error) => toast(String(error)));
               }}>Clear saved form entries</button>
@@ -289,7 +289,7 @@ export function BrowserTab() {
           </Row>
         </Section>
       </SectionGroup>
-      <Section id="history" title="History" lede="Pages visited and words searched for in Discover. Open it from Discover's ••• menu. To have the same history on every device, turn on Sync Discover history in Preferences › Sync & Backup." collapsible={desk}>
+      <Section id="history" title="History" lede="Pages visited and words searched for in Discover. Open it from Discover's ••• menu. To have the same history on every device, turn on Sync Discover history in Attune › Sync & Backup." collapsible={desk}>
         <Toggle label="Keep a history of pages visited" checked={prefs.historyOn} onChange={(historyOn) => writeBrowserPrefs({ historyOn })} />
         <Toggle
           label="Keep searches too"

@@ -32,7 +32,7 @@ const CLEARS: { label: string; since: () => number | null }[] = [
   { label: "Everything", since: () => null },
 ];
 
-/** What's kept, never older than Preferences › Discover allows. */
+/** What's kept, never older than Attune › Discover allows. */
 const kept = () => trimmed(readHistory(), readBrowserPrefs().historyKeep);
 
 export function HistoryPanel({ onGo, onClose }: { onGo: (url: string) => void; onClose: () => void }) {
@@ -117,7 +117,7 @@ export function HistoryPanel({ onGo, onClose }: { onGo: (url: string) => void; o
             </button>
           ))}
         </div>
-        {off && <p className="muted">History is off in Preferences › Discover, so new pages aren't being kept.</p>}
+        {off && <p className="muted">History is off in Attune › Discover, so new pages aren't being kept.</p>}
         {matching.length === 0 ? (
           <p className="muted">{list.length ? "Nothing in your history matches." : "Pages you visit in Discover show here."}</p>
         ) : (

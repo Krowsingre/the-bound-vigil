@@ -15,7 +15,7 @@ use crate::library::Library;
 use crate::model::{BookId, BookPreview};
 use crate::time::now_utc;
 
-/// A book TBV remembers as deleted (Preferences › Library › Deleted books).
+/// A book TBV remembers as deleted (Attune › Library › Deleted books).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeletedBook {

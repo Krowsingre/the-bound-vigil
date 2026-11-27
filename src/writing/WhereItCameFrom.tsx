@@ -1,5 +1,5 @@
 import { RememberedDetails } from "../components/RememberedDetails";
-// Book details' "Where it came from", for a book imported into Quire or
+// Book details' "Where it came from", for a book imported into Scribe or
 // duplicated from one: the signed record of the person confirming they may
 // publish it, checked each time it's shown, the original file when this
 // device keeps it, and this device's own history. Nothing here is part of
@@ -23,7 +23,7 @@ const APPLE_CHECK: Record<string, string> = {
 
 const source = (r: ProvenanceRecord) => (r.record.source ?? {}) as { name?: string; sha256?: string; bytes?: number; format?: string };
 
-/** The earlier records a Quire book file brought with it, as it had them. */
+/** The earlier records a Scribe book file brought with it, as it had them. */
 function carried(r: ProvenanceRecord): { event: string; at: string | null; name: string | null; signature: string | null; device: string | null }[] {
   const list = Array.isArray(r.record.carriedRecords) ? (r.record.carriedRecords as unknown[]) : [];
   return list

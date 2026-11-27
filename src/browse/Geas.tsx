@@ -1,4 +1,4 @@
-// Discover › Geas: bringing books, documents and audiobooks in from your
+// Discover › Commune: bringing books, documents and audiobooks in from your
 // servers, Audiobookshelf and nearby devices (Grimoire). Laid out after
 // embre's picture of 13 November: the servers beside Grimoire, with
 // Audiobookshelf along the bottom. No icon by the name and no row of buttons
@@ -12,7 +12,7 @@ export function Geas() {
   return (
     <div className="discover-page geas-page">
       <DiscoverHeader
-        title="Geas"
+        title="Commune"
         caption="Transfers"
         about="Bring books, documents and audiobooks in from your servers. What TBV can open is added to your Archive or Resonance."
       />

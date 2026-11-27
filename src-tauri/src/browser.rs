@@ -254,7 +254,7 @@ mod view {
 
     const PREFIX: &str = "browser-";
 
-    /// The level chosen in Preferences, and the sites it's lowered for.
+    /// The level chosen in Attune, and the sites it's lowered for.
     static PROTECTION: Mutex<Option<Protection>> = Mutex::new(None);
     /// The host of the page each tab shows, so a site's own requests aren't blocked.
     static SITES: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
@@ -661,7 +661,7 @@ mod view {
     pub fn clear(app: &tauri::AppHandle) -> CommandResult<()> {
         let open = tabs(app);
         let Some(view) = open.first() else {
-            // Cleared from Preferences before the browser was opened: its folder can simply go.
+            // Cleared from Attune before the browser was opened: its folder can simply go.
             let data = data_dir(app)?;
             if data.exists() {
                 std::fs::remove_dir_all(&data).map_err(|e| e.to_string())?;
@@ -1076,7 +1076,7 @@ mod windows {
         let core = platform.controller().CoreWebView2()?;
         let environment = platform.environment();
         // Logins are remembered, in the browser's own store on this computer.
-        // What's typed in forms only when chosen (Preferences › Discover):
+        // What's typed in forms only when chosen (Attune › Discover):
         // its suggestions get in the way of typing.
         if let Ok(settings) = core.Settings()?.cast::<ICoreWebView2Settings4>() {
             let _ = settings.SetIsPasswordAutosaveEnabled(true);
@@ -1827,7 +1827,7 @@ const PIP_SCRIPT: &str = include_str!("browser_pip.js");
 /// Keeps videos playing in the background, when chosen (browser_keep_playing.js).
 const KEEP_PLAYING_SCRIPT: &str = include_str!("browser_keep_playing.js");
 
-/// Preferences › Discover › Keep videos playing in the background.
+/// Attune › Discover › Keep videos playing in the background.
 static KEEP_PLAYING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Keeps Tab out of sites' text boxes, when chosen (browser_tab_keys.js).
@@ -1842,7 +1842,7 @@ fn clear_forms_marker(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     use tauri::Manager;
     app.path().app_local_data_dir().ok().map(|dir| dir.join("clear-form-entries"))
 }
-/// Preferences › Discover › Tab doesn't fill in sites' suggestions.
+/// Attune › Discover › Tab doesn't fill in sites' suggestions.
 static TAB_KEYS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// What runs first in every frame of a page, with the choices in it.
@@ -1962,7 +1962,7 @@ pub async fn browser_read(app: tauri::AppHandle, tab: String, script: String) ->
     tauri::async_runtime::spawn_blocking(move || view::run(&app, &tab, &script)).await.map_err(|e| e.to_string())?
 }
 
-/// Preferences › Discover › Tab doesn't take sites' suggestions: for the
+/// Attune › Discover › Tab doesn't take sites' suggestions: for the
 /// tabs opened from now on, and the pages open now.
 #[tauri::command]
 pub async fn browser_tab_keys(app: tauri::AppHandle, on: bool) -> CommandResult<()> {
@@ -1971,7 +1971,7 @@ pub async fn browser_tab_keys(app: tauri::AppHandle, on: bool) -> CommandResult<
     tauri::async_runtime::spawn_blocking(move || view::everywhere(&app, &script)).await.map_err(|e| e.to_string())?
 }
 
-/// Preferences › Discover › Remember what I type in forms (Windows; off
+/// Attune › Discover › Remember what I type in forms (Windows; off
 /// unless chosen): for the tabs open now and those opened from now on.
 #[tauri::command]
 pub async fn browser_form_memory(app: tauri::AppHandle, on: bool) -> CommandResult<()> {
@@ -1985,7 +1985,7 @@ pub async fn browser_form_memory(app: tauri::AppHandle, on: bool) -> CommandResu
     Ok(())
 }
 
-/// Preferences › Discover › Clear saved form entries. Passwords stay. With
+/// Attune › Discover › Clear saved form entries. Passwords stay. With
 /// no tab open, it's done as the next one opens.
 #[tauri::command]
 pub async fn browser_clear_forms(app: tauri::AppHandle) -> CommandResult<()> {
@@ -2005,7 +2005,7 @@ pub async fn browser_clear_forms(app: tauri::AppHandle) -> CommandResult<()> {
     Ok(())
 }
 
-/// Preferences › Discover › Keep videos playing in the background.
+/// Attune › Discover › Keep videos playing in the background.
 #[tauri::command]
 pub async fn browser_keep_playing(app: tauri::AppHandle, on: bool) -> CommandResult<()> {
     KEEP_PLAYING.store(on, std::sync::atomic::Ordering::Relaxed);

@@ -56,7 +56,7 @@ export interface LinkGo {
 
 /** Goes where a link points. */
 export function followLink(target: string, go: LinkGo) {
-  // Media-server streams (0.98) and the old Scry page now live in the browser, which took Scry's name.
+  // Media-server streams (0.98) and the old Nexus page now live in the browser, which took Nexus's name.
   if (target.startsWith("stream:") || target === "page:scry") return go.onNavigate("catalogs");
   const panel = PANELS.find((p) => p.target === target);
   if (panel) {
@@ -301,7 +301,7 @@ function describe(target: string): string {
   if (page) return page.label;
   if (target.startsWith("book:")) return "A book";
   if (target.startsWith("collection:")) return "A collection";
-  if (target.startsWith("stream:")) return "Discover › Scry";
+  if (target.startsWith("stream:")) return "Discover › Nexus";
   return readableAddress(target);
 }
 

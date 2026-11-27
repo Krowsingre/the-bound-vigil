@@ -1,4 +1,4 @@
-//! Reading history (Preferences › Archive): books finished, dropped or
+//! Reading history (Attune › Archive): books finished, dropped or
 //! rated, kept after they leave the library. An entry is only taken off by
 //! hand, and then nothing about the book is kept.
 

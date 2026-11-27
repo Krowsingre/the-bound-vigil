@@ -1,6 +1,6 @@
 // Discover's history: the pages visited and the words searched for, for as
-// long as Preferences › Discover says. The library keeps it (and syncs it
-// when Preferences › Sync says so); a copy here is read straight away.
+// long as Attune › Discover says. The library keeps it (and syncs it
+// when Attune › Sync says so); a copy here is read straight away.
 
 import { api } from "../api";
 import type { HistoryEntry } from "../api/types";

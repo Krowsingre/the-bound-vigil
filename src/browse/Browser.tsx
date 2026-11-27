@@ -126,7 +126,7 @@ let barNow = BAR_START;
 
 /** TBV's pages Discover can sit beside. */
 const SPLIT_ROUTES = [{ label: "Sanctum", route: "home" }, { label: "Archive", route: "library" }, { label: "Resonance", route: "audiobooks" },
-  { label: "Quire", route: "writing" }, { label: "Compendium", route: "collections" }, { label: "Preferences", route: "settings" }] as const;
+  { label: "Scribe", route: "writing" }, { label: "Compendium", route: "collections" }, { label: "Attune", route: "settings" }] as const;
 
 const ask = (what: string) => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: what }));
 /** Webpage Back/Forward when a control in TBV, rather than the native page, has focus. */
@@ -168,7 +168,7 @@ function useTravel(way: "back" | "forward") {
 
 /**
  * The top bar's buttons on Discover, before the address: Back, Forward and
- * Reload, with Home left of Back when it's turned on in Preferences ›
+ * Reload, with Home left of Back when it's turned on in Attune ›
  * Discover (embre, 19 November). A phone, an iPad held upright and the Duo
  * folded have Home here and the rest in the row under the bar.
  */
@@ -259,7 +259,7 @@ const fileTitle = (url: string) => {
 let openedThisRun = false;
 
 /** Tabs whose page view has been made. The views stay open while Discover
- * is left (unless Preferences says to start afresh), so this outlives the
+ * is left (unless Attune says to start afresh), so this outlives the
  * page: coming back shows them as they were instead of loading them again. */
 const madeViews = new Set<string>();
 const releasingViews = new Set<string>();
@@ -287,14 +287,14 @@ function releaseView(id: string) {
   void tryClose();
 }
 
-// Chosen in Preferences › Discover: videos go on playing in the background.
+// Chosen in Attune › Discover: videos go on playing in the background.
 // Told once, before Discover opens any page, since each page starts with it.
 if (api.kind === "app" && readBrowserPrefs().backgroundPlay) void api.browserKeepPlaying(true).catch(() => undefined);
 if (api.kind === "app" && readBrowserPrefs().quietTab) void api.browserTabKeys(true).catch(() => undefined);
 // Form memory is off unless chosen; the tabs are told before the first opens.
 if (isWindows && readBrowserPrefs().formMemory) void api.browserFormMemory(true).catch(() => undefined);
 
-/** The tabs Discover opens with, as chosen in Preferences › Discover. */
+/** The tabs Discover opens with, as chosen in Attune › Discover. */
 function startingTabs(): TabsState {
   const prefs = readBrowserPrefs();
   const home = homeOf(prefs);
@@ -389,7 +389,7 @@ export function Browser({
   const [article, setArticle] = useState<ReaderArticle | null>(null);
   /** Video reader view: the page's video, playing in TBV's own player. */
   /** Eidolon open over the page. What it plays lives in eidolonPlayer, so it
-   * can go on playing after leaving Scry; coming back opens it again. */
+   * can go on playing after leaving Nexus; coming back opens it again. */
   const [eidolonOpen, setEidolonOpen] = useState(() => !!eidolonNow());
   const [playing, setPlaying] = useState(eidolonNow);
   useEffect(() => onEidolon(() => {
@@ -463,7 +463,7 @@ export function Browser({
   /** Reader mode, the tab grid, the start page and the error page cover the page, so the page's view steps aside. */
   const aside = useRef(false);
   aside.current = !!article || !!film || panel === "tabs" || onStart || !!failure;
-  // Another tab, or another page, ends Eidolon (not coming back to Scry, though).
+  // Another tab, or another page, ends Eidolon (not coming back to Nexus, though).
   const pageOnly = url.split("#")[0];
   const firstPage = useRef(true);
   useEffect(() => {
@@ -495,7 +495,7 @@ export function Browser({
     zoomed.current[tab] = want;
     void api.browserZoom(tab, want).catch(() => undefined);
   }, []);
-  // A site's zoom changed in its sheet, or was reset in Preferences.
+  // A site's zoom changed in its sheet, or was reset in Attune.
   useEffect(() => {
     for (const t of tabsRef.current.tabs) fitZoom(t.id, t.url);
   }, [prefs.sites, fitZoom]);
@@ -577,7 +577,7 @@ export function Browser({
           // Loading again (Try again, or another page): the error page goes.
           if (ev.loading) setFailed((f) => (f[ev.tab] ? Object.fromEntries(Object.entries(f).filter(([t]) => t !== ev.tab)) : f));
           fitZoom(ev.tab, ev.url);
-          // Chosen in Preferences › Discover: each page visited goes in History (not from a private tab).
+          // Chosen in Attune › Discover: each page visited goes in History (not from a private tab).
           const keep = readBrowserPrefs();
           const privately = !!tabsRef.current.tabs.find((t) => t.id === ev.tab)?.private;
           if (!ev.loading && !privately) rememberDownloadSource(ev.tab, ev.url);
@@ -1170,7 +1170,7 @@ export function Browser({
   // Sanctum's Quick Links: a website, or one of the panels.
   // Sanctum's Quick links, heard once the page in front is showing (see the
   // effect that shows it): a website goes in a new tab or the one in front,
-  // as chosen in Preferences › Discover.
+  // as chosen in Attune › Discover.
   heardAsk.current = (ask) => {
     if ("panel" in ask) setPanel(ask.panel);
     else if ("start" in ask) {
@@ -1314,7 +1314,7 @@ export function Browser({
       const quote = clip.text.split(/\r?\n/).map((line) => "> " + line.replace(/[\\`*_~\[\]<>]/g, "\\$&")).join("\n");
       const title = typeof clip.title === "string" && clip.title.trim() ? clip.title.trim() : titleOf(active.title, url);
       await api.savePersonalNote(null, title, `${quote}\n\nSource: <${address}>`);
-      toast("Saved the selection to Quire.");
+      toast("Saved the selection to Scribe.");
     } catch (error) {
       toast(clean(error));
     }
@@ -1423,7 +1423,7 @@ export function Browser({
       ? { label: "Close split screen", icon: "splitScreen" as const, onSelect: () => setPair(null) }
       : { label: "Split screen", icon: "splitScreen" as const, submenu: splitItems.some((item) => item !== "divider") ? splitItems : [{ label: "Open another tab to split with", disabled: true }] }] : []),
     { label: "Page tools", icon: "sliders", submenu: [
-      { label: "Save selection as Quire note", icon: "notes", disabled: !web || !!article, onSelect: () => void saveSelection() },
+      { label: "Save selection as Scribe note", icon: "notes", disabled: !web || !!article, onSelect: () => void saveSelection() },
       // Also on a page's right-click menu (Windows), for one thing at a time.
       { label: "Remove things from this page", icon: "eyeOff", disabled: !web || !!article, onSelect: () => void api.browserRead(active.id, REMOVE_FROM_PAGE).then((on) => {
         if (!on) toast("This page doesn't allow it.");
@@ -1506,7 +1506,7 @@ export function Browser({
     </div>
   );
   const strip = useRef<HTMLDivElement>(null);
-  // Scry is closed while another page shows: back on it, the tab row is where it was left,
+  // Nexus is closed while another page shows: back on it, the tab row is where it was left,
   // not scrolled afresh to put the open tab at the far right (embre, 21 November).
   useLayoutEffect(() => {
     const list = strip.current;

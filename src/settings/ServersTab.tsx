@@ -1,4 +1,4 @@
-// Discover › Geas › Servers: seedboxes, NAS drives and other computers to bring
+// Discover › Commune › Servers: seedboxes, NAS drives and other computers to bring
 // books and audiobooks in from, over FTP, FTPS, SFTP or WebDAV.
 
 import { useCallback, useEffect, useState } from "react";

@@ -1,7 +1,7 @@
-// Scry's menus in a small window of their own, on the computer (embre, 19
-// November). A website in Scry is a separate window laid over TBV's, so a menu
+// Nexus's menus in a small window of their own, on the computer (embre, 19
+// November). A website in Nexus is a separate window laid over TBV's, so a menu
 // TBV draws itself sits under it, and the page used to go blank while one was
-// open. While Scry is showing a website, its menus (and right-click menus)
+// open. While Nexus is showing a website, its menus (and right-click menus)
 // open instead in a little window floating over the page, drawn by menu.html
 // (src/menuPopup) and placed by src-tauri/src/menu_popup.rs.
 
@@ -84,7 +84,7 @@ function look(): PopupMenu["look"] {
   return { className: root.className, attributes, style: root.getAttribute("style") ?? "" };
 }
 
-/** Scry turns this on while it shows a website on the computer. */
+/** Nexus turns this on while it shows a website on the computer. */
 let wanted = 0;
 export function floatMenus(on: boolean) {
   wanted = Math.max(0, wanted + (on ? 1 : -1));

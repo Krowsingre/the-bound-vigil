@@ -4,6 +4,7 @@ import { Icon, type IconName } from "../components/Icon";
 import type { Layout } from "../library/libraryView";
 import { AppearanceTab } from "./AppearanceTab";
 import { ProfileSection } from "./ProfileSection";
+import { AccountPage } from "./AccountPage";
 import { BrowserTab } from "./BrowserTab";
 import { AboutTab, AccessibilityTab, PlanTab, AdvancedTab, CollectionsTab, ConnectionsTab, DeskLibraryTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
 import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex";
@@ -32,7 +33,7 @@ const GROUPS: SettingsTab[][] = [
 ];
 const GROUPED = GROUPS.map((group) => group.flatMap((tab) => TABS.filter((t) => t.tab === tab))).filter((g) => g.length > 0);
 
-/** A page of Preferences on a computer: one or more of the phone's pages, one under another. */
+/** A page of Attune on a computer: one or more of the phone's pages, one under another. */
 interface DeskPage {
   tab: SettingsTab;
   label: string;
@@ -44,6 +45,8 @@ const own = (tab: SettingsTab): DeskPage => ({ tab, label: tabOf(tab).label, ico
 
 /** The computer's eight pages, down from sixteen (embre, 21 November). Phones keep theirs for now. */
 const DESK_GROUPS: DeskPage[][] = [
+  // Account comes first, the start of Attune's new pages (embre, 27 November). The old pages stay for now.
+  [own("account")],
   [{ tab: "profile", label: "You & TBV", icon: "person", holds: ["profile", "plan", "about", "advanced"] }],
   [
     own("appearance"),
@@ -61,7 +64,7 @@ const DESK_SECTION_PAGE: Record<string, SettingsTab> = { goodreads: "ereaders", 
 /** The computer page holding a tab (or one of its sections). */
 export function deskPageOf(tab: SettingsTab, section?: string): DeskPage {
   const moved = section ? DESK_SECTION_PAGE[section] : undefined;
-  return DESK_PAGES.find((p) => p.holds.includes(moved ?? tab)) ?? DESK_PAGES[1];
+  return DESK_PAGES.find((p) => p.holds.includes(moved ?? tab)) ?? DESK_PAGES.find((p) => p.tab === "appearance")!;
 }
 
 /** Settings: its own menu of pages on the left, the chosen page on the right.
@@ -95,9 +98,9 @@ export function Settings({
   onSidebarShown: (shown: boolean) => void;
   /** The library was replaced from a backup, so every page should reload. */
   onRestored: () => void;
-  /** Preferences › Activity: which side shows, and the app's Imports and Sync activity panes. */
+  /** Attune › Activity: which side shows, and the app's Imports and Sync activity panes. */
   activity: { side: ActivitySide; onSide: (side: ActivitySide) => void; imports: React.ReactNode; sync: React.ReactNode };
-  /** What's typed in the top bar's search box, which searches Preferences here (there's no second box). */
+  /** What's typed in the top bar's search box, which searches Attune here (there's no second box). */
   query: string;
   onQuery: (text: string) => void;
   /** Where your books are: on a computer it's reached from Sync & Backup. */
@@ -119,8 +122,9 @@ export function Settings({
   }, [jump, onJumped]);
   const body = useRef<HTMLDivElement>(null);
   const jumped = useRef(false);
-  const results = searchSettings(query).filter((r) => TABS.some((t) => t.tab === r.tab) && (keys || r.tab !== "shortcuts"));
   const desk = !narrow && !isWeb && !isHome;
+  // Account is a computer page for now; phones find the same things on Visage.
+  const results = searchSettings(query).filter((r) => TABS.some((t) => t.tab === r.tab) && (keys || r.tab !== "shortcuts") && (desk || r.tab !== "account"));
   const deskPage = desk && tab ? deskPageOf(tab) : null;
   const page = deskPage ? { ...tabOf(deskPage.tab), label: deskPage.label } : SETTINGS_TABS.find((t) => t.tab === tab);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -166,6 +170,8 @@ export function Settings({
       </div>
     );
     switch (deskPage.tab) {
+      case "account":
+        return <AccountPage />;
       case "profile":
         return [part("profile", <ProfileSection />), part("plan", <PlanTab />), part("about", <AboutTab />), part("advanced", <AdvancedTab />)];
       case "library":
@@ -237,13 +243,15 @@ export function Settings({
         return <AboutTab />;
       case "profile":
         return <ProfileSection />;
+      case "account":
+        return <AccountPage />;
     }
   })();
 
   const found = (
     <ul className="settings-menu settings-results">
       {results.length === 0 ? (
-        <li className="settings-row-hint settings-no-results">Nothing in Preferences matches “{query.trim()}”.</li>
+        <li className="settings-row-hint settings-no-results">Nothing in Attune matches “{query.trim()}”.</li>
       ) : (
         results.map((r) => (
           <li key={`${r.tab}-${r.section}`}>
@@ -279,7 +287,7 @@ export function Settings({
         <div className="settings-body" ref={body}>
           <header className="settings-head settings-landing-head">
             <div>
-              <h1>Preferences</h1>
+              <h1>Attune</h1>
               <p className="muted">Choose what to change.</p>
             </div>
           </header>
@@ -310,8 +318,8 @@ export function Settings({
 
   return (
     <div className="settings-page">
-      <nav className="settings-nav" aria-label="Preferences">
-        <p className="settings-eyebrow">Preferences</p>
+      <nav className="settings-nav" aria-label="Attune">
+        <p className="settings-eyebrow">Attune</p>
         {query.trim() ? (
           found
         ) : (
@@ -334,12 +342,13 @@ export function Settings({
           ))
         )}
       </nav>
-      <div className="settings-body" ref={body}>
+      <div className={`settings-body${desk && page.tab === "account" ? " attune" : ""}`} ref={body}>
         {/* Visage has no heading: its Visage / Oathkin switch sits at the top instead (embre, 20 November). */}
+        {!(desk && page.tab === "account") && (
         <header className={`settings-head${page.tab === "profile" && !desk ? " is-bare" : ""}`}>
           {narrow && (
             <button type="button" className="link-btn settings-back" onClick={() => onTab(null)}>
-              <Icon name="chevronLeft" size={16} /> All preferences
+              <Icon name="chevronLeft" size={16} /> Attune
             </button>
           )}
           {(page.tab !== "profile" || desk) && (
@@ -355,6 +364,7 @@ export function Settings({
             </p>
           )}
         </header>
+        )}
         <PrefsDesk.Provider value={desk}>{content}</PrefsDesk.Provider>
       </div>
     </div>

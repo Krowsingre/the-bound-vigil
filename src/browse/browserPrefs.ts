@@ -69,7 +69,7 @@ export interface BrowserPrefs {
   redirectAllowlist: string[];
   /** Videos and sound go on playing after leaving Discover (otherwise they pause). */
   keepPlaying: boolean;
-  /** Bringing a popped-out video back to full size goes to its tab in Scry. */
+  /** Bringing a popped-out video back to full size goes to its tab in Nexus. */
   pipReturn: boolean;
   /** Videos go on playing when TBV is minimized or the screen locks (pages aren't told they're out of sight). */
   backgroundPlay: boolean;

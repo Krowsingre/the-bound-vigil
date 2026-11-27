@@ -130,13 +130,13 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const [reading, setReading] = useState<{ bookId: string; at?: string; fileId?: string } | null>(null);
   const [writingSection, setWritingSection] = useState<WritingSection>("notes");
   const [writingBook, setWritingBook] = useState<string | null>(null);
-  // An open book beside its tools searches only itself (Quire, 18 November).
+  // An open book beside its tools searches only itself (Scribe, 18 November).
   const scribeSideBySide = useSideBySide();
-  /** A widget asking Quire for a new note, or to show one. */
+  /** A widget asking Scribe for a new note, or to show one. */
   const [scribeAsk, setScribeAsk] = useState<ScribeAsk | null>(null);
   const [openCollection, setOpenCollection] = useState<CollectionRef | null>(null);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
-  /** A section of Preferences to show once it opens. */
+  /** A section of Attune to show once it opens. */
   const [settingsJump, setSettingsJump] = useState<string | null>(null);
   const [activitySide, setActivitySide] = useState<ActivitySide>("imports");
   const search = useRef<HTMLInputElement>(null);
@@ -144,7 +144,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
   const activeDownloads = useDownloads().filter(isActiveDownload).length;
   useEffect(() => workspaceFrame ? undefined : listenForDownloads(toast), [toast]);
   const { refreshAdaptive, togglePrivacy, settings: appSettings } = useAppSettings();
-  // Series looked up online on the schedule set in Preferences, quietly.
+  // Series looked up online on the schedule set in Attune, quietly.
   useSeriesSchedule(appSettings);
   useWatchAlerts(toast);
   useStartupUpdateCheck(!workspaceFrame);
@@ -160,7 +160,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
       setSettingsTab("sync");
       r = "settings";
     } else if (r === "imports" || r === "activity" || r === "lining") {
-      // Imports, Sync activity and lining up are sides of Preferences › Activity.
+      // Imports, Sync activity and lining up are sides of Attune › Activity.
       setSettingsTab("activity");
       setActivitySide(r === "imports" ? "imports" : r === "activity" ? "sync" : "lining");
       r = "settings";
@@ -318,7 +318,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     void api.welcomedBack().then((back) => back && toast("Welcome back. TBV is picking up where you left off."), () => undefined);
   }, [toast]);
 
-  // Chosen in Preferences › Discover: every site's cookies and data go each time TBV starts.
+  // Chosen in Attune › Discover: every site's cookies and data go each time TBV starts.
   useEffect(() => {
     if (!workspaceFrame && api.kind === "app" && readBrowserPrefs().clearOnStart) void api.browserClear().catch(() => undefined);
   }, []);
@@ -345,7 +345,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     return () => window.removeEventListener(PROFILE_CHANGED, changed);
   }, []);
 
-  // Preferences › Profile.
+  // Attune › Profile.
   const openProfile = useCallback(() => {
     setReading(null);
     setMenuOpen(false);
@@ -354,7 +354,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     setRoute("settings");
   }, []);
 
-  // Preferences › Your plan, where nothing can be bought it isn't offered.
+  // Attune › Your plan, where nothing can be bought it isn't offered.
   const openPlan = useCallback(() => {
     setReading(null);
     setMenuOpen(false);
@@ -447,7 +447,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     return () => unlisten?.();
   }, [runImport]);
 
-  // App Back/Forward (Alt+Left/Right; Alt+Shift in Scry), independent of webpage history.
+  // App Back/Forward (Alt+Left/Right; Alt+Shift in Nexus), independent of webpage history.
   type Place = { route: Route; collection: CollectionRef | null; details: typeof details; series: SeriesPlace | null };
   const { back, forward } = useNavigationHistory<Place>(
     { route, collection: openCollection, details, series: seriesPlace },
@@ -585,8 +585,8 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
     refreshAdaptive();
   }, [refreshAdaptive]);
 
-  // A video popped out of a Scry tab, brought back to full size: Scry, at
-  // that tab (Preferences › Discover can turn this off; see pipReturn.ts).
+  // A video popped out of a Nexus tab, brought back to full size: Nexus, at
+  // that tab (Attune › Discover can turn this off; see pipReturn.ts).
   useEffect(() => {
     if (workspaceFrame) return;
     const back = (event: Event) => {
@@ -751,7 +751,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
                   : route === "collections"
                     ? searchingKindle ? "Find a Kindle title or author…" : "Search the Compendium…"
                     : route === "settings"
-                      ? "Search preferences…"
+                      ? "Search Attune…"
                   : undefined
           }
           onSearchSubmit={() => {
