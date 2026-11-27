@@ -1,4 +1,4 @@
-// A book written in Quire as a Word file (DOCX), made from the same pages
+// A book written in Scribe as a Word file (DOCX), made from the same pages
 // as the EPUB. Titles use Word's own Heading styles, so the navigation pane
 // and Word's table of contents work; footnotes are real Word footnotes; text
 // styling, pictures, page breaks and alignment are kept.
@@ -46,7 +46,7 @@ const PASSAGE_FONT: Record<string, string> = {
 /** Styles that open a chapter. */
 const TOP_OF_CHAPTER = ["Heading1", "PageTitle", "ChapterLabel"];
 
-/** Pages Quire makes from the book's details, which a manuscript leaves out. */
+/** Pages Scribe makes from the book's details, which a manuscript leaves out. */
 const MADE_PAGES = ["page-half-title", "titlepage", "page-title-page", "page-copyright", "page-contents", "page-also-by"];
 
 /** The size of a picture in pixels, read from its first bytes. */
@@ -238,7 +238,7 @@ interface Context {
   quote: boolean;
   /** Where a section's headings go in Word's outline: true for chapters, false for pages like Contents. */
   outline: boolean;
-  /** Text made by Quire for the contents, in place of Word's own. */
+  /** Text made by Scribe for the contents, in place of Word's own. */
   contents: { level: number; text: string }[];
   /** Characters a manuscript puts at a scene break. */
   sceneMark: string | null;
@@ -356,7 +356,7 @@ function wrap(el: Element): Element {
   return holder;
 }
 
-/** Word's own table of contents, filled in with Quire's so it shows before Word updates it. */
+/** Word's own table of contents, filled in with Scribe's so it shows before Word updates it. */
 function tocField(w: Writer, entries: { level: number; text: string }[]) {
   const depth = Math.max(1, Math.min(3, ...entries.map((e) => e.level)));
   const begin = `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> TOC \\o "1-${Math.max(depth, 3)}" \\h \\z \\u </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>`;

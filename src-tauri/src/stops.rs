@@ -1,4 +1,4 @@
-//! The Stop buttons on downloads (cloud books, Scry's own downloads, Libram
+//! The Stop buttons on downloads (cloud books, Nexus's own downloads, Libram
 //! and Audiobookshelf). Each download runs under a name; Stop sets its flag,
 //! its next write fails (see `tbv_core::stop`), and the partial file goes.
 

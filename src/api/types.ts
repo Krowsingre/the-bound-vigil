@@ -196,7 +196,7 @@ export interface ProviderView {
 /** A service TBV can sign in to directly. */
 export type CloudService = "dropbox" | "google" | "onedrive";
 
-/** Whether there's a newer version of TBV (Preferences › About). */
+/** Whether there's a newer version of TBV (Attune › About). */
 export interface UpdateInfo {
   /** False where updates come from an app store. */
   canUpdate: boolean;
@@ -301,7 +301,7 @@ export interface TidyPlan {
   bytes: number;
 }
 
-/** One file TBV keeps in Supabase (Preferences › Sync › What's in Supabase). */
+/** One file TBV keeps in Supabase (Attune › Sync › What's in Supabase). */
 export interface StoredFile {
   /** Like `books/<hash>.epub`. */
   path: string;
@@ -1127,10 +1127,10 @@ export interface NoteItem {
   locator: ReaderLocator | null;
   createdAt: IsoUtc;
   updatedAt: IsoUtc;
-  /** When it was pinned above the rest in Quire; null when it isn't. */
+  /** When it was pinned above the rest in Scribe; null when it isn't. */
   pinnedAt?: IsoUtc | null;
   tags?: string[];
-  /** The book you're writing in Quire that a personal note belongs to. */
+  /** The book you're writing in Scribe that a personal note belongs to. */
   project?: { id: string; title: string } | null;
 }
 
@@ -1589,7 +1589,7 @@ export interface WritingProjectView {
   chapters: WritingChapter[];
 }
 
-/** What the person agreed to when importing a manuscript into Quire (src/writing/acknowledgment.ts). */
+/** What the person agreed to when importing a manuscript into Scribe (src/writing/acknowledgment.ts). */
 export interface ImportAcknowledgment {
   policyVersion: string;
   /** The warning and the confirmation, word for word. The core keeps only its SHA-256. */
@@ -1600,11 +1600,11 @@ export interface ImportAcknowledgment {
   sourceBytes: number;
   sourceFormat: string;
   method: "checkbox";
-  /** The records a Quire book file (.tbv) brought from the book it was saved from, signed into this one so they travel on. */
+  /** The records a Scribe book file (.tbv) brought from the book it was saved from, signed into this one so they travel on. */
   carried?: unknown[];
 }
 
-/** A signed record of where a Quire book came from, checked when read. */
+/** A signed record of where a Scribe book came from, checked when read. */
 export interface ProvenanceRecord {
   id: string;
   /** This book, or the book it was duplicated from. */
@@ -1758,7 +1758,7 @@ export type BrowserEvent =
   | { kind: "key"; tab: string; key: "focusAddress" | "bookmarkPage" | "newTab" | "newPrivateTab" | "closeTab" | "nextTab" | "previousTab" | "reopenTab" | "appBack" | "appForward" | "pageBack" | "pageForward" };
 
 /** An article found on a page by reader mode (Mozilla's Readability). */
-/** Eidolon: a video on a Scry page, and where TBV's player plays it from. */
+/** Eidolon: a video on a Nexus page, and where TBV's player plays it from. */
 export interface PageVideo {
   /** Empty when TBV can't play it. */
   src: string;

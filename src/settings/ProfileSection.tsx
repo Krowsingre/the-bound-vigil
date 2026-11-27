@@ -1,4 +1,4 @@
-// Preferences › Visage (its own page, below About): the picture in the sync circle, the
+// Attune › Visage (its own page, below About): the picture in the sync circle, the
 // account's name (both the same on every device), this device's own name,
 // which other devices see in Grimoire and in sync's notes, and the friend code.
 // Oathkin, on the switch at the top in place of a heading (embre, 20 November),
@@ -336,7 +336,7 @@ function Oathkin() {
   );
 }
 
-function FriendRow({ friend, onRename, onRemove }: { friend: Friend; onRename: (name: string) => void; onRemove: () => void }) {
+export function FriendRow({ friend, onRename, onRemove }: { friend: Friend; onRename: (name: string) => void; /** Left out where friends can't be removed (the computer). */ onRemove?: () => void }) {
   const [text, setText] = useState(friend.name ?? "");
   useEffect(() => setText(friend.name ?? ""), [friend.name]);
   const save = () => {
@@ -360,9 +360,11 @@ function FriendRow({ friend, onRename, onRemove }: { friend: Friend; onRename: (
         />
         <span className="oathkin-friend-code">{friend.code}</span>
       </span>
-      <button type="button" className="btn btn-quiet" onClick={onRemove} aria-label={`Remove ${friend.name || friend.code}`}>
-        <Icon name="trash" size={18} /> Remove
-      </button>
+      {onRemove && (
+        <button type="button" className="btn btn-quiet" onClick={onRemove} aria-label={`Remove ${friend.name || friend.code}`}>
+          <Icon name="trash" size={18} /> Remove
+        </button>
+      )}
     </li>
   );
 }

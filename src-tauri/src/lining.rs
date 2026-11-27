@@ -32,7 +32,7 @@ const COOLING: Duration = Duration::from_secs(60);
 /// Phones and tablets, where lining up is off until it's turned on (and agreed to).
 const PHONE: bool = cfg!(any(target_os = "ios", target_os = "android"));
 
-/// What Preferences › Reading › Read-along sets (device setting `readAlong.lineUp`).
+/// What Attune › Reading › Read-along sets (device setting `readAlong.lineUp`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {

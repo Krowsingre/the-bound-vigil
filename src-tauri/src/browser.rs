@@ -254,7 +254,7 @@ mod view {
 
     const PREFIX: &str = "browser-";
 
-    /// The level chosen in Preferences, and the sites it's lowered for.
+    /// The level chosen in Attune, and the sites it's lowered for.
     static PROTECTION: Mutex<Option<Protection>> = Mutex::new(None);
     /// The host of the page each tab shows, so a site's own requests aren't blocked.
     static SITES: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
@@ -661,7 +661,7 @@ mod view {
     pub fn clear(app: &tauri::AppHandle) -> CommandResult<()> {
         let open = tabs(app);
         let Some(view) = open.first() else {
-            // Cleared from Preferences before the browser was opened: its folder can simply go.
+            // Cleared from Attune before the browser was opened: its folder can simply go.
             let data = data_dir(app)?;
             if data.exists() {
                 std::fs::remove_dir_all(&data).map_err(|e| e.to_string())?;
@@ -1076,7 +1076,7 @@ mod windows {
         let core = platform.controller().CoreWebView2()?;
         let environment = platform.environment();
         // Logins are remembered, in the browser's own store on this computer.
-        // What's typed in forms only when chosen (Preferences › Discover):
+        // What's typed in forms only when chosen (Attune › Discover):
         // its suggestions get in the way of typing.
         if let Ok(settings) = core.Settings()?.cast::<ICoreWebView2Settings4>() {
             let _ = settings.SetIsPasswordAutosaveEnabled(true);
@@ -1557,12 +1557,26 @@ mod windows {
 
     /// Windows' own Share panel, for the page in front.
     pub fn share(app: &tauri::AppHandle, url: String, title: String) -> crate::CommandResult<()> {
+        share_on_main(app, Shared::Link(url), title)
+    }
+
+    /// Windows' own Share panel for a few words, like a Signet (Attunement › Account).
+    pub fn share_text(app: &tauri::AppHandle, text: String, title: String) -> crate::CommandResult<()> {
+        share_on_main(app, Shared::Text(text), title)
+    }
+
+    enum Shared {
+        Link(String),
+        Text(String),
+    }
+
+    fn share_on_main(app: &tauri::AppHandle, what: Shared, title: String) -> crate::CommandResult<()> {
         use tauri::Manager;
         let window = app.get_window("main").ok_or("TBV's window isn't open.")?;
         let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
         let (send, receive) = std::sync::mpsc::channel();
         app.run_on_main_thread(move || {
-            let _ = send.send(unsafe { show_share(hwnd, url, title) }.map_err(|e| e.message()));
+            let _ = send.send(unsafe { show_share(hwnd, what, title) }.map_err(|e| e.message()));
         })
         .map_err(|e| e.to_string())?;
         receive
@@ -1571,7 +1585,7 @@ mod windows {
             .map_err(|_| "Windows couldn't open its Share panel. Copy the link instead.".to_string())
     }
 
-    unsafe fn show_share(hwnd: isize, url: String, title: String) -> windows_core::Result<()> {
+    unsafe fn show_share(hwnd: isize, what: Shared, title: String) -> windows_core::Result<()> {
         use windows::ApplicationModel::DataTransfer::{DataRequestedEventArgs, DataTransferManager};
         use windows::Foundation::{TypedEventHandler, Uri};
         use windows::Win32::Foundation::HWND;
@@ -1586,7 +1600,10 @@ mod windows {
             if let Some(args) = args.as_ref() {
                 let data = args.Request()?.Data()?;
                 data.Properties()?.SetTitle(&HSTRING::from(title.as_str()))?;
-                data.SetWebLink(&Uri::CreateUri(&HSTRING::from(url.as_str()))?)?;
+                match &what {
+                    Shared::Link(url) => data.SetWebLink(&Uri::CreateUri(&HSTRING::from(url.as_str()))?)?,
+                    Shared::Text(text) => data.SetText(&HSTRING::from(text.as_str()))?,
+                }
             }
             Ok(())
         }))?;
@@ -1827,7 +1844,7 @@ const PIP_SCRIPT: &str = include_str!("browser_pip.js");
 /// Keeps videos playing in the background, when chosen (browser_keep_playing.js).
 const KEEP_PLAYING_SCRIPT: &str = include_str!("browser_keep_playing.js");
 
-/// Preferences › Discover › Keep videos playing in the background.
+/// Attune › Discover › Keep videos playing in the background.
 static KEEP_PLAYING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Keeps Tab out of sites' text boxes, when chosen (browser_tab_keys.js).
@@ -1842,7 +1859,7 @@ fn clear_forms_marker(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     use tauri::Manager;
     app.path().app_local_data_dir().ok().map(|dir| dir.join("clear-form-entries"))
 }
-/// Preferences › Discover › Tab doesn't fill in sites' suggestions.
+/// Attune › Discover › Tab doesn't fill in sites' suggestions.
 static TAB_KEYS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// What runs first in every frame of a page, with the choices in it.
@@ -1962,7 +1979,7 @@ pub async fn browser_read(app: tauri::AppHandle, tab: String, script: String) ->
     tauri::async_runtime::spawn_blocking(move || view::run(&app, &tab, &script)).await.map_err(|e| e.to_string())?
 }
 
-/// Preferences › Discover › Tab doesn't take sites' suggestions: for the
+/// Attune › Discover › Tab doesn't take sites' suggestions: for the
 /// tabs opened from now on, and the pages open now.
 #[tauri::command]
 pub async fn browser_tab_keys(app: tauri::AppHandle, on: bool) -> CommandResult<()> {
@@ -1971,7 +1988,7 @@ pub async fn browser_tab_keys(app: tauri::AppHandle, on: bool) -> CommandResult<
     tauri::async_runtime::spawn_blocking(move || view::everywhere(&app, &script)).await.map_err(|e| e.to_string())?
 }
 
-/// Preferences › Discover › Remember what I type in forms (Windows; off
+/// Attune › Discover › Remember what I type in forms (Windows; off
 /// unless chosen): for the tabs open now and those opened from now on.
 #[tauri::command]
 pub async fn browser_form_memory(app: tauri::AppHandle, on: bool) -> CommandResult<()> {
@@ -1985,7 +2002,7 @@ pub async fn browser_form_memory(app: tauri::AppHandle, on: bool) -> CommandResu
     Ok(())
 }
 
-/// Preferences › Discover › Clear saved form entries. Passwords stay. With
+/// Attune › Discover › Clear saved form entries. Passwords stay. With
 /// no tab open, it's done as the next one opens.
 #[tauri::command]
 pub async fn browser_clear_forms(app: tauri::AppHandle) -> CommandResult<()> {
@@ -2005,7 +2022,7 @@ pub async fn browser_clear_forms(app: tauri::AppHandle) -> CommandResult<()> {
     Ok(())
 }
 
-/// Preferences › Discover › Keep videos playing in the background.
+/// Attune › Discover › Keep videos playing in the background.
 #[tauri::command]
 pub async fn browser_keep_playing(app: tauri::AppHandle, on: bool) -> CommandResult<()> {
     KEEP_PLAYING.store(on, std::sync::atomic::Ordering::Relaxed);
@@ -2101,6 +2118,18 @@ pub async fn browser_clear_site(app: tauri::AppHandle, site: String) -> CommandR
 pub async fn browser_share(app: tauri::AppHandle, url: String, title: String, anchor: Option<Frame>) -> CommandResult<()> {
     let url = web_url(&url)?;
     view::share(&app, url.as_str(), title.trim(), anchor)
+}
+
+/// The system's Share panel for a few words, like a Signet. Windows only for now.
+#[tauri::command]
+pub async fn share_text(app: tauri::AppHandle, text: String, title: String) -> CommandResult<()> {
+    #[cfg(windows)]
+    return windows::share_text(&app, text, title);
+    #[cfg(not(windows))]
+    {
+        let _ = (app, text, title);
+        Err("Sharing isn't available on this computer. Copy it instead.".into())
+    }
 }
 
 /// Copies of books' own files, under readable names, for sending: each

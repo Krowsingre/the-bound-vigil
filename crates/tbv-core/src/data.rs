@@ -138,55 +138,71 @@ impl Library {
 
     /// Writes every note as Markdown, grouped by book, for reading anywhere.
     pub fn export_notes_markdown(&self, target: &Path) -> Result<()> {
+        let mut out = String::from("# Notes from The Bound Vigil\n");
+        for (heading, notes) in self.notes_by_book()? {
+            out.push_str(&format!("\n## {heading}\n"));
+            out.push_str(&notes_markdown(&notes));
+        }
+        fs::write(target, out)?;
+        Ok(())
+    }
+
+    /// Saves an archive (.zip) holding one file per book that has notes, in Markdown or
+    /// plain text (embre, 27 November). Personal notes, which belong to no book, get a file of
+    /// their own.
+    pub fn export_notes_archive(&self, target: &Path, format: NotesFormat) -> Result<()> {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        let groups = self.notes_by_book()?;
+        let partial = sibling(target, "partial");
+        let zipped = |e: zip::result::ZipError| Error::Unsuitable(e.to_string());
+        let written = (|| -> Result<()> {
+            let mut zip = zip::ZipWriter::new(fs::File::create(&partial)?);
+            let packed = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            let mut used = std::collections::HashSet::new();
+            for (heading, notes) in &groups {
+                let ext = match format {
+                    NotesFormat::Markdown => "md",
+                    NotesFormat::PlainText => "txt",
+                };
+                let name = unique_file_name(heading, ext, &mut used);
+                let text = match format {
+                    NotesFormat::Markdown => format!("# {heading}\n{}", notes_markdown(notes)),
+                    NotesFormat::PlainText => format!("{heading}\n{}\n{}", "=".repeat(heading.chars().count()), notes_plain(notes)),
+                };
+                zip.start_file(name, packed).map_err(zipped)?;
+                zip.write_all(text.as_bytes())?;
+            }
+            zip.finish().map_err(zipped)?;
+            Ok(())
+        })();
+        if let Err(e) = written {
+            let _ = fs::remove_file(&partial);
+            return Err(e);
+        }
+        fs::rename(&partial, target)?;
+        Ok(())
+    }
+
+    /// Every note, in groups: one per book ("Title — Author"), then Personal notes.
+    fn notes_by_book(&self) -> Result<Vec<(String, Vec<NoteItem>)>> {
         let notes = self.notes_page(&NotesQuery {
             sort: NotesSort::Book,
             ..Default::default()
         })?;
-        let mut out = String::from("# Notes from The Bound Vigil\n");
-        let mut current: Option<String> = None;
-        for n in &notes.notes {
+        let mut groups: Vec<(String, Vec<NoteItem>)> = Vec::new();
+        for n in notes.notes {
             let heading = match &n.book {
                 Some(b) if b.authors.is_empty() => b.title.clone(),
                 Some(b) => format!("{} — {}", b.title, b.authors.join(", ")),
                 None => "Personal notes".to_string(),
             };
-            if current.as_ref() != Some(&heading) {
-                out.push_str(&format!("\n## {heading}\n"));
-                current = Some(heading);
-            }
-            out.push('\n');
-            if let Some(title) = &n.title {
-                out.push_str(&format!("### {title}\n\n"));
-            }
-            if n.kind == NoteKind::BookNote {
-                out.push_str("*About the whole book*\n\n");
-            }
-            if !n.excerpt.is_empty() {
-                for line in n.excerpt.lines() {
-                    out.push_str(&format!("> {line}\n"));
-                }
-            }
-            let place: Vec<String> = n.locator.iter().flat_map(|l| {
-                [l.chapter.clone(), l.page_index.map(|p| format!("p. {}", p + 1))]
-                    .into_iter().flatten()
-            }).collect();
-            if !place.is_empty() {
-                if n.excerpt.is_empty() {
-                    out.push_str(&format!("*{}*\n", place.join(", ")));
-                } else {
-                    out.push_str(&format!(">\n> — {}\n", place.join(", ")));
-                }
-            }
-            if !n.excerpt.is_empty() || !place.is_empty() {
-                out.push('\n');
-            }
-            if let Some(note) = &n.note {
-                out.push_str(note);
-                out.push('\n');
+            match groups.last_mut() {
+                Some((h, list)) if *h == heading => list.push(n),
+                _ => groups.push((heading, vec![n])),
             }
         }
-        fs::write(target, out)?;
-        Ok(())
+        Ok(groups)
     }
 
     /// Saves a copy of the library's records (not the book files) to one file.
@@ -422,6 +438,113 @@ fn accent_of(pixels: &image::RgbImage) -> Option<String> {
     Some(format!("#{r:02x}{g:02x}{b:02x}"))
 }
 
+/// How notes are written out: Markdown, or plain text that reads the same anywhere.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NotesFormat {
+    Markdown,
+    PlainText,
+}
+
+/// Where a note sits in its book: "The Lantern, p. 3".
+fn note_place(n: &NoteItem) -> String {
+    n.locator
+        .iter()
+        .flat_map(|l| [l.chapter.clone(), l.page_index.map(|p| format!("p. {}", p + 1))].into_iter().flatten())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// One book's notes as Markdown, under its heading.
+fn notes_markdown(notes: &[NoteItem]) -> String {
+    let mut out = String::new();
+    for n in notes {
+        out.push('\n');
+        if let Some(title) = &n.title {
+            out.push_str(&format!("### {title}\n\n"));
+        }
+        if n.kind == NoteKind::BookNote {
+            out.push_str("*About the whole book*\n\n");
+        }
+        if !n.excerpt.is_empty() {
+            for line in n.excerpt.lines() {
+                out.push_str(&format!("> {line}\n"));
+            }
+        }
+        let place = note_place(n);
+        if !place.is_empty() {
+            if n.excerpt.is_empty() {
+                out.push_str(&format!("*{place}*\n"));
+            } else {
+                out.push_str(&format!(">\n> — {place}\n"));
+            }
+        }
+        if !n.excerpt.is_empty() || !place.is_empty() {
+            out.push('\n');
+        }
+        if let Some(note) = &n.note {
+            out.push_str(note);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// One book's notes as plain text: quotes in quotation marks, no Markdown signs.
+fn notes_plain(notes: &[NoteItem]) -> String {
+    let mut out = String::new();
+    for n in notes {
+        out.push('\n');
+        if let Some(title) = &n.title {
+            out.push_str(&format!("{title}\n\n"));
+        }
+        if n.kind == NoteKind::BookNote {
+            out.push_str("About the whole book\n\n");
+        }
+        if !n.excerpt.is_empty() {
+            out.push_str(&format!("“{}”\n", n.excerpt.trim()));
+        }
+        let place = note_place(n);
+        if !place.is_empty() {
+            if n.excerpt.is_empty() {
+                out.push_str(&format!("{place}\n"));
+            } else {
+                out.push_str(&format!("({place})\n"));
+            }
+        }
+        if !n.excerpt.is_empty() || !place.is_empty() {
+            out.push('\n');
+        }
+        if let Some(note) = &n.note {
+            out.push_str(note);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// A file name every computer accepts, made from a book's title, kept apart from the others.
+fn unique_file_name(heading: &str, ext: &str, used: &mut std::collections::HashSet<String>) -> String {
+    let mut base: String = heading
+        .chars()
+        .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() { ' ' } else { c })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    base = base.trim_end_matches(['.', ' ']).chars().take(120).collect();
+    if base.is_empty() {
+        base = "Notes".into();
+    }
+    let mut name = format!("{base}.{ext}");
+    let mut n = 2;
+    while !used.insert(name.to_lowercase()) {
+        name = format!("{base} ({n}).{ext}");
+        n += 1;
+    }
+    name
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -552,6 +675,22 @@ mod tests {
         assert!(text.contains("*The Lantern, p. 3*\n\nCheck this chapter."));
         assert!(text.contains("## Personal notes"));
         assert!(text.contains("### Plan"));
+
+        for (format, ext, expect) in [(NotesFormat::Markdown, "md", "*The Lantern, p. 3*"), (NotesFormat::PlainText, "txt", "\nThe Lantern, p. 3\n")] {
+            let archive = dir.path().join(format!("notes-{ext}.zip"));
+            library.export_notes_archive(&archive, format).unwrap();
+            let mut zip = zip::ZipArchive::new(fs::File::open(&archive).unwrap()).unwrap();
+            let names: Vec<String> = (0..zip.len()).map(|i| zip.by_index(i).unwrap().name().to_string()).collect();
+            assert!(names.contains(&format!("Lamps — Wren Hale.{ext}")), "{names:?}");
+            assert!(names.contains(&format!("Personal notes.{ext}")), "{names:?}");
+            let mut book = String::new();
+            std::io::Read::read_to_string(&mut zip.by_name(&format!("Lamps — Wren Hale.{ext}")).unwrap(), &mut book).unwrap();
+            assert!(book.contains("Check this chapter."));
+            assert!(book.contains(expect), "{book}");
+            if format == NotesFormat::PlainText {
+                assert!(!book.contains('#') && !book.contains('>') && !book.contains('*'), "{book}");
+            }
+        }
     }
 
     #[test]

@@ -1,8 +1,8 @@
-//! Scry's menus as their own small windows (embre, 19 November).
+//! Nexus's menus as their own small windows (embre, 19 November).
 //!
-//! A website in Scry is a separate web view laid over TBV's window, so TBV's
+//! A website in Nexus is a separate web view laid over TBV's window, so TBV's
 //! own menus can't draw on top of it, and the page used to go blank while one
-//! was open. On the computer, Scry's menus open instead in a little window of
+//! was open. On the computer, Nexus's menus open instead in a little window of
 //! their own floating over the page, as other browsers' menus do. TBV's page
 //! asks for one with the menu's items and where its button is; the window
 //! (menu.html) draws them, fits itself, and says which was chosen, which goes
@@ -33,9 +33,9 @@ pub struct Request {
     pub align: String,
 }
 
-/// TBV's window. Not `get_webview_window`: while Scry shows a website the
+/// TBV's window. Not `get_webview_window`: while Nexus shows a website the
 /// window holds the sites' views too, and then that finds nothing, which is
-/// what left every Scry menu doing nothing in 0.145.
+/// what left every Nexus menu doing nothing in 0.145.
 fn main_window(app: &AppHandle) -> Result<tauri::Window, String> {
     app.get_window("main").ok_or_else(|| "TBV's window isn't open.".to_string())
 }

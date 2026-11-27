@@ -829,7 +829,7 @@
   flex: 1;
 }
 
-/* Interface density (Preferences › Appearance): the room between things,
+/* Interface density (Attune › Appearance): the room between things,
    scaled from what Default has. */
 :root[data-density="compact"] {
   --density: 0.72;

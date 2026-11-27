@@ -1,4 +1,4 @@
-// A book written in Quire laid out as printed pages, for a PDF: a trim size
+// A book written in Scribe laid out as printed pages, for a PDF: a trim size
 // the print-on-demand services accept (KDP, IngramSpark), mirrored margins
 // with an inside margin (gutter) that grows with the page count, running
 // heads, page numbers, chapters that can open on a right-hand page, and

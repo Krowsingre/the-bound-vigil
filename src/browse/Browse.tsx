@@ -1,4 +1,4 @@
-// Discover › Scry: a web browser, with ebooks you download offered to your
+// Discover › Nexus: a web browser, with ebooks you download offered to your
 // library. Whatever comes in joins the import queue like any other book. The
 // catalogues are Discover's Libram page now (catalogs/Libram.tsx).
 

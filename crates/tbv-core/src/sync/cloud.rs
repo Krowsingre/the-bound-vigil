@@ -285,7 +285,7 @@ fn token_answer(service: Service, status: u16, answer: &Value) -> Result<Tokens>
 }
 
 pub(crate) fn signed_out(service: Service) -> Error {
-    Error::Cloud(format!("{} signed TBV out. Sign in again in Preferences › Sync.", service.name()))
+    Error::Cloud(format!("{} signed TBV out. Sign in again in Attune › Sync.", service.name()))
 }
 
 /// Finishes a sign-in with what the browser brought back.

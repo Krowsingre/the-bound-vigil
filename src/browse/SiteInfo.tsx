@@ -59,7 +59,7 @@ export function SiteInfo({ url, actions }: { url: string; actions: SiteActions }
         <div className="site-info-rows">
           <Toggle
             label="Protection"
-            hint={prefs.protection === "off" ? "Protection is off for every site in Preferences › Discover." : lowered ? "Lowered for this site, so it can work properly." : "Trackers and the like are blocked here."}
+            hint={prefs.protection === "off" ? "Protection is off for every site in Attunement › Discover." : lowered ? "Lowered for this site, so it can work properly." : "Trackers and the like are blocked here."}
             checked={prefs.protection !== "off" && !lowered}
             disabled={prefs.protection === "off"}
             onChange={(on) => actions.onProtection(!on)}

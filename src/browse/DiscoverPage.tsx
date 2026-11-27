@@ -1,13 +1,13 @@
-// The pieces Discover's own pages (Geas and Libram) are built from, after
+// The pieces Discover's own pages (Commune and Libram) are built from, after
 // embre's pictures of 13 November: a heading with the page's mark, and cards
 // that each start with an icon and a title.
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "../components/Icon";
 
 /** The page's mark, name and caption. "row" puts the line about the page beside
- * them after a short upright rule (Geas); "stacked" puts it underneath (Libram). */
+ * them after a short upright rule (Commune); "stacked" puts it underneath (Libram). */
 export function DiscoverHeader({ icon, title, caption, about, layout = "row" }: {
-  /** None on Geas (embre, 19 November). */
+  /** None on Commune (embre, 19 November). */
   icon?: IconName;
   title: string;
   caption: string;

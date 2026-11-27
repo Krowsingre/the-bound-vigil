@@ -1250,7 +1250,7 @@ kbd {
   gap: 10px;
 }
 
-/* Preferences › Sync: moving or backing up the library. */
+/* Attune › Sync: moving or backing up the library. */
 .move-panel {
   gap: 12px;
 }
@@ -1374,7 +1374,7 @@ kbd {
   gap: 8px;
 }
 
-/* Preferences › Sync › What's in Supabase. */
+/* Attune › Sync › What's in Supabase. */
 .contents-panel {
   display: grid;
   gap: 10px;
@@ -1536,14 +1536,14 @@ kbd {
   font-size: 13px;
 }
 
-/* Preferences › Sync & Accounts › Names: the two name boxes side by side. */
+/* Attune › Sync & Accounts › Names: the two name boxes side by side. */
 .names-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
 }
 
-/* Preferences › Profile: the picture as the sync circle shows it, then its buttons. */
+/* Attune › Profile: the picture as the sync circle shows it, then its buttons. */
 .profile-card {
   display: flex;
   align-items: center;
@@ -1676,7 +1676,7 @@ kbd {
   justify-self: stretch;
 }
 
-/* Preferences › Archive › Reading history. */
+/* Attune › Archive › Reading history. */
 .history-search {
   display: flex;
   align-items: center;
@@ -1740,7 +1740,7 @@ kbd {
   font-size: 12px;
 }
 
-/* A computer's Preferences: the list of pages in groups, the page's name
+/* A computer's Attune: the list of pages in groups, the page's name
    over a small ornament, and its cards in two columns. */
 .settings-landing + .settings-landing {
   margin-top: 16px;
@@ -2179,7 +2179,7 @@ kbd {
   }
 }
 
-/* Preferences › Compendium › Watching: a name (or title and author) and Watch. */
+/* Attune › Compendium › Watching: a name (or title and author) and Watch. */
 .watch-add {
   display: flex;
   gap: 8px;
@@ -2406,7 +2406,7 @@ kbd {
   white-space: nowrap;
 }
 
-/* Preferences › Library › Deleted books: books TBV remembers, each with Forget. */
+/* Attune › Library › Deleted books: books TBV remembers, each with Forget. */
 .deleted-books {
   margin-top: 12px;
 }
@@ -2437,7 +2437,7 @@ kbd {
   white-space: nowrap;
 }
 
-/* Preferences on a computer, eight pages (embre, 21 November). */
+/* Attune on a computer, eight pages (embre, 21 November). */
 .settings-desk-part + .settings-desk-part,
 .settings-body > .prefs-columns + .prefs-columns,
 .settings-body > .prefs-columns + .settings-section,
@@ -2484,4 +2484,580 @@ kbd {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+}
+
+/* ── Attune design framework (embre, 27 November) ───────────────────────────
+   Shared spacing for pages rebuilt to the framework, starting with Account.
+   Every value lives here; pages and sections don't set their own. Room between
+   things follows Interface density (--density); Interface size zooms it all. The
+   :root in front outranks the older density rules for .settings-body in shell.css. */
+:root .settings-body.attune {
+  --at-pad: calc(20px * var(--density, 1));
+  --at-section-gap: calc(12px * var(--density, 1));
+  --at-card-pad: calc(16px * var(--density, 1));
+  --at-control-gap: calc(12px * var(--density, 1));
+  --at-label-gap: 6px;
+  --at-hint-gap: 4px;
+  --at-button-gap: 8px;
+  --at-control-h: 36px;
+  gap: var(--at-section-gap);
+  max-width: none;
+  padding: var(--at-pad);
+}
+
+/* Sections sit side by side while each has room, one above the other when not. */
+.attune-page {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
+  align-items: start;
+  gap: var(--at-section-gap);
+}
+
+.attune-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-control-gap);
+  min-width: 0;
+  padding: var(--at-card-pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  scroll-margin-top: var(--at-pad);
+  transition: box-shadow 0.3s;
+}
+
+.attune-section.is-found {
+  box-shadow: 0 0 0 2px var(--focus);
+}
+
+.attune-section-head {
+  margin: 0;
+  font: 600 16px/1.3 var(--font-serif);
+}
+
+.attune-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-label-gap);
+  min-width: 0;
+}
+
+.attune-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.attune-hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.attune-field > .attune-hint {
+  margin-top: calc(var(--at-hint-gap) - var(--at-label-gap));
+}
+
+.attune-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.attune-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: var(--at-control-h);
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text);
+  font: 400 14px var(--font-sans);
+  outline: none;
+  user-select: text;
+}
+
+.attune-input:focus {
+  border-color: var(--focus);
+}
+
+.attune .btn {
+  height: var(--at-control-h);
+}
+
+.attune-buttons,
+.attune-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--at-button-gap);
+}
+
+.attune-inline > .attune-input {
+  flex: 1 1 180px;
+  width: auto;
+}
+
+/* Two equal columns of fields, one above the other when narrow. */
+.attune-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: var(--at-control-gap);
+}
+
+/* Account */
+.account-picture-row {
+  display: flex;
+  align-items: center;
+  gap: var(--at-control-gap);
+}
+
+.account-code {
+  display: flex;
+  align-items: center;
+  background: var(--surface-sunk);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  user-select: all;
+  -webkit-user-select: all;
+}
+
+/* The code, the name and Save on one row, their bottoms lined up; they wrap when narrow. */
+.account-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--at-control-gap);
+}
+
+.account-add > .attune-field {
+  flex: 1 1 180px;
+}
+
+.account-add > .btn {
+  flex: none;
+}
+
+.account-friends,
+.account-empty {
+  padding-top: var(--at-control-gap);
+  border-top: 1px solid var(--border);
+}
+
+.account-friends .oathkin-friend {
+  padding: var(--at-label-gap) 0;
+}
+
+/* ── Attunement pages (embre, 27 November) ───────────────────────────────────
+   Folding cards one under another; short ones share a row and come out the same
+   height, their rows spread evenly. Rows: name on the left, control on the right. */
+.at-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-section-gap);
+}
+
+.at-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  align-items: stretch;
+  gap: var(--at-section-gap);
+}
+
+.at-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-control-gap);
+  min-width: 0;
+  padding: var(--at-card-pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  scroll-margin-top: var(--at-pad);
+  transition: box-shadow 0.3s;
+}
+
+.at-section.is-found {
+  box-shadow: 0 0 0 2px var(--focus);
+}
+
+.at-anchor {
+  display: block;
+  height: 0;
+  margin-bottom: calc(var(--at-control-gap) * -1);
+}
+
+.at-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--at-button-gap);
+  padding-bottom: var(--at-control-gap);
+  border-bottom: 1px solid var(--border);
+}
+
+.at-section.is-folded .at-head {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.at-head h2 {
+  margin: 0;
+  font: 600 16px/1.3 var(--font-serif);
+}
+
+.at-fold {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.at-fold:hover {
+  background: var(--surface-sunk);
+  color: var(--text);
+}
+
+.at-section.is-folded .at-fold svg {
+  transform: rotate(-90deg);
+}
+
+.at-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.at-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 32%) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--at-control-gap);
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.at-row:first-child {
+  border-top: 0;
+}
+
+.at-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.at-row-label {
+  font-size: 14px;
+}
+
+.at-row-hint {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.at-row-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--at-button-gap);
+  min-width: 0;
+}
+
+.at-row.is-wide > .at-row-control {
+  justify-content: stretch;
+}
+
+/* In a pair, the name takes what it needs; choice bars and sliders go under it. */
+.at-pair .at-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.at-pair .at-row.is-stacked {
+  grid-template-columns: 1fr;
+  gap: var(--at-label-gap);
+}
+
+/* A paired section grows to its partner's height, and its rows spread out evenly. */
+.at-pair > .at-section > .at-rows {
+  flex: 1;
+}
+
+.at-pair > .at-section > .at-rows > .at-row {
+  flex: 1;
+  align-content: center;
+}
+
+.at-choice {
+  display: grid !important;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  width: 100%;
+}
+
+.at-choice > button {
+  justify-content: center;
+  min-width: 0;
+  font-size: 13.5px;
+  text-align: center;
+}
+
+/* Page colour: separate buttons, each in its own colour, with room between them. */
+.at-choice.is-swatches {
+  gap: var(--at-button-gap);
+  padding: 0;
+  background: none;
+}
+
+.at-choice.is-swatches > button {
+  height: var(--at-control-h);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m, 8px);
+}
+
+.at-choice.is-swatches > button[aria-checked="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+.at-slider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px;
+  align-items: center;
+  column-gap: 12px;
+  width: 100%;
+}
+
+.at-slider input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.at-slider-value {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.at-slider-ends {
+  display: flex;
+  grid-column: 1;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.at-section .settings-select {
+  min-width: 160px;
+}
+
+.at-more {
+  border-top: 1px solid var(--border);
+}
+
+.at-more-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.at-more-head svg {
+  color: var(--text-muted);
+  transform: rotate(-90deg);
+}
+
+.at-more.is-open .at-more-head svg {
+  transform: none;
+}
+
+.at-more-body {
+  padding-bottom: var(--at-control-gap);
+}
+
+.at-path {
+  flex: 1 1 240px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: var(--surface-sunk);
+  font: 12px ui-monospace, "SF Mono", Menlo, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Appearance › Surface: a tile in each surface's colour. */
+.at-tiles {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--at-control-gap);
+}
+
+.at-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.at-tile-face {
+  width: 100%;
+  height: 56px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m, 8px);
+}
+
+.at-tile[aria-checked="true"] .at-tile-face {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+.at-tile-face.is-clean { background: #faf9f6; }
+.at-tile-face.is-matte { background: #e9e6e1; }
+.at-tile-face.is-paper { background: #efe9dd; }
+.at-tile-face.is-linen { background: #ece4d6; }
+.at-tile-face.is-vellum { background: #f2ece2; }
+:root[data-theme="dark"] .at-tile-face.is-clean { background: var(--crow-ink); }
+:root[data-theme="dark"] .at-tile-face.is-matte { background: #1d1f21; }
+:root[data-theme="dark"] .at-tile-face.is-paper { background: #1f1d1a; }
+:root[data-theme="dark"] .at-tile-face.is-linen { background: #211e1a; }
+:root[data-theme="dark"] .at-tile-face.is-vellum { background: #1e1c1a; }
+
+/* Reading › the sample page, drawn as the book will be. */
+.at-sample {
+  padding: 20px 28px;
+}
+
+.at-sample p {
+  margin: 0 auto 8px;
+  max-width: 720px;
+}
+
+.at-sample-note {
+  display: block;
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
+  opacity: 0.75;
+}
+
+/* Lists and chips inside a card. */
+.at-section .tag-manage,
+.at-section .deleted-books,
+.at-section .history-list {
+  margin: 0;
+}
+
+.at-form {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--at-button-gap);
+}
+
+.at-form > .attune-input {
+  flex: 1 1 160px;
+  width: auto;
+}
+
+.at-row-control > .settings-segmented {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  width: 100%;
+}
+
+.at-row-control > .range-row {
+  width: 100%;
+}
+
+/* Adaptive's and Custom's own settings, under the theme cards. */
+.at-theme-extra {
+  padding-top: var(--at-control-gap);
+  border-top: 1px solid var(--border);
+}
+
+.at-theme-extra > .toggle-list,
+.at-theme-extra .at-row {
+  border-top: 1px solid var(--border);
+}
+
+/* Account › Visage: the picture with its button, the names and Signet beside it. */
+.account-visage {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: calc(var(--at-control-gap) * 2);
+}
+
+.account-visage-picture {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--at-control-gap);
+}
+
+.account-visage-picture .profile-picture {
+  width: 72px;
+  height: 72px;
+}
+
+.account-visage-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-control-gap);
+  min-width: 0;
+}
+
+.account-foot {
+  padding-top: var(--at-control-gap);
+  border-top: 1px solid var(--border);
+}
+
+.at-section .account-friends {
+  margin: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.at-section .segmented,
+.at-section .settings-select {
+  margin: 0;
+}
+
+/* The theme cards are picked by clicking them; their radio buttons stay for the keyboard. */
+.at-section .theme-card input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }

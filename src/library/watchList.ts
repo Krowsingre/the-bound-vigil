@@ -1,6 +1,6 @@
 // Watching authors and books (embre, 19 November). Each watched author's
 // books are looked up online with the series check (same schedule, set in
-// Preferences › Compendium), and each watched book's release date. News is
+// Attune › Compendium), and each watched book's release date. News is
 // a book newly announced, or one whose release date has come; it shows in
 // Sanctum and as a message when a check finds it. Nothing is added to the
 // library. The list is kept on this device, like the series news.

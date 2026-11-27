@@ -1,4 +1,4 @@
-// Quire's Books tab: a banner to start a book, the four ways to start one,
+// Scribe's Books tab: a banner to start a book, the four ways to start one,
 // and the books you're writing, as cards or a list. Each book has a menu
 // (its ••• button, a right-click, or holding it on a phone) with the same
 // windows the open book uses.
@@ -267,7 +267,7 @@ export function ScribeBooks({
       icon: "download",
       onSelect: () =>
         void saveAsTbv(p.id).then(
-          (saved) => saved && toast(`Saved “${p.title}” as a Quire book file. Open it in Quire with Import a manuscript.`),
+          (saved) => saved && toast(`Saved “${p.title}” as a Scribe book file. Open it in Scribe with Import a manuscript.`),
           (e: unknown) => toast(`Couldn't save the book file: ${String(e).replace(/^Error: /, "")}`),
         ),
     },

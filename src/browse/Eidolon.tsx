@@ -32,7 +32,7 @@ export function Eidolon({ state, sheets, onClose }: { state: EidolonState; sheet
   const audio = state.mode === "audio";
 
   // The one player comes here while Eidolon is open, and goes on playing out
-  // of sight when Scry closes (background sound, embre 19 November).
+  // of sight when Nexus closes (background sound, embre 19 November).
   useLayoutEffect(() => {
     if (place.current) showIn(place.current);
   }, [audio]);

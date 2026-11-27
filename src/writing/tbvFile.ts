@@ -1,4 +1,4 @@
-// The Quire book file (.tbv): one file holding a whole book as Quire has it,
+// The Scribe book file (.tbv): one file holding a whole book as Scribe has it,
 // so opening it rebuilds the book exactly, with nothing guessed. It isn't
 // locked: like EPUB and Word files it's an ordinary zip, holding
 //
@@ -6,13 +6,13 @@
 //   book.json         the book's details, its settings (styles, store editions,
 //                     sources, copyright, print) and every page in order, each
 //                     with its kind, its area and the part it's in
-//   pages/0001.html   each page's words, as Quire's editor keeps them
+//   pages/0001.html   each page's words, as Scribe's editor keeps them
 //   images/…          the pictures in the pages, taken out of them
 //   cover.jpg|png     the cover picture
 //   notes/0001.html   the book's notes
 //
 // The table of contents isn't written out: a Contents page only marks where
-// it goes, and Quire makes it from the pages. The signed records of where
+// it goes, and Scribe makes it from the pages. The signed records of where
 // the book came from travel in book.json and are signed into the new book's
 // own record when the file is opened (see ImportBook.tsx).
 
@@ -58,7 +58,7 @@ export interface TbvBook {
   language: string | null;
   description: string | null;
   coverPage: WritingProject["coverPage"];
-  /** The export settings, as Quire keeps them (src/writing/epub.ts). */
+  /** The export settings, as Scribe keeps them (src/writing/epub.ts). */
   settings: Record<string, unknown>;
   cover: { bytes: Uint8Array; extension: "png" | "jpg" } | null;
   pages: TbvPage[];
@@ -220,12 +220,12 @@ export function readTbv(bytes: Uint8Array): TbvBook {
       },
     });
   } catch {
-    throw new Error("That Quire book file couldn't be opened. It may be damaged or only partly copied.");
+    throw new Error("That Scribe book file couldn't be opened. It may be damaged or only partly copied.");
   }
   const text = (path: unknown) => (typeof path === "string" && files[path] ? strFromU8(files[path]) : "");
-  if (files.mimetype && text("mimetype").trim() !== TBV_MIME) throw new Error("That isn't a Quire book file.");
+  if (files.mimetype && text("mimetype").trim() !== TBV_MIME) throw new Error("That isn't a Scribe book file.");
   const json = parseJson(text("book.json"));
-  if (!files["book.json"] || json.format !== "The Bound Vigil book") throw new Error("That isn't a Quire book file, or its book.json is damaged.");
+  if (!files["book.json"] || json.format !== "The Bound Vigil book") throw new Error("That isn't a Scribe book file, or its book.json is damaged.");
   const formatVersion = typeof json.formatVersion === "number" ? json.formatVersion : 1;
   const details = (json.book && typeof json.book === "object" ? json.book : {}) as Record<string, unknown>;
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);

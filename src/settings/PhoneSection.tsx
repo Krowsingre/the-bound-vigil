@@ -1,4 +1,4 @@
-// Preferences › Sync › Books for your phone: whether Supabase (the phone's
+// Attune › Sync › Books for your phone: whether Supabase (the phone's
 // place) gets every book on this computer, or only the ones chosen for the
 // phone. Books are chosen with "Send to device" on a book's menu, or asked
 // for from the phone itself.

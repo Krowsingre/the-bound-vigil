@@ -1,7 +1,7 @@
-// Picture in picture, back to the page: when a video popped out of a Scry
+// Picture in picture, back to the page: when a video popped out of a Nexus
 // tab is brought back to full size (the button on the floating video), TBV
-// goes to Discover › Scry and that tab, as chosen in Preferences › Discover.
-// Sites can't tell TBV anything, so TBV asks: Scry notes which tabs have a
+// goes to Discover › Nexus and that tab, as chosen in Attune › Discover.
+// Sites can't tell TBV anything, so TBV asks: Nexus notes which tabs have a
 // popped-out video, and those are watched until the video comes back.
 // Brought back, the video goes on playing; closed, it stops. That's how the
 // two are told apart.
@@ -23,14 +23,14 @@ interface PipState {
   playing: boolean;
 }
 
-/** Asked for when a popped-out video comes back: Scry, at this tab. */
+/** Asked for when a popped-out video comes back: Nexus, at this tab. */
 export const PIP_RETURN = "tbv:pip-return";
 
 const watched = new Set<string>();
 let timer = 0;
 let stillOpen: (tab: string) => boolean = () => true;
 
-/** Scry says which tabs are still open (a closed tab's page can outlive it while its video is popped out). */
+/** Nexus says which tabs are still open (a closed tab's page can outlive it while its video is popped out). */
 export function whenStillOpen(check: (tab: string) => boolean) {
   stillOpen = check;
 }

@@ -12,7 +12,7 @@ export function useNavigationShortcuts({ back, forward, reading, discover, webpa
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (reading || event.defaultPrevented) return;
-      // Alt+arrow moves through app screens; in Scry it moves through webpages and Shift is added for app screens.
+      // Alt+arrow moves through app screens; in Nexus it moves through webpages and Shift is added for app screens.
       const direction = navigationDirection(event, discover);
       if (direction) {
         event.preventDefault();

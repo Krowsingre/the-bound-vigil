@@ -2,7 +2,7 @@ import type { IconName } from "../components/Icon";
 
 export type Route = "home" | "library" | "documents" | "collections" | "audiobooks" | "notes" | "settings" | "sync" | "imports" | "activity" | "lining" | "places" | "book" | "writing" | "catalogs" | "geas" | "libram";
 
-/** An iPhone's Quire holds only Reading notes for now (embre, 19 November). */
+/** An iPhone's Scribe holds only Reading notes for now (embre, 19 November). */
 const iPhone = typeof navigator !== "undefined" && /iPhone|iPod/.test(navigator.userAgent);
 
 /** Each page's name, and the few words under it in the sidebar (Discover has none: its submenu says it). */
@@ -11,17 +11,17 @@ export const PAGE: Record<"home" | "library" | "collections" | "audiobooks" | "w
   library: { label: "Archive", caption: "Books & documents" },
   audiobooks: { label: "Resonance", caption: "Audiobooks" },
   collections: { label: "Compendium", caption: "Your collections" },
-  writing: { label: "Quire", caption: iPhone ? "Reading notes" : "Notes & manuscripts" },
+  writing: { label: "Scribe", caption: iPhone ? "Reading notes" : "Notes & manuscripts" },
   catalogs: { label: "Discover", caption: "" },
-  settings: { label: "Preferences", caption: "Settings & sync" },
+  settings: { label: "Attunement", caption: "Settings & sync" },
 };
 
-/** Discover's submenu in the sidebar: the browser (Scry) and bringing things
- * in from servers (Geas) (embre, 13 November). Libram, the catalogues, is
+/** Discover's submenu in the sidebar: the browser (Nexus) and bringing things
+ * in from servers (Commune) (embre, 13 November). Libram, the catalogues, is
  * hidden until it comes back as Nexus after release (embre, 19 November). */
 export const DISCOVER_MENU: { route: Route; label: string; caption: string; icon: IconName }[] = [
-  { route: "catalogs", label: "Scry", caption: "The web", icon: "globe" },
-  { route: "geas", label: "Geas", caption: "Transfers", icon: "database" },
+  { route: "catalogs", label: "Nexus", caption: "The web", icon: "globe" },
+  { route: "geas", label: "Commune", caption: "Transfers", icon: "database" },
 ];
 
 export const NAV: { route: Route; label: string; caption: string; icon: IconName }[] = [
@@ -35,7 +35,7 @@ export const NAV: { route: Route; label: string; caption: string; icon: IconName
 ];
 
 /** The pages this copy of TBV shows. Discover needs the app (a web page can't
- * reach most catalogs or hold a browser). Quire holds notes too; the books you
+ * reach most catalogs or hold a browser). Scribe holds notes too; the books you
  * write need synced records, which the phone at home doesn't keep, so there
  * it's only notes. */
 export function navFor({ web, home, android = false }: { web: boolean; home: boolean; android?: boolean }) {
@@ -50,8 +50,8 @@ export function routesFor(flags: { web: boolean; home: boolean; android?: boolea
   return navFor(flags).flatMap((n) => (n.route === "catalogs" ? DISCOVER_MENU.map((d) => d.route) : [n.route]));
 }
 
-/** Sync & Accounts lives inside Preferences, so Preferences stays highlighted;
- * notes are part of Quire, and documents of the Archive. */
+/** Sync & Accounts lives inside Attune, so Attune stays highlighted;
+ * notes are part of Scribe, and documents of the Archive. */
 export function navRouteOf(route: Route): Route {
   return route === "sync" ? "settings" : route === "notes" ? "writing" : route === "documents" ? "library" : route;
 }

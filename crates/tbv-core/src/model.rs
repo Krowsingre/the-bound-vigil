@@ -502,7 +502,7 @@ pub enum ImportResult {
         book_id: BookId,
         title: String,
     },
-    /// Deleted before, and Preferences › Library says to leave such books out.
+    /// Deleted before, and Attune › Library says to leave such books out.
     SkippedDeleted {
         path: String,
         book_id: BookId,

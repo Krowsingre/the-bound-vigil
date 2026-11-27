@@ -305,7 +305,7 @@ export function StartPage({
                 <Icon name="close" size={18} />
               </button>
             </header>
-            <p className="muted">A picture behind the start page, on this device. It's also in Preferences › Discover.</p>
+            <p className="muted">A picture behind the start page, on this device. It's also in Attunement › Discover.</p>
             <DiscoverBackgroundPicker value={prefs.background} onError={toast} />
           </div>
         </div>

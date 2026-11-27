@@ -59,7 +59,7 @@ export function Imports({
   onImportBooks: () => void;
   onImportFolder: () => void;
   onOpenBook: (bookId: string) => void;
-  /** Shown inside Preferences › Activity, which gives the page its name. */
+  /** Shown inside Attune › Activity, which gives the page its name. */
   embedded?: boolean;
 }) {
   const { done, total, running } = importCounts(view);

@@ -38,7 +38,7 @@ it("stays put when the floating video is closed instead", async () => {
   expect(pip.watchedTabs()).toEqual([]);
 });
 
-it("stays put when Preferences says so, or the tab was closed", async () => {
+it("stays put when Attune says so, or the tab was closed", async () => {
   localStorage.setItem("tbv.browser.prefs", JSON.stringify({ pipReturn: false }));
   const { pip, asked } = await watching([{ out: false, playing: true }, { out: false, playing: true }]);
   pip.notePopped("tab-1");

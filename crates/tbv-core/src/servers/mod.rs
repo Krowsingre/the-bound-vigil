@@ -187,7 +187,7 @@ impl Library {
         self.servers()?
             .into_iter()
             .find(|s| s.id == id)
-            .ok_or_else(|| Error::Unsuitable("That server isn't saved any more. Add it again in Discover › Geas.".into()))
+            .ok_or_else(|| Error::Unsuitable("That server isn't saved any more. Add it again in Discover › Commune.".into()))
     }
 
     fn save_servers(&self, servers: &[Server]) -> Result<()> {

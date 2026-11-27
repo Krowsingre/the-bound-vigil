@@ -1,5 +1,5 @@
 // Eidolon's player: one video element for the whole app, so what's playing
-// can go on playing after leaving Scry or with TBV out of sight (embre, 19
+// can go on playing after leaving Nexus or with TBV out of sight (embre, 19
 // November: background sound on every device). Eidolon shows it while it's
 // open; otherwise it waits, still playing, in a hidden corner of the page
 // (a media element taken out of the page stops). The video comes through TBV

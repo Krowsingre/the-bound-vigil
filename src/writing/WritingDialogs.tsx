@@ -76,7 +76,7 @@ export function NewBookDialog({
 }: {
   onCreated: (id: string) => void;
   onCancel: () => void;
-  /** The template chosen on Quire's Books page. */
+  /** The template chosen on Scribe's Books page. */
   startWith?: Template;
 }) {
   const [title, setTitle] = useState("");
@@ -798,7 +798,7 @@ const dateOf = (iso: string) => new Date(iso).toLocaleDateString(undefined, { da
 /**
  * A book's drafts. A new draft keeps the book as it stands, locked, and you
  * carry on writing; earlier drafts open in the reader for highlights and
- * notes, and stay in Quire (never the Archive).
+ * notes, and stay in Scribe (never the Archive).
  */
 export function DraftsDialog({
   project,

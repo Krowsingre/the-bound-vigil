@@ -1,5 +1,5 @@
 import { RememberedDetails } from "../components/RememberedDetails";
-// Preferences › Sync › What's in Supabase: every file TBV keeps there, by type,
+// Attune › Sync › What's in Supabase: every file TBV keeps there, by type,
 // and removing any of them. Tidy up Supabase does the usual clear-out; this
 // is for choosing exactly what goes.
 

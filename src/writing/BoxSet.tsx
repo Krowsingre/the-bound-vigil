@@ -1,4 +1,4 @@
-// A box set: several books you've written in Quire joined into one new
+// A box set: several books you've written in Scribe joined into one new
 // book. Each becomes a part of it, keeping its own front and back matter
 // (copyright, dedication, acknowledgements…) and its chapters, numbered from
 // 1 again in each. The books themselves are left as they are.
@@ -126,7 +126,7 @@ export function BoxSetDialog({ onCreated, onCancel }: { onCreated: (id: string) 
         {!projects ? (
           <p className="muted">{error ? "" : "Finding your books…"}</p>
         ) : projects.length < 2 ? (
-          <p className="muted">A box set needs at least two books written in Quire.</p>
+          <p className="muted">A box set needs at least two books written in Scribe.</p>
         ) : (
           <ol className="box-set-books">
             {[...picked, ...projects.filter((p) => !chosen.includes(p.id))].map((p) => {

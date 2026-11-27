@@ -142,7 +142,7 @@ export function previewNotes(
         ],
   );
   const markOf = (id: string) => marks.get(id) ?? { pinnedAt: null, tags: [] };
-  // The Quire book each personal note belongs to.
+  // The Scribe book each personal note belongs to.
   const projects = new Map<string, { id: string; title: string }>();
 
   const toItem = (a: Annotation): NoteItem | null => {

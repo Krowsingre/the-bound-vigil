@@ -107,7 +107,7 @@ function CatalogDialog({
         <h2>{catalog ? "Edit catalogue" : sourcesOnly ? "Catalogue sources" : "Add a catalogue"}</h2>
         {!sourcesOnly && (
           <>
-            {!catalog && <p className="muted dialog-lede">An Audiobookshelf server is signed in to in Discover › Geas, and then shows here.</p>}
+            {!catalog && <p className="muted dialog-lede">An Audiobookshelf server is signed in to in Discover › Commune, and then shows here.</p>}
             {abs ? (
               <p className="muted dialog-lede">
                 Sign in with the username and password you use for Audiobookshelf. You can look through its libraries here and bring audiobooks and ebooks

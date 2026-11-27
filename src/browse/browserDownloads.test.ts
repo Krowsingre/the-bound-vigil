@@ -111,7 +111,7 @@ it("resumes checking a completed file after restart and keeps it available to im
   }
 });
 
-it("fetches a book the page couldn't finish once, however often Scry is opened again", async () => {
+it("fetches a book the page couldn't finish once, however often Nexus is opened again", async () => {
   vi.resetModules();
   native.downloadWebBook.mockResolvedValue(undefined);
   let receive: (event: BrowserEvent) => void = () => undefined;

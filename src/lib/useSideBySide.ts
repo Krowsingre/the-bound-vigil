@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { isPhone } from "./shortcuts";
 
 /**
- * Room for Quire's three columns (contents, page, tools): a computer, or a
+ * Room for Scribe's three columns (contents, page, tools): a computer, or a
  * tablet such as an iPad held sideways (embre, 18 November). Phones, tablets
  * held upright and windows narrowed past this keep the phone's one column.
  */

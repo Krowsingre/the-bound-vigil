@@ -46,7 +46,7 @@ export function Sidebar({
   useEffect(() => onLiningUp(setLining), []);
   const liningPercent = lining ? Math.floor(lining.fraction * 100) : 0;
   const [spin, setSpin] = useState<"inner" | "outer" | null>(null);
-  // Discover opens and closes its submenu (Scry, Geas), and remembers which.
+  // Discover opens and closes its submenu (Nexus, Commune), and remembers which.
   const [discoverOpen, setDiscoverOpen] = useState(() => {
     try {
       return localStorage.getItem(DISCOVER_OPEN_KEY) !== "0";
@@ -111,7 +111,11 @@ export function Sidebar({
                   The Bound Vigil
                 </button>
               )}
-              <span className="brand-tagline">Guardians of the realms of the imagination</span>
+              <span className="brand-tagline">
+                Guardians of the realms
+                <br />
+                of the imagination
+              </span>
               <span className="brand-divider" aria-hidden />
             </>
           )}
@@ -225,7 +229,11 @@ export function Sidebar({
         {!collapsed && (
           <figure className="sidebar-quote" aria-hidden>
             <span className="sidebar-rule" />
-            <blockquote>Wider worlds live in these pages.</blockquote>
+            <blockquote>
+              Wider worlds live
+              <br />
+              between these pages
+            </blockquote>
             <figcaption className="sidebar-quote-by">Krowsingre</figcaption>
             <span className="sidebar-rule" />
           </figure>

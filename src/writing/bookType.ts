@@ -1,4 +1,4 @@
-// What kind of book a book in Quire is, as the writer says (embre, 18
+// What kind of book a book in Scribe is, as the writer says (embre, 18
 // November): picked in Book details, or typed in as their own. Books that
 // never had one chosen show what their template was, and are never changed
 // for the writer.

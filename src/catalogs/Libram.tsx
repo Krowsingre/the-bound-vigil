@@ -6,7 +6,7 @@ import { Catalogs } from "./Catalogs";
 export function Libram({ refreshKey, onOpenBook, onOpenSite }: {
   refreshKey: number;
   onOpenBook: (bookId: string, at?: string) => void;
-  /** A catalogue's website, opened in Scry. */
+  /** A catalogue's website, opened in Nexus. */
   onOpenSite: (url: string) => void;
 }) {
   return (

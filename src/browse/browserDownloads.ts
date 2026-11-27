@@ -198,7 +198,7 @@ async function finishDownload(row: Fetched, toast: (message: string) => void) {
  * A book file the page's own download couldn't finish (the browser
  * interrupted it), by its link or by the name the site gave it, is fetched once by TBV itself and added to the library,
  * as "Download and add to library" does by hand. Once means once: the mark
- * is kept on the row, so leaving Scry and coming back doesn't fetch it again
+ * is kept on the row, so leaving Nexus and coming back doesn't fetch it again
  * (that was one click saving the same book 5 or 6 times).
  */
 function fallBack(row: Fetched | undefined, toast: (message: string) => void) {

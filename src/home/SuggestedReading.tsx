@@ -3,7 +3,7 @@
 // 1. Krowsingre Publishing's own list, read from krowsingre.github.io, so a
 //    new book shows without an update;
 // 2. other books by the authors you read most, found on Open Library (only
-//    author names are sent; off in Preferences › Appearance › Sanctum);
+//    author names are sent; off in Attune › Appearance › Sanctum);
 // 3. books you own and haven't started, Up next first.
 // The online ones are looked up once a day and kept here till the next.
 // One you've read or dropped elsewhere can be marked so, and rated: it goes

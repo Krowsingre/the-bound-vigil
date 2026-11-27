@@ -1,4 +1,4 @@
-// Turning a manuscript into a Quire book: what kind of file it is (before
+// Turning a manuscript into a Scribe book: what kind of file it is (before
 // anything is made), then the book's sections sorted into Front, Body and
 // Back with what each one is, and a report of anything to check. The words
 // themselves are never rewritten, reordered or added to: when it's unclear
@@ -15,7 +15,7 @@ export interface Inspection {
   /** docx, odt, rtf, txt, md, html, epub, kindle_create, kpf, pdf… */
   format: string;
   label: string;
-  /** Quire can rebuild a book from it. */
+  /** Scribe can rebuild a book from it. */
   supported: boolean;
   /** Why not, and what to do instead, in plain words. */
   reason?: string;
@@ -38,14 +38,14 @@ const LABELS: Record<string, string> = {
 
 const extensionOf = (name: string) => /\.([^.]+)$/.exec(name)?.[1]?.toLowerCase() ?? "";
 
-/** Looks at a file without making anything: its kind, and whether Quire can rebuild a book from it. */
+/** Looks at a file without making anything: its kind, and whether Scribe can rebuild a book from it. */
 export function inspect(name: string, bytes: Uint8Array): Inspection {
   const ext = extensionOf(name);
-  // Saved from Quire: opened as it was, nothing rebuilt (damage is reported when it's read).
-  if (isTbv(bytes)) return { format: "tbv", label: "Quire book file", supported: true };
+  // Saved from Scribe: opened as it was, nothing rebuilt (damage is reported when it's read).
+  if (isTbv(bytes)) return { format: "tbv", label: "Scribe book file", supported: true };
   // Written by hand in a text editor: book.md and its pictures, zipped (tbvText.ts).
   if ((ext === "tbv" || ext === "zip") && isTextBookZip(bytes)) return { format: "tbv_text", label: "Book written by hand", supported: true };
-  if (ext === "tbv") return { format: "tbv", label: "Quire book file", supported: true };
+  if (ext === "tbv") return { format: "tbv", label: "Scribe book file", supported: true };
   if (LABELS[ext]) return { format: ext === "markdown" ? "md" : ext === "htm" ? "html" : ext, label: LABELS[ext], supported: true };
   if (ext === "pdf") return { format: "pdf", label: "PDF", supported: true };
   if (ext === "kcb")
@@ -69,7 +69,7 @@ export function inspect(name: string, bytes: Uint8Array): Inspection {
     }
     const kindle = names.some((n) => /(^|\/)book\.kcb$/i.test(n) || /(^|\/)book\.kdf$/i.test(n) || /(^|\/)resources\/ManifestFile$/i.test(n));
     if (ext === "kpf" || kindle) {
-      // Made from a PDF, its words are in that PDF, which Quire reads.
+      // Made from a PDF, its words are in that PDF, which Scribe reads.
       if (kindle && fixedLayout(bytes, names)) return { format: "kindle_create", label: "Kindle Create project (made from a PDF)", supported: true };
       return {
         format: kindle ? "kindle_create" : "kpf",
@@ -80,7 +80,7 @@ export function inspect(name: string, bytes: Uint8Array): Inspection {
     }
     return { format: "zip", label: "Zip file", supported: false, reason: "Choose the manuscript itself: Word, OpenDocument, RTF, text, Markdown, HTML, EPUB or PDF." };
   }
-  return { format: ext || "unknown", label: ext ? `.${ext} file` : "File", supported: false, reason: "Quire can rebuild a book from Word, OpenDocument, RTF, plain text, Markdown, HTML, EPUB and PDF files, and Kindle Create projects made from a PDF." };
+  return { format: ext || "unknown", label: ext ? `.${ext} file` : "File", supported: false, reason: "Scribe can rebuild a book from Word, OpenDocument, RTF, plain text, Markdown, HTML, EPUB and PDF files, and Kindle Create projects made from a PDF." };
 }
 
 /** A Kindle Create project made from a PDF keeps it in resources/res. */
@@ -98,7 +98,7 @@ function fixedLayout(bytes: Uint8Array, names: string[]): boolean {
   }
 }
 
-/** One section of the book as Quire will make it. */
+/** One section of the book as Scribe will make it. */
 export interface ManuscriptSection {
   title: string;
   body: string;
@@ -220,7 +220,7 @@ const MARK_NAMES: Record<string, PageKind | "part" | "end part"> = (() => {
   return names;
 })();
 
-/** What a page mark's name means, or null when it names nothing Quire knows. */
+/** What a page mark's name means, or null when it names nothing Scribe knows. */
 export function markKind(name: string): PageKind | "part" | "end part" | null {
   const key = name.toLowerCase().replace(/[’']/g, "'").replace(/[\s_-]+/g, " ").trim();
   return MARK_NAMES[key] ?? null;
@@ -245,7 +245,7 @@ function markedSection(c: ImportedChapter, reached: Area, inBody: boolean): { ki
   if (/^picture page$/i.test((c.mark ?? "").trim())) return { kind: "custom", area: reached, sure: true, untitled: true };
   if (said === "part") return { kind: "custom", area: "chapter", sure: true, isPart: true };
   if (said === "end part") return { kind: "custom", area: reached, sure: true, endsPart: true };
-  if (!said) return { kind: "custom", area: reached, sure: false, why: `“=== ${c.mark}” isn't a kind of page Quire knows, so it came in as a custom page. Check what it should be.` };
+  if (!said) return { kind: "custom", area: reached, sure: false, why: `“=== ${c.mark}” isn't a kind of page Scribe knows, so it came in as a custom page. Check what it should be.` };
   const areas = KINDS[said].areas;
   let area: Area = areas.length === 1 ? areas[0] : areas.includes(reached) ? reached : areas[0];
   // A poem goes with the poems: in the body, unless the back matter has begun.
@@ -306,7 +306,7 @@ export function looksLikePoem(body: string): boolean {
   return short / lines.length >= 0.8 && ends / lines.length < 0.6;
 }
 
-/** A poem's lines as Quire keeps them: a paragraph per stanza, a line break per line. Empty paragraphs part stanzas. */
+/** A poem's lines as Scribe keeps them: a paragraph per stanza, a line break per line. Empty paragraphs part stanzas. */
 export function asPoem(body: string): string {
   const doc = new DOMParser().parseFromString(`<body>${body}</body>`, "text/html");
   const out: string[] = [];
@@ -381,9 +381,9 @@ function sortSection(title: string, body: string, hint: string | undefined, inde
   for (const [re, kind] of TITLES)
     if (re.test(t))
       return kind === "title_page"
-        ? { kind, area: "front", sure: true, include: false, why: "Quire makes the title page from the book's details, so this one is left out unless you tick it." }
+        ? { kind, area: "front", sure: true, include: false, why: "Scribe makes the title page from the book's details, so this one is left out unless you tick it." }
         : kind === "contents_manual"
-          ? { kind, area: "front", sure: true, include: false, why: "Quire makes the contents from the book's sections, so this list is left out unless you tick it." }
+          ? { kind, area: "front", sure: true, include: false, why: "Scribe makes the contents from the book's sections, so this list is left out unless you tick it." }
           : { kind, area: areaOf(kind), sure: true };
   if (hint) {
     for (const [re, said] of EPUB_TYPES) {
@@ -400,7 +400,7 @@ function sortSection(title: string, body: string, hint: string | undefined, inde
     if (/©|\bcopyright\b|all rights reserved/i.test(text) && words < 400)
       return { kind: "copyright", area: "front", sure: false, byHand: true, why: "Its words look like a copyright page, so they're kept as written." };
     if (words < 80 && (bookTitle && text.toLowerCase().includes(bookTitle.toLowerCase())))
-      return { kind: "title_page", area: "front", sure: false, include: false, why: "Looks like a title page. Quire makes one from the book's details, so it's left out unless you tick it." };
+      return { kind: "title_page", area: "front", sure: false, include: false, why: "Looks like a title page. Scribe makes one from the book's details, so it's left out unless you tick it." };
     if (t === "Opening") return { kind: "custom", area: "front", sure: false, why: "The words before the first chapter. Check whether they belong in the front matter or the story." };
   }
   if (/©|\ball rights reserved\b/i.test(text) && words < 400) return { kind: "copyright", area: "front", sure: false, byHand: true, why: "Its words look like a copyright page." };
@@ -476,7 +476,7 @@ export function buildManuscript(doc: ImportedDocument, at: SplitAt): Manuscript 
     let body = c.body;
     if ((m.kind === "contents" || m.kind === "sources") && c.words) {
       dropped.push(body);
-      marks.push({ kind: "text", section: sections.length, message: m.kind === "contents" ? "Quire makes the contents from the book's pages, so the list under this mark was left out. Use “=== contents by hand” to keep a list of your own." : "Quire makes the Sources page from the sources you cite, so the words under this mark were left out." });
+      marks.push({ kind: "text", section: sections.length, message: m.kind === "contents" ? "Scribe makes the contents from the book's pages, so the list under this mark was left out. Use “=== contents by hand” to keep a list of your own." : "Scribe makes the Sources page from the sources you cite, so the words under this mark were left out." });
       body = "";
     }
     if (m.kind === "poem" || m.kind === "haiku") body = asPoem(body);
@@ -548,7 +548,7 @@ export function buildManuscript(doc: ImportedDocument, at: SplitAt): Manuscript 
   if (poems > 5) issues.push({ kind: "poetry", section: null, message: `${poems} poems were kept line by line. Check their line breaks, stanzas and indents against the original.` });
   const kept = sections.reduce((n, s) => n + (s.body.match(/<img/gi)?.length ?? 0), 0);
   if (kept < sourcePictures) issues.push({ kind: "images", section: null, message: `${sourcePictures - kept} of the file's ${sourcePictures} pictures couldn't be brought in.` });
-  if (sourceDoc.body.querySelector("table")) issues.push({ kind: "formatting", section: null, message: "The file has tables. Quire doesn't hold tables, so their words became plain paragraphs." });
+  if (sourceDoc.body.querySelector("table")) issues.push({ kind: "formatting", section: null, message: "The file has tables. Scribe doesn't hold tables, so their words became plain paragraphs." });
   // The writer's page marks aren't words of the book.
   const before = textWords(at === "marks" ? withoutMarks(doc.html) : doc.html) - textWords(dropped.join(" "));
   const after = sections.reduce((n, s) => n + textWords(s.body.replace(/<sup[^>]*data-footnote="([^"]*)"[^>]*>.*?<\/sup>/g, " $1 ")), 0) + sections.reduce((n, s) => n + textWords(s.title), 0);

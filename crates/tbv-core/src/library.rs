@@ -1191,7 +1191,7 @@ impl Library {
         Ok(false)
     }
 
-    /// Preferences › Library › Skip books I've deleted.
+    /// Attune › Library › Skip books I've deleted.
     fn skips_deleted(&self) -> Result<bool> {
         #[derive(serde::Deserialize, Default)]
         #[serde(default, rename_all = "camelCase")]

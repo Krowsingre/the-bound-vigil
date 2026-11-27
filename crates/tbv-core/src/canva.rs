@@ -44,7 +44,7 @@ pub struct Account {
     pub expires_at: i64,
 }
 
-/// What Preferences shows.
+/// What Attune shows.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CanvaStatus {

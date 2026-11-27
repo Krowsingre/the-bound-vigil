@@ -1,5 +1,5 @@
 // The series check (embre, 17 November): every series in the library is
-// looked up online on a schedule (Preferences › Compendium; once a month
+// looked up online on a schedule (Attune › Compendium; once a month
 // unless changed), quietly, one series at a time with a rest between, so it
 // never gets in the way. Books found that weren't on a series' list before
 // are kept here as "New in your series", for Sanctum and the series page.
@@ -96,7 +96,7 @@ export function newlyListed(before: MissingBook[], after: MissingBook[]): Missin
 }
 
 let running: Promise<void> | null = null;
-/** How far the running check is, for Preferences. */
+/** How far the running check is, for Attune. */
 let progress: { done: number; total: number } | null = null;
 export const seriesCheckProgress = () => progress;
 

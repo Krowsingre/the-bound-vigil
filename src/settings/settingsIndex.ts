@@ -3,6 +3,7 @@
 import type { IconName } from "../components/Icon";
 
 export type SettingsTab =
+  | "account"
   | "plan"
   | "appearance"
   | "reading"
@@ -26,6 +27,13 @@ export const SETTINGS_TABS: {
   icon: IconName;
   lede: string;
 }[] = [
+  {
+    // The computer's first page in the new layout (embre, 27 November). Phones keep Visage for now.
+    tab: "account",
+    label: "Account",
+    icon: "person",
+    lede: "Your picture, your name, this device's name and your friends.",
+  },
   {
     tab: "plan",
     label: "Your plan",
@@ -72,7 +80,7 @@ export const SETTINGS_TABS: {
   },
   {
     tab: "notes",
-    label: "Quire",
+    label: "Scribe",
     icon: "pen",
     lede: "How your notes are shown, taking them with you, and designing in Canva.",
   },
@@ -137,6 +145,18 @@ export interface SettingsEntry {
 
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
   {
+    tab: "account",
+    section: "account-profile",
+    label: "Account: Visage, Moniker, Conduit and Signet",
+    words: "profile visage avatar photo picture name device friend code",
+  },
+  {
+    tab: "account",
+    section: "account-friends",
+    label: "Account: Oathkin",
+    words: "oathkin friends friend code add remove",
+  },
+  {
     tab: "activity",
     section: "activity",
     label: "Imports, sync activity and Confluence",
@@ -200,7 +220,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "appearance",
     section: "privacy",
     label: "Privacy mode",
-    words: "privacy private hide covers blank discreet shortcut profile picture",
+    words: "privacy private hide covers blank discreet shortcut profile picture avatar reading activity progress statistics",
   },
   {
     tab: "appearance",
@@ -265,7 +285,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   {
     tab: "collections",
     section: "series-check",
-    label: "Check for new books in a series",
+    label: "Check for new in series",
     words: "series new books missing check online schedule daily weekly monthly yearly custom days check now",
   },
   {
@@ -284,7 +304,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "notes",
     section: "view",
     label: "Export notes",
-    words: "markdown export highlights annotations",
+    words: "markdown plain text export highlights annotations archive zip",
   },
   {
     tab: "browser",

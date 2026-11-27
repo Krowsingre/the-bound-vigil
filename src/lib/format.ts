@@ -5,7 +5,7 @@ export function percent(progression: number | null | undefined): string {
   return `${Math.round(Math.min(1, Math.max(0, progression)) * 100)}%`;
 }
 
-/** The authors as one line, each name as Preferences › Appearance asks. */
+/** The authors as one line, each name as Attune › Appearance asks. */
 export function authorLine(authors: string[], audioType?: string | null): string {
   const names = authors.map((a) => authorName(a, audioType));
   if (names.length === 0) return "Unknown author";

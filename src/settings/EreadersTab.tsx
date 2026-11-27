@@ -1,4 +1,4 @@
-// Preferences › E-readers: the readers plugged in now, and Kindle by email.
+// Attune › E-readers: the readers plugged in now, and Kindle by email.
 
 import { useCallback, useEffect, useState } from "react";
 import { api, isApp, openExternal } from "../api";

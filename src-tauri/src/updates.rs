@@ -4,7 +4,7 @@
 
 use serde::Serialize;
 
-/// What Preferences › About shows.
+/// What Attune › About shows.
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInfo {
