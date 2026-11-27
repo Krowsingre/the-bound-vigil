@@ -11,7 +11,7 @@ import { relativeTime } from "../lib/format";
 import { canCheckSeries, checkAllSeries, useSeriesNews } from "../library/seriesCheck";
 import { canWatch, unwatch, useWatch, watchAuthor, watchBook, whenLine } from "../library/watchList";
 import { PAGE_THEME_OPTIONS, widthShown } from "../reader/ReaderPopovers";
-import { FADE_RANGE, FONTS, LINE_HEIGHT_RANGE, PAGE_COLORS, resolveTheme, SIZE_RANGE, WIDTH_RANGE, type ReadingFlow, type ReadingTheme, type TextSpread } from "../reader/settings";
+import { FADE_RANGE, fadeShown, FONTS, LINE_HEIGHT_RANGE, PAGE_COLORS, resolveTheme, SIZE_RANGE, WIDTH_RANGE, type ReadingFlow, type ReadingTheme, type TextSpread } from "../reader/settings";
 import { AppearanceTab, useReaderSettings } from "./AppearanceTab";
 import { SCALES, useAppDark, useAppSettings, type InterfaceDensity, type InterfaceFont, type InterfaceScale, type SeriesCheckEvery, type SurfaceStyle } from "./appSettings";
 import { AtChoice, AtMore, AtPage, AtPair, AtRow, AtRows, AtSection, AtSlider, AtSwitch } from "./attune";
@@ -236,21 +236,19 @@ export function DeskReading() {
       </AtSection>
       <AtSection id="focus" title="Focus mode">
         <AtRows>
-          <AtSwitch label="Fade page edges" checked={reader.edgeFade} onChange={(edgeFade) => change({ edgeFade })} />
-          {reader.edgeFade && (
-            <AtRow label="Fade strength" wide>
-              <AtSlider
-                label="Fade strength"
-                value={reader.fadeStrength}
-                min={FADE_RANGE.min}
-                max={FADE_RANGE.max}
-                step={FADE_RANGE.step}
-                low="Faint"
-                high="Deep"
-                onChange={(fadeStrength) => change({ fadeStrength })}
-              />
-            </AtRow>
-          )}
+          <AtRow label="Fade strength" wide>
+            <AtSlider
+              label="Fade strength"
+              value={reader.fadeStrength}
+              min={FADE_RANGE.min}
+              max={FADE_RANGE.max}
+              step={FADE_RANGE.step}
+              shown={fadeShown(reader.fadeStrength)}
+              low="Off"
+              high="Deep"
+              onChange={(fadeStrength) => change({ fadeStrength, edgeFade: fadeStrength > 0 })}
+            />
+          </AtRow>
         </AtRows>
       </AtSection>
     </AtPage>

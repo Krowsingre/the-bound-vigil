@@ -1381,6 +1381,15 @@ export async function webApi(): Promise<Api> {
       const b = library.rows("books").find((r) => r.id === bookId && r.deleted_at && !r.forgotten_at);
       if (b) await library.writeAll([["book", { ...b, forgotten_at: now() }]]);
     },
+    forgetDeletedMany: async (bookIds) => {
+      const ids = new Set(bookIds);
+      const changes: [string, Row][] = library
+        .rows("books")
+        .filter((r) => ids.has(String(r.id)) && r.deleted_at && !r.forgotten_at)
+        .map((b) => ["book", { ...b, forgotten_at: now() }]);
+      if (changes.length) await library.writeAll(changes);
+      return changes.length;
+    },
     setHidden: async (bookIds, hidden) => {
       const changes: [string, Row][] = [];
       for (const id of bookIds) {

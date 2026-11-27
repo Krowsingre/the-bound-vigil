@@ -481,6 +481,8 @@ export interface Api {
   deletedBooks(): Promise<DeletedBook[]>;
   /** Forgets a deletion on every device: importing the file again is a plain import. */
   forgetDeleted(bookId: string): Promise<void>;
+  /** Forgets several deletions at once. How many were forgotten. */
+  forgetDeletedMany(bookIds: string[]): Promise<number>;
   /** Hides books from every list and count, on every device, or brings them back. How many changed. */
   setHidden(bookIds: string[], hidden: boolean): Promise<number>;
   /** How many books are hidden. */
@@ -1334,6 +1336,7 @@ function appApi(): Api {
     removeFromLibrary: async (bookId) => (await core).invoke("remove_from_library", { bookId }),
     deletedBooks: async () => (await core).invoke<DeletedBook[]>("deleted_books"),
     forgetDeleted: async (bookId) => (await core).invoke("forget_deleted", { bookId }),
+    forgetDeletedMany: async (bookIds) => (await core).invoke<number>("forget_deleted_many", { bookIds }),
     setHidden: async (bookIds, hidden) => (await core).invoke<number>("set_hidden", { bookIds, hidden }),
     hiddenCount: async () => (await core).invoke<number>("hidden_count"),
     hiddenLock: async () => (await core).invoke<HiddenLock | null>("hidden_lock"),

@@ -1485,6 +1485,11 @@ async fn forget_deleted(state: State<'_, AppLibrary>, book_id: String) -> Comman
 }
 
 #[tauri::command]
+async fn forget_deleted_many(state: State<'_, AppLibrary>, book_ids: Vec<String>) -> CommandResult<usize> {
+    with_library(state, move |library| library.forget_deleted_many(&book_ids)).await
+}
+
+#[tauri::command]
 async fn remove_from_library(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
     with_library(state, move |library| library.remove_from_library(&book_id)).await
 }
@@ -2456,6 +2461,7 @@ pub fn run() {
             remove_from_library,
             deleted_books,
             forget_deleted,
+            forget_deleted_many,
             hidden::set_hidden,
             hidden::hidden_count,
             hidden::hidden_lock,

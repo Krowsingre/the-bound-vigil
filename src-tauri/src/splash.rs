@@ -3,8 +3,8 @@
 //! has got (the card's bar) and when its first screen is drawn; then the
 //! main window shows behind the card, already finished, and once it has
 //! drawn itself on screen the card breaks up into specks (or fades, with
-//! Reduce motion on). The card's window is bigger than the card, with clear
-//! room round it, so the specks can drift off it before they fade.
+//! Reduce motion on), the pages falling only inside the card (embre, 27 November).
+//! The window is bigger than the card, with clear room round it for its shadow.
 //!
 //! The hidden window is made the size of the screen from the start, so the
 //! page lays itself out once, at its real size. (Made at its normal size and

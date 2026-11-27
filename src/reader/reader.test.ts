@@ -56,7 +56,9 @@ describe("reading settings", () => {
 
   it("keeps the edge fade switch and pulls its strength into range", () => {
     expect(parseSettings(null)).toMatchObject({ edgeFade: true, fadeStrength: 16 });
-    expect(parseSettings('{"edgeFade":false,"fadeStrength":24}')).toMatchObject({ edgeFade: false, fadeStrength: 24 });
+    // The old switch turned off reads as the slider at Off.
+    expect(parseSettings('{"edgeFade":false,"fadeStrength":24}')).toMatchObject({ fadeStrength: 0 });
+    expect(parseSettings('{"edgeFade":true,"fadeStrength":0}')).toMatchObject({ fadeStrength: 0 });
     expect(parseSettings('{"fadeStrength":90}').fadeStrength).toBe(FADE_RANGE.max);
     expect(parseSettings('{"fadeStrength":0}').fadeStrength).toBe(FADE_RANGE.min);
   });

@@ -253,6 +253,16 @@ const reading = (p: number, daysAgo: number): Partial<BookPreview> => ({
 let deletedSample: DeletedBook[] = [
   { id: "sha256:deleted-1", title: "La Peste", authors: ["Albert Camus"], format: "epub", deletedAt: "2026-11-20T23:58:00Z" },
   { id: "sha256:deleted-2", title: "The Moonstone", authors: ["Wilkie Collins"], format: "epub", deletedAt: "2026-11-02T10:15:00Z" },
+  { id: "sha256:deleted-3", title: "The Woman in White", authors: ["Wilkie Collins"], format: "epub", deletedAt: "2026-10-28T09:00:00Z" },
+  { id: "sha256:deleted-4", title: "Bleak House", authors: ["Charles Dickens"], format: "epub", deletedAt: "2026-10-26T09:00:00Z" },
+  { id: "sha256:deleted-5", title: "Middlemarch", authors: ["George Eliot"], format: "epub", deletedAt: "2026-10-24T09:00:00Z" },
+  { id: "sha256:deleted-6", title: "Vanity Fair", authors: ["William Makepeace Thackeray"], format: "epub", deletedAt: "2026-10-22T09:00:00Z" },
+  { id: "sha256:deleted-7", title: "North and South", authors: ["Elizabeth Gaskell"], format: "epub", deletedAt: "2026-10-20T09:00:00Z" },
+  { id: "sha256:deleted-8", title: "The Turn of the Screw", authors: ["Henry James"], format: "epub", deletedAt: "2026-10-18T09:00:00Z" },
+  { id: "sha256:deleted-9", title: "Silas Marner", authors: ["George Eliot"], format: "epub", deletedAt: "2026-10-16T09:00:00Z" },
+  { id: "sha256:deleted-10", title: "Cranford", authors: ["Elizabeth Gaskell"], format: "epub", deletedAt: "2026-10-14T09:00:00Z" },
+  { id: "sha256:deleted-11", title: "Ivanhoe", authors: ["Walter Scott"], format: "epub", deletedAt: "2026-10-12T09:00:00Z" },
+  { id: "sha256:deleted-12", title: "Lorna Doone", authors: ["R. D. Blackmore"], format: "epub", deletedAt: "2026-10-10T09:00:00Z" },
 ];
 
 let books: BookPreview[] = [
@@ -1118,7 +1128,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.167.0", version: "0.167.0", notes: "The Bound Vigil 0.167.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.168.0", version: "0.168.0", notes: "The Bound Vigil 0.168.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
@@ -1200,6 +1210,11 @@ export function previewApi(): Api {
     deletedBooks: async () => [...deletedSample],
     forgetDeleted: async (bookId) => {
       deletedSample = deletedSample.filter((b) => b.id !== bookId);
+    },
+    forgetDeletedMany: async (bookIds) => {
+      const before = deletedSample.length;
+      deletedSample = deletedSample.filter((b) => !bookIds.includes(b.id));
+      return before - deletedSample.length;
     },
     setHidden: async (bookIds, hidden) => {
       let changed = 0;

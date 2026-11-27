@@ -6,8 +6,8 @@
 // gathers speed as it drops, swaying and turning over like a loose page
 // (its pale back showing as it turns), fading only near the end. TBV shows underneath. The splash is drawn onto a canvas first (from where its parts
 // sit on the page), then the canvas is broken up. On the iPhone it fills the
-// screen; on a computer it's the card, whose window has room round it for
-// the pages to drift into. The drawing must match the splash exactly (the
+// screen; on a computer it's the card, and the pages
+// fall only inside the card's edges. The drawing must match the splash exactly (the
 // painting at its current zoom, each letter on its own baseline), or the
 // picture visibly shifts just before it breaks up.
 
@@ -40,7 +40,10 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
   pen.scale(dpr, dpr);
   await draw(pen, splash, box);
 
-  // The specks fly over the whole window, from where the splash sits in it.
+  // The pages fall inside the splash's own edges and rounded corners, as if seen
+  // through a window that stays put: whatever crosses them is cut off (embre,
+  // 27 November). The window itself is left as it is.
+  const round = parseFloat(getComputedStyle(splash).borderTopLeftRadius) || 0;
   const room = { w: window.innerWidth, h: window.innerHeight };
   const ox = box.left * dpr;
   const oy = box.top * dpr;
@@ -89,6 +92,10 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
       const t = now - began;
       out.setTransform(1, 0, 0, 1, 0, 0);
       out.clearRect(0, 0, dust.width, dust.height);
+      out.save();
+      out.beginPath();
+      out.roundRect(ox, oy, box.width * dpr, box.height * dpr, round * dpr);
+      out.clip();
       let left = 0;
       for (const p of specks) {
         const age = (t - p.start) / LIFE;
@@ -114,6 +121,7 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
         if (over >= 0) out.drawImage(pages, p.x * dpr, p.y * dpr, w, h, -w / 2, -h / 2, w, h);
         else out.drawImage(back, -w / 2, -h / 2, w, h);
       }
+      out.restore();
       if (left > 0 && t < SWEEP + LIFE + 200) requestAnimationFrame(frame);
       else done();
     };

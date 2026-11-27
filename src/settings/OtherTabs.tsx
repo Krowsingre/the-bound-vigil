@@ -22,7 +22,7 @@ import { EreadersTab } from "./EreadersTab";
 import { HardcoverSection } from "./HardcoverSection";
 import { CanvaSection, canvaHere } from "./CanvaSection";
 import { ReadingHistorySection } from "./ReadingHistory";
-import { AtChoice, AtRow, AtRows, AtSection, AtSwitch } from "./attune";
+import { AtChoice, AtRow, AtRows, AtSection, AtSwitch, useAttuneFrame } from "./attune";
 import { useShortcuts } from "../lib/shortcuts";
 
 const READING_FONTS = {
@@ -596,7 +596,10 @@ function DeletedBooksSection() {
 export function DeletedBooksList() {
   const [books, setBooks] = useState<DeletedBook[] | null>(null);
   const [query, setQuery] = useState("");
+  const [asking, setAsking] = useState(false);
   const toast = useToast();
+  // On the computer's Attunement page the list scrolls in its own frame, with Forget all beside the search (embre, 27 November).
+  const framed = useAttuneFrame();
   useEffect(() => {
     let live = true;
     api.deletedBooks().then((list) => live && setBooks(list), () => live && setBooks([]));
@@ -616,17 +619,40 @@ export function DeletedBooksList() {
       toast(`That didn't work: ${String(e)}`);
     }
   };
+  const forgetShown = async () => {
+    setAsking(false);
+    const ids = new Set(shown.map((b) => b.id));
+    try {
+      await api.forgetDeletedMany([...ids]);
+      setBooks((list) => list && list.filter((b) => !ids.has(b.id)));
+      setQuery("");
+    } catch (e) {
+      toast(`That didn't work: ${String(e)}`);
+    }
+  };
+  const all = words ? "Forget shown" : "Forget all";
+  const count = `${shown.length} ${shown.length === 1 ? "deleted book" : "deleted books"}`;
+  const search = (
+    <input
+      type="search"
+      className="input deleted-books-search"
+      placeholder="Search deleted books"
+      aria-label="Search deleted books"
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
+    />
+  );
   return (
-    <div className="deleted-books">
-      {(books.length > 8 || query) && (
-        <input
-          type="search"
-          className="input deleted-books-search"
-          placeholder="Search deleted books"
-          aria-label="Search deleted books"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+    <div className={`deleted-books${framed ? " is-framed" : ""}`}>
+      {framed ? (
+        <div className="deleted-books-top">
+          {search}
+          <button type="button" className="btn btn-quiet btn-danger-text" disabled={shown.length === 0} onClick={() => setAsking(true)}>
+            {all}
+          </button>
+        </div>
+      ) : (
+        (books.length > 8 || query) && search
       )}
       <ul className="deleted-books-list">
         {shown.map((b) => (
@@ -643,6 +669,16 @@ export function DeletedBooksList() {
           </li>
         ))}
       </ul>
+      {asking && (
+        <ConfirmDialog
+          title={`Forget ${shown.length === 1 ? "this deleted book" : `all ${count}`}?`}
+          body="Importing their files again will bring them back into your library, on every device."
+          confirm={all}
+          danger
+          onConfirm={() => void forgetShown()}
+          onCancel={() => setAsking(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1548,7 +1584,7 @@ function PublisherPlan() {
 
 export function AboutTab() {
   const desk = useDeskPrefs();
-  const [version, setVersion] = useState("0.167.0");
+  const [version, setVersion] = useState("0.168.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));
