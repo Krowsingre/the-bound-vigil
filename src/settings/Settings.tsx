@@ -123,6 +123,8 @@ export function Settings({
   const body = useRef<HTMLDivElement>(null);
   const jumped = useRef(false);
   const desk = !narrow && !isWeb && !isHome;
+  // Account is a computer page for now: a window narrowed below the computer layout shows Visage instead.
+  if (!desk && tab === "account") tab = "profile";
   // Account is a computer page for now; phones find the same things on Visage.
   const results = searchSettings(query).filter((r) => TABS.some((t) => t.tab === r.tab) && (keys || r.tab !== "shortcuts") && (desk || r.tab !== "account"));
   const deskPage = desk && tab ? deskPageOf(tab) : null;
