@@ -376,6 +376,23 @@ export function Library({
   const queryKey = JSON.stringify(query);
   // A new search, filter, sort or page folds every stack back.
   useEffect(() => setFanned({}), [queryKey, view.page]);
+  // A change to the library (a book marked read, a favourite, an edit elsewhere) refreshes
+  // every open stack in place, keeping its books on screen until the new list arrives.
+  const fannedNow = useRef(fanned);
+  fannedNow.current = fanned;
+  const refreshed = useRef(false);
+  useEffect(() => {
+    if (!refreshed.current) {
+      refreshed.current = true;
+      return;
+    }
+    for (const name of Object.keys(fannedNow.current)) {
+      void seriesBooks(name).then(
+        (books) => setFanned((f) => (name in f ? { ...f, [name]: books } : f)),
+        () => {},
+      );
+    }
+  }, [refreshKey, reload]); // eslint-disable-line react-hooks/exhaustive-deps
   // Paged on a computer: each page is as many full rows as fit the window, with the
   // Pinned and Last read cards counted inside the first page (embre, 21 November).
   const libraryRoot = useRef<HTMLDivElement>(null);

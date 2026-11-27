@@ -38,4 +38,8 @@ describe("wheelTurner", () => {
     expect(swipe(turn, 0, [-20, -40, -30])).toEqual([-1]);
     expect(swipe(turn, 1000, [20, 40, 30])).toEqual([1]);
   });
+  it("turns once for a swipe that keeps speeding up after it turned the page", () => {
+    const turn = wheelTurner();
+    expect(swipe(turn, 0, [10, 25, 40, 80, 70, 60, 50, 40, 30, 25, 20, 16, 13, 10, 8, 6, 5, 4, 3, 2, 1, 1])).toEqual([1]);
+  });
 });

@@ -27,6 +27,8 @@ export function wheelTurner() {
   let lastAt = -Infinity;
   let lastSize = 0;
   let turnedAt = -Infinity;
+  /** Whether the scrolling has slowed since the last turn: only then can a speed-up be a new swipe. */
+  let slowed = false;
   /** One sideways scroll event: 1 next, -1 back, 0 nothing. */
   return (deltaX: number, at: number): -1 | 0 | 1 => {
     const size = Math.abs(deltaX);
@@ -34,10 +36,13 @@ export function wheelTurner() {
       // A pause: a new gesture.
       armed = true;
       sideways = 0;
-    } else if (!armed && size > lastSize * 1.5 && size >= 8) {
-      // Speeding up again after a turn: a new swipe, not the old one's glide.
+    } else if (!armed && slowed && size > lastSize * 1.5 && size >= 8) {
+      // Speeding up again after the glide began: a new swipe, not the old one's glide.
+      // A swipe still speeding up when it turned the page hasn't slowed, so it can't re-arm.
       armed = true;
       sideways = 0;
+    } else if (!armed && size < lastSize) {
+      slowed = true;
     }
     lastAt = at;
     lastSize = size;
@@ -45,6 +50,7 @@ export function wheelTurner() {
     sideways += deltaX;
     if (Math.abs(sideways) < WHEEL_DISTANCE || at - turnedAt < TURN_GAP_MS) return 0;
     armed = false;
+    slowed = false;
     turnedAt = at;
     const step = sideways > 0 ? 1 : -1;
     sideways = 0;
