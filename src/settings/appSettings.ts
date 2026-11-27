@@ -15,15 +15,17 @@ export type InterfaceFont = "system" | "serif" | "echolume";
 export type SurfaceStyle = "clean" | "matte" | "paper" | "linen" | "vellum";
 export type SyncFrequency = "automatic" | "15min" | "hourly" | "manual";
 export type ConflictRule = "recent" | "ask" | "local" | "cloud";
-export type PrivacyStyle = "titles" | "blank";
-
-/** Privacy mode: covers (and pictures that could give a book away) hidden at once. */
+/**
+ * Privacy mode: three switches, each on its own (embre, 27 November). Hidden covers show
+ * nothing in their place; the title and author under a cover stay as usual.
+ */
 export interface PrivacySettings {
+  /** Hide covers (and pictures that could give a book away). Ctrl+Shift+H turns it on and off. */
   on: boolean;
-  /** Plain tiles that keep the title, or blank ones. */
-  style: PrivacyStyle;
-  /** Hides the profile picture too. */
-  avatar: boolean;
+  /** Hide avatar: the profile picture. */
+  hideAvatar: boolean;
+  /** Hide reading activity: what you're reading, how far, and reading statistics. */
+  hideActivity: boolean;
 }
 
 /** The shortcut that turns privacy mode on and off. */
@@ -139,7 +141,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   seriesCheckDays: 14,
   checkUpdates: true,
   autoInstallUpdates: false,
-  privacy: { on: false, style: "titles", avatar: true },
+  privacy: { on: false, hideAvatar: false, hideActivity: false },
   sync: {
     progress: true,
     notes: true,
@@ -215,8 +217,10 @@ export function parseAppSettings(json: string | null): AppSettings {
     autoInstallUpdates: flag(raw.autoInstallUpdates, d.autoInstallUpdates),
     privacy: {
       on: flag(p.on, d.privacy.on),
-      style: oneOf(p.style, ["titles", "blank"], d.privacy.style),
-      avatar: flag(p.avatar, d.privacy.avatar),
+      // Before 27 November the picture was hidden only with the covers ("avatar"), so a
+      // picture hidden then stays hidden now.
+      hideAvatar: flag(p.hideAvatar, flag(p.on, false) && flag(p.avatar, false)),
+      hideActivity: flag(p.hideActivity, d.privacy.hideActivity),
     },
     sync: {
       progress: flag(s.progress, d.sync.progress),
@@ -395,12 +399,12 @@ export function applyAppSettings(settings: AppSettings, dark: boolean, adaptive:
   root.toggleAttribute("data-highlight", !!root.style.getPropertyValue("--highlight"));
 }
 
-/** Shows or hides covers on the whole window, at once. */
+/** Shows or hides covers, the profile picture and reading activity on the whole window, at once. */
 export function applyPrivacy(privacy: PrivacySettings) {
   const root = document.documentElement;
-  if (privacy.on) root.dataset.privacy = privacy.style;
-  else delete root.dataset.privacy;
-  root.toggleAttribute("data-privacy-avatar", privacy.on && privacy.avatar);
+  root.toggleAttribute("data-privacy", privacy.on);
+  root.toggleAttribute("data-privacy-avatar", privacy.hideAvatar);
+  root.toggleAttribute("data-privacy-activity", privacy.hideActivity);
   try {
     localStorage.setItem(PRIVACY_STORE, JSON.stringify(privacy));
   } catch {

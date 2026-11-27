@@ -19,6 +19,7 @@ import { SuggestedReading } from "./SuggestedReading";
 import { SeriesNewsRow } from "./SeriesNewsRow";
 import { WatchNewsRow } from "./WatchNewsRow";
 import { openInDiscover } from "../browse/discoverQueue";
+import { useAppSettings } from "../settings/appSettings";
 
 type Load = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; home: HomeViewModel };
 
@@ -48,6 +49,8 @@ export function Home({
   onOpenCollection: (id: string) => void;
 }) {
   const narrow = useNarrow();
+  // Privacy mode › Hide reading activity: what you are reading, how far, and the numbers (embre, 27 November).
+  const activityHidden = useAppSettings().settings.privacy.hideActivity;
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [reload, setReload] = useState(0);
   const toast = useToast();
@@ -127,12 +130,12 @@ export function Home({
   if (!narrow)
     return (
       <div className="home home-desk">
-        <ResumeHero book={home.resumeBook} actions={actions} onOpenLibrary={openLibrary} refresh={refreshKey + reload} />
-        <ReadingActivity finished={home.libraryCounts.read} finishedDates={home.finishedDates} refreshKey={refreshKey} wide />
+        {!activityHidden && <ResumeHero book={home.resumeBook} actions={actions} onOpenLibrary={openLibrary} refresh={refreshKey + reload} />}
+        {!activityHidden && <ReadingActivity finished={home.libraryCounts.read} finishedDates={home.finishedDates} refreshKey={refreshKey} wide />}
         <SeriesNewsRow onOpenSeries={onOpenSeries ?? ((name) => onOpenLibrary({ tab: "all", series: [name] }))} />
         <WatchNewsRow onOpenLink={openLink} />
         <RecentlyAdded books={home.recentlyAdded} actions={actions} onOpenSeries={onOpenSeries ?? openLibrary} onViewAll={() => onOpenCompendium("recently_added")} menus />
-        <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenCompendium("in_progress")} list />
+        {!activityHidden && <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenCompendium("in_progress")} list />}
         <QuickLinks refreshKey={refreshKey} onNavigate={onNavigate} onOpenBook={onOpenBook} onOpenCollection={onOpenCollection} />
         <SuggestedReading shelves={home.suggested ?? []} readAuthors={home.readAuthors ?? []} actions={actions} onNavigate={onNavigate} />
         <CompendiumRow refreshKey={refreshKey} onOpenCollection={onOpenCollection} onOpenCompendium={onOpenCompendium} onViewAll={() => onNavigate("collections")} />
@@ -142,11 +145,11 @@ export function Home({
   return (
     <div className="home">
       <div className="home-top">
-        <ResumeHero book={home.resumeBook} actions={actions} onOpenLibrary={openLibrary} refresh={refreshKey + reload} />
-        <ReadingActivity finished={home.libraryCounts.read} finishedDates={home.finishedDates} refreshKey={refreshKey} />
+        {!activityHidden && <ResumeHero book={home.resumeBook} actions={actions} onOpenLibrary={openLibrary} refresh={refreshKey + reload} />}
+        {!activityHidden && <ReadingActivity finished={home.libraryCounts.read} finishedDates={home.finishedDates} refreshKey={refreshKey} />}
       </div>
       <div className="home-middle">
-        <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenCompendium("in_progress")} />
+        {!activityHidden && <InProgress books={home.inProgress} actions={actions} onViewAll={() => onOpenCompendium("in_progress")} />}
         <SeriesNewsRow onOpenSeries={onOpenSeries ?? ((name) => onOpenLibrary({ tab: "all", series: [name] }))} />
         <WatchNewsRow onOpenLink={openLink} />
         <RecentlyAdded

@@ -362,6 +362,8 @@ export interface Api {
   /** Asks where to save, then writes the file. False if cancelled. */
   exportLibrary(): Promise<boolean>;
   exportNotesMarkdown(): Promise<boolean>;
+  /** Saves an archive (.zip) with one file per book that has notes. False when the save was cancelled. */
+  exportNotesArchive(format: "markdown" | "plainText"): Promise<boolean>;
   createBackup(): Promise<boolean>;
   /** Asks for a backup file and replaces this device's library with it. False if cancelled. */
   restoreBackup(): Promise<boolean>;
@@ -700,6 +702,8 @@ export interface Api {
   browserClearSite(site: string): Promise<void>;
   /** The system's Share panel for a page; `anchor` is the button it opens from. */
   browserShare(url: string, title: string, anchor: BrowserFrame | null): Promise<void>;
+  /** The system's Share panel for a few words, like a Signet. Only where the system has one (Windows). */
+  shareText?(text: string, title: string): Promise<void>;
   /** Opens a link for another app (mail, a phone number). */
   browserOpenApp(url: string): Promise<void>;
   /** The pages behind and ahead of a tab's page, nearest first. */
@@ -1219,6 +1223,12 @@ function appApi(): Api {
     libraryInfo: async () => (await core).invoke<LibraryInfo>("library_info"),
     exportLibrary: () => saveTo("export_library", "Export library data", `TBV library ${today()}.json`, "JSON", ["json"]),
     exportNotesMarkdown: () => saveTo("export_notes_markdown", "Export notes", `TBV notes ${today()}.md`, "Markdown", ["md"]),
+    exportNotesArchive: async (format) => {
+      const path = await savePicker({ title: "Export notes", defaultPath: `TBV notes ${today()}.zip`, filters: [{ name: "Archive", extensions: ["zip"] }] });
+      if (!path) return false;
+      await (await core).invoke("export_notes_archive", { path, format });
+      return true;
+    },
     createBackup: () => saveTo("create_backup", "Create a backup", `TBV backup ${today()}.tbvbackup`, "TBV backup", ["tbvbackup"]),
     restoreBackup: async () => {
       const [path] = await openFiles({
@@ -1473,6 +1483,7 @@ function appApi(): Api {
     browserDesktopSites: async (hosts) => (await core).invoke("browser_desktop_sites", { hosts }),
     browserClearSite: async (site) => (await core).invoke("browser_clear_site", { site }),
     browserShare: async (url, title, anchor) => (await core).invoke("browser_share", { url, title, anchor }),
+    shareText: isWindows ? async (text, title) => (await core).invoke("share_text", { text, title }) : undefined,
     browserOpenApp: async (url) => (await core).invoke("browser_open_app", { url }),
     browserTravelled: async (tab) => (await core).invoke("browser_travelled", { tab }),
     browserHistory: async () => (await core).invoke<HistoryEntry[]>("browser_history"),

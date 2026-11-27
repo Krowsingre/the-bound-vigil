@@ -751,7 +751,7 @@ export function App({ initialRoute = "home", requestedRoute, onRouteHandled, onS
                   : route === "collections"
                     ? searchingKindle ? "Find a Kindle title or author…" : "Search the Compendium…"
                     : route === "settings"
-                      ? "Search Attune…"
+                      ? "Search Attunement…"
                   : undefined
           }
           onSearchSubmit={() => {

@@ -13,7 +13,7 @@ export const PAGE: Record<"home" | "library" | "collections" | "audiobooks" | "w
   collections: { label: "Compendium", caption: "Your collections" },
   writing: { label: "Scribe", caption: iPhone ? "Reading notes" : "Notes & manuscripts" },
   catalogs: { label: "Discover", caption: "" },
-  settings: { label: "Attune", caption: "Settings & sync" },
+  settings: { label: "Attunement", caption: "Settings & sync" },
 };
 
 /** Discover's submenu in the sidebar: the browser (Nexus) and bringing things

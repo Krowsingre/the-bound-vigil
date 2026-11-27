@@ -38,7 +38,7 @@ function ProjectForm({ project, onSaved, onCancel }: { project: SupabaseProject 
     >
       <h3>Your Supabase project</h3>
       <p className="settings-row-hint">
-        The easy way: on your computer, open TBV's Attune › Sync & Backup and use <strong>Copy phone link</strong>, then open that link here. Or copy the
+        The easy way: on your computer, open TBV's Attunement › Sync & Backup and use <strong>Copy phone link</strong>, then open that link here. Or copy the
         project URL and publishable key from the desktop app's Sync settings into these boxes.
       </p>
       <label className="field">
@@ -113,7 +113,7 @@ export function WebGate({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Attune › Sync in the web version. */
+/** Attunement › Sync in the web version. */
 export function WebSyncTab() {
   const toast = useToast();
   const [overview, setOverview] = useState<SyncOverview | null>(null);

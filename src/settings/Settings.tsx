@@ -6,7 +6,8 @@ import { AppearanceTab } from "./AppearanceTab";
 import { ProfileSection } from "./ProfileSection";
 import { AccountPage } from "./AccountPage";
 import { BrowserTab } from "./BrowserTab";
-import { AboutTab, AccessibilityTab, PlanTab, AdvancedTab, CollectionsTab, ConnectionsTab, DeskLibraryTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
+import { AboutTab, AccessibilityTab, PlanTab, AdvancedTab, CollectionsTab, ConnectionsTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
+import { DeskAppearance, DeskLibrary, DeskManagement, DeskReading } from "./DeskPages";
 import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex";
 import { SyncTab } from "./SyncTab";
 import { EreadersTab } from "./EreadersTab";
@@ -43,15 +44,19 @@ interface DeskPage {
 const tabOf = (tab: SettingsTab) => SETTINGS_TABS.find((t) => t.tab === tab)!;
 const own = (tab: SettingsTab): DeskPage => ({ tab, label: tabOf(tab).label, icon: tabOf(tab).icon, holds: [tab] });
 
-/** The computer's eight pages, down from sixteen (embre, 21 November). Phones keep theirs for now. */
+/**
+ * The computer's pages (embre, 21 and 27 November). Phones keep theirs for now. Library holds
+ * the Compendium's settings and the ones moved to it; Management holds the Archive's files,
+ * tags, duplicates, deleted books, reading history and the Scribe export.
+ */
 const DESK_GROUPS: DeskPage[][] = [
-  // Account comes first, the start of Attune's new pages (embre, 27 November). The old pages stay for now.
   [own("account")],
-  [{ tab: "profile", label: "You & TBV", icon: "person", holds: ["profile", "plan", "about", "advanced"] }],
+  [{ tab: "plan", label: "You & TBV", icon: "person", holds: ["plan", "about", "advanced"] }],
   [
     own("appearance"),
     own("reading"),
-    { tab: "library", label: "Library", icon: "library", holds: ["library", "collections", "notes", "files"] },
+    { tab: "collections", label: "Library", icon: "library", holds: ["collections"] },
+    { tab: "library", label: "Management", icon: "layers", holds: ["library", "notes", "files"] },
     { tab: "ereaders", label: "Connections", icon: "connections", holds: ["ereaders"] },
     own("browser"),
   ],
@@ -59,13 +64,29 @@ const DESK_GROUPS: DeskPage[][] = [
   [{ tab: "accessibility", label: "Accessibility", icon: "accessibility", holds: ["accessibility", "shortcuts"] }],
 ];
 const DESK_PAGES = DESK_GROUPS.flat();
-/** Sections that moved to another page on a computer. */
-const DESK_SECTION_PAGE: Record<string, SettingsTab> = { goodreads: "ereaders", hardcover: "ereaders", ratings: "ereaders", canva: "ereaders" };
+/** Sections that moved to another page on a computer, as "tab/section". */
+const DESK_SECTION_PAGE: Record<string, SettingsTab> = {
+  "library/goodreads": "ereaders",
+  "library/hardcover": "ereaders",
+  "library/ratings": "ereaders",
+  "notes/canva": "ereaders",
+  // Visage's things are on Account now (embre, 27 November).
+  "profile/profile": "account",
+  "profile/oathkin": "account",
+  // Moved to Library (embre, 27 November).
+  "appearance/privacy": "collections",
+  "appearance/sanctum": "collections",
+  "reading/read-along": "collections",
+};
 /** The computer page holding a tab (or one of its sections). */
 export function deskPageOf(tab: SettingsTab, section?: string): DeskPage {
-  const moved = section ? DESK_SECTION_PAGE[section] : undefined;
-  return DESK_PAGES.find((p) => p.holds.includes(moved ?? tab)) ?? DESK_PAGES.find((p) => p.tab === "appearance")!;
+  const moved = section ? DESK_SECTION_PAGE[`${tab}/${section}`] : undefined;
+  const wanted = moved ?? (tab === "profile" ? "account" : tab);
+  return DESK_PAGES.find((p) => p.holds.includes(wanted)) ?? DESK_PAGES.find((p) => p.tab === "appearance")!;
 }
+
+/** The computer pages built to the Attunement framework: no page title, sections that fold. */
+const ATTUNE_PAGES = new Set<SettingsTab>(["account", "appearance", "reading", "collections", "library"]);
 
 /** Settings: its own menu of pages on the left, the chosen page on the right.
  * A phone opens on a landing page of cards instead; a computer opens on Appearance. */
@@ -174,10 +195,16 @@ export function Settings({
     switch (deskPage.tab) {
       case "account":
         return <AccountPage />;
-      case "profile":
-        return [part("profile", <ProfileSection />), part("plan", <PlanTab />), part("about", <AboutTab />), part("advanced", <AdvancedTab />)];
+      case "plan":
+        return [part("plan", <PlanTab />), part("about", <AboutTab />), part("advanced", <AdvancedTab />)];
+      case "appearance":
+        return <DeskAppearance sidebarShown={sidebarShown} onSidebarShown={onSidebarShown} />;
+      case "reading":
+        return <DeskReading />;
+      case "collections":
+        return <DeskLibrary />;
       case "library":
-        return <DeskLibraryTab />;
+        return <DeskManagement />;
       case "ereaders":
         return <ConnectionsTab />;
       case "sync":
@@ -253,7 +280,7 @@ export function Settings({
   const found = (
     <ul className="settings-menu settings-results">
       {results.length === 0 ? (
-        <li className="settings-row-hint settings-no-results">Nothing in Attune matches “{query.trim()}”.</li>
+        <li className="settings-row-hint settings-no-results">Nothing in Attunement matches “{query.trim()}”.</li>
       ) : (
         results.map((r) => (
           <li key={`${r.tab}-${r.section}`}>
@@ -289,7 +316,7 @@ export function Settings({
         <div className="settings-body" ref={body}>
           <header className="settings-head settings-landing-head">
             <div>
-              <h1>Attune</h1>
+              <h1>Attunement</h1>
               <p className="muted">Choose what to change.</p>
             </div>
           </header>
@@ -320,8 +347,8 @@ export function Settings({
 
   return (
     <div className="settings-page">
-      <nav className="settings-nav" aria-label="Attune">
-        <p className="settings-eyebrow">Attune</p>
+      <nav className="settings-nav" aria-label="Attunement">
+        <p className="settings-eyebrow">Attunement</p>
         {query.trim() ? (
           found
         ) : (
@@ -344,13 +371,13 @@ export function Settings({
           ))
         )}
       </nav>
-      <div className={`settings-body${desk && page.tab === "account" ? " attune" : ""}`} ref={body}>
-        {/* Visage has no heading: its Visage / Oathkin switch sits at the top instead (embre, 20 November). */}
-        {!(desk && page.tab === "account") && (
+      <div className={`settings-body${desk && ATTUNE_PAGES.has(page.tab) ? " attune" : ""}`} ref={body}>
+        {/* The Attunement pages have no heading (embre, 27 November). */}
+        {!(desk && ATTUNE_PAGES.has(page.tab)) && (
         <header className={`settings-head${page.tab === "profile" && !desk ? " is-bare" : ""}`}>
           {narrow && (
             <button type="button" className="link-btn settings-back" onClick={() => onTab(null)}>
-              <Icon name="chevronLeft" size={16} /> Attune
+              <Icon name="chevronLeft" size={16} /> Attunement
             </button>
           )}
           {(page.tab !== "profile" || desk) && (

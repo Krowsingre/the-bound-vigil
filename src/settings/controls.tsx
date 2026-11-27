@@ -5,6 +5,7 @@
 import { createContext, useContext, useEffect, useId, useState } from "react";
 import { Icon } from "../components/Icon";
 import { useNarrow } from "../lib/useNarrow";
+import { AtRow, AtSection, AtSwitch, AttuneFrame } from "./attune";
 
 const OPENED_KEY = "tbv.settings.opened";
 
@@ -46,6 +47,9 @@ export function unfoldSection(id: string) {
  */
 export const PrefsDesk = createContext(false);
 export const useDeskPrefs = () => useContext(PrefsDesk);
+
+/** Set where a section's settings sit inside another card: no card or heading of its own. */
+export const BareSections = createContext(false);
 
 /** Set inside a group: its sections are parts of one card, not cards. */
 const InGroup = createContext(false);
@@ -101,8 +105,19 @@ export function Section({
   children: React.ReactNode;
 }) {
   const desk = useContext(PrefsDesk);
+  const framed = useContext(AttuneFrame);
+  const grouped = useContext(InGroup);
+  const bare = useContext(BareSections);
   if (desk && !status) lede = undefined;
-  return useContext(InGroup) ? (
+  if (bare) return <div id={`settings-${id}`}>{children}</div>;
+  // On the rebuilt computer pages a section is a folding card with no intro lines (embre, 27 November).
+  if (framed && !grouped)
+    return (
+      <AtSection id={id} title={title} startFolded={collapsible}>
+        {children}
+      </AtSection>
+    );
+  return grouped ? (
     <SectionPart id={id} title={title} lede={lede} aside={aside}>
       {children}
     </SectionPart>
@@ -169,6 +184,12 @@ function FoldingSection({ id, title, lede, aside, collapsible, children }: { id:
 
 /** One setting: its name and a line of explanation on the left, the control on the right. */
 export function Row({ label, hint, children, stack }: { label: string; hint?: string; children: React.ReactNode; stack?: boolean }) {
+  if (useContext(AttuneFrame))
+    return (
+      <AtRow label={label} hint={hint} wide={stack}>
+        {children}
+      </AtRow>
+    );
   return (
     <div className={`settings-row${stack ? " is-stacked" : ""}`}>
       <div className="settings-row-text">
@@ -195,6 +216,7 @@ export function Toggle({
 }) {
   const id = useId();
   const desk = useContext(PrefsDesk);
+  if (useContext(AttuneFrame)) return <AtSwitch label={label} hint={hint} checked={checked} disabled={disabled} onChange={onChange} />;
   return (
     <div className={`settings-toggle${disabled ? " is-disabled" : ""}`} title={desk ? hint : undefined}>
       <button type="button" role="switch" id={id} className="switch" aria-checked={checked} disabled={disabled} onClick={() => onChange(!checked)}>

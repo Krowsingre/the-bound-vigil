@@ -289,7 +289,7 @@ export function BrowserTab() {
           </Row>
         </Section>
       </SectionGroup>
-      <Section id="history" title="History" lede="Pages visited and words searched for in Discover. Open it from Discover's ••• menu. To have the same history on every device, turn on Sync Discover history in Attune › Sync & Backup." collapsible={desk}>
+      <Section id="history" title="History" lede="Pages visited and words searched for in Discover. Open it from Discover's ••• menu. To have the same history on every device, turn on Sync Discover history in Attunement › Sync & Backup." collapsible={desk}>
         <Toggle label="Keep a history of pages visited" checked={prefs.historyOn} onChange={(historyOn) => writeBrowserPrefs({ historyOn })} />
         <Toggle
           label="Keep searches too"

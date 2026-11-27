@@ -30,7 +30,7 @@ export function useStartupUpdateCheck(enabled = true) {
     if (!enabled || !canSelfUpdate) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const say = (info: UpdateInfo | null) =>
-      info?.version && toast(`The Bound Vigil ${info.version} is ready. Install it in Attune › About.`);
+      info?.version && toast(`The Bound Vigil ${info.version} is ready. Install it in Attunement › About.`);
     void api.getSetting(APP_SETTINGS_KEY).then((json) => {
       const settings = parseAppSettings(json);
       if (!settings.checkUpdates) return;
@@ -70,7 +70,7 @@ export type UpdateState =
   | { step: "installing"; info: UpdateInfo; progress: UpdateProgress | null }
   | { step: "failed"; message: string };
 
-/** Checking and installing, for Attune › About. */
+/** Checking and installing, for Attunement › About. */
 export function useUpdater() {
   const [state, setState] = useState<UpdateState>({ step: "idle" });
   const check = useCallback(() => {

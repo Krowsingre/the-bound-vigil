@@ -1009,6 +1009,11 @@ async fn export_notes_markdown(state: State<'_, AppLibrary>, path: String) -> Co
 }
 
 #[tauri::command]
+async fn export_notes_archive(state: State<'_, AppLibrary>, path: String, format: tbv_core::data::NotesFormat) -> CommandResult<()> {
+    with_library(state, move |library| library.export_notes_archive(&PathBuf::from(path), format)).await
+}
+
+#[tauri::command]
 async fn create_backup(state: State<'_, AppLibrary>, path: String) -> CommandResult<()> {
     with_library(state, move |library| library.create_backup(&PathBuf::from(path))).await
 }
@@ -2344,6 +2349,7 @@ pub fn run() {
             browser::browser_desktop_sites,
             browser::browser_clear_site,
             browser::browser_share,
+            browser::share_text,
             browser::share_book_files,
             browser::send_to_friend,
             browser::receive_from_friend,
@@ -2621,6 +2627,7 @@ pub fn run() {
             library_info,
             export_library,
             export_notes_markdown,
+            export_notes_archive,
             create_backup,
             restore_backup,
             cover_accent,

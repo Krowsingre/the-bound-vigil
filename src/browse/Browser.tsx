@@ -126,7 +126,7 @@ let barNow = BAR_START;
 
 /** TBV's pages Discover can sit beside. */
 const SPLIT_ROUTES = [{ label: "Sanctum", route: "home" }, { label: "Archive", route: "library" }, { label: "Resonance", route: "audiobooks" },
-  { label: "Scribe", route: "writing" }, { label: "Compendium", route: "collections" }, { label: "Attune", route: "settings" }] as const;
+  { label: "Scribe", route: "writing" }, { label: "Compendium", route: "collections" }, { label: "Attunement", route: "settings" }] as const;
 
 const ask = (what: string) => window.dispatchEvent(new CustomEvent(BROWSER_DO, { detail: what }));
 /** Webpage Back/Forward when a control in TBV, rather than the native page, has focus. */

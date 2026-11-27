@@ -67,7 +67,7 @@ function Choice<T extends string | number>({
   );
 }
 
-const THEME_OPTIONS: { value: ReadingTheme; label: string; style?: React.CSSProperties }[] = [
+export const PAGE_THEME_OPTIONS: { value: ReadingTheme; label: string; style?: React.CSSProperties }[] = [
   { value: "auto", label: "Auto" },
   { value: "light", label: "Light", style: { background: PAGE_COLORS.light.background, color: PAGE_COLORS.light.text } },
   { value: "paper", label: "Paper", style: { background: PAGE_COLORS.paper.background, color: PAGE_COLORS.paper.text } },
@@ -229,7 +229,7 @@ export function TextSettings({ settings, onChange, direction }: { settings: Read
           onChange={(textSpread) => onChange({ textSpread })}
         />
       )}
-      <Choice<ReadingTheme> label="Page colour" value={settings.theme} options={THEME_OPTIONS} onChange={(theme) => onChange({ theme })} />
+      <Choice<ReadingTheme> label="Page colour" value={settings.theme} options={PAGE_THEME_OPTIONS} onChange={(theme) => onChange({ theme })} />
       <label className="check-row">
         <input type="checkbox" checked={settings.justify} onChange={(e) => onChange({ justify: e.target.checked })} />
         Justify text (even right edge)
@@ -318,7 +318,7 @@ function Slider({ label, value, min, max, step, shown, low, high, onChange }: {
 }
 
 /** The page width as a share of the usual width (680 pixels), which reads as "100%". */
-const widthShown = (width: number) => `${Math.round((width / 680) * 100)}%`;
+export const widthShown = (width: number) => `${Math.round((width / 680) * 100)}%`;
 
 const widthLines = (n: number) => <span className={`look-lines look-lines-${n}`}><i /><i /><i /><i /></span>;
 
@@ -394,7 +394,7 @@ export function ReadingAppearance({ settings, onChange, onClose, direction }: { 
         <fieldset className="look-section">
           <legend>Page colour</legend>
           <div className="look-colours" role="radiogroup" aria-label="Page colour">
-            {THEME_OPTIONS.map((o) => (
+            {PAGE_THEME_OPTIONS.map((o) => (
               <button key={o.value} type="button" role="radio" aria-checked={settings.theme === o.value} className={settings.theme === o.value ? "is-active" : undefined}
                 onClick={() => onChange({ theme: o.value })}>
                 <span className={`look-swatch look-swatch-${o.value}`} style={o.value === "auto" ? undefined : { background: o.style?.background }} aria-hidden />
@@ -549,7 +549,7 @@ export function PageSettings({
       {settings.pageFlow === "strip" && <p className="settings-hint">One unbroken column with no room between pages, for webtoons.</p>}
       {direction && <DirectionChoice direction={direction} />}
       <ScrollSpeeds settings={settings} onChange={onChange} />
-      <Choice<ReadingTheme> label="Colour around the pages" value={settings.theme} options={THEME_OPTIONS} onChange={(theme) => onChange({ theme })} />
+      <Choice<ReadingTheme> label="Colour around the pages" value={settings.theme} options={PAGE_THEME_OPTIONS} onChange={(theme) => onChange({ theme })} />
     </div>
   );
 }
@@ -750,7 +750,7 @@ export function LiningUpStatus({ readAlong, ebookId }: { readAlong: ReadAlong; e
             ? "TBV is listening through the audiobook and matching every word to the book, in the background."
             : isApp
               ? isIOS
-              ? "TBV lines up every word in the background on a computer with TBV open, or on this phone if you turn it on in Attune › Reading › Read-along."
+              ? "TBV lines up every word in the background on a computer with TBV open, or on this phone if you turn it on in Attunement › Reading › Read-along."
               : "TBV lines up every word in the background, one pair at a time, on each device that has both the book and the audiobook downloaded."
               : "TBV lines up every word in the app on your computer or phone."}{" "}
         Until it's done you can read the book or listen to the audiobook, but not both together.

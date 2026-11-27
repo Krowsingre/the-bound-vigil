@@ -1557,12 +1557,26 @@ mod windows {
 
     /// Windows' own Share panel, for the page in front.
     pub fn share(app: &tauri::AppHandle, url: String, title: String) -> crate::CommandResult<()> {
+        share_on_main(app, Shared::Link(url), title)
+    }
+
+    /// Windows' own Share panel for a few words, like a Signet (Attunement › Account).
+    pub fn share_text(app: &tauri::AppHandle, text: String, title: String) -> crate::CommandResult<()> {
+        share_on_main(app, Shared::Text(text), title)
+    }
+
+    enum Shared {
+        Link(String),
+        Text(String),
+    }
+
+    fn share_on_main(app: &tauri::AppHandle, what: Shared, title: String) -> crate::CommandResult<()> {
         use tauri::Manager;
         let window = app.get_window("main").ok_or("TBV's window isn't open.")?;
         let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
         let (send, receive) = std::sync::mpsc::channel();
         app.run_on_main_thread(move || {
-            let _ = send.send(unsafe { show_share(hwnd, url, title) }.map_err(|e| e.message()));
+            let _ = send.send(unsafe { show_share(hwnd, what, title) }.map_err(|e| e.message()));
         })
         .map_err(|e| e.to_string())?;
         receive
@@ -1571,7 +1585,7 @@ mod windows {
             .map_err(|_| "Windows couldn't open its Share panel. Copy the link instead.".to_string())
     }
 
-    unsafe fn show_share(hwnd: isize, url: String, title: String) -> windows_core::Result<()> {
+    unsafe fn show_share(hwnd: isize, what: Shared, title: String) -> windows_core::Result<()> {
         use windows::ApplicationModel::DataTransfer::{DataRequestedEventArgs, DataTransferManager};
         use windows::Foundation::{TypedEventHandler, Uri};
         use windows::Win32::Foundation::HWND;
@@ -1586,7 +1600,10 @@ mod windows {
             if let Some(args) = args.as_ref() {
                 let data = args.Request()?.Data()?;
                 data.Properties()?.SetTitle(&HSTRING::from(title.as_str()))?;
-                data.SetWebLink(&Uri::CreateUri(&HSTRING::from(url.as_str()))?)?;
+                match &what {
+                    Shared::Link(url) => data.SetWebLink(&Uri::CreateUri(&HSTRING::from(url.as_str()))?)?,
+                    Shared::Text(text) => data.SetText(&HSTRING::from(text.as_str()))?,
+                }
             }
             Ok(())
         }))?;
@@ -2101,6 +2118,18 @@ pub async fn browser_clear_site(app: tauri::AppHandle, site: String) -> CommandR
 pub async fn browser_share(app: tauri::AppHandle, url: String, title: String, anchor: Option<Frame>) -> CommandResult<()> {
     let url = web_url(&url)?;
     view::share(&app, url.as_str(), title.trim(), anchor)
+}
+
+/// The system's Share panel for a few words, like a Signet. Windows only for now.
+#[tauri::command]
+pub async fn share_text(app: tauri::AppHandle, text: String, title: String) -> CommandResult<()> {
+    #[cfg(windows)]
+    return windows::share_text(&app, text, title);
+    #[cfg(not(windows))]
+    {
+        let _ = (app, text, title);
+        Err("Sharing isn't available on this computer. Copy it instead.".into())
+    }
 }
 
 /// Copies of books' own files, under readable names, for sending: each

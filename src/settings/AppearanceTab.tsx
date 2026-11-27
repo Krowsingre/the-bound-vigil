@@ -13,11 +13,10 @@ import {
   type InterfaceDensity,
   type InterfaceFont,
   type InterfaceScale,
-  type PrivacyStyle,
   type SurfaceStyle,
   type ThemeChoice,
 } from "./appSettings";
-import { Columns, Row, Section, SectionGroup, Segmented, Toggle, useDeskPrefs } from "./controls";
+import { BareSections, Columns, Row, Section, SectionGroup, Segmented, Toggle, useDeskPrefs } from "./controls";
 import type { AuthorStyle } from "../lib/authorNames";
 import { CustomThemeSection, themeFromWindow } from "./CustomThemeSection";
 import { api } from "../api";
@@ -100,9 +99,12 @@ function Stops<T extends string>({
 export function AppearanceTab({
   sidebarShown,
   onSidebarShown,
+  part,
 }: {
   sidebarShown: boolean;
   onSidebarShown: (shown: boolean) => void;
+  /** Only the theme cards, colours and their extra settings, for the computer's Appearance page. */
+  part?: "theme";
 }) {
   const keys = useShortcuts();
   const desk = useDeskPrefs();
@@ -233,23 +235,12 @@ export function AppearanceTab({
           onChange={() => togglePrivacy()}
         />
       </div>
-      <Row label="Hidden covers show" hint="What appears in place of each cover.">
-        <Segmented<PrivacyStyle>
-          label="Hidden covers show"
-          value={settings.privacy.style}
-          options={[
-            { value: "titles", label: "The title" },
-            { value: "blank", label: "Nothing" },
-          ]}
-          onChange={(style) => change({ privacy: { ...settings.privacy, style } })}
-        />
-      </Row>
       <div className="toggle-list">
         <Toggle
           label="Hide my profile picture too"
           hint="Collection pictures made from covers or your own images are always hidden. TBV's gallery paintings stay."
-          checked={settings.privacy.avatar}
-          onChange={(avatar) => change({ privacy: { ...settings.privacy, avatar } })}
+          checked={settings.privacy.hideAvatar}
+          onChange={(hideAvatar) => change({ privacy: { ...settings.privacy, hideAvatar } })}
         />
       </div>
     </Section>
@@ -325,41 +316,33 @@ export function AppearanceTab({
     </>
   );
 
-  return (
-    <Columns side={side}>
-      <Section id="theme" title={desk ? "Theme" : "Application theme"} lede="Choose the base theme for the interface.">
-        <div className="theme-cards" role="radiogroup" aria-label="Theme">
-          {THEMES.map((t) => (
-            <label key={t.value} className={`theme-card${card === t.value ? " is-active" : ""}`}>
-              <span
-                className={`theme-tile theme-swatch-${t.value === "adaptive" ? (isDark({ theme: "adaptive", adaptiveBase: settings.adaptiveBase }, systemDark) ? "adaptive-dark" : "adaptive-light") : t.value}`}
-                style={
-                  t.value === "custom" && custom
-                    ? {
-                        background: `linear-gradient(180deg, ${custom.surface} 0 76%, ${custom.accent} 76% 88%, ${custom.highlight} 88%)`,
-                        color: customColors(custom)["--text"],
-                        textShadow: "none",
-                      }
-                    : undefined
-                }
-                aria-hidden
-              >
-                <Icon name={t.icon} size={30} />
-                <span className="theme-tile-name">{t.label}</span>
-              </span>
-              <input type="radio" name="tbv-theme" aria-label={t.label} checked={card === t.value} onChange={() => change({ theme: t.value })} />
-            </label>
-          ))}
-        </div>
-        {desk && swatches}
-      </Section>
-
-      {adaptiveOn && (
-        <Section
-          id="adaptive"
-          title="Adaptive theme"
-          lede="The interface's colours come from the cover of the book you're reading, on a light or dark base."
-        >
+  const themeCards = (
+    <div className="theme-cards" role="radiogroup" aria-label="Theme">
+      {THEMES.map((t) => (
+        <label key={t.value} className={`theme-card${card === t.value ? " is-active" : ""}`}>
+          <span
+            className={`theme-tile theme-swatch-${t.value === "adaptive" ? (isDark({ theme: "adaptive", adaptiveBase: settings.adaptiveBase }, systemDark) ? "adaptive-dark" : "adaptive-light") : t.value}`}
+            style={
+              t.value === "custom" && custom
+                ? {
+                    background: `linear-gradient(180deg, ${custom.surface} 0 76%, ${custom.accent} 76% 88%, ${custom.highlight} 88%)`,
+                    color: customColors(custom)["--text"],
+                    textShadow: "none",
+                  }
+                : undefined
+            }
+            aria-hidden
+          >
+            <Icon name={t.icon} size={30} />
+            <span className="theme-tile-name">{t.label}</span>
+          </span>
+          <input type="radio" name="tbv-theme" aria-label={t.label} checked={card === t.value} onChange={() => change({ theme: t.value })} />
+        </label>
+      ))}
+    </div>
+  );
+  const adaptiveBody = (
+    <>
           <p className="settings-row-hint">
             {adaptiveBook ? (
               <>
@@ -435,6 +418,41 @@ export function AppearanceTab({
               </button>
             </form>
           )}
+    </>
+  );
+
+  // Attunement › Appearance on a computer: the cards and colours, with Adaptive's or Custom's
+  // own settings under them when one is picked (embre, 27 November).
+  if (part === "theme")
+    return (
+      <>
+        {themeCards}
+        {swatches}
+        {adaptiveOn && <div className="at-theme-extra">{adaptiveBody}</div>}
+        {card === "custom" && (
+          <div className="at-theme-extra">
+            <BareSections.Provider value={true}>
+              <CustomThemeSection />
+            </BareSections.Provider>
+          </div>
+        )}
+      </>
+    );
+
+  return (
+    <Columns side={side}>
+      <Section id="theme" title={desk ? "Theme" : "Application theme"} lede="Choose the base theme for the interface.">
+        {themeCards}
+        {desk && swatches}
+      </Section>
+
+      {adaptiveOn && (
+        <Section
+          id="adaptive"
+          title="Adaptive theme"
+          lede="The interface's colours come from the cover of the book you're reading, on a light or dark base."
+        >
+          {adaptiveBody}
         </Section>
       )}
 

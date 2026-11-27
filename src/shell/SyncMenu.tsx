@@ -109,7 +109,7 @@ export function SyncMenu({
       ],
     },
     coverItem,
-    { label: "Attune", icon: "settings", onSelect: () => onOpenPreferences?.() },
+    { label: "Attunement", icon: "settings", onSelect: () => onOpenPreferences?.() },
   ];
   return (
     <Menu

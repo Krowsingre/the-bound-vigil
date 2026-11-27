@@ -1,4 +1,4 @@
-/* Privacy mode (Attune › Appearance): every cover gives way to a plain tile.
+/* Privacy mode (Attunement › Library): every cover gives way to a plain tile.
    The covers stay loaded underneath, so hiding and showing them is instant. */
 
 .cover-private {
@@ -31,9 +31,15 @@
   visibility: hidden;
 }
 
-/* Blank tiles keep no words at all. */
-:root[data-privacy="blank"] .cover-private > span {
+/* The tile in a cover's place shows nothing; the title and author under the cover stay
+   (embre, 27 November). */
+:root[data-privacy] .cover-private > span {
   visibility: hidden;
+}
+
+/* Hide reading activity: progress on covers and in lists. */
+:root[data-privacy-activity] .progress-line {
+  display: none;
 }
 
 /* Badges (in the cloud, has its audiobook…) stay readable above the tile. */

@@ -1,4 +1,4 @@
-// Attune › Activity: what TBV is doing in the background, one switch
+// Attunement › Activity: what TBV is doing in the background, one switch
 // apart: books being imported, what sync is sending and fetching, and pairs
 // of books and audiobooks being lined up for read-along.
 
@@ -134,7 +134,7 @@ function LiningUpPane() {
         <div>
           <p className="settings-row-hint">
             In Confluence, each book paired with its audiobook converges with it word by word, one pair at a time, on every device that has both downloaded. A computer works from
-            the start and a phone from the end, so together they meet in the middle.{isIOS && " On this phone it's off until you turn it on in Attune › Reading › Read-along."}
+            the start and a phone from the end, so together they meet in the middle.{isIOS && " On this phone it's off until you turn it on in Attunement › Reading › Read-along."}
           </p>
         </div>
         <div className="imports-actions">

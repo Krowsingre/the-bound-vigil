@@ -559,6 +559,14 @@ export function Reader({
     },
     [engine],
   );
+  /** A chapter to the left or right on screen (arrow keys while scrolling): back or on by the reading direction. */
+  const chapterSide = (side: "left" | "right") => {
+    const forward = (side === "right") !== (engine.direction === "rtl");
+    const at = current ? entries.indexOf(current) : -1;
+    const target = forward ? entries.slice(at + 1).find((e) => e.href !== current?.href) : at > 0 ? entries[at - 1] : undefined;
+    if (!target) return;
+    jumpTo(target.href);
+  };
   const directionControl = {
     value: engine.direction,
     own: engine.ownDirection,
@@ -805,6 +813,9 @@ export function Reader({
       if (readAloud.unavailable) toast(readAloud.unavailable);
       else narrate.toggle();
     }
+    // Scrolling a flowing book: the arrows move a chapter, remembered so "Return to previous
+    // location" can undo a slip (embre, 27 November).
+    else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !engine.fixed && viewSettings.flow === "scrolled") chapterSide(e.key === "ArrowLeft" ? "left" : "right");
     else if (e.key === "ArrowLeft") turnSide("left");
     else if (e.key === "ArrowRight") turnSide("right");
     else if (!e.shiftKey && (engine.fixed || viewSettings.flow === "scrolled") && (e.key === "ArrowUp" || e.key === "ArrowDown")) {

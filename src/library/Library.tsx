@@ -163,7 +163,7 @@ export function Library({
   // On a phone there are no pages: more books load as the list nears its end.
   // A computer can ask for the same in Settings.
   const narrow = useNarrow();
-  const { settings: { scrollLibrary }, change: changeSettings } = useAppSettings();
+  const { settings: { scrollLibrary, privacy }, change: changeSettings } = useAppSettings();
   const [pins, setPins] = useState<BookPreview[]>([]);
   const [pinnedSeries, setPinnedSeries] = useState<string[]>([]);
   const favourites = useFavourites(refreshKey);
@@ -1015,7 +1015,8 @@ export function Library({
     return () => { current = false; };
   }, [kind, lead === undefined, refreshKey, reload]); // eslint-disable-line react-hooks/exhaustive-deps
   const leadBook = lead === undefined ? ownLead : lead;
-  const leadHere = leadBook && !inSeries && view.tab === "all" && !filtered && !search.trim() ? leadBook : null;
+  // Privacy mode › Hide reading activity leaves out the Last read / Last listened card.
+  const leadHere = leadBook && !privacy.hideActivity && !inSeries && view.tab === "all" && !filtered && !search.trim() ? leadBook : null;
   const firstPage = endless || (page?.page ?? 0) === 0;
   const leadCard: LeadCard | undefined = leadHere && firstPage && page
     ? { book: leadHere, label: kind === "audiobooks" ? "Last listened" : "Last read" }

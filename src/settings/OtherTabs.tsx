@@ -22,6 +22,7 @@ import { EreadersTab } from "./EreadersTab";
 import { HardcoverSection } from "./HardcoverSection";
 import { CanvaSection, canvaHere } from "./CanvaSection";
 import { ReadingHistorySection } from "./ReadingHistory";
+import { AtChoice, AtRow, AtRows, AtSection, AtSwitch } from "./attune";
 import { useShortcuts } from "../lib/shortcuts";
 
 const READING_FONTS = {
@@ -213,13 +214,98 @@ function ReadAlongSection() {
   );
 }
 
+/**
+ * Attunement › Library › Read-along on a computer (embre, 27 November): the same settings
+ * as above, in rows, with TBV's own words.
+ */
+export function DeskReadAlong() {
+  const [set, setSet] = useState<LineUpSettings | null>(null);
+  const [models, setModels] = useState<[string, number][]>([]);
+  const toast = useToast();
+  useEffect(() => {
+    api.getSetting(LINE_UP_KEY).then(
+      (raw) => {
+        let saved: Partial<LineUpSettings> = {};
+        try {
+          saved = raw ? JSON.parse(raw) : {};
+        } catch {
+          // A broken value falls back to the defaults.
+        }
+        setSet({ ...LINE_UP_DEFAULTS, ...saved });
+      },
+      () => setSet(LINE_UP_DEFAULTS),
+    );
+    api.speechModels().then(setModels, () => setModels([]));
+  }, []);
+  if (!set || !isApp) return null;
+  const change = (patch: Partial<LineUpSettings>) => {
+    const next = { ...set, ...patch };
+    setSet(next);
+    void api.setSetting(LINE_UP_KEY, JSON.stringify(next)).then(() => api.wakeLiningUp());
+  };
+  const size = models.reduce((sum, [, bytes]) => sum + bytes, 0);
+  return (
+    <AtSection id="read-along" title="Read-along">
+      <AtRows>
+        <AtSwitch
+          label="Run Confluence by itself"
+          hint="When it's off, nothing converges on this device. Pairs still follow along by chapter."
+          checked={set.auto}
+          onChange={(auto) => change({ auto })}
+        />
+        <AtRow label="Accuracy" hint="Applies to what converges from now on." wide>
+          <AtChoice<LineUpSettings["model"]>
+            label="Accuracy"
+            value={set.model}
+            options={[
+              { value: "standard", label: "Standard" },
+              { value: "faster", label: "Faster" },
+            ]}
+            onChange={(model) => change({ model })}
+          />
+        </AtRow>
+        <AtRow label="Speed" hint="Gently uses half the processor, so everything else stays quick." wide>
+          <AtChoice<LineUpSettings["effort"]>
+            label="Speed"
+            value={set.effort}
+            options={[
+              { value: "gentle", label: "Gently" },
+              { value: "full", label: "As fast as possible" },
+            ]}
+            onChange={(effort) => change({ effort })}
+          />
+        </AtRow>
+        <AtRow label="Speech model" hint={size ? `${formatBytes(size)} on this device.` : "Not downloaded yet. It's fetched the first time a pair converges."}>
+          {size > 0 && (
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() =>
+                void api.removeSpeechModels().then(
+                  () => {
+                    setModels([]);
+                    toast("Speech model removed. It's downloaded again when it's needed.");
+                  },
+                  () => toast("The speech model couldn't be removed."),
+                )
+              }
+            >
+              Remove
+            </button>
+          )}
+        </AtRow>
+      </AtRows>
+    </AtSection>
+  );
+}
+
 const LIBRARY_LAYOUTS: { value: Layout; label: string }[] = [
   { value: "grid", label: "Covers" },
   { value: "list", label: "List" },
   { value: "compact", label: "Compact" },
 ];
 
-function useLibraryInfo() {
+export function useLibraryInfo() {
   const [info, setInfo] = useState<LibraryInfo | null>(null);
   useEffect(() => {
     api.libraryInfo().then(setInfo, () => setInfo(null));
@@ -227,7 +313,7 @@ function useLibraryInfo() {
   return info;
 }
 
-function ShowButton({ path, label = "Show in File Explorer" }: { path: string; label?: string }) {
+export function ShowButton({ path, label = "Show in File Explorer" }: { path: string; label?: string }) {
   const toast = useToast();
   return (
     <button
@@ -414,6 +500,16 @@ export function LibraryTab({
 function TagsSection() {
   // Phones and iPads hold a book where a computer right-clicks it.
   const keys = useShortcuts();
+  return (
+    <Section id="tags" title="Tags" lede={`Your own labels for books. Add them from any book's menu, ${keys ? "right-click" : "hold"} a book, or filter the Archive by them.`}>
+      <TagChips />
+    </Section>
+  );
+}
+
+/** Every tag with how many books have it, each with a button to take it off every book. */
+export function TagChips({ after }: { /** Under the chips, e.g. where tags come from. */ after?: React.ReactNode } = {}) {
+  const keys = useShortcuts();
   const toast = useToast();
   const [tags, setTags] = useState<TagCount[] | null>(null);
   const [removing, setRemoving] = useState<TagCount | null>(null);
@@ -437,7 +533,7 @@ function TagsSection() {
     load();
   };
   return (
-    <Section id="tags" title="Tags" lede={`Your own labels for books. Add them from any book's menu, ${keys ? "right-click" : "hold"} a book, or filter the Archive by them.`}>
+    <>
       {tags === null ? null : tags.length === 0 ? (
         <p className="settings-row-hint">No tags yet. {keys ? "Right-click" : "Hold"} a book, or open its … menu, and choose Add tags.</p>
       ) : (
@@ -465,7 +561,8 @@ function TagsSection() {
           onConfirm={() => void remove(removing)}
         />
       )}
-    </Section>
+      {tags && tags.length > 0 && after}
+    </>
   );
 }
 
@@ -496,7 +593,7 @@ function DeletedBooksSection() {
 }
 
 /** The books TBV remembers as deleted, each with Forget (embre, 21 November). */
-function DeletedBooksList() {
+export function DeletedBooksList() {
   const [books, setBooks] = useState<DeletedBook[] | null>(null);
   const [query, setQuery] = useState("");
   const toast = useToast();
@@ -942,6 +1039,15 @@ const FORMATS: { ext: string; name: string }[] = [
 function BookFormatsSection() {
   return (
       <Section id="formats" title="Book formats" lede="TBV imports and reads all of these.">
+        <BookFormatsList />
+      </Section>
+  );
+}
+
+/** The formats TBV opens, and the word on DRM. */
+export function BookFormatsList() {
+  return (
+      <>
         <ul className="format-list">
           {FORMATS.map((f) => (
             <li key={f.ext}>
@@ -952,13 +1058,21 @@ function BookFormatsSection() {
           ))}
         </ul>
         <p className="settings-row-hint">Books with DRM (copy protection) can't be opened by any reader but the shop's own.</p>
-      </Section>
+      </>
   );
 }
 
 function BookFilesSection() {
   return (
       <Section id="files" title="Your book files" lede="What TBV does, and never does, with your books.">
+        <BookFilesList />
+      </Section>
+  );
+}
+
+/** What TBV does, and never does, with your books. */
+export function BookFilesList() {
+  return (
         <ul className="promise-list">
           <li>
             <Icon name="check" size={18} /> Importing copies a book into TBV's library folder. The file you imported from stays where it was.
@@ -974,7 +1088,6 @@ function BookFilesSection() {
             <Icon name="check" size={18} /> Removing a book from this device keeps your progress and notes. Deleting it removes it everywhere.
           </li>
         </ul>
-      </Section>
   );
 }
 
@@ -1032,7 +1145,7 @@ export function AccessibilityTab({ onShortcuts }: { onShortcuts?: () => void } =
 const EVERYWHERE: [string, string][] = [
   ["Alt + ← / →", "Back / Forward through app screens"],
   ["Alt + ← / → in Nexus", "Back / Forward through webpages (add Shift for app screens)"],
-  ["Ctrl + 1 to 7", "Go to Sanctum, Archive, Resonance, Compendium, Scribe, Discover or Attune"],
+  ["Ctrl + 1 to 7", "Go to Sanctum, Archive, Resonance, Compendium, Scribe, Discover or Attunement"],
   ["Ctrl + F  or  Ctrl + K", "Search"],
   ["Ctrl + O", "Import books"],
   ["Ctrl + \\", "Show or hide the sidebar"],

@@ -1,15 +1,14 @@
-// Attune › Account on a computer (embre, 27 November): the first page built to the
-// Attune design framework. Two sections side by side when there's room: Profile
-// (picture, your name, this device's name, friend code) and Friends. No page title
-// and no flavour text; spacing comes from the shared .attune tokens in settings.css.
-// The older Visage page stays until embre says it can go.
+// Attunement › Account on a computer (embre, 27 November): Visage (picture, Moniker,
+// Conduit, Signet with Copy and Share) and Oathkin, one under the other, each folding.
+// No page title and no flavour text; spacing comes from the shared .attune tokens.
 
 import { useEffect, useId, useState } from "react";
-import { api, isAndroid, isIOS } from "../api";
+import { api } from "../api";
 import type { Friend, Profile } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { FriendRow, PROFILE_CHANGED } from "./ProfileSection";
+import { AtPage, AtSection } from "./attune";
 
 /** Error text as a sentence. */
 const sentence = (e: unknown) => {
@@ -55,7 +54,7 @@ function ProfilePart() {
   useEffect(() => {
     const load = () => void api.getProfile().then(setProfile, () => undefined);
     load();
-    // A first sync can swap this device's new friend code for the library's own.
+    // A first sync can swap this device's new Signet for the library's own.
     return api.onSync({ libraryChanged: load });
   }, []);
   const saved = (p: Profile) => {
@@ -71,152 +70,102 @@ function ProfilePart() {
   const avatar = profile?.avatarPath ? api.coverUrl(profile.avatarPath) : "";
   const copy = (code: string) =>
     void navigator.clipboard?.writeText(code).then(
-      () => toast("Friend code copied."),
-      () => toast("Couldn't copy it. Select the code and copy it instead."),
+      () => toast("Signet copied."),
+      () => toast("Couldn't copy it. Select the Signet and copy it instead."),
     );
+  // Windows' own Share panel; elsewhere the browser's, if it has one.
+  const share = (code: string) => {
+    const shared = api.shareText
+      ? api.shareText(code, "My Signet")
+      : typeof navigator.share === "function"
+        ? navigator.share({ title: "My Signet", text: code })
+        : Promise.reject(new Error("Sharing isn't available here. Copy it instead."));
+    void shared.catch((e: unknown) => {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      toast(sentence(e));
+    });
+  };
   return (
-    <section className="attune-section" id="settings-account-profile" aria-labelledby="account-profile-head">
-      <h2 className="attune-section-head" id="account-profile-head">
-        Profile
-      </h2>
-      <div className="account-picture-row">
-        <span className="profile-picture" aria-hidden>
-          {avatar ? <img src={avatar} alt="" draggable={false} /> : <Icon name="image" size={22} />}
-        </span>
-        <div className="attune-buttons">
+    <AtSection id="account-profile" title="Visage" also={["profile"]}>
+      <div className="account-visage">
+        <div className="account-visage-picture">
+          <span className="profile-picture" aria-hidden>
+            {avatar ? <img src={avatar} alt="" draggable={false} /> : <Icon name="image" size={22} />}
+          </span>
           <button type="button" className="btn btn-quiet" onClick={() => void choose()}>
-            <Icon name="image" size={16} /> {avatar ? "Change picture…" : "Choose a picture…"}
+            Choose picture…
           </button>
           {avatar && (
-            <button type="button" className="btn btn-quiet" onClick={() => void api.clearAvatar().then(saved, failed)}>
+            <button type="button" className="link-btn" onClick={() => void api.clearAvatar().then(saved, failed)}>
               Remove
             </button>
           )}
         </div>
-      </div>
-      <div className="attune-columns">
-        <Field label="Your name" hint="Shown with your picture on every device signed in to this library.">
-          {(id) => <NameInput id={id} value={profile?.name ?? ""} placeholder="Your name" onSave={(name) => void api.setAccountName(name).then(saved, failed)} />}
-        </Field>
-        <Field label="This device's name" hint="What your other devices call this one. Leave it empty for the name it started with.">
-          {(id) => <NameInput id={id} value={profile?.deviceName ?? ""} placeholder="Like embre's PC" onSave={(name) => void api.setDeviceName(name).then(saved, failed)} />}
-        </Field>
-      </div>
-      {profile?.friendCode && (
-        <Field label="Friend code" hint="The same on all your devices. Give it to friends so they can save you.">
-          {(id) => (
-            <div className="attune-inline">
-              <output id={id} className="attune-input account-code" aria-label="Your friend code">
-                {profile.friendCode}
-              </output>
-              <button type="button" className="btn btn-quiet" onClick={() => copy(profile.friendCode!)}>
-                <Icon name="copy" size={16} /> Copy
-              </button>
-            </div>
+        <div className="account-visage-fields">
+          <Field label="Moniker">
+            {(id) => <NameInput id={id} value={profile?.name ?? ""} placeholder="Your name" onSave={(name) => void api.setAccountName(name).then(saved, failed)} />}
+          </Field>
+          <Field label="Conduit">
+            {(id) => <NameInput id={id} value={profile?.deviceName ?? ""} placeholder="This device's name" onSave={(name) => void api.setDeviceName(name).then(saved, failed)} />}
+          </Field>
+          {profile?.friendCode && (
+            <Field label="Signet">
+              {(id) => (
+                <div className="attune-inline">
+                  <output id={id} className="attune-input account-code" aria-label="Your Signet">
+                    {profile.friendCode}
+                  </output>
+                  <button type="button" className="btn btn-quiet" onClick={() => copy(profile.friendCode!)}>
+                    Copy
+                  </button>
+                  <button type="button" className="btn btn-quiet" onClick={() => share(profile.friendCode!)}>
+                    Share
+                  </button>
+                </div>
+              )}
+            </Field>
           )}
-        </Field>
-      )}
-    </section>
+        </div>
+      </div>
+    </AtSection>
   );
 }
 
-/** Where friends can't be reached yet: only the Apple devices will connect to friends. */
-const NO_FRIENDS_YET = !isIOS && !isAndroid;
-
-function FriendsPart() {
+/**
+ * Oathkin: friends saved by their Signet. A computer can't bind new oaths yet, so there's no
+ * Bind Oathkin or Sever bond here; Monikers can always be changed (embre, 27 November).
+ */
+function OathkinPart() {
   const toast = useToast();
   const [friends, setFriends] = useState<Friend[] | null>(null);
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
   useEffect(() => {
-    const load = () => void api.friends().then(setFriends, (e: unknown) => setError(sentence(e)));
+    const load = () => void api.friends().then(setFriends, (e: unknown) => toast(sentence(e)));
     load();
-    // Friends saved on another device arrive with a sync.
+    // Oathkin saved on another device arrive with a sync.
     return api.onSync({ libraryChanged: load });
-  }, []);
-  const save = async () => {
-    if (busy || !code.trim()) return;
-    setBusy(true);
-    setError("");
-    try {
-      setFriends(await api.saveFriend(code, name));
-      setCode("");
-      setName("");
-      toast("Friend saved.");
-    } catch (e) {
-      setError(sentence(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const rename = (friend: Friend, to: string) => api.saveFriend(friend.code, to).then(setFriends, (e: unknown) => toast(sentence(e)));
-  const remove = (friend: Friend) => api.removeFriend(friend.code).then(setFriends, (e: unknown) => toast(sentence(e)));
   return (
-    <section className="attune-section" id="settings-account-friends" aria-labelledby="account-friends-head">
-      <h2 className="attune-section-head" id="account-friends-head">
-        Friends
-      </h2>
-      <form
-        className="account-add"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void save();
-        }}
-      >
-        <Field label="Friend code">
-          {(id) => (
-            <input
-              id={id}
-              className="attune-input oathkin-code-input"
-              value={code}
-              placeholder="TBV-7K3Q-9F2M"
-              autoCapitalize="characters"
-              autoCorrect="off"
-              autoComplete="off"
-              spellCheck={false}
-              maxLength={20}
-              onChange={(e) => (setCode(e.target.value), setError(""))}
-            />
-          )}
-        </Field>
-        <Field label="What to call them">
-          {(id) => <input id={id} className="attune-input" value={name} maxLength={60} placeholder="Optional" onChange={(e) => setName(e.target.value)} />}
-        </Field>
-        <button type="submit" className="btn btn-primary" disabled={busy || !code.trim()}>
-          <Icon name="plus" size={16} /> {busy ? "Saving…" : "Save friend"}
-        </button>
-      </form>
-      {error ? (
-        <p className="attune-error" role="alert">
-          {error}
-        </p>
-      ) : (
-        <small className="attune-hint">
-          {NO_FRIENDS_YET ? "Friends can't connect on the computer yet. Codes you save here go to all your devices." : "Codes you save here go to all your devices."}
-        </small>
-      )}
-      {friends === null ? (
-        <p className="attune-hint">Loading…</p>
-      ) : friends.length === 0 ? (
-        <p className="attune-hint account-empty">No friends saved yet.</p>
+    <AtSection id="account-friends" title="Oathkin" also={["oathkin"]}>
+      {friends === null ? null : friends.length === 0 ? (
+        <p className="attune-hint">No oaths yet sworn.</p>
       ) : (
         <ul className="oathkin-list account-friends">
           {friends.map((friend) => (
-            <FriendRow key={friend.code} friend={friend} onRename={(to) => void rename(friend, to)} onRemove={() => void remove(friend)} />
+            <FriendRow key={friend.code} friend={friend} onRename={(to) => void rename(friend, to)} />
           ))}
         </ul>
       )}
-    </section>
+      <p className="attune-hint account-foot">This Conduit cannot bind new oaths, but honors those sworn through compatible Conduits.</p>
+    </AtSection>
   );
 }
 
 export function AccountPage() {
   return (
-    <div className="attune-page">
+    <AtPage>
       <ProfilePart />
-      <FriendsPart />
-    </div>
+      <OathkinPart />
+    </AtPage>
   );
 }

@@ -1222,6 +1222,9 @@ export async function webApi(): Promise<Api> {
     exportLibrary: async () => {
       throw new Error(DESKTOP_ONLY);
     },
+    exportNotesArchive: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
     exportNotesMarkdown: async () => {
       throw new Error(DESKTOP_ONLY);
     },

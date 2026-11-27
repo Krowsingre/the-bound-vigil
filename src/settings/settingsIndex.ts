@@ -147,13 +147,13 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   {
     tab: "account",
     section: "account-profile",
-    label: "Account: picture, name and this device's name",
+    label: "Account: Visage, Moniker, Conduit and Signet",
     words: "profile visage avatar photo picture name device friend code",
   },
   {
     tab: "account",
     section: "account-friends",
-    label: "Account: friends",
+    label: "Account: Oathkin",
     words: "oathkin friends friend code add remove",
   },
   {
@@ -220,7 +220,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "appearance",
     section: "privacy",
     label: "Privacy mode",
-    words: "privacy private hide covers blank discreet shortcut profile picture",
+    words: "privacy private hide covers blank discreet shortcut profile picture avatar reading activity progress statistics",
   },
   {
     tab: "appearance",
@@ -285,7 +285,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   {
     tab: "collections",
     section: "series-check",
-    label: "Check for new books in a series",
+    label: "Check for new in series",
     words: "series new books missing check online schedule daily weekly monthly yearly custom days check now",
   },
   {
@@ -304,7 +304,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "notes",
     section: "view",
     label: "Export notes",
-    words: "markdown export highlights annotations",
+    words: "markdown plain text export highlights annotations archive zip",
   },
   {
     tab: "browser",

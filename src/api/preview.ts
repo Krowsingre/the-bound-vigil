@@ -1058,6 +1058,9 @@ export function previewApi(): Api {
     exportLibrary: async () => {
       throw new Error("Exporting works in the desktop app.");
     },
+    exportNotesArchive: async () => {
+      throw new Error("Exporting works in the desktop app.");
+    },
     exportNotesMarkdown: async () => {
       throw new Error("Exporting works in the desktop app.");
     },
