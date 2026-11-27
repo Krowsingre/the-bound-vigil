@@ -198,6 +198,32 @@ export function Library({
     }, (error: unknown) => toast(String(error).replace(/^Error: /, "")));
   const toggleSeriesTop = (name: string, top: boolean) =>
     void setTopFive(seriesTopKey(name), name, top).catch((error: unknown) => toast(String(error).replace(/^Error: /, "")));
+  /** The series' own page. */
+  const goToSeries = (name: string) => {
+    if (onOpenSeries) onOpenSeries(name);
+    else {
+      onClearSearch();
+      onChange({ ...NO_FILTERS, tab: "all", series: [name], sort: "series", page: 0 });
+    }
+  };
+  // On a computer, a stack fans its books out in place instead of leaving the page, so
+  // nothing reloads and no other books show while it opens (embre, 27 November).
+  // Each open stack's books, or null while they're being fetched.
+  const [fanned, setFanned] = useState<Record<string, BookPreview[] | null>>({});
+  const toggleFan = (name: string) => {
+    if (name in fanned) {
+      setFanned(({ [name]: _gone, ...rest }) => rest);
+      return;
+    }
+    setFanned((f) => ({ ...f, [name]: null }));
+    void seriesBooks(name).then(
+      (books) => setFanned((f) => (name in f ? { ...f, [name]: books } : f)),
+      (e: unknown) => {
+        setFanned(({ [name]: _gone, ...rest }) => rest);
+        toast(String(e).replace(/^Error: /, ""));
+      },
+    );
+  };
   const seriesMenu = (name: string): import("../components/Menu").MenuEntry[] => {
     const key = name.trim().toLowerCase();
     const favourite = isFavouriteSeries(name, favourites.series);
@@ -240,6 +266,8 @@ export function Library({
       ),
     };
     return [
+      // On a computer a click fans the stack out; the series page is a menu choice away (embre, 27 November).
+      ...(!narrow ? [{ label: albums ? "Open album page" : "Open series page", icon: "chevronRight" as const, onSelect: () => goToSeries(name) }] : []),
       // Start choosing with this whole stack, without going back to the top (embre, 21 November).
       { label: "Select", icon: "check", onSelect: () => void chooseSeries([name], true) },
       ...favouriteItems,
@@ -278,6 +306,26 @@ export function Library({
   // iPhone, portrait iPad and an upright Duo: covers, or the list of names (embre, 20 November).
   const phoneList = useNarrow(PHONE_LIST);
   const Layout = phoneList && view.layout !== "grid" ? PhoneList : { grid: BookGrid, list: BookList, compact: BookTable }[view.layout];
+  /** An open stack's books, under a header with the way to its own page. */
+  const fanOf = (name: string) => {
+    if (!(name in fanned)) return null;
+    const books = fanned[name];
+    return (
+      <>
+        <div className="series-fan-head">
+          <span className="series-fan-name">{name}</span>
+          {books && <span className="muted num">{books.length.toLocaleString()} {books.length === 1 ? words.one : words.many}</span>}
+          <button type="button" className="btn btn-quiet btn-small series-fan-open" onClick={() => goToSeries(name)}>
+            {albums ? "Open album" : "Open series"} <Icon name="chevronRight" size={14} />
+          </button>
+          <button type="button" className="icon-btn icon-btn-s" aria-label={`Fold ${name}`} title="Fold" onClick={() => toggleFan(name)}>
+            <Icon name="chevronUp" size={16} />
+          </button>
+        </div>
+        {books ? <Layout books={books} actions={actions} selection={selection} showStatus inSeries={name} /> : <div className="library-loading series-fan-loading" aria-busy="true" aria-label={`Opening ${name}`} />}
+      </>
+    );
+  };
   // Series stay stacked while choosing: a stack is chosen whole.
   // In Music an album is always one stack: grouping songs as an album means
   // seeing them as one item (embre, 20 November).
@@ -326,6 +374,8 @@ export function Library({
     seriesCoverChoices: coverChoices,
   };
   const queryKey = JSON.stringify(query);
+  // A new search, filter, sort or page folds every stack back.
+  useEffect(() => setFanned({}), [queryKey, view.page]);
   // Paged on a computer: each page is as many full rows as fit the window, with the
   // Pinned and Last read cards counted inside the first page (embre, 21 November).
   const libraryRoot = useRef<HTMLDivElement>(null);
@@ -1028,7 +1078,7 @@ export function Library({
         <Layout books={pins} actions={actions} selection={selection} />
         {pinnedStacks && pinnedStacks.books.length > 0 && (
           <Layout books={pinnedStacks.books} actions={actions} selection={selection} seriesCounts={pinnedStacks.seriesCounts}
-            seriesCovers={pinnedStacks.seriesCovers} seriesPublished={pinnedStacks.seriesPublished} seriesAuthors={pinnedStacks.seriesAuthors} onOpenSeries={onOpenSeries && ((name) => openStack(name, onOpenSeries))} seriesMenu={seriesMenu} />
+            seriesCovers={pinnedStacks.seriesCovers} seriesPublished={pinnedStacks.seriesPublished} seriesAuthors={pinnedStacks.seriesAuthors} onOpenSeries={narrow ? onOpenSeries && ((name) => openStack(name, onOpenSeries)) : toggleFan} fan={narrow ? undefined : fanOf} seriesMenu={seriesMenu} />
         )}
       </>
     );
@@ -1082,11 +1132,7 @@ export function Library({
     );
   } else {
     const noun: [string, string] = groupSeries ? ["item", "items"] : [words.one, words.many];
-    const openSeries = onOpenSeries ?? ((name: string) => {
-      onClearSearch();
-      onChange({ ...NO_FILTERS, tab: "all", series: [name], sort: "series", page: 0 });
-    });
-    const items = <Layout books={shownBooks} pinnedCard={pinnedCard} lead={leadCard} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} seriesCovers={page.seriesCovers} seriesPublished={page.seriesPublished} seriesAuthors={page.seriesAuthors} seriesMenu={seriesMenu} showStatus={inSeries} inSeries={seriesName} onOpenSeries={(name) => openStack(name, openSeries)} />;
+    const items = <Layout books={shownBooks} pinnedCard={pinnedCard} lead={leadCard} actions={actions} selection={selection} seriesCounts={groupSeries ? page.seriesCounts : undefined} seriesCovers={page.seriesCovers} seriesPublished={page.seriesPublished} seriesAuthors={page.seriesAuthors} seriesMenu={seriesMenu} showStatus={inSeries} inSeries={seriesName} onOpenSeries={narrow ? (name) => openStack(name, goToSeries) : toggleFan} fan={narrow ? undefined : fanOf} />;
     body = endless ? (
       <>
         {items}

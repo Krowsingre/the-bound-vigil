@@ -1,6 +1,6 @@
 // Paying for TBV: $2.99 a month, $19.99 a year or $59.99 for life (embre, 30 October), from
 // the Microsoft Store after 30 days to try it in full, or from the App Store,
-// where the yearly plan's first month is free (Apple's own trial). While the trial runs everything works;
+// where the yearly plan's first month is free (Apple's own trial). While the trial runs all of TBV works (Publisher is separate);
 // once it's over, this screen stands in front of the library until TBV is
 // bought, with a way to take a backup so nothing is ever held hostage.
 

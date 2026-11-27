@@ -3,8 +3,8 @@
 // full-page pictures, side-by-side previews) on top of TBV, $9.99 a month,
 // $39.99 a year or $119.99 for life, or the difference for someone who owns
 // TBV for life.
-// Everything works while the trial runs; after that, using one of these
-// tools without Publisher offers it instead.
+// TBV's trial covers TBV only (embre, 27 November): using one of these tools
+// without Publisher offers it instead, during the trial too.
 
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { api } from "../api";
@@ -37,10 +37,10 @@ function previewLicense(): LicenseView | null {
   return { state: "owned", daysLeft: 0, trialEnds: 0, trialDays: 30, shop: "microsoft", price: "$59.99", yearlyPrice: "$19.99", monthlyPrice: "$2.99", plan: owned === "yearly" ? "yearly" : "lifetime", publisher: false, publisherForLife: false, publisherPrice: "$119.99", publisherYearlyPrice: "$39.99", publisherMonthlyPrice: "$9.99", upgradePrice: "$60.00" };
 }
 
-/** Publisher is there when it's owned, while trying TBV, and wherever there's nothing to buy it from (the web version, a copy from outside a store unlocked by code). */
+/** Publisher is there when it's owned, and wherever there's nothing to buy it from (the web version, a copy from outside a store unlocked by code). TBV's trial doesn't include it. */
 export function hasPublisher(license: LicenseView | null): boolean {
   if (!license) return true;
-  return license.state === "trial" || !!license.publisher;
+  return !!license.publisher;
 }
 
 export function PublisherProvider({ children }: { children: ReactNode }) {

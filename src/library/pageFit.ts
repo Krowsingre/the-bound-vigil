@@ -47,7 +47,7 @@ export function measureFit(root: HTMLElement, content: HTMLElement): number | nu
   // its row taller, and measuring that row would size the first page and the others differently.
   let start = -1;
   for (let i = 0; i < items.length; i += cols) {
-    if (!items.slice(i, i + cols).some((item) => item.matches(".is-lead, .pinned-stack"))) {
+    if (!items.slice(i, i + cols).some((item) => item.matches(".is-lead, .pinned-stack, .series-fan, .series-fan-row"))) {
       start = i;
       break;
     }
