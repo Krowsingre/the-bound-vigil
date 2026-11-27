@@ -461,7 +461,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "ereaders",
     section: "connected",
     label: "Connected e-readers",
-    words: "kindle kobo pocketbook nook sony ereader e-reader device usb cable drive send copy",
+    words: "kindle kobo pocketbook nook sony ereader e-reader device usb cable drive send copy eject unplug file explorer",
   },
   {
     tab: "ereaders",

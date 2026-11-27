@@ -18,7 +18,6 @@ import { canWatch, unwatch, useWatch, watchAuthor, watchBook, whenLine } from ".
 import { relativeTime } from "../lib/format";
 import { useReaderSettings } from "./AppearanceTab";
 import { ActionTile, Columns, formatBytes, RadioList, Row, Section, SectionGroup, Segmented, Select, Toggle, useDeskPrefs } from "./controls";
-import { EreadersTab } from "./EreadersTab";
 import { HardcoverSection } from "./HardcoverSection";
 import { CanvaSection, canvaHere } from "./CanvaSection";
 import { ReadingHistorySection } from "./ReadingHistory";
@@ -410,20 +409,6 @@ export function DeskLibraryTab() {
 }
 
 /** The computer's Connections page: the other services TBV works with, in one place. */
-export function ConnectionsTab() {
-  return (
-    <>
-      <Columns side={canvaHere ? <CanvaSection /> : undefined}>
-        <SectionGroup id="ratings" title="Ratings sites" holds={["goodreads", "hardcover"]}>
-          <GoodreadsSection />
-          <HardcoverSection />
-        </SectionGroup>
-      </Columns>
-      <EreadersTab />
-    </>
-  );
-}
-
 export function LibraryTab({
   layout,
   sort,
@@ -671,7 +656,7 @@ export function DeletedBooksList() {
       </ul>
       {asking && (
         <ConfirmDialog
-          title={`Forget ${shown.length === 1 ? "this deleted book" : `all ${count}`}?`}
+          title={`Forget ${shown.length === 1 ? "this deleted book" : words ? `these ${count}` : `all ${count}`}?`}
           body="Importing their files again will bring them back into your library, on every device."
           confirm={all}
           danger
@@ -720,7 +705,8 @@ function DuplicatesSection() {
 }
 
 
-function GoodreadsSection() {
+/** Goodreads by file: bring an export in, or make one for Goodreads (and the report after importing). */
+export function useGoodreads() {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<GoodreadsImport | null>(null);
@@ -746,6 +732,12 @@ function GoodreadsSection() {
       setBusy(false);
     }
   };
+  const shown = report && <GoodreadsReport report={report} onClose={() => setReport(null)} />;
+  return { busy, start, exportFile, report: shown };
+}
+
+function GoodreadsSection() {
+  const { busy, start, exportFile, report } = useGoodreads();
   return (
     <Section
       id="goodreads"
@@ -771,7 +763,7 @@ function GoodreadsSection() {
       <p className="settings-row-hint">
         On the Goodreads website, open My Books, then Import and export, and choose Export Library. Save the file it gives you, then choose it here.
       </p>
-      {report && <GoodreadsReport report={report} onClose={() => setReport(null)} />}
+      {report}
     </Section>
   );
 }

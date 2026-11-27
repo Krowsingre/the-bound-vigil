@@ -41,10 +41,10 @@ export const AttuneFrame = createContext(false);
 export const useAttuneFrame = () => useContext(AttuneFrame);
 
 /** A page of the framework: its sections one under another. */
-export function AtPage({ children }: { children: React.ReactNode }) {
+export function AtPage({ className = "", children }: { className?: string; children: React.ReactNode }) {
   return (
     <AttuneFrame.Provider value={true}>
-      <div className="at-page">{children}</div>
+      <div className={`at-page ${className}`.trim()}>{children}</div>
     </AttuneFrame.Provider>
   );
 }
@@ -126,7 +126,7 @@ export function AtRows({ children }: { children: React.ReactNode }) {
 }
 
 /** One setting: its name (and a line under it) on the left, the control on the right. */
-export function AtRow({ label, hint, children, wide }: { label: string; hint?: React.ReactNode; children?: React.ReactNode; /** Choice bars and sliders: under the name inside a pair. */ wide?: boolean }) {
+export function AtRow({ label, hint, children, wide }: { label: React.ReactNode; hint?: React.ReactNode; children?: React.ReactNode; /** Choice bars and sliders: under the name inside a pair. */ wide?: boolean }) {
   const paired = useContext(InPair);
   return (
     <div className={`at-row${wide && paired ? " is-stacked" : ""}${wide ? " is-wide" : ""}`}>

@@ -1339,6 +1339,7 @@ export function previewApi(): Api {
       relayer(bookId);
     },
     listEreaders: async () => sampleReaders,
+    ejectEreader: async () => {},
     copyToEreader: async () => {
       throw new Error(DESKTOP_ONLY);
     },

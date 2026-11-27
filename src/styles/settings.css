@@ -3092,3 +3092,43 @@ kbd {
 .deleted-books.is-framed .deleted-books-item:first-child {
   border-top: 0;
 }
+
+/* Attunement › Connections (embre, 27 November): a service's name and state on the left take
+   the room they need, its buttons sit on the right. */
+.at-connections .at-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.at-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--at-button-gap);
+}
+.at-label-with-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.at-device {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.at-device ~ .at-row-hint,
+.at-row-text:has(.at-device) .at-row-hint {
+  padding-left: 30px;
+}
+.at-device-note {
+  display: block;
+}
+.at-more-button {
+  padding-inline: 8px;
+}
+.kindle-dialog {
+  width: min(560px, calc(100vw - 48px));
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+.kindle-dialog > .settings-row-hint {
+  margin: 0 0 12px;
+}

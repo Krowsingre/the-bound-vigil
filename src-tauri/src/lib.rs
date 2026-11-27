@@ -7,6 +7,7 @@ mod audio;
 #[cfg(target_os = "ios")]
 mod background_sync;
 mod blocklists;
+mod eject;
 mod browser;
 mod canva;
 mod cloud;
@@ -1563,6 +1564,12 @@ async fn list_ereaders() -> CommandResult<Vec<ereaders::Ereader>> {
     tauri::async_runtime::spawn_blocking(ereaders::connected).await.map_err(|e| e.to_string())
 }
 
+/// Lets go of an e-reader's drive so it can be unplugged safely.
+#[tauri::command]
+async fn eject_ereader(root: String, name: String) -> CommandResult<()> {
+    tauri::async_runtime::spawn_blocking(move || eject::eject(&root, &name)).await.map_err(|e| e.to_string())?
+}
+
 /// What sending a book needs, fetching it first if it's only in the cloud.
 /// The library is held just while the book is looked up.
 async fn outgoing(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<ereaders::Outgoing> {
@@ -2674,6 +2681,7 @@ pub fn run() {
             book_places,
             remove_supabase_files,
             list_ereaders,
+            eject_ereader,
             copy_to_ereader,
             kindle_email_settings,
             save_kindle_email,

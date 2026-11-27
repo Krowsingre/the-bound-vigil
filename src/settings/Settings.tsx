@@ -6,8 +6,9 @@ import { AppearanceTab } from "./AppearanceTab";
 import { ProfileSection } from "./ProfileSection";
 import { AccountPage } from "./AccountPage";
 import { BrowserTab } from "./BrowserTab";
-import { AboutTab, AccessibilityTab, PlanTab, AdvancedTab, CollectionsTab, ConnectionsTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
+import { AboutTab, AccessibilityTab, PlanTab, AdvancedTab, CollectionsTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
 import { DeskAppearance, DeskLibrary, DeskManagement, DeskReading } from "./DeskPages";
+import { DeskConnections } from "./DeskConnections";
 import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex";
 import { SyncTab } from "./SyncTab";
 import { EreadersTab } from "./EreadersTab";
@@ -91,7 +92,7 @@ export function deskPageOf(tab: SettingsTab, section?: string): DeskPage {
 }
 
 /** The computer pages built to the Attunement framework: no page title, sections that fold. */
-const ATTUNE_PAGES = new Set<SettingsTab>(["account", "appearance", "reading", "collections", "library"]);
+const ATTUNE_PAGES = new Set<SettingsTab>(["account", "appearance", "reading", "collections", "library", "ereaders"]);
 
 /** Settings: its own menu of pages on the left, the chosen page on the right.
  * A phone opens on a landing page of cards instead; a computer opens on Appearance. */
@@ -212,7 +213,7 @@ export function Settings({
       case "library":
         return <DeskManagement />;
       case "ereaders":
-        return <ConnectionsTab />;
+        return <DeskConnections />;
       case "sync":
         return [part("sync", <SyncTab onRestored={onRestored} onOpenPlaces={onOpenPlaces} />), part("activity", <ActivityTab {...activity} />)];
       case "accessibility":

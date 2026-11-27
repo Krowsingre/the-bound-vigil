@@ -536,6 +536,8 @@ export interface Api {
   shareBestCover(bookIds: string[]): Promise<number>;
   /** E-readers plugged in by cable now. */
   listEreaders(): Promise<Ereader[]>;
+  /** Lets go of a reader's drive so it can be unplugged safely. */
+  ejectEreader(reader: Ereader): Promise<void>;
   /** Copies a book onto the reader plugged in at `root`. The library's copy is never changed. */
   copyToEreader(bookId: string, root: string): Promise<CopiedToEreader>;
   /** Kindle by email, if it's set up on this device. */
@@ -1364,6 +1366,7 @@ function appApi(): Api {
     resetDetails: async (bookId, fetched) => (await core).invoke("reset_details", { bookId, fetched }),
     saveFetched: async (bookId, source, values) => (await core).invoke("save_fetched", { bookId, source, values }),
     listEreaders: async () => (await core).invoke<Ereader[]>("list_ereaders"),
+    ejectEreader: async (reader) => (await core).invoke("eject_ereader", { root: reader.root, name: reader.name }),
     copyToEreader: async (bookId, root) => (await core).invoke<CopiedToEreader>("copy_to_ereader", { bookId, root }),
     kindleEmailSettings: async () => (await core).invoke<KindleEmailView | null>("kindle_email_settings"),
     saveKindleEmail: async (settings) => (await core).invoke<KindleEmailView>("save_kindle_email", { settings }),

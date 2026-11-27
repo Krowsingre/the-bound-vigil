@@ -1515,6 +1515,9 @@ export async function webApi(): Promise<Api> {
     },
     // A browser can't reach drives or send email; the desktop app does that.
     listEreaders: async () => [],
+    ejectEreader: async () => {
+      throw new Error(SENDING_DESKTOP_ONLY);
+    },
     copyToEreader: async () => {
       throw new Error(SENDING_DESKTOP_ONLY);
     },
