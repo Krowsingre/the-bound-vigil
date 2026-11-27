@@ -2196,3 +2196,74 @@ button.tag-chip-add:hover {
   background: var(--accent);
   color: var(--accent-text);
 }
+
+/* An open series stack on a computer: its books fan out right after it, in a
+   framed band across the page, with the way to the series' own page
+   (embre, 27 November). */
+.book-grid > .series-fan {
+  grid-column: 1 / -1;
+}
+
+.series-fan {
+  padding: 14px 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  animation: series-fan-in 160ms ease-out;
+}
+
+.book-list > .series-fan {
+  margin: 6px 0 10px;
+  list-style: none;
+}
+
+.series-fan-row > td {
+  padding: 6px 0 10px;
+}
+
+.series-fan-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.series-fan-name {
+  font: 400 18px/1.2 var(--font-serif);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.series-fan-open {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.series-fan .book-grid {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+.series-fan-loading {
+  min-height: 120px;
+}
+
+.series-stack.is-fanned .grid-open,
+.series-list-row.is-fanned,
+.series-table-row.is-fanned {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-s);
+}
+
+@keyframes series-fan-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .series-fan { animation: none; }
+}

@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { useDownloadsChanging } from "./cloudDownloads";
 import type { BookPreview } from "../api/types";
 import { BookCover } from "../components/BookCover";
@@ -56,6 +57,9 @@ type Props = {
   pinnedCard?: PinnedCard;
   /** The last thing read or listened to, shown first and marked, as well as in its own place (embre, 20 November). */
   lead?: LeadCard;
+  /** On a computer, an opened stack fans its books out right after it (embre, 27 November):
+   *  what to show under a stack, or nothing while it's folded. */
+  fan?: (name: string) => React.ReactNode;
 };
 
 export type PinnedCard = { count: number; cover: BookPreview; onOpen: () => void };
@@ -187,20 +191,23 @@ function Progress({ book }: { book: BookPreview }) {
 /** Right-click (or press and hold) on a stack opens its menu, as on a book. */
 const stackMenu = (name: string, seriesMenu?: Props["seriesMenu"]) => (seriesMenu ? holdForMenu(`More for ${name}`, () => seriesMenu(name)) : {});
 
-export function BookGrid({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, showStatus, inSeries, pinnedCard, lead }: Props) {
+export function BookGrid({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, showStatus, inSeries, pinnedCard, lead, fan }: Props) {
   const row = (book: BookPreview, leading?: string) => {
         const count = leading ? undefined : seriesCounts?.[book.id];
         if (count && book.series && onOpenSeries) {
           const name = book.series.trim();
           const cover = seriesCovers?.[book.id] ?? book;
           const pick = pickedSeries(name, selection, book, books);
+          const fanned = pick ? null : fan?.(name);
           return (
-            <li key={book.id} className={`grid-card series-stack${pick?.on ? " is-selected" : ""}`} {...stackMenu(name, seriesMenu)}>
+            <Fragment key={book.id}>
+            <li className={`grid-card series-stack${pick?.on ? " is-selected" : ""}${fanned ? " is-fanned" : ""}`} {...stackMenu(name, seriesMenu)}>
               <button
                 type="button"
                 className="grid-open"
                 aria-label={pick ? `Choose series ${name}` : "Open series " + name}
                 aria-pressed={pick ? pick.on : undefined}
+                aria-expanded={fan && !pick ? !!fanned : undefined}
                 onClick={(e) => (pick ? pick.toggle(e.shiftKey) : onOpenSeries(name))}
               >
                 <BookCover key={cover.id} book={cover} seriesCount={count} seriesPublished={seriesPublished?.[book.id]} />
@@ -214,6 +221,8 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesPublis
                 {seriesMenu && <Menu label={"More for " + name} trigger={<Icon name="more" />} items={seriesMenu(name)} />}
               </div>
             </li>
+            {fanned && <li className="series-fan">{fanned}</li>}
+            </Fragment>
           );
         }
         const { mark, props } = picked(book, selection);
@@ -256,16 +265,17 @@ export function BookGrid({ books, actions, selection, seriesCounts, seriesPublis
   );
 }
 
-export function BookList({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, inSeries, pinnedCard, lead }: Props) {
+export function BookList({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, inSeries, pinnedCard, lead, fan }: Props) {
   const row = (book: BookPreview, leading?: string) => {
         const count = leading ? undefined : seriesCounts?.[book.id];
         const name = book.series?.trim();
         if (count && name && onOpenSeries) {
           const cover = seriesCovers?.[book.id] ?? book;
           const pick = pickedSeries(name, selection, book, books);
-          return <li key={book.id} className={`list-row series-list-row${pick?.on ? " is-selected" : ""}`} {...stackMenu(name, seriesMenu)}>
+          const fanned = pick ? null : fan?.(name);
+          return <Fragment key={book.id}><li className={`list-row series-list-row${pick?.on ? " is-selected" : ""}${fanned ? " is-fanned" : ""}`} {...stackMenu(name, seriesMenu)}>
             <button type="button" className="list-open" aria-label={pick ? `Choose series ${name}` : `Open series ${name}`}
-              aria-pressed={pick ? pick.on : undefined} onClick={(e) => (pick ? pick.toggle(e.shiftKey) : onOpenSeries(name))}>
+              aria-pressed={pick ? pick.on : undefined} aria-expanded={fan && !pick ? !!fanned : undefined} onClick={(e) => (pick ? pick.toggle(e.shiftKey) : onOpenSeries(name))}>
               {pick?.mark}
               <BookCover key={cover.id} book={cover} size="s" seriesCount={count} seriesPublished={seriesPublished?.[book.id]} />
               <span className="list-text">
@@ -274,7 +284,9 @@ export function BookList({ books, actions, selection, seriesCounts, seriesPublis
               </span>
             </button>
             {seriesMenu && <Menu label={`More for ${name}`} trigger={<Icon name="more" />} items={seriesMenu(name)} />}
-          </li>;
+          </li>
+          {fanned && <li className="series-fan">{fanned}</li>}
+          </Fragment>;
         }
         const { mark, props } = picked(book, selection);
         return (
@@ -314,14 +326,16 @@ export function BookList({ books, actions, selection, seriesCounts, seriesPublis
   );
 }
 
-export function BookTable({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, inSeries, pinnedCard, lead }: Props) {
+export function BookTable({ books, actions, selection, seriesCounts, seriesPublished, seriesAuthors, seriesCovers, onOpenSeries, seriesMenu, inSeries, pinnedCard, lead, fan }: Props) {
   const row = (book: BookPreview, leading?: string) => {
           const count = leading ? undefined : seriesCounts?.[book.id];
           const name = book.series?.trim();
           const pick = count && name ? pickedSeries(name, selection, book, books) : null;
-          if (count && name && onOpenSeries) return <tr key={book.id} className={`series-table-row${pick?.on ? " is-selected" : ""}`} {...stackMenu(name, seriesMenu)}>
+          const fanned = count && name && !pick ? fan?.(name) : null;
+          if (count && name && onOpenSeries) return <Fragment key={book.id}><tr className={`series-table-row${pick?.on ? " is-selected" : ""}${fanned ? " is-fanned" : ""}`} {...stackMenu(name, seriesMenu)}>
             <td colSpan={7}>
               <button type="button" aria-label={pick ? `Choose series ${name}` : `Open series ${name}`} aria-pressed={pick ? pick.on : undefined}
+                aria-expanded={fan && !pick ? !!fanned : undefined}
                 className="table-title series-table-open" onClick={(e) => (pick ? pick.toggle(e.shiftKey) : onOpenSeries(name))}>
                 {pick?.mark}
                 <BookCover book={seriesCovers?.[book.id] ?? book} size="s" seriesCount={count} seriesPublished={seriesPublished?.[book.id]} />
@@ -330,7 +344,9 @@ export function BookTable({ books, actions, selection, seriesCounts, seriesPubli
               </button>
             </td>
             <td>{seriesMenu && <Menu label={`More for ${name}`} trigger={<Icon name="more" />} items={seriesMenu(name)} />}</td>
-          </tr>;
+          </tr>
+          {fanned && <tr className="series-fan-row"><td colSpan={8}><div className="series-fan">{fanned}</div></td></tr>}
+          </Fragment>;
           const { mark, props } = picked(book, selection);
           return (
             <tr key={leading ? `lead:${book.id}` : book.id} className={[leading ? "is-lead" : "", selection?.has(book.id) ? "is-selected" : ""].filter(Boolean).join(" ") || undefined} {...bookContextMenu(book, actions)}>

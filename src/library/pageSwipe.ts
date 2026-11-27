@@ -9,8 +9,54 @@ import { useEffect, useRef, type RefObject } from "react";
 
 /** Sideways scrolling needed before a page turns. */
 const WHEEL_DISTANCE = 60;
-/** Quiet time that ends one touchpad gesture, so one swipe turns one page. */
-const WHEEL_REST_MS = 220;
+/** A pause this long between scroll events starts a new gesture. */
+const WHEEL_GAP_MS = 150;
+/** The least time between two turns, so one swipe never turns two pages. */
+const TURN_GAP_MS = 300;
+
+/**
+ * Sideways scrolling, turned into page turns (embre, 21 November). After a
+ * turn, Windows keeps sending a touchpad's glide for a while after the fingers
+ * lift, shrinking as it slows; waiting for that to stop made a quick second
+ * swipe do nothing. A new swipe speeds up instead, so scrolling that grows
+ * again starts a new gesture straight away (embre, 27 November).
+ */
+export function wheelTurner() {
+  let sideways = 0;
+  let armed = true;
+  let lastAt = -Infinity;
+  let lastSize = 0;
+  let turnedAt = -Infinity;
+  /** Whether the scrolling has slowed since the last turn: only then can a speed-up be a new swipe. */
+  let slowed = false;
+  /** One sideways scroll event: 1 next, -1 back, 0 nothing. */
+  return (deltaX: number, at: number): -1 | 0 | 1 => {
+    const size = Math.abs(deltaX);
+    if (at - lastAt > WHEEL_GAP_MS) {
+      // A pause: a new gesture.
+      armed = true;
+      sideways = 0;
+    } else if (!armed && slowed && size > lastSize * 1.5 && size >= 8) {
+      // Speeding up again after the glide began: a new swipe, not the old one's glide.
+      // A swipe still speeding up when it turned the page hasn't slowed, so it can't re-arm.
+      armed = true;
+      sideways = 0;
+    } else if (!armed && size < lastSize) {
+      slowed = true;
+    }
+    lastAt = at;
+    lastSize = size;
+    if (!armed) return 0;
+    sideways += deltaX;
+    if (Math.abs(sideways) < WHEEL_DISTANCE || at - turnedAt < TURN_GAP_MS) return 0;
+    armed = false;
+    slowed = false;
+    turnedAt = at;
+    const step = sideways > 0 ? 1 : -1;
+    sideways = 0;
+    return step;
+  };
+}
 /** A touch swipe: at least this far, and mostly sideways. */
 const SWIPE_DISTANCE = 60;
 
@@ -43,26 +89,15 @@ export function usePageSwipe(root: RefObject<HTMLElement | null>, enabled: boole
   useEffect(() => {
     const el = root.current;
     if (!enabled || !el) return;
-    let sideways = 0;
-    let used = false;
-    let rest = 0;
+    const wheel = wheelTurner();
     const onWheel = (e: WheelEvent) => {
       // Mostly up and down: ordinary scrolling.
       if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || e.ctrlKey) return;
       if (keepsOwnGesture(e.target, el)) return;
       e.preventDefault();
-      window.clearTimeout(rest);
-      rest = window.setTimeout(() => {
-        sideways = 0;
-        used = false;
-      }, WHEEL_REST_MS);
-      if (used) return;
       // Lines or pages of scrolling (some mice) count as a full turn.
-      sideways += e.deltaMode === 0 ? e.deltaX : Math.sign(e.deltaX) * WHEEL_DISTANCE;
-      if (Math.abs(sideways) >= WHEEL_DISTANCE) {
-        used = true;
-        latest.current(sideways > 0 ? 1 : -1);
-      }
+      const step = wheel(e.deltaMode === 0 ? e.deltaX : Math.sign(e.deltaX) * WHEEL_DISTANCE, e.timeStamp);
+      if (step) latest.current(step);
     };
 
     let start: { x: number; y: number } | null = null;
@@ -85,7 +120,6 @@ export function usePageSwipe(root: RefObject<HTMLElement | null>, enabled: boole
     el.addEventListener("touchend", onTouchEnd, { passive: true });
     el.addEventListener("touchcancel", onTouchCancel, { passive: true });
     return () => {
-      window.clearTimeout(rest);
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchend", onTouchEnd);

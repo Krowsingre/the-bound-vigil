@@ -1415,9 +1415,8 @@ function PublisherPlan() {
   const keepPrice = keep === "publisherUpgrade" ? license.upgradePrice : license.publisherPrice;
   const lede = license.publisher
     ? publisherWords(license)
-    : license.state === "trial"
-        ? "Everything you need to publish, on top of all of TBV, included while you try it."
-        : "Everything you need to publish, on top of all of TBV. Your writing and exports to EPUB, Word and text stay free to use either way.";
+    // TBV's trial doesn't include Publisher (embre, 27 November).
+    : "Everything you need to publish, on top of all of TBV. Your writing and exports to EPUB, Word and text stay free to use either way.";
   return (
     <Section id="publisher" title="TBV Publisher" lede={lede} status>
       <PublisherTools />
@@ -1436,7 +1435,7 @@ function PublisherPlan() {
 
 export function AboutTab() {
   const desk = useDeskPrefs();
-  const [version, setVersion] = useState("0.165.0");
+  const [version, setVersion] = useState("0.166.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));
