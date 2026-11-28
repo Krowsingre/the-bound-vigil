@@ -692,6 +692,8 @@ function useWholeRows(on: boolean) {
     const fit = () => {
       frame = 0;
       const lists = [...page.querySelectorAll<HTMLElement>(".activity-pane > .imports-group")];
+      // A card folded by hand is left exactly as folding draws it.
+      for (const folded of page.querySelectorAll<HTMLElement>(":scope > .at-section.is-folded")) Object.assign(folded.style, { flex: "", minHeight: "" });
       const cards = [...page.querySelectorAll<HTMLElement>(":scope > .at-section:not(.is-folded)")];
       // The least each list can be: its heading and one whole row (a list with no rows,
       // just a line saying so, is never cut at all).
