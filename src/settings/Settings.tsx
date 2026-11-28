@@ -6,8 +6,9 @@ import { AppearanceTab } from "./AppearanceTab";
 import { ProfileSection } from "./ProfileSection";
 import { AccountPage } from "./AccountPage";
 import { BrowserTab } from "./BrowserTab";
-import { AboutTab, AccessibilityTab, PlanTab, AdvancedTab, CollectionsTab, ConnectionsTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
+import { AboutTab, AccessibilityTab, PlanTab, AdvancedTab, CollectionsTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
 import { DeskAppearance, DeskLibrary, DeskManagement, DeskReading } from "./DeskPages";
+import { DeskConnections } from "./DeskConnections";
 import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex";
 import { SyncTab } from "./SyncTab";
 import { EreadersTab } from "./EreadersTab";
@@ -50,9 +51,8 @@ const own = (tab: SettingsTab): DeskPage => ({ tab, label: tabOf(tab).label, ico
  * tags, duplicates, deleted books, reading history and the Scribe export.
  */
 const DESK_GROUPS: DeskPage[][] = [
-  [own("account")],
-  [{ tab: "plan", label: "You & TBV", icon: "person", holds: ["plan", "about", "advanced"] }],
   [
+    own("account"),
     own("appearance"),
     own("reading"),
     { tab: "collections", label: "Library", icon: "library", holds: ["collections"] },
@@ -78,6 +78,12 @@ const DESK_SECTION_PAGE: Record<string, SettingsTab> = {
   "appearance/sanctum": "collections",
   "reading/read-along": "collections",
 };
+/**
+ * You & TBV is gone from the computer (embre, 27 November); its things wait for an About
+ * section. Until then "Your plan…" opens the plans in a window over Attunement.
+ */
+const NOT_ON_DESK = new Set<SettingsTab>(["plan", "about", "advanced"]);
+
 /** The computer page holding a tab (or one of its sections). */
 export function deskPageOf(tab: SettingsTab, section?: string): DeskPage {
   const moved = section ? DESK_SECTION_PAGE[`${tab}/${section}`] : undefined;
@@ -86,7 +92,7 @@ export function deskPageOf(tab: SettingsTab, section?: string): DeskPage {
 }
 
 /** The computer pages built to the Attunement framework: no page title, sections that fold. */
-const ATTUNE_PAGES = new Set<SettingsTab>(["account", "appearance", "reading", "collections", "library"]);
+const ATTUNE_PAGES = new Set<SettingsTab>(["account", "appearance", "reading", "collections", "library", "ereaders"]);
 
 /** Settings: its own menu of pages on the left, the chosen page on the right.
  * A phone opens on a landing page of cards instead; a computer opens on Appearance. */
@@ -147,13 +153,16 @@ export function Settings({
   // Account is a computer page for now: a window narrowed below the computer layout shows Visage instead.
   if (!desk && tab === "account") tab = "profile";
   // Account is a computer page for now; phones find the same things on Visage.
-  const results = searchSettings(query).filter((r) => TABS.some((t) => t.tab === r.tab) && (keys || r.tab !== "shortcuts") && (desk || r.tab !== "account"));
+  const results = searchSettings(query).filter(
+    (r) => TABS.some((t) => t.tab === r.tab) && (keys || r.tab !== "shortcuts") && (desk || r.tab !== "account") && !(desk && NOT_ON_DESK.has(r.tab) && r.tab !== "plan"),
+  );
+  const planOpen = desk && tab === "plan";
   const deskPage = desk && tab ? deskPageOf(tab) : null;
   const page = deskPage ? { ...tabOf(deskPage.tab), label: deskPage.label } : SETTINGS_TABS.find((t) => t.tab === tab);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   // A tab inside a bigger computer page: open the page there (Activity, Your plan, Shortcuts).
   useEffect(() => {
-    if (!deskPage || !tab || tab === deskPage.tab) return;
+    if (!deskPage || !tab || tab === deskPage.tab || NOT_ON_DESK.has(tab)) return;
     if (tab === "shortcuts") setShortcutsOpen(true);
     else setJumpTo(`tab-${tab}`);
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -195,8 +204,6 @@ export function Settings({
     switch (deskPage.tab) {
       case "account":
         return <AccountPage />;
-      case "plan":
-        return [part("plan", <PlanTab />), part("about", <AboutTab />), part("advanced", <AdvancedTab />)];
       case "appearance":
         return <DeskAppearance sidebarShown={sidebarShown} onSidebarShown={onSidebarShown} />;
       case "reading":
@@ -206,7 +213,7 @@ export function Settings({
       case "library":
         return <DeskManagement />;
       case "ereaders":
-        return <ConnectionsTab />;
+        return <DeskConnections />;
       case "sync":
         return [part("sync", <SyncTab onRestored={onRestored} onOpenPlaces={onOpenPlaces} />), part("activity", <ActivityTab {...activity} />)];
       case "accessibility":
@@ -289,6 +296,7 @@ export function Settings({
               className="settings-menu-item"
               onClick={() => {
                 setQuery("");
+                if (desk && r.tab === "plan") return onTab("plan");
                 onTab(desk ? deskPageOf(r.tab, r.section).tab : r.tab);
                 // Shortcuts are a sheet on a computer: open it rather than jump on the page.
                 if (desk && r.tab === "shortcuts") {
@@ -300,7 +308,7 @@ export function Settings({
             >
               <span>
                 {r.label}
-                <span className="settings-result-page">{desk ? deskPageOf(r.tab, r.section).label : SETTINGS_TABS.find((t) => t.tab === r.tab)?.label}</span>
+                <span className="settings-result-page">{desk && r.tab !== "plan" ? deskPageOf(r.tab, r.section).label : SETTINGS_TABS.find((t) => t.tab === r.tab)?.label}</span>
               </span>
             </button>
           </li>
@@ -396,6 +404,21 @@ export function Settings({
         )}
         <PrefsDesk.Provider value={desk}>{content}</PrefsDesk.Provider>
       </div>
+      {planOpen && (
+        <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onTab("appearance")}>
+          <div className="dialog plan-sheet" role="dialog" aria-label="Your plan" onKeyDown={(e) => e.key === "Escape" && onTab("appearance")}>
+            <div className="shortcuts-sheet-head">
+              <h2>Your plan</h2>
+              <button type="button" className="icon-btn" aria-label="Close" autoFocus onClick={() => onTab("appearance")}>
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+            <PrefsDesk.Provider value={desk}>
+              <PlanTab />
+            </PrefsDesk.Provider>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@ mod audio;
 #[cfg(target_os = "ios")]
 mod background_sync;
 mod blocklists;
+mod eject;
 mod browser;
 mod canva;
 mod cloud;
@@ -1485,6 +1486,11 @@ async fn forget_deleted(state: State<'_, AppLibrary>, book_id: String) -> Comman
 }
 
 #[tauri::command]
+async fn forget_deleted_many(state: State<'_, AppLibrary>, book_ids: Vec<String>) -> CommandResult<usize> {
+    with_library(state, move |library| library.forget_deleted_many(&book_ids)).await
+}
+
+#[tauri::command]
 async fn remove_from_library(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
     with_library(state, move |library| library.remove_from_library(&book_id)).await
 }
@@ -1556,6 +1562,12 @@ async fn dismiss_duplicates(state: State<'_, AppLibrary>, key: String) -> Comman
 #[tauri::command]
 async fn list_ereaders() -> CommandResult<Vec<ereaders::Ereader>> {
     tauri::async_runtime::spawn_blocking(ereaders::connected).await.map_err(|e| e.to_string())
+}
+
+/// Lets go of an e-reader's drive so it can be unplugged safely.
+#[tauri::command]
+async fn eject_ereader(root: String, name: String) -> CommandResult<()> {
+    tauri::async_runtime::spawn_blocking(move || eject::eject(&root, &name)).await.map_err(|e| e.to_string())?
 }
 
 /// What sending a book needs, fetching it first if it's only in the cloud.
@@ -2456,6 +2468,7 @@ pub fn run() {
             remove_from_library,
             deleted_books,
             forget_deleted,
+            forget_deleted_many,
             hidden::set_hidden,
             hidden::hidden_count,
             hidden::hidden_lock,
@@ -2668,6 +2681,7 @@ pub fn run() {
             book_places,
             remove_supabase_files,
             list_ereaders,
+            eject_ereader,
             copy_to_ereader,
             kindle_email_settings,
             save_kindle_email,

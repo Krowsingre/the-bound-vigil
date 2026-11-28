@@ -106,7 +106,11 @@ export function parseZoom(raw: unknown): PageZoom {
 }
 
 /** The edge fade: from a faint band to a deep one, as a percent of the page height. */
-export const FADE_RANGE = { min: 4, max: 32, step: 1 } as const;
+/** The fade's strength in words: "Off" at the bottom of the slider. */
+export const fadeShown = (strength: number) => (strength > 0 ? `${strength}%` : "Off");
+
+/** 0 is off: no fade at all (embre, 27 November). */
+export const FADE_RANGE = { min: 0, max: 32, step: 1 } as const;
 
 export const SIZE_RANGE = { min: 14, max: 30, step: 1 } as const;
 /** Line spacing: a slider from 1 to 2.5, in steps of 0.1, with notches on the whole and half steps. */
@@ -162,7 +166,8 @@ export function parseSettings(json: string | null): ReaderSettings {
     justify: typeof raw.justify === "boolean" ? raw.justify : d.justify,
     edgeFade: typeof raw.edgeFade === "boolean" ? raw.edgeFade : d.edgeFade,
     scrollFocus: typeof raw.scrollFocus === "boolean" ? raw.scrollFocus : d.scrollFocus,
-    fadeStrength: typeof raw.fadeStrength === "number" && Number.isFinite(raw.fadeStrength)
+    // The fade's old on/off switch is the slider's bottom now: switched off reads as 0.
+    fadeStrength: raw.edgeFade === false ? 0 : typeof raw.fadeStrength === "number" && Number.isFinite(raw.fadeStrength)
       ? clamp(Math.round(raw.fadeStrength), FADE_RANGE.min, FADE_RANGE.max) : d.fadeStrength,
     voices: parseVoices(raw.voices),
     followVoice: raw.followVoice === true,

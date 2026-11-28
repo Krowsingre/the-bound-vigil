@@ -76,8 +76,33 @@ const EMPTY: KindleEmailInput = {
 };
 
 function KindleEmailSection() {
+  return (
+    <Section
+      id="kindle"
+      title="Kindle by email"
+      lede="Amazon's Send to Kindle takes EPUB, PDF, Word and text books by email, and turns them into Kindle books. TBV sends them from your own email account."
+    >
+      <KindleEmailForm />
+    </Section>
+  );
+}
+
+/**
+ * The Kindle by email settings: on a phone in their section, on a computer in their own
+ * window (embre, 27 November). `onChange` hears of each save or forget; `onDone` of Save or
+ * Forget finishing, so the window can close.
+ */
+export function KindleEmailForm({
+  onChange,
+  onDone,
+  className,
+}: { onChange?: (saved: KindleEmailView | null) => void; onDone?: () => void; className?: string } = {}) {
   const toast = useToast();
-  const [saved, setSaved] = useState<KindleEmailView | null | undefined>(undefined);
+  const [saved, setSavedHere] = useState<KindleEmailView | null | undefined>(undefined);
+  const setSaved = (next: KindleEmailView | null) => {
+    setSavedHere(next);
+    onChange?.(next);
+  };
   const [draft, setDraft] = useState<KindleEmailInput>(EMPTY);
   const [service, setService] = useState("gmail");
   const [busy, setBusy] = useState<"save" | "test" | null>(null);
@@ -86,13 +111,13 @@ function KindleEmailSection() {
   useEffect(() => {
     api.kindleEmailSettings().then(
       (s) => {
-        setSaved(s);
+        setSavedHere(s);
         if (s) {
           setDraft({ ...s, password: null });
           setService(serviceOf(s.server));
         }
       },
-      () => setSaved(null),
+      () => setSavedHere(null),
     );
   }, []);
 
@@ -148,21 +173,22 @@ function KindleEmailSection() {
     setDraft(EMPTY);
     setService("gmail");
     toast("Forgot the Kindle email settings on this device.");
+    onDone?.();
   };
   const note = EMAIL_SERVICES.find((s) => s.id === service)?.note;
 
   return (
-    <Section
-      id="kindle"
-      title="Kindle by email"
-      lede="Amazon's Send to Kindle takes EPUB, PDF, Word and text books by email, and turns them into Kindle books. TBV sends them from your own email account."
-    >
+    <>
       {saved === undefined ? null : (
         <form
-          className="kindle-form"
+          className={`kindle-form${className ? ` ${className}` : ""}`}
           onSubmit={(e) => {
             e.preventDefault();
-            void save().then((ok) => ok && toast("Saved. Books can now go to your Kindle by email."));
+            void save().then((ok) => {
+              if (!ok) return;
+              toast("Saved. Books can now go to your Kindle by email.");
+              onDone?.();
+            });
           }}
         >
           <label className="field">
@@ -283,6 +309,6 @@ function KindleEmailSection() {
           </div>
         </form>
       )}
-    </Section>
+    </>
   );
 }

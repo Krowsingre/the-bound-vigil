@@ -481,6 +481,8 @@ export interface Api {
   deletedBooks(): Promise<DeletedBook[]>;
   /** Forgets a deletion on every device: importing the file again is a plain import. */
   forgetDeleted(bookId: string): Promise<void>;
+  /** Forgets several deletions at once. How many were forgotten. */
+  forgetDeletedMany(bookIds: string[]): Promise<number>;
   /** Hides books from every list and count, on every device, or brings them back. How many changed. */
   setHidden(bookIds: string[], hidden: boolean): Promise<number>;
   /** How many books are hidden. */
@@ -534,6 +536,8 @@ export interface Api {
   shareBestCover(bookIds: string[]): Promise<number>;
   /** E-readers plugged in by cable now. */
   listEreaders(): Promise<Ereader[]>;
+  /** Lets go of a reader's drive so it can be unplugged safely. */
+  ejectEreader(reader: Ereader): Promise<void>;
   /** Copies a book onto the reader plugged in at `root`. The library's copy is never changed. */
   copyToEreader(bookId: string, root: string): Promise<CopiedToEreader>;
   /** Kindle by email, if it's set up on this device. */
@@ -1334,6 +1338,7 @@ function appApi(): Api {
     removeFromLibrary: async (bookId) => (await core).invoke("remove_from_library", { bookId }),
     deletedBooks: async () => (await core).invoke<DeletedBook[]>("deleted_books"),
     forgetDeleted: async (bookId) => (await core).invoke("forget_deleted", { bookId }),
+    forgetDeletedMany: async (bookIds) => (await core).invoke<number>("forget_deleted_many", { bookIds }),
     setHidden: async (bookIds, hidden) => (await core).invoke<number>("set_hidden", { bookIds, hidden }),
     hiddenCount: async () => (await core).invoke<number>("hidden_count"),
     hiddenLock: async () => (await core).invoke<HiddenLock | null>("hidden_lock"),
@@ -1361,6 +1366,7 @@ function appApi(): Api {
     resetDetails: async (bookId, fetched) => (await core).invoke("reset_details", { bookId, fetched }),
     saveFetched: async (bookId, source, values) => (await core).invoke("save_fetched", { bookId, source, values }),
     listEreaders: async () => (await core).invoke<Ereader[]>("list_ereaders"),
+    ejectEreader: async (reader) => (await core).invoke("eject_ereader", { root: reader.root, name: reader.name }),
     copyToEreader: async (bookId, root) => (await core).invoke<CopiedToEreader>("copy_to_ereader", { bookId, root }),
     kindleEmailSettings: async () => (await core).invoke<KindleEmailView | null>("kindle_email_settings"),
     saveKindleEmail: async (settings) => (await core).invoke<KindleEmailView>("save_kindle_email", { settings }),

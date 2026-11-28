@@ -405,6 +405,21 @@ impl Library {
         Ok(())
     }
 
+    /// Forgets several deletions at once (Forget all / Forget shown). How many were forgotten.
+    pub fn forget_deleted_many(&self, book_ids: &[String]) -> Result<usize> {
+        let tx = self.conn.unchecked_transaction()?;
+        let now = now_utc();
+        let mut forgotten = 0;
+        for id in book_ids {
+            forgotten += tx.execute(
+                "UPDATE books SET forgotten_at = ?2 WHERE id = ?1 AND deleted_at IS NOT NULL AND forgotten_at IS NULL",
+                params![id, now],
+            )?;
+        }
+        tx.commit()?;
+        Ok(forgotten)
+    }
+
     /// Removes the book's file from this device and keeps it in the library,
     /// to download again when it's next opened. Only when the cloud has it.
     pub fn remove_download(&self, book_id: &str) -> Result<()> {
@@ -948,7 +963,7 @@ mod tests {
         assert_eq!(listed.iter().map(|b| b.title.as_str()).collect::<Vec<_>>(), vec!["Carmilla"]);
         assert_eq!(listed[0].authors, vec!["Le Fanu".to_string()]);
 
-        library.forget_deleted(&a).unwrap();
+        assert_eq!(library.forget_deleted_many(&[a.clone(), "book:none".into()]).unwrap(), 1, "only deleted books are forgotten");
         assert!(library.deleted_books().unwrap().is_empty(), "forgotten books leave the list");
         let again = library.import_files(&[dir.path().join("a.epub")]).remove(0);
         assert!(matches!(again, ImportResult::Imported { returned: false, .. }), "{again:?}");

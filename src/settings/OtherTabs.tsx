@@ -18,11 +18,10 @@ import { canWatch, unwatch, useWatch, watchAuthor, watchBook, whenLine } from ".
 import { relativeTime } from "../lib/format";
 import { useReaderSettings } from "./AppearanceTab";
 import { ActionTile, Columns, formatBytes, RadioList, Row, Section, SectionGroup, Segmented, Select, Toggle, useDeskPrefs } from "./controls";
-import { EreadersTab } from "./EreadersTab";
 import { HardcoverSection } from "./HardcoverSection";
 import { CanvaSection, canvaHere } from "./CanvaSection";
 import { ReadingHistorySection } from "./ReadingHistory";
-import { AtChoice, AtRow, AtRows, AtSection, AtSwitch } from "./attune";
+import { AtChoice, AtRow, AtRows, AtSection, AtSwitch, useAttuneFrame } from "./attune";
 import { useShortcuts } from "../lib/shortcuts";
 
 const READING_FONTS = {
@@ -410,20 +409,6 @@ export function DeskLibraryTab() {
 }
 
 /** The computer's Connections page: the other services TBV works with, in one place. */
-export function ConnectionsTab() {
-  return (
-    <>
-      <Columns side={canvaHere ? <CanvaSection /> : undefined}>
-        <SectionGroup id="ratings" title="Ratings sites" holds={["goodreads", "hardcover"]}>
-          <GoodreadsSection />
-          <HardcoverSection />
-        </SectionGroup>
-      </Columns>
-      <EreadersTab />
-    </>
-  );
-}
-
 export function LibraryTab({
   layout,
   sort,
@@ -596,7 +581,10 @@ function DeletedBooksSection() {
 export function DeletedBooksList() {
   const [books, setBooks] = useState<DeletedBook[] | null>(null);
   const [query, setQuery] = useState("");
+  const [asking, setAsking] = useState(false);
   const toast = useToast();
+  // On the computer's Attunement page the list scrolls in its own frame, with Forget all beside the search (embre, 27 November).
+  const framed = useAttuneFrame();
   useEffect(() => {
     let live = true;
     api.deletedBooks().then((list) => live && setBooks(list), () => live && setBooks([]));
@@ -616,17 +604,40 @@ export function DeletedBooksList() {
       toast(`That didn't work: ${String(e)}`);
     }
   };
+  const forgetShown = async () => {
+    setAsking(false);
+    const ids = new Set(shown.map((b) => b.id));
+    try {
+      await api.forgetDeletedMany([...ids]);
+      setBooks((list) => list && list.filter((b) => !ids.has(b.id)));
+      setQuery("");
+    } catch (e) {
+      toast(`That didn't work: ${String(e)}`);
+    }
+  };
+  const all = words ? "Forget shown" : "Forget all";
+  const count = `${shown.length} ${shown.length === 1 ? "deleted book" : "deleted books"}`;
+  const search = (
+    <input
+      type="search"
+      className="input deleted-books-search"
+      placeholder="Search deleted books"
+      aria-label="Search deleted books"
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
+    />
+  );
   return (
-    <div className="deleted-books">
-      {(books.length > 8 || query) && (
-        <input
-          type="search"
-          className="input deleted-books-search"
-          placeholder="Search deleted books"
-          aria-label="Search deleted books"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+    <div className={`deleted-books${framed ? " is-framed" : ""}`}>
+      {framed ? (
+        <div className="deleted-books-top">
+          {search}
+          <button type="button" className="btn btn-quiet btn-danger-text" disabled={shown.length === 0} onClick={() => setAsking(true)}>
+            {all}
+          </button>
+        </div>
+      ) : (
+        (books.length > 8 || query) && search
       )}
       <ul className="deleted-books-list">
         {shown.map((b) => (
@@ -643,6 +654,16 @@ export function DeletedBooksList() {
           </li>
         ))}
       </ul>
+      {asking && (
+        <ConfirmDialog
+          title={`Forget ${shown.length === 1 ? "this deleted book" : words ? `these ${count}` : `all ${count}`}?`}
+          body="Importing their files again will bring them back into your library, on every device."
+          confirm={all}
+          danger
+          onConfirm={() => void forgetShown()}
+          onCancel={() => setAsking(false)}
+        />
+      )}
     </div>
   );
 }
@@ -684,7 +705,8 @@ function DuplicatesSection() {
 }
 
 
-function GoodreadsSection() {
+/** Goodreads by file: bring an export in, or make one for Goodreads (and the report after importing). */
+export function useGoodreads() {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<GoodreadsImport | null>(null);
@@ -710,6 +732,12 @@ function GoodreadsSection() {
       setBusy(false);
     }
   };
+  const shown = report && <GoodreadsReport report={report} onClose={() => setReport(null)} />;
+  return { busy, start, exportFile, report: shown };
+}
+
+function GoodreadsSection() {
+  const { busy, start, exportFile, report } = useGoodreads();
   return (
     <Section
       id="goodreads"
@@ -735,7 +763,7 @@ function GoodreadsSection() {
       <p className="settings-row-hint">
         On the Goodreads website, open My Books, then Import and export, and choose Export Library. Save the file it gives you, then choose it here.
       </p>
-      {report && <GoodreadsReport report={report} onClose={() => setReport(null)} />}
+      {report}
     </Section>
   );
 }
@@ -1548,7 +1576,7 @@ function PublisherPlan() {
 
 export function AboutTab() {
   const desk = useDeskPrefs();
-  const [version, setVersion] = useState("0.167.0");
+  const [version, setVersion] = useState("0.168.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

@@ -1,8 +1,6 @@
 import { deskPageOf } from "./Settings";
 
 it("puts the phone's pages on the computer's", () => {
-  expect(deskPageOf("plan").label).toBe("You & TBV");
-  expect(deskPageOf("advanced").label).toBe("You & TBV");
   expect(deskPageOf("collections").label).toBe("Library");
   expect(deskPageOf("activity").label).toBe("Sync & Backup");
   expect(deskPageOf("shortcuts").label).toBe("Accessibility");
@@ -23,4 +21,8 @@ it("splits Library and Management, and moves Visage to Account (embre, 27 Novemb
   expect(deskPageOf("reading", "read-along").label).toBe("Library");
   // Same section name, other pages: Discover's history stays in Discover.
   expect(deskPageOf("browser", "history").label).toBe("Discover");
+});
+
+it("has no You & TBV page on the computer (embre, 27 November)", () => {
+  for (const tab of ["plan", "about", "advanced"] as const) expect(deskPageOf(tab).label).not.toBe("You & TBV");
 });

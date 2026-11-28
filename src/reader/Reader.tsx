@@ -739,7 +739,7 @@ export function Reader({
   const scrolling = engine.fixed ? viewSettings.pageFlow !== "paginated" : viewSettings.flow === "scrolled";
   // The edge fade: on computers in focus mode; on phones while the bars are away and the book scrolls
   // (turned pages would lose their first and last lines to it).
-  const fading = settings.edgeFade && (flowing || (overlay && focus && scrolling));
+  const fading = settings.fadeStrength > 0 && (flowing || (overlay && focus && scrolling));
   const { scrollByPixels } = engine;
   reportPosition.current = () => engine.getView()?.renderer.reportPosition?.();
   toggleAutoScroll.current = () => {
