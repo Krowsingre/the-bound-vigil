@@ -30,7 +30,19 @@ const PAPER = "rgba(232, 226, 212, 0.92)";
 const GRAVITY = 1_500;
 const NUDGE = 45;
 
-export async function disintegrate(splash: HTMLElement): Promise<void> {
+/**
+ * How the break-up plays: `pace` slows the whole of it (2 = half speed), and
+ * `hold` waits that long (ms) once the pieces are cut, before the line starts.
+ */
+export interface Playing {
+  pace?: number;
+  hold?: number;
+}
+
+/** The most the animation moves on in one frame (ms): a slow frame slows it, never makes it jump. */
+const STEP = 34;
+
+export async function disintegrate(splash: HTMLElement, { pace = 1, hold = 0 }: Playing = {}): Promise<void> {
   const box = splash.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
   const picture = document.createElement("canvas");
@@ -88,10 +100,16 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
   }
   const w = PAGE_W * dpr;
   const h = PAGE_H * dpr;
+  if (hold > 0) await new Promise((wait) => setTimeout(wait, hold));
   await new Promise<void>((done) => {
-    const began = performance.now();
+    // The animation's own clock: it moves on by the time since the last frame,
+    // but never by more than STEP, so pages never leap when a frame is late.
+    let clock = 0;
+    let last = performance.now();
     const frame = (now: number) => {
-      const t = now - began;
+      clock += Math.min(Math.max(0, now - last), STEP);
+      last = now;
+      const t = clock / pace;
       out.setTransform(1, 0, 0, 1, 0, 0);
       out.clearRect(0, 0, dust.width, dust.height);
       out.save();

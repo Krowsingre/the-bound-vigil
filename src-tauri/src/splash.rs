@@ -233,7 +233,7 @@ pub fn started_minimized() -> bool {
 }
 
 /// The longest the card waits for its pages to finish falling.
-const CARD_AT_MOST: Duration = Duration::from_millis(5000);
+const CARD_AT_MOST: Duration = Duration::from_millis(15_000);
 static CARD_GONE: AtomicBool = AtomicBool::new(false);
 
 /// The card's last page has fallen out of it: it can go now (embre, 28 November).
