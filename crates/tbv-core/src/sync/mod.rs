@@ -1504,6 +1504,12 @@ impl Library {
         Ok(())
     }
 
+    /// Whether this library syncs with somewhere: it has finished a sync
+    /// since it was last signed out or moved to another service.
+    pub(crate) fn has_synced(&self) -> Result<bool> {
+        Ok(self.setting(LAST_SUCCESS)?.is_some() || self.setting(ALSO_LAST_SUCCESS)?.is_some())
+    }
+
     /// As `reset_sync`, for the second place only.
     pub fn reset_also_sync(&mut self) -> Result<()> {
         self.sync_epoch += 1;
@@ -2721,6 +2727,13 @@ fn run_lanes(library: &Mutex<Library>, main: Option<&mut dyn Remote>, also: Opti
             // that couldn't be reached this time keeps its note).
             if library.sync_also()?.is_none() {
                 library.set_behind(Lane::Also, &[])?;
+            }
+            // The bin empties only once this device has heard from every place:
+            // a book restored on another device must come back here first,
+            // never be deleted for good on top of the restoring.
+            let fine = |o: &Option<Result<SyncReport>>| o.as_ref().is_none_or(|o| o.is_ok());
+            if fine(&main_outcome) && fine(&also_outcome) {
+                library.empty_bin()?;
             }
             // Books from elsewhere may be the other half of an audiobook here.
             let received = |o: &Option<Result<SyncReport>>| o.as_ref().is_some_and(|o| o.as_ref().is_ok_and(|r| r.received > 0));

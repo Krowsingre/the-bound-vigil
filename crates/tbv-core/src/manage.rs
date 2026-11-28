@@ -1299,6 +1299,20 @@ mod tests {
     }
 
     #[test]
+    fn a_synced_library_waits_for_sync_before_emptying_the_bin() {
+        let (dir, mut library) = open_temp_library();
+        let a = add(&mut library, dir.path(), "a", "Carmilla", "Le Fanu", "");
+        library.bin_book(&a).unwrap();
+        let long_ago = (chrono::Utc::now() - chrono::Duration::days(BIN_DAYS + 1)).to_rfc3339();
+        library.conn.execute("UPDATE books SET binned_at = ?1, deleted_at = ?1 WHERE id = ?2", params![long_ago, a]).unwrap();
+        library.set_setting("sync.last_success_at", &now_utc()).unwrap();
+        let paths = library.paths.clone();
+        drop(library);
+        let library = Library::open(paths).unwrap();
+        assert_eq!(library.deleted_books().unwrap().len(), 1, "kept until a sync has had the chance to bring a restoring");
+    }
+
+    #[test]
     fn days_left_counts_part_of_a_day_as_a_day() {
         let now = chrono::Utc::now();
         assert_eq!(days_left(&now.to_rfc3339(), now), 15);

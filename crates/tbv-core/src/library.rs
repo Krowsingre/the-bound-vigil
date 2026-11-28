@@ -914,7 +914,11 @@ impl Library {
         library.sync_discover_history_once()?;
         library.sent_to_device_to_up_next_once()?;
         library.follow_moved_folders()?;
-        library.empty_bin()?;
+        // A library that syncs empties its bin after a sync instead (run_lanes),
+        // so a book restored on another device meanwhile isn't deleted here.
+        if !library.has_synced()? {
+            library.empty_bin()?;
+        }
         Ok(library)
     }
 
