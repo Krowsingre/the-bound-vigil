@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useRangePick, withShift } from "../lib/rangePick";
 import { api } from "../api";
 import type { BookPreview, KindlePurchase, LibraryPage, SeriesSummary } from "../api/types";
 import { Pagination } from "../library/Pagination";
@@ -55,8 +56,13 @@ export function KindleArchivePicker({ purchase, onClose }: {
     return () => { live = false; clearTimeout(timer); };
   }, [search, series, page]);
   const showSeries = (name: string) => { setSeries(name); setSearch(""); setPage(0); };
-  const choose = (book: BookPreview) => setPicked((items) => items.some((item) => item.id === book.id)
-    ? items.filter((item) => item.id !== book.id) : [...items, book]);
+  const pickRange = useRangePick();
+  const choose = (book: BookPreview, shift = false) => {
+    const shown = results?.books ?? [];
+    const ids = pickRange(new Set(picked.map((item) => item.id)), shown.map((b) => b.id), book.id, shift);
+    const known = new Map([...picked, ...shown, book].map((b) => [b.id, b]));
+    setPicked([...ids].flatMap((id) => known.get(id as BookPreview["id"]) ?? []));
+  };
   const save = async () => {
     if (!picked.length || busy) return;
     setBusy(true);
@@ -92,7 +98,7 @@ export function KindleArchivePicker({ purchase, onClose }: {
               {results.books.map((book) => (
                 <li key={book.id} className="history-row">
                   <label>
-                    <input type="checkbox" checked={picked.some((item) => item.id === book.id)} onChange={() => choose(book)} />
+                    <input type="checkbox" checked={picked.some((item) => item.id === book.id)} onChange={(e) => choose(book, withShift(e))} />
                     {" "}{book.title} · {book.authors.join(", ")}
                   </label>
                   {book.series && !series && <button type="button" className="btn btn-quiet btn-small" onClick={() => showSeries(book.series!)}>Show {book.series}</button>}

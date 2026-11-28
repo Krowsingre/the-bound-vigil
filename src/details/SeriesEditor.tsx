@@ -12,7 +12,7 @@ import { groupPlaces, numbersText, placesOf, samePlace } from "../lib/details";
 export { placesFromFields } from "../lib/details";
 import { SuggestInput } from "./Suggest";
 
-export type PlaceKind = "number" | "side";
+export type PlaceKind = "number" | "omnibus" | "side";
 
 /** One row as typed. */
 export interface PlaceRow {
@@ -22,6 +22,8 @@ export interface PlaceRow {
   /** "3", "1–3" or "10, 12, 14". */
   number: string;
   after: string;
+  /** An omnibus's own number: "2" for Omnibus 2. */
+  omnibus?: string;
 }
 
 let nextKey = 1;
@@ -32,8 +34,21 @@ export function rowsOf(places: SeriesPlace[]): PlaceRow[] {
   const rows: PlaceRow[] = [];
   for (const { name, places: here } of groupPlaces(places)) {
     const sides = here.filter((p) => p.number == null && p.after != null);
-    const numbered = here.filter((p) => p.number != null);
-    if (numbered.length || !sides.length) rows.push({ key: nextKey++, name, kind: "number", number: numbersText(numbered), after: "" });
+    const numbered = here.filter((p) => p.number != null || p.omnibus != null);
+    // One row per omnibus number, so Omnibus 1 (1–3) and Omnibus 2 (4–6) stay apart.
+    const omnibuses = [...new Set(numbered.map((p) => p.omnibus ?? null))];
+    if (!numbered.length && !sides.length) rows.push({ key: nextKey++, name, kind: "number", number: "", after: "" });
+    for (const omnibus of omnibuses) {
+      const these = numbered.filter((p) => (p.omnibus ?? null) === omnibus);
+      rows.push({
+        key: nextKey++,
+        name,
+        kind: omnibus != null ? "omnibus" : "number",
+        number: numbersText(these),
+        after: "",
+        ...(omnibus != null ? { omnibus: text(omnibus) } : {}),
+      });
+    }
     for (const p of sides) rows.push({ key: nextKey++, name, kind: "side", number: "", after: text(p.after) });
   }
   return rows;
@@ -83,7 +98,12 @@ export function placesFromRows(rows: PlaceRow[]): SeriesPlace[] {
       continue;
     }
     const numbers = numbersIn(name, row.number);
-    if (numbers.length) numbers.forEach(add);
+    const omnibus = row.kind === "omnibus" ? numberOf((row.omnibus ?? "").replace(",", "."), "omnibus number") : null;
+    if (omnibus != null) {
+      // The omnibus's own number goes with the books it holds, or alone.
+      if (numbers.length) numbers.forEach((p) => add({ ...p, omnibus }));
+      else add({ name, number: null, omnibus });
+    } else if (numbers.length) numbers.forEach(add);
     // No number: only where the book isn't in that series already.
     else if (!out.some((p) => p.name.toLowerCase() === name.toLowerCase())) add({ name, number: null });
   }
@@ -91,7 +111,7 @@ export function placesFromRows(rows: PlaceRow[]): SeriesPlace[] {
 }
 
 /** Whether places need the list kept beside the series and number. */
-const needsList = (places: SeriesPlace[]) => places.length > 1 || places.some((p) => p.end != null || p.after != null);
+const needsList = (places: SeriesPlace[]) => places.length > 1 || places.some((p) => p.end != null || p.after != null || p.omnibus != null);
 
 /** The details changes that give a book these places. */
 export function placeChanges(places: SeriesPlace[]): DetailChange[] {
@@ -171,6 +191,7 @@ export function SeriesEditor({ rows, onChange, all }: { rows: PlaceRow[]; onChan
             onChange={(e) => update(row.key, { kind: e.target.value as PlaceKind })}
           >
             <option value="number">Book</option>
+            <option value="omnibus">Omnibus</option>
             <option value="side">Side story</option>
           </select>
           {row.kind === "side" ? (
@@ -189,6 +210,19 @@ export function SeriesEditor({ rows, onChange, all }: { rows: PlaceRow[]; onChan
                 aria-label="Number in series"
                 onChange={(e) => update(row.key, { number: e.target.value })}
               />
+              {row.kind === "omnibus" && (
+                <label className="series-edit-omnibus">
+                  <span className="muted">no.</span>
+                  <input
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={row.omnibus ?? ""}
+                    placeholder="1"
+                    aria-label="Omnibus number"
+                    onChange={(e) => update(row.key, { omnibus: e.target.value })}
+                  />
+                </label>
+              )}
             </span>
           )}
           <span className="series-edit-tools">

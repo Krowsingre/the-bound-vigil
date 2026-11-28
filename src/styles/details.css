@@ -679,3 +679,18 @@
     justify-content: flex-start;
   }
 }
+
+/* An omnibus's own number beside the books it holds (embre, 28 November). */
+.series-edit-omnibus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.series-edit-numbers .series-edit-omnibus input {
+  width: 56px;
+}
+
+.series-edit-numbers:has(.series-edit-omnibus) input.series-edit-list {
+  width: 110px;
+}

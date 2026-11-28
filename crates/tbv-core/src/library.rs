@@ -913,6 +913,7 @@ impl Library {
         library.adopt_device_avatar()?;
         library.sync_discover_history_once()?;
         library.sent_to_device_to_up_next_once()?;
+        library.split_ranged_series_once()?;
         library.keep_unspoken_supabase_once()?;
         library.follow_moved_folders()?;
         // A library that syncs empties its bin after a sync instead (run_lanes),
@@ -939,6 +940,16 @@ impl Library {
                 }
             }
         }
+        self.set_setting(DONE, "1")
+    }
+
+    /// Box sets imported before TBV read "Name 1-3" as a range are put right, once.
+    pub(crate) fn split_ranged_series_once(&self) -> Result<()> {
+        const DONE: &str = "once.rangedSeries";
+        if self.setting(DONE)?.is_some() {
+            return Ok(());
+        }
+        self.split_ranged_series(None)?;
         self.set_setting(DONE, "1")
     }
 
@@ -1156,6 +1167,7 @@ impl Library {
         tx.commit()?;
         // Genres and a date are extras; a book still imports without them.
         let _ = self.keep_file_details(&book_id, &metadata.subjects, metadata.published.as_deref());
+        let _ = self.split_ranged_series(Some(&book_id));
         if let Some(audio) = &metadata.audio {
             self.keep_audio_details(&book_id, audio)?;
             self.keep_audio_kind(&book_id, audio)?;
@@ -1259,6 +1271,7 @@ impl Library {
             ],
         )?;
         let _ = self.keep_file_details(book_id, &metadata.subjects, metadata.published.as_deref());
+        let _ = self.split_ranged_series(Some(book_id));
         if let Some(audio) = &metadata.audio {
             self.keep_audio_details(book_id, audio)?;
             self.keep_audio_kind(book_id, audio)?;
