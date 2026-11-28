@@ -205,11 +205,15 @@ fn reveal(app: &AppHandle, still: bool) {
     }
     if let Some(main) = app.get_webview_window("main") {
         // Started with Windows: the card plays as usual, and the window waits minimized.
+        // Minimizing exists only on computers; phones always focus.
+        #[cfg(desktop)]
         if started_minimized() {
             let _ = main.minimize();
         } else {
             let _ = main.set_focus();
         }
+        #[cfg(not(desktop))]
+        let _ = main.set_focus();
     }
     let _ = app.emit_to(EventTarget::webview_window(LABEL), "tbv://splash", Splash { progress: 1.0, label: None, done: true, still });
     let app = app.clone();
@@ -223,6 +227,7 @@ fn reveal(app: &AppHandle, still: bool) {
 
 /// TBV was started by Windows at sign-in (Attunement › Accessibility › Start with Windows,
 /// embre 28 November): it goes through the splash, then waits minimized.
+#[cfg(desktop)]
 pub fn started_minimized() -> bool {
     std::env::args().any(|a| a == crate::tray::MINIMIZED_ARG)
 }
