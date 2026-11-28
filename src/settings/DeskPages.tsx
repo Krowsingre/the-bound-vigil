@@ -220,7 +220,7 @@ export function DeskReading() {
               onChange={(keyboardScrollSpeed) => change({ keyboardScrollSpeed })}
             />
           </AtRow>
-          <AtRow label="Auto-scroll speed" hint="Tap the page three times to start or stop auto-scroll." wide>
+          <AtRow label="Auto-scroll speed" hint="Press Ctrl+Space to start or stop auto-scroll." wide>
             <AtSlider
               label="Auto-scroll speed"
               value={reader.autoScrollSpeed}

@@ -43,15 +43,22 @@ export function MoveSection({
   overview,
   inUse,
   onChanged,
+  startAs,
+  onCancel,
 }: {
   overview: SyncOverview | null;
   inUse: Provider | null;
   onChanged: () => unknown;
+  /** In a window on a computer: Move… or Copy… already chose, so the wizard starts at where to. */
+  startAs?: MoveMode;
+  /** Cancel at the first step closes the window. */
+  onCancel?: () => void;
 }) {
   const toast = useToast();
   const [status, setStatus] = useState<MoveStatus | null>(null);
-  const [step, setStep] = useState<Step | null>(null);
-  const [mode, setMode] = useState<MoveMode>("migrate");
+  const first: Step | null = startAs ? "where" : null;
+  const [step, setStep] = useState<Step | null>(first);
+  const [mode, setMode] = useState<MoveMode>(startAs ?? "migrate");
   const [where, setWhere] = useState<Provider | null>(null);
   const [target, setTarget] = useState<ProviderChoice | null>(null);
   const [scope, setScope] = useState<MoveScope>("all");
@@ -74,7 +81,7 @@ export function MoveSection({
   const current = overview?.provider ?? NOWHERE;
   const from = placeName(inUse ? current : null);
   const reset = () => {
-    setStep(null);
+    setStep(first);
     setWhere(null);
     setTarget(null);
     setProject(null);
@@ -127,9 +134,11 @@ export function MoveSection({
 
     const n = STEPS.indexOf(step) + 1;
     const back = () => setStep(STEPS[n - 2] ?? null);
+    // Started at where to: that's the first step, and going back from it leaves.
+    const firstStep = n === 1 || (!!startAs && step === "where");
     return (
       <div className="settings-subpanel move-panel">
-        <p className="move-step">Step {n} of 4</p>
+        <p className="move-step">{startAs ? `Step ${n - 1} of 3` : `Step ${n} of 4`}</p>
         {step === "mode" && (
           <>
             <h3>What would you like to do?</h3>
@@ -268,8 +277,8 @@ export function MoveSection({
           </>
         )}
         <div className="dialog-actions">
-          <button type="button" className="btn btn-quiet" onClick={() => (n === 1 ? reset() : back())}>
-            {n === 1 ? "Cancel" : "Back"}
+          <button type="button" className="btn btn-quiet" onClick={() => (firstStep ? (reset(), onCancel?.()) : back())}>
+            {firstStep ? "Cancel" : "Back"}
           </button>
           {(step === "mode" || step === "where") && (
             <button

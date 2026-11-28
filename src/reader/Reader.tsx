@@ -214,6 +214,8 @@ export function Reader({
   const narrowViewport = useNarrow(READER_NARROW);
   const narrow = compact || narrowViewport;
   const keys = useShortcuts();
+  const keysRef = useRef(keys);
+  keysRef.current = keys;
   // Phones (and a narrow pane): the bars lie over the page and slide away while reading.
   const overlay = narrow;
   // On a phone books open in focus, just the page, and a tap brings the bars
@@ -352,9 +354,11 @@ export function Reader({
     colors,
     annotations: drawn,
     events: {
+      // With a keyboard (a computer, or an iPad with one), Ctrl+Space starts and stops
+      // auto-scroll and three taps do nothing (embre, 28 November); phones keep the taps.
       onTripleTap: () => {
         clearTimeout(tapTimer.current);
-        toggleAutoScroll.current();
+        if (!keysRef.current) toggleAutoScroll.current();
       },
       // One tap or click goes in or out of focus (on a phone, hides or shows
       // the bars), waiting a moment in case it's three.

@@ -63,7 +63,7 @@ interface Row {
 }
 
 /** Every pair, and how far each is lined up. */
-function LiningUpPane() {
+export function LiningUpPane() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [now, setNow] = useState<LiningUp | null>(liningUp());
   const [paused, setPaused] = useState(liningUpPaused());
@@ -132,7 +132,7 @@ function LiningUpPane() {
     <div className="activity-pane">
       <header className="activity-head">
         <div>
-          <p className="settings-row-hint">
+          <p className="settings-row-hint lining-lede">
             In Confluence, each book paired with its audiobook converges with it word by word, one pair at a time, on every device that has both downloaded. A computer works from
             the start and a phone from the end, so together they meet in the middle.{isIOS && " On this phone it's off until you turn it on in Attunement › Reading › Read-along."}
           </p>

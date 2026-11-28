@@ -4,7 +4,7 @@
 // fall away with weight (embre, 18 November): each one is nudged off the
 // way the line goes, then gravity takes it, so it hangs a moment and
 // gathers speed as it drops, swaying and turning over like a loose page
-// (its pale back showing as it turns), fading only near the end. TBV shows underneath. The splash is drawn onto a canvas first (from where its parts
+// (its pale back showing as it turns), until it has fallen out of the card. TBV shows underneath. The splash is drawn onto a canvas first (from where its parts
 // sit on the page), then the canvas is broken up. On the iPhone it fills the
 // screen; on a computer it's the card, and the pages
 // fall only inside the card's edges. The drawing must match the splash exactly (the
@@ -17,6 +17,8 @@ import { paintings } from "./splashView";
 /** How long the line takes to cross, and each piece to fall (ms). */
 const SWEEP = 700;
 const LIFE = 1_000;
+/** However the pages fall, the break-up ends by this time (ms). */
+const LONGEST = 4_000;
 /** A page's size, in points: taller than wide, like a book's. */
 const PAGE_W = 11;
 const PAGE_H = 15;
@@ -28,7 +30,19 @@ const PAPER = "rgba(232, 226, 212, 0.92)";
 const GRAVITY = 1_500;
 const NUDGE = 45;
 
-export async function disintegrate(splash: HTMLElement): Promise<void> {
+/**
+ * How the break-up plays: `pace` slows the whole of it (2 = half speed), and
+ * `hold` waits that long (ms) once the pieces are cut, before the line starts.
+ */
+export interface Playing {
+  pace?: number;
+  hold?: number;
+}
+
+/** The most the animation moves on in one frame (ms): a slow frame slows it, never makes it jump. */
+const STEP = 34;
+
+export async function disintegrate(splash: HTMLElement, { pace = 1, hold = 0 }: Playing = {}): Promise<void> {
   const box = splash.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
   const picture = document.createElement("canvas");
@@ -64,7 +78,7 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
   const pages = cutPages(picture, cols, rows, dpr);
   const back = paperBack(dpr);
   const way = sweepWay(Math.random() * Math.PI * 2);
-  const specks: { x: number; y: number; start: number; vx: number; vy: number; spin: number; turn: number; sway: number; swing: number }[] = [];
+  const specks: { gone?: boolean; x: number; y: number; start: number; vx: number; vy: number; spin: number; turn: number; sway: number; swing: number }[] = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       // Where the line reaches first goes first; each piece is nudged the way it's going, then falls.
@@ -86,10 +100,16 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
   }
   const w = PAGE_W * dpr;
   const h = PAGE_H * dpr;
+  if (hold > 0) await new Promise((wait) => setTimeout(wait, hold));
   await new Promise<void>((done) => {
-    const began = performance.now();
+    // The animation's own clock: it moves on by the time since the last frame,
+    // but never by more than STEP, so pages never leap when a frame is late.
+    let clock = 0;
+    let last = performance.now();
     const frame = (now: number) => {
-      const t = now - began;
+      clock += Math.min(Math.max(0, now - last), STEP);
+      last = now;
+      const t = clock / pace;
       out.setTransform(1, 0, 0, 1, 0, 0);
       out.clearRect(0, 0, dust.width, dust.height);
       out.save();
@@ -99,7 +119,7 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
       let left = 0;
       for (const p of specks) {
         const age = (t - p.start) / LIFE;
-        if (age >= 1) continue;
+        if (p.gone) continue;
         left++;
         if (age <= 0) {
           out.globalAlpha = 1;
@@ -110,10 +130,16 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
         const seconds = (age * LIFE) / 1000;
         const { dx: fallX, dy } = fall(p.vx, p.vy, seconds);
         const dx = fallX + Math.sin(seconds * p.swing * Math.PI * 2) * p.sway * Math.min(1, age * 3);
+        // Each page falls until it has left the card, however long that takes (embre, 28 November):
+        // none fades out on the way, so none is left hanging when the card goes.
+        if (p.y + dy > box.height + PAGE_H || p.x + dx > box.width + PAGE_W || p.x + dx < -2 * PAGE_W) {
+          p.gone = true;
+          continue;
+        }
         const x = ox + (p.x + dx) * dpr;
         const y = oy + (p.y + dy) * dpr;
-        const size = 1 - age * 0.2;
-        out.globalAlpha = age < 0.6 ? 1 : 1 - (age - 0.6) / 0.4;
+        const size = 1 - Math.min(age, 1) * 0.2;
+        out.globalAlpha = 1;
         const over = Math.cos(p.turn * age);
         out.setTransform(size, 0, 0, size, x + w / 2, y + h / 2);
         out.rotate(p.spin * age);
@@ -122,7 +148,7 @@ export async function disintegrate(splash: HTMLElement): Promise<void> {
         else out.drawImage(back, -w / 2, -h / 2, w, h);
       }
       out.restore();
-      if (left > 0 && t < SWEEP + LIFE + 200) requestAnimationFrame(frame);
+      if (left > 0 && t < LONGEST) requestAnimationFrame(frame);
       else done();
     };
     requestAnimationFrame(frame);
@@ -263,7 +289,7 @@ async function draw(pen: CanvasRenderingContext2D, splash: HTMLElement, box: DOM
     if (img.complete) pen.drawImage(img, mark.x, mark.y, mark.w, mark.h);
   }
 
-  for (const sel of [".splash-title", ".splash-tagline", ".splash-label"]) {
+  for (const sel of [".splash-title", ".splash-tagline", ".splash-label", ".splash-version"]) {
     const el = splash.querySelector<HTMLElement>(sel);
     if (el) words(pen, el, box);
   }

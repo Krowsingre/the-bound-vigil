@@ -6,6 +6,7 @@
 import "@fontsource/gelasio/400.css";
 import emblem from "../assets/emblem.svg?raw";
 import "./splash.css";
+import { version } from "../../package.json";
 
 /** The square gallery paintings: one is picked each time TBV opens. */
 const PAINTINGS = Object.values(
@@ -24,7 +25,8 @@ const MARKUP = `
     <div class="splash-divider"><span></span><i></i><span></span></div>
     <div class="splash-bar" role="progressbar" aria-label="Opening" aria-valuemin="0" aria-valuemax="100"><b></b></div>
     <p class="splash-label">Loading…</p>
-  </div>`;
+  </div>
+  <p class="splash-version">${version}</p>`;
 
 /** The splash, made if the page doesn't have it yet, with a painting chosen. */
 export function showSplash(card = false): HTMLElement {

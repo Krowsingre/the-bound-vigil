@@ -17,8 +17,13 @@ if ("__TAURI_INTERNALS__" in window) {
       if (!payload.done) return;
       leaving = true;
       const fade = () => card.classList.add("is-leaving");
+      // The card's window goes once the last page has fallen out of it (embre, 28 November);
+      // TBV closes it anyway after a while, should this never say so.
+      const gone = () => void import("@tauri-apps/api/core").then(({ invoke }) => invoke("splash_finished")).catch(() => undefined);
       if (payload.still) fade();
-      else void disintegrate(card).catch(fade);
+      // Slower than the iPhone's, and only once the window behind has drawn itself,
+      // so it plays out whole and smoothly (embre, 28 November).
+      else void disintegrate(card, { pace: 1.7, hold: 350 }).then(gone, fade);
     }),
   );
 }

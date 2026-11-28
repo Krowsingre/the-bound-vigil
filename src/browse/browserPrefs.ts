@@ -49,7 +49,7 @@ export const COME_BACK: { value: ComeBack; label: string }[] = [
   { value: "close", label: "At the home page, after closing TBV" },
 ];
 
-export type LinksOpen = "newTab" | "current";
+export type LinksOpen = "newTab" | "current" | "browser";
 
 export const LINKS_OPEN: { value: LinksOpen; label: string }[] = [
   { value: "newTab", label: "In a new tab" },
@@ -163,7 +163,7 @@ export function readBrowserPrefs(): BrowserPrefs {
     historySearches: saved.historySearches !== false,
     historyKeep: HISTORY_KEEPS.some((k) => k.value === saved.historyKeep) ? (saved.historyKeep as HistoryKeep) : "quarter",
     comeBack: COME_BACK.some((c) => c.value === saved.comeBack) ? (saved.comeBack as ComeBack) : "keep",
-    linksOpen: saved.linksOpen === "current" ? "current" : "newTab",
+    linksOpen: saved.linksOpen === "current" || saved.linksOpen === "browser" ? saved.linksOpen : "newTab",
     protection: PROTECTION_LEVELS.some((p) => p.value === saved.protection) ? (saved.protection as ProtectionLevel) : "strict",
     lowered: Array.isArray(saved.lowered) ? saved.lowered.filter((h): h is string => typeof h === "string") : [],
     startPage: saved.startPage !== false,

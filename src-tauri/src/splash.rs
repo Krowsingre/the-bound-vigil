@@ -204,22 +204,56 @@ fn reveal(app: &AppHandle, still: bool) {
         return;
     }
     if let Some(main) = app.get_webview_window("main") {
+        // Started with Windows: the card plays as usual, and the window waits minimized.
+        // Minimizing exists only on computers; phones always focus.
+        #[cfg(desktop)]
+        if started_minimized() {
+            let _ = main.minimize();
+        } else {
+            let _ = main.set_focus();
+        }
+        #[cfg(not(desktop))]
         let _ = main.set_focus();
     }
     let _ = app.emit_to(EventTarget::webview_window(LABEL), "tbv://splash", Splash { progress: 1.0, label: None, done: true, still });
     let app = app.clone();
     std::thread::spawn(move || {
-        // The card's fade, or its specks drifting off.
-        std::thread::sleep(Duration::from_millis(if still { 400 } else { 1400 }));
-        if let Some(card) = app.get_webview_window(LABEL) {
-            let _ = card.destroy();
-        }
-        // Minimising and restoring animate as usual from now on.
-        #[cfg(windows)]
-        if let Some(main) = app.get_webview_window("main") {
-            transitions(&main, true);
-        }
+        // The card's fade; or, breaking up, the card says when its last page has
+        // fallen (splash_finished), and this is only in case it never does.
+        std::thread::sleep(if still { Duration::from_millis(400) } else { CARD_AT_MOST });
+        card_gone(&app);
     });
+}
+
+/// TBV was started by Windows at sign-in (Attunement › Accessibility › Start with Windows,
+/// embre 28 November): it goes through the splash, then waits minimized.
+#[cfg(desktop)]
+pub fn started_minimized() -> bool {
+    std::env::args().any(|a| a == crate::tray::MINIMIZED_ARG)
+}
+
+/// The longest the card waits for its pages to finish falling.
+const CARD_AT_MOST: Duration = Duration::from_millis(15_000);
+static CARD_GONE: AtomicBool = AtomicBool::new(false);
+
+/// The card's last page has fallen out of it: it can go now (embre, 28 November).
+#[tauri::command]
+pub fn splash_finished(app: AppHandle) {
+    card_gone(&app);
+}
+
+fn card_gone(app: &AppHandle) {
+    if CARD_GONE.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    if let Some(card) = app.get_webview_window(LABEL) {
+        let _ = card.destroy();
+    }
+    // Minimising and restoring animate as usual from now on.
+    #[cfg(windows)]
+    if let Some(main) = app.get_webview_window("main") {
+        transitions(&main, true);
+    }
 }
 
 /// Turns Windows' own animations for showing, hiding and resizing a window off or back on.

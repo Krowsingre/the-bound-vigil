@@ -51,6 +51,8 @@ const day = 86_400_000;
 const ago = (days: number) => new Date(Date.now() - days * day).toISOString();
 
 let next = 1;
+/** Attunement › Accessibility › Start with Windows, in the preview. */
+let previewStartsWithWindows = false;
 
 const activityListeners = new Set<(activity: SyncActivity) => void>();
 // `?activity` shows a sync underway in both places, for reviewing the Sync activity page.
@@ -1128,7 +1130,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.168.0", version: "0.168.0", notes: "The Bound Vigil 0.168.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.169.0", version: "0.169.0", notes: "The Bound Vigil 0.169.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
@@ -1340,6 +1342,9 @@ export function previewApi(): Api {
     },
     listEreaders: async () => sampleReaders,
     ejectEreader: async () => {},
+    setCloseToTray: async () => {},
+    setStartWithWindows: async (on) => void (previewStartsWithWindows = on),
+    startWithWindows: async () => previewStartsWithWindows,
     copyToEreader: async () => {
       throw new Error(DESKTOP_ONLY);
     },
