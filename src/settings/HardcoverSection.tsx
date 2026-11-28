@@ -77,10 +77,10 @@ export function HardcoverSection() {
         <>
           <div className="connection-actions">
             <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => void signIn()}>
-              {busy === "signIn" ? "Waiting for Hardcover in your browser…" : "Sign in with Hardcover"}
+              {busy === "signIn" ? "Waiting for Hardcover in your browser…" : "Sign in"}
             </button>
             <button type="button" className="btn btn-quiet" onClick={() => void openExternal("https://hardcover.app/join")}>
-              Make a Hardcover account
+              Sign up
             </button>
           </div>
           <p className="settings-row-hint">Your browser opens Hardcover to approve TBV. TBV never sees your Hardcover password.</p>

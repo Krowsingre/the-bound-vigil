@@ -386,6 +386,8 @@ function PageSlide({ pages }: { pages: { page: number; count: number; onPage: (p
 export function SeriesSwitch({ grouping, onChange }: { grouping: SeriesGrouping; onChange: (grouping: SeriesGrouping) => void }) {
   const stacked = grouping !== "individual";
   const first = grouping === "seriesFirst";
+  // A phone leaves out the book, so the toolbar fits on one row (embre, 28 November).
+  const phone = useNarrow();
   return (
     <div className="series-switch" role="group" aria-label="Series">
       <button
@@ -395,7 +397,7 @@ export function SeriesSwitch({ grouping, onChange }: { grouping: SeriesGrouping;
         className={stacked ? "is-active" : undefined}
         onClick={() => onChange(stacked ? "individual" : "mixed")}
       >
-        <Icon name="bookOpen" size={16} /> Series
+        {!phone && <Icon name="bookOpen" size={16} />} Series
       </button>
       <button
         type="button"

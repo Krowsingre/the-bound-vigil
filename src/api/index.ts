@@ -59,6 +59,8 @@ import type {
   TidyProgress,
   SentFile,
   SupabaseUsage,
+  DeviceSpace,
+  CloudSpace,
   TidyReport,
   Audiobook,
   ReadAlongPair,
@@ -436,6 +438,10 @@ export interface Api {
   /** Tidies Supabase up, sending copies the other place lacks there first. */
   tidyCloud(onProgress: (progress: TidyProgress) => void): Promise<TidyReport>;
   supabaseUsage(): Promise<SupabaseUsage>;
+  /** What TBV takes on this device, by type. */
+  deviceSpace(): Promise<DeviceSpace>;
+  /** What each sync place holds, by type, from its own listing. */
+  cloudSpace(): Promise<CloudSpace[]>;
   /** Every file TBV keeps in Supabase, by type. */
   supabaseContents(): Promise<StoredFile[]>;
   /** Every book and where its file is: this computer and each sync place. */
@@ -477,8 +483,12 @@ export interface Api {
   bookFiles(bookId: string): Promise<BookFile[]>;
   /** Takes a book out of the library, keeping its notes and cloud file for when it's imported again. */
   removeFromLibrary(bookId: string): Promise<void>;
-  /** Books TBV remembers as deleted, newest first (Attune › Library › Deleted books). */
+  /** Books waiting in the bin, newest first (Attunement › Management › Deleted books). */
   deletedBooks(): Promise<DeletedBook[]>;
+  /** Takes a book out of the bin, back into the library. */
+  restoreDeleted(bookId: string): Promise<void>;
+  /** Deletes a book in the bin for good now. */
+  deleteNow(bookId: string): Promise<void>;
   /** Forgets a deletion on every device: importing the file again is a plain import. */
   forgetDeleted(bookId: string): Promise<void>;
   /** Forgets several deletions at once. How many were forgotten. */
@@ -1293,6 +1303,8 @@ function appApi(): Api {
     moveSignOut: async () => (await core).invoke("move_sign_out"),
     planTidyCloud: async () => (await core).invoke("plan_tidy_cloud"),
     supabaseUsage: async () => (await core).invoke("supabase_usage"),
+    deviceSpace: async () => (await core).invoke("device_space"),
+    cloudSpace: async () => (await core).invoke("cloud_space"),
     supabaseContents: async () => (await core).invoke("supabase_contents"),
     bookPlaces: async () => (await core).invoke("book_places"),
     removeSupabaseFiles: async (paths, onProgress) => {
@@ -1342,6 +1354,8 @@ function appApi(): Api {
     bookFiles: async (bookId) => (await core).invoke<BookFile[]>("book_files", { bookId }),
     removeFromLibrary: async (bookId) => (await core).invoke("remove_from_library", { bookId }),
     deletedBooks: async () => (await core).invoke<DeletedBook[]>("deleted_books"),
+    restoreDeleted: async (bookId) => (await core).invoke("restore_deleted", { bookId }),
+    deleteNow: async (bookId) => (await core).invoke("delete_now", { bookId }),
     forgetDeleted: async (bookId) => (await core).invoke("forget_deleted", { bookId }),
     forgetDeletedMany: async (bookIds) => (await core).invoke<number>("forget_deleted_many", { bookIds }),
     setHidden: async (bookIds, hidden) => (await core).invoke<number>("set_hidden", { bookIds, hidden }),

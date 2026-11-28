@@ -13,12 +13,13 @@ import { useToast } from "../components/Toast";
 import { DESKTOP_ONLY } from "../ereaders/ereaders";
 import { usePublisher } from "../license/Publisher";
 import { useCanvaStatus } from "../writing/CanvaLink";
-import { AtPage, AtRow, AtRows, AtSection, AtSwitch } from "./attune";
+import { AtPage, AtRow, AtRows, AtSection, AtSwitch, usePhone } from "./attune";
 import { canvaHere } from "./CanvaSection";
 import { KindleEmailForm } from "./EreadersTab";
 import { useGoodreads } from "./OtherTabs";
 
 export function DeskConnections() {
+  const phone = usePhone();
   return (
     <AtPage className="at-connections">
       <AtSection id="reading-services" title="Reading Services" also={["ratings", "goodreads", "hardcover"]}>
@@ -36,8 +37,9 @@ export function DeskConnections() {
       )}
       <AtSection id="ereaders" title="E-readers" also={["connected", "kindle"]}>
         <AtRows>
-          <ReaderRows />
-          <KindleRow />
+          {/* A phone has no plugged-in readers: Kindle by email only, opening in place (embre, 28 November). */}
+          {!phone && <ReaderRows />}
+          {phone ? <PhoneKindle /> : <KindleRow />}
         </AtRows>
       </AtSection>
     </AtPage>
@@ -45,6 +47,7 @@ export function DeskConnections() {
 }
 
 function GoodreadsRow() {
+  const phone = usePhone();
   const { busy, start, exportFile, report } = useGoodreads();
   const name = (
     <span className="at-label-with-tip">
@@ -59,7 +62,7 @@ function GoodreadsRow() {
     </span>
   );
   return (
-    <AtRow label={name} hint="Transfer ratings, reading status and shelves.">
+    <AtRow label={name} hint={phone ? undefined : "Transfer ratings, reading status and shelves."}>
       <div className="at-buttons">
         <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void start()}>
           <Icon name="upload" size={16} /> Import
@@ -110,13 +113,13 @@ function HardcoverRows() {
   if (!status?.available) return <AtRow label="Hardcover" hint="Signing in to Hardcover arrives in the next version of TBV." />;
   if (!status.username)
     return (
-      <AtRow label="Hardcover" hint="Not connected.">
+      <AtRow label="Hardcover" hint={busy === "signIn" ? "Waiting for Hardcover in your browser…" : "Not connected"}>
         <div className="at-buttons">
-          <button type="button" className="btn btn-quiet" onClick={() => void openExternal("https://hardcover.app/join")}>
-            Make a Hardcover account
+          <button type="button" className="btn btn-quiet" disabled={busy !== null} onClick={() => void signIn()}>
+            Sign in
           </button>
-          <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => void signIn()}>
-            {busy === "signIn" ? "Waiting for Hardcover in your browser…" : "Sign in with Hardcover"}
+          <button type="button" className="btn btn-quiet" onClick={() => void openExternal("https://hardcover.app/join")}>
+            Sign up
           </button>
         </div>
       </AtRow>
@@ -140,6 +143,7 @@ function HardcoverRows() {
 
 function CanvaRow() {
   const toast = useToast();
+  const phone = usePhone();
   const publisher = usePublisher();
   // Shared with the book's Canva buttons, so connecting here shows them there straight away.
   const [status, setStatus] = useCanvaStatus();
@@ -169,11 +173,13 @@ function CanvaRow() {
   return (
     <AtRow label="Canva" hint="Not connected · Publisher">
       <div className="at-buttons">
-        <button type="button" className="btn btn-quiet" onClick={() => void openExternal("https://www.canva.com/signup")}>
-          Make a Canva account
-        </button>
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => publisher.check("Canva", () => void connect())}>
-          {busy ? "Waiting for Canva in your browser…" : "Connect Canva"}
+        {!phone && (
+          <button type="button" className="btn btn-quiet" onClick={() => void openExternal("https://www.canva.com/signup")}>
+            Make a Canva account
+          </button>
+        )}
+        <button type="button" className={phone ? "btn btn-quiet" : "btn btn-primary"} disabled={busy} onClick={() => publisher.check("Canva", () => void connect())}>
+          {busy ? "Waiting for Canva in your browser…" : phone ? "Connect" : "Connect Canva"}
         </button>
       </div>
     </AtRow>
@@ -272,5 +278,29 @@ function KindleRow() {
         </div>
       )}
     </AtRow>
+  );
+}
+
+/** Kindle by email on a phone: one row that opens its settings in place under it. */
+function PhoneKindle() {
+  const [saved, setSaved] = useState<KindleEmailView | null | undefined>(undefined);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    api.kindleEmailSettings().then(setSaved, () => setSaved(null));
+  }, []);
+  return (
+    <>
+      <AtRow label="Kindle by email">
+        <button type="button" className={`at-ios-value${open ? " is-open" : ""}`} aria-expanded={open} disabled={saved === undefined} onClick={() => setOpen(!open)}>
+          <span>{saved ? saved.kindle : "Not set"}</span>
+          <Icon name="chevronRight" size={16} />
+        </button>
+      </AtRow>
+      {open && (
+        <div className="at-ios-form at-ios-kindle">
+          <KindleEmailForm onChange={setSaved} onDone={() => setOpen(false)} />
+        </div>
+      )}
+    </>
   );
 }

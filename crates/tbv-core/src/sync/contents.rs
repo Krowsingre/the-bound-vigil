@@ -3,7 +3,7 @@
 //! a copy is kept anywhere else, and any of them can be removed.
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
@@ -114,18 +114,7 @@ pub fn list_contents(library: &Mutex<Library>, place: &mut dyn Remote, mut other
                 (_, Some((_, b))) if crate::audio::is_audio(&b.format) => "audiobook",
                 (_, Some((_, b))) if DOCUMENT_FORMATS.contains(&b.format.as_str()) => "document",
                 (_, Some(_)) => "ebook",
-                (_, None) => {
-                    let extension = Path::new(&name).extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-                    if crate::audio::is_audio(&extension) {
-                        "audiobook"
-                    } else if DOCUMENT_FORMATS.contains(&extension.as_str()) {
-                        "document"
-                    } else if ["epub", "mobi", "azw", "azw3", "fb2", "cbz", "cbr", "kepub"].contains(&extension.as_str()) {
-                        "ebook"
-                    } else {
-                        "other"
-                    }
-                }
+                (_, None) => kind_of_name(&name),
             };
             let here = match (kind, book) {
                 ("picture", _) => pictures_dir.join(&name).exists() || profile_dir.join(&name).exists(),
@@ -173,4 +162,126 @@ pub fn remove_contents(place: &mut dyn Remote, paths: &[String], cancel: &Atomic
     }
     progress(total, total);
     Ok(report)
+}
+
+/// What a file is by its name alone: `ebook`, `document`, `audiobook` or `other`.
+fn kind_of_name(name: &str) -> &'static str {
+    let extension = Path::new(name).extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if crate::audio::is_audio(&extension) {
+        "audiobook"
+    } else if DOCUMENT_FORMATS.contains(&extension.as_str()) {
+        "document"
+    } else if ["epub", "mobi", "azw", "azw3", "fb2", "cbz", "cbr", "kepub"].contains(&extension.as_str()) {
+        "ebook"
+    } else {
+        "other"
+    }
+}
+
+/// How much room TBV's content takes, by type (Attunement › Storage & Backup, embre 28 November).
+/// Covers, pictures, the library's own data and anything else are Other.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Space {
+    pub ebooks: u64,
+    pub documents: u64,
+    pub audiobooks: u64,
+    pub other: u64,
+}
+
+impl Space {
+    fn add(&mut self, kind: &str, bytes: u64) {
+        match kind {
+            "ebook" => self.ebooks += bytes,
+            "document" => self.documents += bytes,
+            "audiobook" => self.audiobooks += bytes,
+            _ => self.other += bytes,
+        }
+    }
+
+    /// A sync place's files, added up by type.
+    pub fn of(files: &[StoredFile]) -> Space {
+        let mut space = Space::default();
+        for file in files {
+            space.add(file.kind, file.bytes.unwrap_or(0));
+        }
+        space
+    }
+}
+
+/// Adds up the files under `dir` by type.
+fn add_folder(space: &mut Space, dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(kind) = entry.file_type() else { continue };
+        if kind.is_symlink() {
+            continue;
+        }
+        if kind.is_dir() {
+            add_folder(space, &path);
+        } else if let Ok(meta) = entry.metadata() {
+            space.add(kind_of_name(&entry.file_name().to_string_lossy()), meta.len());
+        }
+    }
+}
+
+impl Library {
+    /// What TBV keeps on this device, by type (see `space_in`).
+    pub fn space_here(&self) -> Space {
+        space_in(&self.paths)
+    }
+}
+
+/// What TBV keeps on this device, by type: its book files and everything
+/// else in its own folders (the library, covers, pictures). Each folder is
+/// counted once, even when one sits inside another. Needs no lock on the library.
+pub fn space_in(paths: &crate::library::LibraryPaths) -> Space {
+    let mut roots: Vec<PathBuf> = [paths.database.parent().map(Path::to_path_buf), Some(paths.books_dir.clone()), Some(paths.covers_dir.clone()), Some(paths.profile_dir.clone()), Some(paths.pictures_dir.clone())]
+        .into_iter()
+        .flatten()
+        .filter_map(|p| p.canonicalize().ok())
+        .collect();
+    roots.sort();
+    roots.dedup();
+    let kept: Vec<&PathBuf> = roots.iter().filter(|r| !roots.iter().any(|o| o != *r && r.starts_with(o))).collect();
+    let mut space = Space::default();
+    for root in kept {
+        add_folder(&mut space, root);
+    }
+    space
+}
+
+#[cfg(test)]
+mod space_tests {
+    use super::*;
+
+    #[test]
+    fn files_are_counted_by_type() {
+        let mut space = Space::default();
+        for (name, bytes) in [("a.epub", 10), ("b.PDF", 20), ("c.m4b", 30), ("d.jpg", 4), ("library.sqlite", 6)] {
+            space.add(kind_of_name(name), bytes);
+        }
+        assert_eq!(space, Space { ebooks: 10, documents: 20, audiobooks: 30, other: 10 });
+    }
+
+    #[test]
+    fn a_folder_inside_another_is_counted_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let books = dir.path().join("books");
+        std::fs::create_dir_all(&books).unwrap();
+        std::fs::write(books.join("x.epub"), [0u8; 100]).unwrap();
+        std::fs::write(dir.path().join("notes.json"), [0u8; 7]).unwrap();
+        let paths = crate::library::LibraryPaths {
+            database: dir.path().join("library.sqlite"),
+            books_dir: books.clone(),
+            covers_dir: dir.path().join("covers"),
+            profile_dir: dir.path().join("profile"),
+            pictures_dir: dir.path().join("pictures"),
+        };
+        let library = Library::open(paths).unwrap();
+        let space = library.space_here();
+        assert_eq!(space.ebooks, 100);
+        assert!(space.other >= 7, "the library's own files are Other");
+    }
 }

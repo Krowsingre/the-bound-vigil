@@ -1336,6 +1336,64 @@ async fn remove_supabase_files(
         .map_err(|e| e.to_string())
 }
 
+/// What TBV takes on this device, by type, and the app itself (embre, 28 November).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceSpace {
+    app: u64,
+    #[serde(flatten)]
+    content: tbv_core::sync::contents::Space,
+}
+
+#[tauri::command]
+async fn device_space(state: State<'_, AppLibrary>) -> CommandResult<DeviceSpace> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        // The folders are walked with the library free.
+        let paths = library.lock().map_err(|_| "the library is unavailable".to_string())?.paths().clone();
+        Ok(DeviceSpace { app: app_size(), content: tbv_core::sync::contents::space_in(&paths) })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The app's own files: its bundle on a Mac or iPhone, its folder on Windows.
+fn app_size() -> u64 {
+    let Ok(exe) = std::env::current_exe() else { return 0 };
+    let bundle = if cfg!(target_os = "macos") {
+        exe.ancestors().nth(3).map(std::path::Path::to_path_buf)
+    } else if cfg!(any(target_os = "ios", windows)) {
+        exe.parent().map(std::path::Path::to_path_buf)
+    } else {
+        None
+    };
+    match bundle {
+        Some(dir) => folder_size(&dir),
+        None => std::fs::metadata(&exe).map(|m| m.len()).unwrap_or(0),
+    }
+}
+
+fn folder_size(dir: &std::path::Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
+    entries
+        .flatten()
+        .map(|entry| match entry.file_type() {
+            Ok(kind) if kind.is_dir() => folder_size(&entry.path()),
+            Ok(kind) if kind.is_file() => entry.metadata().map(|m| m.len()).unwrap_or(0),
+            _ => 0,
+        })
+        .sum()
+}
+
+#[tauri::command]
+async fn cloud_space(state: State<'_, AppLibrary>) -> CommandResult<Vec<sync::CloudSpace>> {
+    let library = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || sync::cloud_space(&library))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 /// Where every book's file is: here, and in each sync place.
 #[tauri::command]
 async fn book_places(state: State<'_, AppLibrary>) -> CommandResult<tbv_core::sync::places::PlacesView> {
@@ -1473,7 +1531,18 @@ async fn save_fetched(
 
 #[tauri::command]
 async fn delete_book(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
-    with_library(state, move |library| library.delete_book(&book_id)).await
+    // Into the bin for 15 days first (embre, 28 November).
+    with_library(state, move |library| library.bin_book(&book_id)).await
+}
+
+#[tauri::command]
+async fn restore_deleted(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.restore_binned(&book_id)).await
+}
+
+#[tauri::command]
+async fn delete_now(state: State<'_, AppLibrary>, book_id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.delete_binned_now(&book_id)).await
 }
 
 #[tauri::command]
@@ -2468,6 +2537,8 @@ pub fn run() {
             remove_download,
             remove_from_library,
             deleted_books,
+            restore_deleted,
+            delete_now,
             forget_deleted,
             forget_deleted_many,
             hidden::set_hidden,
@@ -2682,6 +2753,8 @@ pub fn run() {
             plan_tidy_cloud,
             tidy_cloud,
             supabase_usage,
+            device_space,
+            cloud_space,
             supabase_contents,
             book_places,
             remove_supabase_files,

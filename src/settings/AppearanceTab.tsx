@@ -103,8 +103,9 @@ export function AppearanceTab({
 }: {
   sidebarShown: boolean;
   onSidebarShown: (shown: boolean) => void;
-  /** Only the theme cards, colours and their extra settings, for the computer's Appearance page. */
-  part?: "theme";
+  /** Only the theme cards, colours and their extra settings, for the computer's Appearance page;
+   * or only Adaptive's or Custom's own settings, under a phone's swatches. */
+  part?: "theme" | "extra";
 }) {
   const keys = useShortcuts();
   const desk = useDeskPrefs();
@@ -423,6 +424,19 @@ export function AppearanceTab({
 
   // Attunement › Appearance on a computer: the cards and colours, with Adaptive's or Custom's
   // own settings under them when one is picked (embre, 27 November).
+  if (part === "extra")
+    return (
+      <>
+        {adaptiveOn && <div className="at-theme-extra">{adaptiveBody}</div>}
+        {card === "custom" && (
+          <div className="at-theme-extra">
+            <BareSections.Provider value={true}>
+              <CustomThemeSection />
+            </BareSections.Provider>
+          </div>
+        )}
+      </>
+    );
   if (part === "theme")
     return (
       <>

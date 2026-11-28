@@ -672,8 +672,8 @@ pub enum SmartKind {
 
 impl SmartKind {
     /// The ones Compendium shows (embre, 2026-10-23), in their usual order.
-    pub const ALL: [SmartKind; 5] = [
-        SmartKind::SendToDevice,
+    /// Sent to device is no longer one (embre, 28 November): its books went into Up next.
+    pub const ALL: [SmartKind; 4] = [
         SmartKind::InProgress,
         SmartKind::UpNext,
         SmartKind::Favorites,

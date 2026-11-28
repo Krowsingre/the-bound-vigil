@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api, isApp, isWeb } from "../api";
-import type { HomeStatus, ProviderView, SupabaseProject, SupabaseUsage, SyncOverview } from "../api/types";
+import type { CloudSpace, DeviceSpace, HomeStatus, ProviderView, Space, SupabaseProject, SupabaseUsage, SyncOverview } from "../api/types";
 import { relativeTime } from "../lib/format";
 import { behindText } from "../shell/SyncMenu";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -22,10 +22,11 @@ import { ContentsSection } from "./ContentsSection";
 import { FREE_DATABASE, FREE_FILES, size } from "./UsageSection";
 import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
 import { ALL_PROVIDERS, PROVIDERS, ProviderPicker, type Provider } from "./providers";
-import { AtPage, AtPair, AtRow, AtRows, AtSection, AtSwitch } from "./attune";
+import { AtPage, AtPair, AtRow, AtRows, AtSection, AtSwitch, usePhone } from "./attune";
 import { AtWindow } from "./AtWindow";
 import { Select } from "./controls";
 import { LiningUpPane } from "./ActivityTab";
+import { thisDevice } from "./thisDevice";
 
 const STATE_TEXT: Record<SyncOverview["status"]["state"], string> = {
   disabled: "Not connected",
@@ -80,6 +81,9 @@ export function DeskSync() {
   const [also, setAlso] = useState(false);
   const state = overview?.status.state ?? "disabled";
   const signedIn = overview?.signedInAs ?? null;
+  // The row shows only when there's a name to show in it (embre, 28 November).
+  const accountName = current.kind === "supabase" ? signedIn : current.username;
+  const phone = usePhone();
 
   const stop = () =>
     void (current.kind === "supabase" ? api.syncSignOut() : api.setSyncProvider({ kind: "off" })).then(
@@ -133,9 +137,9 @@ export function DeskSync() {
             </span>
             {inUse && <span className="at-count is-strong">{placeOf(current)}</span>}
           </AtRow>
-          {inUse && (signedIn || current.username) && (
+          {inUse && accountName && (
             <AtRow label="Account">
-              <span className="at-count is-strong">{current.kind === "supabase" ? signedIn : current.username}</span>
+              <span className="at-count is-strong">{accountName}</span>
             </AtRow>
           )}
           {inUse === "supabase" && overview?.project && (
@@ -237,7 +241,7 @@ export function DeskSync() {
           <AtSwitch label="Stream audiobooks" checked={sync.streamAudio} onChange={(streamAudio) => changeSync({ streamAudio })} />
           {supabaseOn && <AtSwitch label="Split big files" checked={sync.splitBigFiles} onChange={(splitBigFiles) => changeSync({ splitBigFiles })} />}
         </div>
-        {supabaseOn && (
+        {supabaseOn && !phone && (
           <AtRows>
             <AtRow label="Sync to Supabase">
               <Select<"all" | "chosen">
@@ -255,39 +259,69 @@ export function DeskSync() {
       </AtSection>
 
       <AtSection id="behaviour" title="Sync Behavior">
-        <AtRows>
-          <AtRow label="How often">
-            <Select<SyncFrequency>
-              label="How often to sync"
-              value={sync.frequency}
-              options={[
-                { value: "automatic", label: "Automatically" },
-                { value: "15min", label: "Every 15 minutes" },
-                { value: "hourly", label: "Every hour" },
-                { value: "manual", label: "Only when I ask" },
-              ]}
-              onChange={(frequency) => changeSync({ frequency })}
-            />
-          </AtRow>
-          <AtSwitch label="Sync on open" checked={sync.onStartup} onChange={(onStartup) => changeSync({ onStartup })} />
-          <AtSwitch label="Sync on close" checked={sync.onClose} onChange={(onClose) => changeSync({ onClose })} />
-          <AtRow label="On conflict">
-            <Select<ConflictRule>
-              label="On conflict"
-              value={sync.conflicts}
-              options={[
-                { value: "recent", label: "Most recent change" },
-                { value: "ask", label: "Ask me" },
-                { value: "local", label: "This device's version" },
-                { value: "cloud", label: "The cloud's version" },
-              ]}
-              onChange={(conflicts) => changeSync({ conflicts })}
-            />
-          </AtRow>
-        </AtRows>
+        {(() => {
+          const often = (
+            <AtRow label="How often">
+              <Select<SyncFrequency>
+                label="How often to sync"
+                value={sync.frequency}
+                options={[
+                  { value: "automatic", label: "Automatically" },
+                  { value: "15min", label: "Every 15 minutes" },
+                  { value: "hourly", label: "Every hour" },
+                  { value: "manual", label: "Only when I ask" },
+                ]}
+                onChange={(frequency) => changeSync({ frequency })}
+              />
+            </AtRow>
+          );
+          const conflict = (
+            <AtRow label="On conflict">
+              <Select<ConflictRule>
+                label="On conflict"
+                value={sync.conflicts}
+                options={[
+                  { value: "recent", label: "Most recent change" },
+                  { value: "ask", label: "Ask me" },
+                  { value: "local", label: "This device's version" },
+                  { value: "cloud", label: "The cloud's version" },
+                ]}
+                onChange={(conflicts) => changeSync({ conflicts })}
+              />
+            </AtRow>
+          );
+          const onOpen = <AtSwitch label="Sync on open" checked={sync.onStartup} onChange={(onStartup) => changeSync({ onStartup })} />;
+          const onClose = <AtSwitch label="Sync on close" checked={sync.onClose} onChange={(onClose) => changeSync({ onClose })} />;
+          if (phone)
+            return (
+              <AtRows>
+                {often}
+                {onOpen}
+                {onClose}
+                {conflict}
+              </AtRows>
+            );
+          // Two columns in the one card (embre, 28 November).
+          return (
+            <div className="at-split">
+              <div className="at-split-col">
+                <AtRows>
+                  {often}
+                  {conflict}
+                </AtRows>
+              </div>
+              <div className="at-split-col">
+                <AtRows>
+                  {onOpen}
+                  {onClose}
+                </AtRows>
+              </div>
+            </div>
+          );
+        })()}
       </AtSection>
 
-      {!isWeb && <Devices />}
+      {!isWeb && !phone && <Devices />}
 
       {setup && (
         <AtWindow title={setup === "manage" && inUse ? placeOf(current) : "Sync provider"} className="at-provider-window" onClose={() => setSetup(null)}>
@@ -421,7 +455,9 @@ function Devices() {
 
 export function DeskStorage({ onRestored, onOpenPlaces }: { onRestored: () => void; onOpenPlaces?: () => void }) {
   const toast = useToast();
-  const { overview, reload, inUse, supabaseOn } = useOverview();
+  const phone = usePhone();
+  const { overview, reload, inUse, supabaseOn, current } = useOverview();
+  const clouds = useCloudSpace();
   const [open, setOpen] = useState<"tidy" | "browse" | "migrate" | "backup" | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -438,6 +474,40 @@ export function DeskStorage({ onRestored, onOpenPlaces }: { onRestored: () => vo
     }
   };
   const supabase = overview && supabaseOn && !isWeb;
+  const backup = (
+    <AtSection id="backup" title="Backup & Restore" also={["places"]}>
+        <AtRows>
+          {phone ? (
+            <AtRow label="Library location">
+              <span className="at-count">{inUse ? placeOf(current) : `On this ${thisDevice()}`}</span>
+            </AtRow>
+          ) : (
+            onOpenPlaces && (
+              <AtRow label="Library location">
+                <button type="button" className="btn btn-quiet" onClick={onOpenPlaces}>
+                  Show…
+                </button>
+              </AtRow>
+            )
+          )}
+          <AtRow label="Export library data">
+            <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void run(() => api.exportLibrary(), "Exported your library data.")}>
+              Export…
+            </button>
+          </AtRow>
+          <AtRow label="Back up library data">
+            <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void run(() => api.createBackup(), "Backup saved.")}>
+              Back up…
+            </button>
+          </AtRow>
+          <AtRow label="Restore library data">
+            <button type="button" className="btn btn-quiet btn-danger-text" disabled={busy} onClick={() => (isApp ? setRestoring(true) : toast("Restoring works in the desktop app."))}>
+              Restore…
+            </button>
+          </AtRow>
+        </AtRows>
+      </AtSection>
+  );
   const migration = (
     <AtSection id="move" title="Library Migration">
       <AtRows>
@@ -456,8 +526,27 @@ export function DeskStorage({ onRestored, onOpenPlaces }: { onRestored: () => vo
   );
   return (
     <AtPage className="at-storage">
-      {supabase && <SupabaseStorage />}
-      {supabase ? (
+      {phone && backup}
+      {phone && <SpaceSections clouds={clouds} />}
+      {!phone && supabase && <SupabaseStorage split={clouds.list?.find((c) => c.provider.kind === "supabase") ?? null} />}
+      {phone && supabase && (
+        <AtSection id="tidy" title="Cloud Management" also={["contents"]}>
+          <AtRows>
+            <AtRow label="Tidy up Supabase">
+              <button type="button" className="btn btn-quiet" onClick={() => setOpen("tidy")}>
+                Tidy
+              </button>
+            </AtRow>
+            <AtRow label="What's in Supabase">
+              <button type="button" className="btn btn-quiet" onClick={() => setOpen("browse")}>
+                Browse
+              </button>
+            </AtRow>
+          </AtRows>
+        </AtSection>
+      )}
+      {phone && supabase && <SupabaseStorage split={clouds.list?.find((c) => c.provider.kind === "supabase") ?? null} />}
+      {phone ? null : supabase ? (
         <AtPair>
           <AtSection id="tidy" title="Cloud Management" also={["contents"]}>
             <AtRows>
@@ -478,32 +567,8 @@ export function DeskStorage({ onRestored, onOpenPlaces }: { onRestored: () => vo
       ) : (
         migration
       )}
-      <AtSection id="backup" title="Backup & Restore" also={["places"]}>
-        <AtRows>
-          {onOpenPlaces && (
-            <AtRow label="Library location">
-              <button type="button" className="btn btn-quiet" onClick={onOpenPlaces}>
-                Show…
-              </button>
-            </AtRow>
-          )}
-          <AtRow label="Export library data">
-            <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void run(() => api.exportLibrary(), "Exported your library data.")}>
-              Export…
-            </button>
-          </AtRow>
-          <AtRow label="Back up library data">
-            <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void run(() => api.createBackup(), "Backup saved.")}>
-              Back up…
-            </button>
-          </AtRow>
-          <AtRow label="Restore library data">
-            <button type="button" className="btn btn-quiet btn-danger-text" disabled={busy} onClick={() => (isApp ? setRestoring(true) : toast("Restoring works in the desktop app."))}>
-              Restore…
-            </button>
-          </AtRow>
-        </AtRows>
-      </AtSection>
+      {!phone && backup}
+      {!phone && <SpaceSections clouds={clouds} />}
       {open === "tidy" && overview && (
         <AtWindow title="Tidy up Supabase" onClose={close}>
           <TidySection overview={overview} />
@@ -540,7 +605,7 @@ export function DeskStorage({ onRestored, onOpenPlaces }: { onRestored: () => vo
   );
 }
 
-function SupabaseStorage() {
+function SupabaseStorage({ split }: { split: CloudSpace | null }) {
   const [usage, setUsage] = useState<SupabaseUsage | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
@@ -582,9 +647,17 @@ function SupabaseStorage() {
                 </span>
               </AtRow>
             )}
-            <AtRow label="Files held">
-              <span className="at-count is-strong">{held}</span>
-            </AtRow>
+            {split?.space ? (
+              SPACE_KINDS.filter((k) => k.key !== "app").map((k) => (
+                <AtRow key={k.key} label={k.label}>
+                  <span className="at-count">{size(split.space![k.key as keyof Space])}</span>
+                </AtRow>
+              ))
+            ) : (
+              <AtRow label="Files held">
+                <span className="at-count is-strong">{held}</span>
+              </AtRow>
+            )}
           </>
         )}
       </AtRows>
@@ -618,5 +691,91 @@ export function DeskActivity({ imports, sync }: { imports: React.ReactNode; sync
         </AtSection>
       )}
     </AtPage>
+  );
+}
+
+/** The kinds of content in a breakdown, each with its colour (embre's approved pictures, 28 November). */
+const SPACE_KINDS: { key: keyof DeviceSpace; label: string; color: string }[] = [
+  { key: "app", label: "App", color: "#5b7fa6" },
+  { key: "ebooks", label: "Ebooks", color: "#a0714f" },
+  { key: "documents", label: "Documents", color: "#6d8b5e" },
+  { key: "audiobooks", label: "Audiobooks", color: "#8a8f98" },
+  { key: "other", label: "Other", color: "#c0663f" },
+];
+
+/** What each sync place holds by type, read once when the page opens. */
+function useCloudSpace() {
+  const [list, setList] = useState<CloudSpace[] | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.cloudSpace().then(
+      (found) => live && setList(found),
+      (e: unknown) => live && (setProblem(String(e).replace(/^Error: /, "")), setList([])),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+  return { list, problem };
+}
+
+/** A breakdown: the total, a bar split by type, and a row for each type with its size. */
+function SpaceBreakdown({ space, withApp }: { space: Space | DeviceSpace; withApp: boolean }) {
+  const kinds = SPACE_KINDS.filter((k) => withApp || k.key !== "app");
+  const sizes = kinds.map((k) => (space as DeviceSpace)[k.key] ?? 0);
+  const total = sizes.reduce((a, b) => a + b, 0);
+  return (
+    <>
+      <AtRow label="Total">
+        <span className="at-count">{size(total)}</span>
+      </AtRow>
+      <div className="at-space-bar" aria-hidden>
+        {kinds.map((k, i) => (sizes[i] > 0 ? <i key={k.key} style={{ width: `${(sizes[i] / Math.max(total, 1)) * 100}%`, background: k.color }} /> : null))}
+      </div>
+      {kinds.map((k, i) => (
+        <AtRow
+          key={k.key}
+          label={
+            <span className="at-space-kind">
+              <span className="at-space-key" style={{ background: k.color }} aria-hidden />
+              {k.label}
+            </span>
+          }
+        >
+          <span className="at-count">{size(sizes[i])}</span>
+        </AtRow>
+      ))}
+    </>
+  );
+}
+
+/** On this device, and in each sync place but Supabase (which has its own card), by type (embre, 28 November). */
+function SpaceSections({ clouds }: { clouds: { list: CloudSpace[] | null; problem: string | null } }) {
+  const [here, setHere] = useState<DeviceSpace | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.deviceSpace().then(
+      (found) => live && setHere(found),
+      (e: unknown) => live && setProblem(String(e).replace(/^Error: /, "")),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+  const places = (clouds.list ?? []).filter((c) => c.provider.kind !== "supabase");
+  // Side by side on a computer; a phone stacks them anyway.
+  return (
+    <AtPair>
+      <AtSection id="space-here" title={`On this ${thisDevice()}`} also={["space"]}>
+        <AtRows>{here ? <SpaceBreakdown space={here} withApp /> : <AtRow label={problem ? `Couldn't count: ${problem}` : "Counting…"} />}</AtRows>
+      </AtSection>
+      {places.map((c, i) => (
+        <AtSection key={`${placeOf(c.provider)}${i}`} id={`space-cloud-${i}`} title={`In ${placeOf(c.provider)}`}>
+          <AtRows>{c.space ? <SpaceBreakdown space={c.space} withApp={false} /> : <AtRow label={`Couldn't count: ${c.problem ?? "no answer"}`} />}</AtRows>
+        </AtSection>
+      ))}
+    </AtPair>
   );
 }

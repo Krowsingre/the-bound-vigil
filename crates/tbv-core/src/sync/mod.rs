@@ -78,7 +78,7 @@ pub(crate) const KINDS: &[Kind] = &[
         keys: &["id"],
         cols: &[
             "title", "authors", "format", "file_size", "synopsis", "publisher", "language", "series", "series_index",
-            "added_at", "deleted_at", "isbn", "forgotten_at",
+            "added_at", "deleted_at", "isbn", "forgotten_at", "binned_at",
         ],
         category: Category::Library,
         creates: true,

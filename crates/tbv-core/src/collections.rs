@@ -873,6 +873,22 @@ mod tests {
     }
 
     #[test]
+    fn books_sent_to_device_go_into_up_next_once() {
+        let (dir, mut library) = open_temp_library();
+        let a = add(&mut library, dir.path(), "Alpha", "");
+        let b = add(&mut library, dir.path(), "Beta", "");
+        library.set_phone_wanted(std::slice::from_ref(&a), true).unwrap();
+        library.conn.execute("DELETE FROM device_settings WHERE key = 'once.sentToUpNext'", []).unwrap();
+        library.sent_to_device_to_up_next_once().unwrap();
+        let up = library.library_page(&LibraryQuery { shelf: Shelf::WantToRead, ..Default::default() }).unwrap();
+        assert_eq!(up.books.iter().map(|x| x.id.clone()).collect::<Vec<_>>(), vec![a.clone()]);
+        // Only once: a book chosen later stays out.
+        library.set_phone_wanted(std::slice::from_ref(&b), true).unwrap();
+        library.sent_to_device_to_up_next_once().unwrap();
+        assert_eq!(library.library_page(&LibraryQuery { shelf: Shelf::WantToRead, ..Default::default() }).unwrap().total, 1);
+    }
+
+    #[test]
     fn shelves_are_built_in_and_follow_the_books() {
         let (dir, mut library) = open_temp_library();
         let a = add(&mut library, dir.path(), "Alpha", "");
@@ -884,7 +900,7 @@ mod tests {
         assert!(overview.pinned.is_empty(), "the shelves show among the smart ones instead");
         let smart = |kind| overview.smart.iter().find(|s| s.kind == kind).unwrap().count;
         assert_eq!(smart(SmartKind::UpNext), 1);
-        assert_eq!(smart(SmartKind::SendToDevice), 1, "the books chosen for the phone");
+        assert!(overview.smart.iter().all(|s| s.kind != SmartKind::SendToDevice), "Sent to device isn't shown");
         assert_eq!(library.shelf_counts().unwrap().send_to_device, 1);
         let chosen = library.library_page(&LibraryQuery { shelf: Shelf::SendToDevice, ..Default::default() }).unwrap();
         assert_eq!(chosen.books.iter().map(|b| b.id.clone()).collect::<Vec<_>>(), vec![a.clone()]);
@@ -1064,7 +1080,7 @@ mod tests {
         assert_eq!(
             overview.smart.iter().map(|s| s.kind).collect::<Vec<_>>(),
             SmartKind::ALL,
-            "Sent to device, In progress, Up next, Favourites, Read"
+            "In progress, Up next, Favourites, Read"
         );
         let recent = CollectionRef::Smart { smart: SmartKind::RecentlyAdded };
         assert_eq!(library.collection_detail(&recent).unwrap().books.len(), 3);

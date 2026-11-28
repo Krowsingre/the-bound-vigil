@@ -24,7 +24,12 @@ pub struct DeletedBook {
     pub authors: Vec<String>,
     pub format: String,
     pub deleted_at: String,
+    /// Whole days left in the bin before it's deleted for good.
+    pub days_left: u32,
 }
+
+/// How long a deleted book waits in the bin (embre, 28 November).
+pub const BIN_DAYS: i64 = 15;
 
 const MAX_TAG_CHARS: usize = 40;
 const MAX_TAGS: usize = 50;
@@ -374,25 +379,100 @@ impl Library {
         Ok(())
     }
 
-    /// The books TBV remembers as deleted, newest first: importing one of
-    /// their files again skips it or puts it in Previously deleted.
+    /// The books waiting in the bin, newest first, with the days each has left.
     pub fn deleted_books(&self) -> Result<Vec<DeletedBook>> {
         let mut statement = self.conn.prepare(
-            "SELECT id, title, authors, format, deleted_at FROM books
-             WHERE deleted_at IS NOT NULL AND forgotten_at IS NULL
-             ORDER BY deleted_at DESC, title COLLATE NOCASE",
+            "SELECT id, title, authors, format, binned_at FROM books
+             WHERE deleted_at IS NOT NULL AND binned_at IS NOT NULL AND same_as IS NULL
+             ORDER BY binned_at DESC, title COLLATE NOCASE",
         )?;
+        let now = chrono::Utc::now();
         let rows = statement.query_map([], |r| {
             let authors: Option<String> = r.get(2)?;
+            let binned: String = r.get(4)?;
             Ok(DeletedBook {
                 id: r.get(0)?,
                 title: r.get(1)?,
                 authors: authors.and_then(|a| serde_json::from_str(&a).ok()).unwrap_or_default(),
                 format: r.get(3)?,
-                deleted_at: r.get(4)?,
+                days_left: days_left(&binned, now),
+                deleted_at: binned,
             })
         })?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Puts a book in the bin, on every device (embre, 28 November): it leaves
+    /// the library at once, but its file, cloud copy, notes, tags and
+    /// collections wait for 15 days, when it's deleted for good, unless it's
+    /// restored first. Copies kept with it go too.
+    pub fn bin_book(&self, book_id: &str) -> Result<()> {
+        if !self.book_exists(book_id)? {
+            return Ok(());
+        }
+        let now = now_utc();
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "UPDATE books SET deleted_at = ?2, binned_at = ?2, forgotten_at = NULL
+             WHERE (id = ?1 OR (same_as = ?1 AND deleted_at IS NULL))",
+            params![book_id, now],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Takes a book out of the bin, back into the library as it was.
+    pub fn restore_binned(&self, book_id: &str) -> Result<()> {
+        let binned: Option<String> = self
+            .conn
+            .query_row("SELECT binned_at FROM books WHERE id = ?1 AND binned_at IS NOT NULL", params![book_id], |r| r.get(0))
+            .optional()?;
+        let Some(binned) = binned else { return Ok(()) };
+        self.conn.execute(
+            "UPDATE books SET deleted_at = NULL, binned_at = NULL, forgotten_at = NULL
+             WHERE id = ?1 OR (same_as = ?1 AND binned_at = ?2)",
+            params![book_id, binned],
+        )?;
+        Ok(())
+    }
+
+    /// Deletes a book in the bin for good now (Delete now).
+    pub fn delete_binned_now(&self, book_id: &str) -> Result<()> {
+        let binned: Option<String> = self
+            .conn
+            .query_row("SELECT binned_at FROM books WHERE id = ?1 AND binned_at IS NOT NULL", params![book_id], |r| r.get(0))
+            .optional()?;
+        let Some(binned) = binned else { return Ok(()) };
+        let kept: Vec<String> = {
+            let mut statement = self.conn.prepare("SELECT id FROM books WHERE same_as = ?1 AND binned_at = ?2")?;
+            let rows = statement.query_map(params![book_id, binned], |r| r.get(0))?;
+            rows.collect::<std::result::Result<_, _>>()?
+        };
+        for id in kept.iter().map(String::as_str).chain([book_id]) {
+            // Back in the library for a moment, so it's deleted the usual way.
+            self.conn.execute("UPDATE books SET deleted_at = NULL, binned_at = NULL WHERE id = ?1", params![id])?;
+            self.delete_book(id)?;
+        }
+        Ok(())
+    }
+
+    /// Deletes for good every book that has waited its 15 days in the bin.
+    /// Run each time TBV opens; how many went.
+    pub fn empty_bin(&self) -> Result<usize> {
+        let now = chrono::Utc::now();
+        let due: Vec<String> = {
+            let mut statement = self.conn.prepare("SELECT id, binned_at FROM books WHERE binned_at IS NOT NULL AND same_as IS NULL")?;
+            let rows = statement.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+            rows.collect::<std::result::Result<Vec<_>, _>>()?
+                .into_iter()
+                .filter(|(_, binned)| days_left(binned, now) == 0)
+                .map(|(id, _)| id)
+                .collect()
+        };
+        for id in &due {
+            self.delete_binned_now(id)?;
+        }
+        Ok(due.len())
     }
 
     /// Forgets that a book was deleted, on every device: importing its file
@@ -770,6 +850,20 @@ impl Library {
     }
 }
 
+/// Whole days a book binned at `binned` has left in the bin: 15 the day
+/// it's deleted, 0 once its time is up (or when the date can't be read).
+pub(crate) fn days_left(binned: &str, now: chrono::DateTime<chrono::Utc>) -> u32 {
+    let Ok(at) = chrono::DateTime::parse_from_rfc3339(binned) else { return 0 };
+    let ends = at.with_timezone(&chrono::Utc) + chrono::Duration::days(BIN_DAYS);
+    let left = ends - now;
+    if left <= chrono::Duration::zero() {
+        0
+    } else {
+        // Part of a day counts as a day, so a book deleted today has 15.
+        ((left.num_seconds() + 86_399) / 86_400) as u32
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -958,13 +1052,15 @@ mod tests {
             })
             .unwrap();
         library.set_setting(crate::sync::APP_SETTINGS, r#"{"skipDeletedImports":true}"#).unwrap();
-        library.delete_book(&a).unwrap();
+        library.bin_book(&a).unwrap();
         let listed = library.deleted_books().unwrap();
         assert_eq!(listed.iter().map(|b| b.title.as_str()).collect::<Vec<_>>(), vec!["Carmilla"]);
         assert_eq!(listed[0].authors, vec!["Le Fanu".to_string()]);
+        assert_eq!(listed[0].days_left, BIN_DAYS as u32);
+        library.delete_binned_now(&a).unwrap();
+        assert!(library.deleted_books().unwrap().is_empty(), "deleted for good, it leaves the bin");
 
         assert_eq!(library.forget_deleted_many(&[a.clone(), "book:none".into()]).unwrap(), 1, "only deleted books are forgotten");
-        assert!(library.deleted_books().unwrap().is_empty(), "forgotten books leave the list");
         let again = library.import_files(&[dir.path().join("a.epub")]).remove(0);
         assert!(matches!(again, ImportResult::Imported { returned: false, .. }), "{again:?}");
         assert!(library.collection(PREVIOUSLY_DELETED).is_err(), "not put in Previously deleted");
@@ -1164,4 +1260,51 @@ mod tests {
             author_key(&["Bram Stoker".into()])
         );
     }
+
+    #[test]
+    fn a_binned_book_waits_fifteen_days_and_can_come_back() {
+        use crate::model::{AnnotationInput, AnnotationKind, ReaderLocator};
+        let (dir, mut library) = open_temp_library();
+        let a = add(&mut library, dir.path(), "a", "Carmilla", "Le Fanu", "");
+        let mark = library
+            .save_annotation(&AnnotationInput {
+                id: None,
+                book_id: a.clone(),
+                kind: AnnotationKind::Highlight,
+                excerpt: "the shadow".into(),
+                note: None,
+                color: Some("sage".into()),
+                locator: ReaderLocator { total_progression: Some(0.2), ..Default::default() },
+            })
+            .unwrap();
+        let copy = library.own_copy(&a).unwrap().expect("TBV's own copy");
+        library.bin_book(&a).unwrap();
+        assert_eq!(library.library_page(&LibraryQuery::default()).unwrap().total, 0, "out of the library at once");
+        assert!(Path::new(&copy).is_file(), "its file waits");
+        assert_eq!(library.empty_bin().unwrap(), 0, "not yet");
+
+        library.restore_binned(&a).unwrap();
+        assert_eq!(library.library_page(&LibraryQuery::default()).unwrap().total, 1);
+        assert!(library.deleted_books().unwrap().is_empty());
+        assert_eq!(library.book_annotations(&a).unwrap().len(), 1, "its highlight is still there");
+
+        // Fifteen days on, it's gone for good.
+        library.bin_book(&a).unwrap();
+        let long_ago = (chrono::Utc::now() - chrono::Duration::days(BIN_DAYS) - chrono::Duration::minutes(1)).to_rfc3339();
+        library.conn.execute("UPDATE books SET binned_at = ?1, deleted_at = ?1 WHERE id = ?2", params![long_ago, a]).unwrap();
+        assert_eq!(library.empty_bin().unwrap(), 1);
+        assert!(!Path::new(&copy).exists(), "its file is gone");
+        assert!(library.deleted_books().unwrap().is_empty());
+        let _ = mark;
+    }
+
+    #[test]
+    fn days_left_counts_part_of_a_day_as_a_day() {
+        let now = chrono::Utc::now();
+        assert_eq!(days_left(&now.to_rfc3339(), now), 15);
+        assert_eq!(days_left(&(now - chrono::Duration::days(14) - chrono::Duration::hours(1)).to_rfc3339(), now), 1);
+        assert_eq!(days_left(&(now - chrono::Duration::days(16)).to_rfc3339(), now), 0);
+        assert_eq!(days_left("not a date", now), 0);
+    }
+
 }

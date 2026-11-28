@@ -62,7 +62,7 @@ function downloadFile(bytes: Uint8Array, fileName: string) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
-const SMART: SmartKind[] = ["send_to_device", "in_progress", "up_next", "favorites", "read"];
+const SMART: SmartKind[] = ["in_progress", "up_next", "favorites", "read"];
 const DAY = 86_400_000;
 const MAX_NAME = 80;
 const MAX_DESCRIPTION = 500;
@@ -1376,7 +1376,15 @@ export async function webApi(): Promise<Api> {
         .rows("books")
         .filter((b) => b.deleted_at && !b.forgotten_at)
         .sort((a, b) => String(b.deleted_at).localeCompare(String(a.deleted_at)))
-        .map((b) => ({ id: String(b.id), title: String(b.title), authors: listOf(b.authors as string | null), format: String(b.format), deletedAt: String(b.deleted_at) })),
+        .map((b) => ({ id: String(b.id), title: String(b.title), authors: listOf(b.authors as string | null), format: String(b.format), deletedAt: String(b.deleted_at), daysLeft: 0 })),
+    // The web version deletes at once, with no bin.
+    restoreDeleted: async () => {
+      throw new Error(DESKTOP_ONLY);
+    },
+    deleteNow: async (bookId) => {
+      const b = library.rows("books").find((r) => r.id === bookId && r.deleted_at && !r.forgotten_at);
+      if (b) await library.writeAll([["book", { ...b, forgotten_at: now() }]]);
+    },
     forgetDeleted: async (bookId) => {
       const b = library.rows("books").find((r) => r.id === bookId && r.deleted_at && !r.forgotten_at);
       if (b) await library.writeAll([["book", { ...b, forgotten_at: now() }]]);

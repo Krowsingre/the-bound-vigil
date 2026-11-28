@@ -122,7 +122,7 @@ export const FONTS: { value: ReadingFont; label: string }[] = [
   { value: "georgia", label: "Georgia" },
   { value: "sans", label: "Sans serif" },
   { value: "echolume", label: "Echolume" },
-  { value: "publisher", label: "Book's own" },
+  { value: "publisher", label: "Book default" },
 ];
 
 /** Text width: a slider from narrow to wide, in CSS pixels. */

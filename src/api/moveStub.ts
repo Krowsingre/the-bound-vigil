@@ -37,6 +37,8 @@ type MoveApi = Pick<
   | "planTidyCloud"
   | "tidyCloud"
   | "supabaseUsage"
+  | "deviceSpace"
+  | "cloudSpace"
   | "supabaseContents"
   | "removeSupabaseFiles"
   | "bookPlaces"
@@ -61,6 +63,8 @@ export function moveStub(): MoveApi {
     planTidyCloud: tidyNo,
     tidyCloud: tidyNo,
     supabaseUsage: tidyNo,
+    deviceSpace: tidyNo,
+    cloudSpace: tidyNo,
     supabaseContents: tidyNo,
     removeSupabaseFiles: tidyNo,
     bookPlaces: async () => {

@@ -1325,8 +1325,8 @@ export function Library({
                 `Remove the downloads of ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`}?`,
               remove: seriesRemoval ? `Remove “${seriesRemoval.name}” (${seriesRemoval.books.length} ${seriesRemoval.books.length === 1 ? words.one : words.many}) from your library?` :
                 `Remove ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`} from your library?`,
-              delete: seriesRemoval ? `Delete “${seriesRemoval.name}” (${seriesRemoval.books.length} ${seriesRemoval.books.length === 1 ? words.one : words.many}) for good?` :
-                `Delete ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`} for good?`,
+              delete: seriesRemoval ? `Delete “${seriesRemoval.name}” (${seriesRemoval.books.length} ${seriesRemoval.books.length === 1 ? words.one : words.many})?` :
+                `Delete ${chosen.length === 1 ? `“${chosen[0].title}”` : `${chosen.length} ${words.many}`}?`,
             }[asking]
           }
           body={
@@ -1334,7 +1334,7 @@ export function Library({
               ? "This frees up space on this device. The books stay in your library and in the cloud, and download again when you open them. Books that aren't in the cloud yet are kept here."
               : (asking === "remove" ? removeWarning : deleteWarning)((seriesRemoval?.books ?? chosen).length > 1)
           }
-          confirm={{ download: "Remove downloads", remove: "Remove from library", delete: "Delete for good" }[asking]}
+          confirm={{ download: "Remove downloads", remove: "Remove from library", delete: "Delete" }[asking]}
           danger={asking !== "download"}
           onCancel={() => { setAsking(null); setSeriesRemoval(null); }}
           onConfirm={() => void changeChosen(asking)}
