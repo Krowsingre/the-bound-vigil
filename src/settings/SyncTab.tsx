@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, isAndroid, isApp, isIOS, isMac, isWeb, isWindows } from "../api";
+import { api, isAndroid, isApp, isIOS, isWeb } from "../api";
 import type { ProviderView, SupabaseProject, SyncOverview } from "../api/types";
 import { relativeTime } from "../lib/format";
 import { behindText } from "../shell/SyncMenu";
@@ -16,8 +16,8 @@ import { TidySection } from "./TidySection";
 import { HomeSection } from "./HomeSection";
 import { UsageSection } from "./UsageSection";
 import { ContentsSection } from "./ContentsSection";
-import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
-import { ALL_PROVIDERS, PROVIDERS, ProviderPicker, type Provider } from "./providers";
+import { disconnectLabel, serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
+import { ALL_PROVIDERS, FIRST_CARD, PROVIDERS, ProviderPicker, type Provider } from "./providers";
 import { Columns, ActionTile, RadioList, Row, Section, SectionGroup, Select, Toggle, useDeskPrefs } from "./controls";
 import { RememberedDetails } from "../components/RememberedDetails";
 
@@ -31,8 +31,6 @@ const STATE_TEXT: Record<SyncOverview["status"]["state"], string> = {
   error: "Sync failed",
 };
 
-/** The card picked before anything is set up: the cloud this device already has. */
-const FIRST_CARD: Provider = isIOS || isMac ? "icloud" : isWindows ? "onedrive" : "dropbox";
 
 /** The card for the service in use. */
 function cardFor(view: ProviderView): Provider {
@@ -76,7 +74,7 @@ export function SyncTab({ onRestored, onOpenPlaces }: { onRestored: () => void; 
   const project = overview?.project ?? null;
   const signedIn = overview?.signedInAs ?? null;
   const state = overview?.status.state ?? "disabled";
-  const current = overview?.provider ?? { kind: "supabase" as const, service: null, location: null, username: null };
+  const current: ProviderView = overview?.provider ?? { kind: "off", service: null, location: null, username: null };
   // Supabase counts as in use once signed in; a folder or server as soon as it's chosen.
   const inUse = current.kind === "off" ? null : current.kind === "supabase" ? (signedIn ? "supabase" : null) : cardFor(current);
   const showing = provider === inUse;
@@ -220,7 +218,14 @@ export function SyncTab({ onRestored, onOpenPlaces }: { onRestored: () => void; 
                   </>
                 )}
               </dl>
-              {showing && overview?.lastError && <p className="form-error">{overview.lastError}</p>}
+              {showing && overview?.lastError && (
+                <div className="sync-problem">
+                  <p className="form-error">{overview.lastError}</p>
+                  <button type="button" className="btn btn-quiet btn-small" disabled={state === "syncing"} onClick={() => void api.syncNow()}>
+                    Try again
+                  </button>
+                </div>
+              )}
               {showing && !!overview?.status.behind?.length && <p className="muted">{behindText(overview.status.behind)}</p>}
               <div className="connection-actions">
                 {showing && (
@@ -265,7 +270,7 @@ export function SyncTab({ onRestored, onOpenPlaces }: { onRestored: () => void; 
                       )
                     }
                   >
-                    Stop syncing here
+                    {disconnectLabel(current)}
                   </button>
                 )}
               </div>

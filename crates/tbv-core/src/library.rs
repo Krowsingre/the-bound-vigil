@@ -913,6 +913,7 @@ impl Library {
         library.adopt_device_avatar()?;
         library.sync_discover_history_once()?;
         library.sent_to_device_to_up_next_once()?;
+        library.keep_unspoken_supabase_once()?;
         library.follow_moved_folders()?;
         // A library that syncs empties its bin after a sync instead (run_lanes),
         // so a book restored on another device meanwhile isn't deleted here.

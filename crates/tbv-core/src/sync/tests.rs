@@ -1421,6 +1421,8 @@ mod tidying {
         let supabase = FakeRemote::default();
         let pc = Device::new();
         pc.set_options(json!({ "bookFiles": true }));
+        // Nothing is assumed any more: both devices have chosen Supabase.
+        pc.lib().set_sync_provider(&Provider::Supabase).unwrap();
         let kept = pc.import("Dracula");
         let read = pc.import("Carmilla");
         pc.sync(&supabase);
@@ -1428,6 +1430,7 @@ mod tidying {
         pc.lib().remove_download(&read).unwrap();
         let phone = Device::new();
         phone.lib().set_device_name("Embre's iPhone").unwrap();
+        phone.lib().set_sync_provider(&Provider::Supabase).unwrap();
         phone.sync(&supabase);
         assert!(download_book_from(&phone.library, &mut supabase.clone(), &kept, Lane::Main).unwrap());
         phone.sync(&supabase);
@@ -2006,4 +2009,21 @@ fn hidden_books_and_their_password_reach_every_device() {
     b.sync(&cloud);
     a.sync(&cloud);
     assert_eq!(a.lib().hidden_count().unwrap(), 0);
+}
+
+#[test]
+fn supabase_is_never_assumed_but_a_signed_in_library_keeps_it() {
+    let (_dir, library) = open_temp_library();
+    assert_eq!(library.sync_provider().unwrap(), Provider::Off, "nothing chosen is no sync");
+
+    let (dir, library) = open_temp_library();
+    let project = SupabaseProject { url: "https://x.supabase.co".into(), anon_key: "key".into() };
+    library.put_setting(PROJECT, Some(&serde_json::to_string(&project).unwrap())).unwrap();
+    let session = Session { user_id: "u".into(), email: "a@b.c".into(), access_token: "t".into(), refresh_token: "r".into(), expires_at: 0 };
+    library.set_sync_session(Some(&session)).unwrap();
+    let paths = library.paths.clone();
+    drop(library);
+    let library = Library::open(paths).unwrap();
+    assert_eq!(library.sync_provider().unwrap(), Provider::Supabase, "a library that synced through Supabase keeps it");
+    drop(dir);
 }

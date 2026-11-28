@@ -1064,6 +1064,15 @@ fn sync_now(worker: State<'_, Arc<sync::SyncWorker>>) {
     worker.sync_now();
 }
 
+/// Try again on a file sync couldn't move: it's tried at once, in a new sync.
+#[tauri::command]
+async fn retry_sync_file(state: State<'_, AppLibrary>, worker: State<'_, Arc<sync::SyncWorker>>, path: String) -> CommandResult<()> {
+    let worker = worker.inner().clone();
+    with_library(state, move |library| library.retry_sync_file(&path)).await?;
+    worker.sync_now();
+    Ok(())
+}
+
 /// "Check this book's file": what each sync place shows of it, as text to
 /// copy and send.
 #[tauri::command]
@@ -2742,6 +2751,7 @@ pub fn run() {
             set_also_sync,
             sync_activity,
             clear_sync_changes,
+            retry_sync_file,
             suggest_sync_folder,
             welcomed_back,
             resolve_sync_conflict,

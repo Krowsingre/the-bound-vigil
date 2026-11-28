@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Icon, type IconName } from "./Icon";
+import { ProgressBar } from "./ProgressBar";
 import { justClosed, menusFloat, openMenuPopup } from "./menuPopups";
 
 export interface MenuItem {
@@ -20,6 +21,8 @@ export interface MenuItem {
   hint?: string;
   /** A second, smaller line under the label, with a larger icon beside both. */
   description?: string;
+  /** A bar under the description, 0 to 1 (sync's progress). */
+  progress?: number;
   disabled?: boolean;
   danger?: boolean;
   /** Shown as a tick; the menu stays open so several can be toggled. */
@@ -283,6 +286,7 @@ export const MenuList = forwardRef<
                 <span className="menu-label">
                   {item.label}
                   <span className="menu-description">{item.description}</span>
+                  {item.progress !== undefined && <ProgressBar value={item.progress} label={item.description} />}
                 </span>
               ) : (
                 <span className="menu-label">{item.label}</span>

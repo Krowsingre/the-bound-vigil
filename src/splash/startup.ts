@@ -130,6 +130,9 @@ function drawnOnScreen(): Promise<void> {
   });
 }
 
+/** How the iPhone's splash breaks up. */
+export const PHONE_PLAY = { size: 1.8, sharpest: 2, step: 80 };
+
 async function finish() {
   if (finished) return;
   finished = true;
@@ -163,5 +166,7 @@ async function finish() {
     setTimeout(() => overlay.remove(), 400);
     return;
   }
-  await disintegrate(overlay).catch(() => overlay.remove());
+  // A phone draws the break-up with bigger, fewer pages on a lighter canvas, and a
+  // late frame moves it on in real time, so it plays at full speed (embre, 28 November).
+  await disintegrate(overlay, PHONE_PLAY).catch(() => overlay.remove());
 }

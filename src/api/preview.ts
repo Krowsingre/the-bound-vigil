@@ -69,6 +69,7 @@ let previewActivity: SyncActivity = new URLSearchParams(location.search).has("ac
           step: "files",
           received: 12,
           sent: 3,
+          toSend: 3,
           filesTotal: 6,
           filesDone: 2,
           bytesTotal: 18_400_000,
@@ -83,6 +84,7 @@ let previewActivity: SyncActivity = new URLSearchParams(location.search).has("ac
           step: null,
           received: 0,
           sent: 15,
+          toSend: 15,
           filesTotal: 9,
           filesDone: 9,
           bytesTotal: 412_000_000,
@@ -516,6 +518,8 @@ function previewSync(): SyncOverview {
 
 export function previewApi(): Api {
   let sync = previewSync();
+  // `?activity` shows a sync underway, so the sync menu shows its progress too.
+  if (params.has("activity") && sync.status.state !== "disabled") sync = { ...sync, status: { ...sync.status, state: "syncing" } };
   // `?friends` starts Oathkin with two friends saved.
   let friends: Friend[] = params.has("friends")
     ? [
@@ -767,6 +771,7 @@ export function previewApi(): Api {
     },
     onImports: () => () => undefined,
     syncActivity: async () => previewActivity,
+    retrySyncFile: async () => undefined,
     clearSyncChanges: async () => {
       previewActivity = { ...previewActivity, changes: [] };
       activityListeners.forEach((l) => l(previewActivity));
@@ -1139,7 +1144,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.170.0", version: "0.170.0", notes: "The Bound Vigil 0.170.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.171.0", version: "0.171.0", notes: "The Bound Vigil 0.171.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },

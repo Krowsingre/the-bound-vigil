@@ -226,6 +226,12 @@ export function BookmarksPanel({ onGo, onClose, onChanged, onOpenAll, page }: {
       if (where === "mark") {
         const target = marks.find((m) => m.id === place);
         if (target && !ids.includes(place)) undoable("Moved.", () => api.moveBookmarks(ids, target.folderId ?? null, target.id));
+      } else if (folder && drop.upper) {
+        // Above a folder is not into it (embre, 28 November). Folders always sit above
+        // a level's bookmarks, so it goes to the top of the bookmarks at that level.
+        const level = folder.parentId ?? null;
+        const first = marksIn(level).find((m) => !ids.includes(m.id));
+        undoable("Moved.", () => api.moveBookmarks(ids, level, first?.id ?? null));
       } else if (folder) undoable(`Moved to ${folder.name}.`, () => api.moveBookmarks(ids, folder.id, null));
       else if (where === "end") undoable("Moved.", () => api.moveBookmarks(ids, place || null, null));
     } else if (kind === "folder") {

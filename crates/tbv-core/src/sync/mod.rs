@@ -1209,9 +1209,20 @@ impl Library {
             .filter(|p| !p.url.is_empty() && !p.anon_key.is_empty()))
     }
 
-    /// The chosen service. Before there was a choice, it was Supabase.
+    /// The chosen service. With none chosen, sync is off: Supabase is never
+    /// picked for anyone (embre, 28 November).
     pub fn sync_provider(&self) -> Result<Provider> {
-        Ok(self.setting(PROVIDER)?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Provider::Supabase))
+        Ok(self.setting(PROVIDER)?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Provider::Off))
+    }
+
+    /// Before there was a choice, a library signed in to Supabase synced
+    /// through it without saying so. That's written down once, so it keeps
+    /// syncing now that nothing is assumed.
+    pub(crate) fn keep_unspoken_supabase_once(&self) -> Result<()> {
+        if self.setting(PROVIDER)?.is_none() && self.supabase_project()?.is_some() && self.sync_session()?.is_some() {
+            self.put_setting(PROVIDER, Some(&serde_json::to_string(&Provider::Supabase)?))?;
+        }
+        Ok(())
     }
 
     /// Saves the chosen service. Moving to a different cloud library starts
@@ -1508,6 +1519,15 @@ impl Library {
     /// since it was last signed out or moved to another service.
     pub(crate) fn has_synced(&self) -> Result<bool> {
         Ok(self.setting(LAST_SUCCESS)?.is_some() || self.setting(ALSO_LAST_SUCCESS)?.is_some())
+    }
+
+    /// Try again (embre, 28 November): a file that failed lately is tried at
+    /// the next sync, not a day later. A download is always tried again.
+    pub fn retry_sync_file(&self, path: &str) -> Result<()> {
+        for lane in [Lane::Main, Lane::Also] {
+            self.conn.execute(&format!("DELETE FROM {} WHERE path = ?1 AND uploaded_at IS NULL", lane.files_table()), params![path])?;
+        }
+        Ok(())
     }
 
     /// As `reset_sync`, for the second place only.
@@ -2637,6 +2657,8 @@ pub enum SyncEvent {
     Step { lane: Lane, step: SyncStep },
     /// Changes so far this run, for one place.
     Records { lane: Lane, received: u32, sent: u32 },
+    /// How many of this device's changes a place is about to be sent.
+    ChangesPlanned { lane: Lane, count: u32 },
     /// The files a place is about to send or fetch.
     FilesPlanned { lane: Lane, direction: Direction, count: u32, bytes: u64 },
     /// One file starting, or finished (`done`), or not sent (`problem`).
@@ -2998,6 +3020,8 @@ fn push(lock: Lock, tell: Tell, remote: &mut dyn Remote, options: &SyncOptions, 
     let _ = lock()?.note_read_along_holdings();
     // …and where each book is downloaded.
     lock()?.note_book_holdings()?;
+    // How many there are to send, so the count can read "5,000 of 43,729".
+    tell(SyncEvent::ChangesPlanned { lane, count: lock()?.waiting_count(options, lane)? });
     let mut seen = HashSet::new();
     loop {
         let batch = lock()?.lane_outbox(options, BATCH, lane)?;

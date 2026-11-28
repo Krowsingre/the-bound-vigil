@@ -1,6 +1,9 @@
 import { askFriendLink, canReceiveFromFriend } from "../library/FriendLink";
 import { api } from "../api";
-import type { Profile, SyncBehind, SyncStatus } from "../api/types";
+import { useEffect, useState } from "react";
+import type { Profile, SyncActivity, SyncBehind, SyncStatus } from "../api/types";
+import { ProgressBar } from "../components/ProgressBar";
+import { percentOf, runProgress } from "../sync/progress";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { relativeTime } from "../lib/format";
@@ -71,7 +74,15 @@ export function SyncMenu({
   const hidden = settings.privacy.on;
   const keys = useShortcuts();
   const narrow = useNarrow();
-  const detail = off
+  // While a sync runs, how far it has got (embre, 28 November), from the run's own counts.
+  const [activity, setActivity] = useState<SyncActivity | null>(null);
+  useEffect(() => api.onSyncActivity(setActivity), []);
+  const progress = state === "syncing" && activity ? runProgress(activity) : null;
+  const detail = progress
+    ? progress.fraction === null ? progress.text : `${progress.text} (${percentOf(progress.fraction)})`
+    : state === "syncing"
+      ? "Starting…"
+      : off
     ? "No cloud service connected yet."
     : state === "attention"
       ? "Some changes need you to choose. See Sync & Accounts."
@@ -91,7 +102,9 @@ export function SyncMenu({
   const deskItems: MenuEntry[] = [
     {
       label: profile?.name ?? "Your visage",
-      description: `${behind ? "Not caught up yet" : SUMMARY[state]}. ${detail}`,
+      // "Syncing…" already ends the sentence, so no full stop after it.
+      description: `${behind ? "Not caught up yet" : SUMMARY[state]}${state === "syncing" ? "" : "."} ${detail}`,
+      progress: progress?.fraction ?? undefined,
       icon: icon,
       onSelect: onOpenSyncSettings,
       closeAction: off
@@ -146,6 +159,7 @@ export function SyncMenu({
             <>
               <strong>{behind ? "Not caught up yet" : SUMMARY[state]}</strong>
               <span>{detail}</span>
+              {progress?.fraction != null && <ProgressBar value={progress.fraction} label={detail} />}
             </>
           ),
         },

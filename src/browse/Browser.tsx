@@ -78,7 +78,7 @@ import { onBrowserAsk, type BrowserAsk } from "./browserAsk";
 import { addToReadingList, bookIdOf } from "./readingList";
 import { ClosedList } from "./ClosedList";
 import { SiteInfo } from "./SiteInfo";
-import { SessionsPanel, restoreSession } from "./SessionsPanel";
+import { SessionsPanel, restoreSession, snapshotSession } from "./SessionsPanel";
 import { BookmarksPanel, ReadingListPanel } from "./StartPanels";
 import { StartPage, type StartPanel } from "./StartPage";
 import { useTabDrag } from "./useTabDrag";
@@ -374,6 +374,13 @@ export function Browser({
   const [marks, setMarks] = useState<Bookmark[]>([]);
   const fetched = useDownloads();
   const [panel, setPanel] = useState<null | "tabs" | "site" | "bookmark-page" | "sessions" | StartPanel>(null);
+  // The tab view opens with the tab it was opened from on screen (embre, 28 November):
+  // no scrolling to find it.
+  useEffect(() => {
+    if (panel !== "tabs" || tabsView !== "open") return;
+    const frame = requestAnimationFrame(() => document.querySelector(".browser-grid-tab.is-active")?.scrollIntoView({ block: "center", inline: "nearest" }));
+    return () => cancelAnimationFrame(frame);
+  }, [panel, tabsView]); // eslint-disable-line react-hooks/exhaustive-deps
   const [tabSearch, setTabSearch] = useState("");
   useEffect(() => { if (panel !== "tabs") setTabSearch(""); }, [panel]);
   /** Pages that couldn't open, by tab: TBV's own page says why. */
@@ -1457,6 +1464,25 @@ export function Browser({
     setTabs(next);
     setPanel(null);
   };
+  /**
+   * Open as session (embre, 28 November): the tabs open here are saved as a session
+   * first, then every tab open on the other device opens here as a new session.
+   */
+  const openAsSession = async (device: DeviceTabs) => {
+    const tabsThere = device.tabs.filter((t) => /^https?:\/\//i.test(t.url));
+    if (!tabsThere.length) return;
+    const when = new Date().toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+    const here = snapshotSession(tabsRef.current);
+    try {
+      if (here.tabs.length) await api.putBrowserSession({ id: newTabId(), name: `Tabs, ${when}`, ...here });
+      const session = { id: newTabId(), name: device.name, tabs: tabsThere.map(({ url, title }) => ({ url, title })), active: 0 };
+      await api.putBrowserSession(session);
+      replaceAllTabs(restoreSession(session));
+      toast(here.tabs.length ? `Your tabs were saved as “Tabs, ${when}”.` : `Opened ${device.name}'s tabs.`);
+    } catch (e) {
+      toast(String(e).replace(/^Error: /, ""));
+    }
+  };
   const popOut = async () => {
     if (!web) return toast("Open a page with a video first.");
     try {
@@ -1740,7 +1766,12 @@ export function Browser({
             )}
             {tabsView === "recent" && otherTabs.map((device) => (
               <section key={device.deviceId} className="browser-grid-closed" aria-label={`Tabs open on ${device.name}`}>
-                <h3>On {device.name}</h3>
+                <header className="browser-grid-closed-head">
+                  <h3>On {device.name}</h3>
+                  <button type="button" className="start-more" onClick={() => void openAsSession(device)}>
+                    Open as session <Icon name="chevronRight" size={16} />
+                  </button>
+                </header>
                 <ul className="browser-download-list">
                   {device.tabs.map((t, i) => (
                     <li key={i}>

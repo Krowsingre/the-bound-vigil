@@ -1,21 +1,12 @@
 // The services a library can be kept in, as Attune › Sync shows them.
 
-import { isAndroid } from "../api";
+import { isAndroid, isIOS, isMac, isWindows } from "../api";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 
 export type Provider = "supabase" | "dropbox" | "gdrive" | "onedrive" | "icloud" | "mega" | "custom";
 
 export const ALL_PROVIDERS: { id: Provider; name: string; art: React.ReactNode }[] = [
-  {
-    id: "supabase",
-    name: "Supabase",
-    art: (
-      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
-        <path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="currentColor" />
-      </svg>
-    ),
-  },
   {
     id: "dropbox",
     name: "Dropbox",
@@ -81,15 +72,26 @@ export const ALL_PROVIDERS: { id: Provider; name: string; art: React.ReactNode }
       </svg>
     ),
   },
+  {
+    id: "supabase",
+    name: "Supabase",
+    art: (
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden>
+        <path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="currentColor" />
+      </svg>
+    ),
+  },
 ];
 
 /**
- * The places that can be chosen here. Supabase isn't offered for now
- * (embre, 19 November); a device already syncing with it keeps it, shown
- * as its card, until another place is chosen. Android's test version has no
- * iCloud, and can't reach a folder a desktop app keeps in step (MEGA).
+ * The places that can be chosen here, Supabase always last and never picked for
+ * anyone (embre, 28 November). Android's test version has no iCloud, and can't
+ * reach a folder a desktop app keeps in step (MEGA).
  */
-export const PROVIDERS = ALL_PROVIDERS.filter((p) => p.id !== "supabase" && !(isAndroid && (p.id === "icloud" || p.id === "mega")));
+export const PROVIDERS = ALL_PROVIDERS.filter((p) => !(isAndroid && (p.id === "icloud" || p.id === "mega")));
+
+/** The card shown before anything is set up: the cloud this device already has, never Supabase. */
+export const FIRST_CARD: Provider = isIOS || isMac ? "icloud" : isWindows ? "onedrive" : "dropbox";
 
 /**
  * The place chosen, as a card, and every other one in a dropdown. With
