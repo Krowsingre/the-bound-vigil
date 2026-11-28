@@ -2406,7 +2406,7 @@ kbd {
   white-space: nowrap;
 }
 
-/* Attune › Library › Deleted books: books TBV remembers, each with Forget. */
+/* Management › Deleted books: the bin, each book with Restore and Delete now. */
 .deleted-books {
   margin-top: 12px;
 }
@@ -2435,6 +2435,48 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.deleted-books-item .btn {
+  flex: none;
+}
+/* A long title: an ellipsis, and a slow scroll to show the rest unless Reduce motion is on (embre, 28 November). */
+.marquee-text {
+  display: inline-block;
+}
+.marquee.is-over {
+  text-overflow: clip;
+}
+.marquee.is-over .marquee-text {
+  animation: tbv-marquee var(--marquee-time, 8s) ease-in-out infinite;
+}
+:root[data-reduce-motion] .marquee.is-over {
+  text-overflow: ellipsis;
+}
+:root[data-reduce-motion] .marquee.is-over .marquee-text {
+  animation: none;
+  display: inline;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee.is-over {
+    text-overflow: ellipsis;
+  }
+  .marquee.is-over .marquee-text {
+    animation: none;
+    display: inline;
+  }
+}
+@keyframes tbv-marquee {
+  0%,
+  20% {
+    transform: translateX(0);
+  }
+  70%,
+  90% {
+    transform: translateX(var(--marquee-shift, 0));
+  }
+  100% {
+    transform: translateX(0);
+  }
 }
 
 /* Attune on a computer, eight pages (embre, 21 November). */
@@ -3330,4 +3372,786 @@ kbd {
 }
 .at-activity .imports-empty > svg {
   display: none;
+}
+
+/* ── Attunement on a phone (embre, 28 November) ─────────────────────────────
+   The computer's pages drawn as an iPhone's own settings: a small centred title with a
+   back button, small grey headers over grouped lists, rows at least 44pt tall split by
+   hairlines, choices that open in place under their row, and sliders across the width. */
+.settings-page.at-ios-page {
+  display: block;
+  min-height: 100%;
+  background: var(--bg);
+}
+.at-ios-nav {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  height: 44px;
+  padding: 0 8px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 0.5px solid var(--border);
+}
+.at-ios-back {
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: 17px var(--font-sans);
+  cursor: pointer;
+}
+.at-ios-title {
+  margin: 0;
+  font: 600 17px/1.2 var(--font-sans);
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:root .settings-body.attune.at-ios-body {
+  display: block;
+  max-width: none;
+  padding: 8px 16px 40px;
+}
+.at-ios-list {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding-top: 8px;
+}
+.at-ios-card {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.at-ios-card > li + li .at-ios-link-label,
+.at-ios-card > li + li .at-ios-link::before {
+  position: relative;
+}
+.at-ios-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: 17px var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.at-ios-card > li + li .at-ios-link::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 60px;
+  border-top: 0.5px solid var(--border);
+}
+.at-ios-link-label {
+  flex: 1;
+  padding: 11px 0;
+}
+.at-ios-link > svg:last-child {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+.at-ios-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  color: #fff;
+}
+
+/* A page's sections: the header above, the rows in a rounded group. */
+.at-page.is-ios {
+  gap: 0;
+}
+.at-page.is-ios .at-ios-section {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  scroll-margin-top: 52px;
+}
+.at-page.is-ios .at-ios-section.is-found .at-ios-card {
+  box-shadow: 0 0 0 2px var(--focus);
+}
+.at-ios-head {
+  margin: 22px 16px 7px;
+  font: 400 13px/1.3 var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+}
+.at-page.is-ios > .at-ios-section:first-child .at-ios-head {
+  margin-top: 8px;
+}
+.at-page.is-ios .at-ios-section:not(:has(.at-ios-head)) {
+  margin-top: 22px;
+}
+.at-page.is-ios > .at-ios-section:first-child:not(:has(.at-ios-head)) {
+  margin-top: 8px;
+}
+.at-page.is-ios .at-ios-card {
+  display: flex;
+  flex-direction: column;
+}
+.at-page.is-ios .at-ios-card > :where(:not(.at-rows, .at-row, .at-more, .at-ios-swatches, .deleted-books, .at-ios-sample, .at-ios-profile, .at-space-bar, .at-ios-form, .at-split)) {
+  margin-left: 16px;
+  margin-right: 16px;
+}
+.at-page.is-ios .at-ios-card > p,
+.at-page.is-ios .at-ios-card > .settings-row-hint {
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+.at-page.is-ios .at-rows {
+  display: flex;
+  flex-direction: column;
+}
+.at-page.is-ios .at-row {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-top: 0;
+  font-size: 17px;
+}
+.at-page.is-ios .at-row + .at-row::before,
+.at-page.is-ios .at-rows + .at-rows::before,
+.at-page.is-ios .at-ios-card > * + .at-more::before,
+.at-page.is-ios .at-ios-card > .at-rows + .deleted-books::before,
+.at-page.is-ios .at-row + .tag-manage::before,
+.at-page.is-ios .at-ios-card > .at-rows + :is(.at-rows, .at-more)::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 16px;
+  border-top: 0.5px solid var(--border);
+}
+.at-page.is-ios .at-rows + .at-rows,
+.at-page.is-ios .at-ios-card > .at-more,
+.at-page.is-ios .at-ios-card > .deleted-books {
+  position: relative;
+}
+.at-page.is-ios .at-row-text {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 0;
+}
+.at-page.is-ios .at-row-label {
+  font-size: 17px;
+}
+.at-page.is-ios .at-row-hint {
+  font-size: 13px;
+}
+.at-page.is-ios .at-row-control {
+  display: contents;
+}
+.at-page.is-ios .at-count {
+  color: var(--text-muted);
+  font-size: 17px;
+}
+.at-page.is-ios .btn {
+  min-height: 0;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--surface-sunk);
+  color: var(--accent);
+  font: 500 15px var(--font-sans);
+  box-shadow: none;
+}
+.at-page.is-ios .btn.btn-primary {
+  background: var(--accent);
+  color: var(--accent-text, #fff);
+}
+.at-page.is-ios .btn.btn-danger-text {
+  color: var(--danger);
+}
+.at-page.is-ios .at-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.at-page.is-ios .at-card-actions {
+  padding: 10px 0 14px;
+}
+.at-page.is-ios .switch {
+  width: 51px;
+  height: 31px;
+  border-radius: 16px;
+  box-shadow: none;
+}
+.at-page.is-ios .switch-knob {
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  background: #fff;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.2);
+}
+.at-page.is-ios .switch[aria-checked="true"] .switch-knob {
+  transform: translateX(20px);
+}
+.at-page.is-ios .attune-input,
+.at-page.is-ios input[type="url"],
+.at-page.is-ios input[type="search"],
+.at-page.is-ios input[type="number"] {
+  font-size: 17px;
+}
+.at-page.is-ios .at-path {
+  max-width: 100%;
+  font-size: 13px;
+}
+
+/* A choice: what's chosen on the right, and the choices opening under the row. */
+.at-ios-value {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 11px 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: 17px var(--font-sans);
+  cursor: pointer;
+}
+.at-ios-value svg {
+  opacity: 0.6;
+  transition: transform 0.2s;
+}
+.at-ios-value.is-open {
+  color: var(--accent);
+}
+.at-ios-value.is-open svg {
+  transform: rotate(90deg);
+}
+.at-ios-options {
+  display: flex;
+  flex-direction: column;
+  flex-basis: calc(100% + 32px);
+  margin: 0 -16px;
+  background: var(--surface-sunk);
+}
+.at-ios-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px 0 32px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: 17px var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.at-ios-option::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 32px;
+  border-top: 0.5px solid var(--border);
+}
+.at-ios-option > span {
+  flex: 1;
+}
+.at-ios-option > svg {
+  color: var(--accent);
+}
+:root[data-reduce-motion] .at-ios-value svg {
+  transition: none;
+}
+
+/* A slider: its value on the right of the name, the track across the width under it. */
+.at-ios-slider-value {
+  color: var(--text-muted);
+  font-size: 17px;
+}
+.at-ios-slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-basis: 100%;
+  padding: 0 0 12px;
+}
+.at-ios-slider input {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+.at-ios-slider-end {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Theme and Page colour: round swatches, the name under each. */
+.at-ios-swatches {
+  display: flex;
+  justify-content: space-between;
+  flex-basis: 100%;
+  padding: 16px 18px 12px;
+}
+.at-ios-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: 12px var(--font-sans);
+  cursor: pointer;
+}
+.at-ios-swatch-face {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--text) 25%, transparent);
+}
+.at-ios-swatch[aria-checked="true"] .at-ios-swatch-face {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+}
+.at-ios-swatch[aria-checked="true"] {
+  color: var(--text);
+}
+
+/* A row that opens (Files, Book formats). */
+.at-page.is-ios .at-more {
+  border: 0;
+}
+.at-page.is-ios .at-more-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: 17px var(--font-sans);
+}
+.at-page.is-ios .at-more-head svg {
+  color: var(--text-muted);
+  transform: rotate(-90deg);
+  transition: transform 0.2s;
+}
+.at-page.is-ios .at-more.is-open .at-more-head svg {
+  transform: none;
+}
+.at-page.is-ios .at-more-body {
+  padding: 4px 16px 12px;
+  background: var(--surface-sunk);
+}
+
+/* The bin on a phone: in the group, a line above each book. */
+.at-page.is-ios .deleted-books,
+.at-page.is-ios .deleted-books.is-framed {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.at-page.is-ios .deleted-books .deleted-books-top {
+  padding: 8px 16px;
+  border: 0;
+}
+.at-page.is-ios .deleted-books-list,
+.at-page.is-ios .deleted-books.is-framed .deleted-books-list {
+  max-height: none;
+  padding: 0;
+}
+.at-page.is-ios .deleted-books-item {
+  position: relative;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 0;
+}
+.at-page.is-ios .deleted-books-item::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 16px;
+  border-top: 0.5px solid var(--border);
+}
+.at-page.is-ios .deleted-books-item .settings-row-label {
+  font-size: 17px;
+}
+.at-page.is-ios .deleted-books > .settings-row-hint {
+  margin: 10px 16px;
+}
+.at-ios-slider-end.is-small-a {
+  font-size: 14px;
+}
+.at-ios-slider-end.is-big-a {
+  font-size: 22px;
+}
+
+/* Reading's sample on a phone: the whole passage, and a button to fold it away. */
+.at-page.is-ios .at-sample .at-ios-card {
+  background: none;
+}
+.at-ios-sample {
+  position: relative;
+  padding: 16px 40px 16px 18px;
+  border-radius: 12px;
+}
+.at-ios-sample p {
+  margin: 0;
+}
+.at-ios-sample.is-shut {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+.at-ios-sample-name {
+  font: 17px var(--font-sans);
+}
+.at-ios-sample-fold {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Text buttons in a phone's rows (Remove, Watch an author). */
+.at-ios-text-btn {
+  padding: 11px 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: 17px var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.at-ios-text-btn.is-danger {
+  color: var(--danger);
+}
+.at-ios-form {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px 12px;
+}
+.at-ios-form::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 16px;
+  border-top: 0.5px solid var(--border);
+}
+.at-ios-form .at-buttons {
+  justify-content: flex-end;
+}
+.at-page.is-ios .at-ios-card > .at-ios-segmented {
+  display: flex;
+  margin: 10px 16px 2px;
+}
+.at-ios-segmented > button {
+  flex: 1;
+}
+.at-more-label {
+  flex: 1;
+  text-align: left;
+}
+.at-more-count {
+  margin-right: 6px;
+  color: var(--text-muted);
+}
+.at-ios-tags {
+  margin: 0 -16px -12px;
+  padding: 0;
+  list-style: none;
+}
+.at-ios-tags li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 0 16px 0 32px;
+  font-size: 17px;
+}
+.at-ios-tags li + li::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 32px;
+  border-top: 0.5px solid var(--border);
+}
+.at-ios-tags .muted {
+  font-size: 15px;
+}
+
+/* One card, two columns, each with its own rows (Nexus › Start & Search, Sync › Sync Behavior). */
+.at-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  column-gap: calc(var(--at-control-gap) * 3);
+  row-gap: var(--at-control-gap);
+  align-items: start;
+}
+.at-split-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.at-split-head {
+  margin: 0 0 2px;
+  font: 600 12px/1.3 var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+.at-split .at-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+/* Activity: a card's heading, buttons and switch stay put; only its list of items scrolls
+   (embre, 28 November). */
+.at-activity:not(.is-ios) .at-activity-frame {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.at-activity:not(.is-ios) .at-activity-frame > .activity-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.at-activity:not(.is-ios) .activity-pane > .activity-head,
+.at-activity:not(.is-ios) .activity-pane > .lining-switch {
+  flex: none;
+  position: static;
+}
+.at-activity:not(.is-ios) .activity-pane > :not(.activity-head):not(.lining-switch) {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.at-activity:not(.is-ios) .activity-pane > .imports-group > .settings-row-hint {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding-bottom: 6px;
+  background: var(--surface);
+}
+
+/* Storage & Backup: what's taking room, by type (embre, 28 November). */
+.at-space-bar {
+  display: flex;
+  height: 10px;
+  margin: 4px 0 8px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--surface-sunk);
+}
+.at-page.is-ios .at-space-bar {
+  margin: 0 16px 8px;
+}
+.at-space-bar i {
+  display: block;
+  height: 100%;
+}
+.at-space-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.at-space-key {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+/* Account on a phone. */
+.at-ios-profile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.at-ios-profile > svg {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+.at-ios-avatar.profile-picture {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 60px;
+  height: 60px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--surface-sunk);
+  color: var(--text-muted);
+}
+.at-ios-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.at-ios-profile-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+.at-ios-profile-name {
+  font: 500 20px var(--font-sans);
+}
+.at-ios-profile-hint {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.at-page.is-ios .at-ios-card > .at-ios-profile {
+  margin: 0;
+}
+.at-page.is-ios .at-row .attune-input {
+  flex: 0 1 60%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  text-align: right;
+}
+.at-page.is-ios .at-ios-form .attune-input {
+  flex: none;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface-sunk);
+  color: var(--text);
+  text-align: left;
+}
+.at-page.is-ios .account-code {
+  font: 500 17px ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 1px;
+}
+.at-ios-friend,
+.at-ios-bind {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.at-ios-bind {
+  padding: 11px 0;
+  color: var(--accent);
+}
+.at-ios-friend {
+  padding: 6px 0;
+}
+.at-ios-friend-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+.at-ios-friend > svg,
+.at-ios-bind > svg {
+  margin-left: auto;
+  color: var(--text-muted);
+  opacity: 0.6;
+  transition: transform 0.2s;
+}
+.at-ios-bind.is-open > svg {
+  transform: rotate(90deg);
+}
+.at-page.is-ios .at-row-text:has(.at-ios-friend),
+.at-page.is-ios .at-row-text:has(.at-ios-bind),
+.at-page.is-ios .at-row-text:has(.at-ios-text-btn) {
+  padding: 0;
+}
+.at-ios-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.at-ios-field > span {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.at-page.is-ios .btn.at-ios-wide-btn {
+  justify-content: center;
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.at-page.is-ios .at-anchor {
+  margin: 0;
+}
+.at-page.is-ios .at-rows.at-columns {
+  display: flex;
+  flex-direction: column;
+}
+.at-page.is-ios .at-rows.at-columns > .at-row {
+  border-bottom: 0;
+}
+.at-page.is-ios .account-code {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.at-page.is-ios .at-activity-frame {
+  padding: 10px 0 12px;
 }

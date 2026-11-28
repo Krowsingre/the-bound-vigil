@@ -50,13 +50,15 @@ export interface RemotePosition {
 
 export type AudioType = "audiobook" | "podcast" | "music" | "other";
 
-/** A book TBV remembers as deleted. */
+/** A deleted book waiting in the bin (15 days, embre 28 November). */
 export interface DeletedBook {
   id: string;
   title: string;
   authors: string[];
   format: string;
   deletedAt: string;
+  /** Whole days left before it's deleted for good. */
+  daysLeft: number;
 }
 
 /** The Hidden collection's password, kept only as a salted PBKDF2-SHA256 hash (hex). */
@@ -355,6 +357,27 @@ export interface SupabaseUsage {
   pictureBytes: number;
   /** Unknown until the setup script is run again. */
   databaseBytes: number | null;
+}
+
+/** How much room content takes, by type (Attunement › Storage & Backup, embre 28 November). */
+export interface Space {
+  ebooks: number;
+  documents: number;
+  audiobooks: number;
+  /** Covers, pictures, the library's own data, and anything else. */
+  other: number;
+}
+
+/** What TBV takes on this device: the app itself and its content. */
+export interface DeviceSpace extends Space {
+  app: number;
+}
+
+/** One sync place's content by type, or why it couldn't be read. */
+export interface CloudSpace {
+  provider: ProviderView;
+  space: Space | null;
+  problem: string | null;
 }
 
 export interface TidyReport {

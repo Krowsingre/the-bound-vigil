@@ -2,7 +2,7 @@
 // The one host in App shows them, the way "Add to collection" works.
 
 import { useEffect, useRef, useState } from "react";
-import { api } from "../api";
+import { api, isWeb } from "../api";
 import type { BookPreview, TagCount } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
@@ -32,7 +32,10 @@ export const removeWarning = (many = false) =>
     ? "This takes them out of your library on every device. Their highlights, notes, tags and collections are kept, along with their files in the cloud, so importing the same books again brings it all back."
     : "This takes it out of your library on every device. Its highlights, notes, tags and collections are kept, along with its file in the cloud, so importing the same book again brings it all back.";
 export const deleteWarning = (many = false) =>
-  `This deletes ${many ? "them" : "it"} for good on every device: ${many ? "their" : "its"} highlights and notes go too, and ${many ? "their files and covers are" : "its file and cover are"} erased from your cloud storage at the next sync. This can't be undone. Book files you imported from a folder of your own stay where they are.`;
+  // The web version has no bin: deleting there is for good at once.
+  isWeb
+    ? `This deletes ${many ? "them" : "it"} for good on every device: ${many ? "their" : "its"} highlights and notes go too, and ${many ? "their files and covers are" : "its file and cover are"} erased from your cloud storage at the next sync. This can't be undone. Book files you imported from a folder of your own stay where they are.`
+    : `${many ? "They wait" : "It waits"} 15 days in the bin, in Attunement › Management › Deleted books, where you can restore ${many ? "them" : "it"}. Then ${many ? "they're" : "it's"} deleted for good on every device, with ${many ? "their" : "its"} highlights and notes, and ${many ? "their files are" : "its file is"} erased from your cloud storage. Book files you imported from a folder of your own stay where they are.`;
 
 export function BookDialogsHost({ onChanged }: { onChanged: () => void }) {
   const [ask, setAsk] = useState<Ask | null>(null);
@@ -53,9 +56,9 @@ export function BookDialogsHost({ onChanged }: { onChanged: () => void }) {
   const removing = ask.kind === "remove";
   return (
     <ConfirmDialog
-      title={removing ? `Remove “${book.title}” from your library?` : `Delete “${book.title}” for good?`}
+      title={removing ? `Remove “${book.title}” from your library?` : `Delete “${book.title}”?`}
       body={removing ? removeWarning() : deleteWarning()}
-      confirm={removing ? "Remove from library" : "Delete for good"}
+      confirm={removing ? "Remove from library" : "Delete"}
       danger
       onCancel={() => close(false)}
       onConfirm={() =>

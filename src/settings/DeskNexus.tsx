@@ -30,7 +30,7 @@ import {
   type RedirectMode,
   type SearchEngine,
 } from "../browse/browserPrefs";
-import { AtChoice, AtPage, AtPair, AtRow, AtRows, AtSection, AtSwitch } from "./attune";
+import { AtChoice, AtPage, AtPair, AtRow, AtRows, AtSection, AtSwitch, usePhone } from "./attune";
 import { AtWindow } from "./AtWindow";
 import { formatBytes, Select } from "./controls";
 
@@ -53,6 +53,8 @@ const sites = (n: number) => `${n} ${n === 1 ? "site" : "sites"}`;
 
 export function DeskNexus() {
   const prefs = useBrowserPrefs();
+  // A phone leaves out typing, playing when minimized and the download folder (embre, 28 November).
+  const phone = usePhone();
   return (
     <AtPage className="at-nexus">
       <StartAndSearch prefs={prefs} />
@@ -70,7 +72,7 @@ export function DeskNexus() {
             <AtSwitch label="Ask before opening external links" checked={prefs.askApps} onChange={(askApps) => writeBrowserPrefs({ askApps })} />
           </AtRows>
         </AtSection>
-        <AtSection id="typing" title="Typing & Forms">
+        {!phone && <AtSection id="typing" title="Typing & Forms">
           <AtRows>
             <AtSwitch
               label="Tab autocomplete"
@@ -91,21 +93,23 @@ export function DeskNexus() {
               />
             )}
           </AtRows>
-        </AtSection>
+        </AtSection>}
       </AtPair>
       <AtPair>
         <Downloads prefs={prefs} />
         <AtSection id="playing" title="Media">
           <AtRows>
             <AtSwitch label="Play outside Nexus" checked={prefs.keepPlaying} onChange={(keepPlaying) => writeBrowserPrefs({ keepPlaying })} />
-            <AtSwitch
-              label="Play when minimized"
-              checked={prefs.backgroundPlay}
-              onChange={(backgroundPlay) => {
-                writeBrowserPrefs({ backgroundPlay });
-                void api.browserKeepPlaying(backgroundPlay).catch(() => undefined);
-              }}
-            />
+            {!phone && (
+              <AtSwitch
+                label="Play when minimized"
+                checked={prefs.backgroundPlay}
+                onChange={(backgroundPlay) => {
+                  writeBrowserPrefs({ backgroundPlay });
+                  void api.browserKeepPlaying(backgroundPlay).catch(() => undefined);
+                }}
+              />
+            )}
             <AtSwitch label="Picture in Picture returns to tab" checked={prefs.pipReturn} onChange={(pipReturn) => writeBrowserPrefs({ pipReturn })} />
           </AtRows>
         </AtSection>
@@ -116,6 +120,7 @@ export function DeskNexus() {
 
 function StartAndSearch({ prefs }: { prefs: BrowserPrefs }) {
   const toast = useToast();
+  const phone = usePhone();
   const [home, setHome] = useState(prefs.home);
   useEffect(() => setHome(prefs.home), [prefs.home]);
   const saveHome = () => {
@@ -133,61 +138,88 @@ function StartAndSearch({ prefs }: { prefs: BrowserPrefs }) {
       toast("Your home page is saved.");
     }
   };
+  const search = (
+    <>
+      <AtRow label="Search engine">
+        <Select<SearchEngine>
+          label="Search engine"
+          value={prefs.search}
+          options={SEARCH_ENGINES.map((e) => ({ value: e.value, label: e.label }))}
+          onChange={(search) => writeBrowserPrefs({ search })}
+        />
+      </AtRow>
+      <AtSwitch label="Suggestions" checked={prefs.suggest} onChange={(suggest) => writeBrowserPrefs({ suggest })} />
+    </>
+  );
+  const start = (
+    <>
+      <AtRow label="Start with">
+        <AtChoice<"start" | "site">
+          label="Start with"
+          className="at-nexus-start"
+          value={prefs.startPage ? "start" : "site"}
+          options={[
+            { value: "start", label: "Start page" },
+            { value: "site", label: "A website" },
+          ]}
+          onChange={(v) => writeBrowserPrefs({ startPage: v === "start" })}
+        />
+      </AtRow>
+      {!prefs.startPage && (
+        <AtRow label="Home page">
+          <input
+            className="attune-input at-nexus-home"
+            type="url"
+            spellCheck={false}
+            value={home}
+            aria-label="Home page"
+            onChange={(e) => setHome(e.target.value)}
+            onBlur={saveHome}
+            onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+          />
+          <button
+            type="button"
+            className="btn btn-quiet"
+            disabled={prefs.home === DEFAULT_HOME}
+            onClick={() => (writeBrowserPrefs({ home: DEFAULT_HOME }), toast("Your home page is Project Gutenberg again."))}
+          >
+            Use Project Gutenberg
+          </button>
+        </AtRow>
+      )}
+      <AtSwitch label="Home button" checked={prefs.homeButton} onChange={(homeButton) => writeBrowserPrefs({ homeButton })} />
+      <AtSwitch label="Recent Sites" checked={prefs.showRecent} disabled={!prefs.startPage} onChange={(showRecent) => writeBrowserPrefs({ showRecent })} />
+    </>
+  );
+  // One card, two columns on a computer: Search | Start (embre, 28 November). A phone: one list.
+  if (phone)
+    return (
+      <AtSection id="start" title="Start & Search" also={["search", "home"]}>
+        <AtRows>
+          {search}
+          {start}
+        </AtRows>
+      </AtSection>
+    );
   return (
     <AtSection id="start" title="Start & Search" also={["search", "home"]}>
-      <AtRows>
-        <AtRow label="Search engine">
-          <Select<SearchEngine>
-            label="Search engine"
-            value={prefs.search}
-            options={SEARCH_ENGINES.map((e) => ({ value: e.value, label: e.label }))}
-            onChange={(search) => writeBrowserPrefs({ search })}
-          />
-        </AtRow>
-        <AtSwitch label="Suggestions" checked={prefs.suggest} onChange={(suggest) => writeBrowserPrefs({ suggest })} />
-        <AtRow label="Start with">
-          <AtChoice<"start" | "site">
-            label="Start with"
-            className="at-nexus-start"
-            value={prefs.startPage ? "start" : "site"}
-            options={[
-              { value: "start", label: "Start page" },
-              { value: "site", label: "A website" },
-            ]}
-            onChange={(v) => writeBrowserPrefs({ startPage: v === "start" })}
-          />
-        </AtRow>
-        {!prefs.startPage && (
-          <AtRow label="Home page">
-            <input
-              className="attune-input at-nexus-home"
-              type="url"
-              spellCheck={false}
-              value={home}
-              aria-label="Home page"
-              onChange={(e) => setHome(e.target.value)}
-              onBlur={saveHome}
-              onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
-            />
-            <button
-              type="button"
-              className="btn btn-quiet"
-              disabled={prefs.home === DEFAULT_HOME}
-              onClick={() => (writeBrowserPrefs({ home: DEFAULT_HOME }), toast("Your home page is Project Gutenberg again."))}
-            >
-              Use Project Gutenberg
-            </button>
-          </AtRow>
-        )}
-        <AtSwitch label="Home button" checked={prefs.homeButton} onChange={(homeButton) => writeBrowserPrefs({ homeButton })} />
-        <AtSwitch label="Recent Sites" checked={prefs.showRecent} disabled={!prefs.startPage} onChange={(showRecent) => writeBrowserPrefs({ showRecent })} />
-      </AtRows>
+      <div className="at-split">
+        <div className="at-split-col">
+          <h3 className="at-split-head">Search</h3>
+          <AtRows>{search}</AtRows>
+        </div>
+        <div className="at-split-col">
+          <h3 className="at-split-head">Start</h3>
+          <AtRows>{start}</AtRows>
+        </div>
+      </div>
     </AtSection>
   );
 }
 
 function Downloads({ prefs }: { prefs: BrowserPrefs }) {
   const toast = useToast();
+  const phone = usePhone();
   // Counted when the page opens (embre, 28 November).
   const [temporary, setTemporary] = useState<{ files: number; bytes: number } | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -223,6 +255,7 @@ function Downloads({ prefs }: { prefs: BrowserPrefs }) {
     <AtSection id="downloads" title="Downloads">
       <AtRows>
         <AtSwitch label="Auto-add ebooks" checked={prefs.addWithoutAsking} onChange={(addWithoutAsking) => writeBrowserPrefs({ addWithoutAsking })} />
+        {!phone && (
         <AtRow label="Download folder" wide>
           <code className="path at-path">{prefs.downloadFolder ?? "Downloads (TBV default)"}</code>
           <div className="at-buttons">
@@ -234,7 +267,8 @@ function Downloads({ prefs }: { prefs: BrowserPrefs }) {
             </button>
           </div>
         </AtRow>
-        <AtSwitch label="Ask where to save" checked={prefs.askDownloadFolder} onChange={(askDownloadFolder) => writeBrowserPrefs({ askDownloadFolder })} />
+        )}
+        {!phone && <AtSwitch label="Ask where to save" checked={prefs.askDownloadFolder} onChange={(askDownloadFolder) => writeBrowserPrefs({ askDownloadFolder })} />}
         <AtSwitch
           label="Delete temp files with history"
           checked={prefs.deleteTemporaryWithHistory}

@@ -39,7 +39,7 @@ const day = 86_400_000;
 const stamp = () => new Date().toISOString();
 const ago = (days: number) => new Date(Date.now() - days * day).toISOString();
 const coverOf = ({ id, title, authors, coverPath }: BookPreview) => ({ id, title, authors, coverPath });
-const SMART: SmartKind[] = ["send_to_device", "in_progress", "up_next", "favorites", "read"];
+const SMART: SmartKind[] = ["in_progress", "up_next", "favorites", "read"];
 
 type CollectionsApi = Pick<
   Api,

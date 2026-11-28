@@ -119,7 +119,7 @@ impl Policy {
         source.set_fragment(None);
         let mut target = to.clone();
         target.set_fragment(None);
-        if source == target {
+        if source == target || super::same_site(&source, &target) {
             return false;
         }
         let mode = view::protection().redirect_mode(from.host_str().unwrap_or(""));

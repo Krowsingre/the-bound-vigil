@@ -21,7 +21,7 @@ import { ActionTile, Columns, formatBytes, RadioList, Row, Section, SectionGroup
 import { HardcoverSection } from "./HardcoverSection";
 import { CanvaSection, canvaHere } from "./CanvaSection";
 import { ReadingHistorySection } from "./ReadingHistory";
-import { AtChoice, AtRow, AtRows, AtSection, AtSwitch, useAttuneFrame } from "./attune";
+import { AtChoice, AtMore, AtRow, AtRows, AtSection, AtSwitch, useAttuneFrame, usePhone } from "./attune";
 import { useShortcuts } from "../lib/shortcuts";
 
 const READING_FONTS = {
@@ -495,6 +495,7 @@ function TagsSection() {
 /** Every tag with how many books have it, each with a button to take it off every book. */
 export function TagChips({ after }: { /** Under the chips, e.g. where tags come from. */ after?: React.ReactNode } = {}) {
   const keys = useShortcuts();
+  const phone = usePhone();
   const toast = useToast();
   const [tags, setTags] = useState<TagCount[] | null>(null);
   const [removing, setRemoving] = useState<TagCount | null>(null);
@@ -517,6 +518,24 @@ export function TagChips({ after }: { /** Under the chips, e.g. where tags come 
     }
     load();
   };
+  // A phone: one row that opens to every tag and how many books have it (embre, 28 November).
+  if (phone)
+    return tags === null ? null : tags.length === 0 ? (
+      <p className="settings-row-hint">No tags yet. Hold a book, or open its … menu, and choose Add tags.</p>
+    ) : (
+      <AtMore id="tags" label="Tags" count={tags.length}>
+        <ul className="at-ios-tags">
+          {tags.map((t) => (
+            <li key={t.name}>
+              <span>{t.name}</span>
+              <span className="muted">
+                {t.count} {t.count === 1 ? "book" : "books"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </AtMore>
+    );
   return (
     <>
       {tags === null ? null : tags.length === 0 ? (
@@ -562,7 +581,7 @@ function DeletedBooksSection() {
     >
       <div className="toggle-list">
         <Toggle
-          label="Skip books I've deleted"
+          label="Never re-import"
           hint={
             settings.skipDeletedImports
               ? "Imports leave them out. The Imports page lists them as skipped."
@@ -577,13 +596,13 @@ function DeletedBooksSection() {
   );
 }
 
-/** The books TBV remembers as deleted, each with Forget (embre, 21 November). */
+/** The bin: deleted books wait 15 days, each with Restore and Delete now (embre, 28 November). */
 export function DeletedBooksList() {
   const [books, setBooks] = useState<DeletedBook[] | null>(null);
   const [query, setQuery] = useState("");
-  const [asking, setAsking] = useState(false);
+  const [asking, setAsking] = useState<DeletedBook | null>(null);
   const toast = useToast();
-  // On the computer's Attunement page the list scrolls in its own frame, with Forget all beside the search (embre, 27 November).
+  // On the computer's Attunement page the list scrolls in its own frame.
   const framed = useAttuneFrame();
   useEffect(() => {
     let live = true;
@@ -593,30 +612,19 @@ export function DeletedBooksList() {
     };
   }, []);
   if (books === null) return null;
-  if (books.length === 0) return <p className="settings-row-hint">No deleted books.</p>;
+  if (books.length === 0) return <p className="settings-row-hint">The bin is empty.</p>;
   const words = query.trim().toLowerCase();
   const shown = words ? books.filter((b) => `${b.title} ${b.authors.join(" ")}`.toLowerCase().includes(words)) : books;
-  const forget = async (book: DeletedBook) => {
+  const act = async (book: DeletedBook, how: "restore" | "delete") => {
     try {
-      await api.forgetDeleted(book.id);
+      if (how === "restore") await api.restoreDeleted(book.id);
+      else await api.deleteNow(book.id);
       setBooks((list) => list && list.filter((b) => b.id !== book.id));
+      if (how === "restore") toast(`${book.title} is back in your library.`);
     } catch (e) {
       toast(`That didn't work: ${String(e)}`);
     }
   };
-  const forgetShown = async () => {
-    setAsking(false);
-    const ids = new Set(shown.map((b) => b.id));
-    try {
-      await api.forgetDeletedMany([...ids]);
-      setBooks((list) => list && list.filter((b) => !ids.has(b.id)));
-      setQuery("");
-    } catch (e) {
-      toast(`That didn't work: ${String(e)}`);
-    }
-  };
-  const all = words ? "Forget shown" : "Forget all";
-  const count = `${shown.length} ${shown.length === 1 ? "deleted book" : "deleted books"}`;
   const search = (
     <input
       type="search"
@@ -629,42 +637,67 @@ export function DeletedBooksList() {
   );
   return (
     <div className={`deleted-books${framed ? " is-framed" : ""}`}>
-      {framed ? (
-        <div className="deleted-books-top">
-          {search}
-          <button type="button" className="btn btn-quiet btn-danger-text" disabled={shown.length === 0} onClick={() => setAsking(true)}>
-            {all}
-          </button>
-        </div>
-      ) : (
-        (books.length > 8 || query) && search
-      )}
+      {framed ? <div className="deleted-books-top">{search}</div> : (books.length > 8 || query) && search}
       <ul className="deleted-books-list">
         {shown.map((b) => (
           <li key={b.id} className="deleted-books-item">
             <span className="deleted-books-text">
-              <span className="settings-row-label">{b.title}</span>
-              <span className="settings-row-hint">
-                {[b.authors.join(", "), `Deleted ${relativeTime(b.deletedAt)}`].filter(Boolean).join(" · ")}
-              </span>
+              <MarqueeTitle text={b.title} />
+              <span className="settings-row-hint">{goneIn(b.daysLeft)}</span>
             </span>
-            <button type="button" className="btn btn-quiet" onClick={() => void forget(b)}>
-              Forget
+            <button type="button" className="btn btn-quiet" onClick={() => void act(b, "restore")}>
+              Restore
+            </button>
+            <button type="button" className="btn btn-quiet btn-danger-text" onClick={() => setAsking(b)}>
+              Delete now
             </button>
           </li>
         ))}
       </ul>
       {asking && (
         <ConfirmDialog
-          title={`Forget ${shown.length === 1 ? "this deleted book" : words ? `these ${count}` : `all ${count}`}?`}
-          body="Importing their files again will bring them back into your library, on every device."
-          confirm={all}
+          title={`Delete ${asking.title} now?`}
+          body="It's deleted for good on every device, with its notes and highlights. This can't be undone."
+          confirm="Delete now"
           danger
-          onConfirm={() => void forgetShown()}
-          onCancel={() => setAsking(false)}
+          onConfirm={() => {
+            const book = asking;
+            setAsking(null);
+            void act(book, "delete");
+          }}
+          onCancel={() => setAsking(null)}
         />
       )}
     </div>
+  );
+}
+
+/** "Gone in 12 days" (embre's words, 28 November). */
+function goneIn(days: number): string {
+  return days <= 1 ? "Gone in 1 day" : `Gone in ${days} days`;
+}
+
+/** A title cut with an ellipsis; when it's cut, it scrolls slowly to show the rest, unless Reduce motion is on (embre, 28 November). */
+function MarqueeTitle({ text }: { text: string }) {
+  const box = useRef<HTMLSpanElement>(null);
+  const [over, setOver] = useState(0);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const measure = () => {
+      const inner = el.firstElementChild as HTMLElement | null;
+      setOver(inner ? Math.max(0, Math.ceil(inner.scrollWidth - el.clientWidth)) : 0);
+    };
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [text]);
+  const style = over > 0 ? ({ "--marquee-shift": `-${over}px`, "--marquee-time": `${Math.round(Math.max(6, over / 18 + 4))}s` } as React.CSSProperties) : undefined;
+  return (
+    <span ref={box} className={`settings-row-label marquee${over > 0 ? " is-over" : ""}`} title={text} style={style}>
+      <span className="marquee-text">{text}</span>
+    </span>
   );
 }
 
@@ -1257,9 +1290,6 @@ export function AdvancedTab() {
               <ShowButton path={info.database} />
             </div>
           </Row>
-          <Row label="Data version" hint="Goes up when an update changes how TBV stores things. Backups from newer versions need the newer TBV.">
-            <span className="settings-value">{info.schemaVersion}</span>
-          </Row>
         </>
       ) : (
         <p className="settings-row-hint">The data folder couldn't be read.</p>
@@ -1576,7 +1606,7 @@ function PublisherPlan() {
 
 export function AboutTab() {
   const desk = useDeskPrefs();
-  const [version, setVersion] = useState("0.169.0");
+  const [version, setVersion] = useState("0.170.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

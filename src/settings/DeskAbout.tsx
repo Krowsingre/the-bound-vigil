@@ -9,7 +9,8 @@ import { useToast } from "../components/Toast";
 import { PRIVACY_POLICY, TERMS, useLicense } from "../license/License";
 import type { LicenseView } from "../api/types";
 import { useAppSettings } from "./appSettings";
-import { AtPage, AtPair, AtRow, AtRows, AtSection, AtSwitch } from "./attune";
+import { AtPage, AtPair, AtRow, AtRows, AtSection, AtSwitch, usePhone } from "./attune";
+import { Icon } from "../components/Icon";
 import { AtWindow } from "./AtWindow";
 import { PlanTab, ShortcutsTab, useLibraryInfo } from "./OtherTabs";
 import { canSelfUpdate, useUpdater } from "./updates";
@@ -149,7 +150,7 @@ function publisherPlan(license: LicenseView): string {
 }
 
 function useVersion() {
-  const [version, setVersion] = useState("0.169.0");
+  const [version, setVersion] = useState("0.170.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));
@@ -157,7 +158,9 @@ function useVersion() {
   return version;
 }
 
-export function DeskAbout() {
+/** `onOpenPlan`: a phone opens Your plan as its own page from the Plan rows. */
+export function DeskAbout({ onOpenPlan }: { onOpenPlan?: () => void } = {}) {
+  const phone = usePhone();
   const version = useVersion();
   const { license } = useLicense();
   const info = useLibraryInfo();
@@ -201,22 +204,41 @@ export function DeskAbout() {
       )}
       {license && (
         <AtSection id="licence" title="Plan" also={["publisher"]}>
-          <AtRows>
-            <AtRow label="TBV Standard">
-              <span className="at-count">{standardPlan(license)}</span>
-              <button type="button" className="btn btn-quiet" onClick={() => setOpen("plan")}>
-                Your plan…
-              </button>
-            </AtRow>
-            <AtRow label="TBV Publisher">
-              <span className="at-count">{publisherPlan(license)}</span>
-            </AtRow>
-          </AtRows>
+          {onOpenPlan ? (
+            // Each row opens Your plan (embre, 28 November).
+            <AtRows>
+              <AtRow label="TBV Standard">
+                <button type="button" className="at-ios-value" onClick={onOpenPlan}>
+                  <span>{standardPlan(license)}</span>
+                  <Icon name="chevronRight" size={16} />
+                </button>
+              </AtRow>
+              <AtRow label="TBV Publisher">
+                <button type="button" className="at-ios-value" onClick={onOpenPlan}>
+                  <span>{publisherPlan(license)}</span>
+                  <Icon name="chevronRight" size={16} />
+                </button>
+              </AtRow>
+            </AtRows>
+          ) : (
+            <AtRows>
+              <AtRow label="TBV Standard">
+                <span className="at-count">{standardPlan(license)}</span>
+                <button type="button" className="btn btn-quiet" onClick={() => setOpen("plan")}>
+                  Your plan…
+                </button>
+              </AtRow>
+              <AtRow label="TBV Publisher">
+                <span className="at-count">{publisherPlan(license)}</span>
+              </AtRow>
+            </AtRows>
+          )}
         </AtSection>
       )}
       <AtSection id="trouble" title="Troubleshooting" also={["data", "reset"]}>
         <AtRows>
-          {info && (
+          {/* The data version is for a future developer mode, not shown to people (embre, 28 November). */}
+          {info && !phone && (
             <>
               <AtRow label="Database">
                 <code className="path at-path" title={info.database}>
@@ -229,9 +251,6 @@ export function DeskAbout() {
                 >
                   Show
                 </button>
-              </AtRow>
-              <AtRow label="Data version">
-                <span className="at-count">{info.schemaVersion}</span>
               </AtRow>
             </>
           )}

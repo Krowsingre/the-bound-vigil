@@ -5,7 +5,7 @@
 import { createContext, useContext, useEffect, useId, useState } from "react";
 import { Icon } from "../components/Icon";
 import { useNarrow } from "../lib/useNarrow";
-import { AtRow, AtSection, AtSwitch, AttuneFrame } from "./attune";
+import { AtRow, AtSection, AtSwitch, AttuneFrame, PhoneChoice, usePhone } from "./attune";
 
 const OPENED_KEY = "tbv.settings.opened";
 
@@ -292,6 +292,8 @@ export function Select<T extends string>({
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
 }) {
+  // A phone's Attunement opens the choices in place under the row (embre, 28 November).
+  if (usePhone()) return <PhoneChoice label={label} value={value} options={options} onChange={onChange} />;
   return (
     <select className="settings-select" aria-label={label} value={value} onChange={(e) => onChange(e.target.value as T)}>
       {options.map((o) => (

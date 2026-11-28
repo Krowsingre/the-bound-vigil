@@ -39,18 +39,34 @@ const InPair = createContext(false);
 /** Set on the computer's rebuilt pages: older sections drawn there take the new look. */
 export const AttuneFrame = createContext(false);
 export const useAttuneFrame = () => useContext(AttuneFrame);
+/**
+ * Set on a phone: the same pages drawn as an iPhone's own settings (embre, 28 November):
+ * small grey headers over grouped lists, choices that open in place under their row, and
+ * sliders across the whole width. Nothing folds, and pairs stack.
+ */
+export const AttunePhone = createContext(false);
+export const usePhone = () => useContext(AttunePhone);
+/** A page within a phone's page (a friend on Account): its title and the way back, shown in the nav bar. */
+export interface PhoneSub {
+  title: string;
+  back: string;
+  onBack: () => void;
+}
+export const PhoneSubPage = createContext<(sub: PhoneSub | null) => void>(() => undefined);
 
 /** A page of the framework: its sections one under another. */
 export function AtPage({ className = "", children }: { className?: string; children: React.ReactNode }) {
+  const phone = usePhone();
   return (
     <AttuneFrame.Provider value={true}>
-      <div className={`at-page ${className}`.trim()}>{children}</div>
+      <div className={`at-page${phone ? " is-ios" : ""} ${className}`.trim()}>{children}</div>
     </AttuneFrame.Provider>
   );
 }
 
 /** Two short sections side by side, the same height, one above the other when narrow. */
 export function AtPair({ children }: { children: React.ReactNode }) {
+  if (usePhone()) return <>{children}</>;
   return (
     <div className="at-pair">
       <InPair.Provider value={true}>{children}</InPair.Provider>
@@ -80,7 +96,8 @@ export function AtSection({
   className?: string;
   children: React.ReactNode;
 }) {
-  const [folded, setFolded] = useState(() => foldable && wasFolded(id, startFolded));
+  const phone = usePhone();
+  const [folded, setFolded] = useState(() => !phone && foldable && wasFolded(id, startFolded));
   const head = useId();
   useEffect(() => {
     const open = (e: Event) => {
@@ -100,6 +117,20 @@ export function AtSection({
     saveIn(FOLDED_KEY, id, next);
     saveIn(OPENED_KEY, id, !next);
   };
+  if (phone)
+    return (
+      <section className={`at-section at-ios-section ${className}`.trim()} id={`settings-${id}`} aria-labelledby={title ? head : undefined}>
+        {also.map((a) => (
+          <span key={a} id={`settings-${a}`} className="at-anchor" aria-hidden />
+        ))}
+        {title && (
+          <h2 id={head} className="at-ios-head">
+            {title}
+          </h2>
+        )}
+        <div className="at-ios-card">{children}</div>
+      </section>
+    );
   return (
     <section className={`at-section${folded ? " is-folded" : ""} ${className}`.trim()} id={`settings-${id}`} aria-labelledby={title ? head : undefined}>
       {also.map((a) => (
@@ -164,6 +195,10 @@ export function AtChoice<T extends string>({
   onChange: (value: T) => void;
   className?: string;
 }) {
+  const phone = usePhone();
+  if (phone && className.includes("is-swatches"))
+    return <AtSwatches label={label} value={value} options={options.map((o) => ({ value: o.value, label: o.label, background: String(o.style?.background ?? "") }))} onChange={onChange} />;
+  if (phone) return <PhoneChoice label={label} value={value} options={options} onChange={onChange} />;
   return (
     <div className={`segmented at-choice ${className}`.trim()} role="radiogroup" aria-label={label}>
       {options.map((o) => (
@@ -186,6 +221,7 @@ export function AtSlider({
   low,
   high,
   list,
+  letters,
   onChange,
 }: {
   label: string;
@@ -198,8 +234,25 @@ export function AtSlider({
   low: string;
   high: string;
   list?: string;
+  /** A small and a big A at the ends, for text sizes. */
+  letters?: boolean;
   onChange: (value: number) => void;
 }) {
+  if (usePhone())
+    return (
+      <>
+        {shown && <span className="at-ios-slider-value">{shown}</span>}
+        <span className="at-ios-slider">
+          <span className={`at-ios-slider-end${letters ? " is-small-a" : ""}`} aria-hidden>
+            {letters ? "A" : low}
+          </span>
+          <input type="range" min={min} max={max} step={step} value={value} list={list} aria-label={label} aria-valuetext={shown} onChange={(e) => onChange(Number(e.target.value))} />
+          <span className={`at-ios-slider-end${letters ? " is-big-a" : ""}`} aria-hidden>
+            {letters ? "A" : high}
+          </span>
+        </span>
+      </>
+    );
   return (
     <div className="at-slider">
       <input type="range" min={min} max={max} step={step} value={value} list={list} aria-label={label} aria-valuetext={shown} onChange={(e) => onChange(Number(e.target.value))} />
@@ -212,8 +265,8 @@ export function AtSlider({
   );
 }
 
-/** A row that opens to show more under it, like "How TBV treats your files". */
-export function AtMore({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
+/** A row that opens to show more under it, like Files. */
+export function AtMore({ id, label, count, children }: { id: string; label: string; /** Shown on the right, as how many things it holds. */ count?: number; children: React.ReactNode }) {
   const key = `more:${id}`;
   const [open, setOpen] = useState(() => readSet(OPENED_KEY).has(key));
   return (
@@ -227,10 +280,82 @@ export function AtMore({ id, label, children }: { id: string; label: string; chi
           saveIn(OPENED_KEY, key, !open);
         }}
       >
-        {label}
+        <span className="at-more-label">{label}</span>
+        {count !== undefined && <span className="at-more-count">{count}</span>}
         <Icon name="chevronDown" size={16} />
       </button>
       {open && <div className="at-more-body">{children}</div>}
     </div>
+  );
+}
+
+/**
+ * A phone's choice: the row shows what's chosen, and tapping it opens the choices under it,
+ * in place, each with a tick for the one chosen (embre, 28 November). Never a new page.
+ */
+export function PhoneChoice<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string; style?: React.CSSProperties }[];
+  onChange: (value: T) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const chosen = options.find((o) => o.value === value)?.label ?? "";
+  return (
+    <>
+      <button type="button" className={`at-ios-value${open ? " is-open" : ""}`} aria-expanded={open} aria-label={`${label}: ${chosen}`} onClick={() => setOpen(!open)}>
+        <span>{chosen}</span>
+        <Icon name="chevronRight" size={16} />
+      </button>
+      {open && (
+        <span className="at-ios-options" role="radiogroup" aria-label={label}>
+          {options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              role="radio"
+              aria-checked={o.value === value}
+              className="at-ios-option"
+              onClick={() => {
+                onChange(o.value);
+                setOpen(false);
+              }}
+            >
+              <span style={o.style?.fontFamily ? { fontFamily: o.style.fontFamily } : undefined}>{o.label}</span>
+              {o.value === value && <Icon name="check" size={18} />}
+            </button>
+          ))}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** Round colour swatches with their names under them, for a phone's Theme and Page colour. */
+export function AtSwatches<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string; background: string }[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <span className="at-ios-swatches" role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.value} type="button" role="radio" aria-checked={o.value === value} className="at-ios-swatch" onClick={() => onChange(o.value)}>
+          <span className="at-ios-swatch-face" style={{ background: o.background }} aria-hidden />
+          <span className="at-ios-swatch-name">{o.label}</span>
+        </button>
+      ))}
+    </span>
   );
 }

@@ -811,6 +811,10 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE books ADD COLUMN hidden_at TEXT;
     CREATE TABLE hidden_lock (id TEXT PRIMARY KEY, salt TEXT NOT NULL, hash TEXT NOT NULL, rounds INTEGER NOT NULL, updated_at TEXT NOT NULL);
     "#,
+    // v51: deleted books wait in a bin for 15 days (embre, 28 November):
+    // `binned_at` is when, synced with the book; restoring clears it, and
+    // once the days have passed the book is deleted for good.
+    "ALTER TABLE books ADD COLUMN binned_at TEXT;",
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
@@ -908,7 +912,13 @@ impl Library {
         library.conn.execute_batch(RETIRED_SHELVES)?;
         library.adopt_device_avatar()?;
         library.sync_discover_history_once()?;
+        library.sent_to_device_to_up_next_once()?;
         library.follow_moved_folders()?;
+        // A library that syncs empties its bin after a sync instead (run_lanes),
+        // so a book restored on another device meanwhile isn't deleted here.
+        if !library.has_synced()? {
+            library.empty_bin()?;
+        }
         Ok(library)
     }
 
@@ -928,6 +938,21 @@ impl Library {
                 }
             }
         }
+        self.set_setting(DONE, "1")
+    }
+
+    /// Sent to device is gone from the smart compendiums (embre, 28 November):
+    /// the books in it go into Up next instead, once.
+    pub(crate) fn sent_to_device_to_up_next_once(&self) -> Result<()> {
+        const DONE: &str = "once.sentToUpNext";
+        if self.setting(DONE)?.is_some() {
+            return Ok(());
+        }
+        self.conn.execute(
+            "UPDATE books SET want_to_read = 1
+             WHERE phone_wanted = 1 AND want_to_read = 0 AND deleted_at IS NULL AND same_as IS NULL",
+            [],
+        )?;
         self.set_setting(DONE, "1")
     }
 
@@ -1106,7 +1131,7 @@ impl Library {
                 title = excluded.title, authors = excluded.authors, format = excluded.format, file_size = excluded.file_size,
                 synopsis = excluded.synopsis, publisher = excluded.publisher, language = excluded.language,
                 added_at = excluded.added_at, series = excluded.series, series_index = excluded.series_index,
-                isbn = excluded.isbn, deleted_at = NULL, forgotten_at = NULL",
+                isbn = excluded.isbn, deleted_at = NULL, forgotten_at = NULL, binned_at = NULL",
             params![
                 book_id,
                 title,

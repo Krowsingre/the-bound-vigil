@@ -2,13 +2,14 @@
 // Conduit, Signet with Copy and Share) and Oathkin, one under the other, each folding.
 // No page title and no flavour text; spacing comes from the shared .attune tokens.
 
-import { useEffect, useId, useState } from "react";
+import { useContext, useEffect, useId, useState } from "react";
 import { api } from "../api";
 import type { Friend, Profile } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { FriendRow, PROFILE_CHANGED } from "./ProfileSection";
-import { AtPage, AtSection } from "./attune";
+import { AtPage, AtRow, AtRows, AtSection, PhoneSubPage, usePhone } from "./attune";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 
 /** Error text as a sentence. */
 const sentence = (e: unknown) => {
@@ -162,10 +163,236 @@ function OathkinPart() {
 }
 
 export function AccountPage() {
+  if (usePhone()) return <PhoneAccount />;
   return (
     <AtPage>
       <ProfilePart />
       <OathkinPart />
+    </AtPage>
+  );
+}
+
+/**
+ * Account on a phone (embre's approved pictures, 28 November): the picture and name, Visage's
+ * Moniker and Conduit, the Signet with Copy and Share, and Oathkin in full: each friend opens a
+ * page of their own with Sever bond, and Bind Oathkin opens in place.
+ */
+function PhoneAccount() {
+  const toast = useToast();
+  const setSub = useContext(PhoneSubPage);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [friends, setFriends] = useState<Friend[] | null>(null);
+  const [binding, setBinding] = useState(false);
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [friend, setFriend] = useState<Friend | null>(null);
+  const [severing, setSevering] = useState(false);
+  useEffect(() => {
+    const load = () => {
+      void api.getProfile().then(setProfile, () => undefined);
+      void api.friends().then(setFriends, (e: unknown) => setError(sentence(e)));
+    };
+    load();
+    return api.onSync({ libraryChanged: load });
+  }, []);
+  useEffect(() => {
+    setSub(friend ? { title: friend.name || friend.code, back: "Account", onBack: () => setFriend(null) } : null);
+  }, [friend, setSub]);
+  useEffect(() => () => setSub(null), [setSub]);
+  const saved = (p: Profile) => {
+    setProfile(p);
+    window.dispatchEvent(new CustomEvent(PROFILE_CHANGED, { detail: p }));
+  };
+  const failed = (e: unknown) => toast(sentence(e));
+  const avatar = profile?.avatarPath ? api.coverUrl(profile.avatarPath) : "";
+  const choose = () =>
+    api.chooseAvatar().then(
+      (p) => p && saved(p),
+      (e: unknown) => toast(`That picture couldn't be used: ${String(e)}`),
+    );
+  const copy = (text: string) =>
+    void navigator.clipboard?.writeText(text).then(
+      () => toast("Signet copied."),
+      () => toast("Couldn't copy it. Select the Signet and copy it instead."),
+    );
+  const share = (text: string) => {
+    const shared = api.shareText
+      ? api.shareText(text, "My Signet")
+      : typeof navigator.share === "function"
+        ? navigator.share({ title: "My Signet", text })
+        : Promise.reject(new Error("Sharing isn't available here. Copy it instead."));
+    void shared.catch((e: unknown) => {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      toast(sentence(e));
+    });
+  };
+  const bind = async () => {
+    if (busy || !code.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      setFriends(await api.saveFriend(code, name));
+      setCode("");
+      setName("");
+      setBinding(false);
+      toast("Oath sworn.");
+    } catch (e) {
+      setError(sentence(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (friend) {
+    const current = friends?.find((f) => f.code === friend.code) ?? friend;
+    return (
+      <AtPage>
+        <AtSection id="friend" title="Oathkin">
+          <AtRows>
+            <AtRow label="Moniker">
+              <NameInput
+                id={`friend-${current.code}`}
+                value={current.name ?? ""}
+                placeholder="No name yet"
+                onSave={(to) => void api.saveFriend(current.code, to).then(setFriends, failed)}
+              />
+            </AtRow>
+            <AtRow label="Signet">
+              <span className="at-count account-code">{current.code}</span>
+            </AtRow>
+          </AtRows>
+        </AtSection>
+        <AtSection id="friend-sever">
+          <AtRows>
+            <AtRow
+              label={
+                <button type="button" className="at-ios-text-btn is-danger" onClick={() => setSevering(true)}>
+                  Sever bond
+                </button>
+              }
+            />
+          </AtRows>
+        </AtSection>
+        {severing && (
+          <ConfirmDialog
+            title={`Sever your bond with ${current.name || current.code}?`}
+            body="They leave your Oathkin on every device. You can bind them again with their Signet."
+            confirm="Sever bond"
+            danger
+            onCancel={() => setSevering(false)}
+            onConfirm={() => {
+              setSevering(false);
+              void api.removeFriend(current.code).then((list) => (setFriends(list), setFriend(null)), failed);
+            }}
+          />
+        )}
+      </AtPage>
+    );
+  }
+
+  return (
+    <AtPage className="at-ios-account">
+      <AtSection id="account-picture" also={["profile"]}>
+        <button type="button" className="at-ios-profile" onClick={() => void choose()}>
+          <span className="profile-picture at-ios-avatar" aria-hidden>
+            {avatar ? <img src={avatar} alt="" draggable={false} /> : <Icon name="person" size={26} />}
+          </span>
+          <span className="at-ios-profile-text">
+            <span className="at-ios-profile-name">{profile?.name || "Your name"}</span>
+            <span className="at-ios-profile-hint">{avatar ? "Change picture" : "Choose picture"}</span>
+          </span>
+          <Icon name="chevronRight" size={16} />
+        </button>
+      </AtSection>
+      <AtSection id="account-profile" title="Visage">
+        <AtRows>
+          <AtRow label="Moniker">
+            <NameInput id="phone-moniker" value={profile?.name ?? ""} placeholder="Your name" onSave={(n) => void api.setAccountName(n).then(saved, failed)} />
+          </AtRow>
+          <AtRow label="Conduit">
+            <NameInput id="phone-conduit" value={profile?.deviceName ?? ""} placeholder="This device's name" onSave={(n) => void api.setDeviceName(n).then(saved, failed)} />
+          </AtRow>
+        </AtRows>
+      </AtSection>
+      {profile?.friendCode && (
+        <AtSection id="account-signet" title="Signet">
+          <AtRows>
+            <AtRow label={<span className="account-code">{profile.friendCode}</span>}>
+              <button type="button" className="btn btn-quiet" onClick={() => copy(profile.friendCode!)}>
+                Copy
+              </button>
+              <button type="button" className="btn btn-quiet" onClick={() => share(profile.friendCode!)}>
+                Share
+              </button>
+            </AtRow>
+          </AtRows>
+        </AtSection>
+      )}
+      <AtSection id="account-friends" title="Oathkin" also={["oathkin"]}>
+        <AtRows>
+          {friends?.map((f) => (
+            <AtRow
+              key={f.code}
+              label={
+                <button type="button" className="at-ios-friend" onClick={() => setFriend(f)}>
+                  <span className="at-ios-friend-text">
+                    <span>{f.name || "No name yet"}</span>
+                    <span className="at-row-hint">{f.code}</span>
+                  </span>
+                  <Icon name="chevronRight" size={16} />
+                </button>
+              }
+            />
+          ))}
+          {friends && friends.length === 0 && <AtRow label={<span className="at-row-hint">No oaths yet sworn.</span>} />}
+          <AtRow
+            label={
+              <button type="button" className={`at-ios-text-btn at-ios-bind${binding ? " is-open" : ""}`} aria-expanded={binding} onClick={() => setBinding(!binding)}>
+                Bind Oathkin
+                <Icon name="chevronRight" size={16} />
+              </button>
+            }
+          />
+          {binding && (
+            <form
+              className="at-ios-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void bind();
+              }}
+            >
+              <label className="at-ios-field">
+                <span>Friend code</span>
+                <input
+                  className="attune-input"
+                  value={code}
+                  placeholder="TBV-XXXX-XXXX"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={20}
+                  onChange={(e) => (setCode(e.target.value), setError(""))}
+                />
+              </label>
+              <label className="at-ios-field">
+                <span>Their name</span>
+                <input className="attune-input" value={name} maxLength={60} placeholder="You can leave it empty" onChange={(e) => setName(e.target.value)} />
+              </label>
+              {error && (
+                <p className="attune-error" role="alert">
+                  {error}
+                </p>
+              )}
+              <button type="submit" className="btn btn-primary at-ios-wide-btn" disabled={busy || !code.trim()}>
+                {busy ? "Binding…" : "Bind"}
+              </button>
+            </form>
+          )}
+        </AtRows>
+      </AtSection>
     </AtPage>
   );
 }

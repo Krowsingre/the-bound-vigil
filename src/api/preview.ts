@@ -253,18 +253,18 @@ const reading = (p: number, daysAgo: number): Partial<BookPreview> => ({
 
 /** Preview: books remembered as deleted. */
 let deletedSample: DeletedBook[] = [
-  { id: "sha256:deleted-1", title: "La Peste", authors: ["Albert Camus"], format: "epub", deletedAt: "2026-11-20T23:58:00Z" },
-  { id: "sha256:deleted-2", title: "The Moonstone", authors: ["Wilkie Collins"], format: "epub", deletedAt: "2026-11-02T10:15:00Z" },
-  { id: "sha256:deleted-3", title: "The Woman in White", authors: ["Wilkie Collins"], format: "epub", deletedAt: "2026-10-28T09:00:00Z" },
-  { id: "sha256:deleted-4", title: "Bleak House", authors: ["Charles Dickens"], format: "epub", deletedAt: "2026-10-26T09:00:00Z" },
-  { id: "sha256:deleted-5", title: "Middlemarch", authors: ["George Eliot"], format: "epub", deletedAt: "2026-10-24T09:00:00Z" },
-  { id: "sha256:deleted-6", title: "Vanity Fair", authors: ["William Makepeace Thackeray"], format: "epub", deletedAt: "2026-10-22T09:00:00Z" },
-  { id: "sha256:deleted-7", title: "North and South", authors: ["Elizabeth Gaskell"], format: "epub", deletedAt: "2026-10-20T09:00:00Z" },
-  { id: "sha256:deleted-8", title: "The Turn of the Screw", authors: ["Henry James"], format: "epub", deletedAt: "2026-10-18T09:00:00Z" },
-  { id: "sha256:deleted-9", title: "Silas Marner", authors: ["George Eliot"], format: "epub", deletedAt: "2026-10-16T09:00:00Z" },
-  { id: "sha256:deleted-10", title: "Cranford", authors: ["Elizabeth Gaskell"], format: "epub", deletedAt: "2026-10-14T09:00:00Z" },
-  { id: "sha256:deleted-11", title: "Ivanhoe", authors: ["Walter Scott"], format: "epub", deletedAt: "2026-10-12T09:00:00Z" },
-  { id: "sha256:deleted-12", title: "Lorna Doone", authors: ["R. D. Blackmore"], format: "epub", deletedAt: "2026-10-10T09:00:00Z" },
+  { id: "sha256:deleted-1", title: "La Peste", authors: ["Albert Camus"], format: "epub", deletedAt: "2026-11-20T23:58:00Z", daysLeft: 15 },
+  { id: "sha256:deleted-2", title: "The Moonstone", authors: ["Wilkie Collins"], format: "epub", deletedAt: "2026-11-02T10:15:00Z", daysLeft: 13 },
+  { id: "sha256:deleted-3", title: "The Woman in White", authors: ["Wilkie Collins"], format: "epub", deletedAt: "2026-10-28T09:00:00Z", daysLeft: 12 },
+  { id: "sha256:deleted-4", title: "Bleak House", authors: ["Charles Dickens"], format: "epub", deletedAt: "2026-10-26T09:00:00Z", daysLeft: 10 },
+  { id: "sha256:deleted-5", title: "Middlemarch", authors: ["George Eliot"], format: "epub", deletedAt: "2026-10-24T09:00:00Z", daysLeft: 9 },
+  { id: "sha256:deleted-6", title: "Vanity Fair", authors: ["William Makepeace Thackeray"], format: "epub", deletedAt: "2026-10-22T09:00:00Z", daysLeft: 7 },
+  { id: "sha256:deleted-7", title: "North and South", authors: ["Elizabeth Gaskell"], format: "epub", deletedAt: "2026-10-20T09:00:00Z", daysLeft: 6 },
+  { id: "sha256:deleted-8", title: "The Turn of the Screw", authors: ["Henry James"], format: "epub", deletedAt: "2026-10-18T09:00:00Z", daysLeft: 4 },
+  { id: "sha256:deleted-9", title: "Silas Marner", authors: ["George Eliot"], format: "epub", deletedAt: "2026-10-16T09:00:00Z", daysLeft: 3 },
+  { id: "sha256:deleted-10", title: "Cranford", authors: ["Elizabeth Gaskell"], format: "epub", deletedAt: "2026-10-14T09:00:00Z", daysLeft: 2 },
+  { id: "sha256:deleted-11", title: "Ivanhoe", authors: ["Walter Scott"], format: "epub", deletedAt: "2026-10-12T09:00:00Z", daysLeft: 1 },
+  { id: "sha256:deleted-12", title: "Lorna Doone", authors: ["R. D. Blackmore"], format: "epub", deletedAt: "2026-10-10T09:00:00Z", daysLeft: 1 },
 ];
 
 let books: BookPreview[] = [
@@ -737,6 +737,15 @@ export function previewApi(): Api {
       onProgress({ done: paths.length, total: paths.length });
       return { removed: paths.length, failed: 0, stopped: false };
     },
+    deviceSpace: async () => ({ app: 210_000_000, ebooks: 4_100_000_000, documents: 640_000_000, audiobooks: 2_300_000_000, other: 150_000_000 }),
+    cloudSpace: async () => [
+      {
+        provider: { kind: "folder", service: "icloud", location: null, username: null },
+        space: { ebooks: 6_200_000_000, documents: 1_100_000_000, audiobooks: 4_300_000_000, other: 200_000_000 },
+        problem: null,
+      },
+      { provider: { kind: "supabase", service: null, location: null, username: null }, space: { ebooks: 250_000_000, documents: 40_000_000, audiobooks: 0, other: 22_000_000 }, problem: null },
+    ],
     supabaseUsage: async () => ({
       fileBytes: 742_000_000,
       files: 18_412,
@@ -1130,7 +1139,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.169.0", version: "0.169.0", notes: "The Bound Vigil 0.169.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.170.0", version: "0.170.0", notes: "The Bound Vigil 0.170.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
@@ -1210,6 +1219,12 @@ export function previewApi(): Api {
       books = books.filter((b) => b.id !== bookId);
     },
     deletedBooks: async () => [...deletedSample],
+    restoreDeleted: async (bookId) => {
+      deletedSample = deletedSample.filter((b) => b.id !== bookId);
+    },
+    deleteNow: async (bookId) => {
+      deletedSample = deletedSample.filter((b) => b.id !== bookId);
+    },
     forgetDeleted: async (bookId) => {
       deletedSample = deletedSample.filter((b) => b.id !== bookId);
     },

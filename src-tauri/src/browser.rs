@@ -231,6 +231,35 @@ fn web_url(url: &str) -> CommandResult<tauri::Url> {
     }
 }
 
+/// Whether two addresses are on the same site: the same registrable domain (amazon.com and
+/// www.amazon.com), whatever the scheme or subdomain. A redirect within one site never asks.
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+fn same_site(a: &tauri::Url, b: &tauri::Url) -> bool {
+    fn site(u: &tauri::Url) -> Option<String> {
+        let host = u.host_str()?.trim_end_matches('.').to_ascii_lowercase();
+        Some(psl::domain_str(&host).map(str::to_owned).unwrap_or(host))
+    }
+    matches!((site(a), site(b)), (Some(x), Some(y)) if x == y)
+}
+
+#[cfg(test)]
+mod same_site_tests {
+    use super::same_site;
+    use tauri::Url;
+    fn u(s: &str) -> Url {
+        Url::parse(s).unwrap()
+    }
+    #[test]
+    fn same_site_redirects() {
+        assert!(same_site(&u("https://amazon.com/x"), &u("https://www.amazon.com/y")));
+        assert!(same_site(&u("http://example.org/"), &u("https://example.org/")));
+        assert!(same_site(&u("https://a.b.bbc.co.uk/"), &u("https://www.bbc.co.uk/")));
+        assert!(!same_site(&u("https://amazon.com/"), &u("https://amazon.co.uk/")));
+        assert!(!same_site(&u("https://foo.github.io/"), &u("https://bar.github.io/")));
+        assert!(!same_site(&u("https://example.com/"), &u("https://evil.com/")));
+    }
+}
+
 /// A tab's name, from TBV's page: letters, digits and dashes only.
 fn tab_name(tab: &str) -> CommandResult<String> {
     if tab.is_empty() || tab.len() > 40 || !tab.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
@@ -1252,6 +1281,9 @@ mod windows {
                         let mut target = to;
                         target.set_fragment(None);
                         if !redirected.as_bool() && source == target {
+                            return Ok(());
+                        }
+                        if super::same_site(&source, &target) {
                             return Ok(());
                         }
                         let mode = view::protection().redirect_mode(source.host_str().unwrap_or(""));

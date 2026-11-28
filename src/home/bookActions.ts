@@ -186,7 +186,7 @@ export function bookMenu(book: BookPreview, actions: BookActions): MenuEntry[] {
     "divider",
     { label: "Removal options", icon: "trash", submenu: [
     { label: "Remove from library…", icon: "close", onSelect: () => askRemoveBook(book) },
-    { label: "Delete for good…", icon: "trash", danger: true, onSelect: () => askDeleteBook(book) },
+    { label: "Delete…", icon: "trash", danger: true, onSelect: () => askDeleteBook(book) },
     ] },
   ];
 }

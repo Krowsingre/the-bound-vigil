@@ -20,6 +20,7 @@ import { WebSyncTab } from "../web/WebConnect";
 import { PrefsDesk, unfoldSection } from "./controls";
 import { ActivityTab, type ActivitySide } from "./ActivityTab";
 import { AtWindow } from "./AtWindow";
+import { AttunePhone, PhoneSubPage, type PhoneSub } from "./attune";
 import { useShortcuts } from "../lib/shortcuts";
 import { useNarrow } from "../lib/useNarrow";
 
@@ -72,11 +73,10 @@ const DESK_GROUPS: DeskPage[][] = [
     own("storage"),
     { tab: "activity", label: "Activity", icon: "activity", holds: ["activity"] },
   ],
-  [
-    { tab: "accessibility", label: "Accessibility", icon: "accessibility", holds: ["accessibility", "shortcuts"] },
-    // About is back on the computer (embre, 28 November), with Troubleshooting from Advanced.
-    { tab: "about", label: "About", icon: "info", holds: ["about", "advanced"] },
-  ],
+  [{ tab: "accessibility", label: "Accessibility", icon: "accessibility", holds: ["accessibility", "shortcuts"] }],
+  // About is back on the computer (embre, 28 November), with Troubleshooting from Advanced,
+  // under its own line (28 November).
+  [{ tab: "about", label: "About", icon: "info", holds: ["about", "advanced"] }],
 ];
 const DESK_PAGES = DESK_GROUPS.flat();
 /** Sections that moved to another page on a computer, as "tab/section". */
@@ -176,19 +176,28 @@ export function Settings({
   const body = useRef<HTMLDivElement>(null);
   const jumped = useRef(false);
   const desk = !narrow && !isWeb && !isHome;
-  // Account is a computer page for now: a window narrowed below the computer layout shows Visage instead.
-  if (!desk && tab === "account") tab = "profile";
-  // Web Security and Storage & Backup are computer pages; a narrow window shows the page they came from.
-  if (!desk && tab === "security") tab = "browser";
-  if (!desk && tab === "storage") tab = "sync";
-  // Account is a computer page for now; phones find the same things on Visage.
+  // A phone has the same pages, drawn as an iPhone's own settings (embre, 28 November).
+  const phone = narrow && !isWeb && !isHome;
+  const attune = desk || phone;
+  // The web version and the phone at home keep the older pages.
+  if (!attune && tab === "account") tab = "profile";
+  if (!attune && tab === "security") tab = "browser";
+  if (!attune && tab === "storage") tab = "sync";
   const results = searchSettings(query).filter(
-    (r) => TABS.some((t) => t.tab === r.tab) && (keys || r.tab !== "shortcuts") && (desk || r.tab !== "account") && (desk || !r.desk) && !(desk && NOT_ON_DESK.has(r.tab) && r.tab !== "plan"),
+    (r) =>
+      TABS.some((t) => t.tab === r.tab) &&
+      (keys || r.tab !== "shortcuts") &&
+      (attune || r.tab !== "account") &&
+      (desk || !r.desk) &&
+      !(attune && NOT_ON_DESK.has(r.tab) && r.tab !== "plan"),
   );
   const planOpen = desk && tab === "plan";
-  const deskPage = desk && tab ? deskPageOf(tab) : null;
+  const deskPage = attune && tab && !(phone && tab === "plan") ? deskPageOf(tab) : null;
   const page = deskPage ? { ...tabOf(deskPage.tab), label: deskPage.label } : SETTINGS_TABS.find((t) => t.tab === tab);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  // A page within a phone's page, like a friend on Account.
+  const [sub, setSub] = useState<PhoneSub | null>(null);
+  useEffect(() => setSub(null), [tab]);
   // A tab inside a bigger computer page: open the page there (Activity, Your plan, Shortcuts).
   useEffect(() => {
     if (!deskPage || !tab || tab === deskPage.tab || NOT_ON_DESK.has(tab)) return;
@@ -260,7 +269,7 @@ export function Settings({
           </>
         );
       case "about":
-        return <DeskAbout />;
+        return <DeskAbout onOpenPlan={phone ? () => onTab("plan") : undefined} />;
       default:
         return null;
     }
@@ -322,8 +331,8 @@ export function Settings({
               className="settings-menu-item"
               onClick={() => {
                 setQuery("");
-                if (desk && r.tab === "plan") return onTab("plan");
-                onTab(desk ? deskPageOf(r.tab, r.section).tab : r.tab);
+                if (attune && r.tab === "plan") return onTab("plan");
+                onTab(attune ? deskPageOf(r.tab, r.section).tab : r.tab);
                 // Shortcuts are a sheet on a computer: open it rather than jump on the page.
                 if (desk && r.tab === "shortcuts") {
                   setShortcutsOpen(true);
@@ -334,7 +343,7 @@ export function Settings({
             >
               <span>
                 {r.label}
-                <span className="settings-result-page">{desk && r.tab !== "plan" ? deskPageOf(r.tab, r.section).label : SETTINGS_TABS.find((t) => t.tab === r.tab)?.label}</span>
+                <span className="settings-result-page">{attune && r.tab !== "plan" ? deskPageOf(r.tab, r.section).label : SETTINGS_TABS.find((t) => t.tab === r.tab)?.label}</span>
               </span>
             </button>
           </li>
@@ -342,6 +351,46 @@ export function Settings({
       )}
     </ul>
   );
+
+  if (phone) {
+    const title = sub?.title ?? (tab === "plan" ? "Your plan" : (page?.label ?? "Attunement"));
+    return (
+      <div className="settings-page at-ios-page">
+        <div className="at-ios-nav">
+          {sub ? (
+            <button type="button" className="at-ios-back" onClick={sub.onBack}>
+              <Icon name="chevronLeft" size={20} />
+              {sub.back}
+            </button>
+          ) : tab ? (
+            <button type="button" className="at-ios-back" onClick={() => onTab(tab === "plan" ? "about" : null)}>
+              <Icon name="chevronLeft" size={20} />
+              {tab === "plan" ? "About" : "Attunement"}
+            </button>
+          ) : (
+            <span />
+          )}
+          <h1 className="at-ios-title">{title}</h1>
+          <span />
+        </div>
+        <div className="settings-body attune at-ios-body" ref={body}>
+          {!tab ? (
+            query.trim() ? (
+              found
+            ) : (
+              <PhoneList onTab={onTab} />
+            )
+          ) : (
+            <AttunePhone.Provider value={true}>
+              <PhoneSubPage.Provider value={setSub}>
+                <PrefsDesk.Provider value={false}>{tab === "plan" ? <PlanTab /> : deskContent}</PrefsDesk.Provider>
+              </PhoneSubPage.Provider>
+            </AttunePhone.Provider>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // The landing page's cards are the menu, so the list of pages shows only inside one.
   if (!page) {
@@ -445,6 +494,53 @@ export function Settings({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** A phone's list of pages: coloured icons in groups, as an iPhone's own Settings (embre, 28 November). */
+const PHONE_GROUPS: { tab: SettingsTab; label: string; icon: IconName; color: string }[][] = [
+  [{ tab: "account", label: "Account", icon: "person", color: "#8a8f98" }],
+  [
+    { tab: "appearance", label: "Appearance", icon: "palette", color: "#5b7fa6" },
+    { tab: "reading", label: "Reading", icon: "readingA", color: "#a0714f" },
+    { tab: "collections", label: "Library", icon: "library", color: "#6d8b5e" },
+    { tab: "library", label: "Management", icon: "layers", color: "#7a6a9a" },
+    { tab: "ereaders", label: "Connections", icon: "connections", color: "#3f8f8f" },
+  ],
+  [
+    { tab: "browser", label: "Nexus", icon: "globe", color: "#4a78c2" },
+    { tab: "security", label: "Web Security", icon: "shield", color: "#5f6b7a" },
+  ],
+  [
+    { tab: "sync", label: "Sync", icon: "cloud", color: "#3d82c4" },
+    { tab: "storage", label: "Storage & Backup", icon: "database", color: "#8c7a55" },
+    { tab: "activity", label: "Activity", icon: "activity", color: "#c0663f" },
+  ],
+  [
+    { tab: "accessibility", label: "Accessibility", icon: "accessibility", color: "#3a6fd8" },
+    { tab: "about", label: "About", icon: "info", color: "#8a8f98" },
+  ],
+];
+
+function PhoneList({ onTab }: { onTab: (tab: SettingsTab) => void }) {
+  return (
+    <div className="at-ios-list">
+      {PHONE_GROUPS.map((group, i) => (
+        <ul key={i} className="at-ios-card">
+          {group.map((t) => (
+            <li key={t.tab}>
+              <button type="button" className="at-ios-link" onClick={() => onTab(t.tab)}>
+                <span className="at-ios-icon" style={{ background: t.color }} aria-hidden>
+                  <Icon name={t.icon} size={18} />
+                </span>
+                <span className="at-ios-link-label">{t.label}</span>
+                <Icon name="chevronRight" size={16} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ))}
     </div>
   );
 }
