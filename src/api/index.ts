@@ -385,6 +385,8 @@ export interface Api {
   setSupabaseProject(project: SupabaseProject | null): Promise<void>;
   /** Chooses where the library is kept. True when that folder or server already held a library to join. */
   setSyncProvider(provider: ProviderChoice): Promise<boolean>;
+  /** Whether choosing this place would start sync over (everything sent and read again). */
+  wouldRestartSync(provider: ProviderChoice): Promise<boolean>;
   /** Chooses a second place to sync with at the same time, or with null stops it. True when it already held a library. */
   setAlsoSync(provider: ProviderChoice | null): Promise<boolean>;
   /** Asks for a folder. Null if cancelled. */
@@ -1271,6 +1273,7 @@ function appApi(): Api {
     syncSignOut: async () => (await core).invoke("sync_sign_out"),
     setSupabaseProject: async (project) => (await core).invoke("set_supabase_project", { project }),
     setSyncProvider: async (provider) => (await core).invoke<boolean>("set_sync_provider", { provider }),
+    wouldRestartSync: async (provider) => (await core).invoke<boolean>("would_restart_sync", { provider }),
     setAlsoSync: async (provider) => (await core).invoke<boolean>("set_also_sync", { provider }),
     chooseFolder: async (title, start) => {
       // On iPhone a folder is chosen in Files, and TBV keeps permission to open it.

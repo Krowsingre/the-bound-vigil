@@ -365,10 +365,10 @@ pub fn sign_in(library: &Mutex<Library>, email: &str, password: &str, create: bo
     // starts over. A folder sync is left alone.
     if before.as_deref() != Some(session.user_id.as_str()) {
         if also_supabase {
-            library.reset_also_sync()?;
+            library.reset_also_sync("You signed in to a different Supabase account")?;
         }
         if library.sync_provider()? == Provider::Supabase {
-            library.reset_sync()?;
+            library.reset_sync("You signed in to a different Supabase account")?;
         }
     }
     library.set_sync_session(Some(&session))?;
@@ -387,10 +387,10 @@ pub fn sign_out(library: &Mutex<Library>) -> tbv_core::Result<()> {
         let out = (library.supabase_project()?, library.sync_session()?);
         library.set_sync_session(None)?;
         if library.sync_provider()? == Provider::Supabase {
-            library.reset_sync()?;
+            library.reset_sync("You signed out of Supabase")?;
         }
         if library.sync_also()? == Some(Provider::Supabase) {
-            library.reset_also_sync()?;
+            library.reset_also_sync("You signed out of Supabase")?;
         }
         out
     };
