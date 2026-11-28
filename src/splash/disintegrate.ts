@@ -289,7 +289,7 @@ async function draw(pen: CanvasRenderingContext2D, splash: HTMLElement, box: DOM
     if (img.complete) pen.drawImage(img, mark.x, mark.y, mark.w, mark.h);
   }
 
-  for (const sel of [".splash-title", ".splash-tagline", ".splash-label"]) {
+  for (const sel of [".splash-title", ".splash-tagline", ".splash-label", ".splash-version"]) {
     const el = splash.querySelector<HTMLElement>(sel);
     if (el) words(pen, el, box);
   }

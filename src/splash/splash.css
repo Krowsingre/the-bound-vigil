@@ -138,6 +138,20 @@ html.is-starting body {
   color: #c9c8c4;
 }
 
+/* The version, at the bottom in the middle (embre, 28 November). */
+.splash-version {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  margin: 0;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: rgba(201, 200, 196, 0.7);
+  z-index: 1;
+}
+
 /* Fading out, when motion is turned down or on a computer. */
 .splash.is-leaving {
   opacity: 0;
