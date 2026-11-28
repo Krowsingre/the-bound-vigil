@@ -613,6 +613,8 @@ export interface SeriesPlace {
   number?: number | null;
   end?: number | null;
   after?: number | null;
+  /** An omnibus's own number: "Omnibus 2" (holding books 4–6, say). */
+  omnibus?: number | null;
 }
 
 export interface LibraryPage {

@@ -1240,11 +1240,24 @@ button.tag-chip-add:hover {
   text-overflow: ellipsis;
 }
 
+/* The number on its own line, the buttons under it, so they always fit
+   under the cover and never run into the next book (embre, 28 November). */
 .missing-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
   font-size: 12px;
+}
+
+.series-missing .missing-meta {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.series-missing .missing-meta .missing-actions {
+  flex-wrap: wrap;
 }
 
 /* A book's details: the rest of its series. */

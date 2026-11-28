@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useRangePick, withShift } from "../lib/rangePick";
 import { api } from "../api";
 import type { BookPreview, CollectionDetail, CollectionRef, SeriesSummary } from "../api/types";
 import { BookCover } from "../components/BookCover";
@@ -402,13 +403,9 @@ function AddBooksDialog({
     };
   }, [search]);
 
-  const toggle = (id: string) =>
-    setPicked((p) => {
-      const next = new Set(p);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const pickRange = useRangePick();
+  const toggle = (id: string, shift = false) =>
+    setPicked((p) => pickRange(p, (books ?? []).filter((b) => !already.has(b.id)).map((b) => b.id), id, shift));
 
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onCancel()}>
@@ -429,7 +426,7 @@ function AddBooksDialog({
               return (
                 <li key={b.id}>
                   <label className={`add-book${inIt ? " is-in" : ""}`}>
-                    <input type="checkbox" checked={inIt || picked.has(b.id)} disabled={inIt} onChange={() => toggle(b.id)} />
+                    <input type="checkbox" checked={inIt || picked.has(b.id)} disabled={inIt} onChange={(e) => toggle(b.id, withShift(e))} />
                     <BookCover book={b} size="s" />
                     <span className="add-book-text">
                       <span className="add-book-title">{b.title}</span>

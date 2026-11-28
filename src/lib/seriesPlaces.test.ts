@@ -75,3 +75,23 @@ describe("series places", () => {
     expect(stackAuthor([b("Ann", 2), b("Bo", 1)])).toBe("Bo");
   });
 });
+
+describe("omnibus numbers", () => {
+  it("keeps an omnibus's own number beside the books it holds", () => {
+    const rows = [{ key: 1, name: "Barbarian Chef", kind: "omnibus" as const, number: "4–6", after: "", omnibus: "2" }];
+    const places = placesFromRows(rows);
+    expect(places).toEqual([{ name: "Barbarian Chef", number: 4, end: 6, omnibus: 2 }]);
+    expect(placeWords(places[0])).toBe("Omnibus 2 · Books 4–6");
+    expect(placeLine(places[0])).toBe("Barbarian Chef Omnibus 2 · #4–6");
+    const changes = placeChanges(places);
+    expect(changes.find((c) => c.field === "series_list")?.value).toContain('"omnibus":2');
+    const back = rowsOf(places);
+    expect(back[0]).toMatchObject({ kind: "omnibus", number: "4–6", omnibus: "2" });
+    const fields = [
+      field("series", "Barbarian Chef"),
+      field("series_index", "4"),
+      field("series_list", null, changes.find((c) => c.field === "series_list")!.value),
+    ];
+    expect(placesFromFields(fields)[0]).toEqual({ name: "Barbarian Chef", number: 4, end: 6, omnibus: 2 });
+  });
+});

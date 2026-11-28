@@ -194,7 +194,7 @@ const nearly = (a: number | null | undefined, b: number | null | undefined) => (
 
 /** The same series and the same place in it (same_as in series.rs). */
 export const samePlace = (a: SeriesPlace, b: SeriesPlace) =>
-  a.name.trim().toLowerCase() === b.name.trim().toLowerCase() && nearly(a.number, b.number) && nearly(a.end, b.end) && nearly(a.after, b.after);
+  a.name.trim().toLowerCase() === b.name.trim().toLowerCase() && nearly(a.number, b.number) && nearly(a.end, b.end) && nearly(a.after, b.after) && nearly(a.omnibus, b.omnibus);
 
 /** Where a place sorts in its series: its number, or just after the book it follows. */
 export const placeOrder = (p: SeriesPlace): number | null => p.number ?? (p.after != null ? p.after + 0.001 : null);
@@ -249,14 +249,22 @@ export function placesMark(places: SeriesPlace[]): string {
   return text ? `#${text}` : placeMark(places[0]);
 }
 
-/** A place in words, short: "#3", "#1–3", "Side story", or "" with no number. */
+/** A place in words, short: "#3", "#1–3", "Omnibus 2 · #4–6", "Side story", or "" with no number. */
 export function placeMark(place: SeriesPlace): string {
+  if (place.omnibus != null) {
+    const books = place.number != null ? (place.end != null ? ` · #${num(place.number)}–${num(place.end)}` : ` · #${num(place.number)}`) : "";
+    return `Omnibus ${num(place.omnibus)}${books}`;
+  }
   if (place.number != null) return place.end != null ? `#${num(place.number)}–${num(place.end)}` : `#${num(place.number)}`;
   return place.after != null ? "Side story" : "";
 }
 
-/** A place in words, long: "Book 3", "Books 1–3", "Side story, after book 2". */
+/** A place in words, long: "Book 3", "Books 1–3", "Omnibus 2 · Books 4–6", "Side story, after book 2". */
 export function placeWords(place: SeriesPlace): string {
+  if (place.omnibus != null) {
+    const books = place.number != null ? ` · ${placeWords({ ...place, omnibus: null })}` : "";
+    return `Omnibus ${num(place.omnibus)}${books}`;
+  }
   if (place.number != null) return place.end != null ? `Books ${num(place.number)}–${num(place.end)}` : `Book ${num(place.number)}`;
   if (place.after != null) return place.after > 0 ? `Side story, after book ${num(place.after)}` : "Side story, before book 1";
   return "No number";
@@ -265,7 +273,7 @@ export function placeWords(place: SeriesPlace): string {
 /** "Series #3", or "Series, side story": a place with its series' name. */
 export function placeLine(place: SeriesPlace): string {
   const mark = placeMark(place);
-  return !mark ? place.name : mark.startsWith("#") ? `${place.name} ${mark}` : `${place.name}, ${mark.toLowerCase()}`;
+  return !mark ? place.name : mark.startsWith("#") || mark.startsWith("Omnibus") ? `${place.name} ${mark}` : `${place.name}, ${mark.toLowerCase()}`;
 }
 
 /** The places a book's details give, main first (places_of in series.rs). */
@@ -296,7 +304,8 @@ export function placesFromFields(fields: DetailField[]): SeriesPlace[] {
     const kept = mainAt >= 0 ? list[mainAt] : undefined;
     const end = number != null && kept?.end != null && kept.end > number ? kept.end : null;
     const after = number == null ? (kept?.after ?? null) : null;
-    out.push({ name: main, number, ...(end != null ? { end } : {}), ...(after != null ? { after } : {}) });
+    const omnibus = kept?.omnibus ?? null;
+    out.push({ name: main, number, ...(end != null ? { end } : {}), ...(after != null ? { after } : {}), ...(omnibus != null ? { omnibus } : {}) });
   }
   list.forEach((p, i) => {
     const name = p.name?.trim();
@@ -324,7 +333,14 @@ function cleanSeriesList(value: string): string {
     const number = ok(item.number);
     const end = number !== null && ok(item.end) !== null && ok(item.end)! > number ? ok(item.end) : null;
     const after = number === null ? ok(item.after) : null;
-    const place: SeriesPlace = { name, ...(number !== null ? { number } : {}), ...(end !== null ? { end } : {}), ...(after !== null ? { after } : {}) };
+    const omnibus = ok(item.omnibus);
+    const place: SeriesPlace = {
+      name,
+      ...(number !== null ? { number } : {}),
+      ...(end !== null ? { end } : {}),
+      ...(after !== null ? { after } : {}),
+      ...(omnibus !== null ? { omnibus } : {}),
+    };
     // In a series several times (10, 12 and 14), but each place once.
     if (!kept.some((k) => samePlace(k, place))) kept.push(place);
   }

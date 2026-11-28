@@ -344,7 +344,7 @@ impl Library {
             let mut places = crate::series::places_of(series.as_deref(), index, list.as_deref());
             if places.is_empty() {
                 let Some(name) = series else { continue };
-                places.push(crate::series::SeriesPlace { name, number: index, end: None, after: None });
+                places.push(crate::series::SeriesPlace { name, number: index, ..Default::default() });
             }
             for place in places {
                 all.push(Row { name: place.name.clone(), id: id.clone(), title: title.clone(), authors: authors.clone(), cover_path: cover_path.clone(), place });

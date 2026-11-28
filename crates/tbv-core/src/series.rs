@@ -62,6 +62,10 @@ pub struct SeriesPlace {
     /// A side story: the number it's read after (0: before the first).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub after: Option<f64>,
+    /// An omnibus's own number among the series' omnibuses: "Omnibus 2"
+    /// holding books 4 to 6 (embre, 28 November).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub omnibus: Option<f64>,
 }
 
 impl SeriesPlace {
@@ -72,7 +76,7 @@ impl SeriesPlace {
             (None, None) => true,
             _ => false,
         };
-        series_id(&self.name) == series_id(&other.name) && close(self.number, other.number) && close(self.end, other.end) && close(self.after, other.after)
+        series_id(&self.name) == series_id(&other.name) && close(self.number, other.number) && close(self.end, other.end) && close(self.after, other.after) && close(self.omnibus, other.omnibus)
     }
 
     /// Where it sorts in its series: its number, or just after the book it
@@ -127,7 +131,8 @@ pub(crate) fn clean_series_list(value: &str) -> Result<String> {
         let number = place_number(&item["number"]);
         let end = place_number(&item["end"]).filter(|e| number.is_some_and(|n| *e > n));
         let after = if number.is_some() { None } else { place_number(&item["after"]) };
-        let place = SeriesPlace { name, number, end, after };
+        let omnibus = place_number(&item["omnibus"]);
+        let place = SeriesPlace { name, number, end, after, omnibus };
         // A collection of books that aren't one after another in a series
         // (10, 12 and 14) is in it several times; the same place only once.
         if !kept.iter().any(|k| k.same_as(&place)) {
@@ -135,6 +140,38 @@ pub(crate) fn clean_series_list(value: &str) -> Result<String> {
         }
     }
     Ok(serde_json::to_string(&kept)?)
+}
+
+/// A series name that ends in the books it holds, as a box set's file often
+/// gives it: "Barbarian Chef 1-3", "Barbarian Chef, Books 1–3",
+/// "Barbarian Chef #1-3". The name, first and last number.
+pub(crate) fn ranged_name(name: &str) -> Option<(String, f64, f64)> {
+    let name = name.trim();
+    let (head, last) = name.rsplit_once(['-', '–', '—'])?;
+    let end: f64 = last.trim().parse().ok()?;
+    let head = head.trim_end();
+    let digits = head.len() - head.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.').len();
+    if digits == 0 {
+        return None;
+    }
+    let (rest, first) = head.split_at(head.len() - digits);
+    let start: f64 = first.parse().ok()?;
+    if !end.is_finite() || end <= start || end - start > 100.0 {
+        return None;
+    }
+    let mut rest = rest.trim_end().trim_end_matches('#').trim_end();
+    for word in ["Books", "books", "Book", "book", "Vol.", "vol.", "Volumes", "volumes"] {
+        if let Some(r) = rest.strip_suffix(word) {
+            rest = r.trim_end();
+            break;
+        }
+    }
+    let rest = rest.trim_end_matches([',', ':', '(', '-']).trim_end();
+    // "1-3" alone, or "Book 1-3", isn't a series name.
+    if rest.is_empty() || !rest.chars().any(char::is_alphabetic) {
+        return None;
+    }
+    Some((rest.to_string(), start, end))
 }
 
 /// A book's places in its series, main first: its series and number as
@@ -162,7 +199,8 @@ pub(crate) fn places_of(series: Option<&str>, index: Option<f64>, list: Option<&
         let kept = at.map(|i| &listed[i]);
         let end = kept.and_then(|p| p.end).filter(|e| index.is_some_and(|n| *e > n));
         let after = if index.is_some() { None } else { kept.and_then(|p| p.after) };
-        out.push(SeriesPlace { name: name.to_string(), number: index, end, after });
+        let omnibus = kept.and_then(|p| p.omnibus);
+        out.push(SeriesPlace { name: name.to_string(), number: index, end, after, omnibus });
         main_at = at;
     }
     for (i, place) in listed.into_iter().enumerate() {
@@ -173,7 +211,7 @@ pub(crate) fn places_of(series: Option<&str>, index: Option<f64>, list: Option<&
         }
         out.push(place);
     }
-    if out.len() == 1 && out[0].end.is_none() && out[0].after.is_none() {
+    if out.len() == 1 && out[0].end.is_none() && out[0].after.is_none() && out[0].omnibus.is_none() {
         return Vec::new();
     }
     out
@@ -218,7 +256,7 @@ pub fn places_in(book: &BookPreview, name: &str) -> Vec<SeriesPlace> {
     let mut found: Vec<SeriesPlace> = book.series_places.iter().filter(|p| series_id(&p.name) == id).cloned().collect();
     if book.series_places.is_empty() {
         if let Some(main) = book.series.as_deref().filter(|s| series_id(s) == id) {
-            found.push(SeriesPlace { name: main.trim().to_string(), number: book.series_index, end: None, after: None });
+            found.push(SeriesPlace { name: main.trim().to_string(), number: book.series_index, ..Default::default() });
         }
     }
     found.sort_by(|a, b| a.order().unwrap_or(f64::MAX).total_cmp(&b.order().unwrap_or(f64::MAX)));
@@ -648,6 +686,39 @@ impl Library {
         self.series_review(name)
     }
 
+    /// Box sets whose series name ends in the books they hold ("Barbarian
+    /// Chef 1-3") are put in the series itself as books 1 to 3, as if
+    /// typed in their details (embre, 28 November). Only where the series
+    /// wasn't set by hand. `book`: just that one, after it's imported.
+    pub fn split_ranged_series(&self, book: Option<&str>) -> Result<usize> {
+        let found: Vec<(String, String)> = self
+            .conn
+            .prepare(
+                "SELECT b.id, COALESCE(f.value, b.series) FROM books b
+                 LEFT JOIN metadata_fetched f ON f.book_id = b.id AND f.field = 'series'
+                 WHERE b.deleted_at IS NULL AND (?1 IS NULL OR b.id = ?1)
+                   AND COALESCE(f.value, b.series) GLOB '*[0-9]*[-–—]*[0-9]*'
+                   AND NOT EXISTS (SELECT 1 FROM metadata_overrides o WHERE o.book_id = b.id AND o.field IN ('series', 'series_list'))",
+            )?
+            .query_map(params![book], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        let mut split = 0;
+        for (id, series) in found {
+            let Some((name, start, end)) = ranged_name(&series) else { continue };
+            let list = serde_json::to_string(&[SeriesPlace { name: name.clone(), number: Some(start), end: Some(end), ..Default::default() }])?;
+            self.edit_details(
+                std::slice::from_ref(&id),
+                &[
+                    DetailChange { field: "series".into(), value: Some(name) },
+                    DetailChange { field: "series_index".into(), value: Some(number_text(start)) },
+                    DetailChange { field: "series_list".into(), value: Some(list) },
+                ],
+            )?;
+            split += 1;
+        }
+        Ok(split)
+    }
+
     /// Remembers these books aren't in the series, so they aren't offered again.
     pub fn deny_series_matches(&self, name: &str, book_ids: &[BookId]) -> Result<SeriesReview> {
         let mut saved = self.saved_series(name)?.unwrap_or_default();
@@ -1005,17 +1076,49 @@ mod tests {
     }
 
     #[test]
+    fn a_box_set_named_with_its_range_holds_those_books() {
+        assert_eq!(ranged_name("Barbarian Chef 1-3"), Some(("Barbarian Chef".into(), 1.0, 3.0)));
+        assert_eq!(ranged_name("Barbarian Chef, Books 1–3"), Some(("Barbarian Chef".into(), 1.0, 3.0)));
+        assert_eq!(ranged_name("Barbarian Chef #4-6"), Some(("Barbarian Chef".into(), 4.0, 6.0)));
+        assert_eq!(ranged_name("1-3"), None);
+        assert_eq!(ranged_name("Books 1-3"), None);
+        assert_eq!(ranged_name("Catch-22"), None);
+        assert_eq!(ranged_name("Barbarian Chef 3-1"), None);
+
+        let (dir, mut library) = open_temp_library();
+        let path = dir.path().join("box.epub");
+        write_test_epub_with(&path, "Barbarian Chef Boxset", "Austin Beck", false, r#"<meta name="calibre:series" content="Barbarian Chef 1-3"/>"#);
+        library.import_files(&[path]);
+        let book = library.library_page(&Default::default()).unwrap().books.into_iter().find(|b| b.title == "Barbarian Chef Boxset").unwrap();
+        assert_eq!(book.series.as_deref(), Some("Barbarian Chef"));
+        assert_eq!(book.series_index, Some(1.0));
+        let places = places_in(&book, "Barbarian Chef");
+        assert_eq!(places.len(), 1);
+        assert_eq!((places[0].number, places[0].end), (Some(1.0), Some(3.0)));
+    }
+
+    #[test]
+    fn an_omnibus_keeps_its_own_number() {
+        let kept = clean_series_list(r#"[{"name":"Barbarian Chef","number":4,"end":6,"omnibus":2}]"#).unwrap();
+        let places = places_of(Some("Barbarian Chef"), Some(4.0), Some(&kept));
+        assert_eq!(places[0], SeriesPlace { name: "Barbarian Chef".into(), number: Some(4.0), end: Some(6.0), after: None, omnibus: Some(2.0) });
+        // An omnibus number alone is still kept.
+        let alone = clean_series_list(r#"[{"name":"Barbarian Chef","number":4,"omnibus":2}]"#).unwrap();
+        assert_eq!(places_of(Some("Barbarian Chef"), Some(4.0), Some(&alone))[0].omnibus, Some(2.0));
+    }
+
+    #[test]
     fn series_lists_are_cleaned() {
         let kept = clean_series_list(r#"[{"name":" A  B ","number":"2","end":1},{"name":"a b","number":2},{"name":"C","number":1,"after":4},{"name":"D","after":2},{"name":""}]"#).unwrap();
         let places: Vec<SeriesPlace> = serde_json::from_str(&kept).unwrap();
         assert_eq!(places.len(), 3);
-        assert_eq!(places[0], SeriesPlace { name: "A B".into(), number: Some(2.0), end: None, after: None });
+        assert_eq!(places[0], SeriesPlace { name: "A B".into(), number: Some(2.0), ..Default::default() });
         assert_eq!(places[1].after, None, "a numbered book is no side story");
         assert_eq!(places[2].after, Some(2.0));
         assert!(clean_series_list("not a list").is_err());
         // Nothing beyond the series and number needs no list.
         assert!(places_of(Some("A"), Some(1.0), Some(r#"[{"name":"A","number":1}]"#)).is_empty());
-        let range = SeriesPlace { name: "A".into(), number: Some(1.0), end: Some(3.0), after: None };
+        let range = SeriesPlace { name: "A".into(), number: Some(1.0), end: Some(3.0), ..Default::default() };
         assert_eq!(range.numbers(), [1.0, 2.0, 3.0]);
         assert!(range.holds(2.0) && !range.holds(4.0));
     }

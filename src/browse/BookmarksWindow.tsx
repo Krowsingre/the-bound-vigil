@@ -3,6 +3,7 @@
 // Everything can be dragged into place (held, then slid, on a touch screen),
 // and every move or removal can be undone.
 
+import { useRangePick, withShift } from "../lib/rangePick";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { Bookmark, BookmarkFolder, BookmarkUndo } from "../api/types";
@@ -324,12 +325,8 @@ export function BookmarksPanel({ onGo, onClose, onChanged, onOpenAll, page }: {
     setFolded(next);
     remember(FOLDED, [...next]);
   };
-  const choose = (id: string) => {
-    const next = new Set(chosen);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setChosen(next);
-  };
+  const pickRange = useRangePick();
+  const choose = (id: string, shift = false, order: readonly string[] = []) => setChosen(pickRange(chosen, order, id, shift));
   const stopChoosing = () => {
     setSelecting(false);
     setChosen(new Set());
@@ -369,9 +366,9 @@ export function BookmarksPanel({ onGo, onClose, onChanged, onOpenAll, page }: {
 
   const markRow = (m: Bookmark, showPath: boolean, index: number, list: Bookmark[]) => (
     <li key={m.id} className="bookmark-row" {...(term ? {} : drag.handle("mark:" + m.id))}>
-      {selecting && <input type="checkbox" className="no-drag" aria-label={"Choose " + m.title} checked={chosen.has(m.id)} onChange={() => choose(m.id)} />}
+      {selecting && <input type="checkbox" className="no-drag" aria-label={"Choose " + m.title} checked={chosen.has(m.id)} onChange={(e) => choose(m.id, withShift(e), list.map((x) => x.id))} />}
       <button type="button" className="browser-history-open" title={m.url}
-        onClick={() => (selecting ? choose(m.id) : onGo(m.url))}
+        onClick={(e) => (selecting ? choose(m.id, e.shiftKey, list.map((x) => x.id)) : onGo(m.url))}
         onKeyDown={(e) => {
           if (!e.altKey || term || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
           e.preventDefault();
