@@ -54,6 +54,11 @@ pub struct BookLocation {
     pub temporary: bool,
 }
 
+/// A sync place's name for people.
+pub(crate) fn place_name_of(provider: &Provider) -> Option<String> {
+    place_of(provider).map(|(_, name)| name)
+}
+
 /// A sync place as `book_holders` names it, with its name for people.
 fn place_of(provider: &Provider) -> Option<(String, String)> {
     let (key, name) = match provider {

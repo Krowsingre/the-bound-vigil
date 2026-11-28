@@ -1250,6 +1250,7 @@ export async function webApi(): Promise<Api> {
       if (provider.kind !== "supabase") throw new Error("The web version syncs through Supabase only.");
       return false;
     },
+    wouldRestartSync: async () => false,
     setAlsoSync: async () => {
       throw new Error("The web version syncs through Supabase only.");
     },

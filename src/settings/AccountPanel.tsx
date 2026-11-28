@@ -5,6 +5,7 @@ import { phoneLink } from "../web/link";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { SignInForm } from "./SupabaseSetup";
+import { useRestartAsk } from "./restartAsk";
 
 /**
  * Signing in to the Supabase project. One account holds one library: use
@@ -22,6 +23,21 @@ export function AccountPanel({
 }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const restart = useRestartAsk();
+  const signOut = () => {
+    setBusy(true);
+    api.syncSignOut().then(
+      () => {
+        setBusy(false);
+        toast(isWeb ? "Signed out. Your library is still in the cloud." : "Signed out. Your library stays on this device.");
+        onChanged();
+      },
+      (e: unknown) => {
+        setBusy(false);
+        toast(String(e));
+      },
+    );
+  };
 
   if (signedIn) {
     return (
@@ -60,22 +76,13 @@ export function AccountPanel({
             className="btn btn-quiet"
             disabled={busy}
             onClick={() => {
-              setBusy(true);
-              api.syncSignOut().then(
-                () => {
-                  setBusy(false);
-                  toast(isWeb ? "Signed out. Your library is still in the cloud." : "Signed out. Your library stays on this device.");
-                  onChanged();
-                },
-                (e: unknown) => {
-                  setBusy(false);
-                  toast(String(e));
-                },
-              );
+              if (isWeb) return signOut();
+              restart.leave("Sign out of Supabase?", signOut);
             }}
           >
             Sign out
           </button>
+          {restart.dialog}
         </div>
       </div>
     );

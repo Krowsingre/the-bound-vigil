@@ -7,6 +7,7 @@ import { api, isApp, isIOS, isMac, isWeb } from "../api";
 import type { CloudService, ProviderChoice, ProviderView } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
+import { useRestartAsk } from "./restartAsk";
 
 export type FolderService = "icloud" | "dropbox" | "gdrive" | "onedrive" | "mega" | "custom";
 
@@ -128,8 +129,12 @@ export function SyncFolderPanel({
       void api.suggestSyncFolder(service).then((p) => (isMac ? setLikely(p) : setPath((now) => now ?? p)), () => undefined);
   }, [service, usingThis, current.location]);
 
+  const restart = useRestartAsk();
   const use = async (choice: ProviderChoice, where: string) => {
     if (onUse) return onUse(choice);
+    restart.choose(choice, where, () => void commit(choice, where));
+  };
+  const commit = async (choice: ProviderChoice, where: string) => {
     if (!isApp) toast("This is the browser preview: nothing is synced here.");
     setBusy(true);
     try {
@@ -262,6 +267,7 @@ export function SyncFolderPanel({
           </div>
         </form>
       )}
+      {restart.dialog}
     </div>
   );
 }

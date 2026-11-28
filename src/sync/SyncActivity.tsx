@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { FileActivity, PlaceActivity, SyncActivity as Activity, SyncStatus } from "../api/types";
+import type { FileActivity, PlaceActivity, SyncActivity as Activity, SyncRestart, SyncStatus } from "../api/types";
 import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
 import { relativeTime } from "../lib/format";
@@ -107,6 +107,15 @@ export function SyncActivity({
 }) {
   const [activity, setActivity] = useState<Activity>(NOTHING);
   useEffect(() => api.onSyncActivity(setActivity), []);
+  // Each time sync started over, and why (embre, 28 November), read again as sync's state changes.
+  const [restarts, setRestarts] = useState<SyncRestart[]>([]);
+  useEffect(() => {
+    let live = true;
+    void api.syncOverview().then((o) => live && setRestarts(o.restarts ?? []), () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [sync?.state, sync?.lastSuccessAt]);
 
   const off = (sync?.state ?? "disabled") === "disabled";
   const running = activity.running || sync?.state === "syncing";
@@ -211,6 +220,26 @@ export function SyncActivity({
             </section>
           )}
         </>
+      )}
+
+      {restarts.length > 0 && (
+        <section className="imports-group sync-restarts">
+          <h3 className="section-label">Started over · {restarts.length}</h3>
+          <ul className="imports-list">
+            {restarts.map((r, i) => (
+              <li key={`${r.at}-${i}`} className="import-row">
+                <Icon name="sync" size={18} />
+                <div className="import-text">
+                  <span className="import-name">{r.reason}</span>
+                  <span className="import-detail">
+                    {r.place === "main" ? "Main sync" : "Second sync"} · everything sent and read again
+                  </span>
+                </div>
+                <span className="import-detail sync-when">{relativeTime(r.at)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   );

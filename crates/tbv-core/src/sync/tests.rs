@@ -418,7 +418,7 @@ fn signing_out_and_back_in_sends_everything_again() {
     let a = Device::new();
     a.import("Again");
     a.sync(&cloud);
-    a.lib().reset_sync().unwrap();
+    a.lib().reset_sync("test").unwrap();
     let fresh = FakeRemote::default();
     assert!(a.sync(&fresh).sent >= 1);
     assert_eq!(fresh.0.lock().unwrap().records.len(), cloud.0.lock().unwrap().records.len());
@@ -1189,7 +1189,7 @@ fn starting_the_first_place_over_keeps_the_seconds_conflicts() {
         .conn
         .execute_batch("INSERT INTO sync_conflicts (kind, key, remote, found_at, lane) VALUES ('book', '[\"x\"]', '{}', 'now', 'also')")
         .unwrap();
-    pc.lib().reset_sync().unwrap();
+    pc.lib().reset_sync("test").unwrap();
     let left: i64 = pc.lib().conn.query_row("SELECT COUNT(*) FROM sync_conflicts", [], |r| r.get(0)).unwrap();
     assert_eq!(left, 1);
 }
@@ -2026,4 +2026,42 @@ fn supabase_is_never_assumed_but_a_signed_in_library_keeps_it() {
     let library = Library::open(paths).unwrap();
     assert_eq!(library.sync_provider().unwrap(), Provider::Supabase, "a library that synced through Supabase keeps it");
     drop(dir);
+}
+
+#[test]
+fn choosing_the_same_folder_again_never_starts_sync_over() {
+    assert!(super::same_folder("/sync/Krowsingre", "/sync/Krowsingre/"));
+    assert!(!super::same_folder("/sync/library", "/sync/library "), "a space is part of the name");
+    if cfg!(windows) {
+        assert!(super::same_folder(r"C:\Users\k\iCloudDrive\Krowsingre", r"c:/users/k/icloudDrive/krowsingre\"));
+    } else {
+        assert!(!super::same_folder("/sync/Library", "/sync/library"), "missing folders keep their capitals outside Windows");
+    }
+    assert!(!super::same_folder(r"C:\Users\k\iCloudDrive\Krowsingre", r"C:\Users\k\Dropbox\Krowsingre"));
+    // Folders that exist: the file system decides.
+    let real = tempfile::tempdir().unwrap();
+    let path = real.path().display().to_string();
+    assert!(super::same_folder(&path, &format!("{path}/")));
+
+    let (_dir, mut library) = open_temp_library();
+    let folder = |path: &str| Provider::Folder { service: "icloud".into(), path: path.into() };
+    library.set_sync_provider(&folder("/sync/Krowsingre")).unwrap();
+    library.put_setting(LAST_SUCCESS, Some("2026-11-28T05:30:00.000Z")).unwrap();
+    library.conn.execute("INSERT INTO sync_clock (kind, key, changed_at, pushed) VALUES ('book', 'b1', '2026-11-28T05:00:00.000Z', 1)", []).unwrap();
+    library.conn.execute("UPDATE sync_clock SET pushed = 1", []).unwrap();
+
+    assert!(!library.would_restart_sync(&folder("/sync/Krowsingre/")).unwrap());
+    library.set_sync_provider(&folder("/sync/Krowsingre/")).unwrap();
+    let unsent: i64 = library.conn.query_row("SELECT COUNT(*) FROM sync_clock WHERE pushed = 0", [], |r| r.get(0)).unwrap();
+    assert_eq!(unsent, 0, "the same folder keeps what was sent");
+    assert!(library.sync_restarts().unwrap().is_empty());
+
+    // A different place starts over, and says why.
+    assert!(library.would_restart_sync(&folder("/elsewhere")).unwrap());
+    library.set_sync_provider(&folder("/elsewhere")).unwrap();
+    let restarts = library.sync_restarts().unwrap();
+    assert_eq!(restarts.len(), 1);
+    assert_eq!(restarts[0].reason, "You chose iCloud Drive");
+    assert_eq!(restarts[0].place, "main");
+    assert_eq!(library.sync_overview().unwrap().restarts, restarts);
 }

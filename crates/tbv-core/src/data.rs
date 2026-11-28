@@ -253,8 +253,8 @@ impl Library {
                 }
             }
             // Start sync afresh: send everything again; the cloud keeps whichever is newer.
-            self.reset_also_sync()?;
-            self.reset_sync()
+            self.reset_also_sync("You restored a backup")?;
+            self.reset_sync("You restored a backup")
         });
         let _ = fs::remove_file(&staging);
         restored

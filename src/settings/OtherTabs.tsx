@@ -1606,7 +1606,7 @@ function PublisherPlan() {
 
 export function AboutTab() {
   const desk = useDeskPrefs();
-  const [version, setVersion] = useState("0.171.0");
+  const [version, setVersion] = useState("0.172.0");
   useEffect(() => {
     if (!isApp) return;
     void import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setVersion, () => undefined));

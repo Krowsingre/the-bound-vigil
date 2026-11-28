@@ -1195,6 +1195,15 @@ async fn set_sync_provider(
     Ok(joined)
 }
 
+/// Whether choosing `provider` would start sync over, so Attunement asks first.
+#[tauri::command]
+async fn would_restart_sync(state: State<'_, AppLibrary>, provider: tbv_core::sync::Provider) -> CommandResult<bool> {
+    blocking(state, move |library| {
+        library.lock().map_err(|_| tbv_core::Error::Unsuitable("the library is unavailable".into()))?.would_restart_sync(&provider)
+    })
+    .await
+}
+
 /// Chooses (or, with none, stops) a second place to sync with. True when
 /// the folder or server already held a library.
 #[tauri::command]
@@ -2748,6 +2757,7 @@ pub fn run() {
             sync_sign_out,
             set_supabase_project,
             set_sync_provider,
+            would_restart_sync,
             set_also_sync,
             sync_activity,
             clear_sync_changes,

@@ -277,6 +277,15 @@ export interface SyncOverview {
   conflicts: SyncConflict[];
   /** The second place the library syncs with, if there is one. */
   also: AlsoOverview | null;
+  /** Each time sync started over, and why, newest first. */
+  restarts?: SyncRestart[];
+}
+
+/** Sync started over with a place: everything was sent and read again. */
+export interface SyncRestart {
+  at: IsoUtc;
+  place: "main" | "also";
+  reason: string;
 }
 
 /** How the second place stands. */

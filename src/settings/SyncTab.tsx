@@ -16,6 +16,7 @@ import { TidySection } from "./TidySection";
 import { HomeSection } from "./HomeSection";
 import { UsageSection } from "./UsageSection";
 import { ContentsSection } from "./ContentsSection";
+import { useRestartAsk } from "./restartAsk";
 import { disconnectLabel, serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
 import { ALL_PROVIDERS, FIRST_CARD, PROVIDERS, ProviderPicker, type Provider } from "./providers";
 import { Columns, ActionTile, RadioList, Row, Section, SectionGroup, Select, Toggle, useDeskPrefs } from "./controls";
@@ -46,6 +47,7 @@ export function SyncTab({ onRestored, onOpenPlaces }: { onRestored: () => void; 
   const { settings, changeSync } = useAppSettings();
   const sync = settings.sync;
   const toast = useToast();
+  const restart = useRestartAsk();
   const [provider, setProvider] = useState<Provider>(FIRST_CARD);
   const [overview, setOverview] = useState<SyncOverview | null>(null);
   const [editing, setEditing] = useState(false);
@@ -238,9 +240,11 @@ export function SyncTab({ onRestored, onOpenPlaces }: { onRestored: () => void; 
                     type="button"
                     className="btn btn-primary"
                     onClick={() =>
-                      void api.setSyncProvider({ kind: "supabase" }).then(
-                        () => (toast("Your library now syncs through Supabase."), void reload()),
-                        (e: unknown) => toast(String(e)),
+                      restart.choose({ kind: "supabase" }, "Supabase", () =>
+                        void api.setSyncProvider({ kind: "supabase" }).then(
+                          () => (toast("Your library now syncs through Supabase."), void reload()),
+                          (e: unknown) => toast(String(e)),
+                        ),
                       )
                     }
                   >
@@ -257,6 +261,7 @@ export function SyncTab({ onRestored, onOpenPlaces }: { onRestored: () => void; 
                     type="button"
                     className="btn btn-quiet btn-danger-text"
                     onClick={() =>
+                      restart.leave(`${disconnectLabel(current)}?`, () =>
                       void api.setSyncProvider({ kind: "off" }).then(
                         () => (
                           toast(
@@ -267,6 +272,7 @@ export function SyncTab({ onRestored, onOpenPlaces }: { onRestored: () => void; 
                           void reload()
                         ),
                         (e: unknown) => toast(String(e)),
+                      ),
                       )
                     }
                   >
@@ -560,6 +566,7 @@ export function SyncTab({ onRestored, onOpenPlaces }: { onRestored: () => void; 
           }}
         />
       )}
+      {restart.dialog}
     </Columns>
   );
 }

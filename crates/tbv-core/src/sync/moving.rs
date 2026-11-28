@@ -240,7 +240,7 @@ impl Library {
             }
             Destination::Files(provider) => self.put_setting(PROVIDER, Some(&serde_json::to_string(provider)?))?,
         }
-        self.reset_sync()?;
+        self.reset_sync(&format!("You moved your library to {}", self.sync_provider()?.place_name()))?;
         let now = self.sync_provider()?;
         self.drop_also_if_same(&now)?;
         let tx = self.conn.unchecked_transaction()?;

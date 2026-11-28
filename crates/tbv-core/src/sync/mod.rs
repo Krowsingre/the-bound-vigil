@@ -771,16 +771,50 @@ impl Provider {
         }
     }
 
+    /// The place's name inside a sentence: "iCloud Drive", "your WebDAV server".
+    pub fn place_name(&self) -> String {
+        match holdings::place_name_of(self) {
+            Some(name) if name.starts_with("Your ") => name.replacen("Your ", "your ", 1),
+            Some(name) => name,
+            None => "nowhere".to_string(),
+        }
+    }
+
     /// Whether two choices point at the same cloud library.
     pub fn same_place(&self, other: &Provider) -> bool {
         match (self, other) {
             (Provider::Supabase, Provider::Supabase) | (Provider::Off, Provider::Off) => true,
-            (Provider::Folder { path: a, .. }, Provider::Folder { path: b, .. }) => a == b,
+            (Provider::Folder { path: a, .. }, Provider::Folder { path: b, .. }) => same_folder(a, b),
             (Provider::WebDav(a), Provider::WebDav(b)) => a.url == b.url && a.username == b.username,
             (Provider::Cloud(a), Provider::Cloud(b)) => a.service == b.service && a.account_id == b.account_id,
             _ => false,
         }
     }
+}
+
+/// Two spellings of one folder, so choosing it again mustn't start sync over
+/// (embre, 28 November). When both exist, the file system says whether
+/// they're one folder, capitals and all. Otherwise only what the system
+/// itself ignores is: a trailing separator, and on Windows capitals and
+/// which slash is used (`iCloudDrive` and `icloudDrive\`).
+pub(crate) fn same_folder(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    if let (Ok(x), Ok(y)) = (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        return x == y;
+    }
+    fn plain(path: &str) -> String {
+        let unified: String = if cfg!(windows) { path.chars().map(|c| if c == '\\' { '/' } else { c }).collect() } else { path.to_string() };
+        let trimmed = unified.trim_end_matches('/');
+        let kept = if trimmed.is_empty() { unified.as_str() } else { trimmed };
+        if cfg!(windows) {
+            kept.to_lowercase()
+        } else {
+            kept.to_string()
+        }
+    }
+    plain(a) == plain(b)
 }
 
 /// A connection to wherever the library is kept.
@@ -897,7 +931,23 @@ pub struct SyncOverview {
     pub conflicts: Vec<SyncConflict>,
     /// The second place the library syncs with, if there is one.
     pub also: Option<AlsoOverview>,
+    /// Each time sync started over, newest first.
+    pub restarts: Vec<SyncRestart>,
 }
+
+/// Sync started over with a place: everything is sent and read again.
+/// Noted with why, so it's never a mystery (embre, 28 November).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncRestart {
+    pub at: IsoUtc,
+    /// "main" or "also".
+    pub place: String,
+    pub reason: String,
+}
+
+/// How many restarts are kept.
+const RESTARTS_KEPT: usize = 20;
 
 /// How the second place stands.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1093,6 +1143,8 @@ const RETRY_FILE_HOURS: i64 = 24;
 const DEVICE_ID: &str = "sync.device_id";
 const CURSOR: &str = "sync.cursor";
 const LAST_SUCCESS: &str = "sync.last_success_at";
+/// Each time sync started over, and why: [`SyncRestart`]s, newest first.
+const RESTARTS: &str = "sync.restarts";
 const LAST_ERROR: &str = "sync.last_error";
 /// The second place, as a `Provider`. Kept on this device only, like the first.
 pub(crate) const ALSO: &str = "sync.also";
@@ -1228,8 +1280,13 @@ impl Library {
     /// Saves the chosen service. Moving to a different cloud library starts
     /// sync over with it: everything here is sent there, and all of it read.
     pub fn set_sync_provider(&mut self, provider: &Provider) -> Result<()> {
-        if !self.sync_provider()?.same_place(provider) {
-            self.reset_sync()?;
+        let before = self.sync_provider()?;
+        if !before.same_place(provider) {
+            let reason = match provider {
+                Provider::Off => format!("You disconnected from {}", before.place_name()),
+                to => format!("You chose {}", to.place_name()),
+            };
+            self.reset_sync(&reason)?;
         }
         self.put_setting(PROVIDER, Some(&serde_json::to_string(provider)?))?;
         self.drop_also_if_same(provider)
@@ -1293,7 +1350,12 @@ impl Library {
             _ => false,
         };
         if !same {
-            self.reset_also_sync()?;
+            let reason = match (provider, &before) {
+                (Some(to), _) => format!("You chose {} for the second sync", to.place_name()),
+                (None, Some(was)) => format!("You stopped the second sync with {}", was.place_name()),
+                (None, None) => "You stopped the second sync".to_string(),
+            };
+            self.reset_also_sync(&reason)?;
         }
         let json = provider.map(serde_json::to_string).transpose()?;
         self.put_setting(ALSO, json.as_deref())
@@ -1424,6 +1486,7 @@ impl Library {
             waiting_to_send: self.waiting_count(&options, Lane::Main)?,
             conflicts: self.sync_conflicts()?,
             also,
+            restarts: self.sync_restarts()?,
         })
     }
 
@@ -1503,7 +1566,8 @@ impl Library {
 
     /// Forgets everything sync knew about the cloud, after signing out or
     /// switching project. This device's changes are all sent again next time.
-    pub fn reset_sync(&mut self) -> Result<()> {
+    pub fn reset_sync(&mut self, reason: &str) -> Result<()> {
+        self.note_restart(Lane::Main, reason)?;
         self.sync_epoch += 1;
         self.conn.execute_batch(
             "UPDATE sync_clock SET pushed = 0;
@@ -1513,6 +1577,29 @@ impl Library {
             self.put_setting(key, None)?;
         }
         Ok(())
+    }
+
+    /// Notes that sync starts over with a place, and why. Only a place that
+    /// had synced is worth noting: a new one has nothing to start over.
+    fn note_restart(&self, lane: Lane, reason: &str) -> Result<()> {
+        if self.setting(lane.last_success_key())?.is_none() && self.setting(lane.cursor_key())?.is_none() {
+            return Ok(());
+        }
+        let mut all = self.sync_restarts()?;
+        all.insert(0, SyncRestart { at: now_utc(), place: if lane == Lane::Main { "main" } else { "also" }.into(), reason: reason.to_string() });
+        all.truncate(RESTARTS_KEPT);
+        self.put_setting(RESTARTS, Some(&serde_json::to_string(&all)?))
+    }
+
+    /// Each time sync started over, newest first.
+    pub fn sync_restarts(&self) -> Result<Vec<SyncRestart>> {
+        Ok(self.setting(RESTARTS)?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default())
+    }
+
+    /// Whether choosing `provider` as the main place would start sync over.
+    pub fn would_restart_sync(&self, provider: &Provider) -> Result<bool> {
+        let now = self.sync_provider()?;
+        Ok(now != Provider::Off && !now.same_place(provider) && self.has_synced()?)
     }
 
     /// Whether this library syncs with somewhere: it has finished a sync
@@ -1531,7 +1618,8 @@ impl Library {
     }
 
     /// As `reset_sync`, for the second place only.
-    pub fn reset_also_sync(&mut self) -> Result<()> {
+    pub fn reset_also_sync(&mut self, reason: &str) -> Result<()> {
+        self.note_restart(Lane::Also, reason)?;
         self.sync_epoch += 1;
         self.conn.execute_batch(
             "DELETE FROM sync_clock_also; DELETE FROM sync_files_also;

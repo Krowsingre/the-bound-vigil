@@ -24,6 +24,7 @@ import { disconnectLabel, serviceName, SyncFolderPanel, type FolderService } fro
 import { ALL_PROVIDERS, FIRST_CARD, PROVIDERS, ProviderPicker, type Provider } from "./providers";
 import { AtPage, AtPair, AtRow, AtRows, AtSection, AtSwitch, usePhone } from "./attune";
 import { AtWindow } from "./AtWindow";
+import { useRestartAsk } from "./restartAsk";
 import { Select } from "./controls";
 import { LiningUpPane } from "./ActivityTab";
 import { thisDevice } from "./thisDevice";
@@ -85,7 +86,9 @@ export function DeskSync() {
   const accountName = current.kind === "supabase" ? signedIn : current.username;
   const phone = usePhone();
 
-  const stop = () =>
+  const restart = useRestartAsk();
+  const stop = () => restart.leave(current.kind === "supabase" ? "Sign out of Supabase?" : `${disconnectLabel(current)}?`, leave);
+  const leave = () =>
     void (current.kind === "supabase" ? api.syncSignOut() : api.setSyncProvider({ kind: "off" })).then(
       () => (
         toast(
@@ -340,6 +343,7 @@ export function DeskSync() {
           <AlsoSection overview={overview} onChanged={() => void reload()} />
         </AtWindow>
       )}
+      {restart.dialog}
     </AtPage>
   );
 }
@@ -347,6 +351,7 @@ export function DeskSync() {
 /** Choosing and setting up the service: the old Sync provider section, in a window. */
 function ProviderSetup({ overview, inUse, pick, onChanged }: { overview: SyncOverview | null; inUse: Provider | null; pick: boolean; onChanged: () => void }) {
   const toast = useToast();
+  const restart = useRestartAsk();
   const [provider, setProvider] = useState<Provider>(inUse ?? FIRST_CARD);
   const [editing, setEditing] = useState(false);
   const project = overview?.project ?? null;
@@ -388,9 +393,11 @@ function ProviderSetup({ overview, inUse, pick, onChanged }: { overview: SyncOve
                 type="button"
                 className="btn btn-primary"
                 onClick={() =>
-                  void api.setSyncProvider({ kind: "supabase" }).then(
-                    () => (toast("Your library now syncs through Supabase."), onChanged()),
-                    (e: unknown) => toast(String(e)),
+                  restart.choose({ kind: "supabase" }, "Supabase", () =>
+                    void api.setSyncProvider({ kind: "supabase" }).then(
+                      () => (toast("Your library now syncs through Supabase."), onChanged()),
+                      (e: unknown) => toast(String(e)),
+                    ),
                   )
                 }
               >
@@ -404,6 +411,7 @@ function ProviderSetup({ overview, inUse, pick, onChanged }: { overview: SyncOve
         </>
       )}
       {provider !== "supabase" && <SyncFolderPanel key={provider} service={provider as FolderService} current={current} onChanged={onChanged} />}
+      {restart.dialog}
     </>
   );
 }

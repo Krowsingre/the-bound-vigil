@@ -491,6 +491,7 @@ function previewSync(): SyncOverview {
       waitingToSend: 0,
       conflicts: [],
       also: null,
+      restarts: [{ at: ago(0.06), place: "main", reason: "You chose iCloud Drive" }],
     };
   return {
     status: { state: mode === "ask" ? "attention" : "idle", lastSuccessAt: ago(0.002) },
@@ -1128,6 +1129,8 @@ export function previewApi(): Api {
       sync = { ...sync, provider, status: choice.kind === "off" ? { state: "disabled", lastSuccessAt: null } : { state: "idle", lastSuccessAt: new Date().toISOString() } };
       return false;
     },
+    wouldRestartSync: async (choice) =>
+      sync.provider.kind !== "off" && sync.status.lastSuccessAt !== null && (choice.kind !== sync.provider.kind || (choice.kind === "folder" && choice.path.toLowerCase() !== (sync.provider.location ?? "").toLowerCase())),
     setAlsoSync: async (choice) => {
       const provider: ProviderView | null = !choice || choice.kind === "off"
         ? null
@@ -1144,7 +1147,7 @@ export function previewApi(): Api {
     chooseFolder: async () => "C:\\Users\\you\\Dropbox",
     cloudSignIn: async (service) => ({ kind: "cloud", service, accountId: `${service}-1`, name: "you@example.com", refreshToken: "preview" }),
     cloudServices: async () => ["dropbox", "google", "onedrive"],
-    checkForUpdate: async () => ({ canUpdate: true, current: "0.171.0", version: "0.171.0", notes: "The Bound Vigil 0.171.0" }),
+    checkForUpdate: async () => ({ canUpdate: true, current: "0.172.0", version: "0.172.0", notes: "The Bound Vigil 0.172.0" }),
     installUpdate: async () => {
       throw new Error("The preview can't install updates.");
     },
