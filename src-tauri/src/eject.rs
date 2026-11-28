@@ -19,7 +19,11 @@ pub fn eject(root: &str, name: &str) -> Result<(), String> {
     unsafe {
         let drive: HANDLE = CreateFileW(&volume, (GENERIC_READ | GENERIC_WRITE).0, FILE_SHARE_READ | FILE_SHARE_WRITE, None, OPEN_EXISTING, FILE_FLAGS_AND_ATTRIBUTES(0), None)
             .map_err(|_| failed())?;
-        let control = |code: u32, input: Option<*const c_void>, size: u32| DeviceIoControl(drive, code, input, size, None, 0, None, None);
+        // With no OVERLAPPED, Windows needs somewhere to write the byte count, even when nothing comes back.
+        let control = |code: u32, input: Option<*const c_void>, size: u32| {
+            let mut returned = 0u32;
+            DeviceIoControl(drive, code, input, size, None, 0, Some(&mut returned), None)
+        };
         // Something may still have a file open on it (a copy just finishing): try for a few seconds.
         let mut locked = false;
         for _ in 0..15 {
